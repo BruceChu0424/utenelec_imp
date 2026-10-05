@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/filter_segment_tap.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -40,6 +41,9 @@ Future<void> _pumpPage(
       ],
       // 带路由壳：2026-09-12 起双击进 FQC 办理页、批量审批进汇总页（都不再弹窗）。
       child: MaterialApp.router(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: GoRouter(
           routes: [
             GoRoute(

@@ -328,8 +328,8 @@ abstract class _MaterialAnalysisProductTasksState
 
   /// 弹仓库选择面板并回写货品主档。返回 true = 真的改了(调用方据此 setState)。
   ///
-  /// allowParent: true —— 所属仓库是主档归属不是过账落点, V476 的叶子仓约束不适用,
-  /// 而且「成品仓库」这类合法值本身可能挂着不良子仓, 限叶子会把它挡在外面。
+  /// ADR-145: 所属仓库是「新选」, 走运营口径——只能选服务端算好的可选良品子仓
+  /// (主仓、停用仓、不良品仓、车间内料仓都不列), 与服务端校验同一定义。
   Future<bool> pickOwningWarehouse(
     BuildContext context, {
     required String goodsId,
@@ -337,14 +337,16 @@ abstract class _MaterialAnalysisProductTasksState
   }) async {
     if (goodsId.isEmpty || _busy) return false;
     final names = ref.read(masterNameServiceProvider);
+    // 可选性来自完整仓库字典(selectableForNew)；只有名称映射时没有子仓可选。
+    // ensureWarehousesLoaded 自带缓存，重复点不会重复请求。
+    await names.ensureWarehousesLoaded();
+    if (!context.mounted || !mounted || _busy) return false;
     final picked = await showUtenWarehousePickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy
-          .where((warehouse) => !warehouse.isLineSide)
-          .toList(),
+      hierarchy: names.warehouseHierarchy,
       initialWarehouseId: currentWarehouseId,
-      title: '选择所属仓库', // TODO(l10n): 补 arb
-      allowParent: true,
+      title: _l10n.warehouseOwningPickerTitle,
+      use: WarehouseUse.goodIn,
     );
     if (picked == null || !mounted || _busy) return false;
     final nextId = picked.isAll ? null : picked.id;

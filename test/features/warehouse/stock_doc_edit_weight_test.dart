@@ -279,7 +279,7 @@ class _Api extends ApiClient {
   }) async {
     if (path == ApiEndpoints.warehousesDict) {
       return const [
-        {'id': _warehouseId, 'name': '五金仓库'},
+        {'id': _warehouseId, 'name': '五金仓库', 'selectableForNew': true},
       ];
     }
     if (path == ApiEndpoints.unitsDict) {

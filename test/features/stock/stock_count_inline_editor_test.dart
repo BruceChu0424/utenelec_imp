@@ -70,7 +70,14 @@ class _CountRepo extends StockCountRequestRepository {
   int failures = 0;
   final candidateWarehouses = <String>[];
   final submissions =
-      <({String warehouse, List<Map<String, dynamic>> lines, String key})>[];
+      <
+        ({
+          String warehouse,
+          List<Map<String, dynamic>> lines,
+          String key,
+          String reason,
+        })
+      >[];
   Future<PagedResult<CountStockRow>> Function(String, List<String>)? deferred;
   @override
   Future<List<ProductCategoryNode>> candidateCategories(
@@ -125,6 +132,7 @@ class _CountRepo extends StockCountRequestRepository {
       warehouse: warehouseId,
       lines: lines,
       key: idempotencyKey,
+      reason: reason,
     ));
     if (failures-- > 0) throw ApiException('NETWORK', '暂未确认结果');
     return StockCountRequest(
@@ -240,6 +248,23 @@ void main() {
       expect(payload['weightChanged'], false);
       expect(payload.containsKey('targetWeightKg'), isFalse);
       expect(editor.rows['precise|']!.snapshot.qty, '99999999999999.9998');
+    },
+  );
+
+  test(
+    'blank explanation is submitted as empty text and a failed send keeps input for the same key',
+    () async {
+      final repo = _CountRepo()..failures = 1;
+      final editor = StockCountInlineController(repo)..begin(_normal);
+      addTearDown(editor.dispose);
+      editor.add(_row('blank', qty: '3'));
+      editor.rows['blank|']!.qty.text = '4';
+      editor.reason.text = '   ';
+      await expectLater(editor.submit(), throwsA(isA<ApiException>()));
+      expect(editor.rows['blank|']!.qty.text, '4');
+      await editor.submit();
+      expect(repo.submissions.map((s) => s.reason), ['', '']);
+      expect(repo.submissions[0].key, repo.submissions[1].key);
     },
   );
 
@@ -459,13 +484,13 @@ void main() {
       final qty = find.byKey(const ValueKey('stock-count-qty-pp|'));
       await tester.ensureVisible(qty);
       await tester.enterText(qty, '5000');
-      await tester.enterText(
-        find.byKey(const Key('stock-count-reason')),
-        '上线清点',
-      );
+      await tester.pumpAndSettle();
+      // 2026-10-04 用户原路径: 盘点说明选填, 不填直接「保存并送审」。
+      expect(find.text('盘点说明(选填)'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('stock-count-save')));
       await tester.tap(find.byKey(const Key('stock-count-save')));
       await tester.pumpAndSettle();
+      expect(repo.submissions.single.reason, '');
       expect(repo.submissions.single.warehouse, 'bin1');
       expect(repo.submissions.single.lines.single['expectedQty'], '0');
       expect(repo.submissions.single.lines.single['targetQty'], '5000');

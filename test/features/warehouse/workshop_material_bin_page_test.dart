@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -18,27 +19,61 @@ import 'package:uten_imp/features/warehouse/materialbin/pages/workshop_material_
 
 import 'workshop_material_test_support.dart';
 
+// ADR-147: 三态由服务端给出; 没开通的车间只有设置权限的人能开通 (allowedActions 带 OPEN)。
 const _targetDisabled = WmSetting(
   workshopDepartmentId: 'target',
   workshopName: '目标车间',
-  periodicEnabled: false,
-  allowedActions: ['SETUP'],
+  status: WmBinStatus.notOpen,
+);
+
+const _targetOpenable = WmSetting(
+  workshopDepartmentId: 'target',
+  workshopName: '目标车间',
+  status: WmBinStatus.notOpen,
+  allowedActions: ['SETUP', 'OPEN', 'ENABLE_PERIODIC'],
 );
 
 const _targetEnabled = WmSetting(
   workshopDepartmentId: 'target',
   workshopName: '目标车间',
+  status: WmBinStatus.periodic,
   periodicEnabled: true,
   binWarehouseId: 'target-bin',
   allowedActions: ['SETUP'],
 );
 
+/// 只开通、收车间直送 (没开整批领料) 的车间。
+const _targetDirectOnly = WmSetting(
+  workshopDepartmentId: 'target',
+  workshopName: '目标车间',
+  status: WmBinStatus.open,
+  binWarehouseId: 'target-bin',
+  binWarehouseName: '目标车间内料仓',
+  allowedActions: ['SETUP', 'ENABLE_PERIODIC', 'CHANGE_SOURCE', 'REVOKE'],
+);
+
+const _fourthDirectOnly = WmSetting(
+  workshopDepartmentId: 'w4',
+  workshopName: '第四车间',
+  status: WmBinStatus.open,
+  binWarehouseId: 'bin4',
+);
+
 const _thirdEnabled = WmSetting(
   workshopDepartmentId: 'w3',
   workshopName: '第三车间',
+  status: WmBinStatus.periodic,
   periodicEnabled: true,
   binWarehouseId: 'bin3',
 );
+
+/// 双击表格行 (MasterDataTableView 契约: 双击才触发 onRowTap)。
+Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
+  await tester.tap(finder);
+  await tester.pump(const Duration(milliseconds: 50));
+  await tester.tap(finder);
+  await tester.pump();
+}
 
 class _ContextRepository extends FakeWorkshopMaterialRepository {
   final positionReads = <String>[];
@@ -155,9 +190,9 @@ void main() {
       const WorkshopMaterialBinPage(workshopId: 'target'),
       repo: repo,
     );
-    expect(find.text('「目标车间」尚未开启整批领料'), findsOneWidget);
+    expect(find.text('「目标车间」还没开通内料仓'), findsOneWidget);
     expect(find.textContaining('请找仓库'), findsOneWidget);
-    expect(find.text('去开启整批领料'), findsNothing);
+    expect(find.text('开通内料仓'), findsNothing);
     expect(find.byKey(const Key('wm-bin-request')), findsNothing);
     expect(repo.positionReads, isEmpty);
   });
@@ -177,7 +212,7 @@ void main() {
         },
       );
       expect(find.text('指定车间当前不可用或无权查看'), findsOneWidget);
-      expect(find.text('去开启整批领料'), findsNothing);
+      expect(find.text('开通内料仓'), findsNothing);
       expect(find.text('注塑车间'), findsOneWidget);
       expect(repo.positionReads, isEmpty);
       await _switchWorkshop(tester, '注塑车间');
@@ -196,7 +231,7 @@ void main() {
       const WorkshopMaterialBinPage(workshopId: 'target'),
       repo: repo,
     );
-    expect(find.text('「目标车间」尚未开启整批领料'), findsOneWidget);
+    expect(find.text('「目标车间」还没开通内料仓'), findsOneWidget);
     expect(find.byKey(const Key('wm-bin-workshops')), findsNothing);
     expect(repo.positionReads, isEmpty);
   });
@@ -244,7 +279,7 @@ void main() {
       ),
       repo: repo,
     );
-    expect(find.text('「目标车间」尚未开启整批领料'), findsOneWidget);
+    expect(find.text('「目标车间」还没开通内料仓'), findsOneWidget);
     expect(repo.positionReads, isEmpty);
     await _switchWorkshop(tester, '注塑车间');
     await tester.pumpAndSettle();
@@ -286,75 +321,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('setup navigation carries the target and return uses its newly '
-      'enabled bin even when another workshop sorts first', (tester) async {
+  testWidgets('not-open target opens its bin in place through the opening '
+      'panel and then reads the newly opened bin even when another workshop '
+      'sorts first', (tester) async {
     final repo = _ContextRepository()
-      ..settingsResult = const [wmTestWorkshop, _targetDisabled];
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (_, _) =>
-              const WorkshopMaterialBinPage(workshopId: 'target'),
-        ),
-        GoRoute(
-          path: RouteName.workshopMaterialSetup,
-          builder: (context, state) => Scaffold(
-            body: Column(
-              children: [
-                Text('配置车间 ${state.uri.queryParameters['workshopId']}'),
-                TextButton(
-                  onPressed: () {
-                    repo.settingsResult = const [
-                      wmTestWorkshop,
-                      _targetEnabled,
-                    ];
-                    context.pop();
-                  },
-                  child: const Text('完成开启并返回'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
+      ..settingsResult = const [wmTestWorkshop, _targetOpenable];
     await pumpWorkshopMaterialPage(
       tester,
-      MaterialApp.router(
-        routerConfig: router,
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-      ),
+      const WorkshopMaterialBinPage(workshopId: 'target'),
       repo: repo,
       permissions: const {
         Perm.workshopMaterialView,
         Perm.workshopMaterialSetup,
       },
     );
-    await tester.tap(find.text('去开启整批领料'));
+    expect(find.text('「目标车间」还没开通内料仓'), findsOneWidget);
+    await tester.tap(find.text('开通内料仓'));
     await tester.pumpAndSettle();
-    expect(find.text('配置车间 target'), findsOneWidget);
-    await tester.tap(find.text('完成开启并返回'));
+    expect(find.byKey(const Key('wm-bin-panel-workshops')), findsOneWidget);
+    // 服务端办完后清单里目标车间变成已开通 (整批领料中)。
+    repo.settingsResult = const [wmTestWorkshop, _targetEnabled];
+    await tester.tap(find.byKey(const Key('wm-bin-panel-submit')));
     await tester.pumpAndSettle();
-    expect(find.text('目标车间内料仓'), findsOneWidget);
+    expect(repo.batchEnables.single.items.single.workshopId, 'target');
+    expect(repo.batchEnables.single.items.single.expectedStatus, 'NOT_OPEN');
+    expect(repo.batchEnables.single.periodic, isFalse);
     expect(repo.positionReads, isNotEmpty);
     expect(repo.positionReads, everyElement('target-bin'));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('未开启内料仓时仅有设置权限的人可进入开启流程', (tester) async {
-    final repo = FakeWorkshopMaterialRepository();
+  testWidgets('只开通、收车间直送的内料仓: 只列现有的料, 没有发料/盘点动作, '
+      '有设置权限可接着开启整批领料', (tester) async {
+    final repo = _ContextRepository()
+      ..settingsResult = const [_targetDirectOnly]
+      ..positionByBin = const {
+        'target-bin': WmPosition(rows: [_row]),
+      };
+    await pumpWorkshopMaterialPage(
+      tester,
+      const WorkshopMaterialBinPage(workshopId: 'target'),
+      repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialSetup,
+        Perm.workshopMaterialRequest,
+      },
+    );
+    expect(repo.positionReads, ['target-bin']);
+    expect(find.byKey(const Key('wm-bin-direct-only')), findsOneWidget);
+    expect(find.text('PP 颗粒'), findsOneWidget);
+    expect(find.byKey(const Key('wm-bin-request')), findsNothing);
+    expect(find.byKey(const Key('stock-count-mode')), findsNothing);
+    expect(find.byKey(const Key('wm-bin-enable-periodic')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('总览: 有设置权限才有勾选列和右下批量开通/开启整批领料/撤销, '
+      '没勾选时按钮灰显', (tester) async {
+    final repo = FakeWorkshopMaterialRepository()
+      ..settingsResult = const [wmTestWorkshop, _targetOpenable];
     await pumpWorkshopMaterialPage(
       tester,
       const WorkshopMaterialBinPage(),
       repo: repo,
     );
-    expect(find.text('去开启整批领料'), findsNothing);
     expect(find.byKey(const Key('wm-overview-table')), findsOneWidget);
-    expect(find.byKey(const Key('wm-overview-manage')), findsNothing);
+    expect(
+      tester
+          .widget<MasterDataTableView<WmSetting>>(
+            find.byKey(const Key('wm-overview-table')),
+          )
+          .selectable,
+      isFalse,
+    );
+    expect(find.byKey(const Key('wm-overview-batch-open')), findsNothing);
 
     await pumpWorkshopMaterialPage(
       tester,
@@ -362,8 +403,19 @@ void main() {
       repo: repo,
       permissions: const {Perm.workshopMaterialSetup},
     );
-    expect(find.byKey(const Key('wm-overview-manage')), findsOneWidget);
-    expect(find.text('开通与设置'), findsOneWidget);
+    expect(
+      tester
+          .widget<MasterDataTableView<WmSetting>>(
+            find.byKey(const Key('wm-overview-table')),
+          )
+          .selectable,
+      isTrue,
+    );
+    expect(find.byKey(const Key('wm-overview-batch-open')), findsOneWidget);
+    expect(find.text('开通(0)'), findsOneWidget);
+    expect(find.text('开启整批领料(0)'), findsOneWidget);
+    expect(find.text('撤销(0)'), findsOneWidget);
+    expect(find.byKey(const Key('wm-overview-machines')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -538,9 +590,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('通用入口总览含未启用车间，不自动读取第一个仓的库存', (tester) async {
+  testWidgets('总览行里不放按钮: 行高与平台普通文字行一致 (可勾选时只多出勾选框的点击区)', (tester) async {
+    final repo = FakeWorkshopMaterialRepository()
+      ..settingsResult = const [wmTestWorkshop, _targetOpenable];
+    Future<double> rowHeight(Set<String> permissions) async {
+      await pumpWorkshopMaterialPage(
+        tester,
+        const WorkshopMaterialBinPage(),
+        repo: repo,
+        permissions: permissions,
+      );
+      for (final id in ['w1', 'target']) {
+        final row = find.byKey(ValueKey('wm-overview-row-$id'));
+        expect(row, findsOneWidget);
+        expect(
+          find.descendant(of: row, matching: find.byType(TextButton)),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: row, matching: find.byType(UtenButton)),
+          findsNothing,
+        );
+      }
+      return tester
+          .getSize(find.byKey(const ValueKey('wm-overview-row-w1')))
+          .height;
+    }
+
+    // 只读 (不能开通): 纯文字行约 35px (13 号字 x 1.45 行高 + 上下各 8)。
+    expect(await rowHeight(const {Perm.workshopMaterialView}), lessThan(44));
+    // 可勾选: 行高只由勾选框的最小点击区决定, 与平台其它多选列表相同; 旧版行内按钮是 60px。
+    expect(
+      await rowHeight(const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialSetup,
+      }),
+      lessThanOrEqualTo(kMinInteractiveDimension),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('通用入口总览三态分段, 不自动读取第一个仓的库存', (tester) async {
     final repo = _ContextRepository()
-      ..settingsResult = const [wmTestWorkshop, _targetDisabled];
+      ..settingsResult = const [
+        wmTestWorkshop,
+        _targetDisabled,
+        _fourthDirectOnly,
+      ];
     await pumpWorkshopMaterialPage(
       tester,
       const WorkshopMaterialBinPage(),
@@ -549,13 +645,21 @@ void main() {
     final table = tester.widget<MasterDataTableView<WmSetting>>(
       find.byKey(const Key('wm-overview-table')),
     );
-    expect(table.items.map((s) => s.workshopDepartmentId), ['w1', 'target']);
+    expect(table.items.length, 3);
     expect(repo.positionReads, isEmpty);
-    expect(find.byKey(const Key('wm-overview-setup-target')), findsNothing);
+    for (final label in ['未开通', '已开通', '整批领料中']) {
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('wm-overview-status')),
+          matching: find.textContaining(label),
+        ),
+        findsOneWidget,
+      );
+    }
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('wm-overview-status')),
-        matching: find.textContaining('未启用'),
+        matching: find.textContaining('未开通'),
       ),
     );
     await tester.pumpAndSettle();
@@ -566,15 +670,15 @@ void main() {
           )
           .items
           .single
-          .workshopDepartmentId,
-      'target',
+          .status,
+      WmBinStatus.notOpen,
     );
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('总览选择后才进入指定仓，返回仍能管理未启用车间', (tester) async {
+  testWidgets('总览双击: 已开通进内料仓, 未开通打开开通面板; 返回总览不自动读仓', (tester) async {
     final repo = _ContextRepository()
-      ..settingsResult = const [wmTestWorkshop, _targetDisabled];
+      ..settingsResult = const [wmTestWorkshop, _targetOpenable];
     final router = GoRouter(
       initialLocation: RouteName.workshopMaterialBin,
       routes: [
@@ -582,26 +686,6 @@ void main() {
           path: RouteName.workshopMaterialBin,
           builder: (_, state) => WorkshopMaterialBinPage(
             workshopId: state.uri.queryParameters['workshopId'],
-          ),
-        ),
-        GoRoute(
-          path: RouteName.workshopMaterialSetup,
-          builder: (context, state) => Scaffold(
-            body: Column(
-              children: [
-                Text('配置 ${state.uri.queryParameters['workshopId']}'),
-                TextButton(
-                  onPressed: () {
-                    repo.settingsResult = const [
-                      wmTestWorkshop,
-                      _targetEnabled,
-                    ];
-                    context.pop();
-                  },
-                  child: const Text('开通并返回'),
-                ),
-              ],
-            ),
           ),
         ),
       ],
@@ -622,30 +706,67 @@ void main() {
       },
     );
     expect(repo.positionReads, isEmpty);
-    await tester.tap(find.byKey(const ValueKey('wm-overview-open-w1')));
+    await _doubleTapRow(tester, find.text('注塑车间').first);
     await tester.pumpAndSettle();
-    expect(repo.positionReads, everyElement('bin1'));
     expect(repo.positionReads, isNotEmpty);
+    expect(repo.positionReads, everyElement('bin1'));
     await tester.tap(find.byKey(const Key('wm-bin-more')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('wm-bin-settings')), findsOneWidget);
     await tester.tap(find.byKey(const Key('wm-bin-overview')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('wm-overview-table')), findsOneWidget);
     final stockReads = repo.positionReads.length;
-    await tester.tap(find.byKey(const ValueKey('wm-overview-setup-target')));
+    await _doubleTapRow(tester, find.text('目标车间').first);
     await tester.pumpAndSettle();
-    expect(find.text('配置 target'), findsOneWidget);
-    await tester.tap(find.text('开通并返回'));
+    expect(find.byKey(const Key('wm-bin-panel-workshops')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wm-bin-panel-close')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('wm-overview-open-target')), findsOneWidget);
-    expect(repo.positionReads.length, stockReads, reason: '开启返回总览不自动读任意仓');
+    expect(repo.positionReads.length, stockReads, reason: '打开面板不读任何仓的库存');
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('只有设置权限可看总览和配置，明确仓深链也不读库存', (tester) async {
+  testWidgets('勾选两个未开通的车间: 右下「开通(2)」一次开通, 已开通的不算; 撤销只数已开通的', (tester) async {
+    const second = WmSetting(
+      workshopDepartmentId: 'w2',
+      workshopName: '装配车间',
+      status: WmBinStatus.notOpen,
+      allowedActions: ['SETUP', 'OPEN', 'ENABLE_PERIODIC'],
+    );
+    final repo = FakeWorkshopMaterialRepository()
+      ..settingsResult = const [wmTestWorkshop, _targetOpenable, second];
+    await pumpWorkshopMaterialPage(
+      tester,
+      const WorkshopMaterialBinPage(),
+      repo: repo,
+      permissions: const {
+        Perm.workshopMaterialView,
+        Perm.workshopMaterialSetup,
+      },
+    );
+    final table = find.byKey(const Key('wm-overview-table'));
+    tester.widget<MasterDataTableView<WmSetting>>(table).onSelectedIdsChanged!({
+      'w1',
+      'target',
+      'w2',
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('开通(2)'), findsOneWidget);
+    expect(find.text('开启整批领料(2)'), findsOneWidget);
+    expect(find.text('撤销(1)'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wm-overview-batch-open')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('所选车间 (2)'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('wm-bin-panel-submit')));
+    await tester.pumpAndSettle();
+    final call = repo.batchEnables.single;
+    expect(call.items.map((i) => i.workshopId), ['target', 'w2']);
+    expect(call.items.map((i) => i.expectedStatus), ['NOT_OPEN', 'NOT_OPEN']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('只有设置权限可看总览和开通，明确仓深链也不读库存', (tester) async {
     final repo = _ContextRepository()
-      ..settingsResult = const [wmTestWorkshop, _targetDisabled];
+      ..settingsResult = const [wmTestWorkshop, _targetOpenable];
     await pumpWorkshopMaterialPage(
       tester,
       const WorkshopMaterialBinPage(),
@@ -654,8 +775,7 @@ void main() {
       size: const Size(375, 760),
       textScale: 1.3,
     );
-    expect(find.byKey(const Key('wm-overview-manage')), findsOneWidget);
-    expect(find.byKey(const ValueKey('wm-overview-open-w1')), findsNothing);
+    expect(find.byKey(const Key('wm-overview-table')), findsOneWidget);
     expect(repo.positionReads, isEmpty);
     expect(tester.takeException(), isNull);
     await pumpWorkshopMaterialPage(

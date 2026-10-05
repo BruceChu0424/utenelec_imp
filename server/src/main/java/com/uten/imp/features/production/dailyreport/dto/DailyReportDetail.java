@@ -54,6 +54,11 @@ public class DailyReportDetail extends com.uten.imp.common.history.DocumentHisto
     private List<String> allowedActions;
     /** The installed application implements seen-version approval and receipt resolution. */
     private int approvalCommandVersion;
+    /**
+     * ADR-148：一次录入的实际产出一批一行，批内按实物交接批分去向组(「送入仓库 1100(其中实际超产 100)」)；
+     * 审核摘要与草稿恢复都读它，页面不再自己分组拼摘要。
+     */
+    private List<DailyReportOutputBatch> outputBatches;
     /** Only approval/receipt responses attach a command fact; ordinary detail is not a receipt. */
     @Setter
     private DailyReportApprovalReceipt approvalReceipt;

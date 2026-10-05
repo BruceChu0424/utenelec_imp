@@ -11,6 +11,7 @@ import java.util.Map;
  *
  * <p>上级仓库（parent）桶值=parent_id（UUID）、label=上级仓名；空值=顶层/独立仓。
  * 核算（accountable）桶值=true/false、label=是/否（列 NOT NULL，无空值桶）。
+ * 仓库用途(defective, ADR-145)桶值=true/false、label=不良品仓/良品仓。
  */
 @Getter
 @AllArgsConstructor
@@ -20,5 +21,6 @@ public class WarehouseFacets {
     private final List<FacetBucket> status;
     private final List<FacetBucket> parent;
     private final List<FacetBucket> accountable;
+    private final List<FacetBucket> defective;
     private final Map<String, Long> nullCounts;
 }

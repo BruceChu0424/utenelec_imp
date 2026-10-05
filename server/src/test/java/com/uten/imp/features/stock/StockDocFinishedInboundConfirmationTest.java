@@ -46,6 +46,7 @@ class StockDocFinishedInboundConfirmationTest {
 
     private final UUID documentId = UUID.randomUUID();
     private final UUID itemId = UUID.randomUUID();
+    private final UUID lotId = UUID.randomUUID();
     private final UUID warehouseId = UUID.randomUUID();
     private final UUID planId = UUID.randomUUID();
     private EntityManager em;
@@ -361,8 +362,14 @@ class StockDocFinishedInboundConfirmationTest {
                 }));
         Query sourcePlan = query();
         when(sourcePlan.getResultList()).thenReturn(List.of(planId));
+        Query lots = query();
+        when(lots.getResultList()).thenReturn(java.util.Collections.<Object[]>singletonList(
+                new Object[]{lotId, itemId, new BigDecimal("10.0000")}));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("SELECT source.output_lot_id, item.id, item.qty")) {
+                return lots;
+            }
             if (sql.contains("SELECT warehouse_id")
                     && sql.contains("FROM stock_documents")) {
                 return warehouse;
@@ -390,17 +397,18 @@ class StockDocFinishedInboundConfirmationTest {
                 new FinishedInboundConfirmRequest();
         request.setIdempotencyKey(key);
         request.setVarianceReason(reason);
-        request.setLines(List.of(line(itemId, acceptedQty)));
+        // ADR-148：仓库按实物交接批点收，一批一个实收数，服务端按批内优先级分到各行。
+        request.setLots(List.of(lot(lotId, acceptedQty)));
         return request;
     }
 
-    private static FinishedInboundConfirmRequest.Line line(
+    private static FinishedInboundConfirmRequest.Lot lot(
             UUID id, String acceptedQty) {
-        FinishedInboundConfirmRequest.Line line =
-                new FinishedInboundConfirmRequest.Line();
-        line.setItemId(id);
-        line.setAcceptedQty(new BigDecimal(acceptedQty));
-        return line;
+        FinishedInboundConfirmRequest.Lot lot =
+                new FinishedInboundConfirmRequest.Lot();
+        lot.setLotId(id);
+        lot.setAcceptedQty(new BigDecimal(acceptedQty));
+        return lot;
     }
 
     private static Query query() {

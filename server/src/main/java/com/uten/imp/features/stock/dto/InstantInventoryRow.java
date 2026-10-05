@@ -73,6 +73,8 @@ public class InstantInventoryRow {
     /** Master owning warehouse, not the warehouse scope of this stock query. */
     private UUID owningWarehouseId;
     private String owningWarehouseName;
+    /** 本行数量里在不良品仓的部分(ADR-146; 只有打开「含不良品仓」或直接查不良品仓时非 0)。 */
+    private BigDecimal defectiveQty;
 
     /** Preserve the existing constructor used by stock clients and read-side tests. */
     public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
@@ -83,7 +85,7 @@ public class InstantInventoryRow {
                                BigDecimal unitWeightKg, String weightTier, boolean costMasked) {
         this(goodsId, colorId, categoryName, model, cNumber, name, spec, colorName, unitName, remark,
                 weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
-                weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked, null, null);
+                weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked, null, null, BigDecimal.ZERO);
     }
 
     /** 字段名首字母后紧跟大写, Jackson 按 getter 推名会得到 cnumber; 固定为前端读的 cNumber。 */

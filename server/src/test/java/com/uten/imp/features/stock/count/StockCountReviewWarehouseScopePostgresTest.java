@@ -2,12 +2,13 @@ package com.uten.imp.features.stock.count;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.application.port.WorkshopStockCountPostingPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.master.warehouse.WarehouseKeeperService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -17,7 +18,6 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -27,7 +27,11 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-/** Real V693 scope resolution and real count/page SQL, using no post-V768 schema objects. */
+/**
+ * Real count/page SQL of the warehouse review queue under the ADR-149 warehouse data scope. Role resolution itself
+ * (fn_user_warehouse_access) is pinned by WarehouseDataScopePostgresTest on the full schema; here the port returns the
+ * resolved scopes (keeper default = own subtree without unassigned work; a selected warehouse = its V693 subtree).
+ */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class StockCountReviewWarehouseScopePostgresTest {
     private static final PostgreSQLContainer<?> PG=new PostgreSQLContainer<>("postgres:16-alpine");
@@ -42,6 +46,7 @@ class StockCountReviewWarehouseScopePostgresTest {
     private WorkshopStockCountPostingPort workshop;
     private UUID firstA,secondA,firstB,unassignedRequest;
     private int nextNo;
+    private WarehouseTaskScope defaultScope=WarehouseTaskScope.ALL;
 
     @BeforeAll static void start() {
         PG.start();source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());db=new JdbcTemplate(source);
@@ -79,7 +84,11 @@ class StockCountReviewWarehouseScopePostgresTest {
         var tx=mock(TxSessionVars.class);
         service=new StockCountRequestService(new NamedParameterJdbcTemplate(db),user,workshop,mock(StockDocService.class),
                 mock(DocNumberService.class),mock(BusinessEventPublisher.class),tx,new ObjectMapper(),mock(Validator.class));
-        var scopes=new WarehouseKeeperService(JdbcClient.create(source),tx,user);
+        var scopes=mock(WarehouseTaskScopePort.class);
+        when(scopes.current(any())).thenAnswer(call->{
+            UUID requested=call.getArgument(0);
+            return requested==null?defaultScope:new WarehouseTaskScope(true,subtree(requested),false);
+        });
         controller=new StockCountRequestController(service,mock(AuditDetailViewRecorder.class),scopes);
         firstA=request(binA,"WAREHOUSE","PENDING",actorA);
         secondA=request(binA,"WAREHOUSE","PENDING",actorB);
@@ -90,71 +99,87 @@ class StockCountReviewWarehouseScopePostgresTest {
         request(leafA,"FINANCE","PENDING",actorA);
     }
 
-    @Test void mineUsesRealKeeperAncestryAndUnassignedRulesWhileGlobalBadgesStayGlobal() {
-        var mine=controller.list("WAREHOUSE","PENDING",null,"MINE",null,1,50);
-        assertThat(mine.getTotal()).isEqualTo(3);
-        assertThat(mine.getItems()).extracting(row->row.get("id")).containsExactlyInAnyOrder(firstA,secondA,unassignedRequest);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"ALL",null,1,50).getTotal()).isEqualTo(4);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,1,50).getTotal()).isEqualTo(4);
-        assertThat(((Number)controller.counts().get("warehousePending")).longValue()).isEqualTo(4);
-        as(actorB,StockCountRequestService.WAREHOUSE);
-        var other=controller.list("WAREHOUSE","PENDING",null,"MINE",null,1,50);
-        assertThat(other.getItems()).extracting(row->row.get("id")).containsExactlyInAnyOrder(firstB,unassignedRequest);
+    @Test void keeperDefaultScopeIsTheOwnSubtreeAndTheBadgeCountsTheSameRows() {
+        // 子仓负责人默认 = 自己负责的仓(含下级), 不含别的仓和未定负责人的仓; 徽章与列表同一谓词。
+        defaultScope=new WarehouseTaskScope(true,subtree(parentA),false);
+        var mine=controller.list("WAREHOUSE","PENDING",null,null,null,1,50);
+        assertThat(mine.getTotal()).isEqualTo(2);
+        assertThat(mine.getItems()).extracting(row->row.get("id")).containsExactlyInAnyOrder(firstA,secondA);
+        assertThat(((Number)controller.counts(null).get("warehousePending")).longValue()).isEqualTo(mine.getTotal());
+        assertThat(controller.list("WAREHOUSE","PENDING",null,1,50).getTotal()).isEqualTo(2);
+        // 主管默认不限: 全部可见的待审。
+        defaultScope=WarehouseTaskScope.ALL;
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null,null,1,50).getTotal()).isEqualTo(4);
+        assertThat(((Number)controller.counts(null).get("warehousePending")).longValue()).isEqualTo(4);
+        // 其他人: 没人负责的仓 + 未定仓。
+        defaultScope=new WarehouseTaskScope(true,List.of(unassigned),true);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null,null,1,50).getItems())
+                .extracting(row->row.get("id")).containsExactly(unassignedRequest);
+        assertThat(((Number)controller.counts(null).get("warehousePending")).longValue()).isEqualTo(1);
     }
 
     @Test void aParentScopeExpandsToNestedBinsBeforeCountingAndPagingWithoutBecomingAnExactFilter() {
-        var first=controller.list("WAREHOUSE","PENDING",null,"",parentA,1,1);
-        var second=controller.list("WAREHOUSE","PENDING",null,"",parentA,2,1);
+        var first=controller.list("WAREHOUSE","PENDING",null,parentA,null,1,1);
+        var second=controller.list("WAREHOUSE","PENDING",null,parentA,null,2,1);
         assertThat(first.getTotal()).isEqualTo(2);assertThat(second.getTotal()).isEqualTo(2);
         assertThat(first.getTotalPages()).isEqualTo(2);assertThat(second.getTotalPages()).isEqualTo(2);
         assertThat(first.getItems()).hasSize(1);assertThat(second.getItems()).hasSize(1);
         assertThat(List.of(first.getItems().getFirst().get("id"),second.getItems().getFirst().get("id")))
                 .containsExactlyInAnyOrder(firstA,secondA);
         assertThat(controller.list("WAREHOUSE","PENDING",parentA,1,50).getTotal()).isZero();
-        assertThat(controller.list("WAREHOUSE","PENDING",binA,"",parentA,1,50).getTotal()).isEqualTo(2);
-        assertThat(controller.list("WAREHOUSE","PENDING",binB,"",parentA,1,50).getTotal()).isZero();
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"MINE",parentB,1,50).getItems())
+        assertThat(controller.list("WAREHOUSE","PENDING",binA,parentA,null,1,50).getTotal()).isEqualTo(2);
+        assertThat(controller.list("WAREHOUSE","PENDING",binB,parentA,null,1,50).getTotal()).isZero();
+        assertThat(controller.list("WAREHOUSE","PENDING",null,parentB,null,1,50).getItems())
                 .extracting(row->row.get("id")).containsExactly(firstB);
+        assertThat(((Number)controller.counts(parentB).get("warehousePending")).longValue()).isEqualTo(1);
     }
 
     @Test void allOrParentFilteringCannotBroadenReviewPermissionOrWorkshopObjectScope() {
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",parentA,1,50).getItems())
+        assertThat(controller.list("WAREHOUSE","PENDING",null,parentA,null,1,50).getItems())
                 .extracting(row->row.get("warehouseId")).doesNotContain(hiddenBin);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",hiddenBin,1,50).getTotal()).isZero();
+        assertThat(controller.list("WAREHOUSE","PENDING",null,hiddenBin,null,1,50).getTotal()).isZero();
         when(workshop.canAccessWarehouse(binB)).thenReturn(false);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"ALL",null,1,50).getTotal()).isEqualTo(3);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null,null,1,50).getTotal()).isEqualTo(3);
         as(actorA,StockCountRequestService.FINANCE);
-        assertThatThrownBy(()->controller.list("WAREHOUSE","PENDING",null,"ALL",null,1,50))
+        assertThatThrownBy(()->controller.list("WAREHOUSE","PENDING",null,null,null,1,50))
                 .isInstanceOf(ApiException.class).satisfies(error->assertThat(((ApiException)error).getCode()).isEqualTo(ErrorCode.FORBIDDEN));
-        assertThat(controller.list("FINANCE","PENDING",null,"",parentA,1,50).getTotal()).isEqualTo(1);
+        // 财务审核与「我提交的」不是仓库任务, 不按仓库范围裁剪。
+        assertThat(controller.list("FINANCE","PENDING",null,parentB,null,1,50).getTotal()).isEqualTo(1);
         as(actorA,StockCountRequestService.SUBMIT);
-        assertThatThrownBy(()->controller.list("FINANCE","PENDING",null,"",parentA,1,50)).isInstanceOf(ApiException.class);
-        assertThat(controller.list(null,"PENDING",null,"",parentA,1,50).getTotal()).isEqualTo(2);
+        assertThatThrownBy(()->controller.list("FINANCE","PENDING",null,parentA,null,1,50)).isInstanceOf(ApiException.class);
+        // 「我提交的」不按仓库范围裁剪: 选了 B 主仓仍是本人全部可见的待审(binB 已无对象权限, 剩 A 内料仓与财务那张)。
+        assertThat(controller.list(null,"PENDING",null,parentB,null,1,50).getTotal())
+                .isEqualTo(controller.list(null,"PENDING",null,1,50).getTotal()).isEqualTo(2);
     }
 
     @Test void emptyScopeStaysEmptyAndHistoricalExactWarehouseBehaviorIsPreserved() {
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",UUID.randomUUID(),1,50).getTotal()).isZero();
+        assertThat(controller.list("WAREHOUSE","PENDING",null,UUID.randomUUID(),null,1,50).getTotal()).isZero();
         db.update("UPDATE warehouses SET is_deleted=true,status='禁用' WHERE id=?",binA);
         assertThat(controller.list("WAREHOUSE","PENDING",binA,1,50).getTotal()).isEqualTo(2);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",parentA,1,50).getTotal()).isZero();
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",binA,1,50).getTotal()).isEqualTo(2);
-        db.update("DELETE FROM warehouse_keepers");
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"MINE",null,1,50).getTotal()).isEqualTo(4);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,parentA,null,1,50).getTotal()).isZero();
+        assertThat(controller.list("WAREHOUSE","PENDING",null,binA,null,1,50).getTotal()).isEqualTo(2);
+        // 一个负责人都没有时其他人的默认范围 = 全部(端口返回不过滤)。
+        defaultScope=WarehouseTaskScope.ALL;
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null,null,1,50).getTotal()).isEqualTo(4);
     }
 
     @Test void keywordSearchUsesTheSameScopedRowsForItsTotalAndPagedResults() {
         db.update("INSERT INTO stock_count_request_lines VALUES (?,'PP-9','PP 颗粒','黑色'),(?,'PP-9','PP 颗粒','黑色')",firstA,firstB);
-        var matching=controller.list("WAREHOUSE","PENDING",null,"MINE",null," pp-9 ",1,1);
+        defaultScope=new WarehouseTaskScope(true,subtree(parentA),false);
+        var matching=controller.list("WAREHOUSE","PENDING",null,null," pp-9 ",1,1);
         assertThat(matching.getTotal()).isEqualTo(1);
         assertThat(matching.getItems()).extracting(row->row.get("id")).containsExactly(firstA);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",parentA,"a内料仓",1,1).getTotal()).isEqualTo(2);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",parentA,"黑色",1,50).getTotal()).isEqualTo(1);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"",parentB,"PK-1",1,50).getTotal()).isZero();
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"MINE",null,"测试盘点",1,50).getTotal()).isEqualTo(3);
-        assertThat(controller.list("WAREHOUSE","PENDING",null,"MINE",null," ",1,50).getTotal()).isEqualTo(3);
-        assertThat(((Number)controller.counts().get("warehousePending")).longValue()).isEqualTo(4);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,parentA,"a内料仓",1,1).getTotal()).isEqualTo(2);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,parentA,"黑色",1,50).getTotal()).isEqualTo(1);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,parentB,"PK-1",1,50).getTotal()).isZero();
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null,"测试盘点",1,50).getTotal()).isEqualTo(2);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null," ",1,50).getTotal()).isEqualTo(2);
+        assertThat(((Number)controller.counts(null).get("warehousePending")).longValue()).isEqualTo(2);
     }
 
+    private List<UUID> subtree(UUID warehouse) {
+        return db.queryForList("SELECT unnest(fn_warehouse_scope_ids(ARRAY[CAST(? AS uuid)]))",UUID.class,warehouse);
+    }
     private void as(UUID actor,String... permissions) {
         when(user.get()).thenReturn(Optional.of(new AuthUser(actor,actor.equals(actorA)?employeeA:employeeB,"scope",
                 Set.of(permissions),false,true,false)));

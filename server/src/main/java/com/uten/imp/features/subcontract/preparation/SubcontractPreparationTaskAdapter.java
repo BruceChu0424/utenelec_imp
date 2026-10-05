@@ -406,13 +406,12 @@ public class SubcontractPreparationTaskAdapter
                  (UUID) row[1], (UUID) row[2], (UUID) row[5]);
     }
 
+    /** ADR-146: 前置自制产出要入良品仓——启用、记账、作业子仓、不是内料仓、不是不良品仓(与入库选仓同一函数)。 */
     private void requireAccountableWarehouse(UUID warehouseId) {
-        Number count = (Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM warehouses
-                WHERE id = :id AND is_deleted = FALSE AND is_accountable = TRUE
-                """).setParameter("id", warehouseId).getSingleResult();
-        if (count.longValue() != 1) throw validation(
-                "委外前置自制目标仓不存在或不参与库存核算");
+        Object selectable = em.createNativeQuery("SELECT fn_warehouse_is_good_stock_leaf(CAST(:id AS uuid))")
+                .setParameter("id", warehouseId).getSingleResult();
+        if (!Boolean.TRUE.equals(selectable)) throw validation(
+                "委外前置自制目标仓必须是启用中的良品子仓(不能是主仓、停用仓、不良品仓或车间内料仓)");
     }
 
     private BomSnapshot currentBomSnapshot(UUID goodsId) {

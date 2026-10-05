@@ -20,11 +20,11 @@ import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../stock/counts/pages/stock_count_review_page.dart';
 import '../../providers/warehouse_count_refresh.dart';
-import '../../providers/warehouse_stock_count_review_count_provider.dart';
 import '../../widgets/warehouse_task_center_scaffold.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
@@ -58,16 +58,23 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
     final canCycleCount =
         canOpen(RouteName.workshopMaterialBin) &&
         canOpen(RouteName.workshopMaterialCount);
-    final reviewCount = ref.watch(warehouseStockCountReviewCountProvider);
+    // ADR-149: 分段数与列表同一服务端仓库范围(任务中心选了仓 = 按所选仓汇总)。
+    final reviewCount = canReview
+        ? ref.watch(
+            warehouseTaskEntryTodoProvider(
+              BadgeEntry.warehouseStockCountReview,
+            ),
+          )
+        : null;
     final warehouseScope = ref.watch(warehouseTaskScopeProvider);
     final pendingIssue = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.workshopMaterialPendingIssue),
+      warehouseTaskFactOrNullProvider(BadgeFact.workshopMaterialPendingIssue),
     );
     final pendingReturn = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.workshopMaterialPendingReturn),
+      warehouseTaskFactOrNullProvider(BadgeFact.workshopMaterialPendingReturn),
     );
     final counting = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.workshopMaterialCounting),
+      warehouseTaskFactOrNullProvider(BadgeFact.workshopMaterialCounting),
     );
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseTasks,
@@ -144,8 +151,7 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
               externalRefreshTick: refreshTick,
               warehouseScope: warehouseScope,
               keyword: keyword,
-              onChanged: () =>
-                  ref.invalidate(warehouseScopedStockCountReviewCountProvider),
+              onChanged: () => invalidateWarehouseTaskCounts(ref),
             ),
             'periodCount' => WmBinStatusSegment(
               refreshTick: refreshTick,

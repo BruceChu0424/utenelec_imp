@@ -266,9 +266,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
       if (!mounted) return;
       setState(() {
         _guidedStatus = 'guidedWaiting';
-        _guidedError = error is ApiException
-            ? error.message
-            : aiChatText(context, 'guidedLocalSaveFailed');
+        _guidedError = describeSubmitError(
+          error,
+          fallback: aiChatText(context, 'guidedLocalSaveFailed'),
+        );
       });
     } finally {
       if (mounted) setState(() => _guidedInitializing = false);
@@ -362,9 +363,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     } catch (error) {
       if (!mounted) return;
       setState(
-        () => _guidedError = error is ApiException
-            ? error.message
-            : aiChatText(context, 'guidedLocalSaveFailed'),
+        () => _guidedError = describeSubmitError(
+          error,
+          fallback: aiChatText(context, 'guidedLocalSaveFailed'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -530,12 +532,17 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         if (_guidedPlan != null && !_guidedValidated) {
           setState(() {
             _guidedStatus = 'guidedWaiting';
-            _guidedError = error is ApiException
-                ? error.message
-                : aiChatText(context, 'failed');
+            _guidedError = describeSubmitError(
+              error,
+              fallback: aiChatText(context, 'failed'),
+            );
           });
         }
-        context.appApiError(error);
+        if (error is ApiException) {
+          context.appApiError(error);
+        } else {
+          context.appError(describeSubmitError(error, fallback: '操作失败，请稍后重试'));
+        }
       }
     } finally {
       if (mounted) setState(() => _busy = false);

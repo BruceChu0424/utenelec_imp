@@ -14,8 +14,8 @@ import java.util.UUID;
  * DRAFT 销售未确认 / PENDING_FINANCE 等待财务审核 / FINANCE_REJECTED 财务已退回 /
  * FINANCE_APPROVED 财务已放行待出库 / SHIPPED 已出库 / REVERSED 红冲；空=不按阶段过滤。
  *
- * <p>warehouseScope：仓库任务中心「销售出库」的仓库范围(ADR-115 我的仓库/指定仓库)，表头仓或任一
- * 明细拣货仓落在范围内即算；其它列表不传(= 不过滤)。
+ * <p>warehouseScope：仓库任务中心「销售出库」的仓库数据范围(ADR-149, 服务端按本人范围强制)，表头仓或任一
+ * 明细拣货仓落在范围内即算；销售模块自己的列表不传(= 不过滤)。
  */
 public record ShipmentQueryFilter(
         String keyword,

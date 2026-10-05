@@ -178,7 +178,9 @@ class BusinessDataResetSqlContractTest {
             Map.entry("stock_count_request_lines", 766),
             Map.entry("stock_count_request_events", 766),
             Map.entry("workshop_material_count_adjustment_postings", 768),
-            Map.entry("business_test_object_cleanup_intents", 782));
+            Map.entry("business_test_object_cleanup_intents", 782),
+            // V801 (ADR-148): 品质整批决定命令是业务事实, 随业务数据清空。
+            Map.entry("production_fqc_lot_decision_commands", 801));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
@@ -232,7 +234,9 @@ class BusinessDataResetSqlContractTest {
             Map.entry("sales_quote_template_candidate_history",773),
             Map.entry("business_record_history",775),Map.entry("business_record_retention_registry",775),
             Map.entry("business_record_identities",775),
-            Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778),Map.entry("platform_record_field_versions",779));
+            Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778),Map.entry("platform_record_field_versions",779),
+            // V800 (ADR-147): 车间内料仓开通记录随仓库主档保留 (整批领料设置与期间仍清空)。
+            Map.entry("workshop_bins", 800));
 
     private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
         "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",

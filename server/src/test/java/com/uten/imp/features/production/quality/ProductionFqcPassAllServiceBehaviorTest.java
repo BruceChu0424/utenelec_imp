@@ -44,15 +44,23 @@ class ProductionFqcPassAllServiceBehaviorTest {
         var normalized = ProductionFqcInspectionService
                 .normalizePassAllBatch(request);
 
+        // ADR-148：先按所选份找到整批实物(批号 -> 各份)，再查同键批量命令；重放读命令里记下的份数。
+        UUID firstLot = UUID.randomUUID();
+        UUID secondLot = UUID.randomUUID();
+        Query lots = query(List.of(firstLot, secondLot));
+        Query members = query(List.<Object[]>of(
+                new Object[]{firstLot, first},
+                new Object[]{secondLot, second}));
         Query header = query(Collections.singletonList(new Object[]{
                 batchId, normalized.requestHash(), 2
         }));
+        Query count = countQuery(2);
         Query items = query(List.<Object[]>of(
                 new Object[]{first, firstEvent},
                 new Object[]{second, secondEvent}));
         Query details = query(List.of(viewRow(second, "RB-2"), viewRow(first, "RB-1")));
         Fixture fixture = fixture(
-                actorId, header, items, details);
+                actorId, lots, members, header, count, items, details);
 
         var result = fixture.service().passAll(request);
 
@@ -85,10 +93,12 @@ class ProductionFqcPassAllServiceBehaviorTest {
         PassAllBatchRequest request = new PassAllBatchRequest(
                 List.of(inspectionId), "fqc-batch-conflict-behavior");
 
+        UUID lot = UUID.randomUUID();
         Query header = query(Collections.singletonList(new Object[]{
                 batchId, "0".repeat(64), 2
         }));
-        Fixture fixture = fixture(actorId, header);
+        Fixture fixture = fixture(actorId, query(List.of(lot)),
+                query(List.<Object[]>of(new Object[]{lot, inspectionId})), header);
 
         assertThatThrownBy(() -> fixture.service().passAll(request))
                 .isInstanceOf(ApiException.class)
@@ -106,7 +116,10 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 Collections.singletonList(viewRow(first,"RB-1")),
                 List.of(viewRow(first,"RB-1"),viewRow(first,"RB-1")),
                 List.of(viewRow(first,"RB-1"),viewRow(UUID.randomUUID(),"foreign")))) {
-            var fixture=fixture(actor,query(Collections.singletonList(new Object[]{batch,normalized.requestHash(),2})),
+            UUID lot=UUID.randomUUID();
+            var fixture=fixture(actor,query(List.of(lot)),
+                    query(List.<Object[]>of(new Object[]{lot,first},new Object[]{lot,second})),
+                    query(Collections.singletonList(new Object[]{batch,normalized.requestHash(),2})),countQuery(2),
                     query(List.of(new Object[]{first,UUID.randomUUID()},new Object[]{second,UUID.randomUUID()})),query(rows));
             assertThatThrownBy(()->fixture.service().passAll(request)).isInstanceOf(ApiException.class)
                     .hasMessageContaining("批量生产质检视图");
@@ -161,6 +174,12 @@ class ProductionFqcPassAllServiceBehaviorTest {
         return query;
     }
 
+    private static Query countQuery(int count) {
+        Query query = query(List.of());
+        when(query.getSingleResult()).thenReturn(count);
+        return query;
+    }
+
     private static Object[] viewRow(UUID inspectionId, String reportNo) {
         return new Object[]{
                 inspectionId,
@@ -200,7 +219,11 @@ class ProductionFqcPassAllServiceBehaviorTest {
                 "收货人甲",
                 Boolean.FALSE,
                 null,
-                null
+                null,
+                // ADR-148 实物交接批：批号、本份归属优先级、本批未取消份数(toView 读到 row[37])。
+                UUID.randomUUID(),
+                (short) 0,
+                1
         };
     }
 

@@ -158,7 +158,12 @@ Future<void> _pumpAnalysis(
       onRequest: (request, handler) {
         final Object data = switch (request.path) {
           '/master/warehouses/dict' => [
-            {'id': 'warehouse-1', 'name': '主仓', 'isAccountable': true},
+            {
+              'id': 'warehouse-1',
+              'name': '主仓',
+              'isAccountable': true,
+              'selectableForNew': true,
+            },
           ],
           '/production/material-analyses/analysis-child' => analysis,
           '/production/material-analyses/preview' => analysis,

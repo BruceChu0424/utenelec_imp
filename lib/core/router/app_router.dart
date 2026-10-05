@@ -99,8 +99,8 @@ import '../../features/warehouse/config/warehouse_document_history_config.dart';
 import '../../features/warehouse/pages/finance_arrival_exception_pages.dart';
 import '../../features/warehouse/pages/procurement_return_task_pages.dart';
 import '../../features/warehouse/pages/warehouse_arrival_exceptions_page.dart';
-import '../../features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart';
-import '../../features/warehouse/pages/warehouse_arrival_receipt_page.dart';
+import '../../features/warehouse/pages/inbound_arrival_registration_page.dart';
+import '../../features/warehouse/models/inbound_registration_line.dart';
 import '../../features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import '../../features/warehouse/models/production_finished_inbound_task.dart';
 import '../../features/warehouse/models/warehouse_quality_result.dart';
@@ -110,7 +110,6 @@ import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_list_page.dart';
-import '../../features/warehouse/pages/production_finished_arrival_batch_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_arrival_registration_page.dart';
 import '../../features/warehouse/pages/production_finished_batch_stock_in_page.dart';
 import '../../features/warehouse/pages/production_finished_inbound_tasks_page.dart';
@@ -1093,53 +1092,33 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   : const [],
             ),
           ),
-          DraftAwareGoRoute(
-            // 多单汇总登记页须先于 :reportId 声明（GoRouter 按声明顺序匹配同前缀）。
-            path: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
-            name: 'warehouse-production-finished-arrival-batch-registration',
-            builder: (_, state) =>
-                ProductionFinishedArrivalBatchRegistrationPage(
-                  reportIds: (state.uri.queryParameters['reportIds'] ?? '')
-                      .split(',')
-                      .map((id) => id.trim())
-                      .where((id) => id.isNotEmpty)
-                      .toList(growable: false),
-                  returnTo: state.uri.queryParameters['returnTo'],
-                  // ?preStock=1 = 任务中心「先入库后质检(N)」直达，不带 = 「先质检后入库(N)」
-                  // 直达(与采购/委外批量登记页同一口径，页面只显示所选路线的提交按钮)。
-                  stockInBeforeInspection:
-                      state.uri.queryParameters['preStock'] == '1',
-                ),
-          ),
+          // 产成品登记实际入库页(ADR-151 §5 单批合一)：双击 = 1 张报工、多选 = N 张报工；
+          // ?preStock=1|0 = 任务中心多选时选定的路线，不带 = 两条路线并排。
           DraftAwareGoRoute(
             path: RouteName.warehouseProductionFinishedArrivalRegistration,
             name: 'warehouse-production-finished-arrival-registration',
             builder: (_, state) => ProductionFinishedArrivalRegistrationPage(
-              reportId: state.pathParameters['reportId'] ?? '',
+              reportIds: (state.uri.queryParameters['reportIds'] ?? '')
+                  .split(',')
+                  .map((id) => id.trim())
+                  .where((id) => id.isNotEmpty)
+                  .toList(growable: false),
+              returnTo: state.uri.queryParameters['returnTo'],
+              route: InboundRoute.fromQuery(state.uri.queryParameters),
             ),
           ),
-          // 仓库登记实际到货独立页（须在 /warehouse/:code 系列之前；extra 带预填）。
+          // 登记实际到货页(ADR-151 §5 单批合一)：预计到货双击 = 1 个来源、多选 = N 个来源；
+          // 来源身份走 ?expectationIds=，不再依赖页面跳转时的内存对象。
           DraftAwareGoRoute(
-            path: RouteName.warehouseArrivalReceiptNew,
-            name: 'warehouse-arrival-receipt-new',
-            builder: (_, s) => WarehouseArrivalReceiptPage(
-              prefill: s.extra is ProcurementReceiptPrefill
-                  ? s.extra! as ProcurementReceiptPrefill
-                  : null,
-            ),
-          ),
-          // 批量登记实际到货页(入库任务中心多选「先质检后入库」/「先入库后质检」落点；
-          // extra 带 List<ProcurementReceiptPrefill>，每张=一张订货单；
-          // ?preStock=1 = 列表「先入库后质检(N)」直达，不带 = 「先质检后入库(N)」直达；
-          // 2026-09-20 起页面只显示所选路线的提交按钮)。
-          DraftAwareGoRoute(
-            path: RouteName.warehouseArrivalReceiptBatch,
-            name: 'warehouse-arrival-receipt-batch',
-            builder: (_, s) => WarehouseArrivalBatchReceiptPage(
-              prefills: s.extra is List<ProcurementReceiptPrefill>
-                  ? s.extra! as List<ProcurementReceiptPrefill>
-                  : null,
-              stockInBeforeInspection: s.uri.queryParameters['preStock'] == '1',
+            path: RouteName.warehouseArrivalRegistration,
+            name: 'warehouse-arrival-registration',
+            builder: (_, s) => InboundArrivalRegistrationPage(
+              expectationIds: (s.uri.queryParameters['expectationIds'] ?? '')
+                  .split(',')
+                  .map((id) => id.trim())
+                  .where((id) => id.isNotEmpty)
+                  .toList(growable: false),
+              route: InboundRoute.fromQuery(s.uri.queryParameters),
             ),
           ),
           // 报表（静态段，需在 /warehouse/:code 之前声明以免被当作 :code 匹配）

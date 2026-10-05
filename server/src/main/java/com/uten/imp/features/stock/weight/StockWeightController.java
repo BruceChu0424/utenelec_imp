@@ -52,7 +52,7 @@ public class StockWeightController {
     @PostMapping("/params")
     @PreAuthorize("hasAuthority('stock:view')")
     public WeightParamsResponse params(@Valid @RequestBody WeightParamsRequest request) {
-        return new WeightParamsResponse(estimates.params(request.lines()));
+        return estimates.params(request.lines());
     }
 
     @GetMapping("/goods/{goodsId}")

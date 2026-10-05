@@ -44,22 +44,26 @@ class WarehouseListTopLevelOnlyPageTest {
         OrganizationReferencePort organizations = mock(OrganizationReferencePort.class);
         when(organizations.findActiveDepartmentNames(any())).thenReturn(Map.of());
 
+        WarehouseMasterRules rules = mock(WarehouseMasterRules.class);
+        when(rules.selectableForNew(any())).thenReturn(java.util.Set.of());
         WarehouseService service = new WarehouseService(
                 repository,
                 mock(TxSessionVars.class),
                 mock(EntityManager.class),
                 mock(MasterCodeService.class),
                 organizations,
-                mock(WarehouseKeeperService.class));
+                mock(WarehouseKeeperService.class),
+                rules);
 
         PageResponse<WarehouseListItem> page = service.list(
-                new WarehouseQueryFilter(null, null, null, null, null, null, null, null), 1, 20);
+                new WarehouseQueryFilter(null, null, null, null, null, null, null, null, null), 1, 20);
 
         assertThat(page.getItems()).singleElement().satisfies(item -> {
             assertThat(item.getCode()).isEqualTo("C01");
             assertThat(item.getParentId()).isNull();
             assertThat(item.getParentName()).isNull();
             assertThat(item.getWorkshopDepartmentName()).isNull();
+            assertThat(item.isSelectableForNew()).isFalse();
         });
     }
 }

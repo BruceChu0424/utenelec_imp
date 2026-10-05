@@ -10,6 +10,8 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPeriodService
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialSettingsService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionService;
 import com.uten.imp.features.stock.StockDocService;
+import com.uten.imp.features.stock.count.StockCountDtos;
+import com.uten.imp.features.stock.count.StockCountRequestController;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.*;
@@ -60,10 +62,51 @@ class WorkshopApprovedStockCountPostgresTest {
     @Autowired WorkshopMaterialCountService counts;
     @Autowired WorkshopMaterialRequisitionService requisitions;
     @Autowired StockDocService stockDocuments;
+    @Autowired StockCountRequestController stockCountRequests;
     FullChainEndToEndTest fixture;
     record Shop(FullChainEndToEndTest.World world,UUID workshop,UUID unit,UUID goods,UUID bin,UUID period) {}
     record Request(UUID id,UUID line,UUID event) {}
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    /**
+     * 用户 2026-10-04 的原路径: 内料仓页「库存盘点」不填说明直接「保存并送审」(V766 约束曾回 409),
+     * 送审不动库存 -> 仓库审核 -> 两种颗粒各记一行上线期初; 同一提交编号与同一审核命令重放都只生效一次。
+     */
+    @Test void blankExplanationWorkshopCountIsSubmittedThenWarehouseApprovedAsOpeningOnce() {
+        Shop shop=shop(false);
+        UUID secondGoods=UUID.randomUUID();
+        db.update("""
+                INSERT INTO goods(id,code,name,source_type,status,unit_id,unit_legacy_id,price,code_sequence,issue_method,periodic_cost_basis,min_qty)
+                SELECT ?,?,'另一种期初颗粒',source_type,status,unit_id,unit_legacy_id,price,
+                       (SELECT coalesce(max(code_sequence),0)+1 FROM goods),issue_method,periodic_cost_basis,min_qty
+                FROM goods WHERE id=?
+                """,secondGoods,"COUNT2-"+secondGoods.toString().substring(0,8),shop.goods());
+        java.util.function.Function<UUID,Long> version=goods->((Number)stockCountRequests.candidates(shop.bin(),"",List.of(goods),1,50)
+                .getItems().getFirst().get("goodsVersion")).longValue();
+        var first=new StockCountDtos.LineInput(shop.goods(),null,shop.unit(),BigDecimal.ZERO,null,false,
+                new BigDecimal("1000"),new BigDecimal("1000"),true,null,version.apply(shop.goods()));
+        var second=new StockCountDtos.LineInput(secondGoods,null,shop.unit(),BigDecimal.ZERO,null,false,
+                new BigDecimal("1111"),new BigDecimal("1111"),true,null,version.apply(secondGoods));
+        var proposal=new StockCountDtos.Submit(shop.bin(),"",key(),List.of(first,second));
+        var request=stockCountRequests.submit(proposal);
+        UUID id=(UUID)request.get("id");
+        assertEquals("WAREHOUSE",request.get("reviewRoute"));
+        assertEquals("PENDING",request.get("status"));
+        assertEquals("",db.queryForObject("SELECT reason FROM stock_count_requests WHERE id=?",String.class,id));
+        equal("0",qty(shop));
+        assertEquals(id,stockCountRequests.submit(new StockCountDtos.Submit(shop.bin(),null,proposal.idempotencyKey(),proposal.lines())).get("id"),
+                "不传说明与空说明是同一次提交");
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='SUBMIT'",Integer.class,id));
+        var decision=new StockCountDtos.Decision(0L,key(),null);
+        assertEquals("APPROVED",stockCountRequests.approve(id,decision).get("status"));
+        assertEquals("APPROVED",stockCountRequests.approve(id,decision).get("status"));
+        equal("1000",qty(shop));
+        equal("1111",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class,shop.bin(),secondGoods));
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM workshop_material_count_adjustment_postings WHERE request_id=? AND kind='OPENING'",
+                Integer.class,id));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",Integer.class,id));
+    }
 
     @Test void firstInventoryApprovalWithdrawsAnUntouchedCycleCountInTheSameTransaction() {
         Shop shop=shop(false);
@@ -213,8 +256,8 @@ class WorkshopApprovedStockCountPostgresTest {
         assertFalse(posting.canAccessWarehouse(other.bin()));
         assertEquals(java.util.Set.of(own.bin()),posting.accessibleWarehouses(ids));
         fixture.loginAs(own.world().superAdminUserId());
-        long version=db.queryForObject("SELECT row_version FROM workshop_material_settings WHERE workshop_department_id=?",Long.class,own.workshop());
-        settings.update(own.workshop(),new SettingsRequest(version,false,null,null,List.of(),key()));
+        long version=db.queryForObject("SELECT row_version FROM workshop_bins WHERE workshop_department_id=?",Long.class,own.workshop());
+        settings.update(own.workshop(),new SettingsRequest("OPEN_PERIODIC",version,false,null, null,null,null,List.of(),key()));
         for (UUID actor:List.of(member,own.world().superAdminUserId())) {
             fixture.loginAs(actor);
             assertEquals(ids.stream().filter(posting::canAccessWarehouse).collect(java.util.stream.Collectors.toSet()),posting.accessibleWarehouses(ids));
@@ -240,7 +283,7 @@ class WorkshopApprovedStockCountPostgresTest {
                 INSERT INTO goods(id,code,name,source_type,status,unit_id,unit_legacy_id,price,code_sequence,issue_method,periodic_cost_basis,min_qty)
                 VALUES (?,?,?,'采购','使用',?,?,10,(SELECT coalesce(max(code_sequence),0)+1 FROM goods),?,?,0)
                 """,goods,"COUNT-"+tag,"期初颗粒",unit,legacy,order?"ORDER":"PERIODIC",order?null:"OWN");
-        var enabled=settings.update(workshop,new SettingsRequest(0L,true,world.warehouseId(),goLive,List.of(),key()));
+        var enabled=settings.update(workshop,new SettingsRequest("NOT_OPEN",0L,true,world.warehouseId(), null,true,goLive,List.of(),key()));
         return new Shop(world,workshop,unit,goods,enabled.binWarehouseId(),enabled.currentPeriod().id());
     }
 

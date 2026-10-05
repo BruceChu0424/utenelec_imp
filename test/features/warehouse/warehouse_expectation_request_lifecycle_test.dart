@@ -56,8 +56,8 @@ void main() {
     await tester.pumpAndSettle();
     api.requests.first.complete(_emptyPage);
     await tester.pumpAndSettle();
-    // Only the current page may request its supplementary counts.
-    expect(api.countReads, 1);
+    // ADR-149: 分来源计数随徽章汇总带回(与列表同一仓库范围), 列表不再单独请求 type-counts。
+    expect(api.countReads, 0);
     expect(api.facetReads, 1, reason: '仅当前来源加载筛选桶，过期回包不能跟读');
     expect(tester.takeException(), isNull);
   });

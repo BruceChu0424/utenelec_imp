@@ -32,10 +32,16 @@ class WarehouseArrivalRegistrationContractTest {
         assertThat(mapping.value())
                 .containsExactly("/api/warehouse/inbound");
 
+        // ADR-151 §5：登记实际到货只有一个页面命令(单张 = 1 组、多选 = N 组，一个事务)。
         Method register = WarehouseInboundController.class.getDeclaredMethod(
-                "registerArrival", WarehouseArrivalRegisterRequest.class);
+                "registerArrivalBatch", ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest.class);
         assertThat(register.getAnnotation(PostMapping.class).value())
-                .containsExactly("/arrivals");
+                .containsExactly("/arrivals/batch");
+        assertThat(Arrays.stream(WarehouseInboundController.class.getDeclaredMethods())
+                .map(method -> method.getAnnotation(PostMapping.class))
+                .filter(java.util.Objects::nonNull)
+                .flatMap(post -> Arrays.stream(post.value())))
+                .doesNotContain("/arrivals");
         // 仓库任务入口先要求页面阅读+入仓动作；下层两个收货单 Service 仍保留
         // create/approve 的精确文档权限，形成双层门禁。
         assertThat(register.getAnnotation(PreAuthorize.class).value())
@@ -64,13 +70,16 @@ class WarehouseArrivalRegistrationContractTest {
 
     @Test
     void blockedExceptionMustNotRollbackTheRegistrationTransaction() throws Exception {
-        Method register = WarehouseArrivalRegistrationService.class
-                .getDeclaredMethod(
-                        "register", WarehouseArrivalRegisterRequest.class);
-        Transactional tx = register.getAnnotation(Transactional.class);
-        assertThat(tx).isNotNull();
-        assertThat(tx.noRollbackFor())
-                .containsExactly(ProcurementArrivalBlockedException.class);
+        for (Method register : java.util.List.of(
+                WarehouseArrivalRegistrationService.class.getDeclaredMethod(
+                        "register", WarehouseArrivalRegisterRequest.class),
+                WarehouseArrivalRegistrationService.class.getDeclaredMethod(
+                        "registerBatch", ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest.class))) {
+            Transactional tx = register.getAnnotation(Transactional.class);
+            assertThat(tx).isNotNull();
+            assertThat(tx.noRollbackFor())
+                    .containsExactly(ProcurementArrivalBlockedException.class);
+        }
     }
 
     @Test

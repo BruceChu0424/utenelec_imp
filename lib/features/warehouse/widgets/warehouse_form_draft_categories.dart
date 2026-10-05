@@ -6,8 +6,7 @@ import '../../../shared/drafts/form_draft_category.dart';
 /// Task-entry forms belong to their physical direction; manual stock documents
 /// stay in their existing per-document 草稿 category.
 const _inboundTaskDraftRoutes = {
-  RouteName.warehouseArrivalReceiptNew,
-  RouteName.warehouseArrivalReceiptBatch,
+  RouteName.warehouseArrivalRegistration,
   RouteName.warehouseProductionFinishedArrivalRegistrationBase,
   RouteName.warehouseQualityResults,
 };

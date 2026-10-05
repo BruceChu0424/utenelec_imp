@@ -68,6 +68,7 @@ import '../providers/material_analysis_warehouse_prefs_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../widgets/material_reallocation_dialog.dart';
 import '../widgets/material_transfer_launcher.dart';
 import '../widgets/material_priority_replenishment_dialog.dart';

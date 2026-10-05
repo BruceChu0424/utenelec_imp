@@ -24,8 +24,7 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
@@ -763,23 +762,25 @@ class WorkshopDirectTransferBatchEndToEndTest {
         fixture.loginAs(c.world().superAdminUserId());
         var arrivals = beans.getBean(ProductionFinishedArrivalRegistrationService.class);
         var quality = beans.getBean(ProductionFqcInspectionService.class);
-        for (var row : List.of(surplus, demandWarehouse)) {
-            arrivals.register(reportId, new ArrivalRegistrationRequest("actual-dt-arrival-" + row.getId(),
-                    c.leaf(), List.of(new ArrivalRegistrationItemRequest(row.getId(), "直送余量实物点收")), null));
-            UUID inspection = db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",
-                    UUID.class, row.getId());
-            quality.decide(inspection, new DecisionRequest("PASS", row.getQty(), null, null, null,
-                    "actual-dt-pass-" + row.getId()));
-            UUID inbound = db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",
-                    UUID.class, row.getId());
-            fixture.confirmFinishedInboundFully(inbound);
-            if (row.isActualSurplus()) {
-                assertEquals(0, db.queryForObject("SELECT count(*) FROM stock_reservations WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id=? AND NOT is_deleted",
-                        Integer.class, inbound), "公共超产不能再占下工序需求");
-                qty("30", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",
-                        BigDecimal.class, c.child(), c.leaf()));
-            }
-        }
+        // ADR-148：需求份(分满后送仓)与实际超产同批同去向 = 同一批实物，整批登记、整批判定、一张入库单。
+        UUID lot = db.queryForObject("SELECT output_lot_id FROM production_daily_report_items WHERE id=?",
+                UUID.class, surplus.getId());
+        assertEquals(lot, db.queryForObject("SELECT output_lot_id FROM production_daily_report_items WHERE id=?",
+                UUID.class, demandWarehouse.getId()));
+        FinishedArrivalTestSupport.registerItems(arrivals, reportId, "actual-dt-arrival-" + reportId, c.leaf(),
+                List.of(surplus.getId(), demandWarehouse.getId()), "直送余量实物点收");
+        quality.decideLot(lot, new com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisionRequest(
+                surplus.getQty().add(demandWarehouse.getQty()), BigDecimal.ZERO, null, null, "actual-dt-pass-" + reportId));
+        UUID inbound = db.queryForObject("""
+                SELECT DISTINCT doc_id FROM stock_document_items
+                WHERE source_daily_report_item_id IN (?, ?) AND NOT is_deleted
+                """, UUID.class, surplus.getId(), demandWarehouse.getId());
+        assertEquals(2, db.queryForObject("SELECT count(*) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",
+                Integer.class, inbound), "一张入库单两行: 需求份 + 实际超产");
+        fixture.confirmFinishedInboundFully(inbound);
+        BigDecimal reserved = db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_reservations WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id=? AND NOT is_deleted",
+                BigDecimal.class, inbound);
+        assertTrue(reserved.compareTo(demandWarehouse.getQty()) <= 0, "公共超产不能再占下工序需求");
         qty("50", db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",
                 BigDecimal.class, c.child(), c.leaf()));
         qty("100", db.queryForObject("SELECT COALESCE(sum(qty_base),0) FROM production_material_stock_postings WHERE demand_id=? AND posting_type='ISSUE'",
@@ -858,7 +859,7 @@ class WorkshopDirectTransferBatchEndToEndTest {
     // ===================== 夹具 =====================
 
     @Test
-    void actualSurplusPublicFirstDoesNotAdvanceRootNestedOrMrpPlanProgress() {
+    void shortCountOfMixedLotFillsDemandShareBeforeActualSurplusInPlanProgress() {
         for (boolean nested : List.of(false, true)) {
             String tag = nested ? "dt-progress-child" : "dt-progress-root";
             var world = fixture.seedWorld(tag);
@@ -909,33 +910,42 @@ class WorkshopDirectTransferBatchEndToEndTest {
             command.setItems(List.of(line));
             UUID report = reports.approve(reports.create(command).getId(), DailyReportApproveRequests.freshKey()).getId();
             var surplus = reports.detail(report).getItems().stream().filter(item -> item.isActualSurplus()).findFirst().orElseThrow();
-            beans.getBean(ProductionFinishedArrivalRegistrationService.class).register(report,
-                    new ArrivalRegistrationRequest("actual-progress-arrival-" + report, world.warehouseId(),
-                            List.of(new ArrivalRegistrationItemRequest(surplus.getId(), "超产先入库")), null));
-            UUID inspection = db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?", UUID.class, surplus.getId());
-            beans.getBean(ProductionFqcInspectionService.class).decide(inspection,
-                    new DecisionRequest("PASS", surplus.getQty(), null, null, null, "actual-progress-pass-" + report));
-            UUID inbound = db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",
+            // ADR-148：超产与需求份同批同去向，不能单独先入库；仓库只点到 30 时实收先满足需求份，
+            // 实际超产 30 与需求余 70 进余量单。实际超产永远不会先于需求份推进计划进度。
+            FinishedArrivalTestSupport.registerItems(beans.getBean(ProductionFinishedArrivalRegistrationService.class),
+                    report, "actual-progress-arrival-" + report, world.warehouseId(), List.of(surplus.getId()), "超产与需求同批");
+            UUID lot = db.queryForObject("SELECT output_lot_id FROM production_daily_report_items WHERE id=?", UUID.class, surplus.getId());
+            beans.getBean(ProductionFqcInspectionService.class).decideLot(lot,
+                    new com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisionRequest(
+                            new BigDecimal("130"), BigDecimal.ZERO, null, null, "actual-progress-pass-" + report));
+            UUID inbound = db.queryForObject("SELECT DISTINCT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",
                     UUID.class, surplus.getId());
-            fixture.confirmFinishedInboundFully(inbound);
-            qty("0", db.queryForObject("SELECT fn_plan_original_inbound_qty(?)", BigDecimal.class, source.planItemId()));
+            var confirm = new com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest();
+            confirm.setIdempotencyKey("actual-progress-confirm-" + report);
+            confirm.setVarianceReason("本次只交接 30, 其余待下批");
+            var lotLine = new com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest.Lot();
+            lotLine.setLotId(lot);
+            lotLine.setAcceptedQty(new BigDecimal("30"));
+            confirm.setLots(List.of(lotLine));
+            beans.getBean(com.uten.imp.features.stock.StockDocService.class).confirmFinishedInbound(inbound, confirm);
+            qty("30", db.queryForObject("SELECT fn_plan_original_inbound_qty(?)", BigDecimal.class, source.planItemId()));
             var segmentView = segments.list(plan).stream().filter(item -> item.id().equals(segment)).findFirst().orElseThrow();
             qty("30", segmentView.inboundQty());
-            qty("0", segmentView.plannedInboundQty());
-            qty("30", segmentView.actualSurplusInboundQty());
+            qty("30", segmentView.plannedInboundQty());
+            qty("0", segmentView.actualSurplusInboundQty());
             var root = beans.getBean(ProductionPlanService.class).progress(false, "progress", 1, 100, null, null, null, null)
                     .getItems().stream().filter(item -> item.planId().equals(rootPlan)).findFirst().orElseThrow();
-            assertEquals(0.0, root.percent());
+            if (nested) assertEquals(0.0, root.percent());
             assertFalse(root.closed());
             if (nested) {
                 var child = root.subplans().stream().filter(item -> item.planId().equals(plan)).findFirst().orElseThrow();
-                qty("30", child.inboundQty()); qty("0", child.plannedInboundQty()); qty("30", child.actualSurplusInboundQty());
-                assertEquals(0.0, child.percent()); assertFalse(child.closed());
+                qty("30", child.inboundQty()); qty("30", child.plannedInboundQty()); qty("0", child.actualSurplusInboundQty());
+                assertFalse(child.closed());
                 var mrp = beans.getBean(MrpService.class).subplans(rootPlan).stream().filter(item -> item.planId().equals(plan)).findFirst().orElseThrow();
-                qty("30", mrp.inboundQty()); qty("0", mrp.plannedInboundQty()); qty("30", mrp.actualSurplusInboundQty());
-                assertEquals(0.0, mrp.percent()); assertFalse(mrp.closed());
+                qty("30", mrp.inboundQty()); qty("30", mrp.plannedInboundQty()); qty("0", mrp.actualSurplusInboundQty());
+                assertFalse(mrp.closed());
             } else {
-                qty("30", root.inboundQty()); qty("0", root.plannedInboundQty()); qty("30", root.actualSurplusInboundQty());
+                qty("30", root.inboundQty()); qty("30", root.plannedInboundQty()); qty("0", root.actualSurplusInboundQty());
             }
         }
     }
@@ -991,10 +1001,15 @@ class WorkshopDirectTransferBatchEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "SUB-" + tag, "普通子仓-" + tag, w.warehouseId());
-        db.update("""
-                INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable,is_line_side,workshop_department_id)
-                VALUES(?,?,?,?,'使用',TRUE,TRUE,?)
-                """, lineSide, "LS-" + tag, "线边仓-" + tag, w.warehouseId(), workshop);
+        // ADR-147 (V800): 内料仓与开通行同生共死 (提交时校验), 直送只送已开通内料仓的车间; 两行同一事务写。
+        new org.springframework.transaction.support.TransactionTemplate(
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status -> {
+            db.update("""
+                    INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable,is_line_side,workshop_department_id)
+                    VALUES(?,?,?,?,'使用',TRUE,TRUE,?)
+                    """, lineSide, "LS-" + tag, "线边仓-" + tag, w.warehouseId(), workshop);
+            db.update("INSERT INTO workshop_bins(workshop_department_id,bin_warehouse_id) VALUES(?,?)", workshop, lineSide);
+        });
         fixture.loginAs(w.superAdminUserId());
 
         UUID order = fixture.createApprovedOrder(w, parent, "100", "100");

@@ -65,10 +65,12 @@ class SalesShipmentBatchPhysicalSourcesEndToEndTest {
         request.setLinkPhone("13800000000");request.setLogisticsNo("LOG-"+item);request.setRemark("先发已入库的十件");
         BatchShipRequest.Line line=new BatchShipRequest.Line();line.setOrderItemId(item);line.setQty(BigDecimal.TEN);line.setRemark("本批十件");
         request.setLines(List.of(line));
-        db.update("UPDATE warehouses SET status='禁用' WHERE id=?",main);
-        assertThrows(ApiException.class,()->shipments.batchCreate(request),"disabled ancestor must not produce unusable source suggestions");
+        // ADR-145: a main warehouse with sub-warehouses can never be retired, so batch shipment
+        // never meets a disabled ancestor above its physical sources.
+        var refused=assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                ()->db.update("UPDATE warehouses SET status='禁用' WHERE id=?",main));
+        assertTrue(refused.getMessage().contains("它是主仓"),refused.getMessage());
         assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM sales_shipments WHERE source_order_id=?",Integer.class,order));
-        db.update("UPDATE warehouses SET status='使用' WHERE id=?",main);
         List<ShipmentDetail> created=shipments.batchCreate(request);
         assertEquals(2,created.size());assertEquals(Set.of(w.warehouseId(),second),Set.copyOf(created.stream().map(ShipmentDetail::getWarehouseId).toList()));
         assertEquals(Set.of("3.0000","7.0000"),Set.copyOf(created.stream().map(s->s.getItems().getFirst().getQty().setScale(4).toPlainString()).toList()));

@@ -46,7 +46,6 @@ class _FakeApi extends ApiClient {
       return {
         'items': [
           {
-            'key': 'g-w1|',
             'goodsId': 'g-w1',
             'basis': 'LEARNED',
             'evidence': 'REFERENCE',
@@ -65,7 +64,6 @@ class _FakeApi extends ApiClient {
       return {
         'goodsId': 'g-w1',
         'resolved': {
-          'key': 'g-w1|',
           'basis': 'LEARNED',
           'evidence': 'REFERENCE',
           'unitWeightKg': 0.00231,

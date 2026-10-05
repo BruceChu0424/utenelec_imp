@@ -1,4 +1,5 @@
-// 车间内料仓设置页 (ADR-131 §5.1, 实现规格 §5.4):
+// 车间内料仓设置页 (ADR-131 §5.1, 实现规格 §5.4; ADR-147 起只剩机台与容器、上线准备两个页签,
+// 开通/开启整批领料在内料仓总览里批量办):
 // 批量新增 21 台; 勾选多行改容量一格批量生效 (看到的勾选 = 提交的内容);
 // 上线准备按克输入、异常单重二次确认、与货品资料单重差 20% 标黄;
 // "勾选行用货品资料单重填入"只填空着的行并标黄。
@@ -171,7 +172,7 @@ TextEditingController _controller(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.byKey(Key(key))).controller!;
 
 void main() {
-  testWidgets('仅设置权限保留开启和机台，隐藏上线准备且不读取产品资料', (tester) async {
+  testWidgets('仅设置权限只有机台页签，隐藏上线准备且不读取产品资料; 不再有车间开启页签', (tester) async {
     final repo = _repo();
     await _pumpSetupPage(
       tester,
@@ -180,9 +181,7 @@ void main() {
       permissions: {Perm.workshopMaterialSetup},
     );
     expect(find.text('上线准备'), findsNothing);
-    expect(find.byKey(const Key('wm-setup-enable-table')), findsOneWidget);
-    expect(repo.preparationReads, 0);
-    await _openTab(tester, '机台与容器');
+    expect(find.text('车间开启'), findsNothing);
     expect(find.byType(WmMachinesTab), findsOneWidget);
     expect(repo.preparationReads, 0);
     expect(tester.takeException(), isNull);
@@ -192,7 +191,7 @@ void main() {
     {Perm.workshopMaterialSetup},
     {Perm.goodsView},
   ]) {
-    testWidgets('上线准备深链缺少配套权限时回开启页且零产品请求 $permissions', (tester) async {
+    testWidgets('上线准备深链缺少配套权限时回机台页且零产品请求 $permissions', (tester) async {
       final repo = _repo();
       await _pumpSetupPage(
         tester,
@@ -202,7 +201,7 @@ void main() {
       );
       expect(find.text('上线准备'), findsNothing);
       expect(find.byType(WmPrepTab), findsNothing);
-      expect(find.byKey(const Key('wm-setup-enable-table')), findsOneWidget);
+      expect(find.byType(WmMachinesTab), findsOneWidget);
       expect(repo.preparationReads, 0);
       await tester.tap(find.byTooltip('刷新'));
       await tester.pumpAndSettle();
@@ -228,7 +227,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(WmPrepTab), findsNothing);
     expect(find.text('上线准备'), findsNothing);
-    expect(find.byKey(const Key('wm-setup-enable-table')), findsOneWidget);
+    expect(find.byType(WmMachinesTab), findsOneWidget);
     await tester.tap(find.byTooltip('刷新'));
     await tester.pumpAndSettle();
     expect(repo.preparationReads, 1);
@@ -243,6 +242,7 @@ void main() {
         WmSetting(
           workshopDepartmentId: 'other',
           workshopName: '另一车间',
+          status: WmBinStatus.periodic,
           periodicEnabled: true,
           binWarehouseId: 'other-bin',
         ),
@@ -254,8 +254,18 @@ void main() {
       repo: repo,
       size: const Size(1600, 1000),
     );
-    expect(find.text('注塑车间'), findsOneWidget);
-    expect(find.text('另一车间'), findsNothing);
+    // 车间切换与内料仓总览同一份清单; 深链的车间保持选中。
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('wm-setup-workshop')),
+        matching: find.text('另一车间'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<WmMachinesTab>(find.byType(WmMachinesTab)).workshopId,
+      'w1',
+    );
     await tester.tap(find.byTooltip('刷新'));
     await tester.pumpAndSettle();
     await _openTab(tester, '机台与容器');
@@ -276,7 +286,7 @@ void main() {
     );
     expect(find.text('指定车间当前不可用或无权查看'), findsOneWidget);
     expect(find.text('注塑车间'), findsNothing);
-    expect(find.byKey(const Key('wm-setup-enable-table')), findsNothing);
+    expect(find.byType(WmMachinesTab), findsNothing);
   });
 
   testWidgets('上线余料说明明确原账衔接且不为工单重新领料', (tester) async {
@@ -286,6 +296,7 @@ void main() {
       repo: _repo(),
       size: const Size(800, 900),
     );
+    await _openTab(tester, '上线准备');
     await tester.tap(find.byKey(const Key('wm-setup-opening-guide')));
     await tester.pumpAndSettle();
     expect(find.text('上线前清点车间余料'), findsOneWidget);

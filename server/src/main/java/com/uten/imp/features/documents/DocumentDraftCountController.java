@@ -40,8 +40,10 @@ public class DocumentDraftCountController {
     public Map<String, Long> statusCounts(
             @RequestParam String kind,
             @RequestParam(required = false) String shipmentKind,
-            @RequestParam(required = false) String docType) {
-        return statusCounts.counts(kind, shipmentKind, docType);
+            @RequestParam(required = false) String docType,
+            @RequestParam(required = false) java.util.UUID scopeWarehouseId) {
+        // ADR-149: 仓库单据(stockDocument/stockTransfer/stockCheck)按仓库数据范围计数, 与库存单据列表同一判定。
+        return statusCounts.counts(kind, shipmentKind, docType, scopeWarehouseId);
     }
 
     /** 销售出货 / 销售报价 / 采购订货 / 委外订货各自的「财务已退回」张数(hub 单据卡徽章 = 草稿 + 财务已退回). */

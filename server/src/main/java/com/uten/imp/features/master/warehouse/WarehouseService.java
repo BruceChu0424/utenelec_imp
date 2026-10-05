@@ -43,10 +43,12 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 仓库主档：扁平列表（动态筛选）+ facets + 详情 + 新建/编辑/删除（warehouse:edit）。
+ * 仓库主档：列表(动态筛选)+ facets + 详情 + 新建/编辑/启停(warehouse:edit / warehouse:status)。
  *
- * <p>范式同 {@code CurrencyService}，加 location/remark/isAccountable/workshopDepartment 字段。
- * 仓库供采购收货/退货单据选择，并作为库存 stock_movements/balances 的记账维度。
+ * <p>主档形态(ADR-145): 全公司只有一个主仓(编号 001), 只作汇总、负责人范围和导航;
+ * 其余仓都是它的直属子仓。新建/编辑时上级仓库由服务端补成主仓, 名称按比对键不许重名;
+ * 停用前置条件、仓库用途(良品/不良品)变更条件由 {@link WarehouseMasterRules} 预检成中文原因,
+ * 数据库守卫 fn_guard_warehouse_master_lifecycle 兜底。车间内料仓由车间内料仓页管理, 这里不能改。
  */
 @Service
 @RequiredArgsConstructor
@@ -58,6 +60,27 @@ public class WarehouseService {
             Set.of("code", "name", "status", "location", "parentId");
 
     private static final int FACET_LIMIT = 50;
+
+    /**
+     * 主仓(唯一没有上级的仓)在最前, 子仓按编号排。Hibernate 的 Criteria 不支持 NULLS FIRST,
+     * 用 CASE 表达式排序; 计数查询(结果类型 Long)不加排序。
+     */
+    private static Specification<Warehouse> masterOrder(Specification<Warehouse> filter) {
+        return (root, q, cb) -> {
+            if (q != null && !Long.class.equals(q.getResultType())) {
+                q.orderBy(
+                        cb.asc(cb.selectCase().when(cb.isNull(root.get("parentId")), 0).otherwise(1)),
+                        cb.asc(root.get("code")),
+                        cb.asc(root.get("id")));
+            }
+            return filter.toPredicate(root, q, cb);
+        };
+    }
+
+    private static final String LINE_SIDE_MANAGED_ELSEWHERE =
+            "车间内料仓由「车间内料仓」页开通和撤销, 仓库资料里不能新建或改成内料仓";
+    private static final String LINE_SIDE_READ_ONLY =
+            "车间内料仓由「车间内料仓」页开通和管理, 仓库资料里只读; 要撤销请在「车间内料仓」里撤销开通";
 
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
@@ -72,12 +95,13 @@ public class WarehouseService {
     private final MasterCodeService masterCodeService;
     private final OrganizationReferencePort organizationReferences;
     private final WarehouseKeeperService keeperService;
+    private final WarehouseMasterRules rules;
 
     // ===== 加密 Excel 导出（2026-09-25「表格显示啥导出啥」，V717） =====
 
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
-     * 列集与前端仓库表格一致：编号 / 仓库名称 / 上级仓库 / 位置 / 核算 / 负责人 / 状态。
+     * 列集与前端仓库表格一致：编号 / 仓库名称 / 上级仓库 / 仓库用途 / 位置 / 核算 / 负责人 / 状态。
      * 负责人来自 warehouse_keepers（ADR-115，与列表「负责人」列同一 assignments 查询，
      * 仓库量级个位数，一次带回按仓库分组、「、」连接，无负责人显示「—」）。
      */
@@ -92,6 +116,7 @@ public class WarehouseService {
                 new ExportColumn("code", "编号", ExportColumn.TEXT),
                 new ExportColumn("name", "仓库名称", ExportColumn.TEXT),
                 new ExportColumn("parentName", "上级仓库", ExportColumn.TEXT),
+                new ExportColumn("defective", "仓库用途", ExportColumn.TEXT),
                 new ExportColumn("location", "位置", ExportColumn.TEXT),
                 new ExportColumn("accountable", "核算", ExportColumn.TEXT),
                 new ExportColumn("keepers", "负责人", ExportColumn.TEXT),
@@ -104,6 +129,7 @@ public class WarehouseService {
                     row.put("code", w.getCode());
                     row.put("name", w.getName());
                     row.put("parentName", w.getParentName() == null ? "—" : w.getParentName());
+                    row.put("defective", useLabel(w.isDefective()));
                     row.put("location", w.getLocation());
                     row.put("accountable", w.isAccountable() ? "是" : "否");
                     row.put("keepers", keepersByWarehouse.getOrDefault(w.getId(), "—"));
@@ -136,6 +162,9 @@ public class WarehouseService {
             if (f.accountable() != null) {
                 ps.add(cb.equal(root.get("accountable"), f.accountable()));
             }
+            if (f.defective() != null) {
+                ps.add(cb.equal(root.get("defective"), f.defective()));
+            }
             if (f.nullFields() != null) {
                 for (String fld : f.nullFields()) {
                     if (ALLOWED_NULL_FIELDS.contains(fld)) ps.add(cb.isNull(root.get(fld)));
@@ -143,12 +172,15 @@ public class WarehouseService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
-        Page<Warehouse> p = repo.findAll(spec, pageable);
+        // 主仓置顶(唯一没有上级的仓), 子仓按编号紧随其后(排序在 masterOrder 里)。
+        Pageable pageable = Pageables.of(page, size, Sort.unsorted());
+        Page<Warehouse> p = repo.findAll(masterOrder(spec), pageable);
         Map<UUID, String> workshopNames = workshopNames(p.getContent());
         Map<UUID, String> parentNames = parentNames(p.getContent());
+        Selectable selectable = selectable(p.getContent());
         return new PageResponse<>(
-                p.getContent().stream().map(row -> toList(row, workshopNames, parentNames)).toList(),
+                p.getContent().stream()
+                        .map(row -> toList(row, workshopNames, parentNames, selectable)).toList(),
                 p);
     }
 
@@ -206,18 +238,33 @@ public class WarehouseService {
                     "true".equals(value) ? "是" : "否"));
         }
         buckets.put("accountable", accountableBuckets);
+        // 仓库用途(defective, ADR-145)桶：true=不良品仓 / false=良品仓(列 NOT NULL)。
+        List<Object[]> defectiveRows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+                "select is_defective as v, count(*) as c from warehouses "
+                        + "where is_deleted = false "
+                        + "group by is_defective order by c desc limit " + FACET_LIMIT));
+        List<FacetBucket> defectiveBuckets = new ArrayList<>(defectiveRows.size());
+        for (Object[] row : defectiveRows) {
+            String value = String.valueOf(row[0]);
+            defectiveBuckets.add(new FacetBucket(value, ((Number) row[1]).longValue(),
+                    useLabel("true".equals(value))));
+        }
         return new WarehouseFacets(buckets.get("code"), buckets.get("name"), buckets.get("status"),
-                buckets.get("parent"), buckets.get("accountable"), nullCounts);
+                buckets.get("parent"), buckets.get("accountable"), defectiveBuckets, nullCounts);
     }
 
-    /** 全量字典（采购单据/库存选仓库用）：返回全部未软删仓库，按编号排序。 */
+    /**
+     * 全量字典(单据选仓/历史单据显示名用)：返回全部未软删仓库(含禁用仓, 历史单据要显示名字)，
+     * 主仓在前。每行带服务端算好的 defective 与 selectableForNew, 前端新选入口只认 selectableForNew。
+     */
     @Transactional(readOnly = true)
     public List<WarehouseListItem> dict() {
         Specification<Warehouse> spec = (root, q, cb) -> cb.isFalse(root.get("deleted"));
-        List<Warehouse> rows = repo.findAll(spec, Sort.by(Sort.Direction.ASC, "code"));
+        List<Warehouse> rows = repo.findAll(masterOrder(spec));
         Map<UUID, String> workshopNames = workshopNames(rows);
         Map<UUID, String> parentNames = parentNames(rows);
-        return rows.stream().map(row -> toList(row, workshopNames, parentNames)).toList();
+        Selectable selectable = selectable(rows);
+        return rows.stream().map(row -> toList(row, workshopNames, parentNames, selectable)).toList();
     }
 
     /** Minimal workshop dictionary for warehouse create/edit. */
@@ -245,6 +292,9 @@ public class WarehouseService {
         if (req.getStatus() != null && !"使用".equals(req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:status");
         }
+        if (Boolean.TRUE.equals(req.getIsLineSide())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, LINE_SIDE_MANAGED_ELSEWHERE);
+        }
         Warehouse w = new Warehouse();
         apply(req, w);
         w.setCode(masterCodeService.nextCode(CODE_PREFIX));
@@ -261,14 +311,39 @@ public class WarehouseService {
         tx.bind();
         com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:edit");
         Warehouse w = requireWarehouse(id);
+        em.refresh(w, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (req.getStatus() != null && !java.util.Objects.equals(w.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("warehouse:status");
         }
+        if (req.getIsLineSide() != null && req.getIsLineSide() != w.isLineSide()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, LINE_SIDE_MANAGED_ELSEWHERE);
+        }
+        // ADR-147: 内料仓只由「车间内料仓」开通命令建出和撤销, 仓库资料里只读(名称随车间, 状态随开通)。
+        if (w.isLineSide()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, LINE_SIDE_READ_ONLY);
+        }
+        requireCanRetire(w, req.getStatus());
+        requireCanLeaveSelection(w, req);
         apply(req, w);
         repo.save(w);
         em.flush();
         syncLegacyWorkshopLink(w);
         return toDetail(w);
+    }
+
+    /**
+     * 改成「不核算」或改成不良品仓也让这个仓退出新单可选(ADR-145): 与停用同一组前置条件, 逐条列出原因;
+     * 数据库守卫 fn_guard_warehouse_master_lifecycle 同一定义兜底。
+     */
+    private void requireCanLeaveSelection(Warehouse w, WarehouseSaveRequest req) {
+        boolean toUnaccountable = w.isAccountable() && Boolean.FALSE.equals(req.getAccountable());
+        boolean toDefective = !w.isDefective() && Boolean.TRUE.equals(req.getDefective());
+        if (!toUnaccountable && !toDefective) return;
+        List<String> reasons = rules.selectionExitBlockers(List.of(w.getId())).get(w.getId());
+        if (reasons != null && !reasons.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    WarehouseMasterRules.selectionExitMessage(w.getName(), toDefective, reasons));
+        }
     }
 
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('warehouse:status')")
@@ -278,27 +353,97 @@ public class WarehouseService {
         tx.bind();
         Warehouse w = requireWarehouse(id);
         em.refresh(w, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (w.isLineSide()) throw new ApiException(ErrorCode.VALIDATION_FAILED, LINE_SIDE_READ_ONLY);
+        requireCanRetire(w, req.status());
         w.setStatus(req.status());
         repo.save(w);
+        em.flush();
         return toDetail(w);
+    }
+
+    /** 停用预检(ADR-145/147): 主仓、还有库存/货品归属/未结预留、已开通的内料仓、内料仓发料来源仓不能停用, 逐条列出原因。 */
+    private void requireCanRetire(Warehouse w, String nextStatus) {
+        if (!"禁用".equals(nextStatus) || "禁用".equals(w.getStatus())) return;
+        List<String> reasons = rules.retirementBlockers(List.of(w.getId())).get(w.getId());
+        if (reasons != null && !reasons.isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    WarehouseMasterRules.retirementMessage(w.getName(), false, reasons));
+        }
     }
 
 
     private void apply(WarehouseSaveRequest req, Warehouse w) {
+        String duplicate = rules.duplicateName(req.getName(), w.getId());
+        if (duplicate != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "已有同名仓库「" + duplicate + "」(名称去掉空格、括号不分全角半角后相同), 请换一个名称");
+        }
         w.setName(req.getName());
         w.setLocation(req.getLocation());
         w.setRemark(req.getRemark());
         if (req.getAccountable() != null) w.setAccountable(req.getAccountable());
-        if (req.getIsLineSide() != null) w.setLineSide(req.getIsLineSide());
         if (req.hasWorkshopDepartmentReference()) {
             DepartmentReference workshop = requireWorkshop(req.getWorkshopDepartmentId());
             w.setWorkshopDepartmentId(workshop == null ? null : workshop.id());
         }
-        if (req.hasParentReference()) {
-            w.setParentId(requireValidParent(w, req.getParentId()));
+        w.setParentId(resolveParent(w, req));
+        if (req.getDefective() != null && req.getDefective() != w.isDefective()) {
+            requireDefectiveShape(w, req.getDefective());
+            w.setDefective(req.getDefective());
         }
         w.setStatus(req.getStatus());
         requireLineSideShape(w);
+    }
+
+    /**
+     * 上级仓库(ADR-145 单主仓): 主仓自己没有上级; 其余仓一律挂在主仓下, 请求里写别的仓直接拒绝。
+     * 还没有任何仓时第一个新建的仓就是主仓; 主档没收敛(多个顶层仓、没有 001)时只允许编辑, 不许新建。
+     */
+    private UUID resolveParent(Warehouse w, WarehouseSaveRequest req) {
+        UUID requested = req.hasParentReference() ? req.getParentId() : null;
+        UUID root = rules.rootId();
+        if (root == null) {
+            if (w.getId() == null && rules.anyOtherWarehouse(null)) {
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "仓库资料还没有唯一的主仓, 暂时不能新建仓库, 请联系管理员先整理仓库层级");
+            }
+            if (requested != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "上级仓库只能是主仓");
+            }
+            return w.getId() == null ? null : w.getParentId();
+        }
+        if (root.equals(w.getId())) {
+            if (requested != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "主仓不能挂到别的仓库下面");
+            }
+            return null;
+        }
+        if (requested != null && !requested.equals(root)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "上级仓库只能是主仓「" + rootName(root) + "」, 仓库只有主仓和子仓两层");
+        }
+        return root;
+    }
+
+    /**
+     * 仓库用途改成不良品仓(或改回良品仓)的前置条件: 不良品仓只能是子仓、不能是车间内料仓;
+     * 有库存或还是货品所属仓库时由数据库守卫 fn_guard_warehouse_master_lifecycle 同一口径拒绝。
+     */
+    private void requireDefectiveShape(Warehouse w, boolean defective) {
+        if (w.isLineSide()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "车间内料仓不能设为不良品仓");
+        }
+        if (!defective) return;
+        boolean isMain = w.getId() == null
+                ? rules.rootId() == null
+                : w.getId().equals(rules.rootId()) || repo.existsByParentIdAndDeletedFalse(w.getId());
+        if (isMain) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "不良品仓只能是子仓, 主仓不能设为不良品仓");
+        }
+    }
+
+    private String rootName(UUID root) {
+        return repo.findById(root).map(Warehouse::getName).orElse("主仓");
     }
 
     /**
@@ -322,31 +467,6 @@ public class WarehouseService {
         }
     }
 
-    /**
-     * 上级仓库校验（V476）：存在且未软删、不能是自己、不能落在自己的后代链上（防环）。
-     * 返回 null = 清空回独立顶层。
-     */
-    private UUID requireValidParent(Warehouse self, UUID parentId) {
-        if (parentId == null) return null;
-        if (self.getId() != null && self.getId().equals(parentId)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "上级仓库不能是自己");
-        }
-        Warehouse parent = repo.findById(parentId)
-                .filter(p -> !p.isDeleted())
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "上级仓库不存在"));
-        // 沿 parent 的上级链上溯：途中遇到自己 = 会成环，拒绝。
-        UUID cursor = parent.getParentId();
-        int depth = 0;
-        while (cursor != null && depth++ < 64) {
-            if (cursor.equals(self.getId())) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "上级仓库不能是自己的子仓库");
-            }
-            Warehouse up = repo.findById(cursor).orElse(null);
-            cursor = up == null ? null : up.getParentId();
-        }
-        return parentId;
-    }
-
     private WarehouseDetail toDetail(Warehouse w) {
         UUID workshopId = w.getWorkshopDepartmentId();
         String workshopName = organizationReferences.findActiveDepartment(workshopId)
@@ -355,11 +475,26 @@ public class WarehouseService {
         return new WarehouseDetail(w.getId(), w.getCode(), w.getName(), w.getLocation(), w.getRemark(),
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
-                w.getStatus(), w.getLegacyId(), w.getParentId(), w.isLineSide());
+                w.getStatus(), w.getLegacyId(), w.getParentId(), w.isLineSide(),
+                w.isDefective(), rules.isSelectableForNew(w.getId()),
+                rules.selectableDefective(List.of(w.getId())).contains(w.getId()));
+    }
+
+    /** 两类可选集合(良品子仓 / 不良品子仓), 一批行各查一次。 */
+    private record Selectable(Set<UUID> good, Set<UUID> defective) {
+    }
+
+    private Selectable selectable(List<Warehouse> rows) {
+        List<UUID> ids = rows.stream().map(Warehouse::getId).toList();
+        return new Selectable(rules.selectableForNew(ids), rules.selectableDefective(ids));
+    }
+
+    private static String useLabel(boolean defective) {
+        return defective ? "不良品仓" : "良品仓";
     }
 
     private WarehouseListItem toList(Warehouse w, Map<UUID, String> workshopNames,
-                                     Map<UUID, String> parentNames) {
+                                     Map<UUID, String> parentNames, Selectable selectable) {
         UUID workshopId = w.getWorkshopDepartmentId();
         // Map.copyOf/Map.of 返回的不可变 Map 对 null key 的 get 会抛 NPE，未设置时一律先判空。
         // 上级仓库这一路 2026-09-22 在服务器上真炸过：本页所有行都没有上级时 parentNames()
@@ -373,7 +508,8 @@ public class WarehouseService {
                 w.isAccountable(), workshopId, workshopName, w.getLegacyOperatorId(),
                 w.getWorkshopLegacyId(),
                 w.getStatus(), w.getLegacyId(), parentId, parentName,
-                w.isLineSide());
+                w.isLineSide(), w.isDefective(), selectable.good().contains(w.getId()),
+                selectable.defective().contains(w.getId()));
     }
 
     /** 上级仓库名称（V476 层级列表列）：仓库量级个位数，全量载入一次建 id→name。 */

@@ -15,6 +15,8 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
@@ -23,6 +25,7 @@ import '../weight_predictor.dart';
 import '../weight_prefs.dart';
 import '../weight_unit.dart';
 import 'weight_grid_column.dart';
+import 'weight_params_load_notice.dart';
 import 'weight_text.dart';
 
 /// 供应商候选 (名称由调用方按权限给出, 可能已打码)。
@@ -97,7 +100,10 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
   final _openedAt = DateTime.now().microsecondsSinceEpoch;
 
   /// 按 (货品, 供应商) 取过的参数。
-  final Map<String, WeightParams?> _paramsByKey = {};
+  final Map<WeightParamsIdentity, WeightParams?> _paramsByKey = {};
+
+  /// 取当前单重失败的原因; 只影响对比行, 不妨碍称样, 但要让人看见并可重试。
+  Object? _paramsError;
   String? _supplierId;
   bool _newRegime = false;
   bool _busy = false;
@@ -112,8 +118,7 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
     _remark = TextEditingController(text: widget.remark ?? '');
     final given = widget.params;
     if (given != null) {
-      _paramsByKey[WeightParams.keyOf(widget.goodsId, widget.supplierId)] =
-          given;
+      _paramsByKey[_identity(widget.supplierId)] = given;
     }
     for (final c in [_qty, _weight, _tare]) {
       c.addListener(_changed);
@@ -125,24 +130,33 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
     if (mounted) setState(() => _error = null);
   }
 
-  WeightParams? get _params =>
-      _paramsByKey[WeightParams.keyOf(widget.goodsId, _supplierId)];
+  WeightParamsIdentity _identity(String? supplierId) => WeightParamsLine(
+    goodsId: widget.goodsId,
+    supplierId: supplierId,
+  ).paramsIdentity;
+
+  WeightParams? get _params => _paramsByKey[_identity(_supplierId)];
 
   Future<void> _ensureParams() async {
-    final key = WeightParams.keyOf(widget.goodsId, _supplierId);
+    final key = _identity(_supplierId);
     if (_paramsByKey.containsKey(key)) return;
     _paramsByKey[key] = null;
     try {
-      final map = await ref.read(weightRepositoryProvider).params([
+      final result = await ref.read(weightRepositoryProvider).params([
         WeightParamsLine(goodsId: widget.goodsId, supplierId: _supplierId),
       ]);
       if (!mounted) return;
-      setState(
-        () => _paramsByKey[key] =
-            map[key] ?? (map.isEmpty ? null : map.values.first),
-      );
-    } catch (_) {
-      // 取不到当前单重只影响对比行, 不妨碍称样。
+      setState(() {
+        _paramsByKey[key] = result.params[key];
+        _paramsError = null;
+      });
+    } catch (e) {
+      // 取不到当前单重只影响对比行, 不妨碍称样; 但不再静默 (ADR-151)。
+      if (!mounted) return;
+      setState(() {
+        _paramsByKey.remove(key);
+        _paramsError = e;
+      });
     }
   }
 
@@ -287,6 +301,31 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
                 ),
                 const SizedBox(height: UtenSpacing.s12),
               ],
+              if (_paramsError case final error?)
+                Builder(
+                  builder: (context) {
+                    final l10n =
+                        Localizations.of<AppLocalizations>(
+                          context,
+                          AppLocalizations,
+                        ) ??
+                        AppLocalizationsZh();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                      child: UtenInlineNotice(
+                        key: const Key('weight-sample-params-error'),
+                        level: UtenInlineNoticeLevel.warning,
+                        message: l10n.weightParamsLoadFailed(
+                          weightParamsErrorReason(error, l10n),
+                        ),
+                        trailing: TextButton(
+                          onPressed: _busy ? null : _ensureParams,
+                          child: Text(l10n.commonRetry),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               if (supplierItems.isNotEmpty) ...[
                 UtenDropdownField(
                   key: const ValueKey('weight-sample-supplier'),

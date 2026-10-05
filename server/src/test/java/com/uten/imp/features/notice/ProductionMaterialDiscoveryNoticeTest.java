@@ -23,14 +23,16 @@ class ProductionMaterialDiscoveryNoticeTest {
     final WarehouseTaskScopePort keepers=mock(WarehouseTaskScopePort.class);
     final ChainNoticeService service=new ChainNoticeService(notices,accounts,permissions,jdbc,mock(BusinessEventPublisher.class),mock(RdTaskService.class),mock(FinanceReviewerEligibilityPort.class),mock(SalesOrderFinanceConfirmerEligibility.class));
     final UUID request=UUID.randomUUID(),warehouse=UUID.randomUUID(),keeper=UUID.randomUUID(),other=UUID.randomUUID();
-    ProductionMaterialDiscoveryNoticeTest(){service.setWarehouseKeepers(keepers);}
+    ProductionMaterialDiscoveryNoticeTest(){service.setWarehouseRouter(new WarehouseNoticeRouter(keepers));}
 
     @Test void pendingKnownWarehouseReachesOnlyThatWarehouseKeeper(){
-        row("PENDING",true,warehouse);pool();when(keepers.keeperUserIds(List.of(warehouse))).thenReturn(List.of(keeper));
+        row("PENDING",true,warehouse);pool();when(keepers.noticeRecipients(List.of(keeper,other),List.of(warehouse))).thenReturn(List.of(keeper));
         deliver("PENDING");assertPublished(keeper);verify(notices,never()).publishForUser(eq(other),anyString(),anyString(),anyString(),anyString(),anyString(),anyString(),any(),any());
     }
-    @Test void notYetAssignedWarehouseFallsBackToWholeQualifiedWarehousePool(){
-        row("PENDING",true,null);pool();deliver("PENDING");assertPublished(keeper);assertPublished(other);verifyNoInteractions(keepers);
+    // ADR-149: 未定仓的任务同样经唯一分发规则(主管 ∩ 池, 没有主管才整个池); 这里规则返回整个池。
+    @Test void notYetAssignedWarehouseGoesThroughTheSameRoutingRule(){
+        row("PENDING",true,null);pool();when(keepers.noticeRecipients(List.of(keeper,other),List.of())).thenReturn(List.of(keeper,other));
+        deliver("PENDING");assertPublished(keeper);assertPublished(other);verify(keepers).noticeRecipients(List.of(keeper,other),List.of());
     }
     @Test void stoppedSourceOrConfiguredRequestResolvesInsteadOfDeliveringStalePendingCard(){
         row("PENDING",false,warehouse);deliver("VISIBILITY");verify(notices).resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",request,"STATE_CHANGED");

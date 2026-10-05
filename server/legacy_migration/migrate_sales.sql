@@ -11,7 +11,8 @@
 --   其它出货明细.order_item_id 业务上不挂单（老库触发器 UPDATE 段已注释），留 NULL。
 --   四条真 FK 均按 legacy_id 子查询映射到新 UUID；0/null -> NULL。
 -- 受控重建：外键和审计触发器始终生效，按从属到主表顺序 DELETE 后导入。
--- 缺失基础资料自动补录（units/colors/warehouses/currencies/goods/clients，LEGACY- 前缀 + auto_created）。
+-- 缺失基础资料自动补录(units/colors/currencies/goods/clients，LEGACY- 前缀 + auto_created)。
+-- 仓库不补录(ADR-145)：一律经审过的 warehouse_crosswalk.csv 解析到目标仓。
 -- 人员字段（maker/approver/seller/sender）：*_id(UUID) 留 NULL，**保留 *_legacy_id(INT)** 源老库
 --   Sys_Operator/B_Worker ID。等员工档案录 employees.legacy_id 后，报表 LEFT JOIN 自动出人名（V66 + V65）。
 -- status：老库 1->1（已审）、-1->-1（红冲），直接照搬（老库无 0 草稿态）。
@@ -145,15 +146,35 @@ WHERE lid IS NOT NULL AND lid <> 0
   AND NOT EXISTS (SELECT 1 FROM colors c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
--- 仓库（S_Order 无仓库；ship/oship/return 主表反推）
-INSERT INTO warehouses (legacy_id, code, name, status, is_accountable, auto_created)
-SELECT DISTINCT lid, 'LEGACY-W-' || lid, '（迁移自动补录）', '使用', TRUE, TRUE
-FROM (SELECT warehouse_legacy AS lid FROM ship_stage UNION ALL
-      SELECT warehouse_legacy FROM oship_stage UNION ALL
-      SELECT warehouse_legacy FROM return_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM warehouses w WHERE w.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+-- 仓库(ADR-145)：只按审过的 warehouse_crosswalk.csv 解析，不再补录「(迁移自动补录)」仓库存根。
+-- 老库已禁用的仓并入在用的目标仓，老库主仓 132 的历史单据头记主仓 001(只读历史)；
+-- 落在老库已删除仓(对照表 DROP)上的单据本模块不迁也不猜仓：出现即中止，先人工定去向
+-- (老库目前没有这种单据；库存单据与采购收货单按对照表不迁、写对账清单)。
+CREATE TEMP TABLE warehouse_crosswalk_stage (
+    legacy_id int, legacy_code text, legacy_name text, action text,
+    target_code text, target_name text, target_defective boolean, note text);
+\copy warehouse_crosswalk_stage FROM '/tmp/warehouse_crosswalk.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+CREATE TEMP TABLE warehouse_target_stage AS
+SELECT crosswalk.legacy_id, crosswalk.action, target.id AS warehouse_id
+FROM warehouse_crosswalk_stage crosswalk
+LEFT JOIN warehouses target ON target.code = crosswalk.target_code AND NOT target.is_deleted
+WHERE crosswalk.legacy_id IS NOT NULL;
+DO $$
+DECLARE
+    missing TEXT;
+BEGIN
+    SELECT string_agg(DISTINCT lid::text, ', ') INTO missing
+      FROM (SELECT warehouse_legacy AS lid FROM ship_stage UNION ALL
+            SELECT warehouse_legacy FROM oship_stage UNION ALL
+            SELECT warehouse_legacy FROM return_stage) refs
+     WHERE lid IS NOT NULL AND lid <> 0
+       AND NOT EXISTS (SELECT 1 FROM warehouse_target_stage target
+                        WHERE target.legacy_id = refs.lid AND target.warehouse_id IS NOT NULL);
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'sales warehouses must resolve through warehouse_crosswalk.csv to an existing target (documents on deleted legacy warehouses need a reviewed decision first): %', missing;
+    END IF;
+END;
+$$;
 
 -- 币种（order/ship/oship/return 主表反推）
 INSERT INTO currencies (legacy_id, code, name, exchange_rate, status, auto_created)
@@ -345,7 +366,7 @@ INSERT INTO sales_shipments (
     seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style,
        NULL, NULL, NULL, NULL,                       -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
@@ -399,7 +420,7 @@ INSERT INTO sales_other_shipments (
     seller_legacy_id, sender_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),  -- client_id 可空（内部领用）
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), s.tax_rate, s.p_style,
        NULL, NULL, NULL, NULL,                       -- *_id(UUID) 留空，待 employees.legacy_id 对齐回填
@@ -447,7 +468,7 @@ INSERT INTO sales_returns (
     seller_legacy_id, maker_legacy_id, approver_legacy_id)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy),
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy),
        (SELECT id FROM currencies WHERE legacy_id = s.cur_legacy),
        COALESCE(s.exchange_rate, 1), NULL,            -- S_Withdraw 无 TRate
        s.p_style,

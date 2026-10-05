@@ -60,11 +60,20 @@ class WorkshopDirectTargetReasonPostgresTest {
         for (String table : List.of("departments", "goods", "production_plans", "production_planning_packages",
                 "production_execution_segments", "production_material_demands", "subplan_links",
                 "production_material_supply_pegs", "production_material_analyses",
-                "production_material_analysis_items", "preplan_aggregate_batches")) {
+                "production_material_analysis_items", "preplan_aggregate_batches", "warehouses", "workshop_bins")) {
             jdbc.execute("ALTER TABLE " + table + " DISABLE TRIGGER ALL");
         }
         jdbc.update("INSERT INTO departments(id,code,name,level) VALUES (?,'WS_T736_A','一车间','二级班组'),"
                 + "(?,'WS_T736_B','二车间','二级班组')", W1, W2);
+        // ADR-147 (V800): 直送只送已开通内料仓的车间; 两个车间都已开通 (没开通的情形见专门的用例)。
+        for (UUID workshop : List.of(W1, W2)) {
+            UUID bin = UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO warehouses(id,code,name,status,is_accountable,is_line_side,workshop_department_id)
+                    VALUES (?,?,?,'使用',TRUE,TRUE,?)""", bin, "LS-T736-" + bin.toString().substring(0, 6),
+                    "内料仓-" + bin.toString().substring(0, 6), workshop);
+            jdbc.update("INSERT INTO workshop_bins(workshop_department_id,bin_warehouse_id) VALUES (?,?)", workshop, bin);
+        }
         goods(CHILD, "HVT001");
         goods(OTHER, "HVT999");
         goods(TOP, "HVTP01");
@@ -280,7 +289,39 @@ class WorkshopDirectTargetReasonPostgresTest {
         String check = jdbc.queryForObject("""
                 SELECT pg_get_constraintdef(oid) FROM pg_constraint
                 WHERE conname='production_daily_report_items_output_route_reason_chk'""", String.class);
-        assertThat(check).contains("WAREHOUSE").contains("USER_CHOSEN").contains("SUBCONTRACT_ROUTE");
+        assertThat(check).contains("WAREHOUSE").contains("USER_CHOSEN").contains("SUBCONTRACT_ROUTE")
+                .contains("WORKSHOP_BIN_NOT_OPEN");
+    }
+
+    @Test
+    void receivingWorkshopWithoutAnOpenedBinCannotReceiveAndSaysSo() {
+        // ADR-147: 不再第一次直送时自动建仓; 收料车间没开通内料仓时上层工单都不能收, 原因说清楚怎么办,
+        // 报工这部分送入仓库 (同一原因码记进送仓原因)。
+        UUID bin = jdbc.queryForObject("SELECT bin_warehouse_id FROM workshop_bins WHERE workshop_department_id=?",
+                UUID.class, W1);
+        jdbc.update("DELETE FROM workshop_bins WHERE workshop_department_id=?", W1);
+        try {
+            var row = single(source, earlier, null);
+            assertThat(row).containsEntry("reason_code", "WORKSHOP_BIN_NOT_OPEN").containsEntry("eligible", false)
+                    .containsEntry("receiver_open", false);
+            assertThat((String) row.get("reason_text"))
+                    .isEqualTo("一车间还没开通内料仓，请仓库在「车间内料仓」开通后再直送，这次先送入仓库");
+            var listed = jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", source);
+            assertThat(listed).noneSatisfy(target -> assertThat(target.get("eligible")).isEqualTo(true));
+            assertThat(closestReason(source)).isEqualTo("WORKSHOP_BIN_NOT_OPEN");
+            // 结构原因在前: 跨车间的上层仍说跨车间。
+            assertThat(single(source, otherWorkshop, null)).containsEntry("reason_code", "DIFFERENT_WORKSHOP");
+            assertThatThrownBy(() -> jdbc.queryForList("SELECT fn_assert_workshop_direct_target(?,?,?)",
+                    source, earlier, new BigDecimal("10")))
+                    .rootCause().isInstanceOfSatisfying(PSQLException.class, error ->
+                            assertThat(error.getServerErrorMessage().getHint()).isEqualTo("WORKSHOP_BIN_NOT_OPEN"));
+        } finally {
+            jdbc.update("INSERT INTO workshop_bins(workshop_department_id,bin_warehouse_id) VALUES (?,?)", W1, bin);
+        }
+        assertThat(single(source, earlier, null)).containsEntry("eligible", true);
+        // 报工详情回看时没有车间名: 仍是一句完整的话。
+        assertThat(text("WORKSHOP_BIN_NOT_OPEN", null))
+                .isEqualTo("收料车间还没开通内料仓，请仓库在「车间内料仓」开通后再直送，这次先送入仓库");
     }
 
     @Test

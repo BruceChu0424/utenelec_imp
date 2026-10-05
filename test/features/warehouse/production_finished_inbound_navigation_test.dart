@@ -238,13 +238,13 @@ void main() {
       // 「先入库后质检(N)」：进批量登记页带 preStock=1。
       await tester.tap(find.byKey(stockInFirst));
       await tester.pumpAndSettle();
-      expect(find.byType(_BatchRouteProbe), findsOneWidget);
+      expect(find.byType(_RegistrationRouteProbe), findsOneWidget);
       var location = tester
-          .widget<_BatchRouteProbe>(find.byType(_BatchRouteProbe))
+          .widget<_RegistrationRouteProbe>(find.byType(_RegistrationRouteProbe))
           .location;
       expect(
         location.path,
-        RouteName.warehouseProductionFinishedArrivalBatchRegistration,
+        RouteName.warehouseProductionFinishedArrivalRegistration,
       );
       expect(location.queryParameters['reportIds'], _arrivalTaskId);
       expect(location.queryParameters['preStock'], '1');
@@ -253,17 +253,17 @@ void main() {
         RouteName.warehouseProductionFinishedInboundTasks,
       );
 
-      // 未办理直接返回：勾选保留，改点「先质检后入库(N)」不带 preStock。
+      // 未办理直接返回：勾选保留，改点「先质检后入库(N)」带 preStock=0。
       await tester.tap(find.byKey(const Key('leave-batch-route')));
       await tester.pumpAndSettle();
       expect(find.text('先质检后入库(1)'), findsOneWidget);
       await tester.tap(find.byKey(inspectFirst));
       await tester.pumpAndSettle();
       location = tester
-          .widget<_BatchRouteProbe>(find.byType(_BatchRouteProbe))
+          .widget<_RegistrationRouteProbe>(find.byType(_RegistrationRouteProbe))
           .location;
       expect(location.queryParameters['reportIds'], _arrivalTaskId);
-      expect(location.queryParameters.containsKey('preStock'), isFalse);
+      expect(location.queryParameters['preStock'], '0');
       expect(tester.takeException(), isNull);
     },
   );
@@ -320,17 +320,10 @@ GoRouter _buildRouter({required String initialLocation}) => GoRouter(
       path: RouteName.warehouseProductionFinishedInboundTasks,
       builder: (_, _) => const ProductionFinishedInboundTasksPage(),
     ),
-    // 批量登记页须先于 :reportId 声明(与正式路由表一致)。
-    GoRoute(
-      path: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
-      builder: (_, state) => _BatchRouteProbe(location: state.uri),
-    ),
+    // ADR-151 §5：单张与多选进同一个登记页，来源走 ?reportIds=(1..N)。
     GoRoute(
       path: RouteName.warehouseProductionFinishedArrivalRegistration,
-      builder: (_, state) => _ArrivalRouteProbe(
-        reportId: state.pathParameters['reportId'] ?? '',
-        returnTo: state.uri.queryParameters['returnTo'],
-      ),
+      builder: (_, state) => _RegistrationRouteProbe(location: state.uri),
     ),
     GoRoute(
       path: '/warehouse/:code/:id',
@@ -340,31 +333,9 @@ GoRouter _buildRouter({required String initialLocation}) => GoRouter(
   ],
 );
 
-class _ArrivalRouteProbe extends StatelessWidget {
-  const _ArrivalRouteProbe({required this.reportId, required this.returnTo});
-
-  final String reportId;
-  final String? returnTo;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Column(
-      children: [
-        Text('arrival-report-$reportId'),
-        Text('return-$returnTo'),
-        FilledButton(
-          key: const Key('complete-arrival-route'),
-          onPressed: () => context.pop(true),
-          child: const Text('完成登记'),
-        ),
-      ],
-    ),
-  );
-}
-
-/// 批量登记页落点：记下任务中心 push 的完整地址(含路线参数)。
-class _BatchRouteProbe extends StatelessWidget {
-  const _BatchRouteProbe({required this.location});
+/// 登记页落点：记下任务中心 push 的完整地址(来源报工、路线参数、返回地址)。
+class _RegistrationRouteProbe extends StatelessWidget {
+  const _RegistrationRouteProbe({required this.location});
 
   final Uri location;
 
@@ -372,7 +343,14 @@ class _BatchRouteProbe extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     body: Column(
       children: [
+        Text('arrival-report-${location.queryParameters['reportIds']}'),
+        Text('return-${location.queryParameters['returnTo']}'),
         Text('batch-location-$location'),
+        FilledButton(
+          key: const Key('complete-arrival-route'),
+          onPressed: () => context.pop(true),
+          child: const Text('完成登记'),
+        ),
         FilledButton(
           key: const Key('leave-batch-route'),
           onPressed: () => context.pop(),

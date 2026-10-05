@@ -1,5 +1,7 @@
 # 262 · Windows 全量重导实录与迁移工具修复（2026-09-28）
 
+> **2026-10-04 后置覆盖([V798](V798-仓库主档单主仓.md) / [ADR-145](../99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md))**：重导不再打平仓库层级、不再把用户启用的仓改回禁用(`migrate_warehouse.sql` 不再 DELETE，按对照表增量写入、上级固定主仓、状态取目标值)。全量顺序改为：仓库目标主档 → 主档 → 货品 → 货品所属仓库(`--goods-owning-warehouse`) → 交易模块；导入映射协议升为 `bootstrap-v13`。
+
 > 背景：开发库基础资料需要从老库（本机 LocalDB `YTDQ_2023`，数据文件
 > `C:\Users\bruce\YTDQ_2023.mdf`，业务截止 2026-07-22）完整重导。这是
 > `export_legacy.ps1 All` + `migrate.sh` 全链首次在 Windows 上完整走通，

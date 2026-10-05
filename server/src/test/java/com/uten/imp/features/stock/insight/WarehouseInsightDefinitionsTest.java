@@ -394,7 +394,7 @@ class WarehouseInsightDefinitionsTest {
 
     private static WeightParams params(String basis, String evidence, String tier, BigDecimal unitWeight,
                                        boolean learningEnabled) {
-        return new WeightParams("k", UUID.randomUUID(), basis, false, evidence, unitWeight, null, null, 0.02, null,
+        return new WeightParams(UUID.randomUUID(), null, basis, false, evidence, unitWeight, null, null, 0.02, null,
                 tier, 0.03, 5, 20, null, new BigDecimal("3.000"), null, null, null, false, null, null, null, "COUNT",
                 learningEnabled, 0.00005);
     }

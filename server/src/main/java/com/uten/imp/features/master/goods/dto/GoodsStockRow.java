@@ -25,4 +25,6 @@ public class GoodsStockRow {
     private boolean weightEstimated;
     /** 线边仓(V595 车间料架)：不算现实库存，不计入货品合计。 */
     private boolean lineSide;
+    /** 不良品仓(ADR-146)：照常列出(前端标「不良品」)，不计入货品合计。 */
+    private boolean defective;
 }

@@ -50,7 +50,6 @@ class _Row extends EditableGridRow {
 
 /// 金样 S18 供应商 A: 单重约 2.0 g, 可参考。
 const _learned = WeightParams(
-  key: 'g1|',
   goodsId: 'g1',
   basis: WeightBasis.learned,
   logMean: -6.214979467174846,
@@ -62,7 +61,6 @@ const _learned = WeightParams(
 );
 
 const _red = WeightParams(
-  key: 'g1|',
   goodsId: 'g1',
   basis: WeightBasis.learned,
   logMean: -6.214979467174846,
@@ -73,14 +71,12 @@ const _red = WeightParams(
 );
 
 const _exactKg = WeightParams(
-  key: 'g2|',
   goodsId: 'g2',
   basis: WeightBasis.exact,
   massFactorKg: 1,
 );
 
 const _stock = WeightParams(
-  key: 'g1||w1|',
   goodsId: 'g1',
   stockBalance: WeightStockBalance(
     warehouseId: 'w1',

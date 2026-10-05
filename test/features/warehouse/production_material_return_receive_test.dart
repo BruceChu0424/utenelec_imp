@@ -17,7 +17,12 @@ import '../../helpers/document_scope_fixture.dart';
 
 const _warehouses = [
   WarehouseDictEntry(id: 'main', name: '主仓', isAccountable: false),
-  WarehouseDictEntry(id: 'normal', name: '五金仓', parentId: 'main'),
+  WarehouseDictEntry(
+    id: 'normal',
+    name: '五金仓',
+    parentId: 'main',
+    selectableForNew: true,
+  ),
   WarehouseDictEntry(
     id: 'technical',
     name: '车间位置',
@@ -30,7 +35,7 @@ const _warehouses = [
     parentId: 'main',
     status: '禁用',
   ),
-  WarehouseDictEntry(id: 'other', name: '其他主仓'),
+  WarehouseDictEntry(id: 'other', name: '其他主仓', selectableForNew: true),
 ];
 
 class _Api extends ApiClient {
@@ -55,6 +60,7 @@ class _Api extends ApiClient {
               'accountable': w.isAccountable,
               'lineSide': w.isLineSide,
               'status': w.status,
+              'selectableForNew': w.selectableForNew,
             },
         ]
       : [];

@@ -48,22 +48,24 @@ class SourceAuthorityTest(unittest.TestCase):
             runpy.run_path(str(RESOURCES / "generate_fixture.py"), run_name="__main__")
         return self.root / "server/legacy_migration/data/export_manifest.json"
 
-    def test_real_loader_shapes_preserve_six_exact_missing_master_references(self):
+    def test_real_loader_shapes_preserve_five_exact_missing_master_references(self):
         masters, references = authority.collect(self.generate())
         source_keys = {(row[0], row[1]) for row in masters}
         self.assertIn(("goods", 900101), source_keys)
         self.assertNotIn(("goods", 910101), source_keys)
         facts = {(row[0], row[1]): row[2:] for row in references}
+        # ADR-145: a deleted legacy warehouse (910201) is excluded through the reviewed
+        # crosswalk, never anchored by a historical warehouse stub.
         self.assertEqual(set(facts), {("goods", 910101), ("units", 910301), ("colors", 910401),
-                                      ("warehouses", 910201), ("clients", 910501), ("suppliers", 910601)})
+                                      ("clients", 910501), ("suppliers", 910601)})
         self.assertEqual(facts[("goods", 910101)],
                          ("stock_goods.csv", '{"color_legacy":"910401","goods_legacy":"910101","stock_legacy":"910201","year":"2025"}',
-                          "goods_legacy", 4, 2))
+                          "goods_legacy", 6, 2))
         self.assertEqual(facts[("clients", 910501)],
                          ("m_in.csv", "906101", "client_legacy_id", 2, 1))
         self.assertEqual(facts[("suppliers", 910601)],
                          ("m_out.csv", "906102", "supplier_legacy_id", 3, 1))
-        self.assertEqual(facts[("warehouses", 910201)][-1], 2)
+        self.assertFalse(any(row[0] == "warehouses" for row in references))
         # Missing and historical-only BOM endpoints cannot authorize extra masters.
         self.assertFalse(any(row[1] in (919998, 919999) for row in references))
 

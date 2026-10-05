@@ -15,6 +15,7 @@ import '../network/api_error.dart';
 import '../network/api_exception.dart';
 import '../theme/uten_colors.dart';
 import 'app_notification_stack.dart';
+import 'human_error_message.dart';
 import 'uten_top_banner_card.dart';
 
 /// 通知类型。
@@ -338,6 +339,9 @@ extension AppNotificationContextX on BuildContext {
       _notifier.showInfo(message, title: title, force: force);
 
   /// 从 ApiException 自动提取 message + fieldErrors 显示为错误通知。
+  ///
+  /// 不是服务端异常时(草稿保护、本机存储、页面自己的校验), 有写给人看的中文原因就原样显示
+  /// (ADR-151 §2 提交失败如实报因); 英文内部异常才用 [fallback]。
   void appApiError(Object error, {String? fallback = '操作失败，请稍后重试'}) {
     if (error is ApiException) {
       _notifier.showError(
@@ -345,7 +349,7 @@ extension AppNotificationContextX on BuildContext {
         fieldErrors: error.fieldErrors,
       );
     } else {
-      _notifier.showError(fallback ?? '操作失败，请稍后重试');
+      _notifier.showError(humanErrorMessage(error) ?? fallback ?? '操作失败，请稍后重试');
     }
   }
 }

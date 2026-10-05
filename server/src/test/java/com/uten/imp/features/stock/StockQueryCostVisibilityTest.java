@@ -149,15 +149,22 @@ class StockQueryCostVisibilityTest {
         return new StockQueryService(balanceRepo, entityManager, masker);
     }
 
-    /** 即时库存 SELECT 的一行 (前 19 列为原口径, 其后 5 列为 ADR-135 重量扩展)。 */
+    /**
+     * 即时库存 SELECT 的完整一行(40 列, 按位置映射): 前 19 列为原口径, 19-23 为 ADR-135 重量扩展,
+     * 24-36 为合计用的计数列, 37-38 为所属仓库, 39 为 ADR-146 不良品数量。
+     */
     private static Object[] instantRow(BigDecimal costAmount) {
-        return new Object[]{
+        Object[] row = new Object[40];
+        Object[] head = {
                 UUID.randomUUID(), UUID.randomUUID(), "五金", "M1", "C1", "螺丝", "S1",
                 "银色", "件", "外购", new BigDecimal("2.5"), new BigDecimal("10"),
                 costAmount, new BigDecimal("3"), "MAT-001", "五金件", "A-01",
                 new BigDecimal("4"), new BigDecimal("2"),
                 Boolean.TRUE, 0, 1, new BigDecimal("0.002500000000"), "YELLOW"
         };
+        System.arraycopy(head, 0, row, 0, head.length);
+        row[39] = BigDecimal.ZERO;
+        return row;
     }
 
     private static StockBalance balance() {

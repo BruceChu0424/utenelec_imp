@@ -142,6 +142,8 @@ public class DocumentStatusCountQueryService {
     private final EntityManager em;
     private final OwnerVisibility ownerVisibility;
     private final SecurityContextCurrentUser currentUser;
+    /** ADR-149 仓库数据范围; 未注入(直接 new 的单测)时不按仓库裁剪。 */
+    private com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     public DocumentStatusCountQueryService(EntityManager em, OwnerVisibility ownerVisibility,
                                            SecurityContextCurrentUser currentUser) {
@@ -150,15 +152,30 @@ public class DocumentStatusCountQueryService {
         this.currentUser = currentUser;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWarehouseScopes(com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes) {
+        this.warehouseScopes = warehouseScopes;
+    }
+
+    /** 兼容调用: 本人默认仓库数据范围。 */
+    @Transactional(readOnly = true)
+    public Map<String, Long> counts(String kind, String shipmentKind, String docType) {
+        return counts(kind, shipmentKind, docType, null);
+    }
+
     /**
      * 某类单据的分桶计数. {@code shipmentKind} 只对 salesShipment 生效(客户零星发货列表传 DIRECT_CUSTOMER),
      * {@code docType} 只对 stockDocument 生效(仓库单据列表按单据类型切片); 其余类型传了即视为无效参数.
      */
     @Transactional(readOnly = true)
-    public Map<String, Long> counts(String kind, String shipmentKind, String docType) {
+    public Map<String, Long> counts(String kind, String shipmentKind, String docType, java.util.UUID scopeWarehouseId) {
         String kindName = kind == null ? "" : kind.trim();
         DraftSource source = KINDS.get(kindName);
         if (source == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "单据类型无效: " + kind);
+        boolean warehouseScoped = DocumentDraftCountQueryService.WAREHOUSE_SCOPED.contains(source);
+        if (!warehouseScoped && scopeWarehouseId != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "这类单据不按仓库范围计数");
+        }
         String kindFilter = code(shipmentKind, "salesShipment".equals(kindName), "出货类型");
         String typeFilter = code(docType, "stockDocument".equals(kindName), "仓库单据类型");
         Map<String, Long> result = new LinkedHashMap<>();
@@ -169,9 +186,22 @@ public class DocumentStatusCountQueryService {
         DocumentAccessPolicy policy = new DraftScopeAccessPolicy(
                 source.scope(), source.viewAllAuthority(), ownerVisibility, currentUser);
         DocumentAccessPolicy.NativeReadScope scope = policy.nativeReadScope(source.ownerColumn(), "statusOwners");
+        // ADR-149: 仓库单据的分段数与库存单据列表同一仓库数据范围(发出仓或调入仓)。
+        var warehouseScope = warehouseScoped && warehouseScopes != null
+                ? warehouseScopes.current(scopeWarehouseId)
+                : com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL;
+        String predicate = scope.predicate() + (warehouseScope.active()
+                ? " AND " + DocumentDraftCountQueryService.WAREHOUSE_SCOPE_PREDICATE : "");
         Query query = em.createNativeQuery(
-                countSql(kindName, source, scope.predicate(), kindFilter != null, typeFilter != null));
+                countSql(kindName, source, predicate, kindFilter != null, typeFilter != null));
         scope.bind(query);
+        if (warehouseScope.active()) {
+            // 本人默认范围(没挑仓)时自己的草稿不论仓都算, 与库存单据列表同一判定; 挑了仓只看那个仓。
+            AuthUser me = currentUser.get().orElse(null);
+            DocumentDraftCountQueryService.bindWarehouseScope(query, warehouseScope,
+                    scopeWarehouseId == null && me != null && me.getEmployeeId() != null
+                            ? me.getEmployeeId().toString() : "");
+        }
         if (kindFilter != null) query.setParameter("shipmentKind", kindFilter);
         if (typeFilter != null) query.setParameter("docType", typeFilter);
         Object row = query.getSingleResult();

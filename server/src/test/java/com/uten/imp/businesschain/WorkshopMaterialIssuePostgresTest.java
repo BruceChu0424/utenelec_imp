@@ -571,7 +571,7 @@ class WorkshopMaterialIssuePostgresTest {
         money("20", row.periodReturnQty());
         money("5", row.periodOtherQty());
         // 徽章: 车间账号只数本车间
-        assertEquals(0, positions.badgeCounts().pendingIssue());
+        assertEquals(0, positions.badgeCounts(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL).pendingIssue());
     }
 
     // =============================================================================================
@@ -700,25 +700,27 @@ class WorkshopMaterialIssuePostgresTest {
 
         // 从未用过: 停用删掉空的第 1 期, 之后可以像第一次一样重新开启
         fixture.loginAs(shop.warehouseUser());
-        long version = db.queryForObject("SELECT row_version FROM workshop_material_settings WHERE workshop_department_id = ?",
+        long version = db.queryForObject("SELECT row_version FROM workshop_bins WHERE workshop_department_id = ?",
                 Long.class, shop.workshop());
-        var disabled = settings.update(shop.workshop(), new SettingsRequest(version, false, null, null, null,
-                key("disable")));
+        var disabled = settings.update(shop.workshop(), new SettingsRequest("OPEN_PERIODIC", version, false, null, null,
+                null, null, null, key("disable")));
         assertFalse(disabled.periodicEnabled());
+        assertEquals("OPEN", disabled.status(), "撤销整批领料只退一步: 内料仓仍是已开通");
         assertEquals(0, db.queryForObject("SELECT count(*) FROM workshop_material_periods WHERE id = ?", Integer.class,
                 firstPeriod));
-        var again = settings.update(shop.workshop(), new SettingsRequest(disabled.rowVersion(), true, shop.leafA(),
-                BusinessTime.today(), List.of(), key("enable-again")));
+        var again = settings.update(shop.workshop(), new SettingsRequest("OPEN", disabled.rowVersion(), true, null, null,
+                true, BusinessTime.today(), List.of(), key("enable-again")));
         assertTrue(again.periodicEnabled());
-        assertEquals(bin, again.binWarehouseId(), "同一主仓下取回原来的内料仓");
+        assertEquals(bin, again.binWarehouseId(), "开通记录不变, 重新开启整批领料仍用原来的内料仓");
         assertEquals(1, again.currentPeriod().no());
-        assertTrue(settings.inProgressPending(shop.workshop()).products().isEmpty());
+        assertTrue(settings.inProgressPending(List.of(shop.workshop())).products().isEmpty());
 
         // 有过进出以后: 不能停用
         directIssue(shop, granule, "10", null, "used");
         ApiException inUse = assertThrows(ApiException.class, () -> settings.update(shop.workshop(),
-                new SettingsRequest(again.rowVersion(), false, null, null, null, key("disable-used"))));
-        assertEquals(ErrorCode.CONFLICT, inUse.getCode());
+                new SettingsRequest("OPEN_PERIODIC", again.rowVersion(), false, null, null, null, null, null,
+                        key("disable-used"))));
+        assertEquals(ErrorCode.VALIDATION_FAILED, inUse.getCode());
         assertTrue(inUse.getMessage().contains("已经在用"), inUse.getMessage());
 
         // 认料: 用料 → 同样再认一次不动 → 改为不用内料仓的料 (原认料作废为改认料)
@@ -1104,7 +1106,7 @@ class WorkshopMaterialIssuePostgresTest {
     /** 仓库账号开启车间整批领料 (内料仓挂在叶仓 A 所在主仓下)。返回内料仓。 */
     private UUID enable(Shop shop, LocalDate goLive) {
         fixture.loginAs(shop.warehouseUser());
-        var view = settings.update(shop.workshop(), new SettingsRequest(0L, true, shop.leafA(), goLive, List.of(),
+        var view = settings.update(shop.workshop(), new SettingsRequest(null, 0L, true, shop.leafA(), null, true, goLive, List.of(),
                 key("enable")));
         assertTrue(view.periodicEnabled());
         assertNotNull(view.binWarehouseId());

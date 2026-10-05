@@ -30,4 +30,8 @@ public class StockDocListItem extends com.uten.imp.common.history.DocumentHistor
     private Short issueStatus;
     /** 当前用户无 goods:cost:view 时合计金额已由服务端置空。 */
     private boolean costMasked;
+    /** 调拨类型(ADR-146): NORMAL / TO_DEFECTIVE 转不良品仓 / DEFECT_RELEASE 不良复判转回。 */
+    private String transferKind;
+    /** 专门通道的原因(普通调拨为空)。 */
+    private String defectReason;
 }

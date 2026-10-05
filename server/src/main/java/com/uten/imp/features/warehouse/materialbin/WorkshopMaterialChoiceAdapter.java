@@ -137,15 +137,15 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                     "「" + product.label() + "」选了不用内料仓的料, 就不要再选料");
         }
         if (sameAsActive(product.goodsId(), kind, materials, choice.alsoOrderMaterials())) return;
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 UPDATE goods_periodic_material_choices
                 SET superseded_at = now(), superseded_by = :actor, superseded_reason = 'CHANGED'
                 WHERE product_goods_id = :product AND superseded_at IS NULL
-                """, new MapSqlParameterSource("actor", actor).addValue("product", product.goodsId())));
+                """, new MapSqlParameterSource("actor", actor).addValue("product", product.goodsId()));
         List<MaterialRef> rows = KIND_NONE.equals(kind) ? java.util.Collections.singletonList(null)
                 : List.copyOf(materials);
         for (MaterialRef material : rows) {
-            WorkshopMaterialGuards.guarded(() -> db.update("""
+            db.update("""
                     INSERT INTO goods_periodic_material_choices(
                         product_goods_id, kind, material_goods_id, material_color_id, also_order_materials,
                         prefill_source, chosen_by, chosen_workshop_department_id)
@@ -160,7 +160,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                     .addValue("alsoOrder", KIND_MATERIAL.equals(kind) && choice.alsoOrderMaterials())
                     .addValue("prefill", choice.prefillSource())
                     .addValue("actor", actor)
-                    .addValue("workshop", workshop == null ? null : workshop.toString())));
+                    .addValue("workshop", workshop == null ? null : workshop.toString()));
         }
     }
 
@@ -189,12 +189,12 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
             throw new IllegalArgumentException("unsupported supersede reason");
         }
         UUID actor = currentUser.id().orElse(null);
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 UPDATE goods_periodic_material_choices
                 SET superseded_at = now(), superseded_by = CAST(:actor AS uuid), superseded_reason = :reason
                 WHERE material_goods_id = :material AND superseded_at IS NULL
                 """, new MapSqlParameterSource("actor", actor == null ? null : actor.toString())
-                .addValue("reason", reason).addValue("material", materialGoodsId)));
+                .addValue("reason", reason).addValue("material", materialGoodsId));
     }
 
     /** 这些产品当前有效的认料。 */
@@ -485,7 +485,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                     }
                     UUID changeId = UUID.randomUUID();
                     UUID actor = currentUser.requireId();
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             INSERT INTO production_execution_material_changes(
                                 id, execution_segment_id, from_row_id, to_material_goods_id, to_material_color_id,
                                 effective_from, weight_basis, reason, created_by)
@@ -497,12 +497,12 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                             .addValue("color", request.toMaterialColorId() == null ? null
                                     : request.toMaterialColorId().toString())
                             .addValue("from", from).addValue("basis", basis).addValue("reason", reason)
-                            .addValue("actor", actor)));
+                            .addValue("actor", actor));
                     if (request.fromRowId() != null) {
-                        WorkshopMaterialGuards.guarded(() -> db.update("""
+                        db.update("""
                                 UPDATE production_execution_periodic_materials SET effective_to = :to WHERE id = :row
                                 """, new MapSqlParameterSource("to", from.minusDays(1))
-                                .addValue("row", request.fromRowId())));
+                                .addValue("row", request.fromRowId()));
                     }
                     BigDecimal snapshot = "OWN_BOM".equals(basis) ? db.queryForObject(
                             "SELECT fn_workshop_material_edge_weight(:product, :material, CAST(:color AS uuid))",
@@ -510,7 +510,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                                     .addValue("material", material.goodsId())
                                     .addValue("color", request.toMaterialColorId() == null ? null
                                             : request.toMaterialColorId().toString()), BigDecimal.class) : null;
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             INSERT INTO production_execution_periodic_materials(
                                 execution_segment_id, bin_warehouse_id, material_goods_id, material_color_id, unit_id,
                                 origin, change_id, design_qty_snapshot, effective_from, created_by)
@@ -521,7 +521,7 @@ public class WorkshopMaterialChoiceAdapter implements WorkshopMaterialChoicePort
                             .addValue("color", request.toMaterialColorId() == null ? null
                                     : request.toMaterialColorId().toString())
                             .addValue("unit", material.unitId()).addValue("change", changeId)
-                            .addValue("snapshot", snapshot).addValue("from", from).addValue("actor", actor)));
+                            .addValue("snapshot", snapshot).addValue("from", from).addValue("actor", actor));
                     // 换料结果进命令账本 (同号重放原样返回), 不带可换料清单; 页面要清单时重新读底稿。
                     return new Outcome<>(changeId, segmentMaterials(segmentId, bin, settings, false));
                 });

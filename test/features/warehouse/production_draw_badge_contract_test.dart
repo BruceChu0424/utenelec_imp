@@ -36,9 +36,10 @@ void main() {
         ),
       ),
     );
-    // 来源经 controller 代理调用: 原计数端点的权限判定一并复用。
+    // 来源经 controller 代理调用: 原计数端点的权限判定一并复用; 不传仓 = 本人默认范围,
+    // 任务中心挑了仓时由汇总上下文按所选仓计(ADR-149)。
     expect(sources, contains('new Source("productionDraw"'));
-    expect(sources, contains('controller.warehouseCount()'));
+    expect(sources, contains('controller.warehouseCount(null)'));
     expect(warehouseHub, contains('invalidateWarehouseTaskCounts'));
     expect(
       RegExp(

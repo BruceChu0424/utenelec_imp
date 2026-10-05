@@ -24,24 +24,82 @@ public final class WorkshopMaterialDtos {
     /** 期间摘要。 */
     public record PeriodRef(UUID id, int no, LocalDate startDate, LocalDate endDate, String status, String closeState) {}
 
-    // ------------------------------------------------------------------ 设置
+    // ------------------------------------------------------------------ 开通与整批领料 (ADR-147)
+
+    /** 车间内料仓三态 (服务端唯一给出, 页面只认它)。 */
+    public static final String STATUS_NOT_OPEN = "NOT_OPEN";
+    public static final String STATUS_OPEN = "OPEN";
+    public static final String STATUS_OPEN_PERIODIC = "OPEN_PERIODIC";
 
     /**
-     * @param currentPeriod 开着的那一期 (发料、退回、其它耗用记进它)
-     * @param pendingPeriod 最早一张正在盘点或已盘点、还没结算的期间; 没有为空
+     * 一个车间的内料仓开通状态。
+     *
+     * @param status          {@link #STATUS_NOT_OPEN} 未开通 / {@link #STATUS_OPEN} 已开通(收车间直送) /
+     *                        {@link #STATUS_OPEN_PERIODIC} 已开通且整批领料中
+     * @param rowVersion      开通状态版本(开通行 row_version; 未开通为 0), 批量命令按它判断有没有被别人改过
+     * @param sourceWarehouseId 默认发料来源仓; 为空时按货品所属仓库
+     * @param mainWarehouseId 内料仓挂在哪个主仓下(单主仓后恒为主仓 001)
+     * @param currentPeriod   开着的那一期 (发料、退回、其它耗用记进它); 没开整批领料为空
+     * @param pendingPeriod   最早一张正在盘点或已盘点、还没结算的期间; 没有为空
+     * @param revokeBlockers  撤销这一步(整批领料或开通)现在做不了的原因; 空 = 可以撤销
+     * @param allowedActions  SETUP 有设置权限; OPEN / ENABLE_PERIODIC / CHANGE_SOURCE / REVOKE 当前状态下可做的动作
      */
-    public record SettingsView(UUID workshopDepartmentId, String workshopName, boolean periodicEnabled,
-                               UUID binWarehouseId, String binWarehouseName,
+    public record SettingsView(UUID workshopDepartmentId, String workshopName, String status,
+                               boolean binOpened, boolean periodicEnabled,
+                               UUID binWarehouseId, String binWarehouseName, String binWarehouseCode,
+                               UUID sourceWarehouseId, String sourceWarehouseName,
                                UUID mainWarehouseId, String mainWarehouseName,
-                               LocalDate goLiveDate, long rowVersion,
+                               LocalDate goLiveDate, long rowVersion, OffsetDateTime openedAt,
                                PeriodRef currentPeriod, PeriodRef pendingPeriod,
-                               List<String> allowedActions) {}
+                               List<String> revokeBlockers, List<String> allowedActions) {}
 
-    public record SettingsRequest(Long expectedVersion, Boolean enabled, UUID mainWarehouseId, LocalDate goLiveDate,
+    /** 批量里的一个车间: 页面看到的状态与版本, 与服务端不一致即拒绝 (被别人改过)。 */
+    public record BinItem(UUID workshopId, String expectedStatus, Long expectedVersion) {}
+
+    /**
+     * 批量开通 / 开启整批领料 / 改来源仓 (POST /settings/batch-enable)。每个车间按当前状态往前走:
+     * 未开通 -> 开通 (periodic 为真时同时开启整批领料); 已开通 -> 开启整批领料 (periodic 为真) 或只改来源仓。
+     *
+     * @param sourceWarehouseId 默认发料来源仓 (可空); 已开通的车间传了才改
+     * @param clearSource       为真 = 不再指定来源仓, 恢复按货品所属仓库发料 (来源仓置空); 不能与
+     *                          sourceWarehouseId 同时给
+     * @param goLiveDate        开启整批领料时必填
+     * @param inProgressChoices 在产还没认料的产品 (按产品去重, 一个产品只认一次)
+     */
+    public record BatchEnableRequest(@jakarta.validation.constraints.Size(max = 50) List<BinItem> items,
+                                     UUID sourceWarehouseId, Boolean clearSource, Boolean periodic, LocalDate goLiveDate,
+                                     @jakarta.validation.constraints.Size(max = 500)
+                                     List<WorkshopMaterialChoicePort.ProductChoice> inProgressChoices,
+                                     String idempotencyKey) {}
+
+    /** 批量撤销一步 (POST /settings/batch-disable): 整批领料中 -> 已开通; 已开通 -> 未开通。只撤销设错的。 */
+    public record BatchDisableRequest(@jakarta.validation.constraints.Size(max = 50) List<BinItem> items,
+                                      String idempotencyKey) {}
+
+    /** 单车间命令 (PUT /settings/{workshopId}) 与批量走同一条代码路径。enabled 为假 = 撤销一步。 */
+    public record SettingsRequest(String expectedStatus, Long expectedVersion, Boolean enabled,
+                                  UUID sourceWarehouseId, Boolean clearSource, Boolean periodic, LocalDate goLiveDate,
+                                  @jakarta.validation.constraints.Size(max = 500)
                                   List<WorkshopMaterialChoicePort.ProductChoice> inProgressChoices,
                                   String idempotencyKey) {}
 
-    public record PendingChoiceList(List<WorkshopMaterialChoicePort.PendingChoice> products) {}
+    /** 批量命令的结果: 每个车间办完后的状态 (按请求顺序)。 */
+    public record BatchResult(List<SettingsView> settings) {}
+
+    /** 发料来源仓滑窗用的仓库元数据 (只有层级与能不能选, 不含库存与负责人)。 */
+    public record SourceWarehouseOption(UUID id, String code, String name, UUID parentId, String status,
+                                        boolean defective, boolean selectable, boolean selectableDefective) {}
+
+    /**
+     * 开启整批领料前需要认料的在产产品 (多车间按产品去重)。
+     *
+     * @param workshopNames 这个产品在哪些所选车间里在产
+     */
+    public record PendingProduct(@com.fasterxml.jackson.annotation.JsonUnwrapped
+                                 WorkshopMaterialChoicePort.PendingChoice choice,
+                                 List<UUID> workshopIds, List<String> workshopNames) {}
+
+    public record PendingChoiceList(List<PendingProduct> products) {}
 
     // ------------------------------------------------------------------ 机台与容器
 

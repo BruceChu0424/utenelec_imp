@@ -98,27 +98,7 @@ class ProductionFinishedInboundTaskRepository {
     );
   }
 
-  Future<ProductionFinishedArrivalRegistration> arrivalRegistration(
-    String reportId,
-  ) async {
-    final json = await api.get(
-      ApiEndpoints.productionFinishedArrivalRegistration(reportId),
-    );
-    return ProductionFinishedArrivalRegistration.fromJson(json);
-  }
-
-  Future<ProductionFinishedArrivalRegistration> saveArrivalRegistration(
-    String reportId,
-    Map<String, dynamic> body,
-  ) async {
-    final json = await api.post(
-      ApiEndpoints.productionFinishedArrivalRegistration(reportId),
-      body: body,
-    );
-    return ProductionFinishedArrivalRegistration.fromJson(json);
-  }
-
-  /// 多报工单汇总登记：一次拉取多张待登记报工的明细（已登记的按只读带回）。
+  /// 产成品登记(单张 = 1 个来源、多选 = N 个来源)：一次拉取各报工待登记的实物交接批(已登记的按只读带回)。
   Future<List<ProductionFinishedArrivalRegistration>> batchArrivalRegistrations(
     List<String> reportIds,
   ) async {
@@ -131,7 +111,8 @@ class ProductionFinishedInboundTaskRepository {
         .toList(growable: false);
   }
 
-  /// 一次提交逐单所选 FQC 行：reports = [{reportId, warehouseId, items:[{reportItemId, place}]}]。
+  /// 产成品登记的唯一命令：lots = [{lotId, warehouseId, place, countedQty?, weight?}]，
+  /// 服务端按「报工 x 实际仓」分组成登记批次，一个事务。
   Future<ProductionFinishedBatchRegistrationResult>
   saveArrivalRegistrationBatch(Map<String, dynamic> body) async {
     final json = await api.post(

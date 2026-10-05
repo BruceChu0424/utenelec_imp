@@ -25,6 +25,7 @@ import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/measurement/weight_mass_units.dart';
 import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
@@ -38,6 +39,7 @@ import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/warehouse_defective_tag.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -440,6 +442,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     final names = ref.read(masterNameServiceProvider);
     final selectable = WarehouseSelection(
       names.warehouseHierarchy,
+      use: WarehouseUse.count,
     ).selectableIds;
     if (selectable.contains(prefill.warehouseId)) {
       _warehouseId = prefill.warehouseId;
@@ -501,6 +504,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         if (last.items.isNotEmpty &&
             WarehouseSelection(
               ref.read(masterNameServiceProvider).warehouseHierarchy,
+              use: widget.docType.warehouseUse,
             ).selectableIds.contains(last.items.first.warehouseId)) {
           _warehouseId = last.items.first.warehouseId;
         }
@@ -1061,9 +1065,21 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   Widget _savedFields(Widget child) =>
       SavedDocumentFields(locked: _createdDocId != null, child: child);
 
+  /// 普通调拨的调入仓仍与调出仓同类(良品/不良品, ADR-146)；没选调入仓也算合法。
+  bool _toWarehouseMatchesSource(List<WarehouseDictEntry> hierarchy) {
+    final to = _toWarehouseId;
+    if (to == null || widget.docType != StockDocType.transfer) return true;
+    return WarehouseSelection(
+      hierarchy,
+      use: WarehouseUse.transfer,
+      sameClassAs: _warehouseId,
+    ).selectableIds.contains(to);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = warehouseL10n(context);
     final names = ref.watch(masterNameServiceProvider);
     // 单重参数缓存与单位字典随页面存活；录入/显示单位是用户偏好。
     ref.watch(weightParamsCacheProvider);
@@ -1159,12 +1175,23 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                               required: true,
                                               items: warehouseHierarchyItems(
                                                 names.warehouseHierarchy,
+                                                use:
+                                                    widget.docType.warehouseUse,
                                                 currentValue: _warehouseId,
+                                                defectiveTag:
+                                                    l10n.warehouseDefectiveTag,
                                               ),
                                               onChanged: (v) {
-                                                setState(
-                                                  () => _warehouseId = v,
-                                                );
+                                                setState(() {
+                                                  _warehouseId = v;
+                                                  // ADR-146 普通调拨两端同类：调出仓换了类别，
+                                                  // 原调入仓不再合法就清掉重选。
+                                                  if (!_toWarehouseMatchesSource(
+                                                    names.warehouseHierarchy,
+                                                  )) {
+                                                    _toWarehouseId = null;
+                                                  }
+                                                });
                                                 _ensureWeightParams();
                                                 if (_isCheck) {
                                                   unawaited(
@@ -1179,9 +1206,15 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                               label: '调入仓',
                                               value: _toWarehouseId,
                                               required: true,
+                                              info: l10n
+                                                  .stockTransferSameClassHint,
                                               items: warehouseHierarchyItems(
                                                 names.warehouseHierarchy,
+                                                use: WarehouseUse.transfer,
                                                 currentValue: _toWarehouseId,
+                                                sameClassAs: _warehouseId,
+                                                defectiveTag:
+                                                    l10n.warehouseDefectiveTag,
                                               ),
                                               onChanged: (v) => setState(
                                                 () => _toWarehouseId = v,
@@ -1287,6 +1320,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                               const SizedBox(height: UtenSpacing.s8),
                             ],
                             // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：本页无右侧入口，整行删除。
+                            WeightParamsLoadNotice(cache: _weightCache),
                             _savedFields(
                               UtenEditableGrid<StockGridRow>(
                                 columnEditingEnabled:
@@ -1305,6 +1339,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                   warehouse: _usesLineWarehouse
                                       ? StockGridWarehouseWiring(
                                           entries: names.warehouseHierarchy,
+                                          use: widget.docType.warehouseUse,
                                           label: switch (widget.docType) {
                                             StockDocType.otherIn ||
                                             StockDocType.finishedIn => '入库仓',

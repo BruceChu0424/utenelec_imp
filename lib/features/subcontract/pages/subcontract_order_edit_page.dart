@@ -75,6 +75,8 @@ import '../../../shared/widgets/commercial_terms_batch_sheet.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/warehouse_defective_tag.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
 import '../repositories/subcontract_repository.dart';
@@ -1573,6 +1575,10 @@ class _SubcontractOrderEditPageState
                                             enabled: !_saving,
                                             items: warehouseHierarchyItems(
                                               names.warehouseHierarchy,
+                                              use: WarehouseUse.goodIn,
+                                              defectiveTag: warehouseL10n(
+                                                context,
+                                              ).warehouseDefectiveTag,
                                               currentValue: _warehouseId,
                                             ),
                                             onChanged: (id) => setState(

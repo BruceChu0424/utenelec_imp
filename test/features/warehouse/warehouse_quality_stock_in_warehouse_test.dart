@@ -547,8 +547,18 @@ class _WarehouseApi extends ApiClient {
     }
     return const [
       {'id': 'main', 'name': '本部库', 'accountable': false},
-      {'id': 'warehouse-a', 'name': '塑胶叶仓', 'parentId': 'main'},
-      {'id': 'warehouse-b', 'name': '五金叶仓', 'parentId': 'main'},
+      {
+        'id': 'warehouse-a',
+        'name': '塑胶叶仓',
+        'parentId': 'main',
+        'selectableForNew': true,
+      },
+      {
+        'id': 'warehouse-b',
+        'name': '五金叶仓',
+        'parentId': 'main',
+        'selectableForNew': true,
+      },
       {'id': 'disabled', 'name': '停用叶仓', 'parentId': 'main', 'status': '禁用'},
     ];
   }
@@ -593,6 +603,7 @@ class _Gateway implements WarehouseQualityResultGateway {
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
+    String? scopeWarehouseId,
   }) async => {};
 
   @override
@@ -602,6 +613,7 @@ class _Gateway implements WarehouseQualityResultGateway {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? scopeWarehouseId,
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
@@ -615,6 +627,7 @@ class _Gateway implements WarehouseQualityResultGateway {
     String? sort,
     String? order,
     String? billNo,
+    String? scopeWarehouseId,
   }) async => throw StateError('Unexpected list request');
 }
 

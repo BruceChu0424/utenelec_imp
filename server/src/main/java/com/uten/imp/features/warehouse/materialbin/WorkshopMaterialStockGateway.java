@@ -74,11 +74,11 @@ class WorkshopMaterialStockGateway {
             lines.add(new WorkshopMaterialDocumentCommand.Line(line.goodsId(), line.colorId(), line.unitId(),
                     BigDecimal.ONE, line.qty(), null));
         }
-        WorkshopMaterialDocumentCommand.Posted posted = WorkshopMaterialGuards.guarded(() ->
-                stockDocs.createAndApproveWorkshopMaterialDocument(new WorkshopMaterialDocumentCommand(
+        WorkshopMaterialDocumentCommand.Posted posted = stockDocs.createAndApproveWorkshopMaterialDocument(
+                new WorkshopMaterialDocumentCommand(
                         command.kind(), command.binWarehouseId(), command.leafWarehouseId(), command.requisitionId(),
                         null, command.workshopDepartmentId(), command.receiverEmployeeId(), command.businessDate(),
-                        command.remark(), lines)));
+                        command.remark(), lines));
         if (posted.lines().size() != command.lines().size()) {
             throw new ApiException(ErrorCode.CONFLICT, "内料仓调拨单的明细与领料单对不上, 请刷新后重试");
         }
@@ -87,7 +87,7 @@ class WorkshopMaterialStockGateway {
         for (int index = 0; index < posted.lines().size(); index++) {
             WorkshopMaterialDocumentCommand.PostedLine row = posted.lines().get(index);
             TransferLine source = command.lines().get(index);
-            WorkshopMaterialGuards.guarded(() -> db.update("""
+            db.update("""
                     INSERT INTO workshop_material_requisition_postings(
                         line_id, stock_document_item_id, leaf_warehouse_id, bin_warehouse_id, goods_id, color_id,
                         movement_id, qty, period_id, business_date, is_supplement, supplement_reason, created_by)
@@ -106,7 +106,7 @@ class WorkshopMaterialStockGateway {
                     .addValue("businessDate", command.businessDate())
                     .addValue("supplement", command.supplement())
                     .addValue("reason", command.supplement() ? command.supplementReason() : null)
-                    .addValue("actor", actor)));
+                    .addValue("actor", actor));
             db.update("""
                     UPDATE workshop_material_requisition_lines SET fulfilled_qty = fulfilled_qty + :qty
                     WHERE id = :line
@@ -120,12 +120,12 @@ class WorkshopMaterialStockGateway {
     /** 其它耗用: 从内料仓其它出库 (12 型), 回填耗用记录的明细与流水。耗用记录须已先落库。 */
     OtherIssuePosted otherIssue(UUID otherIssueId, UUID binWarehouseId, UUID workshopDepartmentId, UUID goodsId,
                                 UUID colorId, UUID unitId, BigDecimal qty, LocalDate businessDate, String remark) {
-        WorkshopMaterialDocumentCommand.Posted posted = WorkshopMaterialGuards.guarded(() ->
-                stockDocs.createAndApproveWorkshopMaterialDocument(new WorkshopMaterialDocumentCommand(
+        WorkshopMaterialDocumentCommand.Posted posted = stockDocs.createAndApproveWorkshopMaterialDocument(
+                new WorkshopMaterialDocumentCommand(
                         WorkshopMaterialDocumentCommand.Kind.OTHER_ISSUE, binWarehouseId, null, null, otherIssueId,
                         workshopDepartmentId, null, businessDate, remark,
                         List.of(new WorkshopMaterialDocumentCommand.Line(goodsId, colorId, unitId, BigDecimal.ONE,
-                                qty, null)))));
+                                qty, null))));
         if (posted.lines().size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "其它耗用的出库单明细不对, 请刷新后重试");
         }
@@ -145,7 +145,7 @@ class WorkshopMaterialStockGateway {
     UUID countPosting(UUID periodLineId, UUID countId, UUID binWarehouseId, UUID goodsId, UUID colorId, UUID unitId,
                       String kind, UUID reversesPostingId, BigDecimal qty, LocalDate businessDate, String reason) {
         UUID postingId = UUID.randomUUID();
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 INSERT INTO workshop_material_count_postings(
                     id, period_line_id, count_id, bin_warehouse_id, goods_id, color_id, kind, reverses_posting_id,
                     qty, business_date, reason, created_by)
@@ -163,16 +163,16 @@ class WorkshopMaterialStockGateway {
                 .addValue("qty", qty)
                 .addValue("businessDate", businessDate)
                 .addValue("reason", reason)
-                .addValue("actor", currentUser.requireId())));
+                .addValue("actor", currentUser.requireId()));
         WorkshopMaterialBinKind binKind = WorkshopMaterialBinKind.valueOf(kind);
         short type = kind.startsWith("CONSUME")
                 ? StockService.TYPE_WORKSHOP_MATERIAL_CONSUME : StockService.TYPE_WORKSHOP_MATERIAL_GAIN;
         short direction = "CONSUME".equals(kind) || "GAIN_REVERSE".equals(kind)
                 ? StockService.DIR_OUT : StockService.DIR_IN;
-        UUID movementId = WorkshopMaterialGuards.guarded(() -> stock.recordMovement(new StockService.MovementRequest(
+        UUID movementId = stock.recordMovement(new StockService.MovementRequest(
                 BusinessTime.startOfDay(businessDate), type, StockService.SRC_WORKSHOP_MATERIAL_COUNT, countId,
                 periodLineId, goodsId, colorId, binWarehouseId, direction, qty, unitId, BigDecimal.ONE, null,
-                remark(kind), null, new WorkshopMaterialBin(postingId, binKind))).movementId());
+                remark(kind), null, new WorkshopMaterialBin(postingId, binKind))).movementId();
         db.update("UPDATE workshop_material_count_postings SET movement_id = :movement WHERE id = :id",
                 new MapSqlParameterSource("movement", movementId).addValue("id", postingId));
         return postingId;

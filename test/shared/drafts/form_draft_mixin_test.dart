@@ -806,6 +806,101 @@ void main() {
     env.container.dispose();
   });
 
+  // ADR-151 §1 (2026-10-04 批量登记实际入库「取消勾选再勾回」后提交必失败):
+  // 自动保存回到初始值只丢弃干净草稿, 不写 deleted 墓碑; 同一页面之后的保存与提交照常。
+  testWidgets(
+    'returning to initial values discards cleanly and the same identity saves again',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      await tester.enterText(find.byKey(const Key('input')), '改一下');
+      await tester.pumpAndSettle();
+      final first = env.container.read(formDraftsProvider).single;
+      await tester.enterText(find.byKey(const Key('input')), '');
+      await tester.pumpAndSettle();
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      final discarded =
+          jsonDecode(storage.records.values.single) as Map<String, dynamic>;
+      expect(discarded['id'], first.id);
+      expect(discarded['completed'], isNot(true));
+      expect(discarded.containsKey('historyAction'), isFalse);
+      expect(discarded['lifecycle'], formDraftCleanDiscardedLifecycle);
+      expect(discarded.containsKey('data'), isFalse, reason: '不再保留输入事实');
+      await tester.enterText(find.byKey(const Key('input')), '再改');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('草稿尚未保存'), findsNothing);
+      final again = env.container.read(formDraftsProvider).single;
+      expect(again.id, first.id);
+      expect(again.data['text'], '再改');
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'submission after returning to initial values checkpoints and sends once',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      await tester.tap(find.text('default'));
+      await tester.pumpAndSettle();
+      editor.choice = 'default';
+      editor.markFormDraftChanged();
+      await tester.pumpAndSettle();
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      var sends = 0;
+      await editor.runFormDraftSubmission(() async {
+        sends++;
+        final checkpoint = env.container.read(formDraftsProvider).single;
+        expect(checkpoint.data['_formDraftSubmissionPending'], isTrue);
+      });
+      expect(sends, 1);
+      await editor.completeFormDraft();
+      expect(
+        (jsonDecode(storage.records.values.single)
+            as Map<String, dynamic>)['historyAction'],
+        'completed',
+      );
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
+  testWidgets(
+    'definite rejection back at initial values clears the pending marker before discarding',
+    (tester) async {
+      final storage = MemoryDraftStorage();
+      final env = await pumpEditor(tester, storage);
+      final editor = tester.state<TestEditorState>(find.byType(TestEditor));
+      await expectLater(
+        editor.runFormDraftSubmission(() async {
+          throw ApiException(
+            'VALIDATION_FAILED',
+            '盘点说明最多500字',
+            httpStatus: 422,
+          );
+        }),
+        throwsA(
+          isA<ApiException>().having((e) => e.message, 'message', '盘点说明最多500字'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      final record =
+          jsonDecode(storage.records.values.single) as Map<String, dynamic>;
+      expect(record['lifecycle'], formDraftCleanDiscardedLifecycle);
+      var sends = 0;
+      await editor.runFormDraftSubmission(() async => sends++);
+      expect(sends, 1, reason: '被明确拒绝后改正可再次提交');
+      await tester.pumpWidget(const SizedBox());
+      env.router.dispose();
+      env.container.dispose();
+    },
+  );
+
   testWidgets('empty defaults do not create draft or prompt', (tester) async {
     final storage = MemoryDraftStorage();
     final env = await pumpEditor(tester, storage);

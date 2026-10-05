@@ -41,22 +41,22 @@ def reference_columns() -> dict[str, dict[str, str]]:
     purchase = ["purchase_application_items", "purchase_order_items",
                 "purchase_receipt_items", "purchase_return_items"]
     bind(purchase, goods_legacy_id="goods", unit_legacy_id="units", color_legacy_id="colors")
-    bind(["purchase_applications", "purchase_receipts", "purchase_returns"], warehouse_legacy_id="warehouses")
+    # ADR-145: warehouse references never authorize a historical anchor. Every
+    # legacy warehouse id resolves through the reviewed warehouse_crosswalk.csv
+    # (or the loader stops); deleted legacy warehouses are excluded, not stubbed.
     bind(["purchase_orders", "purchase_receipts", "purchase_returns"], currency_legacy_id="currencies", supplier_legacy_id="suppliers")
 
     stock = ["transfer", "other_in", "other_out", "draw", "wdraw", "finished_in", "finished_out", "check"]
     bind([f"stock_{name}_i" for name in stock], goods_legacy_id="goods", unit_legacy_id="units", color_legacy_id="colors")
-    bind([f"stock_{name}_m" for name in stock], stock_legacy_id="warehouses", to_stock_legacy_id="warehouses")
     # A retained balance may outlive both the master and every O_* document.
     # Preserve its exact goods/color dimension as historical references too.
-    bind(["stock_goods"], stock_legacy="warehouses", goods_legacy="goods", color_legacy="colors")
+    bind(["stock_goods"], goods_legacy="goods", color_legacy="colors")
 
     sales_items = ["sales_quote_items", "sales_order_items", "sales_shipment_items",
                    "sales_other_shipment_items", "sales_return_items"]
     bind(sales_items, goods_legacy="goods", unit_legacy="units", color_legacy="colors")
     bind(["sales_order_cost_items"], goods_legacy="goods", alt_goods_legacy="goods", color_legacy="colors")
     bind(["sales_quotes", "sales_orders", "sales_shipments", "sales_other_shipments", "sales_returns"], client_legacy="clients")
-    bind(["sales_shipments", "sales_other_shipments", "sales_returns"], warehouse_legacy="warehouses")
     bind(["sales_orders", "sales_shipments", "sales_other_shipments", "sales_returns"], cur_legacy="currencies")
 
     subcontract = ["ask", "application", "order", "in", "sout", "withdraw", "swithdraw", "swaste"]
@@ -64,7 +64,6 @@ def reference_columns() -> dict[str, dict[str, str]]:
     bind(["subcontract_order_cost_i"], goods_legacy_id="goods", m_goods_legacy_id="goods", color_legacy_id="colors", m_color_legacy_id="colors")
     bind(["subcontract_sout_i", "subcontract_swithdraw_i"], parent_goods_legacy_id="goods", parent_color_legacy_id="colors")
     bind([f"subcontract_{name}_m" for name in subcontract], supplier_legacy_id="suppliers")
-    bind([f"subcontract_{name}_m" for name in ["in", "sout", "withdraw", "swithdraw", "swaste"]], warehouse_legacy_id="warehouses")
     bind([f"subcontract_{name}_m" for name in ["application", "order", "in", "withdraw"]], currency_legacy_id="currencies")
 
     bind(["production_plan_items", "production_plan_costs"], goods_legacy_id="goods", mgoods_legacy_id="goods", color_legacy_id="colors")

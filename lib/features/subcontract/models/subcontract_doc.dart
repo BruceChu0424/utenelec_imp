@@ -1,4 +1,5 @@
 import '../../../shared/business_columns/business_column.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 // 委外单据模型（8 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 8 单据差异由 doc_type 决定可选字段是否非空（订货有 purchaser+currency；进仓有 sender+
@@ -23,6 +24,13 @@ enum SubcontractDocType {
 
   const SubcontractDocType(this.pathSegment);
   final String pathSegment;
+
+  /// 表头仓库的选仓用途(ADR-146)：发料/损耗从良品仓出，成品退回可从不良品仓退，其余入良品仓。
+  WarehouseUse get warehouseUse => switch (this) {
+    materialIssue || waste => WarehouseUse.goodOut,
+    returnDoc => WarehouseUse.disposalOut,
+    _ => WarehouseUse.goodIn,
+  };
 
   static SubcontractDocType? tryByPath(String seg) {
     for (final type in SubcontractDocType.values) {

@@ -21,6 +21,6 @@ class ProductionReturnWorkbenchBadgeSources implements WorkbenchBadgeSources {
     @Override
     public List<Source> sources() {
         return List.of(
-                new Source("productionReturn", () -> WorkbenchBadgeSources.numbers(controller.count())));
+                new Source("productionReturn", () -> WorkbenchBadgeSources.numbers(controller.count(null))));
     }
 }

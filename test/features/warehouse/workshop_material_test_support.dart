@@ -11,7 +11,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/warehouse/materialbin/models/workshop_material_models.dart';
-import 'package:uten_imp/features/warehouse/materialbin/models/workshop_main_warehouse_option.dart';
+import 'package:uten_imp/features/warehouse/materialbin/models/workshop_source_warehouse_option.dart';
 import 'package:uten_imp/features/warehouse/materialbin/repositories/workshop_material_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -24,7 +24,7 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
 
   // ------------------------------------------------------------ 预置数据
   List<WmSetting> settingsResult = const [];
-  List<WmMainWarehouseOption> setupMainWarehousesResult = const [];
+  List<WmSourceWarehouse> sourceWarehousesResult = wmTestSourceWarehouses;
   Map<String, List<WmPendingProductChoice>> inProgressPendingByWorkshop =
       const {};
   Map<String, List<WmMaterialOption>> materialsByWorkshop = const {};
@@ -39,6 +39,8 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   Map<String, WmRequisition> requisitionById = const {};
 
   // ------------------------------------------------------------ 可注入的失败
+  /// 批量开通/撤销先回这一个错误 (如 409 被别人改过), 回完即清掉。
+  Object? batchFailureOnce;
   Object? directIssueFailure;
   int directIssueFailuresLeft = 0;
 
@@ -62,6 +64,26 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
           String key,
         })
       >[];
+
+  /// 批量开通 / 开启整批领料 / 改来源仓的每次调用 (含请求号)。
+  final batchEnables =
+      <
+        ({
+          List<WmBinItem> items,
+          String? sourceWarehouseId,
+          bool clearSource,
+          bool periodic,
+          String? goLiveDate,
+          List<WmProductChoiceInput> choices,
+          String key,
+        })
+      >[];
+
+  /// 批量撤销的每次调用。
+  final batchDisables = <({List<WmBinItem> items, String key})>[];
+
+  /// 读在产认料时传的车间。
+  final pendingRequests = <List<String>>[];
   final savedLines = <WmCountLine>[];
   final zeroRestCalls = <String>[];
   final createMachineCalls =
@@ -84,13 +106,109 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
   Future<List<WmSetting>> settings() async => settingsResult;
 
   @override
-  Future<List<WmMainWarehouseOption>> setupMainWarehouses() async =>
-      setupMainWarehousesResult;
+  Future<List<WmSourceWarehouse>> sourceWarehouses() async =>
+      sourceWarehousesResult;
 
+  /// 多车间按产品去重 (与服务端同一口径), 并带上在产车间名。
   @override
   Future<List<WmPendingProductChoice>> inProgressPending(
-    String workshopId,
-  ) async => inProgressPendingByWorkshop[workshopId] ?? const [];
+    List<String> workshopIds,
+  ) async {
+    pendingRequests.add(List.of(workshopIds));
+    final byProduct = <String, WmPendingProductChoice>{};
+    final names = <String, List<String>>{};
+    for (final id in workshopIds) {
+      final name =
+          settingsResult
+              .where((s) => s.workshopDepartmentId == id)
+              .map((s) => s.workshopName)
+              .firstOrNull ??
+          id;
+      for (final p
+          in inProgressPendingByWorkshop[id] ??
+              const <WmPendingProductChoice>[]) {
+        byProduct.putIfAbsent(p.productGoodsId, () => p);
+        names.putIfAbsent(p.productGoodsId, () => []).add(name);
+      }
+    }
+    return [
+      for (final p in byProduct.values)
+        WmPendingProductChoice(
+          productGoodsId: p.productGoodsId,
+          productCode: p.productCode,
+          productName: p.productName,
+          productColorName: p.productColorName,
+          taskCount: p.taskCount,
+          prefillMaterials: p.prefillMaterials,
+          prefillSource: p.prefillSource,
+          materialOptions: p.materialOptions,
+          unitWeightGrams: p.unitWeightGrams,
+          canAlsoOrderMaterials: p.canAlsoOrderMaterials,
+          workshopNames: names[p.productGoodsId] ?? const [],
+        ),
+    ];
+  }
+
+  @override
+  Future<List<WmSetting>> batchEnable({
+    required List<WmBinItem> items,
+    String? sourceWarehouseId,
+    bool clearSource = false,
+    required bool periodic,
+    String? goLiveDate,
+    List<WmProductChoiceInput> inProgressChoices = const [],
+    required String idempotencyKey,
+  }) async {
+    batchEnables.add((
+      items: items,
+      sourceWarehouseId: sourceWarehouseId,
+      clearSource: clearSource,
+      periodic: periodic,
+      goLiveDate: goLiveDate,
+      choices: inProgressChoices,
+      key: idempotencyKey,
+    ));
+    final failure = batchFailureOnce;
+    if (failure != null) {
+      batchFailureOnce = null;
+      throw failure;
+    }
+    return [
+      for (final item in items)
+        WmSetting(
+          workshopDepartmentId: item.workshopId,
+          workshopName: item.workshopId,
+          status: periodic ? WmBinStatus.periodic : WmBinStatus.open,
+          periodicEnabled: periodic,
+          binWarehouseId: 'bin-${item.workshopId}',
+          sourceWarehouseId: sourceWarehouseId,
+          rowVersion: item.expectedVersion + 1,
+        ),
+    ];
+  }
+
+  @override
+  Future<List<WmSetting>> batchDisable({
+    required List<WmBinItem> items,
+    required String idempotencyKey,
+  }) async {
+    batchDisables.add((items: items, key: idempotencyKey));
+    final failure = batchFailureOnce;
+    if (failure != null) {
+      batchFailureOnce = null;
+      throw failure;
+    }
+    return [
+      for (final item in items)
+        WmSetting(
+          workshopDepartmentId: item.workshopId,
+          workshopName: item.workshopId,
+          status: item.expectedStatus == WmBinStatus.periodic
+              ? WmBinStatus.open
+              : WmBinStatus.notOpen,
+        ),
+    ];
+  }
 
   @override
   Future<List<WmMaterialOption>> materials(String workshopId) async =>
@@ -338,6 +456,7 @@ Future<void> pumpWorkshopMaterialPage(
 const wmTestWorkshop = WmSetting(
   workshopDepartmentId: 'w1',
   workshopName: '注塑车间',
+  status: WmBinStatus.periodic,
   periodicEnabled: true,
   binWarehouseId: 'bin1',
   binWarehouseName: '注塑车间内料仓',
@@ -352,6 +471,25 @@ const wmTestWorkshop = WmSetting(
   ),
   allowedActions: ['SETUP'],
 );
+
+/// 发料来源仓/出库仓库滑窗的仓库层级 (只有元数据; ADR-147)。
+const wmTestSourceWarehouses = [
+  WmSourceWarehouse(id: 'main', code: '001', name: '仓库(14年版)'),
+  WmSourceWarehouse(
+    id: 'leafA',
+    code: 'A',
+    name: '原料仓 A',
+    parentId: 'main',
+    selectable: true,
+  ),
+  WmSourceWarehouse(
+    id: 'leafB',
+    code: 'B',
+    name: '原料仓 B',
+    parentId: 'main',
+    selectable: true,
+  ),
+];
 
 const wmTestPp = WmMaterialOption(
   goodsId: 'pp',

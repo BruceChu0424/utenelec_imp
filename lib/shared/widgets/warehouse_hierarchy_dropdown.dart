@@ -12,13 +12,16 @@
 // - [warehouseHierarchyItems]：UtenDropdownField 选项列表（编辑页/登记页用），
 //   父仓在运营口径（allowParent=false）下渲染为置灰分组标题。
 //
-// 聚合语义（allowParent=true）：父仓可选，选中 = 自身 + 全部子仓聚合
-// （服务端 WarehouseScopeService 展开）；「含不良品仓」等聚合口径开关在父仓下仍生效。
-// 运营页父仓不可选——单据/收发存只能落到具体仓库；历史已保存的父仓值仍能回显。
+// 必填的用途 [WarehouseUse] 决定口径(ADR-146)：查询口径(WarehouseUse.query)父仓可选，选中 = 自身
+// + 全部子仓聚合(服务端 WarehouseScopeService 展开)；「含不良品仓」等聚合口径开关在父仓下仍生效；
+// 已停用的仓默认不列(ADR-145)。运营口径(良品入/良品出/转入不良/不良转出/处置出库/调拨/盘点)只认
+// 服务端算好的可选标记，主仓只作分组标题——单据/收发存只能落到可选子仓；不良品仓名称后带「不良品」，
+// 良品用途下置灰不可选；历史已保存的值仍能回显。
 import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_dropdown_field.dart';
 import '../providers/master_name_provider.dart';
+import 'warehouse_defective_tag.dart';
 import 'warehouse_selection.dart';
 
 class WarehouseHierarchyDropdown extends StatelessWidget {
@@ -27,9 +30,10 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
     required this.entries,
     required this.value,
     required this.onChanged,
+    required this.use,
     this.labelText = '仓库',
     this.includeAll = false,
-    this.allowParent = false,
+    this.sameClassAs,
     this.enabled = true,
     this.contentPadding,
   });
@@ -44,8 +48,11 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   final String? labelText;
   final bool includeAll;
 
-  /// true = 允许选父仓（查询聚合语义）；false = 父仓只作分组标题。
-  final bool allowParent;
+  /// 选仓用途(ADR-146)：query = 允许选父仓(查询聚合语义)；其余 = 父仓只作分组标题。
+  final WarehouseUse use;
+
+  /// 普通调拨的调入仓：只列与这个调出仓同类(良品/不良品)的仓。
+  final String? sameClassAs;
   final bool enabled;
 
   /// 历史参数（Material 形态时用于与 UtenSearchBar 等高）：UtenDropdownField
@@ -58,8 +65,13 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
     // 在包装层用空串哨兵互转，对外 API 语义不变。
     final items = warehouseHierarchyItems(
       entries,
-      allowParent: allowParent,
+      use: use,
       currentValue: value,
+      sameClassAs: sameClassAs,
+      // 只有字典里真有不良品仓时才取文案(没挂本地化的轻量宿主也能用这个下拉)。
+      defectiveTag: entries.any((entry) => entry.isDefective)
+          ? warehouseL10n(context).warehouseDefectiveTag
+          : null,
     );
     return UtenDropdownField(
       label: labelText,
@@ -75,14 +87,22 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   }
 }
 
-/// 层级仓库下拉的 UtenDropdownField 选项：顶层仓在前，子仓缩进跟随。
-/// allowParent=false（运营默认）时父仓=置灰分组标题（不可点，仍参与值回显）。
+/// 层级仓库下拉的 UtenDropdownField 选项：主仓在前，子仓缩进跟随。
+/// 运营口径时主仓=置灰分组标题(不可点，仍参与值回显)；查询口径(WarehouseUse.query)时
+/// 任意层级可选、已停用的仓不列。当前值总能回显。[defectiveTag] 给出时不良品仓名称后加
+/// 「(不良品)」(ADR-146)。
 List<UtenDropdownItem> warehouseHierarchyItems(
   List<WarehouseDictEntry> hierarchy, {
-  bool allowParent = false,
+  required WarehouseUse use,
   String? currentValue,
+  String? sameClassAs,
+  String? defectiveTag,
 }) {
-  final selection = WarehouseSelection(hierarchy);
+  final selection = WarehouseSelection(
+    hierarchy,
+    use: use,
+    sameClassAs: sameClassAs,
+  );
   final ids = hierarchy.map((e) => e.id).toSet();
   final parentIds = hierarchy
       .map((e) => e.parentId)
@@ -91,14 +111,14 @@ List<UtenDropdownItem> warehouseHierarchyItems(
       .toSet();
   return [
     for (final e in hierarchy)
-      if (allowParent ||
-          selection.visibleIds.contains(e.id) ||
-          currentValue == e.id)
+      if (selection.visibleIds.contains(e.id) || currentValue == e.id)
         UtenDropdownItem(
           value: e.id,
-          label: e.name,
-          enabled: allowParent || selection.selectableIds.contains(e.id),
-          visible: allowParent || selection.visibleIds.contains(e.id),
+          label: e.isDefective && defectiveTag != null
+              ? '${e.name} ($defectiveTag)'
+              : e.name,
+          enabled: selection.selectableIds.contains(e.id),
+          visible: selection.visibleIds.contains(e.id),
           indent: e.parentId != null && parentIds.contains(e.parentId) ? 16 : 0,
         ),
   ];

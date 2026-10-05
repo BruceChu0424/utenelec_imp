@@ -133,7 +133,7 @@ public class WorkshopMaterialCountService {
             if (values.containerId() != null && containerTaken(countId, values.containerId(), key)) {
                 throw new ApiException(ErrorCode.CONFLICT, "这个容器已经录过了, 请在原来那一行上改");
             }
-            List<UUID> inserted = WorkshopMaterialGuards.guarded(() -> db.queryForList("""
+            List<UUID> inserted = db.queryForList("""
                     INSERT INTO workshop_material_count_lines(
                         count_id, client_line_key, line_kind, weigh_note, goods_id, color_id, unit_id, bag_count,
                         bag_net_qty, weighed_qty, machine_id, container_id, capacity_qty_snapshot, fill_level,
@@ -143,7 +143,7 @@ public class WorkshopMaterialCountService {
                             :fill, :actor)
                     ON CONFLICT (count_id, client_line_key) DO NOTHING
                     RETURNING id
-                    """, params, UUID.class));
+                    """, params, UUID.class);
             if (inserted.isEmpty()) throw new LineConflict(line(countId, key));
         } else {
             if (input.expectedVersion() == null || input.expectedVersion() != existing.rowVersion()) {
@@ -153,7 +153,7 @@ public class WorkshopMaterialCountService {
                 throw new ApiException(ErrorCode.CONFLICT, "这个容器已经录过了, 请在原来那一行上改");
             }
             params.addValue("expected", input.expectedVersion());
-            int updated = WorkshopMaterialGuards.guarded(() -> db.update("""
+            int updated = db.update("""
                     UPDATE workshop_material_count_lines
                     SET line_kind = :kind, weigh_note = :note, goods_id = CAST(:goods AS uuid),
                         color_id = CAST(:color AS uuid), unit_id = CAST(:unit AS uuid), bag_count = :bagCount,
@@ -161,7 +161,7 @@ public class WorkshopMaterialCountService {
                         container_id = CAST(:container AS uuid), capacity_qty_snapshot = :capacity,
                         fill_level = :fill, entered_by = :actor, entered_at = now(), row_version = row_version + 1
                     WHERE count_id = :count AND client_line_key = :key AND row_version = :expected
-                    """, params));
+                    """, params);
             if (updated != 1) throw new LineConflict(line(countId, key));
         }
         return line(countId, key);
@@ -177,11 +177,11 @@ public class WorkshopMaterialCountService {
         CountLineView existing = line(countId, key);
         if (existing == null) return;
         if (expectedVersion == null || expectedVersion != existing.rowVersion()) throw new LineConflict(existing);
-        int deleted = WorkshopMaterialGuards.guarded(() -> db.update("""
+        int deleted = db.update("""
                 DELETE FROM workshop_material_count_lines
                 WHERE count_id = :count AND client_line_key = :key AND row_version = :expected
                 """, new MapSqlParameterSource("count", countId).addValue("key", key)
-                .addValue("expected", expectedVersion)));
+                .addValue("expected", expectedVersion));
         if (deleted != 1) throw new LineConflict(line(countId, key));
     }
 
@@ -202,7 +202,7 @@ public class WorkshopMaterialCountService {
                         MaterialInfo info = bins.material(material.goodsId());
                         String key = "Z-" + material.goodsId()
                                 + (material.colorId() == null ? "" : ":" + material.colorId());
-                        WorkshopMaterialGuards.guarded(() -> db.update("""
+                        db.update("""
                                 INSERT INTO workshop_material_count_lines(
                                     count_id, client_line_key, line_kind, goods_id, color_id, unit_id, weighed_qty,
                                     entered_by)
@@ -211,7 +211,7 @@ public class WorkshopMaterialCountService {
                                 """, new MapSqlParameterSource("count", countId).addValue("key", key)
                                 .addValue("goods", material.goodsId())
                                 .addValue("color", material.colorId() == null ? null : material.colorId().toString())
-                                .addValue("unit", info.unitId()).addValue("actor", currentUser.requireId())));
+                                .addValue("unit", info.unitId()).addValue("actor", currentUser.requireId()));
                         CountLineView view = line(countId, key);
                         if (view != null) added.add(view);
                     }
@@ -265,12 +265,12 @@ public class WorkshopMaterialCountService {
                                 WHERE period_id = :period AND status = 'SUBMITTED'
                                 """, Map.of("period", period.id()));
                     }
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             UPDATE workshop_material_counts
                             SET status = 'SUBMITTED', submitted_by = :actor, submitted_at = now(),
                                 row_version = row_version + 1
                             WHERE id = :id
-                            """, new MapSqlParameterSource("actor", actor).addValue("id", countId)));
+                            """, new MapSqlParameterSource("actor", actor).addValue("id", countId));
                     List<UUID> lines = new ArrayList<>();
                     for (Material material : universe) {
                         lines.add(upsertPeriodLine(period, material,
@@ -280,14 +280,14 @@ public class WorkshopMaterialCountService {
                     for (UUID line : lines) {
                         adjust(line, countId, reason, period);
                     }
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             UPDATE workshop_material_periods
                             SET status = 'COUNTED',
                                 close_state = CASE WHEN close_state = 'HELD' THEN 'HELD' ELSE 'QUEUED' END,
                                 close_blockers = CASE WHEN close_state = 'HELD' THEN close_blockers ELSE '[]'::jsonb END,
                                 row_version = row_version + 1
                             WHERE id = :id
-                            """, Map.of("id", period.id())));
+                            """, Map.of("id", period.id()));
                     requestClose(period.id(), actor);
                     return new Outcome<>(period.id(), periodViews.view(period.id()));
                 });
@@ -327,12 +327,12 @@ public class WorkshopMaterialCountService {
                     int version = (latest == null ? 0 : latest) + 1;
                     UUID countId = UUID.randomUUID();
                     UUID actor = currentUser.requireId();
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             INSERT INTO workshop_material_counts(id, period_id, version, correction_reason, created_by)
                             VALUES (:id, :period, :version, :reason, :actor)
                             """, new MapSqlParameterSource("id", countId).addValue("period", periodId)
-                            .addValue("version", version).addValue("reason", reason).addValue("actor", actor)));
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                            .addValue("version", version).addValue("reason", reason).addValue("actor", actor));
+                    db.update("""
                             INSERT INTO workshop_material_count_lines(
                                 count_id, client_line_key, line_kind, weigh_note, goods_id, color_id, unit_id,
                                 bag_count, bag_net_qty, weighed_qty, machine_id, container_id, capacity_qty_snapshot,
@@ -342,7 +342,7 @@ public class WorkshopMaterialCountService {
                                    capacity_qty_snapshot, fill_level, :actor
                             FROM workshop_material_count_lines WHERE count_id = :previous
                             """, new MapSqlParameterSource("count", countId).addValue("actor", actor)
-                            .addValue("previous", previousCount)));
+                            .addValue("previous", previousCount));
                     return new Outcome<>(countId, detailOf(count(countId, false), bins.period(periodId)));
                 });
     }
@@ -377,7 +377,7 @@ public class WorkshopMaterialCountService {
                     FOR UPDATE
                     """, params, UUID.class);
             if (line.isEmpty()) continue;
-            WorkshopMaterialGuards.guarded(() -> db.update("""
+            db.update("""
                     UPDATE workshop_material_period_lines
                     SET transfer_in_qty = COALESCE((
                             SELECT sum(ledger.signed_qty) FROM v_workshop_material_bin_ledger ledger
@@ -385,16 +385,16 @@ public class WorkshopMaterialCountService {
                               AND ledger.goods_id = :goods AND ledger.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)), 0),
                         row_version = row_version + 1
                     WHERE id = :line
-                    """, params.addValue("line", line.getFirst())));
+                    """, params.addValue("line", line.getFirst()));
             adjust(line.getFirst(), countId, "SUPPLEMENT", period);
         }
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 UPDATE workshop_material_periods
                 SET close_state = CASE WHEN close_state = 'HELD' THEN 'HELD' ELSE 'QUEUED' END,
                     close_blockers = CASE WHEN close_state = 'HELD' THEN close_blockers ELSE '[]'::jsonb END,
                     row_version = row_version + 1
                 WHERE id = :id
-                """, Map.of("id", period.id())));
+                """, Map.of("id", period.id()));
         requestClose(period.id(), currentUser.requireId());
     }
 
@@ -425,12 +425,12 @@ public class WorkshopMaterialCountService {
                 """, params, UUID.class);
         if (!existing.isEmpty()) {
             UUID id = existing.getFirst();
-            WorkshopMaterialGuards.guarded(() -> db.update("""
+            db.update("""
                     UPDATE workshop_material_period_lines
                     SET opening_qty = :opening, transfer_in_qty = :transferIn, return_qty = :returned,
                         other_issue_qty = :other, adjustment_qty = :adjustment, closing_qty = :closing, row_version = row_version + 1
                     WHERE id = :line
-                    """, params.addValue("line", id)));
+                    """, params.addValue("line", id));
             return id;
         }
         MaterialInfo info = bins.material(material.goodsId());
@@ -438,13 +438,13 @@ public class WorkshopMaterialCountService {
             throw new ApiException(ErrorCode.CONFLICT, "「" + info.label() + "」已经不是整批领料的料, 不能盘点");
         }
         UUID id = UUID.randomUUID();
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 INSERT INTO workshop_material_period_lines(
                     id, period_id, goods_id, color_id, unit_id, cost_basis, opening_qty, transfer_in_qty, return_qty,
                     other_issue_qty, adjustment_qty, closing_qty)
                 VALUES (:line, :period, :goods, CAST(:color AS uuid), :unit, :basis, :opening, :transferIn, :returned,
                         :other, :adjustment, :closing)
-                """, params.addValue("line", id).addValue("unit", info.unitId()).addValue("basis", info.costBasis())));
+                """, params.addValue("line", id).addValue("unit", info.unitId()).addValue("basis", info.costBasis()));
         return id;
     }
 
@@ -630,10 +630,10 @@ public class WorkshopMaterialCountService {
     /** 期间开始盘点时建第一版盘点单 (由期间服务在同一事务调用)。 */
     UUID createFirstCount(UUID periodId) {
         UUID id = UUID.randomUUID();
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 INSERT INTO workshop_material_counts(id, period_id, version, created_by) VALUES (:id, :period, 1, :actor)
                 """, new MapSqlParameterSource("id", id).addValue("period", periodId)
-                .addValue("actor", currentUser.requireId())));
+                .addValue("actor", currentUser.requireId()));
         return id;
     }
 
@@ -643,9 +643,9 @@ public class WorkshopMaterialCountService {
                 DELETE FROM workshop_material_count_lines
                 WHERE count_id IN (SELECT id FROM workshop_material_counts WHERE period_id = :period AND status = 'DRAFT')
                 """, Map.of("period", periodId));
-        WorkshopMaterialGuards.guarded(() -> db.update(
+        db.update(
                 "DELETE FROM workshop_material_counts WHERE period_id = :period AND status = 'DRAFT'",
-                Map.of("period", periodId)));
+                Map.of("period", periodId));
     }
 
     CountDetail detailOf(UUID countId) {

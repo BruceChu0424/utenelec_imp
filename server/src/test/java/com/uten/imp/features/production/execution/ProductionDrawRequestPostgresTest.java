@@ -64,7 +64,7 @@ class ProductionDrawRequestPostgresTest {
                   UNIQUE(execution_segment_id,action,idempotency_key), counter_event_id uuid, receiving_confirmation_id uuid, receiving_direction smallint);
                 CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,bill_no text,warehouse_id uuid,
                   draw_batch_no text,status integer DEFAULT 0,is_deleted boolean DEFAULT false,
-                  created_at timestamptz,updated_at timestamptz,created_by uuid,updated_by uuid,deleted_at timestamptz);
+                  created_at timestamptz,updated_at timestamptz,created_by uuid,updated_by uuid,deleted_at timestamptz,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text);
                 CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,goods_id uuid,goods_code_snapshot text,
                   goods_name_snapshot text,color_id uuid,unit_id uuid,qty numeric,issued_qty numeric DEFAULT 0,
                   unit_rate numeric DEFAULT 1,is_deleted boolean DEFAULT false);

@@ -40,11 +40,14 @@ class LineSideWordingContractTest {
     }
 
     @Test
-    void autoConfiguredStoreIsNamedWorkshopMaterialStore() throws IOException {
-        Path service = MAIN_SOURCE.resolve("com/uten/imp/features/master/warehouse/LineSideWarehouseService.java");
+    void openedStoreIsNamedWorkshopMaterialStore() throws IOException {
+        // ADR-147: 内料仓只由「车间内料仓」开通命令建出(WorkshopBinService), 不再自动配置。
+        Path service = MAIN_SOURCE.resolve("com/uten/imp/features/warehouse/materialbin/WorkshopBinService.java");
         List<String> texts = literals(Files.readString(service)).stream().map(Literal::text).toList();
-        assertTrue(texts.contains("内料仓"), "自动配置的仓名是「{车间名}内料仓」");
-        assertTrue(texts.contains(" ("), "重名时追加半角括号 \" ({主仓})\", 与 V740 改名同一规则");
+        assertTrue(texts.contains("内料仓"), "开通建出的仓名是「{车间名}内料仓」");
+        // ADR-145 单主仓: 一个车间只有一个内料仓, 不再追加「 (主仓名)」造同名变体, 重名直接拒绝。
+        assertTrue(texts.stream().noneMatch(text -> text.equals(" (")),
+                "不再生成 \" ({主仓})\" 后缀");
     }
 
     /** 扫描器自检: 注释里的字不算, 字符串、文本块里的算, 文本块里的 SQL 行注释不算。 */

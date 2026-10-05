@@ -46,6 +46,32 @@ public interface StockBalanceRepository
         Boolean getWeightEstimated();
     }
 
+    /** ADR-146 出入库类别校验的事实: 流水落的仓, 以及仓库调拨单两端(只在 transferDoc 是调拨单时有值)。 */
+    interface WarehouseClassFacts {
+        String getName();
+        Boolean getDefective();
+        String getTransferKind();
+        UUID getFromId();
+        UUID getToId();
+        Boolean getFromDefective();
+        Boolean getToDefective();
+    }
+
+    @Query(value = """
+            SELECT warehouse.name AS name, warehouse.is_defective AS defective,
+                   document.transfer_kind AS transferKind,
+                   document.warehouse_id AS fromId, document.to_warehouse_id AS toId,
+                   source.is_defective AS fromDefective, target.is_defective AS toDefective
+            FROM warehouses warehouse
+            LEFT JOIN stock_documents document ON document.id = CAST(:transferDoc AS uuid)
+                AND document.doc_type = 'TRANSFER'
+            LEFT JOIN warehouses source ON source.id = document.warehouse_id
+            LEFT JOIN warehouses target ON target.id = document.to_warehouse_id
+            WHERE warehouse.id = :warehouse
+            """, nativeQuery = true)
+    java.util.List<WarehouseClassFacts> warehouseClassFacts(@Param("warehouse") UUID warehouseId,
+            @Param("transferDoc") UUID transferDocId);
+
     /** Native scalar projection deliberately bypasses cached entities after same-transaction upserts. */
     @Query(value="""
             SELECT qty,weight,weight_estimated AS weightEstimated FROM stock_balances

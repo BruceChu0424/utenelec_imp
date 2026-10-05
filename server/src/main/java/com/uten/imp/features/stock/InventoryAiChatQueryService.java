@@ -32,10 +32,11 @@ public class InventoryAiChatQueryService {
     public record Request(String keyword, UUID warehouseId, String warehouseKeyword) {
         public Request(String keyword, UUID warehouseId) { this(keyword, warehouseId, null); }
     }
+    /** defective = 这一行在不良品仓(ADR-146): 现存照报, 可用恒为 0。 */
     public record Row(UUID goodsId, UUID colorId, UUID owningWarehouseId, UUID warehouseId,
                       String code, String name, String color, String unit, String warehouseName,
                       BigDecimal qty, BigDecimal reserved, BigDecimal movable,
-                      BigDecimal pendingInspection, BigDecimal pendingStockIn) {}
+                      BigDecimal pendingInspection, BigDecimal pendingStockIn, boolean defective) {}
     public record Facts(List<WarehouseReference> scope, List<Row> rows, String note) {}
 
     private final StockQueryService stock;
@@ -70,14 +71,18 @@ public class InventoryAiChatQueryService {
         if (!available()) throw new ApiException(ErrorCode.FORBIDDEN);
         AuthUser actor = access.requireChat();
         List<WarehouseReference> all = references.warehouses();
+        // ADR-149: 与仓库任务中心同一判定。主管(含超管)可查全部; 子仓负责人只查自己负责的仓(含下级);
+        // 其他人的「没人负责的仓」是任务兜底, 不是 AI 查库存的授权。
+        var access = actor.isSuperAdmin() ? null : scopes.access();
         Set<UUID> authorized;
-        if (actor.isSuperAdmin()) {
+        if (access == null || access.role() == WarehouseTaskScopePort.Role.SUPERVISOR) {
             authorized = all.stream().map(WarehouseReference::id).collect(Collectors.toSet());
+        } else if (access.role() == WarehouseTaskScopePort.Role.KEEPER) {
+            authorized = all.stream().map(WarehouseReference::id)
+                    .filter(access.defaultScope().warehouseIds()::contains)
+                    .collect(Collectors.toCollection(java.util.HashSet::new));
         } else {
-            // MINE intentionally includes unassigned work. That inbox fallback is not an AI grant.
-            authorized = subtree(all, references.assignedWarehouseRoots());
-            var mine = scopes.resolve(WarehouseTaskScopePort.SCOPE_MINE, null);
-            if (mine.active()) authorized.retainAll(mine.warehouseIds());
+            authorized = new java.util.HashSet<>();
         }
         if (authorized.isEmpty()) return new Facts(List.of(), List.of(),
                 "当前账号尚未分配可查询的负责仓库，请先由管理员维护仓库负责人；这不表示库存为零。");
@@ -133,12 +138,16 @@ public class InventoryAiChatQueryService {
                 if (!goods.getGoodsId().equals(item.getGoodsId())
                         || !Objects.equals(goods.getColorId(), item.getColorId())
                         || !Objects.equals(goods.getOwningWarehouseId(), item.getOwningWarehouseId())) throw changed();
+                // ADR-146: 不良品仓的货不计入任何可用量, 可用恒为 0(现存照报, 并标明是不良品); 不良品仓上不能有任何预留,
+                // 全局预留也不占它, 「预留」照实报 0, 不把全局预留摊到不良品行上让人误以为被占着。
                 rows.add(new Row(item.getGoodsId(), item.getColorId(), item.getOwningWarehouseId(), warehouse.id(),
                         item.getGoodsCode(), item.getName(), item.getColorName(), item.getUnitName(), warehouse.name(),
-                        quantity(item.getQty()), quantity(reservations.warehouseEffectiveReservedBase(
-                                warehouse.id(), item.getGoodsId(), item.getColorId())),
-                        quantity(balances.warehouseAvailableBase(warehouse.id(), item.getGoodsId(), item.getColorId())),
-                        quantity(item.getPendingQty()), quantity(item.getPendingStockInQty())));
+                        quantity(item.getQty()), warehouse.defective() ? BigDecimal.ZERO
+                                : quantity(reservations.warehouseEffectiveReservedBase(
+                                        warehouse.id(), item.getGoodsId(), item.getColorId())),
+                        warehouse.defective() ? BigDecimal.ZERO
+                                : quantity(balances.warehouseAvailableBase(warehouse.id(), item.getGoodsId(), item.getColorId())),
+                        quantity(item.getPendingQty()), quantity(item.getPendingStockInQty()), warehouse.defective()));
             }
         }
         rows.sort(Comparator.comparing((Row row) -> row.goodsId().toString())

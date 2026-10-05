@@ -85,8 +85,8 @@ class _Names extends MasterNameService {
   String warehouse(String? id) => '常规仓';
   @override
   List<WarehouseDictEntry> get warehouseHierarchy => const [
-    WarehouseDictEntry(id: 'w1', name: '原料仓一'),
-    WarehouseDictEntry(id: 'w2', name: '原料仓二'),
+    WarehouseDictEntry(id: 'w1', name: '原料仓一', selectableForNew: true),
+    WarehouseDictEntry(id: 'w2', name: '原料仓二', selectableForNew: true),
   ];
 }
 

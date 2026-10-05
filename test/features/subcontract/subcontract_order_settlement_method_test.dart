@@ -169,8 +169,18 @@ void main() {
       (request) => request.path.endsWith('/warehouses/dict')
           ? <Map<String, dynamic>>[
               {'id': 'main', 'name': '总仓'},
-              {'id': 'original', 'name': '内部成品仓', 'parentId': 'main'},
-              {'id': 'assembly', 'name': '组装仓', 'parentId': 'main'},
+              {
+                'id': 'original',
+                'name': '内部成品仓',
+                'parentId': 'main',
+                'selectableForNew': true,
+              },
+              {
+                'id': 'assembly',
+                'name': '组装仓',
+                'parentId': 'main',
+                'selectableForNew': true,
+              },
             ]
           : <Object?>[],
     );

@@ -9,9 +9,10 @@ import java.util.UUID;
 /**
  * 一个货品 (可带供应商) 的单重参数 (POST /api/stock/weight/params 的 items 元素, ADR-135 §7.2)。
  * 客户端据此用 WeightPredictor 自算称重计数、应称重量与偏差; 过账仍以服务端为准。
+ * 身份 = (goodsId, supplierId), 不再回传客户端拼的字符串 key; 库存均重参考在响应的 stockBalances 里单独给 (ADR-151)。
  *
- * @param key                 请求行的 key 原样返回
  * @param goodsId             货品
+ * @param supplierId          请求的供应商 (null = 货品级, 不指定供应商)
  * @param basis               EXACT (按重量计的货品) / MANUAL (人工设定) / LEARNED (学到的) /
  *                            MASTER_PRIOR (货品档案设计单重) / NONE
  * @param supplierSpecific    LEARNED 时是否用的是该供应商自己的单重
@@ -37,11 +38,10 @@ import java.util.UUID;
  * @param baseUnitDimension   基本单位的计量维度 (COUNT / MASS / ... / null 未登记)
  * @param learningEnabled     是否参与学习
  * @param scaleResKg          秤分辨率 kg (预测公式里的量化误差项)
- * @param stockBalance        请求实物仓库及精确颜色的库存均重依据; 无有效正数重量余额时为空
  */
 public record WeightParams(
-        String key,
         UUID goodsId,
+        UUID supplierId,
         String basis,
         boolean supplierSpecific,
         String evidence,
@@ -65,28 +65,5 @@ public record WeightParams(
         Double manualConflictPct,
         String baseUnitDimension,
         boolean learningEnabled,
-        double scaleResKg,
-        StockWeightBalance stockBalance) {
-
-    /** 原有货品级调用方不提供库存维度。 */
-    public WeightParams(String key, UUID goodsId, String basis, boolean supplierSpecific, String evidence,
-                        BigDecimal unitWeightKg, Double logMean, Double lotPrior, Double gamma, Double df,
-                        String tier, Double relHalfWidth, Integer nInliers, Integer suggestedSampleSize,
-                        Long exactUpToQty, BigDecimal tolerancePct, BigDecimal defaultTareKg,
-                        BigDecimal lastTareKg, BigDecimal massFactorKg, boolean stale,
-                        OffsetDateTime lastObservedAt, Double drawBiasPct, Double manualConflictPct,
-                        String baseUnitDimension, boolean learningEnabled, double scaleResKg) {
-        this(key, goodsId, basis, supplierSpecific, evidence, unitWeightKg, logMean, lotPrior, gamma, df,
-                tier, relHalfWidth, nInliers, suggestedSampleSize, exactUpToQty, tolerancePct, defaultTareKg,
-                lastTareKg, massFactorKg, stale, lastObservedAt, drawBiasPct, manualConflictPct,
-                baseUnitDimension, learningEnabled, scaleResKg, null);
-    }
-
-    /** 附加独立的库存参考快照, 不改变单重学习的来源或可靠度。 */
-    public WeightParams withStockBalance(StockWeightBalance balance) {
-        return new WeightParams(key, goodsId, basis, supplierSpecific, evidence, unitWeightKg, logMean,
-                lotPrior, gamma, df, tier, relHalfWidth, nInliers, suggestedSampleSize, exactUpToQty,
-                tolerancePct, defaultTareKg, lastTareKg, massFactorKg, stale, lastObservedAt, drawBiasPct,
-                manualConflictPct, baseUnitDimension, learningEnabled, scaleResKg, balance);
-    }
+        double scaleResKg) {
 }

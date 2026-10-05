@@ -262,13 +262,17 @@ public class PreplanStockEntitlementService {
                   ), 0) > 0
                 ORDER BY %s positive.created_at, positive.id
                 """.formatted(followQualifiedSource ? """
-                        (fn_preplan_reservation_has_qualified_origin(reservation.id)
+                        (NOT EXISTS(SELECT 1 FROM warehouses defective
+                             WHERE defective.id=reservation.warehouse_id AND defective.is_defective)
+                         AND (fn_preplan_reservation_has_qualified_origin(reservation.id)
                          OR (fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)
                              AND EXISTS(SELECT 1 FROM warehouses warehouse
-                                 WHERE warehouse.id=reservation.warehouse_id AND NOT warehouse.is_defective
-                                   AND NOT warehouse.is_line_side)))
+                                 WHERE warehouse.id=reservation.warehouse_id
+                                   AND NOT warehouse.is_line_side))))
                         """ : sameMain
-                        ? "fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)"
+                        ? "(fn_warehouse_same_main(reservation.warehouse_id, :warehouseId)"
+                          + " AND NOT EXISTS(SELECT 1 FROM warehouses defective"
+                          + " WHERE defective.id=reservation.warehouse_id AND defective.is_defective))"
                         : "reservation.warehouse_id = :warehouseId",
                         followQualifiedSource ? "fn_preplan_reservation_has_qualified_origin(reservation.id) DESC," : "") + lock)
                 .setParameter("analysisId", analysisId)

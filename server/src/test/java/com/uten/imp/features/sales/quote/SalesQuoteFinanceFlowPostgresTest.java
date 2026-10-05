@@ -341,7 +341,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(finance.list("returned", null, 1, 100).getItems()).anyMatch(item -> item.id().equals(quoteId));
 
         loginAs(f.sales());
-        Map<String, Long> buckets = documentCounts.statusCounts("salesQuote", null, null);
+        Map<String, Long> buckets = documentCounts.statusCounts("salesQuote", null, null, null);
         assertThat(buckets).containsEntry("FINANCE_REJECTED", 1L).containsEntry("DRAFT", 0L)
                 .containsEntry("PENDING_FINANCE", 0L);
         assertThat(documentCounts.draftCounts().salesQuote()).isZero();

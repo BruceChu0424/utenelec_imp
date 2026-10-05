@@ -38,17 +38,19 @@ public class WorkshopMaterialRequisitionController {
         this.warehouseScopes = warehouseScopes;
     }
 
-    /** 仓库方可按"我负责的仓库"过滤 (按预填叶仓)。 */
+    /**
+     * 领料/退料单列表。仓库侧按仓库数据范围(ADR-149, 按预填叶仓)强制过滤, scopeWarehouseId = 在可选范围内
+     * 挑一个仓(越界 403); 车间成员按本车间看(车间范围), 不受仓库范围裁剪。
+     */
     @GetMapping("/requisitions")
     @PreAuthorize("hasAuthority('workshop_material:view')")
     public PageResponse<RequisitionView> list(@RequestParam(required = false) String status,
                                               @RequestParam(required = false) String kind,
                                               @RequestParam(required = false) UUID workshopId,
-                                              @RequestParam(defaultValue = "") String warehouseScope,
                                               @RequestParam(required = false) UUID scopeWarehouseId,
                                               @RequestParam(defaultValue = "1") int page,
                                               @RequestParam(defaultValue = "20") int size) {
-        return requisitions.list(status, kind, workshopId, warehouseScopes.resolve(warehouseScope, scopeWarehouseId),
+        return requisitions.list(status, kind, workshopId, warehouseScopes.current(scopeWarehouseId),
                 page, size);
     }
 

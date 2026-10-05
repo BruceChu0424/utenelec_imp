@@ -45,11 +45,10 @@ public class WarehouseSubcontractOutboundController {
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         return planService.tasks(page, size, keyword, supplierId, status,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+                warehouseScopes.current(scopeWarehouseId));
     }
 
     /**
@@ -58,10 +57,11 @@ public class WarehouseSubcontractOutboundController {
      * 两数按同一批计划互斥, 出仓任务中心「委外出库」分段红黄两枚各挂一个。
      */
     @GetMapping("/tasks/count")
-    public Map<String, Long> taskCount() {
+    public Map<String, Long> taskCount(@RequestParam(required = false) UUID scopeWarehouseId) {
+        var scope = warehouseScopes.current(scopeWarehouseId);
         return Map.of(
-                "count", planService.countTasks(),
-                "waitingComponent", planService.countWaitingComponentTasks());
+                "count", planService.countTasks(scope),
+                "waitingComponent", planService.countWaitingComponentTasks(scope));
     }
 
     /** 计划详情：计划行（计划/已出仓/草稿占用/剩余 + 库位）+ 关联出仓单历史。 */

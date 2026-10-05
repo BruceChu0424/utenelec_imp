@@ -11,7 +11,6 @@ import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.Wareh
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalExceptionBatchStockInResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteResult;
-import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -51,15 +50,14 @@ public class WarehouseInboundController {
             @RequestParam(defaultValue = "") String orderType,
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID supplierId,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo) {
-        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级), 越界 403。
         // 2026-09-25 单号列统一：sort/order 表头排序 + billNo 订货单号表头值筛选。
         return service.expectations(page, size, orderType, keyword, supplierId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), sort, order, billNo);
+                warehouseScopes.current(scopeWarehouseId), sort, order, billNo);
     }
 
     /** 预计到货 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——
@@ -69,23 +67,26 @@ public class WarehouseInboundController {
             @RequestParam(defaultValue = "") String orderType,
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID supplierId,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.expectationFacets(orderType, keyword, supplierId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+                warehouseScopes.current(scopeWarehouseId));
     }
 
+    /**
+     * 预计到货待办数(徽章来源 warehouseInboundExpectation): count = 合计, PURCHASE / SUBCONTRACT = 分来源
+     * (入库任务中心「采购入库 / 委外入库」分段与列表里的类型筛选卡都读这两个事实数)。与列表同一过滤基座
+     * 与仓库范围(ADR-149), 一条 SQL 按订货类型分组, 合计 = 两类之和; 不再另开 type-counts 端点。
+     */
     @GetMapping("/expectations/count")
-    public Map<String, Long> expectationCount() {
-        return Map.of("count", service.countExpectations());
-    }
-
-    /** 预计到货按订货类型计数（全部/采购/委外筛选卡的全量口径）。 */
-    @GetMapping("/expectations/type-counts")
-    public Map<String, Long> expectationTypeCounts(
-            @RequestParam(defaultValue = "") String warehouseScope,
-            @RequestParam(required = false) UUID scopeWarehouseId) {
-        return service.countExpectationsByType(warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+    public Map<String, Long> expectationCount(@RequestParam(required = false) UUID scopeWarehouseId) {
+        Map<String, Long> byType = service.countExpectationsByType(warehouseScopes.current(scopeWarehouseId));
+        long purchase = byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE, 0L);
+        long subcontract = byType.getOrDefault(ProcurementArrivalControlPort.SUBCONTRACT, 0L);
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        counts.put("count", purchase + subcontract);
+        counts.put(ProcurementArrivalControlPort.PURCHASE, purchase);
+        counts.put(ProcurementArrivalControlPort.SUBCONTRACT, subcontract);
+        return counts;
     }
 
     @GetMapping("/arrival-exceptions")
@@ -97,7 +98,6 @@ public class WarehouseInboundController {
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
@@ -106,7 +106,7 @@ public class WarehouseInboundController {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 收货单号/订货单号表头值筛选。
         return service.warehouseExceptions(page, size, keyword, includeHistory,
                 supplierId, warehouseId, status,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId),
+                warehouseScopes.current(scopeWarehouseId),
                 sort, order, receiptBillNo, orderBillNo);
     }
 
@@ -119,30 +119,39 @@ public class WarehouseInboundController {
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.warehouseExceptionFacets(keyword, includeHistory,
                 supplierId, warehouseId, status,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+                warehouseScopes.current(scopeWarehouseId));
     }
 
+    /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一仓库范围(ADR-149)。 */
     @GetMapping("/arrival-exceptions/count")
-    public Map<String, Long> arrivalExceptionCount() {
-        return Map.of("count", service.countWarehouseExceptions());
+    public Map<String, Long> arrivalExceptionCount(@RequestParam(required = false) UUID scopeWarehouseId) {
+        return Map.of("count", service.countWarehouseExceptions(warehouseScopes.current(scopeWarehouseId)));
     }
 
     /**
-     * 到货登记一步完成（登记 + 送检审核）：币种/汇率/结算方式由服务端按来源订货单权威回填，
-     * 仓库只登记数量与库位；正常路径保存即转品质部待检（IQC），实到超量时按
-     * EXCESS_QUARANTINED 返回（草稿已建、未入库未立应付，等待财务定案）。
-     * 建单/审核统一通过收货单 Service 的仓库专用网关，以
-     * {@code warehouse_inbound:stock_in} 精确收口。
+     * 登记实际到货的唯一页面命令(ADR-151 §5)：单张 = 1 个来源、多选 = N 个来源，一个事务；
+     * 服务端按「订货单 x 入库仓库」分组建收货单(登记 + 送检审核一步完成)，逐组结果含超量隔离
+     * (EXCESS_QUARANTINED：草稿已建、未入库未立应付，等待财务定案)。币种/汇率/结算方式由服务端按
+     * 来源订货单权威回填，仓库只登记数量与库位；建单/审核统一通过收货单 Service 的仓库专用网关，
+     * 以 {@code warehouse_inbound:stock_in} 精确收口。原单张端点 POST /arrivals 已删除。
      */
-    @PostMapping("/arrivals")
+    @PostMapping("/arrivals/batch")
     @PreAuthorize("hasAuthority('warehouse_inbound:view') and hasAuthority('warehouse_inbound:stock_in')")
-    public WarehouseArrivalRegisterResult registerArrival(
-            @Valid @RequestBody WarehouseArrivalRegisterRequest request) {
-        return arrivalRegistration.register(request);
+    public ProcurementArrivalContracts.WarehouseArrivalBatchRegisterResult registerArrivalBatch(
+            @Valid @RequestBody ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest request) {
+        return arrivalRegistration.registerBatch(request);
+    }
+
+    /**
+     * 登记页按来源身份读取预计到货(?ids=)：页面路由只带身份，刷新/草稿恢复都能重新拿到同一批任务，
+     * 不再依赖页面跳转时塞进去的内存对象；与列表同一投影、同一可见范围。
+     */
+    @GetMapping("/expectations/by-ids")
+    public List<InboundExpectationTask> expectationsByIds(@RequestParam List<UUID> ids) {
+        return service.expectationsByIds(ids);
     }
 
     /**

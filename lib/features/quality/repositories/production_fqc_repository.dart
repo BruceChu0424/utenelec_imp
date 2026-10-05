@@ -98,6 +98,47 @@ class ProductionFqcRepository {
     return ProductionFqcDecisionResult.fromJson(json);
   }
 
+  /// 整批判定(ADR-148)：同一批实物(需求份 / 计划公共 / 实际超产)一次填合格与不良数量；
+  /// 合格先满足需求份，不良先扣实际超产，由服务端分给批内各份。回执映射成同形结果，
+  /// [ProductionFqcDecisionResult.decisionEventId] 为整批命令号，inspection 为批合计视图。
+  Future<ProductionFqcDecisionResult> decideLot({
+    required String lotId,
+    required double passQty,
+    required double failQty,
+    required String idempotencyKey,
+    String? dispositionCode,
+    String? reason,
+    String? sheetId,
+    String? sheetNo,
+  }) async {
+    final trimmedReason = reason?.trim();
+    final effectiveReason = trimmedReason == null || trimmedReason.isEmpty
+        ? null
+        : trimmedReason;
+    final json = await api.post(
+      ApiEndpoints.productionQualityInspectionLotDecisions(lotId),
+      body: {
+        'passQty': passQty,
+        'failQty': failQty,
+        'dispositionCode': ?dispositionCode,
+        'reason': ?effectiveReason,
+        'idempotencyKey': idempotencyKey,
+      },
+    );
+    final lot = ProductionFqcInspectionLot.fromJson(
+      json['lot'] as Map<String, dynamic>? ?? const {},
+    );
+    return ProductionFqcDecisionResult(
+      decisionEventId: json['lotCommandId'] as String? ?? '',
+      inspection: ProductionFqcInspection.fromLot(
+        lot,
+        sheetId: sheetId,
+        sheetNo: sheetNo,
+      ),
+      replay: json['replay'] as bool? ?? false,
+    );
+  }
+
   Future<
     ({
       int processedCount,

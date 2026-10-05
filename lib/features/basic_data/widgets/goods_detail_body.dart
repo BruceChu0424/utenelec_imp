@@ -43,6 +43,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/stock_ledger/goods_stock_ledger_panel.dart';
 import '../../../shared/stock_ledger/stock_ledger_models.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../providers/color_unit_dict.dart';
@@ -565,7 +566,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   ///
   /// 仓库字典按需加载：只有真点开这个字段才拉一次，不让只看基本信息的人白拉一趟
   /// 主档字典 (ensureWarehousesLoaded 自带缓存，重复点不会重复请求)。
-  /// allowParent: true —— 归属是主档事实不是过账落点，V476 的叶子仓约束不适用。
+  /// ADR-145：所属仓库是「新选」，走运营口径——只能选服务端算好的可选良品子仓
+  /// (主仓、停用仓、不良品仓、车间内料仓都不列)，与服务端校验同一定义。
   Future<WarehousePickerResult?> _pickOwningWarehouse(
     String? currentWarehouseId,
   ) async {
@@ -574,12 +576,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     if (!mounted) return null;
     return showUtenWarehousePickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy
-          .where((warehouse) => !warehouse.isLineSide)
-          .toList(),
+      hierarchy: names.warehouseHierarchy,
       initialWarehouseId: currentWarehouseId,
-      title: '选择所属仓库', // TODO(l10n): 补 arb
-      allowParent: true,
+      title: AppLocalizations.of(context).warehouseOwningPickerTitle,
+      use: WarehouseUse.goodIn,
     );
   }
 
@@ -1335,6 +1335,13 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         // 生产车间 (V590)：最近一次排产确认/车间改派自动学习回写，只读。
         MasterDetailRow('生产车间', d.owningWorkshopName),
         MasterDetailRow('库存量(合计)', s(d.stockQty)),
+        // ADR-146: 不良品仓的数量不计入合计, 另列一行。
+        if ((d.stockDefectiveQty ?? 0) > 0)
+          MasterDetailRow(
+            _l10nOrNull()?.warehouseDefectiveTag ?? '不良品',
+            _l10nOrNull()?.goodsStockDefectiveExtra(s(d.stockDefectiveQty)) ??
+                s(d.stockDefectiveQty),
+          ),
         // 重量合计由服务端算好 (千克, 不含内料仓; ADR-135), 前端只按显示单位换算。
         if (d.stockWeightKg != null || d.stockWeightUnknown > 0)
           MasterDetailRow('库存重量(合计)', _stockWeightTotalText(d, weightDisplay)),
@@ -1342,7 +1349,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           MasterDetailRow(
             '　${w.warehouseName ?? w.warehouseCode ?? '仓库'}'
                 '${w.colorName != null ? '·${w.colorName}' : ''}'
-                '${w.lineSide ? ' (内料仓, 不计入合计)' : ''}',
+                '${w.lineSide ? ' (内料仓, 不计入合计)' : ''}'
+                '${w.defective ? ' (${_l10nOrNull()?.warehouseDefectiveTag ?? '不良品'})' : ''}',
             '${s(w.qty)}${d.unitName != null ? ' ${d.unitName}' : ''}'
                 '${_rowWeightText(w, weightDisplay)}',
           ),

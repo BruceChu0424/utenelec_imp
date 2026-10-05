@@ -659,19 +659,16 @@ class _ProductionDailyReportDetailPageState
     }
   }
 
-  /// 审核确认里逐批列出去向(直送给哪个工单多少；送入仓库多少及原因)，最多列 6 批。
+  /// 审核确认里逐批列出去向(直送给哪个工单多少；送入仓库多少及其中实际超产)，最多列 6 批。
+  /// 摘要由服务端按实物交接批拼好(ADR-148)，页面直接显示。
   String _routeLines(ProductionDailyReportDetail reviewed) {
-    try {
-      final groups = productionDailyReportInputGroups(reviewed.items);
-      const limit = 6;
-      final lines = [
-        for (final group in groups.take(limit)) '· ${group.routeSummary}',
-        if (groups.length > limit) '· 等共 ${groups.length} 批，详见明细表',
-      ];
-      return lines.isEmpty ? '' : '${lines.join('\n')}\n';
-    } on FormatException {
-      return '';
-    }
+    final batches = reviewed.outputBatches;
+    const limit = 6;
+    final lines = [
+      for (final batch in batches.take(limit)) '· ${batch.summary}',
+      if (batches.length > limit) '· 等共 ${batches.length} 批，详见明细表',
+    ];
+    return lines.isEmpty ? '' : '${lines.join('\n')}\n';
   }
 
   Future<void> _reverse() => _doAction(

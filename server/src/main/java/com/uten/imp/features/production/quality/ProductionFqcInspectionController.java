@@ -104,6 +104,24 @@ public class ProductionFqcInspectionController {
         return service.passAll(request);
     }
 
+    /** ADR-148 一批实物(需求 / 计划公共 / 实际超产各份)的当前判定；须声明在 /{id} 之前。 */
+    @GetMapping("/lots/{lotId}")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public ProductionFqcContracts.InspectionLotView lot(@PathVariable UUID lotId) {
+        return service.lotDetail(lotId);
+    }
+
+    /** ADR-148 整批判定：一次判合格与不良数量，服务端按瀑布分给批内各份。 */
+    @PostMapping("/lots/{lotId}/decisions")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')"
+            + " and hasAuthority('production_quality_inspection:approve')")
+    public ProductionFqcContracts.LotDecisionResult decideLot(
+            @PathVariable UUID lotId,
+            @Valid @RequestBody ProductionFqcContracts.LotDecisionRequest request) {
+        return service.decideLot(lotId, request);
+    }
+
+    /** 逐份决定只用于单份的批；分成几份的批请走整批判定。 */
     @PostMapping("/{id}/decisions")
     @PreAuthorize("hasAuthority('production_quality_inspection:view')"
             + " and hasAuthority('production_quality_inspection:approve')")

@@ -31,7 +31,10 @@ Future<WarehousePickerResult?> pickWarehouseLeafForStockIn(
   await dictionary.ensureWarehousesLoaded();
   if (!context.mounted) return null;
   final hierarchy = dictionary.warehouseHierarchy;
-  if (WarehouseSelection(hierarchy).selectableIds.isEmpty) {
+  if (WarehouseSelection(
+    hierarchy,
+    use: WarehouseUse.goodIn,
+  ).selectableIds.isEmpty) {
     context.appWarning('未能取得可用的记账叶仓，请刷新仓库资料后重试');
     return null;
   }
@@ -40,5 +43,6 @@ Future<WarehousePickerResult?> pickWarehouseLeafForStockIn(
     hierarchy: hierarchy,
     initialWarehouseId: initialWarehouseId,
     title: title,
+    use: WarehouseUse.goodIn,
   );
 }

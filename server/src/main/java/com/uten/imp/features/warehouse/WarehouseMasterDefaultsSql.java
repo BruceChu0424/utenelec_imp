@@ -10,6 +10,6 @@ public final class WarehouseMasterDefaultsSql {
         }
         return "LEFT JOIN warehouses " + warehouse + " ON " + warehouse + ".id=" + goods + ".owning_warehouse_id\n"
                 + " AND NOT " + goods + ".is_deleted\n"
-                + " AND fn_warehouse_is_active_accounting_leaf(" + warehouse + ".id)\n";
+                + " AND fn_warehouse_is_good_stock_leaf(" + warehouse + ".id)\n";
     }
 }

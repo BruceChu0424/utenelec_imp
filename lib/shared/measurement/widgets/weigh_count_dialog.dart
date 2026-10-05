@@ -23,6 +23,8 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/idempotency_key.dart';
@@ -31,6 +33,7 @@ import '../weight_predictor.dart';
 import '../weight_prefs.dart';
 import '../weight_unit.dart';
 import 'weight_grid_column.dart';
+import 'weight_params_load_notice.dart';
 import 'weight_text.dart';
 
 /// 称重计数的使用场景。
@@ -228,6 +231,9 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
 
   WeightParams? _params;
   bool _loadingParams = false;
+
+  /// 取单重失败的原因: 重量照常能记, 只是不能折算; 显示出来并可重试 (ADR-151)。
+  Object? _paramsError;
   bool _piecesEdited = false;
   bool _rememberTare = false;
   bool _busy = false;
@@ -275,27 +281,34 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
   }
 
   Future<void> _loadParams() async {
-    setState(() => _loadingParams = true);
+    setState(() {
+      _loadingParams = true;
+      _paramsError = null;
+    });
     try {
-      final map = await ref.read(weightRepositoryProvider).params([
-        WeightParamsLine(
-          goodsId: _req.goodsId,
-          supplierId: _req.supplierId,
-          warehouseId: _req.warehouseId,
-          colorId: _req.colorId,
-        ),
-      ]);
+      final line = WeightParamsLine(
+        goodsId: _req.goodsId,
+        supplierId: _req.supplierId,
+        warehouseId: _req.warehouseId,
+        colorId: _req.colorId,
+      );
+      final result = await ref.read(weightRepositoryProvider).params([line]);
       if (!mounted) return;
       setState(() {
-        _params = map.values.isEmpty ? null : map.values.first;
+        _params = result.of(line);
         _loadingParams = false;
       });
       if (_req.initialNetKg == null) {
         _prefillTare(ref.read(warehouseWeightUnitsPrefsProvider).entry);
       }
-    } catch (_) {
-      // 取不到单重参数也能记重量 (重量从不阻断), 只是不能折算。
-      if (mounted) setState(() => _loadingParams = false);
+    } catch (e) {
+      // 取不到单重参数也能记重量 (重量从不阻断), 只是不能折算; 原因要让人看见。
+      if (mounted) {
+        setState(() {
+          _loadingParams = false;
+          _paramsError = e;
+        });
+      }
     }
   }
 
@@ -600,6 +613,31 @@ class _WeighCountPanelState extends ConsumerState<WeighCountPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_loadingParams) const LinearProgressIndicator(minHeight: 2),
+        if (_paramsError case final error?)
+          Builder(
+            builder: (context) {
+              final l10n =
+                  Localizations.of<AppLocalizations>(
+                    context,
+                    AppLocalizations,
+                  ) ??
+                  AppLocalizationsZh();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                child: UtenInlineNotice(
+                  key: const Key('weigh-count-params-error'),
+                  level: UtenInlineNoticeLevel.warning,
+                  message: l10n.weightParamsLoadFailed(
+                    weightParamsErrorReason(error, l10n),
+                  ),
+                  trailing: TextButton(
+                    onPressed: _busy ? null : _loadParams,
+                    child: Text(l10n.commonRetry),
+                  ),
+                ),
+              );
+            },
+          ),
         Text(
           _req.mode == WeighCountContext.outbound
               ? '按本次出库数量估算重量，称完填入秤上的实际读数即可。'

@@ -13,7 +13,13 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
-/** Warehouse physical acceptance for a production-generated FINISHED_IN draft. */
+/**
+ * Warehouse physical acceptance for a production-generated FINISHED_IN draft.
+ *
+ * <p>ADR-148: the warehouse counts each physical handoff lot once; the server distributes the
+ * accepted quantity to the lot's slices (demand first, then planned public, then actual surplus)
+ * and the shortfall stays in the residual draft starting from the actual-surplus slice.</p>
+ */
 @Getter
 @Setter
 public class FinishedInboundConfirmRequest {
@@ -29,13 +35,13 @@ public class FinishedInboundConfirmRequest {
     @Valid
     @NotNull
     @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-    private List<Line> lines;
+    private List<Lot> lots;
 
     @Getter
     @Setter
-    public static class Line {
+    public static class Lot {
         @NotNull
-        private UUID itemId;
+        private UUID lotId;
 
         @NotNull
         @PositiveOrZero

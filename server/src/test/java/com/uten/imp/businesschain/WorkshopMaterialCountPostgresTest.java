@@ -538,7 +538,7 @@ class WorkshopMaterialCountPostgresTest {
                     workshop, counter);
         }
         fixture.loginAs(warehouseUser);
-        var view = settings.update(workshop, new SettingsRequest(0L, true, world.warehouseId(), goLive, List.of(),
+        var view = settings.update(workshop, new SettingsRequest(null, 0L, true, world.warehouseId(), null, true, goLive, List.of(),
                 key("enable")));
         return new Shop(world, world.superAdminUserId(), workshop, worker, kg, world.warehouseId(), warehouseUser,
                 counterA, counterB, view.binWarehouseId(), view.currentPeriod().id());

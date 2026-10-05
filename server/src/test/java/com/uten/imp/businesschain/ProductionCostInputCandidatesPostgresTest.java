@@ -1,6 +1,7 @@
 package com.uten.imp.businesschain;
 
-import com.uten.imp.application.port.LineSideWarehousePort;
+import com.uten.imp.features.warehouse.materialbin.WorkshopBinService;
+import com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport;
 import com.uten.imp.features.stock.valuation.ProductionInventoryValueService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +53,7 @@ class ProductionCostInputCandidatesPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired NamedParameterJdbcTemplate named;
     @Autowired PlatformTransactionManager transactions;
-    @Autowired LineSideWarehousePort lineSide;
+    @Autowired WorkshopBinService lineSide;
     private FullChainEndToEndTest fixture;
 
     /** 改造前 ProductionInventoryValueService 的投入发现查询原文 (回归基线, 不随实现改动)。 */
@@ -130,7 +131,7 @@ class ProductionCostInputCandidatesPostgresTest {
 
         new TransactionTemplate(transactions).executeWithoutResult(status->{
             LocalDate goLive=reported.minusDays(10);
-            UUID bin=lineSide.ensure(workshop,c.world().warehouseId());
+            UUID bin=WorkshopBinTestSupport.open(lineSide,workshop,c.world().warehouseId(),user);
             UUID period=UUID.randomUUID();
             db.update("""
                     INSERT INTO workshop_material_settings(workshop_department_id,periodic_enabled,periodic_bin_warehouse_id,

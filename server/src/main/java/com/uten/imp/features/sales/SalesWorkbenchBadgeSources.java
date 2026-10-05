@@ -37,7 +37,7 @@ class SalesWorkbenchBadgeSources implements WorkbenchBadgeSources {
                 new Source("salesStage", () -> WorkbenchBadgeSources.numbers(orders.progressStageCounts())),
                 new Source("salesOrderFinance", () -> WorkbenchBadgeSources.numbers(financeConfirmation.pendingCount(null))),
                 new Source("shipmentFinance", () -> WorkbenchBadgeSources.numbers(shipments.pendingFinanceCount())),
-                new Source("warehouseSalesOutbound", () -> WorkbenchBadgeSources.numbers(warehouseOutbound.counts())),
+                new Source("warehouseSalesOutbound", () -> WorkbenchBadgeSources.numbers(warehouseOutbound.counts(null))),
                 new Source("salesQuote", () -> WorkbenchBadgeSources.numbers(quotes.counts())),
                 new Source("salesQuoteFinance", () -> WorkbenchBadgeSources.numbers(quoteFinance.pendingCount())));
     }

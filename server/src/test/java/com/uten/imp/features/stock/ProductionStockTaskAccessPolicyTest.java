@@ -1,55 +1,69 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.Role;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseAccess;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.security.AuthUser;
-import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.Query;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/** ADR-149: 生产链仓库任务的对象范围委托仓库数据范围的唯一判定, 不再自己按 SUB_WH 子树查一遍。 */
 class ProductionStockTaskAccessPolicyTest {
 
     @Test
-    void warehouseSubtreeMembershipIsRequiredForARegularStaffAccount() {
-        EntityManager em = mock(EntityManager.class);
+    void participantsAreSupervisorsKeepersOrWarehouseMembers() {
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
-        Query query = mock(Query.class);
-        UUID employeeId = UUID.randomUUID();
-        when(current.get()).thenReturn(Optional.of(staff(employeeId, false)));
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-        when(query.setParameter("employeeId", employeeId)).thenReturn(query);
-        when(query.getSingleResult()).thenReturn(0L, 1L);
-        ProductionStockTaskAccessPolicy policy =
-                new ProductionStockTaskAccessPolicy(em, current);
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        when(current.get()).thenReturn(Optional.of(staff(UUID.randomUUID(), false)));
+        ProductionStockTaskAccessPolicy policy = new ProductionStockTaskAccessPolicy(current, scopes);
 
+        when(scopes.access()).thenReturn(access(Role.OTHER, false));
         assertFalse(policy.canAccessWarehouseTasks());
+        when(scopes.access()).thenReturn(access(Role.OTHER, true));
         assertTrue(policy.canAccessWarehouseTasks());
-        verify(query, times(2)).setParameter("employeeId", employeeId);
+        when(scopes.access()).thenReturn(access(Role.KEEPER, false));
+        assertTrue(policy.canAccessWarehouseTasks());
+        when(scopes.access()).thenReturn(access(Role.SUPERVISOR, false));
+        assertTrue(policy.canAccessWarehouseTasks());
     }
 
     @Test
-    void superAdminRetainsRecoveryAccessWithoutADepartmentQuery() {
-        EntityManager em = mock(EntityManager.class);
+    void superAdminRetainsRecoveryAccessWithoutResolvingScope() {
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
-        when(current.get()).thenReturn(Optional.of(
-                staff(UUID.randomUUID(), true)));
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        when(current.get()).thenReturn(Optional.of(staff(UUID.randomUUID(), true)));
 
-        assertTrue(new ProductionStockTaskAccessPolicy(
-                em, current).canAccessWarehouseTasks());
-        verify(em, never()).createNativeQuery(anyString());
+        assertTrue(new ProductionStockTaskAccessPolicy(current, scopes).canAccessWarehouseTasks());
+        verify(scopes, never()).access();
+    }
+
+    @Test
+    void anonymousOrEmployeeLessAccountsNeverAccessWarehouseTasks() {
+        SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        when(current.get()).thenReturn(Optional.empty());
+        assertFalse(new ProductionStockTaskAccessPolicy(current, scopes).canAccessWarehouseTasks());
+        when(current.get()).thenReturn(Optional.of(staff(null, false)));
+        assertFalse(new ProductionStockTaskAccessPolicy(current, scopes).canAccessWarehouseTasks());
+        verify(scopes, never()).access();
+    }
+
+    private static WarehouseAccess access(Role role, boolean member) {
+        return new WarehouseAccess(role, List.of(), WarehouseTaskScope.ALL, member);
     }
 
     private static AuthUser staff(UUID employeeId, boolean superAdmin) {

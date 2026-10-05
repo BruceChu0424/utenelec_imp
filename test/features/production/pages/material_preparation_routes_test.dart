@@ -617,7 +617,7 @@ Future<List<RequestOptions>> _pump(
         }
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
-            {'id': 'warehouse-1', 'name': '主仓'},
+            {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/analysis-1' => analysis ?? _analysis(),
           '/production/material-analyses/analysis-1/notify' =>

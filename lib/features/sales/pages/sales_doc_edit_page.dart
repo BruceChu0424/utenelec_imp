@@ -36,6 +36,7 @@ import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/warehouse_defective_tag.dart';
 import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -723,6 +724,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           if (last.items.isNotEmpty &&
               WarehouseSelection(
                 ref.read(salesMasterNameServiceProvider).warehouseHierarchy,
+                use: widget.docType.warehouseUse,
               ).selectableIds.contains(last.items.first.warehouseId)) {
             _warehouseId = last.items.first.warehouseId;
             // 预填值黄标提醒核对（用户改选即清除）。
@@ -2032,10 +2034,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       } else {
         context.replace(SalesRoutePath.docDetail(_cfg.type.pathSegment, d.id));
       }
-    } on ApiException catch (e) {
-      if (mounted && isCurrent()) context.appError(e.message);
-    } catch (_) {
-      if (mounted && isCurrent()) context.appError('保存失败，请稍后重试');
+    } catch (error) {
+      // 服务端拒绝与本机草稿保护的原因都如实给人看(ADR-151 §2)。
+      if (mounted && isCurrent()) {
+        context.appError(describeSubmitError(error, fallback: '保存失败，请稍后重试'));
+      }
     } finally {
       if (isCurrent()) setState(() => _saving = false);
     }
@@ -2103,10 +2106,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       context.appError(
         uncertain ? '尚未确认开单结果，当前内容已保留。点击“重试确认开单”使用原请求查询结果。' : error.message,
       );
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(() => _uncertainShipmentBody = body);
-        context.appError('尚未确认开单结果，点击“重试确认开单”继续本次请求。');
+        context.appError(
+          describeSubmitError(error, fallback: '尚未确认开单结果，点击“重试确认开单”继续本次请求。'),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -3697,6 +3702,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                     : null,
                                                 items: warehouseHierarchyItems(
                                                   names.warehouseHierarchy,
+                                                  use: widget
+                                                      .docType
+                                                      .warehouseUse,
+                                                  defectiveTag: warehouseL10n(
+                                                    context,
+                                                  ).warehouseDefectiveTag,
                                                   currentValue: _warehouseId,
                                                 ),
                                                 onChanged: (v) {

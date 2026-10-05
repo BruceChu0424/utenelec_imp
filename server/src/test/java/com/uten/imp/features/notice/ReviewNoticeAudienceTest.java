@@ -13,6 +13,35 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ReviewNoticeAudienceTest {
+    /**
+     * ADR-149: 仓库类通知池按仓纳入了部门外登记的仓库负责人(如财务部的人负责五金仓库), 弹卡资格同口径,
+     * 否则发给他的待办只躺在通知列表里不弹卡。没登记负责人的部门外的人仍然不弹。
+     */
+    @Test
+    void outOfDepartmentWarehouseKeepersGetTheWarehouseActionCards() {
+        var permissions = Set.of("notice:read", "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:view",
+                "warehouse_iqc_stock_in:confirm", "stock_doc:view", "stock_doc:approve", "stock_doc:issue",
+                "warehouse_inbound:view", "warehouse_inbound:stock_in");
+        var events = List.of("SALES_SHIPMENT_PENDING_PICK", "PROCUREMENT_IQC_STOCK_IN_PENDING", "PRODUCTION_DRAW_PENDING",
+                "PRODUCTION_MATERIAL_DISCOVERY_PENDING", "PROCUREMENT_FINANCE_APPROVED");
+        for (String event : events) {
+            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), true)).as(event).isTrue();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("DEPT_FIN"), false)).as(event).isFalse();
+            assertThat(ReviewNoticeAudience.eligible(event, permissions, Set.of("SUB_WH"), false)).as(event).isTrue();
+        }
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        UUID employee = UUID.randomUUID();
+        UUID account = UUID.randomUUID();
+        var keeper = new AuthUser(account, employee, "finance-keeper", permissions, false, true, false);
+        when(jdbc.queryForList(anyString(), eq(String.class), eq(employee), eq(employee))).thenReturn(List.of("DEPT_FIN"));
+        when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
+                .thenReturn(true);
+        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(keeper)).containsAll(events);
+        when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
+                .thenReturn(false);
+        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(keeper)).doesNotContainAnyElementsOf(events);
+    }
+
     @Test
     void productionChangesReachTheCurrentPlanningReviewPoolAndStopAfterPermissionOrMembershipRemoval() {
         var events=Set.of("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED");

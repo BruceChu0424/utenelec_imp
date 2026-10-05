@@ -44,12 +44,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
             // "已开拣未出账"的中间态，原来减去 PICKING/PICKED/EXCEPTION 在途量的子查询已删除。
             Object[] capacity=(Object[])em.createNativeQuery("""
                     SELECT
-                      GREATEST(COALESCE((SELECT SUM(GREATEST(balance.qty-GREATEST(COALESCE(CAST(goods.min_qty AS NUMERIC),0),0),0))
-                          FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id
-                          WHERE balance.goods_id=:goods AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)),0)
-                        -COALESCE((SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations
-                          WHERE goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid) AND status=0 AND NOT is_deleted),0)
-                        ,0),
+                      fn_stock_global_usable(:goods, CAST(:color AS uuid)),
                       GREATEST(COALESCE((SELECT balance.qty-GREATEST(COALESCE(CAST(goods.min_qty AS NUMERIC),0),0)
                           FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id
                           WHERE balance.warehouse_id=:warehouse AND balance.goods_id=:goods

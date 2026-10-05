@@ -1258,6 +1258,38 @@ class _FqcApi extends ApiClient {
     'updatedAt': '2026-09-30T01:00:00Z',
     'unitName': '个',
   };
+
+  /// ADR-148：检查单办理页一行 = 一批实物；这里每份自成一批(批号 = 任务号)。
+  Map<String, dynamic> lot(String id) {
+    final row = inspection(id);
+    return {
+      'lotId': id,
+      'sourceReportId': row['sourceReportId'],
+      'reportNo': row['reportNo'],
+      'goodsName': row['goodsName'],
+      'unitName': row['unitName'],
+      'reportedQty': row['reportedQty'],
+      'passedQty': row['passedQty'],
+      'failedQty': row['failedQty'],
+      'remainingQty': row['remainingQty'],
+      'status': row['status'],
+      if (row['preStocked'] != null) 'preStocked': row['preStocked'],
+      'members': [
+        {
+          'inspectionId': id,
+          'sourceReportItemId': row['sourceReportItemId'],
+          'sliceRank': 0,
+          'kind': 'DEMAND',
+          'reportedQty': row['reportedQty'],
+          'passedQty': row['passedQty'],
+          'failedQty': row['failedQty'],
+          'remainingQty': row['remainingQty'],
+          'status': row['status'],
+        },
+      ],
+    };
+  }
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -1282,6 +1314,7 @@ class _FqcApi extends ApiClient {
           'status': 'ACTIVE',
         },
         'inspections': [for (final id in sheetRows) inspection(id)],
+        'lots': [for (final id in sheetRows) lot(id)],
       };
     }
     if (path.startsWith('${ApiEndpoints.productionQualityInspections}/')) {
@@ -1301,7 +1334,12 @@ class _FqcApi extends ApiClient {
   }) async {
     expect(path.endsWith('/decisions'), isTrue);
     beforePost?.call();
-    final id = path.split('/')[3];
+    // 检查单页按批判定(/lots/{lotId}/decisions)；单份详情页仍逐份(/{id}/decisions)。
+    final segments = path.split('/');
+    final lotDecision = segments.contains('lots');
+    final id = lotDecision
+        ? segments[segments.indexOf('lots') + 1]
+        : segments[3];
     final command = Map<String, dynamic>.from(body! as Map);
     calls.add((id: id, body: command));
     await responseGate;
@@ -1329,10 +1367,12 @@ class _FqcApi extends ApiClient {
     }
     afterPost?.call();
     if (outcome == 'commit-timeout') throw NetworkTimeoutException();
-    return {
-      'decisionEventId': 'decision-$id',
-      'inspection': inspection(id),
-      'replay': replay,
-    };
+    return lotDecision
+        ? {'lotCommandId': 'decision-$id', 'lot': lot(id), 'replay': replay}
+        : {
+            'decisionEventId': 'decision-$id',
+            'inspection': inspection(id),
+            'replay': replay,
+          };
   }
 }

@@ -181,7 +181,7 @@ class ProductionFqcInspectionServiceTest {
                         List.of(second, first), "fqc-batch-replay-01"));
         assertThatCode(() ->
                 ProductionFqcInspectionService.requirePassAllReplayCompatible(
-                        request.requestHash(), 2, request))
+                        request.requestHash(), request))
                 .doesNotThrowAnyException();
 
         var different = ProductionFqcInspectionService.normalizePassAllBatch(
@@ -189,7 +189,7 @@ class ProductionFqcInspectionServiceTest {
                         List.of(first), "fqc-batch-replay-01"));
         assertThatThrownBy(() ->
                 ProductionFqcInspectionService.requirePassAllReplayCompatible(
-                        request.requestHash(), 2, different))
+                        request.requestHash(), different))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("不同任务集合");
     }

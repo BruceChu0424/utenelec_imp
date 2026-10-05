@@ -35,13 +35,8 @@ extension ProcurementInboundOrderTypeUi on ProcurementInboundOrderType {
     ProcurementInboundOrderType.unknown => '未知来源',
   };
 
-  String? get receiptCreateRoute => switch (this) {
-    // 登记实际到货统一走仓库独立页：价格/币种不可见，保存即在同一业务动作中登记并送检。
-    ProcurementInboundOrderType.purchase => '/warehouse/inbound/receipts/new',
-    ProcurementInboundOrderType.subcontract =>
-      '/warehouse/inbound/receipts/new',
-    ProcurementInboundOrderType.unknown => null,
-  };
+  /// 能否在仓库登记实际到货(ADR-151 §5：采购与委外同一个登记页，按来源身份进页)。
+  bool get canRegisterArrival => this != ProcurementInboundOrderType.unknown;
 }
 
 class InboundExpectationItem {

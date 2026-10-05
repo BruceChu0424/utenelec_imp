@@ -70,6 +70,42 @@ class StockCountApprovalPostgresTest {
         assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",Integer.class,id));
     }
 
+    /**
+     * 盘点说明选填(V795/ADR-151): 不传、空串、只有空白都能送审, 统一存成 ""; 同一提交编号的不同空白写法
+     * 是同一次提交(重放返回同一单), 财务审核照常过账。2026-10-04 线上曾因 V766 约束要求至少 1 个字而 409。
+     */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @org.junit.jupiter.params.provider.ValueSource(strings={"   ","\t\n"})
+    void blankExplanationIsOptionalStoredEmptyAndStillPostsAfterFinanceApproval(String reason){
+        fixture.loginAs(maker);var input=input(world.goodsA(),"13",null,false);String command=key();
+        var request=controller.submit(new StockCountDtos.Submit(world.warehouseId(),reason,command,List.of(input)));
+        UUID id=(UUID)request.get("id");assertEquals("PENDING",request.get("status"));
+        assertEquals("",db.queryForObject("SELECT reason FROM stock_count_requests WHERE id=?",String.class,id));
+        assertEquals("",db.queryForObject("SELECT reason FROM stock_count_request_events WHERE request_id=? AND action='SUBMIT'",String.class,id));
+        for(String replay:Arrays.asList(null,""," \t ")){
+            assertEquals(id,controller.submit(new StockCountDtos.Submit(world.warehouseId(),replay,command,List.of(input))).get("id"),
+                    "空白说明的不同写法是同一次提交");
+        }
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_count_requests WHERE command_key=?",Integer.class,command));
+        qty("10");
+        fixture.loginAs(finance);
+        assertEquals("APPROVED",controller.approve(id,new StockCountDtos.Decision(0L,key(),null)).get("status"));
+        qty("13");
+    }
+
+    @Test void explanationLongerThan500CharactersIsAPlainValidationError(){
+        fixture.loginAs(maker);var input=input(world.goodsA(),"13",null,false);
+        var error=assertThrows(ApiException.class,()->controller.submit(
+                new StockCountDtos.Submit(world.warehouseId(),"盘".repeat(501),key(),List.of(input))));
+        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,error.getCode());
+        assertEquals("盘点说明最多500字",error.getMessage());
+        // 去掉首尾空白后正好 500 字是合法的。
+        var request=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"  "+"盘".repeat(500)+"  ",key(),List.of(input)));
+        assertEquals("盘".repeat(500),db.queryForObject("SELECT reason FROM stock_count_requests WHERE id=?",String.class,request.get("id")));
+        qty("10");
+    }
+
     @Test void rejectsUnauthorizedEntryAndRejectOrCancelNeverChangesBalances(){
         fixture.loginAs(outsider);assertThrows(AccessDeniedException.class,()->controller.scope(null));
         fixture.loginAs(maker);var input=input(world.goodsA(),"15",null,false);
@@ -161,15 +197,23 @@ class StockCountApprovalPostgresTest {
         qty("10");
     }
 
-    @Test void disabledWarehouseRemainsReviewableForRejectionButCannotBePosted(){
+    /**
+     * ADR-145: 还有库存的仓不能停用(数据库守卫逐条列出原因), 所以待审盘点不会落在停用仓上;
+     * 停用被拒后仓库照常可用, 盘点照常驳回/审核。
+     */
+    @Test void warehouseHoldingStockCannotBeRetiredWhileItsCountIsPending(){
         fixture.loginAs(maker);var request=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"停用前盘点",key(),
                 List.of(input(world.goodsA(),"12",null,false))));
-        UUID id=(UUID)request.get("id");db.update("UPDATE warehouses SET status='禁用' WHERE id=?",world.warehouseId());
+        UUID id=(UUID)request.get("id");
+        var refused=assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                ()->db.update("UPDATE warehouses SET status='禁用' WHERE id=?",world.warehouseId()));
+        assertTrue(refused.getMessage().contains("现在不能停用"),refused.getMessage());
+        assertTrue(refused.getMessage().contains("有库存"),refused.getMessage());
+        assertEquals("使用",db.queryForObject("SELECT status FROM warehouses WHERE id=?",String.class,world.warehouseId()));
         fixture.loginAs(finance);
         assertEquals("PENDING",controller.detail(id).get("status"));
         assertTrue(controller.list("FINANCE","PENDING",world.warehouseId(),1,50).getItems().stream().anyMatch(r->id.equals(r.get("id"))));
-        assertThrows(ApiException.class,()->controller.approve(id,new StockCountDtos.Decision(0L,key(),null)));
-        assertEquals("REJECTED",controller.reject(id,new StockCountDtos.Decision(0L,key(),"仓库已停用，请重新核对")).get("status"));
+        assertEquals("REJECTED",controller.reject(id,new StockCountDtos.Decision(0L,key(),"请重新核对")).get("status"));
         qty("10");
     }
 
@@ -182,10 +226,11 @@ class StockCountApprovalPostgresTest {
         controller.cancel((UUID)cancelled.get("id"),new StockCountDtos.Decision(0L,key(),null));
         fixture.loginAs(finance);
         controller.reject((UUID)rejected.get("id"),new StockCountDtos.Decision(0L,key(),"recheck"));
-        db.update("UPDATE warehouses SET status='禁用' WHERE id=?",world.warehouseId());
+        // ADR-145: the counted warehouse still holds stock, so it cannot be retired; counts and
+        // scoped lists are compared on the live warehouse.
         for (UUID actor:List.of(maker,finance,warehouseReviewer,world.superAdminUserId())) {
             fixture.loginAs(actor);
-            var actual=controller.counts();
+            var actual=controller.counts(null);
             boolean admin=actor.equals(world.superAdminUserId());
             assertEquals(admin||actor.equals(finance)?controller.list("FINANCE","PENDING",null,1,1).getTotal():0L,actual.get("financePending"));
             assertEquals(admin||actor.equals(warehouseReviewer)?controller.list("WAREHOUSE","PENDING",null,1,1).getTotal():0L,actual.get("warehousePending"));
@@ -193,11 +238,11 @@ class StockCountApprovalPostgresTest {
             assertEquals(admin||actor.equals(maker)?controller.list(null,"REJECTED",null,1,1).getTotal():0L,actual.get("myRejected"));
         }
         fixture.loginAs(maker);
-        assertEquals(1L,controller.counts().get("myPending"));
-        assertEquals(1L,controller.counts().get("myRejected"));
+        assertEquals(1L,controller.counts(null).get("myPending"));
+        assertEquals(1L,controller.counts(null).get("myRejected"));
         assertEquals("PENDING",controller.detail((UUID)pending.get("id")).get("status"));
         fixture.loginAs(outsider);
-        assertThrows(AccessDeniedException.class,controller::counts);
+        assertThrows(AccessDeniedException.class,()->controller.counts(null));
     }
 
     private StockCountDtos.LineInput input(UUID goods,String qty,String weight,boolean weightChanged){

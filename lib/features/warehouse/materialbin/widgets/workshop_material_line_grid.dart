@@ -115,6 +115,8 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
   Map<String, WmPositionRow> positionByKey = const {},
   String? qtyLabel,
   Future<WmMaterialOption?> Function()? pickMaterial,
+  Future<String?> Function(WmIssueLineRow row)? pickLeafWarehouse,
+  String? Function(String warehouseId)? warehouseNameOf,
   VoidCallback? onChanged,
 }) {
   final byKey = {for (final m in materials) m.key: m};
@@ -128,10 +130,29 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
 
   WmLeafStock? leafOf(WmIssueLineRow row) {
     final id = row.leafWarehouseId.value;
-    for (final w in wmLeafOptions(row.material.value)) {
+    final options = row.requisitionLine != null
+        ? _requisitionLeafOptions(row, materials)
+        : wmLeafOptions(row.material.value);
+    for (final w in options) {
       if (w.warehouseId == id) return w;
     }
     return null;
+  }
+
+  /// 出库仓库的显示: 名称 (可发 N 单位); 不在有货清单里的仓按仓库层级取名。
+  String leafText(WmIssueLineRow row) {
+    final id = row.leafWarehouseId.value;
+    if (id == null) return '';
+    final leaf = leafOf(row);
+    final name = leaf?.warehouseName.isNotEmpty == true
+        ? leaf!.warehouseName
+        : (warehouseNameOf?.call(id) ?? '');
+    final unit =
+        row.material.value?.unitName ?? row.requisitionLine?.unitName ?? '';
+    final available = leaf?.availableQty ?? 0;
+    return available > 0
+        ? '$name (${l10n.wmLeafAvailable(wmQty(available), unit)})'
+        : name;
   }
 
   return [
@@ -207,54 +228,47 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
     if (showLeafWarehouse)
       EditableGridColumn<WmIssueLineRow>(
         key: 'leaf',
-        label: leafLabel ?? '出库仓库',
-        width: 180,
+        label: leafLabel ?? l10n.wmLeafColumn,
+        width: 200,
         required: true,
-        textOf: (row) => leafOf(row)?.warehouseName ?? '',
+        textOf: (row) => leafText(row),
         listenableOf: (row) => row.leafWarehouseId,
+        // 出库仓库走全站仓库滑窗 (先主仓, 再子仓; 只能选启用中的良品子仓), 默认值是服务端
+        // fn_workshop_bin_default_source 给出的默认出库仓 (ADR-147)。
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
           valueListenable: row.leafWarehouseId,
-          builder: (context, value, _) => ValueListenableBuilder<WmMaterialOption?>(
-            valueListenable: row.material,
-            builder: (context, material, _) {
-              final options = row.requisitionLine != null
-                  ? _requisitionLeafOptions(row, materials)
-                  : wmLeafOptions(material);
-              return RequiredCellFrame(
-                listenable: row.leafWarehouseId,
-                isEmpty: () => row.leafWarehouseId.value == null,
-                child: UtenDropdownField(
-                  key: ValueKey('wm-line-leaf-${row.id}'),
-                  dense: true,
-                  enabled: enabled && options.isNotEmpty,
-                  allowClear: false,
-                  value: value,
-                  hintText: '选择仓库',
-                  items: [
-                    for (final w in options)
-                      UtenDropdownItem(
-                        value: w.warehouseId,
-                        label: w.availableQty > 0
-                            ? '${w.warehouseName} (${wmQty(w.availableQty)} ${material?.unitName ?? row.requisitionLine?.unitName ?? ''})'
-                            : w.warehouseName,
-                      ),
-                  ],
-                  onChanged: (id) {
-                    for (final target in targets(row)) {
-                      final allowed = target.requisitionLine != null
-                          ? _requisitionLeafOptions(target, materials)
-                          : wmLeafOptions(target.material.value);
-                      if (target == row ||
-                          allowed.any((w) => w.warehouseId == id)) {
-                        target.leafWarehouseId.value = id;
-                      }
-                    }
-                    onChanged?.call();
-                  },
+          builder: (context, value, _) =>
+              ValueListenableBuilder<WmMaterialOption?>(
+                valueListenable: row.material,
+                builder: (context, material, _) => RequiredCellFrame(
+                  listenable: row.leafWarehouseId,
+                  isEmpty: () => row.leafWarehouseId.value == null,
+                  child: TextButton(
+                    key: ValueKey('wm-line-leaf-${row.id}'),
+                    style: TextButton.styleFrom(
+                      alignment: AlignmentDirectional.centerStart,
+                    ),
+                    onPressed:
+                        !enabled ||
+                            pickLeafWarehouse == null ||
+                            (material == null && row.requisitionLine == null)
+                        ? null
+                        : () async {
+                            final picked = await pickLeafWarehouse(row);
+                            if (!context.mounted || picked == null) return;
+                            for (final target in targets(row)) {
+                              target.leafWarehouseId.value = picked;
+                            }
+                            onChanged?.call();
+                          },
+                    child: Text(
+                      value == null ? l10n.wmLeafPick : leafText(row),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 ),
-              );
-            },
-          ),
+              ),
         ),
       ),
     EditableGridColumn<WmIssueLineRow>(

@@ -350,15 +350,12 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   if (location == RouteName.warehouseProductionFinishedInboundTasks ||
       location == RouteName.warehouseProductionFinishedBatchStockIn ||
-      location.startsWith(
-        '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}/',
-      )) {
+      location == RouteName.warehouseProductionFinishedArrivalRegistration) {
     return const [Perm.stockDocView];
   }
   // 到货异常确认入库是独立高影响动作，不再借用收货单编辑权限。
-  // 2026-09-06 批量登记页（入库任务中心多选落点）与单张登记页同权。
-  if (location == RouteName.warehouseArrivalReceiptNew ||
-      location == RouteName.warehouseArrivalReceiptBatch) {
+  // ADR-151 §5：登记实际到货单批合一，只有一个登记页。
+  if (location == RouteName.warehouseArrivalRegistration) {
     return const [Perm.warehouseInboundStockIn];
   }
   if (location == RouteName.warehouseReport ||

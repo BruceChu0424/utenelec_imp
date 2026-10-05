@@ -87,7 +87,7 @@ public class StockQueryService {
      *
      * @param categoryId          货品分类 id(含全部后代，递归 CTE)；null=全部
      * @param warehouseId         仓库 id；null=全部(仅 is_accountable 参与核算仓库)；选父仓=自身+全部子仓聚合
-     * @param includeDefective    是否含不良品仓(仓库=全部或父仓聚合时生效)
+     * @param includeDefective    是否含不良品仓(仓库=全部或父仓聚合时生效; ADR-146 默认不含, 打开时不良品另列)
      * @param includeLineSide     是否含线边仓(V595；仓库=全部或父仓聚合时默认剔除)
      * @param keyword             名称/编号/型号/客户型号 模糊；null=不筛
      * @param owningWarehouse     V587/V590 所属仓库表头筛选
@@ -381,8 +381,7 @@ public class StockQueryService {
                     decimal(r[22]),
                     r[23] == null ? null : r[23].toString(),
                     !canViewCost,
-                    r.length > 37 ? (UUID) r[37] : null,
-                    r.length > 38 ? (String) r[38] : null));
+                    (UUID) r[37], (String) r[38], decimal(r[39])));
         }
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
@@ -571,7 +570,8 @@ public class StockQueryService {
                            AND COALESCE(stock_in.pending_stock_in_qty, 0) > 0
                            THEN 1 ELSE 0 END AS nonpositive_pending_stock_in_rows,
                        COALESCE(base.negative_balance_rows, 0) AS negative_balance_rows,
-                       g.owning_warehouse_id, ow.name AS owning_warehouse_name
+                       g.owning_warehouse_id, ow.name AS owning_warehouse_name,
+                       COALESCE(base.defective_qty, 0) AS defective_qty
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,
@@ -580,23 +580,25 @@ public class StockQueryService {
                                 ELSE COALESCE(SUM(u.weight), 0) END AS weight,
                            COALESCE(bool_or(u.weight_estimated), false) AS weight_estimated,
                            SUM(u.amount_local) AS amount_local,
-                           SUM(CASE WHEN u.qty < 0 THEN 1 ELSE 0 END) AS negative_balance_rows
+                           SUM(CASE WHEN u.qty < 0 THEN 1 ELSE 0 END) AS negative_balance_rows,
+                           SUM(CASE WHEN u.defective THEN u.qty ELSE 0 END) AS defective_qty
                     FROM (
-                        (SELECT b.goods_id, b.color_id, b.qty, b.weight, b.weight_estimated, b.amount_local
+                        (SELECT b.goods_id, b.color_id, b.qty, b.weight, b.weight_estimated, b.amount_local,
+                                w.is_defective AS defective
                          FROM stock_balances b
                          JOIN warehouses w ON w.id = b.warehouse_id
                 """ + balWhere + """
                         )
                         UNION ALL
                         -- 待检品尚无余额行：并入 0 量占位行，保证「货在待检」在即时库存可见(行粒度=货品×颜色)。
-                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0
+                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0, false
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id)
                 """ + iqcWhere + """
                         )
                         UNION ALL
                         -- 品质已放行但仓库尚未确认：仍无余额行，也必须留在即时库存视图。
-                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0
+                        (SELECT i.goods_id, i.color_id, 0, CAST(NULL AS NUMERIC), false, 0, false
                          FROM procurement_inspection_items i
                          JOIN warehouses w ON w.id = i.warehouse_id
                 """ + stockInWhere + """
@@ -701,6 +703,9 @@ public class StockQueryService {
                             com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT, null),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
                             "qty", "合计库存数量", "number", "unit_name"),
+                    // ADR-146: 合计库存数量含了「含不良品仓」打开时的不良品, 这里单列其中的不良品。
+                    new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
+                            "defective_qty", "其中不良品数量", "number", "unit_name"),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
                             "pending_qty", "合计待检量", "number", "unit_name"),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(

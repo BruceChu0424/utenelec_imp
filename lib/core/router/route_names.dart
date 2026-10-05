@@ -287,14 +287,10 @@ abstract final class RouteName {
       '$warehouseQualityResults/${Uri.encodeComponent(receiptType.trim().toUpperCase())}/'
       '${Uri.encodeComponent(receiptId.trim())}';
 
-  /// 仓库登记实际到货独立页（价格/币种对仓库不可见；extra 带 ProcurementReceiptPrefill）。
-  static const String warehouseArrivalReceiptNew =
-      '/warehouse/inbound/receipts/new';
-
-  /// 仓库批量登记实际到货页（入库任务中心多选「先质检后入库」/「先入库后质检」落点；
-  /// extra 带 `List<ProcurementReceiptPrefill>`，每张=一张订货单）。
-  static const String warehouseArrivalReceiptBatch =
-      '/warehouse/inbound/receipts/batch';
+  /// 登记实际到货页(ADR-151 §5 单批合一)：预计到货双击 = 1 个来源、多选 = N 个来源，同一个页面；
+  /// 来源身份走 `?expectationIds=a,b`(刷新、草稿恢复都能重新读到)，路线走 `?preStock=1|0`。
+  static const String warehouseArrivalRegistration =
+      '/warehouse/inbound/arrivals/register';
 
   /// 采购/委外 IQC 待检处置任务中心（sidecar 前端入口）+ 单据处置页。
   static const String warehouseInspections = '/warehouse/inspections';
@@ -319,15 +315,12 @@ abstract final class RouteName {
   static const String warehouseProductionFinishedBatchStockIn =
       '/warehouse/production-finished-in/batch-stock-in';
 
-  /// 单张生产报工的成品仓/库位登记页；reportId 是不可变报工 UUID。
+  /// 产成品登记实际入库页(ADR-151 §5 单批合一)：双击 = 1 张报工、多选 = N 张报工，同一个页面；
+  /// 来源走 `?reportIds=a,b`，路线走 `?preStock=1|0`(不带 = 两条路线并排)。
   static const String warehouseProductionFinishedArrivalRegistrationBase =
       '/warehouse/production-finished-in/arrival-registrations';
   static const String warehouseProductionFinishedArrivalRegistration =
-      '$warehouseProductionFinishedArrivalRegistrationBase/:reportId';
-
-  /// 多报工单汇总登记页（多选后一次提交逐单 FQC）；须先于 :reportId 声明。
-  static const String warehouseProductionFinishedArrivalBatchRegistration =
-      '$warehouseProductionFinishedArrivalRegistrationBase/batch';
+      warehouseProductionFinishedArrivalRegistrationBase;
 
   /// 品质管理部任务中心（待检处置等品质任务的统一入口）。
   static const String qualityTaskCenter = '/quality/task-center';
@@ -643,54 +636,49 @@ abstract final class RoutePath {
   static String stockDocEdit(String code, String id) =>
       '/warehouse/$code/$id/edit';
 
+  /// 产成品登记页深链(单张 = 1 个来源、多选 = N 个来源)：reportIds 逗号拼接进 query(可恢复)；
+  /// [stockInBeforeInspection] = 任务中心多选时点的路线(`preStock=1|0`)，双击进来为空(两条路线并排)。
   static String warehouseProductionFinishedArrivalRegistration(
-    String reportId, {
-    String? returnTo,
-  }) {
-    final path =
-        '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}/'
-        '${Uri.encodeComponent(reportId.trim())}';
-    final safeReturnTo = sanitizeReturnTo(
-      returnTo,
-      scope: ReturnToScope.employee,
-    );
-    return safeReturnTo == null
-        ? path
-        : Uri.parse(
-            path,
-          ).replace(queryParameters: {'returnTo': safeReturnTo}).toString();
-  }
-
-  /// 多报工单汇总登记深链：reportIds 逗号拼接进 query（正式导航也走 URL，可恢复）。
-  /// [stockInBeforeInspection] = 任务中心点的是「先入库后质检(N)」(`preStock=1`，
-  /// 与采购/委外批量登记页同一参数)，页面只显示所选路线的提交按钮。
-  static String warehouseProductionFinishedArrivalBatchRegistration(
     List<String> reportIds, {
     String? returnTo,
-    bool stockInBeforeInspection = false,
+    bool? stockInBeforeInspection,
   }) {
     final ids = reportIds
-        .map((id) => Uri.encodeComponent(id.trim()))
+        .map((id) => id.trim())
         .where((id) => id.isNotEmpty)
         .join(',');
-    final path =
-        '${RouteName.warehouseProductionFinishedArrivalBatchRegistration}'
-        '?reportIds=$ids${stockInBeforeInspection ? '&preStock=1' : ''}';
     final safeReturnTo = sanitizeReturnTo(
       returnTo,
       scope: ReturnToScope.employee,
     );
-    return safeReturnTo == null
-        ? path
-        : Uri.parse(path)
-              .replace(
-                queryParameters: {
-                  'reportIds': ids,
-                  if (stockInBeforeInspection) 'preStock': '1',
-                  'returnTo': safeReturnTo,
-                },
-              )
-              .toString();
+    return Uri(
+      path: RouteName.warehouseProductionFinishedArrivalRegistration,
+      queryParameters: {
+        'reportIds': ids,
+        if (stockInBeforeInspection != null)
+          'preStock': stockInBeforeInspection ? '1' : '0',
+        'returnTo': ?safeReturnTo,
+      },
+    ).toString();
+  }
+
+  /// 登记实际到货页深链(单张 = 1 个来源、多选 = N 个来源)：expectationIds 逗号拼接进 query。
+  static String warehouseArrivalRegistration(
+    List<String> expectationIds, {
+    bool? stockInBeforeInspection,
+  }) {
+    final ids = expectationIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .join(',');
+    return Uri(
+      path: RouteName.warehouseArrivalRegistration,
+      queryParameters: {
+        'expectationIds': ids,
+        if (stockInBeforeInspection != null)
+          'preStock': stockInBeforeInspection ? '1' : '0',
+      },
+    ).toString();
   }
 
   static String procurementArrivalException(String id) =>

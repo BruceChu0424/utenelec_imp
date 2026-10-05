@@ -17,6 +17,10 @@ public class ReviewNoticeAudience {
     private final JdbcTemplate jdbc;
 
     static final String WORKSHOP_EVENT = "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
+    /** 仓库类待办(销售待拣货、IQC 待入库、生产待领料/领料发现、采购财务通过)的动手权限。 */
+    private static final String[] WAREHOUSE_ACTION_PERMISSIONS = {
+            "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:confirm", "stock_doc:issue",
+            "warehouse_inbound:stock_in"};
     private static final UUID NO_EMPLOYEE = new UUID(0, 0);
 
     /** Bounded organization scope, never a list of all execution segments. */
@@ -90,16 +94,32 @@ public class ReviewNoticeAudience {
                     JOIN ancestry a ON a.parent_id = d.id WHERE d.is_deleted = FALSE
                 ) SELECT DISTINCT code FROM ancestry
                 """, String.class, user.getEmployeeId(), user.getEmployeeId()));
+        // ADR-149: 部门外登记的仓库负责人与仓储部门负责人是仓库任务的参与者, 仓库类通知池按仓纳入了他们,
+        // 弹卡资格同口径(否则发给部门外负责人的待办只在通知列表里, 不弹卡)。只有部门外、又持有仓库待办动手权限的人
+        // 才需要多问这一次。
+        boolean warehouseParticipant = !departments.contains("SUB_WH")
+                && any(user.getPermissions(), WAREHOUSE_ACTION_PERMISSIONS)
+                && Boolean.TRUE.equals(jdbc.queryForObject(
+                        "SELECT CAST(? AS uuid) = ANY(fn_warehouse_responsible_user_ids())", Boolean.class, user.getId()));
         return ReviewNoticeCatalog.events().stream()
-                .filter(event -> eligible(event, user.getPermissions(), departments))
+                .filter(event -> eligible(event, user.getPermissions(), departments, warehouseParticipant))
                 .collect(Collectors.toUnmodifiableSet());
     }
 
     static boolean eligible(String event, Set<String> permissions, Set<String> departments) {
+        return eligible(event, permissions, departments, false);
+    }
+
+    /**
+     * @param warehouseParticipant 部门外登记的仓库负责人或仓储部门负责人: 仓库类待办与仓储部门成员同等对待
+     */
+    static boolean eligible(String event, Set<String> permissions, Set<String> departments,
+                            boolean warehouseParticipant) {
         if (!permissions.contains("notice:read")) return false;
+        boolean warehouseSide = departments.contains("SUB_WH") || warehouseParticipant;
         return switch (event) {
             case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> departments.contains("DEPT_FIN") && permissions.contains("sales_shipment_finance:approve");
-            case "SALES_SHIPMENT_PENDING_PICK" -> departments.contains("SUB_WH") && permissions.contains("warehouse_sales_outbound:execute");
+            case "SALES_SHIPMENT_PENDING_PICK" -> warehouseSide && permissions.contains("warehouse_sales_outbound:execute");
             case "SALES_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_shipment:view","sales_shipment:edit"));
             case "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_other_shipment:view","sales_other_shipment:edit"));
             case "SALES_ORDER_PENDING_FINANCE_CONFIRM" -> departments.contains("DEPT_FIN")
@@ -125,11 +145,11 @@ public class ReviewNoticeAudience {
             // 计划 / 生产部门池 + 制单计划员 + 分析可见范围精确算好，这里不再卡部门(制单人不在池里也要弹)。
             case "PRODUCTION_PLANNING_URGED" -> permissions.contains("production_material_analysis:view")
                     && any(permissions, "production_material_analysis:notify", "production_material_analysis:generate");
-            case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> departments.contains("SUB_WH")
+            case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> warehouseSide
                     && permissions.containsAll(Set.of("warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm"));
-            case "PRODUCTION_DRAW_PENDING", "PRODUCTION_MATERIAL_DISCOVERY_PENDING" -> departments.contains("SUB_WH")
+            case "PRODUCTION_DRAW_PENDING", "PRODUCTION_MATERIAL_DISCOVERY_PENDING" -> warehouseSide
                     && permissions.containsAll(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
-            case "PROCUREMENT_FINANCE_APPROVED" -> departments.contains("SUB_WH")
+            case "PROCUREMENT_FINANCE_APPROVED" -> warehouseSide
                     && permissions.containsAll(Set.of("warehouse_inbound:view", "warehouse_inbound:stock_in"));
             case "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP" -> any(departments, "DEPT_SALES", "DEPT_RAIL")
                     && permissions.containsAll(Set.of("sales_order:view", "sales_shipment:create"));

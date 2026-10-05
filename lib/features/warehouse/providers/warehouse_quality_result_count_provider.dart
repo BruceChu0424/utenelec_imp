@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
 
 /// 品质部检查结果合并页「来源大类」两枚计数的来源(页内分段用)。
 ///
@@ -10,10 +11,13 @@ import '../../../shared/badges/badge_registry.dart';
 /// inProgress = 等待检查结果(货已收、结论在品质部手上, 仓库不用动手)。
 /// 随工作台徽章汇总一次带回(ADR-108, 原端点 /warehouse/quality-results/type-counts
 /// 同一次聚合), hub 卡红黄两枚(warehouseQualityResult 入口)由服务端目录按全部来源之和
-/// 算好, 与这里各来源之和天然一致。
+/// 算好, 与这里各来源之和天然一致。与列表同一服务端仓库范围(ADR-149, 任务中心选了仓 =
+/// 按所选仓汇总)。
 final warehouseQualityResultTypeCountsProvider =
-    Provider<WarehouseQualityTypeCounts>((ref) {
-      final facts = ref.watch(badgeSummaryProvider.select((s) => s.facts));
+    Provider.autoDispose<WarehouseQualityTypeCounts>((ref) {
+      final facts = ref.watch(
+        warehouseTaskBadgesProvider.select((s) => s.facts),
+      );
       return WarehouseQualityTypeCounts(
         actionable: {
           for (final type in WarehouseIqcStockInReceiptType.values)

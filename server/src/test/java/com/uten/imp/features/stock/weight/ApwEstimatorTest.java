@@ -394,7 +394,7 @@ class ApwEstimatorTest {
         // 基本单位是重量单位 → EXACT, 单重 = 换算系数
         GoodsWeightFacts kgGoods = new GoodsWeightFacts(UUID.randomUUID(), true, UUID.randomUUID(), "G", "MASS",
                 null, null, Profile.missing(), null, null);
-        WeightParamsResolver.Resolution exact = WeightParamsResolver.resolve(kgGoods, null, "k", Instant.now(),
+        WeightParamsResolver.Resolution exact = WeightParamsResolver.resolve(kgGoods, null, null, Instant.now(),
                 CFG.scaleResKg());
         assertThat(exact.basis()).isEqualTo(WeightParamsResolver.BASIS_EXACT);
         assertThat(exact.params().massFactorKg()).isEqualByComparingTo("0.001");
@@ -443,7 +443,7 @@ class ApwEstimatorTest {
                 true, Profile.REGIME_AUTO, null, 1, null, null);
         GoodsWeightFacts goods = new GoodsWeightFacts(UUID.randomUUID(), true, unit, null, "COUNT", null, null,
                 manual, toRow(r.pool(), r.asOf()), null);
-        WeightParamsResolver.Resolution resolution = WeightParamsResolver.resolve(goods, null, "k", day(200),
+        WeightParamsResolver.Resolution resolution = WeightParamsResolver.resolve(goods, null, null, day(200),
                 CFG.scaleResKg());
         assertThat(resolution.basis()).isEqualTo(WeightParamsResolver.BASIS_MANUAL);
         assertRel(resolution.params().manualConflictPct(), 2.5067460069333025);
@@ -461,7 +461,7 @@ class ApwEstimatorTest {
         // 基本单位改过 (manual_unit_id 对不上) → 人工值失效, 回到学习结果
         GoodsWeightFacts unitChanged = new GoodsWeightFacts(goods.goodsId(), true, UUID.randomUUID(), null, "COUNT",
                 null, null, manual, goods.pool(), null);
-        assertThat(WeightParamsResolver.resolve(unitChanged, null, "k", day(200), CFG.scaleResKg()).basis())
+        assertThat(WeightParamsResolver.resolve(unitChanged, null, null, day(200), CFG.scaleResKg()).basis())
                 .isEqualTo(WeightParamsResolver.BASIS_LEARNED);
     }
 
@@ -496,7 +496,7 @@ class ApwEstimatorTest {
         // 设计单重 (MASTER_PRIOR) 只给参考, 永不告警
         GoodsWeightFacts prior = new GoodsWeightFacts(UUID.randomUUID(), true, UUID.randomUUID(), null, "COUNT",
                 new BigDecimal("2.0000"), "G", Profile.missing(), null, null);
-        WeightParamsResolver.Resolution master = WeightParamsResolver.resolve(prior, null, "k", day(100),
+        WeightParamsResolver.Resolution master = WeightParamsResolver.resolve(prior, null, null, day(100),
                 CFG.scaleResKg());
         assertThat(master.basis()).isEqualTo(WeightParamsResolver.BASIS_MASTER_PRIOR);
         assertThat(master.tier()).isEqualTo(Tier.RED);
@@ -683,7 +683,7 @@ class ApwEstimatorTest {
         GoodsWeightFacts goods = new GoodsWeightFacts(UUID.randomUUID(), true, UUID.randomUUID(), null, "COUNT",
                 null, null, Profile.missing(), toRow(r.pool(), r.asOf()), null);
         return WeightParamsResolver.resolve(goods, supplierRow == null ? null : toRow(supplierRow, r.asOf()),
-                supplierId == null ? "k" : supplierId.toString(), now, CFG.scaleResKg());
+                supplierId, now, CFG.scaleResKg());
     }
 
     /** 模拟落库再读回的一行 (与 GoodsWeightEstimateService.upsert 的列一一对应)。 */

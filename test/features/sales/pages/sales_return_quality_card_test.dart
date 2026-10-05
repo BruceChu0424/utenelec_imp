@@ -405,7 +405,7 @@ class _ReturnQualityApi extends ApiClient {
     }
     if (path == ApiEndpoints.warehousesDict) {
       return const [
-        {'id': 'warehouse-1', 'name': '成品仓'},
+        {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
       ];
     }
     if (path == ApiEndpoints.colorsDict) {

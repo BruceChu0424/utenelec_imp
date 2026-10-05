@@ -545,7 +545,7 @@ class FulfillmentWorkbenchQueryServiceTest {
     @Test
     void warehouseCountEndpointRequiresStockDocumentView() throws Exception {
         Method method = FulfillmentWorkbenchController.class.getDeclaredMethod(
-                "warehouseCount");
+                "warehouseCount", java.util.UUID.class);
         assertEquals(
                 "hasAuthority('stock_doc:view')",
                 method.getAnnotation(PreAuthorize.class).value());

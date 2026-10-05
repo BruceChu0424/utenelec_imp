@@ -894,7 +894,12 @@ Future<void> _pump(
         final path = request.path;
         if (path == '/master/warehouses/dict') {
           result = [
-            {'id': 'warehouse-1', 'name': '原料仓', 'code': '001'},
+            {
+              'id': 'warehouse-1',
+              'name': '原料仓',
+              'code': '001',
+              'selectableForNew': true,
+            },
           ];
         } else if (path.endsWith('/default-workshops')) {
           if (defaultWorkshopsGate != null) await defaultWorkshopsGate;

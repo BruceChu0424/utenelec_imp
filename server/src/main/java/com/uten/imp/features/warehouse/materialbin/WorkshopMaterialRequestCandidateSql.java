@@ -1,6 +1,6 @@
 package com.uten.imp.features.warehouse.materialbin;
 
-/** 申请候选只读 SQL；不改变共享的 PERIODIC 发料/退料候选契约。 */
+/** 申请候选只读 SQL；默认出库仓只由 fn_workshop_bin_default_source 给出(ADR-147)。 */
 final class WorkshopMaterialRequestCandidateSql {
     private WorkshopMaterialRequestCandidateSql() {}
 
@@ -21,7 +21,7 @@ final class WorkshopMaterialRequestCandidateSql {
                     WHERE balance.qty <> 0
                 ), accounting AS MATERIALIZED (
                     SELECT leaf.warehouse_id FROM (SELECT DISTINCT warehouse_id FROM balances) leaf
-                    WHERE fn_warehouse_is_active_accounting_leaf(leaf.warehouse_id)
+                    WHERE fn_warehouse_is_good_stock_leaf(leaf.warehouse_id)
                 ), stocked AS MATERIALIZED (
                     SELECT balances.* FROM balances JOIN accounting ON accounting.warehouse_id = balances.warehouse_id
                 )
@@ -42,14 +42,14 @@ final class WorkshopMaterialRequestCandidateSql {
                     SELECT candidate.goods_id, candidate.color_id, goods.code, goods.name,
                            color.name AS color_name, unit.name AS unit_name,
                            goods.bulk_package_qty, goods.periodic_cost_basis, goods.min_qty,
-                           owning.id AS owning_warehouse_id, owning.name AS owning_name,
+                           default_leaf.id AS default_leaf_id, default_leaf.name AS default_leaf_name,
                            EXISTS (SELECT 1 FROM used WHERE used.goods_id = candidate.goods_id
                                      AND used.color_id IS NOT DISTINCT FROM candidate.color_id) AS used
                     FROM candidate_keys candidate JOIN goods ON goods.id = candidate.goods_id
                     JOIN units unit ON unit.id = goods.unit_id
                     LEFT JOIN colors color ON color.id = candidate.color_id
-                    LEFT JOIN warehouses owning ON owning.id = goods.owning_warehouse_id
-                      AND fn_warehouse_is_active_accounting_leaf(owning.id)
+                    LEFT JOIN warehouses default_leaf ON default_leaf.id = fn_workshop_bin_default_source(
+                        CAST(:bin AS uuid), candidate.goods_id, candidate.color_id)
                     WHERE (candidate.color_id IS NULL OR (color.id IS NOT NULL AND NOT color.is_deleted
                            AND color.status = '使用'))
                       AND (CAST(:keyword AS text) IS NULL OR
@@ -70,7 +70,7 @@ final class WorkshopMaterialRequestCandidateSql {
                                      AND reservation.goods_id = candidate.goods_id
                                      AND reservation.color_id IS NOT DISTINCT FROM candidate.color_id
                                      AND (reservation.warehouse_id IS NULL
-                                          OR fn_warehouse_is_active_accounting_leaf(reservation.warehouse_id))), 0)
+                                          OR fn_warehouse_is_good_stock_leaf(reservation.warehouse_id))), 0)
                        - GREATEST(COALESCE(candidate.min_qty::numeric, 0), 0), 0) AS available
             FROM candidates candidate
             ORDER BY candidate.used DESC, candidate.code, candidate.goods_id,

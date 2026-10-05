@@ -547,14 +547,19 @@ void main() {
     },
   );
 
-  // ADR-115：任务中心选「我的仓库」时，待领任务列表按该范围请求；骨架外默认全部仓库。
+  // ADR-149：任务中心选了某个仓时，待领任务列表按该仓请求；骨架外不带参数(服务端按本人范围过滤)。
   testWidgets('pending tasks are requested within the task-center scope', (
     tester,
   ) async {
     final repo = _FakeRepository()..pages[1] = [_task('d1')];
-    await _pump(tester, repo, _issuer, scope: const WarehouseTaskScope.mine());
+    await _pump(
+      tester,
+      repo,
+      _issuer,
+      scope: const WarehouseTaskScope.warehouse('wh-a'),
+    );
     expect(repo.scopes, isNotEmpty);
-    expect(repo.scopes.last, const WarehouseTaskScope.mine());
+    expect(repo.scopes.last, const WarehouseTaskScope.warehouse('wh-a'));
 
     final unscoped = _FakeRepository()..pages[1] = [_task('d2')];
     await _pump(tester, unscoped, _issuer);

@@ -3,6 +3,8 @@
 // - POST /stock/weight/params: 一页一次批量取每行 (货品, 供应商) 的单重参数 (<= 500 行/次),
 //   表格敲字时的件数折算/应称重量/偏差告警全部在客户端用 [WeightPredictor] 算;
 //   服务端仍是过账重量的权威 (估算永远不写进单据)。
+//   请求行只带结构化身份 (goodsId/supplierId/warehouseId/colorId), 不拼字符串 key (ADR-151);
+//   响应分开给单重 items (按货品+供应商) 与库存均重参考 stockBalances (按仓库+货品+颜色)。
 // - 单货品详情/称重记录/称样校准/单重设置/排除恢复/重新学习/核重 走同一个 [WeightRepository]。
 // - 权限: 称样 = warehouse_inbound:stock_in 或 stock_doc:edit 或 stock:weight:manage;
 //   设定单重/排除/重新学习/设置/核重 = stock:weight:manage。
@@ -56,39 +58,64 @@ enum WeightCaptureMode {
   final WeightSourceKind sourceKind;
 }
 
-/// 取参请求行: [key] 由调用方定 (默认 [WeightParams.keyOf])。
+/// 单重身份: 单重只按 (货品, 供应商) 解析。
+typedef WeightParamsIdentity = ({String goodsId, String? supplierId});
+
+/// 库存均重参考身份: 同一实物仓库、货品、精确颜色 (null = 无色, 不是任意颜色)。
+typedef WeightBalanceIdentity = ({
+  String warehouseId,
+  String goodsId,
+  String? colorId,
+});
+
+String? _blankToNull(String? value) =>
+    value == null || value.isEmpty ? null : value;
+
+/// 取参请求行: 只带结构化身份, 不拼字符串 key (ADR-151)。
+@immutable
 class WeightParamsLine {
   const WeightParamsLine({
     required this.goodsId,
     this.supplierId,
     this.warehouseId,
     this.colorId,
-    this._key,
   });
 
   final String goodsId;
   final String? supplierId;
   final String? warehouseId;
   final String? colorId;
-  final String? _key;
 
-  String get key =>
-      _key ??
-      WeightParams.keyOf(
-        goodsId,
-        supplierId,
-        warehouseId: warehouseId,
-        colorId: colorId,
-      );
+  WeightParamsIdentity get paramsIdentity =>
+      (goodsId: goodsId, supplierId: _blankToNull(supplierId));
+
+  /// 不带仓库的行不取库存参考 (不会退回成「所有仓库」)。
+  WeightBalanceIdentity? get balanceIdentity {
+    final warehouse = _blankToNull(warehouseId);
+    return warehouse == null
+        ? null
+        : (
+            warehouseId: warehouse,
+            goodsId: goodsId,
+            colorId: _blankToNull(colorId),
+          );
+  }
 
   Map<String, Object?> toJson() => {
-    'key': key,
     'goodsId': goodsId,
-    if (supplierId != null && supplierId!.isNotEmpty) 'supplierId': supplierId,
-    if (warehouseId != null && warehouseId!.isNotEmpty)
-      'warehouseId': warehouseId,
-    if (colorId != null && colorId!.isNotEmpty) 'colorId': colorId,
+    'supplierId': ?_blankToNull(supplierId),
+    'warehouseId': ?_blankToNull(warehouseId),
+    'colorId': ?_blankToNull(colorId),
   };
+
+  @override
+  bool operator ==(Object other) =>
+      other is WeightParamsLine &&
+      other.paramsIdentity == paramsIdentity &&
+      other.balanceIdentity == balanceIdentity;
+
+  @override
+  int get hashCode => Object.hash(paramsIdentity, balanceIdentity);
 }
 
 /// 同仓库、货品、颜色的库存重量参考；重量未知时不得当作零。
@@ -97,12 +124,17 @@ class WeightStockBalance {
     required this.warehouseId,
     required this.qtyBase,
     required this.weightKg,
+    this.goodsId = '',
     this.colorId,
     this.estimated = false,
   });
 
   final String warehouseId;
+  final String goodsId;
   final String? colorId;
+
+  WeightBalanceIdentity get identity =>
+      (warehouseId: warehouseId, goodsId: goodsId, colorId: colorId);
   final double qtyBase;
   final double weightKg;
   final bool estimated;
@@ -123,6 +155,7 @@ class WeightStockBalance {
   factory WeightStockBalance.fromJson(Map<String, dynamic> j) =>
       WeightStockBalance(
         warehouseId: _str(j['warehouseId']) ?? '',
+        goodsId: _str(j['goodsId']) ?? '',
         colorId: _str(j['colorId']),
         qtyBase: _num(j['qtyBase']) ?? 0,
         weightKg: _num(j['weightKg']) ?? 0,
@@ -165,11 +198,14 @@ class WeightSuggestion {
   }
 }
 
-/// 一行的单重参数 (POST /stock/weight/params items[])。
+/// 一行的单重参数 (POST /stock/weight/params items[]); 身份 = (货品, 供应商)。
+///
+/// [stockBalance] 不是服务端单重的一部分: 由 [WeightParamsCache.of] /
+/// [WeightParamsResult.of] 按行的仓库与颜色把响应里单独的库存参考接上。
 class WeightParams {
   const WeightParams({
-    required this.key,
     required this.goodsId,
+    this.supplierId,
     this.basis = WeightBasis.none,
     this.supplierSpecific = false,
     this.evidence,
@@ -197,8 +233,10 @@ class WeightParams {
     this.stockBalance,
   });
 
-  final String key;
   final String goodsId;
+
+  /// 请求的供应商 (null = 货品级)。
+  final String? supplierId;
   final WeightBasis basis;
 
   /// 取的是该供应商自己的单重行 (不是全货品汇总)。
@@ -241,17 +279,39 @@ class WeightParams {
   final double scaleResKg;
   final WeightStockBalance? stockBalance;
 
-  static String keyOf(
-    String goodsId,
-    String? supplierId, {
-    String? warehouseId,
-    String? colorId,
-  }) {
-    final base = '$goodsId|${supplierId ?? ''}';
-    return warehouseId == null || warehouseId.isEmpty
-        ? base
-        : '$base|$warehouseId|${colorId ?? ''}';
-  }
+  WeightParamsIdentity get identity =>
+      (goodsId: goodsId, supplierId: _blankToNull(supplierId));
+
+  /// 接上 (或去掉) 本行仓库/颜色的库存均重参考, 单重本身不变。
+  WeightParams withStockBalance(WeightStockBalance? balance) => WeightParams(
+    goodsId: goodsId,
+    supplierId: supplierId,
+    basis: basis,
+    supplierSpecific: supplierSpecific,
+    evidence: evidence,
+    unitWeightKg: unitWeightKg,
+    logMean: logMean,
+    lotPrior: lotPrior,
+    gamma: gamma,
+    df: df,
+    tier: tier,
+    relHalfWidth: relHalfWidth,
+    nInliers: nInliers,
+    suggestedSampleSize: suggestedSampleSize,
+    exactUpToQty: exactUpToQty,
+    tolerancePct: tolerancePct,
+    defaultTareKg: defaultTareKg,
+    lastTareKg: lastTareKg,
+    massFactorKg: massFactorKg,
+    stale: stale,
+    lastObservedAt: lastObservedAt,
+    drawBiasPct: drawBiasPct,
+    manualConflictPct: manualConflictPct,
+    baseUnitDimension: baseUnitDimension,
+    learningEnabled: learningEnabled,
+    scaleResKg: scaleResKg,
+    stockBalance: balance,
+  );
 
   /// 按件计 (折算件数取整)。
   bool get integerQty =>
@@ -310,8 +370,8 @@ class WeightParams {
   double? get prefillTareKg => defaultTareKg ?? lastTareKg;
 
   factory WeightParams.fromJson(Map<String, dynamic> j) => WeightParams(
-    key: (j['key'] ?? '').toString(),
     goodsId: (j['goodsId'] ?? '').toString(),
+    supplierId: _str(j['supplierId']),
     basis: WeightBasis.parse(j['basis']?.toString()),
     supplierSpecific: j['supplierSpecific'] == true,
     evidence: _str(j['evidence']),
@@ -336,10 +396,27 @@ class WeightParams {
     baseUnitDimension: _str(j['baseUnitDimension']),
     learningEnabled: j['learningEnabled'] != false,
     scaleResKg: _num(j['scaleResKg']) ?? WeightPredictor.defaultScaleResKg,
-    stockBalance: j['stockBalance'] is Map<String, dynamic>
-        ? WeightStockBalance.fromJson(j['stockBalance'] as Map<String, dynamic>)
-        : null,
   );
+}
+
+/// 一次取参的结果: 单重按 (货品, 供应商), 库存参考按 (仓库, 货品, 颜色), 分开保存。
+class WeightParamsResult {
+  const WeightParamsResult({this.params = const {}, this.balances = const {}});
+
+  final Map<WeightParamsIdentity, WeightParams> params;
+  final Map<WeightBalanceIdentity, WeightStockBalance> balances;
+
+  /// 某一行的单重, 并接上该行仓库/颜色的库存参考。
+  WeightParams? of(WeightParamsLine line) {
+    final resolved = params[line.paramsIdentity];
+    final balance = line.balanceIdentity;
+    return balance == null
+        ? resolved
+        : resolved?.withStockBalance(balances[balance]);
+  }
+
+  WeightParams? paramsOf(String goodsId, {String? supplierId}) =>
+      params[(goodsId: goodsId, supplierId: _blankToNull(supplierId))];
 }
 
 /// 一次「数量 vs 实称」核对的结果 (偏差 + 称重折算件数)。
@@ -1026,17 +1103,14 @@ class WeightRepository {
   /// 服务端单次上限。
   static const maxParamsLines = 500;
 
-  /// 批量取单重参数; 超过 500 行自动分批。返回 key -> 参数。
-  Future<Map<String, WeightParams>> params(
-    Iterable<WeightParamsLine> lines,
-  ) async {
-    final unique = <String, WeightParamsLine>{};
-    for (final line in lines) {
-      if (line.goodsId.isEmpty) continue;
-      unique.putIfAbsent(line.key, () => line);
-    }
-    final all = unique.values.toList(growable: false);
-    final out = <String, WeightParams>{};
+  /// 批量取单重参数与库存参考; 超过 500 行自动分批。按结构化身份对行。
+  Future<WeightParamsResult> params(Iterable<WeightParamsLine> lines) async {
+    final all = {
+      for (final line in lines)
+        if (line.goodsId.isNotEmpty) line,
+    }.toList(growable: false);
+    final params = <WeightParamsIdentity, WeightParams>{};
+    final balances = <WeightBalanceIdentity, WeightStockBalance>{};
     for (var i = 0; i < all.length; i += maxParamsLines) {
       final chunk = all.sublist(i, math.min(i + maxParamsLines, all.length));
       final json = await api.post(
@@ -1045,10 +1119,16 @@ class WeightRepository {
       );
       for (final raw in _maps(json['items'])) {
         final p = WeightParams.fromJson(raw);
-        out[p.key] = p;
+        if (p.goodsId.isNotEmpty) params[p.identity] = p;
+      }
+      for (final raw in _maps(json['stockBalances'])) {
+        final balance = WeightStockBalance.fromJson(raw);
+        if (balance.usable && balance.goodsId.isNotEmpty) {
+          balances[balance.identity] = balance;
+        }
       }
     }
-    return out;
+    return WeightParamsResult(params: params, balances: balances);
   }
 
   Future<GoodsWeightDetail> goods(String goodsId) async {
@@ -1132,18 +1212,26 @@ final weightRepositoryProvider = Provider<WeightRepository>(
 
 /// 页内单重参数缓存: 一页一次批量取, 取回后通知订阅的格子重绘。
 ///
-/// 重量从不阻断数量过账: 取参失败只记 [lastError], 格子退回「可选」占位。
+/// 重量从不阻断数量过账, 但取参失败不再静默 (ADR-151): [lastError] 由
+/// [WeightParamsLoadNotice] 显示在页面上, [retryFailed] 只重取失败的那几行。
 class WeightParamsCache extends ChangeNotifier {
   WeightParamsCache(this._repository);
 
   final WeightRepository _repository;
-  final Map<String, WeightParams> _items = {};
-  final Map<String, Object> _pending = {};
-  final Map<String, String> _pendingGoods = {};
+  final Map<WeightParamsIdentity, WeightParams> _items = {};
+
+  /// 已取过的库存参考; 值为 null = 该仓库/颜色没有可用的正数重量余额。
+  final Map<WeightBalanceIdentity, WeightStockBalance?> _balances = {};
+  final Map<WeightParamsLine, Object> _pending = {};
+  final Set<WeightParamsLine> _failed = {};
   final Map<String, int> _generations = {};
   bool _disposed = false;
 
+  /// 最近一次取参失败的原因; 成功或重试时清空。
   Object? lastError;
+
+  /// 失败后可重试 (界面显示「单重参数读取失败 · 重试」)。
+  bool get hasFailed => lastError != null && _failed.isNotEmpty;
 
   WeightParams? of(
     String? goodsId, {
@@ -1152,15 +1240,18 @@ class WeightParamsCache extends ChangeNotifier {
     String? colorId,
   }) {
     if (goodsId == null || goodsId.isEmpty) return null;
-    return _items[WeightParams.keyOf(
-      goodsId,
-      supplierId,
+    final line = WeightParamsLine(
+      goodsId: goodsId,
+      supplierId: supplierId,
       warehouseId: warehouseId,
       colorId: colorId,
-    )];
+    );
+    final params = _items[line.paramsIdentity];
+    final balance = line.balanceIdentity;
+    return balance == null
+        ? params
+        : params?.withStockBalance(_balances[balance]);
   }
-
-  WeightParams? byKey(String key) => _items[key];
 
   bool isLoading(
     String goodsId, {
@@ -1168,13 +1259,19 @@ class WeightParamsCache extends ChangeNotifier {
     String? warehouseId,
     String? colorId,
   }) => _pending.containsKey(
-    WeightParams.keyOf(
-      goodsId,
-      supplierId,
+    WeightParamsLine(
+      goodsId: goodsId,
+      supplierId: supplierId,
       warehouseId: warehouseId,
       colorId: colorId,
     ),
   );
+
+  bool _loaded(WeightParamsLine line) {
+    final balance = line.balanceIdentity;
+    return _items.containsKey(line.paramsIdentity) &&
+        (balance == null || _balances.containsKey(balance));
+  }
 
   /// 补齐缺的参数 (已有/在途的不重复取)。
   Future<void> ensure(Iterable<WeightParamsLine> lines) async {
@@ -1184,11 +1281,8 @@ class WeightParamsCache extends ChangeNotifier {
     final generations = <String, int>{};
     for (final line in lines) {
       if (line.goodsId.isEmpty) continue;
-      if (_items.containsKey(line.key) || _pending.containsKey(line.key)) {
-        continue;
-      }
-      _pending[line.key] = token;
-      _pendingGoods[line.key] = line.goodsId;
+      if (_loaded(line) || _pending.containsKey(line)) continue;
+      _pending[line] = token;
       generations[line.goodsId] = _generations[line.goodsId] ?? 0;
       missing.add(line);
     }
@@ -1200,49 +1294,46 @@ class WeightParamsCache extends ChangeNotifier {
         if (generations[line.goodsId] != (_generations[line.goodsId] ?? 0)) {
           continue;
         }
-        final params = fetched[line.key];
-        if (params != null) _items.putIfAbsent(line.key, () => params);
+        final params = fetched.params[line.paramsIdentity];
+        if (params != null) {
+          _items.putIfAbsent(line.paramsIdentity, () => params);
+        }
+        final balance = line.balanceIdentity;
+        if (balance != null) _balances[balance] = fetched.balances[balance];
+        _failed.remove(line);
       }
-      lastError = null;
+      if (_failed.isEmpty) lastError = null;
     } catch (e) {
       if (_disposed) return;
       lastError = e;
+      _failed.addAll(missing);
     } finally {
       for (final line in missing) {
-        if (identical(_pending[line.key], token)) {
-          _pending.remove(line.key);
-          _pendingGoods.remove(line.key);
-        }
+        if (identical(_pending[line], token)) _pending.remove(line);
       }
     }
     if (!_disposed) notifyListeners();
   }
 
-  /// 直接放入 (如称样后服务端回包里的 resolved)。
-  void put(WeightParams params) {
-    if (_disposed) return;
-    final key = params.key.isEmpty
-        ? WeightParams.keyOf(params.goodsId, null)
-        : params.key;
-    _items[key] = params;
+  /// 只重取上次失败的行。
+  Future<void> retryFailed() async {
+    if (_disposed || _failed.isEmpty) return;
+    final lines = _failed.toList(growable: false);
+    _failed.clear();
+    lastError = null;
     notifyListeners();
+    await ensure(lines);
   }
 
   /// 某货品的参数作废 (称样/改设置后), 下次 [ensure] 重新取。
   void invalidateGoods(String goodsId) {
     if (_disposed) return;
-    final before = _items.length;
-    _items.removeWhere((key, value) => value.goodsId == goodsId);
+    final before = _items.length + _balances.length;
+    _items.removeWhere((key, value) => key.goodsId == goodsId);
+    _balances.removeWhere((key, value) => key.goodsId == goodsId);
     _generations[goodsId] = (_generations[goodsId] ?? 0) + 1;
-    final pendingKeys = _pendingGoods.entries
-        .where((entry) => entry.value == goodsId)
-        .map((entry) => entry.key)
-        .toList();
-    for (final key in pendingKeys) {
-      _pending.remove(key);
-      _pendingGoods.remove(key);
-    }
-    if (_items.length != before) notifyListeners();
+    _pending.removeWhere((line, _) => line.goodsId == goodsId);
+    if (_items.length + _balances.length != before) notifyListeners();
   }
 
   @override

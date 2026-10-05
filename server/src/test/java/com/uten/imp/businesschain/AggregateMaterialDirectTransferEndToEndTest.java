@@ -319,9 +319,9 @@ class AggregateMaterialDirectTransferEndToEndTest {
     UUID receiveWarehousePiece(AggregateMaterialOrderEndToEndTest.Case c,UUID report,String location){
         UUID ordinaryItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND destination='WAREHOUSE' AND NOT is_deleted",UUID.class,report);
         flow.fixture.loginAs(c.world().superAdminUserId());
-        beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class).register(report,
-            new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest("aggregate-arrival-"+report,c.world().warehouseId(),
-                List.of(new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(ordinaryItem,location)),null));
+        com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport.registerItems(
+            beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class),
+            report,"aggregate-arrival-"+report,c.world().warehouseId(),List.of(ordinaryItem),location);
         UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,ordinaryItem);
         BigDecimal qty=db.queryForObject("SELECT qty FROM production_daily_report_items WHERE id=?",BigDecimal.class,ordinaryItem);
         beans.getBean(com.uten.imp.features.production.quality.ProductionFqcInspectionService.class).decide(inspection,

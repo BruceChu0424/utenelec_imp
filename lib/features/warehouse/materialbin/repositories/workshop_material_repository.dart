@@ -1,4 +1,4 @@
-// 车间内料仓 (ADR-131) 仓储: 设置、机台与容器、领料 / 退回 / 其它耗用、
+// 车间内料仓 (ADR-131/147) 仓储: 开通与整批领料、机台与容器、领料 / 退回 / 其它耗用、
 // 期间与盘点、自动结算状态、上线准备。
 //
 // 写接口都带 idempotencyKey (8-128 位, 由 [wmIdempotencyKey] 按"页面会话 + 请求内容"
@@ -13,7 +13,7 @@ import '../../../../core/network/api_endpoints.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../models/workshop_material_models.dart';
-import '../models/workshop_main_warehouse_option.dart';
+import '../models/workshop_source_warehouse_option.dart';
 
 /// 一次用户动作的幂等键: `wm-<动作>-<16 位指纹>`; [nonce] 为页面 (或对话框) 会话随机串。
 String wmIdempotencyKey(String action, String nonce, Object? payload) =>
@@ -34,53 +34,78 @@ class WorkshopMaterialRepository {
 
   final ApiClient api;
 
-  // ---------------------------------------------------------------- 设置
+  // ---------------------------------------------------------------- 开通与整批领料 (ADR-147)
 
-  /// 各车间的整批领料设置 (车间成员只看到本车间)。
+  /// 各车间的内料仓开通状态 (三态由服务端给出; 车间成员只看到本车间)。
   Future<List<WmSetting>> settings() async {
     final list = await api.getList(ApiEndpoints.workshopMaterialSettings);
     return list.map(WmSetting.fromJson).toList(growable: false);
   }
 
-  /// SETUP-only metadata: active, accountable top-level warehouses, without exposing stock or the full dictionary.
-  Future<List<WmMainWarehouseOption>> setupMainWarehouses() async {
+  /// 发料来源仓滑窗的仓库层级: 只有元数据, 能不能选由服务端给出 (开通设置或发料权限可读)。
+  Future<List<WmSourceWarehouse>> sourceWarehouses() async {
     final rows = await api.getList(
-      '${ApiEndpoints.workshopMaterialSettings}/main-warehouses',
+      ApiEndpoints.workshopMaterialSourceWarehouses,
     );
-    return rows.map(WmMainWarehouseOption.fromJson).toList(growable: false);
+    return rows.map(WmSourceWarehouse.fromJson).toList(growable: false);
   }
 
-  /// 开启 / 停用整批领料 (一个原子命令; 开启时同一事务写在产产品的认料)。
-  Future<WmSetting> saveSetting(
-    String workshopId, {
-    required int expectedVersion,
-    required bool enabled,
-    String? mainWarehouseId,
+  /// 批量往前走一步 (全成全败): 未开通 -> 开通 ([periodic] 时同时开启整批领料);
+  /// 已开通 -> 开启整批领料或改来源仓。返回各车间办完后的状态 (按请求顺序)。
+  Future<List<WmSetting>> batchEnable({
+    required List<WmBinItem> items,
+    String? sourceWarehouseId,
+    // 为真 = 不再指定来源仓, 恢复按货品所属仓库发料(来源仓置空); 不能与 sourceWarehouseId 同时给。
+    bool clearSource = false,
+    required bool periodic,
     String? goLiveDate,
     List<WmProductChoiceInput> inProgressChoices = const [],
     required String idempotencyKey,
   }) async {
-    final json = await api.put(
-      ApiEndpoints.workshopMaterialSetting(workshopId),
+    final json = await api.post(
+      ApiEndpoints.workshopMaterialSettingsBatchEnable,
       body: {
-        'expectedVersion': expectedVersion,
-        'enabled': enabled,
-        'mainWarehouseId': mainWarehouseId,
+        'items': [for (final item in items) item.toJson()],
+        'sourceWarehouseId': sourceWarehouseId,
+        'clearSource': clearSource,
+        'periodic': periodic,
         'goLiveDate': goLiveDate,
         'inProgressChoices': [for (final c in inProgressChoices) c.toJson()],
         'idempotencyKey': idempotencyKey,
       },
     );
-    return WmSetting.fromJson(json);
+    return _listIn(
+      json,
+      'settings',
+    ).map(WmSetting.fromJson).toList(growable: false);
   }
 
-  /// 开启前本车间在产、需要认料的产品 (含预填)。
+  /// 批量撤销一步 (全成全败): 整批领料中 -> 已开通; 已开通 -> 未开通。只撤销设错的。
+  Future<List<WmSetting>> batchDisable({
+    required List<WmBinItem> items,
+    required String idempotencyKey,
+  }) async {
+    final json = await api.post(
+      ApiEndpoints.workshopMaterialSettingsBatchDisable,
+      body: {
+        'items': [for (final item in items) item.toJson()],
+        'idempotencyKey': idempotencyKey,
+      },
+    );
+    return _listIn(
+      json,
+      'settings',
+    ).map(WmSetting.fromJson).toList(growable: false);
+  }
+
+  /// 开启整批领料前, 所选车间在产、需要认料的产品 (按产品去重, 含预填与在产车间)。
   Future<List<WmPendingProductChoice>> inProgressPending(
-    String workshopId,
+    List<String> workshopIds,
   ) async {
     // 服务端回 {products:[...]}。
     final json = await api.get(
-      ApiEndpoints.workshopMaterialSettingInProgressPending(workshopId),
+      ApiEndpoints.workshopMaterialSettingsInProgressPending,
+      query: {'workshopIds': workshopIds.join(',')},
     );
     return _listIn(
       json,

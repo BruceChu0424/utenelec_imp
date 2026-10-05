@@ -97,23 +97,23 @@ public class WorkshopMachineService {
                     throw new ApiException(ErrorCode.CONFLICT, "机台编号 " + code + " 已经有了, 请换一个起始编号");
                 }
                 UUID machine = UUID.randomUUID();
-                WorkshopMaterialGuards.guarded(() -> db.update("""
+                db.update("""
                         INSERT INTO workshop_machines(id, workshop_department_id, code, name, sort_order, created_by)
                         VALUES (:id, :workshop, :code, :name, :sort, :actor)
                         """, new MapSqlParameterSource("id", machine).addValue("workshop", workshop)
                         .addValue("code", code).addValue("name", prefix.isEmpty() ? number + " 号机" : code)
-                        .addValue("sort", number).addValue("actor", actor)));
+                        .addValue("sort", number).addValue("actor", actor));
                 int sort = 0;
                 for (ContainerSpec container : containers) {
                     int order = sort++;
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             INSERT INTO workshop_machine_containers(id, machine_id, name, capacity_qty, sort_order,
                                                                     created_by)
                             VALUES (:id, :machine, :name, :capacity, :sort, :actor)
                             """, new MapSqlParameterSource("id", UUID.randomUUID()).addValue("machine", machine)
                             .addValue("name", containerName(container.name()))
                             .addValue("capacity", MoneyPolicy.quantity(container.capacityQty()))
-                            .addValue("sort", order).addValue("actor", actor)));
+                            .addValue("sort", order).addValue("actor", actor));
                 }
                 created.add(machine);
             }
@@ -151,7 +151,7 @@ public class WorkshopMachineService {
                 if (tonnage != null && tonnage.signum() <= 0) {
                     throw new ApiException(ErrorCode.VALIDATION_FAILED, "吨位必须大于 0");
                 }
-                WorkshopMaterialGuards.guarded(() -> db.update("""
+                db.update("""
                         UPDATE workshop_machines
                         SET name = :name, model = :model, tonnage = :tonnage, enabled = :enabled, sort_order = :sort,
                             remark = :remark, row_version = row_version + 1, updated_by = :actor, updated_at = now()
@@ -162,7 +162,7 @@ public class WorkshopMachineService {
                         .addValue("sort", edit.sortOrder() == null ? row.get("sort_order") : edit.sortOrder())
                         .addValue("remark", edit.remark() == null ? row.get("remark")
                                 : edit.remark().isBlank() ? null : edit.remark().strip())
-                        .addValue("actor", actor).addValue("id", edit.id())));
+                        .addValue("actor", actor).addValue("id", edit.id()));
                 ids.add(edit.id());
             }
             return new Outcome<>(null, new MachineList(machines(workshop, ids)));
@@ -192,7 +192,7 @@ public class WorkshopMachineService {
                 String name = containerName(edit.name());
                 requireCapacity(edit.capacityQty());
                 if (edit.id() == null) {
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             INSERT INTO workshop_machine_containers(id, machine_id, name, capacity_qty, enabled,
                                                                     sort_order, created_by)
                             VALUES (:id, :machine, :name, :capacity, :enabled, :sort, :actor)
@@ -200,7 +200,7 @@ public class WorkshopMachineService {
                             .addValue("name", name).addValue("capacity", MoneyPolicy.quantity(edit.capacityQty()))
                             .addValue("enabled", edit.enabled() == null || edit.enabled())
                             .addValue("sort", edit.sortOrder() == null ? 0 : edit.sortOrder())
-                            .addValue("actor", actor)));
+                            .addValue("actor", actor));
                 } else {
                     List<Map<String, Object>> rows = db.queryForList("""
                             SELECT row_version, enabled, sort_order FROM workshop_machine_containers
@@ -210,7 +210,7 @@ public class WorkshopMachineService {
                     WorkshopMaterialBinSupport.requireVersion(edit.expectedVersion(),
                             WorkshopMaterialBinSupport.number(rows.getFirst().get("row_version")).longValue(),
                             "容器 " + name);
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             UPDATE workshop_machine_containers
                             SET name = :name, capacity_qty = :capacity, enabled = :enabled, sort_order = :sort,
                                 row_version = row_version + 1, updated_by = :actor, updated_at = now()
@@ -220,7 +220,7 @@ public class WorkshopMachineService {
                             .addValue("enabled", edit.enabled() == null ? rows.getFirst().get("enabled") : edit.enabled())
                             .addValue("sort", edit.sortOrder() == null ? rows.getFirst().get("sort_order")
                                     : edit.sortOrder())
-                            .addValue("actor", actor).addValue("id", edit.id())));
+                            .addValue("actor", actor).addValue("id", edit.id()));
                 }
                 machines.add(edit.machineId());
             }
@@ -279,11 +279,11 @@ public class WorkshopMachineService {
         if (!Set.of("workshop_machines", "workshop_machine_containers").contains(table)) {
             throw new IllegalArgumentException(table);
         }
-        WorkshopMaterialGuards.guarded(() -> db.update("UPDATE " + table + """
+        db.update("UPDATE " + table + """
                  SET is_deleted = TRUE, deleted_at = now(), row_version = row_version + 1, updated_by = :actor,
                      updated_at = now()
                 WHERE id = :id
-                """, new MapSqlParameterSource("actor", actor).addValue("id", id)));
+                """, new MapSqlParameterSource("actor", actor).addValue("id", id));
     }
 
     private Map<String, Object> lockMachine(UUID machineId) {

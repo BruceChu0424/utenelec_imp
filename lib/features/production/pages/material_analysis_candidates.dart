@@ -945,12 +945,15 @@ abstract class _MaterialAnalysisCandidatesState
     final names = ref.read(masterNameServiceProvider);
     final preferred = _warehouseRootOf(_warehouseId);
     final root =
-        (preferred?.status == '禁用' ? null : preferred) ??
+        (preferred?.status == '禁用' || (preferred?.isDefective ?? false)
+            ? null
+            : preferred) ??
         names.warehouseHierarchy
             .where(
               (entry) =>
                   (entry.parentId == null || entry.parentId!.isEmpty) &&
-                  entry.status != '禁用',
+                  entry.status != '禁用' &&
+                  !entry.isDefective,
             )
             .firstOrNull;
     if (root == null) return false;
@@ -967,8 +970,13 @@ abstract class _MaterialAnalysisCandidatesState
 
   Widget _warehouseField() {
     final hierarchy = ref.watch(masterNameServiceProvider).warehouseHierarchy;
+    // ADR-146: 不良品仓不计入任何可用量，不能当分析主仓。
     final roots = hierarchy
-        .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
+        .where(
+          (entry) =>
+              (entry.parentId == null || entry.parentId!.isEmpty) &&
+              !entry.isDefective,
+        )
         .toList();
     final root = _warehouseRootOf(_warehouseId);
     return Row(

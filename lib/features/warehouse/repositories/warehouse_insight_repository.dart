@@ -1,7 +1,7 @@
 // 库存分析接口 (ADR-135 §7.4, /api/stock/insights/*, stock_report:view)。
 //
-// 仓库范围沿用仓库任务中心的「仓库范围」(warehouse.taskScope), 服务端同一口径解析:
-// 指定仓 -> warehouseId (含子仓); 我的仓库 -> warehouseScope=MINE; 全部仓库不带参数。
+// 仓库范围沿用仓库任务中心的仓库数据范围(ADR-149, warehouse.taskScope), 服务端同一口径强制:
+// 不带参数 = 本人默认范围; 选了仓 -> scopeWarehouseId (含子仓, 越界 403)。
 // 称重异常与单重学习是货品级口径, 不按仓过滤。分页页码从 1 起, 回包平铺 {items, page, ...}。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,13 +19,9 @@ class WarehouseInsightRepository {
 
   final ApiClient api;
 
-  /// 仓库范围 -> 查询参数。
+  /// 仓库范围 -> 查询参数(与仓库任务端点同名)。
   static Map<String, String> scopeQuery(WarehouseTaskScope scope) =>
-      switch (scope.mode) {
-        WarehouseTaskScopeMode.all => const {},
-        WarehouseTaskScopeMode.mine => const {'warehouseScope': 'MINE'},
-        WarehouseTaskScopeMode.warehouse => {'warehouseId': scope.warehouseId!},
-      };
+      scope.queryParameters;
 
   /// 呆滞与库龄 (含顶部 KPI 概览)。
   Future<InsightHealthResult> health({

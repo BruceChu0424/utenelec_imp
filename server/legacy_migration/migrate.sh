@@ -22,6 +22,15 @@
 #   bash server/legacy_migration/migrate.sh --hr-roster  # 只迁 HR 正式名录（职工信息表 141 人，先 build_hr_roster.py）
 #   bash server/legacy_migration/migrate.sh --shelf-labels # 只迁货架库位（人工维护 data/shelf_labels.csv → goods.stock_place）
 #   bash server/legacy_migration/migrate.sh --goods-owner # 只迁货品归属（外贸按人授权，V85）
+#   bash server/legacy_migration/migrate.sh --goods-owning-warehouse # 只填货品所属仓库(ADR-145，人工清单
+#     data/goods_owning_warehouse.csv，由 import_product_lists.py --emit-owning-csv 生成)
+#
+# 仓库(ADR-145)：仓库主档与所有单据的仓库只按入库审过的 warehouse_crosswalk.csv 解析——
+#   老库主仓 132 → 主仓 001(库存明细与余额按货品所属子仓拆分)，在用仓 → 同编号子仓，
+#   已禁用仓并入在用的目标仓，已删除仓不建仓(库存单据与余额不迁，写对账清单)。
+#   全量顺序：仓库目标主档 → 主档 → 货品 → 货品所属仓库 → 交易模块。
+#   可选兜底：UTEN_LEGACY_UNASSIGNED_WAREHOUSE_CODE=<子仓编号> 时，所属仓为空的货品在老库主仓上的
+#   明细/余额落到该子仓；不设则不迁并写进对账清单。
 #   bash server/legacy_migration/migrate.sh --client-owner # 补客户/供应商归属（业务员 UUID，V261）
 #   UTEN_CONFIRM_DESTRUCTIVE_MIGRATION=RESET_uten_imp \
 #     bash server/legacy_migration/migrate.sh --bootstrap-all
@@ -81,7 +90,7 @@ usage () {
   --mould | --mould-data
   --client | --client-data | --client-owner
   --supplier | --supplier-data
-  --color-data | --unit-data | --currency-data | --warehouse-data
+  --color-data | --unit-data | --currency-data | --warehouse-data | --goods-owning-warehouse
   --purchase | --stock-docs | --sales | --sales-owner
   --production | --hr-workers
   --hr-cleanup | --hr-roster
@@ -110,7 +119,7 @@ for arg in "$@"; do
         --goods|-g|--goods-data|--goods-owner|--goods-bom|\
         --mould|-m|--mould-data|--client|--client-data|--client-owner|\
         --supplier|--supplier-data|--color-data|--unit-data|--currency-data|\
-        --warehouse-data|--purchase|--stock-docs|--sales|--sales-owner|\
+        --warehouse-data|--goods-owning-warehouse|--purchase|--stock-docs|--sales|--sales-owner|\
         --subcontract|--production|--finance|--hr-workers|\
         --hr-cleanup|--hr-roster|--shelf-labels|\
         --bootstrap-all|--all|-a)
@@ -143,6 +152,13 @@ if [ "$CONFIRMED" -ne 1 ] && \
     exit 65
 fi
 case "$TARGET" in --bootstrap-all|--all|-a) FULL_BOOTSTRAP=1; TARGET=--bootstrap-all ;; esac
+
+# ADR-145：老库主仓 132 上所属仓为空的货品，明细/余额的兜底子仓(不设则不迁、写对账清单)。
+UNASSIGNED_WAREHOUSE_CODE="${UTEN_LEGACY_UNASSIGNED_WAREHOUSE_CODE:-}"
+if [ -n "$UNASSIGNED_WAREHOUSE_CODE" ] && [[ ! "$UNASSIGNED_WAREHOUSE_CODE" =~ ^[A-Za-z0-9_-]{1,30}$ ]]; then
+    echo "✗ UTEN_LEGACY_UNASSIGNED_WAREHOUSE_CODE 只能是仓库编号(字母/数字/下划线/横线)；未修改数据库。" >&2
+    exit 64
+fi
 
 finish_run () {
     local exit_code=$?
@@ -734,7 +750,8 @@ run_sql () {  # $1 = sql 文件名（HERE 下）
     if [ "$FULL_BOOTSTRAP" -eq 1 ]; then
         python3 -I "$HERE/compose_bootstrap.py" "$HERE/$1" >> "$BOOTSTRAP_SQL"
     else
-        { printf '%s\n' 'BEGIN;' 'SET LOCAL standard_conforming_strings=on;' "SET LOCAL app.legacy_import = 'on';"; python3 -I "$HERE/compose_bootstrap.py" "$HERE/$1" || exit $?; printf '%s\n' 'COMMIT;'; } | \
+        { printf '%s\n' 'BEGIN;' 'SET LOCAL standard_conforming_strings=on;' "SET LOCAL app.legacy_import = 'on';" \
+              "SET LOCAL uten.legacy_unassigned_warehouse_code = '$UNASSIGNED_WAREHOUSE_CODE';"; python3 -I "$HERE/compose_bootstrap.py" "$HERE/$1" || exit $?; printf '%s\n' 'COMMIT;'; } | \
             "$DOCKER" exec -i -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
                 -v ON_ERROR_STOP=1 -v "legacy_key_file=$REMOTE_KEY_FILE"
     fi
@@ -831,6 +848,53 @@ SQL
     "$DOCKER" exec -i -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
         -v ON_ERROR_STOP=1 -v "legacy_key_file=$REMOTE_KEY_FILE" < "$BOOTSTRAP_SQL"
     FULL_COMMITTED=1
+}
+
+# 入库审过的对照表(如 warehouse_crosswalk.csv，在 HERE 下、随代码评审)：现算 sha256 登记一次，
+# 同一次运行里多个模块复用同一份字节。
+copy_repo_csv () {  # $1 = csv 文件名(HERE 下)
+    if [[ ! "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*[.]csv$ ]] || [ ! -s "$HERE/$1" ] || [ -L "$HERE/$1" ]; then
+        echo "✗ 对照表不存在、为空或文件名非法：$HERE/$1" >&2
+        exit 66
+    fi
+    local verified_sha file_bytes
+    verified_sha=$(sha256sum "$HERE/$1" | awk '{print tolower($1)}')
+    file_bytes=$(wc -c < "$HERE/$1" | tr -d '[:space:]')
+    if [[ ! "$verified_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$file_bytes" =~ ^[1-9][0-9]*$ ]]; then
+        echo "✗ 对照表审计元数据非法：$1；已拒绝迁移。" >&2
+        exit 66
+    fi
+    "$DOCKER" cp "$HERE/$1" "$CONTAINER:/tmp/$1"
+    REMOTE_TMP_FILES+=("/tmp/$1")
+    "$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 \
+        -c "INSERT INTO legacy_migration_run_files(run_id, file_name, sha256, byte_size)
+            VALUES ('$RUN_ID'::uuid, '$1', '$verified_sha', $file_bytes)
+            ON CONFLICT (run_id, file_name) DO NOTHING" >/dev/null
+}
+
+# 人工整理的导入清单(HERE/data 下，不来自老库导出、不入库)：现算 sha256 登记。
+copy_manual_csv () {  # $1 = csv 文件名(HERE/data 下)；$2 = 缺失时的处理提示
+    if [ ! -s "$HERE/data/$1" ] || [ -L "$HERE/data/$1" ] \
+        || [[ ! "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*[.]csv$ ]]; then
+        echo "✗ 清单不存在、为空或文件名非法：$HERE/data/$1" >&2
+        echo "  $2" >&2
+        exit 66
+    fi
+    local verified_sha file_bytes
+    verified_sha=$(sha256sum "$HERE/data/$1" | awk '{print tolower($1)}')
+    file_bytes=$(wc -c < "$HERE/data/$1" | tr -d '[:space:]')
+    if [[ ! "$verified_sha" =~ ^[0-9a-f]{64}$ ]] || [[ ! "$file_bytes" =~ ^[1-9][0-9]*$ ]]; then
+        echo "✗ 清单审计元数据非法：$1；已拒绝迁移。" >&2
+        exit 66
+    fi
+    "$DOCKER" cp "$HERE/data/$1" "$CONTAINER:/tmp/$1"
+    REMOTE_TMP_FILES+=("/tmp/$1")
+    "$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 \
+        -c "INSERT INTO legacy_migration_run_files(run_id, file_name, sha256, byte_size)
+            VALUES ('$RUN_ID'::uuid, '$1', '$verified_sha', $file_bytes)
+            ON CONFLICT (run_id, file_name) DO NOTHING" >/dev/null
 }
 
 copy_csv () {  # $1 = csv 文件名（HERE/data 下）；按校验后的原始字节导入
@@ -966,10 +1030,20 @@ migrate_currency_data () {
 }
 
 migrate_warehouse_data () {
-    echo "→ [仓库主档] 复制 CSV..."
+    echo "→ [仓库主档] 复制 CSV + 仓库对照表(ADR-145：唯一主仓 001 + 直属子仓)..."
     copy_csv warehouse.csv
+    copy_repo_csv warehouse_crosswalk.csv
     echo "→ [仓库主档] 执行迁移 SQL..."
     run_sql migrate_warehouse.sql
+}
+
+# 货品所属仓库(ADR-145)：交易模块之前先填好，老库主仓 132 的库存明细与余额才能按所属子仓拆分。
+migrate_goods_owning_warehouse () {
+    echo "→ [货品所属仓库] 复制清单..."
+    copy_manual_csv goods_owning_warehouse.csv \
+        "请先运行 python server/legacy_migration/import_product_lists.py --emit-owning-csv server/legacy_migration/data/goods_owning_warehouse.csv"
+    echo "→ [货品所属仓库] 执行迁移 SQL(只填空)..."
+    run_sql migrate_goods_owning_warehouse.sql
 }
 
 migrate_purchase () {
@@ -981,6 +1055,7 @@ migrate_purchase () {
              legacy_workers_ref legacy_operators_ref legacy_departments; do
         copy_csv "$f.csv"
     done
+    copy_repo_csv warehouse_crosswalk.csv
     echo "→ [采购四单据] 执行迁移 SQL..."
     run_sql migrate_purchase.sql
 }
@@ -1002,6 +1077,7 @@ migrate_stock_docs () {
              legacy_workers legacy_operators_ref; do
         copy_csv "$f.csv"
     done
+    copy_repo_csv warehouse_crosswalk.csv
     echo "→ [仓库单据] 执行迁移 SQL（统一表 + 余额 + 流水 + 人员补录）..."
     run_sql migrate_stock_docs.sql
 }
@@ -1018,6 +1094,7 @@ migrate_sales () {
              sales_returns sales_return_items; do
         copy_csv "$f.csv"
     done
+    copy_repo_csv warehouse_crosswalk.csv
     echo "→ [销售五单据] 执行迁移 SQL..."
     run_sql migrate_sales.sql
 }
@@ -1037,6 +1114,7 @@ migrate_subcontract () {
              subcontract_swaste_m subcontract_swaste_i; do
         copy_csv "$f.csv"
     done
+    copy_repo_csv warehouse_crosswalk.csv
     echo "→ [委外八单据] 执行迁移 SQL..."
     run_sql migrate_subcontract.sql
 }
@@ -1197,7 +1275,8 @@ if [ "$FULL_BOOTSTRAP" -eq 1 ]; then
         "SET LOCAL uten.bootstrap_run_id = '$RUN_ID';" \
         "SET LOCAL uten.bootstrap_mapping_version = '$MAPPING_VERSION';" \
         "SET LOCAL uten.bootstrap_repository_commit = '$MIGRATION_REPOSITORY_COMMIT';" \
-        "SET LOCAL uten.bootstrap_manifest_sha = '$EXPORT_MANIFEST_SHA256';" > "$BOOTSTRAP_SQL"
+        "SET LOCAL uten.bootstrap_manifest_sha = '$EXPORT_MANIFEST_SHA256';" \
+        "SET LOCAL uten.legacy_unassigned_warehouse_code = '$UNASSIGNED_WAREHOUSE_CODE';" > "$BOOTSTRAP_SQL"
     cat "$HERE/migrate_execution_guard.sql" "$HERE/migrate_bootstrap_target_guard.sql" >> "$BOOTSTRAP_SQL"
     python3 -I "$HERE/prepare_source_authority.py" "$HERE/data/export_manifest.json" >> "$BOOTSTRAP_SQL"
 fi
@@ -1219,6 +1298,7 @@ case "$TARGET" in
     --unit-data) migrate_unit_data ;;
     --currency-data) migrate_currency_data ;;
     --warehouse-data) migrate_warehouse_data ;;
+    --goods-owning-warehouse) migrate_goods_owning_warehouse ;;
     --purchase) migrate_purchase ;;
     --stock-docs) migrate_stock_docs ;;
     --sales) migrate_sales ;;
@@ -1249,6 +1329,7 @@ case "$TARGET" in
         migrate_supplier_data
         migrate_goods_data
         migrate_goods_bom
+        migrate_goods_owning_warehouse
         migrate_purchase
         migrate_stock_docs
         migrate_sales
@@ -1265,6 +1346,18 @@ esac
 if [ "$FULL_BOOTSTRAP" -eq 1 ]; then
     echo "→ 写入并验证本次全量导入的结构化对账证据..."
     reconcile_full_bootstrap
+    # ADR-145：仓库对照表决定不迁的库存单据/明细/余额，导出成对账清单(不含个人信息)。
+    mkdir -p "$HERE/data/import_report"
+    "$DOCKER" exec -e "PGOPTIONS=$IMPORT_PGOPTIONS" "$CONTAINER" psql -X -v VERBOSITY=sqlstate -v SHOW_CONTEXT=never -U "$PG_USER" -d "$PG_DB" \
+        -v ON_ERROR_STOP=1 -At -F '|' \
+        -c "SELECT 'source_file|source_row_id|legacy_warehouse_id|reason|goods_legacy_id|qty|amount'
+            UNION ALL
+            SELECT concat_ws('|', item->>'source_file', item->>'source_row_id', item->>'legacy_warehouse_id',
+                             item->>'reason', item->>'goods_legacy_id', item->>'qty', item->>'amount')
+            FROM legacy_migration_runs run,
+                 jsonb_array_elements(COALESCE(run.reconciliation_summary->'warehouseExclusions','[]'::jsonb)) item
+            WHERE run.run_id = '$RUN_ID'::uuid" > "$HERE/data/import_report/warehouse_exclusions.csv"
+    echo "  仓库对照表不迁的明细见 data/import_report/warehouse_exclusions.csv"
 fi
 
 echo ""

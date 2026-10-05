@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -261,7 +262,8 @@ public class WarehouseQualityResultService {
             LocalDate dateTo,
             int page,
             int size) {
-        return list(keyword, receiptType, status, dateFrom, dateTo, page, size, null, null, null);
+        return list(keyword, receiptType, status, dateFrom, dateTo, page, size, null, null, null,
+                WarehouseTaskScope.ALL);
     }
 
     /** 同上；2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认序）、
@@ -279,7 +281,8 @@ public class WarehouseQualityResultService {
             int size,
             String sort,
             String order,
-            String billNo) {
+            String billNo,
+            WarehouseTaskScope warehouseScope) {
         int normalizedPage = Math.max(page, 1);
         int normalizedSize = Math.min(Math.max(size, 1), 100);
         String workStatus = normalizeStatus(status);
@@ -289,9 +292,9 @@ public class WarehouseQualityResultService {
         String trimmedBillNo = billNo == null ? "" : billNo.strip();
         String billNoFilter = trimmedBillNo.isEmpty()
                 ? "" : "AND COALESCE(scope.bill_no, '') = :bill_no\n";
-        String filters = KEYWORD_WHERE + statusFilter + DATE_WHERE + billNoFilter;
+        String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + statusFilter + DATE_WHERE + billNoFilter;
 
-        Query data = aggregateQuery(type, search, workStatus, """
+        Query data = aggregateQuery(type, search, workStatus, warehouseScope, """
                 SELECT (%s) AS work_status,
                        scope.receipt_type,
                        scope.receipt_id,
@@ -322,7 +325,7 @@ public class WarehouseQualityResultService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = (List<Object[]>) data.getResultList();
 
-        Query countQuery = aggregateQuery(type, search, workStatus, """
+        Query countQuery = aggregateQuery(type, search, workStatus, warehouseScope, """
                 SELECT COUNT(*)
                 %s%s
                 """.formatted(AGGREGATE_FROM, filters))
@@ -371,13 +374,13 @@ public class WarehouseQualityResultService {
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
     public Map<String, List<Map<String, Object>>> facets(
             String keyword, String receiptType, String status,
-            LocalDate dateFrom, LocalDate dateTo) {
+            LocalDate dateFrom, LocalDate dateTo, WarehouseTaskScope warehouseScope) {
         String workStatus = normalizeStatus(status);
         String type = normalizeFilterType(receiptType);
         String search = normalizeSearch(keyword);
-        String filters = KEYWORD_WHERE + statusFilter(workStatus) + DATE_WHERE;
+        String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + statusFilter(workStatus) + DATE_WHERE;
         List<Map<String, Object>> buckets = NativeFacets.rowsOf(
-                aggregateQuery(type, search, workStatus, """
+                aggregateQuery(type, search, workStatus, warehouseScope, """
                                 SELECT COALESCE(scope.bill_no, ''), COUNT(*)
                                 %s%s
                                 GROUP BY 1 ORDER BY 1
@@ -392,15 +395,15 @@ public class WarehouseQualityResultService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
-    public Map<String, Long> statusCounts(String receiptType, String keyword) {
+    public Map<String, Long> statusCounts(String receiptType, String keyword, WarehouseTaskScope warehouseScope) {
         String type = normalizeFilterType(receiptType);
         String search = normalizeSearch(keyword);
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = (List<Object[]>) aggregateQuery(type, search, "", """
+        List<Object[]> rows = (List<Object[]>) aggregateQuery(type, search, "", warehouseScope, """
                 SELECT (%s) AS work_status, COUNT(*)
-                %s%s
+                %s%s%s
                 GROUP BY (%s)
-                """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE, STATUS_CASE))
+                """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE, scopeFilter(warehouseScope), STATUS_CASE))
                 .getResultList();
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String known : List.of(
@@ -436,13 +439,13 @@ public class WarehouseQualityResultService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
             + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
-    public TypeCounts typeCounts() {
+    public TypeCounts typeCounts(WarehouseTaskScope warehouseScope) {
         @SuppressWarnings("unchecked")
-        List<Object[]> rows = (List<Object[]>) aggregateQuery("ALL", "", "", """
+        List<Object[]> rows = (List<Object[]>) aggregateQuery("ALL", "", "", warehouseScope, """
                 SELECT scope.receipt_type, (%s) AS work_status, COUNT(*)
-                %s%s
+                %s%s%s
                 GROUP BY scope.receipt_type, (%s)
-                """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE, STATUS_CASE))
+                """.formatted(STATUS_CASE, AGGREGATE_FROM, KEYWORD_WHERE, scopeFilter(warehouseScope), STATUS_CASE))
                 .getResultList();
         Map<String, Long> actionable = new LinkedHashMap<>();
         Map<String, Long> inProgress = new LinkedHashMap<>();
@@ -528,7 +531,7 @@ public class WarehouseQualityResultService {
     // ————————————————————————— 私有查询 —————————————————————————
 
     private Query aggregateQuery(
-            String type, String search, String workStatus, String bodySql) {
+            String type, String search, String workStatus, WarehouseTaskScope warehouseScope, String bodySql) {
         Query query = em.createNativeQuery(AGGREGATE_CTE + bodySql)
                 .setParameter("type", type)
                 .setParameter("keyword", search)
@@ -536,7 +539,28 @@ public class WarehouseQualityResultService {
         if (!workStatus.isEmpty()) {
             query.setParameter("status", workStatus);
         }
+        if (warehouseScope != null && warehouseScope.active()) {
+            query.setParameter("warehouse_scope", warehouseScope.idsCsv());
+        }
         return query;
+    }
+
+    /**
+     * 品质检查结果任务的「所在仓」(ADR-149, 唯一定义): 收货单表头仓 + 各检验行的目标入库仓
+     * (未红冲); 任一在范围内即算。列表、facets、状态/来源计数与徽章同用这一条件。
+     */
+    static final String RESULT_WAREHOUSES = """
+            ARRAY(SELECT scope.warehouse_id
+                  UNION
+                  SELECT scoped_inspection.warehouse_id
+                  FROM procurement_inspection_items scoped_inspection
+                  WHERE scoped_inspection.receipt_type = scope.receipt_type
+                    AND scoped_inspection.receipt_id = scope.receipt_id
+                    AND scoped_inspection.status <> 'REVERSED')""";
+
+    private static String scopeFilter(WarehouseTaskScope warehouseScope) {
+        return warehouseScope == null || !warehouseScope.active() ? ""
+                : "  AND " + warehouseScope.predicateAny(RESULT_WAREHOUSES, ":warehouse_scope") + "\n";
     }
 
     private static String statusFilter(String workStatus) {

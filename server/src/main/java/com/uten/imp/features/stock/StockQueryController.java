@@ -37,7 +37,7 @@ public class StockQueryController {
             @RequestParam(required = false) UUID colorId,
             @RequestParam(defaultValue = "false") boolean colorNull,
             @RequestParam(defaultValue = "false") boolean inventoryOnly,
-            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeDefective,
             @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -55,7 +55,7 @@ public class StockQueryController {
             @RequestParam(required = false) UUID colorId,
             @RequestParam(defaultValue = "false") boolean colorNull,
             @RequestParam(defaultValue = "false") boolean inventoryOnly,
-            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeDefective,
             @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "500") int size) {
@@ -74,7 +74,8 @@ public class StockQueryController {
     public PageResponse<InstantInventoryRow> instantInventory(
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(defaultValue = "true") boolean includeDefective,
+            // ADR-146：不良品仓默认不算进库存合计，显式打开才计入(不良品另列)。
+            @RequestParam(defaultValue = "false") boolean includeDefective,
             // V595：线边仓(车间直送料架)默认不算进现实库存，显式打开才计入。
             @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(required = false) String keyword,
@@ -104,7 +105,7 @@ public class StockQueryController {
     public PageResponse<InstantInventoryRow> instantInventoryAttention(
             @RequestParam(required = false) UUID categoryId,
             @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(defaultValue = "true") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeDefective,
             @RequestParam(defaultValue = "false") boolean includeLineSide,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) UUID owningWarehouse,

@@ -261,8 +261,18 @@ public class ProductionMaterialReturnRequestService {
 
     @Transactional(readOnly=true)
     public long warehousePendingCount() {
+        return warehousePendingCount(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 待仓库实收的退料申请数; 仓库数据范围(ADR-149)与库存单据列表同一判定函数(发出仓或调入仓)。 */
+    @Transactional(readOnly=true)
+    public long warehousePendingCount(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         if(!warehouseAccess.canAccessWarehouseTasks())return 0;
-        return ((Number)em.createNativeQuery("SELECT count(*) FROM production_material_return_requests request JOIN stock_documents document ON document.id=request.id WHERE document.status=0 AND NOT document.is_deleted").getSingleResult()).longValue();
+        boolean scoped=warehouseScope!=null&&warehouseScope.active();
+        var query=em.createNativeQuery("SELECT count(*) FROM production_material_return_requests request JOIN stock_documents document ON document.id=request.id WHERE document.status=0 AND NOT document.is_deleted"
+                +(scoped?" AND fn_stock_document_matches_warehouse_scope(document.id,CAST(:scopeIds AS text),CAST(:scopeUnassigned AS boolean),'')":""));
+        if(scoped)query.setParameter("scopeIds",warehouseScope.idsCsv()).setParameter("scopeUnassigned",warehouseScope.includeUnassigned());
+        return ((Number)query.getSingleResult()).longValue();
     }
 
     private List<Document> readDocuments(List<UUID> ids) {

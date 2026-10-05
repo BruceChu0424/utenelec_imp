@@ -8657,12 +8657,6 @@ abstract class AppLocalizations {
   /// **'启用日'**
   String get wmGoLiveDate;
 
-  /// No description provided for @wmMainWarehouse.
-  ///
-  /// In zh, this message translates to:
-  /// **'放在哪个主仓下'**
-  String get wmMainWarehouse;
-
   /// No description provided for @wmMachines.
   ///
   /// In zh, this message translates to:
@@ -8738,7 +8732,7 @@ abstract class AppLocalizations {
   /// No description provided for @workshopMaterialSetupHubDesc.
   ///
   /// In zh, this message translates to:
-  /// **'开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)'**
+  /// **'机台与容器、上线准备 (产品的颗粒与单个重量); 开通内料仓、开启整批领料在「车间内料仓」总览里办'**
   String get workshopMaterialSetupHubDesc;
 
   /// No description provided for @workshopMaterialReportsHubDesc.
@@ -8776,12 +8770,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'袋料'**
   String get wmBagMaterials;
-
-  /// No description provided for @wmEnableWorkshopTab.
-  ///
-  /// In zh, this message translates to:
-  /// **'车间开启'**
-  String get wmEnableWorkshopTab;
 
   /// No description provided for @wmReportPeriod.
   ///
@@ -15669,6 +15657,900 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'服务：{names}'**
   String aiAuditProviders(String names);
+
+  /// No description provided for @stockCountReasonLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'盘点说明(选填)'**
+  String get stockCountReasonLabel;
+
+  /// No description provided for @stockCountReasonHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'例如上线清点或例行盘点，最多 500 字'**
+  String get stockCountReasonHint;
+
+  /// No description provided for @weightParamsLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'单重参数读取失败：{reason}。称重折算与重量预填暂不可用，数量照常登记。'**
+  String weightParamsLoadFailed(String reason);
+
+  /// No description provided for @weightParamsLoadFailedUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络或服务暂时不可用'**
+  String get weightParamsLoadFailedUnknown;
+
+  /// No description provided for @warehouseOwningPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择所属仓库'**
+  String get warehouseOwningPickerTitle;
+
+  /// No description provided for @warehouseMasterUseColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库用途'**
+  String get warehouseMasterUseColumn;
+
+  /// No description provided for @warehouseMasterUseGood.
+  ///
+  /// In zh, this message translates to:
+  /// **'良品仓'**
+  String get warehouseMasterUseGood;
+
+  /// No description provided for @warehouseMasterUseDefective.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良品仓'**
+  String get warehouseMasterUseDefective;
+
+  /// No description provided for @warehouseMasterUseHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良品仓只放判为不良的货, 不计入可用量; 有库存或还是货品的所属仓库时不能改用途'**
+  String get warehouseMasterUseHint;
+
+  /// No description provided for @warehouseMasterParentLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'上级仓库'**
+  String get warehouseMasterParentLabel;
+
+  /// No description provided for @warehouseMasterParentFixedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'固定挂在主仓下面 (仓库只有主仓和子仓两层)'**
+  String get warehouseMasterParentFixedHint;
+
+  /// No description provided for @warehouseMasterParentSelf.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是主仓, 只作汇总、负责人范围和导航, 不能选作单据仓库'**
+  String get warehouseMasterParentSelf;
+
+  /// No description provided for @warehouseMasterMainTag.
+  ///
+  /// In zh, this message translates to:
+  /// **'主仓'**
+  String get warehouseMasterMainTag;
+
+  /// No description provided for @warehouseMasterLineSideLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'内料仓'**
+  String get warehouseMasterLineSideLabel;
+
+  /// No description provided for @warehouseMasterLineSideYes.
+  ///
+  /// In zh, this message translates to:
+  /// **'是 (车间直送与整批领料)'**
+  String get warehouseMasterLineSideYes;
+
+  /// No description provided for @warehouseMasterLineSideNo.
+  ///
+  /// In zh, this message translates to:
+  /// **'否'**
+  String get warehouseMasterLineSideNo;
+
+  /// No description provided for @warehouseMasterLineSideReadOnlyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'内料仓由「车间内料仓」页开通和撤销, 这里只能查看'**
+  String get warehouseMasterLineSideReadOnlyHint;
+
+  /// No description provided for @warehouseDefectiveTag.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良品'**
+  String get warehouseDefectiveTag;
+
+  /// No description provided for @warehouseDefectiveBlockedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良品仓, 这里不能选'**
+  String get warehouseDefectiveBlockedHint;
+
+  /// No description provided for @stockTransferSameClassHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'普通调拨两端必须同是良品仓或同是不良品仓; 良品转不良、复判合格转回请在库存详情里用「不良品处置」'**
+  String get stockTransferSameClassHint;
+
+  /// No description provided for @defectiveMoveAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良品处置'**
+  String get defectiveMoveAction;
+
+  /// No description provided for @defectiveMoveToDefective.
+  ///
+  /// In zh, this message translates to:
+  /// **'转不良品仓'**
+  String get defectiveMoveToDefective;
+
+  /// No description provided for @defectiveMoveRelease.
+  ///
+  /// In zh, this message translates to:
+  /// **'不良复判转回'**
+  String get defectiveMoveRelease;
+
+  /// No description provided for @defectiveMoveToDefectiveExplain.
+  ///
+  /// In zh, this message translates to:
+  /// **'把判为不良的货从良品仓转入不良品仓; 转入后不再计入任何可用量 (销售可预留、MRP、物料分析、领料都不算它)。'**
+  String get defectiveMoveToDefectiveExplain;
+
+  /// No description provided for @defectiveMoveReleaseExplain.
+  ///
+  /// In zh, this message translates to:
+  /// **'品质复判合格后把货从不良品仓转回良品仓; 转回后重新计入可用量。'**
+  String get defectiveMoveReleaseExplain;
+
+  /// No description provided for @defectiveMoveFrom.
+  ///
+  /// In zh, this message translates to:
+  /// **'调出仓'**
+  String get defectiveMoveFrom;
+
+  /// No description provided for @defectiveMoveTo.
+  ///
+  /// In zh, this message translates to:
+  /// **'调入仓'**
+  String get defectiveMoveTo;
+
+  /// No description provided for @defectiveMoveQty.
+  ///
+  /// In zh, this message translates to:
+  /// **'数量'**
+  String get defectiveMoveQty;
+
+  /// No description provided for @defectiveMoveReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'原因'**
+  String get defectiveMoveReason;
+
+  /// No description provided for @defectiveMoveReasonHintToDefective.
+  ///
+  /// In zh, this message translates to:
+  /// **'写明判为不良的原因 (必填, 不超过 500 字)'**
+  String get defectiveMoveReasonHintToDefective;
+
+  /// No description provided for @defectiveMoveReasonHintRelease.
+  ///
+  /// In zh, this message translates to:
+  /// **'写明复判结论 (必填, 不超过 500 字)'**
+  String get defectiveMoveReasonHintRelease;
+
+  /// No description provided for @defectiveMoveSubmit.
+  ///
+  /// In zh, this message translates to:
+  /// **'提交并过账'**
+  String get defectiveMoveSubmit;
+
+  /// No description provided for @defectiveMoveIncomplete.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选好调出仓、调入仓, 填写大于 0 的数量和原因'**
+  String get defectiveMoveIncomplete;
+
+  /// No description provided for @defectiveMoveDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已过账: {billNo}'**
+  String defectiveMoveDone(String billNo);
+
+  /// No description provided for @defectiveMoveGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品'**
+  String get defectiveMoveGoods;
+
+  /// No description provided for @instantInventoryDefectivePart.
+  ///
+  /// In zh, this message translates to:
+  /// **'其中不良品 {qty}'**
+  String instantInventoryDefectivePart(String qty);
+
+  /// No description provided for @goodsStockDefectiveExtra.
+  ///
+  /// In zh, this message translates to:
+  /// **'另有不良品 {qty} (不计入库存合计)'**
+  String goodsStockDefectiveExtra(String qty);
+
+  /// No description provided for @stockTransferKindLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'调拨类型'**
+  String get stockTransferKindLabel;
+
+  /// No description provided for @stockTransferKindNormal.
+  ///
+  /// In zh, this message translates to:
+  /// **'普通调拨'**
+  String get stockTransferKindNormal;
+
+  /// No description provided for @wmBinStatusNotOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'未开通'**
+  String get wmBinStatusNotOpen;
+
+  /// No description provided for @wmBinStatusOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开通'**
+  String get wmBinStatusOpen;
+
+  /// No description provided for @wmBinStatusPeriodic.
+  ///
+  /// In zh, this message translates to:
+  /// **'整批领料中'**
+  String get wmBinStatusPeriodic;
+
+  /// No description provided for @wmBinSegmentAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部车间'**
+  String get wmBinSegmentAll;
+
+  /// No description provided for @wmBinSearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索车间或仓库'**
+  String get wmBinSearchHint;
+
+  /// No description provided for @wmBinColWorkshop.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间'**
+  String get wmBinColWorkshop;
+
+  /// No description provided for @wmBinColStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
+  String get wmBinColStatus;
+
+  /// No description provided for @wmBinColBin.
+  ///
+  /// In zh, this message translates to:
+  /// **'内料仓'**
+  String get wmBinColBin;
+
+  /// No description provided for @wmBinColSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'发料来源仓'**
+  String get wmBinColSource;
+
+  /// No description provided for @wmBinColPeriod.
+  ///
+  /// In zh, this message translates to:
+  /// **'本期'**
+  String get wmBinColPeriod;
+
+  /// No description provided for @wmBinSourceDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'按货品所属仓库'**
+  String get wmBinSourceDefault;
+
+  /// No description provided for @wmBinOpenAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通({n})'**
+  String wmBinOpenAction(int n);
+
+  /// No description provided for @wmBinPeriodicAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启整批领料({n})'**
+  String wmBinPeriodicAction(int n);
+
+  /// No description provided for @wmBinRevokeAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销({n})'**
+  String wmBinRevokeAction(int n);
+
+  /// No description provided for @wmBinMenuViewStock.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看内料仓'**
+  String get wmBinMenuViewStock;
+
+  /// No description provided for @wmBinMenuOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通内料仓'**
+  String get wmBinMenuOpen;
+
+  /// No description provided for @wmBinMenuChangeSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改发料来源仓'**
+  String get wmBinMenuChangeSource;
+
+  /// No description provided for @wmBinMenuRevoke.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销这一步'**
+  String get wmBinMenuRevoke;
+
+  /// No description provided for @wmBinMachinesAndPrep.
+  ///
+  /// In zh, this message translates to:
+  /// **'机台与上线准备'**
+  String get wmBinMachinesAndPrep;
+
+  /// No description provided for @wmBinEmptyAll.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可查看的车间'**
+  String get wmBinEmptyAll;
+
+  /// No description provided for @wmBinEmptyFiltered.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有符合条件的车间'**
+  String get wmBinEmptyFiltered;
+
+  /// No description provided for @wmBinLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载失败, 请重试'**
+  String get wmBinLoadFailed;
+
+  /// No description provided for @wmBinNetworkRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'网络不稳定, 暂时没确认结果。输入已保留, 请再点一次 (不会重复办理)。'**
+  String get wmBinNetworkRetry;
+
+  /// No description provided for @wmBinRevokeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销 {n} 个车间的这一步'**
+  String wmBinRevokeTitle(int n);
+
+  /// No description provided for @wmBinRevokeLinePeriodic.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」: 撤销整批领料, 内料仓仍保持开通'**
+  String wmBinRevokeLinePeriodic(String name);
+
+  /// No description provided for @wmBinRevokeLineOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」: 撤销开通, 内料仓从仓库资料里移除'**
+  String wmBinRevokeLineOpen(String name);
+
+  /// No description provided for @wmBinRevokeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只能撤销设错的: 内料仓已经有进出、收过车间直送, 或整批领料已经在用时都不能撤销。'**
+  String get wmBinRevokeHint;
+
+  /// No description provided for @wmBinRevokeBlockedLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」现在不能撤销: {reasons}'**
+  String wmBinRevokeBlockedLine(String name, String reasons);
+
+  /// No description provided for @wmBinRevokeConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤销'**
+  String get wmBinRevokeConfirm;
+
+  /// No description provided for @wmBinRevokeDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤销 {n} 个车间的这一步'**
+  String wmBinRevokeDone(int n);
+
+  /// No description provided for @wmBinRevoking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在撤销'**
+  String get wmBinRevoking;
+
+  /// No description provided for @wmBinNoneOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有开通内料仓的车间'**
+  String get wmBinNoneOpened;
+
+  /// No description provided for @wmBinNotOpenTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{name}」还没开通内料仓'**
+  String wmBinNotOpenTitle(String name);
+
+  /// No description provided for @wmBinNotOpenDescription.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通后同一车间的上下道工序可以直送; 颗粒等原料要整批存放在车间时, 再开启整批领料。'**
+  String get wmBinNotOpenDescription;
+
+  /// No description provided for @wmBinNotOpenAskWarehouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'请找仓库在「车间内料仓」里开通。'**
+  String get wmBinNotOpenAskWarehouse;
+
+  /// No description provided for @wmBinDirectOnlyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个内料仓只收车间直送, 还没开启整批领料: 下面是现在放在内料仓里的料, 由上层工单直接领用。'**
+  String get wmBinDirectOnlyNotice;
+
+  /// No description provided for @wmBinPanelTitleOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'开通车间内料仓'**
+  String get wmBinPanelTitleOpen;
+
+  /// No description provided for @wmBinPanelTitleSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改发料来源仓'**
+  String get wmBinPanelTitleSource;
+
+  /// No description provided for @wmBinSelectedWorkshops.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选车间 ({n}): {names}'**
+  String wmBinSelectedWorkshops(int n, String names);
+
+  /// No description provided for @wmBinSourceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仓库往这个内料仓发料时, 有货就默认从这里出; 不选就按货品所属仓库。先点主仓, 再点子仓。'**
+  String get wmBinSourceHint;
+
+  /// No description provided for @wmBinSourcePickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择内料仓的发料来源仓'**
+  String get wmBinSourcePickerTitle;
+
+  /// No description provided for @wmBinSourceRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择发料来源仓'**
+  String get wmBinSourceRequired;
+
+  /// No description provided for @wmBinSourceSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'已保存发料来源仓'**
+  String get wmBinSourceSaved;
+
+  /// No description provided for @wmBinSaveSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存来源仓'**
+  String get wmBinSaveSource;
+
+  /// No description provided for @wmBinAlsoPeriodic.
+  ///
+  /// In zh, this message translates to:
+  /// **'同时开启整批领料'**
+  String get wmBinAlsoPeriodic;
+
+  /// No description provided for @wmBinAlsoPeriodicHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'颗粒等原料整批存放在车间, 按盘点计耗; 不开就只收车间直送。'**
+  String get wmBinAlsoPeriodicHint;
+
+  /// No description provided for @wmBinPeriodicFlowNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'开启后，使用内料仓原料的产品首次只需认料，不需要先提交工单领料。缺单重可先生产，补齐后才能计算预计用量和结算。需要嵌件等按单材料的产品，仍按原规则领这些材料。'**
+  String get wmBinPeriodicFlowNotice;
+
+  /// No description provided for @wmBinPendingNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选车间现在没有需要认料的在产任务。'**
+  String get wmBinPendingNone;
+
+  /// No description provided for @wmBinPendingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在生产、还没认料的产品 ({n} 个), 请一次选完 (按产品, 一个产品只认一次):'**
+  String wmBinPendingTitle(int n);
+
+  /// No description provided for @wmBinColProduct.
+  ///
+  /// In zh, this message translates to:
+  /// **'产品'**
+  String get wmBinColProduct;
+
+  /// No description provided for @wmBinColInProgressWorkshops.
+  ///
+  /// In zh, this message translates to:
+  /// **'在产车间'**
+  String get wmBinColInProgressWorkshops;
+
+  /// No description provided for @wmBinColTasks.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务数'**
+  String get wmBinColTasks;
+
+  /// No description provided for @wmBinColMaterial.
+  ///
+  /// In zh, this message translates to:
+  /// **'用哪种料'**
+  String get wmBinColMaterial;
+
+  /// No description provided for @wmBinColAlsoOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'还要按工单领'**
+  String get wmBinColAlsoOrder;
+
+  /// No description provided for @wmBinChooseMaterialHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选这个产品用的料'**
+  String get wmBinChooseMaterialHint;
+
+  /// No description provided for @wmBinMissingChoice.
+  ///
+  /// In zh, this message translates to:
+  /// **'还有 {n} 个在产产品没选料: {names}'**
+  String wmBinMissingChoice(int n, String names);
+
+  /// No description provided for @wmBinOpenDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开通 {n} 个车间的内料仓'**
+  String wmBinOpenDone(int n);
+
+  /// No description provided for @wmBinPeriodicDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已开启 {n} 个车间的整批领料'**
+  String wmBinPeriodicDone(int n);
+
+  /// No description provided for @wmBinSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在办理, 请稍候'**
+  String get wmBinSaving;
+
+  /// No description provided for @wmBinSavingPeriodic.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在建内料仓、第 1 期, 并把在产任务接上'**
+  String get wmBinSavingPeriodic;
+
+  /// No description provided for @wmLeafColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'出库仓库'**
+  String get wmLeafColumn;
+
+  /// No description provided for @wmLeafReturnColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'退到哪个仓库'**
+  String get wmLeafReturnColumn;
+
+  /// No description provided for @wmLeafPick.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择仓库'**
+  String get wmLeafPick;
+
+  /// No description provided for @wmLeafPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择出库仓库'**
+  String get wmLeafPickerTitle;
+
+  /// No description provided for @wmLeafReturnPickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择退到哪个仓库'**
+  String get wmLeafReturnPickerTitle;
+
+  /// No description provided for @wmLeafAvailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'可发 {qty} {unit}'**
+  String wmLeafAvailable(String qty, String unit);
+
+  /// No description provided for @wmSetupNoWorkshop.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有找到生产车间'**
+  String get wmSetupNoWorkshop;
+
+  /// No description provided for @wmSetupNoWorkshopHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间是生产部下面的部门; 请先在部门管理里建好车间'**
+  String get wmSetupNoWorkshopHint;
+
+  /// No description provided for @wmSetupWorkshopUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'指定车间当前不可用或无权查看'**
+  String get wmSetupWorkshopUnavailable;
+
+  /// No description provided for @wmSetupWorkshopUnavailableHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请返回原任务核对车间，或刷新后重试。'**
+  String get wmSetupWorkshopUnavailableHint;
+
+  /// No description provided for @wmSetupMaterialIssueMethod.
+  ///
+  /// In zh, this message translates to:
+  /// **'原材料发料方式'**
+  String get wmSetupMaterialIssueMethod;
+
+  /// No description provided for @wmSetupOpeningGuide.
+  ///
+  /// In zh, this message translates to:
+  /// **'上线余料怎么登记'**
+  String get wmSetupOpeningGuide;
+
+  /// No description provided for @wmSetupOpeningGuideTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'上线前清点车间余料'**
+  String get wmSetupOpeningGuideTitle;
+
+  /// No description provided for @wmSetupOpeningGuideBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'先记录料架整袋、开口袋、搅拌待用料和机台容器余料；称重与容器估算分别记录。\n\n已有库存账的余料：核对原仓库和工单。已按工单发出的先按原流程退料清账；仍在普通仓库账上的，由仓库整批调入车间内料仓。\n\n从未入账的余料：经核定数量和金额后办理其它入库，再整批调入内料仓，不要同时新增一份库存或把历史已用掉的料再记入。\n\n这是上线库存衔接，不要求生产员工为每张工单重新领料。后续按实际交接登记补料、退回，按需要盘点；机桶估算会影响耗用差异，不能当作精确实耗。'**
+  String get wmSetupOpeningGuideBody;
+
+  /// No description provided for @wmSetupOpeningGuideOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get wmSetupOpeningGuideOk;
+
+  /// No description provided for @warehouseMasterLineSideManaged.
+  ///
+  /// In zh, this message translates to:
+  /// **'是, 由「车间内料仓」开通和管理 (这里只读)'**
+  String get warehouseMasterLineSideManaged;
+
+  /// No description provided for @handoffLotRegistrationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记实际入库'**
+  String get handoffLotRegistrationTitle;
+
+  /// No description provided for @handoffLotRegistrationFooter.
+  ///
+  /// In zh, this message translates to:
+  /// **'一行一批实物(同一报工、同一次录入、送入仓库的需求份 / 计划公共 / 实际超产)：库位、实点、称重都是整批一个。入库仓库、库位号必填(仓库按货品归属仓或上次所选仓预填，库位按该仓记住的库位或货品资料带出，黄框请核对)；同一张报工的不同批可以登记到不同仓库。明细默认全选，提交只含勾选行。'**
+  String get handoffLotRegistrationFooter;
+
+  /// No description provided for @handoffLotBatchesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记批次 ({count})'**
+  String handoffLotBatchesTitle(int count);
+
+  /// No description provided for @handoffLotBatchesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'一张报工可按入库仓库分成几个登记批次，每个仓库一张品质检查单；品质尚未处理的批次可撤回登记，撤回后这些批重新回到待登记。'**
+  String get handoffLotBatchesHint;
+
+  /// No description provided for @handoffLotSplitColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'其中'**
+  String get handoffLotSplitColumn;
+
+  /// No description provided for @handoffLotSplitColumnInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一批实物里需求份、计划公共备货、实际超产各多少(服务端算出)。品质判定和仓库点收都按整批：合格 / 实收先满足需求份，不良 / 短收先扣实际超产。'**
+  String get handoffLotSplitColumnInfo;
+
+  /// No description provided for @inboundArrivalRegistrationTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'登记实际到货'**
+  String get inboundArrivalRegistrationTitle;
+
+  /// No description provided for @fqcWholeLotOnlyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'这批实物分成了需求、计划公共备货或实际超产几份，请在检查单里按整批判定合格与不良数量(合格先满足需求份，不良先扣实际超产)。'**
+  String get fqcWholeLotOnlyHint;
+
+  /// No description provided for @fqcOpenSheetForLot.
+  ///
+  /// In zh, this message translates to:
+  /// **'到检查单整批判定'**
+  String get fqcOpenSheetForLot;
+
+  /// No description provided for @warehouseScopeAllWarehouses.
+  ///
+  /// In zh, this message translates to:
+  /// **'全部仓库'**
+  String get warehouseScopeAllWarehouses;
+
+  /// No description provided for @warehouseScopeAllMine.
+  ///
+  /// In zh, this message translates to:
+  /// **'我负责的全部仓库'**
+  String get warehouseScopeAllMine;
+
+  /// No description provided for @warehouseScopeKeeperLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'我负责：{name}'**
+  String warehouseScopeKeeperLabel(String name);
+
+  /// No description provided for @warehouseScopePickerTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择仓库范围'**
+  String get warehouseScopePickerTitle;
+
+  /// No description provided for @warehouseScopeSupervisorTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'你是仓库主管：可看全部仓库，也可只看某一个仓。任务列表、分段计数都按所选范围由服务端给出，不改变办理权限。'**
+  String get warehouseScopeSupervisorTooltip;
+
+  /// No description provided for @warehouseScopeKeeperTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务中心只显示你负责的仓库的任务，徽章和通知也只算这些仓。要调整负责的仓库，请联系仓库主管在「仓库资料」里设置负责人。'**
+  String get warehouseScopeKeeperTooltip;
+
+  /// No description provided for @warehouseKeeperDialogTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置负责人 · {name}'**
+  String warehouseKeeperDialogTitle(String name);
+
+  /// No description provided for @warehouseKeeperRolesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'负责人决定谁看、谁收这个仓的任务：\n1. 登记在主仓「仓库(14年版)」上的人和仓储部负责人是仓库主管，能看全部仓库，也能在任务中心挑任一个仓；\n2. 登记在子仓上的人只看、只收自己负责的仓的任务(徽章也只算这些仓)，负责多个仓时可以在它们之间切换；\n3. 没登记负责人的同事看还没人负责的仓和还没定仓的任务；某个仓没登记负责人时，它的通知发给仓库主管。\n有同名员工时请按工号核对，没有登录账号的人不算有效负责人。'**
+  String get warehouseKeeperRolesHint;
+
+  /// No description provided for @warehouseKeeperNoAccount.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有启用的登录账号，看不到任务也收不到通知'**
+  String get warehouseKeeperNoAccount;
+
+  /// No description provided for @warehouseKeeperOutsideDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'不在仓库部门：要另有仓库任务权限才能看到任务、收到通知'**
+  String get warehouseKeeperOutsideDepartment;
+
+  /// No description provided for @warehouseKeeperDuplicateName.
+  ///
+  /// In zh, this message translates to:
+  /// **'有同名员工，请按工号核对'**
+  String get warehouseKeeperDuplicateName;
+
+  /// No description provided for @warehouseKeeperCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清空负责人：这个仓的任务和通知交给仓库主管，没登记负责人的同事也能看到'**
+  String get warehouseKeeperCleared;
+
+  /// No description provided for @warehouseKeeperSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'负责人已保存'**
+  String get warehouseKeeperSaved;
+
+  /// No description provided for @warehouseKeeperSavedWithWarnings.
+  ///
+  /// In zh, this message translates to:
+  /// **'负责人已保存。{warnings}'**
+  String warehouseKeeperSavedWithWarnings(String warnings);
+
+  /// No description provided for @defectiveMoveUncertain.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次提交的结果还没确认, 内容已锁定: 请按原内容重试, 确认结果后才能修改'**
+  String get defectiveMoveUncertain;
+
+  /// No description provided for @defectiveMoveReservationWarning.
+  ///
+  /// In zh, this message translates to:
+  /// **'这些预留已经没有实物, 请通知相关人员'**
+  String get defectiveMoveReservationWarning;
+
+  /// No description provided for @wmBinSourceFollowOwning.
+  ///
+  /// In zh, this message translates to:
+  /// **'不指定来源仓, 按货品所属仓库发料'**
+  String get wmBinSourceFollowOwning;
+
+  /// No description provided for @wmBinSourceFollowOwningHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'去掉已设的来源仓; 之后这个仓库就能正常停用或改用途'**
+  String get wmBinSourceFollowOwningHint;
+
+  /// No description provided for @wmBinSourceCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'已恢复按货品所属仓库发料'**
+  String get wmBinSourceCleared;
+
+  /// No description provided for @wmMachinesBatchCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量新增机台'**
+  String get wmMachinesBatchCreate;
+
+  /// No description provided for @wmMachinesSaveChanges.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存修改'**
+  String get wmMachinesSaveChanges;
+
+  /// No description provided for @qualityBatchSubmitDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'检验报告已提交: 来料检验 {iqcLines} 行、自制产成品全部合格 {fqcLots} 批; 合格部分已转仓库待入库'**
+  String qualityBatchSubmitDone(int iqcLines, int fqcLots);
+
+  /// No description provided for @qualityBatchColumnSplit.
+  ///
+  /// In zh, this message translates to:
+  /// **'本批拆分'**
+  String get qualityBatchColumnSplit;
+
+  /// No description provided for @qualityBatchWholeLot.
+  ///
+  /// In zh, this message translates to:
+  /// **'整批 {count} 份一起判'**
+  String qualityBatchWholeLot(int count);
+
+  /// No description provided for @qualityBatchWholeLotPass.
+  ///
+  /// In zh, this message translates to:
+  /// **'勾选即整批全部合格'**
+  String get qualityBatchWholeLotPass;
 }
 
 class _AppLocalizationsDelegate

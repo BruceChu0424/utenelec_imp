@@ -44,7 +44,7 @@ class _FakeApi extends ApiClient {
     if (path.endsWith('/samples')) {
       return {
         'goodsId': 'g1',
-        'resolved': {'key': 'g1|', 'basis': 'LEARNED', 'tier': 'YELLOW'},
+        'resolved': {'goodsId': 'g1', 'basis': 'LEARNED', 'tier': 'YELLOW'},
       };
     }
     return {};
@@ -58,7 +58,6 @@ class _FakeApi extends ApiClient {
 }
 
 const _learned = WeightParams(
-  key: 'g1|sup-A',
   goodsId: 'g1',
   basis: WeightBasis.learned,
   supplierSpecific: true,
@@ -72,7 +71,6 @@ const _learned = WeightParams(
 );
 
 const _red = WeightParams(
-  key: 'g1|sup-A',
   goodsId: 'g1',
   basis: WeightBasis.learned,
   logMean: -6.2,
@@ -241,7 +239,7 @@ void main() {
         mode: WeighCountContext.outbound,
         goodsId: 'g1',
         goodsTitle: '螺丝',
-        params: WeightParams(key: 'g1|', goodsId: 'g1'),
+        params: WeightParams(goodsId: 'g1'),
         currentQty: 1000,
         expectedWeightKg: 20,
       ),

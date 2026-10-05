@@ -113,7 +113,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         "warehouse_keepers", "warehouses",
                         // V740 (ADR-131): 车间整批领料设置、机台与容器、产品认料
                         "workshop_material_settings", "workshop_machines", "workshop_machine_containers",
-                        "goods_periodic_material_choices")),
+                        "goods_periodic_material_choices",
+                        // V800 (ADR-147): 车间内料仓开通记录(开通人、来源仓、版本)
+                        "workshop_bins")),
             new FullGroup("count_decisions_and_lineage", "data_change", false,
                     "V766/V768 的盘点申请、逐行计数、处理事件和过账关联是可追溯的业务决定，建表迁移明确 FULL；不以队列或派生名义免审",
                     Set.of("stock_count_requests", "stock_count_request_lines", "stock_count_request_events",
@@ -421,6 +423,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_fqc_contribution_adjustments",
                         "production_fqc_decision_events", "production_fqc_pass_all_batch_items",
                         "production_fqc_pass_all_batches",
+                        // V801 (ADR-148): 品质整批决定命令与逐份决定事件同为只追加账本。
+                        "production_fqc_lot_decision_commands",
                         "production_fqc_recovery_allocation_events",
                         "production_fqc_recovery_authorizations",
                         "production_fqc_recovery_cancellation_events",

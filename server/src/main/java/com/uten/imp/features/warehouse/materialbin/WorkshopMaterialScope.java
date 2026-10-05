@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.materialbin;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
@@ -99,6 +100,21 @@ public class WorkshopMaterialScope {
         if (workshopDepartmentId == null || !canSee(workshopDepartmentId)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "只能查看和办理本车间的内料仓");
         }
+    }
+
+    /**
+     * 车间内料仓请领/退料任务的「所在仓」(ADR-149, 唯一定义): 各行预填叶仓(W3 默认来源函数给出);
+     * 任一在范围内即算, 都没有 = 未定仓。车间成员按车间范围看自己的单, 不再叠加仓库范围。
+     * 列表与徽章计数同用(要求请领表别名 requisition); 返回空串 = 不过滤, 否则绑定 :warehouseScope。
+     */
+    public String requisitionWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+                                             MapSqlParameterSource params) {
+        if (warehouseScope == null || !warehouseScope.active() || restrictedWorkshops().isPresent()) return "";
+        params.addValue("warehouseScope", warehouseScope.idsCsv());
+        return warehouseScope.predicateAny("""
+                ARRAY(SELECT scoped_line.suggested_leaf_warehouse_id
+                      FROM workshop_material_requisition_lines scoped_line
+                      WHERE scoped_line.requisition_id = requisition.id)""", ":warehouseScope");
     }
 
     /**

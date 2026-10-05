@@ -894,8 +894,8 @@ void main() {
         }
         if (count >= 3) {
           _fixtureMaterial(data, 'm-2').addAll({
-            'owningWarehouseId': count == 3 ? 'main' : 'later-warehouse',
-            'owningWarehouseName': count == 3 ? '综合主仓' : '入库后的最新归属',
+            'owningWarehouseId': count == 3 ? 'warehouse-2' : 'later-warehouse',
+            'owningWarehouseName': count == 3 ? '综合主仓-成品子仓' : '入库后的最新归属',
           });
         }
         return data;
@@ -911,17 +911,18 @@ void main() {
     );
     tester.widget<InkWell>(field).onTap!();
     await tester.pumpAndSettle();
-    await tester.tap(find.text('综合主仓').last);
+    // ADR-145：所属仓库只能选可选的良品子仓，主仓只作导航；面板直接展开当前仓所在的主仓层。
+    await tester.tap(find.text('综合主仓-成品子仓').last);
     await tester.pumpAndSettle();
     expect(
-      find.descendant(of: field, matching: find.text('综合主仓')),
+      find.descendant(of: field, matching: find.text('综合主仓-成品子仓')),
       findsOneWidget,
     );
     oldRead.complete(stale!);
     await tester.pumpAndSettle();
     expect(reads, 3);
     expect(
-      find.descendant(of: field, matching: find.text('综合主仓')),
+      find.descendant(of: field, matching: find.text('综合主仓-成品子仓')),
       findsOneWidget,
     );
     await tester.pump(const Duration(seconds: 45));
@@ -5680,6 +5681,14 @@ Future<void> _pump(
               'name': '原料子仓',
               'code': '010',
               'parentId': 'main',
+              'selectableForNew': true,
+            },
+            {
+              'id': 'warehouse-2',
+              'name': '成品子仓',
+              'code': '020',
+              'parentId': 'main',
+              'selectableForNew': true,
             },
           ];
         } else if (request.path.endsWith('/transferable-in-summary')) {

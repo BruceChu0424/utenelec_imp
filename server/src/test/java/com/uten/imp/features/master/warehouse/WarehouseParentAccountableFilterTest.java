@@ -45,7 +45,7 @@ class WarehouseParentAccountableFilterTest {
 
         UUID parent = UUID.randomUUID();
         service.list(new WarehouseQueryFilter(
-                null, null, null, null, null, null, parent, Boolean.FALSE), 1, 20);
+                null, null, null, null, null, null, parent, Boolean.FALSE, Boolean.TRUE), 1, 20);
 
         ArgumentCaptor<Specification<Warehouse>> captor = ArgumentCaptor.forClass(Specification.class);
         verify(repository).findAll(captor.capture(), any(Pageable.class));
@@ -57,6 +57,9 @@ class WarehouseParentAccountableFilterTest {
         verify(cb).equal(any(), eq(parent));
         verify(root).get("accountable");
         verify(cb).equal(any(), eq(Boolean.FALSE));
+        // ADR-145 仓库用途列: defective=true 只看不良品仓。
+        verify(root).get("defective");
+        verify(cb).equal(any(), eq(Boolean.TRUE));
     }
 
     @Test
@@ -67,7 +70,7 @@ class WarehouseParentAccountableFilterTest {
                 .thenReturn(new PageImpl<>(List.of()));
 
         service(mock(EntityManager.class), repository).list(
-                new WarehouseQueryFilter(null, Set.of("parentId"), null, null, null, null, null, null),
+                new WarehouseQueryFilter(null, Set.of("parentId"), null, null, null, null, null, null, null),
                 1, 20);
 
         ArgumentCaptor<Specification<Warehouse>> captor = ArgumentCaptor.forClass(Specification.class);
@@ -102,15 +105,21 @@ class WarehouseParentAccountableFilterTest {
         // accountable 桶：is_accountable 分组（label 的 是/否 由 Java 侧映射）。
         assertThat(sql.getAllValues()).anySatisfy(statement -> assertThat(statement)
                 .contains("group by is_accountable"));
+        // defective 桶(ADR-145 仓库用途)：is_defective 分组(label 良品仓/不良品仓由 Java 侧映射)。
+        assertThat(sql.getAllValues()).anySatisfy(statement -> assertThat(statement)
+                .contains("group by is_defective"));
     }
 
     private static WarehouseService service(EntityManager em, WarehouseRepository repository) {
+        WarehouseMasterRules rules = mock(WarehouseMasterRules.class);
+        when(rules.selectableForNew(any())).thenReturn(Set.of());
         return new WarehouseService(
                 repository,
                 mock(TxSessionVars.class),
                 em,
                 mock(MasterCodeService.class),
                 mock(OrganizationReferencePort.class),
-                mock(WarehouseKeeperService.class));
+                mock(WarehouseKeeperService.class),
+                rules);
     }
 }

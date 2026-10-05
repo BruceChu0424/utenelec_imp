@@ -14,6 +14,7 @@ import com.uten.imp.features.master.supplier.SupplierRepository;
 import com.uten.imp.features.master.unit.Unit;
 import com.uten.imp.features.master.unit.UnitRepository;
 import com.uten.imp.features.master.warehouse.Warehouse;
+import com.uten.imp.features.master.warehouse.WarehouseMasterRules;
 import com.uten.imp.features.master.warehouse.WarehouseRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,7 @@ public class GoodsMasterRelationshipResolver {
     private final ClientRepository clientRepo;
     private final SupplierRepository supplierRepo;
     private final WarehouseRepository warehouseRepo;
+    private final WarehouseMasterRules warehouseRules;
     private final com.uten.imp.features.org.department.DepartmentRepository departmentRepo;
     private final MasterReferenceValidationPort references;
 
@@ -82,8 +84,9 @@ public class GoodsMasterRelationshipResolver {
     /**
      * 所属仓库 (V587)：这批货平时归哪个仓管的主档归属，不是单据落点仓，也不是物料分析范围仓。
      *
-     * <p>按 V587 口径只要求仓库存在且未软删：不限叶子仓，也不按「禁用」状态拦截
-     * (仓库停用后，货品的历史归属仍应保留得住)。UUID 是唯一关系键，没有 legacy 回退。
+     * <p>ADR-145 起所属仓库是「新选」: 只能是启用中的良品子仓(与字典 selectableForNew 同一定义,
+     * 不能是主仓、停用仓、不良品仓或车间内料仓)。调用方只在值变化时才解析, 已有的归属不受影响;
+     * 仓库还是货品的所属仓库时本来就停用不了(停用前置条件)。UUID 是唯一关系键，没有 legacy 回退。
      */
     public Warehouse owningWarehouse(UUID id) {
         Warehouse target = warehouseRepo.findById(requiredUuid(id))
@@ -91,9 +94,10 @@ public class GoodsMasterRelationshipResolver {
         if (target.isDeleted()) {
             throw new ApiException(ErrorCode.CONFLICT, "仓库已删除");
         }
-        if (target.isLineSide()) {
+        String refusal = warehouseRules.selectionRefusal(target.getId());
+        if (refusal != null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "所属仓库必须是正常存放仓，车间流转位置不能作为货品默认仓库");
+                    "所属仓库只能选启用中的良品子仓，「" + target.getName() + "」" + refusal);
         }
         return target;
     }

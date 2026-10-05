@@ -36,9 +36,11 @@ class GoodsMasterRelationshipResolverTest {
     private final com.uten.imp.features.org.department.DepartmentRepository departmentRepo =
             mock(com.uten.imp.features.org.department.DepartmentRepository.class);
     private final MasterReferenceValidationPort references = mock(MasterReferenceValidationPort.class);
+    private final com.uten.imp.features.master.warehouse.WarehouseMasterRules warehouseRules =
+            mock(com.uten.imp.features.master.warehouse.WarehouseMasterRules.class);
     private final GoodsMasterRelationshipResolver resolver = new GoodsMasterRelationshipResolver(
             unitRepo, colorRepo, mouldRepo, clientRepo, supplierRepo, warehouseRepo,
-            departmentRepo, references);
+            warehouseRules, departmentRepo, references);
 
     @Test
     void uuidIsAuthoritativeAndLegacyLookupIsNotConsulted() {
@@ -88,14 +90,19 @@ class GoodsMasterRelationshipResolverTest {
     }
 
     @Test
-    void owningWarehouseRejectsWorkshopLocationButAllowsOrdinaryParent() {
+    void owningWarehouseAcceptsOnlySelectableGoodLeafAndSaysWhyNot() {
         UUID id = UUID.randomUUID();
         var warehouse = new com.uten.imp.features.master.warehouse.Warehouse();
         warehouse.setId(id);
+        warehouse.setName("五金仓库");
         when(warehouseRepo.findById(id)).thenReturn(Optional.of(warehouse));
+        when(warehouseRules.selectionRefusal(id)).thenReturn(null);
         assertSame(warehouse, resolver.owningWarehouse(id));
-        warehouse.setLineSide(true);
-        assertEquals(ErrorCode.VALIDATION_FAILED,
-                assertThrows(ApiException.class, () -> resolver.owningWarehouse(id)).getCode());
+
+        // ADR-145: 主仓/停用仓/不良品仓/内料仓一律不能当所属仓库, 原因来自服务端唯一判定。
+        when(warehouseRules.selectionRefusal(id)).thenReturn("是不良品仓");
+        ApiException refused = assertThrows(ApiException.class, () -> resolver.owningWarehouse(id));
+        assertEquals(ErrorCode.VALIDATION_FAILED, refused.getCode());
+        assertEquals("所属仓库只能选启用中的良品子仓，「五金仓库」是不良品仓", refused.getMessage());
     }
 }

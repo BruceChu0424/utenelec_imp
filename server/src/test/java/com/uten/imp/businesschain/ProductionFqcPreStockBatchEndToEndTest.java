@@ -189,7 +189,7 @@ class ProductionFqcPreStockBatchEndToEndTest {
         Scenario scenario = prepare(2, "prestock");
         ProductionCompletionReverseService target = AopTestUtils.getUltimateTargetObject(completion);
         doAnswer(call -> {
-            assertEquals(2, approvedDocs(scenario), "进入统一收尾之前每笔实收入库已即时完成");
+            assertEquals(1, approvedDocs(scenario), "进入统一收尾之前这批实收入库(一张单两行)已即时完成");
             assertEquals(0, new BigDecimal("2").compareTo(balance(scenario)));
             throw new IllegalStateException("FQC final projection rejected");
         }).when(target).afterFinishedInboundBatchApproved(anyCollection());
@@ -312,10 +312,9 @@ class ProductionFqcPreStockBatchEndToEndTest {
 
     private void register(UUID report, UUID warehouse, List<UUID> items, boolean preStocked) {
         if (items.isEmpty()) return;
-        arrivals.register(report, new ArrivalRegistrationRequest("fqc-register-" + report + "-" + preStocked,
-                warehouse, items.stream().map(id -> new ArrivalRegistrationItemRequest(id,
-                "FQC-BATCH-" + id.toString().substring(0, 8), preStocked ? BigDecimal.ONE : null)).toList(),
-                "FQC batch projection", preStocked));
+        com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport.registerItems(arrivals, report,
+                "fqc-register-" + report + "-" + preStocked, warehouse, items,
+                id -> "FQC-BATCH-" + id.toString().substring(0, 8), "FQC batch projection", preStocked);
     }
 
     private Measured measure(Scenario scenario, String action, java.util.function.Supplier<PassAllBatchResult> command) throws Exception {
@@ -369,10 +368,18 @@ class ProductionFqcPreStockBatchEndToEndTest {
 
     private void assertFacts(Scenario scenario, int earlierPhysicalSlices) {
         int size = scenario.inspections().size();
-        assertEquals(size + earlierPhysicalSlices, sourceCount("stock_documents", "source_daily_report_id", scenario));
-        assertEquals(scenario.preStocked() + earlierPhysicalSlices, approvedDocs(scenario));
+        // ADR-148：一次全合格按「报工 x 登记批次 x 仓库 x 计划 x 是否先入库」合单：先入库的一张(自动点收)、
+        // 原流程的一张(待点收)；之前单独放行的每次各一张。每份仍各占一行。
+        int preStockedDocs = scenario.preStocked() > 0 ? 1 : 0;
+        int draftDocs = size - scenario.preStocked() > 0 ? 1 : 0;
+        assertEquals(preStockedDocs + draftDocs + earlierPhysicalSlices, sourceCount("stock_documents", "source_daily_report_id", scenario));
+        assertEquals(size + earlierPhysicalSlices, db.queryForObject("""
+                SELECT count(*) FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id
+                WHERE document.source_daily_report_id=? AND NOT item.is_deleted
+                """, Integer.class, scenario.reportId()));
+        assertEquals(preStockedDocs + earlierPhysicalSlices, approvedDocs(scenario));
         assertEquals(0, BigDecimal.valueOf(scenario.preStocked()).compareTo(balance(scenario)));
-        assertEquals(scenario.preStocked() + earlierPhysicalSlices, db.queryForObject("""
+        assertEquals(preStockedDocs + earlierPhysicalSlices, db.queryForObject("""
                 SELECT count(*) FROM production_finished_in_confirmations confirmation
                 JOIN stock_documents document ON document.id=confirmation.stock_document_id
                 WHERE document.source_daily_report_id=? AND confirmation.origin='PRE_STOCKED_AUTO'

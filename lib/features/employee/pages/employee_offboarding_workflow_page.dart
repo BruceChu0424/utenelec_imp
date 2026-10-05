@@ -345,8 +345,12 @@ class _EmployeeOffboardingWorkflowPageState
       } else {
         context.appApiError(error, fallback: '离职办理失败，未停用账号');
       }
-    } catch (_) {
-      if (mounted) context.appError('离职办理失败，未停用账号，请重试');
+    } catch (error) {
+      if (mounted) {
+        context.appError(
+          describeSubmitError(error, fallback: '离职办理失败，未停用账号，请重试'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

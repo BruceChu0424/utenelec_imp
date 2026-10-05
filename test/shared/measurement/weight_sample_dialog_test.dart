@@ -41,7 +41,6 @@ class _FakeApi extends ApiClient {
     return {
       'goodsId': 'g1',
       'resolved': {
-        'key': 'g1|sup-A',
         'goodsId': 'g1',
         'basis': 'LEARNED',
         'tier': 'GREEN',
@@ -55,7 +54,6 @@ class _FakeApi extends ApiClient {
 }
 
 const _learned = WeightParams(
-  key: 'g1|sup-A',
   goodsId: 'g1',
   basis: WeightBasis.learned,
   supplierSpecific: true,

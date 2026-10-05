@@ -41,8 +41,7 @@ class InventoryAiChatToolTest {
         actor(false, Set.of("ai:use", "stock:view"));
         when(access.hasDomain("WAREHOUSE")).thenReturn(true);
         when(references.warehouses()).thenReturn(warehouses());
-        when(references.assignedWarehouseRoots()).thenReturn(Set.of(OWN));
-        when(scopes.resolve("MINE", null)).thenReturn(new WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(OWN), true));
+        keeperOf(OWN);
         when(stock.instantInventoryRowsInWarehouseScope(any(), anySet(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(page(row(GOODS, "10", OTHER)));
         when(reservations.warehouseEffectiveReservedBase(any(), any(), nullable(UUID.class))).thenReturn(new BigDecimal("12"));
@@ -80,7 +79,7 @@ class InventoryAiChatToolTest {
             for (int warehouse = 0; warehouse < 4; warehouse++) {
                 rows.add(new InventoryAiChatQueryService.Row(id, null, OWN, UUID.randomUUID(),
                         "C".repeat(120), "货".repeat(120), "色".repeat(120), "单".repeat(120), "仓".repeat(120),
-                        exact, exact, exact, exact, exact));
+                        exact, exact, exact, exact, exact, false));
             }
         }
         when(bounded.read(any())).thenReturn(new InventoryAiChatQueryService.Facts(List.of(), rows, ""));
@@ -109,8 +108,8 @@ class InventoryAiChatToolTest {
     }
 
     @Test void missingAssignmentsDoNotBecomeAllWarehousesOrZeroStock() {
-        when(references.assignedWarehouseRoots()).thenReturn(Set.of());
-        when(scopes.resolve("MINE", null)).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+        // ADR-149: 没登记负责人的人(其他人)的「没人负责的仓」只是任务兜底, 不是 AI 查库存的授权。
+        other();
         String reply = tool.execute(Map.of("keyword", "MAT")).get("reply").toString();
         assertTrue(reply.contains("还没设置你的负责仓库"));
         assertFalse(reply.contains("现有 0"));
@@ -120,8 +119,8 @@ class InventoryAiChatToolTest {
     @Test void explicitForeignWarehouseIsDeniedBeforeAnyInventoryRead() {
         assertThrows(ApiException.class, () -> tool.execute(Map.of("keyword", "MAT", "warehouseId", OTHER.toString())));
         verifyNoInteractions(stock, balances, reservations);
-        verify(scopes).resolve("MINE", null);
-        verify(scopes, never()).resolve(anyString(), eq(OTHER));
+        verify(scopes).access();
+        verify(scopes, never()).current(any());
     }
 
     @Test void parentSelectionIntersectsAssignmentsInsteadOfOpeningSiblingWarehouse() {
@@ -130,10 +129,12 @@ class InventoryAiChatToolTest {
         verify(balances, never()).warehouseAvailableBase(eq(OTHER), any(), any());
     }
 
-    @Test void mineScopeStillRestrictsExplicitKeeperSubtree() {
-        when(references.assignedWarehouseRoots()).thenReturn(Set.of(PARENT));
+    @Test void supervisorReadsEveryWarehouseFromTheSameResolution() {
+        when(scopes.access()).thenReturn(new WarehouseTaskScopePort.WarehouseAccess(WarehouseTaskScopePort.Role.SUPERVISOR,
+                List.of(PARENT), WarehouseTaskScopePort.WarehouseTaskScope.ALL, true));
         tool.execute(Map.of("keyword", "MAT"));
-        verify(stock, times(2)).instantInventoryRowsInWarehouseScope(any(), eq(Set.of(OWN)), anyInt(), anyInt(), any(), any());
+        verify(balances).warehouseAvailableBase(OWN, GOODS, null);
+        verify(balances).warehouseAvailableBase(OTHER, GOODS, null);
     }
 
     @Test void superAdminReadsActualWarehousesWithoutKeeperAssignment() {
@@ -142,7 +143,6 @@ class InventoryAiChatToolTest {
         verify(balances).warehouseAvailableBase(OWN, GOODS, null);
         verify(balances).warehouseAvailableBase(OTHER, GOODS, null);
         verifyNoInteractions(scopes);
-        verify(references, never()).assignedWarehouseRoots();
     }
 
     @Test void unknownWarehouseDoesNotBroadenTheQuery() {
@@ -168,12 +168,11 @@ class InventoryAiChatToolTest {
     }
 
     @Test void ambiguousAuthorizedWarehouseNamesRequireReadableCodeAndNeverReadQuantities() {
-        when(references.assignedWarehouseRoots()).thenReturn(Set.of(PARENT));
-        when(scopes.resolve("MINE", null)).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+        keeperOf(PARENT, OWN, OTHER);
         when(references.warehouses()).thenReturn(List.of(
-                new WarehouseReference(PARENT, "P", "主仓", null, false, false),
-                new WarehouseReference(OWN, "W1", "原料仓", PARENT, true, false),
-                new WarehouseReference(OTHER, "W2", "原料仓", PARENT, true, false)));
+                new WarehouseReference(PARENT, "P", "主仓", null, false, false, false),
+                new WarehouseReference(OWN, "W1", "原料仓", PARENT, true, false, false),
+                new WarehouseReference(OTHER, "W2", "原料仓", PARENT, true, false, false)));
         String reply = tool.execute(Map.of("keyword", "MAT", "warehouseKeyword", "原料仓")).get("reply").toString();
         assertTrue(reply.contains("同名仓库"));
         assertTrue(reply.contains("W1 · 原料仓"));
@@ -199,11 +198,11 @@ class InventoryAiChatToolTest {
         var evidence = (Map<String, Object>) response.get("_toolEvidence");
         assertDoesNotThrow(() -> tool.authorizeResultRead(evidence));
         when(references.warehouses()).thenReturn(List.of(
-                new WarehouseReference(OWN, "W1", "已改名", PARENT, true, false),
-                new WarehouseReference(OTHER, "W2", "原料仓", PARENT, true, false)));
+                new WarehouseReference(OWN, "W1", "已改名", PARENT, true, false, false),
+                new WarehouseReference(OTHER, "W2", "原料仓", PARENT, true, false, false)));
         assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
         clearInvocations(stock, balances, reservations);
-        when(references.assignedWarehouseRoots()).thenReturn(Set.of());
+        other();
         assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
         verifyNoInteractions(stock, balances, reservations);
     }
@@ -241,7 +240,7 @@ class InventoryAiChatToolTest {
     @Test void historyRevalidatesScopeBeforeReturningOldQuantities() {
         var evidence = evidence();
         assertDoesNotThrow(() -> tool.authorizeResultRead(evidence));
-        when(references.assignedWarehouseRoots()).thenReturn(Set.of());
+        other();
         assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
     }
 
@@ -263,8 +262,22 @@ class InventoryAiChatToolTest {
 
     @Test void historyRejectsWarehouseRenameEvenWithSameQuantities() {
         var evidence = evidence();
-        when(references.warehouses()).thenReturn(List.of(new WarehouseReference(OWN, "W1", "移交后的仓", PARENT, true, false)));
+        when(references.warehouses()).thenReturn(List.of(new WarehouseReference(OWN, "W1", "移交后的仓", PARENT, true, false, false)));
         assertThrows(ApiException.class, () -> tool.authorizeResultRead(evidence));
+    }
+
+    /** ADR-146: 不良品仓行现存照报、可用恒为 0、预留照实报 0(不良品仓上不能有预留, 全局预留也不摊到它上面)。 */
+    @Test void defectiveWarehouseRowsShowZeroUsableAndZeroReserved() {
+        when(references.warehouses()).thenReturn(List.of(
+                new WarehouseReference(PARENT, "P", "主仓", null, false, false, false),
+                new WarehouseReference(OWN, "C0401", "成品不良品仓", PARENT, true, false, true)));
+        var result = tool.execute(Map.of("keyword", "MAT-01"));
+        assertTrue(result.get("reply").toString().contains("(不良品仓, 不计入可用)"));
+        String detail = result.get("detailReply").toString();
+        assertTrue(detail.contains("预留 0 件"), detail);
+        assertFalse(detail.contains("预留 12 件"), detail);
+        verify(reservations, never()).warehouseEffectiveReservedBase(eq(OWN), any(), nullable(UUID.class));
+        verify(balances, never()).warehouseAvailableBase(eq(OWN), any(), nullable(UUID.class));
     }
 
     @Test void historyRejectsMissingAndForgedSourceEvidence() {
@@ -276,7 +289,7 @@ class InventoryAiChatToolTest {
     }
 
     @Test void missingWarehouseNameNeverExposesAnInternalIdentifier() {
-        when(references.warehouses()).thenReturn(List.of(new WarehouseReference(OWN, "W1", null, null, true, false)));
+        when(references.warehouses()).thenReturn(List.of(new WarehouseReference(OWN, "W1", null, null, true, false, false)));
         var result = tool.execute(Map.of("keyword", "MAT"));
         for (String field : List.of("reply", "detailReply")) {
             assertTrue(result.get(field).toString().contains("未命名仓库"));
@@ -287,14 +300,26 @@ class InventoryAiChatToolTest {
     @SuppressWarnings("unchecked") private Map<String, Object> evidence() {
         return (Map<String, Object>) tool.execute(Map.of("keyword", "MAT")).get("_toolEvidence");
     }
+    /** 子仓负责人: 默认范围 = 自己负责的仓(含下级), 不含未定仓。 */
+    private void keeperOf(UUID... scope) {
+        when(scopes.access()).thenReturn(new WarehouseTaskScopePort.WarehouseAccess(WarehouseTaskScopePort.Role.KEEPER,
+                List.of(scope[0]), new WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(scope), false), true));
+    }
+
+    /** 其他人: 只看没人负责的仓的任务(这里全公司还没登记, 等于全部), 但不是 AI 查库存的授权。 */
+    private void other() {
+        when(scopes.access()).thenReturn(new WarehouseTaskScopePort.WarehouseAccess(WarehouseTaskScopePort.Role.OTHER,
+                List.of(), WarehouseTaskScopePort.WarehouseTaskScope.ALL, true));
+    }
+
     private void actor(boolean admin, Set<String> permissions) {
         when(access.requireChat()).thenReturn(new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "actor",
                 permissions, false, true, admin));
     }
     private static List<WarehouseReference> warehouses() {
-        return List.of(new WarehouseReference(PARENT, "P", "主仓", null, false, false),
-                new WarehouseReference(OWN, "W1", "原料仓", PARENT, true, false),
-                new WarehouseReference(OTHER, "W2", "其他仓", PARENT, true, false));
+        return List.of(new WarehouseReference(PARENT, "P", "主仓", null, false, false, false),
+                new WarehouseReference(OWN, "W1", "原料仓", PARENT, true, false, false),
+                new WarehouseReference(OTHER, "W2", "其他仓", PARENT, true, false, false));
     }
     private static PageResponse<InstantInventoryRow> page(InstantInventoryRow row) {
         return new PageResponse<>(List.of(row), 1, 6, 1, 1);
@@ -303,6 +328,7 @@ class InventoryAiChatToolTest {
         return new InstantInventoryRow(goods, null, "分类", "M1", "SECRET_CUSTOMER_MODEL", "螺丝", "规格",
                 null, "件", "SECRET_REMARK", BigDecimal.ONE, new BigDecimal(qty), new BigDecimal("98765"),
                 new BigDecimal("98765"), "MAT-01", "系列", "库位", new BigDecimal("3"), new BigDecimal("4"),
-                false, false, BigDecimal.ONE, "GREEN", false, owningWarehouse, "SECRET_OWNING_WAREHOUSE");
+                false, false, BigDecimal.ONE, "GREEN", false, owningWarehouse, "SECRET_OWNING_WAREHOUSE",
+                BigDecimal.ZERO);
     }
 }

@@ -4625,9 +4625,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmGoLiveDate => '启用日';
 
   @override
-  String get wmMainWarehouse => '放在哪个主仓下';
-
-  @override
   String get wmMachines => '机台与容器';
 
   @override
@@ -4666,7 +4663,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmIncludeWorkshopStore => '含内料仓';
 
   @override
-  String get workshopMaterialSetupHubDesc => '开启车间整批领料、机台与容器、上线准备 (产品的颗粒与单个重量)';
+  String get workshopMaterialSetupHubDesc =>
+      '机台与容器、上线准备 (产品的颗粒与单个重量); 开通内料仓、开启整批领料在「车间内料仓」总览里办';
 
   @override
   String get workshopMaterialReportsHubDesc => '按期间看盘点推算耗用、耗用差异率与结算状态';
@@ -4685,9 +4683,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get wmBagMaterials => '袋料';
-
-  @override
-  String get wmEnableWorkshopTab => '车间开启';
 
   @override
   String get wmReportPeriod => '期间';
@@ -8482,4 +8477,516 @@ class AppLocalizationsZh extends AppLocalizations {
   String aiAuditProviders(String names) {
     return '服务：$names';
   }
+
+  @override
+  String get stockCountReasonLabel => '盘点说明(选填)';
+
+  @override
+  String get stockCountReasonHint => '例如上线清点或例行盘点，最多 500 字';
+
+  @override
+  String weightParamsLoadFailed(String reason) {
+    return '单重参数读取失败：$reason。称重折算与重量预填暂不可用，数量照常登记。';
+  }
+
+  @override
+  String get weightParamsLoadFailedUnknown => '网络或服务暂时不可用';
+
+  @override
+  String get warehouseOwningPickerTitle => '选择所属仓库';
+
+  @override
+  String get warehouseMasterUseColumn => '仓库用途';
+
+  @override
+  String get warehouseMasterUseGood => '良品仓';
+
+  @override
+  String get warehouseMasterUseDefective => '不良品仓';
+
+  @override
+  String get warehouseMasterUseHint =>
+      '不良品仓只放判为不良的货, 不计入可用量; 有库存或还是货品的所属仓库时不能改用途';
+
+  @override
+  String get warehouseMasterParentLabel => '上级仓库';
+
+  @override
+  String get warehouseMasterParentFixedHint => '固定挂在主仓下面 (仓库只有主仓和子仓两层)';
+
+  @override
+  String get warehouseMasterParentSelf => '这是主仓, 只作汇总、负责人范围和导航, 不能选作单据仓库';
+
+  @override
+  String get warehouseMasterMainTag => '主仓';
+
+  @override
+  String get warehouseMasterLineSideLabel => '内料仓';
+
+  @override
+  String get warehouseMasterLineSideYes => '是 (车间直送与整批领料)';
+
+  @override
+  String get warehouseMasterLineSideNo => '否';
+
+  @override
+  String get warehouseMasterLineSideReadOnlyHint => '内料仓由「车间内料仓」页开通和撤销, 这里只能查看';
+
+  @override
+  String get warehouseDefectiveTag => '不良品';
+
+  @override
+  String get warehouseDefectiveBlockedHint => '不良品仓, 这里不能选';
+
+  @override
+  String get stockTransferSameClassHint =>
+      '普通调拨两端必须同是良品仓或同是不良品仓; 良品转不良、复判合格转回请在库存详情里用「不良品处置」';
+
+  @override
+  String get defectiveMoveAction => '不良品处置';
+
+  @override
+  String get defectiveMoveToDefective => '转不良品仓';
+
+  @override
+  String get defectiveMoveRelease => '不良复判转回';
+
+  @override
+  String get defectiveMoveToDefectiveExplain =>
+      '把判为不良的货从良品仓转入不良品仓; 转入后不再计入任何可用量 (销售可预留、MRP、物料分析、领料都不算它)。';
+
+  @override
+  String get defectiveMoveReleaseExplain => '品质复判合格后把货从不良品仓转回良品仓; 转回后重新计入可用量。';
+
+  @override
+  String get defectiveMoveFrom => '调出仓';
+
+  @override
+  String get defectiveMoveTo => '调入仓';
+
+  @override
+  String get defectiveMoveQty => '数量';
+
+  @override
+  String get defectiveMoveReason => '原因';
+
+  @override
+  String get defectiveMoveReasonHintToDefective => '写明判为不良的原因 (必填, 不超过 500 字)';
+
+  @override
+  String get defectiveMoveReasonHintRelease => '写明复判结论 (必填, 不超过 500 字)';
+
+  @override
+  String get defectiveMoveSubmit => '提交并过账';
+
+  @override
+  String get defectiveMoveIncomplete => '请选好调出仓、调入仓, 填写大于 0 的数量和原因';
+
+  @override
+  String defectiveMoveDone(String billNo) {
+    return '已过账: $billNo';
+  }
+
+  @override
+  String get defectiveMoveGoods => '货品';
+
+  @override
+  String instantInventoryDefectivePart(String qty) {
+    return '其中不良品 $qty';
+  }
+
+  @override
+  String goodsStockDefectiveExtra(String qty) {
+    return '另有不良品 $qty (不计入库存合计)';
+  }
+
+  @override
+  String get stockTransferKindLabel => '调拨类型';
+
+  @override
+  String get stockTransferKindNormal => '普通调拨';
+
+  @override
+  String get wmBinStatusNotOpen => '未开通';
+
+  @override
+  String get wmBinStatusOpen => '已开通';
+
+  @override
+  String get wmBinStatusPeriodic => '整批领料中';
+
+  @override
+  String get wmBinSegmentAll => '全部车间';
+
+  @override
+  String get wmBinSearchHint => '搜索车间或仓库';
+
+  @override
+  String get wmBinColWorkshop => '车间';
+
+  @override
+  String get wmBinColStatus => '状态';
+
+  @override
+  String get wmBinColBin => '内料仓';
+
+  @override
+  String get wmBinColSource => '发料来源仓';
+
+  @override
+  String get wmBinColPeriod => '本期';
+
+  @override
+  String get wmBinSourceDefault => '按货品所属仓库';
+
+  @override
+  String wmBinOpenAction(int n) {
+    return '开通($n)';
+  }
+
+  @override
+  String wmBinPeriodicAction(int n) {
+    return '开启整批领料($n)';
+  }
+
+  @override
+  String wmBinRevokeAction(int n) {
+    return '撤销($n)';
+  }
+
+  @override
+  String get wmBinMenuViewStock => '查看内料仓';
+
+  @override
+  String get wmBinMenuOpen => '开通内料仓';
+
+  @override
+  String get wmBinMenuChangeSource => '修改发料来源仓';
+
+  @override
+  String get wmBinMenuRevoke => '撤销这一步';
+
+  @override
+  String get wmBinMachinesAndPrep => '机台与上线准备';
+
+  @override
+  String get wmBinEmptyAll => '暂无可查看的车间';
+
+  @override
+  String get wmBinEmptyFiltered => '没有符合条件的车间';
+
+  @override
+  String get wmBinLoadFailed => '加载失败, 请重试';
+
+  @override
+  String get wmBinNetworkRetry => '网络不稳定, 暂时没确认结果。输入已保留, 请再点一次 (不会重复办理)。';
+
+  @override
+  String wmBinRevokeTitle(int n) {
+    return '撤销 $n 个车间的这一步';
+  }
+
+  @override
+  String wmBinRevokeLinePeriodic(String name) {
+    return '「$name」: 撤销整批领料, 内料仓仍保持开通';
+  }
+
+  @override
+  String wmBinRevokeLineOpen(String name) {
+    return '「$name」: 撤销开通, 内料仓从仓库资料里移除';
+  }
+
+  @override
+  String get wmBinRevokeHint => '只能撤销设错的: 内料仓已经有进出、收过车间直送, 或整批领料已经在用时都不能撤销。';
+
+  @override
+  String wmBinRevokeBlockedLine(String name, String reasons) {
+    return '「$name」现在不能撤销: $reasons';
+  }
+
+  @override
+  String get wmBinRevokeConfirm => '撤销';
+
+  @override
+  String wmBinRevokeDone(int n) {
+    return '已撤销 $n 个车间的这一步';
+  }
+
+  @override
+  String get wmBinRevoking => '正在撤销';
+
+  @override
+  String get wmBinNoneOpened => '还没有开通内料仓的车间';
+
+  @override
+  String wmBinNotOpenTitle(String name) {
+    return '「$name」还没开通内料仓';
+  }
+
+  @override
+  String get wmBinNotOpenDescription =>
+      '开通后同一车间的上下道工序可以直送; 颗粒等原料要整批存放在车间时, 再开启整批领料。';
+
+  @override
+  String get wmBinNotOpenAskWarehouse => '请找仓库在「车间内料仓」里开通。';
+
+  @override
+  String get wmBinDirectOnlyNotice =>
+      '这个内料仓只收车间直送, 还没开启整批领料: 下面是现在放在内料仓里的料, 由上层工单直接领用。';
+
+  @override
+  String get wmBinPanelTitleOpen => '开通车间内料仓';
+
+  @override
+  String get wmBinPanelTitleSource => '修改发料来源仓';
+
+  @override
+  String wmBinSelectedWorkshops(int n, String names) {
+    return '所选车间 ($n): $names';
+  }
+
+  @override
+  String get wmBinSourceHint =>
+      '仓库往这个内料仓发料时, 有货就默认从这里出; 不选就按货品所属仓库。先点主仓, 再点子仓。';
+
+  @override
+  String get wmBinSourcePickerTitle => '选择内料仓的发料来源仓';
+
+  @override
+  String get wmBinSourceRequired => '请选择发料来源仓';
+
+  @override
+  String get wmBinSourceSaved => '已保存发料来源仓';
+
+  @override
+  String get wmBinSaveSource => '保存来源仓';
+
+  @override
+  String get wmBinAlsoPeriodic => '同时开启整批领料';
+
+  @override
+  String get wmBinAlsoPeriodicHint => '颗粒等原料整批存放在车间, 按盘点计耗; 不开就只收车间直送。';
+
+  @override
+  String get wmBinPeriodicFlowNotice =>
+      '开启后，使用内料仓原料的产品首次只需认料，不需要先提交工单领料。缺单重可先生产，补齐后才能计算预计用量和结算。需要嵌件等按单材料的产品，仍按原规则领这些材料。';
+
+  @override
+  String get wmBinPendingNone => '所选车间现在没有需要认料的在产任务。';
+
+  @override
+  String wmBinPendingTitle(int n) {
+    return '正在生产、还没认料的产品 ($n 个), 请一次选完 (按产品, 一个产品只认一次):';
+  }
+
+  @override
+  String get wmBinColProduct => '产品';
+
+  @override
+  String get wmBinColInProgressWorkshops => '在产车间';
+
+  @override
+  String get wmBinColTasks => '任务数';
+
+  @override
+  String get wmBinColMaterial => '用哪种料';
+
+  @override
+  String get wmBinColAlsoOrder => '还要按工单领';
+
+  @override
+  String get wmBinChooseMaterialHint => '选这个产品用的料';
+
+  @override
+  String wmBinMissingChoice(int n, String names) {
+    return '还有 $n 个在产产品没选料: $names';
+  }
+
+  @override
+  String wmBinOpenDone(int n) {
+    return '已开通 $n 个车间的内料仓';
+  }
+
+  @override
+  String wmBinPeriodicDone(int n) {
+    return '已开启 $n 个车间的整批领料';
+  }
+
+  @override
+  String get wmBinSaving => '正在办理, 请稍候';
+
+  @override
+  String get wmBinSavingPeriodic => '正在建内料仓、第 1 期, 并把在产任务接上';
+
+  @override
+  String get wmLeafColumn => '出库仓库';
+
+  @override
+  String get wmLeafReturnColumn => '退到哪个仓库';
+
+  @override
+  String get wmLeafPick => '选择仓库';
+
+  @override
+  String get wmLeafPickerTitle => '选择出库仓库';
+
+  @override
+  String get wmLeafReturnPickerTitle => '选择退到哪个仓库';
+
+  @override
+  String wmLeafAvailable(String qty, String unit) {
+    return '可发 $qty $unit';
+  }
+
+  @override
+  String get wmSetupNoWorkshop => '没有找到生产车间';
+
+  @override
+  String get wmSetupNoWorkshopHint => '车间是生产部下面的部门; 请先在部门管理里建好车间';
+
+  @override
+  String get wmSetupWorkshopUnavailable => '指定车间当前不可用或无权查看';
+
+  @override
+  String get wmSetupWorkshopUnavailableHint => '请返回原任务核对车间，或刷新后重试。';
+
+  @override
+  String get wmSetupMaterialIssueMethod => '原材料发料方式';
+
+  @override
+  String get wmSetupOpeningGuide => '上线余料怎么登记';
+
+  @override
+  String get wmSetupOpeningGuideTitle => '上线前清点车间余料';
+
+  @override
+  String get wmSetupOpeningGuideBody =>
+      '先记录料架整袋、开口袋、搅拌待用料和机台容器余料；称重与容器估算分别记录。\n\n已有库存账的余料：核对原仓库和工单。已按工单发出的先按原流程退料清账；仍在普通仓库账上的，由仓库整批调入车间内料仓。\n\n从未入账的余料：经核定数量和金额后办理其它入库，再整批调入内料仓，不要同时新增一份库存或把历史已用掉的料再记入。\n\n这是上线库存衔接，不要求生产员工为每张工单重新领料。后续按实际交接登记补料、退回，按需要盘点；机桶估算会影响耗用差异，不能当作精确实耗。';
+
+  @override
+  String get wmSetupOpeningGuideOk => '知道了';
+
+  @override
+  String get warehouseMasterLineSideManaged => '是, 由「车间内料仓」开通和管理 (这里只读)';
+
+  @override
+  String get handoffLotRegistrationTitle => '登记实际入库';
+
+  @override
+  String get handoffLotRegistrationFooter =>
+      '一行一批实物(同一报工、同一次录入、送入仓库的需求份 / 计划公共 / 实际超产)：库位、实点、称重都是整批一个。入库仓库、库位号必填(仓库按货品归属仓或上次所选仓预填，库位按该仓记住的库位或货品资料带出，黄框请核对)；同一张报工的不同批可以登记到不同仓库。明细默认全选，提交只含勾选行。';
+
+  @override
+  String handoffLotBatchesTitle(int count) {
+    return '登记批次 ($count)';
+  }
+
+  @override
+  String get handoffLotBatchesHint =>
+      '一张报工可按入库仓库分成几个登记批次，每个仓库一张品质检查单；品质尚未处理的批次可撤回登记，撤回后这些批重新回到待登记。';
+
+  @override
+  String get handoffLotSplitColumn => '其中';
+
+  @override
+  String get handoffLotSplitColumnInfo =>
+      '同一批实物里需求份、计划公共备货、实际超产各多少(服务端算出)。品质判定和仓库点收都按整批：合格 / 实收先满足需求份，不良 / 短收先扣实际超产。';
+
+  @override
+  String get inboundArrivalRegistrationTitle => '登记实际到货';
+
+  @override
+  String get fqcWholeLotOnlyHint =>
+      '这批实物分成了需求、计划公共备货或实际超产几份，请在检查单里按整批判定合格与不良数量(合格先满足需求份，不良先扣实际超产)。';
+
+  @override
+  String get fqcOpenSheetForLot => '到检查单整批判定';
+
+  @override
+  String get warehouseScopeAllWarehouses => '全部仓库';
+
+  @override
+  String get warehouseScopeAllMine => '我负责的全部仓库';
+
+  @override
+  String warehouseScopeKeeperLabel(String name) {
+    return '我负责：$name';
+  }
+
+  @override
+  String get warehouseScopePickerTitle => '选择仓库范围';
+
+  @override
+  String get warehouseScopeSupervisorTooltip =>
+      '你是仓库主管：可看全部仓库，也可只看某一个仓。任务列表、分段计数都按所选范围由服务端给出，不改变办理权限。';
+
+  @override
+  String get warehouseScopeKeeperTooltip =>
+      '任务中心只显示你负责的仓库的任务，徽章和通知也只算这些仓。要调整负责的仓库，请联系仓库主管在「仓库资料」里设置负责人。';
+
+  @override
+  String warehouseKeeperDialogTitle(String name) {
+    return '设置负责人 · $name';
+  }
+
+  @override
+  String get warehouseKeeperRolesHint =>
+      '负责人决定谁看、谁收这个仓的任务：\n1. 登记在主仓「仓库(14年版)」上的人和仓储部负责人是仓库主管，能看全部仓库，也能在任务中心挑任一个仓；\n2. 登记在子仓上的人只看、只收自己负责的仓的任务(徽章也只算这些仓)，负责多个仓时可以在它们之间切换；\n3. 没登记负责人的同事看还没人负责的仓和还没定仓的任务；某个仓没登记负责人时，它的通知发给仓库主管。\n有同名员工时请按工号核对，没有登录账号的人不算有效负责人。';
+
+  @override
+  String get warehouseKeeperNoAccount => '没有启用的登录账号，看不到任务也收不到通知';
+
+  @override
+  String get warehouseKeeperOutsideDepartment => '不在仓库部门：要另有仓库任务权限才能看到任务、收到通知';
+
+  @override
+  String get warehouseKeeperDuplicateName => '有同名员工，请按工号核对';
+
+  @override
+  String get warehouseKeeperCleared => '已清空负责人：这个仓的任务和通知交给仓库主管，没登记负责人的同事也能看到';
+
+  @override
+  String get warehouseKeeperSaved => '负责人已保存';
+
+  @override
+  String warehouseKeeperSavedWithWarnings(String warnings) {
+    return '负责人已保存。$warnings';
+  }
+
+  @override
+  String get defectiveMoveUncertain => '上次提交的结果还没确认, 内容已锁定: 请按原内容重试, 确认结果后才能修改';
+
+  @override
+  String get defectiveMoveReservationWarning => '这些预留已经没有实物, 请通知相关人员';
+
+  @override
+  String get wmBinSourceFollowOwning => '不指定来源仓, 按货品所属仓库发料';
+
+  @override
+  String get wmBinSourceFollowOwningHint => '去掉已设的来源仓; 之后这个仓库就能正常停用或改用途';
+
+  @override
+  String get wmBinSourceCleared => '已恢复按货品所属仓库发料';
+
+  @override
+  String get wmMachinesBatchCreate => '批量新增机台';
+
+  @override
+  String get wmMachinesSaveChanges => '保存修改';
+
+  @override
+  String qualityBatchSubmitDone(int iqcLines, int fqcLots) {
+    return '检验报告已提交: 来料检验 $iqcLines 行、自制产成品全部合格 $fqcLots 批; 合格部分已转仓库待入库';
+  }
+
+  @override
+  String get qualityBatchColumnSplit => '本批拆分';
+
+  @override
+  String qualityBatchWholeLot(int count) {
+    return '整批 $count 份一起判';
+  }
+
+  @override
+  String get qualityBatchWholeLotPass => '勾选即整批全部合格';
 }

@@ -1351,9 +1351,13 @@ class _ProcurementInspectionDetailPageState
               : '提交结果尚未确认：${error.message}；请重试原报告核对，原数量和请求编号已保留',
         );
       }
-    } catch (_) {
+    } catch (error) {
+      // 草稿保护在发出请求前拒绝(另一页面改过草稿、保护尚未就绪等)时如实报因(ADR-151 §2)。
       if (mounted) {
-        UtenNotify.error(context, '提交检验报告失败，请稍后重试');
+        UtenNotify.error(
+          context,
+          describeSubmitError(error, fallback: '提交检验报告失败，请稍后重试'),
+        );
       }
     } finally {
       if (mounted) setState(() => _busyDecision = false);

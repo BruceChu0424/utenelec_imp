@@ -58,7 +58,7 @@ public class WarehouseSalesOutboundProjectionService {
                 com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
     }
 
-    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤。 */
+    /** 同上, 另按仓库数据范围(ADR-149)过滤。 */
     @Transactional(readOnly = true)
     public PageResponse<WarehouseSalesOutboundListItem> list(
             String keyword,
@@ -154,19 +154,19 @@ public class WarehouseSalesOutboundProjectionService {
                 null));
     }
 
-    /** 待出库任务计数（出库任务中心/工作台角标），与列表同一读范围与仓库口径。 */
+    /** 待出库任务计数（出库任务中心/工作台角标），与列表同一读范围与仓库数据范围(ADR-149)。 */
     @Transactional(readOnly = true)
-    public long pendingCount() {
-        return shipments.countPendingWarehouseWork();
+    public long pendingCount(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        return shipments.countPendingWarehouseWork(warehouseScope);
     }
 
     /**
      * 仓库作业状态分组计数(出库任务中心「销售出库」小类行徽章): 键为 warehouse_work_status,
-     * 五个可筛选状态都给键(缺省 0), 与列表同一读范围; PENDING_PICK 键与 {@link #pendingCount()} 同数.
+     * 五个可筛选状态都给键(缺省 0), 与列表同一读范围; PENDING_PICK 键与 {@link #pendingCount} 同数.
      */
     @Transactional(readOnly = true)
-    public Map<String, Long> counts() {
-        Map<String, Long> raw = shipments.countWarehouseWorkByStatus();
+    public Map<String, Long> counts(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        Map<String, Long> raw = shipments.countWarehouseWorkByStatus(warehouseScope);
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String status : COUNTED_WORK_STATUSES) {
             counts.put(status, raw.getOrDefault(status, 0L));
@@ -336,7 +336,8 @@ public class WarehouseSalesOutboundProjectionService {
     }
 
     /**
-     * 每行可选的发出仓及可发量（V631）：候选是所有持有本单任一货品库存的启用核算叶仓；
+     * 每行可选的发出仓及可发量(V631)：候选是所有持有本单任一货品库存、计入可用量的启用子仓
+     * (ADR-146：不含不良品仓与车间内料仓)；
      * 可发量 = 本仓余额 − 安全库存 − 其它硬预留，再受全局预算与本订单行自身预留封顶，
      * 同仓同货多行按行序递减。销售详情对仓库隐藏订单谱系，这里只回数量不回订单身份。
      */
@@ -374,19 +375,16 @@ public class WarehouseSalesOutboundProjectionService {
                       AND reservation.color_id IS NOT DISTINCT FROM item.color_id AND NOT reservation.is_deleted AND reservation.status=0
                 ) own ON TRUE
                 LEFT JOIN LATERAL (
-                    SELECT GREATEST(COALESCE((SELECT sum(GREATEST(global_stock.qty-GREATEST(COALESCE(goods.min_qty::numeric,0),0),0))
-                        FROM stock_balances global_stock WHERE global_stock.goods_id=item.goods_id AND global_stock.color_id IS NOT DISTINCT FROM item.color_id),0)
-                      -COALESCE((SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) FROM stock_reservations reservation
-                        WHERE reservation.goods_id=item.goods_id AND reservation.color_id IS NOT DISTINCT FROM item.color_id
-                          AND reservation.status=0 AND NOT reservation.is_deleted
-                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0),0)::numeric qty
+                    SELECT fn_stock_global_usable(item.goods_id, item.color_id,
+                        CAST(string_to_array(:ownIdsCsv, ',') AS uuid[])) qty
                 ) global_budget ON TRUE
-                WHERE physical.is_accountable AND NOT physical.is_line_side
-                  AND fn_warehouse_is_operational_leaf(warehouse.id)
+                WHERE fn_warehouse_counts_as_usable(warehouse.id)
                   AND EXISTS(SELECT 1 FROM stock_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
                     AND present.goods_id IN(SELECT goods_id FROM sales_shipment_items WHERE shipment_id=:shipment AND NOT is_deleted))
                 ORDER BY warehouse.name,warehouse.id,item.line_no,item.id
-                """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds));
+                """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds)
+                .setParameter("ownIdsCsv",ownIds.stream().map(UUID::toString)
+                        .collect(java.util.stream.Collectors.joining(","))));
         Map<UUID,List<WarehouseSalesOutboundWarehouseChoice>> choices=new LinkedHashMap<>();
         Map<String,BigDecimal> physicalRemaining=new HashMap<>(),orderRemaining=new HashMap<>();
         for(Object[] row:rows) {

@@ -317,7 +317,8 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
   }
   if (path == '/warehouse/inbound/expectations' ||
       path == '/warehouse/inbound/arrival-exceptions' ||
-      path == '/warehouse/inbound/receipts/new') {
+      // ADR-151 §5：登记实际到货单批合一，只有一个登记页。
+      path == '/warehouse/inbound/arrivals/register') {
     return _warehouseInboundScope;
   }
   if (path == '/warehouse/report' || _isDescendant(path, '/warehouse/report')) {

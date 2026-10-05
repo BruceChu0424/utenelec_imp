@@ -117,7 +117,7 @@ public class WorkshopMaterialRequisitionService {
         return commands.execute("REQUISITION_CREATE", request.idempotencyKey(), request, RequisitionView.class, () -> {
             Settings settings = bins.enabledSettingsForShare(workshop);
             UUID id = insertHeader(kind, "WORKSHOP_REQUEST", settings, null, remark);
-            insertLines(id, drafts);
+            insertLines(id, workshop, drafts);
             notices.requisitionPending(id);
             return new Outcome<>(id, view(id));
         });
@@ -252,7 +252,8 @@ public class WorkshopMaterialRequisitionService {
             MaterialInfo material = bins.periodicMaterial(line.goodsId());
             bins.requireColor(line.colorId());
             BigDecimal qty = kilograms(material, line.qty(), line.bags());
-            UUID leaf = line.leafWarehouseId() != null ? line.leafWarehouseId() : material.owningWarehouseId();
+            UUID leaf = line.leafWarehouseId() != null ? line.leafWarehouseId()
+                    : bins.defaultSource(workshop, material.goodsId(), line.colorId());
             if (leaf == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "「" + material.label() + "」请选择出库仓库");
             }
@@ -277,7 +278,7 @@ public class WorkshopMaterialRequisitionService {
             gateway.lockInventory(merged.keySet());
             db.queryForList("SELECT id FROM goods WHERE id IN (:ids) ORDER BY id FOR UPDATE",
                     Map.of("ids", merged.keySet().stream().map(Material::goodsId).distinct().toList()));
-            Map<Material, UUID> lineIds = insertLines(id, List.copyOf(merged.values()));
+            Map<Material, UUID> lineIds = insertLines(id, workshop, List.copyOf(merged.values()));
             List<FulfilLine> fulfil = new ArrayList<>();
             for (LineDraft input : inputs) {
                 fulfil.add(new FulfilLine(lineIds.get(new Material(input.material().goodsId(), input.colorId())),
@@ -305,13 +306,13 @@ public class WorkshopMaterialRequisitionService {
                             && !permissions.has(WorkshopMaterialPermissions.REQUEST)) {
                         throw new ApiException(ErrorCode.FORBIDDEN, "没有作废这张单据的权限");
                     }
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             UPDATE workshop_material_requisitions
                             SET status = 'CANCELLED', cancelled_by = :actor, cancelled_at = now(),
                                 cancel_reason = :reason, row_version = row_version + 1
                             WHERE id = :id
                             """, new MapSqlParameterSource("actor", currentUser.requireId())
-                            .addValue("reason", reason).addValue("id", header.id())));
+                            .addValue("reason", reason).addValue("id", header.id()));
                     notices.requisitionResolved(header.id());
                     return new Outcome<>(header.id(), view(header.id()));
                 });
@@ -347,12 +348,8 @@ public class WorkshopMaterialRequisitionService {
             where.append(" AND requisition.workshop_department_id = :workshop");
             params.addValue("workshop", workshopId);
         }
-        if (warehouseScope != null && warehouseScope.active()) {
-            where.append(" AND EXISTS (SELECT 1 FROM workshop_material_requisition_lines scoped_line"
-                    + " WHERE scoped_line.requisition_id = requisition.id AND "
-                    + warehouseScope.predicate("scoped_line.suggested_leaf_warehouse_id", ":warehouseScope") + ")");
-            params.addValue("warehouseScope", warehouseScope.idsCsv());
-        }
+        String warehouseFilter = scope.requisitionWarehouseFilter(warehouseScope, params);
+        if (!warehouseFilter.isEmpty()) where.append(" AND ").append(warehouseFilter);
         var pageable = Pageables.of(page, size);
         Long total = db.queryForObject("SELECT count(*) FROM workshop_material_requisitions requisition WHERE "
                 + where, params, Long.class);
@@ -458,11 +455,11 @@ public class WorkshopMaterialRequisitionService {
                     group.getKey(), header.id(), header.workshop(), receiver, header.requestNo(), transfer,
                     period.id(), today, supplement != null, supplementReason));
         }
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 UPDATE workshop_material_requisitions
                 SET status = 'DONE', done_by = :actor, done_at = now(), row_version = row_version + 1
                 WHERE id = :id
-                """, new MapSqlParameterSource("actor", currentUser.requireId()).addValue("id", header.id())));
+                """, new MapSqlParameterSource("actor", currentUser.requireId()).addValue("id", header.id()));
         if (supplement != null && "COUNTED".equals(period.status())) {
             counts.applySupplement(period, materials);
         }
@@ -474,7 +471,7 @@ public class WorkshopMaterialRequisitionService {
         UUID id = UUID.randomUUID();
         String number = docNumbers.nextNumber(KIND_ISSUE.equals(kind)
                 ? DocNumberPrefix.WORKSHOP_MATERIAL_ISSUE : DocNumberPrefix.WORKSHOP_MATERIAL_RETURN);
-        WorkshopMaterialGuards.guarded(() -> db.update("""
+        db.update("""
                 INSERT INTO workshop_material_requisitions(
                     id, request_no, kind, origin, bin_warehouse_id, workshop_department_id, receiver_employee_id,
                     requested_by, remark)
@@ -488,18 +485,20 @@ public class WorkshopMaterialRequisitionService {
                 .addValue("workshop", settings.workshopDepartmentId())
                 .addValue("receiver", receiver == null ? null : receiver.toString())
                 .addValue("actor", currentUser.requireId())
-                .addValue("remark", remark)));
+                .addValue("remark", remark));
         return id;
     }
 
-    private Map<Material, UUID> insertLines(UUID requisitionId, List<LineDraft> drafts) {
+    /** 申请行的建议出库仓: 人选了就用人选的, 否则取默认出库仓 (与内料仓页、申请候选同一个函数)。 */
+    private Map<Material, UUID> insertLines(UUID requisitionId, UUID workshop, List<LineDraft> drafts) {
         Map<Material, UUID> ids = new LinkedHashMap<>();
         int lineNo = 1;
         for (LineDraft draft : drafts) {
             UUID id = UUID.randomUUID();
-            UUID suggested = draft.leaf() != null ? draft.leaf() : draft.material().owningWarehouseId();
+            UUID suggested = draft.leaf() != null ? draft.leaf()
+                    : bins.defaultSource(workshop, draft.material().goodsId(), draft.colorId());
             int number = lineNo++;
-            WorkshopMaterialGuards.guarded(() -> db.update("""
+            db.update("""
                     INSERT INTO workshop_material_requisition_lines(
                         id, requisition_id, line_no, goods_id, color_id, unit_id, requested_qty, requested_bags,
                         suggested_leaf_warehouse_id)
@@ -514,7 +513,7 @@ public class WorkshopMaterialRequisitionService {
                     .addValue("unit", draft.material().unitId())
                     .addValue("qty", draft.qty())
                     .addValue("bags", draft.bags())
-                    .addValue("leaf", suggested == null ? null : suggested.toString())));
+                    .addValue("leaf", suggested == null ? null : suggested.toString()));
             ids.put(new Material(draft.material().goodsId(), draft.colorId()), id);
         }
         return ids;

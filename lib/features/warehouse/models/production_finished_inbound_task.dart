@@ -174,6 +174,9 @@ class ProductionFinishedInboundTask {
     this.planNo,
     this.reportNos,
     this.goodsSummary,
+    this.publicQty = 0,
+    this.actualSurplusQty = 0,
+    this.actualSurplusNote,
   });
 
   final ProductionFinishedInboundTaskStage taskStage;
@@ -192,6 +195,13 @@ class ProductionFinishedInboundTask {
   final double pendingQty;
   final DateTime createdAt;
   final bool residualTask;
+
+  /// 其中计划公共备货 / 实际超产数量(ADR-148，服务端合计)。
+  final double publicQty;
+  final double actualSurplusQty;
+
+  /// 「其中实际超产 N」(服务端文案)；没有实际超产时为空。
+  final String? actualSurplusNote;
 
   bool get isArrivalRegistration =>
       taskStage == ProductionFinishedInboundTaskStage.arrivalRegistration;
@@ -224,6 +234,9 @@ class ProductionFinishedInboundTask {
       pendingQty: (json['pendingQty'] as num?)?.toDouble() ?? 0,
       createdAt: parseDate('createdAt'),
       residualTask: json['residualTask'] as bool? ?? false,
+      publicQty: (json['publicQty'] as num?)?.toDouble() ?? 0,
+      actualSurplusQty: (json['actualSurplusQty'] as num?)?.toDouble() ?? 0,
+      actualSurplusNote: json['actualSurplusNote'] as String?,
     );
   }
 }
@@ -235,7 +248,7 @@ class ProductionFinishedArrivalRegistration {
     required this.reportId,
     required this.reportNo,
     required this.reportDate,
-    required this.items,
+    required this.lots,
     this.departmentId,
     this.workshopName,
     this.warehouseId,
@@ -283,10 +296,12 @@ class ProductionFinishedArrivalRegistration {
 
   /// 同一报工的全部登记批次（含已撤回）；待登记视图也带回，便于回看历史批次。
   final List<ProductionFinishedRegistrationBatch> batches;
-  final List<ProductionFinishedArrivalRegistrationItem> items;
 
-  List<String> get planNos => items
-      .map((item) => item.planNo?.trim() ?? '')
+  /// 一行一批实物(ADR-148)：同一报工、同一产出批次、送入仓库的各份。
+  final List<ProductionFinishedArrivalLot> lots;
+
+  List<String> get planNos => lots
+      .map((lot) => lot.planNo?.trim() ?? '')
       .where((planNo) => planNo.isNotEmpty)
       .toSet()
       .toList(growable: false);
@@ -322,26 +337,54 @@ class ProductionFinishedArrivalRegistration {
             .map(ProductionFinishedRegistrationBatch.fromJson)
             .toList(growable: false) ??
         const [],
-    items:
-        (json['items'] as List?)
+    lots:
+        (json['lots'] as List?)
             ?.whereType<Map<String, dynamic>>()
-            .map(
-              (item) =>
-                  ProductionFinishedArrivalRegistrationItem.fromJson(item),
-            )
+            .map(ProductionFinishedArrivalLot.fromJson)
             .toList(growable: false) ??
         const [],
   );
 }
 
-class ProductionFinishedArrivalRegistrationItem {
-  const ProductionFinishedArrivalRegistrationItem({
+/// 批内一份(ADR-148)：报工行 + 归属(DEMAND 需求 / PUBLIC 计划公共 / ACTUAL_SURPLUS 实际超产)。
+class ProductionFinishedArrivalLotMember {
+  const ProductionFinishedArrivalLotMember({
     required this.reportItemId,
+    required this.qty,
+    required this.kind,
+    this.lineNo,
+  });
+
+  final String reportItemId;
+  final int? lineNo;
+  final double qty;
+  final String kind;
+
+  factory ProductionFinishedArrivalLotMember.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionFinishedArrivalLotMember(
+    reportItemId: json['reportItemId'] as String? ?? '',
+    lineNo: (json['lineNo'] as num?)?.toInt(),
+    qty: (json['qty'] as num?)?.toDouble() ?? 0,
+    kind: json['kind'] as String? ?? 'DEMAND',
+  );
+}
+
+/// 一批实物(ADR-148)：登记、品质、点收都以它为单位；库位、实点、称重都是整批一个，
+/// 批内拆分(需求 / 计划公共 / 实际超产)由服务端算好。
+class ProductionFinishedArrivalLot {
+  const ProductionFinishedArrivalLot({
+    required this.lotId,
     required this.lineNo,
     required this.goodsId,
     required this.goodsCode,
     required this.goodsName,
     required this.reportedQty,
+    this.members = const [],
+    this.demandQty = 0,
+    this.publicQty = 0,
+    this.actualSurplusQty = 0,
+    this.splitText,
     this.planItemId,
     this.executionSegmentId,
     this.planId,
@@ -359,8 +402,9 @@ class ProductionFinishedArrivalRegistrationItem {
     this.unitRate = 1,
   });
 
-  final String reportItemId;
+  final String lotId;
   final int lineNo;
+  final List<ProductionFinishedArrivalLotMember> members;
   final String goodsId;
   final String goodsCode;
   final String goodsName;
@@ -372,12 +416,20 @@ class ProductionFinishedArrivalRegistrationItem {
   final String? colorName;
   final String? unitId;
   final String? unitName;
-  final double reportedQty;
 
-  /// Explicit physical count; historical and manual-receipt registrations stay unknown.
+  /// 本批报工合计(报工单位)。
+  final double reportedQty;
+  final double demandQty;
+  final double publicQty;
+  final double actualSurplusQty;
+
+  /// 「需求 1000 · 实际超产 100」(服务端文案)；整批都是需求份时为空。
+  final String? splitText;
+
+  /// 已登记批的整批实点数(先入库后质检)；原流程与历史登记为空。
   final double? countedQty;
 
-  /// 已登记批次登记时实称的净重(千克)；待登记行与没称的行为空(ADR-135 §3.2)。
+  /// 已登记批的整批实称净重(千克)；待登记与没称的批为空(ADR-135 §3.2)。
   final double? weight;
 
   /// 1 个报工单位 = 多少货品基本单位(报工行换算率，空按 1)；基本数量 = 报工数量 x 它。
@@ -388,38 +440,44 @@ class ProductionFinishedArrivalRegistrationItem {
   final String? place;
   final String? placeHint;
 
-  /// 同货品同颜色最近一次有效登记的成品仓（只读建议，页面预填并黄框提示核对）。
+  /// 货品主档归属仓(只读建议，页面预填并黄框提示核对)。
   final String? lastWarehouseId;
   final String? lastWarehouseName;
 
-  factory ProductionFinishedArrivalRegistrationItem.fromJson(
-    Map<String, dynamic> json,
-  ) => ProductionFinishedArrivalRegistrationItem(
-    reportItemId: json['reportItemId'] as String? ?? '',
-    lineNo: (json['lineNo'] as num?)?.toInt() ?? 0,
-    goodsId: json['goodsId'] as String? ?? '',
-    goodsCode: json['goodsCode'] as String? ?? '',
-    goodsName: json['goodsName'] as String? ?? '',
-    planItemId: json['planItemId'] as String?,
-    executionSegmentId: json['executionSegmentId'] as String?,
-    planId: json['planId'] as String?,
-    planNo: json['planNo'] as String?,
-    colorId: json['colorId'] as String?,
-    colorName: json['colorName'] as String?,
-    unitId: json['unitId'] as String?,
-    unitName: json['unitName'] as String?,
-    reportedQty:
-        (json['reportedQty'] as num?)?.toDouble() ??
-        (json['qty'] as num?)?.toDouble() ??
-        0,
-    place: json['place'] as String?,
-    placeHint: json['placeHint'] as String?,
-    lastWarehouseId: json['lastWarehouseId'] as String?,
-    lastWarehouseName: json['lastWarehouseName'] as String?,
-    countedQty: (json['countedQty'] as num?)?.toDouble(),
-    weight: (json['weight'] as num?)?.toDouble(),
-    unitRate: _positiveRate(json['unitRate']),
-  );
+  factory ProductionFinishedArrivalLot.fromJson(Map<String, dynamic> json) =>
+      ProductionFinishedArrivalLot(
+        lotId: json['lotId'] as String? ?? '',
+        lineNo: (json['lineNo'] as num?)?.toInt() ?? 0,
+        members:
+            (json['members'] as List?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(ProductionFinishedArrivalLotMember.fromJson)
+                .toList(growable: false) ??
+            const [],
+        goodsId: json['goodsId'] as String? ?? '',
+        goodsCode: json['goodsCode'] as String? ?? '',
+        goodsName: json['goodsName'] as String? ?? '',
+        planItemId: json['planItemId'] as String?,
+        executionSegmentId: json['executionSegmentId'] as String?,
+        planId: json['planId'] as String?,
+        planNo: json['planNo'] as String?,
+        colorId: json['colorId'] as String?,
+        colorName: json['colorName'] as String?,
+        unitId: json['unitId'] as String?,
+        unitName: json['unitName'] as String?,
+        reportedQty: (json['reportedQty'] as num?)?.toDouble() ?? 0,
+        demandQty: (json['demandQty'] as num?)?.toDouble() ?? 0,
+        publicQty: (json['publicQty'] as num?)?.toDouble() ?? 0,
+        actualSurplusQty: (json['actualSurplusQty'] as num?)?.toDouble() ?? 0,
+        splitText: json['splitText'] as String?,
+        place: json['place'] as String?,
+        placeHint: json['placeHint'] as String?,
+        lastWarehouseId: json['lastWarehouseId'] as String?,
+        lastWarehouseName: json['lastWarehouseName'] as String?,
+        countedQty: (json['countedQty'] as num?)?.toDouble(),
+        weight: (json['weight'] as num?)?.toDouble(),
+        unitRate: _positiveRate(json['unitRate']),
+      );
 
   static double _positiveRate(Object? raw) {
     final rate = (raw as num?)?.toDouble();

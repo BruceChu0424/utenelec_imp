@@ -67,18 +67,47 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
             String migration = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
             db.execute(migration.substring(0, migration.indexOf("DO $migration$")));
         }
+        // 默认出库仓只由 V800 fn_workshop_bin_default_source 给出(ADR-147); 依赖的良品子仓判定(V798)、
+        // 按仓可用量(V799)与开通表原样取自迁移文件。
+        db.execute("""
+                ALTER TABLE warehouses ADD COLUMN is_defective boolean DEFAULT false;
+                ALTER TABLE stock_balances ADD COLUMN weight numeric;
+                CREATE TABLE workshop_bins(workshop_department_id uuid PRIMARY KEY, bin_warehouse_id uuid,
+                    source_warehouse_id uuid, opened_by uuid, opened_at timestamptz DEFAULT now(),
+                    updated_by uuid, updated_at timestamptz DEFAULT now(), row_version bigint DEFAULT 0);
+                """);
+        db.execute(definition("V798__warehouse_single_main_master_shape.sql",
+                "CREATE OR REPLACE FUNCTION fn_warehouse_is_good_stock_leaf("));
+        db.execute(definition("V799__defective_warehouse_business_rules.sql",
+                "CREATE OR REPLACE FUNCTION fn_warehouse_counts_as_usable("));
+        db.execute(definition("V799__defective_warehouse_business_rules.sql", "CREATE OR REPLACE VIEW v_stock_usable AS"));
+        db.execute(definition("V800__workshop_bin_opening_single_source.sql",
+                "CREATE FUNCTION fn_workshop_bin_default_source("));
         db.update("INSERT INTO units(id,name) VALUES (?, 'kg'), (?, 'g'), (?, '个')", kg, grams, countUnit);
         db.update("INSERT INTO unit_measurement_profiles VALUES (?, 'MASS'), (?, 'MASS'), (?, 'COUNT')", kg, grams, countUnit);
         warehouse(leaf, "颗粒仓", null, false);
         warehouse(secondLeaf, "辅料仓", null, false);
         warehouse(bin, "本车间内料仓", leaf, true);
         warehouse(otherBin, "别的车间内料仓", secondLeaf, true);
+        db.update("INSERT INTO workshop_bins(workshop_department_id, bin_warehouse_id) VALUES (?,?)", workshop, bin);
         scope = mock(WorkshopMaterialScope.class);
         bins = mock(WorkshopMaterialBinSupport.class);
         when(bins.settings(workshop)).thenReturn(new WorkshopMaterialBinSupport.Settings(workshop,
                 "注塑车间", true, bin, LocalDate.of(2026, 9, 30), 1));
         service = new WorkshopMaterialPositionQueryService(named, bins, scope,
-                mock(WorkshopMaterialPermissions.class), mock(WorkshopMaterialPeriodViews.class));
+                mock(WorkshopMaterialPermissions.class), mock(WorkshopMaterialPeriodViews.class),
+                new WorkshopBinService(named));
+    }
+
+    /** 从迁移文件里原样取一段定义(函数到 $$; 为止, 视图到第一个空行后的分号为止)。 */
+    private String definition(String migration, String start) throws Exception {
+        try (var resource = getClass().getResourceAsStream("/db/migration/" + migration)) {
+            String text = new String(resource.readAllBytes(), StandardCharsets.UTF_8);
+            int from = text.indexOf(start);
+            assertThat(from).as(start).isNotNegative();
+            int to = start.contains("FUNCTION") ? text.indexOf("\n$$;", from) + 4 : text.indexOf(";\n", from) + 1;
+            return text.substring(from, to);
+        }
     }
 
     @Test void zeroPeriodicMaterialsStillOffersOrderMassMaterialsWithTheirActualUnitsAndChangesNothing() {
@@ -127,8 +156,9 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
         assertThat(result.getItems()).extracting(MaterialStockOption::colorId).doesNotContain(foreign);
         var stock = result.getItems().stream().filter(row -> black.equals(row.colorId())).findFirst().orElseThrow();
         assertThat(stock.warehouseAvailableQty()).isEqualByComparingTo("39");
-        assertThat(stock.defaultLeafWarehouseId()).isNull();
-        assertThat(stock.defaultLeafWarehouseName()).isNull();
+        // 所属仓库是别的车间内料仓(不能发料): 默认出库仓退到可发量最大的良品子仓(辅料仓 30 > 颗粒仓 20-6)。
+        assertThat(stock.defaultLeafWarehouseId()).isEqualTo(secondLeaf);
+        assertThat(stock.defaultLeafWarehouseName()).isEqualTo("辅料仓");
         assertThat(stock.leafWarehouses()).extracting(WorkshopMaterialDtos.LeafStockView::warehouseId)
                 .containsExactlyInAnyOrder(leaf, secondLeaf);
     }

@@ -39,8 +39,7 @@ import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocItemLine;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialChoiceController;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.ChooseRequest;
@@ -890,7 +889,7 @@ class WorkshopMaterialStartGatePostgresTest {
     /** 仓库账号开启车间整批领料 (内料仓挂在测试主仓下, 启用日今天)。返回内料仓。 */
     private UUID enable(Shop shop) {
         fixture.loginAs(shop.setupUser());
-        var view = settings.update(shop.workshop(), new SettingsRequest(0L, true, shop.world().warehouseId(),
+        var view = settings.update(shop.workshop(), new SettingsRequest(null, 0L, true, shop.world().warehouseId(), null, true,
                 BusinessTime.today(), List.of(), key("enable")));
         assertTrue(view.periodicEnabled());
         assertNotNull(view.binWarehouseId());
@@ -956,8 +955,8 @@ class WorkshopMaterialStartGatePostgresTest {
 
     private UUID inspect(Shop shop, UUID report) {
         UUID item = firstItem(report);
-        arrivals.register(report, new ArrivalRegistrationRequest(key("arrival"), shop.world().warehouseId(),
-                List.of(new ArrivalRegistrationItemRequest(item, "内料仓注塑件")), null));
+        FinishedArrivalTestSupport.registerItems(arrivals, report, key("arrival"), shop.world().warehouseId(),
+                List.of(item), "内料仓注塑件");
         return db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id = ?",
                 UUID.class, item);
     }

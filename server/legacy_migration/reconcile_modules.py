@@ -4,12 +4,35 @@
 Core master/UUID checks remain the separate 23-item SQL contract. These checks
 make a dropped document or line fatal; amount/quantity/source sign-off remains
 an additional acceptance requirement, not something a row count can prove.
+The only rows a loader may leave out are the reviewed exclusions it records
+itself (orphan BOM edges, and documents/balances the reviewed warehouse
+crosswalk does not carry over, ADR-145); both are persisted with the run.
 """
 import json
 import runpy
 import pathlib
 import sys
 import uuid
+
+
+# Source files whose rows the warehouse crosswalk may exclude (ADR-145): stock
+# documents on a deleted legacy warehouse or unassigned split lines, and purchase
+# receipts on a deleted legacy warehouse. Every other document file must match 1:1.
+WAREHOUSE_EXCLUDABLE = {
+    *(f"stock_{name}_{part}.csv" for name in
+      ["transfer", "other_in", "other_out", "draw", "wdraw", "finished_in", "finished_out", "check"]
+      for part in ("m", "i")),
+    "purchase_receipts.csv", "purchase_receipt_items.csv",
+}
+
+
+def excluded_rows(source):
+    if source == "goods_bom.csv":
+        return "(SELECT count(*) FROM bootstrap_bom_exclusions)"
+    if source in WAREHOUSE_EXCLUDABLE:
+        return ("(SELECT count(DISTINCT source_row_id) FROM bootstrap_warehouse_exclusions "
+                f"WHERE source_file='{source}')")
+    return "0"
 
 
 def document_queries():
@@ -60,11 +83,15 @@ def main():
     uuid.UUID(run_id)
     records = {record["file"]: record for record in json.loads(pathlib.Path(manifest_path).read_text(encoding="utf-8-sig"))["files"]}
     print("CREATE TEMP TABLE bootstrap_module_checks(source text, target text, expected bigint, actual bigint, excluded bigint) ON COMMIT DROP;")
+    # Created by the stock/purchase loaders; an empty table when nothing was excluded.
+    print("CREATE TEMP TABLE IF NOT EXISTS bootstrap_warehouse_exclusions (source_file text NOT NULL, "
+          "source_row_id text NOT NULL, legacy_warehouse_id int, reason text NOT NULL, goods_legacy_id int, "
+          "qty numeric, amount numeric);")
     for source, (target, query) in document_queries().items():
         expected = records[source]["rows"]
         if not isinstance(expected, int) or isinstance(expected, bool) or expected < 0:
             raise ValueError("invalid source row count")
-        excluded = "(SELECT count(*) FROM bootstrap_bom_exclusions)" if source == "goods_bom.csv" else "0"
+        excluded = excluded_rows(source)
         print(f"INSERT INTO bootstrap_module_checks SELECT '{source}', '{target}', {expected}, ({query}), {excluded};")
     emit_master_identity_checks()
     print("SELECT * FROM bootstrap_module_checks WHERE expected <> actual + excluded;")
@@ -82,7 +109,10 @@ def main():
         'historicalAnchors', (SELECT COALESCE(jsonb_agg(to_jsonb(anchor) ORDER BY target_table,legacy_id),'[]'::jsonb)
             FROM bootstrap_verified_anchors anchor),
         'bomExclusions', (SELECT COALESCE(jsonb_agg(to_jsonb(exclusion) ORDER BY source_legacy_id),'[]'::jsonb)
-            FROM bootstrap_bom_exclusions exclusion))
+            FROM bootstrap_bom_exclusions exclusion),
+        'warehouseExclusions', (SELECT COALESCE(jsonb_agg(to_jsonb(exclusion)
+                ORDER BY source_file, source_row_id),'[]'::jsonb)
+            FROM bootstrap_warehouse_exclusions exclusion))
     WHERE run_id = current_setting('uten.bootstrap_run_id')::uuid;
     """)
 
@@ -95,7 +125,8 @@ def emit_master_identity_checks():
         "goods": "master.auto_created AND master.code='LEGACY-G-' || master.legacy_id",
         "units": "master.code='LEGACY-U-' || master.legacy_id",
         "colors": "master.code='LEGACY-C-' || master.legacy_id",
-        "warehouses": "master.auto_created AND master.code='LEGACY-W-' || master.legacy_id",
+        # ADR-145: no loader creates historical warehouse anchors any more; every
+        # warehouse identity comes from B_Storage through the reviewed crosswalk.
         "currencies": "master.auto_created AND master.code='LEGACY-CUR-' || master.legacy_id",
         "clients": "master.status='禁用' AND master.code IN ('LEGACY-CL-' || master.legacy_id, 'LEGACY-FIN-CL-' || master.legacy_id)",
         "suppliers": "master.status='禁用' AND master.code IN ('LEGACY-S-' || master.legacy_id, 'LEGACY-FIN-SP-' || master.legacy_id)",

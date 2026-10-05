@@ -163,6 +163,81 @@ public final class ProcurementArrivalContracts {
     }
 
     /**
+     * 登记实际到货的唯一命令(单张 = 1 个来源, 多选 = N 个来源; ADR-151 §5)：一个事务，服务端按
+     * 「订货单 x 入库仓库」分组，每组一张收货单(送检审核同事务)；批量键 + 分组子键幂等，原样重放返回
+     * 原结果；某组实到超量时该组照常隔离等财务(EXCESS_QUARANTINED)，不回滚其它组。
+     * 超收容差与超量判定沿用收货单审核的既有规则，本命令不改判定。
+     */
+    public record WarehouseArrivalBatchRegisterRequest(
+            @NotBlank
+            @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+")
+            String idempotencyKey,
+            @NotNull LocalDate billDate,
+            @NotNull UUID receiverEmployeeId,
+            @Size(max = 1000) String remark,
+            /** 先入库后质检(V596)：整批一个口径；每行必须带上架库位。 */
+            Boolean stockInBeforeInspection,
+            /** 委外回厂短交确认(ADR-098)：409 逐行列出后原样带 true 重发。 */
+            Boolean shortDeliveryAcknowledged,
+            @NotNull @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
+                    List<@Valid BatchArrivalLine> lines) {
+
+        public boolean stockInBeforeInspectionRequested() {
+            return Boolean.TRUE.equals(stockInBeforeInspection);
+        }
+
+        public boolean shortDeliveryAcknowledgedRequested() {
+            return Boolean.TRUE.equals(shortDeliveryAcknowledged);
+        }
+    }
+
+    /** 批量登记的一行：来源订货明细 + 本行实际入库仓库(同一订货单可按仓分到几张收货单)。 */
+    public record BatchArrivalLine(
+            @NotBlank String orderType,
+            @NotNull UUID warehouseId,
+            UUID purchaserId,
+            @NotNull UUID goodsId,
+            @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal qty,
+            @NotNull UUID orderItemId,
+            UUID colorId,
+            UUID unitId,
+            BigDecimal unitRate,
+            @DecimalMin(value = "0", inclusive = true)
+            @Digits(integer = 14, fraction = 4) BigDecimal weight,
+            @Size(max = 64) String sourceDocNo,
+            @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent,
+            @Size(max = 100) String preStockPlace,
+            Boolean qtyFromWeight) {
+
+        public WarehouseArrivalRegisterRequest.ArrivalLine toArrivalLine() {
+            return new WarehouseArrivalRegisterRequest.ArrivalLine(goodsId, qty, orderItemId, colorId, unitId,
+                    unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight);
+        }
+    }
+
+    /** 批量登记结果：逐组(订货单 x 入库仓库)一张收货单的结果。 */
+    public record WarehouseArrivalBatchRegisterResult(
+            int groupCount,
+            boolean replay,
+            List<WarehouseArrivalBatchRegisterItem> items) {
+        public WarehouseArrivalBatchRegisterResult {
+            items = List.copyOf(items);
+        }
+    }
+
+    public record WarehouseArrivalBatchRegisterItem(
+            String orderType,
+            UUID orderId,
+            UUID warehouseId,
+            String outcome,
+            UUID receiptId,
+            String receiptBillNo,
+            UUID exceptionId,
+            boolean replayed) {
+    }
+
+    /**
      * 预计到货「批量继续送检」：一次事务逐张草稿收货单完成中断的送检步骤。
      * 单张超量隔离不回滚其他单（与单册「继续送检」一致，隔离单走财务异常流程）。
      */

@@ -13,9 +13,9 @@
 // 于「大类未选时小类锁定」）。返回本页时 [onResume] 触发（重拉分段计数
 // provider），刷新按钮通过 refreshTick 传给分段。
 //
-// 仓库范围(ADR-115, 2026-09-24)：顶栏「我的仓库 / 全部仓库 / 某个仓」选择器，范围经
-// [WarehouseListScope] 传给各分段列表；范围一变就推进 refreshTick 并重拉分段计数，
-// 列表与小类计数都按新范围重拉。
+// 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；顶栏选择器只对主管与多仓负责人出现(右侧滑窗)，
+// 所选仓经 [WarehouseListScope] 传给各分段列表；范围一变就推进 refreshTick 并重拉分段计数，
+// 列表与小类计数都按新范围重拉(计数取同一份汇总, 见 warehouse_task_badges.dart)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -156,6 +156,8 @@ class _WarehouseTaskCenterScaffoldState
     _myLocation ??= currentLocationOr(context, widget.location);
     ref.onPageResume(_myLocation!, () {
       // onPageResume already excludes first entry; every actual return refreshes.
+      // 负责关系可能刚改过(仓库资料里换了负责人): 一并重取本人可选范围, 记忆的仓不在范围内就回到默认。
+      ref.invalidate(myWarehouseScopeProvider);
       setState(() => _refreshTick++);
       widget.onResume?.call();
     });
@@ -246,6 +248,7 @@ class _WarehouseTaskCenterScaffoldState
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',
             onPressed: () {
+              ref.invalidate(myWarehouseScopeProvider);
               setState(() => _refreshTick++);
               widget.onResume?.call();
             },

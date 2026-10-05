@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.dailyreport;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.application.port.ProductionMaterialConsumptionWritePort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
 import com.uten.imp.application.port.ProductionFqcRecoveryPort;
@@ -214,7 +215,8 @@ public class ProductionDailyReportService {
         List<DailyReportItemDto> items = rows.stream()
                 .map(item -> toItemDto(item, transferLabels, identities)).toList();
         populateExecutionContext(r, items);
-        DailyReportDetail result = toDetail(r, items, history ? List.of() : allowedActions(r, rows));
+        DailyReportDetail result = toDetail(r, items, history ? List.of() : allowedActions(r, rows),
+                DailyReportOutputGroups.of(items, outputLots(rows)));
         return history ? retainedRecords.detail(result, "production_daily_reports", id, r.isDeleted(), r.getDeletedAt(), true) : result;
     }
 
@@ -2346,7 +2348,7 @@ public class ProductionDailyReportService {
         r.setBillDate(req.getBillDate());
         // V476 运营红线：报工入仓必须落到具体叶子仓。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "仓库", WarehouseUse.GOOD_IN);
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setDepartmentId(req.getDepartmentId());
@@ -2648,8 +2650,22 @@ public class ProductionDailyReportService {
         return List.copyOf(actions);
     }
 
+    /** 报工行 -> 库里生成的实物交接批号(ADR-148, production_daily_report_items.output_lot_id)。 */
+    private Map<UUID, UUID> outputLots(List<ProductionDailyReportItem> rows) {
+        List<UUID> ids = rows.stream().map(ProductionDailyReportItem::getId).filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) return Map.of();
+        Map<UUID, UUID> result = new HashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id, output_lot_id FROM production_daily_report_items WHERE id IN (:ids)
+                """).setParameter("ids", ids))) {
+            if (row[1] != null) result.put((UUID) row[0], (UUID) row[1]);
+        }
+        return result;
+    }
+
     private DailyReportDetail toDetail(ProductionDailyReport r, List<DailyReportItemDto> items,
-                                       List<String> allowedActions) {
+                                       List<String> allowedActions,
+                                       List<com.uten.imp.features.production.dailyreport.dto.DailyReportOutputBatch> outputBatches) {
         List<UUID> workerIds = reportWorkerIds(r.getId(), r.getWorkerId());
         return new DailyReportDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(),
@@ -2662,7 +2678,7 @@ public class ProductionDailyReportService {
                 // (那个接口要 employee:view 且会落人事查看审计)。
                 departmentNameResolver.nameOf(r.getDepartmentId()),
                 workerIds.stream().map(nameResolver::nameOf).toList(),
-                allowedActions, 2, null);
+                allowedActions, 2, outputBatches, null);
     }
 
     private ProductionDailyReport requireReport(UUID id) {

@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 全模块草稿计数只读查询（{@code GET /api/documents/drafts/count} 的数据源）。
@@ -190,6 +191,28 @@ public class DocumentDraftCountQueryService {
         return latestApprovalCaseStatusSql(orderType) + " NOT IN ('PENDING', 'REJECTED')";
     }
 
+    /**
+     * 仓库单据三支(整表 / 调拨 / 盘点)另按仓库数据范围(ADR-149)计数: 与库存单据列表同一判定函数
+     * {@code fn_stock_document_matches_warehouse_scope}(发出仓或调入仓), 仓库模块红数 = 列表草稿段。
+     */
+    static final java.util.Set<DraftSource> WAREHOUSE_SCOPED = java.util.Set.of(STOCK_DOCUMENT, STOCK_TRANSFER, STOCK_CHECK);
+
+    /**
+     * 仓库范围谓词(绑定 :draftWarehouseScope / :draftWarehouseUnassigned / :draftOwnMaker)。
+     * :draftOwnMaker = 本人默认范围时当前员工 id(自己的草稿不论仓都算), 页面挑了仓时为空串。
+     */
+    static final String WAREHOUSE_SCOPE_PREDICATE =
+            "fn_stock_document_matches_warehouse_scope(o.id, CAST(:draftWarehouseScope AS text),"
+                    + " CAST(:draftWarehouseUnassigned AS boolean), CAST(:draftOwnMaker AS text))";
+
+    /** 绑定 {@link #WAREHOUSE_SCOPE_PREDICATE} 的三个参数。 */
+    static void bindWarehouseScope(Query query,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope scope, String ownDraftMaker) {
+        query.setParameter("draftWarehouseScope", scope.idsCsv());
+        query.setParameter("draftWarehouseUnassigned", scope.includeUnassigned());
+        query.setParameter("draftOwnMaker", ownDraftMaker == null ? "" : ownDraftMaker);
+    }
+
     /** 响应字段顺序（与 {@link DraftCountsResponse} 的构造参数顺序一一对应）。 */
     static final List<DraftSource> SOURCES = List.of(
             SALES_ORDER, SALES_SHIPMENT, SALES_RETURN, SALES_QUOTE,
@@ -204,6 +227,8 @@ public class DocumentDraftCountQueryService {
     private final EntityManager em;
     private final OwnerVisibility ownerVisibility;
     private final SecurityContextCurrentUser currentUser;
+    /** ADR-149 仓库数据范围; 未注入(直接 new 的 SQL 契约单测)时不按仓库裁剪。 */
+    private com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     public DocumentDraftCountQueryService(EntityManager em,
                                           OwnerVisibility ownerVisibility,
@@ -211,6 +236,18 @@ public class DocumentDraftCountQueryService {
         this.em = em;
         this.ownerVisibility = ownerVisibility;
         this.currentUser = currentUser;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setWarehouseScopes(com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes) {
+        this.warehouseScopes = warehouseScopes;
+    }
+
+    /** 当前请求的仓库数据范围(工作台徽章按任务中心所选仓汇总时取所选仓)。 */
+    com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope(UUID requested) {
+        return warehouseScopes == null
+                ? com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL
+                : warehouseScopes.current(requested);
     }
 
     /**
@@ -252,6 +289,7 @@ public class DocumentDraftCountQueryService {
         Map<String, ScopeBinding> byScope = new LinkedHashMap<>();
         List<String> projections = new ArrayList<>(SOURCES.size());
         boolean anyQueryable = false;
+        com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope stockScope = null;
 
         for (DraftSource source : SOURCES) {
             if (!canView(user, source.viewAuthority())) {
@@ -267,7 +305,12 @@ public class DocumentDraftCountQueryService {
             DocumentAccessPolicy.NativeReadScope readScope = binding.policy()
                     .nativeReadScope(
                             source.ownerColumn(), binding.parameterName(), binding.ownerScope());
-            projections.add("(" + countSql(source, readScope.predicate()) + ")");
+            String predicate = readScope.predicate();
+            if (WAREHOUSE_SCOPED.contains(source)) {
+                if (stockScope == null) stockScope = warehouseScope(null);
+                if (stockScope.active()) predicate = predicate + " AND " + WAREHOUSE_SCOPE_PREDICATE;
+            }
+            projections.add("(" + countSql(source, predicate) + ")");
             anyQueryable = true;
         }
 
@@ -280,6 +323,13 @@ public class DocumentDraftCountQueryService {
                         && !binding.ownerScope().visibleOwners().isEmpty()) {
                     query.setParameter(binding.parameterName(), binding.ownerScope().visibleOwners());
                 }
+            }
+            if (stockScope != null && stockScope.active()) {
+                // 本人默认范围: 自己的草稿不论仓都算(与列表默认范围同一判定); 任务中心挑了仓(汇总按某仓计)
+                // 就只数那个仓, 与带 scopeWarehouseId 的列表、分段计数一致。
+                boolean picked = warehouseScopes != null && warehouseScopes.warehousePicked();
+                bindWarehouseScope(query, stockScope,
+                        picked || user == null || user.getEmployeeId() == null ? "" : user.getEmployeeId().toString());
             }
             Object row = query.getSingleResult();
             Object[] cells = row instanceof Object[] array ? array : new Object[] {row};

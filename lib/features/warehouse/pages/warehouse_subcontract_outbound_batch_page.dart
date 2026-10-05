@@ -392,6 +392,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         (draft.warehouseId != draft.document?.warehouseId &&
             !WarehouseSelection(
               ref.read(masterNameServiceProvider).warehouseHierarchy,
+              use: WarehouseUse.goodOut,
             ).selectableIds.contains(draft.warehouseId))) {
       return l10n.warehouseSubcontractOutboundWarehouseRequired;
     }

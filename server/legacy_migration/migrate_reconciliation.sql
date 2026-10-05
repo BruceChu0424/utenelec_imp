@@ -94,6 +94,9 @@ SELECT :'run_id'::uuid, 'export_manifest.json', 'legacy_migration_run_files',
        'Every CSV in the reviewed target=All manifest must be consumed.'
 FROM legacy_migration_run_files
 WHERE run_id = :'run_id'::uuid AND file_name LIKE '%.csv'
+  -- ADR-145: the reviewed warehouse crosswalk and the manual goods-owning list are recorded
+  -- with the run (bytes + sha256) but are repository/manual inputs, not legacy export files.
+  AND file_name NOT IN ('warehouse_crosswalk.csv', 'goods_owning_warehouse.csv')
 UNION ALL
 -- V718 起注册表 material_category_id 置空脱钩；货品未分类根按本体身份核对，
 -- 客户/模具/供应商三根仍由注册表绑定。

@@ -67,8 +67,9 @@ abstract final class ApiEndpoints {
   static const warehouseInboundExpectations = '/warehouse/inbound/expectations';
   static const warehouseInboundExpectationFacets =
       '$warehouseInboundExpectations/facets'; // 2026-09-25 单号列统一
-  static const warehouseInboundExpectationTypeCounts =
-      '$warehouseInboundExpectations/type-counts';
+  // ADR-151 §5：登记页按来源身份读取预计到货。
+  static const warehouseInboundExpectationsByIds =
+      '$warehouseInboundExpectations/by-ids';
   static const warehouseArrivalExceptions =
       '/warehouse/inbound/arrival-exceptions';
   static const warehouseArrivalExceptionFacets =
@@ -114,10 +115,6 @@ abstract final class ApiEndpoints {
       '$productionFinishedInboundTasks/facets'; // 2026-09-25 单号列统一
   static const productionFinishedInboundBatchConfirm =
       '/stock/docs/finished-in/confirm-batch';
-  static String productionFinishedArrivalRegistration(String reportId) =>
-      '/warehouse/production-finished-in/arrival-registrations/$reportId';
-  // 多报工单汇总登记：批量明细 + 一次提交(2026-09-27 起库位建议走共用
-  // warehousePlaceSuggestions，库位记忆随登记事务在服务端自动完成，上次仓改走账号记忆)。
   static const productionFinishedArrivalBatchBase =
       '/warehouse/production-finished-in/arrival-registrations/batch';
 
@@ -129,6 +126,10 @@ abstract final class ApiEndpoints {
       '/production/quality-inspections/capability';
   static const productionQualityInspectionPassAll =
       '/production/quality-inspections/decisions/pass-all';
+
+  /// ADR-148 整批判定：同一批实物(需求份 / 计划公共 / 实际超产)一次判定。
+  static String productionQualityInspectionLotDecisions(String lotId) =>
+      '/production/quality-inspections/lots/$lotId/decisions';
 
   /// V547 品质检查单（待检处置一行一张单）。
   static const productionQualityInspectionSheets =
@@ -154,6 +155,9 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/goods-profile-hints';
   // 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族服务端权威回填。
   static const warehouseInboundArrivals = '/warehouse/inbound/arrivals';
+  // ADR-151 §5：登记实际到货的唯一页面命令(单张 = 1 组，多选 = N 组，一个事务)。
+  static const warehouseInboundArrivalsBatch =
+      '$warehouseInboundArrivals/batch';
   // 完成中断的到货登记（断点恢复）：草稿收货单一键继续送检，不进采购/委外单据页。
   static String warehouseInboundArrivalComplete(String receiptId) =>
       '/warehouse/inbound/arrivals/$receiptId/complete';
@@ -415,7 +419,7 @@ abstract final class ApiEndpoints {
   static const warehousesWorkshops = '$warehouses/workshops';
   static String warehouse(String id) => '/master/warehouses/$id';
 
-  // 仓库负责人(仓管员, ADR-115)：列表列 / 候选员工 / 我的仓库 / 某仓整组替换
+  // 仓库负责人(仓管员, ADR-115)：列表列 / 候选员工 / 本人仓库数据范围(ADR-149) / 某仓整组替换
   static const warehouseKeeperAssignments = '$warehouses/keepers';
   static const warehouseKeeperCandidates = '$warehouses/keeper-candidates';
   static const myWarehouseScope = '$warehouses/my-scope';
@@ -442,6 +446,11 @@ abstract final class ApiEndpoints {
 
   // 库存查询 (库存管理): 当前余额 + 授权余额调整 (出入库流水见下方 stockGoodsLedger)。
   static const stockBalances = '/stock/balances';
+
+  /// ADR-146 不良品专门通道：当前用户能办的通道 / 一次建单并过账。
+  static const stockDefectiveMoveOptions =
+      '/stock/docs/defective-moves/options';
+  static const stockDefectiveMoves = '/stock/docs/defective-moves';
   static const stockBalanceAdjust = '/stock/balances/adjust';
   // 即时库存（货品+颜色聚合余额 + 分类树/仓库过滤；仓库管理 hub 入口）。
   static const stockInstantInventory = '/stock/instant-inventory';
@@ -517,9 +526,21 @@ abstract final class ApiEndpoints {
   static String workshopMaterialSetting(String workshopId) =>
       '$workshopMaterialSettings/$workshopId';
 
-  /// 开启前本车间在产、需认料的产品清单 (含预填)。
-  static String workshopMaterialSettingInProgressPending(String workshopId) =>
-      '$workshopMaterialSettings/$workshopId/in-progress-pending';
+  /// 开启整批领料前, 所选车间在产、需认料的产品 (按产品去重, 含预填; ADR-147)。
+  static const workshopMaterialSettingsInProgressPending =
+      '$workshopMaterialSettings/in-progress-pending';
+
+  /// 发料来源仓滑窗的仓库层级 (只有元数据; ADR-147)。
+  static const workshopMaterialSourceWarehouses =
+      '$workshopMaterialSettings/source-warehouses';
+
+  /// 批量开通 / 开启整批领料 / 改来源仓 (全成全败; ADR-147)。
+  static const workshopMaterialSettingsBatchEnable =
+      '$workshopMaterialSettings/batch-enable';
+
+  /// 批量撤销一步 (全成全败; ADR-147)。
+  static const workshopMaterialSettingsBatchDisable =
+      '$workshopMaterialSettings/batch-disable';
   static const workshopMaterialMachines = '$workshopMaterialBase/machines';
   static const workshopMaterialMachinesBatch =
       '$workshopMaterialBase/machines/batch';

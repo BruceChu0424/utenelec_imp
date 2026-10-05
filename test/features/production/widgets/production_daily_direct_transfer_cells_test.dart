@@ -285,7 +285,7 @@ void main() {
         ('i2', 'WORKSHOP', 'B', 1000.0),
         ('i3', 'WAREHOUSE', null, 8000.0),
       ])
-        ProductionDailyReportItem.fromJson({
+        <String, dynamic>{
           'id': id,
           'goodsId': 'g',
           'unitId': 'u',
@@ -301,20 +301,27 @@ void main() {
               ? null
               : '成品 · ZX-$demand',
           if (demand == null) 'outputRouteReasonText': '能直送的上层工单都已分满，其余送入仓库',
-        }),
+        },
     ];
-    final group = productionDailyReportInputGroups(items).single;
+    // ADR-148：批次分组由服务端给(outputBatches)，页面按 itemIds 合回一行。
+    final group = ProductionDailyReportDetail.fromJson({
+      'id': 'report',
+      'items': items,
+      'outputBatches': [
+        {
+          'batchKey': 'batch',
+          'itemIds': ['i1', 'i2', 'i3'],
+          'qty': 10000,
+          'summary': '本行产出 共 10000',
+        },
+      ],
+    }).inputGroups.single;
     expect(group.qty, 10000);
     expect(group.allocations, [
       {'directTransferDemandId': 'A', 'qty': 1000.0},
       {'directTransferDemandId': 'B', 'qty': 1000.0},
       {'directTransferDemandId': null, 'qty': 8000.0},
     ]);
-    expect(
-      group.routeSummary,
-      '本行产出 共 10000：转给 成品 · ZX-A 1000；转给 成品 · ZX-B 1000；'
-      '送入仓库 8000 (能直送的上层工单都已分满，其余送入仓库)',
-    );
     final product = DailyGridRow();
     addTearDown(product.dispose);
     restoreOutputAllocations(product, group.allocations);

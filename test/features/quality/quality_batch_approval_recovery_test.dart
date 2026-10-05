@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -392,7 +393,12 @@ Future<void> _pump(
         procurementInspectionRepositoryProvider.overrideWithValue(iqc),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        routerConfig: router,
+      ),
     ),
   );
   await tester.tap(find.byKey(const Key('open-approval')));

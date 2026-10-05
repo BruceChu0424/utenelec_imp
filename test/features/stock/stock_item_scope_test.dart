@@ -355,7 +355,6 @@ void main() {
       const scope = InstantInventoryScope(
         warehouseId: 'parent',
         colorId: 'red',
-        includeDefective: false,
       );
       final env = await _open(
         tester,
@@ -494,7 +493,6 @@ void main() {
           path: RouteName.stockInstantInventory,
           queryParameters: const InstantInventoryScope(
             warehouseId: 'parent',
-            includeDefective: false,
             includeLineSide: true,
           ).toQuery(),
         ).toString(),

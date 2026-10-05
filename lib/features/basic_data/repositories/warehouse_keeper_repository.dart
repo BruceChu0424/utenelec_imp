@@ -1,9 +1,11 @@
-// 仓库负责人(仓管员, ADR-115)：仓库资料页的「负责人」列、详情行与「设置负责人」。
+// 仓库负责人(仓管员, ADR-115 / ADR-149)：仓库资料页的「负责人」列、详情行与「设置负责人」。
 //
-// 负责关系决定两件事：仓库类通知只发给单据所在仓的负责人(没登记负责人的仓照旧发给整个
-// 仓库部门)；仓库任务中心「我的仓库」按它筛选。登记在主仓上 = 负责它下面全部子仓。
+// 负责关系决定谁看、谁收仓库任务(服务端唯一判定)：登记在主仓上 = 仓库主管(看全部、可挑任一仓)；
+// 登记在子仓上 = 只看、只收自己负责的仓；没登记负责人的仓，任务交主管、通知发主管，
+// 没登记的同事也看得到。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 
@@ -16,6 +18,7 @@ class WarehouseKeeper {
     this.departmentName,
     this.hasAccount = true,
     this.warehouseMember = true,
+    this.duplicateName = false,
   });
 
   final String employeeId;
@@ -23,16 +26,20 @@ class WarehouseKeeper {
   final String? code;
   final String? departmentName;
 
-  /// 有启用中的登录账号(没有账号收不到任何通知)。
+  /// 有启用中的登录账号(没有账号 = 不是有效负责人：看不到任务、收不到通知)。
   final bool hasAccount;
 
-  /// 属于仓库部门(主部门或兼职部门)；仓库类通知只在仓库部门里分发。
+  /// 属于仓库部门(主部门或兼职部门)。部门外的负责人也按登记的仓看任务、收通知,
+  /// 前提是另有对应的仓库任务权限(ADR-149)。
   final bool warehouseMember;
 
-  /// 为什么这名负责人收不到仓库通知(能收到时为 null)。
-  String? get noticeWarning {
-    if (!hasAccount) return '没有启用的登录账号，收不到通知';
-    if (!warehouseMember) return '不在仓库部门，收不到仓库类通知';
+  /// 还有同名的在职员工(按工号核对, 防止登记到没账号的那份档案上)。
+  final bool duplicateName;
+
+  /// 这名负责人登记后需要留意的地方(没有时为 null)。
+  String? warningOf(AppLocalizations l10n) {
+    if (!hasAccount) return l10n.warehouseKeeperNoAccount;
+    if (!warehouseMember) return l10n.warehouseKeeperOutsideDepartment;
     return null;
   }
 
@@ -44,6 +51,7 @@ class WarehouseKeeper {
         departmentName: json['departmentName'] as String?,
         hasAccount: json['hasAccount'] != false,
         warehouseMember: json['warehouseMember'] != false,
+        duplicateName: json['duplicateName'] == true,
       );
 }
 

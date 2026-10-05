@@ -50,7 +50,8 @@ import java.util.UUID;
  * 材料清账与成本产出四道既有硬闸，其中成本产出行的 movement_id 是 NOT NULL——
  * 没有库存移动就没有成本产出，子件的成本会永远停在在制。所以取向是**不绕开「仓库」
  * 这个数据概念，只绕开「仓库」这个部门角色**：线边仓是车间自己的料架，是一个真实叶仓。
- * V595 起线边仓由系统按「车间 × 收料主仓」自动配置，不再要求手工到仓库资料里建。
+ * ADR-147(V800) 起线边仓(内料仓)只能在「车间内料仓」里开通，直送只送已开通的车间，不再自动建仓；
+ * 收料车间没开通时资格判定给出 WORKSHOP_BIN_NOT_OPEN，报工这部分送入仓库。
  *
  * <p>权限：整条链由 {@code production_direct_transfer:approve} 一个码显式授权(V585)，
  * 不借用品质部与仓库的码；范围由 {@link ProductionWorkshopMembership} 逐段判定。
@@ -68,7 +69,7 @@ public class ProductionWorkshopDirectTransferService {
     private final ProductionFqcInspectionService inspections;
     private final ProductionExecutionReadinessService readiness;
     private final StockDocService stockDocs;
-    /** 线边仓自动配置走应用端口(ADR-017：跨 feature 只经 application.port)。 */
+    /** 读收料车间已开通的内料仓走应用端口(ADR-017：跨 feature 只经 application.port)。 */
     private final LineSideWarehousePort lineSideWarehouses;
     private final ChainNoticeService chainNotices;
 
@@ -221,7 +222,7 @@ public class ProductionWorkshopDirectTransferService {
      * <p>一张报工分给多个上层工单时仍逐块办：校验、写直送明细、自检入线边仓、投给这个上层工单，
      * 办完一块再办下一块(ADR-127 §8)。曾试过把同一线边位置的各块合成一张入库单一次点收，实测更慢：
      * 各块同时进了线边仓，后面每个上层工单投料时的可用量与权益查询都要把还没投出去的各块再过一遍，
-     * 11 块时审核反而多花约一倍时间，所以不合单。线边仓按「车间 × 收料主仓」一次审核只确定一次。
+     * 11 块时审核反而多花约一倍时间，所以不合单。收料车间的内料仓一次审核只读一次。
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void executeForApprovedReport(
@@ -237,10 +238,10 @@ public class ProductionWorkshopDirectTransferService {
         // 同一张报工常有多行出自同一个执行工单；车间成员资格只由 (工单, 当前操作者) 决定，
         // 在一次调用里逐行重查是纯粹的重复往返(每行两条语句)。
         Set<UUID> memberCheckedSegments = new LinkedHashSet<>();
-        // 线边仓只由 (车间, 收料主仓) 决定，同一次审核里各块共用，不再每块重走一遍查找/配置。
-        Map<List<UUID>, UUID> lineSideByPlace = new HashMap<>();
+        // 内料仓只由收料车间决定，同一次审核里各块共用，不再每块重读一遍。
+        Map<UUID, UUID> binByWorkshop = new HashMap<>();
         for (ProductionDailyReportItem item : direct) {
-            Resolved resolved = resolve(item, memberCheckedSegments, lineSideByPlace);
+            Resolved resolved = resolve(item, memberCheckedSegments, binByWorkshop);
             UUID transferId = transferByLocation.computeIfAbsent(
                     resolved.lineSideWarehouseId(),
                     location -> insertTransfer(report, resolved.workshopDepartmentId(), location));
@@ -325,11 +326,11 @@ public class ProductionWorkshopDirectTransferService {
     /**
      * 逐行解析收料需求、车间与线边仓。能不能送只读 fn_workshop_direct_targets 的单条校验(V736)，
      * 与候选列表、保存拆分、数据库守卫同一把尺子；不能送时原样说出原因。
-     * 线边仓按「车间 × 收料主仓」自动配置(V595)，第一次直送时就地建好。
+     * 内料仓只读收料车间已开通的那一个(ADR-147)；没开通时上面的判定已经是 WORKSHOP_BIN_NOT_OPEN。
      */
     private Resolved resolve(
             ProductionDailyReportItem item, Set<UUID> memberCheckedSegments,
-            Map<List<UUID>, UUID> lineSideByPlace) {
+            Map<UUID, UUID> binByWorkshop) {
         BigDecimal baseQty = baseQuantity(item);
         // 一条语句：先锁住出料工单、收料需求、接收工单及其计划与计划包(防并发停产/关闭穿透)，
         // 再读库里唯一的单条判定。判定读的是本语句快照；写直送明细时数据库断言会在锁后重新判定，
@@ -376,9 +377,9 @@ public class ProductionWorkshopDirectTransferService {
             requireWorkshopMember(item.getExecutionSegmentId());
         }
         UUID workshop = (UUID) row[3];
-        UUID lineSide = lineSideByPlace.computeIfAbsent(
-                java.util.Arrays.asList(workshop, (UUID) row[4]),
-                place -> lineSideWarehouses.ensure(place.get(0), place.get(1)));
+        UUID lineSide = binByWorkshop.computeIfAbsent(workshop, receiving -> lineSideWarehouses
+                .openedBinOf(receiving)
+                .orElseThrow(() -> conflict(UNAVAILABLE_PREFIX + "收料车间还没开通内料仓，请仓库在「车间内料仓」开通后再直送，这次先送入仓库")));
         return new Resolved(
                 (UUID) row[0], (UUID) row[1], (UUID) row[2],
                 (String) row[6], Boolean.TRUE.equals(row[7]),

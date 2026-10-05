@@ -21,7 +21,6 @@ class _Line extends InboundRegistrationLine {
 }
 
 WeightParams _params(WeightTier tier) => WeightParams(
-  key: 'g||w|red',
   goodsId: 'g',
   basis: WeightBasis.learned,
   logMean: -6.214608098422191,

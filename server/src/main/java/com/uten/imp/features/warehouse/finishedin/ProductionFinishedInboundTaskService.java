@@ -54,16 +54,21 @@ public class ProductionFinishedInboundTaskService {
                                         THEN NULL ELSE NULLIF(goods.code, '') END,
                                    NULLIF(line_color.name, '')), '') || ')', ''),
                            '、') AS goods_summary,
-                       COUNT(report_item.id)::integer AS line_count,
+                       -- ADR-148：一批实物(同一产出批次、送入仓库的各份)在登记页是一行。
+                       COUNT(DISTINCT report_item.output_lot_id)::integer AS line_count,
                        COALESCE(SUM(report_item.qty), 0) AS pending_qty,
                        report.created_at,
                        FALSE AS residual_task,
-                       -- 仓库范围(ADR-115)：待登记还没选仓，按成品主档「所属仓库」归属；
-                       -- 一单多个所属仓或有未登记所属仓的成品时为空(「我的仓库」照样显示)。
-                       CASE WHEN COUNT(DISTINCT goods.owning_warehouse_id) = 1
-                                 AND COUNT(goods.owning_warehouse_id) = COUNT(*)
-                            THEN MIN(goods.owning_warehouse_id::text)::uuid END
-                           AS scope_warehouse_id
+                       -- 仓库数据范围(ADR-149)的「所在仓」：待登记还没选仓，按成品主档「所属仓库」归属
+                       -- (一单多个所属仓时任一仓的负责人都看得到；都没有所属仓 = 未定仓)。
+                       COALESCE(array_agg(DISTINCT goods.owning_warehouse_id)
+                                    FILTER (WHERE goods.owning_warehouse_id IS NOT NULL),
+                                ARRAY[]::uuid[]) AS scope_warehouse_ids,
+                       COALESCE(SUM(report_item.qty) FILTER (
+                           WHERE report_item.is_public_output AND NOT report_item.is_actual_surplus), 0)
+                           AS public_qty,
+                       COALESCE(SUM(report_item.qty) FILTER (WHERE report_item.is_actual_surplus), 0)
+                           AS actual_surplus_qty
                 FROM production_daily_reports report
                 JOIN production_daily_report_items report_item
                   ON report_item.report_id = report.id
@@ -93,6 +98,7 @@ public class ProductionFinishedInboundTaskService {
                 ) plan ON TRUE
                 WHERE report.status = 1
                   AND report.is_deleted = FALSE
+                  AND report_item.destination = 'WAREHOUSE'
                 GROUP BY report.id, report.bill_no, report.bill_date,
                          plan.plan_id, plan.plan_no, report.created_at
             ), final_count_tasks AS (
@@ -118,7 +124,7 @@ public class ProductionFinishedInboundTaskService {
                                         ELSE NULLIF(item.goods_code_snapshot, '') END,
                                    NULLIF(line_color.name, '')), '') || ')', ''),
                            '、') AS goods_summary,
-                       COUNT(item.id)::integer AS line_count,
+                       COUNT(DISTINCT COALESCE(lot_source.output_lot_id, item.id))::integer AS line_count,
                        COALESCE(SUM(item.qty), 0) AS pending_qty,
                        document.created_at,
                        EXISTS (
@@ -127,7 +133,12 @@ public class ProductionFinishedInboundTaskService {
                            WHERE confirmation.residual_stock_document_id =
                                  document.id
                        ) AS residual_task,
-                       document.warehouse_id AS scope_warehouse_id
+                       ARRAY[document.warehouse_id] AS scope_warehouse_ids,
+                       COALESCE(SUM(item.qty) FILTER (
+                           WHERE lot_source.is_public_output AND NOT lot_source.is_actual_surplus), 0)
+                           AS public_qty,
+                       COALESCE(SUM(item.qty) FILTER (WHERE lot_source.is_actual_surplus), 0)
+                           AS actual_surplus_qty
                 FROM stock_documents document
                 JOIN stock_document_items item
                   ON item.doc_id = document.id
@@ -136,6 +147,8 @@ public class ProductionFinishedInboundTaskService {
                      item.source_daily_report_item_id IS NOT NULL
                      OR item.execution_segment_id IS NOT NULL
                  )
+                LEFT JOIN production_daily_report_items lot_source
+                  ON lot_source.id = item.source_daily_report_item_id
                 -- 单据行自带颜色（快照口径，不回看主档）：摘要同样按
                 -- 「名称 (编号 · 颜色)」拼，同名不同色不再被 DISTINCT 并成一条。
                 LEFT JOIN colors line_color
@@ -209,7 +222,7 @@ public class ProductionFinishedInboundTaskService {
         return list(keyword, taskStage, warehouseId, requestedPage, requestedSize, WarehouseTaskScope.ALL);
     }
 
-    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤。 */
+    /** 同上, 另按仓库数据范围(ADR-149)过滤。 */
     @Transactional(readOnly = true)
     public PageResponse<ProductionFinishedInboundTask> list(
             String keyword, String taskStage, UUID warehouseId,
@@ -260,7 +273,8 @@ public class ProductionFinishedInboundTaskService {
                        document_id, document_no, document_date,
                        warehouse_id, warehouse_name, plan_id, plan_no,
                        report_nos, goods_summary, line_count,
-                       pending_qty, created_at, residual_task
+                       pending_qty, created_at, residual_task,
+                       public_qty, actual_surplus_qty
                 FROM task_documents
                 """ + filter + """
                 """ + taskOrderBy(sort, order) + """
@@ -344,7 +358,7 @@ public class ProductionFinishedInboundTaskService {
                         : " AND warehouse_id = :warehouse_id\n")
                 + (activeScope == null
                         ? ""
-                        : " AND " + activeScope.predicate("scope_warehouse_id", ":warehouse_scope") + "\n")
+                        : " AND " + activeScope.predicateAny("scope_warehouse_ids", ":warehouse_scope") + "\n")
                 + (isBlank(taskNo)
                         ? ""
                         : " AND " + TASK_NO_EXPR + " = :task_no\n")
@@ -384,11 +398,18 @@ public class ProductionFinishedInboundTaskService {
 
     @Transactional(readOnly = true)
     public long countPending() {
+        return countPending(WarehouseTaskScope.ALL);
+    }
+
+    /** 待办数(ADR-149): 与列表同一过滤基座与仓库范围(目标仓, 未登记按成品所属仓), 徽章 = 列表 total。 */
+    @Transactional(readOnly = true)
+    public long countPending(WarehouseTaskScope warehouseScope) {
         if (!access.canAccessWarehouseTasks()) return 0;
-        Number count = (Number) em.createNativeQuery(
-                        BASE_SQL
-                                + " SELECT COUNT(*) FROM task_documents")
-                .getSingleResult();
+        WarehouseTaskScope activeScope = warehouseScope != null && warehouseScope.active() ? warehouseScope : null;
+        Query query = em.createNativeQuery(BASE_SQL + " SELECT COUNT(*) FROM task_documents "
+                + taskFilter("", "", null, activeScope, null, null));
+        bindTaskFilters(query, "", "", null, activeScope, null, null);
+        Number count = (Number) query.getSingleResult();
         return count == null ? 0 : count.longValue();
     }
 
@@ -409,7 +430,10 @@ public class ProductionFinishedInboundTaskService {
                 ((Number) row[12]).intValue(),
                 decimal(row[13]),
                 offsetDateTime(row[14]),
-                Boolean.TRUE.equals(row[15]));
+                Boolean.TRUE.equals(row[15]),
+                decimal(row[16]),
+                decimal(row[17]),
+                com.uten.imp.common.production.OutputLotText.actualSurplusNote(decimal(row[17])));
     }
 
     private static BigDecimal decimal(Object value) {

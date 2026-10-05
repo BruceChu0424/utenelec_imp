@@ -20,6 +20,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -363,6 +364,7 @@ class _WarehouseSalesOutboundDetailPageState
                               const SizedBox(height: UtenSpacing.s12),
                               _factsCard(detail),
                               const SizedBox(height: UtenSpacing.s16),
+                              WeightParamsLoadNotice(cache: _weightCache),
                             ],
                           ),
                         ),

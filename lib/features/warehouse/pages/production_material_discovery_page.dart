@@ -24,6 +24,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/production_material_discovery.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/models/goods_node.dart';
@@ -296,6 +297,7 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
         hierarchy: names.warehouseHierarchy,
         initialWarehouseId: row.values['warehouseId'] as String?,
         title: AppLocalizations.of(context).materialDiscoveryWarehouse,
+        use: WarehouseUse.goodOut,
       );
       if (!mounted ||
           selected == null ||

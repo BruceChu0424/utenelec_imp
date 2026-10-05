@@ -280,7 +280,7 @@ Iterable<String> _businessPaths() sync* {
     '/quality/inspection-records',
     '/warehouse/inbound/expectations',
     '/warehouse/inbound/arrival-exceptions',
-    '/warehouse/inbound/receipts/new',
+    '/warehouse/inbound/arrivals/register',
     '/warehouse/report',
     '/warehouse/report/detail',
     '/warehouse/report/summary',

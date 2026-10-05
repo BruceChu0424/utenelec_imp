@@ -71,13 +71,17 @@ class SubcontractDraftIdentityPostgresTest {
                 new BigDecimal("20"), null, false, null, null, null, java.time.OffsetDateTime.now(),
                 "出仓预填测试核重", "draft-weight-" + UUID.randomUUID(), world.superAdminUserId()));
         var references = weights.params(List.of(
-                new WeightParamsRequest.Line("actual", world.goodsA(), null, world.warehouseId(), null),
-                new WeightParamsRequest.Line("other-warehouse", world.goodsA(), null, UUID.randomUUID(), null),
-                new WeightParamsRequest.Line("other-color", world.goodsA(), null, world.warehouseId(), UUID.randomUUID())));
-        assertThat(references.getFirst().stockBalance().qtyBase()).isEqualByComparingTo("1000");
-        assertThat(references.getFirst().stockBalance().weightKg()).isEqualByComparingTo("20");
-        assertThat(references.get(1).stockBalance()).isNull();
-        assertThat(references.get(2).stockBalance()).isNull();
+                new WeightParamsRequest.Line(world.goodsA(), null, world.warehouseId(), null),
+                new WeightParamsRequest.Line(world.goodsA(), null, UUID.randomUUID(), null),
+                new WeightParamsRequest.Line(world.goodsA(), null, world.warehouseId(), UUID.randomUUID())));
+        assertThat(references.items()).hasSize(3);
+        assertThat(references.stockBalances()).singleElement().satisfies(balance -> {
+            assertThat(balance.warehouseId()).isEqualTo(world.warehouseId());
+            assertThat(balance.goodsId()).isEqualTo(world.goodsA());
+            assertThat(balance.colorId()).isNull();
+            assertThat(balance.qtyBase()).isEqualByComparingTo("1000");
+            assertThat(balance.weightKg()).isEqualByComparingTo("20");
+        });
         OrderSaveRequest orderRequest = call(fixture, "directSubcontractDraft", world, world.goodsA(),
                 (Object) new String[]{"1000"});
         var order = orders.create(orderRequest);

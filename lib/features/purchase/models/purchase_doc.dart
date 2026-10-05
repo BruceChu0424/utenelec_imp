@@ -1,4 +1,5 @@
 import '../../../shared/business_columns/business_column.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 // 采购单据模型（4 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 4 单据差异由 doc_type 决定可选字段是否非空（申请无供应商/币种；收货有 sender/receiver；
@@ -19,6 +20,10 @@ enum PurchaseDocType {
 
   const PurchaseDocType(this.pathSegment);
   final String pathSegment;
+
+  /// 表头仓库的选仓用途(ADR-146)：退货可以从不良品仓退供应商，其余都只落良品仓。
+  WarehouseUse get warehouseUse =>
+      this == returnDoc ? WarehouseUse.disposalOut : WarehouseUse.goodIn;
 
   static PurchaseDocType? tryByPath(String seg) {
     for (final type in PurchaseDocType.values) {

@@ -14,7 +14,6 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dar
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
-import 'package:uten_imp/features/warehouse/providers/procurement_inbound_count_providers.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
@@ -67,7 +66,7 @@ class _Drafts extends FormDraftsNotifier {
       id: 'arrival-draft',
       title: '采购到货登记',
       module: BadgeModule.warehouse,
-      route: RouteName.warehouseArrivalReceiptNew,
+      route: RouteName.warehouseArrivalRegistration,
       permission: Perm.warehouseInboundView,
       updatedAt: DateTime(2026, 9, 30),
       data: const {},
@@ -112,11 +111,13 @@ void main() {
                   subcontractCounts.waitingComponent,
               BadgeFact.warehouseArrivalException: 0,
               BadgeFact.finishedInbound: 0,
+              // ADR-149: 预计到货分来源也随汇总同步带回(与列表同一仓库范围)。这里给 0:
+              // 有红数时进页面会默认选中该大类, 入库用例要验证的是「没红数不预选」。
+              BadgeFact.warehouseInboundExpectation: 0,
+              BadgeFact.warehouseInboundExpectationPurchase: 0,
+              BadgeFact.warehouseInboundExpectationSubcontract: 0,
             },
           ),
-        ),
-        warehouseInboundExpectationTypeCountsProvider.overrideWith(
-          (ref) async => const {'PURCHASE': 2, 'SUBCONTRACT': 1},
         ),
       ],
       child: MaterialApp(

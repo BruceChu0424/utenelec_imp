@@ -2,6 +2,7 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
@@ -24,8 +25,9 @@ import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import com.uten.imp.features.stock.dto.StockDocSaveRequest;
 import com.uten.imp.features.stock.valuation.InventoryValueWorkService;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
+import com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisionRequest;
+import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.support.DailyReportApproveRequests;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -269,39 +271,37 @@ class WorkshopPublicSurplusEndToEndTest {
         assertNull(output.getLast().get("execution_segment_sales_allocation_id"));
         assertEquals("WAREHOUSE", output.getLast().get("destination"));
 
-        arrivals.register(report, new ArrivalRegistrationRequest("actual-arrival-" + report,
-                c.world().warehouseId(), List.of(new ArrivalRegistrationItemRequest(demandItem, "需求成品"),
-                new ArrivalRegistrationItemRequest(publicItem, "公共超产")), null));
-        UUID publicInbound = releaseOutputItem(publicItem, "300");
+        // ADR-148：需求 2000 与实际超产 300 同批同去向 = 一批实物：整批登记、整批判定、一张入库单两行。
+        UUID lot = lotOf(demandItem);
+        assertEquals(lot, lotOf(publicItem));
+        FinishedArrivalTestSupport.registerItems(arrivals, report, "actual-arrival-" + report,
+                c.world().warehouseId(), List.of(demandItem, publicItem), "需求与超产同库位");
+        quality.decideLot(lot, new LotDecisionRequest(new BigDecimal("2300"), BigDecimal.ZERO, null, null, "actual-pass-" + report));
+        UUID inbound = draftOf(demandItem);
+        assertEquals(inbound, draftOf(publicItem), "同一批实物合格只进一张入库单");
         qty("0", planQuantity(c, "iqty"));
-        UUID residual = ReflectionTestUtils.invokeMethod(fixture, "confirmFinishedInboundPartially",
-                publicInbound, new BigDecimal("100"), "本次实际到货100，余量200继续交接");
-        qty("100", planQuantity(c, "iqty"));
-        assertPlannedReceipt(c, "0", "100");
-        assertEquals("IN_PROGRESS", status(c));
+        // 仓库只收到 2100：实收先满足需求份，短少的 200 只能是实际超产，余量单只含超产份。
+        UUID residual = confirmLot(inbound, lot, "2100", "本次实际到货2100，余量200继续交接");
+        qty("2100", planQuantity(c, "iqty"));
+        assertPlannedReceipt(c, "2000", "100");
+        assertSalesProgress(c, 2000, 2000);
+        assertEquals(List.of(publicItem), db.queryForList(
+                "SELECT source_daily_report_item_id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", UUID.class, residual));
+        qty("200", db.queryForObject("SELECT qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted", BigDecimal.class, residual));
         fixture.confirmFinishedInboundFully(residual);
-        assertPlannedReceipt(c, "0", "300");
-        qty("0", db.queryForObject("SELECT inbound_qty FROM plan_order_item_links WHERE plan_item_id=? AND NOT is_deleted", BigDecimal.class, c.planItem()));
-        qty("0", db.queryForObject("SELECT root_progress_ratio FROM v_production_execution_workbench_roots WHERE root_type='ANALYSIS' AND root_id=(SELECT material_analysis_id FROM production_plans WHERE id=?)", BigDecimal.class, c.plan()));
-
-        UUID demandInbound = releaseOutputItem(demandItem, "2000");
-        fixture.confirmFinishedInboundFully(demandInbound);
         qty("2300", planQuantity(c, "iqty"));
         qty("2000", planQuantity(c, "qty"));
-        assertSalesProgress(c, 2000, 2000);
         assertPlannedReceipt(c, "2000", "300");
         assertEquals(0, db.queryForObject("""
                 SELECT COUNT(*) FROM stock_reservations
-                WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id IN (?,?)
+                WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id = ?
                   AND NOT is_deleted AND owner_type IN ('SALES_ORDER_ITEM','PREPLAN_ANALYSIS')
-                """, Integer.class, publicInbound, residual));
+                """, Integer.class, residual), "公共超产余量不能占销售或分析需求");
         qty("2300", db.queryForObject("SELECT fn_production_execution_cost_target(fn_production_execution_cost_scope(?))", BigDecimal.class, c.segment()));
-        drainValuation(c);
-        stock.reverseFinishedInbound(demandInbound);
         drainValuation(c);
         stock.reverseFinishedInbound(residual);
         drainValuation(c);
-        stock.reverseFinishedInbound(publicInbound);
+        stock.reverseFinishedInbound(inbound);
         drainValuation(c);
         reports.reverse(report);
         qty("0", planQuantity(c, "fqty"));
@@ -318,6 +318,50 @@ class WorkshopPublicSurplusEndToEndTest {
                 """, c.segment());
         qty(planned, (BigDecimal) progress.get("planned_inbound_qty"));
         qty(surplus, (BigDecimal) progress.get("actual_surplus_inbound_qty"));
+    }
+
+    private UUID lotOf(UUID reportItem) {
+        return db.queryForObject("SELECT output_lot_id FROM production_daily_report_items WHERE id=?", UUID.class, reportItem);
+    }
+
+    /** 本报工行当前的待点收草稿。 */
+    private UUID draftOf(UUID reportItem) {
+        return db.queryForObject("""
+                SELECT document.id FROM stock_documents document JOIN stock_document_items item ON item.doc_id=document.id
+                WHERE item.source_daily_report_item_id=? AND NOT item.is_deleted AND NOT document.is_deleted
+                  AND document.doc_type='FINISHED_IN' AND document.status=0
+                """, UUID.class, reportItem);
+    }
+
+    /** 按批点收(ADR-148)，返回余量单(全收时为 null)。 */
+    private UUID confirmLot(UUID document, UUID lot, String accepted, String reason) {
+        var request = new FinishedInboundConfirmRequest();
+        request.setIdempotencyKey("lot-confirm-" + document);
+        request.setVarianceReason(reason);
+        var line = new FinishedInboundConfirmRequest.Lot();
+        line.setLotId(lot);
+        line.setAcceptedQty(new BigDecimal(accepted));
+        request.setLots(List.of(line));
+        stock.confirmFinishedInbound(document, request);
+        return db.queryForObject("SELECT residual_stock_document_id FROM production_finished_in_confirmations WHERE stock_document_id=?",
+                UUID.class, document);
+    }
+
+    /** 本报工全部批整批登记、整批全合格，返回生成的待点收入库单(不跨计划合单，可能多张)。 */
+    private List<UUID> registerAndPassAll(Case c, UUID report, String key) {
+        FinishedArrivalTestSupport.registerAll(arrivals, report, key, c.world().warehouseId(), "实际分账入库", null, false);
+        for (var lot : db.queryForList("""
+                SELECT item.output_lot_id, SUM(item.qty) FROM production_daily_report_items item
+                WHERE item.report_id=? AND NOT item.is_deleted AND item.destination='WAREHOUSE'
+                GROUP BY item.output_lot_id
+                """, report)) {
+            quality.decideLot((UUID) lot.get("output_lot_id"), new LotDecisionRequest(
+                    (BigDecimal) lot.get("sum"), BigDecimal.ZERO, null, null, key + "-pass-" + lot.get("output_lot_id")));
+        }
+        return db.queryForList("""
+                SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN'
+                  AND status=0 AND NOT is_deleted ORDER BY bill_no
+                """, UUID.class, report);
     }
 
     private UUID releaseOutputItem(UUID reportItem, String quantity) {
@@ -357,6 +401,194 @@ class WorkshopPublicSurplusEndToEndTest {
         return createStartedTask("workshop-public-surplus", true);
     }
 
+    /**
+     * ADR-148 主场景：计划 1000、允许超产 10%、实报 1100 = 需求 1000 + 实际超产 100 同批同去向。
+     * 登记一行、品质一次整批全合格 -> 恰好一张入库单两行、一个待点收任务、一条待点收通知；
+     * 仓库只点到 1060 -> 需求 1000 + 超产 60 入库，余量单只含超产 40。
+     */
+    @Test
+    void handoffLotOf1100IsOneInboundOneCountTaskOneNoticeAndShortCountTrimsActualSurplusFirst() {
+        Case c=createStartedTask("wps-handoff-lot",false,"1000");
+        // 默认允许超产比例即 10%(无需另行审批)。
+        UUID report=approveReport(c,sources(c).getFirst(),"1100","1000");
+        var detail=reports.detail(report);
+        assertEquals(2,detail.getItems().size());
+        UUID demand=detail.getItems().stream().filter(row->!row.isActualSurplus()).findFirst().orElseThrow().getId();
+        UUID surplus=detail.getItems().stream().filter(row->row.isActualSurplus()).findFirst().orElseThrow().getId();
+        UUID lot=lotOf(demand);
+        assertEquals(lot,lotOf(surplus),"同一报工、同一产出批次、送入仓库 = 同一批实物");
+        // 车间侧：服务端一批一行、同去向一组，摘要「送入仓库 1100(其中实际超产 100)」。
+        assertEquals(1,detail.getOutputBatches().size());
+        var batch=detail.getOutputBatches().getFirst();
+        assertEquals(1,batch.groups().size());
+        assertTrue(batch.groups().getFirst().summary().startsWith("送入仓库 1100(其中实际超产 100"),batch.groups().getFirst().summary());
+        assertTrue(batch.summary().contains("共 1100"),batch.summary());
+        // 仓库待登记：一个任务、一行(一批)，其中实际超产 100。
+        var tasks=beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskService.class);
+        var arrival=tasks.list(detail.getBillNo(),"ARRIVAL_REGISTRATION",null,1,40).getItems();
+        assertEquals(1,arrival.size());assertEquals(1,arrival.getFirst().lineCount());
+        qty("100",arrival.getFirst().actualSurplusQty());assertEquals("其中实际超产 100",arrival.getFirst().actualSurplusNote());
+        var pending=arrivals.batchDetail(List.of(report)).getFirst();
+        assertEquals(1,pending.lots().size());
+        var lotView=pending.lots().getFirst();
+        qty("1100",lotView.reportedQty());qty("1000",lotView.demandQty());qty("100",lotView.actualSurplusQty());
+        assertEquals("需求 1000 · 实际超产 100",lotView.splitText());
+        // 部分登记被数据库整批守卫拒绝(绕过服务直接写登记行)。
+        assertWholeLotGuardRejectsPartialRegistration(c,report,demand);
+        FinishedArrivalTestSupport.registerAll(arrivals,report,"handoff-arrival-"+report,c.world().warehouseId(),"A-01",null,false);
+        assertEquals(1,db.queryForObject("SELECT count(DISTINCT place_snapshot) FROM production_finished_arrival_registration_items WHERE source_report_item_id IN (?,?)",Integer.class,demand,surplus));
+        // 分成几份的批不能逐份判定。
+        UUID demandInspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",UUID.class,demand);
+        ApiException single=assertThrows(ApiException.class,()->quality.decide(demandInspection,
+                new DecisionRequest("PASS",null,null,null,null,"handoff-single-"+report)));
+        assertTrue(single.getMessage().contains("整批判定"),single.getMessage());
+        var decided=quality.decideLot(lot,new LotDecisionRequest(new BigDecimal("1100"),BigDecimal.ZERO,null,null,"handoff-pass-"+report));
+        assertFalse(decided.replay());assertEquals("RESOLVED",decided.lot().status());
+        assertTrue(quality.decideLot(lot,new LotDecisionRequest(new BigDecimal("1100"),BigDecimal.ZERO,null,null,"handoff-pass-"+report)).replay());
+        List<UUID> docs=db.queryForList("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND NOT is_deleted",UUID.class,report);
+        assertEquals(1,docs.size(),"恰好一张成品入库单");
+        UUID doc=docs.getFirst();
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",Integer.class,doc));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM plan_draw_links WHERE draw_id=?",Integer.class,doc));
+        assertEquals(1,db.queryForObject("""
+                SELECT count(*) FROM business_outbox WHERE event_type='PRODUCTION_FINISHED_INBOUND_PENDING'
+                  AND aggregate_id IN (SELECT id FROM stock_documents WHERE source_daily_report_id=?)
+                """,Integer.class,report),"恰好一条待点收通知");
+        var count=tasks.list(detail.getBillNo(),"FINAL_COUNT",null,1,40).getItems();
+        assertEquals(1,count.size(),"恰好一个待最终点收任务");
+        assertEquals(doc,count.getFirst().documentId());assertEquals(1,count.getFirst().lineCount());
+        qty("100",count.getFirst().actualSurplusQty());
+        var stockDetail=stock.detail(doc);
+        assertEquals(1,stockDetail.getFinishedLots().size());
+        assertEquals("其中实际超产 100",stockDetail.getFinishedLots().getFirst().actualSurplusNote());
+        UUID residual=confirmLot(doc,lot,"1060","实际到货1060，其余40待交接");
+        qty("1060",planQuantity(c,"iqty"));
+        assertPlannedReceipt(c,"1000","60");
+        qty("1000",db.queryForObject("SELECT qty FROM stock_document_items WHERE doc_id=? AND source_daily_report_item_id=? AND NOT is_deleted",BigDecimal.class,doc,demand));
+        qty("60",db.queryForObject("SELECT qty FROM stock_document_items WHERE doc_id=? AND source_daily_report_item_id=? AND NOT is_deleted",BigDecimal.class,doc,surplus));
+        assertEquals(List.of(surplus),db.queryForList("SELECT source_daily_report_item_id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",UUID.class,residual),"余量单只含超产份");
+        qty("40",db.queryForObject("SELECT qty FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",BigDecimal.class,residual));
+    }
+
+    /**
+     * 按批点收的重放(ADR-148): 只点到需求数时实际超产份收到 0, 被软删进余量单; 同一请求(同键同数)再来
+     * 仍是原结果, 不能因为当前明细少了一行就变成 409 或 422; 同键换数 409。
+     */
+    @Test
+    void lotCountThatZeroesASliceReplaysTheSameRequestAndRejectsADifferentOne() {
+        Case c=createStartedTask("wps-lot-replay",false,"1000");
+        UUID report=approveReport(c,sources(c).getFirst(),"1100","1000");
+        var detail=reports.detail(report);
+        UUID demand=detail.getItems().stream().filter(row->!row.isActualSurplus()).findFirst().orElseThrow().getId();
+        UUID surplus=detail.getItems().stream().filter(row->row.isActualSurplus()).findFirst().orElseThrow().getId();
+        UUID lot=lotOf(demand);
+        FinishedArrivalTestSupport.registerAll(arrivals,report,"replay-arrival-"+report,c.world().warehouseId(),"A-02",null,false);
+        // 数据库对抗: 绕过服务直接给多份批里的一份写逐份决定(没有整批命令) -> 守卫拒绝。
+        UUID surplusInspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",UUID.class,surplus);
+        var bypass=assertThrows(org.springframework.dao.DataAccessException.class,()->db.update("""
+                INSERT INTO production_fqc_decision_events(inspection_id,decision,pass_qty,fail_qty,idempotency_key,request_hash,
+                    decided_by_employee_id,created_by)
+                VALUES (?,'PASS',100,0,?,repeat('b',64),?,?)
+                """,surplusInspection,"bypass-"+report,c.world().employeeId(),c.world().superAdminUserId()));
+        assertTrue(String.valueOf(bypass.getMostSpecificCause().getMessage()).contains("请按整批判定"),
+                bypass.getMostSpecificCause().getMessage());
+        quality.decideLot(lot,new LotDecisionRequest(new BigDecimal("1100"),BigDecimal.ZERO,null,null,"replay-pass-"+report));
+        UUID doc=db.queryForObject("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND NOT is_deleted",UUID.class,report);
+        UUID residual=confirmLot(doc,lot,"1000","超产 100 还在车间");
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_document_items WHERE doc_id=? AND source_daily_report_item_id=? AND NOT is_deleted",Integer.class,doc,surplus),
+                "收到 0 的超产份不留在原单");
+        long movements=db.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",Long.class,doc);
+        // 同一请求再来(响应丢了, 页面按同一键重试): 原结果, 不再过账, 不多一张余量单。
+        assertEquals(residual,confirmLot(doc,lot,"1000","超产 100 还在车间"));
+        assertEquals(movements,db.queryForObject("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",Long.class,doc));
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND status=0 AND NOT is_deleted",Integer.class,report));
+        // 同一个键换了实收数: 409, 不当成已办成。
+        ApiException changed=assertThrows(ApiException.class,()->confirmLot(doc,lot,"990","超产 100 还在车间"));
+        assertEquals(ErrorCode.CONFLICT,changed.getCode());
+        assertTrue(changed.getMessage().contains("另一组实收数量"),changed.getMessage());
+    }
+
+    /** 品质整批判定的瀑布(ADR-118 §4 修订)：合格先满足需求份，不良先扣实际超产；同键重放、换内容 409。 */
+    @Test
+    void lotDecisionPassFillsDemandFirstAndFailureTrimsActualSurplusFirst() {
+        for(String scenario:List.of("pass1050-fail50","pass950-fail150")) {
+            Case c=createStartedTask("wps-lot-"+scenario,false,"1000");
+            UUID report=approveReport(c,sources(c).getFirst(),"1100","1000");
+            var items=reports.detail(report).getItems();
+            UUID demand=items.stream().filter(row->!row.isActualSurplus()).findFirst().orElseThrow().getId();
+            UUID surplus=items.stream().filter(row->row.isActualSurplus()).findFirst().orElseThrow().getId();
+            FinishedArrivalTestSupport.registerAll(arrivals,report,"lot-arrival-"+report,c.world().warehouseId(),"W-01",null,false);
+            boolean first=scenario.startsWith("pass1050");
+            var request=new LotDecisionRequest(new BigDecimal(first?"1050":"950"),new BigDecimal(first?"50":"150"),
+                    "REWORK","整批抽检不良返工","lot-decision-"+report);
+            quality.decideLot(lotOf(demand),request);
+            var demandRow=db.queryForMap("SELECT passed_qty,failed_qty FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",demand);
+            var surplusRow=db.queryForMap("SELECT passed_qty,failed_qty FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",surplus);
+            if(first) {
+                qty("1000",(BigDecimal)demandRow.get("passed_qty"));qty("0",(BigDecimal)demandRow.get("failed_qty"));
+                qty("50",(BigDecimal)surplusRow.get("passed_qty"));qty("50",(BigDecimal)surplusRow.get("failed_qty"));
+            } else {
+                qty("950",(BigDecimal)demandRow.get("passed_qty"));qty("50",(BigDecimal)demandRow.get("failed_qty"));
+                qty("0",(BigDecimal)surplusRow.get("passed_qty"));qty("100",(BigDecimal)surplusRow.get("failed_qty"));
+            }
+            assertEquals(1,db.queryForObject("SELECT count(*) FROM production_fqc_lot_decision_commands WHERE lot_id=?",Integer.class,lotOf(demand)));
+            assertTrue(quality.decideLot(lotOf(demand),request).replay());
+            ApiException changed=assertThrows(ApiException.class,()->quality.decideLot(lotOf(demand),
+                    new LotDecisionRequest(new BigDecimal("1000"),new BigDecimal("100"),"REWORK","换了数量","lot-decision-"+report)));
+            assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,changed.getCode());
+            List<UUID> docs=db.queryForList("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND NOT is_deleted",UUID.class,report);
+            assertEquals(1,docs.size(),"一次整批判定合格的数量只进一张入库单");
+        }
+    }
+
+    /** 同一报工、同一计划的两次录入(两个产出批次)在同一次登记里：品质全合格后仍只一张入库单。 */
+    @Test
+    void twoOutputBatchesOfOnePlanInOneRegistrationShareOneInboundAfterPassAll() {
+        Case c=createStartedTask("wps-two-batches",false,"1000");
+        var source=sources(c).getFirst();
+        var request=reportRequest(c,source,"600","600");
+        var second=reportRequest(c,source,"500","400").getItems().getFirst();second.setLineNo(2);
+        request.setItems(List.of(request.getItems().getFirst(),second));
+        request.getMaterialLines().getFirst().setQtyBase(new BigDecimal("1000"));
+        UUID report=reports.approve(reports.create(request).getId(),DailyReportApproveRequests.freshKey()).getId();
+        var items=reports.detail(report).getItems();
+        assertEquals(2,items.stream().map(row->row.getOutputBatchId()).distinct().count());
+        assertEquals(2,arrivals.batchDetail(List.of(report)).getFirst().lots().size(),"两次录入 = 两批实物");
+        FinishedArrivalTestSupport.registerAll(arrivals,report,"two-batches-"+report,c.world().warehouseId(),"T-01",null,false);
+        UUID surplusSlice=items.stream().filter(row->row.isActualSurplus()).findFirst().orElseThrow().getId();
+        UUID firstBatchSlice=items.stream().filter(row->!row.getOutputBatchId().equals(
+                items.stream().filter(item->item.getId().equals(surplusSlice)).findFirst().orElseThrow().getOutputBatchId()))
+                .findFirst().orElseThrow().getId();
+        // 检查单级全合格：只选第二批的超产份 + 第一批，服务端把第二批的需求份一起带上(选中一份 = 整批)。
+        var result=quality.passAll(new com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest(
+                List.of(inspectionOf(surplusSlice),inspectionOf(firstBatchSlice)),"two-batches-pass-"+report));
+        assertEquals(3,result.items().size(),"两批三份全部判定");
+        List<UUID> docs=db.queryForList("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND NOT is_deleted",UUID.class,report);
+        assertEquals(1,docs.size(),"同报工、同登记、同计划只一张入库单");
+        fixture.confirmFinishedInboundFully(docs.getFirst());
+        qty("1100",planQuantity(c,"iqty"));
+    }
+
+    private UUID inspectionOf(UUID reportItem) {
+        return db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",UUID.class,reportItem);
+    }
+
+    private void assertWholeLotGuardRejectsPartialRegistration(Case c,UUID report,UUID oneSlice) {
+        var failure=assertThrows(org.springframework.dao.DataAccessException.class,()->new org.springframework.transaction.support.TransactionTemplate(
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status->{
+            UUID registration=UUID.randomUUID();
+            db.update("""
+                    INSERT INTO production_finished_arrival_registrations(id,source_report_id,warehouse_id,warehouse_code_snapshot,
+                        warehouse_name_snapshot,receiver_employee_id,receiver_name_snapshot,idempotency_key,request_hash,created_by)
+                    SELECT ?,?,warehouse.id,warehouse.code,warehouse.name,?,'整批守卫','partial-lot-'||?,repeat('a',64),?
+                    FROM warehouses warehouse WHERE warehouse.id=?
+                    """,registration,report,c.world().employeeId(),report,c.world().superAdminUserId(),c.world().warehouseId());
+            db.update("INSERT INTO production_finished_arrival_registration_items(id,registration_id,source_report_item_id,place_snapshot,created_by) VALUES (?,?,?,?,?)",
+                    UUID.randomUUID(),registration,oneSlice,"P-01",c.world().superAdminUserId());
+        }));
+        assertTrue(String.valueOf(failure.getMostSpecificCause().getMessage()).contains("同一次登记"),failure.getMostSpecificCause().getMessage());
+    }
+
     @Test
     void actualPublicRecoveryReworkRetainsPublicOwnershipWithoutExpandingProductionTarget() {
         Case c=createStartedTask("wps-actual-rework",false);
@@ -365,12 +597,14 @@ class WorkshopPublicSurplusEndToEndTest {
         var rows=reports.detail(original).getItems();
         var normal=rows.stream().filter(row->!row.isActualSurplus()).findFirst().orElseThrow();
         var surplus=rows.stream().filter(row->row.isActualSurplus()).findFirst().orElseThrow();
-        arrivals.register(original,new ArrivalRegistrationRequest("actual-rework-arrival-"+original,c.world().warehouseId(),
-                List.of(new ArrivalRegistrationItemRequest(normal.getId(),"需求成品"),new ArrivalRegistrationItemRequest(surplus.getId(),"公共超产")),null));
-        fixture.confirmFinishedInboundFully(releaseOutputItem(normal.getId(),"2000"));
-        UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,surplus.getId());
-        quality.decide(inspection,new DecisionRequest("PARTIAL",new BigDecimal("250"),new BigDecimal("50"),"REWORK","公共超产返工50","actual-rework-fail-"+inspection));
-        UUID receipt=db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",UUID.class,surplus.getId());
+        FinishedArrivalTestSupport.registerItems(arrivals,original,"actual-rework-arrival-"+original,c.world().warehouseId(),
+                List.of(normal.getId(),surplus.getId()),"需求与超产同库位");
+        // 整批判定：合格 2250、不良 50 -> 需求 2000 全合格；不良先扣实际超产(超产合格 250、返工 50)。
+        quality.decideLot(lotOf(normal.getId()),new LotDecisionRequest(new BigDecimal("2250"),new BigDecimal("50"),"REWORK","超产返工50","actual-rework-lot-"+original));
+        qty("50",db.queryForObject("SELECT failed_qty FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",BigDecimal.class,surplus.getId()));
+        qty("0",db.queryForObject("SELECT failed_qty FROM production_fqc_inspections WHERE source_report_item_id=? AND status<>'CANCELLED'",BigDecimal.class,normal.getId()));
+        UUID receipt=draftOf(normal.getId());
+        assertEquals(receipt,draftOf(surplus.getId()));
         fixture.confirmFinishedInboundFully(receipt);
         ReportablePlanLine recovery=sources(c).stream().filter(row->row.fqcRecoveryAuthorizationId()!=null).findFirst().orElseThrow();
         assertFalse(recovery.allowActualOverproduction());assertNull(recovery.orderItemId());
@@ -424,16 +658,14 @@ class WorkshopPublicSurplusEndToEndTest {
         }
         qty("2000",planQuantity(c,"qty"));qty("2400",planQuantity(c,"fqty"));
         qty("2000",db.queryForObject("SELECT confirmed_consumed_qty FROM v_production_material_clearance WHERE demand_id=?",BigDecimal.class,c.demand()));
-        for(var row:slices) {
-            arrivals.register(report,new ArrivalRegistrationRequest("actual-arrival-"+row.getId(),c.world().warehouseId(),
-                    List.of(new ArrivalRegistrationItemRequest(row.getId(),"实际产量逐份点收")),null));
-            UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,row.getId());
-            quality.decide(inspection,new DecisionRequest("PASS",row.getQty(),null,null,null,"actual-pass-"+row.getId()));
-            UUID inbound=db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",UUID.class,row.getId());
-            fixture.confirmFinishedInboundFully(inbound);
-            if(row.isPublicOutput())assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM stock_reservations WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id=? AND NOT is_deleted",Integer.class,inbound));
-            if(!row.isActualSurplus())assertEquals("IN_PROGRESS",status(c));
-        }
+        // ADR-148：销售 1000、计划公共 1000、实际超产 400 同批同去向 = 一批实物，一张入库单三行。
+        List<UUID> inbounds=registerAndPassAll(c,report,"actual-arrival-"+report);
+        assertEquals(1,inbounds.size());
+        assertEquals(3,db.queryForObject("SELECT COUNT(*) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",Integer.class,inbounds.getFirst()));
+        assertEquals("IN_PROGRESS",status(c));
+        fixture.confirmFinishedInboundFully(inbounds.getFirst());
+        BigDecimal reserved=db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_reservations WHERE source_doc_type='PRODUCTION_INBOUND' AND source_doc_id=? AND NOT is_deleted",BigDecimal.class,inbounds.getFirst());
+        assertTrue(reserved.compareTo(new BigDecimal("1000"))<=0,"公共与实际超产不占销售需求");
         qty("2400",planQuantity(c,"iqty"));assertEquals("COMPLETED",status(c));assertSalesTotals(c);
         qty("2400",db.queryForObject("SELECT fn_production_execution_cost_target(?)",BigDecimal.class,c.segment()));
         drainValuation(c);
@@ -509,10 +741,10 @@ class WorkshopPublicSurplusEndToEndTest {
         UUID childItem=db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?",UUID.class,approved.supplementSegmentId());
         qty("30",db.queryForObject("SELECT fqty FROM production_plan_items WHERE id=?",BigDecimal.class,childItem));
         qty("100",db.queryForObject("SELECT confirmed_consumed_qty FROM v_production_material_clearance WHERE demand_id=?",BigDecimal.class,c.demand()));
-        for(var item:report.getItems()) {
-            arrivals.register(report.getId(),new ArrivalRegistrationRequest("supplement-arrival-"+item.getId(),c.world().warehouseId(),List.of(new ArrivalRegistrationItemRequest(item.getId(),"实际分账入库")),null));
-            fixture.confirmFinishedInboundFully(releaseOutputItem(item.getId(),item.getQty().toPlainString()));
-        }
+        // 原计划 100 + 追加计划 30 同批同去向：整批登记、整批判定；不跨计划合单，两张入库单。
+        List<UUID> inbounds=registerAndPassAll(c,report.getId(),"supplement-arrival-"+report.getId());
+        assertEquals(2,inbounds.size());
+        for(UUID inbound:inbounds)fixture.confirmFinishedInboundFully(inbound);
         qty("100",planQuantity(c,"iqty"));qty("30",db.queryForObject("SELECT iqty FROM production_plan_items WHERE id=?",BigDecimal.class,childItem));
         qty("130",db.queryForObject("SELECT fn_production_execution_cost_target(?)",BigDecimal.class,c.segment()));
         drainValuation(c);
@@ -556,15 +788,23 @@ class WorkshopPublicSurplusEndToEndTest {
         }
         var report=reports.approve(reports.create(request).getId(),DailyReportApproveRequests.freshKey());
         assertEquals(3,report.getItems().size());
-        for(var item:report.getItems()) {
-            arrivals.register(report.getId(),new ArrivalRegistrationRequest("multi-arrival-"+item.getId(),c.world().warehouseId(),List.of(new ArrivalRegistrationItemRequest(item.getId(),"同表真实产出")),null));
-            if(item.getExecutionSegmentId().equals(approved.getLast().supplementSegmentId())) {
-                UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,item.getId());
-                quality.decide(inspection,new DecisionRequest("PARTIAL",new BigDecimal("15"),new BigDecimal("5"),"REWORK","本追加份返工5","supplement-rework-"+inspection));
-                UUID inbound=db.queryForObject("SELECT doc_id FROM stock_document_items WHERE source_daily_report_item_id=? AND NOT is_deleted",UUID.class,item.getId());
-                fixture.confirmFinishedInboundFully(inbound);
-            } else fixture.confirmFinishedInboundFully(releaseOutputItem(item.getId(),item.getQty().toPlainString()));
+        FinishedArrivalTestSupport.registerAll(arrivals,report.getId(),"multi-arrival-"+report.getId(),c.world().warehouseId(),"同表真实产出",null,false);
+        UUID reworkSegment=approved.getLast().supplementSegmentId();
+        for(var lot:db.queryForList("""
+                SELECT output_lot_id,SUM(qty) AS qty,bool_or(execution_segment_id=?) AS rework
+                FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted AND destination='WAREHOUSE'
+                GROUP BY output_lot_id
+                """,reworkSegment,report.getId())) {
+            UUID lotId=(UUID)lot.get("output_lot_id");BigDecimal total=(BigDecimal)lot.get("qty");
+            if(Boolean.TRUE.equals(lot.get("rework"))) {
+                // 第二行 20 全是第二个追加份：合格 15、返工 5(不良先扣批内末位的份)。
+                quality.decideLot(lotId,new LotDecisionRequest(total.subtract(new BigDecimal("5")),new BigDecimal("5"),"REWORK","本追加份返工5","supplement-rework-"+lotId));
+            } else {
+                quality.decideLot(lotId,new LotDecisionRequest(total,BigDecimal.ZERO,null,null,"supplement-pass-"+lotId));
+            }
         }
+        for(UUID inbound:db.queryForList("SELECT id FROM stock_documents WHERE source_daily_report_id=? AND doc_type='FINISHED_IN' AND status=0 AND NOT is_deleted",UUID.class,report.getId()))
+            fixture.confirmFinishedInboundFully(inbound);
         var target=approved.getLast();
         var recovery=reportable.list(1,50,null,c.workshop(),List.of(target.supplementSegmentId())).getItems().stream()
                 .filter(row->row.fqcRecoveryAuthorizationId()!=null).findFirst().orElseThrow();
@@ -710,8 +950,8 @@ class WorkshopPublicSurplusEndToEndTest {
 
     private UUID finishInbound(Case c, UUID reportId) {
         UUID reportItem = db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted", UUID.class, reportId);
-        arrivals.register(reportId, new ArrivalRegistrationRequest("wps-arrival-" + reportId, c.world().warehouseId(),
-                List.of(new ArrivalRegistrationItemRequest(reportItem, "真实生产完工入库")), null));
+        FinishedArrivalTestSupport.registerItems(arrivals, reportId, "wps-arrival-" + reportId, c.world().warehouseId(),
+                List.of(reportItem), "真实生产完工入库");
         UUID inspection = db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?", UUID.class, reportItem);
         BigDecimal quantity = db.queryForObject("SELECT qty FROM production_daily_report_items WHERE id=?", BigDecimal.class, reportItem);
         quality.decide(inspection, new DecisionRequest("PASS", quantity, null, null, null, "wps-pass-" + reportId));

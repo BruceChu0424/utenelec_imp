@@ -192,7 +192,12 @@ ApiClient _dictApi() {
           statusCode: 200,
           data: request.path.contains('warehouses/dict')
               ? const [
-                  {'id': 'w1', 'name': '五金仓库', 'code': 'WH01'},
+                  {
+                    'id': 'w1',
+                    'name': '五金仓库',
+                    'code': 'WH01',
+                    'selectableForNew': true,
+                  },
                 ]
               : const <Map<String, dynamic>>[],
         ),

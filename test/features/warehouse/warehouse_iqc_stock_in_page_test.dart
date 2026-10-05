@@ -187,6 +187,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? scopeWarehouseId,
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
@@ -200,6 +201,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? sort,
     String? order,
     String? billNo,
+    String? scopeWarehouseId,
   }) async => PagedResult(
     items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
     page: page,
@@ -212,6 +214,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
+    String? scopeWarehouseId,
   }) async => const {
     WarehouseQualityWorkStatus.waitingInspection: 1,
     WarehouseQualityWorkStatus.allPassed: 0,

@@ -31,7 +31,12 @@ import 'outbound_weight_fakes.dart';
 
 const _warehouses = [
   WarehouseDictEntry(id: 'main', name: '主仓', isAccountable: false),
-  WarehouseDictEntry(id: 'normal', name: '五金仓', parentId: 'main'),
+  WarehouseDictEntry(
+    id: 'normal',
+    name: '五金仓',
+    parentId: 'main',
+    selectableForNew: true,
+  ),
 ];
 
 class _Names extends MasterNameService {

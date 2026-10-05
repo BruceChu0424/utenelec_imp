@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.finishedin;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort.InspectionSheetRef;
 import com.uten.imp.application.port.ProductionQualityInspectionPort.InspectionSheetRequest;
@@ -10,14 +11,14 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.weight.GoodsWeightObservationService;
 import com.uten.imp.features.stock.weight.SourceKind;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemView;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.common.production.OutputLotText;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalLotMemberView;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalLotRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalLotView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationResult;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.InspectionSheetSummaryView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegisteredReportView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.RegistrationBatchView;
@@ -43,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
@@ -56,6 +58,10 @@ import java.util.UUID;
  * 库位记进 {@code warehouse_goods_place_preferences}(较新来源胜出、同一命令同仓同货同色
  * 多库位则不记)，不再有页面开关与单独的记忆接口；建议库位改走通用的
  * {@code POST /api/warehouse/place-suggestions}(与采购/委外到货登记同一口径)。</p>
+ *
+ * <p>V801 / ADR-148 / ADR-151 §5：登记以「实物交接批」为单位(同一报工、同一产出批次、送入仓库的
+ * 需求份 / 计划公共 / 实际超产是同一堆货)，一批一个库位、一个实点、一个称重，由服务端展开到各份；
+ * 单张与多张报工只有一个命令(批量命令)，服务端按「报工 x 实际入库仓」分组成登记批次。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -64,7 +70,6 @@ public class ProductionFinishedArrivalRegistrationService {
     private static final org.slf4j.Logger log =
             org.slf4j.LoggerFactory.getLogger(ProductionFinishedArrivalRegistrationService.class);
 
-    static final String SOURCE_ARRIVAL_SINGLE = "ARRIVAL_SINGLE";
     static final String SOURCE_ARRIVAL_BATCH = "ARRIVAL_BATCH";
     /** 称重观测的来源单据类型(登记头 id)与幂等键前缀 'FINISHED:' + 登记行 id (ADR-135 §3.2)。 */
     static final String OBSERVATION_SOURCE_TYPE = "PRODUCTION_FINISHED_ARRIVAL";
@@ -84,13 +89,6 @@ public class ProductionFinishedArrivalRegistrationService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private GoodsWeightObservationService weightObservations;
 
-    @Transactional(readOnly = true)
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public ArrivalRegistrationView detail(UUID reportId) {
-        access.requireWarehouseTaskAccess("无权查看生产成品送检登记");
-        return detailInternal(reportId);
-    }
-
     /**
      * 先入库后质检(V597)：把未检成品的入库结果先定死在登记的成品仓 + 库位上，
      * 是一个独立的、可回收的决定，不靠 stock_doc:approve 顺带(它同时是登记与点收的按钮码)。
@@ -108,55 +106,6 @@ public class ProductionFinishedArrivalRegistrationService {
             throw new ApiException(ErrorCode.FORBIDDEN,
                     "当前账号没有「产成品先入库后质检」权限，请改用「登记并送检」或联系管理员授权");
         }
-    }
-
-    /**
-     * 单张登记：登记头/行 + 逐行 FQC PENDING + 一张品质检查单(V547)+ 库位记忆同事务提交。
-     * 页面按行仓分组后每个仓调用一次（幂等键 = 页面键 + ':' + 仓库 UUID）。
-     * 同键重放直接返回原批次，不再开单、不再记忆。
-     */
-    @Transactional
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public ArrivalRegistrationView register(
-            UUID reportId,
-            ArrivalRegistrationRequest request) {
-        tx.bind();
-        access.requireWarehouseTaskAccess("无权登记生产成品送检");
-        if (reportId == null || request == null) {
-            throw validation("生产成品送检登记请求不能为空");
-        }
-        if (request.stockInBeforeInspectionRequested()) {
-            requireStockInBeforeInspectionAuthority();
-        }
-        NormalizedRequest normalized = normalize(request);
-        RegistrationOutcome outcome = registerNormalized(reportId, normalized);
-        if (!outcome.replay()) {
-            qualityInspection.openInspectionSheet(new InspectionSheetRequest(
-                    outcome.warehouseId(), outcome.warehouseName(),
-                    outcome.receiver().id(), outcome.receiver().name(),
-                    normalized.remark(), SOURCE_ARRIVAL_SINGLE,
-                    normalized.idempotencyKey(),
-                    List.of(outcome.registrationId())));
-            rememberRegisteredPlaces(List.of(outcome.registrationId()));
-        }
-        return detailInternal(reportId, outcome.registrationId());
-    }
-
-    /**
-     * Shared registration core for the single and batch commands. Same actor +
-     * same key + same request replays the original batch; the caller decides
-     * how the newly created batches are grouped into inspection sheets.
-     */
-    private RegistrationOutcome registerNormalized(
-            UUID reportId,
-            NormalizedRequest normalized) {
-        UUID actorId = currentUser.requireId();
-        UUID receiverEmployeeId = currentUser.requireEmployeeId();
-
-        lockCommand(actorId, normalized.idempotencyKey());
-        RegistrationOutcome replay = existingRegistration(reportId, normalized, actorId);
-        if (replay != null) return replay;
-        return registerNew(reportId, normalized, new RegistrationReferences(), actorId, receiverEmployeeId);
     }
 
     /** Read only after the corresponding command lock, before any current warehouse checks. */
@@ -187,36 +136,27 @@ public class ProductionFinishedArrivalRegistrationService {
         return null;
     }
 
+    /**
+     * 新登记一组(同一报工、同一实际入库仓)：登记头 + 各批展开到各份的登记行 + 逐份 FQC PENDING。
+     * 一批的各份同一个库位；先入库后质检时整批实点必须等于本批待登记合计，各份实点 = 各份报工数；
+     * 整批称重按各份数量比例分摊(余数落在最后一份)。
+     */
     private RegistrationOutcome registerNew(
             UUID reportId, NormalizedRequest normalized, RegistrationReferences references,
             UUID actorId, UUID receiverEmployeeId) {
         Object[] report = references.reports.computeIfAbsent(reportId, this::lockApprovedReport);
-        // V548：待登记口径统一走视图（撤回后的报工行重新可登记）。
-        List<UUID> pendingReportItemIds = NativeQueryResults.typedRows(
-                em.createNativeQuery("""
-                                SELECT report_item.id
-                                FROM production_daily_report_items report_item
-                                JOIN v_production_report_items_pending_registration pending
-                                  ON pending.report_item_id = report_item.id
-                                WHERE report_item.report_id = :reportId
-                                ORDER BY report_item.id
-                                FOR UPDATE OF report_item
-                                """)
-                        .setParameter("reportId", reportId),
-                UUID.class);
-        requireSelectedPending(
-                pendingReportItemIds, normalized.places().keySet());
-        if (normalized.stockInBeforeInspection()) {
-            Map<UUID, BigDecimal> reported = new LinkedHashMap<>();
-            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                    SELECT id, qty FROM production_daily_report_items
-                    WHERE report_id=:reportId AND id IN (:ids) AND NOT is_deleted
-                    ORDER BY id FOR UPDATE
-                    """).setParameter("reportId", reportId)
-                    .setParameter("ids", normalized.places().keySet()))) {
-                reported.put((UUID) row[0], (BigDecimal) row[1]);
+        Map<UUID, List<LotMember>> members = pendingLotMembers(reportId, normalized.lots().keySet());
+        for (UUID lotId : normalized.lots().keySet()) {
+            if (!members.containsKey(lotId)) {
+                throw conflict("所选成品批已登记、已进入品质或来源已变化，请刷新后重试");
             }
-            requireCountedQuantities(reported, normalized.countedQuantities());
+        }
+        if (normalized.stockInBeforeInspection()) {
+            for (Map.Entry<UUID, List<LotMember>> lot : members.entrySet()) {
+                BigDecimal total = lot.getValue().stream().map(LotMember::qty)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                requireCountedLot(total, normalized.lots().get(lot.getKey()).countedQty());
+            }
         }
 
         WarehouseSnapshot warehouse = references.warehouses.computeIfAbsent(normalized.warehouseId(), this::validatedWarehouse);
@@ -255,42 +195,91 @@ public class ProductionFinishedArrivalRegistrationService {
                 .setParameter("actorId", actorId)
                 .executeUpdate();
 
-        Map<UUID, WeighedReportItem> weighed = weighedReportItems(reportId, normalized.weights());
-        Map<UUID, UUID> registrationItemIds = new LinkedHashMap<>();
-        normalized.places().entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> {
-                    UUID registrationItemId = UUID.randomUUID();
-                    registrationItemIds.put(entry.getKey(), registrationItemId);
-                    WeighedReportItem weighedItem = weighed.get(entry.getKey());
-                    em.createNativeQuery("""
-                                    INSERT INTO production_finished_arrival_registration_items(
-                                        id, registration_id, source_report_item_id,
-                                        place_snapshot, created_by, counted_qty, weight)
-                                    VALUES (
-                                        :id, :registrationId,
-                                        :reportItemId, :place, :actorId, :countedQty, :weight)
-                                    """)
-                            .setParameter("id", registrationItemId)
-                            .setParameter("registrationId", registrationId)
-                            .setParameter("reportItemId", entry.getKey())
-                            .setParameter("place", entry.getValue())
-                            .setParameter("actorId", actorId)
-                            .setParameter("countedQty", normalized.countedQuantities().get(entry.getKey()))
-                            .setParameter("weight", weighedItem == null ? null : weighedItem.weightKg())
-                            .executeUpdate();
-                });
+        Map<UUID, WeighedLot> weighed = weighedLots(reportId, normalized.lots(), members);
+        List<UUID> reportItemIds = new ArrayList<>();
+        Map<UUID, UUID> firstRegistrationItemOfLot = new LinkedHashMap<>();
+        for (Map.Entry<UUID, List<LotMember>> lot : members.entrySet()) {
+            LotRequest lotRequest = normalized.lots().get(lot.getKey());
+            WeighedLot weighedLot = weighed.get(lot.getKey());
+            List<BigDecimal> weights = weighedLot == null
+                    ? null : splitWeight(weighedLot.weightKg(), lot.getValue());
+            for (int index = 0; index < lot.getValue().size(); index++) {
+                LotMember member = lot.getValue().get(index);
+                UUID registrationItemId = UUID.randomUUID();
+                firstRegistrationItemOfLot.putIfAbsent(lot.getKey(), registrationItemId);
+                reportItemIds.add(member.reportItemId());
+                em.createNativeQuery("""
+                                INSERT INTO production_finished_arrival_registration_items(
+                                    id, registration_id, source_report_item_id,
+                                    place_snapshot, created_by, counted_qty, weight)
+                                VALUES (
+                                    :id, :registrationId,
+                                    :reportItemId, :place, :actorId, :countedQty, :weight)
+                                """)
+                        .setParameter("id", registrationItemId)
+                        .setParameter("registrationId", registrationId)
+                        .setParameter("reportItemId", member.reportItemId())
+                        .setParameter("place", lotRequest.place())
+                        .setParameter("actorId", actorId)
+                        .setParameter("countedQty", normalized.stockInBeforeInspection() ? member.qty() : null)
+                        .setParameter("weight", weights == null ? null : weights.get(index))
+                        .executeUpdate();
+            }
+        }
 
         // This selected registration batch and its exact FQC PENDING facts
-        // commit or roll back together. Unselected report lines remain pending.
+        // commit or roll back together. Unselected report lots remain pending.
         qualityInspection.registerApprovedReportItems(
                 (UUID) report[0],
-                normalized.places().keySet().stream().sorted().toList(),
+                reportItemIds.stream().sorted().toList(),
                 registrationId);
-        recordFinishedObservations(registrationId, normalized, weighed, registrationItemIds, actorId);
+        recordFinishedObservations(registrationId, normalized, weighed, firstRegistrationItemOfLot, actorId);
         return new RegistrationOutcome(
                 registrationId, false, normalized.warehouseId(),
                 warehouse.name(), receiver);
+    }
+
+    /**
+     * 本报工所选批里还没登记的、送入仓库的各份(按批内归属优先级排好)。各份数量来自已审核报工，
+     * 报工行已在命令开始时按 UUID 顺序加锁。
+     */
+    private Map<UUID, List<LotMember>> pendingLotMembers(UUID reportId, Collection<UUID> lotIds) {
+        Map<UUID, List<LotMember>> result = new LinkedHashMap<>();
+        if (lotIds.isEmpty()) return result;
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT lot.lot_id, lot.report_item_id, lot.qty, lot.slice_rank
+                        FROM v_production_output_handoff_lots lot
+                        JOIN v_production_report_items_pending_registration pending
+                          ON pending.report_item_id = lot.report_item_id
+                        WHERE lot.report_id = :reportId
+                          AND lot.lot_id IN (:lotIds)
+                          AND lot.destination = 'WAREHOUSE'
+                        ORDER BY lot.lot_id, lot.lot_position
+                        """)
+                .setParameter("reportId", reportId)
+                .setParameter("lotIds", List.copyOf(lotIds)))) {
+            result.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>())
+                    .add(new LotMember((UUID) row[1], decimal(row[2]), ((Number) row[3]).intValue()));
+        }
+        return result;
+    }
+
+    /** 整批称重按各份数量比例分摊到登记行(4 位小数，余数落在最后一份；分到 0 的份记为没称)。 */
+    static List<BigDecimal> splitWeight(BigDecimal totalKg, List<LotMember> members) {
+        BigDecimal totalQty = members.stream().map(LotMember::qty).reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<BigDecimal> result = new ArrayList<>(members.size());
+        BigDecimal assigned = BigDecimal.ZERO;
+        BigDecimal cumulative = BigDecimal.ZERO;
+        for (int index = 0; index < members.size(); index++) {
+            cumulative = cumulative.add(members.get(index).qty());
+            BigDecimal boundary = index == members.size() - 1 || totalQty.signum() == 0
+                    ? totalKg
+                    : com.uten.imp.common.finance.MoneyPolicy.quantitySlice(totalKg, totalQty, BigDecimal.ZERO, cumulative);
+            BigDecimal share = boundary.subtract(assigned);
+            assigned = boundary;
+            result.add(share.signum() > 0 ? share : null);
+        }
+        return result;
     }
 
     /**
@@ -418,16 +407,24 @@ public class ProductionFinishedArrivalRegistrationService {
     }
 
     /**
-     * 本次登记里称了重的报工行(ADR-135 §3.2), 一条 SQL 读出记观测要的货品/单位/报工数/车间。
-     * 按重量计的行(货品基本单位或报工单位登记了重量单位)丢弃手填重量: 库存账按数量精确换算。
+     * 本次登记里称了重的批(ADR-135 §3.2)，一条 SQL 读出记观测要的货品/单位/换算率/车间。
+     * 按重量计的货品(基本单位或报工单位登记了重量单位)丢弃手填重量: 库存账按数量精确换算。
      */
-    private Map<UUID, WeighedReportItem> weighedReportItems(UUID reportId, Map<UUID, BigDecimal> weights) {
-        if (weights.isEmpty()) return Map.of();
-        Map<UUID, WeighedReportItem> result = new LinkedHashMap<>();
+    private Map<UUID, WeighedLot> weighedLots(
+            UUID reportId, Map<UUID, LotRequest> lots, Map<UUID, List<LotMember>> members) {
+        Map<UUID, UUID> firstItemOfLot = new LinkedHashMap<>();
+        for (Map.Entry<UUID, LotRequest> lot : lots.entrySet()) {
+            List<LotMember> lotMembers = members.get(lot.getKey());
+            if (lot.getValue().weight() != null && lotMembers != null && !lotMembers.isEmpty()) {
+                firstItemOfLot.put(lot.getKey(), lotMembers.getFirst().reportItemId());
+            }
+        }
+        if (firstItemOfLot.isEmpty()) return Map.of();
+        Map<UUID, Object[]> byItem = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT report_item.id, report_item.goods_id, report_item.color_id,
                                report_item.unit_id, COALESCE(report_item.unit_rate, 1),
-                               report_item.qty, report.department_id,
+                               report.department_id,
                                (goods_profile.mass_unit_code IS NOT NULL
                                 OR line_profile.mass_unit_code IS NOT NULL) AS exact_weight
                         FROM production_daily_report_items report_item
@@ -441,40 +438,47 @@ public class ProductionFinishedArrivalRegistrationService {
                           AND report_item.id IN (:ids)
                         """)
                 .setParameter("reportId", reportId)
-                .setParameter("ids", List.copyOf(weights.keySet())))) {
-            if (Boolean.TRUE.equals(row[7])) continue;
-            UUID reportItemId = (UUID) row[0];
-            result.put(reportItemId, new WeighedReportItem(
-                    weights.get(reportItemId), (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    decimal(row[4]), decimal(row[5]), (UUID) row[6]));
+                .setParameter("ids", List.copyOf(firstItemOfLot.values())))) {
+            byItem.put((UUID) row[0], row);
+        }
+        Map<UUID, WeighedLot> result = new LinkedHashMap<>();
+        for (Map.Entry<UUID, UUID> lot : firstItemOfLot.entrySet()) {
+            Object[] row = byItem.get(lot.getValue());
+            if (row == null || Boolean.TRUE.equals(row[6])) continue;
+            BigDecimal reported = members.get(lot.getKey()).stream().map(LotMember::qty)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            result.put(lot.getKey(), new WeighedLot(
+                    lots.get(lot.getKey()).weight(), (UUID) row[1], (UUID) row[2], (UUID) row[3],
+                    decimal(row[4]), reported, (UUID) row[5]));
         }
         return result;
     }
 
     /**
-     * 产成品登记称重进单重学习: 每个称了重的登记行一条 FINISHED 观测, 与登记同事务。
-     * 数量 = (仓库实点数, 没有则报工数) x 换算率; 实点过的数量误差按 0.5%, 只有报工数按 1.5%;
+     * 产成品登记称重进单重学习: 每个称了重的批一条 FINISHED 观测(挂在该批第一份的登记行上), 与登记同事务。
+     * 数量 = (整批实点数, 没有则整批报工数) x 换算率; 实点过的数量误差按 0.5%, 只有报工数按 1.5%;
      * 往来方记报工车间。
      */
     private void recordFinishedObservations(
             UUID registrationId, NormalizedRequest normalized,
-            Map<UUID, WeighedReportItem> weighed, Map<UUID, UUID> registrationItemIds, UUID actorId) {
+            Map<UUID, WeighedLot> weighed, Map<UUID, UUID> firstRegistrationItemOfLot, UUID actorId) {
         if (weightObservations == null || weighed.isEmpty()) return;
         OffsetDateTime observedAt = OffsetDateTime.now();
-        for (Map.Entry<UUID, WeighedReportItem> entry : weighed.entrySet()) {
-            WeighedReportItem item = entry.getValue();
-            UUID registrationItemId = registrationItemIds.get(entry.getKey());
+        for (Map.Entry<UUID, WeighedLot> entry : weighed.entrySet()) {
+            WeighedLot lot = entry.getValue();
+            UUID registrationItemId = firstRegistrationItemOfLot.get(entry.getKey());
             if (registrationItemId == null) continue;
-            BigDecimal counted = normalized.countedQuantities().get(entry.getKey());
-            BigDecimal qty = counted != null ? counted : item.reportedQty();
+            BigDecimal counted = normalized.stockInBeforeInspection()
+                    ? normalized.lots().get(entry.getKey()).countedQty() : null;
+            BigDecimal qty = counted != null ? counted : lot.reportedQty();
             weightObservations.record(new GoodsWeightObservationService.ObservationCommand(
-                    item.goodsId(), item.colorId(), normalized.warehouseId(), SourceKind.FINISHED,
-                    qty.multiply(item.unitRate()), item.weightKg(), null,
-                    item.departmentId() == null ? null : "WORKSHOP", item.departmentId(),
+                    lot.goodsId(), lot.colorId(), normalized.warehouseId(), SourceKind.FINISHED,
+                    qty.multiply(lot.unitRate()), lot.weightKg(), null,
+                    lot.departmentId() == null ? null : "WORKSHOP", lot.departmentId(),
                     OBSERVATION_SOURCE_TYPE, registrationId, registrationItemId, null,
                     FINISHED_CAPTURE_PREFIX + registrationItemId, observedAt, null, null,
                     counted != null ? COUNTED_QTY_EPS : REPORTED_QTY_EPS,
-                    false, item.unitId(), false, null, actorId));
+                    false, lot.unitId(), false, null, actorId));
         }
     }
 
@@ -671,7 +675,7 @@ public class ProductionFinishedArrivalRegistrationService {
             if (registration == null) throw notFound();
             rows = NativeQueryResults.objectArrayRows(
                     em.createNativeQuery("""
-                                SELECT report_item.id, report_item.line_no,
+                                SELECT lot.lot_id, report_item.id, report_item.line_no,
                                         report_item.plan_item_id,
                                         report_item.execution_segment_id,
                                        plan.id, plan.bill_no,
@@ -686,8 +690,12 @@ public class ProductionFinishedArrivalRegistrationService {
                                        NULL::text AS last_warehouse_name,
                                        registration_item.counted_qty,
                                        registration_item.weight,
-                                       COALESCE(report_item.unit_rate, 1) AS unit_rate
+                                       COALESCE(report_item.unit_rate, 1) AS unit_rate,
+                                       lot.slice_rank
                                 FROM production_daily_report_items report_item
+                                JOIN v_production_output_handoff_lots lot
+                                  ON lot.report_item_id = report_item.id
+                                 AND lot.report_id = :reportId
                                 JOIN production_plan_items plan_item
                                   ON plan_item.id = report_item.plan_item_id
                                  AND plan_item.is_deleted = FALSE
@@ -736,7 +744,7 @@ public class ProductionFinishedArrivalRegistrationService {
                 registered ? text(registration[5]) : currentReceiver.name(),
                 registered ? text(registration[7]) : null,
                 registered ? offsetDateTime(registration[6]) : null,
-                mapArrivalItems(rows),
+                mapLots(rows),
                 current == null ? null : current.sheetId(),
                 current == null ? null : current.sheetNo(),
                 current == null ? null : current.reversedAt(),
@@ -748,6 +756,16 @@ public class ProductionFinishedArrivalRegistrationService {
 
     /** 同一报工的全部登记批次（含检查单号、撤回态、可撤回判定）；无登记时为空。 */
     private List<RegistrationBatchView> registrationBatches(UUID reportId) {
+        return registrationBatches(List.of(reportId)).getOrDefault(reportId, List.of());
+    }
+
+    /**
+     * 多张报工的登记批次历史一次查完(ADR-151 §5：登记页 1..N 个来源都带回已有批次，部分登记、撤回后
+     * 重登的报工照样能在本页看见并撤回)；按报工分组，组内按登记时间。
+     */
+    private Map<UUID, List<RegistrationBatchView>> registrationBatches(List<UUID> reportIds) {
+        Map<UUID, List<RegistrationBatchView>> result = new LinkedHashMap<>();
+        if (reportIds.isEmpty()) return result;
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT registration.id,
@@ -790,7 +808,8 @@ public class ProductionFinishedArrivalRegistrationService {
                                                       FROM production_fqc_recovery_authorizations
                                                            recovery_auth
                                                       WHERE recovery_auth.source_inspection_id =
-                                                            inspection.id))) AS reversible
+                                                            inspection.id))) AS reversible,
+                                       registration.source_report_id
                                 FROM production_finished_arrival_registrations registration
                                 LEFT JOIN production_finished_arrival_registration_reversals reversal
                                   ON reversal.registration_id = registration.id
@@ -803,22 +822,24 @@ public class ProductionFinishedArrivalRegistrationService {
                                     ORDER BY sheet.created_at, sheet.id
                                     LIMIT 1
                                 ) sheet ON TRUE
-                                WHERE registration.source_report_id = :reportId
-                                ORDER BY registration.created_at, registration.id
+                                WHERE registration.source_report_id IN (:reportIds)
+                                ORDER BY registration.source_report_id, registration.created_at, registration.id
                                 """)
-                        .setParameter("reportId", reportId));
-        return rows.stream()
-                .map(row -> new RegistrationBatchView(
-                        (UUID) row[0], (UUID) row[1], text(row[2]), text(row[3]),
-                        text(row[4]), offsetDateTime(row[5]),
-                        ((Number) row[6]).intValue(), (UUID) row[7], text(row[8]),
-                        offsetDateTime(row[9]), text(row[10]),
-                        Boolean.TRUE.equals(row[11])))
-                .toList();
+                        .setParameter("reportIds", reportIds));
+        for (Object[] row : rows) {
+            result.computeIfAbsent((UUID) row[12], ignored -> new ArrayList<>()).add(new RegistrationBatchView(
+                    (UUID) row[0], (UUID) row[1], text(row[2]), text(row[3]),
+                    text(row[4]), offsetDateTime(row[5]),
+                    ((Number) row[6]).intValue(), (UUID) row[7], text(row[8]),
+                    offsetDateTime(row[9]), text(row[10]),
+                    Boolean.TRUE.equals(row[11])));
+        }
+        result.replaceAll((report, batches) -> List.copyOf(batches));
+        return result;
     }
 
     private static final String PENDING_ITEM_COLUMNS = """
-            SELECT report_item.id, report_item.line_no,
+            SELECT lot.lot_id, report_item.id, report_item.line_no,
                    report_item.plan_item_id,
                    report_item.execution_segment_id,
                    plan.id, plan.bill_no,
@@ -833,17 +854,22 @@ public class ProductionFinishedArrivalRegistrationService {
                    last_warehouse.name,
                    NULL::numeric AS counted_qty,
                    NULL::numeric AS weight,
-                   COALESCE(report_item.unit_rate, 1) AS unit_rate
+                   COALESCE(report_item.unit_rate, 1) AS unit_rate,
+                   lot.slice_rank
             """;
 
     /**
      * 待登记行的默认仓只读货品主档，并校验当前实际仓资格。
      * DTO lastWarehouse 字段保留兼容名称；不再扫描登记历史，也不改历史快照。
+     * 只列送入仓库的份(直送车间的份不经仓库登记)，按实物交接批分组。
      */
     private static final String PENDING_ITEM_JOINS = """
             FROM production_daily_report_items report_item
             JOIN v_production_report_items_pending_registration pending
               ON pending.report_item_id = report_item.id
+            JOIN v_production_output_handoff_lots lot
+              ON lot.report_item_id = report_item.id
+             AND lot.report_id = report_item.report_id
             JOIN production_plan_items plan_item
               ON plan_item.id = report_item.plan_item_id
              AND plan_item.is_deleted = FALSE
@@ -861,6 +887,8 @@ public class ProductionFinishedArrivalRegistrationService {
         return NativeQueryResults.objectArrayRows(
                 em.createNativeQuery(PENDING_ITEM_COLUMNS + PENDING_ITEM_JOINS + """
                                 WHERE report_item.report_id = :reportId
+                                  AND lot.report_id = :reportId
+                                  AND report_item.destination = 'WAREHOUSE'
                                 ORDER BY report_item.line_no NULLS LAST,
                                          report_item.id
                                 """)
@@ -901,18 +929,60 @@ public class ProductionFinishedArrivalRegistrationService {
         return rows.isEmpty() ? null : rows.getFirst();
     }
 
-    private static List<ArrivalRegistrationItemView> mapArrivalItems(
-            List<Object[]> rows) {
-        return rows.stream()
-                .map(row -> new ArrivalRegistrationItemView(
-                        (UUID) row[0], integer(row[1]), (UUID) row[2],
-                        (UUID) row[3], (UUID) row[4], text(row[5]),
-                        (UUID) row[6], text(row[7]), text(row[8]),
-                        (UUID) row[9], text(row[10]), (UUID) row[11],
-                        text(row[12]), decimal(row[13]), text(row[14]),
-                        text(row[15]), (UUID) row[16], text(row[17]), (BigDecimal) row[18],
-                        (BigDecimal) row[19], decimal(row[20])))
-                .toList();
+    /**
+     * 一份一行的查询结果按实物交接批分组(批的顺序 = 批内第一份的行号顺序)：
+     * 合计、按归属拆分与拆分文案由服务端算一次；库位、实点、称重是整批一个。
+     */
+    static List<ArrivalLotView> mapLots(List<Object[]> rows) {
+        Map<UUID, List<Object[]>> byLot = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            byLot.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>()).add(row);
+        }
+        List<ArrivalLotView> result = new ArrayList<>(byLot.size());
+        for (Map.Entry<UUID, List<Object[]>> lot : byLot.entrySet()) {
+            List<Object[]> lotRows = new ArrayList<>(lot.getValue());
+            lotRows.sort(Comparator
+                    .comparingInt((Object[] row) -> ((Number) row[22]).intValue())
+                    .thenComparing(row -> integer(row[2]), Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(row -> row[1].toString()));
+            BigDecimal total = BigDecimal.ZERO;
+            BigDecimal demand = BigDecimal.ZERO;
+            BigDecimal publicQty = BigDecimal.ZERO;
+            BigDecimal surplus = BigDecimal.ZERO;
+            BigDecimal counted = BigDecimal.ZERO;
+            boolean allCounted = true;
+            BigDecimal weight = null;
+            Integer lineNo = null;
+            List<ArrivalLotMemberView> members = new ArrayList<>(lotRows.size());
+            for (Object[] row : lotRows) {
+                int rank = ((Number) row[22]).intValue();
+                BigDecimal qty = decimal(row[14]);
+                total = total.add(qty);
+                switch (rank) {
+                    case OutputLotText.RANK_ACTUAL_SURPLUS -> surplus = surplus.add(qty);
+                    case OutputLotText.RANK_PUBLIC -> publicQty = publicQty.add(qty);
+                    default -> demand = demand.add(qty);
+                }
+                if (row[19] == null) allCounted = false;
+                else counted = counted.add((BigDecimal) row[19]);
+                if (row[20] != null) weight = (weight == null ? BigDecimal.ZERO : weight).add((BigDecimal) row[20]);
+                Integer memberLine = integer(row[2]);
+                if (memberLine != null && (lineNo == null || memberLine < lineNo)) lineNo = memberLine;
+                members.add(new ArrivalLotMemberView(
+                        (UUID) row[1], memberLine, qty, rank, OutputLotText.kind(rank)));
+            }
+            Object[] first = lotRows.getFirst();
+            result.add(new ArrivalLotView(
+                    lot.getKey(), lineNo, members,
+                    (UUID) first[3], (UUID) first[4], (UUID) first[5], text(first[6]),
+                    (UUID) first[7], text(first[8]), text(first[9]),
+                    (UUID) first[10], text(first[11]), (UUID) first[12], text(first[13]),
+                    total, demand, publicQty, surplus,
+                    OutputLotText.split(demand, publicQty, surplus),
+                    text(first[15]), text(first[16]), (UUID) first[17], text(first[18]),
+                    allCounted ? counted : null, weight, decimal(first[21])));
+        }
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -941,6 +1011,8 @@ public class ProductionFinishedArrivalRegistrationService {
                         "SELECT report_item.report_id, " + PENDING_ITEM_COLUMNS.substring(7)
                                 + PENDING_ITEM_JOINS + """
                                 WHERE report_item.report_id IN (:reportIds)
+                                  AND lot.report_id IN (:reportIds)
+                                  AND report_item.destination = 'WAREHOUSE'
                                 ORDER BY report_item.report_id,
                                          report_item.line_no NULLS LAST,
                                          report_item.id
@@ -956,6 +1028,9 @@ public class ProductionFinishedArrivalRegistrationService {
                 ? null
                 : requireReceiver(currentUser.requireEmployeeId());
 
+        // 已有的登记批次(含撤回历史)一次查完：部分登记或撤回过的报工在本页仍能看见并撤回。
+        Map<UUID, List<RegistrationBatchView>> batchesByReport = registrationBatches(
+                ids.stream().filter(itemsByReport::containsKey).toList());
         List<ArrivalRegistrationView> result = new ArrayList<>();
         for (UUID reportId : ids) {
             Object[] header = headerByReport.get(reportId);
@@ -972,18 +1047,19 @@ public class ProductionFinishedArrivalRegistrationService {
                     text(header[1]), localDate(header[2]), (UUID) header[3],
                     text(header[4]), null, null, null,
                     receiver.id(), receiver.name(), null, null,
-                    mapArrivalItems(items),
-                    null, null, null, null, false, List.of(), false));
+                    mapLots(items),
+                    null, null, null, null, false,
+                    batchesByReport.getOrDefault(reportId, List.of()), false));
         }
         return List.copyOf(result);
     }
 
     /**
-     * 多张报工单一次性汇总登记送检：外层一个事务，逐单复用单册登记核心的完整校验
-     * 与逐行 FQC 创建（每个请求可为待办行的非空子集）；任一单失败整批回滚。
-     * 幂等：批量键 + 报工单 UUID 派生逐单子键，重试时已完成单自动安全重放。
-     * V547：本批新建的登记按成品仓分组，每个仓生成一张品质检查单（同键重放不再建单）。
-     * 本批新建的登记同事务自动记忆库位；重放的单不再记忆。
+     * 产成品入库登记的唯一命令(单张 = 1 个来源, 多选 = N 个来源; ADR-151 §5)：外层一个事务，
+     * 按「报工 x 实际入库仓」分组，每组复用同一登记核心(整批展开 + 逐份 FQC)；任一组失败整批回滚。
+     * 幂等：批量键 + 报工 + 仓库派生每组子键，重试时已完成的组按原结果重放。
+     * V547：本批新建的登记按成品仓分组，每个仓生成一张品质检查单(同键重放不再建单)。
+     * 本批新建的登记同事务自动记忆库位；重放的组不再记忆。
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
@@ -992,62 +1068,54 @@ public class ProductionFinishedArrivalRegistrationService {
         tx.bind();
         access.requireWarehouseTaskAccess("无权登记生产成品送检");
         if (request == null || request.idempotencyKey() == null
-                || request.reports() == null || request.reports().isEmpty()) {
-            throw validation("批量送检登记请求不能为空");
+                || request.lots() == null || request.lots().isEmpty()) {
+            throw validation("入库登记请求不能为空");
         }
-        if (request.stockInBeforeInspectionRequested()) {
+        boolean preStock = request.stockInBeforeInspectionRequested();
+        if (preStock) {
             requireStockInBeforeInspectionAuthority();
         }
         String batchKey = request.idempotencyKey().strip();
         if (batchKey.length() < 8 || batchKey.length() > 128
                 || !batchKey.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("批量送检登记幂等键格式无效");
+            throw validation("入库登记幂等键格式无效");
         }
-        if (request.reports().size() > 50) {
+        String remark = normalizeRemark(request.remark());
+        Map<UUID, ArrivalLotRequest> requested = normalizeLots(request.lots(), preStock);
+        Map<UUID, UUID> reportOfLot = lotReports(requested.keySet());
+        if (reportOfLot.size() != requested.size()) {
+            throw conflict("所选成品批不存在或来源已变化，请刷新后重试");
+        }
+        if (reportOfLot.values().stream().distinct().count() > 50) {
             throw validation("一次最多汇总登记 50 张报工单");
         }
-        LinkedHashSet<UUID> reportIds = new LinkedHashSet<>();
-        for (BatchReportRegistrationRequest report : request.reports()) {
-            if (report == null || report.reportId() == null) {
-                throw validation("批量送检登记缺少报工单 UUID");
-            }
-            if (!reportIds.add(report.reportId())) {
-                throw validation("批量送检登记不能重复选择同一报工单");
-            }
-        }
 
-        // Canonical report lock order prevents reverse-order overlapping
-        // batches from deadlocking. Never trust client list order for locks.
-        List<BatchReportRegistrationRequest> orderedReports = request.reports()
-                .stream()
-                .sorted(Comparator.comparing(
-                        BatchReportRegistrationRequest::reportId))
-                .toList();
-        Map<UUID, RegistrationOutcome> outcomes = new LinkedHashMap<>();
-        Map<UUID, NormalizedRequest> normalizedReports = new LinkedHashMap<>();
-        for (BatchReportRegistrationRequest report : orderedReports) {
-            UUID reportId = report.reportId();
-            // 子键 = 批量键 + 报工单 UUID（UUID 仅含十六进制与 '-'，落在合法字符集内）。
-            String reportKey = batchKey + ":" + reportId;
-            NormalizedRequest normalized = normalize(new ArrivalRegistrationRequest(
-                    reportKey, report.warehouseId(), report.items(), request.remark(),
-                    request.stockInBeforeInspection()));
-            normalizedReports.put(reportId, normalized);
-        }
+        // 「报工 x 实际入库仓」一组 = 一个登记批次；分组、子键与锁顺序都只认服务端排序。
+        Map<GroupKey, Map<UUID, LotRequest>> groups = new TreeMap<>();
+        requested.forEach((lotId, lot) -> groups
+                .computeIfAbsent(new GroupKey(reportOfLot.get(lotId), lot.warehouseId()),
+                        ignored -> new TreeMap<>())
+                .put(lotId, new LotRequest(lot.place().strip(), lot.countedQty() == null
+                        ? null : lot.countedQty().stripTrailingZeros(), normalizedWeight(lot.weight()))));
+        Map<GroupKey, NormalizedRequest> normalizedGroups = new LinkedHashMap<>();
+        groups.forEach((group, lots) -> normalizedGroups.put(group,
+                normalizeGroup(batchKey, group, lots, remark, preStock)));
+
         UUID actorId = currentUser.requireId();
         UUID receiverEmployeeId = currentUser.requireEmployeeId();
-        for (String key : normalizedReports.values().stream().map(NormalizedRequest::idempotencyKey).sorted().toList()) {
+        for (String key : normalizedGroups.values().stream().map(NormalizedRequest::idempotencyKey).sorted().toList()) {
             lockCommand(actorId, key);
         }
-        for (var entry : normalizedReports.entrySet()) {
-            RegistrationOutcome replay = existingRegistration(entry.getKey(), entry.getValue(), actorId);
-            outcomes.put(entry.getKey(), replay);
+        Map<GroupKey, RegistrationOutcome> outcomes = new LinkedHashMap<>();
+        for (var entry : normalizedGroups.entrySet()) {
+            outcomes.put(entry.getKey(), existingRegistration(entry.getKey().reportId(), entry.getValue(), actorId));
         }
-        List<UUID> pendingReports = normalizedReports.keySet().stream()
-                .filter(id -> outcomes.get(id) == null).toList();
+        List<GroupKey> pendingGroups = normalizedGroups.keySet().stream()
+                .filter(group -> outcomes.get(group) == null).toList();
         RegistrationReferences references = new RegistrationReferences();
         // Every report/item precedes every warehouse. Otherwise disjoint report
         // batches visiting warehouses A/B in opposite order can deadlock.
+        List<UUID> pendingReports = pendingGroups.stream().map(GroupKey::reportId).distinct().sorted().toList();
         for (UUID reportId : pendingReports) {
             references.reports.put(reportId, lockApprovedReport(reportId));
         }
@@ -1057,21 +1125,18 @@ public class ProductionFinishedArrivalRegistrationService {
                     WHERE report_id IN (:reportIds)
                     ORDER BY report_id, id FOR UPDATE
                     """).setParameter("reportIds", pendingReports).getResultList();
-            for (UUID warehouseId : pendingReports.stream()
-                    .map(id -> normalizedReports.get(id).warehouseId()).distinct().sorted().toList()) {
+            for (UUID warehouseId : pendingGroups.stream()
+                    .map(GroupKey::warehouseId).distinct().sorted().toList()) {
                 references.warehouses.put(warehouseId, validatedWarehouse(warehouseId));
             }
             references.receiver = requireReceiver(receiverEmployeeId);
         }
-        for (var entry : normalizedReports.entrySet()) {
-            if (outcomes.get(entry.getKey()) == null) {
-                outcomes.put(entry.getKey(), registerNew(entry.getKey(), entry.getValue(), references,
-                        actorId, receiverEmployeeId));
-            }
+        for (GroupKey group : pendingGroups) {
+            outcomes.put(group, registerNew(group.reportId(), normalizedGroups.get(group), references,
+                    actorId, receiverEmployeeId));
         }
 
         // 同仓新建批次 → 一张检查单；备注与收货人来自本批命令（登记头已分别冻结）。
-        String remark = request.remark() == null ? null : request.remark().strip();
         Map<UUID, List<RegistrationOutcome>> byWarehouse = new LinkedHashMap<>();
         for (RegistrationOutcome outcome : outcomes.values()) {
             if (outcome.replay()) continue;
@@ -1100,13 +1165,13 @@ public class ProductionFinishedArrivalRegistrationService {
         Map<UUID, Object[]> sheetByRegistration = sheetsByRegistration(registrationIds);
         List<RegisteredReportView> registered = new ArrayList<>();
         Map<UUID, InspectionSheetSummaryView> sheets = new LinkedHashMap<>();
-        for (Map.Entry<UUID, RegistrationOutcome> entry : outcomes.entrySet()) {
+        for (Map.Entry<GroupKey, RegistrationOutcome> entry : outcomes.entrySet()) {
             RegistrationOutcome outcome = entry.getValue();
             Object[] sheet = sheetByRegistration.get(outcome.registrationId());
             String reportNo = text(sheet == null ? null : sheet[5]);
             UUID sheetId = sheet == null ? null : (UUID) sheet[0];
             registered.add(new RegisteredReportView(
-                    outcome.registrationId(), entry.getKey(), reportNo,
+                    outcome.registrationId(), entry.getKey().reportId(), reportNo,
                     outcome.warehouseId(), outcome.warehouseName(),
                     sheetId, text(sheet == null ? null : sheet[1])));
             if (sheet != null && !sheets.containsKey(sheetId)) {
@@ -1116,7 +1181,25 @@ public class ProductionFinishedArrivalRegistrationService {
             }
         }
         return new BatchArrivalRegistrationResult(
-                registered.size(), registered, new ArrayList<>(sheets.values()));
+                (int) registered.stream().map(RegisteredReportView::reportId).distinct().count(),
+                registered, new ArrayList<>(sheets.values()));
+    }
+
+    /** 批 → 报工(批号由报工行生成列算出，身份不随状态变化；只认送入仓库的批)。 */
+    private Map<UUID, UUID> lotReports(Collection<UUID> lotIds) {
+        Map<UUID, UUID> result = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT DISTINCT item.output_lot_id, item.report_id
+                        FROM production_daily_report_items item
+                        WHERE item.output_lot_id IN (:lotIds)
+                          AND item.destination = 'WAREHOUSE'
+                          AND NOT item.is_deleted
+                        """).setParameter("lotIds", List.copyOf(lotIds)))) {
+            if (result.put((UUID) row[0], (UUID) row[1]) != null) {
+                throw conflict("成品批身份异常，请联系管理员核查");
+            }
+        }
+        return result;
     }
 
     /** 登记批次 → 所属检查单（每个批次恰一张）+ 报工单号；一次有界查询。 */
@@ -1224,7 +1307,7 @@ public class ProductionFinishedArrivalRegistrationService {
 
     private WarehouseSnapshot validatedWarehouse(UUID warehouseId) {
         WarehouseSnapshot warehouse = lockWarehouse(warehouseId);
-        warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
+        warehouseScopes.require(warehouseId, "入库仓库", WarehouseUse.GOOD_IN);
         return warehouse;
     }
 
@@ -1239,76 +1322,67 @@ public class ProductionFinishedArrivalRegistrationService {
                 .getSingleResult();
     }
 
-    static NormalizedRequest normalize(ArrivalRegistrationRequest request) {
-        if (request == null || request.idempotencyKey() == null
-                || request.warehouseId() == null || request.items() == null
-                || request.items().isEmpty()) {
-            throw validation("送检登记缺少幂等键、目标仓或明细");
+    /** 逐批校验(库位必填、先入库后质检必须带整批实点数、称重格式)，同一批不能出现两次。 */
+    static Map<UUID, ArrivalLotRequest> normalizeLots(List<ArrivalLotRequest> lots, boolean preStock) {
+        if (lots.size() > com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES) {
+            throw validation("一次登记的成品批过多，请分批登记");
         }
-        String key = request.idempotencyKey().strip();
-        if (key.length() < 8 || key.length() > 128
-                || !key.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("送检登记幂等键格式无效");
+        Map<UUID, ArrivalLotRequest> result = new LinkedHashMap<>();
+        for (ArrivalLotRequest lot : lots) {
+            if (lot == null || lot.lotId() == null || lot.warehouseId() == null || lot.place() == null) {
+                throw validation("入库登记行缺少成品批、入库仓库或库位");
+            }
+            String place = lot.place().strip();
+            if (place.isEmpty() || place.length() > 100) {
+                throw validation("库位必须为 1至100 个字符");
+            }
+            if (preStock) {
+                BigDecimal quantity = lot.countedQty() == null ? null : lot.countedQty().stripTrailingZeros();
+                if (quantity == null) {
+                    throw validation("合格自动入库前必须逐批填写实际点数，请刷新后核对；数量有差异请使用人工点收");
+                }
+                if (quantity.signum() <= 0 || quantity.scale() > 4
+                        || quantity.precision() - quantity.scale() > 14) {
+                    throw validation("实际点数必须大于0且最多4位小数；数量有差异请使用人工点收");
+                }
+            }
+            normalizedWeight(lot.weight());
+            if (result.putIfAbsent(lot.lotId(), lot) != null) {
+                throw validation("同一批实物不能重复登记");
+            }
         }
-        String remark = request.remark() == null
-                ? null : request.remark().strip();
+        return result;
+    }
+
+    static String normalizeRemark(String raw) {
+        String remark = raw == null ? null : raw.strip();
         if (remark != null && remark.isEmpty()) remark = null;
         if (remark != null && remark.length() > 500) {
             throw validation("备注不能超过 500 个字符");
         }
-        Map<UUID, String> places = new LinkedHashMap<>();
-        Map<UUID, BigDecimal> counted = new LinkedHashMap<>();
-        Map<UUID, BigDecimal> weights = new LinkedHashMap<>();
-        boolean preStock = request.stockInBeforeInspectionRequested();
-        if (request.items().stream().anyMatch(Objects::isNull)) {
-            throw validation("送检登记行不能为空");
-        }
-        request.items().stream()
-                .sorted(Comparator.comparing(
-                        ArrivalRegistrationItemRequest::reportItemId,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .forEach(item -> {
-                    if (item == null || item.reportItemId() == null
-                            || item.place() == null) {
-                        throw validation("送检登记行缺少报工明细 UUID 或库位");
-                    }
-                    String place = item.place().strip();
-                    if (place.isEmpty() || place.length() > 100) {
-                        throw validation("库位必须为 1至100 个字符");
-                    }
-                    if (places.putIfAbsent(item.reportItemId(), place) != null) {
-                        throw validation("同一报工明细不能重复登记库位");
-                    }
-                    if (preStock) {
-                        BigDecimal quantity = item.countedQty() == null ? null : item.countedQty().stripTrailingZeros();
-                        if (quantity == null) {
-                            throw validation("合格自动入库前必须逐行填写实际点数，请刷新后核对；数量有差异请使用人工点收");
-                        }
-                        if (quantity.signum() <= 0 || quantity.scale() > 4
-                                || quantity.precision() - quantity.scale() > 14) {
-                            throw validation("实际点数必须大于0且最多4位小数；数量有差异请使用人工点收");
-                        }
-                        counted.put(item.reportItemId(), quantity);
-                    }
-                    BigDecimal weight = normalizedWeight(item.weight());
-                    if (weight != null) weights.put(item.reportItemId(), weight);
-                });
+        return remark;
+    }
+
+    /**
+     * 一组(同一报工、同一实际入库仓)的规范化请求：子键由批量键 + 报工 + 仓库派生(固定长度)，
+     * 指纹只看批一级的事实(批号、库位、整批实点、整批称重、备注、路线)，重放时不依赖各份的当前状态。
+     */
+    static NormalizedRequest normalizeGroup(
+            String batchKey, GroupKey group, Map<UUID, LotRequest> lots, String remark, boolean preStock) {
+        String childKey = "FAR:" + CanonicalFingerprint.sha256(List.of(
+                "PRODUCTION-FINISHED-ARRIVAL-GROUP-V2", batchKey,
+                group.reportId().toString(), group.warehouseId().toString())).substring(0, 48);
         List<String> hashParts = new ArrayList<>();
-        hashParts.add("PRODUCTION-FINISHED-ARRIVAL-REGISTRATION-V1");
-        hashParts.add(request.warehouseId().toString());
-        places.forEach((id, place) -> hashParts.add(id + "|" + place));
+        hashParts.add("PRODUCTION-FINISHED-ARRIVAL-REGISTRATION-V2");
+        hashParts.add(group.reportId().toString());
+        hashParts.add(group.warehouseId().toString());
+        lots.forEach((lotId, lot) -> hashParts.add(lotId + "|" + lot.place()
+                + "|" + (lot.countedQty() == null ? "" : lot.countedQty().toPlainString())
+                + "|" + (lot.weight() == null ? "" : lot.weight().toPlainString())));
         hashParts.add("remark=" + (remark == null ? "" : remark));
-        // 先入库后质检改变的是「合格后要不要人工点收」这件事实，必须进哈希：
-        // 同键不同选择要 409，而不是静默按第一次的选择重放。不勾时不写，老哈希逐字不变。
-        if (preStock) {
-            hashParts.add("stockInBeforeInspection=1");
-            counted.forEach((id, quantity) -> hashParts.add("counted=" + id + "|" + quantity.toPlainString()));
-        }
-        // ADR-135: 登记实称重量(千克)同样是登记事实, 同键不同重量要 409; 没称的行不写, 老哈希逐字不变。
-        weights.forEach((id, weight) -> hashParts.add("weight=" + id + "|" + weight.toPlainString()));
-        return new NormalizedRequest(
-                key, request.warehouseId(), Map.copyOf(places), Map.copyOf(counted), Map.copyOf(weights),
-                remark, preStock, CanonicalFingerprint.sha256(hashParts));
+        if (preStock) hashParts.add("stockInBeforeInspection=1");
+        return new NormalizedRequest(childKey, group.warehouseId(), Map.copyOf(lots), remark, preStock,
+                CanonicalFingerprint.sha256(hashParts));
     }
 
     /**
@@ -1325,15 +1399,10 @@ public class ProductionFinishedArrivalRegistrationService {
         return value.scale() < 0 ? value.setScale(0) : value;
     }
 
-    static void requireCountedQuantities(Map<UUID, BigDecimal> reported, Map<UUID, BigDecimal> counted) {
-        if (!reported.keySet().equals(counted.keySet()) || reported.isEmpty()) {
-            throw conflict("实际点数必须逐行覆盖本次送检来源，请刷新后重新核对");
-        }
-        for (var row : reported.entrySet()) {
-            BigDecimal actual = counted.get(row.getKey());
-            if (actual == null || row.getValue() == null || actual.compareTo(row.getValue()) != 0) {
-                throw conflict("实际点数与本批报工量不一致，请使用人工点收登记差异及未收余量");
-            }
+    /** 先入库后质检：整批实点必须等于本批待登记合计，否则走人工点收。 */
+    static void requireCountedLot(BigDecimal reported, BigDecimal counted) {
+        if (counted == null || reported == null || counted.compareTo(reported) != 0) {
+            throw conflict("实际点数与本批报工量不一致，请使用人工点收登记差异及未收余量");
         }
     }
 
@@ -1359,18 +1428,6 @@ public class ProductionFinishedArrivalRegistrationService {
                         "PRODUCTION-FINISHED-ARRIVAL-REVERSAL-V1",
                         registrationId.toString(),
                         reason)));
-    }
-
-    static void requireSelectedPending(
-            List<UUID> pendingReportItemIds,
-            Set<UUID> requestedReportItemIds) {
-        if (pendingReportItemIds == null || pendingReportItemIds.isEmpty()
-                || requestedReportItemIds == null
-                || requestedReportItemIds.isEmpty()
-                || !Set.copyOf(pendingReportItemIds).containsAll(
-                        requestedReportItemIds)) {
-            throw conflict("所选报工明细已登记、已进入品质或来源已变化，请刷新后重试");
-        }
     }
 
     /**
@@ -1462,17 +1519,32 @@ public class ProductionFinishedArrivalRegistrationService {
     record NormalizedRequest(
             String idempotencyKey,
             UUID warehouseId,
-            Map<UUID, String> places,
-            Map<UUID, BigDecimal> countedQuantities,
-            /** 称了重的报工行 -> 实称净重(千克, 已去尾零; 没称的行不在里面)。 */
-            Map<UUID, BigDecimal> weights,
+            /** 批号 -> 本批登记事实(库位、整批实点、整批称重)。 */
+            Map<UUID, LotRequest> lots,
             String remark,
             boolean stockInBeforeInspection,
             String requestHash) {
     }
 
-    /** 称了重、要写登记重量并记 FINISHED 观测的报工行。 */
-    private record WeighedReportItem(
+    /** 一批的登记事实(已去空白、去尾零；没称的批 weight 为空)。 */
+    record LotRequest(String place, BigDecimal countedQty, BigDecimal weight) {
+    }
+
+    /** 一组 = 同一报工 + 同一实际入库仓(按 UUID 排序：分组、子键与锁顺序都只认它)。 */
+    record GroupKey(UUID reportId, UUID warehouseId) implements Comparable<GroupKey> {
+        @Override
+        public int compareTo(GroupKey other) {
+            int report = reportId.compareTo(other.reportId);
+            return report != 0 ? report : warehouseId.compareTo(other.warehouseId);
+        }
+    }
+
+    /** 批内一份：报工行 + 报工数量 + 归属优先级。 */
+    record LotMember(UUID reportItemId, BigDecimal qty, int sliceRank) {
+    }
+
+    /** 称了重、要记 FINISHED 观测的批。 */
+    private record WeighedLot(
             BigDecimal weightKg,
             UUID goodsId,
             UUID colorId,

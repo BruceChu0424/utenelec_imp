@@ -309,7 +309,7 @@ class ProductionDailyReportItem {
 }
 
 /// 保存后的需求/公共切片在编辑时还原为一次实际申报，避免再报一份超产。
-/// 合并只认服务端批次 UUID；同产品、同计划或同工单都不是合并依据。
+/// 分组只认服务端给的产出批次(ProductionDailyReportDetail.outputBatches)，页面不再自己拼组。
 class ProductionDailyReportInputGroup {
   ProductionDailyReportInputGroup(List<ProductionDailyReportItem> items)
     : items = List.unmodifiable(items);
@@ -367,122 +367,109 @@ class ProductionDailyReportInputGroup {
       if (warehouse > 0) {'directTransferDemandId': null, 'qty': warehouse},
     ];
   }
-
-  /// 审核确认与详情用的一句话：本批共多少，逐条写转给哪个工单多少、送入仓库多少及原因。
-  String get routeSummary {
-    final head = [
-      source.goodsCode ?? source.goodsName ?? '本行产出',
-      '共 ${_quantityText(qty ?? 0)}',
-    ].join(' ');
-    final parts = <String>[];
-    final warehouse = <String, double>{};
-    for (final item in items) {
-      final qty = item.qty ?? 0;
-      if (item.isDirectTransfer) {
-        parts.add(
-          '转给 ${item.directTransferTargetLabel ?? '上层工单'} ${_quantityText(qty)}',
-        );
-      } else {
-        final reason = item.outputRouteReasonText ?? '';
-        warehouse[reason] = (warehouse[reason] ?? 0) + qty;
-      }
-    }
-    for (final entry in warehouse.entries) {
-      parts.add(
-        entry.key.isEmpty
-            ? '送入仓库 ${_quantityText(entry.value)}'
-            : '送入仓库 ${_quantityText(entry.value)} (${entry.key})',
-      );
-    }
-    return '$head：${parts.join('；')}';
-  }
 }
 
-/// 数量文本：整数不带小数点，小数最多 4 位且不留尾零。
-String _quantityText(double value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value
-          .toStringAsFixed(4)
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
+/// 一次录入的实际产出批次(ADR-148，服务端 DailyReportOutputBatch)：报工页一行 = 一批。
+/// 服务端按库里的实物交接批分好去向组并拼好审核摘要，页面直接显示，不再自己拼。
+class ProductionDailyReportOutputBatch {
+  const ProductionDailyReportOutputBatch({
+    required this.batchKey,
+    required this.itemIds,
+    required this.qty,
+    required this.summary,
+    this.sourceItemId,
+    this.groups = const [],
+  });
 
-List<ProductionDailyReportInputGroup> productionDailyReportInputGroups(
-  List<ProductionDailyReportItem> items,
-) {
-  final groups = <String, List<ProductionDailyReportItem>>{};
-  for (final item in items) {
-    final batchId = item.outputBatchId;
-    final key = batchId == null || batchId.isEmpty
-        ? 'line:${item.id}'
-        : 'batch:$batchId';
-    groups.putIfAbsent(key, () => []).add(item);
-  }
-  return [
-    for (final group in groups.values) _validatedProductionInputGroup(group),
-  ];
+  /// 产出批次号(没拆分的行 = 行 id)。
+  final String batchKey;
+
+  /// 本批第一份(行号最小)的报工行。
+  final String? sourceItemId;
+
+  /// 本批全部份(按行号)：草稿恢复按它把同批各份合回一行。
+  final List<String> itemIds;
+  final double qty;
+
+  /// 「货品 共 1100：送入仓库 1100(其中实际超产 100)」。
+  final String summary;
+  final List<ProductionDailyReportOutputGroup> groups;
+
+  factory ProductionDailyReportOutputBatch.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionDailyReportOutputBatch(
+    batchKey: json['batchKey'] as String? ?? '',
+    sourceItemId: json['sourceItemId'] as String?,
+    itemIds: [
+      for (final id in json['itemIds'] as List? ?? const [])
+        if (id is String) id,
+    ],
+    qty: _asDouble(json['qty']) ?? 0,
+    summary: json['summary'] as String? ?? '',
+    groups:
+        (json['groups'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(ProductionDailyReportOutputGroup.fromJson)
+            .toList(growable: false) ??
+        const [],
+  );
 }
 
-ProductionDailyReportInputGroup _validatedProductionInputGroup(
-  List<ProductionDailyReportItem> items,
-) {
-  final first = items.first;
-  final sameSupplement =
-      first.supplementProofId != null &&
-      first.fqcRecoveryAuthorizationId == null &&
-      first.outputSourceExecutionSegmentId != null &&
-      first.outputSourcePlanItemId != null &&
-      first.outputSourcePlanId != null &&
-      items.every(
-        (item) =>
-            item.supplementProofId == first.supplementProofId &&
-            item.fqcRecoveryAuthorizationId == null &&
-            item.outputSourceExecutionSegmentId ==
-                first.outputSourceExecutionSegmentId &&
-            item.outputSourcePlanItemId == first.outputSourcePlanItemId &&
-            item.outputSourcePlanId == first.outputSourcePlanId &&
-            item.outputSourceSalesAllocationId ==
-                first.outputSourceSalesAllocationId &&
-            item.outputSourceSalesOrderItemId ==
-                first.outputSourceSalesOrderItemId,
-      );
-  if (items.any(
-        (item) =>
-            item.supplementProofId != null &&
-            item.fqcRecoveryAuthorizationId == null,
-      ) &&
-      (!sameSupplement ||
-          first.outputBatchId?.isNotEmpty != true ||
-          first.outputBatchQty == null)) {
-    throw const FormatException('追加报工缺少完整原来源，请重新读取草稿');
-  }
-  if (first.outputBatchId?.isNotEmpty == true) {
-    final total = first.outputBatchQty;
-    final valid =
-        total != null &&
-        total.isFinite &&
-        total > 0 &&
-        items.every(
-          (item) =>
-              item.outputBatchQty == total &&
-              item.goodsId == first.goodsId &&
-              item.colorId == first.colorId &&
-              item.unitId == first.unitId &&
-              item.unitRate == first.unitRate &&
-              (sameSupplement ||
-                  (item.planItemId == first.planItemId &&
-                      item.executionSegmentId == first.executionSegmentId)) &&
-              item.qty != null &&
-              item.qty!.isFinite &&
-              item.qty! > 0,
-        );
-    if (!valid ||
-        (items.fold<double>(0, (sum, item) => sum + (item.qty ?? 0)) - total)
-                .abs() >
-            0.000001) {
-      throw const FormatException('报工分流明细不完整，请重新读取草稿');
-    }
-  }
-  return ProductionDailyReportInputGroup(items);
+/// 同一产出批次、同一去向、同一接收方的各份(一个实物交接批)。
+class ProductionDailyReportOutputGroup {
+  const ProductionDailyReportOutputGroup({
+    required this.itemIds,
+    required this.qty,
+    required this.summary,
+    this.lotId,
+    this.destination,
+    this.directTransferDemandId,
+    this.receiverLabel,
+    this.demandQty = 0,
+    this.publicQty = 0,
+    this.actualSurplusQty = 0,
+    this.splitText,
+    this.reasonText,
+  });
+
+  final String? lotId;
+  final List<String> itemIds;
+
+  /// WAREHOUSE 送入仓库 / WORKSHOP 转给上层工单。
+  final String? destination;
+  final String? directTransferDemandId;
+  final String? receiverLabel;
+  final double qty;
+  final double demandQty;
+  final double publicQty;
+  final double actualSurplusQty;
+
+  /// 「需求 1000 · 实际超产 100」；整批都是需求份时为空。
+  final String? splitText;
+
+  /// 需求份送入仓库的原因(大白话)；没有时为空。
+  final String? reasonText;
+  final String summary;
+
+  factory ProductionDailyReportOutputGroup.fromJson(
+    Map<String, dynamic> json,
+  ) => ProductionDailyReportOutputGroup(
+    lotId: json['lotId'] as String?,
+    itemIds: [
+      for (final id in json['itemIds'] as List? ?? const [])
+        if (id is String) id,
+    ],
+    destination: json['destination'] as String?,
+    directTransferDemandId: json['directTransferDemandId'] as String?,
+    receiverLabel: json['receiverLabel'] as String?,
+    qty: _asDouble(json['qty']) ?? 0,
+    demandQty: _asDouble(json['demandQty']) ?? 0,
+    publicQty: _asDouble(json['publicQty']) ?? 0,
+    actualSurplusQty: _asDouble(json['actualSurplusQty']) ?? 0,
+    splitText: json['splitText'] as String?,
+    reasonText: json['reasonText'] as String?,
+    summary: json['summary'] as String? ?? '',
+  );
 }
 
 /// 生产日报详情（GET /production/daily-reports/{id} → DailyReportDetail）。
@@ -515,6 +502,7 @@ class ProductionDailyReportDetail {
     this.approvalCapabilityMalformed = false,
     this.approvalReceipt,
     this.items = const [],
+    this.outputBatches = const [],
     this.materialUsages = const [],
     this.surplusReturnRequested = false,
     this.departmentName,
@@ -574,6 +562,22 @@ class ProductionDailyReportDetail {
       supportsReviewedApproval && rowVersionAvailable && rowVersion >= 0;
   final List<ProductionDailyReportItem> items;
 
+  /// ADR-148：服务端按一次录入的产出批次分好的组与审核摘要(报工页一行 = 一批)。
+  final List<ProductionDailyReportOutputBatch> outputBatches;
+
+  /// 草稿恢复：每个产出批次的各份合回一行(一次实际申报)。服务端给的份缺了就拒绝恢复。
+  List<ProductionDailyReportInputGroup> get inputGroups {
+    final byId = {for (final item in items) item.id: item};
+    return [
+      for (final batch in outputBatches)
+        if (batch.itemIds.isNotEmpty)
+          ProductionDailyReportInputGroup([
+            for (final id in batch.itemIds)
+              byId[id] ?? (throw const FormatException('报工分流明细不完整，请重新读取草稿')),
+          ]),
+    ];
+  }
+
   /// V583 报工同页登记的本次实际用料；历史日报为空。
   final List<ProductionDailyReportMaterialUsage> materialUsages;
 
@@ -630,6 +634,12 @@ class ProductionDailyReportDetail {
                   ProductionDailyReportItem.fromJson(e as Map<String, dynamic>),
             )
             .toList() ??
+        const [],
+    outputBatches:
+        (json['outputBatches'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(ProductionDailyReportOutputBatch.fromJson)
+            .toList(growable: false) ??
         const [],
     materialUsages:
         (json['materialUsages'] as List?)

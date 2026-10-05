@@ -77,6 +77,14 @@ V630(2026-09-20)退役了 V443 的客户货款类别标签：首导不再按 `B_
 
 受验采购/委外收货通过 V627 恢复旧历史 `consideration_required=false` 口径，保持原 header/item 来源、金额与单位证据，不造对价分段、库存或 AP。P Total 是原币；E STotal 是本币成本。只有原单明确正汇率才转换商业原币到本币；E 成本只有基准币且原率 1 才能等值为原币，否则未知维度保持 NULL。所有源单位/汇率 NULL/0 不填 1、不借当前货品默认单位。原 header Total 的真实 0 不能被明细成本合计替换；源头/明细只读，详见采购/委外迁移文档当前覆盖说明。
 
+## 仓库对照表(ADR-145 / V798)
+
+仓库主档与所有单据的仓库只按入库审过的 `warehouse_crosswalk.csv` 解析(不含个人信息，`verify_candidate.py` 纳入受审文件)。每个老库仓 id 一行：`SPLIT` 老库主仓 132 → 主仓 001(单据头记主仓，库存明细/流水/余额按货品所属子仓拆分)；`KEEP` 在用仓 → 同编号子仓；`MERGE` 老库已禁用的 123 五金仓库 → 并入在用的 C01；`DROP` 老库已删除的 119/120/121/124/125/127/128/129/130/131 → 不建仓、不写目标；`TARGET` 新 ERP 才有的塑胶/包材/五金车间子仓。`migrate_warehouse.sql` 不再 `DELETE FROM warehouses`，按编号增量写入，上级固定主仓、状态取目标值「使用」、不良品仓按对照表标记；库里还留着旧「(迁移自动补录)」仓库存根时中止。各单据脚本不再补建仓库存根(委外脚本的单位/颜色/币种存根状态改为合法的「使用」)，身份核验也不再把仓库引用当历史锚点。
+
+「对不上的就不要」：落在 DROP 仓上的库存单据(整张，含调拨任一端)、余额和采购收货单不迁；老库主仓上所属仓库为空的货品明细/余额不迁(设置 `UTEN_LEGACY_UNASSIGNED_WAREHOUSE_CODE=<子仓编号>` 时落到该子仓)。全部逐条写入 `bootstrap_warehouse_exclusions`(装配器跨模块保留)，`reconcile_modules.py` 按它扣减行数对账并写进运行记录 `warehouseExclusions`，`migrate.sh` 导出 `data/import_report/warehouse_exclusions.csv`。销售、委外、采购申请/退货若落在 DROP 仓上直接中止，先人工定去向(老库目前没有这种单据)。
+
+全量顺序：仓库目标主档 → 主档 → 货品 → 货品所属仓库 → 交易模块。货品所属仓库来自人工清单 `data/goods_owning_warehouse.csv`(`goods_legacy_id|warehouse_code`)，由 `python server/legacy_migration/import_product_lists.py --emit-owning-csv server/legacy_migration/data/goods_owning_warehouse.csv` 按新 ERP 产品列表生成，`migrate.sh --goods-owning-warehouse` 只填空；仓库必须是主仓下的可选良品子仓。`import_product_lists.py` 也只匹配这类子仓，找不到报错写 `warehouse_name_unmatched.csv`，不再补建仓库存根。导入映射协议随之升为 `bootstrap-v13`。
+
 ## 历史资金与期初余额
 
 V626 的受验导入函数一次写入历史资金原单、实际原明细、原账户流水和不可变来源证明。旧 `M_Get` 缺少足以证明现代业务分类的核销关系时保留 `LEGACY_UNCLASSIFIED`，不能因为明细为空就猜成预收；`M_AllCheck` 保留 `LEGACY_SNAPSHOT`。原单不允许普通修改、审批、红冲或再次生成总账。既有 legacy 原单也不能作为新预收转销资金源。

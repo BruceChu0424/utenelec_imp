@@ -9,6 +9,6 @@ class StockCountWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private final StockCountReviewBadgeController counts;
     StockCountWorkbenchBadgeSources(StockCountReviewBadgeController counts) { this.counts = counts; }
     @Override public List<Source> sources() {
-        return List.of(new Source("stockCountFinance", counts::finance), new Source("stockCountWarehouse", counts::warehouse));
+        return List.of(new Source("stockCountFinance", counts::finance), new Source("stockCountWarehouse", () -> counts.warehouse(null)));
     }
 }

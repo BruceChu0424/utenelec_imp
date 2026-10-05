@@ -142,7 +142,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_material_stock_postings(id uuid PRIMARY KEY, demand_id uuid,
                     posting_type text, qty_base numeric, stock_document_item_id uuid, recorded_tx_id xid8);
                 CREATE TABLE production_planning_package_documents(document_id uuid, document_type text, execution_segment_id uuid);
-                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE stock_documents(id uuid, doc_type text, status integer, warehouse_id uuid, is_deleted boolean DEFAULT FALSE,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text);
                 CREATE TABLE stock_document_items(id uuid, doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE production_execution_segment_events(action text, draw_document_ids uuid[],draw_item_quantities jsonb,receiving_confirmation_id uuid, counter_event_id uuid, receiving_direction smallint,
                     execution_segment_id uuid, created_by uuid, created_at timestamp with time zone DEFAULT now());

@@ -243,9 +243,11 @@ public class MrpService {
                 FROM exp e
                 GROUP BY e.goods_id, e.color_id
             ),
+            -- ADR-146 可用量单一口径: 账面只算计入可用量的仓(不含不良品仓、车间内料仓、主仓),
+            -- 预留只扣全局预留与落在这些仓上的预留。
             stock AS (
-                SELECT goods_id, color_id, SUM(qty)::numeric AS book_stock
-                FROM stock_balances
+                SELECT goods_id, color_id, SUM(on_hand_qty)::numeric AS book_stock
+                FROM v_stock_usable
                 GROUP BY goods_id, color_id
             ),
             reserved AS (
@@ -253,6 +255,7 @@ public class MrpService {
                        SUM(GREATEST(qty - consumed_qty - released_qty, 0))::numeric AS sales_reserved
                 FROM stock_reservations
                 WHERE is_deleted = false AND status = 0
+                  AND (warehouse_id IS NULL OR fn_warehouse_counts_as_usable(warehouse_id))
                 GROUP BY goods_id, color_id
             )
             SELECT a.goods_id, g.code, g.name, g.spec, a.color_id, a.gross,

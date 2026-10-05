@@ -30,13 +30,20 @@ final class QualifiedOriginWarehouseAssertions {
         assertTrue(footprint.mainWarehouseIds().containsAll(actualWarehouseIds),
                 "formalized stock must keep every actual warehouse in the initial lock footprint");
 
+        // ADR-146: 合格来源只落在实际入库的良品仓; 不良品仓上不能有任何正向预留(取代 ADR-075 第 2 条)。
+        assertEquals(0, db.queryForObject("""
+                SELECT count(*) FROM stock_reservations target
+                JOIN production_material_demands demand ON demand.id=target.demand_id
+                JOIN warehouses warehouse ON warehouse.id=target.warehouse_id
+                WHERE demand.package_id=? AND warehouse.is_defective
+                  AND target.qty-target.consumed_qty-target.released_qty>0
+                """, Integer.class, packageId));
         UUID target = db.queryForObject("""
                 SELECT target.id FROM stock_reservations target
                 JOIN production_material_demands demand ON demand.id=target.demand_id
-                JOIN warehouses warehouse ON warehouse.id=target.warehouse_id
-                WHERE demand.package_id=? AND target.requires_qualified_origin AND warehouse.is_defective
+                WHERE demand.package_id=? AND target.requires_qualified_origin AND target.warehouse_id=?
                 ORDER BY target.id LIMIT 1
-                """, UUID.class, packageId);
+                """, UUID.class, packageId, actualWarehouseIds.getFirst());
         assertNotNull(target);
         assertEquals(0, db.queryForObject("""
                 SELECT count(*) FROM preplan_stock_entitlement_events formalize

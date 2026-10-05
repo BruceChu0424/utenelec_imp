@@ -7,7 +7,9 @@
 --   退货明细.receipt_item_id/order_item_id，均按 legacy_id 子查询映射到新 UUID）。
 -- 重载：按 FK 逆序 DELETE；任何当前模块的下游执行/质检/财务引用都会
 -- 在导入前 fail-closed，绝不级联删除在线证据。
--- 缺失基础资料自动补录（units/colors/warehouses/currencies，§3.3，auto_created=true 标记）。
+-- 缺失基础资料自动补录(units/colors/currencies，§3.3，auto_created=true 标记)。
+-- 仓库不补录(ADR-145)：一律经审过的 warehouse_crosswalk.csv 解析到目标仓；落在老库已删除仓
+--   (对照表 DROP)上的收货单整张不迁、写对账清单 bootstrap_warehouse_exclusions。
 -- 人员（两类来源，与委外/钱流同模式）：
 --   · B_Worker（申请人/采购员/收货人/交货人）→ employees stub（legacy_id=B_Worker.ID，
 --     status='resigned'，NOT EXISTS 守卫不覆盖 HR 真名单）；报表 JOIN employees 出名。
@@ -187,15 +189,82 @@ WHERE lid IS NOT NULL AND lid <> 0
   AND NOT EXISTS (SELECT 1 FROM colors c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
--- 仓库（从申请/收货/退货主表反推；订货单 P_Order 无仓库字段）
-INSERT INTO warehouses (legacy_id, code, name, status, is_accountable, auto_created)
-SELECT DISTINCT lid, 'LEGACY-W-' || lid, '（迁移自动补录）', '使用', TRUE, TRUE
-FROM (SELECT warehouse_legacy_id AS lid FROM app_stage UNION ALL
-      SELECT warehouse_legacy_id FROM receipt_stage UNION ALL
-      SELECT warehouse_legacy_id FROM return_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM warehouses w WHERE w.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+-- 仓库(ADR-145)：只按审过的 warehouse_crosswalk.csv 解析，不再补录「(迁移自动补录)」仓库存根。
+-- 老库已禁用的仓并入在用的目标仓，老库主仓 132 的历史单据头记主仓 001(只读历史)；
+-- 老库已删除的仓(DROP)不建仓：落在上面的收货单整张不迁(明细一起)，写对账清单；
+-- 申请单/退货单落在已删除仓上时中止(老库没有这种单据，出现了要先人工定去向)。
+CREATE TEMP TABLE warehouse_crosswalk_stage (
+    legacy_id int, legacy_code text, legacy_name text, action text,
+    target_code text, target_name text, target_defective boolean, note text);
+\copy warehouse_crosswalk_stage FROM '/tmp/warehouse_crosswalk.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+CREATE TEMP TABLE warehouse_target_stage AS
+SELECT crosswalk.legacy_id, crosswalk.action, target.id AS warehouse_id
+FROM warehouse_crosswalk_stage crosswalk
+LEFT JOIN warehouses target ON target.code = crosswalk.target_code AND NOT target.is_deleted
+WHERE crosswalk.legacy_id IS NOT NULL;
+DO $$
+DECLARE
+    missing TEXT;
+BEGIN
+    SELECT string_agg(DISTINCT lid::text, ', ') INTO missing
+      FROM (SELECT warehouse_legacy_id AS lid FROM app_stage UNION ALL
+            SELECT warehouse_legacy_id FROM receipt_stage UNION ALL
+            SELECT warehouse_legacy_id FROM return_stage) refs
+     WHERE lid IS NOT NULL AND lid <> 0
+       AND NOT EXISTS (SELECT 1 FROM warehouse_target_stage target
+                        WHERE target.legacy_id = refs.lid
+                          AND (target.action = 'DROP' OR target.warehouse_id IS NOT NULL));
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'purchase warehouses must resolve through warehouse_crosswalk.csv to an existing target: %', missing;
+    END IF;
+    SELECT string_agg(DISTINCT refs.lid::text, ', ') INTO missing
+      FROM (SELECT warehouse_legacy_id AS lid FROM app_stage UNION ALL
+            SELECT warehouse_legacy_id FROM return_stage) refs
+      JOIN warehouse_target_stage target ON target.legacy_id = refs.lid AND target.action = 'DROP';
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'purchase applications/returns on deleted legacy warehouses (crosswalk DROP) need a reviewed decision first: %', missing;
+    END IF;
+END;
+$$;
+
+-- 不迁的单据(对账按它扣减；全量导入时保留到运行结束，与仓库单据模块同一张表)。
+CREATE TEMP TABLE IF NOT EXISTS bootstrap_warehouse_exclusions (
+    source_file text NOT NULL, source_row_id text NOT NULL, legacy_warehouse_id int,
+    reason text NOT NULL, goods_legacy_id int, qty numeric, amount numeric);
+
+-- 落在老库已删除仓(DROP)上的收货单：整张不迁，明细一起记进对账清单；还被退货明细引用就中止。
+INSERT INTO bootstrap_warehouse_exclusions (source_file, source_row_id, legacy_warehouse_id, reason)
+SELECT 'purchase_receipts.csv', s.legacy_id::text, s.warehouse_legacy_id, 'DROPPED_WAREHOUSE_DOCUMENT'
+FROM receipt_stage s
+JOIN warehouse_target_stage target ON target.legacy_id = s.warehouse_legacy_id AND target.action = 'DROP';
+
+INSERT INTO bootstrap_warehouse_exclusions (source_file, source_row_id, legacy_warehouse_id, reason,
+    goods_legacy_id, qty, amount)
+SELECT 'purchase_receipt_items.csv', i.legacy_id::text, excluded.legacy_warehouse_id,
+       'DROPPED_WAREHOUSE_DOCUMENT', i.goods_legacy_id, i.qty, i.amount_original
+FROM receipt_item_stage i
+JOIN bootstrap_warehouse_exclusions excluded
+  ON excluded.source_file = 'purchase_receipts.csv' AND excluded.source_row_id = i.bill_legacy_id::text;
+
+DO $$
+DECLARE
+    referenced TEXT;
+BEGIN
+    SELECT string_agg(DISTINCT r.bill_legacy_id::text, ', ') INTO referenced
+      FROM return_item_stage r
+      JOIN bootstrap_warehouse_exclusions excluded
+        ON excluded.source_file = 'purchase_receipt_items.csv'
+       AND excluded.source_row_id = r.receipt_item_legacy_id::text;
+    IF referenced IS NOT NULL THEN
+        RAISE EXCEPTION 'purchase returns reference receipts on deleted legacy warehouses (crosswalk DROP): %', referenced;
+    END IF;
+END;
+$$;
+
+DELETE FROM receipt_item_stage i USING bootstrap_warehouse_exclusions excluded
+ WHERE excluded.source_file = 'purchase_receipt_items.csv' AND excluded.source_row_id = i.legacy_id::text;
+DELETE FROM receipt_stage s USING bootstrap_warehouse_exclusions excluded
+ WHERE excluded.source_file = 'purchase_receipts.csv' AND excluded.source_row_id = s.legacy_id::text;
 
 -- 币种（从订货/收货/退货主表反推）
 INSERT INTO currencies (legacy_id, code, name, exchange_rate, status, auto_created)
@@ -215,7 +284,7 @@ INSERT INTO purchase_requests (
     applicant_legacy_id, maker_legacy_id, approver_legacy_id, is_stopped,
     department_legacy_id, maker_name, approver_name)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy_id),
        (SELECT department_id FROM legacy_departments WHERE legacy_id = s.step_id),
        NULL, NULL, NULL,                -- *_id(UUID) 待 employees.legacy_id 对齐后回填
        s.app_date,                       -- need_date ← AppDate
@@ -332,7 +401,7 @@ INSERT INTO purchase_returns (
     maker_name, approver_name)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy_id),
        (SELECT id FROM currencies WHERE legacy_id = s.currency_legacy_id),
        s.exchange_rate, NULL,          -- P_Withdraw 无 TRate → tax_rate NULL
        NULL, NULL, NULL,                            -- receiver_id/maker_id/approver_id 待对齐（主表无 Receiver → receiver_legacy_id 恒 NULL）

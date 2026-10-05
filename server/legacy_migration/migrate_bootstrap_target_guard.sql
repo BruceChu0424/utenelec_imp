@@ -2,7 +2,8 @@
 -- NEVER call business_data_reset(), truncate, delete or disable any constraint.
 DO $$
 DECLARE
-    policy_row text[];
+    clear_tables text[];
+    clear_table text;
     policy_count integer := 0;
     occupied boolean;
 BEGIN
@@ -51,15 +52,23 @@ BEGIN
             (SELECT count(*) FROM material_categories), (SELECT count(*) FROM client_categories),
             (SELECT count(*) FROM supplier_categories), (SELECT count(*) FROM mould_categories);
     END IF;
-    FOR policy_row IN
-        SELECT regexp_matches(
+    SELECT array_agg(policy_row[1]) INTO clear_tables
+    FROM regexp_matches(
             pg_get_functiondef('public.business_data_reset()'::regprocedure),
-            '\(''([a-z_0-9]+)'',\s*''CLEAR''\)', 'g')
+            '\(''([a-z_0-9]+)'',\s*''CLEAR''\)', 'g') AS policy_row;
+    FOREACH clear_table IN ARRAY COALESCE(clear_tables, ARRAY[]::text[])
     LOOP
         policy_count := policy_count + 1;
-        EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', policy_row[1]) INTO occupied;
+        IF clear_table = 'business_record_identities' THEN
+            -- 留痕身份跟着它的来源记录走: 迁移种下的配置行(如 V799 给部门的默认权限)在全新库里就有身份,
+            -- 它们不是业务事实; 只有来源表本身是要清空的业务表时才算「目标库已有业务数据」。
+            SELECT EXISTS (SELECT 1 FROM public.business_record_identities identity
+                            WHERE identity.source_table = ANY(clear_tables)) INTO occupied;
+        ELSE
+            EXECUTE format('SELECT EXISTS (SELECT 1 FROM public.%I)', clear_table) INTO occupied;
+        END IF;
         IF occupied THEN
-            RAISE EXCEPTION 'bootstrap target already contains business facts in %', policy_row[1];
+            RAISE EXCEPTION 'bootstrap target already contains business facts in %', clear_table;
         END IF;
     END LOOP;
     IF policy_count = 0 THEN

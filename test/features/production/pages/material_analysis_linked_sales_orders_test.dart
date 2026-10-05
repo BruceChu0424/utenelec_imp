@@ -71,7 +71,7 @@ Future<void> _pump(WidgetTester tester) async {
       onRequest: (request, handler) {
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
-            {'id': 'warehouse-1', 'name': '主仓'},
+            {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/analysis-1' => _analysis(),
           '/production/material-analyses/sales-candidates' => {

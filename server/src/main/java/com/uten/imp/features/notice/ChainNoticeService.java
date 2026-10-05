@@ -236,8 +236,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private final SalesOrderFinanceConfirmerEligibility salesOrderFinanceConfirmers;
     private final NoticePermissionCandidateQuery permissionCandidates;
     private final org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.WorkshopMaterialAvailabilityReadPort> workshopReadiness;
-    /** ADR-115 仓库负责人分发; 未注入(直接 new 的单测)时仓库类通知照旧发给整个通知池。 */
-    private com.uten.imp.application.port.WarehouseTaskScopePort warehouseKeepers;
+    /** ADR-149 仓库类通知唯一分发规则; 未注入(直接 new 的单测)时仓库类通知照旧发给整个通知池。 */
+    private WarehouseNoticeRouter warehouseRouter;
 
     public ChainNoticeService(NoticeService noticeService,
                               UserAccountRepository userRepo,
@@ -293,24 +293,43 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    void setWarehouseKeepers(com.uten.imp.application.port.WarehouseTaskScopePort warehouseKeepers) {
-        this.warehouseKeepers = warehouseKeepers;
+    void setWarehouseRouter(WarehouseNoticeRouter warehouseRouter) {
+        this.warehouseRouter = warehouseRouter;
     }
 
     /**
-     * 仓库类通知按仓分发(ADR-115 / V693)。{@code pool} 是原有通知池(仓库部门 × 该通知所需权限);
-     * 单据涉及的仓库(含各级上级仓)登记了有效负责人时, 只发给池里的负责人——成品仓管不再收到
-     * 五金仓的领料单。没有登记负责人、单据还没定仓, 或登记的负责人都不在池里(不在仓库部门/
-     * 缺这项权限)时照旧发给整个池: 宁可多发, 不让任务掉进无人区。
+     * 仓库类通知按仓分发(ADR-149, 取代 ADR-115 的「负责人 ∩ 池, 为空发整个池」):
+     * 该仓链上的子仓负责人 ∩ 池; 没有则主管 ∩ 池; 再没有(还没配置任何负责人)才发整个池。
+     * 单据还没定仓时直接走主管那一级。与列表范围同一套负责关系(WarehouseNoticeRouter)。
      */
     List<UUID> warehouseRecipients(List<UUID> pool, Collection<UUID> warehouseIds) {
-        if (warehouseKeepers == null || pool.isEmpty() || warehouseIds == null) return pool;
-        List<UUID> scoped = warehouseIds.stream().filter(Objects::nonNull).distinct().toList();
-        if (scoped.isEmpty()) return pool;
-        Set<UUID> keepers = new HashSet<>(warehouseKeepers.keeperUserIds(scoped));
-        if (keepers.isEmpty()) return pool;
-        List<UUID> routed = pool.stream().filter(keepers::contains).toList();
-        return routed.isEmpty() ? pool : routed;
+        if (warehouseRouter == null || pool.isEmpty()) return pool;
+        return warehouseRouter.recipients(pool, warehouseIds);
+    }
+
+    /** 仓库类通知池: 部门池 + 部门外的人还要满足的条件(在职、持有全部所需权限)。 */
+    record WarehouseNoticePool(List<UUID> department, java.util.function.Predicate<UUID> qualifies) {
+    }
+
+    /**
+     * 按这张单涉及的仓组池并分发: 部门池加上这些仓的子仓负责人与指定的主管里同样持有所需权限的部门外的人
+     * (ADR-149: 子仓负责人不论部门都按登记的仓收通知; 别的仓的负责人不进这张单的池)。
+     */
+    List<UUID> warehouseRecipients(WarehouseNoticePool pool, Collection<UUID> warehouseIds) {
+        if (warehouseRouter == null) return pool.department();
+        return warehouseRecipients(warehouseRouter.pool(pool.department(), pool.qualifies(), warehouseIds),
+                warehouseIds);
+    }
+
+    /** 仓库类通知池: 仓库部门(SUB_WH 子树)里持有全部所需权限的账号 + 部门外的人要满足的同样条件。 */
+    private WarehouseNoticePool warehousePool(String... authorities) {
+        List<UUID> department = departmentUserIdsWithAuthorities("SUB_WH", authorities);
+        Set<String> required = Set.of(authorities);
+        return new WarehouseNoticePool(department, userId -> userRepo.findById(userId)
+                .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
+                .map(permissionResolver::permsOf)
+                .map(permissions -> permissions.containsAll(required))
+                .orElse(false));
     }
 
     /** 单据仓库列(可能为空)的 UUID 集合。 */
@@ -774,7 +793,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             }
             if(!"PRODUCTION_MATERIAL_DISCOVERY_PENDING".equals(event)&&!"PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY".equals(event))return;
             if("PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY".equals(event))noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",requestId,"REFRESHED");
-            for(UUID user:warehouseRecipients(departmentUserIdsWithAuthorities("SUB_WH","stock_doc:view","stock_doc:approve","stock_doc:issue"),warehouseIdsOf(request.get("warehouse_id")))) {
+            for(UUID user:warehouseRecipients(warehousePool("stock_doc:view","stock_doc:approve","stock_doc:issue"),warehouseIdsOf(request.get("warehouse_id")))) {
                 sendToUser(user,TYPE_TASK,"待登记实际领料："+str(request.get("segment_code")),
                         "车间申请生产「"+str(request.get("goods_name"))+"」。请与领料人核对材料，在生产领料任务中填写物料、数量和实际仓库。",
                         "/warehouse/tasks/draw","PRODUCTION_MATERIAL_DISCOVERY_PENDING",null,requestId);
@@ -1201,8 +1220,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     + " 已生成并等待仓库审核"
                     + (warehouse.isBlank() ? "。" : "，目标仓库 " + warehouse + "。")
                     + "请核对实物、数量和库位后处理；通知不代替库存审核。";
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthority(
-                    "SUB_WH", "stock_doc:approve"), warehouseIdsOf(document.get("warehouse_id")))) {
+            for (UUID warehouseUser : warehouseRecipients(warehousePool("stock_doc:approve"), warehouseIdsOf(document.get("warehouse_id")))) {
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
@@ -1238,8 +1256,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     JOIN goods ON goods.id = item.goods_id
                     WHERE pending.report_id = ?
                     """, reportId);
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                    "SUB_WH", "stock_doc:view", "stock_doc:approve"), productWarehouses)) {
+            for (UUID warehouseUser : warehouseRecipients(warehousePool("stock_doc:view", "stock_doc:approve"), productWarehouses)) {
                 sendToUser(
                         warehouseUser,
                         TYPE_TASK,
@@ -1526,8 +1543,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 + (worker.isBlank() ? "" : "，领料负责人「" + worker + "」")
                 + "。请核对实物后直接点“出库”；首次出库会在同一事务完成审核与本次扣账，"
                 + "任一步失败都不会留下半审核状态。";
-        for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                "SUB_WH", "stock_doc:view", "stock_doc:approve",
+        for (UUID warehouseUser : warehouseRecipients(warehousePool("stock_doc:view", "stock_doc:approve",
                 "stock_doc:issue"), warehouseIdsOf(document.get("warehouse_id")))) {
             if (preserveExistingPending && Boolean.TRUE.equals(jdbc.queryForObject("""
                     SELECT EXISTS(SELECT 1 FROM notices WHERE aggregate_kind='STOCK_DOCUMENT'
@@ -1849,8 +1865,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             ? "。" : "，目标仓库「" + str(task.get("warehouse_name")) + "」。")
                     + "请核对实物数量和实际库位；确认前不会增加可用库存。";
             String route = "/warehouse/iqc-stock-ins/" + receiptType + '/' + receiptId;
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                    "SUB_WH", NOTICE_READ_AUTHORITY,
+            for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY,
                     WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY), warehouseIdsOf(task.get("warehouse_id")))) {
                 // 2026-09-05 起升级为居中行动卡：aggregate 绑定
                 // (PROCUREMENT_INSPECTION_PASS, passEventId)，该切片全部
@@ -1989,8 +2004,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         SELECT pre_stocked_warehouse_id FROM procurement_inspection_items
                         WHERE receipt_type = ? AND receipt_id = ? AND status <> 'REVERSED'
                         """, receiptType, receiptId, receiptType, receiptId);
-                for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                        "SUB_WH", NOTICE_READ_AUTHORITY,
+                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY,
                         WAREHOUSE_IQC_STOCK_IN_VIEW_AUTHORITY), receiptWarehouses)) {
                     sendToUser(
                             warehouseUser,
@@ -2257,8 +2271,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     + qty(bd(shipment.get("shipment_qty")))
                     + (warehouse.isBlank() ? "。" : "，出库仓库 " + warehouse + "。")
                     + "请按仓库作业流程核对库存并拣货；通知不代表已占用或已出库。";
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                    "SUB_WH", NOTICE_READ_AUTHORITY,
+            for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY,
                     "warehouse_sales_outbound:execute"), shipmentWarehouseIds(shipmentId))) {
                 sendToUser(
                         warehouseUser,
@@ -2292,8 +2305,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                       AND warehouse_work_status = 'PENDING_PICK'
                     """, shipmentId);
             if (billNo == null || billNo.isBlank()) return;
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                    "SUB_WH", NOTICE_READ_AUTHORITY,
+            for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY,
                     "warehouse_sales_outbound:execute"), shipmentWarehouseIds(shipmentId))) {
                 sendToUser(
                         warehouseUser,
@@ -2949,9 +2961,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     JOIN subcontract_material_issues issue ON issue.id = issue_item.issue_id
                     WHERE issue_item.plan_item_id = ? AND issue.status = 0 AND issue.is_deleted = FALSE
                     """, planItemId, planItemId);
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                    "SUB_WH",
-                    NOTICE_READ_AUTHORITY,
+            for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY,
                     "subcontract_outbound:view",
                     "subcontract_outbound:execute"), outboundWarehouses)) {
                 sendToUser(
@@ -3069,8 +3079,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             "/subcontract/orders/" + orderId,
                             EVENT_SUBCONTRACT_OUTBOUND_COMPLETED);
                 }
-                for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                        "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
+                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
                         subcontractOrderWarehouseIds(orderId))) {
                     sendToUser(
                             warehouseUser,
@@ -3204,8 +3213,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                                 + "出仓；实时订单/任务投影为准。",
                         "/subcontract/orders/" + orderId,
                         EVENT_SUBCONTRACT_OUTBOUND_REVERSED);
-                for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                        "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
+                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
                         subcontractOrderWarehouseIds(orderId))) {
                     sendToUser(
                             warehouseUser,
@@ -3375,10 +3383,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 """, shipmentId, shipmentId);
     }
 
-    /** 委外回厂的收货仓 = 委外订货单表头仓。 */
+    /** 委外回厂的收货仓(ADR-149): 与预计到货同一逐行规则(订货表头仓 → 委外申请表头仓 → 货品所属仓)。 */
     private List<UUID> subcontractOrderWarehouseIds(UUID orderId) {
         if (orderId == null) return List.of();
-        return warehouseIdsQuery("SELECT warehouse_id FROM subcontract_orders WHERE id = ?", orderId);
+        return warehouseIdsQuery(
+                "SELECT unnest(fn_procurement_order_inbound_warehouse_ids('SUBCONTRACT', CAST(? AS uuid)))", orderId);
     }
 
     /** 「首个货品 + 等 N 项」汇总标签; first 为空(没 JOIN 到货品)返回空串由调用方兜底。 */
@@ -4761,11 +4770,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             if (!subcontract) {
                 String warehouseName = str(approval.get("warehouse_name"));
                 String expectedDate = str(approval.get("expected_date"));
+                // ADR-149: 预计到货的所在仓按逐行到货仓(订货表头仓 → 申请表头仓 → 货品所属仓)推出;
+                // inbound_expectations.warehouse_id 自 ADR-038 起恒为空, 不再用它分发。
                 List<UUID> expectationWarehouses = warehouseIdsQuery(
-                        "SELECT warehouse_id FROM inbound_expectations WHERE approval_case_id = ?",
+                        "SELECT unnest(fn_inbound_expectation_warehouse_ids(id)) FROM inbound_expectations"
+                                + " WHERE approval_case_id = ?",
                         approvalCaseId);
-                for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                        "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
+                for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:view"),
                         expectationWarehouses)) {
                     // 2026-09-05 起升级为居中行动卡：aggregate 绑定
                     // (PROCUREMENT_ORDER, orderId)，到货全部登记完
@@ -5038,8 +5049,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             }
 
             BigDecimal accepted = bd(arrival.get("accepted_qty"));
-            for (UUID warehouseUser : warehouseRecipients(departmentUserIdsWithAuthorities(
-                    "SUB_WH", NOTICE_READ_AUTHORITY, "warehouse_inbound:stock_in"),
+            for (UUID warehouseUser : warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, "warehouse_inbound:stock_in"),
                     warehouseIdsOf(arrival.get("warehouse_id")))) {
                 if (accepted.signum() > 0) {
                     sendToUser(warehouseUser, TYPE_TASK,

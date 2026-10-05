@@ -274,7 +274,7 @@ public class FulfillmentWorkbenchQueryService {
     }
 
     /**
-     * 同上, 仓库待领任务另按「仓库范围」过滤(ADR-115: 我的仓库 / 指定仓库); 采购/委外忽略范围。
+     * 同上, 仓库待领任务另按仓库数据范围过滤(ADR-149: 本人范围 / 所选仓); 采购/委外忽略范围。
      * 范围进 {@code filters}, 列表、合计、状态卡与待完成计数同口径。
      */
     @Transactional(readOnly = true)
@@ -621,6 +621,12 @@ public class FulfillmentWorkbenchQueryService {
      */
     @Transactional(readOnly = true)
     public long countPending(String department) {
+        return countPending(department, WarehouseTaskScope.ALL);
+    }
+
+    /** 同上; 仓库待领另按仓库数据范围(ADR-149)计数, 与列表同一谓词(发料仓); 采购/委外忽略范围。 */
+    @Transactional(readOnly = true)
+    public long countPending(String department, WarehouseTaskScope warehouseScope) {
         if (!DEPARTMENTS.contains(department)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
         }
@@ -656,9 +662,11 @@ public class FulfillmentWorkbenchQueryService {
                     """.formatted(shortDelivery, preparation)
                 : """
                     SELECT COUNT(*) FROM %s documents
-                    WHERE department = :department AND open_line_count > 0
-                    """.formatted(WAREHOUSE_DOCUMENT_ROWS));
+                    WHERE department = :department AND open_line_count > 0%s
+                    """.formatted(WAREHOUSE_DOCUMENT_ROWS, warehouseScoped(department, warehouseScope)
+                        ? " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope") : ""));
         query.setParameter("department", department);
+        if (warehouseScoped(department, warehouseScope)) query.setParameter("warehouse_scope", warehouseScope.idsCsv());
         return ((Number) query.getSingleResult()).longValue();
     }
 
@@ -700,6 +708,11 @@ public class FulfillmentWorkbenchQueryService {
         return ((Number) query.getSingleResult()).longValue();
     }
 
+    /** 仓库待领任务的「所在仓」= 领料单发料仓(列 warehouse_id); 只有仓库部门的任务按仓库数据范围过滤。 */
+    private static boolean warehouseScoped(String department, WarehouseTaskScope warehouseScope) {
+        return "WAREHOUSE".equals(department) && warehouseScope != null && warehouseScope.active();
+    }
+
     /** 采购/委外读订货分解投影，仓库读领料投影——两边的归组键与状态集合都不通用。 */
     private static boolean usesDecompositionProjection(String department) {
         return "PURCHASE".equals(department) || "SUBCONTRACT".equals(department);
@@ -719,7 +732,7 @@ public class FulfillmentWorkbenchQueryService {
         return warehouseStatusBreakdown(WarehouseTaskScope.ALL);
     }
 
-    /** 同上, 按「仓库范围」(ADR-115)计数, 与列表同一范围。 */
+    /** 同上, 按仓库数据范围(ADR-149)计数, 与列表同一范围。 */
     @Transactional(readOnly = true)
     public Map<String, Long> warehouseStatusBreakdown(WarehouseTaskScope warehouseScope) {
         if (!accessPolicy.canAccessWarehouseTasks()) {

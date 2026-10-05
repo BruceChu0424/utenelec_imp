@@ -4,6 +4,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/warehouse_selection.dart';
+
 enum StockDocType {
   transfer('TRANSFER', '仓库调拨'),
   otherIn('OTHER_IN', '其它入库'),
@@ -17,6 +19,17 @@ enum StockDocType {
   const StockDocType(this.code, this.label);
   final String code;
   final String label;
+
+  /// 表头仓库(调拨为调出仓)与行级仓库的选仓用途(ADR-146，与服务端
+  /// StockDocService.headerWarehouseUse 同一张表)：入库类只落良品仓，其它出库/报废两类都可，
+  /// 盘点两类都可，普通调拨两端同类，领料/成品出仓只从良品仓出。
+  WarehouseUse get warehouseUse => switch (this) {
+    otherIn || finishedIn || wdraw => WarehouseUse.goodIn,
+    otherOut => WarehouseUse.disposalOut,
+    check => WarehouseUse.count,
+    transfer => WarehouseUse.transfer,
+    draw || finishedOut => WarehouseUse.goodOut,
+  };
   bool get supportsManualDraft => this != StockDocType.wdraw;
 
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
@@ -219,6 +232,8 @@ class StockDocDetail {
     this.closed = false,
     this.sourceDocNo,
     this.materialRequestNo,
+    this.transferKind,
+    this.defectReason,
     this.sourceDailyReportId,
     this.sourcePlanId,
     this.planNo,
@@ -241,6 +256,7 @@ class StockDocDetail {
     this.restrictionReason,
     this.finishedInboundDecision,
     this.finishedInboundVarianceReason,
+    this.finishedLots = const [],
   });
   final String id;
   final String? docType;
@@ -256,6 +272,12 @@ class StockDocDetail {
 
   /// 来源领料申请号（LQ），独立于正式领料单号（SL）。
   final String? materialRequestNo;
+
+  /// 调拨类型(ADR-146)：NORMAL 普通调拨 / TO_DEFECTIVE 转不良品仓 / DEFECT_RELEASE 不良复判转回。
+  final String? transferKind;
+
+  /// 专门通道的原因(普通调拨为空)。
+  final String? defectReason;
   final String? sourceDailyReportId;
 
   /// 来源生产计划 id（plan_draw_links 反查；DRAW/FINISHED_IN 溯源跳转用）
@@ -302,6 +324,9 @@ class StockDocDetail {
   /// 实收差异/拒收原因（确认记录为权威，不再从备注解析）
   final String? finishedInboundVarianceReason;
 
+  /// ADR-148：生产成品入库单里的实物批(单内各行按批合计 + 按归属拆分)；仓库按批点收一次。
+  final List<FinishedInLot> finishedLots;
+
   factory StockDocDetail.fromJson(Map<String, dynamic> json) => StockDocDetail(
     id: json['id'] as String,
     docType: json['docType'] as String?,
@@ -315,6 +340,8 @@ class StockDocDetail {
     closed: (json['closed'] as bool?) ?? false,
     sourceDocNo: json['sourceDocNo'] as String?,
     materialRequestNo: json['materialRequestNo'] as String?,
+    transferKind: json['transferKind'] as String?,
+    defectReason: json['defectReason'] as String?,
     sourceDailyReportId: json['sourceDailyReportId'] as String?,
     sourcePlanId: json['sourcePlanId'] as String?,
     planNo: json['planNo'] as String?,
@@ -344,6 +371,73 @@ class StockDocDetail {
             ?.map((e) => StockDocItem.fromJson(e as Map<String, dynamic>))
             .toList() ??
         const [],
+    finishedLots:
+        (json['finishedLots'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .map(FinishedInLot.fromJson)
+            .toList(growable: false) ??
+        const [],
+  );
+}
+
+/// 成品入库单里的一批实物(ADR-148)：同一报工、同一产出批次的需求份 / 计划公共 / 实际超产
+/// 合在一起点收；少收时服务端先扣实际超产，再扣计划公共，最后扣需求份。
+class FinishedInLot {
+  const FinishedInLot({
+    required this.lotId,
+    required this.itemIds,
+    required this.qty,
+    this.goodsId,
+    this.colorId,
+    this.unitId,
+    this.demandQty = 0,
+    this.publicQty = 0,
+    this.actualSurplusQty = 0,
+    this.splitText,
+    this.actualSurplusNote,
+    this.shortageHint,
+    this.weight,
+  });
+
+  final String lotId;
+  final List<String> itemIds;
+  final String? goodsId;
+  final String? colorId;
+  final String? unitId;
+  final double qty;
+  final double demandQty;
+  final double publicQty;
+  final double actualSurplusQty;
+
+  /// 「需求 1000 · 实际超产 100」；整批都是需求份时为空。
+  final String? splitText;
+
+  /// 「其中实际超产 100」；没有实际超产时为空。
+  final String? actualSurplusNote;
+
+  /// 本批几份时的少收规则说明；只有一份时为空。
+  final String? shortageHint;
+
+  /// 登记重量(千克)；未称重为空。
+  final double? weight;
+
+  factory FinishedInLot.fromJson(Map<String, dynamic> json) => FinishedInLot(
+    lotId: json['lotId'] as String? ?? '',
+    itemIds: [
+      for (final id in json['itemIds'] as List? ?? const [])
+        if (id is String) id,
+    ],
+    goodsId: json['goodsId'] as String?,
+    colorId: json['colorId'] as String?,
+    unitId: json['unitId'] as String?,
+    qty: (json['qty'] as num?)?.toDouble() ?? 0,
+    demandQty: (json['demandQty'] as num?)?.toDouble() ?? 0,
+    publicQty: (json['publicQty'] as num?)?.toDouble() ?? 0,
+    actualSurplusQty: (json['actualSurplusQty'] as num?)?.toDouble() ?? 0,
+    splitText: json['splitText'] as String?,
+    actualSurplusNote: json['actualSurplusNote'] as String?,
+    shortageHint: json['shortageHint'] as String?,
+    weight: (json['weight'] as num?)?.toDouble(),
   );
 }
 

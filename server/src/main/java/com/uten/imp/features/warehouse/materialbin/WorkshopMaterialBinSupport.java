@@ -227,6 +227,19 @@ class WorkshopMaterialBinSupport {
         return names.isEmpty() ? null : names.getFirst();
     }
 
+    /**
+     * 车间内料仓发料的默认出库仓 (ADR-147 唯一定义 {@code fn_workshop_bin_default_source}): 来源仓有可发量 ->
+     * 货品所属仓库 (可选良品子仓) -> 可发量最大的良品子仓; 车间没开通内料仓时从第二步起算。都没有返回 null。
+     */
+    UUID defaultSource(UUID workshopDepartmentId, UUID goodsId, UUID colorId) {
+        return db.queryForObject("""
+                SELECT fn_workshop_bin_default_source(
+                    (SELECT opened.bin_warehouse_id FROM workshop_bins opened
+                     WHERE opened.workshop_department_id = :workshop), :goods, CAST(:color AS uuid))
+                """, new MapSqlParameterSource("workshop", workshopDepartmentId).addValue("goods", goodsId)
+                .addValue("color", colorId == null ? null : colorId.toString()), UUID.class);
+    }
+
     String warehouseName(UUID warehouseId) {
         if (warehouseId == null) return null;
         List<String> names = db.queryForList("SELECT name FROM warehouses WHERE id = :id",

@@ -57,7 +57,7 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         UUID warehouseUser=fixture.createUserWithPerms(w,"physical-picker","warehouse_sales_outbound:view", "warehouse_sales_outbound:execute");fixture.loginAs(warehouseUser);
         var task=warehouse.detail(draft.getId());
         // 小类行计数与 /count 同源同数(同库里可能有别的用例留下的待出库单, 只断言一致性、包含本单与后面的增减量).
-        var countsBefore=warehouse.counts();assertEquals(countsBefore.get("PENDING_PICK").longValue(),warehouse.pendingCount());assertTrue(countsBefore.get("PENDING_PICK")>=1L);
+        var countsBefore=warehouse.counts(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);assertEquals(countsBefore.get("PENDING_PICK").longValue(),warehouse.pendingCount(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL));assertTrue(countsBefore.get("PENDING_PICK")>=1L);
         assertTrue(warehouse.list(draft.getBillNo(),"PENDING_PICK",null,null,1,20).getItems().stream().anyMatch(item->item.id().equals(draft.getId())));
         // V631：发出仓按行给候选与可发量，表头仓能发就预填表头仓。
         var choice=task.lines().getFirst().warehouseChoices().stream().filter(value->value.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
@@ -77,10 +77,10 @@ class SalesShipmentWarehouseAssignmentEndToEndTest {
         // 一步式确认出库把 status 翻成 1: 仓库投影不能再按 status=0 过滤, 「已出库」段与历史段都要列得出这张单; 计数从 PENDING_PICK 转到 SHIPPED 各差 1.
         assertTrue(warehouse.list(draft.getBillNo(),"SHIPPED",null,null,1,20).getItems().stream().anyMatch(item->item.id().equals(draft.getId())));
         assertTrue(warehouse.list(draft.getBillNo(),null,null,null,1,20).getItems().stream().anyMatch(item->item.id().equals(draft.getId())));
-        var countsAfter=warehouse.counts();
+        var countsAfter=warehouse.counts(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
         assertEquals(countsBefore.get("PENDING_PICK")-1L,countsAfter.get("PENDING_PICK").longValue());
         assertEquals(countsBefore.get("SHIPPED")+1L,countsAfter.get("SHIPPED").longValue());
-        assertEquals(countsAfter.get("PENDING_PICK").longValue(),warehouse.pendingCount());
+        assertEquals(countsAfter.get("PENDING_PICK").longValue(),warehouse.pendingCount(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL));
         assertEquals("SHIPPED",shipped.warehouseWorkStatus());assertEquals(w.warehouseId(),shipped.warehouseId());
         assertEquals("A-02-03",shipped.lines().getFirst().actualStockPlace());
         assertEquals(w.warehouseId(),shipped.lines().getFirst().warehouseId());assertTrue(shipped.lines().getFirst().warehouseChoices().isEmpty());

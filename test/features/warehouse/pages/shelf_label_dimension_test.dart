@@ -113,8 +113,18 @@ Future<_DimensionRepository> _pump(WidgetTester tester) async {
           statusCode: 200,
           data: request.path.contains('warehouses/dict')
               ? const [
-                  {'id': 'wa', 'code': 'WA', 'name': 'A仓'},
-                  {'id': 'wb', 'code': 'WB', 'name': 'B仓'},
+                  {
+                    'id': 'wa',
+                    'code': 'WA',
+                    'name': 'A仓',
+                    'selectableForNew': true,
+                  },
+                  {
+                    'id': 'wb',
+                    'code': 'WB',
+                    'name': 'B仓',
+                    'selectableForNew': true,
+                  },
                 ]
               : const <Map<String, dynamic>>[],
         ),

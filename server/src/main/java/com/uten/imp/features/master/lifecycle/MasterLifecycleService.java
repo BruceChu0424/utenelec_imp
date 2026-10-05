@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.lifecycle.dto.MasterBatchRequests;
 import com.uten.imp.features.master.lifecycle.dto.MasterBatchResult;
+import com.uten.imp.features.master.warehouse.WarehouseMasterRules;
 import com.uten.imp.security.CurrentAuthorityGuard;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
@@ -36,6 +37,10 @@ import java.util.stream.Collectors;
  *
  * <p>批量命令逐条返回结果(部分成功照常提交)，单条删除失败直接抛出中文原因。表名来自
  * {@link MasterEntityKind} 白名单；id 以一个逗号串参数绑定，批量 500 条也不展开成 500 个参数。
+ *
+ * <p>仓库(ADR-145)另有停用/删除前置条件: 主仓、还有库存、还是货品所属仓库、有未结预留、
+ * 已开通的车间内料仓(ADR-147)都不能停用或删除; 这里按 {@link WarehouseMasterRules} 逐条预检成中文原因,
+ * 数据库守卫 fn_guard_warehouse_master_lifecycle 同一定义兜底。
  */
 @Service
 @RequiredArgsConstructor
@@ -53,6 +58,7 @@ public class MasterLifecycleService {
     private final TxSessionVars tx;
     private final MasterReferenceGuard guard;
     private final MasterObjectAccess access;
+    private final WarehouseMasterRules warehouseRules;
 
     /** 锁定行快照。 */
     private record Row(UUID id, long version, UUID owner, String status, String label) {
@@ -94,11 +100,19 @@ public class MasterLifecycleService {
         Map<UUID, Long> requested = dedupe(items);
         Map<UUID, MasterBatchResult.ItemResult> results = new LinkedHashMap<>();
         List<Row> allowed = authorize(kind, requested, results);
+        Map<UUID, List<String>> retirement = kind == MasterEntityKind.WAREHOUSE && "禁用".equals(status)
+                ? warehouseRules.retirementBlockers(allowed.stream()
+                        .filter(row -> !status.equals(row.status())).map(Row::id).toList())
+                : Map.of();
         List<UUID> changing = new ArrayList<>();
         for (Row row : allowed) {
+            List<String> reasons = retirement.get(row.id());
             if (status.equals(row.status())) {
                 results.put(row.id(), new MasterBatchResult.ItemResult(
                         row.id(), row.label(), true, "原本就是「" + status + "」，未改动"));
+            } else if (reasons != null) {
+                results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), false,
+                        WarehouseMasterRules.retirementMessage(row.label(), false, reasons)));
             } else {
                 changing.add(row.id());
                 results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), true, null));
@@ -177,15 +191,24 @@ public class MasterLifecycleService {
         List<UUID> candidates = allowed.stream().map(Row::id).toList();
         Map<UUID, List<MasterReferenceGuard.Blocker>> blocked = candidates.isEmpty() ? Map.of()
                 : guard.blockers(kind, candidates, List.of());
+        Map<UUID, List<String>> retirement = kind == MasterEntityKind.WAREHOUSE && !candidates.isEmpty()
+                ? warehouseRules.retirementBlockers(candidates)
+                : Map.of();
         List<UUID> deleting = new ArrayList<>();
         for (Row row : allowed) {
             List<MasterReferenceGuard.Blocker> blockers = blocked.get(row.id());
-            if (blockers == null) {
-                deleting.add(row.id());
-                results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), true, null));
-            } else {
+            List<String> reasons = retirement.get(row.id());
+            if (blockers != null) {
+                // 引用守卫逐条列出是哪些货品/单据在用它, 比停用前置条件的计数更具体, 优先给人看。
                 results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), false,
                         MasterReferenceGuard.describe(kind, row.label(), blockers)));
+            } else if (reasons != null) {
+                // 引用守卫之外的仓库前置条件(如已开通的车间内料仓), 与数据库守卫同一定义。
+                results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), false,
+                        WarehouseMasterRules.retirementMessage(row.label(), true, reasons)));
+            } else {
+                deleting.add(row.id());
+                results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), true, null));
             }
         }
         softDelete(kind, deleting);

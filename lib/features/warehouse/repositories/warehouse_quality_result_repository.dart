@@ -19,6 +19,7 @@ abstract interface class WarehouseQualityResultGateway {
     String? sort,
     String? order,
     String? billNo,
+    String? scopeWarehouseId,
   });
 
   /// 收货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
@@ -28,11 +29,13 @@ abstract interface class WarehouseQualityResultGateway {
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? scopeWarehouseId,
   });
 
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
+    String? scopeWarehouseId,
   });
 
   Future<WarehouseQualityResultDetail> detail(
@@ -63,6 +66,7 @@ class WarehouseQualityResultRepository
     String? sort,
     String? order,
     String? billNo,
+    String? scopeWarehouseId,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -79,6 +83,8 @@ class WarehouseQualityResultRepository
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
         if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
+        // ADR-149：服务端按本人仓库数据范围强制过滤；选了仓再带这个参数(越界 403)。
+        'scopeWarehouseId': ?scopeWarehouseId,
       },
     );
     return PagedResult.fromJson(json, WarehouseQualityResultTask.fromJson);
@@ -91,6 +97,7 @@ class WarehouseQualityResultRepository
     String? keyword,
     String? dateFrom,
     String? dateTo,
+    String? scopeWarehouseId,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -101,6 +108,7 @@ class WarehouseQualityResultRepository
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
         'dateFrom': ?dateFrom,
         'dateTo': ?dateTo,
+        'scopeWarehouseId': ?scopeWarehouseId,
       },
     );
     return parseFacetBuckets(json, 'billNo');
@@ -110,6 +118,7 @@ class WarehouseQualityResultRepository
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
+    String? scopeWarehouseId,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -117,6 +126,7 @@ class WarehouseQualityResultRepository
       query: {
         'receiptType': receiptType?.apiValue ?? 'ALL',
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
+        'scopeWarehouseId': ?scopeWarehouseId,
       },
     );
     final raw = json;

@@ -2,7 +2,6 @@ package com.uten.imp.features.notice;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.uten.imp.application.port.BusinessOutboxDomainHandler;
-import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkshopStockCountPostingPort;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -28,13 +27,13 @@ public class StockCountNoticeHandler implements BusinessOutboxDomainHandler {
     private final UserAccountRepository users;
     private final PermissionResolver permissions;
     private final WorkshopStockCountPostingPort workshop;
-    private final WarehouseTaskScopePort warehouseScopes;
+    private final WarehouseNoticeRouter warehouseRouter;
 
     public StockCountNoticeHandler(JdbcTemplate db, NoticeService notices, NoticePermissionCandidateQuery candidates,
             UserAccountRepository users, PermissionResolver permissions, WorkshopStockCountPostingPort workshop,
-            WarehouseTaskScopePort warehouseScopes) {
+            WarehouseNoticeRouter warehouseRouter) {
         this.db = db; this.notices = notices; this.candidates = candidates; this.users = users;
-        this.permissions = permissions; this.workshop = workshop; this.warehouseScopes = warehouseScopes;
+        this.permissions = permissions; this.workshop = workshop; this.warehouseRouter = warehouseRouter;
     }
 
     @Override public boolean supports(String eventType) {
@@ -58,21 +57,21 @@ public class StockCountNoticeHandler implements BusinessOutboxDomainHandler {
             if (!"PENDING".equals(status)) return; // Approval/cancellation won before the worker delivered submission.
             String authority = warehouse ? "stock:count:warehouse_review" : "stock:count:finance_review";
             List<UserAccount> possible = candidates.possibleUsers(Set.of(authority)).map(users::findAllById).orElseGet(users::findAll);
-            // 2026-10-02 用户口径（对齐 ADR-115 / WorkshopMaterialNoticeService.requisitionPending 的既有设计）：
-            // 仓库路由的盘点审核卡只发「登记为该仓负责人 且 持审核权限」的人；仓库没登记负责人时
-            // 才按权限全收（与仓库类通知同口径，不会有单据掉进无人区）。财务路由仍按权限全员。
-            java.util.LinkedHashSet<UUID> registeredKeepers = new java.util.LinkedHashSet<>();
-            if (warehouse) {
-                registeredKeepers.addAll(warehouseScopes.keeperUserIds(List.of((UUID) request.get("warehouse_id"))));
-            }
-            boolean keepersConfigured = !registeredKeepers.isEmpty();
+            // 池 = 在职、持通知与审核权限(仓库路由另须能看这个仓)的人。仓库路由的盘点审核卡再经 ADR-149
+            // 唯一分发规则: 该仓子仓负责人 ∩ 池; 没有则主管 ∩ 池; 再没有才发整个池。财务路由仍按权限全员。
+            java.util.LinkedHashSet<UUID> pool = new java.util.LinkedHashSet<>();
             for (UserAccount user : possible) {
                 if (!active(user)) continue;
                 Set<String> current = permissions.permsOf(user);
                 if (!current.contains("notice:read") || !current.contains(authority)) continue;
-                if (warehouse && keepersConfigured && !registeredKeepers.contains(user.getId())) continue;
                 if (warehouse && !workshop.canAccessWarehouseForUser((UUID) request.get("warehouse_id"), user.getId())) continue;
-                notices.publishForUser(user.getId(), "盘点待审核：" + label,
+                pool.add(user.getId());
+            }
+            List<UUID> recipients = warehouse
+                    ? warehouseRouter.recipients(pool, List.of((UUID) request.get("warehouse_id")))
+                    : List.copyOf(pool);
+            for (UUID recipient : recipients) {
+                notices.publishForUser(recipient, "盘点待审核：" + label,
                         "请核对盘点的原数量、目标数量、重量和差额；审核通过后才更新库存。",
                         "approval", "库存盘点", (warehouse ? "/warehouse/stock-count-review" : "/finance/stock-count-review")
                                 + "?requestId=" + requestId,

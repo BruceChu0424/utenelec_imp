@@ -13,6 +13,7 @@ import java.util.UUID;
 @RequestMapping("/api/stock/production-materials")
 public class ProductionMaterialReturnRequestController {
     private final ProductionMaterialReturnRequestService service;
+    private final com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
 
     @GetMapping("/plans/{planId}/return-requests/sources")
     @PreAuthorize("hasAnyAuthority('production_plan:view','stock_doc:view','production_execution:view')")
@@ -34,7 +35,10 @@ public class ProductionMaterialReturnRequestController {
     public Document cancel(@PathVariable UUID planId, @PathVariable UUID documentId, @RequestBody Cancel request) {
         return service.cancel(planId, documentId, request);
     }
+    /** 车间退料待仓库实收数(徽章来源 productionReturn): 与库存单据列表同一仓库范围(ADR-149, 调入仓)。 */
     @GetMapping("/return-requests/warehouse/count")
     @PreAuthorize("hasAuthority('stock_doc:view')")
-    public Map<String, Long> count() { return Map.of("count", service.warehousePendingCount()); }
+    public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
+        return Map.of("count", service.warehousePendingCount(warehouseScopes.current(scopeWarehouseId)));
+    }
 }

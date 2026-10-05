@@ -451,7 +451,14 @@ void main() {
     await tester.ensureVisible(leaf);
     await tester.tap(leaf);
     await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('原料仓 B').last);
+    // ADR-147: 出库仓库走全站仓库滑窗 (先主仓再子仓), 有货的仓副行写可发量。
+    expect(find.text('选择出库仓库'), findsOneWidget);
+    expect(
+      find.byKey(const Key('warehouse-picker-subtitle-leafB')),
+      findsOneWidget,
+    );
+    expect(find.text('可发 300 公斤'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('warehouse-picker-entry-leafB')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('wm-line-bags-r2')), '2');
     await tester.pump();

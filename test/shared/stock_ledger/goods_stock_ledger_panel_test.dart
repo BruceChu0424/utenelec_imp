@@ -40,7 +40,7 @@ class _PanelApi extends ApiClient {
   }) async {
     if (path.contains('warehouses/dict')) {
       return [
-        {'id': 'w1', 'name': '五金仓库'},
+        {'id': 'w1', 'name': '五金仓库', 'selectableForNew': true},
       ];
     }
     if (path.contains('colors/dict')) {
@@ -251,7 +251,6 @@ class _PanelApi extends ApiClient {
             'version': 2,
           },
           'resolved': {
-            'key': 'g1|',
             'goodsId': 'g1',
             'basis': 'LEARNED',
             'evidence': 'REFERENCE',
@@ -335,7 +334,6 @@ class _PanelApi extends ApiClient {
       return {
         'items': [
           {
-            'key': 'g1|',
             'goodsId': 'g1',
             'basis': 'LEARNED',
             'tier': 'YELLOW',

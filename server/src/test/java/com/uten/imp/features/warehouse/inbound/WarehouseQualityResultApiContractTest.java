@@ -69,10 +69,10 @@ class WarehouseQualityResultApiContractTest {
                 .contains(" or ");
 
         // 2026-09-25 单号列统一：列表方法追加 sort/order/billNo 三个可选参数
-        // （单号列排序 + 值筛选）；读权限口径不变。
+        // （单号列排序 + 值筛选）；ADR-149 再追加 scopeWarehouseId(仓库数据范围)；读权限口径不变。
         Method list = WarehouseQualityResultController.class.getDeclaredMethod(
                 "list", String.class, String.class, String.class, LocalDate.class, LocalDate.class,
-                int.class, int.class, String.class, String.class, String.class);
+                int.class, int.class, String.class, String.class, String.class, UUID.class);
         Method detail = WarehouseQualityResultController.class.getDeclaredMethod(
                 "detail", String.class, UUID.class);
         // 读接口只吃类级任一视图权限，方法级不得再叠加更严的口径。
@@ -136,7 +136,7 @@ class WarehouseQualityResultApiContractTest {
         // 角标与页内分段同口径：复用聚合管线按 (类型, 状态) 分组，
         // 红黄两支分流在 Java 侧做，不在 SQL 里另起一套状态白名单。
         assertThat(source)
-                .contains("public TypeCounts typeCounts()")
+                .contains("public TypeCounts typeCounts(WarehouseTaskScope warehouseScope)")
                 .doesNotContain("IN ('ALL_PASSED','PARTIAL_PASSED','RETURN_REQUIRED')");
         // 列表不再为展示列做整库 stocked 聚合（历史直接在详情按单读取）。
         assertThat(source).doesNotContain("stocked_stat");
@@ -161,7 +161,7 @@ class WarehouseQualityResultApiContractTest {
         // 于是来源大类行上的黄徽章一进页面就蒸发。现在两支必须同出一次聚合。
         assertThat(source)
                 .contains("public record TypeCounts(")
-                .contains("public TypeCounts typeCounts()")
+                .contains("public TypeCounts typeCounts(WarehouseTaskScope warehouseScope)")
                 .doesNotContain("pendingTypeCounts")
                 .doesNotContain("countPending");
         assertThat(Arrays.stream(WarehouseQualityResultService.TypeCounts.class
@@ -170,7 +170,7 @@ class WarehouseQualityResultApiContractTest {
                 .toList())
                 .containsExactly("actionable", "inProgress");
 
-        int signature = source.indexOf("public TypeCounts typeCounts()");
+        int signature = source.indexOf("public TypeCounts typeCounts(WarehouseTaskScope warehouseScope)");
         String guards = source.substring(
                 source.lastIndexOf("@Transactional", signature), signature);
         // 计数端点是只读聚合，且不得比列表/详情的任一视图权限更松。
@@ -178,7 +178,8 @@ class WarehouseQualityResultApiContractTest {
                 .contains("@Transactional(readOnly = true)")
                 .contains("@PreAuthorize(");
         assertThat(WarehouseQualityResultService.class
-                .getDeclaredMethod("typeCounts")
+                .getDeclaredMethod("typeCounts",
+                        com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.class)
                 .getAnnotation(PreAuthorize.class).value())
                 .contains("warehouse_iqc_stock_in:view")
                 .contains("warehouse_iqc_return:view");
@@ -208,7 +209,7 @@ class WarehouseQualityResultApiContractTest {
         assertThat(WarehouseQualityResultController.class.getDeclaredMethods())
                 .noneMatch(method -> "count".equals(method.getName()));
         Method typeCounts = WarehouseQualityResultController.class
-                .getDeclaredMethod("typeCounts");
+                .getDeclaredMethod("typeCounts", UUID.class);
         assertThat(typeCounts.getReturnType())
                 .isEqualTo(WarehouseQualityResultService.TypeCounts.class);
         assertThat(typeCounts.getAnnotation(PreAuthorize.class)).isNull();

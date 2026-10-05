@@ -68,7 +68,8 @@ public class SubcontractMaterialPlanService
     private static final short ISSUE_DRAFT = 0;
 
     /**
-     * ADR-103 路线 B 锁判据的仓过滤: 只认「未删、非不良品、非线边、且是作业叶仓」的仓。
+     * ADR-103 路线 B 锁判据的仓过滤: 只认「未删、非不良品、非线边、且是作业叶仓」的仓
+     * (与 ADR-146 计入可用量的仓同口径)。
      * 必须与 {@code JOIN warehouses w} 搭配使用 (别名固定 w)。wakeOutboundAfterStockIn 的
      * 入库仓短路也用它, 于是「哪些仓的货算数」全系统只有这一份定义。
      */
@@ -811,6 +812,9 @@ public class SubcontractMaterialPlanService
                 WHERE available.goods_id = :goodsId
                   AND available.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
                   AND available.available_qty > 0
+                  AND EXISTS (SELECT 1 FROM warehouses w WHERE w.id = available.warehouse_id AND
+                """ + OPERATIONAL_LEAF_WAREHOUSE_PREDICATE + """
+                  )
                 ORDER BY CASE WHEN available.warehouse_id = CAST(:preferred AS uuid) THEN 0 ELSE 1 END,
                          available.available_qty DESC, available.warehouse_id
                 """).setParameter("goodsId", goodsId)
@@ -824,30 +828,13 @@ public class SubcontractMaterialPlanService
     }
 
     /**
-     * 全局可用量（基本单位，销售 reserveOnApprove 同款口径）：
-     * 全仓账面−安全库存−全部生效预留，GREATEST(…,0) 兜底；带货色锁防并发超占。
-     * colorId 可能为 NULL，比较与 CAST 对齐 StockReservationRepository 的写法。
+     * 全局可用量(基本单位)= 数据库 fn_stock_global_usable(ADR-146 可用量单一口径, 与销售下单占用同一函数),
+     * 带货色锁防并发超占。
      */
     private BigDecimal globalAvailableBase(UUID goodsId, UUID colorId) {
         inventoryLock.lock(new InventoryKey(goodsId, colorId));
-        BigDecimal value = jdbc.queryForObject("""
-                SELECT GREATEST(
-                  (SELECT COALESCE(SUM(GREATEST(
-                              COALESCE(b.qty, 0)
-                              - GREATEST(
-                                  COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0),
-                              0)), 0)
-                     FROM stock_balances b
-                     JOIN goods g ON g.id = b.goods_id
-                     WHERE b.goods_id = ?
-                       AND (b.color_id IS NOT DISTINCT FROM CAST(? AS uuid)))
-                  - (SELECT COALESCE(SUM(r.qty - r.consumed_qty - r.released_qty), 0)
-                       FROM stock_reservations r
-                       WHERE r.is_deleted = FALSE AND r.status = 0
-                         AND r.goods_id = ?
-                         AND (r.color_id IS NOT DISTINCT FROM CAST(? AS uuid)))
-                , 0)
-                """, BigDecimal.class, goodsId, colorId, goodsId, colorId);
+        BigDecimal value = jdbc.queryForObject("SELECT fn_stock_global_usable(?, CAST(? AS uuid))",
+                BigDecimal.class, goodsId, colorId);
         return value == null ? BigDecimal.ZERO : value;
     }
 
@@ -2247,8 +2234,8 @@ public class SubcontractMaterialPlanService
     }
 
     /**
-     * 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤: 计划行的备料仓或未审出仓草稿的来源仓
-     * 在范围内即算; 「我的仓库」另含还没有任何备料仓的计划(没定仓的活谁都可能要接)。
+     * 同上, 另按仓库数据范围(ADR-149)过滤: 计划行的备料仓或未审出仓草稿的来源仓在范围内即算;
+     * 都还没有 = 未定仓, 只在范围含未定仓(「其他人」的默认范围)时算。列表与红黄计数同一谓词。
      */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('subcontract_outbound:view')")
@@ -2256,24 +2243,7 @@ public class SubcontractMaterialPlanService
             int page, int size, String keyword, UUID supplierId, String status,
             com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         boolean scoped = warehouseScope != null && warehouseScope.active();
-        String inScope = "= ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))";
-        String scopeClause = !scoped ? "" : """
-                AND (EXISTS (SELECT 1 FROM subcontract_material_plan_items scope_item
-                             WHERE scope_item.plan_id = p.id AND scope_item.is_deleted = FALSE
-                               AND scope_item.preparation_warehouse_id %1$s)
-                     OR EXISTS (SELECT 1 FROM subcontract_material_issues scope_issue
-                                JOIN subcontract_material_issue_items scope_issue_item
-                                  ON scope_issue_item.issue_id = scope_issue.id
-                                JOIN subcontract_material_plan_items scope_plan_item
-                                  ON scope_plan_item.id = scope_issue_item.plan_item_id
-                                WHERE scope_plan_item.plan_id = p.id AND NOT scope_issue_item.is_deleted
-                                  AND scope_issue.status = 0 AND scope_issue.is_deleted = FALSE
-                                  AND scope_issue.warehouse_id %1$s)%2$s)
-                """.formatted(inScope, warehouseScope.includeUnassigned() ? """
-
-                     OR NOT EXISTS (SELECT 1 FROM subcontract_material_plan_items unassigned_item
-                                    WHERE unassigned_item.plan_id = p.id AND unassigned_item.is_deleted = FALSE
-                                      AND unassigned_item.preparation_warehouse_id IS NOT NULL)""" : "");
+        String scopeClause = outboundScopeClause(warehouseScope);
         String kw = keyword == null || keyword.isBlank() ? null : "%" + keyword.trim() + "%";
         String kwClause = kw == null ? "" : """
                 AND (p.order_bill_no ILIKE ? OR s.name ILIKE ?)
@@ -2405,7 +2375,7 @@ public class SubcontractMaterialPlanService
                 """ + supplierClause + scopeClause + statusClause + kwClause;
         List<Object> params = new java.util.ArrayList<>();
         if (supplierId != null) params.add(supplierId);
-        if (scoped) params.addAll(java.util.List.of(warehouseScope.idsCsv(), warehouseScope.idsCsv()));
+        if (scoped) params.add(warehouseScope.idsCsv());
         if (kw != null) params.addAll(java.util.List.of(kw, kw));
         Long total = jdbc.queryForObject("SELECT COUNT(*) " + base, Long.class, params.toArray());
         List<OutboundTaskListItem> content = jdbc.query("""
@@ -2446,9 +2416,20 @@ public class SubcontractMaterialPlanService
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public long countTasks() {
+        return countTasks(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按仓库数据范围(ADR-149)计数, 与出仓任务列表同一范围谓词。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
+    public long countTasks(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        String scopeClause = outboundScopeClause(warehouseScope);
+        Object[] params = scopeClause.isEmpty() ? new Object[0] : new Object[] {warehouseScope.idsCsv()};
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM subcontract_material_plans p
-                WHERE p.is_deleted = FALSE AND p.status = 'OPEN' AND EXISTS (
+                WHERE p.is_deleted = FALSE AND p.status = 'OPEN'
+                """ + scopeClause + """
+                  AND EXISTS (
                     SELECT 1 FROM subcontract_material_plan_items pi
                     WHERE pi.plan_id = p.id AND pi.is_deleted = FALSE
                       AND pi.preparation_status IN ('LEGACY_READY','READY_OUTBOUND')
@@ -2466,8 +2447,30 @@ public class SubcontractMaterialPlanService
                                SELECT 1 FROM (
                 """ + PLAN_ITEM_AVAILABLE_STOCK + """
                                ) candidate WHERE candidate.available_qty > 0)))
-                """, Long.class);
+                """, Long.class, params);
         return count == null ? 0 : count;
+    }
+
+    /**
+     * 委外出仓任务的「所在仓」(ADR-149, 唯一定义): 计划行备料仓 + 未审出仓草稿的来源仓; 任一在范围内
+     * 即算, 都没有 = 未定仓。只接范围, 不改委外业务口径。返回空串 = 不过滤; 否则含一个位置参数(仓库 id 串)。
+     */
+    private static String outboundScopeClause(
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        if (warehouseScope == null || !warehouseScope.active()) return "";
+        return "AND " + warehouseScope.predicateAny("""
+                ARRAY(SELECT scope_item.preparation_warehouse_id
+                      FROM subcontract_material_plan_items scope_item
+                      WHERE scope_item.plan_id = p.id AND scope_item.is_deleted = FALSE
+                      UNION
+                      SELECT scope_issue.warehouse_id
+                      FROM subcontract_material_issues scope_issue
+                      JOIN subcontract_material_issue_items scope_issue_item
+                        ON scope_issue_item.issue_id = scope_issue.id
+                      JOIN subcontract_material_plan_items scope_plan_item
+                        ON scope_plan_item.id = scope_issue_item.plan_item_id
+                      WHERE scope_plan_item.plan_id = p.id AND NOT scope_issue_item.is_deleted
+                        AND scope_issue.status = 0 AND scope_issue.is_deleted = FALSE)""", "?") + "\n";
     }
 
     /**
@@ -2480,9 +2483,21 @@ public class SubcontractMaterialPlanService
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public long countWaitingComponentTasks() {
+        return countWaitingComponentTasks(
+                com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按仓库数据范围(ADR-149)计数, 与出仓任务列表同一范围谓词。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('subcontract_outbound:view')")
+    public long countWaitingComponentTasks(
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        String scopeClause = outboundScopeClause(warehouseScope);
+        Object[] params = scopeClause.isEmpty() ? new Object[0] : new Object[] {warehouseScope.idsCsv()};
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*) FROM subcontract_material_plans p
                 WHERE p.is_deleted = FALSE AND p.status = 'OPEN'
+                """ + scopeClause + """
                   AND EXISTS (
                     SELECT 1 FROM subcontract_material_plan_items pi
                     WHERE pi.plan_id = p.id AND pi.is_deleted = FALSE
@@ -2503,7 +2518,7 @@ public class SubcontractMaterialPlanService
                                SELECT 1 FROM (
                 """ + PLAN_ITEM_AVAILABLE_STOCK + """
                                ) candidate WHERE candidate.available_qty > 0)))
-                """, Long.class);
+                """, Long.class, params);
         return count == null ? 0 : count;
     }
 

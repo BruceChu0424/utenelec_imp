@@ -33,7 +33,6 @@ public class FulfillmentWorkbenchController {
             @RequestParam(defaultValue = "50") int size,
             @RequestParam(defaultValue = "") String sort,
             @RequestParam(defaultValue = "asc") String order,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam Map<String, String> params) {
         // 生产领料任务中心表头排序(2026-09-24): 不传 sort 保持原排序(需求日期), 传了走白名单字段。
@@ -42,24 +41,24 @@ public class FulfillmentWorkbenchController {
         boolean hasColumnFilters = params.keySet().stream().anyMatch(key -> key.startsWith("f."));
         FulfillmentWorkbenchTableQuery table = sort.isBlank() && !hasColumnFilters ? null
                 : FulfillmentWorkbenchTableQuery.from(sort, order, params, null, null, null, null);
-        // 仓库范围(ADR-115): MINE = 我负责的仓库; scopeWarehouseId = 指定仓库(含子仓)。
+        // 仓库数据范围(ADR-149): 服务端按本人范围强制过滤; scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size, table,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+                warehouseScopes.current(scopeWarehouseId));
     }
 
+    /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */
     @GetMapping("/warehouse/count")
     @PreAuthorize("hasAuthority('stock_doc:view')")
-    public Map<String, Long> warehouseCount() {
-        return counts("WAREHOUSE");
+    public Map<String, Long> warehouseCount(@RequestParam(required = false) UUID scopeWarehouseId) {
+        return counts("WAREHOUSE", warehouseScopes.current(scopeWarehouseId));
     }
 
     /** 领料任务分状态计数（任务中心子分类徽章；待完成=READY+PARTIAL）。 */
     @GetMapping("/warehouse/status-breakdown")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public Map<String, Long> warehouseStatusBreakdown(
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        return queryService.warehouseStatusBreakdown(warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+        return queryService.warehouseStatusBreakdown(warehouseScopes.current(scopeWarehouseId));
     }
 
     @GetMapping("/purchase")
@@ -86,7 +85,7 @@ public class FulfillmentWorkbenchController {
     @GetMapping("/purchase/count")
     @PreAuthorize("hasAnyAuthority('purchase_request:view','purchase_order:view','purchase_receipt:view','purchase_return:view')")
     public Map<String, Long> purchaseCount() {
-        return counts("PURCHASE");
+        return counts("PURCHASE", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
     }
 
     @GetMapping("/subcontract")
@@ -113,7 +112,7 @@ public class FulfillmentWorkbenchController {
     @GetMapping("/subcontract/count")
     @PreAuthorize("hasAnyAuthority('subcontract_application:view','subcontract_order:view')")
     public Map<String, Long> subcontractCount() {
-        return counts("SUBCONTRACT");
+        return counts("SUBCONTRACT", WarehouseTaskScopePort.WarehouseTaskScope.ALL);
     }
 
     /**
@@ -123,8 +122,8 @@ public class FulfillmentWorkbenchController {
      * <p>count 是 pending 的旧键名：仓库任务中心的角标仍按这个键读，
      * 两个键同值，不是两个口径。
      */
-    private Map<String, Long> counts(String department) {
-        long pending = queryService.countPending(department);
+    private Map<String, Long> counts(String department, WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        long pending = queryService.countPending(department, warehouseScope);
         return Map.of(
                 "count", pending,
                 "pending", pending,

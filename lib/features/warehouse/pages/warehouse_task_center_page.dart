@@ -9,6 +9,9 @@
 //   小类（第二行起）= 原三张任务中心页各自的分段（嵌入态复用整页能力）；
 //   品质检查结果大类内保留其来源行 + 状态行；委外两类为时间门控的历史视图。
 //
+// 仓库数据范围(ADR-149)：大类与分段计数都取同一份汇总(没选仓 = 全站徽章汇总，服务端已按本人范围；
+// 选了仓 = /workbench/badges?scopeWarehouseId=)，与各分段列表同一服务端谓词。
+//
 // 徽章口径（准则 14 不变）：
 //   · 出库/入库/领料/品质四个大类的红数 = 原 hub 四张卡同源入口
 //    （BadgeEntry.warehouseOutboundCenter / warehouseInboundCenter /
@@ -36,10 +39,10 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../../shared/badges/badge_scope.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
 import '../widgets/warehouse_form_draft_categories.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -49,7 +52,6 @@ import '../pages/warehouse_inbound_task_center_page.dart';
 import '../pages/warehouse_outbound_task_center_page.dart';
 import '../pages/warehouse_quality_results_page.dart';
 import '../providers/warehouse_count_refresh.dart';
-import '../providers/warehouse_stock_count_review_count_provider.dart';
 import '../widgets/warehouse_document_history_view.dart';
 import '../widgets/warehouse_history_gate.dart';
 import '../widgets/warehouse_scope_selector.dart';
@@ -164,38 +166,19 @@ class _WarehouseTaskCenterPageState
     final canCycleCount =
         canOpen(RouteName.workshopMaterialBin) &&
         canOpen(RouteName.workshopMaterialCount);
-    final reviewCount = ref.watch(warehouseStockCountReviewCountProvider);
-    final warehouseScope = ref.watch(warehouseTaskScopeProvider);
-    final workshopCounts = ref.watch(
-      badgeScopeCountsProvider(
-        BadgeScope.entries(
-          todo: canWorkshopMaterial
-              ? BadgeEntry.warehouseWorkshopMaterial
-              : BadgeEntry.warehouseStockCountReview,
-          inProgress: canCycleCount
-              ? BadgeEntry.warehouseWorkshopMaterial
-              : null,
-          additionalTodoEntries: {
-            if (canWorkshopMaterial && canReviewCounts && warehouseScope.isAll)
-              BadgeEntry.warehouseStockCountReview,
-          },
-        ),
-      ),
-    );
-    // ALL uses the existing entry union. A selected warehouse replaces only
-    // the review entry with its server-filtered total; module totals are intact.
-    final workshopTodo = !canWorkshopMaterial && !canReviewCounts
-        ? 0
-        : warehouseScope.isAll
-        ? workshopCounts.todo
-        : (canWorkshopMaterial
-                  ? ref.watch(
-                      badgeEntryTodoProvider(
-                        BadgeEntry.warehouseWorkshopMaterial,
-                      ),
-                    )
-                  : 0) +
-              (reviewCount ?? 0);
+    // ADR-149: 大类数与各分段列表同一服务端仓库范围——没选仓 = 全站徽章汇总(服务端已按
+    // 本人范围算); 选了仓 = 同一汇总接口带 scopeWarehouseId。不再用 list(size:1) 凑数。
+    int todo(BadgeEntry entry) =>
+        ref.watch(warehouseTaskEntryTodoProvider(entry));
+    int inProgress(BadgeEntry entry) =>
+        ref.watch(warehouseTaskEntryInProgressProvider(entry));
+    // 红 = 待发料/退回与待审盘点(各按自己的入口); 黄仅真实周期盘点中。
+    final workshopTodo =
+        (canWorkshopMaterial ? todo(BadgeEntry.warehouseWorkshopMaterial) : 0) +
+        (canReviewCounts ? todo(BadgeEntry.warehouseStockCountReview) : 0);
+    final workshopInProgress = canCycleCount
+        ? inProgress(BadgeEntry.warehouseWorkshopMaterial)
+        : 0;
     // 本页其余文案尚未接 arb (部分既有测试不挂本地化代理), 取不到时回落中文原文。
     final workshopMaterialLabel =
         Localizations.of<AppLocalizations>(
@@ -211,9 +194,7 @@ class _WarehouseTaskCenterPageState
           value: 'outbound',
           label: '出库',
           count:
-              (ref.watch(
-                badgeEntryTodoProvider(BadgeEntry.warehouseOutboundCenter),
-              )) +
+              todo(BadgeEntry.warehouseOutboundCenter) +
               ref.watch(
                 formDraftCategoryCountProvider(warehouseOutboundAllDraftScope),
               ),
@@ -223,9 +204,7 @@ class _WarehouseTaskCenterPageState
           value: 'inbound',
           label: '入库',
           count:
-              (ref.watch(
-                badgeEntryTodoProvider(BadgeEntry.warehouseInboundCenter),
-              )) +
+              todo(BadgeEntry.warehouseInboundCenter) +
               ref.watch(
                 formDraftCategoryCountProvider(warehouseInboundAllDraftScope),
               ),
@@ -235,9 +214,7 @@ class _WarehouseTaskCenterPageState
           value: 'draw',
           label: '生产领料',
           count:
-              (ref.watch(
-                badgeEntryTodoProvider(BadgeEntry.warehouseDrawCenter),
-              )) +
+              todo(BadgeEntry.warehouseDrawCenter) +
               ref.watch(
                 formDraftCategoryCountProvider(warehouseDrawAllDraftScope),
               ),
@@ -246,12 +223,8 @@ class _WarehouseTaskCenterPageState
         _GroupSpec(
           value: 'quality',
           label: '品质检查结果',
-          count: ref.watch(
-            badgeEntryTodoProvider(BadgeEntry.warehouseQualityResult),
-          ),
-          inProgressCount: ref.watch(
-            badgeEntryInProgressProvider(BadgeEntry.warehouseQualityResult),
-          ),
+          count: todo(BadgeEntry.warehouseQualityResult),
+          inProgressCount: inProgress(BadgeEntry.warehouseQualityResult),
         ),
       if (canWorkshopMaterial || canReviewCounts || canCycleCount)
         _GroupSpec(
@@ -259,7 +232,7 @@ class _WarehouseTaskCenterPageState
           label: workshopMaterialLabel,
           // 红 = 待发料/退回与待审盘点的独立入口并集；黄仅真实周期盘点中。
           count: workshopTodo,
-          inProgressCount: workshopCounts.inProgress,
+          inProgressCount: workshopInProgress,
         ),
       if (canScReturn) const _GroupSpec(value: 'scReturn', label: '委外成品退货'),
       if (canScWaste) const _GroupSpec(value: 'scWaste', label: '委外损耗'),

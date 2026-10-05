@@ -18,7 +18,7 @@ import 'form_draft_navigation.dart';
 import 'form_draft_store.dart';
 
 export 'form_draft.dart';
-export 'form_draft_store.dart' show describeFormSaveError;
+export 'form_draft_store.dart' show describeFormSaveError, describeSubmitError;
 
 /// Pages provide only their typed snapshot codec and editable listenables.
 /// Saving here never invokes a business create/submit/approve endpoint.
@@ -496,8 +496,24 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       final snapshot = _draftPendingJson;
       if (snapshot == null || snapshot == _draftSavedJson) return;
       if (snapshot == _draftBaseline) {
-        if (_draftRevision != null) {
-          await _draftStore!.delete(_draftId, expectedRevision: _draftRevision);
+        // Back to the initial values: discard the clean draft without a
+        // `deleted` tombstone, so this same identity keeps saving and the
+        // next submission checkpoint is not refused (ADR-151 §1). Only the
+        // user's explicit "不保存" writes a tombstone (see the exit prompt).
+        final revision = _draftRevision;
+        if (revision != null) {
+          var current = revision;
+          if (_savedDraftHasUnknownSubmission) {
+            // The stored copy still says a command may be in flight. Reaching
+            // here means this editor learned the command was definitely
+            // rejected; persist that fact first, then discard.
+            current = (await _draftStore!.save(
+              _draftOf(snapshot),
+              expectedRevision: revision,
+            )).revision;
+            _draftRevision = current;
+          }
+          await _draftStore!.discardClean(_draftId, expectedRevision: current);
         }
         _draftRevision = null;
         _draftSavedJson = snapshot;
@@ -505,24 +521,41 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         if (!_draftDisposed) _draftStatus.value = '';
         continue;
       }
-      final spec = formDraftSpec;
       final saved = await _draftStore!.save(
-        FormDraft(
-          id: _draftId,
-          title: spec.title,
-          module: spec.module,
-          route: _draftRoute,
-          permission: spec.permission,
-          draftKind: spec.draftKind,
-          updatedAt: DateTime.now(),
-          data: jsonDecode(snapshot) as Map<String, dynamic>,
-        ),
+        _draftOf(snapshot),
         expectedRevision: _draftRevision,
       );
       _draftRevision = saved.revision;
       _draftSavedJson = snapshot;
       _draftError = null;
       if (!_draftDisposed) _draftStatus.value = '已自动保存本机草稿';
+    }
+  }
+
+  FormDraft _draftOf(String snapshot) {
+    final spec = formDraftSpec;
+    return FormDraft(
+      id: _draftId,
+      title: spec.title,
+      module: spec.module,
+      route: _draftRoute,
+      permission: spec.permission,
+      draftKind: spec.draftKind,
+      updatedAt: DateTime.now(),
+      data: jsonDecode(snapshot) as Map<String, dynamic>,
+    );
+  }
+
+  bool get _savedDraftHasUnknownSubmission {
+    final saved = _draftSavedJson;
+    if (saved == null) return false;
+    try {
+      return hasUnknownFormDraftSubmission(
+        jsonDecode(saved) as Map<String, dynamic>,
+        route: _draftRoute,
+      );
+    } on FormatException {
+      return false;
     }
   }
 

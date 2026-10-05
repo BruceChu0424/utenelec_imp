@@ -20,7 +20,7 @@ import 'instant_inventory_test_fixture.dart';
 const _scope = InstantInventoryScope(
   categoryId: 'category-1',
   warehouseId: 'warehouse-1',
-  includeDefective: false,
+  includeDefective: true,
   includeLineSide: true,
   keyword: '端子 & 螺丝',
   owningWarehouseNull: true,
@@ -257,7 +257,7 @@ InstantInventoryApiFixture _api() =>
 void _expectScope(Map<String, dynamic> query) {
   expect(query['categoryId'], 'category-1');
   expect(query['warehouseId'], 'warehouse-1');
-  expect(query['includeDefective'], false);
+  expect(query['includeDefective'], true);
   expect(query['includeLineSide'], true);
   expect(query['keyword'], '端子 & 螺丝');
   expect(query['owningWarehouseNull'], true);

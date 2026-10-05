@@ -21,11 +21,12 @@ final class MaterialAnalysisWarehouseBreakdownReader {
                 WHERE material.analysis_id = :analysisId AND material.active = TRUE
                   AND material.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
             ), warehouse_facts AS MATERIALIZED (
+                -- ADR-146: 分仓明细直接不列不良品仓(不良品不计入任何可用量)。
                 SELECT w.id, w.code, w.name,
-                       (NOT w.is_defective AND NOT w.is_line_side AND fn_warehouse_is_operational_leaf(w.id)) AS public_allowed,
+                       fn_warehouse_counts_as_usable(w.id) AS public_allowed,
                        fn_warehouse_main_id(w.id) AS main_warehouse_id
                 FROM warehouses w
-                WHERE w.is_deleted=FALSE AND w.is_accountable=TRUE
+                WHERE w.is_deleted=FALSE AND w.is_accountable=TRUE AND NOT w.is_defective
             ), open_safety AS MATERIALIZED (
                 SELECT action.warehouse_id, action.goods_id, action.color_id,
                        SUM(progress.safety_future_qty)::numeric AS open_qty

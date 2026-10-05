@@ -27,11 +27,13 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/models/production_material_discovery.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/production_draw_discovery_row.dart';
 import '../models/stock_doc.dart';
@@ -585,6 +587,7 @@ class _ProductionDrawBatchIssuePageState
         hierarchy: names.warehouseHierarchy,
         initialWarehouseId: row.values['warehouseId'] as String?,
         title: '选择实际发料仓',
+        use: WarehouseUse.goodOut,
       );
       if (!mounted ||
           selected == null ||
@@ -814,7 +817,7 @@ class _ProductionDrawBatchIssuePageState
                   ? error.fieldErrors?.firstOrNull?.message ?? error.message
                   : _uncertain
                   ? '批量出库结果待确认，请原样重试；已填写的信息已保留'
-                  : '本次尚未发送，请保留页面后重试'),
+                  : describeSubmitError(error, fallback: '本次尚未发送，请保留页面后重试')),
         );
       }
     } finally {
@@ -941,6 +944,7 @@ class _ProductionDrawBatchIssuePageState
                                     ),
                                   if (_uncertain)
                                     const Text('出库结果待确认，当前信息已锁定，请原样重试以核对结果。'),
+                                  WeightParamsLoadNotice(cache: _weightCache),
                                   TextField(
                                     key: const Key(
                                       'warehouse-draw-batch-remark',

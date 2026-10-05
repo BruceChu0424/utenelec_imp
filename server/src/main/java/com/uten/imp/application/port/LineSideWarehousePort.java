@@ -1,20 +1,17 @@
 package com.uten.imp.application.port;
 
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 车间内料仓(原名线边仓)自动配置端口(V595 / ADR-089; ADR-131 起面向员工叫「{车间名}内料仓」,
- * 接口名与方法名不改)。
+ * 车间内料仓(原名线边仓)的只读端口(ADR-147 起; 取代 V595 / ADR-089 的「第一次直送时自动配置」)。
  *
- * <p>仓库主档(master)拥有仓库行；生产(production)在车间直送时、内料仓(warehouse)开启整批领料时
- * 只需要「本车间与收料仓同主仓的那个内料仓」，没有就建一个。实现必须运行在调用方事务里：直送事实、
- * 班组自检放行、入内料仓三笔写入要与建仓同生共死，失败整单回滚不留半个空仓。
+ * <p>内料仓只能在「车间内料仓」里由开通命令建出(唯一真源是 {@code workshop_bins} 开通记录),
+ * 生产(production)的车间直送只读取收料车间已开通的那一个内料仓, 不再建仓。收料车间没开通时
+ * 直送资格判定 {@code fn_workshop_direct_targets} 已给出原因码 WORKSHOP_BIN_NOT_OPEN, 报工这部分送入仓库。
  */
 public interface LineSideWarehousePort {
 
-    /**
-     * 返回车间与 {@code demandWarehouseId} 同主仓的内料仓；没有就在同一事务里配置一个
-     * (auto_created、挂收料主仓下、参与核算、非不良、叶子仓、归属该车间)。
-     */
-    UUID ensure(UUID workshopDepartmentId, UUID demandWarehouseId);
+    /** 车间已开通的内料仓; 没开通返回空。 */
+    Optional<UUID> openedBinOf(UUID workshopDepartmentId);
 }

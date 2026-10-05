@@ -18,6 +18,8 @@ PRESERVED_TEMP_TABLES = (
     "bootstrap_source_master_ids",
     "bootstrap_legacy_reference_evidence",
     "bootstrap_bom_exclusions",
+    # ADR-145: documents/balances the reviewed warehouse crosswalk does not carry over.
+    "bootstrap_warehouse_exclusions",
 )
 _IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_$]*"
 _COPY = re.compile(

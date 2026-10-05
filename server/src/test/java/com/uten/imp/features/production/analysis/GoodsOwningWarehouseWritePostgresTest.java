@@ -58,6 +58,9 @@ class GoodsOwningWarehouseWritePostgresTest {
     private static final UUID WAREHOUSE_A = UUID.fromString("20000000-0000-4000-8000-00000000000a");
     private static final UUID WAREHOUSE_B = UUID.fromString("20000000-0000-4000-8000-00000000000b");
     private static final UUID WAREHOUSE_DELETED = UUID.fromString("20000000-0000-4000-8000-00000000000d");
+    private static final UUID WAREHOUSE_MAIN = UUID.fromString("20000000-0000-4000-8000-000000000001");
+    private static final UUID WAREHOUSE_DISABLED = UUID.fromString("20000000-0000-4000-8000-0000000000e1");
+    private static final UUID WAREHOUSE_DEFECTIVE = UUID.fromString("20000000-0000-4000-8000-0000000000e2");
     private static final UUID GOODS_PLAIN = UUID.fromString("10000000-0000-4000-8000-000000000001");
     private static final UUID GOODS_ALREADY_A = UUID.fromString("10000000-0000-4000-8000-000000000002");
     private static final UUID GOODS_SOFT_DELETED = UUID.fromString("10000000-0000-4000-8000-000000000003");
@@ -74,8 +77,30 @@ class GoodsOwningWarehouseWritePostgresTest {
                 CREATE TABLE warehouses(
                     id uuid PRIMARY KEY,
                     name text,
+                    parent_id uuid,
+                    status text NOT NULL DEFAULT '使用',
+                    is_accountable boolean NOT NULL DEFAULT true,
+                    is_defective boolean NOT NULL DEFAULT false,
                     is_line_side boolean NOT NULL DEFAULT false,
                     is_deleted boolean NOT NULL DEFAULT false)
+                """);
+        // ADR-145 / V798: the services ask fn_warehouse_is_good_stock_leaf whether a warehouse may be
+        // chosen (enabled, accountable, operational leaf, enabled ancestors, not a workshop bin, not a
+        // defective-stock warehouse). This hand-written schema carries only the columns that rule reads,
+        // so the test installs the same rule over them; the real function is covered by
+        // WarehouseSingleMainMasterMigrationPostgresTest on the full Flyway schema.
+        jdbc.execute("""
+                CREATE FUNCTION fn_warehouse_is_good_stock_leaf(p_warehouse uuid)
+                RETURNS boolean LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                        SELECT 1 FROM warehouses w
+                         WHERE w.id = p_warehouse AND NOT w.is_deleted AND w.status = '使用'
+                           AND w.is_accountable AND NOT w.is_line_side AND NOT w.is_defective
+                           AND NOT EXISTS (SELECT 1 FROM warehouses c
+                                            WHERE c.parent_id = w.id AND NOT c.is_deleted AND NOT c.is_line_side)
+                           AND NOT EXISTS (SELECT 1 FROM warehouses p
+                                            WHERE p.id = w.parent_id AND p.status IS DISTINCT FROM '使用'))
+                $$
                 """);
         jdbc.execute("""
                 CREATE TABLE goods(
@@ -95,8 +120,14 @@ class GoodsOwningWarehouseWritePostgresTest {
     void fixture() {
         jdbc.update("DELETE FROM goods");
         jdbc.update("DELETE FROM warehouses");
-        jdbc.update("INSERT INTO warehouses(id, name, is_deleted) VALUES (?,?,false),(?,?,false),(?,?,true)",
-                WAREHOUSE_A, "五金仓库", WAREHOUSE_B, "塑胶仓库", WAREHOUSE_DELETED, "已删仓");
+        jdbc.update("INSERT INTO warehouses(id, name) VALUES (?,?)", WAREHOUSE_MAIN, "仓库(14年版)");
+        jdbc.update("INSERT INTO warehouses(id, name, parent_id, is_deleted) VALUES (?,?,?,false),(?,?,?,false),(?,?,?,true)",
+                WAREHOUSE_A, "五金仓库", WAREHOUSE_MAIN, WAREHOUSE_B, "塑胶仓库", WAREHOUSE_MAIN,
+                WAREHOUSE_DELETED, "已删仓", WAREHOUSE_MAIN);
+        jdbc.update("INSERT INTO warehouses(id, name, parent_id, status) VALUES (?,?,?,'禁用')",
+                WAREHOUSE_DISABLED, "停用仓", WAREHOUSE_MAIN);
+        jdbc.update("INSERT INTO warehouses(id, name, parent_id, is_defective) VALUES (?,?,?,true)",
+                WAREHOUSE_DEFECTIVE, "成品不良品仓", WAREHOUSE_MAIN);
         jdbc.update("INSERT INTO goods(id, name, owning_warehouse_id, is_deleted) VALUES (?,?,NULL,false)",
                 GOODS_PLAIN, "未登记归属的货品");
         jdbc.update("INSERT INTO goods(id, name, owning_warehouse_id, is_deleted) VALUES (?,?,?,false)",
@@ -173,6 +204,30 @@ class GoodsOwningWarehouseWritePostgresTest {
                 new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_ALREADY_A, WAREHOUSE_B))));
         assertNull(owningWarehouseOf(GOODS_PLAIN));
         assertEquals(WAREHOUSE_A, owningWarehouseOf(GOODS_ALREADY_A));
+    }
+
+    /**
+     * ADR-145: 所属仓库只能是启用中的良品子仓——主仓(有子仓)、停用仓、不良品仓整批拒绝,
+     * 一行都不落; 但只校验真的变化的行: 历史上已经指向不良品仓的归属原样带回不报错。
+     */
+    @Test
+    void rejectsMainDisabledAndDefectiveWarehousesButOnlyValidatesChangedRows() {
+        for (UUID refused : List.of(WAREHOUSE_MAIN, WAREHOUSE_DISABLED, WAREHOUSE_DEFECTIVE)) {
+            ApiException error = assertThrows(ApiException.class, () -> service.applyOwningWarehouses(List.of(
+                    new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_PLAIN, WAREHOUSE_A),
+                    new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_ALREADY_A, refused))));
+            assertEquals("所属仓库只能选启用中的良品子仓，不能是主仓、停用仓、不良品仓或车间内料仓",
+                    error.getMessage());
+            assertNull(owningWarehouseOf(GOODS_PLAIN), "整批拒绝时不许落一半");
+            assertEquals(WAREHOUSE_A, owningWarehouseOf(GOODS_ALREADY_A));
+        }
+        jdbc.update("UPDATE goods SET owning_warehouse_id = ? WHERE id = ?", WAREHOUSE_DEFECTIVE, GOODS_ALREADY_A);
+        Map<String, Integer> result = service.applyOwningWarehouses(List.of(
+                new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_ALREADY_A, WAREHOUSE_DEFECTIVE),
+                new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(GOODS_PLAIN, WAREHOUSE_B)));
+        assertEquals(1, result.get("updated"));
+        assertEquals(1, result.get("skipped"));
+        assertEquals(WAREHOUSE_B, owningWarehouseOf(GOODS_PLAIN));
     }
 
     @Test

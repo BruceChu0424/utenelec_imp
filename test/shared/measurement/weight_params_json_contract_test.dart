@@ -5,7 +5,22 @@ import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
 
 void main() {
-  test('库存参数请求按仓库与颜色隔离，旧缓存键保持兼容', () {
+  test('请求行只带结构化身份: 4 个 UUID 齐全也不拼 key (ADR-151)', () {
+    // 2026-10-04 实测: 旧契约把 goods|supplier|warehouse|color 拼成 147 字的 key,
+    // 服务端限 100 字整批 422。现在每行只发结构化字段, 服务端不再要求 key。
+    const uuid = '00000000-0000-0000-0000-000000000000';
+    const line = WeightParamsLine(
+      goodsId: uuid,
+      supplierId: uuid,
+      warehouseId: uuid,
+      colorId: uuid,
+    );
+    expect(line.toJson(), {
+      'goodsId': uuid,
+      'supplierId': uuid,
+      'warehouseId': uuid,
+      'colorId': uuid,
+    });
     const a = WeightParamsLine(
       goodsId: 'g',
       supplierId: 's',
@@ -18,37 +33,72 @@ void main() {
       warehouseId: 'w2',
       colorId: 'red',
     );
-    const c = WeightParamsLine(
+    expect(a.paramsIdentity, b.paramsIdentity, reason: '单重只按 (货品, 供应商)');
+    expect(a.balanceIdentity, isNot(b.balanceIdentity), reason: '库存参考按仓库隔离');
+  });
+
+  test('响应按身份解析: 单重 items 与库存参考 stockBalances 分开, 行按仓库与颜色接上', () {
+    const line = WeightParamsLine(
       goodsId: 'g',
       supplierId: 's',
-      warehouseId: 'w1',
-      colorId: 'blue',
+      warehouseId: 'w',
+      colorId: 'red',
     );
-    expect(a.key, 'g|s|w1|red');
-    expect({a.key, b.key, c.key}.length, 3);
-    expect(const WeightParamsLine(goodsId: 'g', supplierId: 's').key, 'g|s');
-    expect(a.toJson(), {
-      'key': a.key,
-      'goodsId': 'g',
-      'supplierId': 's',
-      'warehouseId': 'w1',
-      'colorId': 'red',
-    });
+    final result = WeightParamsResult(
+      params: {
+        for (final raw in [
+          {'goodsId': 'g', 'supplierId': 's', 'basis': 'NONE'},
+        ])
+          WeightParams.fromJson(raw).identity: WeightParams.fromJson(raw),
+      },
+      balances: {
+        for (final raw in [
+          {
+            'warehouseId': 'w',
+            'goodsId': 'g',
+            'colorId': 'red',
+            'qtyBase': 1000,
+            'weightKg': 20,
+            'estimated': false,
+          },
+          {
+            'warehouseId': 'w',
+            'goodsId': 'g',
+            'colorId': null,
+            'qtyBase': 1000,
+            'weightKg': 99,
+          },
+        ])
+          WeightStockBalance.fromJson(raw).identity:
+              WeightStockBalance.fromJson(raw),
+      },
+    );
+    final params = result.of(line)!;
+    expect(params.supplierId, 's');
+    expect(params.stockBalance!.weightKg, 20, reason: '颜色精确匹配, 不拿无色余额');
+    expect(
+      result
+          .of(const WeightParamsLine(goodsId: 'g', supplierId: 's'))!
+          .stockBalance,
+      isNull,
+      reason: '不带仓库就没有库存参考',
+    );
+    expect(result.paramsOf('g', supplierId: 's'), isNotNull);
+    expect(result.paramsOf('g'), isNull, reason: '供应商不同是另一份单重');
   });
 
   test('同仓色库存余额可在学习前按数量比例给出参考并识别离谱重量', () {
-    final params = WeightParams.fromJson({
-      'key': 'g||w|red',
-      'goodsId': 'g',
-      'basis': 'NONE',
-      'stockBalance': {
-        'warehouseId': 'w',
-        'colorId': 'red',
-        'qtyBase': 1000,
-        'weightKg': 20,
-        'estimated': false,
-      },
-    });
+    final params = WeightParams.fromJson({'goodsId': 'g', 'basis': 'NONE'})
+        .withStockBalance(
+          WeightStockBalance.fromJson({
+            'warehouseId': 'w',
+            'goodsId': 'g',
+            'colorId': 'red',
+            'qtyBase': 1000,
+            'weightKg': 20,
+            'estimated': false,
+          }),
+        );
     final stock = params.stockBalance!;
     expect(stock.colorId, 'red');
     expect(stock.expectedKgFor(500), 10);
@@ -65,37 +115,41 @@ void main() {
   });
 
   test('未知或非法库存不估重，入库可信历史优先、出库对应库存优先', () {
-    final params = WeightParams.fromJson({
-      'key': 'g||w|',
-      'goodsId': 'g',
-      'basis': 'LEARNED',
-      'logMean': -6.214608098422191,
-      'lotPrior': 0.0004,
-      'tier': 'GREEN',
-      'stockBalance': {'warehouseId': 'w', 'qtyBase': 1000, 'weightKg': 20},
-    });
+    final params =
+        WeightParams.fromJson({
+          'goodsId': 'g',
+          'basis': 'LEARNED',
+          'logMean': -6.214608098422191,
+          'lotPrior': 0.0004,
+          'tier': 'GREEN',
+        }).withStockBalance(
+          WeightStockBalance.fromJson({
+            'warehouseId': 'w',
+            'goodsId': 'g',
+            'qtyBase': 1000,
+            'weightKg': 20,
+          }),
+        );
     expect(params.suggestionFor(1000)!.kg, closeTo(2, 0.0001));
     expect(
       params.suggestionFor(1000, mode: WeightCaptureMode.outbound)!.kg,
       20,
     );
     for (final weight in [null, 0, -1, 'NaN', 'Infinity']) {
-      final unknown = WeightParams.fromJson({
-        'key': 'g',
-        'goodsId': 'g',
-        'stockBalance': {
+      final unknown = WeightParams.fromJson({'goodsId': 'g'}).withStockBalance(
+        WeightStockBalance.fromJson({
           'warehouseId': 'w',
+          'goodsId': 'g',
           'qtyBase': 1000,
           'weightKg': weight,
-        },
-      });
+        }),
+      );
       expect(unknown.suggestionFor(1000), isNull);
     }
   });
 
   test('params carry the server scale resolution into predictions', () {
     final params = WeightParams.fromJson({
-      'key': 'g1|',
       'goodsId': 'g1',
       'basis': 'LEARNED',
       'unitWeightKg': 0.002312,
@@ -110,7 +164,6 @@ void main() {
     expect(params.scaleResKg, 0.001);
     final coarse = params.countFromWeight(0.05)!;
     final fine = WeightParams.fromJson({
-      'key': 'g1|',
       'goodsId': 'g1',
       'basis': 'LEARNED',
       'logMean': -6.0696,
@@ -124,7 +177,7 @@ void main() {
       reason: '秤越粗, 称重折算件数的区间越宽',
     );
     expect(
-      WeightParams.fromJson({'key': 'k', 'goodsId': 'g'}).scaleResKg,
+      WeightParams.fromJson({'goodsId': 'g'}).scaleResKg,
       WeightPredictor.defaultScaleResKg,
     );
   });
@@ -143,7 +196,7 @@ void main() {
         'regimeMode': 'MANUAL',
         'version': 3,
       },
-      'resolved': {'key': 'g1|', 'goodsId': 'g1', 'basis': 'MANUAL'},
+      'resolved': {'goodsId': 'g1', 'basis': 'MANUAL'},
       'goodsRow': {'unitWeightKg': 0.00231, 'nObs': 5, 'nInliers': 4},
       'supplierRows': [
         {'supplierId': 's1', 'supplierName': '甲五金', 'diffPct': 1.5},

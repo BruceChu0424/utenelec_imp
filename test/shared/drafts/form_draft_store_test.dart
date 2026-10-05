@@ -151,6 +151,107 @@ void main() {
       expect(retained['data'], saved.data);
     },
   );
+  group('clean discard (ADR-151 §1)', () {
+    test(
+      'is not a tombstone: the owner reuses the identity, a stale tab cannot',
+      () async {
+        final storage = MemoryDraftStorage();
+        final owner = _container(storage);
+        final stale = _container(storage);
+        addTearDown(owner.dispose);
+        addTearDown(stale.dispose);
+        final a = owner.read(formDraftsProvider.notifier);
+        await a.ready;
+        final saved = await a.save(_draft('clean'));
+        final b = stale.read(formDraftsProvider.notifier);
+        await b.ready;
+        await a.discardClean(saved.id, expectedRevision: saved.revision);
+        final marker = jsonDecode(storage.records.values.single) as Map;
+        expect(marker['completed'], isNot(true));
+        expect(marker.containsKey('historyAction'), isFalse);
+        expect(marker.containsKey('data'), isFalse);
+        expect(owner.read(formDraftsProvider), isEmpty);
+        await expectLater(
+          b.save(_draft('clean'), expectedRevision: saved.revision),
+          throwsA(isA<FormDraftConflict>()),
+        );
+        final again = await a.save(_draft('clean', note: 'again'));
+        expect(again.data['note'], 'again');
+        expect(owner.read(formDraftsProvider).single.id, 'clean');
+      },
+    );
+
+    test(
+      'a fresh session lists nothing and explicit delete is a no-op',
+      () async {
+        final storage = MemoryDraftStorage();
+        final first = _container(storage);
+        addTearDown(first.dispose);
+        final a = first.read(formDraftsProvider.notifier);
+        await a.ready;
+        final saved = await a.save(_draft('gone'));
+        await a.discardClean(saved.id, expectedRevision: saved.revision);
+        final reopened = _container(storage);
+        addTearDown(reopened.dispose);
+        final b = reopened.read(formDraftsProvider.notifier);
+        await b.ready;
+        expect(reopened.read(formDraftsProvider), isEmpty);
+        await b.delete('gone');
+        final record = jsonDecode(storage.records.values.single) as Map;
+        expect(record['completed'], isNot(true), reason: '没有事实可留, 不写墓碑');
+      },
+    );
+
+    test('never discards an unknown submission or a newer revision', () async {
+      final storage = MemoryDraftStorage();
+      final container = _container(storage);
+      addTearDown(container.dispose);
+      final store = container.read(formDraftsProvider.notifier);
+      await store.ready;
+      final pending = await store.save(
+        _draft(
+          'pending',
+          data: {'_formDraftHasUnknownSubmission': true, 'commandKey': 'k'},
+        ),
+      );
+      final before = storage.records.values.single;
+      await expectLater(
+        store.discardClean(pending.id, expectedRevision: pending.revision),
+        throwsA(isA<FormDraftUnknownSubmission>()),
+      );
+      expect(storage.records.values.single, before);
+      final newer = await store.save(
+        _draft('pending', data: {'note': 'other tab'}),
+        expectedRevision: pending.revision,
+      );
+      await expectLater(
+        store.discardClean(newer.id, expectedRevision: pending.revision),
+        throwsA(isA<FormDraftConflict>()),
+      );
+      expect(
+        container.read(formDraftsProvider).single.data['note'],
+        'other tab',
+      );
+    });
+
+    test('completed submissions stay terminal', () async {
+      final storage = MemoryDraftStorage();
+      final container = _container(storage);
+      addTearDown(container.dispose);
+      final store = container.read(formDraftsProvider.notifier);
+      await store.ready;
+      final saved = await store.save(_draft('done'));
+      await store.complete(saved.id, expectedRevision: saved.revision);
+      await expectLater(
+        store.discardClean(saved.id, expectedRevision: saved.revision),
+        throwsA(isA<FormDraftConflict>()),
+      );
+      await expectLater(
+        store.save(_draft('done')),
+        throwsA(isA<FormDraftConflict>()),
+      );
+    });
+  });
   final pendingPayloads = <String, Map<String, dynamic>>{
     'unified': {
       '_formDraftHasUnknownSubmission': true,

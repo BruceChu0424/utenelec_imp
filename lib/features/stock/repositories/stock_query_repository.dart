@@ -92,7 +92,8 @@ class StockQueryRepository {
   }
 
   /// 即时库存分页（货品+颜色聚合余额；categoryId=分类含子树 / warehouseId=仓库 / keyword 模糊）。
-  /// includeDefective=「含不良品仓」开关（仅仓库=全部时生效，默认 true=老系统口径）。
+  /// includeDefective=「含不良品仓」开关(仅仓库=全部/主仓聚合时生效；ADR-146 默认 false，
+  /// 打开后每行另带 defectiveQty 与合计「其中不良品数量」)。
   /// 2026-09-16 起表头筛选：owningWarehouse=归属仓库 UUID；colorId/series/unitId=颜色/
   /// 物料系列/单位列筛选（值为颜色 UUID / 系列文本 / 单位 UUID，桶由列表响应 facets 下发）。
   /// attention 为服务器白名单行动规则；明细和 totals 包含规则筛选，facets 保持基础范围。
@@ -102,7 +103,7 @@ class StockQueryRepository {
     int size = 20,
     String? categoryId,
     String? warehouseId,
-    bool includeDefective = true,
+    bool includeDefective = false,
     bool includeLineSide = false,
     String? keyword,
     String? owningWarehouse,

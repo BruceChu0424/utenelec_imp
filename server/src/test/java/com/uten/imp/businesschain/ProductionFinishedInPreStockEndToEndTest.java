@@ -6,8 +6,7 @@ import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionR
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
 import com.uten.imp.features.stock.StockDocService;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionContracts.PlaceSuggestionItemRequest;
 import com.uten.imp.features.warehouse.place.WarehousePlaceSuggestionContracts.PlaceSuggestionRequest;
@@ -161,10 +160,16 @@ class ProductionFinishedInPreStockEndToEndTest {
         assertEquals(2, result.items().size());
         assertEquals(0, new BigDecimal("7").compareTo(balance(c.warehouseId(), c.goodsId())),
                 "两行合格量都按登记位置进库存");
-        assertEquals(2, jdbc.queryForObject("""
+        // ADR-148：同一报工、同一登记、同一计划的两行合格一张成品入库单(两行)，自动点收一次。
+        assertEquals(1, jdbc.queryForObject("""
                 SELECT count(*) FROM production_finished_in_confirmations confirmation
                 JOIN stock_documents document ON document.id = confirmation.stock_document_id
                 WHERE document.source_daily_report_id = ? AND confirmation.origin = 'PRE_STOCKED_AUTO'
+                """, Integer.class, c.reportId()));
+        assertEquals(2, jdbc.queryForObject("""
+                SELECT count(*) FROM stock_document_items item
+                JOIN stock_documents document ON document.id = item.doc_id
+                WHERE document.source_daily_report_id = ? AND NOT item.is_deleted
                 """, Integer.class, c.reportId()));
         assertEquals(0, finishedInDocs(c.reportId(), 0), "批量合格后同样没有待点收任务");
     }
@@ -273,13 +278,10 @@ class ProductionFinishedInPreStockEndToEndTest {
         List<String> places = reportItems.stream()
                 .map(id -> "CP-" + id.toString().substring(0, 4).toUpperCase(java.util.Locale.ROOT))
                 .toList();
-        List<ArrivalRegistrationItemRequest> items = new java.util.ArrayList<>();
-        for (int index = 0; index < reportItems.size(); index++) {
-            items.add(new ArrivalRegistrationItemRequest(reportItems.get(index), places.get(index),
-                    preStock ? new BigDecimal(quantities[index]) : null));
-        }
-        arrivals.register(reportId, new ArrivalRegistrationRequest(
-                tag + "-register-" + reportId, world.warehouseId(), items, "先入库后质检链路", preStock));
+        // ADR-148：一批实物一个库位、一个实点(整批合计)，服务端展开到各份。
+        FinishedArrivalTestSupport.registerItems(arrivals, reportId, tag + "-register-" + reportId,
+                world.warehouseId(), reportItems, item -> places.get(reportItems.indexOf(item)),
+                "先入库后质检链路", preStock);
         List<UUID> inspections = jdbc.queryForList("""
                 SELECT inspection.id FROM production_fqc_inspections inspection
                 JOIN production_daily_report_items item ON item.id = inspection.source_report_item_id

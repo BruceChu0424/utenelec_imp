@@ -15,6 +15,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,7 +74,8 @@ class ProductionFqcFinishedInboundServiceTest {
                         allocationId, goodsId, null, unitId,
                         BigDecimal.ONE, planId, "SJ202608280001",
                         reportedQty, "IN_PROGRESS", inspectionId,
-                        decisionId, "A31-3-1", registrationWeight, priorPassQty
+                        decisionId, "A31-3-1", registrationWeight, priorPassQty,
+                        quantity, UUID.randomUUID(), false, 1, 0
                 }));
         Query goods = query();
         when(goods.getResultList()).thenReturn(
@@ -99,10 +101,11 @@ class ProductionFqcFinishedInboundServiceTest {
             return value;
         });
 
-        var result = service.createReleasedDraft(
+        var result = service.createReleasedDrafts(List.of(
                 new ProductionFinishedInboundReleasePort.ReleaseRequest(
                         inspectionId, decisionId,
-                        reportId, reportItemId, quantity));
+                        reportId, reportItemId, quantity))).get(decisionId);
+        assertThat(result.preStockedAutoConfirm()).isFalse();
 
         assertThat(result.stockDocumentId()).isEqualTo(documentId);
         assertThat(result.stockDocumentItemId())

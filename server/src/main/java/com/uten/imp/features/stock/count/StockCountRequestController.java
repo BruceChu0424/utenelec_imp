@@ -40,23 +40,26 @@ public class StockCountRequestController {
     public List<UUID> candidateCategoryIds(@RequestParam UUID warehouseId,@RequestParam(defaultValue="") String keyword) {
         return service.candidateCategoryIds(warehouseId,keyword);
     }
+    /**
+     * 盘点申请列表。仓库审核(reviewRoute=WAREHOUSE)是仓库任务, 按仓库数据范围(ADR-149)强制过滤,
+     * scopeWarehouseId = 在可选范围内挑一个仓(越界 403); 财务审核与「我提交的」不按仓库范围裁剪。
+     */
     @GetMapping public PageResponse<Map<String,Object>> list(@RequestParam(required=false) String reviewRoute,
             @RequestParam(required=false) String status, @RequestParam(required=false) UUID warehouseId,
-            @RequestParam(defaultValue="") String warehouseScope,@RequestParam(required=false) UUID scopeWarehouseId,
+            @RequestParam(required=false) UUID scopeWarehouseId,
             @RequestParam(required=false) String keyword,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
-        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.resolve(warehouseScope,scopeWarehouseId),keyword);
+        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(scopeWarehouseId),keyword);
     }
-    public PageResponse<Map<String,Object>> list(String reviewRoute,String status,UUID warehouseId,
-                                               String warehouseScope,UUID scopeWarehouseId,int page,int size) {
-        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.resolve(warehouseScope,scopeWarehouseId));
-    }
-    /** No task-center filter for existing callers and global badge counts. */
+    /** Java 调用方: 同端点口径(本人仓库数据范围)。 */
     public PageResponse<Map<String,Object>> list(String reviewRoute,String status,UUID warehouseId,
                                                int page,int size) {
-        return service.list(reviewRoute,status,warehouseId,page,size);
+        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(null));
     }
-    @GetMapping("/counts") public Map<String,Object> counts() { return service.counts(); }
+    /** 待办计数; warehousePending(仓库审核红数, 徽章来源 stockCountWarehouse)与仓库审核列表同一仓库范围。 */
+    @GetMapping("/counts") public Map<String,Object> counts(@RequestParam(required=false) UUID scopeWarehouseId) {
+        return service.counts(warehouseScopes.current(scopeWarehouseId));
+    }
     @GetMapping("/{id}") public Map<String,Object> detail(@PathVariable UUID id) {
         Map<String,Object> detail=service.detail(id);
         auditViews.record("view_stock_count_request_detail","stock_count_requests",id,

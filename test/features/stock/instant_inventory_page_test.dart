@@ -132,8 +132,8 @@ void main() {
     await pumpPage(tester, stock: stock);
 
     expect(stock.lastIncludeLineSide, isFalse);
-    // 同一口径里不良品仓仍是默认计入的，别把两个开关搞混。
-    expect(stock.lastIncludeDefective, isTrue);
+    // ADR-146: 不良品仓同样默认不计入(只看可用良品)，打开「含不良品仓」才另列不良品。
+    expect(stock.lastIncludeDefective, isFalse);
 
     // 换仓库口径(主仓子树聚合)不得顺手把线边仓带回来。
     await tapInventoryHeader(tester, const Key('instant-inventory-warehouse'));
@@ -625,7 +625,7 @@ void main() {
     expect(stock.lastSeries, 'X系列');
     expect(stock.lastUnitId, 'unit-1');
     expect(stock.lastIncludeLineSide, isFalse);
-    expect(stock.lastIncludeDefective, isTrue);
+    expect(stock.lastIncludeDefective, isFalse);
 
     // 取消筛选（选「所有」）→ 参数回到 null。
     table().onFilterChanged('unit', null);
@@ -717,7 +717,13 @@ class _InventoryApi extends ApiClient {
   }) async => path.contains('warehouses/dict')
       ? const <Map<String, dynamic>>[
           {'id': 'w1', 'name': '成品仓库', 'code': 'C04'},
-          {'id': 'w1a', 'name': '成品不良品仓', 'code': 'C0401', 'parentId': 'w1'},
+          {
+            'id': 'w1a',
+            'name': '成品不良品仓',
+            'code': 'C0401',
+            'parentId': 'w1',
+            'selectableForNew': true,
+          },
         ]
       : const <Map<String, dynamic>>[];
 }
@@ -768,7 +774,7 @@ class _RecordingStockRepository extends StockQueryRepository {
     int size = 20,
     String? categoryId,
     String? warehouseId,
-    bool includeDefective = true,
+    bool includeDefective = false,
     bool includeLineSide = false,
     String? keyword,
     String? owningWarehouse,

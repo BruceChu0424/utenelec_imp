@@ -32,23 +32,34 @@ abstract final class DocumentStatusBucket {
 }
 
 /// 一次分段计数的范围: 单据类型 + 出货类型切片(仅 salesShipment, 客户零星发货列表传
-/// DIRECT_CUSTOMER) + 仓库单据类型(仅 stockDocument)。作 family 键, 值相等即同一份计数。
+/// DIRECT_CUSTOMER) + 仓库单据类型(仅 stockDocument) + 任务中心挑的仓(仅仓库单据,
+/// ADR-149: 与旁边列表同一个 scopeWarehouseId, 计数与列表同一谓词)。作 family 键, 值相等即同一份计数。
 class DocumentStatusScope {
-  const DocumentStatusScope(this.kind, {this.shipmentKind, this.docType});
+  const DocumentStatusScope(
+    this.kind, {
+    this.shipmentKind,
+    this.docType,
+    this.scopeWarehouseId,
+  });
 
   final DraftDocKind kind;
   final String? shipmentKind;
   final String? docType;
+
+  /// 仓库任务中心选择器挑的仓(含下级); null = 本人默认范围(服务端照样按本人范围计数)。
+  final String? scopeWarehouseId;
 
   @override
   bool operator ==(Object other) =>
       other is DocumentStatusScope &&
       other.kind == kind &&
       other.shipmentKind == shipmentKind &&
-      other.docType == docType;
+      other.docType == docType &&
+      other.scopeWarehouseId == scopeWarehouseId;
 
   @override
-  int get hashCode => Object.hash(kind, shipmentKind, docType);
+  int get hashCode =>
+      Object.hash(kind, shipmentKind, docType, scopeWarehouseId);
 }
 
 /// 同一业务分类内的本机填写草稿范围，供列表与分类徽章共用。
@@ -109,6 +120,8 @@ final documentStatusCountsProvider = FutureProvider.autoDispose
               if (scope.shipmentKind != null)
                 'shipmentKind': scope.shipmentKind,
               if (scope.docType != null) 'docType': scope.docType,
+              if (scope.scopeWarehouseId != null)
+                'scopeWarehouseId': scope.scopeWarehouseId,
             },
           );
       return {

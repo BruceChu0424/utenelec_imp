@@ -9380,6 +9380,7 @@ ApiClient _api(
                     'fullName': '王负责人',
                     'departmentId': 'workshop-1',
                     'departmentName': '装配一车间',
+                    'selectableForNew': true,
                   },
                 ],
                 'page': 1,

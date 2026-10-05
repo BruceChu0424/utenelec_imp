@@ -763,7 +763,7 @@ class WorkshopMaterialClosePostgresTest {
 
         void enable(List<WorkshopMaterialChoicePort.ProductChoice> choices) {
             login();
-            var view = settings.update(workshop, new SettingsRequest(0L, true, world.warehouseId(), GO_LIVE, choices,
+            var view = settings.update(workshop, new SettingsRequest(null, 0L, true, world.warehouseId(), null, true, GO_LIVE, choices,
                     key("enable")));
             assertTrue(view.periodicEnabled());
             bin = view.binWarehouseId();

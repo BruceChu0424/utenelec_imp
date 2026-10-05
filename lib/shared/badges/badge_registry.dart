@@ -220,6 +220,12 @@ abstract final class BadgeFact {
 
   static const warehouseInboundExpectation =
       'warehouseInboundExpectation.count';
+
+  /// 预计到货分来源(ADR-149: 与列表同一仓库范围, 合计 = 两类之和)。
+  static const warehouseInboundExpectationPurchase =
+      'warehouseInboundExpectation.PURCHASE';
+  static const warehouseInboundExpectationSubcontract =
+      'warehouseInboundExpectation.SUBCONTRACT';
   static const warehouseArrivalException = 'warehouseArrivalException.count';
   static const finishedInbound = 'finishedInbound.count';
   static const productionDraw = 'productionDraw.count';

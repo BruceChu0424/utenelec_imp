@@ -223,10 +223,11 @@ class _ClientShipAddressSheetState
       if (!mounted) return;
       // 新增即选用：直接回填表单并关闭弹窗，少一步操作。
       Navigator.of(context).pop(saved);
-    } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
-    } catch (_) {
-      if (mounted) context.appError('新增地址失败，请稍后重试');
+    } catch (error) {
+      // 服务端拒绝与本机草稿保护的原因都如实给人看(ADR-151 §2)。
+      if (mounted) {
+        context.appError(describeSubmitError(error, fallback: '新增地址失败，请稍后重试'));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

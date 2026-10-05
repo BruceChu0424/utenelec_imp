@@ -67,7 +67,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>T3 超收 1050 (料只发了 1000): 登记落到货异常通知财务, 文案点明「委外商自带料」; 财务批准后
  *       仓库一键入库必须走得通 —— 回厂消费我方子件时只消费 1000, 多出的 50 按自带料入库, 守恒不放松
  *       (ADR-103 §三.6)。</li>
- *   <li>T4 子件只在非作业叶仓 (不良品仓) 有货时建单仍锁; 调拨进作业叶仓后放行 (ADR-103 §2.1 判据)。</li>
+ *   <li>T4 子件只在不良品仓有货时建单仍锁; 普通调拨不能把不良品搬回良品仓, 只有「不良复判转回」后放行
+ *       (ADR-103 §2.1 判据, ADR-146 不良品专门通道)。</li>
  * </ul>
  *
  * <p>骨架复制自 {@link SubcontractToleranceAutoSettleEndToEndTest} (DIRECT 形态) 与
@@ -496,18 +497,24 @@ class SubcontractComponentReturnLegEndToEndTest {
     // ===================== T4 =====================
 
     @Test
-    void childStockOnlyInANonOperationalLeafWarehouseKeepsOrderingLockedUntilTransferredIntoAnOperationalLeaf() {
+    void childStockOnlyInADefectiveWarehouseKeepsOrderingLockedUntilReleasedBackByQualityRecheck() {
         var w = fixture.seedWorld("sc-comp-return-transfer");
         fixture.loginAs(w.superAdminUserId());
         bindSoleComponentBom(w);
-        // 不良品仓是记账叶仓 (其它入库能进), 但被 ADR-103 判据 (NOT is_defective) 排除在作业叶仓之外。
         UUID defectiveWarehouseId = UUID.randomUUID();
         db.update("INSERT INTO warehouses(id, code, name, status, is_defective) VALUES (?, ?, ?, '使用', TRUE)",
                 defectiveWarehouseId, "WH-DEF-sc-comp-transfer", "不良品仓-sc-comp-transfer");
-        receiveChildStock(w, "1000", defectiveWarehouseId);
+        // ADR-146: 正常到货不能直接入不良品仓。
+        ApiException refused = assertThrows(ApiException.class,
+                () -> receiveChildStock(w, "1000", defectiveWarehouseId));
+        assertTrue(refused.getMessage().contains("是不良品仓"), refused.getMessage());
+        // 判为不良的子件只能经「转不良品仓」从良品仓转进来。
+        receiveChildStock(w, "1000", w.warehouseId());
+        defectiveMove(w, "TO_DEFECTIVE", w.warehouseId(), defectiveWarehouseId, "1000", "子件来料划伤, 判不良");
         qty("1000", onHand(w.goodsD(), defectiveWarehouseId), "子件必须真的进了不良品仓");
+        qty("0", onHand(w.goodsD(), w.warehouseId()), "良品仓已转空");
 
-        // ① 子件只在非作业叶仓有货 → 建单仍锁 (判据只看作业叶仓合格可动用量)。
+        // ① 子件只在不良品仓有货 → 建单仍锁 (判据只看计入可用量的仓)。
         ApiException locked = assertThrows(ApiException.class,
                 () -> orders.create(orderRequest(w, "1000")),
                 "子件只在不良品仓时不得建委外订货单 (ADR-103 §2.1)");
@@ -516,13 +523,27 @@ class SubcontractComponentReturnLegEndToEndTest {
         assertEquals(0, count("SELECT COUNT(*) FROM subcontract_order_items WHERE goods_id=?", w.goodsE()),
                 "被锁的建单不能留下半张单");
 
-        // ② 调拨进作业叶仓 (调拨单审核走 StockService 入库方向) → 建单放行。
-        transferChildStock(w, defectiveWarehouseId, w.warehouseId(), "1000");
-        qty("1000", onHand(w.goodsD(), w.warehouseId()), "调拨后作业叶仓子件量");
-        qty("0", onHand(w.goodsD(), defectiveWarehouseId), "调拨后不良品仓子件量");
+        // ② 普通调拨不能把不良品搬回良品仓 (两端必须同类)。
+        ApiException mixed = assertThrows(ApiException.class,
+                () -> transferChildStock(w, defectiveWarehouseId, w.warehouseId(), "1000"));
+        assertTrue(mixed.getMessage().contains("普通调拨的调出仓和调入仓必须同是良品仓或同是不良品仓"),
+                mixed.getMessage());
+
+        // ③ 品质复判合格 →「不良复判转回」→ 建单放行。
+        defectiveMove(w, "DEFECT_RELEASE", defectiveWarehouseId, w.warehouseId(), "1000", "复判合格, 转回良品仓");
+        qty("1000", onHand(w.goodsD(), w.warehouseId()), "复判转回后作业叶仓子件量");
+        qty("0", onHand(w.goodsD(), defectiveWarehouseId), "复判转回后不良品仓子件量");
         UUID orderId = orders.create(orderRequest(w, "1000")).getId();
-        assertNotNull(orderId, "子件调进作业叶仓后建单必须放行");
+        assertNotNull(orderId, "子件复判转回良品仓后建单必须放行");
         assertEquals(1, count("SELECT COUNT(*) FROM subcontract_order_items WHERE order_id=?", orderId));
+    }
+
+    /** ADR-146 不良品专门通道: 一次建单并过账。 */
+    private void defectiveMove(FullChainEndToEndTest.World w, String kind, UUID from, UUID to, String qty,
+                               String reason) {
+        stockDocs.createDefectiveMove(new com.uten.imp.features.stock.dto.StockDefectiveMoveRequest(
+                kind, from, to, reason, BusinessTime.today(), "sc-comp-" + kind + "-" + UUID.randomUUID(),
+                List.of(childLine(w, qty))));
     }
 
     // ===================== 夹具 =====================

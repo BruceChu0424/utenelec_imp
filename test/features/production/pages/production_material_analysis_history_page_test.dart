@@ -143,6 +143,7 @@ class _PlanningMainNames extends MasterNameService {
       id: 'warehouse-1',
       name: '实际子仓',
       parentId: 'planning-main',
+      selectableForNew: true,
     ),
   ];
 }

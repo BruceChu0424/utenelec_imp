@@ -19,7 +19,10 @@ Future<String?> showProductionMaterialReturnReceiveDialog(
   String? initialWarehouseId,
   String? weightSummary,
 }) {
-  final eligible = WarehouseSelection(hierarchy).selectableIds;
+  final eligible = WarehouseSelection(
+    hierarchy,
+    use: WarehouseUse.goodIn,
+  ).selectableIds;
   final scoped = hierarchy
       .where(
         (entry) =>
@@ -65,7 +68,10 @@ Future<String?> showProductionMaterialReturnReceiveDialog(
                   required: true,
                   allowClear: false,
                   value: selected,
-                  items: warehouseHierarchyItems(scoped),
+                  items: warehouseHierarchyItems(
+                    scoped,
+                    use: WarehouseUse.goodIn,
+                  ),
                   info: '来源记录用于追溯；本次库存进入这里选择的正常仓库。',
                   errorMessage: mainWarehouseId == null
                       ? '来源主仓尚未读取，请刷新单据'

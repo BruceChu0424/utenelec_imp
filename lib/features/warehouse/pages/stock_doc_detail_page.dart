@@ -42,6 +42,7 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
 import '../../../shared/measurement/weight_predictor.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
@@ -258,9 +259,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         _outboundReviewToken == null) {
       return;
     }
-    final l10n =
-        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
-        AppLocalizationsZh();
+    final l10n = _detailL10n;
     final token = _outboundReviewToken!;
     setState(() => _confirmingOutbound = true);
     try {
@@ -784,16 +783,21 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     }
   }
 
-  /// FQC PASS 只形成“待点收上限”；仓库逐行点收后，实收量才成为库存/iqty 权威。
+  /// FQC PASS 只形成“待点收上限”；仓库按实物批(ADR-148)点收后，实收量才成为库存/iqty 权威。
+  /// 一批 = 同一报工、同一产出批次的需求份 / 计划公共 / 实际超产，只填一个实收数；
+  /// 服务端把实收先分给需求份，少收先扣实际超产。
   Future<void> _confirmFinishedInboundDialog() async {
     if (_busy || _d == null || _d!.items.isEmpty) return;
     final detail = _d!;
+    final lots = detail.finishedLots;
+    if (lots.isEmpty) {
+      context.appWarning('本单没有可点收的实物批，请刷新后重试');
+      return;
+    }
     final names = ref.read(masterNameServiceProvider);
     final controllers = <String, TextEditingController>{
-      for (final item in detail.items)
-        item.id!: TextEditingController(
-          text: _quantityInputText(item.reportedQty ?? item.qty ?? 0),
-        ),
+      for (final lot in lots)
+        lot.lotId: TextEditingController(text: _quantityInputText(lot.qty)),
     };
     final reasonController = TextEditingController();
     String? dialogError;
@@ -811,11 +815,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                 children: [
                   Text(
                     '当前数量是已审核报工或 FQC PASS 形成的待点收上限，并不等于仓库已收。'
-                    '请按实物逐行确认；少收部分会自动保留为新的待点收余量单。',
+                    '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，按实物点一次；'
+                    '实收先满足需求份，少收先扣实际超产，少收部分会自动保留为新的待点收余量单。',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  for (final item in detail.items)
+                  for (final lot in lots)
                     Padding(
                       padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
                       child: Row(
@@ -826,11 +831,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                             child: Padding(
                               padding: const EdgeInsets.only(top: 10),
                               child: Text(
-                                '${names.goods(item.goodsId)}\n'
-                                '待点收上限 ${_quantityInputText(item.reportedQty ?? item.qty ?? 0)} '
-                                '${names.unit(item.unitId)}'
+                                '${names.goods(lot.goodsId)}\n'
+                                '待点收上限 ${_quantityInputText(lot.qty)} '
+                                '${names.unit(lot.unitId)}'
+                                '${lot.splitText == null ? '' : '\n其中 ${lot.splitText}'}'
+                                '${lot.shortageHint == null ? '' : '\n${lot.shortageHint}'}'
                                 // 产成品重量在到货登记时称 (按放行量分摊), 这里只读。
-                                '${item.weight == null ? '' : '\n登记重量 ${formatWeightValue(item.weight)}'}',
+                                '${lot.weight == null ? '' : '\n登记重量 ${formatWeightValue(lot.weight)}'}',
                               ),
                             ),
                           ),
@@ -841,7 +848,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 TextField(
-                                  controller: controllers[item.id!],
+                                  key: Key('finished-in-lot-${lot.lotId}'),
+                                  controller: controllers[lot.lotId],
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
                                         decimal: true,
@@ -857,10 +865,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                     ),
                                   ),
                                 ),
-                                if (item.weight != null)
+                                if (lot.weight != null)
                                   _FinishedInboundWeightHint(
-                                    item: item,
-                                    accepted: controllers[item.id!]!,
+                                    weight: lot.weight!,
+                                    baseQty: lot.qty,
+                                    accepted: controllers[lot.lotId]!,
                                   ),
                               ],
                             ),
@@ -877,7 +886,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         label: fieldLabel(
                           '少收差异原因',
                           Theme.of(context),
-                          info: '任一行实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
+                          info: '任一批实收少于申报量时必填，例如：本次只交接 80 件，余量待下批。',
                         ),
                         border: const OutlineInputBorder(),
                       ),
@@ -909,13 +918,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               icon: const Icon(Icons.inventory_rounded),
               onPressed: () {
                 var hasVariance = false;
-                for (final item in detail.items) {
-                  final proposed = item.reportedQty ?? item.qty ?? 0;
+                for (final lot in lots) {
+                  final proposed = lot.qty;
                   final accepted = double.tryParse(
-                    controllers[item.id]!.text.trim(),
+                    controllers[lot.lotId]!.text.trim(),
                   );
                   if (accepted == null || accepted < 0) {
-                    setDialogState(() => dialogError = '每行必须填写不小于 0 的实收数量');
+                    setDialogState(() => dialogError = '每批必须填写不小于 0 的实收数量');
                     return;
                   }
                   if (accepted > proposed + 0.0000001) {
@@ -944,15 +953,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       reasonController.dispose();
       return;
     }
-    final lines = <Map<String, dynamic>>[
-      for (final item in detail.items)
+    final lotLines = <Map<String, dynamic>>[
+      for (final lot in lots)
         {
-          'itemId': item.id,
-          'acceptedQty': double.parse(controllers[item.id]!.text.trim()),
+          'lotId': lot.lotId,
+          'acceptedQty': double.parse(controllers[lot.lotId]!.text.trim()),
         },
     ];
-    final canonical = lines
-        .map((line) => '${line['itemId']}|${line['acceptedQty']}')
+    final canonical = lotLines
+        .map((line) => '${line['lotId']}|${line['acceptedQty']}')
         .join(';');
     final idempotencyKey = businessIdempotencyKey(
       'FINISHED-IN-CONFIRM',
@@ -970,7 +979,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           .read(stockDocRepositoryProvider(widget.docType))
           .confirmFinishedInbound(
             widget.id,
-            lines,
+            lotLines,
             idempotencyKey,
             varianceReason: reason,
           );
@@ -1039,6 +1048,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  /// 详情页文案；没挂本地化的轻量宿主(测试)回落中文。
+  AppLocalizations get _detailL10n =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      AppLocalizationsZh();
 
   @override
   Widget build(BuildContext context) {
@@ -1200,6 +1214,26 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                             names.warehouse(_d!.toWarehouseId),
                                             theme,
                                           ),
+                                        // ADR-146 不良品专门通道: 调拨类型与原因。
+                                        if (widget.docType ==
+                                                StockDocType.transfer &&
+                                            _d!.transferKind != null &&
+                                            _d!.transferKind != 'NORMAL') ...[
+                                          _kv(
+                                            _detailL10n.stockTransferKindLabel,
+                                            _d!.transferKind == 'TO_DEFECTIVE'
+                                                ? _detailL10n
+                                                      .defectiveMoveToDefective
+                                                : _detailL10n
+                                                      .defectiveMoveRelease,
+                                            theme,
+                                          ),
+                                          _kv(
+                                            _detailL10n.defectiveMoveReason,
+                                            _d!.defectReason,
+                                            theme,
+                                          ),
+                                        ],
                                         if (_d!.remark?.isNotEmpty == true)
                                           _kv('备注', _d!.remark, theme),
                                         _kv(
@@ -1301,6 +1335,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                 ),
                                 const SizedBox(height: UtenSpacing.s8),
                               ],
+                              WeightParamsLoadNotice(cache: _weightCache),
                               Expanded(
                                 child: widget.docType == StockDocType.draw
                                     ? ProductionDrawDetailTable(
@@ -1975,11 +2010,14 @@ class _ReturnedWeightHint extends StatelessWidget {
 /// 只读提示, 不在这里改重量。
 class _FinishedInboundWeightHint extends StatelessWidget {
   const _FinishedInboundWeightHint({
-    required this.item,
+    required this.weight,
+    required this.baseQty,
     required this.accepted,
   });
 
-  final StockDocItem item;
+  /// 本批登记重量(千克)与待点收上限：实收按比例折算入库重量。
+  final double weight;
+  final double baseQty;
   final TextEditingController accepted;
 
   @override
@@ -1987,8 +2025,7 @@ class _FinishedInboundWeightHint extends StatelessWidget {
       ValueListenableBuilder<TextEditingValue>(
         valueListenable: accepted,
         builder: (context, value, _) {
-          final weight = item.weight!;
-          final base = item.qty ?? 0;
+          final base = baseQty;
           final qty = double.tryParse(value.text.trim());
           final String text;
           if (qty == null || qty < 0 || base <= 0) {

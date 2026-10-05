@@ -1,3 +1,4 @@
+-- ADR-146 (V799): 分仓明细不列不良品仓, 基线同步加上 NOT w.is_defective。
 WITH dimensions AS (
     SELECT DISTINCT material.goods_id, material.color_id,
            material.unit_id
@@ -64,5 +65,5 @@ LEFT JOIN LATERAL (
       AND action.goods_id = dimension.goods_id
       AND action.color_id IS NOT DISTINCT FROM dimension.color_id
 ) open_safety ON TRUE
-WHERE w.is_deleted = FALSE AND w.is_accountable = TRUE
+WHERE w.is_deleted = FALSE AND w.is_accountable = TRUE AND NOT w.is_defective
 ORDER BY w.code, w.id

@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../shared/models/procurement_inbound.dart';
 
 const String kSubcontractShortDeliveryUnacknowledgedCode =
     'SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED';
@@ -65,13 +64,10 @@ Future<bool> showSubcontractShortDeliveryConfirmDialog(
 /// 裸图层**重新抬到最顶**——后推的弹窗一定被它盖住、两个按钮都点不动(2026-09-21 批量登记
 /// 页实测)，靠调整先后顺序绕不开。唯一可靠的做法是弹窗前 setBusy(false) 把遮罩整个撤掉并
 /// 等这一帧画完，确认后再 setBusy(true) 接着重发。
-Future<WarehouseArrivalRegistration?> registerArrivalConfirmingShortDelivery({
+Future<T?> registerArrivalConfirmingShortDelivery<T>({
   required BuildContext context,
   required Map<String, dynamic> body,
-  required Future<WarehouseArrivalRegistration> Function(
-    Map<String, dynamic> body,
-  )
-  register,
+  required Future<T> Function(Map<String, dynamic> body) register,
   required void Function(bool busy) setBusy,
 }) async {
   try {

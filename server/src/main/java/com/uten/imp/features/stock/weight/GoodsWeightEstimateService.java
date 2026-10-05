@@ -18,6 +18,7 @@ import com.uten.imp.features.stock.weight.dto.StockWeightBalance;
 import com.uten.imp.features.stock.weight.dto.WeightObservationRow;
 import com.uten.imp.features.stock.weight.dto.WeightParams;
 import com.uten.imp.features.stock.weight.dto.WeightParamsRequest;
+import com.uten.imp.features.stock.weight.dto.WeightParamsResponse;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.extern.slf4j.Slf4j;
@@ -222,11 +223,14 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
         }
     }
 
-    /** 一页表格的单重参数, 与请求行同序。 */
+    /**
+     * 一页表格的单重参数 (items 与请求行同序, 按 (货品, 供应商) 解析) + 库存均重参考
+     * (按 (仓库, 货品, 颜色) 去重, 只含存在的货品)。两类事实分开返回, 客户端按结构化身份对行 (ADR-151)。
+     */
     @Transactional(readOnly = true)
-    public List<WeightParams> params(List<WeightParamsRequest.Line> lines) {
+    public WeightParamsResponse params(List<WeightParamsRequest.Line> lines) {
         if (lines == null || lines.isEmpty()) {
-            return List.of();
+            return new WeightParamsResponse(List.of(), List.of());
         }
         Set<UUID> goodsIds = new LinkedHashSet<>();
         Set<UUID> supplierIds = new LinkedHashSet<>();
@@ -239,15 +243,17 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
         Map<BalanceKey, StockWeightBalance> balances = facts.stockBalances(lines);
         Instant now = Instant.now();
         List<WeightParams> items = new ArrayList<>(lines.size());
+        Map<BalanceKey, StockWeightBalance> references = new LinkedHashMap<>();
         for (WeightParamsRequest.Line line : lines) {
             GoodsWeightFacts goods = byGoods.getOrDefault(line.goodsId(), GoodsWeightFacts.missing(line.goodsId()));
             EstimateRow supplierRow = line.supplierId() == null ? null
                     : supplierRows.get(GoodsWeightFactsStore.supplierKey(line.goodsId(), line.supplierId()));
-            WeightParams resolved = WeightParamsResolver.resolve(goods, supplierRow, line.key(), now, scaleResKg)
-                    .params();
-            items.add(resolved.withStockBalance(goods.exists() ? balances.get(BalanceKey.of(line)) : null));
+            items.add(WeightParamsResolver.resolve(goods, supplierRow, line.supplierId(), now, scaleResKg).params());
+            BalanceKey key = BalanceKey.of(line);
+            StockWeightBalance balance = goods.exists() ? balances.get(key) : null;
+            if (balance != null) references.putIfAbsent(key, balance);
         }
-        return items;
+        return new WeightParamsResponse(List.copyOf(items), List.copyOf(references.values()));
     }
 
     /** 货品单重学习概况。 */

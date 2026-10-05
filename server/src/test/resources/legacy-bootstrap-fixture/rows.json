@@ -64,6 +64,16 @@
   ],
   "warehouse.csv": [
     {
+      "legacy_id": 900200,
+      "code": "SYN-MAIN",
+      "name": "合成主仓",
+      "location": null,
+      "remark": "合成首导回归样本：老库主仓，库存明细与余额按货品所属子仓拆分；非公司业务数据",
+      "is_accountable": false,
+      "workshop_legacy_id": 0,
+      "status": "使用"
+    },
+    {
       "legacy_id": 900201,
       "code": "SYN-WH",
       "name": "合成仓库",
@@ -1126,6 +1136,12 @@
       "source": "SYNTHETIC M_Get 906002",
       "b_style": 20,
       "bill_id": 906002
+    }
+  ],
+  "goods_owning_warehouse.csv": [
+    {
+      "goods_legacy_id": 900102,
+      "warehouse_code": "SYN-WH"
     }
   ]
 }

@@ -98,7 +98,7 @@ class WorkshopNoticeScopePostgresTest {
             seed.getTransaction().commit();
         }
         jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY,parent_id uuid,name text)");
-        jdbc.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,bill_no text,warehouse_id uuid,doc_type text,is_deleted boolean,status int,created_at timestamptz)");
+        jdbc.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,bill_no text,warehouse_id uuid,doc_type text,is_deleted boolean,status int,created_at timestamptz,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text)");
         jdbc.execute("CREATE TABLE production_planning_package_documents(document_id uuid,execution_segment_id uuid,document_type text)");
         jdbc.execute("CREATE TABLE production_execution_segment_events(action text,draw_document_ids uuid[],draw_item_quantities jsonb, counter_event_id uuid, receiving_confirmation_id uuid, receiving_direction smallint)");
         jdbc.execute("CREATE TABLE stock_document_items(id uuid,doc_id uuid,qty numeric DEFAULT 1,issued_qty numeric DEFAULT 0,is_deleted boolean DEFAULT false)");
@@ -107,6 +107,8 @@ class WorkshopNoticeScopePostgresTest {
         // This fixture has no execution splits. Full split guards and borrowed
         // material prerequisites are covered by ProductionExecutionBatchEndToEndTest.
         jdbc.execute("CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE'");
+        // V802 仓库任务参与者(部门外登记的仓库负责人): 本夹具里没有仓库负责人登记。
+        jdbc.execute("CREATE FUNCTION fn_warehouse_responsible_user_ids() RETURNS uuid[] LANGUAGE sql AS 'SELECT ARRAY[]::uuid[]'");
         // Load the authoritative read predicate; full migration/event guards are
         // exercised separately in production request integration tests.
         String migration=java.nio.file.Files.readString(java.nio.file.Path.of(

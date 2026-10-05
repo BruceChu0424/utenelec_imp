@@ -91,7 +91,7 @@ void main() {
     'visitor_approval->visitor',
     'visitor->settings',
     'warehouse->basic_data',
-    // 2026-08-19：仓库登记实际到货独立页（/warehouse/inbound/receipts/new）——
+    // 2026-08-19：仓库登记实际到货独立页(2026-10-05 起单批合一 /warehouse/inbound/arrivals/register)——
     // 仓库代采购/委外执行收货登记，复用两类收货仓储与配置（与后端
     // WarehouseInboundController 注入 Purchase/SubcontractReceiptService 同构）；
     // 收货人/采购员选择器复用员工与部门检索（与 purchase->employee/department 同款）。

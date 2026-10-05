@@ -41,10 +41,10 @@ class GoodsWeightBalanceQueryTest {
             return null;
         }).when(db).query(anyString(), any(MapSqlParameterSource.class), any(RowCallbackHandler.class));
         List<WeightParamsRequest.Line> lines = List.of(
-                new WeightParamsRequest.Line("plain", goods, null, warehouse, null),
-                new WeightParamsRequest.Line("same", goods, UUID.randomUUID(), warehouse, null),
-                new WeightParamsRequest.Line("colored", goods, null, warehouse, color),
-                new WeightParamsRequest.Line("no-warehouse", goods, null));
+                new WeightParamsRequest.Line(goods, null, warehouse, null),
+                new WeightParamsRequest.Line(goods, UUID.randomUUID(), warehouse, null),
+                new WeightParamsRequest.Line(goods, null, warehouse, color),
+                new WeightParamsRequest.Line(goods, null));
 
         Map<BalanceKey, StockWeightBalance> balances = new GoodsWeightFactsStore(db).stockBalances(lines);
 
@@ -68,7 +68,7 @@ class GoodsWeightBalanceQueryTest {
         NamedParameterJdbcTemplate db = mock(NamedParameterJdbcTemplate.class);
 
         assertThat(new GoodsWeightFactsStore(db).stockBalances(List.of(
-                new WeightParamsRequest.Line("legacy", UUID.randomUUID(), null)))).isEmpty();
+                new WeightParamsRequest.Line(UUID.randomUUID(), null)))).isEmpty();
 
         verifyNoInteractions(db);
     }

@@ -10,7 +10,7 @@
 //    可切「按往来方汇总」(供应商来料少数 + 车间领料超发)。
 // 4. 单重学习: 上线批量称样的可编辑表 (抽样数量 + 抽样重量 → 保存 = 一条称样记录, 立即重算);
 //    筛选 需称样 (默认: 有动态但单重未学准) / 与设计单重不符 / 仅按领料推算 / 全部。
-// 仓库范围沿用仓库任务中心的「仓库范围」(我的仓库 / 全部仓库 / 某个仓, 按账号记忆),
+// 仓库范围沿用仓库任务中心的仓库数据范围(ADR-149: 服务端按本人范围强制, 主管/多仓负责人可挑仓, 按账号记忆),
 // 只影响按仓统计的两段 (呆滞与库龄、盘点建议); 称重异常与单重学习是货品级口径。
 // 数字全部由服务端算好 (合计也是服务端算), 本页不做加法; 重量按用户显示单位换算,
 // 估算带「≈」, 没称显示「未称」。
@@ -142,7 +142,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
 
   WarehouseTaskScope get _scope => ref.read(warehouseTaskScopeProvider);
 
-  String get _scopeKey => '${_scope.mode.name}|${_scope.warehouseId ?? ''}';
+  String get _scopeKey => _scope.warehouseId ?? '';
 
   String get _healthKey =>
       '$_scopeKey|$_keyword|$_abc|$_onlyDead|$_agedOver180|$_healthSort|$_healthAsc';
@@ -1039,7 +1039,7 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 仓库范围变了 (含「我的仓库」加载完才定下来的默认范围): 按仓统计的两段重拉。
+    // 仓库范围变了 (ADR-149, 含可选范围加载完才定下来的默认范围): 按仓统计的两段重拉。
     ref.listen<WarehouseTaskScope>(warehouseTaskScopeProvider, (prev, next) {
       if (prev != next && mounted) _onScopeChanged();
     });

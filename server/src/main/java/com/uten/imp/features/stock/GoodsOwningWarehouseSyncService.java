@@ -19,7 +19,9 @@ import com.uten.imp.common.web.ErrorCode;
  * 货品「归属仓」入库自动回写（2026-09-15 用户口径，V590 单一事实源）。
  *
  * <p>普通仓库入库把该货品的归属仓自动更新为最新入库仓；车间直送在线边位置的
- * 技术入库只记在制流转，不改变正常存放仓。调用方是
+ * 技术入库只记在制流转，不改变正常存放仓。ADR-145 起只学「可选良品子仓」
+ * (fn_warehouse_is_good_stock_leaf)：进不良品仓、停用仓不翻转归属仓，
+ * 与货品所属仓库守卫同一口径，入不良品仓的过账不会被守卫打断。调用方是
  * {@link StockService}——它是唯一库存过账内核，采购入库 / 委外回厂 / 完工入库 /
  * 调拨入 / 退料 / 盘盈 / 手工单全部入库路径都在那里收口，无旁路遗漏。
  * 出库与红冲（反方向流水）不翻转归属仓；红冲后再入库自然纠正。
@@ -127,8 +129,7 @@ public class GoodsOwningWarehouseSyncService {
                     updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
                 FROM warehouses warehouse
                 WHERE warehouse.id = ?
-                  AND NOT warehouse.is_line_side
-                  AND NOT warehouse.is_deleted
+                  AND fn_warehouse_is_good_stock_leaf(warehouse.id)
                   AND goods.id = ?
                   AND NOT goods.is_deleted
                   AND goods.owning_warehouse_id IS DISTINCT FROM warehouse.id

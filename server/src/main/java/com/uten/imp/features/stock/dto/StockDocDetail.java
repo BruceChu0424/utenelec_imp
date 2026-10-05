@@ -76,6 +76,12 @@ public class StockDocDetail extends com.uten.imp.common.history.DocumentHistoryM
     private UUID materialReturnMainWarehouseId;
     /** Read-only LQ source identity via exact discovery-demand-DRAW mapping. */
     private String materialRequestNo;
+    /** 调拨类型(ADR-146): NORMAL / TO_DEFECTIVE 转不良品仓 / DEFECT_RELEASE 不良复判转回。 */
+    private String transferKind;
+    /** 专门通道的原因(普通调拨为空)。 */
+    private String defectReason;
+    /** 生产成品入库单按实物交接批分组(ADR-148): 仓库按批点收; 其它单据为空列表。 */
+    private List<FinishedInLotView> finishedLots;
 
     @Override public void disableHistoryActions() {
         canEdit = false;

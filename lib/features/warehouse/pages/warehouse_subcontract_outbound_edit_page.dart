@@ -464,6 +464,7 @@ class _WarehouseSubcontractOutboundEditPageState
             (_warehouseId != _draftDocument?.warehouseId &&
                 !WarehouseSelection(
                   ref.read(mn.masterNameServiceProvider).warehouseHierarchy,
+                  use: WarehouseUse.goodOut,
                 ).selectableIds.contains(_warehouseId)))) {
       context.appError('请选择发出仓');
       return null;
@@ -1205,6 +1206,7 @@ class _WarehouseSubcontractOutboundEditPageState
             WarehouseHierarchyDropdown(
               key: ValueKey('warehouse_$_warehouseId'),
               entries: names.warehouseHierarchy,
+              use: WarehouseUse.goodOut,
               value: _warehouseId,
               labelText: '发出仓(必选)',
               onChanged: (v) {

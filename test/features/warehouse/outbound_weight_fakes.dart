@@ -7,7 +7,6 @@ import 'package:uten_imp/shared/measurement/weight_predictor.dart';
 
 /// 金样 S18 供应商 A: 单重约 2.0 g, 可参考 (偏差核对生效)。
 WeightParams learnedWeightParams(String goodsId) => WeightParams(
-  key: WeightParams.keyOf(goodsId, null),
   goodsId: goodsId,
   basis: WeightBasis.learned,
   logMean: -6.214979467174846,
@@ -26,12 +25,14 @@ class FakeWeightRepository extends WeightRepository {
   final requests = <List<String>>[];
 
   @override
-  Future<Map<String, WeightParams>> params(
-    Iterable<WeightParamsLine> lines,
-  ) async {
+  Future<WeightParamsResult> params(Iterable<WeightParamsLine> lines) async {
     final list = lines.toList();
     requests.add([for (final line in list) line.goodsId]);
-    return {for (final line in list) line.key: ?byGoods[line.goodsId]};
+    return WeightParamsResult(
+      params: {
+        for (final line in list) line.paramsIdentity: ?byGoods[line.goodsId],
+      },
+    );
   }
 }
 

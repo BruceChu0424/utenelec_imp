@@ -4,6 +4,7 @@
 // 个别机台单独改、停用、删除 (盘点用过的只能停用)。
 // 勾选多行后改任一勾选行的单元格 = 对全部勾选行生效 (编号与名称除外, 它们是每台机自己的);
 // 看到的勾选 = 提交的内容。改完点"保存修改"一次提交。
+import '../../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -471,7 +472,11 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     return Stack(
       children: [
         SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          // 末尾留出右下悬浮按钮组的位置 (平台统一: 动作放右下悬浮组, ADR-147)。
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s8,
+            bottom: UtenFloatingActionGroup.scrollClearance,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -502,28 +507,30 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
                   onDeleteRow: (row, _) => _delete(row),
                   showColumnSettings: false,
                 ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  UtenButton(
-                    key: const Key('wm-machines-batch-create'),
-                    type: UtenButtonType.secondary,
-                    icon: Icons.library_add_outlined,
-                    onPressed: _busyTitle == null ? _batchCreate : null,
-                    child: const Text('批量新增机台'),
-                  ),
-                  if (!_grid.isEmpty)
-                    UtenButton(
-                      key: const Key('wm-machines-save'),
-                      icon: Icons.save_outlined,
-                      onPressed: _busyTitle == null ? _save : null,
-                      child: const Text('保存修改'),
-                    ),
-                ],
+            ],
+          ),
+        ),
+        PositionedDirectional(
+          end: UtenSpacing.s16,
+          bottom: UtenSpacing.s16,
+          child: UtenFloatingActionGroup(
+            children: [
+              UtenButton(
+                key: const Key('wm-machines-batch-create'),
+                type: UtenButtonType.secondary,
+                size: UtenButtonSize.large,
+                icon: Icons.library_add_outlined,
+                onPressed: _busyTitle == null ? _batchCreate : null,
+                child: Text(l10n.wmMachinesBatchCreate),
               ),
+              if (!_grid.isEmpty)
+                UtenButton(
+                  key: const Key('wm-machines-save'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.save_outlined,
+                  onPressed: _busyTitle == null ? _save : null,
+                  child: Text(l10n.wmMachinesSaveChanges),
+                ),
             ],
           ),
         ),

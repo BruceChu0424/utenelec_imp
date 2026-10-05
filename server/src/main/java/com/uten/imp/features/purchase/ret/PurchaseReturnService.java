@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.ret;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.web.ApiException;
@@ -419,7 +420,7 @@ public class PurchaseReturnService {
         r.setSupplierId(header.supplierId());
         // V476 运营红线：退回出库必须落到具体叶子仓。
         if (warehouseScopes != null) {
-            warehouseScopes.requireLeafWarehouse(req.getWarehouseId(), "仓库");
+            warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "仓库", WarehouseUse.DISPOSAL_OUT);
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(header.currencyId());

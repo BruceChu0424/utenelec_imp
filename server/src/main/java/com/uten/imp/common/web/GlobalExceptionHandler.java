@@ -26,6 +26,7 @@ import org.springframework.transaction.TransactionTimedOutException;
 import java.util.List;
 import java.sql.SQLException;
 import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
 
 /** 全局异常处理：统一转 ApiError，不向前端泄露堆栈/SQL/状态码细节。 */
 @Slf4j
@@ -144,22 +145,25 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(403).body(ApiError.of(ErrorCode.FORBIDDEN, null));
     }
 
+    /**
+     * 数据库完整性/数据类错误(Spring 把 SQLSTATE 22xxx/23xxx 都翻译成 DataIntegrityViolationException)。
+     * 口径见 {@link #integrityOutcome}: 业务守卫的中文原因原样给人看(422), 规则不满足给中性话(422),
+     * 只有真正的并发占用/重复/引用变化才回 409; 任何情况下都不回显 SQL/DETAIL/WHERE/CONTEXT。
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
-        return ResponseEntity.status(409)
-                .body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex.getMostSpecificCause())));
+        return integrityResponse(integrityOutcome(ex.getMostSpecificCause()));
     }
 
     // JdbcTemplate 的完整性异常由 Spring 翻译为 DataIntegrityViolationException（上一条已兜住）；
     // 但 Service 层经 EntityManager 执行的原生 SQL（如采购到货超收触发器
     // fn_guard_procurement_received_with_arrival_allowance）抛出的是 Hibernate 的
     // ConstraintViolationException，@Service 不在持久化异常翻译范围内，会原样上抛。
-    // 不单独处理则落入 handleOther → 裸 500。此处补 409 兜底。
+    // 不单独处理则落入 handleOther → 裸 500。此处按同一完整性口径兜底。
     @ExceptionHandler(org.hibernate.exception.ConstraintViolationException.class)
     public ResponseEntity<ApiError> handleHibernateConstraint(
             org.hibernate.exception.ConstraintViolationException ex) {
-        return ResponseEntity.status(409)
-                .body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex)));
+        return integrityResponse(integrityOutcome(ex));
     }
 
     // 乐观锁冲突（JPA @Version 在 flush 时发现版本不符，或显式版本校验失败经持久化层抛出）。
@@ -221,11 +225,155 @@ public class GlobalExceptionHandler {
         return "none";
     }
 
-    /** Known business conflicts have actionable messages; database details remain private. */
-    private String integrityMessage(Throwable root) {
+    /** 中性文案: CHECK/NOT NULL/未登记的英文守卫 —— 提交内容不满足数据规则, 不是并发冲突。 */
+    static final String RULE_VIOLATION_MESSAGE = "提交的内容不符合数据规则，请检查后重试";
+    /** 22xxx 数据类错误(数值溢出、文字超长、格式不对)。 */
+    static final String DATA_RANGE_MESSAGE = "提交的数值或文字超出可保存的范围，请检查后重试";
+    /** 23505/23P01: 唯一或排他冲突 —— 多半是并发占用或重复提交。 */
+    static final String DUPLICATE_MESSAGE = "这条数据已被其他操作占用或已重复提交，请刷新后查看结果";
+    /** 23503: 外键 —— 引用的资料刚被删除, 或要删的资料仍被引用。 */
+    static final String REFERENCE_MESSAGE = "相关资料已被删除或仍被其它数据引用，请刷新后重试";
+    /** 行版本守卫没有中文原因时的说法(并发改写, 409)。 */
+    static final String VERSION_CONFLICT_MESSAGE = "该记录已被他人修改，请刷新后重试";
+    static final String VERSION_GUARD_SUFFIX = "_version_guard";
+    /** 链上找不到 SQLSTATE 的兜底(旁路包装)。 */
+    static final String INTEGRITY_FALLBACK_MESSAGE = "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
+    /** PL/pgSQL RAISE 的服务端例程名; 真正的 CHECK 违反是 ExecConstraints, 与 lc_messages 语言无关。 */
+    static final String PLPGSQL_RAISE_ROUTINE = "exec_stmt_raise";
+    private static final java.util.regex.Pattern HAN = java.util.regex.Pattern.compile("\\p{IsHan}");
+    private static final int GUARD_MESSAGE_LIMIT = 300;
+
+    /** 完整性错误对外的错误码 + 文案(状态码随错误码)。 */
+    record IntegrityOutcome(ErrorCode code, String message) {}
+
+    private static ResponseEntity<ApiError> integrityResponse(IntegrityOutcome outcome) {
+        return ResponseEntity.status(outcome.code().getHttpStatus())
+                .body(ApiError.of(outcome.code(), outcome.message()));
+    }
+
+    /**
+     * 数据库完整性错误的唯一映射点(ADR-151 §4):
+     * <ol>
+     *   <li>已登记的约束/守卫(白名单)保持原来的专门文案与 409;</li>
+     *   <li>23514 且约束名以 _version_guard 结尾(行版本守卫): 别人刚改过, 409, 有中文原因时原样回显;</li>
+     *   <li>23514 且是我们自己的守卫函数 RAISE(例程 exec_stmt_raise)、文案是中文: 原样回显第一行(422),
+     *       只取主消息, 不带 DETAIL/HINT/WHERE/CONTEXT;</li>
+     *   <li>其余 23514(真正的 CHECK 约束、英文守卫): 中性文案 422, 约束名只进服务端日志;</li>
+     *   <li>23502 / 22xxx: 写请求回 422(中性文案 / 数值文字超范围); 读请求(GET/HEAD)不可能是用户填错,
+     *       一律 500。两种都按服务端缺陷记 error 日志并带完整堆栈, 不把程序问题伪装成用户输入问题;</li>
+     *   <li>23505/23P01 重复占用: 409; 我们自己的守卫函数 RAISE 的中文原因原样回显(同 23514 的回显规则);</li>
+     *   <li>23503 引用变化: 409。</li>
+     * </ol>
+     */
+    IntegrityOutcome integrityOutcome(Throwable root) {
+        String registered = registeredIntegrityMessage(root);
+        if (registered != null) return new IntegrityOutcome(ErrorCode.CONFLICT, registered);
+        SQLException sql = integritySqlException(root);
+        String state = sql == null ? null : sql.getSQLState();
+        ServerErrorMessage server = sql instanceof PSQLException postgres ? postgres.getServerErrorMessage() : null;
+        if ("23514".equals(state)) {
+            String guard = businessGuardMessage(server);
+            // 版本守卫(约束名 *_version_guard)是并发改写, 不是规则不满足: 409, 让页面重读后再试。
+            if (versionGuard(server)) {
+                return new IntegrityOutcome(ErrorCode.CONFLICT, guard != null ? guard : VERSION_CONFLICT_MESSAGE);
+            }
+            if (guard != null) return new IntegrityOutcome(ErrorCode.VALIDATION_FAILED, guard);
+            logIntegrity("rule violation", sql, server, root);
+            return new IntegrityOutcome(ErrorCode.VALIDATION_FAILED, RULE_VIOLATION_MESSAGE);
+        }
+        if ("23502".equals(state) || (state != null && state.startsWith("22"))) {
+            // NOT NULL / 数据类错误多半是服务端拼参数或漏列(DTO 已做长度与必填校验): 记完整堆栈。
+            log.error("Database {} (sqlState={} constraint={} table={})",
+                    "23502".equals(state) ? "not null violation" : "data exception", state,
+                    server == null ? null : server.getConstraint(), server == null ? null : server.getTable(), root);
+            if (readOnlyRequest()) return new IntegrityOutcome(ErrorCode.INTERNAL, null);
+            return new IntegrityOutcome(ErrorCode.VALIDATION_FAILED,
+                    "23502".equals(state) ? RULE_VIOLATION_MESSAGE : DATA_RANGE_MESSAGE);
+        }
+        if ("23505".equals(state) || "23P01".equals(state)) {
+            String guard = businessGuardMessage(server);
+            if (guard != null) return new IntegrityOutcome(ErrorCode.CONFLICT, guard);
+            logIntegrity("duplicate", sql, server, root);
+            return new IntegrityOutcome(ErrorCode.CONFLICT, DUPLICATE_MESSAGE);
+        }
+        if ("23503".equals(state)) {
+            logIntegrity("reference changed", sql, server, root);
+            return new IntegrityOutcome(ErrorCode.CONFLICT, REFERENCE_MESSAGE);
+        }
+        logIntegrity("integrity conflict", sql, server, root);
+        return new IntegrityOutcome(ErrorCode.CONFLICT, INTEGRITY_FALLBACK_MESSAGE);
+    }
+
+    /** 当前请求是读请求(GET/HEAD): 读请求没有用户提交的内容, 数据类错误只可能是服务端缺陷。 */
+    static boolean readOnlyRequest() {
+        var attributes = org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+        if (!(attributes instanceof org.springframework.web.context.request.ServletRequestAttributes servlet)) {
+            return false;
+        }
+        String method = servlet.getRequest().getMethod();
+        return "GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method);
+    }
+
+    /** 约束名以 _version_guard 结尾的守卫(V409/V740/V800 等的行版本守卫): 别人刚改过, 属于并发冲突。 */
+    static boolean versionGuard(ServerErrorMessage server) {
+        String constraint = server == null ? null : server.getConstraint();
+        return constraint != null && constraint.endsWith(VERSION_GUARD_SUFFIX);
+    }
+
+    /** 业务守卫(RAISE ... USING ERRCODE='23514')写给人看的中文原因; 不是这类返回 null。 */
+    static String businessGuardMessage(ServerErrorMessage server) {
+        if (server == null || !PLPGSQL_RAISE_ROUTINE.equals(server.getRoutine())) return null;
+        String message = server.getMessage();
+        if (message == null) return null;
+        String line = message.strip().split("\\r?\\n", 2)[0].strip();
+        if (line.isEmpty() || !HAN.matcher(line).find()) return null;
+        return line.length() > GUARD_MESSAGE_LIMIT ? line.substring(0, GUARD_MESSAGE_LIMIT) : line;
+    }
+
+    /** 链上第一个带 22xxx/23xxx SQLSTATE 的 SQLException。 */
+    private static SQLException integritySqlException(Throwable root) {
         int depth = 0;
         for (Throwable cause = root; cause != null && depth < 16; cause = cause.getCause(), depth++) {
-            if (!(cause instanceof SQLException sql) || !"23514".equals(sql.getSQLState())) continue;
+            if (cause instanceof SQLException sql && sql.getSQLState() != null
+                    && (sql.getSQLState().startsWith("23") || sql.getSQLState().startsWith("22"))) {
+                return withServerDetail(sql);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * JPA flush 走 JDBC 批量执行时, 驱动抛的是 BatchUpdateException(只有 SQLState, 没有服务端细节),
+     * 带守卫原文、约束名、例程名的 PSQLException 挂在 getNextException 上。取它, 否则守卫的中文原因
+     * 会被当成无名约束落成中性文案(2026-10-04 仓库资料改仓库用途时实测)。
+     */
+    private static SQLException withServerDetail(SQLException sql) {
+        int depth = 0;
+        for (SQLException next = sql; next != null && depth < 8; next = next.getNextException(), depth++) {
+            if (next instanceof PSQLException postgres && postgres.getServerErrorMessage() != null) return next;
+        }
+        return sql;
+    }
+
+    /** 只进服务端日志: 约束名/表/例程/首行, 便于不翻数据库日志就知道撞的是哪条规则。 */
+    private static void logIntegrity(String kind, SQLException sql, ServerErrorMessage server, Throwable root) {
+        String message = sql != null ? sql.getMessage() : root == null ? null : root.getMessage();
+        String firstLine = message == null ? "" : message.strip().split("\\r?\\n", 2)[0];
+        log.warn("Database {}: sqlState={} constraint={} table={} routine={} {} {}", kind,
+                sql == null ? "none" : sql.getSQLState(),
+                server == null ? null : server.getConstraint(),
+                server == null ? null : server.getTable(),
+                server == null ? null : server.getRoutine(),
+                root == null ? "unknown" : root.getClass().getSimpleName(),
+                firstLine.length() > 300 ? firstLine.substring(0, 300) : firstLine);
+    }
+
+    /** 已登记(白名单)的约束与守卫: 专门的大白话; 数据库细节仍不外露。没有登记返回 null。 */
+    private String registeredIntegrityMessage(Throwable root) {
+        int depth = 0;
+        for (Throwable cause = root; cause != null && depth < 16; cause = cause.getCause(), depth++) {
+            if (!(cause instanceof SQLException batch) || !"23514".equals(batch.getSQLState())) continue;
+            SQLException sql = withServerDetail(batch);
             if (sql instanceof PSQLException postgres && postgres.getServerErrorMessage()!=null) {
                 var databaseError=postgres.getServerErrorMessage();
                 String constraint=databaseError.getConstraint();
@@ -279,13 +427,7 @@ public class GlobalExceptionHandler {
                 && message.contains("received_qty exceeds finance-approved arrival capacity")) {
             return "该订货明细的可收数量已用尽(可能已被其他收货单审核入库)，无法重复入库";
         }
-        // 只记类名时排查要翻数据库日志才知道是哪条约束(2026-09-21 委外批量批准实测):
-        // 这里把根因首行一并记下(仅服务端日志, 客户端仍只收通用文案)。
-        String firstLine = message == null ? "" : message.strip().split("\\r?\\n", 2)[0];
-        log.warn("Database integrity conflict: {} {}",
-                root == null ? "unknown" : root.getClass().getSimpleName(),
-                firstLine.length() > 300 ? firstLine.substring(0, 300) : firstLine);
-        return "数据已被其他操作更新，或数量超出可处理范围，请刷新后重试";
+        return null;
     }
 
     /** V683/V684 主档触发器(23514)的大白话；不是这几条就返回 null 交给通用文案。 */
@@ -330,8 +472,9 @@ public class GlobalExceptionHandler {
         if (deadline != null) return retryableConflict(ex, deadline);
         // Deferred constraints can surface only at COMMIT, wrapped by JPA's
         // transaction exception. Keep the same response as the direct adapters.
-        if (sqlState(ex).startsWith("23")) {
-            return ResponseEntity.status(409).body(ApiError.of(ErrorCode.CONFLICT, integrityMessage(ex)));
+        String state = sqlState(ex);
+        if (state.startsWith("23") || state.startsWith("22")) {
+            return integrityResponse(integrityOutcome(ex));
         }
         log.error("未处理异常", ex);
         return ResponseEntity.status(500).body(ApiError.of(ErrorCode.INTERNAL, null));

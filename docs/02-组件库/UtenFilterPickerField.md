@@ -68,15 +68,22 @@
 
 ### 3.2 仓库：`showUtenWarehousePickerPanel`
 
-同一个面板两种口径：
+同一个面板两种口径，由必填参数 `use`(`WarehouseUse`，2026-10-04 [ADR-146](../99-决策记录-ADR/ADR-146-不良品仓业务规则与可用量单一口径.md) 取代 `allowParent`)决定：
 
 | 口径 | 参数 | 行为 |
 |---|---|---|
-| 运营（单据登记，默认） | `allowParent: false` | 先显主仓 → 点主仓钻到子仓 → 选叶子仓返回「主仓名-子仓名」；父仓只导航不选定。 |
-| 查询（页面筛选） | `allowParent: true`，通常配 `includeAll: true` | **不钻层**，整棵层级按缩进一次铺开，任意层级一点即选；主仓 = 自身 + 全部子仓聚合（服务端 `WarehouseScopeService` 展开）；顶部「全部」行返回 `WarehousePickerResult.all`（`isAll`，id 为空串）供调用方置 `null`。带本地搜索框（名称/编号，命中保留祖先链）。 |
+| 运营(单据登记、货品所属仓库等「新选」) | `use: goodIn/goodOut/defectiveIn/defectiveOut/disposalOut/transfer/count`，普通调拨调入仓另传 `sameClassAs: 调出仓` | 先显主仓 → 点主仓钻到子仓 → 只能选服务端算好的可选子仓：良品用途认 `selectableForNew`(启用的良品子仓)，「转不良品仓」调入/「不良复判转回」调出认 `selectableDefective`(启用的不良品子仓)，处置出库/普通调拨/盘点两类都可；返回「主仓名-子仓名」；主仓只导航不选定。不良品仓一律带「不良品」标签，良品用途下照常列出但置灰不可选(附「不良品仓, 这里不能选」)。 |
+| 查询(页面筛选) | `use: WarehouseUse.query`，通常配 `includeAll: true` | **不钻层**，整棵层级按缩进一次铺开，任意层级一点即选；主仓 = 自身 + 全部子仓聚合(服务端 `WarehouseScopeService` 展开)；顶部「全部」行返回 `WarehousePickerResult.all`(`isAll`，id 为空串)供调用方置 `null`。带本地搜索框(名称/编号，命中保留祖先链)。 |
 
-查询口径**不做可选性裁剪**（禁用仓、不记账仓也能单独看），与旧
-`WarehouseHierarchyDropdown` 的 `allowParent` 分支同口径，避免筛选能力回退。
+查询口径(`WarehouseUse.query`)任意层级可选，但**默认不列已停用的仓**；当前选中值总能回显，历史单据仍按字典显示停用仓名称
+(2026-10-04 [ADR-145](../99-决策记录-ADR/ADR-145-仓库主档单主仓与禁用不可选.md) 撤销 2026-09-11「查询口径不做可选性裁剪、禁用仓也能单独看」)。
+可选性只认服务端字典下发的 `selectableForNew`/`selectableDefective`/`defective`，组件不再自己推算启用、记账、叶仓规则；
+同一口径也由 `WarehouseSelection(层级, use:)` / `warehouseSelectionProvider(use)` 给页面做预填校验，`warehouseHierarchyItems` 与
+`WarehouseHierarchyDropdown` 的 `use` 同样必填(不良品仓名称后加「(不良品)」)。
+
+可选参数 `allLabel: String?`(2026-10-05 [ADR-149](../99-决策记录-ADR/ADR-149-仓库数据范围服务端强制.md))：`includeAll` 那一行的文字，缺省「全部」。仓库任务中心的范围选择器用它显示「全部仓库」(主管)/「我负责的全部仓库」(多仓负责人)，层级只传服务端 my-scope 下发的可选仓。
+
+可选参数 `subtitleOf: String? Function(WarehouseDictEntry)`(2026-10-04 [ADR-147](../99-决策记录-ADR/ADR-147-车间内料仓开通单一真源与发料来源仓.md))：给每个仓加一行灰色副标题(如车间内料仓发料时「可发 12 公斤」，key `warehouse-picker-subtitle-{id}`)，只作参考，不影响能不能选；返回空则不显示。仓库层级也可由调用方自带(如内料仓页用 `GET /api/workshop-material/settings/source-warehouses` 的全站仓库树)，可选性仍只认条目上的 `selectableForNew`/`selectableDefective`。
 
 ---
 
@@ -93,8 +100,11 @@
 
 | 页面 | 用法 |
 |---|---|
-| [即时库存页](../03-页面/即时库存页.md) | 货品分类字段（分类树面板）+ 仓库字段（查询口径面板，`includeAll` + `allowParent`） |
+| [即时库存页](../03-页面/即时库存页.md) | 货品分类字段(分类树面板)+ 仓库字段(查询口径面板，`includeAll` + `use: WarehouseUse.query`) |
+| [库存详情页](../03-页面/库存详情页.md) | 不良品处置面板的调出/调入仓(`defectiveIn`/`defectiveOut`/`goodIn`/`goodOut`，[ADR-146](../99-决策记录-ADR/ADR-146-不良品仓业务规则与可用量单一口径.md)) |
 | [货架目视化清单页](../03-页面/货架目视化清单页.md) | 仓库字段（同上查询口径） |
+| [车间内料仓页](../03-页面/车间内料仓页.md) | 开通面板的「发料来源仓」(`use: goodOut`，只能选良品子仓，[ADR-147](../99-决策记录-ADR/ADR-147-车间内料仓开通单一真源与发料来源仓.md)) |
+| [车间内料仓发料页](../03-页面/车间内料仓发料页.md) | 每行「出库仓库」(`goodOut` + `subtitleOf` 显示可发量)、收退回「退到哪个仓库」(`goodIn`) |
 
 ---
 

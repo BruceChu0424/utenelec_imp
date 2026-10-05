@@ -475,6 +475,11 @@ class _PlanningMainNames extends MasterNameService {
   @override
   List<WarehouseDictEntry> get warehouseHierarchy => const [
     WarehouseDictEntry(id: 'planning-main', name: '主仓'),
-    WarehouseDictEntry(id: 'wh-1', name: '实际子仓', parentId: 'planning-main'),
+    WarehouseDictEntry(
+      id: 'wh-1',
+      name: '实际子仓',
+      parentId: 'planning-main',
+      selectableForNew: true,
+    ),
   ];
 }

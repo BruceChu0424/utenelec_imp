@@ -15,7 +15,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_receipt_page.dart';
+import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -26,6 +26,7 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'arrival_weight_test_support.dart';
+import 'inbound_arrival_test_support.dart';
 
 const _goodsId = 'goods-screw';
 const _itemId = 'order-item-screw';
@@ -66,7 +67,7 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final api = _Api(failFirstArrival: failFirstArrival);
+  final api = _Api(prefill: prefill, failFirstArrival: failFirstArrival);
   final weights = FakeWeightRepository(
     api,
     byGoods: const {_goodsId: learnedTwoGramParams},
@@ -76,8 +77,11 @@ Future<({_Api api, FakeWeightRepository weights})> _open(
       GoRoute(path: '/', builder: (_, _) => const Text('任务中心')),
       GoRoute(
         path: '/receipt',
-        builder: (_, _) =>
-            WarehouseArrivalReceiptPage(prefill: prefill, canRegister: true),
+        // ADR-151 §5：单张 = 1 个来源的同一个登记页，按来源 id 从服务端读预计到货。
+        builder: (_, _) => const InboundArrivalRegistrationPage(
+          expectationIds: ['expectation-weight'],
+          canRegister: true,
+        ),
       ),
     ],
   );
@@ -136,7 +140,7 @@ Future<void> _submit(WidgetTester tester) async {
 }
 
 Map<String, dynamic> _item(Map<String, dynamic> body) =>
-    (body['items'] as List).cast<Map<String, dynamic>>().single;
+    (body['lines'] as List).cast<Map<String, dynamic>>().single;
 
 void main() {
   testWidgets('历史单重实际预填，但未经实称的建议不提交为重量', (tester) async {
@@ -289,8 +293,9 @@ class _Session extends SessionNotifier {
 }
 
 class _Api extends ApiClient {
-  _Api({this.failFirstArrival = false}) : super(Dio());
+  _Api({required this.prefill, this.failFirstArrival = false}) : super(Dio());
 
+  final ProcurementReceiptPrefill prefill;
   final bool failFirstArrival;
   final List<Map<String, dynamic>> arrivalBodies = [];
 
@@ -307,8 +312,11 @@ class _Api extends ApiClient {
   }) async {
     if (path == '/master/warehouses/dict') {
       return const [
-        {'id': 'warehouse-1', 'name': '成品仓'},
+        {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
       ];
+    }
+    if (path == arrivalExpectationsByIdsPath) {
+      return expectationsByIdsAnswer(query, [prefill]);
     }
     return const [];
   }
@@ -320,16 +328,13 @@ class _Api extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/warehouse/inbound/arrivals') {
-      arrivalBodies.add(Map<String, dynamic>.from(body! as Map));
+    if (path == arrivalBatchPath) {
+      final request = Map<String, dynamic>.from(body! as Map);
+      arrivalBodies.add(request);
       if (failFirstArrival && arrivalBodies.length == 1) {
         throw NetworkException('响应中断，请使用原请求重试');
       }
-      return const {
-        'outcome': 'SUBMITTED_FOR_INSPECTION',
-        'receiptId': 'sc-receipt-1',
-        'receiptBillNo': 'SC-SR-001',
-      };
+      return arrivalBatchAnswer(request);
     }
     if (path == '/warehouse/inbound/goods-profile-hints') {
       return const {'updated': 0};

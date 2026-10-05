@@ -253,8 +253,20 @@ class _Api extends ApiClient {
   }) async {
     if (path == ApiEndpoints.warehousesDict) {
       return const [
-        {'id': _whMain, 'name': '主仓库', 'accountable': true, 'status': '使用'},
-        {'id': _whSecond, 'name': '二号仓', 'accountable': true, 'status': '使用'},
+        {
+          'id': _whMain,
+          'name': '主仓库',
+          'accountable': true,
+          'status': '使用',
+          'selectableForNew': true,
+        },
+        {
+          'id': _whSecond,
+          'name': '二号仓',
+          'accountable': true,
+          'status': '使用',
+          'selectableForNew': true,
+        },
       ];
     }
     if (path == ApiEndpoints.unitsDict) {

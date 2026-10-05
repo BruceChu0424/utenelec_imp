@@ -302,9 +302,11 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
     } on ApiException catch (e) {
       if (!mounted) return;
       context.appApiError(e, fallback: l10n.employeeOnboardSubmitFailed);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
-      context.appError(l10n.employeeOnboardSubmitFailed);
+      context.appError(
+        describeSubmitError(error, fallback: l10n.employeeOnboardSubmitFailed),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

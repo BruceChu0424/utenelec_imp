@@ -4,9 +4,10 @@
 // 都进独立页面办理，不再叠弹窗；页面效果与采购收货（ProcurementInspectionDetailPage）
 // 一样：单据摘要卡 + 行级可编辑明细表 + 右下角「提交报告」。
 //   - ProductionFqcSheetHandlingPage：一张品质检查单（V547 同仓一次送检）的
-//     办理页。行内直接改合格/不合格数量（默认全合格），含不合格时行内选处置
-//     方式、确认弹窗收结论原因；提交按行逐条 decide（PASS/PARTIAL/FAIL 由两
-//     个数量推导），行级幂等键重试不重复。
+//     办理页。一行 = 一批实物(ADR-148：同一报工、同一产出批次、同一去向的需求份 /
+//     计划公共 / 实际超产)，行内直接改整批的合格/不合格数量(默认全合格)，含不合格
+//     时行内选处置方式、确认弹窗收结论原因；提交按批逐条整批判定(服务端瀑布：合格先
+//     满足需求份，不良先扣实际超产)，批级幂等键重试不重复。
 //   - ProductionFqcInspectionPage：单条 FQC 任务（含无检查单的历史任务）的
 //     详情 + 办理页。摘要卡展示送检登记事实，检验图片/文件就近挂载；决定表单
 //     与检查单页同一套数量/处置口径。
@@ -38,6 +39,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -228,6 +230,19 @@ class FqcReportRow {
       final result = await guard(
         () {
           dispatched = true;
+          // ADR-148：检查单办理页一行是一批实物，走整批判定；单份任务仍逐份决定。
+          if (inspection.lot != null) {
+            return repository.decideLot(
+              lotId: inspection.id,
+              passQty: value.passQty ?? 0,
+              failQty: value.failQty ?? 0,
+              idempotencyKey: idempotencyKey,
+              dispositionCode: submission?['disposition'] as String?,
+              reason: submission?['reason'] as String?,
+              sheetId: inspection.sheetId,
+              sheetNo: inspection.sheetNo,
+            );
+          }
           return repository.decide(
             id: inspection.id,
             decision: value.decision,
@@ -611,7 +626,7 @@ class _ProductionFqcSheetHandlingPageState
       for (final row in draftMaps(data['rows'])) row['inspectionId']: row,
     };
     for (final inspection
-        in _detail?.inspections ?? <ProductionFqcInspection>[]) {
+        in _detail?.lotInspections ?? <ProductionFqcInspection>[]) {
       final value = saved[inspection.id];
       if ((value?['submission'] is Map || value?['completed'] == true) &&
           !(_rows ?? <FqcReportRow>[]).any(
@@ -676,8 +691,9 @@ class _ProductionFqcSheetHandlingPageState
       if (!accepts()) return;
       final canDecide = await _canDecideFqc(ref);
       if (!accepts()) return;
+      // ADR-148：一批实物一行(批内各份合计)，整批判定。
       final rows = [
-        for (final inspection in detail.activeInspections)
+        for (final inspection in detail.activeLotInspections)
           FqcReportRow(inspection),
       ];
       final previousRows = _rows ?? <FqcReportRow>[];
@@ -685,7 +701,7 @@ class _ProductionFqcSheetHandlingPageState
         final saved = {
           for (final row in previousRows) row.inspection.id: row.toFormDraft(),
         };
-        for (final inspection in detail.inspections) {
+        for (final inspection in detail.lotInspections) {
           final value = saved[inspection.id];
           if ((value?['submission'] is Map || value?['completed'] == true) &&
               !rows.any((row) => row.inspection.id == inspection.id)) {
@@ -995,19 +1011,19 @@ class _ProductionFqcSheetHandlingPageState
                   ? UtenEmpty(
                       icon: Icons.verified_outlined,
                       message:
-                          _error == null && detail.activeInspections.isEmpty
+                          _error == null && detail.activeLotInspections.isEmpty
                           ? '本检查单当前待检已全部处理完成'
                           : '本次提交已确认，待检状态尚未刷新',
                       description:
-                          _error == null && detail.activeInspections.isEmpty
+                          _error == null && detail.activeLotInspections.isEmpty
                           ? '请以当前品质结果与仓库记录为准；返回待检处置继续下一单。'
                           : '刷新后核对剩余待检数量，再继续办理。已确认的原提交不会重发。',
                       actionLabel:
-                          _error == null && detail.activeInspections.isEmpty
+                          _error == null && detail.activeLotInspections.isEmpty
                           ? '返回待检处置'
                           : '刷新待检状态',
                       onAction:
-                          _error == null && detail.activeInspections.isEmpty
+                          _error == null && detail.activeLotInspections.isEmpty
                           ? () => popOrBackTo(
                               context,
                               defaultPath: RouteName.warehouseInspections,
@@ -1044,12 +1060,15 @@ class _ProductionFqcSheetHandlingPageState
                             icon: Icons.visibility_outlined,
                             // 单任务办理页里登记了决定的话，返回时重拉本检查单
                             // （fire-and-forget push 此前不重载，行状态停在旧值）。
+                            // 一行是一批实物：详情页看批内第一份(证据挂在报工份上)。
                             onTap: () async {
+                              final member =
+                                  row.inspection.lot?.members.firstOrNull;
                               await context.push(
                                 RouteName.productionFqcInspectionHandling(
-                                  row.inspection.id,
+                                  member?.inspectionId ?? row.inspection.id,
                                 ),
-                                extra: row.inspection,
+                                extra: member == null ? row.inspection : null,
                               );
                               if (mounted) _load();
                             },
@@ -1194,8 +1213,9 @@ class _ProductionFqcSheetHandlingPageState
                 Expanded(
                   child: Text(
                     _canDecide
-                        ? '行内直接修改合格数量/不合格数量（默认全合格），含不合格的行另选处置'
-                              '方式；勾选后点「提交报告」逐行登记，遇到未确认或拒绝时停止。'
+                        ? '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，行内直接修改整批的'
+                              '合格数量/不合格数量(默认全合格)，合格先满足需求份、不合格先扣实际超产；'
+                              '含不合格的行另选处置方式；勾选后点「提交报告」逐批登记，遇到未确认或拒绝时停止。'
                         : '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.primary,
@@ -1268,6 +1288,14 @@ class _ProductionFqcSheetHandlingPageState
       type: 'number',
       value: (row) => fqty(row.inspection.reportedQty),
       exactValueOf: (row) => row.inspection.reportedQty.toString(),
+    ),
+    // ADR-148：这批实物里需求份 / 计划公共 / 实际超产各多少(服务端算好)。
+    MasterColumnDef<FqcReportRow>(
+      key: 'split',
+      label: workflowFieldText(context).handoffLotSplitColumn,
+      info: workflowFieldText(context).handoffLotSplitColumnInfo,
+      width: 200,
+      value: (row) => row.inspection.lot?.splitText ?? '—',
     ),
     // 先入库后检(V597)：已上架行红字「已入库 · 仓 / 库位」，品质部按此到储放区域检验。
     MasterColumnDef<FqcReportRow>(
@@ -1548,8 +1576,10 @@ class _ProductionFqcInspectionPageState
       final canDecide = await _canDecideFqc(ref);
       if (!accepts()) return;
       final oldRow = _row;
+      // ADR-148：多份实物批只能在检查单里整批判定，单份页只读(待核对的原提交仍可续办)。
       final row =
-          inspection.active || (preserveInput && oldRow?.submission != null)
+          (inspection.active && !inspection.wholeLotOnly) ||
+              (preserveInput && oldRow?.submission != null)
           ? FqcReportRow(inspection)
           : null;
       if (preserveInput && row != null && oldRow != null) {
@@ -2140,7 +2170,9 @@ class _ProductionFqcInspectionPageState
         const SizedBox(width: UtenSpacing.s8),
         Expanded(
           child: Text(
-            inspection.active
+            inspection.active && inspection.wholeLotOnly
+                ? workflowFieldText(context).fqcWholeLotOnlyHint
+                : inspection.active
                 ? '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。'
                 : inspection.status == 'CANCELLED'
                 ? '来源报工已红冲或仓库登记已撤回，本任务只读且不能再登记检验决定。'
@@ -2150,6 +2182,18 @@ class _ProductionFqcInspectionPageState
             ),
           ),
         ),
+        if (inspection.active &&
+            inspection.wholeLotOnly &&
+            inspection.sheetId?.isNotEmpty == true)
+          UtenButton(
+            key: const Key('fqc-inspection-open-sheet-for-lot'),
+            type: UtenButtonType.secondary,
+            icon: Icons.open_in_new_rounded,
+            onPressed: () => context.push(
+              RouteName.productionFqcSheetHandling(inspection.sheetId!),
+            ),
+            child: Text(workflowFieldText(context).fqcOpenSheetForLot),
+          ),
       ],
     ),
     const SizedBox(height: UtenSpacing.s12),

@@ -1720,7 +1720,7 @@ public class ProductionExecutionReadinessService
                                (NOT scope.is_defective AND fn_warehouse_same_main(scope.id,:warehouseId)
                                 AND (NOT scope.is_line_side
                                      OR fn_line_side_stock_targets_demand(scope.id, demand.id))) AS public_allowed,
-                               (fn_warehouse_same_main(scope.id,:warehouseId)
+                               (NOT scope.is_defective AND fn_warehouse_same_main(scope.id,:warehouseId)
                                 AND (NOT scope.is_line_side
                                      OR fn_line_side_stock_targets_demand(scope.id, demand.id))) AS may_allocate,
                                goods.code, goods.name, scope.name, scope.is_line_side,

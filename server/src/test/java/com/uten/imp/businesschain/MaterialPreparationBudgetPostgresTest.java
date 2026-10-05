@@ -84,21 +84,24 @@ class MaterialPreparationBudgetPostgresTest {
         amount("0",db.queryForObject("SELECT available_to_claim_qty FROM v_preplan_make_public_supply_state WHERE source_plan_id=?",BigDecimal.class,plan));
         var other=otherAnalysis(c,c.common(),"2");var otherRow=other.flatMaterials().stream().filter(row->row.goodsId().equals(c.common())).findFirst().orElseThrow();
         amount("4",shared(read(other),otherRow.materialLineId()));amount("0",owned(otherRow));
+        // ADR-148：私有 1 与公共 4 同批同去向 = 一批实物，一张成品入库单两行；红冲整张单两份一起撤回。
         UUID inbound=db.queryForObject("SELECT DISTINCT item.doc_id FROM stock_document_items item JOIN production_plan_items source ON source.id=item.upstream_item_id WHERE source.plan_id=? AND fn_finished_in_is_public_output(item.id) AND NOT item.is_deleted",UUID.class,plan);
+        assertEquals(2,db.queryForObject("SELECT count(*) FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",Integer.class,inbound));
         InventoryValueWorkTestSupport.drain(beans.getBean(com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,List.of(c.common(),c.material()));
         beans.getBean(com.uten.imp.features.stock.StockDocService.class).reverseFinishedInbound(inbound);
         var reversedView=analyses.detail(c.analysis());var reversed=read(reversedView);
-        amount("4",shared(reversed,original));amount("0",reversed.privatePending().getOrDefault(original,BigDecimal.ZERO));amount("1",owned(material(reversedView,original)));
+        // 撤回后私有份回到「待到」(仍是本分析自己的 1，不把私有库存放成公共)，公共份回到可认领的未来供给。
+        amount("4",shared(reversed,original));amount("1",reversed.privatePending().getOrDefault(original,BigDecimal.ZERO));amount("1",owned(material(reversedView,original)));
         assertEquals(futureSlice,slice(material(reversedView,original),"4",false));
         amount("4",db.queryForObject("SELECT available_to_claim_qty FROM v_preplan_make_public_supply_state WHERE source_plan_id=?",BigDecimal.class,plan));
-        amount("1",db.queryForObject("SELECT sum(qty) FROM stock_balances WHERE goods_id=?",BigDecimal.class,c.common()));
+        amount("0",db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=?",BigDecimal.class,c.common()));
         UUID reassigned=UUID.randomUUID();String reassignedName="新的货品归属仓";
         db.update("INSERT INTO warehouses(id,code,name,status) VALUES(?,?,?,'使用')",reassigned,"OWNER-"+reassigned,reassignedName);
         long unchangedVersion=reversedView.version();String unchangedFingerprint=reversedView.fingerprint();
         beans.getBean(GoodsOwningWarehouseWriteService.class).applyOwningWarehouses(List.of(new GoodsOwningWarehouseWriteService.OwningWarehouseRequest(c.common(),reassigned)));
         var reassignedView=analyses.detail(c.analysis());assertEquals(unchangedVersion,reassignedView.version());assertEquals(unchangedFingerprint,reassignedView.fingerprint());
         assertOwner(reassignedView,c.common(),reassigned,reassignedName);
-        amount("1",db.queryForObject("SELECT sum(qty) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",BigDecimal.class,c.common(),actualWarehouse));
+        amount("0",db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",BigDecimal.class,c.common(),actualWarehouse));
         amount("0",db.queryForObject("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",BigDecimal.class,c.common(),reassigned));
     }
     @Test void inheritedChildPromiseLeavesItsOriginalEditingBudgetExactlyOnce(){

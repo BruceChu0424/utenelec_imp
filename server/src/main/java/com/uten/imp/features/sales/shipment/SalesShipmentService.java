@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.shipment;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.finance.PartyOpenBalanceView;
 import com.uten.imp.common.web.ApiException;
@@ -278,22 +279,8 @@ public class SalesShipmentService {
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
-            // 仓库任务中心的仓库范围(ADR-115)：表头仓或任一明细拣货仓(V631 逐行选仓)在范围内；
-            // 「我的仓库」另含表头尚未定仓的单据。
-            if (f.warehouseScope().active()) {
-                java.util.List<java.util.UUID> scopeIds = f.warehouseScope().warehouseIds();
-                List<Predicate> inScope = new ArrayList<>();
-                if (!scopeIds.isEmpty()) {
-                    inScope.add(root.get("warehouseId").in(scopeIds));
-                    jakarta.persistence.criteria.Subquery<java.util.UUID> lines = q.subquery(java.util.UUID.class);
-                    Root<SalesShipmentItem> line = lines.from(SalesShipmentItem.class);
-                    lines.select(line.get("shipmentId")).where(cb.isFalse(line.get("deleted")),
-                            line.get("warehouseId").in(scopeIds));
-                    inScope.add(root.get("id").in(lines));
-                }
-                if (f.warehouseScope().includeUnassigned()) inScope.add(cb.isNull(root.get("warehouseId")));
-                ps.add(inScope.isEmpty() ? cb.disjunction() : cb.or(inScope.toArray(Predicate[]::new)));
-            }
+            // 仓库数据范围(ADR-149)：仓库侧销售出库列表与计数同一谓词(warehouseScopePredicate)。
+            if (f.warehouseScope().active()) ps.add(warehouseScopePredicate(root, q, cb, f.warehouseScope()));
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.arPosted() != null) ps.add(cb.equal(root.get("arPosted"), f.arPosted()));
@@ -347,6 +334,14 @@ public class SalesShipmentService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
     public long countPendingWarehouseWork() {
+        return countPendingWarehouseWork(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按仓库数据范围(ADR-149)计数, 与仓库投影列表同一谓词。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    public long countPendingWarehouseWork(
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         Specification<SalesShipment> spec = (root, q, cb) -> {
@@ -357,9 +352,39 @@ public class SalesShipmentService {
             ps.add(cb.notEqual(root.get("shipmentKind"),"LEGACY"));
             ps.add(cb.isFalse(root.get("rejected")));
             ps.add(cb.equal(root.get("warehouseWorkStatus"), SalesShipment.WORK_PENDING_PICK));
+            if (warehouseScope != null && warehouseScope.active()) {
+                ps.add(warehouseScopePredicate(root, q, cb, warehouseScope));
+            }
             return cb.and(ps.toArray(new Predicate[0]));
         };
         return shipmentRepo.count(spec);
+    }
+
+    /**
+     * 销售出库任务的「所在仓」(ADR-149, 唯一定义): 表头仓或任一明细拣货仓(V631 逐行选仓)在范围内即算;
+     * 表头和明细都还没定仓 = 未定仓, 只在范围含未定仓(「其他人」的默认范围)时算。
+     */
+    private Predicate warehouseScopePredicate(Root<SalesShipment> root,
+            jakarta.persistence.criteria.CriteriaQuery<?> q, CriteriaBuilder cb,
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
+        java.util.List<java.util.UUID> scopeIds = warehouseScope.warehouseIds();
+        List<Predicate> inScope = new ArrayList<>();
+        if (!scopeIds.isEmpty()) {
+            inScope.add(root.get("warehouseId").in(scopeIds));
+            jakarta.persistence.criteria.Subquery<java.util.UUID> lines = q.subquery(java.util.UUID.class);
+            Root<SalesShipmentItem> line = lines.from(SalesShipmentItem.class);
+            lines.select(line.get("shipmentId")).where(cb.isFalse(line.get("deleted")),
+                    line.get("warehouseId").in(scopeIds));
+            inScope.add(root.get("id").in(lines));
+        }
+        if (warehouseScope.includeUnassigned()) {
+            jakarta.persistence.criteria.Subquery<java.util.UUID> placed = q.subquery(java.util.UUID.class);
+            Root<SalesShipmentItem> line = placed.from(SalesShipmentItem.class);
+            placed.select(line.get("shipmentId")).where(cb.isFalse(line.get("deleted")),
+                    cb.isNotNull(line.get("warehouseId")));
+            inScope.add(cb.and(cb.isNull(root.get("warehouseId")), cb.not(root.get("id").in(placed))));
+        }
+        return inScope.isEmpty() ? cb.disjunction() : cb.or(inScope.toArray(Predicate[]::new));
     }
 
     /**
@@ -373,18 +398,30 @@ public class SalesShipmentService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
     public Map<String, Long> countWarehouseWorkByStatus() {
+        return countWarehouseWorkByStatus(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+    }
+
+    /** 同上, 按仓库数据范围(ADR-149)分组计数, 与仓库投影列表同一谓词。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('warehouse_sales_outbound:view')")
+    public Map<String, Long> countWarehouseWorkByStatus(
+            com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         var readScope = accessPolicy.scope(
                 FINANCE_AUDIT_AUTHORITY, REJECT_AUTHORITY, WAREHOUSE_VIEW_AUTHORITY);
         CriteriaBuilder cb = em.getCriteriaBuilder();
         jakarta.persistence.criteria.CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
         Root<SalesShipment> root = query.from(SalesShipment.class);
+        List<Predicate> where = new ArrayList<>(List.of(
+                cb.isFalse(root.get("deleted")),
+                accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope),
+                cb.equal(root.get("financeAudit"), (short) 1),
+                cb.notEqual(root.get("shipmentKind"), "LEGACY"),
+                cb.isNotNull(root.get("warehouseWorkStatus"))));
+        if (warehouseScope != null && warehouseScope.active()) {
+            where.add(warehouseScopePredicate(root, query, cb, warehouseScope));
+        }
         query.multiselect(root.get("warehouseWorkStatus"), cb.count(root))
-                .where(
-                        cb.isFalse(root.get("deleted")),
-                        accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope),
-                        cb.equal(root.get("financeAudit"), (short) 1),
-                        cb.notEqual(root.get("shipmentKind"), "LEGACY"),
-                        cb.isNotNull(root.get("warehouseWorkStatus")))
+                .where(where.toArray(Predicate[]::new))
                 .groupBy(root.get("warehouseWorkStatus"));
         Map<String, Long> counts = new java.util.LinkedHashMap<>();
         for (Object[] row : em.createQuery(query).getResultList()) {
@@ -1202,7 +1239,7 @@ public class SalesShipmentService {
         if(req.getWarehouseId()!=null) {
             if(!s.isWarehouseChosenAtPick() && !req.getWarehouseId().equals(s.getWarehouseId()))
                 throw new ApiException(ErrorCode.CONFLICT,"该出货单已按原来源仓完成财审，请按原仓核对；需要换仓时先撤回重审");
-            if(warehouseScopes!=null)warehouseScopes.requireActiveLeafWarehouse(req.getWarehouseId(),"实际出货仓");
+            if(warehouseScopes!=null)warehouseScopes.require(req.getWarehouseId(),"实际出货仓",WarehouseUse.GOOD_OUT);
             s.setWarehouseId(req.getWarehouseId());
         }
         Map<UUID,String> stockPlaces=warehouseStockPlaces(req,items);
@@ -1321,7 +1358,7 @@ public class SalesShipmentService {
                         "第 " + item.getLineNo() + " 行未选择实际发出仓，请仓库人员按行确认发出仓");
             }
             if (warehouseScopes != null) {
-                warehouseScopes.requireActiveLeafWarehouse(warehouse, "第 " + item.getLineNo() + " 行发出仓");
+                warehouseScopes.require(warehouse, "第 " + item.getLineNo() + " 行发出仓", WarehouseUse.GOOD_OUT);
             }
             item.setWarehouseId(warehouse);
             resolved.put(item.getId(), warehouse);
@@ -1407,16 +1444,12 @@ public class SalesShipmentService {
                     .subtract(otherReservations)
                     .max(BigDecimal.ZERO);
             List<UUID> globalOwners=ownIds.isEmpty()?List.of(new UUID(0,0)):List.copyOf(ownIds);
+            // ADR-146 全局可用量单一口径(本单自己的预留不扣)。
             BigDecimal globalBudget=scalarDecimal(em.createNativeQuery("""
-                    SELECT GREATEST(COALESCE((SELECT sum(GREATEST(balance.qty-GREATEST(COALESCE(goods.min_qty::numeric,0),0),0))
-                        FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id
-                        WHERE balance.goods_id=:gid AND balance.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)),0)
-                      -COALESCE((SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) FROM stock_reservations reservation
-                        WHERE reservation.goods_id=:gid AND reservation.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                          AND reservation.status=0 AND NOT reservation.is_deleted
-                          AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))),0),0)::numeric
+                    SELECT fn_stock_global_usable(:gid, CAST(:cid AS uuid), CAST(string_to_array(:ownIds, ',') AS uuid[]))
                     """).setParameter("gid",key.goodsId()).setParameter("cid",key.colorId())
-                    .setParameter("ownIds",globalOwners));
+                    .setParameter("ownIds",globalOwners.stream().map(UUID::toString)
+                            .collect(java.util.stream.Collectors.joining(","))));
             movable=movable.min(globalBudget);
             if (entry.getValue().compareTo(movable) > 0) {
                 throw new ApiException(
@@ -3155,7 +3188,7 @@ public class SalesShipmentService {
         }
         // V476 运营红线：出货必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireNewLeafSelection(s.getWarehouseId(), req.getWarehouseId(), "出货仓库");
+            warehouseScopes.require(s.getWarehouseId(), req.getWarehouseId(), "出货仓库", WarehouseUse.GOOD_OUT);
         }
         if(!s.isWarehouseChosenAtPick())s.setWarehouseId(req.getWarehouseId());
         s.setCurrencyId(req.getCurrencyId());

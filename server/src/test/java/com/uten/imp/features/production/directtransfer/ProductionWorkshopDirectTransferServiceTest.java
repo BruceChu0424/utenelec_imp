@@ -1,6 +1,7 @@
 package com.uten.imp.features.production.directtransfer;
 
 import com.uten.imp.application.port.LineSideWarehousePort;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.production.ProductionWorkshopMembership;
 import com.uten.imp.features.production.dailyreport.ProductionDailyReport;
@@ -59,8 +60,12 @@ class ProductionWorkshopDirectTransferServiceTest {
                 contains("已撤回"), eq("CURRENT_STATE"), eq(List.of()));
     }
 
+    /**
+     * ADR-147: 一个车间只有一个开通的内料仓。一张报工里两行分别送给两个不同收料主仓的需求, 也都进这个车间
+     * 开通的那一个内料仓(一张直送单头), 各自按基本单位补投。
+     */
     @Test
-    void oneReportUsesEachReceivingStorageAndTopsUpInBaseUnits() {
+    void oneReportUsesTheWorkshopsOpenedBinAndTopsUpInBaseUnits() {
         EntityManager em = mock(EntityManager.class);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         AuthUser user = mock(AuthUser.class);
@@ -77,13 +82,12 @@ class ProductionWorkshopDirectTransferServiceTest {
         var locations = mock(LineSideWarehousePort.class);
         var notices = mock(ChainNoticeService.class);
         UUID workshop = UUID.randomUUID(), firstWarehouse = UUID.randomUUID(), secondWarehouse = UUID.randomUUID();
-        UUID firstLocation = UUID.randomUUID(), secondLocation = UUID.randomUUID();
+        UUID bin = UUID.randomUUID();
         UUID firstDemand = UUID.randomUUID(), secondDemand = UUID.randomUUID();
         UUID firstReceiver = UUID.randomUUID(), secondReceiver = UUID.randomUUID();
         var first = item("2", "5");
         var second = item("3", "4");
-        when(locations.ensure(workshop, firstWarehouse)).thenReturn(firstLocation);
-        when(locations.ensure(workshop, secondWarehouse)).thenReturn(secondLocation);
+        when(locations.openedBinOf(workshop)).thenReturn(Optional.of(bin));
         List<Map<String, Object>> heads = new ArrayList<>();
         List<Map<String, Object>> lines = new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
@@ -121,16 +125,15 @@ class ProductionWorkshopDirectTransferServiceTest {
         report.setId(UUID.randomUUID());
         service.executeForApprovedReport(report, List.of(first, second));
 
-        assertThat(heads).hasSize(2);
-        assertThat(heads).extracting(row -> row.get("warehouseId"))
-                .containsExactly(firstLocation, secondLocation);
-        assertThat(heads.get(0).get("key")).isNotEqualTo(heads.get(1).get("key"));
+        assertThat(heads).hasSize(1);
+        assertThat(heads).extracting(row -> row.get("warehouseId")).containsExactly(bin);
         assertThat(lines).extracting(row -> row.get("qty"))
                 .containsExactly(new BigDecimal("2"), new BigDecimal("3"));
-        verify(readiness).topUpDirectSupply(eq(firstReceiver), eq(firstDemand), eq(firstLocation),
+        verify(readiness).topUpDirectSupply(eq(firstReceiver), eq(firstDemand), eq(bin),
                 argThat(value -> value.compareTo(BigDecimal.TEN) == 0), anyString());
-        verify(readiness).topUpDirectSupply(eq(secondReceiver), eq(secondDemand), eq(secondLocation),
+        verify(readiness).topUpDirectSupply(eq(secondReceiver), eq(secondDemand), eq(bin),
                 argThat(value -> value.compareTo(new BigDecimal("12")) == 0), anyString());
+        verify(locations, times(1)).openedBinOf(workshop);
         verify(notices).notifyWorkshopMaterialArrival(eq(firstReceiver), eq("DT-" + first.getId()), contains("子件 10"),
                 eq("DIRECT_REPORT"), eq(List.of(report.getId())));
         verify(notices).notifyWorkshopMaterialArrival(eq(secondReceiver), eq("DT-" + second.getId()), contains("子件 12"),
@@ -180,7 +183,7 @@ class ProductionWorkshopDirectTransferServiceTest {
         doAnswer(call -> events.add("confirm"))
                 .when(stockDocs).confirmWorkshopDirectTransferInbound(any(), anyString());
         var locations = mock(LineSideWarehousePort.class);
-        when(locations.ensure(workshop, warehouse)).thenReturn(location);
+        when(locations.openedBinOf(workshop)).thenReturn(Optional.of(location));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
             Query query = mock(Query.class);
@@ -216,7 +219,57 @@ class ProductionWorkshopDirectTransferServiceTest {
                 "transfer:0", "inspect:0", "confirm", "handover:0",
                 "transfer:1", "inspect:1", "confirm", "handover:1",
                 "transfer:2", "inspect:2", "confirm", "handover:2");
-        verify(locations, times(1)).ensure(workshop, warehouse);
+        verify(locations, times(1)).openedBinOf(workshop);
+    }
+
+    /**
+     * ADR-147: 不再第一次直送时自动建仓。资格判定放行了但收料车间的内料仓刚被撤销(并发), 审核拒绝并说明,
+     * 一笔直送都不写。
+     */
+    @Test
+    void approvalRefusesWhenTheReceivingWorkshopHasNoOpenedBinAndWritesNothing() {
+        EntityManager em = mock(EntityManager.class);
+        SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
+        AuthUser user = mock(AuthUser.class);
+        when(user.isSuperAdmin()).thenReturn(true);
+        when(currentUser.get()).thenReturn(Optional.of(user));
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        var membership = mock(ProductionWorkshopMembership.class);
+        when(membership.isWorkshopMember(any(), any(), any())).thenReturn(true);
+        UUID workshop = UUID.randomUUID(), warehouse = UUID.randomUUID();
+        var piece = item("1", "1");
+        List<String> writes = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            Query query = mock(Query.class);
+            when(query.setParameter(anyString(), any())).thenReturn(query);
+            when(query.getResultList()).thenAnswer(ignored -> {
+                if (sql.contains("fn_workshop_direct_targets(")) {
+                    return java.util.Collections.singletonList(new Object[] {
+                            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), workshop,
+                            warehouse, warehouse, "IN_PROGRESS", true, "子件", true, null});
+                }
+                return java.util.Collections.singletonList(new Object[] {workshop, UUID.randomUUID()});
+            });
+            when(query.executeUpdate()).thenAnswer(ignored -> {
+                writes.add(sql);
+                return 1;
+            });
+            return query;
+        });
+        var locations = mock(LineSideWarehousePort.class);
+        when(locations.openedBinOf(workshop)).thenReturn(Optional.empty());
+        var service = new ProductionWorkshopDirectTransferService(em, currentUser, membership,
+                mock(ProductionFqcInspectionService.class), mock(ProductionExecutionReadinessService.class),
+                mock(StockDocService.class), locations, mock(ChainNoticeService.class));
+        var report = new ProductionDailyReport();
+        report.setId(UUID.randomUUID());
+
+        assertThatThrownBy(() -> service.executeForApprovedReport(report, List.of(piece)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("还没开通内料仓")
+                .hasMessageContaining("这次先送入仓库");
+        assertThat(writes).isEmpty();
     }
 
     @Test

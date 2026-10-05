@@ -1,6 +1,7 @@
 // 仓库主档模型（对应后端 WarehouseListItem / WarehouseDetail / WarehouseFacets）。
 //
-// 扁平主档（无分类树）：编号/名称/位置/备注/是否核算/所属车间 UUID/状态 + legacy_id。
+// ADR-145 单主仓：只有主仓(编号 001)没有上级，其余仓都是它的直属子仓。
+// 编号/名称/位置/备注/是否核算/所属车间 UUID/状态/仓库用途 + 服务端算好的 selectableForNew。
 // legacyOperatorId 是 B_Storage.WorkID -> Sys_Operator.ID 的只读迁移快照。
 
 import 'master_facet.dart';
@@ -40,6 +41,8 @@ class WarehouseListItem {
     this.parentId,
     this.parentName,
     this.lineSide = false,
+    this.defective = false,
+    this.selectableForNew = false,
   });
 
   final String id;
@@ -56,7 +59,7 @@ class WarehouseListItem {
   final String? status;
   final int? legacyId;
 
-  /// 上级仓库（V476 主/子层级）；null=独立顶层。
+  /// 上级仓库(ADR-145)；只有主仓为 null。
   final String? parentId;
 
   /// 上级仓库名称（列表列展示用）。
@@ -64,6 +67,15 @@ class WarehouseListItem {
 
   /// 线边仓（V584 车间内部直送）：车间自己的料架，直送产出先进它再投给上层工单。
   final bool lineSide;
+
+  /// 仓库用途(ADR-145)：true = 不良品仓。
+  final bool defective;
+
+  /// 新单能不能选它(ADR-145，服务端只算一次)。
+  final bool selectableForNew;
+
+  /// 主仓：唯一没有上级的仓，只作汇总、负责人范围和导航。
+  bool get isMain => parentId == null || parentId!.isEmpty;
 
   factory WarehouseListItem.fromJson(Map<String, dynamic> json) =>
       WarehouseListItem(
@@ -83,6 +95,8 @@ class WarehouseListItem {
         parentId: json['parentId'] as String?,
         parentName: json['parentName'] as String?,
         lineSide: (json['lineSide'] as bool?) ?? false,
+        defective: (json['defective'] as bool?) ?? false,
+        selectableForNew: (json['selectableForNew'] as bool?) ?? false,
       );
 }
 
@@ -101,6 +115,8 @@ class WarehouseDetail {
     this.legacyId,
     this.parentId,
     this.lineSide = false,
+    this.defective = false,
+    this.selectableForNew = false,
   });
 
   final String id;
@@ -117,11 +133,20 @@ class WarehouseDetail {
   final String? status;
   final int? legacyId;
 
-  /// 上级仓库（V476 主/子层级）；null=独立顶层。
+  /// 上级仓库(ADR-145)；只有主仓为 null。
   final String? parentId;
 
   /// 线边仓（V584 车间内部直送）。
   final bool lineSide;
+
+  /// 仓库用途(ADR-145)：true = 不良品仓。
+  final bool defective;
+
+  /// 新单能不能选它(ADR-145，服务端只算一次)。
+  final bool selectableForNew;
+
+  /// 主仓：唯一没有上级的仓。
+  bool get isMain => parentId == null || parentId!.isEmpty;
 
   factory WarehouseDetail.fromJson(Map<String, dynamic> json) =>
       WarehouseDetail(
@@ -140,6 +165,8 @@ class WarehouseDetail {
         legacyId: (json['legacyId'] as num?)?.toInt(),
         parentId: json['parentId'] as String?,
         lineSide: (json['lineSide'] as bool?) ?? false,
+        defective: (json['defective'] as bool?) ?? false,
+        selectableForNew: (json['selectableForNew'] as bool?) ?? false,
       );
 }
 
@@ -149,7 +176,14 @@ class WarehouseFacets {
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = ['code', 'name', 'status', 'parent', 'accountable'];
+  static const _keys = [
+    'code',
+    'name',
+    'status',
+    'parent',
+    'accountable',
+    'defective',
+  ];
 
   factory WarehouseFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};

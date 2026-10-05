@@ -18,6 +18,7 @@ import '../widgets/warehouse_draw_task_segment.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
 
 class WarehouseDrawTaskCenterPage extends ConsumerWidget {
   const WarehouseDrawTaskCenterPage({
@@ -47,10 +48,10 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
     }
     // 待领任务 / 待确认实收的退料随徽章汇总带回(ADR-108), 汇总未到/无权为 null。
     final drawCount = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.productionDraw),
+      warehouseTaskFactOrNullProvider(BadgeFact.productionDraw),
     );
     final returnCount = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.productionReturn),
+      warehouseTaskFactOrNullProvider(BadgeFact.productionReturn),
     );
     return WarehouseTaskCenterScaffold(
       location: RouteName.warehouseDrawTasks,

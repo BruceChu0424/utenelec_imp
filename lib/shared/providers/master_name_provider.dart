@@ -64,7 +64,7 @@ class GoodsDictEntry {
   );
 }
 
-/// 仓库字典项（V476 主/子层级）：id/名称 + 上级仓库引用，供层级下拉分组展示。
+/// 仓库字典项(ADR-145 单主仓)：id/名称 + 上级仓库引用 + 服务端算好的仓库用途与可选性。
 class WarehouseDictEntry {
   const WarehouseDictEntry({
     required this.id,
@@ -75,6 +75,9 @@ class WarehouseDictEntry {
     this.status,
     this.isAccountable = true,
     this.isLineSide = false,
+    this.isDefective = false,
+    this.selectableForNew = false,
+    this.selectableDefective = false,
   });
 
   final String id;
@@ -85,6 +88,17 @@ class WarehouseDictEntry {
   final String? status;
   final bool isAccountable;
   final bool isLineSide;
+
+  /// 仓库用途(ADR-145)：true = 不良品仓。
+  final bool isDefective;
+
+  /// 新单能不能选它(ADR-145)：服务端只算一次(启用、记账、作业叶仓、不是车间内料仓、
+  /// 不是不良品仓)。所有新选入口只认它，前端不再自己推算；缺这个字段一律按不可选。
+  final bool selectableForNew;
+
+  /// 专门通道/盘点/处置出库能不能选它(ADR-146)：服务端只算一次(启用、记账、作业叶仓、
+  /// 是不良品仓)。缺这个字段一律按不可选。
+  final bool selectableDefective;
 
   factory WarehouseDictEntry.fromJson(Map<String, dynamic> json) =>
       WarehouseDictEntry(
@@ -97,6 +111,10 @@ class WarehouseDictEntry {
         isAccountable:
             (json['accountable'] ?? json['isAccountable']) as bool? ?? true,
         isLineSide: (json['lineSide'] ?? json['isLineSide']) as bool? ?? false,
+        isDefective:
+            (json['defective'] ?? json['isDefective']) as bool? ?? false,
+        selectableForNew: json['selectableForNew'] as bool? ?? false,
+        selectableDefective: json['selectableDefective'] as bool? ?? false,
       );
 }
 
@@ -337,6 +355,13 @@ class MasterDictionaryService {
     };
   }
 
+  /// 仓库字典项(含仓库用途与两个可选标记)；未加载或找不到返回 null。
+  WarehouseDictEntry? warehouseEntry(String? id) {
+    if (id == null) return null;
+    if (_warehouseById.isNotEmpty) return _warehouseById[id];
+    return warehouseHierarchy.where((entry) => entry.id == id).firstOrNull;
+  }
+
   /// Resolve only proven parent links. An orphan/cycle is not a new main warehouse.
   WarehouseDictEntry? mainWarehouseOf(String? id) {
     if (id == null) return null;
@@ -452,7 +477,7 @@ class MasterDictionaryService {
 
   Map<String, String> get warehouseEntries => _warehouses;
 
-  /// 仓库层级列表（V476）：顶层仓在前、子仓紧随其后按编号排序；
+  /// 仓库层级列表(ADR-145 单主仓)：主仓在前、子仓紧随其后按编号排序；
   /// parentId 悬空（指向已删/未知仓）按顶层处理。旧后端无 parentId 时全为顶层。
   /// [_warehouseList] 为空但名称映射有值（测试 fake 只注名称映射）时按平铺退化。
   List<WarehouseDictEntry> get warehouseHierarchy {

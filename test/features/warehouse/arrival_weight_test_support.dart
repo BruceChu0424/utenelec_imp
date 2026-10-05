@@ -23,7 +23,7 @@ class MemoryWeightUnitsPrefs extends WarehouseWeightUnitsPrefsNotifier {
   void persist() {}
 }
 
-/// 按货品返回预置单重参数 (键按请求行重写); 没预置的货品不返回 (= 没学过)。
+/// 按货品返回预置单重参数 (按请求行的 (货品, 供应商) 身份回填); 没预置的货品不返回 (= 没学过)。
 class FakeWeightRepository extends WeightRepository {
   FakeWeightRepository(super.api, {this.byGoods = const {}});
 
@@ -31,12 +31,14 @@ class FakeWeightRepository extends WeightRepository {
   final List<List<WeightParamsLine>> requests = [];
 
   @override
-  Future<Map<String, WeightParams>> params(
-    Iterable<WeightParamsLine> lines,
-  ) async {
+  Future<WeightParamsResult> params(Iterable<WeightParamsLine> lines) async {
     final list = lines.toList(growable: false);
     requests.add(list);
-    return {for (final line in list) line.key: ?byGoods[line.goodsId]};
+    return WeightParamsResult(
+      params: {
+        for (final line in list) line.paramsIdentity: ?byGoods[line.goodsId],
+      },
+    );
   }
 }
 
@@ -58,7 +60,6 @@ List<Override> warehouseWeightTestOverrides(
 
 /// 学准了的单重: 约 2.0 g/个, 可参考 (金样 S18 供应商 A 口径)。
 const learnedTwoGramParams = WeightParams(
-  key: '',
   goodsId: '',
   basis: WeightBasis.learned,
   evidence: 'REFERENCE',
@@ -72,7 +73,6 @@ const learnedTwoGramParams = WeightParams(
 
 /// 货品按千克计 (重量由数量精确换算)。
 const exactKgParams = WeightParams(
-  key: '',
   goodsId: '',
   basis: WeightBasis.exact,
   massFactorKg: 1,

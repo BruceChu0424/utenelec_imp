@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_issue;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.features.subcontract.SubcontractOutboundFlowSql;
 import com.uten.imp.common.web.ApiException;
@@ -670,7 +671,7 @@ public class SubcontractMaterialIssueService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：委外发料出仓必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "发出仓库");
+            warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "发出仓库", WarehouseUse.GOOD_OUT);
         }
         r.setWarehouseId(req.getWarehouseId());
         var operator = nameResolver.resolveForWrite(

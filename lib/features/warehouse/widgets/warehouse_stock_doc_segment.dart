@@ -508,6 +508,8 @@ class _WarehouseStockDocSegmentState
             DocumentStatusScope(
               DraftDocKind.stockDocument,
               docType: widget.docType.code,
+              // ADR-149: 与旁边列表同一个范围(任务中心挑了仓就按那个仓数)。
+              scopeWarehouseId: WarehouseListScope.of(context).warehouseId,
             ),
           ),
         )

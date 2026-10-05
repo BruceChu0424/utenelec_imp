@@ -42,14 +42,14 @@ import java.util.UUID;
  *
  * - GET  /api/master/warehouses?keyword=&nullFields=&code=&name=&status=&location=&page=1&size=20
  * - GET  /api/master/warehouses/facets
- * - GET  /api/master/warehouses/dict            （采购单据/库存选仓库用）
+ * - GET  /api/master/warehouses/dict            (单据选仓/历史显示名; 每行带 defective、selectableForNew)
  * - GET  /api/master/warehouses/{id}
  * - POST /api/master/warehouses                 （warehouse:edit）
  * - PUT  /api/master/warehouses/{id}            （warehouse:edit）
  * - DEL  /api/master/warehouses/{id}            （warehouse:edit，软删）
  * - GET  /api/master/warehouses/keepers          （全部负责关系，列表「负责人」列）
  * - GET  /api/master/warehouses/keeper-candidates（warehouse:edit，负责人候选员工）
- * - GET  /api/master/warehouses/my-scope         （登录即可：当前账号的「我的仓库」）
+ * - GET  /api/master/warehouses/my-scope         （登录即可：当前账号的仓库数据范围, ADR-149）
  * - GET  /api/master/warehouses/{id}/keepers     （某仓库的负责人）
  * - PUT  /api/master/warehouses/{id}/keepers     （warehouse:edit，整组替换负责人，ADR-115）
  */
@@ -66,6 +66,7 @@ public class WarehouseController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
     private final ExportLimitPort exportLimits;
+    private final WarehouseDataScopeService dataScopeService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('warehouse:view')")
@@ -78,10 +79,12 @@ public class WarehouseController {
             @RequestParam(required = false) String location,
             @RequestParam(required = false) UUID parentId,
             @RequestParam(required = false) Boolean accountable,
+            @RequestParam(required = false) Boolean defective,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new WarehouseQueryFilter(
-                keyword, nullFields, code, name, status, location, parentId, accountable), page, size);
+                keyword, nullFields, code, name, status, location, parentId, accountable, defective),
+                page, size);
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致；V717） ----------
@@ -97,9 +100,11 @@ public class WarehouseController {
             @RequestParam(required = false) String location,
             @RequestParam(required = false) UUID parentId,
             @RequestParam(required = false) Boolean accountable,
+            @RequestParam(required = false) Boolean defective,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new WarehouseQueryFilter(
-                        keyword, nullFields, code, name, status, location, parentId, accountable),
+                        keyword, nullFields, code, name, status, location, parentId, accountable,
+                        defective),
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_warehouse");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
@@ -145,13 +150,14 @@ public class WarehouseController {
     }
 
     /**
-     * 当前账号的「我的仓库」：仓库任务中心的仓库范围选择器用。只回本人负责的仓与范围 id，
-     * 不含任何他人信息，登录即可读(任务中心各列表自己再按各自权限校验)。
+     * 当前账号的仓库数据范围(ADR-149)：角色、能否选「全部仓库」、可切换的仓(先主仓后子仓)、
+     * 本人登记负责的仓、默认仓。只回仓库主档字段与本人信息, 登录即可读; 各任务列表由服务端
+     * 按同一范围强制过滤, 越界选仓 403。
      */
     @GetMapping("/my-scope")
     @PreAuthorize("isAuthenticated()")
     public MyWarehouseScope myScope() {
-        return keeperService.myScope();
+        return dataScopeService.myScope();
     }
 
     @GetMapping("/{id}/keepers")
@@ -160,7 +166,7 @@ public class WarehouseController {
         return keeperService.keepers(id);
     }
 
-    /** 整组替换负责人(ADR-115)：空列表 = 清空，该仓的仓库类通知回到整个仓库部门。 */
+    /** 整组替换负责人(ADR-115 / ADR-149)：空列表 = 清空，该仓的任务与通知交给仓库主管，没登记的同事也看得到。 */
     @PutMapping("/{id}/keepers")
     @PreAuthorize("hasAuthority('warehouse:edit')")
     public List<WarehouseKeeper> replaceKeepers(

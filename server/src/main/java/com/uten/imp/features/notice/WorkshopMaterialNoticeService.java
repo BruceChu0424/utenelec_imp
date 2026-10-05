@@ -1,6 +1,5 @@
 package com.uten.imp.features.notice;
 
-import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
@@ -61,18 +60,18 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
     private final UserAccountRepository userRepo;
     private final PermissionResolver permissionResolver;
     private final NoticePermissionCandidateQuery permissionCandidates;
-    private final WarehouseTaskScopePort warehouseScopes;
+    private final WarehouseNoticeRouter warehouseRouter;
     private final NamedParameterJdbcTemplate db;
 
     public WorkshopMaterialNoticeService(NoticeService noticeService, UserAccountRepository userRepo,
                                          PermissionResolver permissionResolver,
                                          NoticePermissionCandidateQuery permissionCandidates,
-                                         WarehouseTaskScopePort warehouseScopes, JdbcTemplate jdbc) {
+                                         WarehouseNoticeRouter warehouseRouter, JdbcTemplate jdbc) {
         this.noticeService = noticeService;
         this.userRepo = userRepo;
         this.permissionResolver = permissionResolver;
         this.permissionCandidates = permissionCandidates;
-        this.warehouseScopes = warehouseScopes;
+        this.warehouseRouter = warehouseRouter;
         this.db = new NamedParameterJdbcTemplate(jdbc);
     }
 
@@ -112,14 +111,9 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
         for (Map<String, Object> line : lines) {
             if (line.get("suggested_leaf_warehouse_id") instanceof UUID leaf) leaves.add(leaf);
         }
+        // ADR-149 唯一分发规则: 预填叶仓的子仓负责人 ∩ 持发料权限的人; 没有则主管; 再没有才发全部持权限的人。
         Set<UUID> holders = usersWithNoticeAnd(Set.of(ISSUE));
-        Set<UUID> recipients = new LinkedHashSet<>();
-        if (!leaves.isEmpty()) {
-            for (UUID keeper : warehouseScopes.keeperUserIds(leaves)) {
-                if (holders.contains(keeper)) recipients.add(keeper);
-            }
-        }
-        if (recipients.isEmpty()) recipients.addAll(holders);
+        Set<UUID> recipients = new LinkedHashSet<>(warehouseRouter.recipients(holders, leaves));
         String event = issue ? EVENT_REQUISITION_PENDING : EVENT_RETURN_PENDING;
         for (UUID target : recipients) {
             publish(target, title, content, ROUTE_WAREHOUSE, event, requisitionId);
@@ -202,12 +196,9 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
             }
             case EVENT_CLOSE_BLOCKED_WEIGHT -> out.addAll(usersWithNoticeAnd(Set.of(BOM_EDIT)));
             default -> {
+                // ADR-149: 内料仓的「所在仓」= 该车间内料仓的来源仓(没设 = 未定仓, 交主管)。
                 Set<UUID> issuers = usersWithNoticeAnd(Set.of(ISSUE));
-                UUID bin = (UUID) period.get("bin_warehouse_id");
-                for (UUID keeper : warehouseScopes.keeperUserIds(List.of(bin))) {
-                    if (issuers.contains(keeper)) out.add(keeper);
-                }
-                if (out.isEmpty()) out.addAll(issuers);
+                out.addAll(warehouseRouter.recipients(issuers, binSourceWarehouses(workshop)));
                 Set<UUID> choosers = usersWithNoticeAnd(Set.of(CHOOSE));
                 Set<UUID> members = workshopMembers(workshop);
                 for (UUID user : choosers) if (members.contains(user)) out.add(user);
@@ -350,6 +341,14 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
     }
 
     // ========================= 公共 =========================
+
+    private List<UUID> binSourceWarehouses(UUID workshopId) {
+        if (workshopId == null) return List.of();
+        return db.queryForList("""
+                SELECT source_warehouse_id FROM workshop_bins
+                WHERE workshop_department_id = :workshop AND source_warehouse_id IS NOT NULL
+                """, Map.of("workshop", workshopId), UUID.class);
+    }
 
     private Map<String, Object> period(UUID periodId) {
         List<Map<String, Object>> rows = db.queryForList("""

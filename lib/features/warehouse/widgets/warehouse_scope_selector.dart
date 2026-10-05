@@ -1,96 +1,90 @@
-// 仓库任务中心顶栏的「仓库范围」选择(ADR-115)：我的仓库 / 全部仓库 / 某个仓。
+// 仓库任务中心顶栏的仓库范围(ADR-149)。
 //
+// 谁能看哪些仓由服务端判定(my-scope)，这里只按结论显示:
+//   · 主管：小标签(当前范围)，点开右侧滑窗(先主仓后子仓)，首行「全部仓库」；
+//   · 负责多个仓的子仓负责人：同上，首行「我负责的全部仓库」，只列自己负责的仓；
+//   · 只负责一个仓：只读标签「我负责：包材仓库」；
+//   · 其他人：不显示(列表照样由服务端按本人范围过滤)。
 // 选择按账号记忆；范围变化时任务中心骨架推进 refreshTick，各分段列表连同分段计数一起重拉。
-// 口径说明见 shared/warehouse/warehouse_task_scope.dart。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 
 class WarehouseScopeSelector extends ConsumerWidget {
   const WarehouseScopeSelector({super.key});
 
-  static String labelOf(WarehouseTaskScope scope) => switch (scope.mode) {
-    WarehouseTaskScopeMode.all => '全部仓库',
-    WarehouseTaskScopeMode.mine => '我的仓库',
-    WarehouseTaskScopeMode.warehouse => scope.warehouseName ?? '指定仓库',
-  };
-
-  /// 「我的仓库」一项的说明：负责哪些仓 / 为什么等于全部。
-  static String mineHint(MyWarehouseScope? mine) {
-    if (mine == null) return '正在读取我负责的仓库…';
-    if (!mine.keepersConfigured) {
-      return '还没有在「仓库资料」里登记任何仓库负责人，目前等于全部仓库';
+  /// 当前范围的显示名：默认范围按角色区分「全部仓库 / 我负责的全部仓库」。
+  static String labelOf(
+    AppLocalizations l10n,
+    MyWarehouseScope mine,
+    WarehouseTaskScope scope,
+  ) {
+    if (!scope.isAll) {
+      return scope.warehouseName ??
+          mine.option(scope.warehouseId!)?.name ??
+          l10n.warehouseScopeAllWarehouses;
     }
-    final names = mine.keeperWarehouses.map((w) => w.name).join('、');
-    return mine.isKeeper
-        ? '我负责：$names；另含尚未指定负责人的仓库与尚未定仓的任务'
-        : '我不是任何仓库的负责人：只显示尚未指定负责人的仓库与尚未定仓的任务';
+    return mine.isSupervisor
+        ? l10n.warehouseScopeAllWarehouses
+        : l10n.warehouseScopeAllMine;
+  }
+
+  /// 可选范围按层级(先主仓后子仓)交给全站仓库滑窗；选择器只认服务端给的可选清单。
+  static List<WarehouseDictEntry> hierarchyOf(MyWarehouseScope mine) {
+    final ids = {for (final option in mine.selectable) option.id};
+    return [
+      for (final option in mine.selectable)
+        WarehouseDictEntry(
+          id: option.id,
+          name: option.name,
+          code: option.code,
+          parentId: ids.contains(option.parentId) ? option.parentId : null,
+          status: '使用',
+        ),
+    ];
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // 顶栏组件被多张页面复用, 少数既有测试不挂本地化代理: 取不到时按中文显示。
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        lookupAppLocalizations(const Locale('zh'));
     final theme = Theme.of(context);
-    final scope = ref.watch(warehouseTaskScopeProvider);
     final mine = ref.watch(myWarehouseScopeProvider).valueOrNull;
-    final options =
-        ref.watch(warehouseScopeOptionsProvider).valueOrNull ?? const [];
-    final byId = {for (final option in options) option.id: option};
-    int depthOf(WarehouseScopeOption option) {
-      var depth = 0;
-      var parent = option.parentId;
-      final seen = <String>{};
-      while (parent != null && byId.containsKey(parent) && seen.add(parent)) {
-        depth++;
-        parent = byId[parent]!.parentId;
-      }
-      return depth;
-    }
-
-    PopupMenuItem<WarehouseTaskScope> item(
-      WarehouseTaskScope value,
-      String title, {
-      String? subtitle,
-      int indent = 0,
-      Key? key,
-    }) {
-      final selected = value == scope;
-      return PopupMenuItem<WarehouseTaskScope>(
-        key: key,
-        value: value,
+    if (mine == null) return const SizedBox.shrink();
+    final only = mine.onlyWarehouse;
+    if (only != null) {
+      return Tooltip(
+        message: l10n.warehouseScopeKeeperTooltip,
         child: Padding(
-          padding: EdgeInsets.only(left: UtenSpacing.s12 * indent),
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s8,
+            vertical: UtenSpacing.s4,
+          ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                selected ? Icons.check_rounded : null,
+                Icons.warehouse_outlined,
                 size: 18,
                 color: theme.colorScheme.primary,
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: selected
-                          ? TextStyle(
-                              color: theme.colorScheme.primary,
-                              fontWeight: FontWeight.w600,
-                            )
-                          : null,
-                    ),
-                    if (subtitle != null)
-                      Text(
-                        subtitle,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
+              const SizedBox(width: UtenSpacing.s4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  l10n.warehouseScopeKeeperLabel(only.name),
+                  key: const Key('warehouse-scope-keeper-label'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge,
                 ),
               ),
             ],
@@ -98,38 +92,40 @@ class WarehouseScopeSelector extends ConsumerWidget {
         ),
       );
     }
-
+    if (!mine.showsSelector) return const SizedBox.shrink();
+    final scope = ref.watch(warehouseTaskScopeProvider);
+    final label = labelOf(l10n, mine, scope);
     return Tooltip(
-      message: '仓库范围：${labelOf(scope)}。只影响本页列表显示哪些仓的单据，不改变权限',
-      child: PopupMenuButton<WarehouseTaskScope>(
+      message: mine.isSupervisor
+          ? l10n.warehouseScopeSupervisorTooltip
+          : l10n.warehouseScopeKeeperTooltip,
+      child: InkWell(
         key: const Key('warehouse-scope-selector'),
-        tooltip: '',
-        position: PopupMenuPosition.under,
-        constraints: const BoxConstraints(minWidth: 260, maxWidth: 360),
-        onSelected: (value) =>
-            ref.read(warehouseTaskScopePrefProvider.notifier).select(value),
-        itemBuilder: (context) => [
-          item(
-            const WarehouseTaskScope.mine(),
-            '我的仓库',
-            subtitle: mineHint(mine),
-            key: const Key('warehouse-scope-mine'),
-          ),
-          item(
-            const WarehouseTaskScope.all(),
-            '全部仓库',
-            subtitle: '显示所有仓库的单据',
-            key: const Key('warehouse-scope-all'),
-          ),
-          if (options.isNotEmpty) const PopupMenuDivider(),
-          for (final option in options)
-            item(
-              WarehouseTaskScope.warehouse(option.id, name: option.name),
-              option.name,
-              indent: depthOf(option),
-              key: Key('warehouse-scope-${option.id}'),
-            ),
-        ],
+        borderRadius: BorderRadius.circular(UtenRadius.control),
+        onTap: () async {
+          final picked = await showUtenWarehousePickerPanel(
+            context,
+            hierarchy: hierarchyOf(mine),
+            use: WarehouseUse.query,
+            title: l10n.warehouseScopePickerTitle,
+            includeAll: true,
+            allLabel: mine.isSupervisor
+                ? l10n.warehouseScopeAllWarehouses
+                : l10n.warehouseScopeAllMine,
+            initialWarehouseId: scope.warehouseId,
+          );
+          if (picked == null) return;
+          ref
+              .read(warehouseTaskScopePrefProvider.notifier)
+              .select(
+                picked.isAll
+                    ? const WarehouseTaskScope.all()
+                    : WarehouseTaskScope.warehouse(
+                        picked.id,
+                        name: mine.option(picked.id)?.name,
+                      ),
+              );
+        },
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: UtenSpacing.s8,
@@ -147,9 +143,9 @@ class WarehouseScopeSelector extends ConsumerWidget {
               ),
               const SizedBox(width: UtenSpacing.s4),
               ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 140),
+                constraints: const BoxConstraints(maxWidth: 160),
                 child: Text(
-                  labelOf(scope),
+                  label,
                   key: const Key('warehouse-scope-label'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

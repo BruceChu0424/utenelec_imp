@@ -1,6 +1,5 @@
 package com.uten.imp.features.warehouse.materialbin;
 
-import com.uten.imp.application.port.LineSideWarehousePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -53,8 +52,9 @@ class WorkshopMaterialSettingsReadPermissionTest {
     @Test void setupOnlyCanReadSettingsWithoutAcquiringStockViewPermission() {
         signIn(WorkshopMaterialPermissions.SETUP);
         UUID workshop = UUID.randomUUID();
-        var visible = new WorkshopMaterialDtos.SettingsView(workshop, "注塑车间", false,
-                null, null, null, null, null, 0, null, null, List.of("SETUP"));
+        var visible = new WorkshopMaterialDtos.SettingsView(workshop, "注塑车间",
+                WorkshopMaterialDtos.STATUS_NOT_OPEN, false, false, null, null, null, null, null, null, null, null,
+                0, null, null, null, List.of(), List.of("SETUP", "OPEN", "ENABLE_PERIODIC"));
         when(settingsService.list()).thenReturn(List.of(visible));
 
         assertThat(settings.list()).containsExactly(visible);
@@ -89,10 +89,18 @@ class WorkshopMaterialSettingsReadPermissionTest {
         verify(settingsService).list();
         verify(positions).position(bin);
         verify(context.getBean(WorkshopMachineService.class)).list(workshop);
-        assertThatThrownBy(() -> settings.inProgressPending(workshop)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> settings.update(workshop, new WorkshopMaterialDtos.SettingsRequest(
-                0L, true, UUID.randomUUID(), java.time.LocalDate.of(2026, 10, 1), List.of(), "permission-test")))
+        assertThatThrownBy(() -> settings.inProgressPending(List.of(workshop)))
                 .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> settings.update(workshop, new WorkshopMaterialDtos.SettingsRequest(
+                null, 0L, true, null, null, true, java.time.LocalDate.of(2026, 10, 1), List.of(), "permission-test")))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> settings.batchEnable(new WorkshopMaterialDtos.BatchEnableRequest(
+                List.of(new WorkshopMaterialDtos.BinItem(workshop, "NOT_OPEN", 0L)), null, null, false, null, List.of(),
+                "permission-test-batch"))).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> settings.batchDisable(new WorkshopMaterialDtos.BatchDisableRequest(
+                List.of(new WorkshopMaterialDtos.BinItem(workshop, "OPEN", 1L)), "permission-test-off")))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(settings::sourceWarehouses).isInstanceOf(AccessDeniedException.class);
         verifyNoMoreInteractions(settingsService);
     }
 
@@ -113,18 +121,22 @@ class WorkshopMaterialSettingsReadPermissionTest {
             assertThat(params.getValue("scopeWorkshops")).isEqualTo(workshop.toString());
             return List.of(workshop);
         });
-        when(db.queryForMap(anyString(), eq(Map.of("workshop", workshop)))).thenReturn(Map.of(
-                "id", workshop, "name", "注塑车间", "enabled", false, "row_version", 0));
+        java.util.Map<String, Object> notOpened = new java.util.HashMap<>();
+        notOpened.put("id", workshop);
+        notOpened.put("name", "注塑车间");
+        notOpened.put("periodic", false);
+        when(db.queryForList(anyString(), eq(Map.of("ids", List.of(workshop))))).thenReturn(List.of(notOpened));
         var scope = new WorkshopMaterialScope(db, currentUser);
         var service = new WorkshopMaterialSettingsService(db, mock(WorkshopMaterialBinSupport.class),
                 mock(WorkshopMaterialCommandLedger.class), scope, new WorkshopMaterialPermissions(currentUser),
-                mock(WorkshopMaterialChoiceAdapter.class), mock(LineSideWarehousePort.class), currentUser);
+                mock(WorkshopMaterialChoiceAdapter.class), mock(WorkshopBinService.class), currentUser);
 
         var rows = service.list();
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().workshopDepartmentId()).isEqualTo(workshop);
+        assertThat(rows.getFirst().status()).isEqualTo(WorkshopMaterialDtos.STATUS_NOT_OPEN);
         assertThat(rows.getFirst().periodicEnabled()).isFalse();
-        assertThat(rows.getFirst().allowedActions()).containsExactly("SETUP");
+        assertThat(rows.getFirst().allowedActions()).containsExactly("SETUP", "OPEN", "ENABLE_PERIODIC");
         assertThatThrownBy(() -> service.detail(UUID.randomUUID())).isInstanceOf(ApiException.class)
                 .hasMessageContaining("本车间");
     }

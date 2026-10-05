@@ -34,6 +34,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../stock/repositories/stock_query_repository.dart';
@@ -90,7 +91,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
       initialWarehouseId: _warehouseId,
       title: '选择仓库', // TODO(l10n): 补 arb
       includeAll: true,
-      allowParent: true,
+      use: WarehouseUse.query,
     );
     if (!mounted || result == null) return;
     final next = result.isAll ? null : result.id;

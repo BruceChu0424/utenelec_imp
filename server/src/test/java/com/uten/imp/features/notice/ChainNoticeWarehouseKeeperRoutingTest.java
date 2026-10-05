@@ -13,7 +13,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,8 +24,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * ADR-115 仓库类通知按仓分发: 单据所在仓(含上级仓)登记了有效负责人时只发给通知池里的负责人;
- * 没登记、没定仓、或负责人都不在池里时照旧发给整个池(宁可多发, 不让任务掉进无人区)。
+ * ADR-149 仓库类通知唯一分发规则(取代 ADR-115 的「负责人 ∩ 池, 为空发整个池」): ChainNoticeService 的每一处
+ * 仓库通知都经 {@link WarehouseNoticeRouter}; 规则本身(子仓负责人 ∩ 池 → 主管 ∩ 池 → 池)在数据库函数
+ * fn_warehouse_notice_recipients, 由 WarehouseDataScopePostgresTest 钉住。
  */
 class ChainNoticeWarehouseKeeperRoutingTest {
 
@@ -37,67 +37,72 @@ class ChainNoticeWarehouseKeeperRoutingTest {
     private final UUID finishedGoodsWarehouse = UUID.randomUUID();
 
     @Test
-    void keepersOfTheDocumentWarehouseReceiveTheNoticeInPoolOrder() {
-        WarehouseTaskScopePort keepers = mock(WarehouseTaskScopePort.class);
-        when(keepers.keeperUserIds(List.of(finishedGoodsWarehouse)))
-                .thenReturn(List.of(supervisor, finishedGoodsKeeper));
-        ChainNoticeService service = service(keepers);
+    void recipientsComeFromTheSingleRoutingRule() {
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        when(scopes.noticeRecipients(pool, List.of(finishedGoodsWarehouse))).thenReturn(List.of(finishedGoodsKeeper));
 
-        assertThat(service.warehouseRecipients(pool, List.of(finishedGoodsWarehouse)))
-                .containsExactly(finishedGoodsKeeper, supervisor);
+        assertThat(service(scopes).warehouseRecipients(pool, List.of(finishedGoodsWarehouse)))
+                .containsExactly(finishedGoodsKeeper);
     }
 
     @Test
-    void warehouseWithoutKeepersStillNotifiesTheWholePool() {
-        WarehouseTaskScopePort keepers = mock(WarehouseTaskScopePort.class);
-        when(keepers.keeperUserIds(any())).thenReturn(List.of());
+    void unassignedDocumentsStillGoThroughTheRule() {
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        // 未定仓的任务交主管那一级, 不再直接发整个池。
+        when(scopes.noticeRecipients(pool, List.of())).thenReturn(List.of(supervisor));
 
-        assertThat(service(keepers).warehouseRecipients(pool, List.of(finishedGoodsWarehouse)))
-                .isEqualTo(pool);
+        assertThat(service(scopes).warehouseRecipients(pool, List.of())).containsExactly(supervisor);
     }
 
     @Test
-    void keepersOutsideThePoolFallBackToTheWholePool() {
-        WarehouseTaskScopePort keepers = mock(WarehouseTaskScopePort.class);
-        // 负责人不在仓库部门或缺这项通知要求的权限: 不能让这张单据没人收到。
-        when(keepers.keeperUserIds(any())).thenReturn(List.of(UUID.randomUUID()));
+    void emptyPoolNeverQueriesTheRule() {
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
 
-        assertThat(service(keepers).warehouseRecipients(pool, List.of(finishedGoodsWarehouse)))
-                .isEqualTo(pool);
+        assertThat(service(scopes).warehouseRecipients(List.of(), List.of(finishedGoodsWarehouse))).isEmpty();
+        verify(scopes, never()).noticeRecipients(any(), any());
     }
 
     @Test
-    void documentsWithoutAWarehouseDoNotQueryKeepers() {
-        WarehouseTaskScopePort keepers = mock(WarehouseTaskScopePort.class);
-        ChainNoticeService service = service(keepers);
+    void routerPoolAddsOnlyTheInvolvedWarehousesKeepersOutsideTheDepartmentWhoQualify() {
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        UUID financeKeeper = UUID.randomUUID();
+        UUID unqualified = UUID.randomUUID();
+        // 候选只来自这张单涉及的仓(子仓负责人 + 指定的主管), 别的仓的负责人不进池。
+        when(scopes.noticeCandidateUserIds(List.of(finishedGoodsWarehouse)))
+                .thenReturn(List.of(supervisor, financeKeeper, unqualified));
 
-        assertThat(service.warehouseRecipients(pool, List.of())).isEqualTo(pool);
-        assertThat(service.warehouseRecipients(pool, Arrays.asList((UUID) null))).isEqualTo(pool);
-        assertThat(service.warehouseRecipients(List.of(), List.of(finishedGoodsWarehouse))).isEmpty();
-        verify(keepers, never()).keeperUserIds(any());
+        assertThat(new WarehouseNoticeRouter(scopes).pool(pool, id -> !id.equals(unqualified),
+                List.of(finishedGoodsWarehouse)))
+                .containsExactly(finishedGoodsKeeper, hardwareKeeper, supervisor, financeKeeper);
+        verify(scopes, never()).responsibleUserIds();
     }
 
     @Test
-    void withoutTheKeeperPortRoutingIsUnchanged() {
-        assertThat(service(null).warehouseRecipients(pool, List.of(finishedGoodsWarehouse)))
-                .isEqualTo(pool);
+    void withoutTheRouterRoutingIsUnchanged() {
+        assertThat(service(null).warehouseRecipients(pool, List.of(finishedGoodsWarehouse))).isEqualTo(pool);
     }
 
-    /** 每一处仓库类通知都经过按仓分发; 新增仓库通知时漏接会在这里暴露。 */
+    /** 每一处仓库类通知都用仓库通知池并经唯一规则分发; 新增仓库通知时漏接会在这里暴露。 */
     @Test
     void everyWarehouseDepartmentNoticeIsRoutedByWarehouse() throws Exception {
         String source = Files.readString(
                 Path.of("src/main/java/com/uten/imp/features/notice/ChainNoticeService.java"),
                 StandardCharsets.UTF_8);
-        int routed = source.split("warehouseRecipients\\(departmentUserIdsWithAuthorit", -1).length - 1;
-        int warehousePools = source.split("\"SUB_WH\"", -1).length - 1;
-        // 13 处仓库通知池全部按仓分发(新增最底层自制件实际物料待登记；成品入库待审、成品待登记、领料待出库、IQC 待入库、IQC 结案、
-        // 销售待拣货与撤回放行、委外出仓、委外预计回厂与撤回、采购预计到货、到货异常定案)。
+        int routed = source.split("warehouseRecipients\\(warehousePool\\(", -1).length - 1;
+        int legacy = source.split("warehouseRecipients\\(departmentUserIdsWithAuthorit", -1).length - 1;
+        // 13 处仓库通知全部按仓分发(最底层自制件实际物料待登记、成品入库待审、成品待登记、领料待出库、IQC 待入库、
+        // IQC 结案、销售待拣货与撤回放行、委外出仓、委外预计回厂与撤回、采购预计到货、到货异常定案)。
         assertThat(routed).isEqualTo(13);
-        assertThat(warehousePools).isEqualTo(routed);
+        assertThat(legacy).isZero();
+        // 另两处仓库通知(车间内料仓、盘点审核)也只经同一个 router。
+        for (String file : List.of("WorkshopMaterialNoticeService.java", "StockCountNoticeHandler.java")) {
+            String other = Files.readString(Path.of("src/main/java/com/uten/imp/features/notice/" + file),
+                    StandardCharsets.UTF_8);
+            assertThat(other).contains("warehouseRouter.recipients(").doesNotContain("keeperUserIds(");
+        }
     }
 
-    private static ChainNoticeService service(WarehouseTaskScopePort keepers) {
+    private static ChainNoticeService service(WarehouseTaskScopePort scopes) {
         ChainNoticeService service = new ChainNoticeService(
                 mock(NoticeService.class),
                 mock(UserAccountRepository.class),
@@ -107,7 +112,7 @@ class ChainNoticeWarehouseKeeperRoutingTest {
                 mock(RdTaskService.class),
                 mock(FinanceReviewerEligibilityPort.class),
                 mock(SalesOrderFinanceConfirmerEligibility.class));
-        service.setWarehouseKeepers(keepers);
+        service.setWarehouseRouter(scopes == null ? null : new WarehouseNoticeRouter(scopes));
         return service;
     }
 }

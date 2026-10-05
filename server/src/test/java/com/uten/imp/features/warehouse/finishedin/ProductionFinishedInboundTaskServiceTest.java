@@ -66,7 +66,9 @@ class ProductionFinishedInboundTaskServiceTest {
                         new BigDecimal("1000.0000"),
                         OffsetDateTime.parse(
                                 "2026-08-28T05:00:00Z"),
-                        true
+                        true,
+                        BigDecimal.ZERO,
+                        new BigDecimal("100.0000")
                 }));
         when(em.createNativeQuery(anyString())).thenReturn(count, rows);
         ProductionFinishedInboundTaskService service =
@@ -83,6 +85,8 @@ class ProductionFinishedInboundTaskServiceTest {
                 new BigDecimal("1000.0000"),
                 page.getItems().getFirst().pendingQty());
         assertTrue(page.getItems().getFirst().residualTask());
+        // ADR-148：任务队列带服务端拼好的「其中实际超产 N」。
+        assertEquals("其中实际超产 100", page.getItems().getFirst().actualSurplusNote());
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, org.mockito.Mockito.times(2))
@@ -129,7 +133,9 @@ class ProductionFinishedInboundTaskServiceTest {
                         1,
                         new BigDecimal("10000.0000"),
                         OffsetDateTime.parse("2026-08-30T05:00:00Z"),
-                        false
+                        false,
+                        null,
+                        null
                 }));
         when(em.createNativeQuery(anyString())).thenReturn(count, rows);
         ProductionFinishedInboundTaskService service =
@@ -146,6 +152,7 @@ class ProductionFinishedInboundTaskServiceTest {
         assertEquals(null, task.warehouseId());
         assertEquals(planId, task.planId());
         assertEquals(new BigDecimal("10000.0000"), task.pendingQty());
+        assertEquals(null, task.actualSurplusNote());
     }
 
     private static Query query() {

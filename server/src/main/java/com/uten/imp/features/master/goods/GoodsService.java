@@ -430,8 +430,8 @@ public class GoodsService {
     }
 
     /**
-     * 批量按 goods_id 聚合即时库存（仅参与核算仓库 is_accountable），列表「库存量」列用。
-     * 口径同即时库存/货品详情。空集合返回空 map（toList 对缺省键回落 BigDecimal.ZERO）。
+     * 批量按 goods_id 聚合良品库存(ADR-146: 参与核算、非不良品仓、非车间内料仓)，列表「库存量」列用。
+     * 口径同货品详情的合计。空集合返回空 map(toList 对缺省键回落 BigDecimal.ZERO)。
      */
     private Map<UUID, BigDecimal> stockQuantitiesFor(Collection<UUID> goodsIds) {
         Set<UUID> distinct = goodsIds.stream().filter(Objects::nonNull).collect(Collectors.toSet());
@@ -440,7 +440,8 @@ public class GoodsService {
                 SELECT b.goods_id, SUM(b.qty) AS qty
                 FROM stock_balances b
                 JOIN warehouses w ON w.id = b.warehouse_id
-                WHERE w.is_accountable AND b.goods_id IN (:ids)
+                WHERE w.is_accountable AND NOT w.is_defective AND NOT w.is_line_side
+                  AND b.goods_id IN (:ids)
                 GROUP BY b.goods_id
                 """;
         @SuppressWarnings("unchecked")
@@ -472,13 +473,13 @@ public class GoodsService {
                    CASE WHEN bool_or(b.qty <> 0 AND b.weight IS NULL) THEN NULL
                         ELSE COALESCE(SUM(b.weight), 0) END AS weight,
                    COALESCE(bool_or(b.weight_estimated), false) AS weight_estimated,
-                   w.is_line_side
+                   w.is_line_side, w.is_defective
             FROM stock_balances b
             JOIN warehouses w ON w.id = b.warehouse_id
             LEFT JOIN colors c ON c.id = b.color_id
             WHERE b.goods_id = :goodsId AND w.is_accountable
-            GROUP BY b.warehouse_id, w.code, w.name, w.is_line_side, b.color_id, c.name
-            ORDER BY w.is_line_side, w.code, c.name NULLS FIRST
+            GROUP BY b.warehouse_id, w.code, w.name, w.is_line_side, w.is_defective, b.color_id, c.name
+            ORDER BY w.is_line_side, w.is_defective, w.code, c.name NULLS FIRST
             """;
 
     private GoodsStockSummary stockSummaryForGoods(UUID goodsId) {
@@ -490,7 +491,8 @@ public class GoodsService {
     }
 
     /**
-     * 行 → 汇总：线边仓(V595 车间料架)行照常列出但不计入合计。
+     * 行 → 汇总：线边仓(V595 车间料架)行照常列出但不计入合计; 不良品仓(ADR-146)行照常列出、
+     * 不计入合计, 数量另计 defectiveQty(前端「另有不良品 N」)。
      * 重量合计口径同即时库存合计条(ADR-135)：只加非线边行的已知重量，有数量却重量未知的行另计
      * weightUnknownRows(前端「≈28.9 kg (另有 2 处未称)」)；有量的行重量全都未知时合计为 null
      * (前端「未称」)，绝不把未知当 0。含估算的已知重量行让合计带「≈」。
@@ -499,6 +501,7 @@ public class GoodsService {
      */
     static GoodsStockSummary summarizeStock(List<Object[]> rows) {
         BigDecimal totalQty = BigDecimal.ZERO;
+        BigDecimal defectiveQty = BigDecimal.ZERO;
         BigDecimal totalWeight = BigDecimal.ZERO;
         int weightUnknownRows = 0;
         boolean knownStockWeight = false;
@@ -509,8 +512,13 @@ public class GoodsService {
             BigDecimal weight = r[6] == null ? null : decimalOf(r[6]);
             boolean estimated = weight != null && Boolean.TRUE.equals(r[7]);
             boolean lineSide = Boolean.TRUE.equals(r[8]);
+            boolean defective = Boolean.TRUE.equals(r[9]);
             out.add(new GoodsStockRow(toUuid(r[0]), (String) r[1], (String) r[2],
-                    toUuid(r[3]), (String) r[4], qty, weight, estimated, lineSide));
+                    toUuid(r[3]), (String) r[4], qty, weight, estimated, lineSide, defective));
+            if (defective) {
+                defectiveQty = defectiveQty.add(qty);
+                continue;
+            }
             if (lineSide) {
                 continue;
             }
@@ -525,7 +533,7 @@ public class GoodsService {
         }
         boolean allUnknown = weightUnknownRows > 0 && !knownStockWeight;
         return new GoodsStockSummary(totalQty, allUnknown ? null : totalWeight, weightUnknownRows,
-                !allUnknown && weightEstimated, out);
+                !allUnknown && weightEstimated, out, defectiveQty);
     }
 
     private static BigDecimal decimalOf(Object o) {
@@ -1099,6 +1107,8 @@ public class GoodsService {
             goods.setOwningWarehouse(null);
             return;
         }
+        // ADR-145: 只在值变化时按「可选良品子仓」校验; 原样带回的旧值不重新判定。
+        if (req.getOwningWarehouseId().equals(owningWarehouseIdOf(goods))) return;
         goods.setOwningWarehouse(relationships.owningWarehouse(req.getOwningWarehouseId()));
     }
 
@@ -1344,7 +1354,9 @@ public class GoodsService {
                 g.getIssueMethod(), g.getPeriodicCostBasis(), g.getBulkPackageQty(), g.isRecycledMaterial(),
                 periodicBomWeights(g.getId()),
                 // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
-                g.getNameEn(), g.getNameEnSource(), canEditNameEn(g));
+                g.getNameEn(), g.getNameEnSource(), canEditNameEn(g),
+                // ADR-146 不良品仓数量另列, 不计入库存合计。
+                stock.getDefectiveQty());
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());

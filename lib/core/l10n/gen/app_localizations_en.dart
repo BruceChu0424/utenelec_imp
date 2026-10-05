@@ -4859,9 +4859,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wmGoLiveDate => 'Go-live date';
 
   @override
-  String get wmMainWarehouse => 'Under main warehouse';
-
-  @override
   String get wmMachines => 'Machines & containers';
 
   @override
@@ -4901,7 +4898,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get workshopMaterialSetupHubDesc =>
-      'Enable bulk issue, machines & containers, go-live preparation';
+      'Machines & containers, go-live preparation; open bins and start batch issuing from the Workshop bins overview';
 
   @override
   String get workshopMaterialReportsHubDesc =>
@@ -4921,9 +4918,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get wmBagMaterials => 'Bagged material';
-
-  @override
-  String get wmEnableWorkshopTab => 'Workshops';
 
   @override
   String get wmReportPeriod => 'Period';
@@ -8998,4 +8992,547 @@ class AppLocalizationsEn extends AppLocalizations {
   String aiAuditProviders(String names) {
     return 'Service: $names';
   }
+
+  @override
+  String get stockCountReasonLabel => 'Count note (optional)';
+
+  @override
+  String get stockCountReasonHint =>
+      'e.g. go-live count or routine count, up to 500 characters';
+
+  @override
+  String weightParamsLoadFailed(String reason) {
+    return 'Unit weight data could not be loaded: $reason. Weigh-to-count and weight prefill are unavailable for now; quantities can still be registered.';
+  }
+
+  @override
+  String get weightParamsLoadFailedUnknown =>
+      'The network or service is temporarily unavailable';
+
+  @override
+  String get warehouseOwningPickerTitle => 'Select owning warehouse';
+
+  @override
+  String get warehouseMasterUseColumn => 'Warehouse use';
+
+  @override
+  String get warehouseMasterUseGood => 'Good stock';
+
+  @override
+  String get warehouseMasterUseDefective => 'Defective stock';
+
+  @override
+  String get warehouseMasterUseHint =>
+      'A defective-stock warehouse only holds goods judged defective and never counts as available. The use cannot change while it holds stock or is still a product\'s owning warehouse.';
+
+  @override
+  String get warehouseMasterParentLabel => 'Parent warehouse';
+
+  @override
+  String get warehouseMasterParentFixedHint =>
+      'Always under the main warehouse (only two levels: main and sub-warehouses)';
+
+  @override
+  String get warehouseMasterParentSelf =>
+      'This is the main warehouse: totals, responsibility scope and navigation only; documents cannot use it';
+
+  @override
+  String get warehouseMasterMainTag => 'Main';
+
+  @override
+  String get warehouseMasterLineSideLabel => 'Workshop material store';
+
+  @override
+  String get warehouseMasterLineSideYes =>
+      'Yes (workshop transfers and bulk issue)';
+
+  @override
+  String get warehouseMasterLineSideNo => 'No';
+
+  @override
+  String get warehouseMasterLineSideReadOnlyHint =>
+      'Workshop material stores are opened and closed on the workshop material store page; read-only here';
+
+  @override
+  String get warehouseDefectiveTag => 'Defective';
+
+  @override
+  String get warehouseDefectiveBlockedHint =>
+      'Defective-stock warehouse, not selectable here';
+
+  @override
+  String get stockTransferSameClassHint =>
+      'Both ends of a normal transfer must be good-stock or both defective-stock warehouses. To move goods into or out of defective stock use \"Defective stock\" in the stock detail.';
+
+  @override
+  String get defectiveMoveAction => 'Defective stock';
+
+  @override
+  String get defectiveMoveToDefective => 'Move to defective stock';
+
+  @override
+  String get defectiveMoveRelease => 'Release after re-inspection';
+
+  @override
+  String get defectiveMoveToDefectiveExplain =>
+      'Moves goods judged defective from a good-stock warehouse into a defective-stock warehouse. Afterwards they no longer count as available anywhere (sales reservations, MRP, material analysis, issues).';
+
+  @override
+  String get defectiveMoveReleaseExplain =>
+      'After quality re-inspection passes, moves goods from the defective-stock warehouse back to a good-stock warehouse, where they count as available again.';
+
+  @override
+  String get defectiveMoveFrom => 'From warehouse';
+
+  @override
+  String get defectiveMoveTo => 'To warehouse';
+
+  @override
+  String get defectiveMoveQty => 'Quantity';
+
+  @override
+  String get defectiveMoveReason => 'Reason';
+
+  @override
+  String get defectiveMoveReasonHintToDefective =>
+      'Why the goods were judged defective (required, up to 500 characters)';
+
+  @override
+  String get defectiveMoveReasonHintRelease =>
+      'The re-inspection conclusion (required, up to 500 characters)';
+
+  @override
+  String get defectiveMoveSubmit => 'Submit and post';
+
+  @override
+  String get defectiveMoveIncomplete =>
+      'Choose both warehouses and enter a quantity above 0 and a reason';
+
+  @override
+  String defectiveMoveDone(String billNo) {
+    return 'Posted: $billNo';
+  }
+
+  @override
+  String get defectiveMoveGoods => 'Goods';
+
+  @override
+  String instantInventoryDefectivePart(String qty) {
+    return 'incl. $qty defective';
+  }
+
+  @override
+  String goodsStockDefectiveExtra(String qty) {
+    return 'plus $qty defective (not in the stock total)';
+  }
+
+  @override
+  String get stockTransferKindLabel => 'Transfer type';
+
+  @override
+  String get stockTransferKindNormal => 'Normal transfer';
+
+  @override
+  String get wmBinStatusNotOpen => 'Not opened';
+
+  @override
+  String get wmBinStatusOpen => 'Opened';
+
+  @override
+  String get wmBinStatusPeriodic => 'Batch issuing';
+
+  @override
+  String get wmBinSegmentAll => 'All workshops';
+
+  @override
+  String get wmBinSearchHint => 'Search workshop or warehouse';
+
+  @override
+  String get wmBinColWorkshop => 'Workshop';
+
+  @override
+  String get wmBinColStatus => 'Status';
+
+  @override
+  String get wmBinColBin => 'Workshop bin';
+
+  @override
+  String get wmBinColSource => 'Issue source';
+
+  @override
+  String get wmBinColPeriod => 'Current period';
+
+  @override
+  String get wmBinSourceDefault => 'By each item\'s own warehouse';
+
+  @override
+  String wmBinOpenAction(int n) {
+    return 'Open ($n)';
+  }
+
+  @override
+  String wmBinPeriodicAction(int n) {
+    return 'Start batch issuing ($n)';
+  }
+
+  @override
+  String wmBinRevokeAction(int n) {
+    return 'Undo ($n)';
+  }
+
+  @override
+  String get wmBinMenuViewStock => 'View bin stock';
+
+  @override
+  String get wmBinMenuOpen => 'Open workshop bin';
+
+  @override
+  String get wmBinMenuChangeSource => 'Change issue source';
+
+  @override
+  String get wmBinMenuRevoke => 'Undo last step';
+
+  @override
+  String get wmBinMachinesAndPrep => 'Machines and go-live prep';
+
+  @override
+  String get wmBinEmptyAll => 'No workshops to show';
+
+  @override
+  String get wmBinEmptyFiltered => 'No workshops match';
+
+  @override
+  String get wmBinLoadFailed => 'Loading failed, please retry';
+
+  @override
+  String get wmBinNetworkRetry =>
+      'The network is unstable and the result is not confirmed yet. Your input is kept; tap again (it will not be done twice).';
+
+  @override
+  String wmBinRevokeTitle(int n) {
+    return 'Undo the last step for $n workshop(s)';
+  }
+
+  @override
+  String wmBinRevokeLinePeriodic(String name) {
+    return '\"$name\": stop batch issuing; the bin stays opened';
+  }
+
+  @override
+  String wmBinRevokeLineOpen(String name) {
+    return '\"$name\": undo opening; the bin is removed from the warehouse list';
+  }
+
+  @override
+  String get wmBinRevokeHint =>
+      'Only mistakes can be undone: a bin that already has stock movements or workshop transfers, or batch issuing already in use, cannot be undone.';
+
+  @override
+  String wmBinRevokeBlockedLine(String name, String reasons) {
+    return '\"$name\" cannot be undone now: $reasons';
+  }
+
+  @override
+  String get wmBinRevokeConfirm => 'Undo';
+
+  @override
+  String wmBinRevokeDone(int n) {
+    return 'Undid the last step for $n workshop(s)';
+  }
+
+  @override
+  String get wmBinRevoking => 'Undoing';
+
+  @override
+  String get wmBinNoneOpened => 'No workshop has an opened bin yet';
+
+  @override
+  String wmBinNotOpenTitle(String name) {
+    return '\"$name\" has no opened bin yet';
+  }
+
+  @override
+  String get wmBinNotOpenDescription =>
+      'Once opened, upstream and downstream jobs in the workshop can hand over directly; start batch issuing when raw material such as pellets is stored in the workshop in bulk.';
+
+  @override
+  String get wmBinNotOpenAskWarehouse =>
+      'Ask the warehouse to open it in Workshop bins.';
+
+  @override
+  String get wmBinDirectOnlyNotice =>
+      'This bin only receives workshop transfers; batch issuing is not started. Below is what is in the bin now, taken by the receiving jobs directly.';
+
+  @override
+  String get wmBinPanelTitleOpen => 'Open workshop bins';
+
+  @override
+  String get wmBinPanelTitleSource => 'Change issue source';
+
+  @override
+  String wmBinSelectedWorkshops(int n, String names) {
+    return 'Selected workshops ($n): $names';
+  }
+
+  @override
+  String get wmBinSourceHint =>
+      'When the warehouse issues to this bin, stock is taken from here by default when it has some; leave empty to use each item\'s own warehouse. Pick the main warehouse, then a sub-warehouse.';
+
+  @override
+  String get wmBinSourcePickerTitle => 'Choose the bin\'s issue source';
+
+  @override
+  String get wmBinSourceRequired => 'Choose an issue source';
+
+  @override
+  String get wmBinSourceSaved => 'Issue source saved';
+
+  @override
+  String get wmBinSaveSource => 'Save source';
+
+  @override
+  String get wmBinAlsoPeriodic => 'Also start batch issuing';
+
+  @override
+  String get wmBinAlsoPeriodicHint =>
+      'Raw material such as pellets is kept in the workshop in bulk and consumed by counting; otherwise the bin only receives workshop transfers.';
+
+  @override
+  String get wmBinPeriodicFlowNotice =>
+      'After starting, products that use bin material only need to choose the material once; no work-order requisition first. Production can start without unit weights; they are needed before estimates and settlement. Products that also need order materials such as inserts still requisition those as before.';
+
+  @override
+  String get wmBinPendingNone =>
+      'No in-progress tasks in the selected workshops need a material choice.';
+
+  @override
+  String wmBinPendingTitle(int n) {
+    return 'Products in production without a material choice ($n); choose them all now (once per product):';
+  }
+
+  @override
+  String get wmBinColProduct => 'Product';
+
+  @override
+  String get wmBinColInProgressWorkshops => 'In-progress workshops';
+
+  @override
+  String get wmBinColTasks => 'Tasks';
+
+  @override
+  String get wmBinColMaterial => 'Material used';
+
+  @override
+  String get wmBinColAlsoOrder => 'Also by work order';
+
+  @override
+  String get wmBinChooseMaterialHint => 'Choose this product\'s material';
+
+  @override
+  String wmBinMissingChoice(int n, String names) {
+    return '$n in-progress product(s) have no material yet: $names';
+  }
+
+  @override
+  String wmBinOpenDone(int n) {
+    return 'Opened bins for $n workshop(s)';
+  }
+
+  @override
+  String wmBinPeriodicDone(int n) {
+    return 'Started batch issuing for $n workshop(s)';
+  }
+
+  @override
+  String get wmBinSaving => 'Working on it, please wait';
+
+  @override
+  String get wmBinSavingPeriodic =>
+      'Creating the bins and period 1 and binding in-progress tasks';
+
+  @override
+  String get wmLeafColumn => 'Issue from';
+
+  @override
+  String get wmLeafReturnColumn => 'Return to';
+
+  @override
+  String get wmLeafPick => 'Choose warehouse';
+
+  @override
+  String get wmLeafPickerTitle => 'Choose the issuing warehouse';
+
+  @override
+  String get wmLeafReturnPickerTitle => 'Choose where to return';
+
+  @override
+  String wmLeafAvailable(String qty, String unit) {
+    return '$qty $unit available';
+  }
+
+  @override
+  String get wmSetupNoWorkshop => 'No production workshop found';
+
+  @override
+  String get wmSetupNoWorkshopHint =>
+      'Workshops are departments under Production; create them in department management first';
+
+  @override
+  String get wmSetupWorkshopUnavailable =>
+      'The workshop is unavailable or not visible to you';
+
+  @override
+  String get wmSetupWorkshopUnavailableHint =>
+      'Go back and check the workshop, or refresh and retry.';
+
+  @override
+  String get wmSetupMaterialIssueMethod => 'Raw material issue method';
+
+  @override
+  String get wmSetupOpeningGuide => 'How to register go-live leftovers';
+
+  @override
+  String get wmSetupOpeningGuideTitle =>
+      'Count workshop leftovers before go-live';
+
+  @override
+  String get wmSetupOpeningGuideBody =>
+      'First record full bags on the racks, opened bags, mixed material waiting to be used and what is left in machine containers; record weighed and estimated amounts separately.\n\nLeftovers already on the stock books: check the original warehouse and work order. Material issued against work orders is returned through the usual flow first; material still on an ordinary warehouse\'s books is transferred into the workshop bin in bulk by the warehouse.\n\nLeftovers never booked: after the quantity and value are approved, book them as other stock-in and then transfer them into the bin in bulk; do not add a second copy of the stock or book material already used up.\n\nThis only links go-live stock; production staff do not have to requisition again for each work order. Afterwards register top-ups and returns as they happen and count when needed; container estimates affect usage differences and are not exact consumption.';
+
+  @override
+  String get wmSetupOpeningGuideOk => 'Got it';
+
+  @override
+  String get warehouseMasterLineSideManaged =>
+      'Yes, opened and managed in Workshop bins (read-only here)';
+
+  @override
+  String get handoffLotRegistrationTitle => 'Register finished goods receipt';
+
+  @override
+  String get handoffLotRegistrationFooter =>
+      'Each row is one physical lot (one report entry sent to the warehouse: demand share / planned public stock / actual surplus). Location, physical count and weight are entered once per lot. Warehouse and location are required (prefilled from the goods owning warehouse or your last choice; yellow means please check). Different lots of one report may go to different warehouses. All rows are selected by default; only selected rows are submitted.';
+
+  @override
+  String handoffLotBatchesTitle(int count) {
+    return 'Registration batches ($count)';
+  }
+
+  @override
+  String get handoffLotBatchesHint =>
+      'One report may be split into several registration batches by warehouse, one quality sheet per warehouse. A batch not yet handled by quality can be withdrawn; its lots then return to pending registration.';
+
+  @override
+  String get handoffLotSplitColumn => 'Breakdown';
+
+  @override
+  String get handoffLotSplitColumnInfo =>
+      'How much of this physical lot is demand share, planned public stock and actual surplus (calculated by the server). Quality and warehouse count act on the whole lot: passed / received quantity fills the demand share first, failed / missing quantity is taken from the actual surplus first.';
+
+  @override
+  String get inboundArrivalRegistrationTitle => 'Register actual arrival';
+
+  @override
+  String get fqcWholeLotOnlyHint =>
+      'This physical lot is split into demand share, planned public stock or actual surplus. Decide passed and failed quantities for the whole lot on the inspection sheet (passed fills the demand share first, failed is taken from the actual surplus first).';
+
+  @override
+  String get fqcOpenSheetForLot => 'Decide on inspection sheet';
+
+  @override
+  String get warehouseScopeAllWarehouses => 'All warehouses';
+
+  @override
+  String get warehouseScopeAllMine => 'All warehouses I manage';
+
+  @override
+  String warehouseScopeKeeperLabel(String name) {
+    return 'My warehouse: $name';
+  }
+
+  @override
+  String get warehouseScopePickerTitle => 'Choose warehouse scope';
+
+  @override
+  String get warehouseScopeSupervisorTooltip =>
+      'You are a warehouse supervisor: view all warehouses or pick one. Task lists and counts follow the selected scope on the server; handling permissions are unchanged.';
+
+  @override
+  String get warehouseScopeKeeperTooltip =>
+      'The task center shows only tasks of the warehouses you manage; badges and notices count only these. To change them, ask a warehouse supervisor to update keepers in Warehouse master data.';
+
+  @override
+  String warehouseKeeperDialogTitle(String name) {
+    return 'Set keepers · $name';
+  }
+
+  @override
+  String get warehouseKeeperRolesHint =>
+      'Keepers decide who sees and receives this warehouse\'s tasks:\n1. People registered on the main warehouse and the warehouse department manager are supervisors: they see all warehouses and can pick any one in the task center;\n2. People registered on a sub-warehouse see and receive only their own warehouses\' tasks (badges count only these) and can switch among them;\n3. Colleagues without a registration see warehouses nobody manages and tasks not yet assigned to a warehouse; notices of a warehouse without keepers go to supervisors.\nCheck the employee number when names are duplicated. People without a login account are not effective keepers.';
+
+  @override
+  String get warehouseKeeperNoAccount =>
+      'no active login account: cannot see tasks or receive notices';
+
+  @override
+  String get warehouseKeeperOutsideDepartment =>
+      'not in the warehouse department: needs warehouse task permissions to see tasks and receive notices';
+
+  @override
+  String get warehouseKeeperDuplicateName =>
+      'another employee has the same name, check the employee number';
+
+  @override
+  String get warehouseKeeperCleared =>
+      'Keepers cleared: this warehouse\'s tasks and notices go to supervisors, and colleagues without a registration can see them';
+
+  @override
+  String get warehouseKeeperSaved => 'Keepers saved';
+
+  @override
+  String warehouseKeeperSavedWithWarnings(String warnings) {
+    return 'Keepers saved. $warnings';
+  }
+
+  @override
+  String get defectiveMoveUncertain =>
+      'The last submission has not been confirmed yet, so the fields are locked. Retry with the same content; you can edit again once the result is confirmed.';
+
+  @override
+  String get defectiveMoveReservationWarning =>
+      'These reservations no longer have stock behind them; please tell the people concerned';
+
+  @override
+  String get wmBinSourceFollowOwning =>
+      'No issue source: issue from each goods\' owning warehouse';
+
+  @override
+  String get wmBinSourceFollowOwningHint =>
+      'Clears the current source warehouse; that warehouse can then be disabled or repurposed normally';
+
+  @override
+  String get wmBinSourceCleared =>
+      'Issuing now follows each goods\' owning warehouse';
+
+  @override
+  String get wmMachinesBatchCreate => 'Add machines in bulk';
+
+  @override
+  String get wmMachinesSaveChanges => 'Save changes';
+
+  @override
+  String qualityBatchSubmitDone(int iqcLines, int fqcLots) {
+    return 'Inspection report submitted: $iqcLines incoming line(s), $fqcLots finished-goods lot(s) passed in full; passed goods are now waiting for warehouse stock-in';
+  }
+
+  @override
+  String get qualityBatchColumnSplit => 'Lot split';
+
+  @override
+  String qualityBatchWholeLot(int count) {
+    return 'Whole lot of $count parts decided together';
+  }
+
+  @override
+  String get qualityBatchWholeLotPass => 'Ticking passes the whole lot';
 }

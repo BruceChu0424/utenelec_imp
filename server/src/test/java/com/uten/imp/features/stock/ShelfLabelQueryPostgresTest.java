@@ -222,25 +222,29 @@ class ShelfLabelQueryPostgresTest {
             Fixture fixture = Fixture.create(connection);
             setOwningWarehouse(connection, fixture.parsedA30, fixture.childWh);
             assertEquals(fixture.childWh, masterWarehouse(connection, fixture.parsedA30, fixture.parentWh));
-            try (PreparedStatement statement = connection.prepareStatement("UPDATE warehouses SET status='禁用' WHERE id=?")) {
-                statement.setObject(1, fixture.parentWh); statement.executeUpdate();
-            }
+            // ADR-145 / V798: a main warehouse with sub-warehouses, or a warehouse that still holds stock
+            // or owns goods, cannot be retired; goods cannot own a main, disabled or non-accounting warehouse.
+            assertRefused(connection, "UPDATE warehouses SET status='禁用' WHERE id='" + fixture.parentWh + "'", "它是主仓");
+            // The default join still never auto-fills from an invalid master. Such rows can only be
+            // legacy facts from before V798 (replica role skips the guards), so the join keeps refusing them.
+            asLegacyFact(connection, "UPDATE warehouses SET status='禁用' WHERE id='" + fixture.parentWh + "'");
             assertNull(masterWarehouse(connection, fixture.parsedA30, null), "主仓禁用时仍在使用的子仓也不能自动带入");
-            try (PreparedStatement statement = connection.prepareStatement("UPDATE warehouses SET status='使用' WHERE id=?")) {
-                statement.setObject(1, fixture.parentWh); statement.executeUpdate();
-            }
+            asLegacyFact(connection, "UPDATE warehouses SET status='使用' WHERE id='" + fixture.parentWh + "'");
             // This good already has real balances in both warehouses; those facts do not select a default.
             setOwningWarehouse(connection, fixture.parsedA30, fixture.otherWh);
             assertEquals(fixture.otherWh, masterWarehouse(connection, fixture.parsedA30, null));
             assertNull(masterWarehouse(connection, fixture.parsedA30, fixture.parentWh), "主档不在来源主仓范围时不回退旧仓");
-            try (PreparedStatement statement = connection.prepareStatement("UPDATE warehouses SET status='禁用' WHERE id=?")) {
-                statement.setObject(1, fixture.otherWh); statement.executeUpdate();
+            assertRefused(connection, "UPDATE warehouses SET status='禁用' WHERE id='" + fixture.otherWh + "'", "所属仓库");
+            asLegacyFact(connection, "UPDATE warehouses SET status='禁用' WHERE id='" + fixture.otherWh + "'");
+            assertNull(masterWarehouse(connection, fixture.parsedA30, null));
+            asLegacyFact(connection, "UPDATE warehouses SET status='使用' WHERE id='" + fixture.otherWh + "'");
+            for (UUID invalid : List.of(fixture.parentWh, fixture.nonAccountableWh)) {
+                assertRefused(connection, "UPDATE goods SET owning_warehouse_id='" + invalid + "' WHERE id='"
+                        + fixture.parsedA30 + "'", "只能选启用中的良品子仓");
+                asLegacyFact(connection, "UPDATE goods SET owning_warehouse_id='" + invalid + "' WHERE id='"
+                        + fixture.parsedA30 + "'");
+                assertNull(masterWarehouse(connection, fixture.parsedA30, null), "有正常子仓的逻辑主仓/不记账仓不是实际落仓");
             }
-            assertNull(masterWarehouse(connection, fixture.parsedA30, null));
-            setOwningWarehouse(connection, fixture.parsedA30, fixture.parentWh);
-            assertNull(masterWarehouse(connection, fixture.parsedA30, null), "有正常子仓的逻辑主仓不是实际落仓");
-            setOwningWarehouse(connection, fixture.parsedA30, fixture.nonAccountableWh);
-            assertNull(masterWarehouse(connection, fixture.parsedA30, null));
             setOwningWarehouse(connection, fixture.parsedA30, null);
             assertNull(masterWarehouse(connection, fixture.parsedA30, null));
         }
@@ -253,6 +257,29 @@ class ShelfLabelQueryPostgresTest {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setObject(1, scope); statement.setObject(2, scope); statement.setObject(3, goods);
             try (ResultSet result = statement.executeQuery()) { assertTrue(result.next()); return result.getObject(1, UUID.class); }
+        }
+    }
+
+    private static void assertRefused(Connection connection, String sql, String reason) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate(sql);
+        } catch (java.sql.SQLException refused) {
+            assertEquals("23514", refused.getSQLState());
+            assertTrue(refused.getMessage().contains(reason), refused.getMessage());
+            return;
+        }
+        throw new AssertionError("expected the warehouse master guard to refuse: " + sql);
+    }
+
+    /** A row shape that only pre-V798 history can hold: write it with the guards skipped. */
+    private static void asLegacyFact(Connection connection, String sql) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET session_replication_role = replica");
+            try {
+                statement.executeUpdate(sql);
+            } finally {
+                statement.execute("SET session_replication_role = origin");
+            }
         }
     }
 

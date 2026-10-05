@@ -10,6 +10,7 @@
 // - 双料件一种料一行; 一个产品改了任一行, 这个产品的全部行一起提交 (只选料时服务端按
 //   整个产品重写认料, 漏交一行就等于把那种料去掉了)。
 // - 可选的料随上线准备清单一起下发 (本车间内料仓收的整批领料主料)。
+import '../../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -540,7 +541,11 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
     return Stack(
       children: [
         SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+          // 末尾留出右下悬浮按钮组的位置 (平台统一: 动作放右下悬浮组, ADR-147)。
+          padding: const EdgeInsets.only(
+            top: UtenSpacing.s8,
+            bottom: UtenFloatingActionGroup.scrollClearance,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -573,35 +578,6 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
-              ListenableBuilder(
-                listenable: _grid,
-                builder: (context, _) => Wrap(
-                  spacing: UtenSpacing.s12,
-                  runSpacing: UtenSpacing.s8,
-                  children: [
-                    UtenButton(
-                      key: const Key('wm-prep-fill-goods-weight'),
-                      type: UtenButtonType.secondary,
-                      icon: Icons.auto_fix_high_outlined,
-                      onPressed: _busyTitle == null && _grid.selectedCount > 0
-                          ? _fillFromGoodsWeight
-                          : null,
-                      child: Text(
-                        '${l10n.wmFillFromGoodsWeight} (${_grid.selectedCount})',
-                      ),
-                    ),
-                    UtenButton(
-                      key: const Key('wm-prep-save'),
-                      icon: Icons.save_outlined,
-                      onPressed: _busyTitle == null && !_grid.isEmpty
-                          ? _save
-                          : null,
-                      child: const Text('保存'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
               if (_grid.isEmpty)
                 const UtenEmpty(
                   message: '没有要准备的产品',
@@ -622,6 +598,38 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                       setState(() => _hidden = hidden),
                 ),
             ],
+          ),
+        ),
+        PositionedDirectional(
+          end: UtenSpacing.s16,
+          bottom: UtenSpacing.s16,
+          child: ListenableBuilder(
+            listenable: _grid,
+            builder: (context, _) => UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const Key('wm-prep-fill-goods-weight'),
+                  type: UtenButtonType.secondary,
+                  size: UtenButtonSize.large,
+                  icon: Icons.auto_fix_high_outlined,
+                  onPressed: _busyTitle == null && _grid.selectedCount > 0
+                      ? _fillFromGoodsWeight
+                      : null,
+                  child: Text(
+                    '${l10n.wmFillFromGoodsWeight} (${_grid.selectedCount})',
+                  ),
+                ),
+                UtenButton(
+                  key: const Key('wm-prep-save'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.save_outlined,
+                  onPressed: _busyTitle == null && !_grid.isEmpty
+                      ? _save
+                      : null,
+                  child: Text(l10n.commonSave),
+                ),
+              ],
+            ),
           ),
         ),
         if (_busyTitle != null) UtenBusyOverlay(title: _busyTitle!),

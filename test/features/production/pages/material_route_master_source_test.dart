@@ -211,7 +211,7 @@ Future<_Harness> _pump(
         dynamic result = <String, dynamic>{};
         if (request.path.endsWith('/warehouses/dict')) {
           result = [
-            {'id': 'warehouse', 'name': '主仓'},
+            {'id': 'warehouse', 'name': '主仓', 'selectableForNew': true},
           ];
         } else if (request.method == 'POST' &&
             request.path.endsWith('/preview')) {

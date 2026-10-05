@@ -34,8 +34,9 @@ const _row1 = '30000000-0000-0000-0000-000000000001';
 const _row2 = '30000000-0000-0000-0000-000000000002';
 const _goods1 = 'a0000000-0000-0000-0000-000000000001';
 const _goods2 = 'a0000000-0000-0000-0000-000000000002';
+// ADR-151 §5：单张 = 1 个来源的同一个登记页；读写都走批量端点(一个事务)。
 const _registrationPath =
-    '/warehouse/production-finished-in/arrival-registrations/$_reportId';
+    '/warehouse/production-finished-in/arrival-registrations/batch';
 const _placeSuggestionPath = '/warehouse/place-suggestions';
 
 void main() {
@@ -61,9 +62,7 @@ void main() {
     expect(weights.requests.first.single.goodsId, _goods1);
     expect(weights.requests.first.single.supplierId, isNull);
     // 本页只核对不回填数量：重量格里没有称重计数按钮。
-    final grid = find.byKey(
-      const Key('production-finished-arrival-registration-grid'),
-    );
+    final grid = find.byKey(const Key('production-finished-arrival-grid'));
     expect(
       find.descendant(
         of: grid,
@@ -91,7 +90,8 @@ void main() {
 
     await _submit(tester);
     final body = api.postBodies.single;
-    final item = (body['items'] as List).single as Map;
+    final item = (body['lots'] as List).single as Map;
+    expect(item['lotId'], _row1);
     expect(item['weight'], 0.03);
     // 幂等键带重量指纹：改了重量是另一个请求。
     expect(
@@ -120,9 +120,7 @@ void main() {
       clearSelection: false,
       overrides: warehouseWeightTestOverrides(api, repository: weights),
     );
-    final grid = find.byKey(
-      const Key('production-finished-arrival-registration-grid'),
-    );
+    final grid = find.byKey(const Key('production-finished-arrival-grid'));
     final input = find.descendant(
       of: grid,
       matching: find.byKey(const ValueKey('weight-cell-input')),
@@ -170,9 +168,7 @@ void main() {
         },
       ),
     );
-    final grid = find.byKey(
-      const Key('production-finished-arrival-registration-grid'),
-    );
+    final grid = find.byKey(const Key('production-finished-arrival-grid'));
     expect(
       find.descendant(
         of: grid,
@@ -181,7 +177,7 @@ void main() {
       findsOneWidget,
     );
     await _submit(tester);
-    final item = (api.postBodies.single['items'] as List).single as Map;
+    final item = (api.postBodies.single['lots'] as List).single as Map;
     expect(item.containsKey('weight'), isFalse);
   });
 
@@ -202,9 +198,7 @@ void main() {
     );
     final field = tester.widget<TextField>(
       find.descendant(
-        of: find.byKey(
-          const Key('production-finished-arrival-registration-grid'),
-        ),
+        of: find.byKey(const Key('production-finished-arrival-grid')),
         matching: find.byKey(const ValueKey('weight-cell-input')),
       ),
     );
@@ -269,12 +263,14 @@ void main() {
     // 幂等键含路线：改用另一个按钮重提交是另一个请求，不是重放。
     expect(
       api.lastPostBody?['idempotencyKey'] as String,
-      endsWith(':warehouse-1:prestock'),
+      endsWith(':prestock'),
     );
-    final items = (api.lastPostBody?['items'] as List)
+    final lots = (api.lastPostBody?['lots'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items.single['countedQty'], 10);
-    expect(items.single['place'], 'CP-A-09');
+    expect(lots.single['lotId'], _row1);
+    expect(lots.single['warehouseId'], 'warehouse-1');
+    expect(lots.single['countedQty'], 10);
+    expect(lots.single['place'], 'CP-A-09');
     expect(find.byKey(const Key('open-arrival-registration')), findsOneWidget);
   });
 
@@ -300,10 +296,10 @@ void main() {
     await tester.enterText(_placeField(_row1), 'CP-A-01');
     await tester.pump();
     await _submit(tester);
-    final items = (api.lastPostBody?['items'] as List)
+    final lots = (api.lastPostBody?['lots'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items, hasLength(1));
-    expect(items.single['reportItemId'], _row1);
+    expect(lots, hasLength(1));
+    expect(lots.single['lotId'], _row1);
   });
 
   testWidgets(
@@ -355,14 +351,13 @@ void main() {
         findsOneWidget,
       );
       expect(api.lastPostPath, _registrationPath);
-      expect(api.lastPostBody?['warehouseId'], 'warehouse-1');
-      expect(api.lastPostBody?['items'], const [
-        {'reportItemId': _row1, 'place': 'CP-A-01'},
+      // 一行一批实物：仓库、库位跟着批走，服务端按「报工 x 实际仓」分组。
+      expect(api.lastPostBody?['lots'], const [
+        {'lotId': _row1, 'warehouseId': 'warehouse-1', 'place': 'CP-A-01'},
       ]);
       expect(api.lastPostBody?.containsKey('stockInBeforeInspection'), isFalse);
       final idempotencyKey = api.lastPostBody?['idempotencyKey'] as String;
       expect(idempotencyKey.length, greaterThanOrEqualTo(8));
-      expect(idempotencyKey, endsWith(':warehouse-1'));
       expect(tester.takeException(), isNull);
     },
   );
@@ -390,15 +385,19 @@ void main() {
       findsNothing,
     );
     expect(_warehouseCell(_row1), findsNothing);
+    // 已登记批只读显示登记仓与所属品质检查单。
     expect(
-      find.descendant(of: _grid, matching: find.text('成品仓')),
+      find.descendant(
+        of: _grid,
+        matching: find.text('成品仓 · FQC20260830000001'),
+      ),
       findsOneWidget,
     );
     expect(tester.widget<TextField>(_placeField(_row1)).enabled, isFalse);
     _expectPlace(tester, _row1, 'CP-A-01');
     expect(find.byType(RequiredCellFrame), findsNothing);
     expect(api.suggestionRequests, isEmpty);
-    const footer = '该报工单已登记，仓库和库位仅供核对。';
+    const footer = '当前账号只有查看权限，不能修改仓库或库位。';
     await tester.scrollUntilVisible(
       find.text(footer),
       200,
@@ -426,7 +425,10 @@ void main() {
           GoRoute(
             path: RouteName.warehouseProductionFinishedArrivalRegistration,
             builder: (_, state) => ProductionFinishedArrivalRegistrationPage(
-              reportId: state.pathParameters['reportId'] ?? '',
+              reportIds: (state.uri.queryParameters['reportIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
             ),
           ),
         ],
@@ -449,6 +451,7 @@ void main() {
             routerConfig: router,
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
           ),
         ),
       );
@@ -471,7 +474,10 @@ void main() {
         findsOneWidget,
       );
       expect(badges.refreshCalls, greaterThanOrEqualTo(1));
-      expect(api.lastPostBody?['warehouseId'], 'warehouse-1');
+      expect(
+        ((api.lastPostBody?['lots'] as List).single as Map)['warehouseId'],
+        'warehouse-1',
+      );
     },
   );
 
@@ -877,7 +883,7 @@ void main() {
     _expectPlace(tester, _row2, '');
   });
 
-  testWidgets('行级入库仓库：两行分别选不同仓，按仓两次 POST (不同幂等键)', (tester) async {
+  testWidgets('一张报工的两批实物进两个仓：一次提交一个命令，各批带各自的仓', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _ArrivalRegistrationApi(
@@ -904,33 +910,23 @@ void main() {
     await tester.enterText(_placeField(_row1), 'CP-A-01');
     await tester.enterText(_placeField(_row2), 'CP-B-01');
     await tester.pump();
-    await _pressRoute(tester, InboundRoute.inspectFirst);
-    expect(find.textContaining('本次按 2 个入库仓库分别登记'), findsOneWidget);
-    await _confirm(tester, InboundRoute.inspectFirst);
+    await _submit(tester);
 
-    expect(api.postBodies, hasLength(2));
-    expect(api.postBodies[0]['warehouseId'], 'warehouse-1');
-    expect(api.postBodies[1]['warehouseId'], 'warehouse-2');
-    expect(
-      ((api.postBodies[0]['items'] as List).single as Map)['reportItemId'],
-      _row1,
-    );
-    expect(
-      ((api.postBodies[1]['items'] as List).single as Map)['place'],
-      'CP-B-01',
-    );
-    final keys = api.postBodies
-        .map((body) => body['idempotencyKey'] as String)
-        .toList();
-    expect(keys.toSet(), hasLength(2));
-    expect(keys[0], endsWith(':warehouse-1'));
-    expect(keys[1], endsWith(':warehouse-2'));
-    expect(keys.map((key) => key.split(':').first).toSet(), hasLength(1));
+    // ADR-151 §5：同一报工按实际仓分组由服务端做，页面只发一个命令。
+    expect(api.postBodies, hasLength(1));
+    final lots = (api.postBodies.single['lots'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(lots.map((lot) => lot['lotId']), [_row1, _row2]);
+    expect(lots.map((lot) => lot['warehouseId']), [
+      'warehouse-1',
+      'warehouse-2',
+    ]);
+    expect(lots.last['place'], 'CP-B-01');
     expect(find.byKey(const Key('open-arrival-registration')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('部分仓登记失败停在原页；重试只补提交失败仓', (tester) async {
+  testWidgets('登记失败整批不落：停在原页，重试原样提交同一个命令', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = _ArrivalRegistrationApi(
@@ -950,26 +946,29 @@ void main() {
     await tester.pump();
     await _submit(tester);
 
-    expect(api.postBodies, hasLength(1));
-    expect(api.postBodies.single['warehouseId'], 'warehouse-1');
-    expect(
-      _toasts(tester).last,
-      allOf(contains('登记失败'), contains('已成功部分不会重复登记')),
-    );
+    // 一个事务：失败时一批都不落，两行都仍可编辑。
+    expect(api.postBodies, isEmpty);
+    expect(api.failedBodies, hasLength(1));
+    expect(_toasts(tester).last, contains('暂时不可登记'));
     expect(find.byKey(InboundRoute.inspectFirst.submitKey), findsOneWidget);
     expect(find.byKey(const Key('open-arrival-registration')), findsNothing);
-    // 已成功仓的行锁定只读；失败仓的行仍可编辑。
     await _revealGrid(tester);
-    expect(tester.widget<TextField>(_placeField(_row1)).enabled, isFalse);
+    expect(tester.widget<TextField>(_placeField(_row1)).enabled, isTrue);
     expect(tester.widget<TextField>(_placeField(_row2)).enabled, isTrue);
 
+    // 原样重试：同一个提交键(丢响应重放安全)，两批一起登记。
     api.failWarehouses.clear();
     await _submit(tester);
-    expect(api.postBodies, hasLength(2));
-    expect(api.postBodies.last['warehouseId'], 'warehouse-2');
+    expect(api.postBodies, hasLength(1));
     expect(
-      ((api.postBodies.last['items'] as List).single as Map)['reportItemId'],
-      _row2,
+      api.postBodies.single['idempotencyKey'],
+      api.failedBodies.single['idempotencyKey'],
+    );
+    expect(
+      (api.postBodies.single['lots'] as List).map(
+        (lot) => (lot as Map)['lotId'],
+      ),
+      [_row1, _row2],
     );
     expect(find.byKey(const Key('open-arrival-registration')), findsOneWidget);
   });
@@ -1017,7 +1016,7 @@ void main() {
     );
     await _openPage(tester, api: api, canRegister: true);
 
-    expect(find.text('FQC20260830000001'), findsWidgets);
+    expect(find.textContaining('FQC20260830000001'), findsWidgets);
     for (final route in InboundRoute.values) {
       expect(find.byKey(route.submitKey), findsNothing);
     }
@@ -1078,10 +1077,9 @@ class _ArrivalRouteQueue extends ConsumerWidget {
         child: FilledButton(
           key: const Key('open-formal-arrival-route'),
           onPressed: () => context.push(
-            RoutePath.warehouseProductionFinishedArrivalRegistration(
+            RoutePath.warehouseProductionFinishedArrivalRegistration([
               _reportId,
-              returnTo: RouteName.warehouseProductionFinishedInboundTasks,
-            ),
+            ], returnTo: RouteName.warehouseProductionFinishedInboundTasks),
           ),
           child: const Text('打开登记'),
         ),
@@ -1090,9 +1088,7 @@ class _ArrivalRouteQueue extends ConsumerWidget {
   }
 }
 
-final _grid = find.byKey(
-  const Key('production-finished-arrival-registration-grid'),
-);
+final _grid = find.byKey(const Key('production-finished-arrival-grid'));
 
 final _suggestionStatus = find.byKey(
   const Key('inbound-place-suggestion-status'),
@@ -1329,6 +1325,7 @@ Future<void> _openPage(
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('zh'),
         home: Builder(
           builder: (context) => Scaffold(
             body: Center(
@@ -1337,7 +1334,7 @@ Future<void> _openPage(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => ProductionFinishedArrivalRegistrationPage(
-                      reportId: _reportId,
+                      reportIds: const [_reportId],
                       canRegister: canRegister,
                     ),
                   ),
@@ -1409,6 +1406,9 @@ class _ArrivalRegistrationApi extends ApiClient {
   final bool secondRowOtherGoods;
 
   final List<Map<String, dynamic>> postBodies = [];
+
+  /// 整批失败的提交(一个事务，什么都没落)。
+  final List<Map<String, dynamic>> failedBodies = [];
   final List<String> reversedRegistrationIds = [];
   Map<String, dynamic>? lastReverseBody;
   String? lastPostPath;
@@ -1432,9 +1432,14 @@ class _ArrivalRegistrationApi extends ApiClient {
   }) async {
     if (path == '/master/warehouses/dict') {
       return const [
-        {'id': 'warehouse-1', 'name': '成品仓'},
-        {'id': 'warehouse-2', 'name': '备用成品仓'},
+        {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
+        {'id': 'warehouse-2', 'name': '备用成品仓', 'selectableForNew': true},
       ];
+    }
+    // 登记页按来源报工一次拉取(单张 = 1 个来源)。
+    if (path == _registrationPath) {
+      expect(query?['reportIds'], _reportId);
+      return [_detailJson()];
     }
     return const [];
   }
@@ -1444,7 +1449,6 @@ class _ArrivalRegistrationApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == _registrationPath) return _detailJson();
     throw StateError('Unexpected GET $path');
   }
 
@@ -1475,21 +1479,50 @@ class _ArrivalRegistrationApi extends ApiClient {
       _savedPlaces.clear();
       return _detailJson();
     }
+    // 单重参数取参失败不再静默 (ADR-151): 这些用例不关心单重, 回一个「都没学过」的真实形状。
+    if (path == '/stock/weight/params') {
+      return {'items': <Object>[], 'stockBalances': <Object>[]};
+    }
     if (path != _registrationPath) throw StateError('Unexpected POST $path');
     lastPostPath = path;
     lastPostBody = Map<String, dynamic>.from(body! as Map);
-    final requestedWarehouse = lastPostBody?['warehouseId'] as String?;
-    if (failWarehouses.contains(requestedWarehouse)) {
-      throw NetworkException('仓库「$requestedWarehouse」暂时不可登记');
+    final lots = [
+      for (final lot in (lastPostBody?['lots'] as List? ?? const []))
+        Map<String, dynamic>.from(lot as Map),
+    ];
+    final failed = lots
+        .map((lot) => lot['warehouseId'] as String?)
+        .where(failWarehouses.contains)
+        .toList();
+    if (failed.isNotEmpty) {
+      failedBodies.add(lastPostBody!);
+      throw NetworkException('仓库「${failed.first}」暂时不可登记');
     }
     postBodies.add(lastPostBody!);
     _saved = true;
-    _savedWarehouseId = requestedWarehouse;
-    for (final item in (lastPostBody?['items'] as List? ?? const [])) {
-      final row = Map<String, dynamic>.from(item as Map);
-      _savedPlaces[row['reportItemId'] as String] = row['place'] as String;
+    _savedWarehouseId = lots.isEmpty
+        ? null
+        : lots.first['warehouseId'] as String?;
+    for (final lot in lots) {
+      _savedPlaces[lot['lotId'] as String] = lot['place'] as String;
     }
-    return _detailJson();
+    final groups = <String>{
+      for (final lot in lots) lot['warehouseId'] as String,
+    };
+    return {
+      'registeredCount': 1,
+      'reports': [
+        for (final warehouse in groups)
+          {
+            'registrationId': '40000000-0000-0000-0000-000000000001',
+            'reportId': _reportId,
+            'reportNo': 'RB202608300001',
+            'warehouseId': warehouse,
+            'warehouseName': '成品仓',
+          },
+      ],
+      'sheets': const <Object>[],
+    };
   }
 
   /// 共用库位建议端点的服务端口径：该仓记住的库位 → 货品资料通用库位 → 无。
@@ -1557,7 +1590,7 @@ class _ArrivalRegistrationApi extends ApiClient {
               },
             ]
           : const <Map<String, dynamic>>[],
-      'items': _itemsJson(),
+      'lots': _itemsJson(),
     };
   }
 
@@ -1578,8 +1611,17 @@ class _ArrivalRegistrationApi extends ApiClient {
   }) {
     final pending = !(registered || _saved);
     final master = masterWarehouseByItem[reportItemId] ?? warehouseId;
+    // 一批实物一行：测试里一批只有一份(需求份)，批号沿用报工行号便于定位格子。
     return {
-      'reportItemId': reportItemId,
+      'lotId': reportItemId,
+      'members': [
+        {
+          'reportItemId': reportItemId,
+          'lineNo': lineNo,
+          'qty': 10,
+          'kind': 'DEMAND',
+        },
+      ],
       'lineNo': lineNo,
       'planItemId': '70000000-0000-0000-0000-000000000001',
       'executionSegmentId': '80000000-0000-0000-0000-000000000001',

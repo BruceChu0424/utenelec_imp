@@ -1,7 +1,6 @@
 package com.uten.imp.features.warehouse.finishedin;
 
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
@@ -39,16 +38,15 @@ public class ProductionFinishedInboundTaskController {
             @RequestParam(required = false) UUID warehouseId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "40") int size,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String taskNo,
             @RequestParam(required = false) String planNo) {
-        // 仓库范围(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
+        // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         // 2026-09-25 单号列统一：sort/order 表头排序 + 任务单号/生产计划号表头值筛选。
         return service.list(keyword, taskStage, warehouseId, page, size,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId),
+                warehouseScopes.current(scopeWarehouseId),
                 sort, order, taskNo, planNo);
     }
 
@@ -60,20 +58,20 @@ public class ProductionFinishedInboundTaskController {
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) String taskStage,
             @RequestParam(required = false) UUID warehouseId,
-            @RequestParam(defaultValue = "") String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.facets(keyword, taskStage, warehouseId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId));
+                warehouseScopes.current(scopeWarehouseId));
     }
 
+    /** 产成品待点收待办数(徽章来源 finishedInbound): 与列表同一仓库范围(ADR-149)。 */
     @GetMapping("/tasks/count")
     @PreAuthorize("hasAuthority('stock_doc:view')")
-    public Map<String, Long> count() {
-        return Map.of("count", service.countPending());
+    public Map<String, Long> count(@RequestParam(required = false) UUID scopeWarehouseId) {
+        return Map.of("count", service.countPending(warehouseScopes.current(scopeWarehouseId)));
     }
 
-    // 批量端点须声明在 /{reportId} 之前：同前缀下字面量路径优先匹配，多单汇总入口
-    // 不会被当作 reportId 解析。
+    // 产成品入库登记只有这一组端点(ADR-151 §5)：单张 = 1 个来源、多选 = N 个来源，
+    // 按实物交接批(ADR-148)一行；原按单张报工的读取/登记端点已删除。
     @GetMapping("/arrival-registrations/batch")
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public List<ArrivalRegistrationView> batchArrivalRegistrations(
@@ -102,21 +100,5 @@ public class ProductionFinishedInboundTaskController {
             @PathVariable UUID registrationId,
             @Valid @RequestBody ArrivalRegistrationReversalRequest request) {
         return arrivalRegistrations.reverse(registrationId, request);
-    }
-
-    @GetMapping("/arrival-registrations/{reportId}")
-    @PreAuthorize("hasAuthority('stock_doc:view')")
-    public ArrivalRegistrationView arrivalRegistration(
-            @PathVariable UUID reportId) {
-        return arrivalRegistrations.detail(reportId);
-    }
-
-    @PostMapping("/arrival-registrations/{reportId}")
-    @PreAuthorize("hasAuthority('stock_doc:view')"
-            + " and hasAuthority('stock_doc:approve')")
-    public ArrivalRegistrationView registerArrival(
-            @PathVariable UUID reportId,
-            @Valid @RequestBody ArrivalRegistrationRequest request) {
-        return arrivalRegistrations.register(reportId, request);
     }
 }

@@ -77,8 +77,9 @@ public class InventoryAiChatTool implements AiChatToolPort {
             String unit = label(row.unit(), "单位未登记");
             reply.append("\n• ").append(label(row.code(), "未编码")).append(" · ").append(label(row.name(), "未命名货品"));
             if (row.color() != null && !row.color().isBlank()) reply.append("（").append(label(row.color(), "")).append("）");
-            reply.append(" · ").append(label(row.warehouseName(), "未命名仓库"))
-                    .append("：现有 ").append(row.qty().toPlainString()).append(" ").append(unit)
+            reply.append(" · ").append(label(row.warehouseName(), "未命名仓库"));
+            if (row.defective()) reply.append("(不良品仓, 不计入可用)");
+            reply.append("：现有 ").append(row.qty().toPlainString()).append(" ").append(unit)
                     .append("，可用 ").append(row.movable().toPlainString()).append(" ").append(unit);
             if (detailed) reply.append("\n  预留 ").append(row.reserved().toPlainString()).append(" ").append(unit)
                     .append("，待检 ").append(row.pendingInspection().toPlainString()).append(" ").append(unit)

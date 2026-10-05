@@ -97,7 +97,7 @@ class QualifiedSourceWarehouseEndToEndTest {
         qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",BigDecimal.class,actual,c.material()));
     }
 
-    @Test void qualifiedPurchaseInDisabledSiblingWarehouseAutomaticallyReadiesAndIssuesOriginalStock(){
+    @Test void qualifiedPurchaseLocationCannotBeRetiredWhileHoldingStockAndStillReadiesOriginalStock(){
         var world=fixture.seedWorld("disabled-qualified-10000");
         UUID main=warehouse("main-with-disabled-storage",false);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?",main,world.warehouseId());
@@ -110,9 +110,15 @@ class QualifiedSourceWarehouseEndToEndTest {
         org.mockito.Mockito.doNothing().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());
         try {pass(c,actual,receipt,"10000");}
         finally {org.mockito.Mockito.doCallRealMethod().when(readinessTarget()).applyPriorityForOriginEvent(org.mockito.ArgumentMatchers.any());}
-        // Stock was lawfully received while the location was active. Retiring
-        // that location must not make its existing qualified stock disappear.
-        db.update("UPDATE warehouses SET status='禁用' WHERE id=?",actual);
+        // Stock was lawfully received while the location was active. ADR-145: a location that
+        // still holds stock (or owns goods / has open reservations) cannot be retired at all, so
+        // its qualified stock can never become stranded in a disabled warehouse (V540 is only a
+        // historical fallback now). The guard names the reasons; the location stays usable.
+        var refused=assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                ()->db.update("UPDATE warehouses SET status='禁用' WHERE id=?",actual));
+        assertTrue(refused.getMessage().contains("现在不能停用"),refused.getMessage());
+        assertTrue(refused.getMessage().contains("有库存"),refused.getMessage());
+        assertEquals("使用",db.queryForObject("SELECT status FROM warehouses WHERE id=?",String.class,actual));
         org.springframework.security.core.context.SecurityContextHolder.clearContext();
         runReconcilerUntilReady(c);
         assertEquals("READY",status(c));assertEquals(1,drawCount(c));
@@ -130,7 +136,8 @@ class QualifiedSourceWarehouseEndToEndTest {
         stockDocuments.approveAndIssue(drawId,issue);stockDocuments.approveAndIssue(drawId,issue);
         qty("0",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",BigDecimal.class,actual,c.material()));
         qty("10000",db.queryForObject("SELECT SUM(consumed_qty) FROM stock_reservations WHERE demand_id IN (SELECT id FROM production_material_demands WHERE execution_segment_id=?) AND warehouse_id=? AND NOT is_deleted",BigDecimal.class,c.segment(),actual));
-        assertEquals("禁用",db.queryForObject("SELECT status FROM warehouses WHERE id=?",String.class,actual));
+        // The location could not be retired while it held the stock (ADR-145), so it is still live.
+        assertEquals("使用",db.queryForObject("SELECT status FROM warehouses WHERE id=?",String.class,actual));
         com.uten.imp.features.stock.dto.StockDocIssueRequest reverse=call("drawIssueRequest",drawId,
                 "disabled-qualified-return-"+drawId,"退回原入库位置",BigDecimal.ZERO);
         stockDocuments.reverseIssue(drawId,reverse);
@@ -143,7 +150,7 @@ class QualifiedSourceWarehouseEndToEndTest {
             var w=fixture.seedWorld("qualified-with-safety-"+special);
             Case c=create(w,"safety");
             db.update("UPDATE goods SET min_qty=20 WHERE id=?",c.material());
-            UUID actual=special?warehouse("qualified-safety-special",true):w.warehouseId();
+            UUID actual=special?warehouse("qualified-safety-special",false):w.warehouseId();
             UUID receipt=receive(c,actual,"10");pass(c,actual,receipt,"10");
             assertEquals("READY",status(c));qty("0",material(c).shortageQty());
             qty("10",db.queryForObject("SELECT sum(r.qty-r.released_qty) FROM stock_reservations r JOIN production_material_demands d ON d.id=r.demand_id WHERE d.plan_id=?",BigDecimal.class,c.plan()));
@@ -152,7 +159,7 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     @Test void qualifiedSourceAcrossTwoOtherMainWarehousesPromotesOnlyWhenCompleteAndCreatesActualDraws(){
         var w=fixture.seedWorld("qualified-two-warehouses");
-        Case c=create(w,"split");UUID b=warehouse("qualified-B",true),d=warehouse("qualified-C",false);
+        Case c=create(w,"split");UUID b=warehouse("qualified-B",false),d=warehouse("qualified-C",false);
         UUID first=receive(c,b,"5");pass(c,b,first,"5");
         assertEquals("WAITING",status(c));assertEquals(0,drawCount(c));
         var partial=material(c);
@@ -224,9 +231,49 @@ class QualifiedSourceWarehouseEndToEndTest {
         qty("10",db.queryForObject("SELECT SUM(consumed_qty) FROM stock_reservations WHERE demand_id IN(SELECT id FROM production_material_demands WHERE execution_segment_id=?)",BigDecimal.class,c.segment()));
     }
 
+    /**
+     * ADR-146 废止 ADR-075 第 2 条: 合格到货不能直接入不良品仓(入库选仓与流水守卫都拒绝), 已在不良品仓的货
+     * 既不算物料「库存」也不能被任何需求预留; 只有经「不良复判转回」回到良品仓才重新可用。
+     */
+    @Test void qualifiedArrivalCannotEnterADefectiveWarehouseAndDefectiveStockNeverCoversDemand(){
+        var w=fixture.seedWorld("qualified-defective-refused");
+        Case c=create(w,"defective");
+        UUID defective=warehouse("qualified-defective-target",true);
+        db.update("UPDATE warehouses SET parent_id=(SELECT parent_id FROM warehouses WHERE id=?) WHERE id=?",
+                w.warehouseId(),defective);
+        // 到货登记与 IQC 入库都只能落良品仓: 直接登记到不良品仓就被拒。
+        Throwable refused=assertThrows(RuntimeException.class,()->pass(c,defective,receive(c,defective,"5"),"5"));
+        assertTrue(String.valueOf(refused.getMessage()).contains("不良品仓")
+                ||String.valueOf(refused.getCause()).contains("不良品仓"),()->String.valueOf(refused));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_balances WHERE warehouse_id=?",Integer.class,defective));
+        // 即便不良品仓里本来就有这种料(盘盈进来的), 物料分析也不算它, 需求照样缺。
+        db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+            try(var statement=connection.createStatement()){
+                statement.execute("SET session_replication_role = replica");
+                statement.execute("INSERT INTO stock_balances(goods_id,warehouse_id,qty) VALUES ('"+c.material()+"','"+defective+"',100)");
+                statement.execute("SET session_replication_role = origin");
+            }
+            return null;
+        });
+        for(int round=0;round<5;round++)readinessReconciler.runBatch();
+        assertEquals("WAITING",status(c));
+        qty("10",material(c).shortageQty());
+        assertTrue(material(c).warehouseBreakdown().stream().noneMatch(row->defective.equals(row.warehouseId())),
+                "不良品仓不进分仓明细");
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_reservations WHERE warehouse_id=? AND status=0 AND NOT is_deleted",Integer.class,defective));
+        db.execute((org.springframework.jdbc.core.ConnectionCallback<Void>)connection->{
+            try(var statement=connection.createStatement()){
+                statement.execute("SET session_replication_role = replica");
+                statement.execute("DELETE FROM stock_balances WHERE warehouse_id='"+defective+"'");
+                statement.execute("SET session_replication_role = origin");
+            }
+            return null;
+        });
+    }
+
     @Test void publicUninspectedAndOtherAnalysisStockCannotFillTheQualifiedSourceShortage(){
         var w=fixture.seedWorld("qualified-boundaries");
-        Case c=create(w,"primary");UUID b=warehouse("qualified-isolated",true);
+        Case c=create(w,"primary");UUID b=warehouse("qualified-isolated",false);
         // This is a real unrelated OTHER_IN, not a fabricated balance or a PASS event.
         call("putDirectTargetStock",withWarehouse(w,b),c.material(),"100");
         UUID first=receive(c,b,"5");pass(c,b,first,"5");
@@ -245,7 +292,7 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     @Test void cancellingUnusedPackageRestoresEachQualifiedLotInItsActualWarehouse(){
         var w=fixture.seedWorld("qualified-reverse");Case c=create(w,"reverse");
-        UUID b=warehouse("restore-B",true),d=warehouse("restore-C",false);
+        UUID b=warehouse("restore-B",false),d=warehouse("restore-C",false);
         pass(c,b,receive(c,b,"4"),"4");pass(c,d,receive(c,d,"6"),"6");
         assertEquals("READY",status(c));
         fixture.loginAs(w.superAdminUserId());
@@ -271,7 +318,7 @@ class QualifiedSourceWarehouseEndToEndTest {
 
     @Test void directMakeQualifiedInboundFollowsItsActualWarehouseButSubcontractPreparationIsNotFinalSupply(){
         MakeCase c=makeCase("qualified-direct-make",false);
-        UUID actual=warehouse("actual-qualified-MAKE",true);
+        UUID actual=warehouse("actual-qualified-MAKE",false);
         call("produceInternal",withWarehouse(c.world(),actual),c.childPlanItem(),c.childGoods(),"1");
         assertEquals("READY",segmentStatus(c.parentPlan()));
         qty("1",db.queryForObject("""

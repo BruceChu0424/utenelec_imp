@@ -1,5 +1,6 @@
 package com.uten.imp.features.master.warehouse;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.web.ApiException;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -18,7 +19,8 @@ import static org.mockito.Mockito.when;
  * V476 主/子层级：查询范围展开 + 叶子仓落库红线的纯单元测试。
  *
  * <p>父仓=自身+全部后代聚合；叶子仓=单元素集合（旧精确匹配语义）；
- * 单据保存遇到父仓必须拒绝（货品/物料必须落到具体子仓库）。
+ * 单据保存遇到父仓必须拒绝(货品/物料必须落到具体子仓库)。选仓一律经 require(仓, 名称, 用途),
+ * 用途与仓库类别(良品仓/不良品仓)的矩阵见 WarehouseUsePolicyTest(ADR-146)。
  */
 class WarehouseScopeServiceTest {
 
@@ -89,10 +91,10 @@ class WarehouseScopeServiceTest {
     }
 
     @Test
-    void operationalSaveRejectsParentWarehouse() {
+    void operationalSaveRejectsParentWarehouseEvenWhenItWasThePreviousValue() {
         givenHierarchy();
-        assertThatThrownBy(() ->
-                service.requireLeafWarehouse(UUID.fromString(MAIN), "仓库"))
+        UUID main = UUID.fromString(MAIN);
+        assertThatThrownBy(() -> service.require(main, main, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("具体子仓库");
     }
@@ -100,11 +102,40 @@ class WarehouseScopeServiceTest {
     @Test
     void operationalSaveAcceptsLeafWarehouseAndNull() {
         givenHierarchy();
-        assertThatCode(() ->
-                service.requireLeafWarehouse(UUID.fromString(TRACK), "仓库"))
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(List.of(wh(MAIN, null), wh(TRACK, MAIN)));
+        assertThatCode(() -> service.require(UUID.fromString(TRACK), "仓库", WarehouseUse.GOOD_IN))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> service.requireLeafWarehouse(null, "仓库"))
+        assertThatCode(() -> service.require(null, "仓库", WarehouseUse.GOOD_IN))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void defectiveLeafIsRejectedForGoodBusinessAndAcceptedForDisposalCountAndChannels() {
+        Warehouse defective = wh(DEFECTIVE, MAIN);
+        defective.setDefective(true);
+        defective.setName("成品不良品仓");
+        List<Warehouse> rows = List.of(wh(MAIN, null), defective, wh(TRACK, MAIN));
+        when(repo.findAll()).thenReturn(rows);
+        when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(rows);
+        UUID id = UUID.fromString(DEFECTIVE);
+        assertThatThrownBy(() -> service.require(id, "入库仓库", WarehouseUse.GOOD_IN))
+                .isInstanceOf(ApiException.class).hasMessageContaining("成品不良品仓」是不良品仓");
+        assertThatThrownBy(() -> service.require(id, "发出仓库", WarehouseUse.GOOD_OUT))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不能从这里领用或发货");
+        // 沿用原仓也不放行: 仓库用途比历史身份优先。
+        assertThatThrownBy(() -> service.require(id, id, "仓库", WarehouseUse.GOOD_IN))
+                .isInstanceOf(ApiException.class).hasMessageContaining("不良品仓");
+        for (WarehouseUse use : List.of(WarehouseUse.DISPOSAL_OUT, WarehouseUse.COUNT, WarehouseUse.TRANSFER,
+                WarehouseUse.DEFECTIVE_IN, WarehouseUse.DEFECTIVE_OUT)) {
+            assertThatCode(() -> service.require(id, "仓库", use)).doesNotThrowAnyException();
+        }
+        UUID good = UUID.fromString(TRACK);
+        assertThatThrownBy(() -> service.require(good, "调入仓", WarehouseUse.DEFECTIVE_IN))
+                .isInstanceOf(ApiException.class).hasMessageContaining("只能转入不良品仓");
+        assertThatThrownBy(() -> service.require(good, "调出仓", WarehouseUse.DEFECTIVE_OUT))
+                .isInstanceOf(ApiException.class).hasMessageContaining("只能从不良品仓转出");
+        assertThat(service.isDefective(id)).isFalse(); // findById 未打桩: 查不到按良品仓
     }
 
     @Test
@@ -118,11 +149,8 @@ class WarehouseScopeServiceTest {
     }
 
     @Test
-    void operationalScopeIncludesSiblingLeavesButNeverAnotherMainWarehouse() {
+    void sameMainWarehouseNeverJoinsAnUnknownWarehouse() {
         givenHierarchy();
-        assertThat(service.operationalLeafIds(UUID.fromString(FINISHED_SUB)))
-                .containsExactlyInAnyOrder(UUID.fromString(FINISHED_SUB),
-                        UUID.fromString(DEFECTIVE), UUID.fromString(TRACK));
         assertThat(service.sameMainWarehouse(UUID.fromString(FINISHED_SUB),
                 UUID.fromString(TRACK))).isTrue();
         assertThat(service.sameMainWarehouse(UUID.fromString(TRACK), UUID.randomUUID()))
@@ -134,8 +162,6 @@ class WarehouseScopeServiceTest {
         when(repo.findAll()).thenReturn(List.of(wh(MAIN, FINISHED), wh(FINISHED, MAIN)));
         assertThat(service.sameMainWarehouse(UUID.fromString(MAIN), UUID.fromString(FINISHED)))
                 .isFalse();
-        assertThat(service.operationalLeafIds(UUID.fromString(MAIN)))
-                .containsExactly(UUID.fromString(MAIN));
         assertThat(service.sameMainWarehouse(null, UUID.fromString(MAIN))).isFalse();
     }
 
@@ -144,9 +170,9 @@ class WarehouseScopeServiceTest {
         Warehouse main = wh(MAIN, null);
         main.setAccountable(false);
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(main, wh(TRACK, MAIN)));
-        assertThatCode(() -> service.requireNewLeafSelection(null, UUID.fromString(TRACK), "仓库"))
+        assertThatCode(() -> service.require(null, UUID.fromString(TRACK), "仓库", WarehouseUse.GOOD_IN))
                 .doesNotThrowAnyException();
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.fromString(MAIN), "仓库"))
+        assertThatThrownBy(() -> service.require(UUID.fromString(MAIN), "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class);
     }
 
@@ -158,12 +184,11 @@ class WarehouseScopeServiceTest {
         when(repo.findAll()).thenReturn(rows);
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(rows);
         UUID id = UUID.fromString(TRACK);
-        assertThat(service.operationalLeafIds(UUID.fromString(MAIN))).contains(id);
-        assertThatCode(() -> service.requireNewLeafSelection(id, id, "仓库"))
+        assertThatCode(() -> service.require(id, id, "仓库", WarehouseUse.GOOD_IN))
                 .doesNotThrowAnyException();
-        assertThatThrownBy(() -> service.requireNewLeafSelection(null, id, "仓库"))
+        assertThatThrownBy(() -> service.require(null, id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("停用");
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "入库仓库"))
+        assertThatThrownBy(() -> service.require(id, "入库仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("停用");
     }
 
@@ -174,19 +199,19 @@ class WarehouseScopeServiceTest {
         Warehouse leaf = wh(TRACK, MAIN);
         main.setStatus("禁用");
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(main, leaf));
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+        assertThatThrownBy(() -> service.require(id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("停用");
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(leaf));
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+        assertThatThrownBy(() -> service.require(id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("不完整");
         main.setStatus("使用");
         leaf.setAccountable(false);
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(main, leaf));
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+        assertThatThrownBy(() -> service.require(id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("记账");
         leaf.setAccountable(true);
         leaf.setDeleted(true);
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+        assertThatThrownBy(() -> service.require(id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("删除");
     }
 
@@ -194,9 +219,9 @@ class WarehouseScopeServiceTest {
     void activeSelectionRejectsCyclesAndUnknownIds() {
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection())).thenReturn(List.of(
                 wh(MAIN, FINISHED), wh(FINISHED, MAIN), wh(TRACK, MAIN)));
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.fromString(TRACK), "仓库"))
+        assertThatThrownBy(() -> service.require(UUID.fromString(TRACK), "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("不完整");
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(UUID.randomUUID(), "仓库"))
+        assertThatThrownBy(() -> service.require(UUID.randomUUID(), "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("不存在");
     }
 
@@ -208,13 +233,13 @@ class WarehouseScopeServiceTest {
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection()))
                 .thenReturn(List.of(main, leaf));
         UUID id = UUID.fromString(TRACK);
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "仓库"))
+        assertThatThrownBy(() -> service.require(id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("正常仓库");
-        assertThatThrownBy(() -> service.requireNewLeafSelection(null, id, "仓库"))
+        assertThatThrownBy(() -> service.require(null, id, "仓库", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("正常仓库");
         assertThatCode(() -> service.requireActiveLineSideWarehouse(id, "车间流转位置"))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> service.requireNewLeafSelection(id, id, "历史仓库"))
+        assertThatCode(() -> service.require(id, id, "历史仓库", WarehouseUse.GOOD_IN))
                 .doesNotThrowAnyException();
         leaf.setLineSide(false);
         assertThatThrownBy(() -> service.requireActiveLineSideWarehouse(id, "车间流转位置"))
@@ -229,11 +254,10 @@ class WarehouseScopeServiceTest {
         when(repo.findAllForNewSelection(org.mockito.ArgumentMatchers.anyCollection()))
                 .thenReturn(List.of(ordinary, technical));
         UUID id = UUID.fromString(MAIN);
-        assertThatCode(() -> service.requireLeafWarehouse(id, "原存放仓")).doesNotThrowAnyException();
-        assertThatCode(() -> service.requireActiveLeafWarehouse(id, "原存放仓")).doesNotThrowAnyException();
-        assertThat(service.operationalLeafIds(id)).contains(id);
+        assertThatCode(() -> service.require(id, id, "原存放仓", WarehouseUse.GOOD_IN)).doesNotThrowAnyException();
+        assertThatCode(() -> service.require(id, "原存放仓", WarehouseUse.GOOD_IN)).doesNotThrowAnyException();
         technical.setLineSide(false);
-        assertThatThrownBy(() -> service.requireActiveLeafWarehouse(id, "主仓"))
+        assertThatThrownBy(() -> service.require(id, "主仓", WarehouseUse.GOOD_IN))
                 .isInstanceOf(ApiException.class).hasMessageContaining("具体子仓库");
     }
 }

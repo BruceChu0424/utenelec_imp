@@ -124,10 +124,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           .list(
             reviewRoute: widget.reviewRoute,
             status: _status.isEmpty ? null : _status,
-            warehouseScope:
-                widget.warehouseScope.queryParameters['warehouseScope'],
-            scopeWarehouseId:
-                widget.warehouseScope.queryParameters['scopeWarehouseId'],
+            scopeWarehouseId: widget.warehouseScope.warehouseId,
             keyword: widget.keyword,
             page: page,
           );

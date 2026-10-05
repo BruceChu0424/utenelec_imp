@@ -11,23 +11,24 @@ class _Repository extends WeightRepository {
   final requested = <WeightParamsLine>[];
 
   @override
-  Future<Map<String, WeightParams>> params(
-    Iterable<WeightParamsLine> lines,
-  ) async {
+  Future<WeightParamsResult> params(Iterable<WeightParamsLine> lines) async {
     requested.addAll(lines);
-    return {
-      for (final line in lines)
-        line.key: WeightParams(
-          key: line.key,
-          goodsId: line.goodsId,
-          stockBalance: WeightStockBalance(
+    return WeightParamsResult(
+      params: {
+        for (final line in lines)
+          line.paramsIdentity: WeightParams(goodsId: line.goodsId),
+      },
+      balances: {
+        for (final line in lines)
+          line.balanceIdentity!: WeightStockBalance(
             warehouseId: line.warehouseId!,
+            goodsId: line.goodsId,
             colorId: line.colorId,
             qtyBase: 1000,
             weightKg: line.warehouseId == 'source-a' ? 20 : 40,
           ),
-        ),
-    };
+      },
+    );
   }
 }
 

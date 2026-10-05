@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.integrity.ProcurementReceiptOriginPolicy;
 
 import com.uten.imp.application.port.PreplanAnalysisPegPort;
@@ -226,7 +227,7 @@ public class ProcurementIqcStockInService {
             }
         }
         for (UUID warehouseId : actualWarehouses) {
-            warehouseScopes.requireActiveLeafWarehouse(warehouseId, "入库仓库");
+            warehouseScopes.require(warehouseId, "入库仓库", WarehouseUse.GOOD_IN);
         }
         for(String type:List.of(PURCHASE,SUBCONTRACT)) {
             List<UUID> receiptIds=prepared.stream().filter(item->item.existing()==null&&type.equals(item.batch().type()))
@@ -334,7 +335,7 @@ public class ProcurementIqcStockInService {
         for (PreStockedRelease release : releases) {
             boolean usable = usableShelves.computeIfAbsent(release.warehouseId(), warehouse -> {
                 try {
-                    warehouseScopes.requireActiveLeafWarehouse(warehouse, "上架仓库");
+                    warehouseScopes.require(warehouse, "上架仓库", WarehouseUse.GOOD_IN);
                     return true;
                 } catch (ApiException shelfUnavailable) {
                     return false;

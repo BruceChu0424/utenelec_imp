@@ -1016,7 +1016,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 WarehouseTaskScope.ALL);
     }
 
-    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤。 */
+    /** 同上, 另按仓库数据范围(ADR-149)过滤。 */
     @Transactional(readOnly = true)
     public PageResponse<ArrivalExceptionTask> warehouseExceptions(
             int page, int size, String keyword, boolean includeHistory,
@@ -1273,11 +1273,20 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public long countWarehouseExceptions() {
+        return countWarehouseExceptions(WarehouseTaskScope.ALL);
+    }
+
+    /** 仓库侧到货异常待办数(ADR-149): 与列表同一过滤基座(未结案 + 仓库范围), 徽章 = 列表 total。 */
+    @Transactional(readOnly = true)
+    public long countWarehouseExceptions(WarehouseTaskScope warehouseScope) {
+        WarehouseExceptionFilters filters = warehouseExceptionFilters(
+                null, false, null, null, null, warehouseScope);
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
-                FROM procurement_arrival_exceptions
-                WHERE status NOT IN ('CLOSED', 'CANCELED')
-                """, Long.class);
+                FROM procurement_arrival_exceptions exception
+                JOIN goods goods ON goods.id = exception.goods_id
+                LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                """ + " WHERE " + filters.where(), Long.class, filters.args().toArray());
         return count == null ? 0 : count;
     }
 
@@ -1293,7 +1302,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return expectations(page, size, orderType, keyword, supplierId, WarehouseTaskScope.ALL);
     }
 
-    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤(按预计到货的目标仓)。 */
+    /** 同上, 另按仓库数据范围(ADR-149)过滤(按预计到货的所在仓)。 */
     @Transactional(readOnly = true)
     public PageResponse<InboundExpectationTask> expectations(
             int page, int size, String orderType, String keyword, UUID supplierId,
@@ -1302,23 +1311,42 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 warehouseScope, null, null, null);
     }
 
-    /** 同上, 另按仓库任务中心的「仓库范围」(ADR-115)过滤(按预计到货的目标仓)；
+    /** 同上, 另按仓库数据范围(ADR-149)过滤(按预计到货的所在仓)；
      *  2026-09-25 单号列统一：sort/order 表头排序（白名单，未知回落默认到货日序）、
      *  billNo 订货单号表头值筛选（等值精确匹配，参数绑定）。 */
     @Transactional(readOnly = true)
     public PageResponse<InboundExpectationTask> expectations(
             int page, int size, String orderType, String keyword, UUID supplierId,
             WarehouseTaskScope warehouseScope, String sort, String order, String billNo) {
+        return expectations(page, size, orderType, keyword, supplierId, warehouseScope, sort, order, billNo, List.of());
+    }
+
+    /** 登记页按来源身份读取预计到货(ADR-151 §5)：与列表同一投影、同一可见范围，最多 50 个。 */
+    @Transactional(readOnly = true)
+    public List<InboundExpectationTask> expectationsByIds(List<UUID> ids) {
+        List<UUID> distinct = ids == null ? List.of()
+                : ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (distinct.isEmpty()) return List.of();
+        if (distinct.size() > 50) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多登记 50 个预计到货任务");
+        }
+        return expectations(1, distinct.size(), "", "", null, WarehouseTaskScope.ALL, null, null, null, distinct)
+                .getItems();
+    }
+
+    private PageResponse<InboundExpectationTask> expectations(
+            int page, int size, String orderType, String keyword, UUID supplierId,
+            WarehouseTaskScope warehouseScope, String sort, String order, String billNo, List<UUID> ids) {
         int safePage = safePage(page);
-        int safeSize = safeSize(size);
+        int safeSize = ids.isEmpty() ? safeSize(size) : Math.max(1, ids.size());
         // 类型筛选卡（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
         String trimmedKeyword = normalizeKeyword(keyword);
         long total = countExpectations(
-                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo);
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo, ids);
         // 列表 / 计数 / facets 共用同一过滤基座（参数顺序 = SQL 文本出现顺序）。
         ExpectationFilters filters = expectationFilters(
-                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo);
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo, ids);
         List<Object> params = new ArrayList<>(filters.args());
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
@@ -1462,7 +1490,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
     @Transactional(readOnly = true)
     public long countExpectations() {
-        return countExpectations("", "", null, WarehouseTaskScope.ALL);
+        return countExpectations(WarehouseTaskScope.ALL);
+    }
+
+    /** 预计到货待办数(ADR-149): 与列表同一过滤基座与仓库范围, 徽章 = 列表 total。 */
+    @Transactional(readOnly = true)
+    public long countExpectations(WarehouseTaskScope warehouseScope) {
+        return countExpectations("", "", null, warehouseScope);
     }
 
     /**
@@ -1576,9 +1610,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     /** 同上，另带 billNo 单号等值筛选（2026-09-25 单号列统一；列表/计数同口径）。 */
     private long countExpectations(String orderType, String keyword, UUID supplierId,
                                    WarehouseTaskScope warehouseScope, String billNo) {
+        return countExpectations(orderType, keyword, supplierId, warehouseScope, billNo, List.of());
+    }
+
+    private long countExpectations(String orderType, String keyword, UUID supplierId,
+                                   WarehouseTaskScope warehouseScope, String billNo, List<UUID> ids) {
         String normalizedType = normalizeOrderType(orderType);
         ExpectationFilters filters = expectationFilters(
-                normalizedType, keyword, supplierId, warehouseScope, billNo);
+                normalizedType, keyword, supplierId, warehouseScope, billNo, ids);
         String sql = """
                 SELECT COUNT(*) FROM inbound_expectations expectation
                 WHERE (%s)
@@ -1588,6 +1627,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return count == null ? 0 : count;
     }
 
+    /**
+     * 预计到货任务的「所在仓」(ADR-149 / V802, 唯一定义): 逐行到货仓 = 订货表头仓 → 采购/委外申请
+     * 表头仓 → 货品所属仓, 去重成数组; 空数组 = 未定仓。ADR-038 起订货不带仓,
+     * {@code inbound_expectations.warehouse_id} 恒为空, 不再用它判范围。列表、facets、类型计数、
+     * 徽章计数与「采购财务通过」通知共用。
+     */
+    static final String EXPECTATION_WAREHOUSES = "fn_inbound_expectation_warehouse_ids(expectation.id)";
+
     /** 预计到货过滤基座（2026-09-25 单号列统一）：类型/供应商/仓库范围/关键字 +
      *  订货单号等值筛选的 WHERE 片段与参数。列表 / 计数 / facets 三处共用同一份文本，
      *  参数顺序与 SQL 文本出现顺序严格一致（JdbcTemplate 位置绑定）。 */
@@ -1595,9 +1642,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
 
         static ExpectationFilters of(String normalizedType, String trimmedKeyword,
                                      UUID supplierId, WarehouseTaskScope warehouseScope,
-                                     String billNo) {
+                                     String billNo, List<UUID> ids) {
             StringBuilder sql = new StringBuilder();
             List<Object> args = new ArrayList<>();
+            // 登记页按来源身份读取(ADR-151 §5)：参数绑定的 id 清单。
+            if (ids != null && !ids.isEmpty()) {
+                sql.append(" AND expectation.id IN (")
+                        .append(String.join(", ", java.util.Collections.nCopies(ids.size(), "?")))
+                        .append(")\n");
+                args.addAll(ids);
+            }
             if (!normalizedType.isEmpty()) {
                 sql.append(" AND expectation.order_type = ?\n");
                 args.add(normalizedType);
@@ -1609,7 +1663,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             }
             if (warehouseScope != null && warehouseScope.active()) {
                 sql.append(" AND ")
-                        .append(warehouseScope.predicate("expectation.warehouse_id", "?"))
+                        .append(warehouseScope.predicateAny(EXPECTATION_WAREHOUSES, "?"))
                         .append("\n");
                 args.add(warehouseScope.idsCsv());
             }
@@ -1632,8 +1686,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private static ExpectationFilters expectationFilters(String normalizedType,
             String trimmedKeyword, UUID supplierId,
             WarehouseTaskScope warehouseScope, String billNo) {
+        return expectationFilters(normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo, List.of());
+    }
+
+    private static ExpectationFilters expectationFilters(String normalizedType,
+            String trimmedKeyword, UUID supplierId,
+            WarehouseTaskScope warehouseScope, String billNo, List<UUID> ids) {
         return ExpectationFilters.of(
-                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo);
+                normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo, ids);
     }
 
     /** 预计到货排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
@@ -1686,7 +1746,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return countExpectationsByType(WarehouseTaskScope.ALL);
     }
 
-    /** 同上, 按「仓库范围」(ADR-115)计数。 */
+    /** 同上, 按仓库数据范围(ADR-149)计数。 */
     @Transactional(readOnly = true)
     public Map<String, Long> countExpectationsByType(WarehouseTaskScope warehouseScope) {
         Map<String, Long> counts = new LinkedHashMap<>();
@@ -1698,7 +1758,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   AND (%s)%s
                 GROUP BY order_type
                 """.formatted(warehouseWorkRemaining(), expectationVisible(), scoped
-                        ? " AND " + warehouseScope.predicate("expectation.warehouse_id", "?") : "");
+                        ? " AND " + warehouseScope.predicateAny(EXPECTATION_WAREHOUSES, "?") : "");
         org.springframework.jdbc.core.RowCallbackHandler collect =
                 rs -> counts.put(rs.getString(1), rs.getLong(2));
         if (scoped) jdbc.query(sql, collect, warehouseScope.idsCsv());

@@ -93,6 +93,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         jdbc.execute(migration.substring(migration.indexOf("CREATE OR REPLACE VIEW v_preplan_buy_action_slice_progress")));
         jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V489__same_main_warehouse_material_fulfillment.sql")),"fn_warehouse_main_id"));
         jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V613__operational_warehouse_leaf_identity.sql")),"fn_warehouse_is_operational_leaf"));
+        jdbc.execute(function(Files.readString(Path.of("src/main/resources/db/migration/V799__defective_warehouse_business_rules.sql")),"fn_warehouse_counts_as_usable"));
         original=Files.readString(Path.of("src/test/resources/fixtures/material-analysis/warehouse-breakdown-v557-before.sql"));
     }
 
@@ -128,7 +129,8 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
 
     @Test void candidateRetainsEveryQuantityWarehouseFlagNullAndUnitIdentity() throws Exception {
         var before=rows(original);var after=rows(MaterialAnalysisWarehouseBreakdownReader.SQL);
-        assertEquals(before,after);assertEquals(20,after.size());
+        // ADR-146: 不良品仓 BAD 不再出现在分仓明细里(4 个维度 x 4 个仓)。
+        assertEquals(before,after);assertEquals(16,after.size());
         assertEquals(bd("13"),row(after,G,null,UNIT,LEAF).get(11),"Recorded returned failure reopens safety supply; zero declared legacy safety is not discarded");
         assertEquals(bd("13"),row(after,G,null,OTHER_UNIT,LEAF).get(11),"Two display units must not double the shared safety dimension");
         assertEquals(bd("10.5"),row(after,G,null,UNIT,LEAF).get(9));
@@ -136,7 +138,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
         assertEquals(BigDecimal.ZERO,row(after,G,BLUE,UNIT,LEAF).get(8));
         assertEquals(bd("4"),row(after,G,null,UNIT,OTHER).get(11));
         assertEquals(Boolean.FALSE,row(after,G,null,UNIT,MAIN).get(12));
-        assertEquals(Boolean.FALSE,row(after,G,null,UNIT,BAD).get(12));
+        assertNull(row(after,G,null,UNIT,BAD),"不良品仓不进分仓明细");
         assertEquals(Boolean.TRUE,row(after,G,null,UNIT,LEAF).get(12));
         assertEquals(MAIN,row(after,G,null,UNIT,LEAF).get(13));
         assertEquals(OTHER,row(after,G,null,UNIT,OTHER).get(13));
@@ -190,7 +192,7 @@ class MaterialAnalysisWarehouseBreakdownPostgresTest {
                 settings.execute("SET LOCAL plan_cache_mode="+mode);
             }
             var expected=rows(connection,original);var actual=rows(connection,MaterialAnalysisWarehouseBreakdownReader.SQL);
-            assertEquals(expected,actual);assertEquals(420,actual.size());
+            assertEquals(expected,actual);assertEquals(336,actual.size());
             JsonNode oldPlan=plan(connection,original),newPlan=plan(connection,MaterialAnalysisWarehouseBreakdownReader.SQL);
             double oldReads=actionReads(oldPlan),newReads=actionReads(newPlan);
             evidence.add(Map.of("planMode",mode,"rows",actual.size(),"originalActionRowsVisited",oldReads,

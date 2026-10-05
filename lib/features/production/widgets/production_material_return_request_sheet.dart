@@ -310,9 +310,11 @@ class _MaterialReturnRequestState
       _saving = true;
       _submitError = null;
     });
+    var dispatched = false;
     try {
       _submissionPending = true;
       await saveFormDraftNow();
+      dispatched = true;
       final documents = await ref
           .read(productionMaterialRepositoryProvider)
           .requestReturn(
@@ -346,11 +348,19 @@ class _MaterialReturnRequestState
             ? '暂未确认退料申请结果，请重试本次申请。原数量与提交信息已保留。'
             : '${error.fieldErrors?.firstOrNull?.message ?? error.message}。请刷新可退明细后重新核对。';
       });
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(() {
-          _uncertain = true;
-          _submitError = '暂未确认退料申请结果，请重试本次申请。原数量与提交信息已保留。';
+          if (dispatched) {
+            _uncertain = true;
+            _submitError = '暂未确认退料申请结果，请重试本次申请。原数量与提交信息已保留。';
+          } else {
+            // 本机检查点没写成, 退料申请还没发出: 如实说明原因(ADR-151 §2)。
+            _submitError = describeSubmitError(
+              error,
+              fallback: '本次退料申请尚未发出，请保留页面后重试',
+            );
+          }
         });
       }
     } finally {

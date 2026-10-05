@@ -117,6 +117,7 @@ class InstantInventoryRow {
     this.pendingStockInQty,
     this.owningWarehouseId,
     this.owningWarehouseName,
+    this.defectiveQty,
   });
 
   final String? goodsId;
@@ -162,6 +163,9 @@ class InstantInventoryRow {
   final String? owningWarehouseId;
   final String? owningWarehouseName;
 
+  /// 本行数量里在不良品仓的部分(ADR-146; 只有打开「含不良品仓」或直接查不良品仓时非 0)。
+  final double? defectiveQty;
+
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(
         goodsId: json['goodsId'] as String?,
@@ -192,5 +196,6 @@ class InstantInventoryRow {
         pendingStockInQty: (json['pendingStockInQty'] as num?)?.toDouble(),
         owningWarehouseId: json['owningWarehouseId'] as String?,
         owningWarehouseName: json['owningWarehouseName'] as String?,
+        defectiveQty: (json['defectiveQty'] as num?)?.toDouble(),
       );
 }

@@ -294,6 +294,125 @@ class LegacyMigrationSafetyContractTest {
                 .doesNotContain("signed-candidate");
     }
 
+    /**
+     * ADR-145: one reviewed crosswalk decides every legacy warehouse id. Re-imports never
+     * flatten the hierarchy or revive a disabled duplicate, no loader invents warehouse stubs,
+     * and whatever the crosswalk does not carry over is excluded and reconciled, not stubbed.
+     */
+    @Test
+    void warehouseMasterAndEveryWarehouseReferenceComeOnlyFromTheReviewedCrosswalk() throws IOException {
+        List<String> crosswalk = Files.readAllLines(LEGACY_ROOT.resolve("warehouse_crosswalk.csv"));
+        assertThat(crosswalk.getFirst())
+                .isEqualTo("legacy_id|legacy_code|legacy_name|action|target_code|target_name|target_defective|note");
+        java.util.Map<String, String[]> byLegacyId = new java.util.TreeMap<>();
+        List<String> targetCodes = new java.util.ArrayList<>();
+        for (String line : crosswalk.subList(1, crosswalk.size())) {
+            String[] cells = line.split("\\|", -1);
+            assertThat(cells).as(line).hasSize(8);
+            if ("TARGET".equals(cells[3])) {
+                assertThat(cells[0]).as("new ERP sub-warehouses have no legacy id").isEmpty();
+                targetCodes.add(cells[4]);
+            } else {
+                assertThat(byLegacyId.put(cells[0], cells)).as("legacy id listed once: " + cells[0]).isNull();
+            }
+        }
+        // B_Storage (6 rows) plus the 10 deleted ids that StockGoods/documents still reference.
+        assertThat(byLegacyId.keySet()).containsExactlyInAnyOrder("118", "119", "120", "121", "123", "124",
+                "125", "126", "127", "128", "129", "130", "131", "132", "133", "134");
+        assertThat(byLegacyId.values().stream().filter(row -> "SPLIT".equals(row[3])).toList())
+                .singleElement().satisfies(row -> {
+                    assertThat(row[0]).isEqualTo("132");
+                    assertThat(row[4]).isEqualTo("001");
+                    assertThat(row[6]).isEqualTo("false");
+                });
+        assertThat(byLegacyId.get("123")).satisfies(row -> {
+            assertThat(row[3]).isEqualTo("MERGE");
+            assertThat(row[4]).isEqualTo("C01");
+        });
+        assertThat(byLegacyId.get("133")[6]).as("002 is a defective-stock sub-warehouse").isEqualTo("true");
+        assertThat(byLegacyId.get("118")[6]).as("C0401 is a defective-stock sub-warehouse").isEqualTo("true");
+        for (String deleted : List.of("119", "120", "121", "124", "125", "127", "128", "129", "130", "131")) {
+            String[] row = byLegacyId.get(deleted);
+            assertThat(row[3]).as(deleted).isEqualTo("DROP");
+            assertThat(row[4] + row[5] + row[6]).as("a dropped warehouse names no target: " + deleted).isEmpty();
+        }
+        assertThat(targetCodes).containsExactly("XW01", "XW02", "XW03");
+
+        String warehouse = executable(LEGACY_ROOT.resolve("migrate_warehouse.sql"));
+        assertThat(warehouse)
+                .contains("\\copy warehouse_crosswalk_stage from '/tmp/warehouse_crosswalk.csv'")
+                .contains("fn_warehouse_root_id()")
+                .doesNotContain("delete from warehouses")
+                .doesNotContain("like '%不良%'")
+                .doesNotContain("stage.status");
+        try (Stream<Path> scripts = Files.list(LEGACY_ROOT)) {
+            for (Path script : scripts
+                    .filter(path -> path.getFileName().toString().startsWith("migrate_"))
+                    .filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .toList()) {
+                String name = script.getFileName().toString();
+                String sql = executable(script);
+                assertThat(sql).as(name + " uses the status vocabulary of the CHECK constraints")
+                        .doesNotContain("'in-use'");
+                if (!name.equals("migrate_warehouse.sql")) {
+                    assertThat(sql).as(name + " never creates warehouse rows")
+                            .doesNotContain("insert into warehouses");
+                }
+            }
+        }
+        for (String loader : List.of("migrate_purchase.sql", "migrate_stock_docs.sql", "migrate_sales.sql",
+                "migrate_subcontract.sql")) {
+            assertThat(executable(LEGACY_ROOT.resolve(loader))).as(loader)
+                    .contains("\\copy warehouse_crosswalk_stage from '/tmp/warehouse_crosswalk.csv'")
+                    .contains("from warehouse_target_stage where legacy_id =")
+                    .doesNotContain("from warehouses where legacy_id");
+        }
+        for (String loader : List.of("migrate_purchase.sql", "migrate_stock_docs.sql")) {
+            assertThat(executable(LEGACY_ROOT.resolve(loader))).as(loader)
+                    .contains("create temp table if not exists bootstrap_warehouse_exclusions")
+                    .contains("'dropped_warehouse_document'");
+        }
+        assertThat(executable(LEGACY_ROOT.resolve("migrate_stock_docs.sql")))
+                .contains("'unassigned_owning_warehouse'")
+                .contains("'dropped_warehouse_balance'")
+                .contains("fn_warehouse_is_good_stock_leaf(material.owning_warehouse_id)");
+
+        String shell = compact(Files.readString(LEGACY_ROOT.resolve("migrate.sh")));
+        String branch = shell.substring(shell.lastIndexOf("--bootstrap-all|--all|-a)"));
+        assertThat(branch.indexOf("migrate_warehouse_data")).isLessThan(branch.indexOf("migrate_goods_data"));
+        assertThat(branch.indexOf("migrate_goods_data")).isLessThan(branch.indexOf("migrate_goods_owning_warehouse"));
+        assertThat(branch.indexOf("migrate_goods_owning_warehouse")).isLessThan(branch.indexOf("migrate_purchase"))
+                .isLessThan(branch.indexOf("migrate_stock_docs"));
+        assertThat(shell).contains("copy_repo_csv warehouse_crosswalk.csv")
+                .contains("warehouse_exclusions.csv");
+
+        String importer = compact(Files.readString(LEGACY_ROOT.resolve("import_product_lists.py")));
+        assertThat(importer)
+                .contains("main_warehouse_code = \"001\"")
+                .contains("fn_warehouse_is_good_stock_leaf(id)")
+                .doesNotContain("insert into warehouses");
+        assertThat(compact(Files.readString(LEGACY_ROOT.resolve("compose_bootstrap.py"))))
+                .contains("\"bootstrap_warehouse_exclusions\"");
+        assertThat(compact(Files.readString(LEGACY_ROOT.resolve("reconcile_modules.py"))))
+                .contains("bootstrap_warehouse_exclusions")
+                .contains("'warehouseexclusions'")
+                .doesNotContain("'legacy-w-'");
+        assertThat(compact(Files.readString(LEGACY_ROOT.resolve("prepare_source_authority.py"))))
+                .doesNotContain("=\"warehouses\"");
+        assertThat(compact(Files.readString(LEGACY_ROOT.resolve("verify_candidate.py"))))
+                .contains("\"warehouse_crosswalk.csv\"");
+        // The crosswalk and the manual owning list are recorded with the run but are not export files.
+        assertThat(executable(LEGACY_ROOT.resolve("migrate_reconciliation.sql")))
+                .contains("file_name not in ('warehouse_crosswalk.csv', 'goods_owning_warehouse.csv')");
+    }
+
+    /** SQL without comments, lower-case, whitespace collapsed. */
+    private static String executable(Path script) throws IOException {
+        return compact(Files.readString(script)
+                .replaceAll("(?s)/\\*.*?\\*/", "")
+                .replaceAll("(?m)--.*$", ""));
+    }
+
     private static int occurrences(String value, String token) {
         return (value.length() - value.replace(token, "").length()) / token.length();
     }

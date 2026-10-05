@@ -180,7 +180,13 @@ class _RequestApi extends ApiClient {
     if (path.endsWith('/warehouses/dict')) {
       return [
         {'id': 'main', 'name': '主仓库'},
-        {'id': 'child', 'name': '材料区', 'parentId': 'main', 'parentName': '主仓库'},
+        {
+          'id': 'child',
+          'name': '材料区',
+          'parentId': 'main',
+          'parentName': '主仓库',
+          'selectableForNew': true,
+        },
       ];
     }
     return [];

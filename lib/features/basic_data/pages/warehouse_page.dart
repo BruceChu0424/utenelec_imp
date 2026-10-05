@@ -1,11 +1,15 @@
-// 仓库资料管理页（基础资料 · 扁平主档，无分类树）。
+// 仓库资料管理页(基础资料)。
 //
-// 复刻 color_page：编号/名称/位置/核算/状态。accountable(bool) 用 select 使用/不使用
-// （提交 'true'/'false' 字符串，Jackson 自动转 Boolean）。查看全员可见，编辑按 warehouse:edit。
+// 主档形态(ADR-145)：全公司只有一个主仓(编号 001)，只作汇总、负责人范围和导航；其余仓都是
+// 它的直属子仓。列表主仓置顶、子仓缩进；「上级仓库」只读、固定是主仓(新建不传，服务端补)；
+// 「仓库用途」(良品仓/不良品仓)可筛选可编辑；内料仓由「车间内料仓」页开通，这里只读。
+// 停用/删除被拒时原样展示服务端原因(还有库存/还是货品所属仓库/未结预留/主仓等)。
+// accountable(bool) 用 select 使用/不使用(提交 'true'/'false' 字符串，Jackson 自动转 Boolean)。
+// 查看全员可见，编辑按 warehouse:edit。
 //
-// 仓库负责人(仓管员, ADR-115, 2026-09-24)：列表「负责人」列 + 详情「设置负责人」。登记后该仓的
-// 仓库类通知只发给负责人(没登记的仓照旧发给整个仓库部门)，仓库任务中心「我的仓库」按它筛选；
-// 登记在主仓上 = 负责它下面全部子仓。
+// 仓库负责人(仓管员, ADR-115 / ADR-149)：列表「负责人」列 + 详情「设置负责人」。负责关系决定
+// 谁看、谁收仓库任务(服务端唯一判定)：登记在主仓上 = 仓库主管(看全部、可挑任一仓)；登记在子仓上
+// = 只看、只收自己负责的仓；没登记负责人的仓交主管，没登记的同事也看得到。
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,8 +22,10 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -173,14 +179,21 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       ),
     );
     if (saved == null || !mounted) return;
+    final l10n = AppLocalizations.of(context);
     final warnings = [
       for (final keeper in saved)
-        if (keeper.noticeWarning case final warning?) '${keeper.name}：$warning',
+        if (keeper.warningOf(l10n) case final warning?)
+          '${keeper.name}: $warning',
     ];
     if (warnings.isEmpty) {
-      context.appSuccess(saved.isEmpty ? '已清空负责人，该仓通知发给整个仓库部门' : '负责人已保存');
+      context.appSuccess(
+        saved.isEmpty ? l10n.warehouseKeeperCleared : l10n.warehouseKeeperSaved,
+      );
     } else {
-      context.appWarning('负责人已保存。${warnings.join('；')}', force: true);
+      context.appWarning(
+        l10n.warehouseKeeperSavedWithWarnings(warnings.join('; ')),
+        force: true,
+      );
     }
     await _loadKeepers();
   }
@@ -213,91 +226,141 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     _loadWarehouses(1);
   }
 
-  List<MasterFieldDef> _fields({String? excludeId}) => [
-    const MasterFieldDef(
-      key: 'name',
-      label: '仓库名称',
-      required: true,
-      group: '基础',
-    ),
-    const MasterFieldDef(
-      key: 'code',
-      label: '仓库编号',
-      group: '基础',
-      readOnly: true,
-      hint: '保存后自动生成',
-    ),
-    const MasterFieldDef(
-      key: 'location',
-      label: '仓库位置',
-      group: '基础',
-      hint: '如 总仓库/轨道仓',
-    ),
-    const MasterFieldDef(
-      key: 'accountable',
-      label: '是否核算',
-      group: '基础',
-      type: MasterFieldType.select,
-      options: [
-        MasterSelectOption(value: 'true', label: '使用(参与核算)'),
-        MasterSelectOption(value: 'false', label: '不使用(不核算)'),
-      ],
-    ),
-    MasterFieldDef(
-      key: 'workshopDepartmentId',
-      label: '所属车间',
-      group: '基础',
-      type: MasterFieldType.custom,
-      customBuilder: (field) => _WarehouseWorkshopField(
-        initialValue: field.initialValue,
-        onChanged: field.onChanged,
+  /// 主仓名称(字典里唯一没有上级的仓)；字典没加载到时为空。
+  String? get _mainWarehouseName => ref
+      .read(masterNameServiceProvider)
+      .warehouseHierarchy
+      .where((entry) => entry.parentId == null || entry.parentId!.isEmpty)
+      .map((entry) => entry.name)
+      .firstOrNull;
+
+  /// 表单字段。[editing] 为空 = 新建。内料仓与主仓的用途/车间字段只读(ADR-145)。
+  List<MasterFieldDef> _fields({WarehouseDetail? editing}) {
+    final l10n = AppLocalizations.of(context);
+    final lineSide = editing?.lineSide ?? false;
+    final isMain = editing?.isMain ?? false;
+    return [
+      const MasterFieldDef(
+        key: 'name',
+        label: '仓库名称',
+        required: true,
+        group: '基础',
       ),
-    ),
-    // V584 车间内部直送：线边仓=车间自己的料架。直送产出先进它再投给同车间上层工单，
-    // 仓库部门不参与；置「是」要求已选所属车间、参与核算、且是叶子仓。
-    const MasterFieldDef(
-      key: 'isLineSide',
-      label: '内料仓',
-      group: '基础',
-      type: MasterFieldType.select,
-      hint: '车间内部直送用；须有所属车间且参与核算',
-      options: [
-        MasterSelectOption(value: 'false', label: '否'),
-        MasterSelectOption(value: 'true', label: '是(车间料架)'),
-      ],
-    ),
-    // V476 主/子层级：上级仓库。不选=独立顶层；父仓仅作查询聚合与下拉分组。
-    MasterFieldDef(
-      key: 'parentId',
-      label: '上级仓库',
-      group: '基础',
-      type: MasterFieldType.custom,
-      hint: '不选=独立顶层仓',
-      customBuilder: (field) => _WarehouseParentField(
-        initialValue: field.initialValue,
-        onChanged: field.onChanged,
-        excludeId: excludeId,
+      const MasterFieldDef(
+        key: 'code',
+        label: '仓库编号',
+        group: '基础',
+        readOnly: true,
+        hint: '保存后自动生成',
       ),
-    ),
-    const MasterFieldDef(
-      key: 'status',
-      label: '状态',
-      type: MasterFieldType.select,
-      options: kMasterStatusOptions,
-      required: true,
-      group: '基础',
-    ),
-  ];
+      const MasterFieldDef(
+        key: 'location',
+        label: '仓库位置',
+        group: '基础',
+        hint: '如 总仓库/轨道仓',
+      ),
+      const MasterFieldDef(
+        key: 'accountable',
+        label: '是否核算',
+        group: '基础',
+        type: MasterFieldType.select,
+        options: [
+          MasterSelectOption(value: 'true', label: '使用(参与核算)'),
+          MasterSelectOption(value: 'false', label: '不使用(不核算)'),
+        ],
+      ),
+      // 内料仓的所属车间是它的身份(由车间内料仓页开通时定下)，这里只读。
+      if (lineSide)
+        const MasterFieldDef(
+          key: 'workshopDepartmentName',
+          label: '所属车间',
+          group: '基础',
+          readOnly: true,
+        )
+      else
+        MasterFieldDef(
+          key: 'workshopDepartmentId',
+          label: '所属车间',
+          group: '基础',
+          type: MasterFieldType.custom,
+          customBuilder: (field) => _WarehouseWorkshopField(
+            initialValue: field.initialValue,
+            onChanged: field.onChanged,
+          ),
+        ),
+      // ADR-145：内料仓由「车间内料仓」页开通和撤销，仓库资料只读展示，不上送。
+      if (editing != null)
+        MasterFieldDef(
+          key: 'isLineSide',
+          label: l10n.warehouseMasterLineSideLabel,
+          group: '基础',
+          type: MasterFieldType.select,
+          readOnly: true,
+          hint: l10n.warehouseMasterLineSideReadOnlyHint,
+          options: [
+            MasterSelectOption(
+              value: 'false',
+              label: l10n.warehouseMasterLineSideNo,
+            ),
+            MasterSelectOption(
+              value: 'true',
+              label: l10n.warehouseMasterLineSideYes,
+            ),
+          ],
+        ),
+      // ADR-145 单主仓：上级仓库固定是主仓，只读展示，不上送(服务端补成主仓)。
+      MasterFieldDef(
+        key: 'parentName',
+        label: l10n.warehouseMasterParentLabel,
+        group: '基础',
+        readOnly: true,
+        hint: isMain
+            ? l10n.warehouseMasterParentSelf
+            : l10n.warehouseMasterParentFixedHint,
+      ),
+      // ADR-145 仓库用途：不良品仓只能是子仓、不能是内料仓；有库存/还是货品所属仓库时服务端拒绝并说明原因。
+      MasterFieldDef(
+        key: 'defective',
+        label: l10n.warehouseMasterUseColumn,
+        group: '基础',
+        type: MasterFieldType.select,
+        required: true,
+        readOnly: lineSide || isMain,
+        hint: l10n.warehouseMasterUseHint,
+        options: [
+          MasterSelectOption(
+            value: 'false',
+            label: l10n.warehouseMasterUseGood,
+          ),
+          MasterSelectOption(
+            value: 'true',
+            label: l10n.warehouseMasterUseDefective,
+          ),
+        ],
+      ),
+      const MasterFieldDef(
+        key: 'status',
+        label: '状态',
+        type: MasterFieldType.select,
+        options: kMasterStatusOptions,
+        required: true,
+        group: '基础',
+      ),
+    ];
+  }
 
   Future<void> _showCreate() async {
+    await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
+    if (!mounted) return;
     await showMasterEditDialog(
       context: context,
       draftSpec: FormDraftCatalog.warehouse.spec(title: '新增仓库'),
       title: '新增仓库',
       fields: _fields(),
-      initialValues: const {
+      initialValues: {
         'accountable': 'true',
-        'isLineSide': 'false',
+        'defective': 'false',
+        'parentName': _mainWarehouseName ?? '',
         'status': '使用',
       },
       readOnlyKeys: _canStatus ? null : const {'status'},
@@ -315,19 +378,23 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     return true;
   }
 
-  void _showEdit(WarehouseDetail d) {
-    showMasterEditDialog(
+  Future<void> _showEdit(WarehouseDetail d) async {
+    await ref.read(masterNameServiceProvider).ensureWarehousesLoaded();
+    if (!mounted) return;
+    await showMasterEditDialog(
       context: context,
       title: '编辑仓库',
-      fields: _fields(excludeId: d.id),
+      fields: _fields(editing: d),
       initialValues: {
         'name': d.name ?? '',
         'code': d.code ?? '',
         'location': d.location ?? '',
         'accountable': d.accountable ? 'true' : 'false',
         'workshopDepartmentId': d.workshopDepartmentId ?? '',
+        'workshopDepartmentName': d.workshopDepartmentName ?? '',
         'isLineSide': d.lineSide ? 'true' : 'false',
-        'parentId': d.parentId ?? '',
+        'parentName': d.isMain ? '' : (_mainWarehouseName ?? ''),
+        'defective': d.defective ? 'true' : 'false',
         'status': d.status ?? '',
       },
       readOnlyKeys: _canStatus ? null : const {'status'},
@@ -425,15 +492,19 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
       return;
     }
     final detail = d;
+    // ADR-147: 车间内料仓只由「车间内料仓」开通和撤销, 这里只读 (编辑、停用、删除都不给)。
+    final lineSide = detail.lineSide;
     await showMasterDetailSheet(
       context: context,
       title: detail.name?.isNotEmpty == true
           ? detail.name!
           : (detail.code ?? '仓库详情'),
       rows: _detailRows(detail),
-      canEdit: _canEdit,
-      canDelete: _canDelete,
-      onToggleStatus: _canStatus ? () => _toggleDetailStatus(detail) : null,
+      canEdit: _canEdit && !lineSide,
+      canDelete: _canDelete && !lineSide,
+      onToggleStatus: _canStatus && !lineSide
+          ? () => _toggleDetailStatus(detail)
+          : null,
       statusActionLabel: detail.status == '使用' ? '停用' : '启用',
       onEdit: () => _showEdit(detail),
       onDelete: () => _delete(detail),
@@ -449,19 +520,37 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     if (mounted) _detailLoading = false;
   }
 
-  List<MasterDetailRow> _detailRows(WarehouseDetail w) => [
-    MasterDetailRow('编号', w.code),
-    MasterDetailRow('仓库名称', w.name),
-    MasterDetailRow('位置', w.location),
-    MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
-    MasterDetailRow('内料仓', w.lineSide ? '是 (车间直送与整批领料)' : '否'),
-    MasterDetailRow('备注', w.remark),
-    MasterDetailRow('状态', w.status),
-    MasterDetailRow('所属车间', w.workshopDepartmentName),
-    MasterDetailRow('仓库负责人', _keeperLabel(w.id)),
-    MasterDetailRow('旧操作员ID', w.legacyOperatorId?.toString()),
-    MasterDetailRow('旧系统 ID', w.legacyId?.toString()),
-  ];
+  List<MasterDetailRow> _detailRows(WarehouseDetail w) {
+    final l10n = AppLocalizations.of(context);
+    return [
+      MasterDetailRow('编号', w.code),
+      MasterDetailRow('仓库名称', w.name),
+      MasterDetailRow(
+        l10n.warehouseMasterParentLabel,
+        w.isMain ? l10n.warehouseMasterParentSelf : _mainWarehouseName,
+      ),
+      MasterDetailRow(
+        l10n.warehouseMasterUseColumn,
+        w.defective
+            ? l10n.warehouseMasterUseDefective
+            : l10n.warehouseMasterUseGood,
+      ),
+      MasterDetailRow('位置', w.location),
+      MasterDetailRow('是否核算', w.accountable ? '是' : '否'),
+      MasterDetailRow(
+        l10n.warehouseMasterLineSideLabel,
+        w.lineSide
+            ? l10n.warehouseMasterLineSideManaged
+            : l10n.warehouseMasterLineSideNo,
+      ),
+      MasterDetailRow('备注', w.remark),
+      MasterDetailRow('状态', w.status),
+      MasterDetailRow('所属车间', w.workshopDepartmentName),
+      MasterDetailRow('仓库负责人', _keeperLabel(w.id)),
+      MasterDetailRow('旧操作员ID', w.legacyOperatorId?.toString()),
+      MasterDetailRow('旧系统 ID', w.legacyId?.toString()),
+    ];
+  }
 
   /// 导出查询参数（与 _loadWarehouses 一致，不含 page/size；V717）。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
@@ -489,47 +578,87 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
     );
   }
 
-  List<MasterColumnDef<WarehouseListItem>> get _columns => [
-    MasterColumnDef(key: 'code', label: '编号', width: 120, value: (w) => w.code),
-    MasterColumnDef(
-      key: 'name',
-      label: '仓库名称',
-      width: 200,
-      value: (w) => w.name,
-    ),
-    MasterColumnDef(
-      key: 'parent',
-      // V476 主/子层级：子仓行显示主仓名，主仓/独立仓显示「—」。
-      label: '上级仓库',
-      width: 150,
-      value: (w) => w.parentName ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'location',
-      label: '位置',
-      width: 160,
-      value: (w) => w.location,
-    ),
-    MasterColumnDef(
-      key: 'accountable',
-      label: '核算',
-      width: 90,
-      value: (w) => w.accountable ? '是' : '否',
-    ),
-    // ADR-115：登记后该仓的仓库类通知只发给负责人；主仓负责人管全部子仓。
-    MasterColumnDef(
-      key: 'keepers',
-      label: '负责人',
-      width: 180,
-      value: (w) => _keeperLabel(w.id),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (w) => w.status,
-    ),
-  ];
+  List<MasterColumnDef<WarehouseListItem>> get _columns {
+    final l10n = AppLocalizations.of(context);
+    String useLabel(WarehouseListItem w) => w.defective
+        ? l10n.warehouseMasterUseDefective
+        : l10n.warehouseMasterUseGood;
+    return [
+      MasterColumnDef(
+        key: 'code',
+        label: '编号',
+        width: 110,
+        value: (w) => w.code,
+      ),
+      MasterColumnDef(
+        key: 'name',
+        label: '仓库名称',
+        width: 200,
+        value: (w) => w.name,
+        // ADR-145：主仓置顶带「主仓」标签，子仓缩进一级。
+        cellBuilder: (context, w) => Padding(
+          padding: EdgeInsets.only(left: w.isMain ? 0 : UtenSpacing.s16),
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  w.name ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (w.isMain) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                UtenStatusBadge(
+                  label: l10n.warehouseMasterMainTag,
+                  type: UtenStatusBadgeType.info,
+                  size: UtenStatusBadgeSize.small,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      MasterColumnDef(
+        key: 'parent',
+        // ADR-145 单主仓：子仓行显示主仓名，主仓显示「—」。
+        label: l10n.warehouseMasterParentLabel,
+        width: 140,
+        value: (w) => w.parentName ?? '—',
+      ),
+      MasterColumnDef(
+        key: 'defective',
+        label: l10n.warehouseMasterUseColumn,
+        width: 90,
+        value: useLabel,
+      ),
+      MasterColumnDef(
+        key: 'location',
+        label: '位置',
+        width: 120,
+        value: (w) => w.location,
+      ),
+      MasterColumnDef(
+        key: 'accountable',
+        label: '核算',
+        width: 80,
+        value: (w) => w.accountable ? '是' : '否',
+      ),
+      // ADR-115：登记后该仓的仓库类通知只发给负责人；主仓负责人管全部子仓。
+      MasterColumnDef(
+        key: 'keepers',
+        label: '负责人',
+        width: 160,
+        value: (w) => _keeperLabel(w.id),
+      ),
+      MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 100,
+        value: (w) => w.status,
+      ),
+    ];
+  }
 
   Future<void> _refresh() async {
     await Future.wait([_loadWarehouses(1), _loadFacets(), _loadKeepers()]);
@@ -664,71 +793,6 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   }
 }
 
-class _WarehouseParentField extends ConsumerStatefulWidget {
-  const _WarehouseParentField({
-    required this.initialValue,
-    required this.onChanged,
-    this.excludeId,
-  });
-
-  final String? initialValue;
-  final ValueChanged<dynamic> onChanged;
-
-  /// 编辑时排除自己（自己不能当自己的上级；服务端另防环）。
-  final String? excludeId;
-
-  @override
-  ConsumerState<_WarehouseParentField> createState() =>
-      _WarehouseParentFieldState();
-}
-
-class _WarehouseParentFieldState extends ConsumerState<_WarehouseParentField> {
-  String? _value;
-
-  @override
-  void initState() {
-    super.initState();
-    _value = widget.initialValue?.isEmpty == true ? null : widget.initialValue;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(masterNameServiceProvider).ensureLoaded();
-    });
-  }
-
-  @override
-  void didUpdateWidget(_WarehouseParentField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialValue != widget.initialValue) {
-      _value = widget.initialValue?.isEmpty == true
-          ? null
-          : widget.initialValue;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final names = ref.watch(masterNameServiceProvider);
-    return UtenDropdownField(
-      label: '上级仓库',
-      hintText: '不选=独立顶层仓',
-      value: _value,
-      items: [
-        for (final e in names.warehouseHierarchy)
-          if (e.id != widget.excludeId)
-            UtenDropdownItem(
-              value: e.id,
-              label: e.name,
-              enabled: e.id == _value || e.parentId == null,
-              indent: e.parentId == null ? 0 : 16,
-            ),
-      ],
-      onChanged: (value) {
-        setState(() => _value = value);
-        widget.onChanged(value);
-      },
-    );
-  }
-}
-
 class _WarehouseWorkshopField extends ConsumerStatefulWidget {
   const _WarehouseWorkshopField({
     required this.initialValue,
@@ -786,7 +850,8 @@ class _WarehouseWorkshopFieldState
   }
 }
 
-/// 设置仓库负责人(ADR-115)：多选在职员工，整组替换。
+/// 设置仓库负责人(ADR-115 / ADR-149)：多选在职员工，整组替换；说明三种角色，候选人标出工号、
+/// 账号状态与同名提示。
 class _WarehouseKeepersDialog extends StatefulWidget {
   const _WarehouseKeepersDialog({
     required this.warehouseId,
@@ -817,13 +882,21 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
   bool _saving = false;
   String? _error;
 
-  static UtenEmployeePickerItem _itemOf(WarehouseKeeper keeper) =>
-      UtenEmployeePickerItem(
-        id: keeper.employeeId,
-        name: keeper.name,
-        employeeCode: keeper.code,
-        departmentName: keeper.departmentName,
-      );
+  /// 显示「姓名(工号)」; 副行带部门、账号状态与同名提示(重名员工按工号核对)。
+  UtenEmployeePickerItem _itemOf(WarehouseKeeper keeper) {
+    final l10n = AppLocalizations.of(context);
+    final notes = [
+      if (keeper.departmentName?.isNotEmpty == true) keeper.departmentName!,
+      if (!keeper.hasAccount) l10n.warehouseKeeperNoAccount,
+      if (keeper.duplicateName) l10n.warehouseKeeperDuplicateName,
+    ];
+    return UtenEmployeePickerItem(
+      id: keeper.employeeId,
+      name: keeper.name,
+      employeeCode: keeper.code,
+      departmentName: notes.isEmpty ? null : notes.join(' · '),
+    );
+  }
 
   Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
     final candidates = await widget.repository.candidates(keyword);
@@ -855,13 +928,14 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final warnings = [
       for (final item in _selection)
-        if (_known[item.id]?.noticeWarning case final warning?)
-          '${item.name}：$warning',
+        if (_known[item.id]?.warningOf(l10n) case final warning?)
+          '${item.name}: $warning',
     ];
     return AlertDialog(
-      title: Text('设置负责人 · ${widget.warehouseName}'),
+      title: Text(l10n.warehouseKeeperDialogTitle(widget.warehouseName)),
       content: SizedBox(
         width: 460,
         child: Column(
@@ -869,9 +943,7 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '登记后，这个仓(含下级子仓)的领料、采购/委外到货、IQC 入库、产成品、'
-              '销售出库等仓库通知只发给负责人；不登记则照旧发给整个仓库部门。'
-              '仓库任务中心选「我的仓库」即可只看自己负责的仓。',
+              l10n.warehouseKeeperRolesHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

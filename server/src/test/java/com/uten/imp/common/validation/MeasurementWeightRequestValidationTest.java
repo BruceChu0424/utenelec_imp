@@ -69,8 +69,8 @@ class MeasurementWeightRequestValidationTest {
 
     @Test
     void finishedRegistrationRejectsNegativeWeight() {
-        var item = new ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(
-                UUID.randomUUID(), "A-01", null, new BigDecimal("-0.0001"));
+        var item = new ProductionFinishedArrivalContracts.ArrivalLotRequest(
+                UUID.randomUUID(), UUID.randomUUID(), "A-01", null, new BigDecimal("-0.0001"));
 
         assertThat(validator.validate(item))
                 .anyMatch(v -> v.getPropertyPath().toString().equals("weight"));

@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.outbox.BusinessOutboxProcessor;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest.ArrivalLine;
 import com.uten.imp.features.warehouse.inbound.ProcurementInspectionService;
@@ -38,7 +39,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static com.uten.imp.businesschain.WarehouseIqcScaleFixture.RECEIPT_QTY;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewItem;
@@ -284,6 +287,93 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals("R-07", jdbc.queryForObject("SELECT place_snapshot FROM procurement_iqc_stock_in_batch_items WHERE inspection_item_id=?", String.class, inspectionId));
         assertEquals("PRE_STOCKED_AUTO", jdbc.queryForObject("SELECT origin FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", String.class, receipt));
         drainOutbox();
+    }
+
+    /**
+     * ADR-151 §5：登记实际到货只有一个命令(单张 = 1 组、多选 = N 组)。一个事务里服务端按「订货单 × 入库仓库」
+     * 分组建收货单；整批同键重放返回原结果；同键改内容 409；任何一组失败整批不落任何一张。
+     */
+    @Test
+    void batchArrivalGroupsOrderByWarehouseInOneTransactionAndReplaysAsOneCommand() {
+        String tag = "pab-" + UUID.randomUUID().toString().substring(0, 8);
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        var w = masters.seedWorld(tag);
+        masters.loginAs(w.superAdminUserId());
+        UUID leaf = UUID.randomUUID();
+        UUID leaf2 = UUID.randomUUID();
+        jdbc.update("INSERT INTO warehouses(id,parent_id,code,name,status,is_accountable) VALUES(?,?,?,?,'使用',TRUE)",
+                leaf, w.warehouseId(), "PB-L1-" + tag, "批量到货叶仓一");
+        jdbc.update("INSERT INTO warehouses(id,parent_id,code,name,status,is_accountable) VALUES(?,?,?,?,'使用',TRUE)",
+                leaf2, w.warehouseId(), "PB-L2-" + tag, "批量到货叶仓二");
+        UUID finished = UUID.randomUUID();
+        masters.insertGoods(finished, "PBF-" + tag, "批量到货成品", "自制", w.unitId(), w.unitLegacy());
+        masters.insertBom(finished, w.goodsD(), "1");
+        jdbc.update("UPDATE goods SET default_supplier_id=? WHERE id=?", w.supplierId(), w.goodsD());
+        var view = beans.getBean(MaterialAnalysisService.class).preview(new PreviewRequest(null, null, null, w.warehouseId(),
+                "batch-arrival-preview-" + tag, List.of(new PreviewItem("OTHER", null, finished, null, w.unitId(),
+                        "BATCH-" + tag, "批量到货登记", BusinessTime.today(), new BigDecimal("2.5")))));
+        UUID purchaseItem = ReflectionTestUtils.invokeMethod(masters, "approvePurchaseForAnalysis",
+                WarehouseIqcScaleFixture.withWarehouse(w, leaf), view, w.goodsD());
+        assertNotNull(purchaseItem);
+        masters.loginAs(w.superAdminUserId());
+        int receiptsBefore = jdbc.queryForObject("SELECT count(*) FROM purchase_receipts WHERE supplier_id=?",
+                Integer.class, w.supplierId());
+
+        // 同一张订货单的一行实物分到两个仓：一个命令、一个事务、按仓两张收货单。
+        String key = "batch-arrival-" + tag;
+        var result = arrivals.registerBatch(batchRequest(key, w, List.of(
+                batchLine(w, leaf, purchaseItem, "1.0"), batchLine(w, leaf2, purchaseItem, "0.5"))));
+        assertEquals(2, result.groupCount());
+        assertFalse(result.replay());
+        assertEquals(2, result.items().size());
+        assertEquals(Set.of(leaf, leaf2), result.items().stream()
+                .map(ProcurementArrivalContracts.WarehouseArrivalBatchRegisterItem::warehouseId).collect(Collectors.toSet()));
+        assertTrue(result.items().stream().allMatch(item -> "SUBMITTED_FOR_INSPECTION".equals(item.outcome())));
+        assertEquals(receiptsBefore + 2, jdbc.queryForObject("SELECT count(*) FROM purchase_receipts WHERE supplier_id=?",
+                Integer.class, w.supplierId()));
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT count(*) FROM warehouse_arrival_registration_commands WHERE batch_idempotency_key=?",
+                Integer.class, key));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(DISTINCT batch_request_hash) FROM warehouse_arrival_registration_commands WHERE batch_idempotency_key=?",
+                Integer.class, key));
+
+        // 丢响应后原样重试：整批重放，收货单不多建。
+        var replayed = arrivals.registerBatch(batchRequest(key, w, List.of(
+                batchLine(w, leaf, purchaseItem, "1.0"), batchLine(w, leaf2, purchaseItem, "0.5"))));
+        assertTrue(replayed.replay());
+        assertEquals(result.items().stream().map(ProcurementArrivalContracts.WarehouseArrivalBatchRegisterItem::receiptId).collect(Collectors.toSet()),
+                replayed.items().stream().map(ProcurementArrivalContracts.WarehouseArrivalBatchRegisterItem::receiptId).collect(Collectors.toSet()));
+        assertEquals(receiptsBefore + 2, jdbc.queryForObject("SELECT count(*) FROM purchase_receipts WHERE supplier_id=?",
+                Integer.class, w.supplierId()));
+        // 同键改内容：409，什么都不写。
+        conflict(() -> arrivals.registerBatch(batchRequest(key, w, List.of(
+                batchLine(w, leaf, purchaseItem, "0.9"), batchLine(w, leaf2, purchaseItem, "0.5")))));
+
+        // 整批一个事务：第一组能建、第二组仓库不存在 -> 整批回滚，第一组的收货单也不留。
+        UUID missingWarehouse = UUID.fromString("ffffffff-ffff-4fff-bfff-ffffffffffff");
+        String broken = "batch-arrival-broken-" + tag;
+        assertThrows(RuntimeException.class, () -> arrivals.registerBatch(batchRequest(broken, w, List.of(
+                batchLine(w, leaf, purchaseItem, "0.2"), batchLine(w, missingWarehouse, purchaseItem, "0.2")))));
+        assertEquals(receiptsBefore + 2, jdbc.queryForObject("SELECT count(*) FROM purchase_receipts WHERE supplier_id=?",
+                Integer.class, w.supplierId()));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM warehouse_arrival_registration_commands WHERE batch_idempotency_key=?",
+                Integer.class, broken));
+        drainOutbox();
+    }
+
+    private static ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest batchRequest(
+            String key, FullChainEndToEndTest.World w, List<ProcurementArrivalContracts.BatchArrivalLine> lines) {
+        return new ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest(key, BusinessTime.today(),
+                w.employeeId(), "批量到货登记", false, false, lines);
+    }
+
+    private static ProcurementArrivalContracts.BatchArrivalLine batchLine(FullChainEndToEndTest.World w, UUID warehouse,
+                                                                          UUID purchaseItem, String qty) {
+        return new ProcurementArrivalContracts.BatchArrivalLine("PURCHASE", warehouse, w.employeeId(), w.goodsD(),
+                new BigDecimal(qty), purchaseItem, null, w.unitId(), BigDecimal.ONE, null, "PO-BATCH", null, null, null);
     }
 
     // ------------------------------------------------------------------ helpers

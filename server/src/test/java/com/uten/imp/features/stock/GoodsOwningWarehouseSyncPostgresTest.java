@@ -35,6 +35,8 @@ class GoodsOwningWarehouseSyncPostgresTest {
     private static final UUID WAREHOUSE_A = UUID.fromString("20000000-0000-4000-8000-00000000000a");
     private static final UUID WAREHOUSE_B = UUID.fromString("20000000-0000-4000-8000-00000000000b");
     private static final UUID LINE_SIDE = UUID.fromString("20000000-0000-4000-8000-00000000000c");
+    private static final UUID DEFECTIVE = UUID.fromString("20000000-0000-4000-8000-0000000000e2");
+    private static final UUID DISABLED = UUID.fromString("20000000-0000-4000-8000-0000000000e1");
     private static final UUID GOODS_PLAIN = UUID.fromString("10000000-0000-4000-8000-000000000001");
     private static final UUID GOODS_AT_A = UUID.fromString("10000000-0000-4000-8000-000000000002");
     private static final UUID GOODS_ABSENT = UUID.fromString("10000000-0000-4000-8000-0000000000ff");
@@ -52,9 +54,31 @@ class GoodsOwningWarehouseSyncPostgresTest {
         jdbc.execute("""
                 CREATE TABLE warehouses(
                     id uuid PRIMARY KEY,
+                    parent_id uuid,
+                    status text NOT NULL DEFAULT '使用',
+                    is_accountable boolean NOT NULL DEFAULT true,
+                    is_defective boolean NOT NULL DEFAULT false,
                     is_line_side boolean NOT NULL DEFAULT false,
                     is_deleted boolean NOT NULL DEFAULT false,
                     name text)
+                """);
+        // ADR-145 / V798: the services ask fn_warehouse_is_good_stock_leaf whether a warehouse may be
+        // chosen (enabled, accountable, operational leaf, enabled ancestors, not a workshop bin, not a
+        // defective-stock warehouse). This hand-written schema carries only the columns that rule reads,
+        // so the test installs the same rule over them; the real function is covered by
+        // WarehouseSingleMainMasterMigrationPostgresTest on the full Flyway schema.
+        jdbc.execute("""
+                CREATE FUNCTION fn_warehouse_is_good_stock_leaf(p_warehouse uuid)
+                RETURNS boolean LANGUAGE sql STABLE AS $$
+                    SELECT EXISTS (
+                        SELECT 1 FROM warehouses w
+                         WHERE w.id = p_warehouse AND NOT w.is_deleted AND w.status = '使用'
+                           AND w.is_accountable AND NOT w.is_line_side AND NOT w.is_defective
+                           AND NOT EXISTS (SELECT 1 FROM warehouses c
+                                            WHERE c.parent_id = w.id AND NOT c.is_deleted AND NOT c.is_line_side)
+                           AND NOT EXISTS (SELECT 1 FROM warehouses p
+                                            WHERE p.id = w.parent_id AND p.status IS DISTINCT FROM '使用'))
+                $$
                 """);
         jdbc.execute("""
                 CREATE TABLE goods(
@@ -90,6 +114,8 @@ class GoodsOwningWarehouseSyncPostgresTest {
         jdbc.update("INSERT INTO warehouses(id, name) VALUES (?, 'A'), (?, 'B')",
                 WAREHOUSE_A, WAREHOUSE_B);
         jdbc.update("INSERT INTO warehouses(id, name, is_line_side) VALUES (?, '车间流转位置', true)", LINE_SIDE);
+        jdbc.update("INSERT INTO warehouses(id, name, is_defective) VALUES (?, '原材料不良仓', true)", DEFECTIVE);
+        jdbc.update("INSERT INTO warehouses(id, name, status) VALUES (?, '停用仓', '禁用')", DISABLED);
         jdbc.update("INSERT INTO goods(id, name) VALUES (?, 'plain')", GOODS_PLAIN);
         jdbc.update(
                 "INSERT INTO goods(id, name, owning_warehouse_id) VALUES (?, 'at-a', ?)",
@@ -135,6 +161,21 @@ class GoodsOwningWarehouseSyncPostgresTest {
         assertEquals(0L, version(GOODS_PLAIN));
         service.syncOnInbound(GOODS_AT_A, WAREHOUSE_B);
         assertEquals(WAREHOUSE_B, owningWarehouse(GOODS_AT_A));
+    }
+
+    /**
+     * ADR-145: 入库学习只学可选良品子仓——进不良品仓(如 IQC 拒收)、停用仓不翻转所属仓库,
+     * 也就不会撞上所属仓库守卫把整张过账打断。
+     */
+    @Test
+    void inboundToDefectiveOrDisabledWarehouseNeverBecomesTheOwningWarehouse() {
+        service.syncOnInbound(GOODS_AT_A, DEFECTIVE);
+        service.syncOnInbound(GOODS_AT_A, DISABLED);
+        service.syncOnInbound(GOODS_PLAIN, DEFECTIVE);
+        assertEquals(WAREHOUSE_A, owningWarehouse(GOODS_AT_A));
+        assertNull(owningWarehouse(GOODS_PLAIN));
+        assertEquals(0L, version(GOODS_AT_A));
+        assertEquals(0L, version(GOODS_PLAIN));
     }
 
     @Test

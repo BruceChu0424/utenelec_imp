@@ -160,11 +160,24 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
                 INSERT INTO unit_stage(legacy_id, code, name, status)
                 VALUES (2, 'U2', '件', '使用');
                 """));
+        // ADR-145: 仓库主档只按审过的对照表建(唯一主仓 001 + 直属子仓); 老库主仓 SPLIT 成 001, 测试仓 KEEP。
         executeScript("migrate_warehouse.sql", Map.of("warehouse_stage", """
                 INSERT INTO warehouse_stage(
                     legacy_id, code, name, location, remark,
                     is_accountable, workshop_legacy_id, status)
-                VALUES (3, 'W3', '测试仓', '厂内', NULL, FALSE, NULL, '使用');
+                VALUES (900, '001', '测试主仓', NULL, NULL, FALSE, NULL, '使用'),
+                       (3, 'W3', '测试仓', '厂内', NULL, FALSE, NULL, '使用');
+                """, "warehouse_crosswalk_stage", """
+                INSERT INTO warehouse_crosswalk_stage(
+                    legacy_id, legacy_code, legacy_name, action,
+                    target_code, target_name, target_defective, note)
+                VALUES (900, '001', '测试主仓', 'SPLIT', '001', '测试主仓', FALSE, '唯一主仓'),
+                       (3, 'W3', '测试仓', 'KEEP', 'W3', '测试仓', FALSE, '子仓');
+                """));
+        assertEquals("001|W3", scalar("""
+                SELECT root.code || '|' || child.code
+                FROM warehouses child JOIN warehouses root ON root.id = child.parent_id
+                WHERE child.legacy_id = 3 AND root.parent_id IS NULL
                 """));
         executeScript("migrate_mould_data.sql", Map.of("mould_stage", """
                 INSERT INTO mould_stage(legacy_id, parent_legacy, name, code, status)

@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort;
@@ -1085,7 +1086,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         o.setSupplierId(req.getSupplierId());
         // V476 运营红线：订货仓库必须选具体叶子仓（收货沿用同仓）。
         if (warehouseScopes != null) {
-            warehouseScopes.requireNewLeafSelection(o.getWarehouseId(), req.getWarehouseId(), "仓库");
+            warehouseScopes.require(o.getWarehouseId(), req.getWarehouseId(), "仓库", WarehouseUse.GOOD_IN);
         }
         o.setWarehouseId(req.getWarehouseId());
         o.setCurrencyId(req.getCurrencyId());

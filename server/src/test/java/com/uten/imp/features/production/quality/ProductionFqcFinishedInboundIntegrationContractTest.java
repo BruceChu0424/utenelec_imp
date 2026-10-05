@@ -17,7 +17,7 @@ class ProductionFqcFinishedInboundIntegrationContractTest {
                         + "ProductionFqcInspectionService.java"));
 
         int create = source.indexOf(
-                "finishedInbound.createReleasedDraft(");
+                "finishedInbound.createReleasedDrafts(");
         int allocate = source.indexOf(
                 "allocateReleasedQuantity(",
                 create);

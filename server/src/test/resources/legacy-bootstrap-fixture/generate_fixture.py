@@ -35,6 +35,10 @@ fixture = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
 for variant_path in sys.argv[3:]:
     for filename, rows in json.loads(pathlib.Path(variant_path).read_text(encoding="utf-8")).items():
         fixture.setdefault(filename, []).extend(rows)
+# Reviewed manual lists are not part of the legacy export (ADR-145: goods -> owning
+# sub-warehouse); they are written next to the export but never enter its manifest.
+MANUAL = {"goods_owning_warehouse.csv"}
+manual = {name: fixture.pop(name) for name in sorted(MANUAL) if name in fixture}
 if set(fixture) - inventory:
     raise ValueError("fixture contains a file outside the real All export inventory")
 records = []
@@ -49,6 +53,11 @@ for filename in sorted(inventory):
     content = path.read_bytes()
     records.append(dict(file=filename, rows=len(rows), bytes=len(content),
                         sha256=hashlib.sha256(content).hexdigest()))
+for filename in sorted(MANUAL):
+    with (data / filename).open("w", encoding="utf-8", newline="") as target:
+        writer = csv.DictWriter(target, schemas[filename], delimiter="|", lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(manual.get(filename, []))
 sidecar = data / "export_manifest.sha256"
 sidecar.write_text("".join(f"{row['sha256']} *{row['file']}\n" for row in records), encoding="ascii")
 snapshot = json.dumps(fixture, sort_keys=True, separators=(",", ":")).encode("utf-8")

@@ -4738,9 +4738,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmGoLiveDate => '사용 시작일';
 
   @override
-  String get wmMainWarehouse => '소속 주창고';
-
-  @override
   String get wmMachines => '설비 및 용기';
 
   @override
@@ -4779,7 +4776,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get wmIncludeWorkshopStore => '작업장 자재창고 포함';
 
   @override
-  String get workshopMaterialSetupHubDesc => '일괄 출고 사용, 설비·용기, 도입 준비';
+  String get workshopMaterialSetupHubDesc =>
+      '설비·용기, 가동 준비; 자재창고 개설과 일괄 출고 시작은 \"작업장 자재창고\" 개요에서';
 
   @override
   String get workshopMaterialReportsHubDesc => '기간별 실사 기반 추산 사용량, 차이율, 결산 상태';
@@ -4798,9 +4796,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get wmBagMaterials => '포대 자재';
-
-  @override
-  String get wmEnableWorkshopTab => '작업장 사용 설정';
 
   @override
   String get wmReportPeriod => '기간';
@@ -8664,4 +8659,531 @@ class AppLocalizationsKo extends AppLocalizations {
   String aiAuditProviders(String names) {
     return '서비스: $names';
   }
+
+  @override
+  String get stockCountReasonLabel => '실사 메모(선택)';
+
+  @override
+  String get stockCountReasonHint => '예: 도입 실사 또는 정기 실사, 최대 500자';
+
+  @override
+  String weightParamsLoadFailed(String reason) {
+    return '단위 중량 정보를 불러오지 못했습니다: $reason. 무게 환산과 무게 미리 채우기는 지금 사용할 수 없으며 수량은 그대로 등록할 수 있습니다.';
+  }
+
+  @override
+  String get weightParamsLoadFailedUnknown => '네트워크 또는 서비스를 일시적으로 사용할 수 없습니다';
+
+  @override
+  String get warehouseOwningPickerTitle => '소속 창고 선택';
+
+  @override
+  String get warehouseMasterUseColumn => '창고 용도';
+
+  @override
+  String get warehouseMasterUseGood => '양품 창고';
+
+  @override
+  String get warehouseMasterUseDefective => '불량품 창고';
+
+  @override
+  String get warehouseMasterUseHint =>
+      '불량품 창고에는 불량으로 판정된 물품만 두며 가용 수량에 포함되지 않습니다. 재고가 있거나 아직 품목의 소속 창고이면 용도를 바꿀 수 없습니다.';
+
+  @override
+  String get warehouseMasterParentLabel => '상위 창고';
+
+  @override
+  String get warehouseMasterParentFixedHint =>
+      '항상 본창고 아래에 둡니다 (본창고와 하위 창고 두 단계뿐)';
+
+  @override
+  String get warehouseMasterParentSelf =>
+      '본창고입니다. 집계·담당 범위·탐색 전용이며 전표 창고로 선택할 수 없습니다';
+
+  @override
+  String get warehouseMasterMainTag => '본창고';
+
+  @override
+  String get warehouseMasterLineSideLabel => '작업장 자재창고';
+
+  @override
+  String get warehouseMasterLineSideYes => '예 (작업장 직송 및 일괄 출고)';
+
+  @override
+  String get warehouseMasterLineSideNo => '아니요';
+
+  @override
+  String get warehouseMasterLineSideReadOnlyHint =>
+      '작업장 자재창고는 「작업장 자재창고」 페이지에서 개설·취소하며 여기서는 조회만 가능합니다';
+
+  @override
+  String get warehouseDefectiveTag => '불량품';
+
+  @override
+  String get warehouseDefectiveBlockedHint => '불량품 창고라 여기서는 선택할 수 없습니다';
+
+  @override
+  String get stockTransferSameClassHint =>
+      '일반 이동은 양쪽 모두 양품 창고이거나 모두 불량품 창고여야 합니다. 양품을 불량으로 옮기거나 재판정 후 되돌릴 때는 재고 상세의 \"불량품 처리\"를 사용하세요.';
+
+  @override
+  String get defectiveMoveAction => '불량품 처리';
+
+  @override
+  String get defectiveMoveToDefective => '불량품 창고로 이동';
+
+  @override
+  String get defectiveMoveRelease => '재판정 후 양품 반환';
+
+  @override
+  String get defectiveMoveToDefectiveExplain =>
+      '불량으로 판정된 물품을 양품 창고에서 불량품 창고로 옮깁니다. 옮긴 뒤에는 어떤 가용 수량에도 포함되지 않습니다 (판매 예약, MRP, 자재 분석, 출고).';
+
+  @override
+  String get defectiveMoveReleaseExplain =>
+      '품질 재판정에 합격하면 불량품 창고의 물품을 양품 창고로 되돌립니다. 되돌린 뒤에는 다시 가용 수량에 포함됩니다.';
+
+  @override
+  String get defectiveMoveFrom => '출고 창고';
+
+  @override
+  String get defectiveMoveTo => '입고 창고';
+
+  @override
+  String get defectiveMoveQty => '수량';
+
+  @override
+  String get defectiveMoveReason => '사유';
+
+  @override
+  String get defectiveMoveReasonHintToDefective => '불량으로 판정한 사유 (필수, 500자 이내)';
+
+  @override
+  String get defectiveMoveReasonHintRelease => '재판정 결론 (필수, 500자 이내)';
+
+  @override
+  String get defectiveMoveSubmit => '제출 및 전기';
+
+  @override
+  String get defectiveMoveIncomplete => '출고·입고 창고를 고르고 0보다 큰 수량과 사유를 입력하세요';
+
+  @override
+  String defectiveMoveDone(String billNo) {
+    return '전기 완료: $billNo';
+  }
+
+  @override
+  String get defectiveMoveGoods => '품목';
+
+  @override
+  String instantInventoryDefectivePart(String qty) {
+    return '불량품 $qty 포함';
+  }
+
+  @override
+  String goodsStockDefectiveExtra(String qty) {
+    return '불량품 $qty 별도 (재고 합계에 포함되지 않음)';
+  }
+
+  @override
+  String get stockTransferKindLabel => '이동 유형';
+
+  @override
+  String get stockTransferKindNormal => '일반 이동';
+
+  @override
+  String get wmBinStatusNotOpen => '미개설';
+
+  @override
+  String get wmBinStatusOpen => '개설됨';
+
+  @override
+  String get wmBinStatusPeriodic => '일괄 출고 중';
+
+  @override
+  String get wmBinSegmentAll => '전체 작업장';
+
+  @override
+  String get wmBinSearchHint => '작업장 또는 창고 검색';
+
+  @override
+  String get wmBinColWorkshop => '작업장';
+
+  @override
+  String get wmBinColStatus => '상태';
+
+  @override
+  String get wmBinColBin => '작업장 자재창고';
+
+  @override
+  String get wmBinColSource => '출고 원천 창고';
+
+  @override
+  String get wmBinColPeriod => '현재 기간';
+
+  @override
+  String get wmBinSourceDefault => '품목 소속 창고 기준';
+
+  @override
+  String wmBinOpenAction(int n) {
+    return '개설($n)';
+  }
+
+  @override
+  String wmBinPeriodicAction(int n) {
+    return '일괄 출고 시작($n)';
+  }
+
+  @override
+  String wmBinRevokeAction(int n) {
+    return '취소($n)';
+  }
+
+  @override
+  String get wmBinMenuViewStock => '자재창고 보기';
+
+  @override
+  String get wmBinMenuOpen => '작업장 자재창고 개설';
+
+  @override
+  String get wmBinMenuChangeSource => '출고 원천 창고 변경';
+
+  @override
+  String get wmBinMenuRevoke => '마지막 단계 취소';
+
+  @override
+  String get wmBinMachinesAndPrep => '설비 및 가동 준비';
+
+  @override
+  String get wmBinEmptyAll => '표시할 작업장이 없습니다';
+
+  @override
+  String get wmBinEmptyFiltered => '조건에 맞는 작업장이 없습니다';
+
+  @override
+  String get wmBinLoadFailed => '불러오지 못했습니다. 다시 시도하세요';
+
+  @override
+  String get wmBinNetworkRetry =>
+      '네트워크가 불안정해 결과를 아직 확인하지 못했습니다. 입력은 그대로이니 다시 누르세요 (중복 처리되지 않습니다).';
+
+  @override
+  String wmBinRevokeTitle(int n) {
+    return '작업장 $n곳의 마지막 단계 취소';
+  }
+
+  @override
+  String wmBinRevokeLinePeriodic(String name) {
+    return '\"$name\": 일괄 출고 취소, 자재창고는 계속 개설 상태';
+  }
+
+  @override
+  String wmBinRevokeLineOpen(String name) {
+    return '\"$name\": 개설 취소, 자재창고를 창고 목록에서 제거';
+  }
+
+  @override
+  String get wmBinRevokeHint =>
+      '잘못 설정한 경우만 취소할 수 있습니다. 입출고나 작업장 직송 기록이 있거나 일괄 출고가 이미 사용 중이면 취소할 수 없습니다.';
+
+  @override
+  String wmBinRevokeBlockedLine(String name, String reasons) {
+    return '\"$name\"은(는) 지금 취소할 수 없습니다: $reasons';
+  }
+
+  @override
+  String get wmBinRevokeConfirm => '취소';
+
+  @override
+  String wmBinRevokeDone(int n) {
+    return '작업장 $n곳의 마지막 단계를 취소했습니다';
+  }
+
+  @override
+  String get wmBinRevoking => '취소하는 중';
+
+  @override
+  String get wmBinNoneOpened => '자재창고를 개설한 작업장이 아직 없습니다';
+
+  @override
+  String wmBinNotOpenTitle(String name) {
+    return '\"$name\"은(는) 아직 자재창고를 개설하지 않았습니다';
+  }
+
+  @override
+  String get wmBinNotOpenDescription =>
+      '개설하면 같은 작업장의 앞뒤 공정이 직접 넘겨받을 수 있습니다. 펠릿 등 원료를 작업장에 일괄 보관할 때 일괄 출고를 시작하세요.';
+
+  @override
+  String get wmBinNotOpenAskWarehouse =>
+      '창고 담당자에게 \"작업장 자재창고\"에서 개설해 달라고 요청하세요.';
+
+  @override
+  String get wmBinDirectOnlyNotice =>
+      '이 자재창고는 작업장 직송만 받고 일괄 출고는 아직 시작하지 않았습니다. 아래는 지금 자재창고에 있는 자재이며 상위 작업이 바로 가져갑니다.';
+
+  @override
+  String get wmBinPanelTitleOpen => '작업장 자재창고 개설';
+
+  @override
+  String get wmBinPanelTitleSource => '출고 원천 창고 변경';
+
+  @override
+  String wmBinSelectedWorkshops(int n, String names) {
+    return '선택한 작업장 ($n): $names';
+  }
+
+  @override
+  String get wmBinSourceHint =>
+      '창고가 이 자재창고로 출고할 때 재고가 있으면 기본으로 여기서 출고합니다. 비워 두면 품목 소속 창고를 씁니다. 주창고를 먼저 누른 뒤 하위 창고를 고르세요.';
+
+  @override
+  String get wmBinSourcePickerTitle => '자재창고의 출고 원천 창고 선택';
+
+  @override
+  String get wmBinSourceRequired => '출고 원천 창고를 선택하세요';
+
+  @override
+  String get wmBinSourceSaved => '출고 원천 창고를 저장했습니다';
+
+  @override
+  String get wmBinSaveSource => '원천 창고 저장';
+
+  @override
+  String get wmBinAlsoPeriodic => '일괄 출고도 시작';
+
+  @override
+  String get wmBinAlsoPeriodicHint =>
+      '펠릿 등 원료를 작업장에 일괄 보관하고 재고 조사로 소비를 계산합니다. 시작하지 않으면 작업장 직송만 받습니다.';
+
+  @override
+  String get wmBinPeriodicFlowNotice =>
+      '시작 후 자재창고 원료를 쓰는 제품은 처음 한 번 자재만 지정하면 되고 작업지시 출고를 먼저 할 필요가 없습니다. 개당 중량이 없어도 생산할 수 있으나 예상 사용량과 정산 전에 채워야 합니다. 인서트 등 작업지시 자재가 필요한 제품은 기존대로 그 자재를 출고합니다.';
+
+  @override
+  String get wmBinPendingNone => '선택한 작업장에 자재를 지정해야 할 진행 중 작업이 없습니다.';
+
+  @override
+  String wmBinPendingTitle(int n) {
+    return '생산 중이지만 자재를 지정하지 않은 제품 ($n개). 한 번에 모두 고르세요 (제품당 한 번):';
+  }
+
+  @override
+  String get wmBinColProduct => '제품';
+
+  @override
+  String get wmBinColInProgressWorkshops => '생산 중 작업장';
+
+  @override
+  String get wmBinColTasks => '작업 수';
+
+  @override
+  String get wmBinColMaterial => '사용 자재';
+
+  @override
+  String get wmBinColAlsoOrder => '작업지시 출고도';
+
+  @override
+  String get wmBinChooseMaterialHint => '이 제품의 자재 선택';
+
+  @override
+  String wmBinMissingChoice(int n, String names) {
+    return '자재를 고르지 않은 생산 중 제품 $n개: $names';
+  }
+
+  @override
+  String wmBinOpenDone(int n) {
+    return '작업장 $n곳의 자재창고를 개설했습니다';
+  }
+
+  @override
+  String wmBinPeriodicDone(int n) {
+    return '작업장 $n곳의 일괄 출고를 시작했습니다';
+  }
+
+  @override
+  String get wmBinSaving => '처리 중입니다. 잠시 기다려 주세요';
+
+  @override
+  String get wmBinSavingPeriodic => '자재창고와 1기를 만들고 진행 중 작업을 연결하는 중';
+
+  @override
+  String get wmLeafColumn => '출고 창고';
+
+  @override
+  String get wmLeafReturnColumn => '반납 창고';
+
+  @override
+  String get wmLeafPick => '창고 선택';
+
+  @override
+  String get wmLeafPickerTitle => '출고 창고 선택';
+
+  @override
+  String get wmLeafReturnPickerTitle => '반납할 창고 선택';
+
+  @override
+  String wmLeafAvailable(String qty, String unit) {
+    return '출고 가능 $qty $unit';
+  }
+
+  @override
+  String get wmSetupNoWorkshop => '생산 작업장을 찾지 못했습니다';
+
+  @override
+  String get wmSetupNoWorkshopHint => '작업장은 생산부 아래 부서입니다. 먼저 부서 관리에서 작업장을 만드세요';
+
+  @override
+  String get wmSetupWorkshopUnavailable => '지정한 작업장을 사용할 수 없거나 볼 권한이 없습니다';
+
+  @override
+  String get wmSetupWorkshopUnavailableHint =>
+      '원래 작업으로 돌아가 작업장을 확인하거나 새로 고친 뒤 다시 시도하세요.';
+
+  @override
+  String get wmSetupMaterialIssueMethod => '원자재 출고 방식';
+
+  @override
+  String get wmSetupOpeningGuide => '가동 시 잔여 자재 등록 방법';
+
+  @override
+  String get wmSetupOpeningGuideTitle => '가동 전 작업장 잔여 자재 확인';
+
+  @override
+  String get wmSetupOpeningGuideBody =>
+      '먼저 랙의 완포대, 개봉 포대, 혼합 후 대기 자재, 설비 용기의 잔여 자재를 기록하고, 계량값과 용기 추정값을 따로 기록하세요.\n\n이미 재고 장부에 있는 잔여 자재: 원래 창고와 작업지시를 확인하세요. 작업지시로 출고된 자재는 먼저 기존 절차로 반납 정리하고, 일반 창고 장부에 남아 있는 자재는 창고가 작업장 자재창고로 일괄 이동합니다.\n\n장부에 없던 잔여 자재: 수량과 금액을 확정한 뒤 기타 입고로 등록하고 자재창고로 일괄 이동하세요. 재고를 이중으로 만들거나 이미 사용한 자재를 다시 기록하지 마세요.\n\n이는 가동 시 재고 연결일 뿐이며, 생산 직원이 작업지시마다 다시 출고할 필요는 없습니다. 이후에는 실제 인계에 따라 보충과 반납을 등록하고 필요할 때 재고 조사를 하세요. 용기 추정은 사용량 차이에 영향을 주며 정확한 실소비로 볼 수 없습니다.';
+
+  @override
+  String get wmSetupOpeningGuideOk => '알겠습니다';
+
+  @override
+  String get warehouseMasterLineSideManaged =>
+      '예, \"작업장 자재창고\"에서 개설·관리 (여기서는 읽기 전용)';
+
+  @override
+  String get handoffLotRegistrationTitle => '완제품 입고 등록';
+
+  @override
+  String get handoffLotRegistrationFooter =>
+      '한 행 = 실물 한 묶음(같은 보고, 같은 입력, 창고로 보내는 수요분 / 계획 공용 / 실제 초과 생산). 위치, 실측 수량, 무게는 묶음마다 하나입니다. 입고 창고와 위치는 필수입니다(상품 소속 창고 또는 지난번 선택으로 미리 채움, 노란 테두리는 확인 필요). 같은 보고의 다른 묶음은 다른 창고로 등록할 수 있습니다. 기본으로 모두 선택되며 선택한 행만 제출됩니다.';
+
+  @override
+  String handoffLotBatchesTitle(int count) {
+    return '등록 차수 ($count)';
+  }
+
+  @override
+  String get handoffLotBatchesHint =>
+      '하나의 보고는 입고 창고별로 여러 등록 차수로 나뉠 수 있으며 창고마다 품질 검사서가 하나입니다. 품질 처리가 안 된 차수는 등록을 철회할 수 있고, 철회하면 해당 묶음은 다시 등록 대기로 돌아갑니다.';
+
+  @override
+  String get handoffLotSplitColumn => '구성';
+
+  @override
+  String get handoffLotSplitColumnInfo =>
+      '이 실물 묶음 중 수요분, 계획 공용 재고, 실제 초과 생산이 각각 얼마인지(서버 계산). 품질 판정과 창고 실수령은 묶음 단위입니다: 합격 / 실수령은 수요분부터 채우고, 불량 / 부족분은 실제 초과 생산부터 차감합니다.';
+
+  @override
+  String get inboundArrivalRegistrationTitle => '실제 입하 등록';
+
+  @override
+  String get fqcWholeLotOnlyHint =>
+      '이 실물 묶음은 수요분, 계획 공용 재고 또는 실제 초과 생산으로 나뉘어 있습니다. 검사서에서 묶음 전체의 합격·불량 수량을 판정하세요(합격은 수요분부터, 불량은 실제 초과 생산부터).';
+
+  @override
+  String get fqcOpenSheetForLot => '검사서에서 판정';
+
+  @override
+  String get warehouseScopeAllWarehouses => '전체 창고';
+
+  @override
+  String get warehouseScopeAllMine => '내가 담당하는 전체 창고';
+
+  @override
+  String warehouseScopeKeeperLabel(String name) {
+    return '담당 창고: $name';
+  }
+
+  @override
+  String get warehouseScopePickerTitle => '창고 범위 선택';
+
+  @override
+  String get warehouseScopeSupervisorTooltip =>
+      '창고 관리자입니다: 전체 창고를 보거나 한 창고만 볼 수 있습니다. 작업 목록과 건수는 선택한 범위로 서버에서 계산되며 처리 권한은 바뀌지 않습니다.';
+
+  @override
+  String get warehouseScopeKeeperTooltip =>
+      '작업 센터에는 담당 창고의 작업만 표시되며 배지와 알림도 이 창고만 셉니다. 담당 창고를 바꾸려면 창고 관리자에게 「창고 자료」에서 담당자를 설정해 달라고 요청하세요.';
+
+  @override
+  String warehouseKeeperDialogTitle(String name) {
+    return '담당자 설정 · $name';
+  }
+
+  @override
+  String get warehouseKeeperRolesHint =>
+      '담당자는 이 창고의 작업을 누가 보고 받는지 정합니다:\n1. 주 창고에 등록된 사람과 창고 부서장은 창고 관리자이며 전체 창고를 보고 작업 센터에서 어느 창고든 고를 수 있습니다;\n2. 하위 창고에 등록된 사람은 자기 담당 창고의 작업만 보고 받으며(배지도 이 창고만 셈) 여러 창고를 담당하면 그 사이에서 전환할 수 있습니다;\n3. 등록되지 않은 동료는 담당자가 없는 창고와 창고가 정해지지 않은 작업을 봅니다. 담당자가 없는 창고의 알림은 창고 관리자에게 갑니다.\n동명이인은 사번으로 확인하세요. 로그인 계정이 없는 사람은 유효한 담당자가 아닙니다.';
+
+  @override
+  String get warehouseKeeperNoAccount => '활성 로그인 계정 없음: 작업을 보거나 알림을 받을 수 없음';
+
+  @override
+  String get warehouseKeeperOutsideDepartment =>
+      '창고 부서 아님: 작업을 보고 알림을 받으려면 창고 작업 권한이 따로 필요함';
+
+  @override
+  String get warehouseKeeperDuplicateName => '동명이인이 있음, 사번으로 확인';
+
+  @override
+  String get warehouseKeeperCleared =>
+      '담당자 해제: 이 창고의 작업과 알림은 창고 관리자에게 가며 등록되지 않은 동료도 볼 수 있습니다';
+
+  @override
+  String get warehouseKeeperSaved => '담당자 저장됨';
+
+  @override
+  String warehouseKeeperSavedWithWarnings(String warnings) {
+    return '담당자 저장됨. $warnings';
+  }
+
+  @override
+  String get defectiveMoveUncertain =>
+      '지난 제출 결과가 아직 확인되지 않아 내용이 잠겼습니다. 같은 내용으로 다시 시도하고, 결과가 확인된 뒤에 수정하세요.';
+
+  @override
+  String get defectiveMoveReservationWarning =>
+      '이 예약들은 더 이상 실물이 없습니다. 관련 담당자에게 알려 주세요';
+
+  @override
+  String get wmBinSourceFollowOwning => '출고 원천 창고를 지정하지 않고 품목 소속 창고에서 출고';
+
+  @override
+  String get wmBinSourceFollowOwningHint =>
+      '설정된 원천 창고를 해제합니다. 이후 그 창고는 정상적으로 사용 중지하거나 용도를 바꿀 수 있습니다';
+
+  @override
+  String get wmBinSourceCleared => '이제 품목 소속 창고 기준으로 출고합니다';
+
+  @override
+  String get wmMachinesBatchCreate => '설비 일괄 추가';
+
+  @override
+  String get wmMachinesSaveChanges => '변경 저장';
+
+  @override
+  String qualityBatchSubmitDone(int iqcLines, int fqcLots) {
+    return '검사 보고서를 제출했습니다: 수입검사 $iqcLines행, 자체 완제품 $fqcLots로트 전부 합격; 합격분은 창고 입고 대기로 넘어갔습니다';
+  }
+
+  @override
+  String get qualityBatchColumnSplit => '로트 구성';
+
+  @override
+  String qualityBatchWholeLot(int count) {
+    return '$count개 묶음을 로트 전체로 판정';
+  }
+
+  @override
+  String get qualityBatchWholeLotPass => '선택하면 로트 전체 합격';
 }

@@ -241,11 +241,11 @@ class _ProductionFinishedInboundTasksViewState
         context.appWarning('该到货登记任务缺少报工单标识，请刷新后重试', force: true);
         return;
       }
+      // ADR-151 §5：双击 = 同一个登记页的 1 个来源，没选路线(两条路线并排)。
       final changed = await context.push<bool>(
-        RoutePath.warehouseProductionFinishedArrivalRegistration(
+        RoutePath.warehouseProductionFinishedArrivalRegistration([
           reportId,
-          returnTo: GoRouterState.of(context).matchedLocation,
-        ),
+        ], returnTo: GoRouterState.of(context).matchedLocation),
       );
       if (!mounted || changed != true) return;
       // 登记页只失效了待点收计数；返回后统一失效，保证分段徽章/hub/工作台即时联动。
@@ -345,7 +345,7 @@ class _ProductionFinishedInboundTasksViewState
       return;
     }
     final changed = await context.push<bool>(
-      RoutePath.warehouseProductionFinishedArrivalBatchRegistration(
+      RoutePath.warehouseProductionFinishedArrivalRegistration(
         reportIds,
         returnTo: GoRouterState.of(context).matchedLocation,
         stockInBeforeInspection: route.isStockInFirst,
@@ -651,17 +651,42 @@ class _ProductionFinishedInboundTasksViewState
       value: (task) =>
           task.isArrivalRegistration ? '待本步骤选择' : task.warehouseName ?? '—',
     ),
+    // ADR-148：待处理数量后跟服务端拼好的「其中实际超产 N」(没有实际超产不显示)。
     MasterColumnDef(
       key: 'pendingQty',
       label: '待处理数量',
-      width: 120,
+      width: 200,
       type: 'number',
       value: (task) => _quantity(task.pendingQty),
+      cellBuilder: (context, task) {
+        final note = task.actualSurplusNote;
+        if (note == null || note.isEmpty) {
+          return Text(_quantity(task.pendingQty));
+        }
+        final theme = Theme.of(context);
+        return Text.rich(
+          TextSpan(
+            text: _quantity(task.pendingQty),
+            children: [
+              TextSpan(
+                text: ' ($note)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      },
     ),
     MasterColumnDef(
       key: 'lineCount',
-      label: '行数',
-      width: 80,
+      label: '实物批数',
+      // ADR-148：同一报工、同一产出批次的需求份 / 计划公共 / 实际超产合在一起算一批。
+      info: '一批实物 = 同一报工、同一次录入送入仓库的需求份、计划公共备货与实际超产，合在一起登记、判定和点收。',
+      width: 100,
       type: 'number',
       value: (task) => '${task.lineCount}',
     ),

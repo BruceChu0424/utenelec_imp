@@ -358,7 +358,7 @@ WHERE c.parent_legacy_id <> 0
 -- F_DateReport / F_DateReportItem 在 YTDQ_2023 为 0 行（design 24 §3.4，字段类型
 --   自相矛盾从未启用）。staging 已 \copy 验证形态；INSERT 跳过，结构留位。
 -- 未来老库启用时，按 design 24 §7.4 映射规则补：
---   * daily_reports: warehouse_id 经 warehouses.legacy_id 映射 StockID；
+--   * daily_reports: warehouse_id 经审过的 warehouse_crosswalk.csv 映射 StockID(ADR-145，不补录仓库存根)；
 --     department_id 留 NULL + workshop_name 留底（WorkShop int 与 F_Plan varchar 矛盾，
 --     design §7.4 统一为 department_id + workshop_name 文本占位）；
 --     VendID -> supplier_id；MakerID/ApproverID/WorkerID 留 NULL + *_legacy_id 留底。

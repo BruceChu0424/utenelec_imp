@@ -8,7 +8,7 @@ import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.da
 
 void main() {
   test(
-    'repository sends exact warehouse accepted quantities and reason',
+    'repository sends exact warehouse accepted quantities per physical lot and reason',
     () async {
       late RequestOptions captured;
       final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
@@ -44,10 +44,11 @@ void main() {
         StockDocType.finishedIn,
       );
 
+      // ADR-148：仓库按实物批点收(一批只填一个实收数)，服务端按瀑布分给批内各份。
       final detail = await repository.confirmFinishedInbound(
         'finished-in-1',
         const [
-          {'itemId': 'line-1', 'acceptedQty': 6},
+          {'lotId': 'lot-1', 'acceptedQty': 6},
         ],
         'finished-confirm-key-0001',
         varianceReason: ' 本次实物只交接 6 件 ',
@@ -57,8 +58,8 @@ void main() {
       expect(captured.path, '/stock/docs/finished-in-1/finished-in/confirm');
       expect(captured.data, {
         'idempotencyKey': 'finished-confirm-key-0001',
-        'lines': [
-          {'itemId': 'line-1', 'acceptedQty': 6},
+        'lots': [
+          {'lotId': 'lot-1', 'acceptedQty': 6},
         ],
         'varianceReason': '本次实物只交接 6 件',
       });

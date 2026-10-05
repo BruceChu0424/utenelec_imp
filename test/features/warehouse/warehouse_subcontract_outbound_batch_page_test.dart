@@ -551,8 +551,12 @@ class _Names extends MasterNameService {
   Future<void> ensureWarehousesLoaded() async {}
   @override
   List<WarehouseDictEntry> get warehouseHierarchy => const [
-    WarehouseDictEntry(id: 'actual-leaf', name: '轨道车间'),
-    WarehouseDictEntry(id: 'actual-leaf-b', name: '补充仓'),
+    WarehouseDictEntry(id: 'actual-leaf', name: '轨道车间', selectableForNew: true),
+    WarehouseDictEntry(
+      id: 'actual-leaf-b',
+      name: '补充仓',
+      selectableForNew: true,
+    ),
   ];
   @override
   String warehouse(String? id) => id == 'actual-leaf'

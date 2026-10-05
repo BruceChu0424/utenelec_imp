@@ -33,6 +33,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -67,6 +68,8 @@ class _FqcSheetGroup {
   _FqcSheetGroup(this.sheet, this.inspections, this.loadError);
 
   final ProductionFqcInspectionSheet sheet;
+
+  /// ADR-148: 一批实物一行(批内各份合计); 行 id 是批号, 勾选并提交时带上批内各份的检查任务。
   final List<ProductionFqcInspection> inspections;
   final String? loadError;
 
@@ -152,6 +155,13 @@ class _ApprovalRow {
   String? get goodsName => isFqc ? fqc!.goodsName : iqc!.item.goodsName;
   String? get goodsCode => isFqc ? fqc!.goodsCode : iqc!.item.goodsCode;
   String? get colorName => isFqc ? fqc!.colorName : iqc!.item.colorName;
+
+  /// 本行是一批多份的实物批(检查单里的批行, 或无检查单的历史任务所在的多份批)。
+  bool get wholeLot =>
+      isFqc && ((fqc!.lot?.members.length ?? fqc!.lotSliceCount) > 1);
+
+  /// 批内拆分说明(服务端算好的「需求 1000 · 实际超产 100」)。
+  String? get splitText => fqc?.lot?.splitText;
 
   /// 勾一行就是整行判合格。
   bool get preStocked =>
@@ -397,7 +407,12 @@ class _QualityBatchApprovalPageState
           }
           try {
             final detail = await fqc.sheetDetail(sheet.id);
-            return _FqcSheetGroup(detail.sheet, detail.activeInspections, null);
+            // ADR-148: 品质按实物批判定, 一批一行(与检查单办理页同一口径)。
+            return _FqcSheetGroup(
+              detail.sheet,
+              detail.activeLotInspections,
+              null,
+            );
           } on ApiException catch (error) {
             return _FqcSheetGroup(sheet, const [], error.message);
           } catch (_) {
@@ -452,7 +467,7 @@ class _QualityBatchApprovalPageState
       .where((row) => row.selected && !row.completed)
       .toList();
 
-  /// 全部 FQC 行：检查单内仍待检行 + 无检查单的历史任务。
+  /// 全部 FQC 行：检查单内仍待检的实物批 + 无检查单的历史任务(已在某个批里的不重复列)。
   List<ProductionFqcInspection> get _allFqc {
     final byId = <String, ProductionFqcInspection>{};
     for (final group in _sheetGroups ?? const <_FqcSheetGroup>[]) {
@@ -460,11 +475,40 @@ class _QualityBatchApprovalPageState
         byId.putIfAbsent(inspection.id, () => inspection);
       }
     }
+    final grouped = _groupedFqcIds;
     for (final inspection in _selection.inspections) {
+      if (grouped.contains(inspection.id)) continue;
       byId.putIfAbsent(inspection.id, () => inspection);
     }
     return byId.values.toList(growable: false);
   }
+
+  /// 检查单批行覆盖的全部 id: 批号 + 批内各份的检查任务。
+  Set<String> get _groupedFqcIds => {
+    for (final group in _sheetGroups ?? const <_FqcSheetGroup>[])
+      for (final inspection in group.inspections) ..._fqcMemberIds(inspection),
+  };
+
+  /// 一行要提交的检查任务: 批行 = 批内仍待判的各份(服务端仍按整批展开); 单份 = 它自己。
+  static List<String> _fqcSubmitIds(ProductionFqcInspection row) {
+    final lot = row.lot;
+    if (lot == null) return [row.id];
+    final active = [
+      for (final member in lot.members)
+        if (member.status == 'PENDING' || member.status == 'PARTIAL')
+          member.inspectionId,
+    ];
+    return active.isEmpty
+        ? [for (final member in lot.members) member.inspectionId]
+        : active;
+  }
+
+  static Set<String> _fqcMemberIds(ProductionFqcInspection row) => {
+    row.id,
+    for (final member
+        in row.lot?.members ?? const <ProductionFqcInspectionLotMember>[])
+      member.inspectionId,
+  };
 
   /// 列表里已勾选的任务进入本页默认保持选中（可再取消）；IQC 行同理
   ///（_EditableIqcRow 构造即 selected = true）。
@@ -502,7 +546,8 @@ class _QualityBatchApprovalPageState
       context.appWarning('请先选择要提交的明细');
       return;
     }
-    if (fqcSelected.length > 100) {
+    final fqcIds = [for (final row in fqcSelected) ..._fqcSubmitIds(row)];
+    if (fqcIds.toSet().length > 100) {
       context.appWarning('自制产成品每批最多100项，请减少本次勾选');
       return;
     }
@@ -572,7 +617,11 @@ class _QualityBatchApprovalPageState
             ),
           for (final inspection in fqcSelected)
             InspectionReportConfirmLine(
-              label: '自制产成品 ${inspection.reportNo ?? inspection.id}',
+              label: [
+                '自制产成品 ${inspection.reportNo ?? inspection.id}',
+                if (inspection.lot?.splitText?.isNotEmpty == true)
+                  inspection.lot!.splitText!,
+              ].join(' · '),
               passText: '',
               failText: '0',
             ),
@@ -584,7 +633,8 @@ class _QualityBatchApprovalPageState
     if (reason == null || !mounted) return;
     _submission = QualityBatchSubmission(
       reason: reason.isEmpty ? null : reason,
-      fqcInspectionIds: [for (final item in fqcSelected) item.id],
+      fqcInspectionIds: fqcIds,
+      fqcLotCount: fqcSelected.length,
       receipts: [
         for (final group in _groups ?? const <_IqcReceiptGroup>[])
           if (group.rows.any(selected.contains))
@@ -665,8 +715,10 @@ class _QualityBatchApprovalPageState
       invalidateCounts();
       setState(() => _submitting = false);
       context.appSuccess(
-        '检验报告已提交：IQC ${submission.iqcLineCount} 行、'
-        '自制产成品全部合格 ${submission.fqcInspectionIds.length} 项；合格部分已转仓库待入库',
+        AppLocalizations.of(context).qualityBatchSubmitDone(
+          submission.iqcLineCount,
+          submission.fqcLotCount,
+        ),
       );
       if (context.canPop()) {
         context.pop(true);
@@ -679,8 +731,16 @@ class _QualityBatchApprovalPageState
           '${submission.currentLabel}：${error.message}。重试将核对原报告，已确认成功的单据不会重发',
         );
       }
-    } catch (_) {
-      if (mounted) context.appError('${submission.currentLabel}提交未确认，请重试原报告');
+    } catch (error) {
+      // 本机检查点或回执校验的原因如实给人看(ADR-151 §2); 真正未知才提示核对原报告。
+      final reason = describeFormSaveError(error);
+      if (mounted) {
+        context.appError(
+          reason == null
+              ? '${submission.currentLabel}提交未确认，请重试原报告'
+              : '${submission.currentLabel}：$reason',
+        );
+      }
     } finally {
       invalidateCounts();
       if (mounted) {
@@ -775,10 +835,7 @@ class _QualityBatchApprovalPageState
   Widget _buildBody(ThemeData theme) {
     final groups = _groups ?? const <_IqcReceiptGroup>[];
     final sheetGroups = _sheetGroups ?? const <_FqcSheetGroup>[];
-    final groupedFqcIds = {
-      for (final group in sheetGroups)
-        for (final inspection in group.inspections) inspection.id,
-    };
+    final groupedFqcIds = _groupedFqcIds;
     final looseFqc = _selection.inspections
         .where((inspection) => !groupedFqcIds.contains(inspection.id))
         .toList(growable: false);
@@ -965,6 +1022,18 @@ class _QualityBatchApprovalPageState
         exactValueOf: (row) => row.iqc?.item.remainingBaseQty?.toString(),
       ),
       MasterColumnDef(
+        key: 'split',
+        label: AppLocalizations.of(context).qualityBatchColumnSplit,
+        width: 200,
+        value: (row) =>
+            row.splitText ??
+            (row.wholeLot
+                ? AppLocalizations.of(
+                    context,
+                  ).qualityBatchWholeLot(row.fqc!.lotSliceCount)
+                : '—'),
+      ),
+      MasterColumnDef(
         key: 'unit',
         label: '单位',
         width: 190,
@@ -1013,7 +1082,9 @@ class _QualityBatchApprovalPageState
         label: '本次报告',
         width: 190,
         value: (row) => row.isFqc
-            ? '勾选即全部合格'
+            ? (row.wholeLot
+                  ? AppLocalizations.of(context).qualityBatchWholeLotPass
+                  : '勾选即全部合格')
             : row.iqc!.completed
             ? '本次报告已确认提交'
             : '待提交',

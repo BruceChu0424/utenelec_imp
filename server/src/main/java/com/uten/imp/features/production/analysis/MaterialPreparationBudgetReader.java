@@ -79,6 +79,8 @@ final class MaterialPreparationBudgetReader {
                   AND material.goods_id=source.goods_id AND material.color_id IS NOT DISTINCT FROM source.color_id
                   AND material.unit_id=source.unit_id
                 WHERE fn_warehouse_same_main(source.warehouse_id,:warehouse)
+                  AND NOT EXISTS (SELECT 1 FROM warehouses defective
+                                  WHERE defective.id=source.warehouse_id AND defective.is_defective)
                   AND source.goods_id IN (SELECT unnest(CAST(string_to_array(:goods,',') AS uuid[])))
                   AND source.available_to_claim_qty>0
                 ORDER BY source.kind,source.source_id,source.item_id,material.id

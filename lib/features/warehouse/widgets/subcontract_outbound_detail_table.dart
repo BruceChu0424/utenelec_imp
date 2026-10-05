@@ -14,6 +14,7 @@ import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/subcontract_outbound.dart';
 import 'outbound_weight_columns.dart';
@@ -566,6 +567,7 @@ class _SubcontractOutboundDetailTableState
                     'subcontract-outbound-${row.draft.draftItemId ?? row.draft.line.planItemId}-warehouse',
                   ),
                   entries: row.warehouses,
+                  use: WarehouseUse.goodOut,
                   value: row.warehouseId,
                   enabled:
                       widget.editable && row.editable && row.draft.selected,

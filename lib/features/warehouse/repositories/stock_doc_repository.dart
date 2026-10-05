@@ -43,7 +43,7 @@ class StockDocFilter {
   final String? dateTo;
   final bool? productionReturnRequests;
 
-  /// 仓库任务中心的仓库范围(ADR-115)：发出仓或调入仓在范围内；默认不过滤。
+  /// 仓库任务中心选的仓(ADR-149)：发出仓或调入仓在范围内；默认 = 本人仓库数据范围(服务端强制)。
   final WarehouseTaskScope warehouseScope;
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
@@ -166,10 +166,11 @@ class StockDocRepository {
     ),
   );
 
-  /// 生产报工成品入库：仓库逐行确认实收数量，少收量由服务端拆成余量草稿。
+  /// 生产报工成品入库：仓库按实物批(ADR-148)确认实收数量 [lots] = [{lotId, acceptedQty}]；
+  /// 实收先满足需求份，少收先扣实际超产，少收量由服务端拆成余量草稿。
   Future<StockDocDetail> confirmFinishedInbound(
     String id,
-    List<Map<String, dynamic>> lines,
+    List<Map<String, dynamic>> lots,
     String idempotencyKey, {
     String? varianceReason,
   }) async => StockDocDetail.fromJson(
@@ -177,7 +178,7 @@ class StockDocRepository {
       '${ApiEndpoints.stockDoc(id)}/finished-in/confirm',
       body: {
         'idempotencyKey': idempotencyKey,
-        'lines': lines,
+        'lots': lots,
         if (varianceReason?.trim().isNotEmpty == true)
           'varianceReason': varianceReason!.trim(),
       },

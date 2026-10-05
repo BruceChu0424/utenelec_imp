@@ -21,57 +21,23 @@ public final class ProductionFinishedArrivalContracts {
     private ProductionFinishedArrivalContracts() {
     }
 
-    public record ArrivalRegistrationRequest(
-            @NotBlank
-            @Size(min = 8, max = 128)
-            @Pattern(regexp = "[A-Za-z0-9._:-]+",
-                    message = "幂等键只能包含字母、数字或 ._:-")
-            String idempotencyKey,
+    /**
+     * 一批实物的登记(ADR-148 / ADR-151 §5): 登记以「实物交接批」为单位——同一报工、同一产出批次、
+     * 送入仓库的各份(需求 / 计划公共 / 实际超产)一个库位、一个实点数、一个称重, 由服务端展开到各份。
+     */
+    public record ArrivalLotRequest(
+            @NotNull UUID lotId,
+            /** 本批的实际入库仓库; 同一报工的不同批可以登记到不同仓库(按「报工 x 仓库」各成一个登记批次)。 */
             @NotNull UUID warehouseId,
-            @Valid
-            @NotNull
-            @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-            List<ArrivalRegistrationItemRequest> items,
-            @Size(max = 500, message = "备注不能超过 500 个字符")
-            String remark,
-            /**
-             * 先入库后质检(V597)：TRUE = 品质合格时系统按本次登记的成品仓与库位自动点收入库，
-             * 仓库必须先逐行填写实点数并与本批报工量核对一致；有差异则走人工点收。
-             * 缺省/FALSE = 原「登记并送检」流程。
-             * 需要 production_finished_in:before_inspection，服务端另行兜底。
-             */
-            Boolean stockInBeforeInspection) {
-
-        /** 老客户端不传该字段时等价于原流程。 */
-        public ArrivalRegistrationRequest(
-                String idempotencyKey, UUID warehouseId,
-                List<ArrivalRegistrationItemRequest> items, String remark) {
-            this(idempotencyKey, warehouseId, items, remark, null);
-        }
-
-        public boolean stockInBeforeInspectionRequested() {
-            return Boolean.TRUE.equals(stockInBeforeInspection);
-        }
-    }
-
-    public record ArrivalRegistrationItemRequest(
-            @NotNull UUID reportItemId,
             @NotBlank @Size(max = 100) String place,
+            /** 先入库后质检时必填: 整批实点数, 必须等于本批报工合计; 原流程不填。 */
             BigDecimal countedQty,
             /**
-             * 仓库登记时实称的本行净重(千克, 4 位小数; ADR-135 §3.2); 空或 0 = 没称。
-             * 只写登记行, 合格入库草稿按放行数量从它分摊; 报工单自己的重量列不再进库存账。
+             * 仓库登记时实称的整批净重(千克, 4 位小数; ADR-135 §3.2); 空或 0 = 没称。
+             * 服务端按各份数量比例分摊(余数落在最后一份), 合格入库草稿再按放行数量从份上分摊。
              */
             @DecimalMin(value = "0", inclusive = true)
             @Digits(integer = 14, fraction = 4) BigDecimal weight) {
-        /** Standard registration keeps its existing request shape. */
-        public ArrivalRegistrationItemRequest(UUID reportItemId, String place) {
-            this(reportItemId, place, null, null);
-        }
-
-        public ArrivalRegistrationItemRequest(UUID reportItemId, String place, BigDecimal countedQty) {
-            this(reportItemId, place, countedQty, null);
-        }
     }
 
     public record ArrivalRegistrationView(
@@ -89,7 +55,8 @@ public final class ProductionFinishedArrivalContracts {
             String receiverName,
             String remark,
             OffsetDateTime registeredAt,
-            List<ArrivalRegistrationItemView> items,
+            /** 一行一批实物(ADR-148); 待登记视图只含还没登记的批, 已登记视图是该登记批次的批。 */
+            List<ArrivalLotView> lots,
             UUID sheetId,
             String sheetNo,
             OffsetDateTime reversedAt,
@@ -100,7 +67,7 @@ public final class ProductionFinishedArrivalContracts {
             boolean stockInBeforeInspection) {
 
         public ArrivalRegistrationView {
-            items = List.copyOf(items);
+            lots = List.copyOf(lots);
             batches = batches == null ? List.of() : List.copyOf(batches);
         }
     }
@@ -145,7 +112,11 @@ public final class ProductionFinishedArrivalContracts {
             int itemCount) {
     }
 
-    /** 多张报工单一次性汇总登记：每张可提交其待办行的非空子集并逐行创建 FQC。 */
+    /**
+     * 产成品入库登记的唯一命令(单张 = 1 个来源, 多选 = N 个来源; ADR-151 §5)。服务端按「报工 x 实际入库仓」
+     * 分组, 每组一个登记批次, 同仓的登记批次合成一张品质检查单; 整个命令一个事务, 任一组失败整批回滚。
+     * 幂等: 同一操作人 + 批量键 + 同一内容重放原结果; 每组用批量键派生的子键落库。
+     */
     public record BatchArrivalRegistrationRequest(
             @NotBlank
             @Size(min = 8, max = 128)
@@ -154,32 +125,16 @@ public final class ProductionFinishedArrivalContracts {
             String idempotencyKey,
             @Valid
             @NotNull
-            @Size(min = 1, max = 50)
-            List<BatchReportRegistrationRequest> reports,
+            @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
+            List<ArrivalLotRequest> lots,
             @Size(max = 500, message = "备注不能超过 500 个字符")
             String remark,
-            /** 先入库后质检(V597)：整批一个口径，逐单落到各自的登记头上。 */
+            /** 先入库后质检(V597)：整批一个口径，逐组落到各自的登记头上。 */
             Boolean stockInBeforeInspection) {
-
-        /** 老客户端不传该字段时等价于原流程。 */
-        public BatchArrivalRegistrationRequest(
-                String idempotencyKey,
-                List<BatchReportRegistrationRequest> reports, String remark) {
-            this(idempotencyKey, reports, remark, null);
-        }
 
         public boolean stockInBeforeInspectionRequested() {
             return Boolean.TRUE.equals(stockInBeforeInspection);
         }
-    }
-
-    public record BatchReportRegistrationRequest(
-            @NotNull UUID reportId,
-            @NotNull UUID warehouseId,
-            @Valid
-            @NotNull
-            @Size(min = 1, max = RequestLimits.DOCUMENT_LINES)
-            List<ArrivalRegistrationItemRequest> items) {
     }
 
     public record BatchArrivalRegistrationResult(
@@ -203,9 +158,14 @@ public final class ProductionFinishedArrivalContracts {
             String sheetNo) {
     }
 
-    public record ArrivalRegistrationItemView(
-            UUID reportItemId,
+    /**
+     * 一批实物(ADR-148): 批内各份的报工行、合计与按归属拆分(服务端算一次), 以及登记事实。
+     * 库位、实点数、称重都是整批一个。
+     */
+    public record ArrivalLotView(
+            UUID lotId,
             Integer lineNo,
+            List<ArrivalLotMemberView> members,
             UUID planItemId,
             UUID executionSegmentId,
             UUID planId,
@@ -217,18 +177,38 @@ public final class ProductionFinishedArrivalContracts {
             String colorName,
             UUID unitId,
             String unitName,
+            /** 本批报工合计(报工单位)。 */
             BigDecimal reportedQty,
+            BigDecimal demandQty,
+            BigDecimal publicQty,
+            BigDecimal actualSurplusQty,
+            /** 「需求 1000 · 实际超产 100」; 整批都是需求份时为空。 */
+            String splitText,
             String place,
             String placeHint,
             UUID lastWarehouseId,
             String lastWarehouseName,
+            /** 已登记批次: 先入库后质检时的整批实点数; 待登记与原流程为空。 */
             BigDecimal countedQty,
-            /** 已登记批次: 登记时实称的净重(千克); 待登记行与没称的行为空。 */
+            /** 已登记批次: 登记时实称的整批净重(千克); 待登记与没称的批为空。 */
             BigDecimal weight,
             /**
              * 1 个报工单位 = 多少货品基本单位(报工行 unit_rate, 空按 1)。页面按
              * 报工数量 x unitRate 核对实称重量与换算按重量计的精确重量(ADR-135 §3.2)。
              */
             BigDecimal unitRate) {
+
+        public ArrivalLotView {
+            members = List.copyOf(members);
+        }
+    }
+
+    /** 批内一份: 报工行 + 归属(DEMAND / PUBLIC / ACTUAL_SURPLUS)。 */
+    public record ArrivalLotMemberView(
+            UUID reportItemId,
+            Integer lineNo,
+            BigDecimal qty,
+            int sliceRank,
+            String kind) {
     }
 }

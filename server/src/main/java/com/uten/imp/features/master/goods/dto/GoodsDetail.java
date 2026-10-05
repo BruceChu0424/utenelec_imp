@@ -100,8 +100,8 @@ public class GoodsDetail {
     private boolean priceMasked;
 
     // ===== 即时库存（聚合 stock_balances，仅参与核算仓库；详情展示+关联仓库） =====
-    private BigDecimal stockQty;                 // 非线边核算仓余量合计
-    private List<GoodsStockRow> stockByWarehouse; // 按仓库×颜色展开(线边仓行标 lineSide，不计入合计)
+    private BigDecimal stockQty;                 // 良品库存合计(ADR-146: 不含车间内料仓、不良品仓)
+    private List<GoodsStockRow> stockByWarehouse; // 按仓库×颜色展开(线边仓行标 lineSide、不良品仓行标 defective，都不计入合计)
     /**
      * 非线边核算仓已知库存重量合计(千克，ADR-135)；未知的行不计入而另计 {@link #stockWeightUnknown}；
      * null = 有量的行重量全都未知(前端「未称」，绝不当 0)。
@@ -155,6 +155,8 @@ public class GoodsDetail {
      * 页面按它决定是否显示编辑入口, 不再新增前端权限字面量。
      */
     private boolean canEditNameEn;
+    /** 不良品仓里的数量(ADR-146): 不计入 stockQty, 详情另列「另有不良品 N」。 */
+    private BigDecimal stockDefectiveQty;
 
     public BigDecimal getDefaultPurchasePrice() {
         return defaultPurchasePriceInfo == null ? null : defaultPurchasePriceInfo.price();

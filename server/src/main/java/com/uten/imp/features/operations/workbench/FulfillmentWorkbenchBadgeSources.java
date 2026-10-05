@@ -23,6 +23,6 @@ class FulfillmentWorkbenchBadgeSources implements WorkbenchBadgeSources {
         return List.of(
                 new Source("purchaseTask", () -> WorkbenchBadgeSources.numbers(controller.purchaseCount())),
                 new Source("subcontractTask", () -> WorkbenchBadgeSources.numbers(controller.subcontractCount())),
-                new Source("productionDraw", () -> WorkbenchBadgeSources.numbers(controller.warehouseCount())));
+                new Source("productionDraw", () -> WorkbenchBadgeSources.numbers(controller.warehouseCount(null))));
     }
 }

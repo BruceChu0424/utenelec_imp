@@ -21,6 +21,7 @@ import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import 'inbound_registration_widgets.dart' show WarehouseQtyInputField;
 
 /// 仓库明细行。
@@ -165,12 +166,16 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
 class StockGridWarehouseWiring {
   const StockGridWarehouseWiring({
     required this.entries,
+    required this.use,
     this.label = '仓库',
     this.onWarehouseChanged,
   });
 
   /// 层级有序仓库列表（names.warehouseHierarchy）：父仓置灰分组，行仓落叶子仓。
   final List<WarehouseDictEntry> entries;
+
+  /// 行仓库的选仓用途(ADR-146，按单据类型由编辑页决定)。
+  final WarehouseUse use;
 
   /// 列头文案（出库类传「发出仓」、入库类传「入库仓」由页面决定）。
   final String label;
@@ -344,6 +349,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           child: WarehouseHierarchyDropdown(
             key: ValueKey('stock-grid-warehouse-${row.hashCode}'),
             entries: warehouse.entries,
+            use: warehouse.use,
             value: row.warehouseId,
             labelText: null,
             onChanged: (v) {

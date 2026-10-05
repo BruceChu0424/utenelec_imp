@@ -28,8 +28,8 @@ final class WarehouseInsightSql {
     /**
      * 仓库范围。
      *
-     * @param warehouseIds 选中仓库 (含下级) 或「我的仓库」展开后的集合; null = 默认范围 (参与核算、非线边、
-     *                     未删除的全部仓库); 空集合 = 一个仓也没有 (登记了负责人、本账号却不负责任何仓)
+     * @param warehouseIds 选中仓库 (含下级) 或本人仓库数据范围 (ADR-149) 展开后的集合; null = 默认范围
+     *                     (参与核算、非线边、未删除的全部仓库); 空集合 = 一个仓也没有
      */
     record Scope(Set<UUID> warehouseIds) {
 

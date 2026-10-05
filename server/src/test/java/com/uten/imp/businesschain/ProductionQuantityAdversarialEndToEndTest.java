@@ -149,9 +149,9 @@ class ProductionQuantityAdversarialEndToEndTest {
         var request=report(c,"7",true,"7");
         UUID report=reports().approve(reports().create(request).getId(), DailyReportApproveRequests.freshKey()).getId();
         UUID reportItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=?",UUID.class,report);
-        beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class).register(report,
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest(
-                        "aq-kit-final-arrival-"+report,c.leaf(),List.of(new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(reportItem,"正常叶仓实收七件")),null));
+        com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport.registerItems(
+                beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class),
+                report,"aq-kit-final-arrival-"+report,c.leaf(),List.of(reportItem),"正常叶仓实收七件");
         UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,reportItem);
         beans.getBean(com.uten.imp.features.production.quality.ProductionFqcInspectionService.class).decide(inspection,
                 new com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest("PASS",new BigDecimal("7"),null,null,null,"aq-kit-final-pass-"+report));
@@ -494,6 +494,10 @@ class ProductionQuantityAdversarialEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "RG-SUB-" + tag, "路线子仓-" + tag, w.warehouseId());
+        // ADR-147 (V800): 直送只送已开通内料仓的车间; 来源仓 = 路线子仓, 内料仓挂在它的主仓下。
+        com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.open(
+                beans.getBean(com.uten.imp.features.warehouse.materialbin.WorkshopBinService.class),
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class), workshop, leaf);
 
         UUID order = fixture.createApprovedOrder(w, parent, total, "100");
         UUID orderItem = db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?", UUID.class, order);

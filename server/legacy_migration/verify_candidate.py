@@ -33,6 +33,8 @@ def verify(root: pathlib.Path, manifest: pathlib.Path) -> tuple[int, int, str]:
     controlled.append(legacy / "prepare_source_authority.py")
     controlled.append(legacy / "prepare_hr_keys.py")
     controlled.append(legacy / "cleanup_hr_keep_admin.sql")
+    # ADR-145: the reviewed warehouse crosswalk decides every warehouse identity.
+    controlled.append(legacy / "warehouse_crosswalk.csv")
     controlled.extend(sorted(legacy.glob("migrate_*.sql")))
     records = []
     versions: set[int] = set()

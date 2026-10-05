@@ -62,7 +62,7 @@ class ProcurementIqcStockInBatchExecutionTest {
                 .containsExactly(new BigDecimal("2.0000"), new BigDecimal("3.0000"));
         verify(f.locks, times(1)).stockIn(any());
         verify(f.guard, times(1)).verifyUnchanged();
-        verify(f.warehouses, times(1)).requireActiveLeafWarehouse(WAREHOUSE, "入库仓库");
+        verify(f.warehouses, times(1)).require(WAREHOUSE, "入库仓库", com.uten.imp.application.port.WarehouseUse.GOOD_IN);
         verify(f.production, times(1)).afterInspectionStockInConfirmed(anyList());
         verify(f.allocations, times(1)).actualForBatches(anyList());
     }
@@ -126,7 +126,7 @@ class ProcurementIqcStockInBatchExecutionTest {
             assertThat(movement.sourceDocType()).isEqualTo("SUBCONTRACT_RECEIPT");
         });
         assertThat(f.stockItemWarehouses).containsExactly(actual);
-        verify(f.warehouses).requireActiveLeafWarehouse(actual,"入库仓库");
+        verify(f.warehouses).require(actual,"入库仓库",com.uten.imp.application.port.WarehouseUse.GOOD_IN);
         verify(f.peg).attributeInspectionStockIn(eq("SUBCONTRACT"),eq(seed.receiptId()),any(),
                 eq(original.passEventId()),any(),eq(new BigDecimal("2.0000")),eq(actual));
         assertThat(f.slices.get(seed.receiptId())[2]).isEqualTo(WAREHOUSE);

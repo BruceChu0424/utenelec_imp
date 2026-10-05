@@ -317,9 +317,11 @@ class _ProductionDrawRequestPageState
       _saving = true;
       _submitError = null;
     });
+    var dispatched = false;
     try {
       _draftSubmissionPending = true;
       await saveFormDraftNow();
+      dispatched = true;
       final result = await ref
           .read(productionDrawRequestRepositoryProvider)
           .submit(
@@ -361,11 +363,19 @@ class _ProductionDrawRequestPageState
             ? '暂未确认领料结果，请点击“重试领料”查询并继续本批提交。当前汇总已保留。'
             : '${_errorMessage(error)}。请重新加载并核对领料汇总。';
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _uncertain = true;
-        _submitError = '暂未确认领料结果，请点击“重试领料”查询并继续本批提交。当前汇总已保留。';
+        if (dispatched) {
+          _uncertain = true;
+          _submitError = '暂未确认领料结果，请点击“重试领料”查询并继续本批提交。当前汇总已保留。';
+        } else {
+          // 本机检查点没写成, 领料请求还没发出: 如实说明原因(ADR-151 §2)。
+          _submitError = describeSubmitError(
+            error,
+            fallback: '本次领料尚未发出，请保留页面后重试',
+          );
+        }
       });
     } finally {
       _draftSubmissionPending = false;

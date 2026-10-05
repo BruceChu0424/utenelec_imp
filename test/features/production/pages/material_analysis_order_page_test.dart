@@ -585,7 +585,7 @@ Future<_Harness> _pump(
         final base = persisted;
         final data = switch (request.path) {
           '/master/warehouses/dict' => [
-            {'id': 'warehouse-1', 'name': '主仓'},
+            {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/default-workshops' => [
             for (final goods in ['g-a', 'g-c', 'g-s'])

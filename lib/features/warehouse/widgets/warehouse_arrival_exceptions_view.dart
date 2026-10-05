@@ -33,6 +33,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import 'arrival_qty_revision_table.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class WarehouseArrivalExceptionsView extends ConsumerStatefulWidget {
@@ -644,10 +645,15 @@ class _WarehouseArrivalExceptionsViewState
               UtenFilterSegment(
                 value: false,
                 label: '待处理',
-                // 随徽章汇总带回(ADR-108); 汇总未到/无权时为 null, 只是不渲染这个数字,
-                // 列表照常可用。
-                count: ref.watch(
-                  badgeFactOrNullProvider(BadgeFact.warehouseArrivalException),
+                // 随徽章汇总带回(ADR-108), 与列表同一仓库范围(ADR-149); 汇总未到/无权时为
+                // null, 只是不渲染这个数字, 列表照常可用。
+                count: warehouseFactOrNull(
+                  ref.watch(
+                    warehouseScopedBadgesProvider(
+                      WarehouseListScope.of(context),
+                    ),
+                  ),
+                  BadgeFact.warehouseArrivalException,
                 ),
                 countForm: UtenSegmentCountForm.actionable,
               ),

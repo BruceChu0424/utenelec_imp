@@ -376,12 +376,14 @@ Future<_Harness> _pump(
               'name': '原料子仓',
               'code': '010',
               'parentId': 'main',
+              'selectableForNew': true,
             },
             {
               'id': 'warehouse-2',
               'name': '辅料子仓',
               'code': '020',
               'parentId': 'main',
+              'selectableForNew': true,
             },
             {'id': 'other-main', 'name': '备用主仓', 'code': '002'},
             {
@@ -389,6 +391,7 @@ Future<_Harness> _pump(
               'name': '备用子仓',
               'code': '030',
               'parentId': 'other-main',
+              'selectableForNew': true,
             },
           ];
         } else if (request.path.endsWith('/routes') &&

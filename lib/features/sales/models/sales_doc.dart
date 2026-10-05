@@ -1,4 +1,5 @@
 import '../../../shared/business_columns/business_column.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 // 销售单据模型（5 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
 //
 // 5 单据差异由 doc_type 决定可选字段是否非空（报价无仓库/币种；退货明细有 outItemId+
@@ -30,6 +31,10 @@ enum SalesDocType {
 
   const SalesDocType(this.pathSegment);
   final String pathSegment;
+
+  /// 表头仓库的选仓用途(ADR-146)：退货入良品仓，其余(报价/订货/出货)都从良品仓出。
+  WarehouseUse get warehouseUse =>
+      this == returnDoc ? WarehouseUse.goodIn : WarehouseUse.goodOut;
   bool get isShipment => this == shipment || this == customerShipment;
 
   static SalesDocType? tryByPath(String seg) {

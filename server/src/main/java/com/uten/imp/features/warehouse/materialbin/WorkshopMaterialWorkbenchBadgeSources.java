@@ -21,6 +21,6 @@ class WorkshopMaterialWorkbenchBadgeSources implements WorkbenchBadgeSources {
 
     @Override
     public List<Source> sources() {
-        return List.of(new Source("workshopMaterial", () -> WorkbenchBadgeSources.numbers(badges.badgeCounts())));
+        return List.of(new Source("workshopMaterial", () -> WorkbenchBadgeSources.numbers(badges.badgeCounts(null))));
     }
 }

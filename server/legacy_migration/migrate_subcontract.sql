@@ -267,7 +267,7 @@ SET code = COALESCE(goods.code, EXCLUDED.code);
 
 -- Units (no auto_created column; LEGACY-U- prefix marks stubs)
 INSERT INTO units (legacy_id, code, name, status)
-SELECT DISTINCT lid, 'LEGACY-U-' || lid, '(migration auto-stub)', 'in-use'
+SELECT DISTINCT lid, 'LEGACY-U-' || lid, '（迁移自动补录）', '使用'
 FROM (SELECT unit_legacy_id AS lid FROM inquiry_item_stage UNION ALL
       SELECT unit_legacy_id FROM application_item_stage UNION ALL
       SELECT unit_legacy_id FROM order_item_stage UNION ALL
@@ -282,7 +282,7 @@ ON CONFLICT (legacy_id) DO NOTHING;
 
 -- Colors (0 = no color, never stubbed)
 INSERT INTO colors (legacy_id, code, name, status)
-SELECT DISTINCT lid, 'LEGACY-C-' || lid, '(migration auto-stub)', 'in-use'
+SELECT DISTINCT lid, 'LEGACY-C-' || lid, '（迁移自动补录）', '使用'
 FROM (SELECT color_legacy_id AS lid FROM inquiry_item_stage UNION ALL
       SELECT color_legacy_id FROM application_item_stage UNION ALL
       SELECT color_legacy_id FROM order_item_stage UNION ALL
@@ -299,22 +299,43 @@ WHERE lid IS NOT NULL AND lid <> 0
   AND NOT EXISTS (SELECT 1 FROM colors c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
--- Warehouses (from main tables that have StockID: E_In/E_SOut/E_WithDraw/E_SWithDraw/E_SWaste.
--- E_Ask/E_Application/E_Order have no StockID column -> their stages have no warehouse_legacy_id.)
-INSERT INTO warehouses (legacy_id, code, name, status, is_accountable, auto_created)
-SELECT DISTINCT lid, 'LEGACY-W-' || lid, '(migration auto-stub)', 'in-use', TRUE, TRUE
-FROM (SELECT warehouse_legacy_id AS lid FROM receipt_stage UNION ALL
-      SELECT warehouse_legacy_id FROM issue_stage UNION ALL
-      SELECT warehouse_legacy_id FROM return_stage UNION ALL
-      SELECT warehouse_legacy_id FROM mreturn_stage UNION ALL
-      SELECT warehouse_legacy_id FROM waste_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM warehouses w WHERE w.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+-- Warehouses come from main tables that have StockID: E_In/E_SOut/E_WithDraw/E_SWithDraw/E_SWaste
+-- (E_Ask/E_Application/E_Order have no StockID column).
+-- 仓库(ADR-145)：只按审过的 warehouse_crosswalk.csv 解析，不再补录「(迁移自动补录)」仓库存根。
+-- 老库已禁用的仓并入在用的目标仓，老库主仓 132 的历史单据头记主仓 001(只读历史)；
+-- 落在老库已删除仓(对照表 DROP)上的单据本模块不迁也不猜仓：出现即中止，先人工定去向
+-- (老库目前没有这种单据；库存单据与采购收货单按对照表不迁、写对账清单)。
+CREATE TEMP TABLE warehouse_crosswalk_stage (
+    legacy_id int, legacy_code text, legacy_name text, action text,
+    target_code text, target_name text, target_defective boolean, note text);
+\copy warehouse_crosswalk_stage FROM '/tmp/warehouse_crosswalk.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+CREATE TEMP TABLE warehouse_target_stage AS
+SELECT crosswalk.legacy_id, crosswalk.action, target.id AS warehouse_id
+FROM warehouse_crosswalk_stage crosswalk
+LEFT JOIN warehouses target ON target.code = crosswalk.target_code AND NOT target.is_deleted
+WHERE crosswalk.legacy_id IS NOT NULL;
+DO $$
+DECLARE
+    missing TEXT;
+BEGIN
+    SELECT string_agg(DISTINCT lid::text, ', ') INTO missing
+      FROM (SELECT warehouse_legacy_id AS lid FROM receipt_stage UNION ALL
+            SELECT warehouse_legacy_id FROM issue_stage UNION ALL
+            SELECT warehouse_legacy_id FROM return_stage UNION ALL
+            SELECT warehouse_legacy_id FROM mreturn_stage UNION ALL
+            SELECT warehouse_legacy_id FROM waste_stage) refs
+     WHERE lid IS NOT NULL AND lid <> 0
+       AND NOT EXISTS (SELECT 1 FROM warehouse_target_stage target
+                        WHERE target.legacy_id = refs.lid AND target.warehouse_id IS NOT NULL);
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'subcontract warehouses must resolve through warehouse_crosswalk.csv to an existing target (documents on deleted legacy warehouses need a reviewed decision first): %', missing;
+    END IF;
+END;
+$$;
 
 -- Currencies (from main tables with currency)
 INSERT INTO currencies (legacy_id, code, name, exchange_rate, status, auto_created)
-SELECT DISTINCT lid, 'LEGACY-CUR-' || lid, '(migration auto-stub)', 1, 'in-use', TRUE
+SELECT DISTINCT lid, 'LEGACY-CUR-' || lid, '（迁移自动补录）', 1, '使用', TRUE
 FROM (SELECT currency_legacy_id AS lid FROM application_stage UNION ALL
       SELECT currency_legacy_id FROM order_stage UNION ALL
       SELECT currency_legacy_id FROM receipt_stage UNION ALL
@@ -456,7 +477,7 @@ INSERT INTO subcontract_material_issues (
     operator_legacy_id, operator_name, maker_legacy_id, maker_name, approver_legacy_id, approver_name)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses WHERE legacy_id = s.warehouse_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy_id),
        s.deliver_date, s.remark,
        0, 0, s.status, FALSE,  -- E_SOut has no currency/Total; amount_local recomputed by Service
        NULLIF(s.worker_legacy, 0),
@@ -562,7 +583,7 @@ INSERT INTO subcontract_returns (
     settlement_style_legacy, maker_legacy_id, maker_name, approver_legacy_id, approver_name)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers   WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses  WHERE legacy_id = s.warehouse_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy_id),
        (SELECT id FROM currencies  WHERE legacy_id = s.currency_legacy_id),
        s.exchange_rate, NULL, s.last_date, s.remark,  -- E_WithDraw has no TRate
        s.total_original, fn_legacy_source_book_amount(s.total_original,s.exchange_rate), s.status, FALSE,
@@ -603,7 +624,7 @@ INSERT INTO subcontract_material_returns (
     operator_legacy_id, operator_name, maker_legacy_id, maker_name, approver_legacy_id, approver_name)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers   WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses  WHERE legacy_id = s.warehouse_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy_id),
        s.b_style, s.remark,
        0, 0, s.status, FALSE,  -- E_SWithDraw has no currency/Total; amount_local recomputed by Service
        NULLIF(s.worker_legacy, 0),
@@ -649,7 +670,7 @@ INSERT INTO subcontract_wastes (
     total_original, total_local, status, is_closed)
 SELECT s.legacy_id, s.bill_no, s.bill_date,
        (SELECT id FROM suppliers   WHERE legacy_id = s.supplier_legacy_id),
-       (SELECT id FROM warehouses  WHERE legacy_id = s.warehouse_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.warehouse_legacy_id),
        s.total_weight, s.remark,
        0, 0, s.status, FALSE  -- E_SWaste has no currency/Total; amount_local recomputed by Service
 FROM waste_stage s;

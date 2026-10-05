@@ -4,18 +4,23 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 当前账号的「我的仓库」(ADR-115), 仓库任务中心仓库范围选择器用。
+ * 当前账号的仓库数据范围(ADR-149, GET /api/master/warehouses/my-scope), 任务中心仓库选择器只依赖它。
  *
- * @param keeperWarehouses  本人被登记为负责人的仓库(登记在主仓上的只列主仓, 范围里已含其子仓)
- * @param scopeWarehouseIds 「我的仓库」实际范围: 本人负责的仓(含子仓) + 尚无有效负责人的仓
- * @param keepersConfigured 全公司是否已登记过任何负责人(没有 = 「我的仓库」等于全部仓库)
+ * @param role               SUPERVISOR 主管 / KEEPER 子仓负责人 / OTHER 其他人
+ * @param canSelectAll       能选「全部仓库」(只有主管)
+ * @param selectable         可以切换到的仓(主管 = 全部在用仓, 先主仓后子仓; 子仓负责人 = 自己负责的仓及下级;
+ *                           其他人为空)。服务端按同一清单校验 scopeWarehouseId, 越界 403
+ * @param keeperWarehouses   本人登记负责的仓(登记在主仓上的也列出)
+ * @param defaultWarehouseId 只负责一个仓的子仓负责人 = 那个仓(选择器显示只读标签); 其余为空 = 本人默认范围
  */
 public record MyWarehouseScope(
-        List<KeeperWarehouse> keeperWarehouses,
-        List<UUID> scopeWarehouseIds,
-        boolean keepersConfigured) {
+        String role,
+        boolean canSelectAll,
+        List<Option> selectable,
+        List<Option> keeperWarehouses,
+        UUID defaultWarehouseId) {
 
-    /** 本人负责的一个仓库。 */
-    public record KeeperWarehouse(UUID id, String code, String name) {
+    /** 一个仓库选项。 */
+    public record Option(UUID id, String code, String name, UUID parentId) {
     }
 }

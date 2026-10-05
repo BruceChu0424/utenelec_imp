@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 import '../badges/badge_module.dart';
 import '../../core/router/route_names.dart';
 
@@ -172,6 +174,24 @@ Set<String> unknownFormDraftCommandIdentities(
 bool isActiveFormDraftRecord(Map<String, dynamic> json) =>
     json['completed'] != true &&
     (json['lifecycle'] == null || json['lifecycle'] == 'ACTIVE');
+
+/// Lifecycle of an editor that autosaved back to its initial values (ADR-151):
+/// no user fact remains, nothing is listed or restored, and the same identity
+/// may be saved again. Unlike a `deleted` tombstone it is not terminal.
+const formDraftCleanDiscardedLifecycle = 'DISCARDED_CLEAN';
+
+bool isCleanDiscardedFormDraftRecord(Map<String, dynamic> json) =>
+    json['completed'] != true &&
+    json['lifecycle'] == formDraftCleanDiscardedLifecycle;
+
+/// The record carries no payload: earlier revisions remain only in history.
+Map<String, dynamic> cleanDiscardedFormDraftRecord(String id) => {
+  'version': 1,
+  'id': id,
+  'lifecycle': formDraftCleanDiscardedLifecycle,
+  'revision': 'clean:${const Uuid().v4()}',
+  'discardedAt': DateTime.now().toUtc().toIso8601String(),
+};
 
 /// Only the original local daily-report submission gets a view-only recovery
 /// route. Arbitrary drafts do not gain create/edit permission through this gate.

@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.material_return;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -365,7 +366,7 @@ public class SubcontractMaterialReturnService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：委外退料入仓必须落到具体叶子仓。
         if (warehouseScopes != null) {
-            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
+            warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "仓库", WarehouseUse.GOOD_IN);
         }
         r.setWarehouseId(req.getWarehouseId());
         var operator = nameResolver.resolveForWrite(

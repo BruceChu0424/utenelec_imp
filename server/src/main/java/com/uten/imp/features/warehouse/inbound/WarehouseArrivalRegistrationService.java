@@ -14,6 +14,10 @@ import com.uten.imp.features.subcontract.receipt.SubcontractReceiptService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteItemResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchCompleteResult;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.BatchArrivalLine;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchRegisterItem;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest;
+import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchRegisterResult;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterResult;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -35,6 +39,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -112,6 +117,151 @@ public class WarehouseArrivalRegistrationService {
     @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
     public WarehouseArrivalRegisterResult register(WarehouseArrivalRegisterRequest request) {
         tx.bind();
+        return registerGroup(request, null, null, false);
+    }
+
+    /**
+     * 登记实际到货的唯一页面命令(ADR-151 §5)：一个事务，服务端按「订货单 x 入库仓库」分组，每组复用
+     * 单组登记核心(建收货单 + 送检审核 + 先入库上架 + 短交登记)；某组实到超量时该组隔离等财务、其它组照常。
+     * 幂等：批量键 + 订货单 + 仓库派生每组子键；同一批量键换了内容 409，原样重放返回原结果。
+     */
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    public WarehouseArrivalBatchRegisterResult registerBatch(WarehouseArrivalBatchRegisterRequest request) {
+        tx.bind();
+        if (request == null || request.lines() == null || request.lines().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "登记实际到货请求不能为空");
+        }
+        UUID makerId = currentUser.requireEmployeeId();
+        String batchKey = normalizeIdempotencyKey(request.idempotencyKey());
+        boolean stockInFirst = request.stockInBeforeInspectionRequested();
+        if (stockInFirst) {
+            requireStockInBeforeInspectionAuthority();
+        }
+        // 订货明细 -> 订货单(只认库里的来源)；分组、子键与锁顺序都只认服务端排序。
+        Map<UUID, OrderRef> orders = orderRefs(request.lines());
+        java.util.TreeMap<String, List<BatchArrivalLine>> grouped = new java.util.TreeMap<>();
+        for (BatchArrivalLine line : request.lines()) {
+            if (line == null || line.orderItemId() == null || line.warehouseId() == null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "登记行缺少来源订货明细或入库仓库");
+            }
+            OrderRef order = orders.get(line.orderItemId());
+            if (order == null || !order.orderType().equals(normalizeOrderType(line.orderType()))) {
+                throw new ApiException(ErrorCode.CONFLICT, "来源订货明细不存在或类型不符，请刷新预计到货任务后重新登记");
+            }
+            grouped.computeIfAbsent(order.orderType() + "|" + order.orderId() + "|" + line.warehouseId(),
+                    ignored -> new ArrayList<>()).add(line);
+        }
+        if (grouped.size() > 100) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多登记 100 张收货单，请分批登记");
+        }
+        List<BatchGroup> groups = new ArrayList<>(grouped.size());
+        for (List<BatchArrivalLine> lines : grouped.values()) {
+            BatchArrivalLine first = lines.getFirst();
+            OrderRef order = orders.get(first.orderItemId());
+            String childKey = "ARB:" + sha256Hex("WAREHOUSE-ARRIVAL-BATCH-GROUP-V1|" + batchKey + "|"
+                    + order.orderType() + "|" + order.orderId() + "|" + first.warehouseId()).substring(0, 48);
+            WarehouseArrivalRegisterRequest groupRequest = new WarehouseArrivalRegisterRequest(
+                    childKey, order.orderType(), request.billDate(), order.supplierId(), first.warehouseId(),
+                    lines.stream().map(BatchArrivalLine::purchaserId).filter(Objects::nonNull).findFirst().orElse(null),
+                    request.receiverEmployeeId(), request.remark(),
+                    lines.stream().map(BatchArrivalLine::toArrivalLine).toList(),
+                    request.stockInBeforeInspection(), request.shortDeliveryAcknowledged());
+            groups.add(new BatchGroup(order, first.warehouseId(), groupRequest));
+        }
+        String batchHash = sha256Hex(String.join("\n", groups.stream()
+                .map(group -> group.request().idempotencyKey() + "=" + requestHash(group.request())).toList()));
+        jdbc.queryForObject(
+                "SELECT pg_advisory_xact_lock(hashtextextended(?, 0)) IS NULL",
+                Boolean.class,
+                "WAREHOUSE_ARRIVAL_BATCH_REGISTER|" + makerId + "|" + batchKey);
+        List<String> previousHashes = jdbc.queryForList("""
+                SELECT DISTINCT batch_request_hash FROM warehouse_arrival_registration_commands
+                WHERE maker_id = ? AND batch_idempotency_key = ?
+                """, String.class, makerId, batchKey);
+        boolean replay = !previousHashes.isEmpty();
+        if (replay && (previousHashes.size() != 1 || !batchHash.equals(previousHashes.getFirst().strip()))) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "这次登记的提交键已用于不同内容，请刷新预计到货任务后重新登记");
+        }
+        // 委外回厂短交(ADR-098)：先把全部委外组一起评估，需要确认就一次列全，任何一组都还没写。
+        if (!replay && !request.shortDeliveryAcknowledgedRequested()) {
+            List<com.uten.imp.application.port.SubcontractShortDeliveryPort.ShortDeliveryFinding> findings = new ArrayList<>();
+            for (BatchGroup group : groups) {
+                if (!SUBCONTRACT.equals(group.order().orderType())) continue;
+                findings.addAll(shortDelivery.evaluateArrival(group.request().items().stream()
+                        .map(item -> new com.uten.imp.application.port.SubcontractShortDeliveryPort.ArrivalQuantity(
+                                item.orderItemId(), item.qty())).toList()));
+            }
+            requireShortDeliveryAcknowledged(findings, false);
+        }
+        List<WarehouseArrivalBatchRegisterItem> items = new ArrayList<>(groups.size());
+        for (BatchGroup group : groups) {
+            ArrivalCommand existing = findRegistrationCommand(makerId, group.request().idempotencyKey());
+            WarehouseArrivalRegisterResult result = existing != null
+                    ? replayGroup(existing, group.request())
+                    : registerGroup(group.request(), batchKey, batchHash, true);
+            items.add(new WarehouseArrivalBatchRegisterItem(group.order().orderType(), group.order().orderId(),
+                    group.warehouseId(), result.outcome(), result.receiptId(), result.receiptBillNo(),
+                    result.exceptionId(), existing != null));
+        }
+        return new WarehouseArrivalBatchRegisterResult(items.size(), replay, items);
+    }
+
+    private WarehouseArrivalRegisterResult replayGroup(ArrivalCommand existing, WarehouseArrivalRegisterRequest request) {
+        if (!Objects.equals(existing.requestHash(), requestHash(request))) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "到货登记幂等键已用于不同内容，请刷新预计到货任务后重新登记");
+        }
+        return replayResult(existing);
+    }
+
+    /** 订货明细 -> (订货类型, 订货单, 供应商)；按类型各查一次。 */
+    private Map<UUID, OrderRef> orderRefs(List<BatchArrivalLine> lines) {
+        Map<UUID, OrderRef> result = new java.util.HashMap<>();
+        for (String type : List.of(PURCHASE, SUBCONTRACT)) {
+            List<UUID> ids = lines.stream()
+                    .filter(line -> line != null && line.orderItemId() != null
+                            && type.equals(normalizeOrderType(line.orderType())))
+                    .map(BatchArrivalLine::orderItemId).distinct().toList();
+            if (ids.isEmpty()) continue;
+            String itemTable = PURCHASE.equals(type) ? "purchase_order_items" : "subcontract_order_items";
+            String orderTable = PURCHASE.equals(type) ? "purchase_orders" : "subcontract_orders";
+            jdbc.query("""
+                    SELECT order_item.id, order_doc.id AS order_id, order_doc.supplier_id
+                    FROM %s order_item
+                    JOIN %s order_doc ON order_doc.id = order_item.order_id
+                    WHERE order_item.id IN (%s)
+                    """.formatted(itemTable, orderTable, String.join(", ", Collections.nCopies(ids.size(), "?"))),
+                    rs -> {
+                        result.put(rs.getObject("id", UUID.class), new OrderRef(type,
+                                rs.getObject("order_id", UUID.class), rs.getObject("supplier_id", UUID.class)));
+                    }, ids.toArray());
+        }
+        return result;
+    }
+
+    private static String sha256Hex(String text) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(text.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private record OrderRef(String orderType, UUID orderId, UUID supplierId) {
+    }
+
+    private record BatchGroup(OrderRef order, UUID warehouseId, WarehouseArrivalRegisterRequest request) {
+    }
+
+    /**
+     * 单组登记核心(一张订货单 x 一个入库仓库 = 一张收货单)：单张端点与批量命令共用。
+     * 批量命令先统一评估委外短交(shortDeliveryChecked=true)，这里不再逐组拦截。
+     */
+    private WarehouseArrivalRegisterResult registerGroup(
+            WarehouseArrivalRegisterRequest request, String batchKey, String batchHash,
+            boolean shortDeliveryChecked) {
         UUID makerId = currentUser.requireEmployeeId();
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
         String orderType = normalizeOrderType(request.orderType());
@@ -145,13 +295,15 @@ public class WarehouseArrivalRegistrationService {
             requireSubcontractOutboundReleased(request.items().stream()
                     .map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList());
             // ADR-098：登记前只读评估回厂短交; 低于允许损耗下限的行要仓库看过弹窗再登记(409 逐行明细)。
-            // 此时还没插幂等命令、没建收货单, 重试没有副作用。
-            requireShortDeliveryAcknowledged(shortDelivery.evaluateArrival(request.items().stream()
-                    .map(item -> new com.uten.imp.application.port.SubcontractShortDeliveryPort.ArrivalQuantity(
-                            item.orderItemId(), item.qty())).toList()), shortAcknowledged);
+            // 此时还没插幂等命令、没建收货单, 重试没有副作用。批量命令已在写任何一组之前统一评估过。
+            if (!shortDeliveryChecked) {
+                requireShortDeliveryAcknowledged(shortDelivery.evaluateArrival(request.items().stream()
+                        .map(item -> new com.uten.imp.application.port.SubcontractShortDeliveryPort.ArrivalQuantity(
+                                item.orderItemId(), item.qty())).toList()), shortAcknowledged);
+            }
         }
         mutationGuard.verifyUnchanged();
-        UUID commandId = insertPendingCommand(makerId,idempotencyKey,requestHash,orderType);
+        UUID commandId = insertPendingCommand(makerId,idempotencyKey,requestHash,orderType,batchKey,batchHash);
         List<BigDecimal> weights = capturedWeights(request.items());
         UUID receiptId;
         String billNo;
@@ -809,13 +961,14 @@ public class WarehouseArrivalRegistrationService {
 
     private UUID insertPendingCommand(
             UUID makerId, String idempotencyKey,
-            String requestHash, String orderType) {
+            String requestHash, String orderType, String batchKey, String batchHash) {
         UUID commandId = UUID.randomUUID();
         int inserted = jdbc.update("""
                 INSERT INTO warehouse_arrival_registration_commands(
-                    id, maker_id, idempotency_key, request_hash, order_type)
-                VALUES (?, ?, ?, ?, ?)
-                """, commandId, makerId, idempotencyKey, requestHash, orderType);
+                    id, maker_id, idempotency_key, request_hash, order_type,
+                    batch_idempotency_key, batch_request_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, commandId, makerId, idempotencyKey, requestHash, orderType, batchKey, batchHash);
         if (inserted != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "到货登记命令未能建立，请刷新后重试");

@@ -16,9 +16,9 @@ class InstantInventoryPrefsNotifier extends UtenPagePrefsNotifier<bool> {
   @override
   String get cacheKey => 'instant_inventory_prefs_cache';
 
-  /// 默认开 = 老系统口径（不良仓计入全部）。
+  /// 默认关(ADR-146)：不良品仓不计入库存合计，只看可用的良品；打开后不良品另列。
   @override
-  bool get defaultValue => true;
+  bool get defaultValue => false;
 
   @override
   bool? decode(Object? raw) {

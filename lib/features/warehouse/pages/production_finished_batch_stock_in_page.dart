@@ -300,14 +300,39 @@ class _ProductionFinishedBatchStockInPageState
     MasterColumnDef<ProductionFinishedInboundTask>(
       key: 'pendingQty',
       label: '待点收数量',
-      width: 120,
+      width: 200,
       type: 'number',
       value: (task) => _quantity(task.pendingQty),
+      // ADR-148：服务端拼好的「其中实际超产 N」跟在数量后(没有实际超产不显示)。
+      cellBuilder: (context, task) {
+        final note = task.actualSurplusNote;
+        if (note == null || note.isEmpty) {
+          return Text(_quantity(task.pendingQty));
+        }
+        final theme = Theme.of(context);
+        return Text.rich(
+          TextSpan(
+            text: _quantity(task.pendingQty),
+            children: [
+              TextSpan(
+                text: ' ($note)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      },
     ),
     MasterColumnDef<ProductionFinishedInboundTask>(
       key: 'lineCount',
-      label: '行数',
-      width: 80,
+      label: '实物批数',
+      // ADR-148：同一报工、同一产出批次的需求份 / 计划公共 / 实际超产合在一起算一批。
+      info: '一批实物 = 同一报工、同一次录入送入仓库的需求份、计划公共备货与实际超产，合在一起登记、判定和点收。',
+      width: 100,
       type: 'number',
       value: (task) => '${task.lineCount}',
     ),

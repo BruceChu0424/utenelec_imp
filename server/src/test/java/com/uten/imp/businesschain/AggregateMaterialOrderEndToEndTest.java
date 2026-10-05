@@ -732,6 +732,10 @@ class AggregateMaterialOrderEndToEndTest {
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        // ADR-147 (V800): 直送只送已开通内料仓的车间; 本车间的内料仓开通在测试世界的主仓下。
+        com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.openUnderMain(
+                beans.getBean(com.uten.imp.features.warehouse.materialbin.WorkshopBinService.class),db,
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class),workshop,world.warehouseId());
         UUID common=manufacture?UUID.randomUUID():world.goodsD(),child=nested?UUID.randomUUID():null;
         if(manufacture)fixture.insertGoods(common,"AG-H-"+common,"共享制造父件","自制",world.unitId(),world.unitLegacy());
         if(nested){fixture.insertGoods(child,"AG-C-"+child,"先下达制造子件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,child,"1");fixture.insertBom(child,world.goodsD(),"2");}

@@ -67,6 +67,25 @@ abstract final class WmAction {
   static const closeRetry = 'CLOSE_RETRY';
   static const reopen = 'REOPEN';
   static const setup = 'SETUP';
+
+  /// 开通内料仓 (未开通的车间; ADR-147)。
+  static const open = 'OPEN';
+
+  /// 开启整批领料 (未开通的车间同时开通)。
+  static const enablePeriodic = 'ENABLE_PERIODIC';
+
+  /// 改发料来源仓 (已开通的车间)。
+  static const changeSource = 'CHANGE_SOURCE';
+
+  /// 撤销一步: 整批领料中 -> 已开通; 已开通 -> 未开通 (只撤销设错的)。
+  static const revoke = 'REVOKE';
+}
+
+/// 车间内料仓三态 (服务端唯一给出; ADR-147)。
+abstract final class WmBinStatus {
+  static const notOpen = 'NOT_OPEN';
+  static const open = 'OPEN';
+  static const periodic = 'OPEN_PERIODIC';
 }
 
 /// 期间状态 (开着 → 盘点中 → 已盘点 → 已结算)。
@@ -147,43 +166,72 @@ class WmPeriod {
 }
 
 /// 一个车间的整批领料设置 (GET /settings 每车间一条)。
+/// 一个车间的内料仓开通状态 (ADR-147)。三态 [status] 只由服务端给出, 页面不自己推算。
 class WmSetting {
   const WmSetting({
     required this.workshopDepartmentId,
     required this.workshopName,
-    required this.periodicEnabled,
+    required this.status,
+    this.periodicEnabled = false,
     this.binWarehouseId,
     this.binWarehouseName,
+    this.binWarehouseCode,
+    this.sourceWarehouseId,
+    this.sourceWarehouseName,
     this.mainWarehouseId,
     this.mainWarehouseName,
     this.goLiveDate,
     this.rowVersion = 0,
     this.currentPeriod,
+    this.revokeBlockers = const [],
     this.allowedActions = const [],
   });
 
   final String workshopDepartmentId;
   final String workshopName;
+
+  /// [WmBinStatus] 之一。
+  final String status;
   final bool periodicEnabled;
   final String? binWarehouseId;
   final String? binWarehouseName;
+  final String? binWarehouseCode;
+
+  /// 默认发料来源仓; 为空时按货品所属仓库。
+  final String? sourceWarehouseId;
+  final String? sourceWarehouseName;
   final String? mainWarehouseId;
   final String? mainWarehouseName;
   final String? goLiveDate;
+
+  /// 开通状态版本 (批量命令按它判断是否被别人改过; 未开通为 0)。
   final int rowVersion;
   final WmPeriod? currentPeriod;
+
+  /// 撤销这一步现在做不了的原因 (服务端给出); 空 = 可以撤销。
+  final List<String> revokeBlockers;
   final List<String> allowedActions;
 
   bool can(String action) => allowedActions.contains(action);
+
+  /// 已开通 (收车间直送, 可能也在整批领料)。
+  bool get opened => status != WmBinStatus.notOpen && binWarehouseId != null;
+
+  /// 整批领料中。
+  bool get periodic => status == WmBinStatus.periodic && binWarehouseId != null;
 
   factory WmSetting.fromJson(Map<String, dynamic> json) {
     final period = _map(json['currentPeriod']);
     return WmSetting(
       workshopDepartmentId: json['workshopDepartmentId'] as String,
       workshopName: _s(json['workshopName']) ?? '',
+      status: _s(json['status']) ?? WmBinStatus.notOpen,
       periodicEnabled: _b(json['periodicEnabled']),
       binWarehouseId: _s(json['binWarehouseId']),
       binWarehouseName: _s(json['binWarehouseName']),
+      binWarehouseCode: _s(json['binWarehouseCode']),
+      sourceWarehouseId: _s(json['sourceWarehouseId']),
+      sourceWarehouseName: _s(json['sourceWarehouseName']),
       mainWarehouseId: _s(json['mainWarehouseId']),
       mainWarehouseName: _s(json['mainWarehouseName']),
       goLiveDate: _s(json['goLiveDate']),
@@ -191,9 +239,35 @@ class WmSetting {
       currentPeriod: period == null || period['id'] == null
           ? null
           : WmPeriod.fromJson(period),
+      revokeBlockers: _strings(json['revokeBlockers']),
       allowedActions: _strings(json['allowedActions']),
     );
   }
+}
+
+/// 批量命令里的一个车间: 页面看到的状态与版本 (服务端不一致即拒绝)。
+class WmBinItem {
+  const WmBinItem({
+    required this.workshopId,
+    required this.expectedStatus,
+    required this.expectedVersion,
+  });
+
+  factory WmBinItem.of(WmSetting setting) => WmBinItem(
+    workshopId: setting.workshopDepartmentId,
+    expectedStatus: setting.status,
+    expectedVersion: setting.rowVersion,
+  );
+
+  final String workshopId;
+  final String expectedStatus;
+  final int expectedVersion;
+
+  Map<String, dynamic> toJson() => {
+    'workshopId': workshopId,
+    'expectedStatus': expectedStatus,
+    'expectedVersion': expectedVersion,
+  };
 }
 
 /// 结算被拦住的一项: 差什么、几条、责任人种类、前几个样例名称。
@@ -827,6 +901,7 @@ class WmPendingProductChoice {
     this.materialOptions = const [],
     this.unitWeightGrams,
     this.canAlsoOrderMaterials = false,
+    this.workshopNames = const [],
   });
 
   final String productGoodsId;
@@ -843,6 +918,9 @@ class WmPendingProductChoice {
 
   /// 能不能勾"还要按工单领别的料" (= 产品没有任何 BOM)。
   final bool canAlsoOrderMaterials;
+
+  /// 多车间开启时: 这个产品在哪些所选车间里在产 (按产品去重, 一个产品只认一次)。
+  final List<String> workshopNames;
 
   /// 2026-09-29 用户口径：名称只显名称（颜色不再拼进名称串，见
   /// [productSubline]——需要颜色的地方走副行）。
@@ -886,6 +964,7 @@ class WmPendingProductChoice {
       canAlsoOrderMaterials: _b(
         json['canAlsoOrderMaterials'] ?? json['alsoOrderMaterialsAllowed'],
       ),
+      workshopNames: _strings(json['workshopNames']),
     );
   }
 }

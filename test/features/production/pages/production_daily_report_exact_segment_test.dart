@@ -951,6 +951,10 @@ void main() {
                   },
                 ];
               }
+              // ADR-148：产出批次分组由服务端给(outputBatches)，编辑页按 itemIds 合回一行。
+              (data as Map)['outputBatches'] = _serverOutputBatches(
+                (data['items'] as List).cast<Map<String, dynamic>>(),
+              );
             } else if (request.path.endsWith('/material-usage-sources')) {
               data = [
                 {
@@ -2614,4 +2618,28 @@ class _FakeEmployeeRepository implements EmployeeRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// 服务端 DailyReportOutputGroups 的分组口径：同一产出批次(没拆分的行自成一批)的各份一组，按出现顺序。
+List<Map<String, dynamic>> _serverOutputBatches(
+  List<Map<String, dynamic>> items,
+) {
+  final batches = <String, List<Map<String, dynamic>>>{};
+  for (final item in items) {
+    final key = (item['outputBatchId'] ?? item['id']) as String;
+    batches.putIfAbsent(key, () => []).add(item);
+  }
+  return [
+    for (final entry in batches.entries)
+      {
+        'batchKey': entry.key,
+        'sourceItemId': entry.value.first['id'],
+        'itemIds': [for (final item in entry.value) item['id']],
+        'qty':
+            entry.value.first['outputBatchQty'] ??
+            entry.value.fold<num>(0, (sum, item) => sum + (item['qty'] as num)),
+        'summary': '本行产出',
+        'groups': const <Object>[],
+      },
+  ];
 }

@@ -102,7 +102,10 @@ class _WarehouseMaterialReturnBatchReceivePageState
 
   Set<String> _allowedWarehouseIds(StockDocDetail detail) {
     final hierarchy = ref.read(masterNameServiceProvider).warehouseHierarchy;
-    final eligible = WarehouseSelection(hierarchy).selectableIds;
+    final eligible = WarehouseSelection(
+      hierarchy,
+      use: WarehouseUse.goodIn,
+    ).selectableIds;
     final mainId = detail.materialReturnMainWarehouseId;
     return hierarchy
         .where(
@@ -252,7 +255,10 @@ class _WarehouseMaterialReturnBatchReceivePageState
                                     required: true,
                                     allowClear: false,
                                     value: row.warehouseId,
-                                    items: warehouseHierarchyItems(scoped),
+                                    items: warehouseHierarchyItems(
+                                      scoped,
+                                      use: WarehouseUse.goodIn,
+                                    ),
                                     info: '余料进入这里选择的正常仓库；来源记录用于追溯。',
                                     errorMessage:
                                         detail.materialReturnMainWarehouseId ==

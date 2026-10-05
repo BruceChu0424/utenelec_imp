@@ -3,7 +3,7 @@ class InstantInventoryScope {
   const InstantInventoryScope({
     this.categoryId,
     this.warehouseId,
-    this.includeDefective = true,
+    this.includeDefective = false,
     this.includeLineSide = false,
     this.keyword,
     this.owningWarehouse,
@@ -60,7 +60,8 @@ class InstantInventoryScope {
     return InstantInventoryScope(
       categoryId: value('categoryId'),
       warehouseId: value('warehouseId'),
-      includeDefective: query['includeDefective'] != 'false',
+      // ADR-146: 不良品仓默认不计入，只有显式打开才算。
+      includeDefective: query['includeDefective'] == 'true',
       includeLineSide: query.containsKey('includeLineSide')
           ? query['includeLineSide'] == 'true'
           : !inventory,

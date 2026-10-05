@@ -12,7 +12,15 @@
 --   开头清三处：stock_movements 的 STOCK_DOC 源、stock_document_items、stock_documents、
 --   stock_balances（全清后从 StockGoods 重建）。任何下游生产/财务引用
 --   都会由 FK 在导入前拒绝，绝不绕过触发器或级联删除。
---   缺失基础资料（goods/units/colors/warehouses）自动补录（§自动补录）。
+--   缺失基础资料(goods/units/colors)自动补录(§自动补录)。仓库不补录(ADR-145)：
+--   仓库一律经审过的 warehouse_crosswalk.csv 解析——
+--     KEEP/MERGE 落到目标子仓；SPLIT(老库主仓 132)单据头记主仓 001，明细、流水、余额按
+--     货品所属子仓(goods.owning_warehouse_id，须是可选良品子仓)拆分，所属仓为空的不迁；
+--     可选兜底：会话设置 uten.legacy_unassigned_warehouse_code=<子仓编号>(migrate.sh 环境变量
+--     UTEN_LEGACY_UNASSIGNED_WAREHOUSE_CODE)时落到该子仓；
+--     DROP(老库已删除仓)的单据与余额不迁。
+--   不迁的单据/明细/余额逐条记进 bootstrap_warehouse_exclusions(全量导入对账按它扣减并写入
+--   运行记录，migrate.sh 导出成 data/import_report/warehouse_exclusions.csv)。
 --
 -- 【结构】统一 staging：主表/明细各一张 TEMP 表 + doc_type 列，一次性 \copy 全部 8 类
 --   （accumulate，不清空）→ 自动补录（此时 staging 满）→ 各一条 INSERT（doc_type 来自
@@ -102,6 +110,47 @@ UPDATE item_stage SET doc_type='CHECK' WHERE doc_type IS NULL;
 -- StockGoods 台账
 \copy sg_stage FROM '/tmp/stock_goods.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 
+-- ======================== 仓库对照表(ADR-145：只按审过的对照表解析，不补录仓库存根) ========================
+CREATE TEMP TABLE warehouse_crosswalk_stage (
+    legacy_id int, legacy_code text, legacy_name text, action text,
+    target_code text, target_name text, target_defective boolean, note text);
+\copy warehouse_crosswalk_stage FROM '/tmp/warehouse_crosswalk.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+CREATE TEMP TABLE warehouse_target_stage AS
+SELECT crosswalk.legacy_id, crosswalk.action, target.id AS warehouse_id
+FROM warehouse_crosswalk_stage crosswalk
+LEFT JOIN warehouses target ON target.code = crosswalk.target_code AND NOT target.is_deleted
+WHERE crosswalk.legacy_id IS NOT NULL;
+
+-- 不迁的单据/明细/余额(对账按它扣减；全量导入时保留到运行结束)。
+CREATE TEMP TABLE IF NOT EXISTS bootstrap_warehouse_exclusions (
+    source_file text NOT NULL, source_row_id text NOT NULL, legacy_warehouse_id int,
+    reason text NOT NULL, goods_legacy_id int, qty numeric, amount numeric);
+
+DO $$
+DECLARE
+    missing TEXT;
+    fallback TEXT := NULLIF(current_setting('uten.legacy_unassigned_warehouse_code', true), '');
+BEGIN
+    SELECT string_agg(DISTINCT lid::text, ', ') INTO missing
+      FROM (SELECT stock_legacy_id AS lid FROM doc_stage UNION ALL
+            SELECT to_stock_legacy_id FROM doc_stage UNION ALL
+            SELECT stock_legacy FROM sg_stage) refs
+     WHERE lid IS NOT NULL AND lid <> 0
+       AND NOT EXISTS (SELECT 1 FROM warehouse_target_stage target
+                        WHERE target.legacy_id = refs.lid
+                          AND (target.action = 'DROP' OR target.warehouse_id IS NOT NULL));
+    IF missing IS NOT NULL THEN
+        RAISE EXCEPTION 'legacy warehouses must resolve through warehouse_crosswalk.csv to an existing target: %', missing;
+    END IF;
+    IF fallback IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM warehouses WHERE code = fallback AND NOT is_deleted
+          AND fn_warehouse_is_good_stock_leaf(id)) THEN
+        RAISE EXCEPTION 'uten.legacy_unassigned_warehouse_code must name an enabled good-stock sub-warehouse: %', fallback;
+    END IF;
+END;
+$$;
+
 -- ======================== 自动补录缺失基础资料（此时 staging 满） ========================
 -- 货品历史 FK 锚（盘点等可能引用已删货品）：legacy_id+name+auto_created=TRUE；V177/V181 要求选择器/BOM/MRP 隔离。
 WITH candidates AS (
@@ -149,38 +198,80 @@ FROM (SELECT color_legacy_id AS lid FROM item_stage
 WHERE NOT EXISTS (SELECT 1 FROM colors c WHERE c.legacy_id = lid)
 ON CONFLICT (legacy_id) DO NOTHING;
 
--- 仓库（从主表 + 台账反推）
--- ⚠ 幻影仓（StockGoods 引用了 B_Storage 里不存在的 StockID）：is_accountable=FALSE。
---   老库即时库存 INNER JOIN B_Storage，幻影仓本就不计入「全部」；指定该仓下拉仍可查。
-INSERT INTO warehouses (legacy_id, code, name, status, is_accountable, auto_created)
-SELECT DISTINCT lid, 'LEGACY-W-' || lid, '（迁移自动补录）', '使用', FALSE, TRUE
-FROM (SELECT stock_legacy_id AS lid FROM doc_stage UNION ALL
-      SELECT to_stock_legacy_id FROM doc_stage UNION ALL
-      SELECT stock_legacy FROM sg_stage) t
-WHERE lid IS NOT NULL AND lid <> 0
-  AND NOT EXISTS (SELECT 1 FROM warehouses w WHERE w.legacy_id = lid)
-ON CONFLICT (legacy_id) DO NOTHING;
+-- 仓库不补录(ADR-145)：老库已删除/已禁用的仓按对照表处理，见上方「仓库对照表」。
+
+-- 货品的落仓子仓(SPLIT 用)：所属仓库是可选良品子仓才算数；否则用兜底子仓(如有)。
+-- 放在货品补录之后：本模块才补建的历史货品锚(没有所属仓库)同样落到兜底子仓，不因为建表早于补录而漏掉。
+CREATE TEMP TABLE goods_split_warehouse_stage AS
+SELECT material.legacy_id AS goods_legacy_id,
+       COALESCE(
+           CASE WHEN fn_warehouse_is_good_stock_leaf(material.owning_warehouse_id)
+                THEN material.owning_warehouse_id END,
+           (SELECT fallback.id FROM warehouses fallback
+             WHERE fallback.code = NULLIF(current_setting('uten.legacy_unassigned_warehouse_code', true), '')
+               AND NOT fallback.is_deleted)) AS warehouse_id
+FROM goods material
+WHERE material.legacy_id IS NOT NULL;
+
 
 -- StockGoods is itself a historical source even if the old O_* documents have
--- been removed. Never discard its nonzero facts or turn a missing real color
--- into the distinct no-color dimension. Invalid zero/null identities fail closed.
+-- been removed. Never discard its nonzero facts silently or turn a missing real color
+-- into the distinct no-color dimension. Invalid zero/null identities fail closed;
+-- the reviewed crosswalk decides which warehouses are not carried over: balances on a
+-- DROP warehouse are written to bootstrap_warehouse_exclusions below instead.
 DO $$
 BEGIN
     IF EXISTS (
         SELECT 1 FROM sg_stage source
-        LEFT JOIN warehouses warehouse ON warehouse.legacy_id = source.stock_legacy
+        LEFT JOIN warehouse_target_stage warehouse ON warehouse.legacy_id = source.stock_legacy
         LEFT JOIN goods material ON material.legacy_id = source.goods_legacy
         LEFT JOIN colors color ON color.legacy_id = NULLIF(source.color_legacy, 0)
         WHERE (COALESCE(source.fact_qty, source.qty, 0) <> 0
                OR COALESCE(source.fact_weight, source.weight, 0) <> 0
                OR COALESCE(source.total, 0) <> 0)
-          AND (warehouse.id IS NULL OR material.id IS NULL
+          AND warehouse.action IS DISTINCT FROM 'DROP'
+          AND (warehouse.warehouse_id IS NULL OR material.id IS NULL
                OR (NULLIF(source.color_legacy, 0) IS NOT NULL AND color.id IS NULL))
     ) THEN
         RAISE EXCEPTION 'nonzero StockGoods facts require exact warehouse, goods and optional color identities';
     END IF;
 END;
 $$;
+
+-- 落在老库已删除仓(DROP)的库存单据整张不迁(含调拨任一端)，明细随单据一起记进对账清单。
+INSERT INTO bootstrap_warehouse_exclusions (source_file, source_row_id, legacy_warehouse_id, reason)
+SELECT 'stock_' || lower(s.doc_type) || '_m.csv', s.legacy_id::text,
+       CASE WHEN source_side.action = 'DROP' THEN s.stock_legacy_id ELSE s.to_stock_legacy_id END,
+       'DROPPED_WAREHOUSE_DOCUMENT'
+FROM doc_stage s
+LEFT JOIN warehouse_target_stage source_side ON source_side.legacy_id = s.stock_legacy_id
+LEFT JOIN warehouse_target_stage target_side ON target_side.legacy_id = NULLIF(s.to_stock_legacy_id, 0)
+WHERE source_side.action = 'DROP' OR target_side.action = 'DROP';
+
+INSERT INTO bootstrap_warehouse_exclusions (source_file, source_row_id, legacy_warehouse_id, reason,
+    goods_legacy_id, qty, amount)
+SELECT 'stock_' || lower(i.doc_type) || '_i.csv', i.legacy_id::text, excluded.legacy_warehouse_id,
+       'DROPPED_WAREHOUSE_DOCUMENT', i.goods_legacy_id, i.qty, i.amount
+FROM item_stage i
+JOIN bootstrap_warehouse_exclusions excluded
+  ON excluded.reason = 'DROPPED_WAREHOUSE_DOCUMENT'
+ AND excluded.source_file = 'stock_' || lower(i.doc_type) || '_m.csv'
+ AND excluded.source_row_id = i.bill_legacy_id::text;
+
+-- 老库主仓 132(SPLIT)上的明细：货品没有可选的所属子仓(也没给兜底子仓)时这一行不迁。
+INSERT INTO bootstrap_warehouse_exclusions (source_file, source_row_id, legacy_warehouse_id, reason,
+    goods_legacy_id, qty, amount)
+SELECT 'stock_' || lower(i.doc_type) || '_i.csv', i.legacy_id::text,
+       CASE WHEN source_side.action = 'SPLIT' THEN d.stock_legacy_id ELSE d.to_stock_legacy_id END,
+       'UNASSIGNED_OWNING_WAREHOUSE', i.goods_legacy_id, i.qty, i.amount
+FROM item_stage i
+JOIN doc_stage d ON d.legacy_id = i.bill_legacy_id AND d.doc_type = i.doc_type
+LEFT JOIN warehouse_target_stage source_side ON source_side.legacy_id = d.stock_legacy_id
+LEFT JOIN warehouse_target_stage target_side ON target_side.legacy_id = NULLIF(d.to_stock_legacy_id, 0)
+LEFT JOIN goods_split_warehouse_stage split ON split.goods_legacy_id = i.goods_legacy_id
+WHERE (source_side.action = 'SPLIT' OR target_side.action = 'SPLIT')
+  AND COALESCE(source_side.action, '') <> 'DROP' AND COALESCE(target_side.action, '') <> 'DROP'
+  AND split.warehouse_id IS NULL;
 
 -- ======================== 人员补录：B_Worker → employees stub（融合键 legacy_id） ========================
 -- 用户要求：老库有、新库没有就在员工表添加、显示名字（名字后带「（子类）」标记，sub_class 非空时）。
@@ -211,8 +302,9 @@ INSERT INTO stock_documents (
     maker_name_snapshot, approver_name_snapshot, ass_team,
     source_daily_report_id)
 SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
-       (SELECT id FROM warehouses WHERE legacy_id = s.stock_legacy_id),
-       (SELECT id FROM warehouses WHERE legacy_id = s.to_stock_legacy_id AND s.to_stock_legacy_id <> 0),
+       (SELECT warehouse_id FROM warehouse_target_stage WHERE legacy_id = s.stock_legacy_id),
+       (SELECT warehouse_id FROM warehouse_target_stage
+         WHERE legacy_id = s.to_stock_legacy_id AND s.to_stock_legacy_id <> 0),
        (SELECT id FROM suppliers  WHERE legacy_id = s.supplier_legacy_id AND s.supplier_legacy_id <> 0),
        (SELECT id FROM clients    WHERE legacy_id = s.client_legacy_id  AND s.client_legacy_id  <> 0),
        NULLIF(s.plan_no,''), NULLIF(s.remark,''),
@@ -225,12 +317,17 @@ SELECT s.legacy_id, s.doc_type, s.bill_no, s.bill_date,
         WHERE op.legacy_id = NULLIF(s.approver_legacy,0)),
        NULLIF(s.ass_team,''),
        NULL::uuid  -- 历史自由文本不能证明来源报工关系，禁止按单号猜测
-FROM doc_stage s;
+FROM doc_stage s
+WHERE NOT EXISTS (SELECT 1 FROM bootstrap_warehouse_exclusions excluded
+                   WHERE excluded.reason = 'DROPPED_WAREHOUSE_DOCUMENT'
+                     AND excluded.source_file = 'stock_' || lower(s.doc_type) || '_m.csv'
+                     AND excluded.source_row_id = s.legacy_id::text);
 
 -- ======================== 统一明细（一条 INSERT，全 8 类） ========================
 -- upstream（退料→领料）暂留空，下一步 UPDATE 回填（INSERT 时新 id 尚未生成）。
+-- 明细仓(ADR-145)：单据头是老库主仓 132(SPLIT，记主仓 001)的一端，明细按货品所属子仓落仓。
 INSERT INTO stock_document_items (
-    legacy_id, doc_id, bill_type, bill_no, bill_date, line_no, goods_id, color_id, unit_id,
+    legacy_id, doc_id, bill_type, bill_no, bill_date, line_no, goods_id, color_id, unit_id, warehouse_id,
     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at,
     unit_rate, qty, base_qty, price, amount_original, amount_local, weight, gift_qty,
     surplus_qty, count_qty, place, upstream_item_id, source_doc_no, remark)
@@ -239,6 +336,11 @@ SELECT s.legacy_id, d.id, s.doc_type, d.bill_no, d.bill_date,
        (SELECT id FROM goods  WHERE legacy_id = s.goods_legacy_id),
        (SELECT id FROM colors WHERE legacy_id = s.color_legacy_id),
        (SELECT id FROM units  WHERE legacy_id = s.unit_legacy_id),
+       CASE WHEN EXISTS (SELECT 1 FROM warehouse_target_stage target
+                          WHERE target.action = 'SPLIT'
+                            AND target.legacy_id IN (source_doc.stock_legacy_id, source_doc.to_stock_legacy_id))
+            THEN (SELECT split.warehouse_id FROM goods_split_warehouse_stage split
+                   WHERE split.goods_legacy_id = s.goods_legacy_id) END,
        (SELECT code FROM goods WHERE legacy_id = s.goods_legacy_id),
        (SELECT name FROM goods WHERE legacy_id = s.goods_legacy_id),
        'LEGACY_IMPORT', CASE WHEN d.status <> 0 THEN now() ELSE NULL END,
@@ -250,7 +352,12 @@ SELECT s.legacy_id, d.id, s.doc_type, d.bill_no, d.bill_date,
        NULLIF(CAST(s.place_legacy_id AS TEXT),'0'),
        NULL,  -- upstream 回填见下
        NULLIF(s.source_doc_no,''), NULLIF(s.summary,'')
-FROM item_stage s JOIN stock_documents d ON d.legacy_id = s.bill_legacy_id AND d.doc_type = s.doc_type;
+FROM item_stage s
+JOIN stock_documents d ON d.legacy_id = s.bill_legacy_id AND d.doc_type = s.doc_type
+JOIN doc_stage source_doc ON source_doc.legacy_id = s.bill_legacy_id AND source_doc.doc_type = s.doc_type
+WHERE NOT EXISTS (SELECT 1 FROM bootstrap_warehouse_exclusions excluded
+                   WHERE excluded.source_file = 'stock_' || lower(s.doc_type) || '_i.csv'
+                     AND excluded.source_row_id = s.legacy_id::text);
 
 -- 退料明细 → 领料明细 链路回填（upstream_legacy_id → DRAW 明细新 id）
 UPDATE stock_document_items w SET upstream_item_id = i.id
@@ -267,29 +374,48 @@ WHERE w.bill_type = 'WDRAW' AND w.legacy_id = s.legacy_id
 -- 重量(V743/ADR-135)：库存重量统一为千克，老库 Weight/FactWeight 的单位不可证明，一律不导入
 -- (NULL=不知道，从第一次称重/盘点起建立重量账)；只有基本单位本身是质量单位(kg/g/斤等，
 -- unit_measurement_profiles.mass_unit_code)的货品按「数量 x 系数」精确得出重量。
-CREATE TEMP TABLE latest_stock_balance_stage ON COMMIT DROP AS
-SELECT DISTINCT ON (warehouse_id, goods_id, color_id)
-       warehouse_id,
-       goods_id,
-       color_id,
-       year,
-       fact_qty,
-       total
+-- 仓库(ADR-145)：先按老库仓取最新年，再经对照表落到目标仓——KEEP/MERGE 落目标子仓，
+-- SPLIT(老库主仓 132)按货品所属子仓拆分，DROP(老库已删除仓)不迁；不迁的非零余额进对账清单。
+-- 多个老库键落到同一目标键(如 132 拆到五金仓库 + 已禁用的 123 并入五金仓库)时合计。
+CREATE TEMP TABLE legacy_latest_balance_stage ON COMMIT DROP AS
+SELECT DISTINCT ON (stock_legacy, goods_legacy, color_legacy)
+       stock_legacy, goods_legacy, color_legacy, year, fact_qty, total
 FROM (
-    SELECT (SELECT id FROM warehouses WHERE legacy_id = g.stock_legacy)
-               AS warehouse_id,
-           (SELECT id FROM goods WHERE legacy_id = g.goods_legacy)
-               AS goods_id,
-           (SELECT id FROM colors WHERE legacy_id = g.color_legacy)
-               AS color_id,
-           g.year,
+    SELECT g.stock_legacy, g.goods_legacy, g.color_legacy, g.year,
            COALESCE(SUM(COALESCE(g.fact_qty, g.qty)), 0) AS fact_qty,
            COALESCE(SUM(g.total), 0) AS total
     FROM sg_stage g
-    GROUP BY 1, 2, 3, g.year
+    GROUP BY 1, 2, 3, 4
 ) yearly
-WHERE warehouse_id IS NOT NULL AND goods_id IS NOT NULL
-ORDER BY warehouse_id, goods_id, color_id, year DESC;
+ORDER BY stock_legacy, goods_legacy, color_legacy, year DESC;
+
+INSERT INTO bootstrap_warehouse_exclusions (source_file, source_row_id, legacy_warehouse_id, reason,
+    goods_legacy_id, qty, amount)
+SELECT 'stock_goods.csv',
+       json_build_object('stock_legacy', latest.stock_legacy, 'goods_legacy', latest.goods_legacy,
+                         'color_legacy', latest.color_legacy, 'year', latest.year)::text,
+       latest.stock_legacy,
+       CASE WHEN target.action = 'DROP' THEN 'DROPPED_WAREHOUSE_BALANCE' ELSE 'UNASSIGNED_OWNING_WAREHOUSE' END,
+       latest.goods_legacy, latest.fact_qty, latest.total
+FROM legacy_latest_balance_stage latest
+JOIN warehouse_target_stage target ON target.legacy_id = latest.stock_legacy
+LEFT JOIN goods_split_warehouse_stage split ON split.goods_legacy_id = latest.goods_legacy
+WHERE (latest.fact_qty <> 0 OR latest.total <> 0)
+  AND (target.action = 'DROP' OR (target.action = 'SPLIT' AND split.warehouse_id IS NULL));
+
+CREATE TEMP TABLE latest_stock_balance_stage ON COMMIT DROP AS
+SELECT CASE WHEN target.action = 'SPLIT' THEN split.warehouse_id ELSE target.warehouse_id END AS warehouse_id,
+       material.id AS goods_id,
+       (SELECT id FROM colors WHERE legacy_id = latest.color_legacy) AS color_id,
+       max(latest.year) AS year,
+       SUM(latest.fact_qty) AS fact_qty,
+       SUM(latest.total) AS total
+FROM legacy_latest_balance_stage latest
+JOIN warehouse_target_stage target ON target.legacy_id = latest.stock_legacy AND target.action <> 'DROP'
+JOIN goods material ON material.legacy_id = latest.goods_legacy
+LEFT JOIN goods_split_warehouse_stage split ON split.goods_legacy_id = latest.goods_legacy
+WHERE CASE WHEN target.action = 'SPLIT' THEN split.warehouse_id ELSE target.warehouse_id END IS NOT NULL
+GROUP BY 1, 2, 3;
 
 INSERT INTO stock_balances (warehouse_id, goods_id, color_id, qty, amount_local, weight, weight_estimated, last_movement_date)
 SELECT latest.warehouse_id,
@@ -314,13 +440,14 @@ SET qty = EXCLUDED.qty, amount_local = EXCLUDED.amount_local, weight = EXCLUDED.
     last_movement_date = now(), updated_at = now();
 
 -- ======================== 回填仓库流水（已审单据 → stock_movements，供报表） ========================
+-- 流水仓(ADR-145)：明细带了拆分子仓就用它(老库主仓 132 一端)，否则用单据头仓。
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
     goods_id, color_id, warehouse_id, direction, qty, unit_id, unit_rate, amount_local, remark)
 SELECT d.bill_date::timestamptz,
        CASE d.doc_type WHEN 'OTHER_IN' THEN 11 WHEN 'OTHER_OUT' THEN 12
                        WHEN 'DRAW' THEN 5 WHEN 'WDRAW' THEN 6
                        WHEN 'FINISHED_IN' THEN 13 WHEN 'FINISHED_OUT' THEN 14 END,
-       'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id, d.warehouse_id,
+       'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id, COALESCE(i.warehouse_id, d.warehouse_id),
        CASE WHEN d.doc_type IN ('OTHER_IN','WDRAW','FINISHED_IN') THEN 1 ELSE -1 END,
        i.base_qty, i.unit_id, i.unit_rate, i.amount_local, NULLIF(i.remark,'')
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
@@ -330,14 +457,16 @@ WHERE d.status = 1 AND d.doc_type IN ('OTHER_IN','OTHER_OUT','DRAW','WDRAW','FIN
 -- 调拨：调出仓 -8 / 调入仓 +7（两条）
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
     goods_id, color_id, warehouse_id, direction, qty, unit_id, unit_rate, remark)
-SELECT d.bill_date::timestamptz, 8, 'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id, d.warehouse_id,
+SELECT d.bill_date::timestamptz, 8, 'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id,
+       CASE WHEN d.warehouse_id = fn_warehouse_root_id() THEN i.warehouse_id ELSE d.warehouse_id END,
        -1, i.base_qty, i.unit_id, i.unit_rate, '调拨出'
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
 WHERE d.status = 1 AND d.doc_type = 'TRANSFER' AND d.warehouse_id IS NOT NULL AND i.goods_id IS NOT NULL;
 
 INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, source_doc_id, source_item_id,
     goods_id, color_id, warehouse_id, direction, qty, unit_id, unit_rate, remark)
-SELECT d.bill_date::timestamptz, 7, 'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id, d.to_warehouse_id,
+SELECT d.bill_date::timestamptz, 7, 'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id,
+       CASE WHEN d.to_warehouse_id = fn_warehouse_root_id() THEN i.warehouse_id ELSE d.to_warehouse_id END,
        1, i.base_qty, i.unit_id, i.unit_rate, '调拨入'
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
 WHERE d.status = 1 AND d.doc_type = 'TRANSFER' AND d.to_warehouse_id IS NOT NULL AND i.goods_id IS NOT NULL;
@@ -347,7 +476,7 @@ INSERT INTO stock_movements (transaction_date, movement_type, source_doc_type, s
     goods_id, color_id, warehouse_id, direction, qty, unit_id, unit_rate, remark)
 SELECT d.bill_date::timestamptz,
        CASE WHEN i.surplus_qty > 0 THEN 9 ELSE 10 END,
-       'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id, d.warehouse_id,
+       'STOCK_DOC', d.id, i.id, i.goods_id, i.color_id, COALESCE(i.warehouse_id, d.warehouse_id),
        CASE WHEN i.surplus_qty > 0 THEN 1 ELSE -1 END,
        ABS(i.surplus_qty), i.unit_id, i.unit_rate, NULLIF(i.remark,'')
 FROM stock_document_items i JOIN stock_documents d ON d.id = i.doc_id
@@ -371,4 +500,8 @@ UNION ALL SELECT '审核操作员快照覆盖 ' || (SELECT count(*) FROM stock_d
 UNION ALL SELECT '装配班组 ' || (SELECT count(*) FROM stock_documents WHERE ass_team IS NOT NULL)
 UNION ALL SELECT '孤儿明细(无货品) ' || (SELECT count(*) FROM stock_document_items WHERE goods_id IS NULL)
 UNION ALL SELECT '孤儿明细(无主表) ' || (SELECT count(*) FROM stock_document_items i WHERE NOT EXISTS (SELECT 1 FROM stock_documents d WHERE d.id=i.doc_id))
-UNION ALL SELECT '退料挂领料 ' || (SELECT count(*) FROM stock_document_items WHERE bill_type='WDRAW' AND upstream_item_id IS NOT NULL);
+UNION ALL SELECT '退料挂领料 ' || (SELECT count(*) FROM stock_document_items WHERE bill_type='WDRAW' AND upstream_item_id IS NOT NULL)
+UNION ALL SELECT '主仓上的流水(应为 0) ' || (SELECT count(*) FROM stock_movements WHERE source_doc_type='STOCK_DOC' AND warehouse_id = fn_warehouse_root_id())
+UNION ALL SELECT '主仓上的余额(应为 0) ' || (SELECT count(*) FROM stock_balances WHERE warehouse_id = fn_warehouse_root_id())
+UNION ALL SELECT '对照表不迁: ' || reason || ' ' || source_file || ' ' || count(*) || ' 行'
+          FROM bootstrap_warehouse_exclusions GROUP BY reason, source_file;

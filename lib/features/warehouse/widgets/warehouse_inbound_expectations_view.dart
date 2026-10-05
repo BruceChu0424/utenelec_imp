@@ -40,6 +40,8 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/inbound_registration_line.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import 'inbound_registration_widgets.dart';
 
@@ -89,7 +91,6 @@ class _WarehouseInboundExpectationsViewState
   bool _typeSelected = false;
 
   /// 按类型计数（后端全量口径）；null = 尚未返回，分段按钮显示 '—'。
-  Map<String, int>? _typeCounts;
 
   /// 搜索关键字（订货单号/供应商/货品编码或名称），UtenSearchBar 300ms 防抖后回写。
   String _keyword = '';
@@ -307,20 +308,17 @@ class _WarehouseInboundExpectationsViewState
       }
     }
     if (!mounted) return;
-    // 2) 待登记行：进批量登记页（实收数量默认=批准剩余，入库仓库行级必填）。
+    // 2) 待登记行：进登记页(ADR-151 §5 单批合一，来源身份走 ?expectationIds=；
+    //    实收数量默认=批准剩余，入库仓库行级必填)。
     if (ready.isNotEmpty) {
-      final prefills = <ProcurementReceiptPrefill>[];
-      for (final task in ready) {
-        final prefill = task.toReceiptPrefill();
-        if (prefill == null) {
-          context.appWarning('部分所选任务已不可登记，请刷新后重新选择');
-          return;
-        }
-        prefills.add(prefill);
+      if (ready.any((task) => !task.canCreateReceipt)) {
+        context.appWarning('部分所选任务已不可登记，请刷新后重新选择');
+        return;
       }
       final batch = await context.push<WarehouseArrivalRegistrationBatch>(
-        RouteName.warehouseArrivalReceiptBatch,
-        extra: prefills,
+        RoutePath.warehouseArrivalRegistration([
+          for (final task in ready) task.id,
+        ], stockInBeforeInspection: false),
       );
       if (!mounted) return;
       if (batch != null) _announceRegistration(batch);
@@ -362,20 +360,10 @@ class _WarehouseInboundExpectationsViewState
       );
     }
     if (ready.isEmpty) return;
-    final prefills = <ProcurementReceiptPrefill>[];
-    for (final task in ready) {
-      final prefill = task.toReceiptPrefill();
-      if (prefill == null) {
-        context.appWarning('部分所选任务已不可登记，请刷新后重新选择');
-        return;
-      }
-      prefills.add(prefill);
-    }
     final batch = await context.push<WarehouseArrivalRegistrationBatch>(
-      InboundRoute.stockInFirst.appendTo(
-        RouteName.warehouseArrivalReceiptBatch,
-      ),
-      extra: prefills,
+      RoutePath.warehouseArrivalRegistration([
+        for (final task in ready) task.id,
+      ], stockInBeforeInspection: true),
     );
     if (!mounted) return;
     if (batch != null) _announceRegistration(batch);
@@ -400,12 +388,21 @@ class _WarehouseInboundExpectationsViewState
             : _batchRegisterAndSend(selectedIds),
       );
 
+  /// 类型筛选卡的分来源计数(ADR-149): 随徽章汇总带回, 与本列表同一服务端仓库范围;
+  /// 汇总未到/无权为 null(按钮不渲染数字)。不再单独请求 type-counts。
   int? _typeCount(ProcurementInboundOrderType type) {
-    final counts = _typeCounts;
-    if (counts == null) return null;
+    final summary = ref.watch(
+      warehouseScopedBadgesProvider(WarehouseListScope.of(context)),
+    );
     return switch (type) {
-      ProcurementInboundOrderType.purchase => counts['PURCHASE'] ?? 0,
-      ProcurementInboundOrderType.subcontract => counts['SUBCONTRACT'] ?? 0,
+      ProcurementInboundOrderType.purchase => warehouseFactOrNull(
+        summary,
+        BadgeFact.warehouseInboundExpectationPurchase,
+      ),
+      ProcurementInboundOrderType.subcontract => warehouseFactOrNull(
+        summary,
+        BadgeFact.warehouseInboundExpectationSubcontract,
+      ),
       _ => 0,
     };
   }
@@ -439,13 +436,6 @@ class _WarehouseInboundExpectationsViewState
       if (!current()) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets(scope));
-      // 类型计数失败不阻断列表（分段按钮降级为 '—'）。
-      repo
-          .expectationTypeCounts(scope: scope)
-          .then((counts) {
-            if (current()) setState(() => _typeCounts = counts);
-          })
-          .catchError((_) {});
       if (!current()) return;
       setState(() {
         _result = result;
@@ -546,9 +536,8 @@ class _WarehouseInboundExpectationsViewState
   }
 
   Future<void> _createReceipt(InboundExpectation expectation) async {
-    final prefill = expectation.toReceiptPrefill();
-    final route = expectation.orderType.receiptCreateRoute;
-    if (prefill == null || route == null) {
+    if (!expectation.canCreateReceipt ||
+        !expectation.orderType.canRegisterArrival) {
       context.appWarning('该预计到货任务暂不能登记，请刷新后重试');
       return;
     }
@@ -556,9 +545,9 @@ class _WarehouseInboundExpectationsViewState
     // 正常已转品质部待检，超量已隔离待财务。回本页就地刷新一次并提示下一步，
     // 不再跳采购/委外收货单详情页（仓库流程全程留在仓储模块，也消除闪跳）。
     // 2026-09-05 行级入库仓库起，一次提交可能按仓分组返回多张收货单结果。
+    // ADR-151 §5：双击 = 同一个登记页的 1 个来源，没选路线(两条路线并排)。
     final batch = await context.push<WarehouseArrivalRegistrationBatch>(
-      route,
-      extra: prefill,
+      RoutePath.warehouseArrivalRegistration([expectation.id]),
     );
     if (batch == null || !mounted) return;
     await _load(_result?.page ?? 1);

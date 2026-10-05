@@ -11,16 +11,15 @@ void main() {
     int count(String path, String needle) =>
         source(path).split(needle).length - 1;
 
-    // 统一入口(ADR-108): 徽章汇总单飞重拉一次(全部入口与分段细数随之更新),
-    // 外加入库任务中心页内专用的分来源预计到货计数失效。
+    // 统一入口(ADR-108 / ADR-149): 徽章汇总单飞重拉一次(全部入口与分段细数随之更新),
+    // 任务中心选了某个仓时按该仓汇总的那一份也重拉; 不再有单独的 type-counts 或 list(size:1) 计数。
     final helper = source(
       'lib/features/warehouse/providers/warehouse_count_refresh.dart',
     );
     expect(helper, contains('refreshBadges(ref)'));
-    expect(
-      helper,
-      contains('ref.invalidate(warehouseInboundExpectationTypeCountsProvider)'),
-    );
+    expect(helper, contains('invalidateSelectedWarehouseBadges(ref)'));
+    expect(helper, isNot(contains('TypeCounts')));
+    expect(helper, isNot(contains('StockCountReviewCount')));
 
     // 分段细数 provider 全部从徽章汇总派生: 失效它们拿到的仍是同一份汇总, 不会重拉,
     // 全库只能走 refreshBadges(或 invalidateWarehouseTaskCounts)。
@@ -67,7 +66,7 @@ void main() {
       // 产成品：批量点收 + 登记页返回变更。
       'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart':
           2,
-      'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart': 1,
+      'lib/features/warehouse/pages/inbound_arrival_registration_page.dart': 1,
       'lib/features/warehouse/pages/production_finished_arrival_registration_page.dart':
           1,
       // 销售出库详情：拣货/交接状态流转。

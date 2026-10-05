@@ -56,17 +56,14 @@ void main() {
 
   test('arrival registration deep link keeps stock view boundary', () {
     const reportId = '20000000-0000-0000-0000-000000000001';
-    final location = RoutePath.warehouseProductionFinishedArrivalRegistration(
+    final location = RoutePath.warehouseProductionFinishedArrivalRegistration([
       reportId,
-      returnTo: RouteName.warehouseProductionFinishedInboundTasks,
-    );
+    ], returnTo: RouteName.warehouseProductionFinishedInboundTasks);
     final uri = Uri.parse(location);
 
-    expect(
-      uri.path,
-      '${RouteName.warehouseProductionFinishedArrivalRegistrationBase}/'
-      '$reportId',
-    );
+    // ADR-151 §5：单张 = 1 个来源的同一个登记页，来源走 ?reportIds=。
+    expect(uri.path, RouteName.warehouseProductionFinishedArrivalRegistration);
+    expect(uri.queryParameters['reportIds'], reportId);
     expect(
       uri.queryParameters['returnTo'],
       RouteName.warehouseProductionFinishedInboundTasks,

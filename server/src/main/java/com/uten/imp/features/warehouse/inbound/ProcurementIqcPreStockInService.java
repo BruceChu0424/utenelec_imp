@@ -123,7 +123,7 @@ public class ProcurementIqcPreStockInService {
             }
         }
         ProcurementReceiptOriginPolicy.requireNative(em,type,List.of(receiptId));
-        Map<UUID, String> warehouseNames = requireLeafWarehouses(
+        Map<UUID, String> warehouseNames = requireGoodStockWarehouses(
                 lines.stream().map(PreStockLine::warehouseId).distinct().toList());
         OffsetDateTime now = OffsetDateTime.now();
         int stocked = 0;
@@ -194,25 +194,28 @@ public class ProcurementIqcPreStockInService {
     }
 
     /**
-     * 上架仓必须是启用中的记账叶仓(祖先链全部启用、无子仓、参与核算)，且不能是线边仓(车间料架)。
-     * 口径与 V563 入库选仓守卫、V596 数据库触发器同一个 SQL 函数，仓库主档不跨 feature 直连(ADR-017)。
+     * 上架仓必须是启用中的良品记账子仓(祖先链全部启用、无子仓、参与核算、不是不良品仓)，且不能是内料仓。
+     * 口径与 V563 入库选仓守卫、V596/V799 数据库触发器同一个 SQL 函数，仓库主档不跨 feature 直连(ADR-017)。
      * 返回仓名供事件文案。
      */
-    private Map<UUID, String> requireLeafWarehouses(List<UUID> warehouseIds) {
+    private Map<UUID, String> requireGoodStockWarehouses(List<UUID> warehouseIds) {
         Map<UUID, String> names = new HashMap<>();
         for (UUID warehouseId : warehouseIds) {
             @SuppressWarnings("unchecked")
             List<Object[]> rows = em.createNativeQuery("""
-                    SELECT name, is_line_side, fn_warehouse_is_active_accounting_leaf(id)
+                    SELECT name, is_line_side, fn_warehouse_is_good_stock_leaf(id), is_defective
                     FROM warehouses WHERE id = :id AND is_deleted = FALSE
                     """).setParameter("id", warehouseId).getResultList();
             if (rows.isEmpty()) throw validation("上架仓库不存在或已删除，请重新选择");
             Object[] row = rows.getFirst();
-            if (!Boolean.TRUE.equals(row[2])) {
-                throw validation("上架仓库必须是启用中的记账叶仓(不能是父仓、停用仓或不参与核算的仓)");
-            }
             if (Boolean.TRUE.equals(row[1])) {
                 throw conflict("内料仓是车间的料架, 采购和委外到货不能放进内料仓");
+            }
+            if (Boolean.TRUE.equals(row[3])) {
+                throw validation("上架仓库「" + row[0] + "」是不良品仓, 正常到货不能放进不良品仓, 请选择良品仓");
+            }
+            if (!Boolean.TRUE.equals(row[2])) {
+                throw validation("上架仓库必须是启用中的记账子仓(不能是主仓、停用仓或不参与核算的仓)");
             }
             names.put(warehouseId, row[0] == null ? "" : row[0].toString());
         }

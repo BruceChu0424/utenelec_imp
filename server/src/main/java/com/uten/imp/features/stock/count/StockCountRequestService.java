@@ -248,6 +248,11 @@ public class StockCountRequestService {
     public Map<String,Object> submit(StockCountDtos.Submit request) {
         require(SUBMIT);
         if(request==null||!validator.validate(request).isEmpty())throw invalid("盘点输入不完整，数量和重量最多14位整数、4位小数");
+        // 盘点说明选填(2026-10-02 用户口径, V795 只留 500 字上限): 不填/null/空白统一存成 ""。
+        // 指纹也按归一化后的内容算, 同一次提交 null 与 "" 重放不被当成不同盘点。
+        String reason=request.reason()==null?"":request.reason().strip();
+        if(reason.length()>500)throw invalid("盘点说明最多500字");
+        request=new StockCountDtos.Submit(request.warehouseId(),reason,request.idempotencyKey(),request.lines());
         tx.bind();commandLock(request.idempotencyKey());String fingerprint=hash(request);
         var prior=db.queryForList("SELECT id,request_hash FROM stock_count_requests WHERE submitted_by=:actor AND command_key=:key",
                 Map.of("actor",user.requireId(),"key",request.idempotencyKey()));
@@ -257,8 +262,6 @@ public class StockCountRequestService {
         }
         var w=warehouse(request.warehouseId());
         if(request.lines()==null||request.lines().isEmpty()||request.lines().size()>500)throw invalid("请选择1至500项盘点数值");
-        // 2026-10-02 用户口径：盘点说明选填（例行盘点常无话可说），只保留长度上限。
-        if(request.reason()!=null&&request.reason().strip().length()>500)throw invalid("盘点说明最多500字");
         var snapshots=new ArrayList<Map<String,Object>>();var targets=new ArrayList<BigDecimal>();var identities=new HashSet<String>();
         for(var line:request.lines()) {
             if(line==null||line.goodsId()==null||line.unitId()==null||line.expectedQty()==null||line.targetQty()==null||line.targetQty().signum()<0)
@@ -289,7 +292,7 @@ public class StockCountRequestService {
                 INSERT INTO stock_count_requests(id,request_no,warehouse_id,review_route,submitted_by,reason,command_key,request_hash)
                 VALUES(:id,:number,:warehouse,:route,:actor,:reason,:key,:hash)
                 """,new MapSqlParameterSource("id",id).addValue("number",number).addValue("warehouse",request.warehouseId())
-                .addValue("route",w.get("review_route")).addValue("actor",actor).addValue("reason",request.reason().strip())
+                .addValue("route",w.get("review_route")).addValue("actor",actor).addValue("reason",reason)
                 .addValue("key",request.idempotencyKey()).addValue("hash",fingerprint));
         for(int index=0;index<request.lines().size();index++) {
             var line=request.lines().get(index);var current=snapshots.get(index);
@@ -308,7 +311,7 @@ public class StockCountRequestService {
                     .addValue("name",current.get("goods_name")).addValue("colorName",current.get("color_name"))
                     .addValue("unitName",current.get("unit_name")).addValue("factor",current.get("kg_factor")));
         }
-        insertEvent(id,"SUBMIT",0,request.idempotencyKey(),request.reason());
+        insertEvent(id,"SUBMIT",0,request.idempotencyKey(),reason);
         publish(header(id,false));return detail(id);
     }
 
@@ -427,10 +430,6 @@ public class StockCountRequestService {
         events.publishOnce("STOCK_COUNT_"+event,"STOCK_COUNT_REQUEST",(UUID)h.get("id"),payload,h.get("id")+":"+h.get("status")+":"+h.get("row_version"));
     }
     @Transactional(readOnly=true)
-    public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size) {
-        return list(route,status,warehouseId,page,size,WarehouseTaskScope.ALL);
-    }
-    @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
                                                WarehouseTaskScope taskWarehouseScope) {
         return list(route,status,warehouseId,page,size,taskWarehouseScope,null);
@@ -446,9 +445,9 @@ public class StockCountRequestService {
         var params=new MapSqlParameterSource("warehouses",allowed).addValue("actor",user.requireId())
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
         String where=" WHERE r.warehouse_id IN (:warehouses)";
-        // This is a task-center filter, intersected with the original object scope and optional exact warehouse.
-        // The resolved scope already expands a parent to its children, including workshop bins.
-        if(taskWarehouseScope!=null&&taskWarehouseScope.active()) {
+        // ADR-149: 仓库审核是仓库任务, 与原对象范围、精确仓库筛选取交集; 财务审核与「我提交的」不按仓库范围裁剪。
+        // 范围已展开下级(含车间内料仓)。
+        if("WAREHOUSE".equals(route)&&taskWarehouseScope!=null&&taskWarehouseScope.active()) {
             where+=" AND "+taskWarehouseScope.predicate("r.warehouse_id",":taskWarehouseScope");
             params.addValue("taskWarehouseScope",taskWarehouseScope.idsCsv());
         }
@@ -473,16 +472,25 @@ public class StockCountRequestService {
     }
     @Transactional(readOnly=true)
     public Map<String,Object> counts() {
+        return counts(WarehouseTaskScope.ALL);
+    }
+
+    /** warehouse_pending 与仓库审核列表同一仓库数据范围(ADR-149); 财务与本人计数不按仓库范围裁剪。 */
+    @Transactional(readOnly=true)
+    public Map<String,Object> counts(WarehouseTaskScope taskWarehouseScope) {
         var allowed = warehouses(false).stream().map(w -> (UUID)w.get("id")).toList();
         if (allowed.isEmpty()) return Map.of("financePending",0L,"warehousePending",0L,"myPending",0L,"myRejected",0L);
         var params = new MapSqlParameterSource("warehouses",allowed).addValue("actor",user.requireId());
+        boolean scoped = taskWarehouseScope != null && taskWarehouseScope.active();
+        if (scoped) params.addValue("taskWarehouseScope", taskWarehouseScope.idsCsv());
         var counts = db.queryForMap("""
                 SELECT count(*) FILTER (WHERE r.review_route='FINANCE' AND r.status='PENDING') AS finance_pending,
-                       count(*) FILTER (WHERE r.review_route='WAREHOUSE' AND r.status='PENDING') AS warehouse_pending,
+                       count(*) FILTER (WHERE r.review_route='WAREHOUSE' AND r.status='PENDING'%s) AS warehouse_pending,
                        count(*) FILTER (WHERE r.submitted_by=:actor AND r.status='PENDING') AS my_pending,
                        count(*) FILTER (WHERE r.submitted_by=:actor AND r.status='REJECTED') AS my_rejected
                 FROM stock_count_requests r WHERE r.warehouse_id IN (:warehouses) AND r.status IN ('PENDING','REJECTED')
-                """,params);
+                """.formatted(scoped ? " AND " + taskWarehouseScope.predicate("r.warehouse_id", ":taskWarehouseScope") : ""),
+                params);
         return Map.of("financePending",has(FINANCE)?counts.get("finance_pending"):0L,
                 "warehousePending",has(WAREHOUSE)?counts.get("warehouse_pending"):0L,
                 "myPending",has(SUBMIT)?counts.get("my_pending"):0L,

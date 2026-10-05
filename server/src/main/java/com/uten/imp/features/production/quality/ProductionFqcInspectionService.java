@@ -16,7 +16,12 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionResult;
+import com.uten.imp.common.production.OutputLotText;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionLotMemberView;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionLotView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionSheetDetailView;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisionRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisionResult;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionSheetView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.InspectionView;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchItem;
@@ -44,6 +49,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -57,6 +63,11 @@ import java.util.UUID;
  * inbound and MAKE handoffs belong to the stock port in the same transaction;
  * ordinary PASS still leaves a warehouse draft, while proven pre-stocked lots
  * are accepted immediately.</p>
+ *
+ * <p>ADR-148 实物交接批：同一报工、同一产出批次、同一去向的各份(需求 / 计划公共 / 实际超产)是一批实物，
+ * 品质按批一次判定合格与不良数量，服务端按瀑布分给各份(合格先满足需求份、不良先扣实际超产)，
+ * 各份仍写自己的决定事件与恢复链；同一命令的合格放行按实物交接合成一张入库单。
+ * 分成多份的批不允许逐份判定。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -377,7 +388,7 @@ public class ProductionFqcInspectionService
                         .toList();
         if (inspections.isEmpty()) throw notFound("品质检查单不存在");
         return new InspectionSheetDetailView(
-                toSheetView(heads.getFirst()), inspections);
+                toSheetView(heads.getFirst()), inspections, lotsOf(inspections));
     }
 
     private static String sheetOwnerPredicate(NativeReadScope ownerScope) {
@@ -580,7 +591,7 @@ public class ProductionFqcInspectionService
                 """).setParameter("actor", currentUser.requireId()).setParameter("key", key));
         if (rows.isEmpty()) return new ProductionFqcContracts.PassAllResolution("UNKNOWN", key, null);
         Object[] row = rows.getFirst();
-        PassAllBatchResult result = loadPassAllBatch((UUID) row[0], true, ((Number) row[1]).intValue());
+        PassAllBatchResult result = loadPassAllBatch((UUID) row[0], true);
         for (var item : result.items()) requireReadable(item.inspection().reportMakerId());
         return new ProductionFqcContracts.PassAllResolution("COMMITTED", key, result);
     }
@@ -598,14 +609,102 @@ public class ProductionFqcInspectionService
         var sourceGuard = mutationFootprint.beginInspections(List.of(inspectionId));
         prelockDecisionDimensions(inspectionId);
         Object[] inspection = lockInspection(inspectionId);
+        requireSingleSliceLot(inspectionId);
 
         return decideLocked(inspectionId, normalized, inspection, sourceGuard::verifyUnchanged);
     }
 
     /**
-     * Atomically resolves every selected inspection as PASS for its current
-     * remaining quantity. The client supplies identities only; all quantities
-     * are derived after the complete lock set has been acquired.
+     * 整批判定(ADR-148)：一批实物一次判合格与不良数量，服务端按瀑布分给批内各份，
+     * 每份写自己的决定事件(复用恢复/补产链)，合格放行合成一张入库单。
+     * 同一操作人 + 同一幂等键 + 同一内容重放原结果；换了内容 409。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')"
+            + " and hasAuthority('production_quality_inspection:approve')")
+    public LotDecisionResult decideLot(UUID lotId, LotDecisionRequest request) {
+        tx.bind();
+        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        NormalizedLotDecision normalized = normalizeLotDecision(lotId, request);
+        UUID actorUserId = currentUser.requireId();
+        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key, 801))")
+                .setParameter("key", "FQC-LOT-DECISION:" + actorUserId + ':' + normalized.idempotencyKey())
+                .getSingleResult();
+        LotCommandRef existing = findLotCommand(actorUserId, normalized.idempotencyKey());
+        if (existing != null) {
+            if (!existing.lotId().equals(lotId) || !existing.requestHash().equals(normalized.requestHash())) {
+                throw conflict("该整批判定幂等键已用于不同的批或不同数量，请刷新后重试");
+            }
+            return new LotDecisionResult(existing.id(), requireLotView(lotId), true);
+        }
+        List<LotMemberRef> members = lotMembers(List.of(lotId)).get(lotId);
+        if (members == null || members.isEmpty()) {
+            throw notFound("这一批实物没有待检任务，请刷新后重试");
+        }
+        List<UUID> inspectionIds = members.stream().map(LotMemberRef::inspectionId)
+                .sorted(UUID_ORDER).toList();
+        var sourceGuard = mutationFootprint.beginInspections(inspectionIds);
+        Map<UUID, Object[]> locked = lockPassAllDecisionDimensions(inspectionIds);
+        sourceGuard.verifyUnchanged();
+        LotWrite write = writeLotDecisionLocked(lotId, members, locked, normalized.passQty(),
+                normalized.failQty(), normalized.dispositionCode(), normalized.reason(),
+                normalized.idempotencyKey(), normalized.requestHash(), null);
+        stockDocs.getObject().withBatch(inboundBatch -> releaseLocked(write.releases(), inboundBatch));
+        for (InspectionView view : detailViews(inspectionIds).values()) publishResolved(view);
+        return new LotDecisionResult(write.commandId(), requireLotView(lotId), false);
+    }
+
+    /** 当前可见的一批实物(检查单页刷新后重读)。 */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')")
+    public InspectionLotView lotDetail(UUID lotId) {
+        InspectionLotView view = requireLotView(lotId);
+        for (InspectionLotMemberView member : view.members()) {
+            requireReadable(detailInternal(member.inspectionId()).reportMakerId());
+        }
+        return view;
+    }
+
+    private InspectionLotView requireLotView(UUID lotId) {
+        List<InspectionView> views = NativeQueryResults.objectArrayRows(em.createNativeQuery(viewSql(
+                        "source_item.output_lot_id = :lotId AND inspection.status <> 'CANCELLED'")
+                        + " ORDER BY inspection.id")
+                .setParameter("lotId", lotId)).stream()
+                .map(ProductionFqcInspectionService::toView)
+                .toList();
+        if (views.isEmpty()) throw notFound("这一批实物没有待检任务");
+        return lotsOf(views).getFirst();
+    }
+
+    /**
+     * 逐份决定只用于单份的批；分成需求 / 公共 / 超产几份的批必须整批判定(数据库守卫兜底)。
+     */
+    private void requireSingleSliceLot(UUID inspectionId) {
+        Number members = (Number) em.createNativeQuery("""
+                        SELECT COUNT(*)
+                        FROM production_fqc_inspections target
+                        JOIN production_daily_report_items target_item
+                          ON target_item.id = target.source_report_item_id
+                        JOIN production_daily_report_items sibling_item
+                          ON sibling_item.output_lot_id = target_item.output_lot_id
+                        JOIN production_fqc_inspections sibling
+                          ON sibling.source_report_item_id = sibling_item.id
+                         AND sibling.status <> 'CANCELLED'
+                        WHERE target.id = :inspectionId
+                        """)
+                .setParameter("inspectionId", inspectionId)
+                .getSingleResult();
+        if (members != null && members.longValue() > 1) {
+            throw validation("这批实物分成了需求、计划公共备货或实际超产几份，请在检查单里按整批判定合格与不良数量");
+        }
+    }
+
+    /**
+     * Atomically resolves every selected physical lot as PASS for its current
+     * remaining quantity. The client supplies identities only; a selected slice
+     * stands for its whole handoff lot (ADR-148), and all quantities are derived
+     * after the complete lock set has been acquired. One lot decision command per
+     * lot; all PASS releases of the command share handoff documents.
      */
     @Transactional
     @PreAuthorize("hasAuthority('production_quality_inspection:view')"
@@ -615,56 +714,79 @@ public class ProductionFqcInspectionService
         taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
         NormalizedPassAllBatch normalized = normalizePassAllBatch(request);
         UUID actorUserId = currentUser.requireId();
-        var sourceGuard = mutationFootprint.beginInspections(normalized.inspectionIds());
+        // 选中一份 = 选中它所在的整批实物(批内各份同时判定)；批的成员身份不随状态变化。
+        Map<UUID, List<LotMemberRef>> lots = lotMembers(lotsOfInspections(normalized.inspectionIds()));
+        List<UUID> expanded = lots.values().stream().flatMap(List::stream)
+                .map(LotMemberRef::inspectionId).distinct().sorted(UUID_ORDER).toList();
+        var sourceGuard = mutationFootprint.beginInspections(expanded.isEmpty() ? normalized.inspectionIds() : expanded);
         BatchCommand existing = findPassAllBatch(actorUserId, normalized);
-        if (existing != null) return loadPassAllBatch(existing.id(), true, normalized.inspectionIds().size());
-        Map<UUID, Object[]> locked = lockPassAllDecisionDimensions(
-                normalized.inspectionIds());
+        if (existing != null) return loadPassAllBatch(existing.id(), true);
+        if (expanded.isEmpty() || !expanded.containsAll(normalized.inspectionIds())) {
+            throw notFound("部分生产质检任务不存在，请刷新后重试");
+        }
+        Map<UUID, Object[]> locked = lockPassAllDecisionDimensions(expanded);
         for (UUID inspectionId : normalized.inspectionIds()) {
             requireActiveDecisionRow(locked.get(inspectionId));
         }
         sourceGuard.verifyUnchanged();
-        BatchCommand batch = claimPassAllBatch(actorUserId, normalized);
-        if (batch.replay()) return loadPassAllBatch(batch.id(), true, normalized.inspectionIds().size());
+        List<UUID> active = expanded.stream()
+                .filter(id -> remainingOf(locked.get(id)).signum() > 0
+                        && List.of("PENDING", "PARTIAL").contains(string(locked.get(id)[4])))
+                .toList();
+        if (active.size() > 100) {
+            throw validation("一次全合格最多 100 份待检，请分批处理");
+        }
+        BatchCommand batch = claimPassAllBatch(actorUserId, normalized, active.size());
+        if (batch.replay()) return loadPassAllBatch(batch.id(), true);
 
         Map<UUID, UUID> decisions = new LinkedHashMap<>();
-        stockDocs.getObject().withBatch(inboundBatch -> {
-            int lineNo = 0;
-            for (UUID inspectionId : normalized.inspectionIds()) {
-                NormalizedRequest child = normalizeRequest(new DecisionRequest(
-                        "PASS", null, null, null, null,
-                        passAllChildKey(batch.id(), inspectionId)));
-                DecisionWrite decision = recordDecisionLocked(
-                        inspectionId, child, locked.get(inspectionId),
-                        () -> { /* whole batch verified before its first write */ }, inboundBatch);
-                if (decision.replay()) {
-                    throw conflict("批量全合格子结果已存在但缺少批次关联，请联系管理员核查");
+        List<PendingRelease> releases = new ArrayList<>();
+        for (Map.Entry<UUID, List<LotMemberRef>> lot : lots.entrySet()) {
+            BigDecimal remaining = BigDecimal.ZERO;
+            for (LotMemberRef member : lot.getValue()) {
+                Object[] row = locked.get(member.inspectionId());
+                if (List.of("PENDING", "PARTIAL").contains(string(row[4]))) {
+                    remaining = remaining.add(remainingOf(row));
                 }
-                int nextLine = ++lineNo;
-                em.createNativeQuery("""
-                                INSERT INTO production_fqc_pass_all_batch_items(
-                                    batch_id, inspection_id, decision_event_id,
-                                    line_no)
-                                VALUES (:batchId, :inspectionId, :decisionEventId,
-                                        :lineNo)
-                                """)
-                        .setParameter("batchId", batch.id())
-                        .setParameter("inspectionId", inspectionId)
-                        .setParameter("decisionEventId", decision.decisionEventId())
-                        .setParameter("lineNo", nextLine)
-                        .executeUpdate();
-                decisions.put(inspectionId, decision.decisionEventId());
             }
-        });
-        Map<UUID, InspectionView> views = detailViews(normalized.inspectionIds());
-        List<PassAllBatchItem> items = new ArrayList<>(decisions.size());
+            if (remaining.signum() <= 0) continue;
+            String lotKey = "FQC-BATCH-LOT:" + batch.id() + ':' + lot.getKey();
+            String lotHash = sha256(List.of("PRODUCTION-FQC-LOT-DECISION-V1", lot.getKey().toString(),
+                    canonicalQty(remaining), "0", "", ""));
+            LotWrite write = writeLotDecisionLocked(lot.getKey(), lot.getValue(), locked,
+                    remaining, BigDecimal.ZERO.setScale(4), null, null, lotKey, lotHash, batch.id());
+            decisions.putAll(write.decisions());
+            releases.addAll(write.releases());
+        }
+        int lineNo = 0;
+        for (UUID inspectionId : active) {
+            UUID decisionEventId = decisions.get(inspectionId);
+            if (decisionEventId == null) {
+                throw conflict("批量全合格未能覆盖所选的全部待检份，请刷新后重试");
+            }
+            em.createNativeQuery("""
+                            INSERT INTO production_fqc_pass_all_batch_items(
+                                batch_id, inspection_id, decision_event_id,
+                                line_no)
+                            VALUES (:batchId, :inspectionId, :decisionEventId,
+                                    :lineNo)
+                            """)
+                    .setParameter("batchId", batch.id())
+                    .setParameter("inspectionId", inspectionId)
+                    .setParameter("decisionEventId", decisionEventId)
+                    .setParameter("lineNo", ++lineNo)
+                    .executeUpdate();
+        }
+        stockDocs.getObject().withBatch(inboundBatch -> releaseLocked(releases, inboundBatch));
+        Map<UUID, InspectionView> views = detailViews(active);
+        List<PassAllBatchItem> items = new ArrayList<>(active.size());
         // Durable outbox rows become consumable only after commit. Each item's
         // RELEASED still precedes its RESOLVED; no consumer observes this batch
         // between its individual decisions and the final complete view query.
-        for (var decision : decisions.entrySet()) {
-            InspectionView view = views.get(decision.getKey());
+        for (UUID inspectionId : active) {
+            InspectionView view = views.get(inspectionId);
             publishResolved(view);
-            items.add(new PassAllBatchItem(decision.getKey(), decision.getValue(), view));
+            items.add(new PassAllBatchItem(inspectionId, decisions.get(inspectionId), view));
         }
         return new PassAllBatchResult(batch.id(), items, false);
     }
@@ -763,7 +885,8 @@ public class ProductionFqcInspectionService
         Object[] inspection = lockInspection(inspectionId);
         NormalizedRequest normalized = normalizeRequest(new DecisionRequest(
                 "PASS", null, null, null, "车间内部直送 · 班组自检合格", idempotencyKey));
-        recordDecisionLocked(inspectionId, normalized, inspection, () -> { });
+        DecisionWrite decision = writeDecisionLocked(inspectionId, normalized, inspection, () -> { }, null);
+        if (decision.release() != null) releaseLocked(List.of(decision.release()), null);
         List<UUID> documents = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT DISTINCT item.doc_id
                         FROM stock_document_items item
@@ -786,27 +909,24 @@ public class ProductionFqcInspectionService
             NormalizedRequest normalized,
             Object[] inspection,
             Runnable verifyBeforeFirstWrite) {
-        DecisionWrite decision = recordDecisionLocked(inspectionId, normalized, inspection, verifyBeforeFirstWrite);
+        DecisionWrite decision = writeDecisionLocked(inspectionId, normalized, inspection, verifyBeforeFirstWrite, null);
+        if (decision.release() != null) releaseLocked(List.of(decision.release()), null);
         InspectionView view = detailInternal(inspectionId);
         if (!decision.replay()) publishResolved(view);
         return new DecisionResult(decision.decisionEventId(), view, decision.replay());
     }
 
-    /** Writes the same decision/recovery/release facts without rebuilding a response for each batch member. */
-    private DecisionWrite recordDecisionLocked(
-            UUID inspectionId,
-            NormalizedRequest normalized,
-            Object[] inspection,
-            Runnable verifyBeforeFirstWrite) {
-        return recordDecisionLocked(inspectionId, normalized, inspection, verifyBeforeFirstWrite, null);
-    }
-
-    private DecisionWrite recordDecisionLocked(
+    /**
+     * Writes one decision event and its failure adjustment. PASS quantity is returned as a
+     * pending release: the caller releases every PASS of its command together, so one physical
+     * handoff becomes one warehouse document (ADR-148).
+     */
+    private DecisionWrite writeDecisionLocked(
             UUID inspectionId,
             NormalizedRequest normalized,
             Object[] inspection,
             Runnable verifyBeforeFirstWrite,
-            ProductionPreStockedInboundPort.Batch inboundBatch) {
+            UUID lotCommandId) {
 
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
@@ -825,7 +945,7 @@ public class ProductionFqcInspectionService
             if (!Objects.equals(replay.getFirst()[1], normalized.requestHash())) {
                 throw conflict("该质检幂等键已用于不同决定，请刷新后重试");
             }
-            return new DecisionWrite((UUID) replay.getFirst()[0], true);
+            return new DecisionWrite((UUID) replay.getFirst()[0], true, null);
         }
 
         BigDecimal reported = dec(inspection[1]);
@@ -846,11 +966,13 @@ public class ProductionFqcInspectionService
                         INSERT INTO production_fqc_decision_events(
                             id, inspection_id, decision, pass_qty, fail_qty,
                             disposition_code, reason, idempotency_key,
-                            request_hash, decided_by_employee_id, created_by)
+                            request_hash, decided_by_employee_id, created_by,
+                            lot_command_id)
                         VALUES (
                             :id, :inspectionId, :decision, :passQty, :failQty,
                             :dispositionCode, :reason, :key,
-                            :requestHash, :employeeId, :userId)
+                            :requestHash, :employeeId, :userId,
+                            CAST(:lotCommandId AS uuid))
                         """)
                 .setParameter("id", eventId)
                 .setParameter("inspectionId", inspectionId)
@@ -863,6 +985,7 @@ public class ProductionFqcInspectionService
                 .setParameter("requestHash", normalized.requestHash())
                 .setParameter("employeeId", actorEmployeeId)
                 .setParameter("userId", actorUserId)
+                .setParameter("lotCommandId", lotCommandId == null ? null : lotCommandId.toString())
                 .executeUpdate();
 
         if (resolved.failQty().signum() > 0) {
@@ -872,53 +995,242 @@ public class ProductionFqcInspectionService
                     resolved.failQty(),
                     resolved.dispositionCode());
         }
+        PendingRelease release = resolved.passQty().signum() > 0
+                ? new PendingRelease(inspectionId, eventId, (UUID) inspection[5],
+                        (UUID) inspection[6], resolved.passQty())
+                : null;
+        return new DecisionWrite(eventId, false, release);
+    }
 
-        if (resolved.passQty().signum() > 0) {
-            ProductionFinishedInboundReleasePort.CreatedDraft draft =
-                    finishedInbound.createReleasedDraft(
-                            new ProductionFinishedInboundReleasePort.ReleaseRequest(
-                                    inspectionId,
-                                    eventId,
-                                    (UUID) inspection[5],
-                                    (UUID) inspection[6],
-                                    resolved.passQty()));
+    /**
+     * 一个命令的全部合格放行一起建单(ADR-148)：同一实物交接一张入库单，逐份精确放行分配；
+     * 先入库后质检的单在本单全部放行分配落定后各自动点收一次。
+     */
+    private void releaseLocked(
+            List<PendingRelease> releases,
+            ProductionPreStockedInboundPort.Batch inboundBatch) {
+        if (releases.isEmpty()) return;
+        Map<UUID, ProductionFinishedInboundReleasePort.CreatedDraft> drafts =
+                finishedInbound.createReleasedDrafts(releases.stream()
+                        .map(release -> new ProductionFinishedInboundReleasePort.ReleaseRequest(
+                                release.inspectionId(), release.decisionEventId(),
+                                release.sourceReportId(), release.sourceReportItemId(),
+                                release.passQty()))
+                        .toList());
+        Map<UUID, UUID> autoConfirm = new LinkedHashMap<>();
+        for (PendingRelease release : releases) {
+            ProductionFinishedInboundReleasePort.CreatedDraft draft = drafts.get(release.decisionEventId());
+            if (draft == null) {
+                throw conflict("FQC 合格放行未能生成对应的入库明细，请刷新后重试");
+            }
             allocateReleasedQuantity(
-                    (UUID) inspection[6],
+                    release.sourceReportItemId(),
                     draft.stockDocumentItemId(),
-                    resolved.passQty(),
-                    "FQC-FINISHED-IN:" + eventId);
-            // V597 先入库后质检：仓库登记时已按成品仓 + 库位上架并承诺全量入库，
-            // 合格就在同一事务里按那个位置自动点收，仓库不再收到「待点收」任务。
-            // 放行分配必须先落(放行命令守卫要求单据仍是草稿)，再自动点收推到已审核。
-            if (preStockedForAutoConfirm((UUID) inspection[6])) {
-                if (inboundBatch == null) {
-                    stockDocs.getObject().confirmPreStockedFinishedInbound(
-                            draft.stockDocumentId(), "FQC-PRESTOCK:" + eventId);
-                } else {
-                    inboundBatch.confirm(draft.stockDocumentId(), "FQC-PRESTOCK:" + eventId);
-                }
+                    release.passQty(),
+                    "FQC-FINISHED-IN:" + release.decisionEventId());
+            if (draft.preStockedAutoConfirm()) {
+                autoConfirm.putIfAbsent(draft.stockDocumentId(), release.decisionEventId());
             }
             Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("inspectionId", inspectionId);
-            payload.put("decisionEventId", eventId);
-            payload.put("sourceReportId", inspection[5]);
-            payload.put("sourceReportItemId", inspection[6]);
-            payload.put("passQty", resolved.passQty());
+            payload.put("inspectionId", release.inspectionId());
+            payload.put("decisionEventId", release.decisionEventId());
+            payload.put("sourceReportId", release.sourceReportId());
+            payload.put("sourceReportItemId", release.sourceReportItemId());
+            payload.put("passQty", release.passQty());
             payload.put("stockDocumentId", draft.stockDocumentId());
-            payload.put(
-                    "stockDocumentItemId",
-                    draft.stockDocumentItemId());
+            payload.put("stockDocumentItemId", draft.stockDocumentItemId());
             outbox.publishOnce(
                     EVENT_RELEASED,
                     "PRODUCTION_FQC_INSPECTION",
-                    inspectionId,
+                    release.inspectionId(),
                     payload,
-                    EVENT_RELEASED + ':' + eventId);
+                    EVENT_RELEASED + ':' + release.decisionEventId());
         }
-        return new DecisionWrite(eventId, false);
+        // V597 先入库后质检：仓库登记时已按成品仓 + 库位上架并承诺全量入库，
+        // 合格就在同一事务里按那个位置自动点收，仓库不再收到「待点收」任务。
+        // 放行分配必须先落(放行命令守卫要求单据仍是草稿)，再自动点收推到已审核。
+        for (Map.Entry<UUID, UUID> document : autoConfirm.entrySet()) {
+            String key = "FQC-PRESTOCK:" + document.getValue();
+            if (inboundBatch == null) {
+                stockDocs.getObject().confirmPreStockedFinishedInbound(document.getKey(), key);
+            } else {
+                inboundBatch.confirm(document.getKey(), key);
+            }
+        }
     }
 
-    private record DecisionWrite(UUID decisionEventId, boolean replay) {}
+    /**
+     * 一批的整批决定：插入命令，按瀑布(合格升序、不良降序)分给各份，逐份写决定事件；
+     * 合格放行留给调用方与同命令的其它批一起建单。数据库延迟约束按同一瀑布重算核对。
+     */
+    private LotWrite writeLotDecisionLocked(
+            UUID lotId,
+            List<LotMemberRef> members,
+            Map<UUID, Object[]> locked,
+            BigDecimal passQty,
+            BigDecimal failQty,
+            String dispositionCode,
+            String reason,
+            String idempotencyKey,
+            String requestHash,
+            UUID passAllBatchId) {
+        List<BigDecimal> remaining = new ArrayList<>(members.size());
+        BigDecimal total = BigDecimal.ZERO;
+        UUID reportId = null;
+        for (LotMemberRef member : members) {
+            Object[] row = locked.get(member.inspectionId());
+            if (row == null) throw conflict("这一批实物的待检任务已变化，请刷新后重试");
+            BigDecimal left = List.of("PENDING", "PARTIAL").contains(string(row[4]))
+                    ? remainingOf(row) : BigDecimal.ZERO.setScale(4);
+            remaining.add(left);
+            total = total.add(left);
+            reportId = (UUID) row[5];
+        }
+        if (total.signum() <= 0) {
+            throw conflict("这一批实物已全部判定，请刷新后查看结果");
+        }
+        if (passQty.add(failQty).compareTo(total) > 0) {
+            throw conflict("合格 " + OutputLotText.plain(passQty) + " 加不良 " + OutputLotText.plain(failQty)
+                    + " 超过这一批还没判定的数量 " + OutputLotText.plain(total));
+        }
+        List<BigDecimal> pass = waterfallPass(remaining, passQty);
+        List<BigDecimal> fail = waterfallFail(remaining, pass, failQty);
+
+        UUID commandId = UUID.randomUUID();
+        em.createNativeQuery("""
+                        INSERT INTO production_fqc_lot_decision_commands(
+                            id, lot_id, source_report_id, pass_qty, fail_qty,
+                            disposition_code, reason, idempotency_key, request_hash,
+                            pass_all_batch_id, created_by)
+                        VALUES (
+                            :id, :lotId, :reportId, :passQty, :failQty,
+                            :dispositionCode, :reason, :key, :hash,
+                            CAST(:batchId AS uuid), :actorId)
+                        """)
+                .setParameter("id", commandId)
+                .setParameter("lotId", lotId)
+                .setParameter("reportId", reportId)
+                .setParameter("passQty", passQty)
+                .setParameter("failQty", failQty)
+                .setParameter("dispositionCode", dispositionCode)
+                .setParameter("reason", reason)
+                .setParameter("key", idempotencyKey)
+                .setParameter("hash", requestHash)
+                .setParameter("batchId", passAllBatchId == null ? null : passAllBatchId.toString())
+                .setParameter("actorId", currentUser.requireId())
+                .executeUpdate();
+
+        Map<UUID, UUID> decisions = new LinkedHashMap<>();
+        List<PendingRelease> releases = new ArrayList<>();
+        for (int index = 0; index < members.size(); index++) {
+            BigDecimal memberPass = pass.get(index);
+            BigDecimal memberFail = fail.get(index);
+            if (memberPass.signum() == 0 && memberFail.signum() == 0) continue;
+            UUID inspectionId = members.get(index).inspectionId();
+            String decision = memberFail.signum() == 0 ? "PASS" : memberPass.signum() == 0 ? "FAIL" : "PARTIAL";
+            NormalizedRequest child = normalizeRequest(new DecisionRequest(
+                    decision,
+                    "FAIL".equals(decision) ? null : memberPass,
+                    "PASS".equals(decision) ? null : memberFail,
+                    "PASS".equals(decision) ? null : dispositionCode,
+                    reason,
+                    "FQC-LOT:" + commandId + ':' + inspectionId));
+            DecisionWrite write = writeDecisionLocked(inspectionId, child, locked.get(inspectionId),
+                    () -> { /* the whole lot was verified before its first write */ }, commandId);
+            if (write.replay()) {
+                throw conflict("整批判定子结果已存在，请刷新后查看结果");
+            }
+            decisions.put(inspectionId, write.decisionEventId());
+            if (write.release() != null) releases.add(write.release());
+        }
+        return new LotWrite(commandId, decisions, releases);
+    }
+
+    /** 合格按批内顺序(需求 -> 计划公共 -> 实际超产)依次填满。 */
+    static List<BigDecimal> waterfallPass(List<BigDecimal> remaining, BigDecimal passQty) {
+        List<BigDecimal> result = new ArrayList<>(remaining.size());
+        BigDecimal left = passQty;
+        for (BigDecimal capacity : remaining) {
+            BigDecimal take = capacity.min(left).max(BigDecimal.ZERO);
+            result.add(take.setScale(4, RoundingMode.UNNECESSARY));
+            left = left.subtract(take);
+        }
+        if (left.signum() != 0) throw conflict("合格数量超过这一批还没判定的数量");
+        return result;
+    }
+
+    /** 不良按批内倒序(实际超产 -> 计划公共 -> 需求)先扣，只扣合格分剩下的部分。 */
+    static List<BigDecimal> waterfallFail(List<BigDecimal> remaining, List<BigDecimal> pass, BigDecimal failQty) {
+        BigDecimal[] result = new BigDecimal[remaining.size()];
+        BigDecimal left = failQty;
+        for (int index = remaining.size() - 1; index >= 0; index--) {
+            BigDecimal take = remaining.get(index).subtract(pass.get(index)).min(left).max(BigDecimal.ZERO);
+            result[index] = take.setScale(4, RoundingMode.UNNECESSARY);
+            left = left.subtract(take);
+        }
+        if (left.signum() != 0) throw conflict("不良数量超过这一批还没判定的数量");
+        return List.of(result);
+    }
+
+    /** 所选检验所在的批(选中一份 = 选中它的整批)。 */
+    private List<UUID> lotsOfInspections(List<UUID> inspectionIds) {
+        return NativeQueryResults.typedRows(em.createNativeQuery("""
+                        SELECT DISTINCT source_item.output_lot_id
+                        FROM production_fqc_inspections inspection
+                        JOIN production_daily_report_items source_item
+                          ON source_item.id = inspection.source_report_item_id
+                        WHERE inspection.id IN (:ids)
+                        """).setParameter("ids", inspectionIds), UUID.class);
+    }
+
+    /** 每批未取消的各份(按批内归属优先级排好)。 */
+    private Map<UUID, List<LotMemberRef>> lotMembers(List<UUID> lotIds) {
+        Map<UUID, List<LotMemberRef>> result = new LinkedHashMap<>();
+        if (lotIds.isEmpty()) return result;
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT source_item.output_lot_id, inspection.id
+                        FROM production_daily_report_items source_item
+                        JOIN production_fqc_inspections inspection
+                          ON inspection.source_report_item_id = source_item.id
+                         AND inspection.status <> 'CANCELLED'
+                        WHERE source_item.output_lot_id IN (:lotIds)
+                          AND NOT source_item.is_deleted
+                        ORDER BY source_item.output_lot_id,
+                                 fn_daily_report_output_slice_rank(
+                                     source_item.is_public_output, source_item.is_actual_surplus),
+                                 source_item.line_no NULLS LAST, source_item.id
+                        """).setParameter("lotIds", lotIds))) {
+            result.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>())
+                    .add(new LotMemberRef((UUID) row[1]));
+        }
+        return result;
+    }
+
+    private LotCommandRef findLotCommand(UUID actorUserId, String key) {
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT id, lot_id, request_hash
+                        FROM production_fqc_lot_decision_commands
+                        WHERE created_by = :actorId AND idempotency_key = :key
+                        """).setParameter("actorId", actorUserId).setParameter("key", key));
+        if (rows.isEmpty()) return null;
+        Object[] row = rows.getFirst();
+        return new LotCommandRef((UUID) row[0], (UUID) row[1], string(row[2]).strip());
+    }
+
+    private static BigDecimal remainingOf(Object[] inspection) {
+        return dec(inspection[1]).subtract(dec(inspection[2])).subtract(dec(inspection[3]));
+    }
+
+    private record DecisionWrite(UUID decisionEventId, boolean replay, PendingRelease release) {}
+
+    private record PendingRelease(UUID inspectionId, UUID decisionEventId, UUID sourceReportId,
+                                  UUID sourceReportItemId, BigDecimal passQty) {}
+
+    private record LotWrite(UUID commandId, Map<UUID, UUID> decisions, List<PendingRelease> releases) {}
+
+    private record LotMemberRef(UUID inspectionId) {}
+
+    private record LotCommandRef(UUID id, UUID lotId, String requestHash) {}
 
     private void publishResolved(InspectionView result) {
         if ("RESOLVED".equals(result.status())) {
@@ -1401,7 +1713,8 @@ public class ProductionFqcInspectionService
 
     private BatchCommand claimPassAllBatch(
             UUID actorUserId,
-            NormalizedPassAllBatch normalized) {
+            NormalizedPassAllBatch normalized,
+            int inspectionCount) {
         UUID candidateId = UUID.randomUUID();
         int inserted = em.createNativeQuery("""
                         INSERT INTO production_fqc_pass_all_batches(
@@ -1413,7 +1726,7 @@ public class ProductionFqcInspectionService
                 .setParameter("id", candidateId)
                 .setParameter("key", normalized.idempotencyKey())
                 .setParameter("hash", normalized.requestHash())
-                .setParameter("count", normalized.inspectionIds().size())
+                .setParameter("count", inspectionCount)
                 .setParameter("actorId", actorUserId)
                 .executeUpdate();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
@@ -1430,10 +1743,7 @@ public class ProductionFqcInspectionService
             throw conflict("批量全合格幂等命令未能建立，请重试");
         }
         Object[] row = rows.getFirst();
-        requirePassAllReplayCompatible(
-                string(row[1]),
-                ((Number) row[2]).intValue(),
-                normalized);
+        requirePassAllReplayCompatible(string(row[1]), normalized);
         UUID batchId = (UUID) row[0];
         if (inserted == 1 && !candidateId.equals(batchId)) {
             throw conflict("批量全合格幂等命令身份冲突，请刷新后重试");
@@ -1448,14 +1758,16 @@ public class ProductionFqcInspectionService
                 """).setParameter("actorId",actorUserId).setParameter("key",normalized.idempotencyKey()));
         if(rows.isEmpty())return null;
         Object[] row=rows.getFirst();
-        requirePassAllReplayCompatible(string(row[1]),((Number)row[2]).intValue(),normalized);
+        requirePassAllReplayCompatible(string(row[1]),normalized);
         return new BatchCommand((UUID)row[0],true);
     }
 
     private PassAllBatchResult loadPassAllBatch(
             UUID batchId,
-            boolean replay,
-            int expectedCount) {
+            boolean replay) {
+        int expectedCount = ((Number) em.createNativeQuery("""
+                        SELECT inspection_count FROM production_fqc_pass_all_batches WHERE id = :batchId
+                        """).setParameter("batchId", batchId).getSingleResult()).intValue();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT inspection_id, decision_event_id
@@ -1679,10 +1991,21 @@ public class ProductionFqcInspectionService
                        registration.receiver_name_snapshot,
                        registration.stock_in_before_inspection,
                        registration.pre_stocked_at,
-                       registration.pre_stocked_by_name
+                       registration.pre_stocked_by_name,
+                       source_item.output_lot_id,
+                       fn_daily_report_output_slice_rank(
+                           source_item.is_public_output, source_item.is_actual_surplus) AS slice_rank,
+                       (SELECT COUNT(*)
+                        FROM production_daily_report_items sibling_item
+                        JOIN production_fqc_inspections sibling
+                          ON sibling.source_report_item_id = sibling_item.id
+                         AND sibling.status <> 'CANCELLED'
+                        WHERE sibling_item.output_lot_id = source_item.output_lot_id) AS lot_slice_count
                 FROM production_fqc_inspections inspection
                 JOIN production_daily_reports report
                   ON report.id = inspection.source_report_id
+                JOIN production_daily_report_items source_item
+                  ON source_item.id = inspection.source_report_item_id
                 JOIN production_execution_segments segment
                   ON segment.id = inspection.execution_segment_id
                 JOIN production_plans plan ON plan.id = segment.plan_id
@@ -1748,7 +2071,114 @@ public class ProductionFqcInspectionService
                 NativeValueConverters.toOffsetDateTime(row[25]),
                 (UUID) row[26], string(row[27]), string(row[28]),
                 string(row[29]), string(row[30]), string(row[31]),
-                preStocked(row));
+                preStocked(row),
+                (UUID) row[35],
+                row[36] == null ? 0 : ((Number) row[36]).intValue(),
+                OutputLotText.kind(row[36] == null ? 0 : ((Number) row[36]).intValue()),
+                row[37] == null ? 1 : ((Number) row[37]).intValue());
+    }
+
+    /**
+     * 逐份视图按实物交接批分组(批的顺序 = 批内第一份出现的顺序)：合计、拆分与状态服务端算一次。
+     */
+    static List<InspectionLotView> lotsOf(List<InspectionView> inspections) {
+        Map<UUID, List<InspectionView>> byLot = new LinkedHashMap<>();
+        for (InspectionView inspection : inspections) {
+            UUID lotId = inspection.lotId() == null ? inspection.id() : inspection.lotId();
+            byLot.computeIfAbsent(lotId, ignored -> new ArrayList<>()).add(inspection);
+        }
+        List<InspectionLotView> result = new ArrayList<>(byLot.size());
+        for (Map.Entry<UUID, List<InspectionView>> lot : byLot.entrySet()) {
+            List<InspectionView> members = new ArrayList<>(lot.getValue());
+            members.sort(Comparator.comparingInt(InspectionView::sliceRank)
+                    .thenComparing(view -> view.sourceReportItemId().toString()));
+            BigDecimal reported = BigDecimal.ZERO;
+            BigDecimal passed = BigDecimal.ZERO;
+            BigDecimal failed = BigDecimal.ZERO;
+            BigDecimal remaining = BigDecimal.ZERO;
+            BigDecimal demand = BigDecimal.ZERO;
+            BigDecimal publicQty = BigDecimal.ZERO;
+            BigDecimal surplus = BigDecimal.ZERO;
+            boolean allCancelled = true;
+            List<InspectionLotMemberView> memberViews = new ArrayList<>(members.size());
+            for (InspectionView member : members) {
+                if (!"CANCELLED".equals(member.status())) {
+                    allCancelled = false;
+                    reported = reported.add(member.reportedQty());
+                    passed = passed.add(member.passedQty());
+                    failed = failed.add(member.failedQty());
+                    remaining = remaining.add(member.remainingQty());
+                    switch (member.sliceRank()) {
+                        case OutputLotText.RANK_ACTUAL_SURPLUS -> surplus = surplus.add(member.reportedQty());
+                        case OutputLotText.RANK_PUBLIC -> publicQty = publicQty.add(member.reportedQty());
+                        default -> demand = demand.add(member.reportedQty());
+                    }
+                }
+                memberViews.add(new InspectionLotMemberView(
+                        member.id(), member.sourceReportItemId(), member.sliceRank(), member.sliceKind(),
+                        member.reportedQty(), member.passedQty(), member.failedQty(), member.remainingQty(),
+                        member.status()));
+            }
+            String status = allCancelled ? "CANCELLED"
+                    : remaining.signum() == 0 ? "RESOLVED"
+                    : passed.add(failed).signum() == 0 ? "PENDING" : "PARTIAL";
+            InspectionView head = members.getFirst();
+            result.add(new InspectionLotView(
+                    lot.getKey(), head.sourceReportId(), head.reportNo(), head.planId(), head.planNo(),
+                    head.goodsId(), head.goodsCode(), head.goodsName(), head.colorId(), head.colorName(),
+                    head.unitId(), head.unitName(), reported, passed, failed, remaining,
+                    demand, publicQty, surplus, OutputLotText.split(demand, publicQty, surplus),
+                    status, head.warehouseId(), head.warehouseName(), head.place(), head.preStocked(),
+                    memberViews));
+        }
+        return result;
+    }
+
+    /** 整批判定请求规范化：数量非负、合计大于 0、有不良必须写处置方式与原因。 */
+    static NormalizedLotDecision normalizeLotDecision(UUID lotId, LotDecisionRequest request) {
+        if (lotId == null || request == null) throw validation("整批判定请求不能为空");
+        BigDecimal pass = nonNegativeQty(request.passQty(), "合格数量");
+        BigDecimal fail = nonNegativeQty(request.failQty(), "不合格数量");
+        if (pass.add(fail).signum() <= 0) {
+            throw validation("合格数量与不合格数量不能同时为 0");
+        }
+        String disposition = request.dispositionCode() == null || request.dispositionCode().isBlank()
+                ? null : request.dispositionCode().strip().toUpperCase(Locale.ROOT);
+        if (fail.signum() == 0) {
+            if (disposition != null) throw validation("全部合格时不能填写不良处置方式");
+        } else if (disposition == null || !List.of("REWORK", "SCRAP", "REJECT").contains(disposition)) {
+            throw validation("有不合格数量时必须选择处置方式(返工、报废或退回)");
+        }
+        String reason = request.reason() == null || request.reason().isBlank() ? null : request.reason().strip();
+        if (fail.signum() > 0 && reason == null) {
+            throw validation("有不合格数量时必须填写差异原因");
+        }
+        if (reason != null && (reason.length() < 2 || reason.length() > 1000)) {
+            throw validation("质检原因必须为 2 到 1000 个字符");
+        }
+        String key = normalizeDecisionKey(request.idempotencyKey());
+        String hash = sha256(List.of("PRODUCTION-FQC-LOT-DECISION-V1", lotId.toString(),
+                canonicalQty(pass), canonicalQty(fail),
+                disposition == null ? "" : disposition, reason == null ? "" : reason));
+        return new NormalizedLotDecision(pass, fail, disposition, reason, key, hash);
+    }
+
+    private static BigDecimal nonNegativeQty(BigDecimal value, String label) {
+        if (value == null || value.signum() < 0) throw validation(label + "不能小于 0");
+        try {
+            return value.setScale(4, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            throw validation(label + "最多保留 4 位小数");
+        }
+    }
+
+    record NormalizedLotDecision(
+            BigDecimal passQty,
+            BigDecimal failQty,
+            String dispositionCode,
+            String reason,
+            String idempotencyKey,
+            String requestHash) {
     }
 
     /** 已上架待检行的实物位置：落仓 = 登记头的成品仓(= inspection.warehouse_id)。 */
@@ -1807,10 +2237,8 @@ public class ProductionFqcInspectionService
 
     static void requirePassAllReplayCompatible(
             String existingHash,
-            int existingCount,
             NormalizedPassAllBatch request) {
-        if (!Objects.equals(existingHash, request.requestHash())
-                || existingCount != request.inspectionIds().size()) {
+        if (!Objects.equals(existingHash == null ? null : existingHash.strip(), request.requestHash())) {
             throw conflict("该批量全合格幂等键已用于不同任务集合，请刷新后重试");
         }
     }

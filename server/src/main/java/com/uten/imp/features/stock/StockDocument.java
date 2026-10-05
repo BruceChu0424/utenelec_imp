@@ -47,6 +47,18 @@ public class StockDocument extends SoftDeletableEntity {
     @Column(name = "to_warehouse_id")
     private UUID toWarehouseId;
 
+    /** 调拨类型(ADR-146, 仅 TRANSFER): NORMAL / TO_DEFECTIVE 转不良品仓 / DEFECT_RELEASE 不良复判转回; 审核后不可改。 */
+    @Column(name = "transfer_kind", nullable = false)
+    private String transferKind = "NORMAL";
+
+    /** 转不良品仓的原因 / 不良复判转回的复判说明(两种专门通道必填, 1-500 字)。 */
+    @Column(name = "defect_reason")
+    private String defectReason;
+
+    /** 专门通道建单的客户端重试键(同一制单人唯一), 只用于幂等回放。 */
+    @Column(name = "channel_request_key")
+    private String channelRequestKey;
+
     @Column(name = "supplier_id")
     private UUID supplierId;
 

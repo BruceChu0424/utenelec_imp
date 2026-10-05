@@ -271,7 +271,12 @@ class _Server {
     final path = request.path;
     if (path == '/master/warehouses/dict') {
       return [
-        {'id': 'warehouse-1', 'name': '主仓', 'code': '001'},
+        {
+          'id': 'warehouse-1',
+          'name': '主仓',
+          'code': '001',
+          'selectableForNew': true,
+        },
       ];
     }
     if (path.endsWith('/sales-candidates')) {

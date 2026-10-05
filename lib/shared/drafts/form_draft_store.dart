@@ -5,7 +5,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/network/api_exception.dart';
 import '../../core/network/server_config.dart';
+import '../../core/ui/human_error_message.dart';
 import '../../core/router/route_access_policy.dart';
 import '../auth/permissions.dart';
 import '../attachments/attachment.dart';
@@ -41,15 +43,25 @@ class FormDraftUnknownSubmission implements Exception {
 }
 
 /// 单据保存失败的公共类型化解读：草稿保护抛出的 StateError / FormDraftConflict /
-/// 存储格式异常自带「下一步怎么办」的大白话文案，必须原样带给用户；其余未知异常
-/// 返回 null，调用方兜底提示并记日志——不许把可行动的错误吞成「保存失败，请稍后重试」。
-String? describeFormSaveError(Object error) => switch (error) {
-  FormDraftConflict() => error.toString(),
-  StateError() => error.message.isEmpty ? null : error.message,
-  final FormatException e => e.message.isEmpty ? null : e.message,
-  final TimeoutException e => e.message?.isEmpty == false ? e.message : null,
-  _ => null,
-};
+/// 存储格式异常自带「下一步怎么办」的大白话文案，必须原样带给用户；Dart/框架内部的英文异常
+/// ('No element'、'Invalid date format') 与其余未知异常返回 null，调用方兜底提示并记日志——
+/// 不许把可行动的错误吞成「保存失败，请稍后重试」，也不许把程序内部的英文报错原样给人看。
+String? describeFormSaveError(Object error) => humanErrorMessage(error);
+
+/// 提交失败给人看的真实原因 (ADR-151 §2): 服务端拒绝带服务端文案(含第一条字段原因),
+/// 草稿保护/本机存储异常带它自己的「下一步怎么办」; 只有真正未知的异常才用 [fallback]
+/// (调用方同时记日志)。提交路径不许再用 `catch (_)` + 通用句吞掉原因。
+String describeSubmitError(Object error, {required String fallback}) {
+  if (error is ApiException) {
+    final message = error.message.trim();
+    final field = error.fieldErrors?.firstOrNull?.message.trim();
+    if (field == null || field.isEmpty) {
+      return message.isEmpty ? fallback : message;
+    }
+    return message.isEmpty || message == field ? field : '$message: $field';
+  }
+  return describeFormSaveError(error) ?? fallback;
+}
 
 class FormDraftsNotifier extends Notifier<List<FormDraft>> {
   int _generation = 0;
@@ -744,8 +756,16 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (current != null && current['id'] != draft.id) {
         throw const FormDraftConflict();
       }
-      if ((current != null && !isActiveFormDraftRecord(current)) ||
-          current?['revision'] != expectedRevision) {
+      // A cleanly discarded record carries no facts: the same editor (which
+      // dropped its revision when it discarded) may reuse the identity as if
+      // new. A stale tab that still holds the old revision cannot.
+      final reusable =
+          current != null &&
+          isCleanDiscardedFormDraftRecord(current) &&
+          expectedRevision == null;
+      if (!reusable &&
+          ((current != null && !isActiveFormDraftRecord(current)) ||
+              current?['revision'] != expectedRevision)) {
         throw const FormDraftConflict();
       }
       final saved = FormDraft(
@@ -756,7 +776,10 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
         permission: draft.permission,
         draftKind: draft.draftKind,
         updatedAt: DateTime.now(),
-        data: _preserveFrozenDailyReportCommand(draft, current),
+        data: _preserveFrozenDailyReportCommand(
+          draft,
+          reusable ? null : current,
+        ),
         revision: const Uuid().v4(),
       );
       final written = await storage.compareAndSet(
@@ -798,6 +821,13 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
       if (existing != null) {
         final current = jsonDecode(existing) as Map<String, dynamic>;
         if (current['id'] != id) throw const FormDraftConflict();
+        if (isCleanDiscardedFormDraftRecord(current)) {
+          // Nothing left to retain: the editor already returned to its initial values.
+          if (generation == _generation) {
+            state = state.where((item) => item.id != id).toList();
+          }
+          return;
+        }
         if (current['completed'] != true &&
             !_normalAllowed(FormDraft.fromJson(current))) {
           throw StateError('草稿操作权限已变化');
@@ -822,6 +852,61 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
           }),
         );
         if (!deleted) throw const FormDraftConflict();
+      }
+      if (generation == _generation) {
+        state = state.where((item) => item.id != id).toList();
+      }
+    });
+  }
+
+  /// Autosave returned to the editor's initial values (ADR-151 §1): there is no
+  /// longer any user fact to keep, so the active record becomes a reusable
+  /// clean marker instead of a `deleted` tombstone. Earlier saved revisions stay
+  /// in the immutable history; the same editor may save again under the same
+  /// identity with `expectedRevision: null`. Only an explicit user discard
+  /// ([delete]) or a confirmed submission ([complete]) is terminal.
+  ///
+  /// Replay protection is unchanged: a record with an unknown submission still
+  /// refuses ([FormDraftUnknownSubmission]), and terminal records or another
+  /// tab's newer revision are conflicts.
+  Future<void> discardClean(String id, {required String expectedRevision}) {
+    final generation = _generation;
+    final prefix = _prefix;
+    final storage = _storage;
+    final ready = _ready;
+    return _serial(() async {
+      await ready;
+      if (generation != _generation ||
+          _readOnly ||
+          prefix == null ||
+          storage == null) {
+        throw StateError('登录身份已变化');
+      }
+      _validateId(id);
+      final key = '$prefix$id';
+      final existing = await storage.read(key);
+      if (generation != _generation) throw StateError('登录身份已变化');
+      if (existing != null) {
+        final current = jsonDecode(existing) as Map<String, dynamic>;
+        if (current['id'] != id) throw const FormDraftConflict();
+        if (isCleanDiscardedFormDraftRecord(current)) {
+          throw const FormDraftConflict();
+        }
+        if (!isActiveFormDraftRecord(current) ||
+            current['revision'] != expectedRevision) {
+          throw const FormDraftConflict();
+        }
+        final draft = FormDraft.fromJson(current);
+        if (!_normalAllowed(draft)) throw StateError('草稿操作权限已变化');
+        if (draft.hasUnknownSubmission) {
+          throw const FormDraftUnknownSubmission();
+        }
+        final discarded = await storage.compareAndSet(
+          key,
+          expectedValue: existing,
+          value: jsonEncode(cleanDiscardedFormDraftRecord(id)),
+        );
+        if (!discarded) throw const FormDraftConflict();
       }
       if (generation == _generation) {
         state = state.where((item) => item.id != id).toList();

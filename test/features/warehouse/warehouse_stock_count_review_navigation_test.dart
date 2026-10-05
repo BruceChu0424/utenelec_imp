@@ -20,13 +20,13 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import 'workshop_material_test_support.dart';
 
 typedef _Query = ({
-  String? scope,
   String? warehouse,
   String? keyword,
   String? status,
@@ -69,7 +69,6 @@ class _Repo implements StockCountRequestRepository {
     String? reviewRoute,
     String? status,
     String? warehouseId,
-    String? warehouseScope,
     String? scopeWarehouseId,
     String? keyword,
     int page = 1,
@@ -81,7 +80,6 @@ class _Repo implements StockCountRequestRepository {
       isNull,
     ); // Selected main warehouse must include children.
     queries.add((
-      scope: warehouseScope,
       warehouse: scopeWarehouseId,
       keyword: keyword,
       status: status,
@@ -185,6 +183,13 @@ Future<ProviderContainer> _pump(
         warehouseTaskScopeProvider.overrideWith((ref) => ref.watch(_scope)),
         _scope.overrideWith((ref) => scope),
         fixedBadgeSummaryOverride(summary ?? _summary()),
+        // ADR-149: 选了某个仓时任务中心计数来自同一汇总接口带 scopeWarehouseId; 这里给定那一份
+        // (跟着全站汇总重拉, 与生产实现同一订阅关系)。
+        warehouseScopedBadgesProvider.overrideWith((ref, selected) {
+          final global = ref.watch(badgeSummaryProvider);
+          // 模拟服务端按所选仓算出的那一份: 待审数 = 仓库审核队列当前张数。
+          return selected.isAll ? global : _summary(review: repo.pending);
+        }),
       ],
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -281,7 +286,7 @@ void main() {
       tester,
       repo,
       permissions: {Perm.workshopMaterialIssue},
-      scope: const WarehouseTaskScope.mine(),
+      scope: const WarehouseTaskScope.warehouse('main-warehouse'),
     );
     expect(find.byKey(const Key('warehouse-count-review-entry')), findsNothing);
     await tester.tap(find.text('车间内料仓'));
@@ -320,14 +325,11 @@ void main() {
       scope: const WarehouseTaskScope.warehouse('main-warehouse'),
       summary: _summary(review: 8),
     );
+    // 选了仓: 大类数来自按所选仓汇总的那一份(1), 不是全站汇总(8)。
     expect(_redCounts(tester, _label('车间内料仓')), [1]);
     await _openReviewSection(tester);
-    expect(
-      repo.queries.every(
-        (q) => q.warehouse == 'main-warehouse' && q.scope == null,
-      ),
-      isTrue,
-    );
+    expect(_redCounts(tester, _label('盘点审核')), [1]);
+    expect(repo.queries.every((q) => q.warehouse == 'main-warehouse'), isTrue);
     await tester.tap(find.text('查看明细'));
     await tester.pump();
     expect(find.byType(LinearProgressIndicator), findsNothing);
@@ -347,14 +349,16 @@ void main() {
     expect(repo.approvals, 1);
     expect(find.text('返回审核列表'), findsNothing);
     expect(find.byKey(const Key('stock-count-approve')), findsNothing);
+    // ADR-149: 不再用 list(size:1) 凑数, 计数只来自汇总; 审核成功触发汇总重拉,
+    // 下一份汇总(全站与所选仓两份同时)带回 0 后红数消失。
+    expect(repo.queries.where((q) => q.size == 1), isEmpty);
+    final badges =
+        container.read(badgeSummaryProvider.notifier)
+            as FixedBadgeSummaryNotifier;
+    expect(badges.refreshCalls, greaterThan(0));
+    badges.emit(_summary(review: 0));
+    await tester.pumpAndSettle();
     expect(find.byType(UtenNotificationBadge), findsNothing);
-    expect(repo.queries.where((q) => q.size == 1).length, greaterThan(1));
-    expect(
-      (container.read(badgeSummaryProvider.notifier)
-              as FixedBadgeSummaryNotifier)
-          .refreshCalls,
-      greaterThan(0),
-    );
     expect(find.text('暂无盘点申请'), findsOneWidget);
     expect(
       repo.queries.where((query) => query.size == 50).length,
@@ -364,13 +368,9 @@ void main() {
 
   testWidgets('切换仓库范围清除原详情并拒绝旧范围迟到响应', (tester) async {
     final repo = _Repo();
-    final container = await _pump(
-      tester,
-      repo,
-      scope: const WarehouseTaskScope.mine(),
-    );
+    final container = await _pump(tester, repo);
     await _openReviewSection(tester);
-    expect(repo.queries.every((q) => q.scope == 'MINE'), isTrue);
+    expect(repo.queries.every((q) => q.warehouse == null), isTrue);
     repo.pendingDetail = Completer<StockCountRequest>();
     await tester.tap(find.text('查看明细'));
     await tester.pump();
@@ -387,11 +387,7 @@ void main() {
 
   testWidgets('审批进行中切仓，迟到成功只刷新当前队列不恢复旧申请详情', (tester) async {
     final repo = _Repo()..pendingApproval = Completer<StockCountRequest>();
-    final container = await _pump(
-      tester,
-      repo,
-      scope: const WarehouseTaskScope.mine(),
-    );
+    final container = await _pump(tester, repo);
     await _openReviewSection(tester);
     await tester.tap(find.text('查看明细'));
     await tester.pumpAndSettle();
@@ -412,13 +408,14 @@ void main() {
     expect(find.byKey(const Key('stock-count-approve')), findsNothing);
     expect(find.text('审核通过，库存已按盘点更新'), findsNothing);
     expect(find.text('暂无盘点申请'), findsOneWidget);
+    // 迟到的成功也触发汇总重拉; 下一份汇总(按当前所选仓)带回 0 后红数消失。
+    final badges =
+        container.read(badgeSummaryProvider.notifier)
+            as FixedBadgeSummaryNotifier;
+    expect(badges.refreshCalls, greaterThan(0));
+    badges.emit(_summary(review: 0));
+    await tester.pumpAndSettle();
     expect(find.byType(UtenNotificationBadge), findsNothing);
-    expect(
-      (container.read(badgeSummaryProvider.notifier)
-              as FixedBadgeSummaryNotifier)
-          .refreshCalls,
-      greaterThan(0),
-    );
   });
 
   test('list仓库范围与精确仓及搜索是独立参数', () async {
@@ -427,7 +424,6 @@ void main() {
       reviewRoute: 'WAREHOUSE',
       status: 'PENDING',
       warehouseId: 'bin',
-      warehouseScope: 'MINE',
       scopeWarehouseId: 'main',
       keyword: '颗粒',
       size: 1,
@@ -436,7 +432,6 @@ void main() {
       'reviewRoute': 'WAREHOUSE',
       'status': 'PENDING',
       'warehouseId': 'bin',
-      'warehouseScope': 'MINE',
       'scopeWarehouseId': 'main',
       'keyword': '颗粒',
       'page': 1,

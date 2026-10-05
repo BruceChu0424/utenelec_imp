@@ -23,6 +23,7 @@ import '../../measurement/weight_unit.dart';
 import '../../measurement/widgets/weight_text.dart';
 import '../../providers/master_name_provider.dart';
 import '../../widgets/warehouse_picker_panel.dart';
+import '../../widgets/warehouse_selection.dart';
 import '../stock_ledger_models.dart';
 import '../stock_ledger_repository.dart';
 import '../../../features/stock/models/instant_inventory_scope.dart';
@@ -199,7 +200,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
       initialWarehouseId: _warehouseId,
       title: '选择仓库(含下级)',
       includeAll: true,
-      allowParent: true,
+      use: WarehouseUse.query,
     );
     if (!mounted || result == null) return;
     final next = result.isAll ? null : result.id;

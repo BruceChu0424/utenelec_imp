@@ -1,5 +1,6 @@
 package com.uten.imp.features.subcontract.receipt;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
@@ -308,7 +309,7 @@ public class SubcontractReceiptService {
         if (r.getSupplierId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "进仓单需指定委外商");
         }
-        warehouseScopes.requireActiveLeafWarehouse(r.getWarehouseId(), "入库仓库");
+        warehouseScopes.require(r.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -966,7 +967,7 @@ public class SubcontractReceiptService {
         }
         r.setBillDate(req.getBillDate());
         r.setSupplierId(req.getSupplierId());
-        warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "入库仓库");
+        warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());
         r.setExchangeRate(req.getExchangeRate()==null?null:com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"委外收货汇率"));

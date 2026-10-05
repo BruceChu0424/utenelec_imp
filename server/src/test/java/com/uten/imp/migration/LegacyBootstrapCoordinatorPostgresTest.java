@@ -54,6 +54,10 @@ class LegacyBootstrapCoordinatorPostgresTest {
                 }
             }
         }
+        // ADR-145: the synthetic candidate reviews its own warehouse crosswalk (the real one
+        // names the company's legacy warehouse ids, which the synthetic export does not use).
+        Files.copy(Path.of("src/test/resources/legacy-bootstrap-fixture/warehouse_crosswalk.csv"),
+                legacy.resolve("warehouse_crosswalk.csv"));
         var loader = LegacyBootstrapCoordinatorPostgresTest.class.getClassLoader();
         Path migrationDirectory = candidate.resolve("server/src/main/resources/db/migration");
         Files.createDirectories(migrationDirectory);
@@ -93,7 +97,8 @@ class LegacyBootstrapCoordinatorPostgresTest {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();
                 if (name.equals("migrate.sh") || name.equals("export_legacy.ps1") || name.endsWith(".py")
-                        || name.equals("mapping-version.txt") || name.endsWith(".sql")) {
+                        || name.equals("mapping-version.txt") || name.endsWith(".sql")
+                        || name.equals("warehouse_crosswalk.csv")) {
                     put(ROOT + "/server/legacy_migration/" + name, Files.readAllBytes(file));
                 }
             }
@@ -210,6 +215,20 @@ class LegacyBootstrapCoordinatorPostgresTest {
             assertThat(Long.parseLong(scalar("SELECT count(*) FROM " + table))).as(table).isPositive();
         }
         String identity = scalar("SELECT md5(string_agg(id::text || ':' || legacy_id::text, ',' ORDER BY id)) FROM goods");
+        // ADR-145: the warehouse master is the reviewed crosswalk's single main warehouse plus
+        // direct children; the reviewed manual list fills the owning warehouse before documents.
+        assertThat(scalar("""
+                SELECT string_agg(w.code || ':' || COALESCE(parent.code, '-') || ':' || COALESCE(w.legacy_id::text, '-'),
+                                  ',' ORDER BY w.code)
+                FROM warehouses w LEFT JOIN warehouses parent ON parent.id = w.parent_id WHERE NOT w.is_deleted
+                """)).isEqualTo("001:-:900200,SYN-WH:001:900201");
+        assertThat(scalar("""
+                SELECT string_agg(goods.legacy_id || ':' || COALESCE(owner.code, '-'), ',' ORDER BY goods.legacy_id)
+                FROM goods LEFT JOIN warehouses owner ON owner.id = goods.owning_warehouse_id WHERE goods.legacy_id < 910000
+                """)).isEqualTo("900101:-,900102:SYN-WH,900103:-");
+        assertThat(scalar("SELECT jsonb_array_length(reconciliation_summary->'warehouseExclusions') FROM legacy_migration_runs WHERE status='SUCCESS' AND target='--bootstrap-all'"))
+                .isEqualTo("0");
+        shell("test \"$(wc -l < /bootstrap/server/legacy_migration/data/import_report/warehouse_exclusions.csv)\" -eq 1");
         assertThat(scalar("""
                 SELECT (r.qty=10 AND r.amount_original=25 AND o.qty=10 AND o.amount_original=25
                     AND request.qty=10 AND g.legacy_id=900102)::text
@@ -335,16 +354,51 @@ class LegacyBootstrapCoordinatorPostgresTest {
         assertThat(scalar("SELECT count(*) FROM goods WHERE legacy_id IN (919998,919999)")).isEqualTo("0");
         assertThat(scalar("SELECT count(*) FROM goods_bom_items WHERE legacy_id IN (900902,900903,900904)"))
                 .isEqualTo("0");
+        // ADR-145: warehouse 910201 was deleted in the legacy system. The reviewed crosswalk
+        // drops it (no historical warehouse anchor any more), so only the seven goods/unit/
+        // color/client/supplier anchors remain.
         assertThat(scalar("SELECT jsonb_array_length(reconciliation_summary->'historicalAnchors') FROM legacy_migration_runs WHERE target='--bootstrap-all'"))
-                .isEqualTo("8");
+                .isEqualTo("7");
         assertThat(scalar("SELECT jsonb_array_length(reconciliation_summary->'bomExclusions') FROM legacy_migration_runs WHERE target='--bootstrap-all'"))
                 .isEqualTo("3");
+        // ADR-145 crosswalk: nothing is created for the deleted legacy warehouse; its document,
+        // balance and purchase receipt are written to the reconciliation list instead. Lines and
+        // balances of the legacy main warehouse follow the goods' owning sub-warehouse; lines
+        // whose goods have no owning warehouse are listed, never parked on the main warehouse.
+        assertThat(scalar("SELECT count(*) FROM warehouses WHERE legacy_id=910201")).isEqualTo("0");
+        assertThat(scalar("SELECT count(*) FROM stock_documents WHERE legacy_id=902101")).isEqualTo("0");
+        assertThat(scalar("SELECT count(*) FROM purchase_receipts WHERE legacy_id=902301")).isEqualTo("0");
         assertThat(scalar("""
-                SELECT (balance.qty=2 AND balance.amount_local=14 AND NOT warehouse.is_accountable)::text
+                SELECT string_agg((item->>'source_file') || ':' || (item->>'reason'), ','
+                                  ORDER BY item->>'source_file', item->>'source_row_id')
+                FROM legacy_migration_runs run, jsonb_array_elements(run.reconciliation_summary->'warehouseExclusions') item
+                WHERE run.status='SUCCESS' AND run.target='--bootstrap-all'
+                """)).isEqualTo("purchase_receipt_items.csv:DROPPED_WAREHOUSE_DOCUMENT,"
+                + "purchase_receipts.csv:DROPPED_WAREHOUSE_DOCUMENT,"
+                + "stock_goods.csv:UNASSIGNED_OWNING_WAREHOUSE,stock_goods.csv:DROPPED_WAREHOUSE_BALANCE,"
+                + "stock_other_in_i.csv:DROPPED_WAREHOUSE_DOCUMENT,stock_other_in_i.csv:UNASSIGNED_OWNING_WAREHOUSE,"
+                + "stock_other_in_m.csv:DROPPED_WAREHOUSE_DOCUMENT");
+        shell("test \"$(wc -l < /bootstrap/server/legacy_migration/data/import_report/warehouse_exclusions.csv)\" -eq 8");
+        assertThat(scalar("""
+                SELECT (count(*)=1 AND bool_and(document.warehouse_id=main.id AND item.warehouse_id=child.id
+                    AND goods.legacy_id=900102))::text
+                FROM stock_documents document JOIN stock_document_items item ON item.doc_id=document.id
+                JOIN goods ON goods.id=item.goods_id
+                JOIN warehouses main ON main.code='001' JOIN warehouses child ON child.legacy_id=900201
+                WHERE document.legacy_id=902201
+                """)).isEqualTo("true");
+        assertThat(scalar("""
+                SELECT count(*) || '|' || count(*) FILTER (WHERE movement.warehouse_id=(SELECT id FROM warehouses WHERE legacy_id=900201))
+                FROM stock_movements movement WHERE movement.source_doc_id=(SELECT id FROM stock_documents WHERE legacy_id=902201)
+                """)).isEqualTo("1|1");
+        assertThat(scalar("""
+                SELECT (balance.qty=11 AND balance.amount_local=25)::text
                 FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id
                 JOIN warehouses warehouse ON warehouse.id=balance.warehouse_id JOIN colors color ON color.id=balance.color_id
-                WHERE goods.legacy_id=910101 AND warehouse.legacy_id=910201 AND color.legacy_id=910401
+                WHERE goods.legacy_id=900102 AND warehouse.legacy_id=900201 AND color.legacy_id=900401
                 """)).isEqualTo("true");
+        assertThat(scalar("SELECT count(*) FROM stock_balances WHERE warehouse_id=(SELECT id FROM warehouses WHERE code='001')"))
+                .isEqualTo("0");
         assertThat(scalar("SELECT count(*) FROM clients WHERE legacy_id=910501 AND status='禁用'"))
                 .isEqualTo("1");
         assertThat(scalar("SELECT count(*) FROM suppliers WHERE legacy_id=910601 AND status='禁用'"))

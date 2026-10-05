@@ -18,6 +18,7 @@ import '../../features/stock/repositories/stock_query_repository.dart';
 import '../models/paged_result.dart';
 import '../measurement/weight_prefs.dart';
 import '../widgets/warehouse_picker_panel.dart';
+import '../widgets/warehouse_selection.dart';
 import '../measurement/widgets/weight_text.dart';
 import '../providers/master_name_provider.dart';
 import 'stock_ledger_models.dart';
@@ -148,7 +149,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
       initialWarehouseId: _scope.warehouseId,
       title: '查询仓库范围（含下级）',
       includeAll: true,
-      allowParent: true,
+      use: WarehouseUse.query,
     );
     if (!mounted || picked == null) return;
     selectScope(

@@ -1,9 +1,10 @@
 // 到货登记「先质检后入库」(2026-09-20 前叫「登记并送检」)一步完成的导航链路 widget 测试。
 //
 // 覆盖 2026-08-27 的流程简化 + 2026-09-05 双击直达：预计到货任务中心双击行
-// （待登记）→ 登记页「先质检后入库」（确认框）→ POST /warehouse/inbound/arrivals
-// （服务端按订货单回填币族并同事务审核）→ pop(结果) 回任务中心就地刷新并提示
-// 下一步——全程不再经过到货详情中间页，也不跳采购/委外收货单详情页。
+// (待登记) → 登记页「先质检后入库」(确认框) → POST /warehouse/inbound/arrivals/batch
+// (ADR-151 §5 单批合一：单张 = 1 个来源的同一个命令；服务端按订货单回填币族并同事务审核)
+// → pop(结果) 回任务中心就地刷新并提示下一步——全程不再经过到货详情中间页，也不跳
+// 采购/委外收货单详情页。登记页按来源 id 进页(?expectationIds=)，再从服务端读预计到货。
 // 用委外（SUBCONTRACT）类型：无需采购员，表单最小可提交。
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
@@ -23,7 +24,8 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
-import 'package:uten_imp/features/warehouse/pages/warehouse_arrival_receipt_page.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_expectations_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
@@ -35,6 +37,7 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'arrival_weight_test_support.dart';
+import 'inbound_arrival_test_support.dart';
 
 final _testArrivalPermissionsProvider =
     NotifierProvider<_TestArrivalPermissions, Set<String>>(
@@ -147,7 +150,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final api = _FakeApi();
     const prefill = ProcurementReceiptPrefill(
       expectationId: 'unit-rate-expectation',
       orderType: ProcurementInboundOrderType.subcontract,
@@ -190,6 +192,7 @@ void main() {
         ),
       ],
     );
+    final api = _FakeApi(prefills: const [prefill]);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -220,8 +223,8 @@ void main() {
             ).copyWith(textScaler: const TextScaler.linear(1.3)),
             child: child!,
           ),
-          home: const WarehouseArrivalReceiptPage(
-            prefill: prefill,
+          home: const InboundArrivalRegistrationPage(
+            expectationIds: ['unit-rate-expectation'],
             canRegister: true,
           ),
         ),
@@ -268,7 +271,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final api = _FakeApi();
     const prefill = ProcurementReceiptPrefill(
       expectationId: 'permission-expectation',
       orderType: ProcurementInboundOrderType.subcontract,
@@ -287,6 +289,7 @@ void main() {
         ),
       ],
     );
+    final api = _FakeApi(prefills: const [prefill]);
     final container = ProviderContainer(
       overrides: [
         localServerReachableProvider.overrideWith(
@@ -319,7 +322,9 @@ void main() {
       UncontrolledProviderScope(
         container: container,
         child: const MaterialApp(
-          home: WarehouseArrivalReceiptPage(prefill: prefill),
+          home: InboundArrivalRegistrationPage(
+            expectationIds: ['permission-expectation'],
+          ),
         ),
       ),
     );
@@ -353,7 +358,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final api = _FakeApi();
     const prefill = ProcurementReceiptPrefill(
       expectationId: 'expectation-two-lines',
       orderType: ProcurementInboundOrderType.subcontract,
@@ -404,6 +408,7 @@ void main() {
         ),
       ],
     );
+    final api = _FakeApi(prefills: const [prefill]);
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -417,8 +422,8 @@ void main() {
         ),
         GoRoute(
           path: '/arrival',
-          builder: (_, _) => const WarehouseArrivalReceiptPage(
-            prefill: prefill,
+          builder: (_, _) => const InboundArrivalRegistrationPage(
+            expectationIds: ['expectation-two-lines'],
             canRegister: true,
           ),
         ),
@@ -495,10 +500,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
     await tester.pumpAndSettle();
-    final items = (api.lastPostBody?['items'] as List)
+    final lines = (api.lastPostBody?['lines'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items, hasLength(1));
-    expect(items.single['orderItemId'], 'order-item-1');
+    expect(lines, hasLength(1));
+    expect(lines.single['orderItemId'], 'order-item-1');
   });
 
   testWidgets('采购登记移出一行后只提交剩余订货行且保留采购字段', (tester) async {
@@ -506,7 +511,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final api = _FakeApi();
     const prefill = ProcurementReceiptPrefill(
       expectationId: 'purchase-expectation-two-lines',
       orderType: ProcurementInboundOrderType.purchase,
@@ -537,6 +541,7 @@ void main() {
         ),
       ],
     );
+    final api = _FakeApi(prefills: const [prefill]);
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -550,8 +555,8 @@ void main() {
         ),
         GoRoute(
           path: '/purchase-arrival',
-          builder: (_, _) => const WarehouseArrivalReceiptPage(
-            prefill: prefill,
+          builder: (_, _) => const InboundArrivalRegistrationPage(
+            expectationIds: ['purchase-expectation-two-lines'],
             canRegister: true,
           ),
         ),
@@ -587,7 +592,7 @@ void main() {
     await tester.tap(find.text('打开采购登记'));
     await tester.pumpAndSettle();
 
-    expect(find.text('登记实际到货 · 采购'), findsOneWidget);
+    expect(find.text('登记实际到货'), findsOneWidget);
     // 2026-09-14 起名称/编号各占一列，行内不再拼「名称(编号)」。
     // 2026-09-17 默认全选：先取消勾选「采购明细 B」（at(1)=B 行框），右键计数才是 (1)。
     await tester.tap(find.byType(Checkbox).at(1));
@@ -619,21 +624,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.arrivalPostBodies, hasLength(1));
-    expect(api.lastPostBody?['orderType'], 'PURCHASE');
-    expect(api.lastPostBody?['purchaserId'], 'purchaser-1');
     expect(api.lastPostBody?['receiverEmployeeId'], 'emp-me');
-    final items = (api.lastPostBody?['items'] as List)
+    final lines = (api.lastPostBody?['lines'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items, hasLength(1));
-    expect(items.single['orderItemId'], 'purchase-order-item-1');
+    expect(lines, hasLength(1));
+    expect(lines.single['orderType'], 'PURCHASE');
+    expect(lines.single['purchaserId'], 'purchaser-1');
+    expect(lines.single['orderItemId'], 'purchase-order-item-1');
   });
 
   testWidgets('先入库后质检按钮：需独立权限、库位必填、提交带上架标记与库位', (tester) async {
-    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.physicalSize = const Size(1600, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final api = _FakeApi();
     const prefill = ProcurementReceiptPrefill(
       expectationId: 'purchase-expectation-pre-stock',
       orderType: ProcurementInboundOrderType.purchase,
@@ -656,6 +660,7 @@ void main() {
         ),
       ],
     );
+    final api = _FakeApi(prefills: const [prefill]);
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -667,10 +672,11 @@ void main() {
             ),
           ),
         ),
+        // 双击进来(没选路线)：两条路线按钮并排，「先入库后质检」随独立权限出现。
         GoRoute(
           path: '/purchase-arrival',
-          builder: (_, _) => const WarehouseArrivalReceiptPage(
-            prefill: prefill,
+          builder: (_, _) => const InboundArrivalRegistrationPage(
+            expectationIds: ['purchase-expectation-pre-stock'],
             canRegister: true,
           ),
         ),
@@ -764,10 +770,10 @@ void main() {
 
     expect(api.arrivalPostBodies, hasLength(1));
     expect(api.lastPostBody?['stockInBeforeInspection'], isTrue);
-    final items = (api.lastPostBody?['items'] as List)
+    final lines = (api.lastPostBody?['lines'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items.single['preStockPlace'], 'A-07');
-    expect(items.single['orderItemId'], 'purchase-order-item-1');
+    expect(lines.single['preStockPlace'], 'A-07');
+    expect(lines.single['orderItemId'], 'purchase-order-item-1');
   });
 
   testWidgets('登记并送检丢响应重试复用原 key，回任务中心且不跳收货单详情', (tester) async {
@@ -785,11 +791,12 @@ void main() {
           builder: (_, _) => const WarehouseInboundExpectationsPage(),
         ),
         GoRoute(
-          path: '/warehouse/inbound/receipts/new',
-          builder: (_, state) => WarehouseArrivalReceiptPage(
-            prefill: state.extra is ProcurementReceiptPrefill
-                ? state.extra! as ProcurementReceiptPrefill
-                : null,
+          path: RouteName.warehouseArrivalRegistration,
+          builder: (_, state) => InboundArrivalRegistrationPage(
+            expectationIds: (state.uri.queryParameters['expectationIds'] ?? '')
+                .split(',')
+                .where((id) => id.isNotEmpty)
+                .toList(),
             canRegister: true,
           ),
         ),
@@ -861,7 +868,7 @@ void main() {
     // 任务中心：双击行（待登记）直达登记页，不再经过到货详情中间页。
     await _doubleTapRow(tester, find.text('SC-PO-001'));
     await tester.pumpAndSettle();
-    expect(find.text('登记实际到货 · 委外'), findsOneWidget);
+    expect(find.text('登记实际到货'), findsOneWidget);
     expect(
       find.byKey(const Key('warehouse-arrival-lines-grid')),
       findsOneWidget,
@@ -878,6 +885,9 @@ void main() {
 
     // 多行统一改仓（2026-09-11 新交互；2026-09-17 起明细默认全选，无需先点表头）：
     // 点**其中任意一行**的仓库格 → 主/子仓级联滑窗 → 选「原料仓」，全部明细行整体换仓。
+    // 合并页多了「来源订货单」「预计去向」等列：先把仓库格滚进视口再点。
+    await tester.ensureVisible(lineWarehouseCell);
+    await tester.pumpAndSettle();
     await tester.tap(lineWarehouseCell);
     await tester.pumpAndSettle();
     expect(find.text('先选主仓，再选子仓'), findsOneWidget);
@@ -887,12 +897,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('原料仓'), findsWidgets);
     expect(find.text('成品仓'), findsNothing);
-
-    final firstPrefill = tester
-        .widget<WarehouseArrivalReceiptPage>(
-          find.byType(WarehouseArrivalReceiptPage),
-        )
-        .prefill!;
 
     // The selected source is kept with the same submission when a response is lost.
     await tester.ensureVisible(
@@ -919,13 +923,13 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('登记实际到货 · 委外'), findsOneWidget);
+    expect(find.text('登记实际到货'), findsOneWidget);
     expect(api.arrivalPostBodies, hasLength(1));
     final firstKey = api.arrivalPostBodies.single['idempotencyKey'];
     expect(firstKey, isA<String>());
     expect(
       firstKey as String,
-      matches(r'^warehouse-arrival-create-[0-9a-f]{16}$'),
+      matches(r'^warehouse-arrival-batch-[0-9a-f]{16}$'),
     );
 
     // 原页面原动作重试：服务端以 maker+key+hash 回放原结果，不再造第二张收货单。
@@ -940,9 +944,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
-    // 断言 1：请求打到「一步登记」端点，orderType=委外、收货人/明细齐备、不带价格。
-    expect(api.lastPostPath, '/warehouse/inbound/arrivals');
-    expect(api.lastPostBody?['orderType'], 'SUBCONTRACT');
+    // 断言 1：请求打到登记命令(单张 = 1 组)，orderType=委外、收货人/明细齐备、不带价格。
+    expect(api.lastPostPath, arrivalBatchPath);
     expect(api.lastPostBody?['receiverEmployeeId'], 'emp-me');
     expect(api.lastPostBody?['idempotencyKey'], firstKey);
     expect(api.arrivalPostBodies, hasLength(2));
@@ -950,9 +953,10 @@ void main() {
       api.arrivalPostBodies.map((body) => body['idempotencyKey']).toSet(),
       {firstKey},
     );
-    final items = api.lastPostBody?['items'] as List?;
+    final items = api.lastPostBody?['lines'] as List?;
     expect(items, hasLength(1));
     final item = items!.first as Map;
+    expect(item['orderType'], 'SUBCONTRACT');
     expect(item['qty'], 5);
     expect(item['replacementIntent'], 'RETURN_REPLACEMENT');
     expect(item.containsKey('price'), isFalse);
@@ -969,15 +973,18 @@ void main() {
     // A new delivery with identical fields must not replay the previous receipt.
     final firstBody = Map<String, dynamic>.from(api.lastPostBody!)
       ..remove('idempotencyKey');
-    router.push<void>('/warehouse/inbound/receipts/new', extra: firstPrefill);
+    router.push<void>(
+      RoutePath.warehouseArrivalRegistration(['expectation-1']),
+    );
     await tester.pumpAndSettle();
     // 同上：默认全选下点任意一行的仓库格即整批落仓。
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('warehouse-arrival-lines-grid')),
-        matching: find.byKey(const Key('warehouse-arrival-wh-order-item-1')),
-      ),
+    final secondCell = find.descendant(
+      of: find.byKey(const Key('warehouse-arrival-lines-grid')),
+      matching: find.byKey(const Key('warehouse-arrival-wh-order-item-1')),
     );
+    await tester.ensureVisible(secondCell);
+    await tester.pumpAndSettle();
+    await tester.tap(secondCell);
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
@@ -1240,7 +1247,11 @@ class _FakeApi extends ApiClient {
     this.pendingDraftReceiptIds = const [],
     this.inspectionPendingReceipts = 0,
     this.failFirstArrival = false,
+    this.prefills = const [],
   }) : super(Dio());
+
+  /// 登记页按 id 读回的预计到货(测试按单张页的预填写法给出)；空 = 用任务中心那条任务。
+  final List<ProcurementReceiptPrefill> prefills;
 
   /// 待恢复场景：任务挂着的草稿收货单 id 列表。
   final List<String> pendingDraftReceiptIds;
@@ -1280,9 +1291,14 @@ class _FakeApi extends ApiClient {
   }) async {
     if (path == '/master/warehouses/dict') {
       return const [
-        {'id': 'warehouse-1', 'name': '成品仓'},
-        {'id': 'warehouse-2', 'name': '原料仓'},
+        {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
+        {'id': 'warehouse-2', 'name': '原料仓', 'selectableForNew': true},
       ];
+    }
+    if (path == arrivalExpectationsByIdsPath) {
+      if (prefills.isNotEmpty) return expectationsByIdsAnswer(query, prefills);
+      final ids = (query?['ids'] as String? ?? '').split(',');
+      return [if (ids.contains('expectation-1')) _expectationJson()];
     }
     return const [];
   }
@@ -1294,18 +1310,14 @@ class _FakeApi extends ApiClient {
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/warehouse/inbound/arrivals') {
+    if (path == arrivalBatchPath) {
       lastPostPath = path;
       lastPostBody = Map<String, dynamic>.from(body! as Map);
       arrivalPostBodies.add(lastPostBody!);
       if (failFirstArrival && arrivalPostBodies.length == 1) {
         throw NetworkException('响应中断，请使用原请求重试');
       }
-      return const {
-        'outcome': 'SUBMITTED_FOR_INSPECTION',
-        'receiptId': 'sc-receipt-1',
-        'receiptBillNo': 'SC-SR-001',
-      };
+      return arrivalBatchAnswer(lastPostBody!);
     }
     if (path.startsWith('/warehouse/inbound/arrivals/') &&
         path.endsWith('/complete')) {

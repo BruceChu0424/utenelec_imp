@@ -244,7 +244,7 @@ class GoodsIssueMethodSwitchPostgresTest {
         UUID used = goods(shop, "颗粒甲", shop.kg(), "采购", "PERIODIC", "OWN", null);
         otherIn(shop, world.warehouseId(), used, "100", "10");
         fixture.loginAs(warehouseUser);
-        var enabled = settings.update(workshop, new SettingsRequest(0L, true, world.warehouseId(), BusinessTime.today(),
+        var enabled = settings.update(workshop, new SettingsRequest(null, 0L, true, world.warehouseId(), null, true, BusinessTime.today(),
                 List.of(), key("enable")));
         UUID bin = enabled.binWarehouseId();
         requisitions.directIssue(new DirectIssueRequest(workshop, worker,

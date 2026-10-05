@@ -29,10 +29,18 @@ public class WarehouseSaveRequest {
     private UUID workshopDepartmentId;
     @JsonIgnore
     private boolean workshopDepartmentReferenceSpecified;
-    private UUID parentId;             // 上级仓库（V476；null=独立顶层）
+    /**
+     * 上级仓库(ADR-145): 只能是唯一主仓; 不传或传空 = 服务端补成主仓。主仓自己没有上级。
+     */
+    private UUID parentId;
     @JsonIgnore
     private boolean parentReferenceSpecified;
     private String status;           // 使用/禁用
+    /**
+     * 仓库用途(ADR-145): true=不良品仓, false=良品仓; null=不改(新建默认良品仓)。
+     * 不良品仓只能是子仓、不能是车间内料仓, 有库存或还是货品所属仓库时不能改用途。
+     */
+    private Boolean defective;
 
     @JsonSetter("workshopDepartmentId")
     public void setWorkshopDepartmentId(UUID workshopDepartmentId) {
@@ -51,7 +59,7 @@ public class WarehouseSaveRequest {
         this.parentReferenceSpecified = true;
     }
 
-    /** 同车间引用口径：更新时省略=保留，显式 null=清空回独立顶层。 */
+    /** 是否带了上级仓库字段(ADR-145 起只用于拒绝「挂到主仓以外的仓」)。 */
     public boolean hasParentReference() {
         return parentReferenceSpecified;
     }

@@ -54,16 +54,16 @@ class ProductionReportGeneratedDocumentUuidContractTest {
                 .contains("chainNotice.notifyProductionFinishedArrivalPending(r.getId())");
         assertThat(arrival)
                 .contains("qualityInspection.registerApprovedReportItems(")
-                .contains("normalized.places().keySet().stream().sorted().toList()")
+                .contains("reportItemIds.stream().sorted().toList()")
                 .contains("production_finished_arrival_registrations");
         assertThat(finishedInbound)
-                .contains("document.setSourceDailyReportId((UUID) row[0])")
+                .contains("document.setSourceDailyReportId((UUID) head[0])")
                 .contains("item.setSourceDailyReportItemId((UUID) row[6])")
                 .contains("item.setPlace((String) row[20])")
                 .contains("production_fqc_inspections inspection")
                 .contains("production_fqc_decision_events decision");
         assertThat(fqc)
-                .contains("finishedInbound.createReleasedDraft(")
+                .contains("finishedInbound.createReleasedDrafts(")
                 .contains("allocateReleasedQuantity(");
         assertThat(dailyReport).contains("rp.setSourceDailyReportId(r.getId())");
         assertThat(dailyReport).contains("docsBySource(\"FINISHED_IN\", r.getId())");

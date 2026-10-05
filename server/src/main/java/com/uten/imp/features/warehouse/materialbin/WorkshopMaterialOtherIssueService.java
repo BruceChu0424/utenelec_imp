@@ -83,7 +83,7 @@ public class WorkshopMaterialOtherIssueService {
             Period period = bins.openPeriod(settings.binWarehouseId());
             gateway.lockInventory(List.of(new Material(material.goodsId(), request.colorId())));
             UUID id = UUID.randomUUID();
-            WorkshopMaterialGuards.guarded(() -> db.update("""
+            db.update("""
                     INSERT INTO workshop_material_other_issues(
                         id, bin_warehouse_id, workshop_department_id, goods_id, color_id, unit_id, qty, reason,
                         reason_text, period_id, business_date, created_by)
@@ -101,7 +101,7 @@ public class WorkshopMaterialOtherIssueService {
                     .addValue("reasonText", reasonText)
                     .addValue("period", period.id())
                     .addValue("businessDate", today)
-                    .addValue("actor", currentUser.requireId())));
+                    .addValue("actor", currentUser.requireId()));
             var posted = gateway.otherIssue(id, settings.binWarehouseId(), workshop, material.goodsId(),
                     request.colorId(), material.unitId(), kilograms, today, reasonLabel(request.reason(), reasonText));
             return new Outcome<>(id, view(id, posted.documentId(), posted.billNo()));

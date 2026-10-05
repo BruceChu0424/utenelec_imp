@@ -332,13 +332,6 @@ abstract final class FormDraftCatalog {
     permission: Perm.stockDocApprove,
   );
 
-  static const finishedArrivalBatch = FormDraftDescriptor(
-    title: '批量登记实际入库',
-    module: BadgeModule.warehouse,
-    route: RouteName.warehouseProductionFinishedArrivalBatchRegistration,
-    permission: Perm.stockDocApprove,
-  );
-
   static const warehouseDraw = FormDraftDescriptor(
     title: '批量领料出库填写',
     module: BadgeModule.warehouse,
@@ -364,14 +357,7 @@ abstract final class FormDraftCatalog {
   static const arrival = FormDraftDescriptor(
     title: '登记实际到货',
     module: BadgeModule.warehouse,
-    route: RouteName.warehouseArrivalReceiptNew,
-    permission: Perm.warehouseInboundStockIn,
-  );
-
-  static const arrivalBatch = FormDraftDescriptor(
-    title: '批量登记实际到货',
-    module: BadgeModule.warehouse,
-    route: RouteName.warehouseArrivalReceiptBatch,
+    route: RouteName.warehouseArrivalRegistration,
     permission: Perm.warehouseInboundStockIn,
   );
 
@@ -451,12 +437,10 @@ abstract final class FormDraftCatalog {
     'fqcSheet': fqcSheet,
     'fqcInspection': fqcInspection,
     'finishedArrival': finishedArrival,
-    'finishedArrivalBatch': finishedArrivalBatch,
     'warehouseDraw': warehouseDraw,
     'warehouseDiscovery': warehouseDiscovery,
     'stockDocument': stockDocument,
     'arrival': arrival,
-    'arrivalBatch': arrivalBatch,
     'subcontractOutbound': subcontractOutbound,
     'suggestion': suggestion,
     'notice': notice,

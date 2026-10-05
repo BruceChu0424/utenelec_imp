@@ -690,7 +690,7 @@ class _ProductionDailyReportEditPageState
           _savedMaterialUsage[usage.demandId] = usage;
         }
         final rows = <DailyGridRow>[];
-        for (final group in productionDailyReportInputGroups(d.items)) {
+        for (final group in d.inputGroups) {
           final it = group.source;
           final row = DailyGridRow()
             ..platformFields.sourceRecordId = it.id
@@ -2792,7 +2792,7 @@ class _ProductionDailyReportEditPageState
         }
         context.appError(e.message);
       }
-    } catch (_) {
+    } catch (error) {
       if (!mounted || !ownsSubmission()) return;
       if (widget.id == null && !dispatched) {
         _frozenCreate = null;
@@ -2808,10 +2808,11 @@ class _ProductionDailyReportEditPageState
       }
       if (!mounted || !ownsSubmission()) return;
       if (widget.id == null && dispatched) holdFormDraftForReadRecovery();
+      // 已发出的新建请求结果未知: 只给「只读核对原提交」的指引; 其余如实报因(ADR-151 §2)。
       context.appError(
         dispatched && widget.id == null
             ? '创建结果尚未确认，完整原提交已保留，请只读核对原提交'
-            : '保存失败，请保留输入后重试',
+            : describeSubmitError(error, fallback: '保存失败，请保留输入后重试'),
       );
     } finally {
       if (mounted &&

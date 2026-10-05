@@ -34,7 +34,13 @@ class _DrawDetailApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async => path == '/master/warehouses/dict'
       ? [
-          {'id': 'main', 'name': '主仓库', 'accountable': true, 'status': '使用'},
+          {
+            'id': 'main',
+            'name': '主仓库',
+            'accountable': true,
+            'status': '使用',
+            'selectableForNew': true,
+          },
         ]
       : const <Map<String, dynamic>>[];
 

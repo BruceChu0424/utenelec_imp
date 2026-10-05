@@ -69,16 +69,17 @@ public class StockDocController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
-            @RequestParam(required = false) String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(required = false) String billNo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        // 仓库任务中心的「仓库范围」(ADR-115)：MINE = 我负责的仓库；scopeWarehouseId = 指定仓库(含子仓)。
-        // 与表头的 warehouseId(精确发出仓)是两件事，二者可同时生效。
+        // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤(发出仓或调入仓)；scopeWarehouseId = 在可选范围内
+        // 挑一个仓(含下级), 越界 403。与表头的 warehouseId(精确发出仓)是两件事，二者可同时生效。
+        // 本人默认范围(没挑仓)时, 自己还没提交的草稿不论仓都列出(与草稿徽章、分段草稿数同一判定)。
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), billNo), page, size, sort, order, includeDeleted, onlyDeleted);
+                warehouseScopes.current(scopeWarehouseId), billNo, scopeWarehouseId == null),
+                page, size, sort, order, includeDeleted, onlyDeleted);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（docType 维度）分组计数。 */
@@ -95,13 +96,12 @@ public class StockDocController {
             @RequestParam(required = false) Short issueStatus,
             @RequestParam(required = false) Boolean productionReturnRequests,
             @RequestParam(required = false) UUID toWarehouseId,
-            @RequestParam(required = false) String warehouseScope,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @RequestParam(defaultValue = "false") boolean onlyDeleted) {
         return service.facets(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.resolve(warehouseScope, scopeWarehouseId), null), includeDeleted, onlyDeleted);
+                warehouseScopes.current(scopeWarehouseId), null, scopeWarehouseId == null), includeDeleted, onlyDeleted);
     }
 
     @GetMapping("/{id}")
@@ -137,6 +137,21 @@ public class StockDocController {
     @PreAuthorize("hasAuthority('stock_doc:create')")
     public StockDocDetail create(@Valid @RequestBody StockDocSaveRequest req) {
         return service.create(req);
+    }
+
+    /** ADR-146 当前用户能办理的不良品专门通道(空 = 都不能办)。 */
+    @GetMapping("/defective-moves/options")
+    @PreAuthorize("hasAnyAuthority('stock:view','stock_doc:view','stock:defective_transfer','stock:defective_release')")
+    public com.uten.imp.features.stock.dto.StockDefectiveMoveOptions defectiveMoveOptions() {
+        return service.defectiveMoveOptions();
+    }
+
+    /** ADR-146 转不良品仓 / 不良复判转回: 一次建单并过账, 只认该通道的独立权限。 */
+    @PostMapping("/defective-moves")
+    @PreAuthorize("hasAnyAuthority('stock:defective_transfer','stock:defective_release')")
+    public com.uten.imp.features.stock.dto.StockDefectiveMoveResult createDefectiveMove(
+            @Valid @RequestBody com.uten.imp.features.stock.dto.StockDefectiveMoveRequest req) {
+        return service.createDefectiveMove(req);
     }
 
     @GetMapping("/{id}/outbound-review")

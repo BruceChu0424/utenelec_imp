@@ -431,7 +431,10 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
       await saveFormDraftNow();
     } catch (error) {
       if (!mounted) return;
-      setState(() => _operationError = '生成失败：$error');
+      setState(
+        () => _operationError =
+            '生成失败：${describeSubmitError(error, fallback: '$error')}',
+      );
       context.appError(_operationError!);
     } finally {
       if (mounted) setState(() => _submitting = false);

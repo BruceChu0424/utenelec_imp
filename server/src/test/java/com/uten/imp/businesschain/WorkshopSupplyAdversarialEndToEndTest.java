@@ -424,10 +424,9 @@ class WorkshopSupplyAdversarialEndToEndTest {
 
     private UUID acceptWarehouseReport(Case c,UUID report,String quantity) {
         UUID reportItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,report);
-        beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class).register(report,
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest(
-                        "adv-arrival-"+report,c.leaf(),List.of(new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest(
-                                reportItem,"实际普通叶仓")),null));
+        com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport.registerItems(
+                beans.getBean(com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService.class),
+                report,"adv-arrival-"+report,c.leaf(),List.of(reportItem),"实际普通叶仓");
         UUID inspection=db.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,reportItem);
         beans.getBean(com.uten.imp.features.production.quality.ProductionFqcInspectionService.class).decide(inspection,
                 new com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest("PASS",new BigDecimal(quantity),null,null,null,"adv-quality-"+report));
@@ -691,10 +690,15 @@ class WorkshopSupplyAdversarialEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "SUB-" + tag, "普通子仓-" + tag, w.warehouseId());
-        db.update("""
-                INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable,is_line_side,workshop_department_id)
-                VALUES(?,?,?,?,'使用',TRUE,TRUE,?)
-                """, lineSide, "LS-" + tag, "线边仓-" + tag, w.warehouseId(), workshop);
+        // ADR-147 (V800): 内料仓与开通行同生共死 (提交时校验), 直送只送已开通内料仓的车间; 两行同一事务写。
+        new org.springframework.transaction.support.TransactionTemplate(
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status -> {
+            db.update("""
+                    INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable,is_line_side,workshop_department_id)
+                    VALUES(?,?,?,?,'使用',TRUE,TRUE,?)
+                    """, lineSide, "LS-" + tag, "线边仓-" + tag, w.warehouseId(), workshop);
+            db.update("INSERT INTO workshop_bins(workshop_department_id,bin_warehouse_id) VALUES(?,?)", workshop, lineSide);
+        });
         fixture.loginAs(w.superAdminUserId());
 
         UUID order = fixture.createApprovedOrder(w, parent, "100", "100");

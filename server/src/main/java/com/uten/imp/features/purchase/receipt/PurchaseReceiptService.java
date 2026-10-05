@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.receipt;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
@@ -284,7 +285,7 @@ public class PurchaseReceiptService {
             throw new ApiException(ErrorCode.BUSINESS, "收货单需指定仓库");
         }
         if (warehouseScopes != null) {
-            warehouseScopes.requireActiveLeafWarehouse(r.getWarehouseId(), "入库仓库");
+            warehouseScopes.require(r.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         }
         List<PurchaseReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
@@ -486,7 +487,7 @@ public class PurchaseReceiptService {
         r.setSupplierId(req.getSupplierId());
         // V476 运营红线：收货入库必须落到具体叶子仓；主仓库只作查询聚合。
         if (warehouseScopes != null) {
-            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "入库仓库");
+            warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());

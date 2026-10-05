@@ -109,6 +109,7 @@ public class ProductionReadinessReconciler {
                         AND stock.color_id IS NOT DISTINCT FROM demand.color_id AND stock.qty>0
                     JOIN warehouses warehouse ON warehouse.id=stock.warehouse_id
                         AND NOT warehouse.is_deleted AND warehouse.is_accountable
+                        AND NOT warehouse.is_defective
                         AND fn_warehouse_is_operational_leaf(warehouse.id)
                     WHERE demand.execution_segment_id=segment.id AND NOT demand.is_deleted
                       AND demand.status NOT IN ('RELEASED','REVERSED')

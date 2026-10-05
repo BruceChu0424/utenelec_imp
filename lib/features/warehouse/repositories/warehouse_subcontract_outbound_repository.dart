@@ -6,6 +6,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/subcontract_outbound.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 class WarehouseSubcontractOutboundRepository {
@@ -71,9 +72,10 @@ final warehouseSubcontractOutboundRepositoryProvider =
 /// 等子件到货的任务按 ADR-101 不计(仓库此刻办不了), 走下面那支黄的。
 ///
 /// 随工作台徽章汇总一次带回(ADR-108, 原端点 /warehouse/subcontract-outbound/tasks/count),
-/// 汇总未到/无权为 null。hub「出库任务中心」卡的红数由服务端目录算好。
-final warehouseSubcontractOutboundCountProvider = Provider<int?>(
-  (ref) => ref.watch(badgeFactOrNullProvider(BadgeFact.subcontractOutbound)),
+/// 与列表同一服务端仓库范围(ADR-149); 汇总未到/无权为 null。hub「出库任务中心」卡的红数由服务端目录算好。
+final warehouseSubcontractOutboundCountProvider = Provider.autoDispose<int?>(
+  (ref) =>
+      ref.watch(warehouseTaskFactOrNullProvider(BadgeFact.subcontractOutbound)),
 );
 
 /// 黄: 等子件到货的待出仓任务数(有待出量、子件一件都没到)。
@@ -81,8 +83,10 @@ final warehouseSubcontractOutboundCountProvider = Provider<int?>(
 /// 只画在出库任务中心的分段上, 不进任何徽章入口: 这些委外单已在委外任务中心的
 /// IN_PROGRESS 黄数里, 仓库再数一遍是跨卡双计(准则 14 §四之八)。
 final warehouseSubcontractOutboundWaitingComponentCountProvider =
-    Provider<int?>(
+    Provider.autoDispose<int?>(
       (ref) => ref.watch(
-        badgeFactOrNullProvider(BadgeFact.subcontractOutboundWaitingComponent),
+        warehouseTaskFactOrNullProvider(
+          BadgeFact.subcontractOutboundWaitingComponent,
+        ),
       ),
     );

@@ -76,7 +76,7 @@ class InventoryPositionPostgresTest {
         }
         db.execute(consumptionReturns.substring(0,consumptionReturns.indexOf("-- Correcting an explicit material settlement")));
         db.execute("ALTER TABLE stock_value_production_cost_objects ADD COLUMN source_kind text NOT NULL DEFAULT 'PRODUCTION_EXECUTION', ADD COLUMN business_refresh_pending boolean NOT NULL DEFAULT false");
-        db.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,warehouse_id uuid,status smallint,is_deleted boolean DEFAULT false)");
+        db.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,warehouse_id uuid,status smallint,is_deleted boolean DEFAULT false,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text)");
         db.execute("CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,execution_segment_id uuid)");
         try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V527__unused_procurement_stock_in_reversal.sql")){
             db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));

@@ -8,7 +8,6 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.stock.StockCostMasker;
-import com.uten.imp.features.stock.StockWarehouseScope;
 import com.uten.imp.features.stock.insight.WarehouseInsightSql.Scope;
 import com.uten.imp.features.stock.insight.WarehouseInsightSql.Window;
 import com.uten.imp.features.stock.insight.dto.CycleCountRow;
@@ -75,14 +74,14 @@ public class WarehouseInsightService {
     // ================================================================== 呆滞与库龄
 
     @Transactional(readOnly = true)
-    public WarehouseHealthPage health(UUID warehouseId, String warehouseScope, UUID categoryId, String keyword,
+    public WarehouseHealthPage health(UUID scopeWarehouseId, UUID categoryId, String keyword,
                                       String abc, boolean onlyDead, boolean agedOver180, int page, int size,
                                       String sort, String order) {
-        return health(warehouseId, warehouseScope, categoryId, keyword, abc, onlyDead, agedOver180, page, size,
+        return health(scopeWarehouseId, categoryId, keyword, abc, onlyDead, agedOver180, page, size,
                 sort, order, BusinessTime.today());
     }
 
-    WarehouseHealthPage health(UUID warehouseId, String warehouseScope, UUID categoryId, String keyword, String abc,
+    WarehouseHealthPage health(UUID scopeWarehouseId, UUID categoryId, String keyword, String abc,
                                boolean onlyDead, boolean agedOver180, int page, int size, String sort, String order,
                                LocalDate asOf) {
         boolean canViewCost = costMasker.canView();
@@ -92,7 +91,7 @@ public class WarehouseInsightService {
         if (abc != null && !abc.isBlank() && !Set.of("A", "B", "C", "N").contains(abc.strip().toUpperCase())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "ABC 分类只能是 A/B/C/N");
         }
-        Scope scope = scope(warehouseId, warehouseScope);
+        Scope scope = scope(scopeWarehouseId);
         MapSqlParameterSource params = WarehouseInsightSql.params(scope, Window.of(asOf));
         List<InsightFacts.Health> facts = db.query(WarehouseInsightSql.health(scope, false), params,
                 (rs, i) -> healthFact(rs));
@@ -128,14 +127,13 @@ public class WarehouseInsightService {
     // ================================================================== 盘点建议
 
     @Transactional(readOnly = true)
-    public PageResponse<CycleCountRow> cycleCount(UUID warehouseId, String warehouseScope, boolean showAll, int page,
-                                                  int size) {
-        return cycleCount(warehouseId, warehouseScope, showAll, page, size, BusinessTime.today());
+    public PageResponse<CycleCountRow> cycleCount(UUID scopeWarehouseId, boolean showAll, int page, int size) {
+        return cycleCount(scopeWarehouseId, showAll, page, size, BusinessTime.today());
     }
 
-    PageResponse<CycleCountRow> cycleCount(UUID warehouseId, String warehouseScope, boolean showAll, int page,
-                                           int size, LocalDate asOf) {
-        Scope scope = scope(warehouseId, warehouseScope);
+    PageResponse<CycleCountRow> cycleCount(UUID scopeWarehouseId, boolean showAll, int page, int size,
+                                           LocalDate asOf) {
+        Scope scope = scope(scopeWarehouseId);
         MapSqlParameterSource params = WarehouseInsightSql.params(scope, Window.of(asOf));
         List<CycleCountRow> rows = new ArrayList<>(db.query(WarehouseInsightSql.cycleCount(scope), params,
                         (rs, i) -> cycleFact(rs)).stream()
@@ -253,9 +251,9 @@ public class WarehouseInsightService {
             return Map.of();
         }
         List<WeightParamsRequest.Line> lines = goodsIds.stream()
-                .map(id -> new WeightParamsRequest.Line(id.toString(), id, null)).toList();
+                .map(id -> new WeightParamsRequest.Line(id, null)).toList();
         Map<UUID, WeightParams> byGoods = new HashMap<>();
-        for (WeightParams p : weights.params(lines)) {
+        for (WeightParams p : weights.params(lines).items()) {
             byGoods.put(p.goodsId(), p);
         }
         return byGoods;
@@ -286,18 +284,12 @@ public class WarehouseInsightService {
     // ================================================================== helpers
 
     /**
-     * 仓库范围: 指定仓库 (含下级) 优先; 否则 warehouseScope=MINE 取「我的仓库」(与仓库任务中心同一口径:
-     * 还没人登记负责人、或本人负责全部在用仓库时等于不过滤); 都没给 = 默认范围。
+     * 仓库范围(ADR-149, 与仓库任务中心同一判定): 服务端按本人仓库数据范围强制; scopeWarehouseId = 在可选范围
+     * 内挑一个仓(含下级), 越界 403。不限范围(主管、或还没登记任何子仓负责人)时 = 默认范围。
      */
-    private Scope scope(UUID warehouseId, String warehouseScope) {
-        if (warehouseId != null) {
-            return new Scope(StockWarehouseScope.subtreeOf(db, warehouseId));
-        }
-        if (warehouseScope == null || warehouseScope.isBlank()) {
-            return Scope.defaultScope();
-        }
-        WarehouseTaskScopePort.WarehouseTaskScope mine = warehouseScopes.resolve(warehouseScope, null);
-        return mine.active() ? new Scope(Set.copyOf(mine.warehouseIds())) : Scope.defaultScope();
+    private Scope scope(UUID scopeWarehouseId) {
+        WarehouseTaskScopePort.WarehouseTaskScope resolved = warehouseScopes.current(scopeWarehouseId);
+        return resolved.active() ? new Scope(Set.copyOf(resolved.warehouseIds())) : Scope.defaultScope();
     }
 
     private Set<UUID> categorySubtree(UUID categoryId) {

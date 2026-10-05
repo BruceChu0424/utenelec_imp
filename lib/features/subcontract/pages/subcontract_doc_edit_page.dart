@@ -26,6 +26,7 @@ import '../../../shared/models/historical_receipt_facts.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/warehouse_defective_tag.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -246,6 +247,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           if (last.items.isNotEmpty &&
               WarehouseSelection(
                 ref.read(mn.masterNameServiceProvider).warehouseHierarchy,
+                use: widget.docType.warehouseUse,
               ).selectableIds.contains(last.items.first.warehouseId)) {
             _warehouseId = last.items.first.warehouseId;
           }
@@ -1186,6 +1188,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     required: _cfg.warehouseRequired,
                     items: warehouseHierarchyItems(
                       names.warehouseHierarchy,
+                      use: widget.docType.warehouseUse,
+                      defectiveTag: warehouseL10n(
+                        context,
+                      ).warehouseDefectiveTag,
                       currentValue: _warehouseId,
                     ),
                     onChanged: (v) => setState(() => _warehouseId = v),

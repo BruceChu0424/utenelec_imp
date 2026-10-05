@@ -45,7 +45,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 车间直送 v2(V595 / ADR-089)的用户口径回归：
  *
  * <ol>
- *   <li>「部分开工 · 持续生产」：子件全由同车间直送时一键开工，线边仓由系统自动配置；
+ *   <li>「部分开工 · 持续生产」：子件全由同车间直送时一键开工(收料车间先开通内料仓, ADR-147)；
  *       之后每一笔直送审核自动补投，报工量以已到料折算封顶，最后一次报工后余量释放；</li>
  *   <li>混合链：仓库物料缺时开不了工(报出缺什么)，领齐仓库料才开工，直送子件照旧分次到料；</li>
  *   <li>线边仓里的直送料只归指名的父件，别的任务看不见、拿不走；</li>
@@ -77,6 +77,8 @@ class WorkshopContinuousSupplyEndToEndTest {
     @Autowired ProductionDrawRequestService drawRequests;
     @Autowired StockDocService stock;
     @Autowired StockQueryService stockQuery;
+    @Autowired com.uten.imp.features.warehouse.materialbin.WorkshopBinService bins;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     FullChainEndToEndTest fixture;
 
     @BeforeEach
@@ -93,8 +95,8 @@ class WorkshopContinuousSupplyEndToEndTest {
     @Test
     void allDirectChildrenStartAtOnceAndEachTransferTopsUpTheRunningParent() {
         Case c = create("cs-all", false);
-        // 线边仓不预建：第一笔直送时由系统按「车间 × 主仓」自动配置。
-        assertEquals(0, lineSideCount(c.workshop()));
+        // ADR-147：直送不再自动建仓；收料车间在「车间内料仓」开通过(夹具里开通)，一个车间一个内料仓。
+        assertEquals(1, lineSideCount(c.workshop()));
         fixture.loginAs(c.workerUser());
         // V599：先确认「持续生产」路线，才能按持续生产开工。
         confirmRoute(c.plan(), c.segment(), "CONTINUOUS");
@@ -111,7 +113,7 @@ class WorkshopContinuousSupplyEndToEndTest {
                 "SELECT continuous_supply FROM production_execution_segments WHERE id=?", Boolean.class, c.segment()),
                 "路线已确认；开工被拒不会取消用户选择的持续路线");
 
-        // 子件先报工直送 40 套：料落进自动配置的线边仓，父件仍在等待物料。
+        // 子件先报工直送 40 套：料落进收料车间已开通的内料仓，父件仍在等待物料。
         var waitingListing = directTransfers.candidates(c.childSegment(), c.child(), null);
         assertEquals(1, waitingListing.candidates().size());
         assertEquals("WAITING", waitingListing.candidates().getFirst().executionSegmentStatus());
@@ -119,8 +121,10 @@ class WorkshopContinuousSupplyEndToEndTest {
         UUID lineSide = db.queryForObject("""
                 SELECT id FROM warehouses WHERE is_line_side AND workshop_department_id=? AND NOT is_deleted
                 """, UUID.class, c.workshop());
-        assertEquals(Boolean.TRUE, db.queryForObject("SELECT auto_created FROM warehouses WHERE id=?", Boolean.class, lineSide),
-                "线边仓由系统自动配置");
+        assertEquals(lineSide, bins.openedBinOf(c.workshop()).orElseThrow(), "直送落进开通记录里的那个内料仓");
+        assertEquals(Boolean.FALSE, db.queryForObject("SELECT auto_created FROM warehouses WHERE id=?", Boolean.class, lineSide),
+                "内料仓由开通命令建出, 不是直送自动配置");
+        assertEquals(1, lineSideCount(c.workshop()), "直送不另建内料仓");
         assertEquals(c.world().warehouseId(), db.queryForObject("SELECT parent_id FROM warehouses WHERE id=?", UUID.class, lineSide),
                 "线边仓挂在收料主仓下(同主仓分仓领料前提)");
         qty("0", balance(lineSide, c.child()));
@@ -374,7 +378,7 @@ class WorkshopContinuousSupplyEndToEndTest {
             UUID leaf, UUID planItem) {
     }
 
-    /** 父件→自制子件→真实原料；主仓下挂普通叶仓，不预建线边仓。 */
+    /** 父件→自制子件→真实原料；主仓下挂普通叶仓，收料车间开通内料仓(来源仓 = 普通叶仓)。 */
     private Case create(String tag, boolean withBuyMaterial) {
         var w = fixture.seedWorld(tag);
         fixture.loginAs(w.superAdminUserId());
@@ -408,6 +412,8 @@ class WorkshopContinuousSupplyEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "SUB-" + tag, "普通子仓-" + tag, w.warehouseId());
+        // ADR-147 (V800)：直送只送已开通内料仓的车间；内料仓挂在来源仓的主仓下(同主仓分仓领料前提)。
+        com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.open(bins, transactionManager, workshop, leaf);
         fixture.loginAs(w.superAdminUserId());
 
         UUID order = fixture.createApprovedOrder(w, parent, "100", "100");

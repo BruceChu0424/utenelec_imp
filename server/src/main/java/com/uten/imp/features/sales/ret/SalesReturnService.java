@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.ret;
 
+import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -277,7 +278,7 @@ public class SalesReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "退货单需指定仓库");
         }
         if (warehouseScopes != null) {
-            warehouseScopes.requireActiveLeafWarehouse(r.getWarehouseId(), "入库仓库");
+            warehouseScopes.require(r.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         }
         if (r.getClientId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "退货单需指定客户");
@@ -1163,7 +1164,7 @@ public class SalesReturnService {
         r.setClientId(req.getClientId());
         // V476 运营红线：退货入库必须落到具体叶子仓。
         if (warehouseScopes != null) {
-            warehouseScopes.requireNewLeafSelection(r.getWarehouseId(), req.getWarehouseId(), "仓库");
+            warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "仓库", WarehouseUse.GOOD_IN);
         }
         r.setWarehouseId(req.getWarehouseId());
         r.setCurrencyId(req.getCurrencyId());

@@ -34,6 +34,10 @@ import java.util.UUID;
  * <p>幂等性：调用方负责不重复调用（单据审核状态机保证 status 仅 0→1 一次）。
  * 红冲（1→-1）由调用方以反方向 movement 冲销。
  *
+ * <p>仓库用途(ADR-146): 每笔流水先按出入库类别矩阵({@link WarehouseClassMovementRule})核对落仓类别——
+ * 良品业务不进出不良品仓, 调拨按调拨类型判定两端; 数据库 fn_guard_stock_movement_warehouse_class 兜底。
+ * 不良品仓不参与可用量, 没有预留和安全库存, 从不良品仓出库只守非负底线。
+ *
  * <p>仓库重量账(ADR-135): 重量是仓库自己的平行账, 永远不挡数量过账。每笔流水在同一把库存锁下按
  * 精确换算 > 调拨对应 > 红冲镜像 > 实称/切片 > 均重/单重估算 定出重量与来历, 余额重量整值改写,
  * 需要时先补「重量起算 / 尾差调整」行(见 weight.StockWeightResolver)。
@@ -198,6 +202,8 @@ public class StockService {
             throw new IllegalArgumentException("inventory movement weight must not be negative");
         }
         InventoryMovementCostReference.WorkshopMaterialBin bin = workshopMaterialBin(req);
+        WarehouseClass warehouseClass = requireWarehouseClass(req);
+        boolean defectiveWarehouse = warehouseClass.defective();
         // Re-entrant when the top-level document already batch-locked its keys;
         // mandatory as a safe fallback for future single-movement callers.
         inventoryLock.lock(new InventoryKey(req.goodsId(), req.colorId()));
@@ -235,8 +241,13 @@ public class StockService {
             // 的调出一侧只扣有效预留、不扣安全库存(料仍在本厂, 只是换了存放位置)。
             boolean binIssue = bin != null
                     && bin.kind() == InventoryMovementCostReference.WorkshopMaterialBinKind.ISSUE_OUT;
+            // ADR-146: 不良品仓不参与可用量(上面没有任何预留, 安全库存只管良品), 出库只守非负底线。
+            // 「转不良品仓」的调出一侧与盘亏一样是在记录事实(这些货已经判为不良, 不再是良品):
+            // 不能被预留或安全库存挡住, 只守非负底线; 因此失去实物支撑的预留由建单方在同一事务里列出提醒。
             if (req.movementType() != TYPE_CHECK_LOSS
                     && !REVERSAL_RETURN_TYPES.contains(req.movementType())
+                    && !defectiveWarehouse
+                    && !warehouseClass.quarantineLeg()
                     && (bin == null || binIssue)) {
                 boolean allocatedProductionIssue = false;
                 if (req.costReference() instanceof InventoryMovementCostReference.WorkshopReturn returned) {
@@ -322,6 +333,40 @@ public class StockService {
                     req.goodsId(), req.colorId(), req.warehouseId()));
         }
         return new PostedMovement(m.getId(), weight.weightKg(), weight.source(), false);
+    }
+
+    /**
+     * 这笔流水所在仓的类别事实: 是不是不良品仓; 是不是「转不良品仓」的调出一侧(从良品仓移走判为不良的货)。
+     */
+    private record WarehouseClass(boolean defective, boolean quarantineLeg) {
+        static final WarehouseClass GOOD = new WarehouseClass(false, false);
+    }
+
+    /**
+     * ADR-146 出入库类别校验: 按矩阵核对这笔流水能不能落在这个仓, 不能就给出中文原因。
+     * 返回这个仓的类别事实(出库可动量口径要用)。手工 new 的纯单测查不到仓时按良品仓处理。
+     */
+    private WarehouseClass requireWarehouseClass(MovementRequest req) {
+        boolean transferLeg = (req.movementType() == 7 || req.movementType() == 8)
+                && com.uten.imp.features.stock.StockDocService.SRC_STOCK_DOC.equals(req.sourceDocType());
+        List<StockBalanceRepository.WarehouseClassFacts> rows = balanceRepo.warehouseClassFacts(
+                req.warehouseId(), transferLeg ? req.sourceDocId() : null);
+        if (rows == null || rows.isEmpty()) return WarehouseClass.GOOD;
+        StockBalanceRepository.WarehouseClassFacts facts = rows.getFirst();
+        boolean defective = Boolean.TRUE.equals(facts.getDefective());
+        WarehouseClassMovementRule.TransferSide transfer = facts.getTransferKind() == null ? null
+                : new WarehouseClassMovementRule.TransferSide(facts.getTransferKind(),
+                        facts.getFromId() == null ? null : Boolean.TRUE.equals(facts.getFromDefective()),
+                        facts.getToId() == null ? null : Boolean.TRUE.equals(facts.getToDefective()),
+                        req.warehouseId().equals(facts.getFromId()) || req.warehouseId().equals(facts.getToId()));
+        String violation = WarehouseClassMovementRule.violation(req.movementType(), defective, transfer);
+        if (violation != null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    WarehouseClassMovementRule.message(violation, facts.getName(), req.movementType()));
+        }
+        boolean quarantineLeg = transfer != null && "TO_DEFECTIVE".equals(transfer.kind())
+                && req.direction() == DIR_OUT && !defective && req.warehouseId().equals(facts.getFromId());
+        return new WarehouseClass(defective, quarantineLeg);
     }
 
     /** 估值幂等重放: 不再记账, 按已落库的原流水回报重量。 */

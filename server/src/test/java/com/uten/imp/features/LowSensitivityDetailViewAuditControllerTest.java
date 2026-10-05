@@ -127,7 +127,7 @@ class LowSensitivityDetailViewAuditControllerTest {
         when(warehouseService.detail(warehouseId)).thenReturn(warehouse);
         assertSame(warehouse,
                 new WarehouseController(warehouseService, null, recorder,
-                        null, null, null, null, null).detail(warehouseId));
+                        null, null, null, null, null, null).detail(warehouseId));
         verify(recorder).record(
                 "view_warehouse_detail", "warehouses", warehouseId, "WH-01", 5, "仓库");
 

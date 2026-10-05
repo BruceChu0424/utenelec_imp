@@ -42,17 +42,22 @@ enum InboundRoute {
 
   bool get isStockInFirst => this == InboundRoute.stockInFirst;
 
-  /// 批量登记页路由参数：`?preStock=1` = 先入库后质检；不带 = 先质检后入库。
+  /// 登记页路由参数(ADR-151 §5 单批合一)：`?preStock=1` = 先入库后质检，`?preStock=0` = 先质检后入库，
+  /// 不带 = 双击进来没选路线(两条路线按钮并排)。
   static const queryKey = 'preStock';
 
-  static InboundRoute fromQuery(Map<String, String> query) =>
-      query[queryKey] == '1' ? stockInFirst : inspectFirst;
+  static InboundRoute? fromQuery(Map<String, String> query) =>
+      switch (query[queryKey]) {
+        '1' => stockInFirst,
+        '0' => inspectFirst,
+        _ => null,
+      };
 
-  /// 把路线挂到批量登记页地址上(已有 query 时追加)。
-  String appendTo(String location) {
-    if (!isStockInFirst) return location;
-    return '$location${location.contains('?') ? '&' : '?'}$queryKey=1';
-  }
+  String get queryValue => isStockInFirst ? '1' : '0';
+
+  /// 把路线挂到登记页地址上(已有 query 时追加)。
+  String appendTo(String location) =>
+      '$location${location.contains('?') ? '&' : '?'}$queryKey=$queryValue';
 
   /// 提交按钮键(两类登记页同一套，测试与自动化按路线取按钮)。
   Key get submitKey => Key('inbound-route-submit-$name');

@@ -8,6 +8,8 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
+import '../../../../core/l10n/gen/app_localizations.dart';
+import '../../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -241,7 +243,8 @@ class StockCountInlineController extends ChangeNotifier {
         throw FormatException('${row.snapshot.goodsName}：${row.validation}');
       }
     }
-    // 2026-10-02 用户口径：盘点说明选填（例行盘点常无话可说）；长度上限交服务端把关。
+    // 盘点说明选填(2026-10-02 用户口径, V795/ADR-151)：原样提交，空白归一与
+    // 500 字上限都由服务端判定，前端不另设必填。
     final explanation = reason.text.trim();
     final lines = [for (final row in changed) row.payload(selected.isWorkshop)];
     final key = businessIdempotencyKey(
@@ -346,6 +349,43 @@ class StockCountInlineCell extends StatelessWidget {
       );
     },
   );
+}
+
+/// 盘点说明输入框：内料仓页与即时库存页共用这一个(controller 自带的输入)，
+/// 标签「盘点说明(选填)」，不在前端判必填；超长由服务端回 422 说明。
+class StockCountReasonField extends StatelessWidget {
+  const StockCountReasonField({
+    super.key,
+    required this.controller,
+    this.maxWidth = 320,
+  });
+  final StockCountInlineController controller;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) => ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: TextField(
+          key: const Key('stock-count-reason'),
+          controller: controller.reason,
+          enabled: !controller.busy,
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              labelText: l10n.stockCountReasonLabel,
+              hintText: l10n.stockCountReasonHint,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// One toolbar shared by both existing inventory tables; no replacement table or separate count layout.
@@ -560,21 +600,7 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           // 2026-10-02 用户口径：盘点说明放最左、选填；「已改 N 项」计数退役。
-          SizedBox(
-            width: 240,
-            child: TextField(
-              key: const Key('stock-count-reason'),
-              controller: controller.reason,
-              enabled: !controller.busy,
-              decoration: const UtenInputDecoration(
-                InputDecoration(
-                  isDense: true,
-                  labelText: '盘点说明（选填）',
-                  hintText: '例如上线清点或例行盘点',
-                ),
-              ),
-            ),
-          ),
+          StockCountReasonField(controller: controller, maxWidth: 240),
           Text(
             '${controller.warehouse!.name} · ${controller.warehouse!.reviewerLabel}审核',
           ),

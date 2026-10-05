@@ -6404,9 +6404,7 @@ public class MaterialAnalysisService {
                        COALESCE(v.on_hand_qty,0), COALESCE(v.reserved_qty,0),
                        GREATEST(COALESCE(v.available_qty,0),0),
                        COALESCE(own.own_qty,0),
-                       (NOT w.is_defective
-                        AND NOT w.is_line_side
-                        AND fn_warehouse_is_operational_leaf(w.id)
+                       (fn_warehouse_counts_as_usable(w.id)
                         AND (CAST(:warehouseId AS uuid) IS NULL
                              OR fn_warehouse_same_main(v.warehouse_id,CAST(:warehouseId AS uuid)))) AS public_allowed
                 FROM v_stock_available v
@@ -6444,6 +6442,8 @@ public class MaterialAnalysisService {
                 ) own ON TRUE
                 WHERE v.goods_id IN (SELECT unnest(CAST(string_to_array(:goodsIds, ',') AS uuid[])))
                   AND w.is_deleted = FALSE AND w.is_accountable = TRUE
+                  -- ADR-146: 不良品仓的货不算物料「库存」, 合格专属来源在不良品仓也不再算可用(废止 ADR-075 第 2 条)。
+                  AND NOT w.is_defective
                   AND (CAST(:warehouseId AS uuid) IS NULL
                        OR fn_warehouse_same_main(v.warehouse_id,CAST(:warehouseId AS uuid))
                        OR v.warehouse_id=ANY(CAST(string_to_array(:qualifiedWarehouses,',') AS uuid[])))
@@ -8867,12 +8867,13 @@ public class MaterialAnalysisService {
                 FROM warehouses
                 WHERE id IN (:warehouseIds)
                   AND is_deleted = FALSE
+                  AND NOT is_defective
                   AND COALESCE(status, '') <> '禁用'
                   AND (parent_id IS NULL OR (is_accountable = TRUE
                     AND fn_warehouse_is_operational_leaf(warehouses.id)))
                 """).setParameter("warehouseIds", requested).getSingleResult();
         if (valid.longValue() != requested.size()) {
-            throw notFound("所选主仓库或历史仓库范围不存在、已禁用或不能用于物料分析");
+            throw notFound("所选主仓库或历史仓库范围不存在、已禁用、是不良品仓或不能用于物料分析");
         }
         List<UUID> result = new ArrayList<>();
         result.add(primaryWarehouseId);

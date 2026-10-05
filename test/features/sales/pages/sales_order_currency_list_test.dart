@@ -267,7 +267,7 @@ class _ShipmentListApi extends ApiClient {
     }
     if (path == '/master/warehouses/dict') {
       return const [
-        {'id': 'warehouse-1', 'name': '成品仓'},
+        {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
       ];
     }
     return const <Map<String, dynamic>>[];

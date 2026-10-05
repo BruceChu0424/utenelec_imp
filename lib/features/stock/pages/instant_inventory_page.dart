@@ -51,6 +51,7 @@ import '../../../shared/models/paged_result.dart';
 import '../models/instant_inventory_scope.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../shared/widgets/warehouse_selection.dart';
 import '../../basic_data/models/product_category_node.dart';
 import '../../basic_data/repositories/product_category_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -534,10 +535,25 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       MasterColumnDef(
         key: 'qty',
         label: '库存数量',
-        width: 110,
+        width: 150,
         type: 'number',
         sortable: true,
         value: (r) => _countEditor.addedRows[_countKey(r)]?.qty ?? _num(r.qty),
+        // ADR-146: 打开「含不良品仓」时, 数量里在不良品仓的部分另标出来。
+        cellBuilder: (context, r) {
+          final qty = _countEditor.addedRows[_countKey(r)]?.qty ?? _num(r.qty);
+          final defective = r.defectiveQty ?? 0;
+          if (defective <= 0) return Text(qty, textAlign: TextAlign.end);
+          return Text(
+            '$qty (${AppLocalizations.of(context).instantInventoryDefectivePart(_num(defective))})',
+            key: ValueKey(
+              'instant-inventory-defective-${r.goodsId}-${r.colorId}',
+            ),
+            textAlign: TextAlign.end,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
+        },
       ),
       // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算，估算「≈」、没称「未称」。
       MasterColumnDef(
@@ -805,7 +821,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       initialWarehouseId: _warehouseId,
       title: '选择仓库', // TODO(l10n): 补 arb
       includeAll: true,
-      allowParent: true,
+      use: WarehouseUse.query,
     );
     if (!mounted || result == null) return;
     final next = result.isAll ? null : result.id;

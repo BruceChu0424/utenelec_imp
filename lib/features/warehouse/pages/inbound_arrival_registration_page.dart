@@ -1,20 +1,18 @@
-// 仓库批量登记实际到货页（/warehouse/inbound/receipts/batch）。
+// 登记实际到货页(/warehouse/inbound/arrivals/register；ADR-151 §5 单批合一)。
+//
+// 入库任务中心「预计到货」双击 = 1 个来源、多选 = N 个来源，都进这一个页面；来源身份走
+// `?expectationIds=`(刷新、草稿恢复都能从服务端重新读到同一批任务)，路线走 `?preStock=1|0`
+// (多选时选定的路线)，双击进来不带路线时两条路线按钮并排。
 //
 // 2026-09-27 用户口径「产成品入库与采购/委外入库 UI、逻辑、表格、记忆都一样」：本页与
-// 产成品批量登记页(production_finished_arrival_batch_registration_page)同一骨架，
+// 产成品登记页(production_finished_arrival_registration_page)同一骨架，
 // 路线按钮 / 共用列 / 仓库格 / 库位建议 / 选仓记忆都走 inbound_registration_* 共用层；
 // 改仓后按「该仓 × 货品 × 颜色记住的库位 → 货品资料通用库位」重新带出库位(黄框待核对)。
-//
-// 入库任务中心「预计到货」多选「先质检后入库」/「先入库后质检」的落点（2026-09-06）：把多张
-// 采购/委外订货单的待登记明细汇成一张行级表——本次实收默认=批准剩余、入库仓库
-// 行级必填（建议仓预填；**勾选多行后在其中任意一行改仓/写库位即整批落值**，
-// 2026-09-11 起不再有表头上方的批量按钮，并记住上次所落仓与库位下次自动带），
-// 一次提交按
-// 「订货单 × 入库仓库」分组逐张登记并送检（与单张登记页同一条
-// registerArrival + 内容派生幂等键链路；部分失败可原地重试不重复登记）。
-// 仅断点「已登记 · 待送检」的草稿单不走本页（列表内直接批量送检）。
-// 实称重量(ADR-135)与单张页同一口径：数量组之后录净重(可选)，按各行订货单供应商
-// 学到的单重核对；称重计数默认只记重量；重量与「按称重改数量」随明细提交并计入幂等键。
+// 本次实收默认=批准剩余、入库仓库行级必填(建议仓预填；**勾选多行后在其中任意一行改仓/写库位
+// 即整批落值**)。提交 = 一个服务端命令、一个事务：服务端按「订货单 × 入库仓库」分组逐张登记并
+// 送检；某张实到超量时只隔离那张，其余照常。超收容差与超量判定沿用收货审核既有规则。
+// 实称重量(ADR-135)：数量组之后录净重(可选)，按各行订货单供应商学到的单重核对；称重计数默认
+// 只记重量；重量与「按称重改数量」随明细提交并计入幂等键。
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -29,6 +27,7 @@ import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/measurement/weight_mass_units.dart';
 import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
@@ -40,7 +39,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -50,7 +48,6 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
-import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -79,46 +76,48 @@ import '../providers/warehouse_count_refresh.dart';
 import '../repositories/warehouse_place_suggestion_repository.dart';
 import '../widgets/batch_place_fill_dialog.dart';
 import '../widgets/inbound_registration_widgets.dart';
+import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 import '../repositories/procurement_inbound_repository.dart';
 
-class WarehouseArrivalBatchReceiptPage extends ConsumerStatefulWidget {
-  const WarehouseArrivalBatchReceiptPage({
+class InboundArrivalRegistrationPage extends ConsumerStatefulWidget {
+  const InboundArrivalRegistrationPage({
     super.key,
-    this.prefills,
+    required this.expectationIds,
     this.canRegister,
-    this.stockInBeforeInspection = false,
+    this.route,
   });
 
-  /// 入库任务中心多选带入的预计到货预填（每张=一张订货单）；空 = 直达兜底。
-  final List<ProcurementReceiptPrefill>? prefills;
+  /// 来源预计到货任务(1..N)：双击 = 1 个，多选 = N 个；每个 = 一张订货单。
+  final List<String> expectationIds;
 
   /// 仅供独立预览/测试覆盖；正式路由为空时从当前登录权限实时推导。
   final bool? canRegister;
 
-  /// 任务中心进页时选定的路线(2026-09-20 用户口径：本页只显示所选那条路线的
-  /// 提交按钮，不再并排两个)：true = 「先入库后质检(N)」直达(`?preStock=1`)，
-  /// 库位列进页即必填红框；false = 「先质检后入库(N)」(原「批量登记送检」)直达，
-  /// 走原登记送检流程。
-  final bool stockInBeforeInspection;
+  /// 任务中心多选时选定的路线(`?preStock=1|0`)，右下只显示这一条路线的提交按钮；
+  /// 为空 = 双击进来，两条路线按钮并排，点哪条走哪条。
+  final InboundRoute? route;
 
   @override
-  ConsumerState<WarehouseArrivalBatchReceiptPage> createState() =>
-      _WarehouseArrivalBatchReceiptPageState();
+  ConsumerState<InboundArrivalRegistrationPage> createState() =>
+      _InboundArrivalRegistrationPageState();
 }
 
-class _WarehouseArrivalBatchReceiptPageState
-    extends ConsumerState<WarehouseArrivalBatchReceiptPage>
-    with FormDraftMixin<WarehouseArrivalBatchReceiptPage> {
+class _InboundArrivalRegistrationPageState
+    extends ConsumerState<InboundArrivalRegistrationPage>
+    with FormDraftMixin<InboundArrivalRegistrationPage> {
   @override
   bool get formDraftBusy => _saving;
   @override
   bool get formDraftCanReplaySubmission => true;
   @override
-  FormDraftSpec get formDraftSpec => FormDraftCatalog.arrivalBatch.spec(
-    title: '批量登记实际到货',
-    route: RouteName.warehouseArrivalReceiptBatch,
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.arrival.spec(
+    title: '登记实际到货',
+    route: RoutePath.warehouseArrivalRegistration(
+      widget.expectationIds,
+      stockInBeforeInspection: widget.route?.isStockInFirst,
+    ),
   );
   @override
   Iterable<Listenable> get formDraftListenables => [
@@ -139,7 +138,7 @@ class _WarehouseArrivalBatchReceiptPageState
     'receiverId': _receiverId,
     'registrationId': _registrationId,
     'removedLineCount': _removedLineCount,
-    'stockInBeforeInspection': _route.isStockInFirst,
+    'route': _route?.name,
     'employees': draftEmployees(_empCache),
     'prefills': {
       for (final line in _lines)
@@ -169,10 +168,14 @@ class _WarehouseArrivalBatchReceiptPageState
     _receiverId = data['receiverId'] as String?;
     _registrationId = draftText(data, 'registrationId');
     _removedLineCount = data['removedLineCount'] as int? ?? 0;
-    _route =
-        data['stockInBeforeInspection'] == true && _canStockInBeforeInspection
-        ? InboundRoute.stockInFirst
-        : InboundRoute.inspectFirst;
+    final savedRoute = InboundRoute.values
+        .where((route) => route.name == data['route'])
+        .firstOrNull;
+    _route = savedRoute == null
+        ? null
+        : savedRoute.isStockInFirst && !_canStockInBeforeInspection
+        ? InboundRoute.inspectFirst
+        : savedRoute;
     restoreDraftEmployees(_empCache, data['employees']);
     final prefills = draftMap(data['prefills']).map(
       (key, value) =>
@@ -218,7 +221,7 @@ class _WarehouseArrivalBatchReceiptPageState
   final _remark = TextEditingController();
   final _scrollCtl = ScrollController();
 
-  /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
+  /// 明细表 sticky 表头是否已置顶(页面滚动条门控：置顶前不显示，置顶后才显示)。
   final _gridPinned = ValueNotifier<bool>(false);
   final _lineGrid = UtenEditableGridController<_BatchArrivalLine>();
   late final _suggestions = InboundPlaceSuggestionLoader(
@@ -239,11 +242,14 @@ class _WarehouseArrivalBatchReceiptPageState
 
   String _registrationId = const Uuid().v4();
   int _removedLineCount = 0;
+  String? _loadError;
 
-  /// 本页路线由任务中心进页时定死(2026-09-20 起底部只有一个提交按钮，与产成品批量页
-  /// 同一口径)：「先入库后质检」= 登记送检的同一事务里把每行按库位上架(库位必填)；
-  /// 「先质检后入库」= 原登记送检流程。进页或提交时发现没有独立权限则退回原流程并提示。
-  InboundRoute _route = InboundRoute.inspectFirst;
+  /// 多选时任务中心选定的路线：「先入库后质检」= 登记送检的同一事务里把每行按库位上架(库位必填)；
+  /// 「先质检后入库」= 原登记送检流程。双击进来为空，两条路线按钮并排。
+  InboundRoute? _route;
+
+  /// 最近一次点的路线(两条并排时，库位列是否必填跟着它走)。
+  InboundRoute _activeRoute = InboundRoute.inspectFirst;
 
   bool get _canRegisterNow {
     final override = widget.canRegister;
@@ -358,9 +364,12 @@ class _WarehouseArrivalBatchReceiptPageState
   void initState() {
     super.initState();
     // 进页即定路线；没有独立权限时退回「先质检后入库」(任务中心本就不显示该入口)。
-    _route = widget.stockInBeforeInspection && _canStockInBeforeInspection
-        ? InboundRoute.stockInFirst
-        : InboundRoute.inspectFirst;
+    final route = widget.route;
+    _route = route == null
+        ? null
+        : route.isStockInFirst && !_canStockInBeforeInspection
+        ? InboundRoute.inspectFirst
+        : route;
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -375,8 +384,7 @@ class _WarehouseArrivalBatchReceiptPageState
   }
 
   Future<void> _init() async {
-    final prefills = widget.prefills;
-    if (prefills == null || prefills.isEmpty) {
+    if (widget.expectationIds.isEmpty) {
       try {
         await ref.read(masterNameServiceProvider).ensureLoaded();
       } catch (_) {
@@ -385,8 +393,38 @@ class _WarehouseArrivalBatchReceiptPageState
       await initializeFormDraft();
       return;
     }
-    setState(() => _loading = true);
-    await ref.read(masterNameServiceProvider).ensureLoaded();
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    final List<ProcurementReceiptPrefill> prefills;
+    try {
+      await ref.read(masterNameServiceProvider).ensureLoaded();
+      // 来源身份进页(ADR-151 §5)：按 id 从服务端重新读预计到货，与任务中心同一投影。
+      final expectations = await ref
+          .read(procurementInboundRepositoryProvider)
+          .expectationsByIds(widget.expectationIds);
+      prefills = [
+        for (final expectation in expectations) ?expectation.toReceiptPrefill(),
+      ];
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = describeSubmitError(
+          error,
+          fallback: '预计到货任务读取失败，请返回任务中心刷新',
+        );
+      });
+      try {
+        await initializeFormDraft();
+      } catch (_) {}
+      return;
+    }
+    if (!mounted) return;
+    if (prefills.length < widget.expectationIds.length) {
+      context.appWarning('部分所选任务已不可登记(可能已被其他仓库人员处理)，本页只带入仍可登记的任务');
+    }
     final meId = ref.read(sessionProvider).user?.employeeId;
     if (meId != null && meId.isNotEmpty) {
       _receiverId = meId;
@@ -397,11 +435,12 @@ class _WarehouseArrivalBatchReceiptPageState
         for (final item in prefill.items)
           _BatchArrivalLine(prefill, item, onChanged: _onLineChanged),
     ]);
-    // 进页默认全选（2026-09-17，与订货单编辑页同款）：勾选=本次要登记送检的行，
+    // 进页默认全选(2026-09-17，与订货单编辑页同款)：勾选=本次要登记送检的行，
     // 右下两个提交按钮只认勾选行；默认全选让「进来直接提交」行为不变。
     _lineGrid.setSelected(_lineGrid.rows, true);
     final selectable = WarehouseSelection(
       ref.read(masterNameServiceProvider).warehouseHierarchy,
+      use: WarehouseUse.goodIn,
     ).selectableIds;
     // 个人选仓上下文：只补空位，不覆盖来源建议仓(优先级见
     // inbound_warehouse_fill_memory.dart)。补进来的一律带黄标提示核对。
@@ -447,7 +486,7 @@ class _WarehouseArrivalBatchReceiptPageState
     if (mounted) setState(() {});
   }
 
-  /// 仅从本次批量登记移出：不写库、不改订货或到货累计（返回任务中心仍待登记）。
+  /// 仅从本次批量登记移出：不写库、不改订货或到货累计(返回任务中心仍待登记)。
   void _removeFromThisRegistration(List<_BatchArrivalLine> rows) {
     if (_saving || !_canRegisterNow || rows.isEmpty) return;
     _lineGrid.removeRows(rows);
@@ -456,17 +495,17 @@ class _WarehouseArrivalBatchReceiptPageState
     context.appInfo('已从本次登记移出 ${rows.length} 行；未写入数据库，返回任务中心后仍可继续登记送检');
   }
 
-  /// 一次改动的落值范围（对齐新建采购订货单的 `_writeTargets`）。
+  /// 一次改动的落值范围(对齐新建采购订货单的 `_writeTargets`)。
   ///
   /// 2026-09-11 起本页不再有「批量设置入库仓库 / 批量填写库位」两个常驻按钮：
   /// **勾选若干行 → 在其中任意一行改仓/写库位 = 批量落到全部选中行**；
-  /// 点的行不在选中集里（或压根没勾）就只改这一行。
+  /// 点的行不在选中集里(或压根没勾)就只改这一行。
   List<_BatchArrivalLine> _writeTargets(_BatchArrivalLine row) {
     final selected = _lineGrid.selectedRows;
     return selected.contains(row) ? selected : [row];
   }
 
-  /// 行内选仓：落到 [_writeTargets]（选中一批就整批落仓），并记住这次选的仓。
+  /// 行内选仓：落到 [_writeTargets](选中一批就整批落仓)，并记住这次选的仓。
   Future<void> _pickLineWarehouse(_BatchArrivalLine line) async {
     if (_saving) return;
     await _pickWarehouseFor(
@@ -475,7 +514,7 @@ class _WarehouseArrivalBatchReceiptPageState
     );
   }
 
-  /// 选仓核心（行内点击与右键「批量设置入库仓库」共用）：面板返回后落到目标行、
+  /// 选仓核心(行内点击与右键「批量设置入库仓库」共用)：面板返回后落到目标行、
   /// 记住这次选的仓。
   Future<void> _pickWarehouseFor(
     List<_BatchArrivalLine> targets, {
@@ -485,9 +524,10 @@ class _WarehouseArrivalBatchReceiptPageState
     final picked = await showUtenWarehousePickerPanel(
       context,
       hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
+      use: WarehouseUse.goodIn,
       initialWarehouseId: targets.first.warehouseId ?? fallbackWarehouseId,
       title: targets.length > 1
-          ? '批量设置入库仓库（选中 ${targets.length} 行）'
+          ? '批量设置入库仓库(选中 ${targets.length} 行)'
           : '选择入库仓库 · ${targets.first.item.goodsName}',
     );
     if (picked == null || !mounted) return;
@@ -511,15 +551,15 @@ class _WarehouseArrivalBatchReceiptPageState
     await _suggestions.reload(targets);
   }
 
-  /// 右键「批量设置库位号」：一次输入应用到全部选中行（整托同架场景），
+  /// 右键「批量设置库位号」：一次输入应用到全部选中行(整托同架场景)，
   /// 只作用本次选中行(成功入库后按仓库、货品和颜色学习)。
   Future<void> _batchFillStockPlace(List<_BatchArrivalLine> rows) async {
     if (_saving || rows.isEmpty) return;
     final place = await showBatchPlaceFillDialog(
       context,
       rowCount: rows.length,
-      inputKey: const Key('warehouse-arrival-batch-place-input'),
-      applyKey: const Key('warehouse-arrival-batch-place-apply'),
+      inputKey: const Key('warehouse-arrival-place-input'),
+      applyKey: const Key('warehouse-arrival-place-apply'),
     );
     if (place == null || !mounted) return;
     if (place.isEmpty) {
@@ -535,8 +575,8 @@ class _WarehouseArrivalBatchReceiptPageState
 
   /// 行内写库位：同样落到 [_writeTargets]，并记住这次写的库位号。
   ///
-  /// 逐字符同步到选中行（不等失焦），用户边打边能看到整批跟着变——与「改一行
-  /// 就是改一批」的心智一致。只改本行时什么都不用做（控件自己持有文本）。
+  /// 逐字符同步到选中行(不等失焦)，用户边打边能看到整批跟着变——与「改一行
+  /// 就是改一批」的心智一致。只改本行时什么都不用做(控件自己持有文本)。
   void _onStockPlaceChanged(_BatchArrivalLine line, String value) {
     final targets = _writeTargets(line);
     if (targets.length > 1) {
@@ -552,52 +592,156 @@ class _WarehouseArrivalBatchReceiptPageState
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  /// 按「订货单 × 入库仓库」分组（LinkedHashMap 保序）：每组一张收货单顺序登记。
-  /// 只对本次要提交的行分组（勾选行，2026-09-17 起提交集=勾选集）。
-  Map<String, List<_BatchArrivalLine>> _buildGroups(
-    List<_BatchArrivalLine> lines,
-  ) {
-    final groups = <String, List<_BatchArrivalLine>>{};
-    for (final line in lines) {
-      final key = '${line.prefill.orderId}:${line.warehouseId}';
-      groups.putIfAbsent(key, () => []).add(line);
-    }
-    return groups;
+  /// 本次会建几张收货单(确认弹窗标题用)：服务端按「订货单 × 入库仓库」分组，这里只数一数。
+  int _receiptCount(List<_BatchArrivalLine> lines) => lines
+      .map((line) => '${line.prefill.orderId}:${line.warehouseId}')
+      .toSet()
+      .length;
+
+  /// 本次实收折成基本量(预计去向按基本量算)。
+  double _lineInputBaseQty(_BatchArrivalLine line) {
+    final input = double.tryParse(line.qty.text.trim()) ?? 0;
+    final rate = line.item.unitRate.toDouble();
+    return input * (rate.isFinite && rate > 0 ? rate : 1);
   }
 
-  /// 行级跨仓预定检测（实收超过所选仓的分析预定量）：确认框警示用。
-  bool _hasCrossWarehouseAllocation(List<_BatchArrivalLine> lines) {
-    for (final line in lines) {
-      final qty = double.tryParse(line.qty.text.trim()) ?? 0;
-      final allocations = warehouseInboundAllocationForWarehouse(
-        line.item.expectedAllocations,
-        qty,
-        actualWarehouseId: line.warehouseId,
-        actualWarehouseName: _warehouseLabel(line.warehouseId) ?? '',
-        sameMainWarehouse: (target, actual) => warehousesShareMain(
-          ref.read(masterNameServiceProvider).warehouseHierarchy,
-          target,
-          actual,
+  /// 预计去向：按本次实收、换算率与本行入库仓重算分析预定(跨仓部分只作预计、转公共库存)。
+  /// 真正归属仍由 IQC 合格后的入库事务决定。
+  List<WarehouseInboundAllocation> _lineProjectedAllocations(
+    _BatchArrivalLine line,
+  ) => warehouseInboundAllocationForWarehouse(
+    line.item.expectedAllocations,
+    double.tryParse(line.qty.text.trim()) ?? 0,
+    actualWarehouseId: line.warehouseId,
+    actualWarehouseName: _warehouseLabel(line.warehouseId) ?? '',
+    sameMainWarehouse: (target, actual) => warehousesShareMain(
+      ref.read(masterNameServiceProvider).warehouseHierarchy,
+      target,
+      actual,
+    ),
+    unitRate: line.item.unitRate.toDouble(),
+  );
+
+  String _lineBaseUnitLabel(_BatchArrivalLine line) =>
+      line.item.baseUnitName?.trim().isNotEmpty == true
+      ? line.item.baseUnitName!.trim()
+      : line.item.expectedAllocations
+                .map((item) => item.baseUnitName)
+                .whereType<String>()
+                .where((name) => name.trim().isNotEmpty)
+                .firstOrNull ??
+            '基本量';
+
+  WarehouseInboundAllocationSection _lineAllocationSection(
+    _BatchArrivalLine line,
+  ) => WarehouseInboundAllocationSection(
+    id: line.item.orderItemId,
+    goodsLabel: '${line.item.goodsName}(${line.item.goodsCode})',
+    quantity: _lineInputBaseQty(line),
+    unitName: _lineBaseUnitLabel(line),
+    sourceOrderNo: line.prefill.orderBillNo,
+    allocations: _lineProjectedAllocations(line),
+  );
+
+  /// 仓库相关提示(合并自单张登记页，安全信息不随合并省略)：多仓分组说明 + 跨仓预定警告。
+  List<Widget> _warehouseNotices(ThemeData theme) {
+    final effectiveLabels = <String>{};
+    var crossLineCount = 0;
+    for (final line in _lines) {
+      final label = _warehouseLabel(line.warehouseId);
+      if (label != null) effectiveLabels.add(label);
+      if (_lineProjectedAllocations(line).any((a) => a.isCrossWarehouse)) {
+        crossLineCount++;
+      }
+    }
+    return [
+      if (effectiveLabels.length > 1)
+        _noticeContainer(
+          theme,
+          color: theme.colorScheme.tertiary,
+          icon: Icons.call_split_rounded,
+          title: '本次登记涉及 ${effectiveLabels.length} 个入库仓库',
+          detail:
+              '仓库：${effectiveLabels.join(' / ')}。服务端按「订货单 x 入库仓库」分组，'
+              '一个事务建好各张收货单；如需调整，点击各行「入库仓库」单独改仓。',
+          key: const Key('warehouse-arrival-multi-warehouse-notice'),
         ),
-        unitRate: line.item.unitRate.toDouble(),
-      );
-      if (allocations.any((a) => a.isCrossWarehouse)) return true;
-    }
-    return false;
+      if (crossLineCount > 0)
+        _noticeContainer(
+          theme,
+          color: theme.colorScheme.error,
+          icon: Icons.warning_amber_rounded,
+          title: '当前有 $crossLineCount 行包含跨仓预定',
+          detail:
+              '这些行的本次实收超过所选入库仓的分析预定量。可把本次实收改小到所选仓预定量，'
+              '或勾选/右键移出整行，按实际到仓分批登记；若实物确在该仓，'
+              '确认后跨仓部分预计转公共库存，最终由 IQC 入库事务复核。',
+          key: const Key('warehouse-arrival-allocation-warehouse-notice'),
+        ),
+    ];
   }
 
-  Future<void> _save() async {
+  Widget _noticeContainer(
+    ThemeData theme, {
+    required Color color,
+    required IconData icon,
+    required String title,
+    required String detail,
+    Key? key,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+    child: Semantics(
+      key: key,
+      container: true,
+      liveRegion: true,
+      label: '$title。$detail',
+      child: Container(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: UtenRadius.mdAll,
+          border: Border.all(color: color.withValues(alpha: 0.55)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: color,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(detail, style: theme.textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Future<void> _save(InboundRoute route) async {
     if (!_canRegisterNow) {
       context.appError('当前账号没有登记并送检权限，请返回任务中心刷新权限');
       return;
     }
-    if (_route.isStockInFirst && !_canStockInBeforeInspection) {
+    if (route.isStockInFirst && !_canStockInBeforeInspection) {
       // 路线进页已定，这里只会因权限被收回而退回原流程：说明原因并换成
       // 「先质检后入库」按钮，由用户决定是否继续，不静默换路线提交。
       setState(() => _route = InboundRoute.inspectFirst);
       context.appWarning('当前账号没有「到货先入库后质检」权限，已切换为「先质检后入库」，请确认后再提交');
       return;
     }
+    setState(() => _activeRoute = route);
     if (_suggestions.loading) {
       context.appInfo('正在读取所选仓库的默认库位，请稍候再提交');
       return;
@@ -610,11 +754,11 @@ class _WarehouseArrivalBatchReceiptPageState
       context.appError('没有可登记明细，请返回任务中心刷新');
       return;
     }
-    // 勾选=本次要登记送检的行（2026-09-17，与订货单编辑页同款）：右下两个
+    // 勾选=本次要登记送检的行(2026-09-17，与订货单编辑页同款)：右下两个
     // 提交按钮没勾行时已置灰，这里再兜一层；未勾选行不进校验也不进提交。
     final submitLines = _lineGrid.selectedRows;
     if (submitLines.isEmpty) {
-      context.appError('请先勾选要登记送检的明细行（未勾选的行本次不登记）');
+      context.appError('请先勾选要登记送检的明细行(未勾选的行本次不登记)');
       return;
     }
     final submitted = submitLines.toSet();
@@ -624,12 +768,12 @@ class _WarehouseArrivalBatchReceiptPageState
     final badQty = <String>[];
     final missingWarehouse = <String>[];
     final missingPlace = <String>[];
-    final stockInFirst = _route.isStockInFirst;
+    final stockInFirst = route.isStockInFirst;
     for (var index = 0; index < _lines.length; index++) {
       final line = _lines[index];
       if (!submitted.contains(line)) continue;
       final label =
-          '第 ${index + 1} 行（${line.prefill.orderBillNo} ${line.item.goodsName}）';
+          '第 ${index + 1} 行(${line.prefill.orderBillNo} ${line.item.goodsName})';
       final qty = double.tryParse(line.qty.text.trim()) ?? 0;
       if (qty <= 0) badQty.add(label);
       if (line.warehouseId == null || line.warehouseId!.isEmpty) {
@@ -657,7 +801,7 @@ class _WarehouseArrivalBatchReceiptPageState
       context.appError(rowIssues.join('\n'));
       return;
     }
-    // 采购收货单必须有采购员（批量页取订货负责人预填，不可编辑）；
+    // 采购收货单必须有采购员(批量页取订货负责人预填，不可编辑)；
     // 只看本次要提交的行——整单都没勾时该单不建收货单，不该被拦。
     final missingPurchaser = submitLines
         .where(
@@ -668,133 +812,94 @@ class _WarehouseArrivalBatchReceiptPageState
         .map((line) => line.prefill.orderBillNo)
         .toSet();
     if (missingPurchaser.isNotEmpty) {
-      context.appError('订货单 ${missingPurchaser.join('、')} 缺少采购员，请先在单张登记页处理');
+      context.appError(
+        '订货单 ${missingPurchaser.join('、')} 缺少采购员(订货负责人)，请联系采购补齐后再登记',
+      );
       return;
     }
-    final groups = _buildGroups(submitLines);
-    final hasCrossWarehouse = _hasCrossWarehouseAllocation(submitLines);
-    // 2026-09-11：原来是一整段连排文字，弹窗被顶得巨长。改成「一句结论 + 短要点」，
-    // 高度与宽度由 UtenDialog 统一兜（限宽 460 / 限高 60% 屏高 / 超出自滚）。
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '${_route.label}(${groups.length} 张收货单)',
-      confirmLabel: stockInFirst ? '确认登记并先入库' : '确认登记送检',
-      content: InboundConfirmPoints([
-        // 有未勾选行时先说清去向，防「取消勾选=静默不登记」。
-        if (excludedCount > 0)
-          '有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在任务中心待登记送检，可稍后办理。',
-        ...(stockInFirst
-            ? const [
-                '按「订货单 × 入库仓库」分组建单，同一事务内登记到货、送品质部待检，并把每行实物按库位号上架(先入库后质检)。',
-                '品质部到库位检验：合格后系统自动按上架位置转正入库，不合格由仓库从库位取出登记退回。',
-                '实到超批准量的单自动隔离并通知财务审核组：隔离单不上架、不入库、不生成应付，也不影响其余单。',
-              ]
-            : const [
-                '按「订货单 × 入库仓库」分组建单，同一事务内登记到货并直送品质部待检(IQC)。',
-                '检验合格后转仓库待入库；仓库确认实物与库位后库存才增加。',
-                '实到超批准量的单自动隔离并通知财务审核组：不入库、不生成应付，也不影响其余单。',
-              ]),
-      ], extra: hasCrossWarehouse ? '部分行实收超过所选仓的分析预定量，跨仓部分只作预计、转公共库存。' : null),
+    final receiptCount = _receiptCount(submitLines);
+    // 预计去向按本次实收、换算率和各行入库仓重算(合并自单张登记页)；真正归属仍由 IQC 入库事务决定。
+    final projectedSections = [
+      for (final line in submitLines) _lineAllocationSection(line),
+    ];
+    final hasCrossWarehouse = projectedSections.any(
+      (section) => section.allocations.any((item) => item.isCrossWarehouse),
     );
-    if (confirmed != true || !mounted) return;
+    final confirmed = await showWarehouseInboundAllocationConfirmDialog(
+      context,
+      title: '${route.label}($receiptCount 张收货单)',
+      actionLabel: stockInFirst ? '登记先入库' : '登记送检',
+      confirmLabel: stockInFirst
+          ? (hasCrossWarehouse ? '确认跨仓登记并先入库' : '确认登记并先入库')
+          : (hasCrossWarehouse ? '确认跨仓登记送检' : '确认登记送检'),
+      sections: projectedSections,
+      // 有未勾选行时先说清去向，防「取消勾选=静默不登记」。
+      description:
+          (stockInFirst
+              ? '服务端按「订货单 x 入库仓库」分组建单，一个事务登记到货、送品质部待检，'
+                    '并把每行实物按库位号上架(先入库后质检)：品质部到库位检验，合格后系统自动按上架位置转正入库，'
+                    '不合格由仓库从库位取出登记退回；'
+                    '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
+                    '实到超过财务批准量的单自动隔离并通知财务审核组，隔离单不上架、不入库、不生成应付，也不影响其余单。'
+              : '服务端按「订货单 x 入库仓库」分组建单，一个事务登记到货并直送品质部待检(IQC)：'
+                    '检验合格后转仓库待入库，仓库确认实物与库位后库存才增加；'
+                    '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
+                    '实到超过财务批准量的单自动隔离并通知财务审核组，不入库、不生成应付，也不影响其余单。') +
+          (excludedCount > 0
+              ? '另有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在任务中心待登记送检。'
+              : ''),
+    );
+    if (!confirmed || !mounted) return;
     setState(() => _saving = true);
-    final registrations = <WarehouseArrivalRegistration>[];
     try {
       await saveFormDraftNow();
       final repo = ref.read(procurementInboundRepositoryProvider);
-      for (final entry in groups.entries) {
-        final lines = entry.value;
-        final first = lines.first;
-        final prefill = first.prefill;
-        final isPurchase =
-            prefill.orderType == ProcurementInboundOrderType.purchase;
-        // 幂等键按「订货单+仓库+行+数量(+实称重量)」内容派生：响应丢失重试复用同键
-        // 安全重放；部分失败后原地重试，已成功组合按同键重放、不会重复登记。
-        final canonical = [
-          _registrationId,
-          '${prefill.orderType.name}:${entry.key}',
-          if (stockInFirst) 'stock-in-first',
-          for (final line in lines)
-            '${line.item.orderItemId}:${(double.tryParse(line.qty.text.trim()) ?? 0)}'
-                '${line.source.apiValue == null ? '' : ':${line.source.apiValue}'}'
-                '${_weightKeyPart(line)}',
-        ].join('|');
-        final body = <String, dynamic>{
-          'idempotencyKey': businessIdempotencyKey(
-            'warehouse-arrival-create',
-            canonical,
-          ),
-          'billDate': _fmt(_billDate),
-          'warehouseId': lineWarehouseOf(lines),
-          'supplierId': prefill.supplierId,
-          'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
-          if (isPurchase) ...{
-            'purchaserId': prefill.purchaserId,
-            'receiverEmployeeId': _receiverId,
-          } else
-            // 委外进仓单主档仅 sender_id 一个人员列（按「收货人」语义解析）。
-            'receiverEmployeeId': _receiverId,
-          // 先入库后质检(V596)：同事务按库位上架；点「登记并送检」时不传，老哈希逐字不变。
-          if (stockInFirst) 'stockInBeforeInspection': true,
-          'items': [
-            for (final line in lines)
-              {
-                'goodsId': line.item.goodsId,
-                'qty': double.tryParse(line.qty.text.trim()) ?? 0,
-                'orderItemId': line.item.orderItemId,
-                if (stockInFirst) 'preStockPlace': line.place.text.trim(),
-                if (line.source.apiValue != null)
-                  'replacementIntent': line.source.apiValue,
-                'sourceDocNo': prefill.orderBillNo,
-                if (line.item.colorId != null) 'colorId': line.item.colorId,
-                if (line.item.unitId != null) 'unitId': line.item.unitId,
-                if (!isPurchase) 'unitRate': line.item.unitRate,
-                // 实称净重(千克 4 位；没称不带，精确换算行不带)与「按称重改数量」。
-                'weight': ?_sentKg(line),
-                if (line.weight.qtyFromWeight) 'qtyFromWeight': true,
-              },
-          ],
-        };
-        try {
-          if (!mounted) return;
-          // ADR-098：委外回厂累计低于允许损耗下限时服务端先 409，弹窗确认后带确认重发。
-          final registration = await registerArrivalConfirmingShortDelivery(
-            context: context,
-            body: body,
-            register: (payload) => runFormDraftSubmission(
-              () => repo.registerArrival(
-                orderType: prefill.orderType,
-                body: payload,
-              ),
-            ),
-            setBusy: _setSaving,
-          );
-          if (registration == null) {
-            if (!mounted) return;
-            if (registrations.isNotEmpty) {
-              context.appWarning(
-                '已登记送检 ${registrations.length} 张收货单；其余已取消，修改数量后可直接重试',
-              );
-            }
-            return;
-          }
-          registrations.add(registration);
-        } on ApiException catch (e) {
-          if (!mounted) return;
-          if (registrations.isNotEmpty) {
-            context.appError(
-              '已登记送检 ${registrations.length} 张收货单；'
-              '订货单「${prefill.orderBillNo}」仓库'
-              '「${_warehouseLabel(lineWarehouseOf(lines)) ?? '—'}」登记失败：${e.message}。'
-              '可直接重试，已成功部分不会重复登记',
-            );
-          } else {
-            context.appError(e.message);
-          }
-          return;
-        }
-      }
-      // 学习回写只针对实际登记了的行（未勾选行不产生本次事实）。
+      // 幂等键随草稿持久化(_registrationId)，再按路线与本批内容派生：响应丢失后原样重试安全重放，
+      // 改了数量/仓库/重量再提交是另一次登记。
+      final body = <String, dynamic>{
+        'idempotencyKey': _batchKey(submitLines, stockInFirst),
+        'billDate': _fmt(_billDate),
+        'receiverEmployeeId': _receiverId,
+        'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
+        // 先入库后质检(V596)：同事务按库位上架；先质检后入库时不传。
+        if (stockInFirst) 'stockInBeforeInspection': true,
+        'lines': [
+          for (final line in submitLines)
+            {
+              'orderType': line.prefill.orderType.name.toUpperCase(),
+              'warehouseId': line.warehouseId,
+              if (line.prefill.orderType ==
+                  ProcurementInboundOrderType.purchase)
+                'purchaserId': line.prefill.purchaserId,
+              'goodsId': line.item.goodsId,
+              'qty': double.tryParse(line.qty.text.trim()) ?? 0,
+              'orderItemId': line.item.orderItemId,
+              if (stockInFirst) 'preStockPlace': line.place.text.trim(),
+              if (line.source.apiValue != null)
+                'replacementIntent': line.source.apiValue,
+              'sourceDocNo': line.prefill.orderBillNo,
+              if (line.item.colorId != null) 'colorId': line.item.colorId,
+              if (line.item.unitId != null) 'unitId': line.item.unitId,
+              if (line.prefill.orderType !=
+                  ProcurementInboundOrderType.purchase)
+                'unitRate': line.item.unitRate,
+              // 实称净重(千克 4 位；没称不带，精确换算行不带)与「按称重改数量」。
+              'weight': ?_sentKg(line),
+              if (line.weight.qtyFromWeight) 'qtyFromWeight': true,
+            },
+        ],
+      };
+      if (!mounted) return;
+      // ADR-098：委外回厂累计低于允许损耗下限时服务端先 409，弹窗确认后带确认重发(一个事务，任何一组都还没写)。
+      final batch = await registerArrivalConfirmingShortDelivery(
+        context: context,
+        body: body,
+        register: (payload) =>
+            runFormDraftSubmission(() => repo.registerArrivals(payload)),
+        setBusy: _setSaving,
+      );
+      if (batch == null) return;
+      // 学习回写只针对实际登记了的行(未勾选行不产生本次事实)。
       unawaited(_learnGoodsProfiles(submitLines));
       if (!mounted) return;
       await completeFormDraft();
@@ -808,25 +913,38 @@ class _WarehouseArrivalBatchReceiptPageState
         SubcontractDocConfig.by(SubcontractDocType.receipt).refreshKey,
       );
       invalidateWarehouseTaskCounts(ref);
-      final batch = WarehouseArrivalRegistrationBatch(
-        registrations: registrations,
-      );
       if (context.canPop()) {
         context.pop(batch);
       } else {
         context.go(RouteName.warehouseInboundExpectations);
       }
-    } catch (_) {
-      if (mounted) context.appError('批量登记失败，请保持当前内容后重试');
+    } catch (error, stack) {
+      // 本机草稿检查点失败等非接口异常也带真实原因(ADR-151 §2)。
+      debugPrint('登记到货失败: $error\n$stack');
+      if (mounted) {
+        context.appError(
+          describeSubmitError(error, fallback: '登记失败，请保持当前内容后重试'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  String? lineWarehouseOf(List<_BatchArrivalLine> lines) =>
-      lines.first.warehouseId;
+  /// 本次提交的幂等键：草稿里持久化的登记编号 + 路线 + 本批内容(订货行、仓、数量、来源、重量)。
+  String _batchKey(List<_BatchArrivalLine> lines, bool stockInFirst) {
+    final canonical = [
+      _registrationId,
+      if (stockInFirst) 'stock-in-first',
+      for (final line in lines)
+        '${line.item.orderItemId}:${line.warehouseId}:${(double.tryParse(line.qty.text.trim()) ?? 0)}'
+            '${line.source.apiValue == null ? '' : ':${line.source.apiValue}'}'
+            '${_weightKeyPart(line)}',
+    ].join('|');
+    return businessIdempotencyKey('warehouse-arrival-batch', canonical);
+  }
 
-  /// 学习回写（best-effort）：仅上报用户实际填了值的字段；失败不阻断主流程。
+  /// 学习回写(best-effort)：仅上报用户实际填了值的字段；失败不阻断主流程。
   Future<void> _learnGoodsProfiles(List<_BatchArrivalLine> lines) async {
     final hints = <Map<String, dynamic>>[
       for (final line in lines)
@@ -853,14 +971,17 @@ class _WarehouseArrivalBatchReceiptPageState
     // 单重参数缓存与单位字典随页面存活；录入/显示单位是用户偏好。
     ref.watch(weightParamsCacheProvider);
     ref.watch(warehouseUnitMassUnitsProvider);
+    // 写权限与「先入库后质检」独立权限随会话动态授予/撤销：按钮与勾选列跟着重建。
+    ref.watch(currentPermissionsProvider);
+    ref.watch(isSuperAdminProvider);
     final theme = Theme.of(context);
     final canRegister = widget.canRegister ?? _canRegisterNow;
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
-          title: '批量登记实际到货',
-          // 2026-09-20：路线在任务中心已选定，标题下标明本页走哪条，底部只此一个提交按钮。
-          subtitle: '路线：${_route.label}',
+          title: workflowFieldText(context).inboundArrivalRegistrationTitle,
+          // 多选时路线在任务中心已选定：标题下标明本页走哪条，底部只此一个提交按钮。
+          subtitle: _route == null ? null : '路线：${_route!.label}',
           leading: UtenBackButton(
             onPressed: () => popOrBackTo(
               context,
@@ -879,19 +1000,19 @@ class _WarehouseArrivalBatchReceiptPageState
                       absorbing: _saving || !canRegister,
                       child: _buildForm(context, theme, canRegister),
                     ),
-                    // 提交期间全屏加载遮罩（整批到货登记事务）。
+                    // 提交期间全屏加载遮罩(整批到货登记事务)。
                     if (_saving)
                       const UtenBusyOverlay(
-                        title: '正在批量登记到货',
-                        description: '正在按实收数量整批登记送检，请勿重复提交或离开本页。',
+                        title: '正在登记到货',
+                        description: '正在按订货单与入库仓库一次登记送检，请勿重复提交或离开本页。',
                       ),
                   ],
                 ),
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        // 提交集=勾选集（2026-09-17）：监听表格选择集，一行都没勾时右下两个
-        // 提交按钮置灰（灰态点击说明原因），勾回任意行立即恢复。
+        // 提交集=勾选集(2026-09-17)：监听表格选择集，一行都没勾时右下两个
+        // 提交按钮置灰(灰态点击说明原因)，勾回任意行立即恢复。
         floatingActionButton: _lines.isEmpty
             ? null
             : ListenableBuilder(
@@ -909,7 +1030,7 @@ class _WarehouseArrivalBatchReceiptPageState
         children: [
           const Icon(Icons.local_shipping_outlined, size: 40),
           const SizedBox(height: UtenSpacing.s12),
-          const Text('请从「入库任务中心」多选预计到货任务后批量登记'),
+          Text(_loadError ?? '请从「入库任务中心」选择预计到货任务后登记'),
           const SizedBox(height: UtenSpacing.s16),
           UtenButton(
             type: UtenButtonType.tonal,
@@ -927,7 +1048,7 @@ class _WarehouseArrivalBatchReceiptPageState
     return UtenGridPageScrollbar(
       pinned: _gridPinned,
       controller: _scrollCtl,
-      // 滚动条贴屏幕右缘（2026-09-15）：包装在内容容器之外，右缘窄条
+      // 滚动条贴屏幕右缘(2026-09-15)：包装在内容容器之外，右缘窄条
       // 恒在屏幕最右，不随限宽容器/列宽漂移。
       child: UtenContentContainer(
         child: ListView(
@@ -976,16 +1097,18 @@ class _WarehouseArrivalBatchReceiptPageState
               loader: _suggestions,
               onRetry: () => _suggestions.reload(_lines),
             ),
+            WeightParamsLoadNotice(cache: _weightCache),
+            ..._warehouseNotices(theme),
             // 来源单据张数 + 勾选口径(与产成品批量页同一句式)。
             InboundGridIntro(
               sourceSummary: '来自 $_orderCount 张订货单',
-              submitLabel: _route.label,
+              submitLabel: _route?.label ?? '提交按钮',
             ),
             const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_BatchArrivalLine>(
               tableKey:
-                  'features.warehouse.pages.warehouse_arrival_batch_receipt_page.WarehouseArrivalBatchReceiptPageState._buildForm.1',
-              key: const Key('warehouse-arrival-batch-lines-grid'),
+                  'features.warehouse.pages.inbound_arrival_registration_page.InboundArrivalRegistrationPageState._buildForm.1',
+              key: const Key('warehouse-arrival-lines-grid'),
               controller: _lineGrid,
               stickyHeaderPinned: _gridPinned,
               columns: _lineColumns(canRegister, weightUnits.entry),
@@ -1004,10 +1127,10 @@ class _WarehouseArrivalBatchReceiptPageState
               // 2026-09-11 表头上方四个常驻按钮全撤：「全选/取消全选」由表头
               // 复选框承担，「移出本次登记」搬进行右键菜单，「批量设置入库仓库 /
               // 批量填写库位」改成「勾选多行后在任意一行改仓/写库位即批量落值」。
-              // 2026-09-12 再补右键菜单显式批量入口（与产成品登记页统一口径）。
+              // 2026-09-12 再补右键菜单显式批量入口(与产成品登记页统一口径)。
               showSelectAllToggle: false,
               showRemoveRowsAction: false,
-              // 2026-09-14：行末常驻 ⊖（走同一条「移出本次登记」确认与回调）。
+              // 2026-09-14：行末常驻 ⊖(走同一条「移出本次登记」确认与回调)。
               showInlineRemoveAction: true,
               rowMenuExtraBuilder: canRegister && !_saving
                   ? (context, selected) => [
@@ -1037,7 +1160,7 @@ class _WarehouseArrivalBatchReceiptPageState
                     listenable: _weightCache,
                     builder: (context, _) =>
                         inboundTotalsBar<_BatchArrivalLine>(
-                          key: const Key('warehouse-arrival-batch-totals'),
+                          key: const Key('warehouse-arrival-totals'),
                           lines: _lines,
                           qtyLabel: '本次实收',
                           qtyOf: (line) =>
@@ -1090,14 +1213,14 @@ class _WarehouseArrivalBatchReceiptPageState
     final names = ref.read(masterNameServiceProvider);
     final shared = InboundGridColumns<_BatchArrivalLine>(
       names: names,
-      keyPrefix: 'warehouse-arrival-batch',
+      keyPrefix: 'warehouse-arrival',
       lineKeyOf: (line) => line.item.orderItemId,
       goodsCodeOf: (line) => line.item.goodsCode,
       colorNameOf: (line) => line.item.colorName,
       unitNameOf: (line) => line.item.unitName,
     );
     bool editable(_BatchArrivalLine line) => canRegister && !_saving;
-    final stockInFirst = _route.isStockInFirst;
+    final stockInFirst = (_route ?? _activeRoute).isStockInFirst;
     return [
       EditableGridColumn(
         key: 'order',
@@ -1140,9 +1263,7 @@ class _WarehouseArrivalBatchReceiptPageState
         headerInfo: workflowFieldText(context).warehouseArrivalSourceHint,
         textOf: (line) => line.source.label(context),
         cellBuilder: (context, line) => WarehouseArrivalSourceField(
-          key: ValueKey(
-            'warehouse-arrival-batch-source-${line.item.orderItemId}',
-          ),
+          key: ValueKey('warehouse-arrival-source-${line.item.orderItemId}'),
           value: line.source,
           enabled: editable(line),
           onChanged: (source) => setState(() => line.source = source),
@@ -1188,6 +1309,31 @@ class _WarehouseArrivalBatchReceiptPageState
               !warehousesShareMain(names.warehouseHierarchy, actual, suggested);
         },
       ),
+      // 预计去向(合并自单张登记页)：按本次实收与本行入库仓重算分析预定，跨仓部分红字。
+      EditableGridColumn(
+        key: 'expectedAllocation',
+        label: '预计去向(基本量)',
+        width: 240,
+        textOf: (line) => warehouseInboundAllocationSummaryText(
+          _lineProjectedAllocations(line),
+          (value) => '${inboundQty(value)} ${_lineBaseUnitLabel(line)}',
+        ),
+        listenableOf: (line) => line.qty,
+        cellBuilder: (context, line) =>
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: line.qty,
+              builder: (context, _, _) => WarehouseInboundAllocationSummary(
+                allocations: _lineProjectedAllocations(line),
+                qtyText: (value) =>
+                    '${inboundQty(value)} ${_lineBaseUnitLabel(line)}',
+                onTap: () => showWarehouseInboundAllocationDetails(
+                  context,
+                  title: '预计去向 · ${line.item.goodsName}',
+                  sections: [_lineAllocationSection(line)],
+                ),
+              ),
+            ),
+      ),
       // 先入库后质检：库位是实物落点，必填(空则红框)。
       shared.place(
         required: stockInFirst,
@@ -1220,8 +1366,8 @@ class _WarehouseArrivalBatchReceiptPageState
   }
 
   Widget _buildBottomBar(bool canRegister) {
-    // 右下悬浮：取消 + 进页时所选路线的唯一提交按钮(与产成品批量页同一组件)。
-    // 提交集=勾选集：一行都没勾或库位建议加载中时提交置灰，灰态点击说明原因。
+    // 右下悬浮：取消 + 提交按钮。多选时只有进页所选的那一条路线；双击进来两条并排
+    // (与产成品登记页同一组件、同名同义)。提交集=勾选集：一行都没勾或库位建议加载中时置灰。
     final hasCheckedLine = _lineGrid.selectedRows.isNotEmpty;
     final canSubmit =
         canRegister &&
@@ -1235,7 +1381,13 @@ class _WarehouseArrivalBatchReceiptPageState
         ? () => context.appInfo('正在读取所选仓库的默认库位，请稍候再提交')
         : hasCheckedLine
         ? null
-        : () => context.appWarning('请先勾选要登记送检的明细行（未勾选的行本次不登记）');
+        : () => context.appWarning('请先勾选要登记送检的明细行(未勾选的行本次不登记)');
+    final routes = _route != null
+        ? [_route!]
+        : [
+            if (_canStockInBeforeInspection) InboundRoute.stockInFirst,
+            InboundRoute.inspectFirst,
+          ];
     return UtenFloatingActionGroup(
       children: [
         UtenButton(
@@ -1244,12 +1396,13 @@ class _WarehouseArrivalBatchReceiptPageState
           onPressed: _saving ? null : () => context.pop(),
           child: const Text('取消'),
         ),
-        InboundRouteSubmitButton(
-          route: _route,
-          isLoading: _saving,
-          onPressed: canSubmit ? _save : null,
-          onDisabledTap: onDisabledTap,
-        ),
+        for (final route in routes)
+          InboundRouteSubmitButton(
+            route: route,
+            isLoading: _saving && _activeRoute == route,
+            onPressed: canSubmit ? () => _save(route) : null,
+            onDisabledTap: onDisabledTap,
+          ),
       ],
     );
   }

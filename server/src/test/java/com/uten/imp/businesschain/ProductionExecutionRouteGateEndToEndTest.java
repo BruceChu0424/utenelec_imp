@@ -1411,6 +1411,10 @@ class ProductionExecutionRouteGateEndToEndTest {
                 INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable)
                 VALUES(?,?,?,?,'使用',TRUE)
                 """, leaf, "RG-SUB-" + tag, "路线子仓-" + tag, w.warehouseId());
+        // ADR-147 (V800): 直送只送已开通内料仓的车间; 来源仓 = 路线子仓, 内料仓挂在它的主仓下。
+        com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.open(
+                beans.getBean(com.uten.imp.features.warehouse.materialbin.WorkshopBinService.class),
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class), workshop, leaf);
 
         UUID order = fixture.createApprovedOrder(w, parent, total, "100");
         UUID orderItem = db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?", UUID.class, order);

@@ -41,8 +41,10 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.DecisionRequest;
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationItemRequest;
-import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationRequest;
+import com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalLotRequest;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationView;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueBatchRequest;
@@ -6838,8 +6840,11 @@ class FullChainEndToEndTest {
                 makeSegment.segmentId(), makeSegment.salesAllocationId(), "15", true);
         var allInbounds=new ArrayList<UUID>(finishedInDocsForReport(firstReport));
         allInbounds.addAll(finishedInDocsForReport(secondReport));
-        assertEquals(3,allInbounds.size(),"首报需求10+计划公共5、续报计划公共15均有独立放行草稿");
-        assertEquals(3,java.util.Set.copyOf(allInbounds).size());
+        // ADR-148：首报需求10+计划公共5同批同去向 = 一批实物，一张放行草稿两行；续报计划公共15另一张。
+        assertEquals(2,allInbounds.size(),"每次报工的一批实物一张放行草稿");
+        assertEquals(2,java.util.Set.copyOf(allInbounds).size());
+        assertEquals(3,jdbc.queryForObject("SELECT count(*) FROM stock_document_items WHERE doc_id=ANY(string_to_array(?,',')::uuid[]) AND NOT is_deleted",
+                Integer.class,String.join(",",allInbounds.stream().map(UUID::toString).toList())),"三份(需求10、计划公共5、计划公共15)各一行");
         var finishedBatch = new com.uten.imp.features.stock.dto.FinishedInboundBatchConfirmRequest();
         finishedBatch.setIdempotencyKey("scoq-finished-batch-" + analysisId);
         finishedBatch.setDocumentIds(allInbounds);
@@ -7825,8 +7830,8 @@ class FullChainEndToEndTest {
             assertEquals(1,count("SELECT count(*) FROM production_finished_in_confirmations WHERE stock_document_id=?",inbound));
             assertEquals(2,count("SELECT count(*) FROM production_daily_reports WHERE id IN (?,?) AND status=1",firstReport,second.id()));
             UUID secondItem=jdbc.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,second.id());
-            finishedArrivalRegistrationService.register(second.id(),new ArrivalRegistrationRequest(
-                    "prefix-second-arrival-"+second.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(secondItem,"PREFIX-SECOND-05")), null));
+            FinishedArrivalTestSupport.registerItems(finishedArrivalRegistrationService,second.id(),
+                    "prefix-second-arrival-"+second.id(),w.warehouseId(),List.of(secondItem),"PREFIX-SECOND-05");
             remainingInspections.add(jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,secondItem));
         }
         var batch=new com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest(
@@ -7848,8 +7853,8 @@ class FullChainEndToEndTest {
             PrefixReportDraft report=createPrefixReportDraft(w,plan,planItem,orderItem,"10");
             loginAs(report.reporter()); reportService.approve(report.id(), DailyReportApproveRequests.freshKey()); loginAs(w.superAdminUserId());
             UUID reportItem=jdbc.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted",UUID.class,report.id());
-            finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest(
-                    "prefix-fqc-arrival-"+report.id(),w.warehouseId(),List.of(new ArrivalRegistrationItemRequest(reportItem,"PREFIX-FQC-01")), null));
+            FinishedArrivalTestSupport.registerItems(finishedArrivalRegistrationService,report.id(),
+                    "prefix-fqc-arrival-"+report.id(),w.warehouseId(),List.of(reportItem),"PREFIX-FQC-01");
             UUID inspection=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,reportItem);
             fqcService.decide(inspection,new DecisionRequest("PASS",new BigDecimal("5"),null,null,null,"prefix-pass-"+inspection));
             UUID inbound=finishedInDocForReport(report.id());
@@ -12940,9 +12945,11 @@ class FullChainEndToEndTest {
      */
     /** 单据仓必须是具体子仓: 世界主仓带有子仓时, 取/建一个普通实际叶仓(保持其它叶仓世界的原行为)。 */
     private UUID reportWarehouse(World w) {
+        // 车间内料仓(ADR-147 开通后挂在主仓下)不改变仓库的作业叶仓身份(fn_warehouse_is_operational_leaf 同口径)。
         Boolean isMain = jdbc.query("""
                 select exists(select 1 from warehouses child
-                              where child.parent_id = ? and not child.is_deleted)
+                              where child.parent_id = ? and not child.is_deleted
+                                and not coalesce(child.is_line_side, false))
                 """, (rs, i) -> rs.getBoolean(1), w.warehouseId()).getFirst();
         if (!Boolean.TRUE.equals(isMain)) return w.warehouseId();
         UUID leaf = jdbc.query("""
@@ -13208,28 +13215,27 @@ class FullChainEndToEndTest {
                 .reduce(BigDecimal.ZERO,BigDecimal::add).compareTo(new BigDecimal(qty)),
                 "the exact demand/public slices preserve the physically declared total");
         BigDecimal failed=new BigDecimal(failedQty);
-        assertTrue(reportItems.size()==1 || failed.signum()==0,
-                "a mixed-source failed batch needs explicit per-source quality decisions, not guessed failure allocation");
         if(warehouseActor!=null)loginAs(warehouseActor);
-        finishedArrivalRegistrationService.register(report.getId(),new ArrivalRegistrationRequest(
-                "e2e-arrival-"+UUID.randomUUID(),w.warehouseId(),
-                reportItems.stream().map(row -> new ArrivalRegistrationItemRequest(
-                        (UUID)row.get("id"),"E2E-FINISHED-01")).toList(),null));
+        // ADR-148：一批实物(同一产出批次送入仓库的各份)一行登记、一个库位。
+        FinishedArrivalTestSupport.registerAll(finishedArrivalRegistrationService,report.getId(),
+                "e2e-arrival-"+UUID.randomUUID(),w.warehouseId(),"E2E-FINISHED-01",null,false);
         if(qualityActor!=null)loginAs(qualityActor);
-        for(var reportItem:reportItems) {
-            UUID reportItemId=(UUID)reportItem.get("id");
-            UUID inspectionId=jdbc.queryForObject("""
-                    SELECT id FROM production_fqc_inspections
-                    WHERE source_report_id=? AND source_report_item_id=?
-                    """,UUID.class,report.getId(),reportItemId);
-            BigDecimal passed=((BigDecimal)reportItem.get("qty")).subtract(failed);
-            var fqc=fqcService.decide(inspectionId,new DecisionRequest(
-                    failed.signum()==0?"PASS":passed.signum()==0?"FAIL":"PARTIAL",
-                    passed.signum()==0?null:passed,failed.signum()==0?null:failed,
-                    failed.signum()==0?null:"REWORK",failed.signum()==0?null:"实际不良保留待返工处置",
-                    "e2e-fqc-"+UUID.randomUUID()));
+        // 品质整批判定：不良先扣实际超产、再计划公共、最后需求份(服务端瀑布)。
+        for(var lot:jdbc.queryForList("""
+                SELECT output_lot_id, SUM(qty) AS qty FROM production_daily_report_items
+                WHERE report_id=? AND NOT is_deleted AND destination='WAREHOUSE'
+                GROUP BY output_lot_id
+                """,report.getId())) {
+            BigDecimal total=(BigDecimal)lot.get("qty");
+            BigDecimal lotFailed=failed.min(total);
+            BigDecimal passed=total.subtract(lotFailed);
+            var fqc=fqcService.decideLot((UUID)lot.get("output_lot_id"),
+                    new com.uten.imp.features.production.quality.ProductionFqcContracts.LotDecisionRequest(
+                            passed,lotFailed,lotFailed.signum()==0?null:"REWORK",
+                            lotFailed.signum()==0?null:"实际不良保留待返工处置","e2e-fqc-"+UUID.randomUUID()));
             assertFalse(fqc.replay());
-            assertEquals(0,fqc.inspection().authorizedInboundQty().compareTo(passed));
+            assertEquals(0,fqc.lot().passedQty().compareTo(passed));
+            assertEquals(0,fqc.lot().failedQty().compareTo(lotFailed));
         }
         return report.getId();
     }
@@ -13248,24 +13254,29 @@ class FullChainEndToEndTest {
         List<UUID> items=report.itemIds(); assertEquals(2,items.size());
         loginAs(w.superAdminUserId()); long activeBefore=fqcService.countActive();
         String pageKey="sheet-rows-"+UUID.randomUUID();
-        var requestA=new ArrivalRegistrationRequest(pageKey+":"+w.warehouseId(),w.warehouseId(),
-                List.of(new ArrivalRegistrationItemRequest(items.get(0),"A-01")),"  行仓 A  ");
-        var first=finishedArrivalRegistrationService.register(report.id(),requestA);
-        assertTrue(first.registered()); assertNotNull(first.sheetId()); assertTrue(first.sheetNo().startsWith("FQC"));
-        assertEquals("行仓 A",first.remark(),"备注 trim 后随登记批次留痕");
-        assertFalse(finishedArrivalRegistrationService.detail(report.id()).registered(),"另一行仍待登记");
-        var second=finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest(pageKey+":"+warehouseB,warehouseB,
-                List.of(new ArrivalRegistrationItemRequest(items.get(1),"B-01")),null));
+        // ADR-151 §5：一张报工的两批登记到两个仓 = 一个命令，服务端按「报工 x 实际仓」拆成两个登记批次。
+        var lotA=FinishedArrivalTestSupport.lotsOf(finishedArrivalRegistrationService,report.id(),w.warehouseId(),List.of(items.get(0)),ignored->"A-01",false);
+        var lotB=FinishedArrivalTestSupport.lotsOf(finishedArrivalRegistrationService,report.id(),warehouseB,List.of(items.get(1)),ignored->"B-01",false);
+        var requestA=new BatchArrivalRegistrationRequest(pageKey,
+                java.util.stream.Stream.concat(lotA.stream(),lotB.stream()).toList(),"  行仓 A  ",null);
+        var registeredBoth=finishedArrivalRegistrationService.batchRegister(requestA);
+        assertEquals(1,registeredBoth.registeredCount(),"一张报工");
+        assertEquals(2,registeredBoth.reports().size(),"报工 x 实际仓 = 两个登记批次");
+        var first=registeredBoth.reports().stream().filter(row->row.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
+        var second=registeredBoth.reports().stream().filter(row->row.warehouseId().equals(warehouseB)).findFirst().orElseThrow();
+        assertNotNull(first.sheetId()); assertTrue(first.sheetNo().startsWith("FQC"));
+        assertEquals("行仓 A",strFor("SELECT remark FROM production_finished_arrival_registrations WHERE id=?",first.registrationId()),"备注 trim 后随登记批次留痕");
         assertFalse(first.registrationId().equals(second.registrationId())); assertFalse(first.sheetId().equals(second.sheetId()));
         assertEquals(2,count("SELECT count(*) FROM production_finished_arrival_registrations WHERE source_report_id=?",report.id()));
         assertEquals(2,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=?",report.id()));
         assertEquals(w.warehouseId(),jdbc.queryForObject("SELECT warehouse_id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,items.get(0)));
         assertEquals(warehouseB,jdbc.queryForObject("SELECT warehouse_id FROM production_fqc_inspections WHERE source_report_item_id=?",UUID.class,items.get(1)));
         // 同键同体重放：原批次、不再建检查单。
-        var replay=finishedArrivalRegistrationService.register(report.id(),requestA);
-        assertEquals(first.registrationId(),replay.registrationId()); assertEquals(first.sheetId(),replay.sheetId());
-        assertEquals(1,count("SELECT count(*) FROM production_fqc_inspection_sheets WHERE batch_idempotency_key=?",pageKey+":"+w.warehouseId()));
-        var detail=finishedArrivalRegistrationService.detail(report.id());
+        var replay=finishedArrivalRegistrationService.batchRegister(requestA);
+        assertEquals(registeredBoth.reports().stream().map(row->row.registrationId()).toList(),
+                replay.reports().stream().map(row->row.registrationId()).toList());
+        assertEquals(2,count("SELECT count(*) FROM production_fqc_inspection_sheets WHERE batch_idempotency_key=?",pageKey));
+        var detail=registrationView(report.id());
         assertTrue(detail.registered()); assertEquals(2,detail.batches().size());
         assertTrue(detail.batches().stream().allMatch(batch->batch.reversible()&&batch.sheetNo()!=null));
         // 品质侧回看：检查单号、仓、库位、登记备注。
@@ -13297,10 +13308,9 @@ class FullChainEndToEndTest {
         MultiLineReport r=approvedMultiLineReportOfNewPlan(w,"10");
         loginAs(w.superAdminUserId()); long activeBefore=fqcService.countActive();
         String batchKey="sheet-batch-"+UUID.randomUUID();
-        var request=new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest(batchKey,List.of(
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(p.id(),w.warehouseId(),placesFor(p,"P")),
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(q.id(),w.warehouseId(),placesFor(q,"Q")),
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(r.id(),warehouseB,placesFor(r,"R"))),"批量送检");
+        var request=new BatchArrivalRegistrationRequest(batchKey,java.util.stream.Stream.of(
+                lotsFor(p,w.warehouseId(),"P"),lotsFor(q,w.warehouseId(),"Q"),lotsFor(r,warehouseB,"R"))
+                .flatMap(List::stream).toList(),"批量送检",null);
         var result=finishedArrivalRegistrationService.batchRegister(request);
         assertEquals(3,result.registeredCount()); assertEquals(2,result.sheets().size(),"同仓合并：A 一张、B 一张");
         var sheetA=result.sheets().stream().filter(sheet->sheet.warehouseId().equals(w.warehouseId())).findFirst().orElseThrow();
@@ -13341,8 +13351,9 @@ class FullChainEndToEndTest {
         issueReadyPlanAndMaterials(w,plan); UUID planItem=planItemIdFor(plan,w.goodsA()); UUID orderItem=orderItemIdOfPlan(plan);
         MultiLineReport report=approvedMultiLineReport(w,plan,planItem,orderItem,"5","5");
         loginAs(w.superAdminUserId()); long activeBefore=fqcService.countActive();
-        var registered=finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest("reg-reverse-first-"+report.id(),w.warehouseId(),placesFor(report,"A"),"错仓登记"));
-        assertTrue(registered.registered()&&registered.reversible());
+        var registered=finishedArrivalRegistrationService.batchRegister(new BatchArrivalRegistrationRequest(
+                "reg-reverse-first-"+report.id(),lotsFor(report,w.warehouseId(),"A"),"错仓登记",null)).reports().getFirst();
+        assertTrue(registrationView(report.id()).registered()&&registrationView(report.id()).reversible());
         assertEquals(0,finishedInboundTasks.list(report.billNo(),1,40).getTotal(),"登记后任务不再出现");
         UUID sheet=registered.sheetId();
         var reversal=new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest("reg-reverse-cmd-"+report.id(),"  仓库选错，撤回重登  ");
@@ -13354,9 +13365,9 @@ class FullChainEndToEndTest {
         assertEquals(2,count("SELECT count(*) FROM production_fqc_inspection_sheet_items WHERE sheet_id=?",sheet),"检查单明细保留为历史");
         assertEquals(activeBefore,fqcService.countActive(),"已撤回的待检不计入角标");
         assertEquals(2,count("SELECT count(*) FROM v_production_report_items_pending_registration WHERE report_id=?",report.id()));
-        var pending=finishedArrivalRegistrationService.detail(report.id());
-        assertFalse(pending.registered()); assertEquals(2,pending.items().size()); assertEquals(1,pending.batches().size());
-        assertNull(pending.items().getFirst().lastWarehouseId(),"已撤回的登记不作为逐行「上次成品仓」建议");
+        var pending=registrationView(report.id());
+        assertFalse(pending.registered()); assertEquals(2,pending.lots().size()); assertEquals(1,pending.batches().size());
+        assertNull(pending.lots().getFirst().lastWarehouseId(),"已撤回的登记不作为逐行「上次成品仓」建议");
         assertEquals(1,finishedInboundTasks.list(report.billNo(),1,40).getTotal(),"撤回后任务重新出现");
         // 同键重放撤回：幂等，不新增撤回记录。
         assertEquals(reversed.registrationId(),finishedArrivalRegistrationService.reverse(registered.registrationId(),reversal).registrationId());
@@ -13364,24 +13375,25 @@ class FullChainEndToEndTest {
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->finishedArrivalRegistrationService.reverse(registered.registrationId(),
                 new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest("reg-reverse-again-"+report.id(),"再撤一次"))).getCode());
         // 重新登记到另一仓：新批次、新 inspection、新检查单；上次成品仓建议来自有效登记（已撤回不算）。
-        var again=finishedArrivalRegistrationService.register(report.id(),new ArrivalRegistrationRequest("reg-reverse-second-"+report.id(),warehouseB,placesFor(report,"B"),null));
-        assertTrue(again.registered()); assertFalse(again.registrationId().equals(registered.registrationId())); assertFalse(again.sheetId().equals(sheet));
+        var again=finishedArrivalRegistrationService.batchRegister(new BatchArrivalRegistrationRequest(
+                "reg-reverse-second-"+report.id(),lotsFor(report,warehouseB,"B"),null,null)).reports().getFirst();
+        assertTrue(registrationView(report.id()).registered()); assertFalse(again.registrationId().equals(registered.registrationId())); assertFalse(again.sheetId().equals(sheet));
         assertEquals(2,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=? AND status='PENDING' AND warehouse_id=?",report.id(),warehouseB));
         assertEquals(4,count("SELECT count(*) FROM production_fqc_inspections WHERE source_report_id=?",report.id()));
-        assertEquals(activeBefore+1,fqcService.countActive()); assertEquals(2,finishedArrivalRegistrationService.detail(report.id()).batches().size());
+        assertEquals(activeBefore+1,fqcService.countActive()); assertEquals(2,registrationView(report.id()).batches().size());
         MultiLineReport sibling=approvedMultiLineReportOfNewPlan(w,"10"); loginAs(w.superAdminUserId());
         // V623 起待登记行的逐行建议只读货品主档归属仓（须为有效核算叶子仓），
         // 不再扫描登记历史；主档缺省时建议为空。
         jdbc.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?",warehouseB,w.goodsA());
-        assertEquals(warehouseB,finishedArrivalRegistrationService.detail(sibling.id()).items().getFirst().lastWarehouseId(),"待登记行建议来自货品主档归属仓");
+        assertEquals(warehouseB,registrationView(sibling.id()).lots().getFirst().lastWarehouseId(),"待登记行建议来自货品主档归属仓");
         jdbc.update("UPDATE goods SET owning_warehouse_id=NULL WHERE id=?",w.goodsA());
-        assertNull(finishedArrivalRegistrationService.detail(sibling.id()).items().getFirst().lastWarehouseId(),"主档无归属仓时建议为空");
+        assertNull(registrationView(sibling.id()).lots().getFirst().lastWarehouseId(),"主档无归属仓时建议为空");
         // 品质已处理（PASS 一行）后不能再撤回；数据库守卫同样拒绝绕过服务的撤回。
         UUID passed=jdbc.queryForObject("SELECT id FROM production_fqc_inspections WHERE source_report_item_id=? AND status='PENDING'",UUID.class,report.itemIds().getFirst());
         fqcService.decide(passed,new DecisionRequest("PASS",null,null,null,null,"reg-reverse-pass-"+passed));
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->finishedArrivalRegistrationService.reverse(again.registrationId(),
                 new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.ArrivalRegistrationReversalRequest("reg-reverse-third-"+report.id(),"品质已处理后撤回"))).getCode());
-        assertFalse(finishedArrivalRegistrationService.detail(report.id()).batches().stream().filter(batch->batch.registrationId().equals(again.registrationId())).findFirst().orElseThrow().reversible());
+        assertFalse(registrationView(report.id()).batches().stream().filter(batch->batch.registrationId().equals(again.registrationId())).findFirst().orElseThrow().reversible());
         var raw=assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("INSERT INTO production_finished_arrival_registration_reversals(id,registration_id,reason,idempotency_key,request_hash,created_by) VALUES (?,?,'绕过服务',?,?,?)",
                 UUID.randomUUID(),again.registrationId(),"raw-reverse-"+UUID.randomUUID(),"a".repeat(64),w.superAdminUserId()));
         assertTrue(String.valueOf(raw.getMostSpecificCause().getMessage()).contains("reversal command"),raw.getMostSpecificCause().getMessage());
@@ -13398,18 +13410,15 @@ class FullChainEndToEndTest {
         reports.sort(java.util.Comparator.comparing(MultiLineReport::id));
         List<UUID> warehouses = java.util.stream.Stream.of(w.warehouseId(), otherWarehouse).sorted().toList();
         UUID firstWarehouse = warehouses.getFirst(), secondWarehouse = warehouses.getLast();
-        var firstRequest = new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest(
-                "arrival-first-" + UUID.randomUUID(), List.of(
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(
-                        reports.get(0).id(), firstWarehouse, placesFor(reports.get(0), "FIRST-A")),
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(
-                        reports.get(1).id(), secondWarehouse, placesFor(reports.get(1), "FIRST-B"))), "并发第一批");
-        var secondRequest = new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchArrivalRegistrationRequest(
-                "arrival-second-" + UUID.randomUUID(), List.of(
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(
-                        reports.get(2).id(), secondWarehouse, placesFor(reports.get(2), "SECOND-B")),
-                new com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalContracts.BatchReportRegistrationRequest(
-                        reports.get(3).id(), firstWarehouse, placesFor(reports.get(3), "SECOND-A"))), "并发第二批");
+        loginAs(w.superAdminUserId());
+        var firstRequest = new BatchArrivalRegistrationRequest(
+                "arrival-first-" + UUID.randomUUID(), java.util.stream.Stream.concat(
+                lotsFor(reports.get(0), firstWarehouse, "FIRST-A").stream(),
+                lotsFor(reports.get(1), secondWarehouse, "FIRST-B").stream()).toList(), "并发第一批", null);
+        var secondRequest = new BatchArrivalRegistrationRequest(
+                "arrival-second-" + UUID.randomUUID(), java.util.stream.Stream.concat(
+                lotsFor(reports.get(2), secondWarehouse, "SECOND-B").stream(),
+                lotsFor(reports.get(3), firstWarehouse, "SECOND-A").stream()).toList(), "并发第二批", null);
         var held = new java.util.concurrent.CountDownLatch(1);
         var release = new java.util.concurrent.CountDownLatch(1);
         var firstPid = new java.util.concurrent.atomic.AtomicInteger();
@@ -13451,7 +13460,16 @@ class FullChainEndToEndTest {
             release.countDown();
         }
         loginAs(w.superAdminUserId());
-        jdbc.update("UPDATE warehouses SET status='禁用' WHERE id=?", firstWarehouse);
+        // ADR-145 起仍是货品所属仓库的仓不能停用(主档守卫拒绝); 这里只验证「已完成的命令回放不看仓库此后的状态」,
+        // 用复制模式造出这个历史状态(守卫不参与), 不经过停用入口。
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            try (var statement = connection.createStatement()) {
+                statement.execute("SET session_replication_role = replica");
+                statement.execute("UPDATE warehouses SET status='禁用' WHERE id='" + firstWarehouse + "'");
+                statement.execute("SET session_replication_role = origin");
+            }
+            return null;
+        });
         assertEquals(2, finishedArrivalRegistrationService.batchRegister(firstRequest).registeredCount(),
                 "completed command replays despite subsequent warehouse disablement");
         for (MultiLineReport report : reports) {
@@ -13601,10 +13619,15 @@ class FullChainEndToEndTest {
         return approvedMultiLineReport(w,plan,planItemIdFor(plan,w.goodsA()),orderItemIdOfPlan(plan),qtys);
     }
 
-    private static List<ArrivalRegistrationItemRequest> placesFor(MultiLineReport report,String prefix) {
-        List<ArrivalRegistrationItemRequest> items=new ArrayList<>(); int index=0;
-        for(UUID itemId:report.itemIds()) items.add(new ArrivalRegistrationItemRequest(itemId,prefix+"-"+String.format("%02d",++index)));
-        return items;
+    /** 本报工全部待登记批的登记请求(一批一个库位 prefix-01、prefix-02…，按报工行顺序)。 */
+    private List<ArrivalLotRequest> lotsFor(MultiLineReport report,UUID warehouse,String prefix) {
+        return FinishedArrivalTestSupport.lotsOf(finishedArrivalRegistrationService,report.id(),warehouse,report.itemIds(),
+                itemId->prefix+"-"+String.format("%02d",report.itemIds().indexOf(itemId)+1),false);
+    }
+
+    /** 产成品登记视图(单张 = 批量视图的一个来源)。 */
+    private ArrivalRegistrationView registrationView(UUID reportId) {
+        return finishedArrivalRegistrationService.batchDetail(List.of(reportId)).getFirst();
     }
 
     private UUID leafWarehouse(String tag) {
@@ -13681,19 +13704,23 @@ class FullChainEndToEndTest {
      * E2E 链按报工量全额点收（accepted = 报工申报量）后自动审核入账。
      */
     void confirmFinishedInboundFully(UUID finishedInId) {
-        var lines = jdbc.queryForList(
-                "select id, qty from stock_document_items "
-                        + "where doc_id = ? and is_deleted = false order by line_no",
-                finishedInId);
+        // ADR-148：仓库按实物交接批点收，一批一个实收数。
+        var lots = jdbc.queryForList("""
+                select source.output_lot_id as lot_id, sum(item.qty) as qty
+                from stock_document_items item
+                join production_daily_report_items source on source.id = item.source_daily_report_item_id
+                where item.doc_id = ? and item.is_deleted = false
+                group by source.output_lot_id
+                """, finishedInId);
         var request = new com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest();
         request.setIdempotencyKey("e2e-confirm-" + finishedInId);
-        request.setLines(lines.stream()
+        request.setLots(lots.stream()
                 .map(row -> {
-                    var line = new com.uten.imp.features.stock.dto
-                            .FinishedInboundConfirmRequest.Line();
-                    line.setItemId((java.util.UUID) row.get("id"));
-                    line.setAcceptedQty((java.math.BigDecimal) row.get("qty"));
-                    return line;
+                    var lot = new com.uten.imp.features.stock.dto
+                            .FinishedInboundConfirmRequest.Lot();
+                    lot.setLotId((java.util.UUID) row.get("lot_id"));
+                    lot.setAcceptedQty((java.math.BigDecimal) row.get("qty"));
+                    return lot;
                 })
                 .toList());
         stockDocService.confirmFinishedInbound(finishedInId, request);
@@ -13703,21 +13730,23 @@ class FullChainEndToEndTest {
             UUID finishedInId,
             BigDecimal acceptedQty,
             String reason) {
-        var lines = jdbc.queryForList(
-                "select id, qty from stock_document_items "
-                        + "where doc_id = ? and is_deleted = false order by line_no",
-                finishedInId);
-        assertEquals(1, lines.size(), "本测试只处理单行 FQC 入库");
+        var lots = jdbc.queryForList("""
+                select distinct source.output_lot_id
+                from stock_document_items item
+                join production_daily_report_items source on source.id = item.source_daily_report_item_id
+                where item.doc_id = ? and item.is_deleted = false
+                """, UUID.class, finishedInId);
+        assertEquals(1, lots.size(), "本测试只处理一批实物的 FQC 入库");
         var request = new com.uten.imp.features.stock.dto
                 .FinishedInboundConfirmRequest();
         request.setIdempotencyKey(
                 "e2e-confirm-partial-" + finishedInId);
         request.setVarianceReason(reason);
-        var line = new com.uten.imp.features.stock.dto
-                .FinishedInboundConfirmRequest.Line();
-        line.setItemId((UUID) lines.getFirst().get("id"));
-        line.setAcceptedQty(acceptedQty);
-        request.setLines(List.of(line));
+        var lot = new com.uten.imp.features.stock.dto
+                .FinishedInboundConfirmRequest.Lot();
+        lot.setLotId(lots.getFirst());
+        lot.setAcceptedQty(acceptedQty);
+        request.setLots(List.of(lot));
         stockDocService.confirmFinishedInbound(finishedInId, request);
         return jdbc.queryForObject("""
                         SELECT residual_stock_document_id

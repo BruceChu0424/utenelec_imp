@@ -34,6 +34,9 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/providers/master_name_provider.dart';
+import '../../../../shared/widgets/warehouse_picker_panel.dart';
+import '../../../../shared/widgets/warehouse_selection.dart';
 import '../../../employee/repositories/employee_repository.dart';
 import '../../providers/warehouse_count_refresh.dart';
 import '../models/workshop_material_models.dart';
@@ -75,6 +78,9 @@ class _WorkshopMaterialIssuePageState
   String? _workshopId;
   WmRequisition? _requisition;
   List<WmMaterialOption> _materials = const [];
+
+  /// 出库仓库滑窗的仓库层级 (只有元数据; 发料权限就能读, ADR-147)。
+  List<WarehouseDictEntry> _leafHierarchy = const [];
   List<WmPeriod> _periods = const [];
   UtenEmployeePickerItem? _receiver;
   bool _supplement = false;
@@ -176,6 +182,9 @@ class _WorkshopMaterialIssuePageState
       _materialSetupRevision++;
     });
     try {
+      final sources = await _repo.sourceWarehouses();
+      if (!mounted) return;
+      _leafHierarchy = [for (final w in sources) w.toDictEntry()];
       if (_direct) {
         final settings = await _repo.settings();
         if (!mounted) return;
@@ -798,7 +807,9 @@ class _WorkshopMaterialIssuePageState
           enabled: editable && !_saving,
           materialEditable: _direct,
           showLeafWarehouse: true,
-          leafLabel: _isReturn ? '退到哪个仓库' : '出库仓库',
+          leafLabel: _isReturn ? l10n.wmLeafReturnColumn : l10n.wmLeafColumn,
+          pickLeafWarehouse: (row) => _pickLeaf(l10n, row),
+          warehouseNameOf: (id) => warehouseFullLabel(_leafHierarchy, id) ?? '',
           showWarehouseAvailable: !_isReturn,
           qtyLabel: _isReturn ? '实收数量' : null,
           onChanged: () {
@@ -898,6 +909,35 @@ class _WorkshopMaterialIssuePageState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: children,
     );
+  }
+
+  /// 出库仓库 (收退回时是退到哪个仓库): 全站仓库滑窗, 先主仓再子仓, 只能选启用中的良品子仓;
+  /// 有货的仓在副行写「可发 N 单位」(数字来自服务端)。
+  Future<String?> _pickLeaf(AppLocalizations l10n, WmIssueLineRow row) async {
+    final line = row.requisitionLine;
+    final material =
+        row.material.value ?? (line == null ? null : _materialFor(line.key));
+    final unit = material?.unitName ?? line?.unitName ?? '';
+    final available = {
+      for (final w in wmLeafOptions(material)) w.warehouseId: w.availableQty,
+    };
+    final picked = await showUtenWarehousePickerPanel(
+      context,
+      hierarchy: _leafHierarchy,
+      use: _isReturn ? WarehouseUse.goodIn : WarehouseUse.goodOut,
+      initialWarehouseId: row.leafWarehouseId.value,
+      title: _isReturn ? l10n.wmLeafReturnPickerTitle : l10n.wmLeafPickerTitle,
+      subtitleOf: _isReturn
+          ? null
+          : (entry) {
+              final qty = available[entry.id];
+              return qty == null || qty <= 0
+                  ? null
+                  : l10n.wmLeafAvailable(wmQty(qty), unit);
+            },
+    );
+    if (picked == null || picked.isAll) return null;
+    return picked.id;
   }
 
   void _splitRow(WmIssueLineRow source) {

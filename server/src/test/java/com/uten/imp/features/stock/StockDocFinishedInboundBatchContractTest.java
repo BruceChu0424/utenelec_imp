@@ -112,8 +112,9 @@ class StockDocFinishedInboundBatchContractTest {
         assertThat(source)
                 .contains("mutationLocks.acquire(() -> mutationFootprints.forStockDocuments(orderedIds))")
                 .contains("该批量点收幂等键已用于不同单据集合")
-                .contains("fullFinishedInboundAcceptanceRequest(")
-                .contains("line.setAcceptedQty(item.getQty())");
+                // ADR-148：批量全量点收 = 每行实收等于该行待点收量，键只带幂等键(不经按批分配)。
+                .contains("keyOnlyConfirmRequest(childKey)")
+                .contains("fullAcceptance(itemRepo.findByDocIdOrderByLineNoAsc(documentId))");
         int kernel = source.indexOf("private StockDocument approveDocumentAfterPrelock(");
         int kernelEnd = source.indexOf("/** 红冲", kernel);
         assertThat(source.substring(kernel, kernelEnd)).doesNotContain("prelockProductionDocument(");

@@ -27,7 +27,6 @@ import '../../../shared/models/procurement_inbound.dart'
     show ProcurementInboundOrderType;
 import '../config/warehouse_document_history_config.dart';
 import '../models/stock_doc.dart';
-import '../providers/procurement_inbound_count_providers.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../widgets/production_finished_inbound_tasks_view.dart';
 import '../widgets/warehouse_arrival_exceptions_view.dart';
@@ -37,6 +36,7 @@ import '../widgets/warehouse_inbound_expectations_view.dart';
 import '../widgets/warehouse_stock_doc_segment.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/warehouse/warehouse_task_badges.dart';
 
 class WarehouseInboundTaskCenterPage extends ConsumerWidget {
   const WarehouseInboundTaskCenterPage({
@@ -69,21 +69,25 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     );
     final canStockDocs = can(Perm.stockDocView);
 
-    final typeCounts = ref.watch(warehouseInboundExpectationTypeCountsProvider);
-    // 到货异常 / 产成品待点收随徽章汇总带回(ADR-108), 汇总未到/无权为 null。
+    // 预计到货分来源 / 到货异常 / 产成品待点收都随徽章汇总带回(ADR-108), 与列表同一服务端
+    // 仓库范围(ADR-149, 任务中心选了仓 = 按所选仓汇总); 汇总未到/无权为 null。
     final exceptionCount = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.warehouseArrivalException),
+      warehouseTaskFactOrNullProvider(BadgeFact.warehouseArrivalException),
     );
     final finishedCount = ref.watch(
-      badgeFactOrNullProvider(BadgeFact.finishedInbound),
+      warehouseTaskFactOrNullProvider(BadgeFact.finishedInbound),
     );
     int? sum(int? a, int? b) => a == null || b == null ? null : a + b;
-    final purchaseExpectation = typeCounts.isLoading || typeCounts.hasError
-        ? null
-        : typeCounts.valueOrNull?['PURCHASE'] ?? 0;
-    final subcontractExpectation = typeCounts.isLoading || typeCounts.hasError
-        ? null
-        : typeCounts.valueOrNull?['SUBCONTRACT'] ?? 0;
+    final purchaseExpectation = ref.watch(
+      warehouseTaskFactOrNullProvider(
+        BadgeFact.warehouseInboundExpectationPurchase,
+      ),
+    );
+    final subcontractExpectation = ref.watch(
+      warehouseTaskFactOrNullProvider(
+        BadgeFact.warehouseInboundExpectationSubcontract,
+      ),
+    );
 
     final segments = <WarehouseTaskSegmentSpec>[
       if (canInbound ||

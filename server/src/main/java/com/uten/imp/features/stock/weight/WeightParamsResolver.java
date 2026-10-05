@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * 读时解析单重 (ADR-135 §5): EXACT &gt; MANUAL &gt; LEARNED &gt; MASTER_PRIOR &gt; NONE。纯函数。
@@ -65,16 +66,16 @@ public final class WeightParamsResolver {
     /**
      * @param facts       货品事实
      * @param supplierRow 该供应商的学习行 (可空)
-     * @param key         请求行 key
+     * @param supplierId  请求的供应商 (null = 货品级), 原样作为结果身份
      * @param now         当前时间 (判断陈旧)
      * @param scaleResKg  秤分辨率 kg
      */
-    public static Resolution resolve(GoodsWeightFacts facts, EstimateRow supplierRow, String key,
+    public static Resolution resolve(GoodsWeightFacts facts, EstimateRow supplierRow, UUID supplierId,
                                      Instant now, double scaleResKg) {
         Objects.requireNonNull(facts, "facts");
         Profile profile = facts.profile();
         EstimatorConfig cfg = EstimatorConfig.forProfile(profile.pieceCvPct(), profile.tolerancePct(), scaleResKg);
-        Builder b = new Builder(key, facts, cfg);
+        Builder b = new Builder(supplierId, facts, cfg);
         if (!facts.exists()) {
             return b.none();
         }
@@ -176,12 +177,12 @@ public final class WeightParamsResolver {
     }
 
     private static final class Builder {
-        private final String key;
+        private final UUID supplierId;
         private final GoodsWeightFacts facts;
         private final EstimatorConfig cfg;
 
-        Builder(String key, GoodsWeightFacts facts, EstimatorConfig cfg) {
-            this.key = key;
+        Builder(UUID supplierId, GoodsWeightFacts facts, EstimatorConfig cfg) {
+            this.supplierId = supplierId;
             this.facts = facts;
             this.cfg = cfg;
         }
@@ -189,22 +190,22 @@ public final class WeightParamsResolver {
         Resolution none() {
             EstimateRow pool = facts.pool();
             Profile profile = facts.profile();
-            WeightParams params = new WeightParams(key, facts.goodsId(), BASIS_NONE, false,
+            WeightParams params = new WeightParams(facts.goodsId(), supplierId, BASIS_NONE, false,
                     pool == null ? null : pool.evidence(), null, null, null, cfg.gamma(), null, null, null,
                     pool == null ? null : pool.nInliers(), ApwEstimator.suggestedSampleSize(cfg, null), null,
                     profile.effectiveTolerancePct(), profile.defaultTareKg(), facts.lastTareKg(), null, false,
                     pool == null ? null : pool.lastObservedAt(), drawBiasPct(pool), null,
-                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg(), null);
+                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg());
             return new Resolution(params, null, null, false, cfg);
         }
 
         Resolution exact(BigDecimal factor) {
             Profile profile = facts.profile();
-            WeightParams params = new WeightParams(key, facts.goodsId(), BASIS_EXACT, false, null, factor,
+            WeightParams params = new WeightParams(facts.goodsId(), supplierId, BASIS_EXACT, false, null, factor,
                     StrictMath.log(factor.doubleValue()), 0.0, cfg.gamma(), null, Tier.GREEN.name(), 0.0,
                     null, null, null, profile.effectiveTolerancePct(), profile.defaultTareKg(),
                     facts.lastTareKg(), factor, false, null, null, null, facts.baseUnitDimension(),
-                    profile.learningEnabled(), cfg.scaleResKg(), null);
+                    profile.learningEnabled(), cfg.scaleResKg());
             return new Resolution(params, null, Tier.GREEN, false, cfg);
         }
 
@@ -217,13 +218,13 @@ public final class WeightParamsResolver {
             double hw = qq * Math.sqrt(prior);
             double exactUpTo = ApwPredictor.exactUpToQty(prior, cfg.gamma(), qq);
             Long exactUpToQty = Double.isFinite(exactUpTo) ? (long) Math.floor(exactUpTo) : null;
-            WeightParams params = new WeightParams(key, facts.goodsId(), basis, supplierSpecific,
+            WeightParams params = new WeightParams(facts.goodsId(), supplierId, basis, supplierSpecific,
                     pool == null ? null : pool.evidence(), unitWeight, mu, prior, cfg.gamma(), df, tier.name(),
                     StrictMath.expm1(hw), nInliers,
                     ApwEstimator.suggestedSampleSize(cfg, unitWeight == null ? null : unitWeight.doubleValue()),
                     exactUpToQty, profile.effectiveTolerancePct(), profile.defaultTareKg(), facts.lastTareKg(),
                     null, stale, row == null ? null : row.lastObservedAt(), drawBiasPct(pool), manualConflictPct,
-                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg(), null);
+                    facts.baseUnitDimension(), profile.learningEnabled(), cfg.scaleResKg());
             ApwPredictor.Params predictor = new ApwPredictor.Params(mu, prior, df, cfg.gamma(), cfg.scaleResKg());
             return new Resolution(params, predictor, tier, alertsAllowed, cfg);
         }

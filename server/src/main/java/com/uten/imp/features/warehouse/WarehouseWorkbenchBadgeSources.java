@@ -18,7 +18,8 @@ import java.util.List;
  * 仓库与品质入库链的计数来源: 预计到货/到货异常、超量到货财务审批、待退回供应商、IQC 待检、产成品待点收、品质结果、委外待出仓。
  *
  * <p>工作台徽章汇总(ADR-108)的计数来源: 读取函数直接调用原计数端点的控制器方法,
- * 资格判定与数字都沿用端点本身, 不另写口径。
+ * 资格判定与数字都沿用端点本身, 不另写口径。仓库任务类来源传 null = 本人仓库数据范围
+ * (ADR-149; 任务中心带 scopeWarehouseId 汇总时取所选仓), 与列表同一谓词。
  */
 @Component
 @RequiredArgsConstructor
@@ -35,14 +36,14 @@ class WarehouseWorkbenchBadgeSources implements WorkbenchBadgeSources {
     @Override
     public List<Source> sources() {
         return List.of(
-                new Source("warehouseInboundExpectation", () -> WorkbenchBadgeSources.numbers(inbound.expectationCount())),
-                new Source("warehouseArrivalException", () -> WorkbenchBadgeSources.numbers(inbound.arrivalExceptionCount())),
+                new Source("warehouseInboundExpectation", () -> WorkbenchBadgeSources.numbers(inbound.expectationCount(null))),
+                new Source("warehouseArrivalException", () -> WorkbenchBadgeSources.numbers(inbound.arrivalExceptionCount(null))),
                 new Source("financeArrivalException", () -> WorkbenchBadgeSources.numbers(financeArrivalExceptions.count())),
                 new Source("purchaseSupplierReturn", () -> WorkbenchBadgeSources.numbers(supplierReturns.count("PURCHASE"))),
                 new Source("subcontractSupplierReturn", () -> WorkbenchBadgeSources.numbers(supplierReturns.count("SUBCONTRACT"))),
                 new Source("iqcPending", () -> WorkbenchBadgeSources.numbers(inspections.pendingCount())),
-                new Source("finishedInbound", () -> WorkbenchBadgeSources.numbers(finishedInbound.count())),
-                new Source("qualityResult", () -> WorkbenchBadgeSources.numbers(qualityResults.typeCounts())),
-                new Source("subcontractOutbound", () -> WorkbenchBadgeSources.numbers(subcontractOutbound.taskCount())));
+                new Source("finishedInbound", () -> WorkbenchBadgeSources.numbers(finishedInbound.count(null))),
+                new Source("qualityResult", () -> WorkbenchBadgeSources.numbers(qualityResults.typeCounts(null))),
+                new Source("subcontractOutbound", () -> WorkbenchBadgeSources.numbers(subcontractOutbound.taskCount(null))));
     }
 }

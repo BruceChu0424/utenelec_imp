@@ -2,7 +2,8 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.application.port.InventoryMovementCostReference.WorkshopMaterialBin;
 import com.uten.imp.application.port.InventoryMovementCostReference.WorkshopMaterialBinKind;
-import com.uten.imp.application.port.LineSideWarehousePort;
+import com.uten.imp.features.warehouse.materialbin.WorkshopBinService;
+import com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport;
 import com.uten.imp.application.port.InventoryValuationPort;
 import com.uten.imp.application.port.InventoryValuationPort.EventContext;
 import com.uten.imp.application.port.InventoryValuationPort.PoolKey;
@@ -96,7 +97,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
     @Autowired InventoryValueWorkService valueWork;
     @Autowired InventoryValuationPort values;
     @Autowired DocNumberService docNumbers;
-    @Autowired LineSideWarehousePort lineSide;
+    @Autowired WorkshopBinService lineSide;
     FullChainEndToEndTest fixture;
 
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
@@ -433,7 +434,7 @@ class WorkshopMaterialStockAuthorizationPostgresTest {
                 VALUES (?, 'MASS', 'KG', 'MANUAL_GOVERNANCE')""",kg);
         UUID period=UUID.randomUUID();
         UUID bin=inTx(()->{
-            UUID created=lineSide.ensure(workshop,world.warehouseId());
+            UUID created=WorkshopBinTestSupport.open(lineSide,workshop,world.warehouseId(),world.superAdminUserId());
             db.update("""
                     INSERT INTO workshop_material_settings(workshop_department_id,periodic_enabled,periodic_bin_warehouse_id,
                         go_live_date,enabled_by,enabled_at,created_by)

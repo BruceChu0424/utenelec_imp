@@ -103,21 +103,21 @@ public class WorkshopMaterialPeriodService {
                         throw new ApiException(ErrorCode.VALIDATION_FAILED, "截止日不能晚于今天");
                     }
                     UUID actor = currentUser.requireId();
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             UPDATE workshop_material_periods
                             SET status = 'COUNTING', end_date = :cutoff, counting_started_by = :actor,
                                 counting_started_at = now(), row_version = row_version + 1
                             WHERE id = :id
                             """, new MapSqlParameterSource("cutoff", cutoff).addValue("actor", actor)
-                            .addValue("id", periodId)));
+                            .addValue("id", periodId));
                     UUID next = UUID.randomUUID();
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             INSERT INTO workshop_material_periods(
                                 id, bin_warehouse_id, workshop_department_id, period_no, start_date, created_by)
                             VALUES (:id, :bin, :workshop, :no, :start, :actor)
                             """, new MapSqlParameterSource("id", next).addValue("bin", period.binWarehouseId())
                             .addValue("workshop", period.workshopDepartmentId()).addValue("no", period.no() + 1)
-                            .addValue("start", cutoff.plusDays(1)).addValue("actor", actor)));
+                            .addValue("start", cutoff.plusDays(1)).addValue("actor", actor));
                     UUID count = counts.createFirstCount(periodId);
                     return new Outcome<>(periodId, new StartCountResult(views.view(periodId), views.view(next),
                             counts.detailOf(count)));
@@ -207,16 +207,16 @@ public class WorkshopMaterialPeriodService {
                             throw new ApiException(ErrorCode.CONFLICT,
                                     "盘点开始后下一期已有收发料、报工或盘点记录，不能再撤回盘点");
                         }
-                        WorkshopMaterialGuards.guarded(() -> db.update(
-                                "DELETE FROM workshop_material_periods WHERE id = :id", Map.of("id", next.id())));
+                        db.update(
+                                "DELETE FROM workshop_material_periods WHERE id = :id", Map.of("id", next.id()));
                     }
                     counts.deleteDrafts(periodId);
-                    WorkshopMaterialGuards.guarded(() -> db.update("""
+                    db.update("""
                             UPDATE workshop_material_periods
                             SET status = 'OPEN', end_date = NULL, counting_started_by = NULL, counting_started_at = NULL,
                                 row_version = row_version + 1
                             WHERE id = :id
-                            """, Map.of("id", periodId)));
+                            """, Map.of("id", periodId));
                     return new Outcome<>(periodId, views.view(periodId));
                 });
     }

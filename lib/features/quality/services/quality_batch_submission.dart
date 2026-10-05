@@ -28,8 +28,10 @@ class QualityBatchSubmission {
     required List<String> fqcInspectionIds,
     required this.reason,
     String? fqcKey,
+    int? fqcLotCount,
   }) : receipts = List.unmodifiable(receipts),
        fqcInspectionIds = List.unmodifiable(fqcInspectionIds.toSet()),
+       fqcLotCount = fqcLotCount ?? fqcInspectionIds.toSet().length,
        fqcIdempotencyKey = fqcKey ?? 'fqc-batch-approval-${const Uuid().v4()}';
 
   Map<String, dynamic> exportDraft() => {
@@ -43,6 +45,7 @@ class QualityBatchSubmission {
         },
     ],
     'fqcInspectionIds': fqcInspectionIds,
+    'fqcLotCount': fqcLotCount,
     'reason': reason,
     'fqcIdempotencyKey': fqcIdempotencyKey,
     'acknowledged': _acknowledged.toList(),
@@ -77,6 +80,7 @@ class QualityBatchSubmission {
           .cast<String>(),
       reason: data['reason'] as String?,
       fqcKey: data['fqcIdempotencyKey'] as String,
+      fqcLotCount: (data['fqcLotCount'] as num?)?.toInt(),
     );
     result._acknowledged.addAll(
       (data['acknowledged'] as List<dynamic>).cast<int>(),
@@ -94,12 +98,18 @@ class QualityBatchSubmission {
   static const int _sendLanes = 1;
 
   final List<QualityReceiptSubmission> receipts;
+
+  /// 本次全部合格的自制产成品批数(ADR-148: 一批实物一行; 批内各份的检查任务都在 [fqcInspectionIds] 里)。
+  final int fqcLotCount;
   final List<String> fqcInspectionIds;
   final String? reason;
   final String fqcIdempotencyKey;
   final Set<int> _acknowledged = <int>{};
   bool _fqcAcknowledged = false;
   bool _running = false;
+
+  /// 服务端确认判定的检查任务份数(整批展开后); 还没发或从草稿恢复时为空。
+  int? fqcProcessedCount;
 
   int get completedReceiptCount => _acknowledged.length;
   int get remainingReceiptCount => receipts.length - _acknowledged.length;
@@ -165,10 +175,11 @@ class QualityBatchSubmission {
         throw failures[earliest]!;
       }
       if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
-        await fqc.passAll(
+        final result = await fqc.passAll(
           inspectionIds: fqcInspectionIds,
           idempotencyKey: fqcIdempotencyKey,
         );
+        fqcProcessedCount = result.processedCount;
         _fqcAcknowledged = true;
         onProgress?.call();
       }

@@ -97,11 +97,13 @@ class ProductionFqcBatchViewEndToEndTest {
             assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM business_outbox WHERE dedupe_key=?",Integer.class,"PRODUCTION_FQC_RESOLVED:"+row.inspectionId()));
         }
         assertEquals(2,result.items().stream().map(item->item.inspection().warehouseId()).distinct().count());
-        assertEquals(6,sourceCount("stock_documents","source_daily_report_id",source),"One earlier partial PASS plus five batch decisions retain six distinct FINISHED_IN documents");
+        // ADR-148：放行按「报工 x 登记批次 x 仓库 x 生产计划」合单：先前的部分合格一张，这次全合格每张报工(同登记、同仓、同计划)一张。
+        assertEquals(3,sourceCount("stock_documents","source_daily_report_id",source),"One earlier partial PASS plus one release document per report handoff");
+        assertEquals(6,jdbc.queryForObject("SELECT count(*) FROM stock_document_items item JOIN stock_documents document ON document.id=item.doc_id WHERE document.source_daily_report_id=ANY(string_to_array(?,',')::uuid[]) AND NOT item.is_deleted",Integer.class,reportIds(source)),"Every released slice keeps its own FINISHED_IN line");
         assertEquals(0,jdbc.queryForObject("SELECT coalesce(sum(qty),0) FROM stock_balances WHERE goods_id=?",BigDecimal.class,source.goods()).signum(),"FQC creates drafts, never qualified physical stock");
         PassAllBatchResult replay=oneView(()->quality.passAll(request));
         assertTrue(replay.replay());assertEquals(result.batchId(),replay.batchId());assertEquals(result.items(),replay.items());
-        assertEquals(6,sourceCount("stock_documents","source_daily_report_id",source));
+        assertEquals(3,sourceCount("stock_documents","source_daily_report_id",source));
     }
 
     @Test void databaseFailureAfterTheFinalViewRollsBackDecisionDraftReleaseAndBatchLinks() {
@@ -110,7 +112,8 @@ class ProductionFqcBatchViewEndToEndTest {
         assertThrows(org.springframework.dao.DataAccessException.class,()->new TransactionTemplate(manager).executeWithoutResult(status->{
             var result=oneView(()->quality.passAll(request));
             assertEquals(2,result.items().size());
-            assertEquals(2,sourceCount("stock_documents","source_daily_report_id",source));
+            // ADR-148：同一报工、同一登记、同一计划的两份放行进同一张成品入库单。
+            assertEquals(1,sourceCount("stock_documents","source_daily_report_id",source));
             jdbc.queryForObject("SELECT 1/0",Integer.class);
         }));
         assertEquals(0,sourceCount("stock_documents","source_daily_report_id",source));
@@ -130,8 +133,8 @@ class ProductionFqcBatchViewEndToEndTest {
             UUID warehouse=world.warehouseId();
             if(reportIndex++>0) {warehouse=UUID.randomUUID();jdbc.update("INSERT INTO warehouses(id,parent_id,code,name,status,is_accountable) VALUES(?,?,?,?,'使用',TRUE)",warehouse,world.warehouseId(),"FV-"+warehouse,"FQC other actual warehouse");}
             var items=jdbc.queryForList("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted ORDER BY line_no",UUID.class,reportId);
-            arrivals.register(reportId,new ArrivalRegistrationRequest("fqc-view-register-"+reportId,warehouse,
-                    items.stream().map(id->new ArrivalRegistrationItemRequest(id,"FQC-VIEW-"+id)).toList(),"FQC complete snapshot"));
+            com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport.registerItems(arrivals,reportId,
+                    "fqc-view-register-"+reportId,warehouse,items,id->"FQC-VIEW-"+id,"FQC complete snapshot",false);
             inspections.addAll(jdbc.queryForList("SELECT id FROM production_fqc_inspections WHERE source_report_id=? ORDER BY id",UUID.class,reportId));
         }
         masters.loginAs(world.superAdminUserId());return new Source(world.goodsA(),reports,inspections);

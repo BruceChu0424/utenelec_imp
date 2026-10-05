@@ -412,13 +412,14 @@ Future<(_FakeApi, _Nav)> _open(
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         myWarehouseScopeProvider.overrideWith(
-          (ref) async => const MyWarehouseScope(keepersConfigured: true),
-        ),
-        warehouseScopeOptionsProvider.overrideWith(
-          (ref) async => const [
-            WarehouseScopeOption(id: 'wh-hw', name: '五金仓库'),
-            WarehouseScopeOption(id: 'wh-pl', name: '塑胶仓库'),
-          ],
+          (ref) async => const MyWarehouseScope(
+            role: WarehouseScopeRole.supervisor,
+            canSelectAll: true,
+            selectable: [
+              WarehouseScopeOption(id: 'wh-hw', name: '五金仓库'),
+              WarehouseScopeOption(id: 'wh-pl', name: '塑胶仓库'),
+            ],
+          ),
         ),
         warehouseWeightUnitsPrefsProvider.overrideWith(
           _MemoryWeightUnitsPrefs.new,
@@ -476,20 +477,16 @@ void main() {
     expect(find.textContaining('重量未知'), findsNothing);
   });
 
-  test('scope maps to warehouseId / warehouseScope=MINE like the server', () {
+  test('scope maps to scopeWarehouseId like the task endpoints (ADR-149)', () {
     expect(
       WarehouseInsightRepository.scopeQuery(const WarehouseTaskScope.all()),
       isEmpty,
     );
     expect(
-      WarehouseInsightRepository.scopeQuery(const WarehouseTaskScope.mine()),
-      {'warehouseScope': 'MINE'},
-    );
-    expect(
       WarehouseInsightRepository.scopeQuery(
         const WarehouseTaskScope.warehouse('wh-hw'),
       ),
-      {'warehouseId': 'wh-hw'},
+      {'scopeWarehouseId': 'wh-hw'},
     );
   });
 

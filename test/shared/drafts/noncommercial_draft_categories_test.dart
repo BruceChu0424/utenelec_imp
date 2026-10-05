@@ -271,7 +271,8 @@ void main() {
           _draft(
             'arrival-local',
             BadgeModule.warehouse,
-            '/warehouse/inbound/receipts/new',
+            // ADR-151 §5：登记实际到货只有一个页面，来源走地址里的 id。
+            '/warehouse/inbound/arrivals/register?expectationIds=e-1',
           ),
           _draft(
             'outbound-local',

@@ -176,13 +176,17 @@ class _RateRequestEditorState
       _busy = true;
       _error = null;
     });
+    var dispatched = false;
+    // 上一次已发出但结果未知时, 这次在发出前失败不能把「结果未知」抹掉(字段仍锁定, 防止重复申请)。
+    final wasUncertain = _uncertain;
     try {
       _uncertain = true;
-      final request = await runFormDraftSubmission(
-        () => ref
+      final request = await runFormDraftSubmission(() {
+        dispatched = true;
+        return ref
             .read(productionOverproductionRateRepositoryProvider)
-            .submit(_source, percentage / 100, _reason.text.trim()),
-      );
+            .submit(_source, percentage / 100, _reason.text.trim());
+      });
       await completeFormDraft();
       if (mounted) await _close(request);
     } on ApiException catch (error) {
@@ -196,8 +200,21 @@ class _RateRequestEditorState
               error.code == 'CONFLICT' || error.httpStatus == 409;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _error = '暂未确认申请结果，请重试本次申请；填写内容已保留');
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          if (dispatched) {
+            _error = '暂未确认申请结果，请重试本次申请；填写内容已保留';
+          } else {
+            // 本机检查点没写成, 本次申请还没发出: 如实说明原因(ADR-151 §2); 之前那次的未知结果保留。
+            _uncertain = wasUncertain;
+            _error = describeSubmitError(
+              error,
+              fallback: '本次申请尚未发出，请重试；填写内容已保留',
+            );
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -126,7 +126,8 @@ class SubcontractPreparationActualWarehousePostgresTest {
         UUID analysis=call(source,"analysis"), child=call(source,"childAnalysisItem"), goods=call(source,"childGoods");
         UUID childPlan=call(source,"childPlan"), parentPlan=call(source,"parentPlan");
         UUID childPlanItem=call(source,"childPlanItem"), leafPlanItem=call(source,"leafPlanItem"), leafGoods=call(source,"leafGoods");
-        UUID b=warehouse("SC actual B",true),c=multipleActualWarehouses?warehouse("SC actual C",false):b;
+        // ADR-146: 前置自制产出只能入良品仓(不良品仓拒绝报工入仓), 「另一个实际仓」用良品仓。
+        UUID b=warehouse("SC actual B",false),c=multipleActualWarehouses?warehouse("SC actual C",false):b;
         List<Object[]> expectedWarehouses=multipleActualWarehouses
                 ? List.of(new Object[]{b,"0.4"},new Object[]{c,"0.6"})
                 : java.util.Collections.singletonList(new Object[]{b,"1"});

@@ -32,9 +32,7 @@ class ProductionFqcPassAllTransactionContractTest {
         assertThat(release.getAnnotation(Transactional.class).propagation())
                 .isEqualTo(Propagation.MANDATORY);
         var draft = ProductionFqcFinishedInboundService.class.getMethod(
-                "createReleasedDraft",
-                com.uten.imp.application.port.ProductionFinishedInboundReleasePort
-                        .ReleaseRequest.class);
+                "createReleasedDrafts", java.util.List.class);
         assertThat(draft.getAnnotation(Transactional.class).propagation())
                 .isEqualTo(Propagation.MANDATORY);
 
@@ -47,16 +45,20 @@ class ProductionFqcPassAllTransactionContractTest {
         assertThat(batchBody)
                 .contains("lockPassAllDecisionDimensions(")
                 .contains("requireActiveDecisionRow(locked.get(inspectionId))")
-                .contains("DecisionWrite decision = recordDecisionLocked(")
+                .contains("LotWrite write = writeLotDecisionLocked(")
                 .contains("INSERT INTO production_fqc_pass_all_batch_items")
-                .contains("detailViews(normalized.inspectionIds())")
+                .contains("releaseLocked(releases, inboundBatch)")
+                .contains("detailViews(active)")
                 .doesNotContain("detailInternal(")
                 .doesNotContain("catch (")
                 .doesNotContain("REQUIRES_NEW");
         assertThat(batchBody.indexOf("requireActiveDecisionRow"))
-                .isLessThan(batchBody.indexOf("DecisionWrite decision = recordDecisionLocked"));
+                .isLessThan(batchBody.indexOf("LotWrite write = writeLotDecisionLocked"));
+        // ADR-148：同一命令的全部合格先逐份写决定，再一起放行建单(同一实物交接一张入库单)。
+        assertThat(batchBody.indexOf("LotWrite write = writeLotDecisionLocked"))
+                .isLessThan(batchBody.indexOf("releaseLocked(releases, inboundBatch)"));
         assertThat(batchBody.indexOf("INSERT INTO production_fqc_pass_all_batch_items"))
-                .isLessThan(batchBody.indexOf("detailViews(normalized.inspectionIds())"));
+                .isLessThan(batchBody.indexOf("detailViews(active)"));
         assertThat(batchBody.indexOf("mutationFootprint.beginInspections("))
                 .isGreaterThan(0).isLessThan(batchBody.indexOf("findPassAllBatch("));
         assertThat(batchBody.indexOf("findPassAllBatch("))

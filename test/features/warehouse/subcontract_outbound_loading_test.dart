@@ -146,7 +146,12 @@ class _DictionaryApi extends ApiClient {
       throw StateError('unrelated dictionary');
     }
     return [
-      {'id': 'leaf', 'name': '实际仓', 'status': 'active'},
+      {
+        'id': 'leaf',
+        'name': '实际仓',
+        'status': 'active',
+        'selectableForNew': true,
+      },
     ];
   }
 }

@@ -407,8 +407,9 @@ public class ProductionScheduleService {
                            CASE WHEN b.qty > 0 THEN fn_material_analysis_edge_required(
                                line.need * line.rate, usage.effective_qty, b.consumption_basis,
                                b.basis_output_qty, b.allow_partial_package) END AS need_qty,
-                           COALESCE((SELECT SUM(balance.qty) FROM stock_balances balance
-                                     WHERE balance.goods_id = b.component_goods_id), 0) AS onhand,
+                           -- ADR-146 可用量单一口径: 不含不良品仓、车间内料仓。
+                           COALESCE((SELECT SUM(usable.on_hand_qty) FROM v_stock_usable usable
+                                     WHERE usable.goods_id = b.component_goods_id), 0) AS onhand,
                            EXISTS (SELECT 1 FROM goods_bom_items child
                                    WHERE child.goods_id = b.component_goods_id
                                      AND child.is_deleted = false) AS self_made,

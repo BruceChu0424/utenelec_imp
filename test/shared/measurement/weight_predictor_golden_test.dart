@@ -101,7 +101,6 @@ void main() {
       String? evidence,
       bool stale = false,
     }) => WeightParams(
-      key: 'g|A',
       goodsId: 'g',
       basis: basis,
       evidence: evidence,
@@ -173,7 +172,6 @@ void main() {
       );
       // 先验很紧 (本应「可靠」), 但超过一年没称过 -> 本次最高「可参考」。
       const tight = WeightParams(
-        key: 'g|',
         goodsId: 'g',
         basis: WeightBasis.learned,
         logMean: -6.2,
@@ -184,7 +182,6 @@ void main() {
       final estimate = tight.countFromWeight(20)!;
       expect(tight.requestTierFor(estimate), WeightTier.green);
       const staleTight = WeightParams(
-        key: 'g|',
         goodsId: 'g',
         basis: WeightBasis.learned,
         logMean: -6.2,
@@ -197,7 +194,7 @@ void main() {
     });
 
     test('没有单重时只用同批抽样折算', () {
-      const none = WeightParams(key: 'g|', goodsId: 'g');
+      const none = WeightParams(goodsId: 'g');
       expect(none.countFromWeight(20), isNull);
       final r = none.countFromWeight(
         20,

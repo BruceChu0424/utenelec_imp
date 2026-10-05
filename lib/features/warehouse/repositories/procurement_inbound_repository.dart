@@ -29,10 +29,6 @@ abstract interface class ProcurementInboundRepository {
   });
 
   /// 预计到货按订货类型计数（PURCHASE/SUBCONTRACT → 全量张数；类型筛选卡用）。
-  Future<Map<String, int>> expectationTypeCounts({
-    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
-  });
-
   Future<PagedResult<ProcurementArrivalException>> warehouseExceptions({
     int page = 1,
     int size = 20,
@@ -70,10 +66,14 @@ abstract interface class ProcurementInboundRepository {
 
   /// 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族由服务端按
   /// 来源订货单权威回填；正常保存即转品质待检，超量返回 excessQuarantined（已隔离待财务）。
-  Future<WarehouseArrivalRegistration> registerArrival({
-    required ProcurementInboundOrderType orderType,
-    required Map<String, dynamic> body,
-  });
+  /// 登记页按来源身份读取预计到货(ADR-151 §5：页面路由只带 ?expectationIds=)。
+  Future<List<InboundExpectation>> expectationsByIds(List<String> ids);
+
+  /// 登记实际到货的唯一命令(单张 = 1 个来源、多选 = N 个来源)：一个事务，服务端按
+  /// 「订货单 x 入库仓库」分组成收货单，逐组结果含超量隔离。
+  Future<WarehouseArrivalRegistrationBatch> registerArrivals(
+    Map<String, dynamic> body,
+  );
 
   /// 完成中断的到货登记（断点恢复）：草稿收货单一键「继续送检」——服务端先按来源
   /// 订货单权威修复表头币族（老草稿），再走同一审核链路；仓库不进采购/委外单据页。
@@ -181,20 +181,6 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
       },
     );
     return parseFacetBuckets(json, 'billNo');
-  }
-
-  @override
-  Future<Map<String, int>> expectationTypeCounts({
-    WarehouseTaskScope scope = const WarehouseTaskScope.all(),
-  }) async {
-    final json = await api.get(
-      ApiEndpoints.warehouseInboundExpectationTypeCounts,
-      query: scope.queryParameters,
-    );
-    return {
-      for (final entry in (json as Map).entries)
-        entry.key.toString(): (entry.value as num).toInt(),
-    };
   }
 
   @override
@@ -315,15 +301,28 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   }
 
   @override
-  Future<WarehouseArrivalRegistration> registerArrival({
-    required ProcurementInboundOrderType orderType,
-    required Map<String, dynamic> body,
-  }) async {
-    final json = await api.post(
-      ApiEndpoints.warehouseInboundArrivals,
-      body: {'orderType': orderType.name.toUpperCase(), ...body},
+  Future<List<InboundExpectation>> expectationsByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final rows = await api.getList(
+      ApiEndpoints.warehouseInboundExpectationsByIds,
+      query: {'ids': ids.join(',')},
     );
-    return WarehouseArrivalRegistration.fromJson(json);
+    return rows.map(InboundExpectation.fromJson).toList(growable: false);
+  }
+
+  @override
+  Future<WarehouseArrivalRegistrationBatch> registerArrivals(
+    Map<String, dynamic> body,
+  ) async {
+    final json = await api.post(
+      ApiEndpoints.warehouseInboundArrivalsBatch,
+      body: body,
+    );
+    final items = (json['items'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(WarehouseArrivalRegistration.fromJson)
+        .toList(growable: false);
+    return WarehouseArrivalRegistrationBatch(registrations: items);
   }
 
   @override

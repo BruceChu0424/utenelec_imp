@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.materialbin;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -38,21 +39,27 @@ public class WorkshopMaterialPositionQueryService {
     private final WorkshopMaterialScope scope;
     private final WorkshopMaterialPermissions permissions;
     private final WorkshopMaterialPeriodViews periodViews;
+    private final WorkshopBinService openings;
 
     public WorkshopMaterialPositionQueryService(NamedParameterJdbcTemplate db, WorkshopMaterialBinSupport bins,
                                                 WorkshopMaterialScope scope, WorkshopMaterialPermissions permissions,
-                                                WorkshopMaterialPeriodViews periodViews) {
+                                                WorkshopMaterialPeriodViews periodViews, WorkshopBinService openings) {
         this.db = db;
         this.bins = bins;
         this.scope = scope;
         this.permissions = permissions;
         this.periodViews = periodViews;
+        this.openings = openings;
     }
 
+    /**
+     * 内料仓页的现存。开启了整批领料的按期间口径算 (账面、上次实盘、本期进出、估计已用与还剩);
+     * 只开通、收车间直送的内料仓 (ADR-147 已开通) 只列现有的料和数量, 没有发料/盘点动作。
+     */
     @Transactional(readOnly = true)
     public PositionView position(UUID binWarehouseId) {
         Settings settings = binWarehouseId == null ? null : bins.settingsByBin(binWarehouseId);
-        if (settings == null) throw new ApiException(ErrorCode.NOT_FOUND, "这个仓库不是开启了整批领料的车间内料仓");
+        if (settings == null || !settings.enabled()) return directOnlyPosition(binWarehouseId);
         scope.requireWorkshop(settings.workshopDepartmentId());
         List<PositionRow> rows = new ArrayList<>();
         for (Map<String, Object> row : db.queryForList("""
@@ -110,6 +117,41 @@ public class WorkshopMaterialPositionQueryService {
                 open == null ? null : open.ref(), pending == null ? null : pending.ref(), rows, actions);
     }
 
+    /** 只开通、没开整批领料的内料仓: 现有的料与数量 (车间直送进来、等上层工单领用的料)。 */
+    private PositionView directOnlyPosition(UUID binWarehouseId) {
+        List<Map<String, Object>> opened = binWarehouseId == null ? List.of() : db.queryForList("""
+                SELECT opened.workshop_department_id, workshop.name AS workshop_name, bin.name AS bin_name
+                FROM workshop_bins opened
+                JOIN departments workshop ON workshop.id = opened.workshop_department_id
+                JOIN warehouses bin ON bin.id = opened.bin_warehouse_id AND NOT bin.is_deleted
+                WHERE opened.bin_warehouse_id = :bin
+                """, Map.of("bin", binWarehouseId));
+        if (opened.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "这个仓库不是已开通的车间内料仓");
+        UUID workshop = (UUID) opened.getFirst().get("workshop_department_id");
+        scope.requireWorkshop(workshop);
+        List<PositionRow> rows = new ArrayList<>();
+        for (Map<String, Object> row : db.queryForList("""
+                SELECT balance.goods_id, balance.color_id, balance.qty, goods.code AS goods_code,
+                       goods.name AS goods_name, color.name AS color_name, unit.name AS unit_name,
+                       goods.bulk_package_qty
+                FROM stock_balances balance
+                JOIN goods ON goods.id = balance.goods_id
+                LEFT JOIN colors color ON color.id = balance.color_id
+                LEFT JOIN units unit ON unit.id = goods.unit_id
+                WHERE balance.warehouse_id = :bin AND balance.qty <> 0
+                ORDER BY goods.code, color.name NULLS FIRST, balance.goods_id
+                """, Map.of("bin", binWarehouseId))) {
+            rows.add(new PositionRow((UUID) row.get("goods_id"), (String) row.get("goods_code"),
+                    (String) row.get("goods_name"), (UUID) row.get("color_id"), (String) row.get("color_name"),
+                    (String) row.get("unit_name"), WorkshopMaterialBinSupport.decimal(row.get("bulk_package_qty")),
+                    WorkshopMaterialBinSupport.decimal(row.get("qty")), null, null, null, null, null, null, null,
+                    null, 0, 0));
+        }
+        return new PositionView(binWarehouseId, (String) opened.getFirst().get("bin_name"), workshop,
+                (String) opened.getFirst().get("workshop_name"), null, null, List.of(), null, null, null,
+                rows, List.of());
+    }
+
     /** 下拉最多列出的料数 (整批领料的料通常几十种; 防异常数据拖慢页面)。 */
     private static final int MATERIAL_LIMIT = 500;
 
@@ -124,7 +166,7 @@ public class WorkshopMaterialPositionQueryService {
                 WHERE balance.qty <> 0
             ), accounting AS MATERIALIZED (
                 SELECT leaf.warehouse_id FROM (SELECT DISTINCT warehouse_id FROM balances) leaf
-                WHERE fn_warehouse_is_active_accounting_leaf(leaf.warehouse_id)
+                WHERE fn_warehouse_is_good_stock_leaf(leaf.warehouse_id)
             ), stocked AS MATERIALIZED (
                 SELECT balances.* FROM balances JOIN accounting ON accounting.warehouse_id = balances.warehouse_id
             )
@@ -141,8 +183,7 @@ public class WorkshopMaterialPositionQueryService {
             List<UUID> goodsIds, int page, int size) {
         if (workshopDepartmentId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择车间");
         scope.requireWorkshop(workshopDepartmentId);
-        Settings settings = bins.settings(workshopDepartmentId);
-        UUID bin = settings == null ? null : settings.binWarehouseId();
+        UUID bin = openings.openedBinOf(workshopDepartmentId).orElse(null);
         var paging = Pageables.of(page, size);
         List<UUID> ids = goodsIds == null ? List.of() : goodsIds.stream().filter(Objects::nonNull).distinct().toList();
         MapSqlParameterSource params = new MapSqlParameterSource("bin", bin == null ? null : bin.toString())
@@ -175,31 +216,31 @@ public class WorkshopMaterialPositionQueryService {
         List<MaterialStockOption> options = new ArrayList<>();
         for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {
             Map<String, Object> row = entry.getValue();
-            UUID defaultLeaf = (UUID) row.get("owning_warehouse_id");
+            UUID defaultLeaf = (UUID) row.get("default_leaf_id");
             List<LeafStockView> stock = new ArrayList<>(leaves.getOrDefault(entry.getKey(), List.of()));
             if (defaultLeaf != null && stock.stream().noneMatch(leaf -> defaultLeaf.equals(leaf.warehouseId()))) {
-                stock.add(0, new LeafStockView(defaultLeaf, (String) row.get("owning_name"), BigDecimal.ZERO));
+                stock.add(0, new LeafStockView(defaultLeaf, (String) row.get("default_leaf_name"), BigDecimal.ZERO));
             }
             options.add(new MaterialStockOption(entry.getKey().goodsId(), (String) row.get("code"),
                     (String) row.get("name"), entry.getKey().colorId(), (String) row.get("color_name"),
                     (String) row.get("unit_name"), WorkshopMaterialBinSupport.decimal(row.get("bulk_package_qty")),
-                    (String) row.get("periodic_cost_basis"), defaultLeaf, (String) row.get("owning_name"),
+                    (String) row.get("periodic_cost_basis"), defaultLeaf, (String) row.get("default_leaf_name"),
                     WorkshopMaterialBinSupport.zero(row.get("available")), List.copyOf(stock)));
         }
         return new PageResponse<>(List.copyOf(options), paging.getPageNumber() + 1, paging.getPageSize(), total, pages);
     }
 
     /**
-     * 可发到某车间内料仓的料: 全部整批领料的料 (按货品资料的颜色), 加上记账叶仓里有货的颜色、这个内料仓进出过的颜色;
-     * 进过这个内料仓的排在前面。每种料带每袋净重、分摊方式、默认出库叶仓、各叶仓还能发多少与合计 (合计与内料仓页
-     * 「仓库可发」同一口径: 叶仓余额 - 未了结的占用 - 最低库存)。车间成员只能查本车间。
+     * 可发到某车间内料仓的料: 全部整批领料的料 (按货品资料的颜色), 加上良品子仓里有货的颜色、这个内料仓进出过的颜色;
+     * 进过这个内料仓的排在前面。每种料带每袋净重、分摊方式、默认出库仓、各良品子仓还能发多少与合计 (合计与内料仓页
+     * 「仓库可发」同一口径: 叶仓余额 - 未了结的占用 - 最低库存)。默认出库仓只由 fn_workshop_bin_default_source 给出
+     * (来源仓有货 -> 货品所属仓库 -> 可发量最大的良品子仓, ADR-147)。车间成员只能查本车间。
      */
     @Transactional(readOnly = true)
     public List<MaterialStockOption> materials(UUID workshopDepartmentId) {
         if (workshopDepartmentId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择车间");
         scope.requireWorkshop(workshopDepartmentId);
-        Settings settings = bins.settings(workshopDepartmentId);
-        UUID bin = settings == null ? null : settings.binWarehouseId();
+        UUID bin = openings.openedBinOf(workshopDepartmentId).orElse(null);
         MapSqlParameterSource params = new MapSqlParameterSource("bin", bin == null ? null : bin.toString())
                 .addValue("limit", MATERIAL_LIMIT);
         Map<MaterialKey, Map<String, Object>> heads = new LinkedHashMap<>();
@@ -214,7 +255,7 @@ public class WorkshopMaterialPositionQueryService {
                 )
                 SELECT candidate.goods_id, candidate.color_id, goods.code, goods.name, color.name AS color_name,
                        unit.name AS unit_name, goods.bulk_package_qty, goods.periodic_cost_basis,
-                       goods.owning_warehouse_id, owning.name AS owning_name,
+                       default_leaf.id AS default_leaf_id, default_leaf.name AS default_leaf_name,
                        EXISTS (SELECT 1 FROM used WHERE used.goods_id = candidate.goods_id
                                  AND used.color_id IS NOT DISTINCT FROM candidate.color_id) AS used,
                        GREATEST(
@@ -227,23 +268,23 @@ public class WorkshopMaterialPositionQueryService {
                                          AND reservation.goods_id = candidate.goods_id
                                          AND reservation.color_id IS NOT DISTINCT FROM candidate.color_id
                                          AND (reservation.warehouse_id IS NULL
-                                              OR fn_warehouse_is_active_accounting_leaf(reservation.warehouse_id))), 0)
+                                              OR fn_warehouse_is_good_stock_leaf(reservation.warehouse_id))), 0)
                            - GREATEST(COALESCE(goods.min_qty::numeric, 0), 0),
                            0) AS available
                 FROM candidates candidate
                 JOIN goods ON goods.id = candidate.goods_id
                 LEFT JOIN colors color ON color.id = candidate.color_id
                 LEFT JOIN units unit ON unit.id = goods.unit_id
-                LEFT JOIN warehouses owning ON owning.id = goods.owning_warehouse_id
+                LEFT JOIN warehouses default_leaf ON default_leaf.id = fn_workshop_bin_default_source(
+                    CAST(:bin AS uuid), candidate.goods_id, candidate.color_id)
                 ORDER BY used DESC, goods.code, color.name NULLS FIRST, candidate.goods_id, candidate.color_id
                 LIMIT :limit
                 """, params)) {
             heads.put(new MaterialKey((UUID) row.get("goods_id"), (UUID) row.get("color_id")), row);
         }
         if (heads.isEmpty()) return List.of();
-        // 2026-10-02 用户口径「退到哪个仓库要能选」：候选叶仓为空的料（货全在
-        // 内料仓、归属仓即内料仓）此前把收退回/发料的仓库下拉钉死。兜底列出全部
-        // 有效核算叶仓（数量按 0 显示，仅供选择；提交仍由服务端校验）。
+        // 2026-10-02 用户口径「退到哪个仓库要能选」：没有有货子仓也没有默认出库仓的料，
+        // 兜底列出全部良品子仓（数量按 0 显示，仅供选择；提交仍由服务端校验）。
         List<LeafStockView> allActiveLeaves = null;
         Map<MaterialKey, List<LeafStockView>> leaves = new LinkedHashMap<>();
         for (Map<String, Object> row : db.queryForList(PERIODIC_STOCK_CTES + """
@@ -270,17 +311,13 @@ public class WorkshopMaterialPositionQueryService {
         }
         for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {
             List<LeafStockView> stock = leaves.get(entry.getKey());
-            UUID owning = (UUID) entry.getValue().get("owning_warehouse_id");
-            // 兜底只在「原规则下一个可选叶仓都没有」时触发：没有存货叶仓、且
-            // 归属仓也给不出候选（无归属或归属即内料仓本身）。归属仓可用的料
-            // 仍只列「有货叶仓 + 归属仓」，保持发料指引不发散。
-            boolean owningUsable = owning != null && !owning.equals(bin);
-            if ((stock == null || stock.isEmpty()) && !owningUsable) {
+            // 兜底只在「一个可选子仓都没有」时触发：没有有货子仓、也没有默认出库仓。
+            if ((stock == null || stock.isEmpty()) && entry.getValue().get("default_leaf_id") == null) {
                 if (allActiveLeaves == null) {
                     allActiveLeaves = new ArrayList<>();
                     for (Map<String, Object> row : db.queryForList("""
                             SELECT warehouse.id, warehouse.name FROM warehouses warehouse
-                            WHERE fn_warehouse_is_active_accounting_leaf(warehouse.id)
+                            WHERE fn_warehouse_is_good_stock_leaf(warehouse.id)
                               AND warehouse.id IS DISTINCT FROM CAST(:bin AS uuid)
                               AND warehouse.is_deleted = FALSE
                             ORDER BY warehouse.name
@@ -295,40 +332,46 @@ public class WorkshopMaterialPositionQueryService {
         List<MaterialStockOption> out = new ArrayList<>();
         for (Map.Entry<MaterialKey, Map<String, Object>> entry : heads.entrySet()) {
             Map<String, Object> row = entry.getValue();
-            UUID owning = (UUID) row.get("owning_warehouse_id");
-            UUID defaultLeaf = Objects.equals(owning, bin) ? null : owning;
+            UUID defaultLeaf = (UUID) row.get("default_leaf_id");
             List<LeafStockView> stock = new ArrayList<>(leaves.getOrDefault(entry.getKey(), List.of()));
             if (defaultLeaf != null && stock.stream().noneMatch(leaf -> defaultLeaf.equals(leaf.warehouseId()))) {
-                // 默认出库叶仓即使没货也列出, 仓库照样可以选。
-                stock.add(0, new LeafStockView(defaultLeaf, (String) row.get("owning_name"), BigDecimal.ZERO));
+                // 默认出库仓即使没货也列出, 仓库照样可以选。
+                stock.add(0, new LeafStockView(defaultLeaf, (String) row.get("default_leaf_name"), BigDecimal.ZERO));
             }
             out.add(new MaterialStockOption(entry.getKey().goodsId(), (String) row.get("code"),
                     (String) row.get("name"), entry.getKey().colorId(), (String) row.get("color_name"),
                     (String) row.get("unit_name"), WorkshopMaterialBinSupport.decimal(row.get("bulk_package_qty")),
-                    (String) row.get("periodic_cost_basis"), defaultLeaf,
-                    defaultLeaf == null ? null : (String) row.get("owning_name"),
+                    (String) row.get("periodic_cost_basis"), defaultLeaf, (String) row.get("default_leaf_name"),
                     WorkshopMaterialBinSupport.zero(row.get("available")), List.copyOf(stock)));
         }
         return out;
     }
 
-    /** 工作台徽章: 待发料、待收退回 (红), 盘点中 (黄); 车间成员只数本车间。 */
+    /**
+     * 工作台徽章: 待发料、待收退回 (红), 盘点中 (黄); 车间成员只数本车间。仓库侧另按仓库数据范围(ADR-149):
+     * 请领/退料与列表同一谓词(预填叶仓), 盘点中按该车间内料仓的来源仓(没设来源仓 = 未定仓)。
+     */
     @Transactional(readOnly = true)
-    public BadgeCounts badgeCounts() {
+    public BadgeCounts badgeCounts(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         String inScope = scope.predicate("workshop_department_id", params);
+        String requisitionScope = scope.requisitionWarehouseFilter(warehouseScope, params);
+        String requisitionFilter = requisitionScope.isEmpty() ? "" : " AND " + requisitionScope;
+        String periodFilter = requisitionScope.isEmpty() ? "" : " AND " + warehouseScope.predicateAny("""
+                ARRAY(SELECT bin.source_warehouse_id FROM workshop_bins bin
+                      WHERE bin.workshop_department_id = period.workshop_department_id)""", ":warehouseScope");
         Map<String, Object> row = db.queryForMap("""
-                SELECT (SELECT count(*) FROM workshop_material_requisitions
+                SELECT (SELECT count(*) FROM workshop_material_requisitions requisition
                         WHERE status = 'PENDING' AND kind = 'ISSUE'
-                        """ + " AND " + inScope + """
+                        """ + " AND " + inScope + requisitionFilter + """
                 ) AS pending_issue,
-                       (SELECT count(*) FROM workshop_material_requisitions
+                       (SELECT count(*) FROM workshop_material_requisitions requisition
                         WHERE status = 'PENDING' AND kind = 'RETURN'
-                        """ + " AND " + inScope + """
+                        """ + " AND " + inScope + requisitionFilter + """
                 ) AS pending_return,
-                       (SELECT count(*) FROM workshop_material_periods
+                       (SELECT count(*) FROM workshop_material_periods period
                         WHERE status = 'COUNTING'
-                        """ + " AND " + inScope + """
+                        """ + " AND " + inScope + periodFilter + """
                 ) AS counting
                 """, params);
         return new BadgeCounts(WorkshopMaterialBinSupport.number(row.get("pending_issue")).longValue(),

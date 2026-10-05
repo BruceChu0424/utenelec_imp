@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+@SuppressWarnings("unchecked")
 class StockCountNoticeHandlerTest {
     private final JdbcTemplate db = mock(JdbcTemplate.class);
     private final NoticeService notices = mock(NoticeService.class);
@@ -27,7 +28,14 @@ class StockCountNoticeHandlerTest {
     private final PermissionResolver permissions = mock(PermissionResolver.class);
     private final WorkshopStockCountPostingPort workshop = mock(WorkshopStockCountPostingPort.class);
     private final WarehouseTaskScopePort warehouseScopes = mock(WarehouseTaskScopePort.class);
-    private final StockCountNoticeHandler handler = new StockCountNoticeHandler(db, notices, candidates, users, permissions, workshop, warehouseScopes);
+    private final StockCountNoticeHandler handler = new StockCountNoticeHandler(db, notices, candidates, users, permissions,
+            workshop, new WarehouseNoticeRouter(warehouseScopes));
+
+    StockCountNoticeHandlerTest() {
+        // 默认: 唯一分发规则原样返回池(还没配置负责人)。
+        when(warehouseScopes.noticeRecipients(any(), any()))
+                .thenAnswer(call -> List.copyOf((java.util.Collection<UUID>) call.getArgument(0)));
+    }
     private final UUID request = UUID.randomUUID(), warehouse = UUID.randomUUID(), submitter = UUID.randomUUID();
 
     @Test void workshopReviewRecipientsNeedCurrentReviewPermissionNoticePermissionAndExactWarehouseScope() {
@@ -46,8 +54,8 @@ class StockCountNoticeHandlerTest {
     }
 
     @Test void registeredKeepersNarrowWarehouseReviewToResponsiblePermissionHolders() {
-        // 2026-10-02 用户口径（对齐 requisitionPending 既有设计）：登记了负责人的仓
-        // 只发「负责人 且 持审核权限」；负责人没权限不发，非负责人有权限也不发。
+        // ADR-149 唯一分发规则: 池 = 持审核与通知权限且能看这个仓的人; 再由规则收窄到该仓子仓负责人。
+        // 负责人没权限不进池, 非负责人有权限也不发。
         header("WAREHOUSE", "PENDING");
         UserAccount keeper = user(), keeperWithoutPerm = user(), outsiderWithPerm = user();
         pool(keeper, keeperWithoutPerm, outsiderWithPerm);
@@ -56,8 +64,13 @@ class StockCountNoticeHandlerTest {
         when(permissions.permsOf(outsiderWithPerm)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
         when(workshop.canAccessWarehouseForUser(warehouse, keeper.getId())).thenReturn(true);
         when(workshop.canAccessWarehouseForUser(warehouse, outsiderWithPerm.getId())).thenReturn(true);
-        when(warehouseScopes.keeperUserIds(anyList())).thenReturn(List.of(keeper.getId(), keeperWithoutPerm.getId()));
+        when(warehouseScopes.noticeRecipients(anyCollection(), eq(List.of(warehouse)))).thenAnswer(call ->
+                ((java.util.Collection<UUID>) call.getArgument(0)).stream()
+                        .filter(id -> id.equals(keeper.getId()) || id.equals(keeperWithoutPerm.getId())).toList());
         deliver("STOCK_COUNT_SUBMITTED");
+        verify(warehouseScopes).noticeRecipients(
+                argThat(pool -> pool.size() == 2 && pool.contains(keeper.getId()) && pool.contains(outsiderWithPerm.getId())),
+                eq(List.of(warehouse)));
         verify(notices).publishForUser(eq(keeper.getId()), anyString(), anyString(), eq("approval"), eq("库存盘点"),
                 eq("/warehouse/stock-count-review?requestId=" + request), eq(StockCountNoticeHandler.WAREHOUSE_EVENT), eq("important"), eq(request));
         verifyNoMoreInteractions(notices);

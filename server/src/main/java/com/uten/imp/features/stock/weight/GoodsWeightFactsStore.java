@@ -89,7 +89,7 @@ public class GoodsWeightFactsStore {
                     """, args, rs -> {
                 BalanceKey key = new BalanceKey(rs.getObject("warehouse_id", UUID.class),
                         rs.getObject("goods_id", UUID.class), rs.getObject("color_id", UUID.class));
-                result.put(key, new StockWeightBalance(key.warehouseId(), key.colorId(),
+                result.put(key, new StockWeightBalance(key.warehouseId(), key.goodsId(), key.colorId(),
                         rs.getBigDecimal("qty"), rs.getBigDecimal("weight"), rs.getBoolean("weight_estimated")));
             });
         }

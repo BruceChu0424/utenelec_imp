@@ -35,6 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -142,7 +143,7 @@ class WarehouseInsightPostgresTest {
     void healthAgesStockFirstInFirstOutAndFlagsDeadStock() throws Exception {
         World w = seed(dataSource);
 
-        WarehouseHealthPage page = service(true).health(w.parent(), null, null, null, null, false, false, 1, 50,
+        WarehouseHealthPage page = service(true).health(w.parent(), null, null, null, false, false, 1, 50,
                 "code", "asc", AS_OF);
 
         assertThat(page.getItems()).hasSize(3);
@@ -181,25 +182,25 @@ class WarehouseInsightPostgresTest {
         assertThat(page.getOverview().drawOver30d()).isEqualTo(1);
 
         // 只看 A 仓: 调往 B 的 20 对 A 是消耗, Z 不再呆滞。
-        WarehouseHealthPage onlyA = service(true).health(w.a(), null, null, null, null, false, false, 1, 50, null,
+        WarehouseHealthPage onlyA = service(true).health(w.a(), null, null, null, false, false, 1, 50, null,
                 null, AS_OF);
         HealthRow zInA = row(onlyA.getItems(), w.z());
         assertThat(zInA.qty()).isEqualByComparingTo("10");
         assertThat(zInA.out90()).isEqualByComparingTo("20");
         assertThat(zInA.dead()).isFalse();
 
-        // 我的仓库 (warehouseScope=MINE): 只负责 B 仓的账号只看到 B 仓的 Z。
-        WarehouseHealthPage mine = service(true, List.of(w.b())).health(null, "MINE", null, null, null, false,
+        // 子仓负责人的默认范围(ADR-149): 只负责 B 仓的账号只看到 B 仓的 Z。
+        WarehouseHealthPage mine = service(true, List.of(w.b())).health(null, null, null, null, false,
                 false, 1, 50, null, null, AS_OF);
         assertThat(mine.getItems()).extracting(HealthRow::goodsId).containsExactly(w.z());
         assertThat(mine.getOverview().skuWithStock()).isEqualTo(1);
         // 登记了负责人、本账号却不负责任何仓: 一个仓也没有 (不退回全部仓库, 也不绑定空的 IN 列表)。
-        WarehouseHealthPage none = service(true, List.of()).health(null, "MINE", null, null, null, false, false,
+        WarehouseHealthPage none = service(true, List.of()).health(null, null, null, null, false, false,
                 1, 50, null, null, AS_OF);
         assertThat(none.getItems()).isEmpty();
         assertThat(none.getOverview().alerts30d()).isZero();
 
-        WarehouseHealthPage dead = service(false).health(w.parent(), null, null, null, null, true, false, 1, 50,
+        WarehouseHealthPage dead = service(false).health(w.parent(), null, null, null, true, false, 1, 50,
                 null, null, AS_OF);
         assertThat(dead.getItems()).extracting(HealthRow::goodsId).containsExactlyInAnyOrder(w.y(), w.z());
         assertThat(dead.getItems()).allSatisfy(r -> assertThat(r.amountLocal()).isNull());
@@ -226,7 +227,7 @@ class WarehouseInsightPostgresTest {
             more.jdbc().update("UPDATE stock_document_items SET color_id = ? WHERE id = ?", white, whiteItem);
         }
 
-        PageResponse<CycleCountRow> page = service(true).cycleCount(w.parent(), null, true, 1, 50, AS_OF);
+        PageResponse<CycleCountRow> page = service(true).cycleCount(w.parent(), true, 1, 50, AS_OF);
 
         assertThat(page.getItems()).extracting(r -> r.goodsId() + "@" + r.warehouseId() + "/" + r.colorId())
                 .containsExactly(w.z() + "@" + w.a() + "/null", w.x() + "@" + w.a() + "/null",
@@ -246,8 +247,8 @@ class WarehouseInsightPostgresTest {
         assertThat(xWhite.reasons()).containsExactly("UNKNOWN_WEIGHT");
         assertThat(page.getItems().get(3).reasons()).containsExactly("UNKNOWN_WEIGHT");
 
-        // 我的仓库 = B 仓: 只剩 B 仓的行。
-        PageResponse<CycleCountRow> mine = service(true, List.of(w.b())).cycleCount(null, "MINE", true, 1, 50,
+        // 子仓负责人的默认范围 = B 仓: 只剩 B 仓的行。
+        PageResponse<CycleCountRow> mine = service(true, List.of(w.b())).cycleCount(null, true, 1, 50,
                 AS_OF);
         assertThat(mine.getItems()).extracting(CycleCountRow::warehouseId).containsOnly(w.b());
         assertThat(mine.getItems()).extracting(CycleCountRow::colorId).contains(white);
@@ -320,19 +321,30 @@ class WarehouseInsightPostgresTest {
     }
 
     private static WarehouseInsightService service(boolean canViewCost) {
-        return service(canViewCost, List.of());
+        return service(canViewCost, null);
     }
 
-    /** @param mine 「我的仓库」(warehouseScope=MINE) 解析出的仓库 (负责关系由仓库主档的端口给) */
+    /**
+     * @param mine 子仓负责人的默认仓库数据范围(ADR-149, 由仓库主档的端口给); null = 主管/不限。
+     *             选了某个仓时端口给该仓子树(fn_warehouse_scope_ids)。
+     */
     private static WarehouseInsightService service(boolean canViewCost, List<UUID> mine) {
         StockCostMasker masker = mock(StockCostMasker.class);
         when(masker.canView()).thenReturn(canViewCost);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.get()).thenReturn(Optional.empty());
-        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
-        when(scopes.resolve(WarehouseTaskScopePort.SCOPE_MINE, null))
-                .thenReturn(new WarehouseTaskScopePort.WarehouseTaskScope(true, mine, true));
         NamedParameterJdbcTemplate db = new NamedParameterJdbcTemplate(dataSource);
+        WarehouseTaskScopePort scopes = mock(WarehouseTaskScopePort.class);
+        when(scopes.current(any())).thenAnswer(call -> {
+            UUID requested = call.getArgument(0);
+            if (requested != null) {
+                return new WarehouseTaskScopePort.WarehouseTaskScope(true, db.queryForList(
+                        "SELECT unnest(fn_warehouse_scope_ids(ARRAY[CAST(:id AS uuid)]))",
+                        java.util.Map.of("id", requested), UUID.class), false);
+            }
+            return mine == null ? WarehouseTaskScopePort.WarehouseTaskScope.ALL
+                    : new WarehouseTaskScopePort.WarehouseTaskScope(true, mine, false);
+        });
         GoodsWeightEstimateService weights = new GoodsWeightEstimateService(db, new GoodsWeightFactsStore(db),
                 currentUser, new ObjectMapper(), new DataSourceTransactionManager(dataSource), 0.00005);
         return new WarehouseInsightService(db, masker, weights, scopes);

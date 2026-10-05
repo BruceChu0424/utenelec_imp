@@ -31,6 +31,7 @@ import '../providers/warehouse_quality_result_count_provider.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_slice_table.dart'
     show warehouseQualityDateTime;
+import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 /// 品质部检查结果：原「IQC 合格待入库」+「IQC 不合格实物退回」的合并任务中心。
 /// 与预计到货任务中心同款表格工作台——列表按收货单聚合作业状态（等待检查结果 /
@@ -186,6 +187,11 @@ class _WarehouseQualityResultsPageState
     }
   }
 
+  /// 仓库任务中心选的仓(ADR-149)；没选 = 本人默认范围(服务端强制)。范围变化时任务中心推进
+  /// externalRefreshTick, 本页随之重拉列表与计数。
+  String? get _scopeWarehouseId =>
+      ref.read(warehouseTaskScopeProvider).warehouseId;
+
   /// 状态小类计数（后端全量口径；null = 尚未返回，分段按钮显示 '—'）。
   /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
   void _refreshStatusCounts() {
@@ -197,6 +203,7 @@ class _WarehouseQualityResultsPageState
         .statusCounts(
           receiptType: receiptType,
           keyword: keyword.isEmpty ? null : keyword,
+          scopeWarehouseId: _scopeWarehouseId,
         )
         .then((counts) {
           if (mounted && version == _statusCountRequestVersion) {
@@ -265,6 +272,7 @@ class _WarehouseQualityResultsPageState
             ? null
             : (_columnFilters.sortAscending ? 'asc' : 'desc'),
         billNo: _columnFilters['billNo'],
+        scopeWarehouseId: _scopeWarehouseId,
       );
       // 状态计数失败不阻断列表（分段按钮降级为 '—'）。
       _refreshStatusCounts();
@@ -332,6 +340,7 @@ class _WarehouseQualityResultsPageState
               dateTo: range == null
                   ? null
                   : ChinaDateTime.formatDate(range.end),
+              scopeWarehouseId: _scopeWarehouseId,
             ),
       },
       onLoaded: () {

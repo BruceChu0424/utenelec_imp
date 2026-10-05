@@ -61,11 +61,12 @@ void main() {
       final stockGrid = source(
         'lib/features/warehouse/widgets/stock_grid_columns.dart',
       );
+      // ADR-151 §5：采购委外到货单批合一，只剩一个登记页。
       final arrival = source(
-        'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart',
+        'lib/features/warehouse/pages/inbound_arrival_registration_page.dart',
       );
-      final arrivalBatch = source(
-        'lib/features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart',
+      final finished = source(
+        'lib/features/warehouse/pages/production_finished_arrival_registration_page.dart',
       );
 
       // 入库登记与仓库单据都用共用的实称重量格 (后缀换算、永不批量、按重量计只读)。
@@ -75,7 +76,7 @@ void main() {
       expect(stockGrid, contains("key: 'bookWeight'"));
       expect(stockGrid, contains("key: 'countWeight'"));
       // 列序: 单位 → 实称重量 (数量组之后, 不把数量与单位拆开)。
-      for (final page in [arrival, arrivalBatch]) {
+      for (final page in [arrival, finished]) {
         final unit = page.indexOf('shared.unit(),');
         final weight = page.indexOf('shared.weight(');
         final warehouse = page.indexOf('shared.warehouse(');
@@ -87,23 +88,18 @@ void main() {
   );
 
   test('warehouse requests send measured kg only and key it for idempotency', () {
+    // ADR-151 §5：单张页与批量页合一，各只剩一个登记页。
     final arrival = source(
-      'lib/features/warehouse/pages/warehouse_arrival_receipt_page.dart',
-    );
-    final arrivalBatch = source(
-      'lib/features/warehouse/pages/warehouse_arrival_batch_receipt_page.dart',
+      'lib/features/warehouse/pages/inbound_arrival_registration_page.dart',
     );
     final finished = source(
       'lib/features/warehouse/pages/production_finished_arrival_registration_page.dart',
-    );
-    final finishedBatch = source(
-      'lib/features/warehouse/pages/production_finished_arrival_batch_registration_page.dart',
     );
     final stockEdit = source(
       'lib/features/warehouse/pages/stock_doc_edit_page.dart',
     );
 
-    for (final page in [arrival, arrivalBatch]) {
+    for (final page in [arrival]) {
       expect(page, contains("'weight': ?_sentKg(line),"));
       expect(page, contains("'qtyFromWeight': true"));
       // 内容派生的幂等键带上行重量片段。
@@ -111,7 +107,7 @@ void main() {
       // 精确换算行不带重量 (服务端按数量算 EXACT)。
       expect(page, contains('_exactKg(line) == null ? line.weight.kg : null'));
     }
-    for (final page in [finished, finishedBatch]) {
+    for (final page in [finished]) {
       expect(page, contains("'weight': ?_sentKg(row),"));
       expect(page, contains('warehouseWeightKeySuffix('));
       // 产成品登记只核对不回填数量 (没有称重计数按钮)。
@@ -121,13 +117,7 @@ void main() {
     expect(stockEdit, contains("m['countWeight'] = sentKg"));
     expect(stockEdit, contains("m['qtyFromWeight'] = true"));
     // 单据上绝不写估算: 只提交格子里的实称值, 没有单重乘数量的回写。
-    for (final page in [
-      arrival,
-      arrivalBatch,
-      finished,
-      finishedBatch,
-      stockEdit,
-    ]) {
+    for (final page in [arrival, finished, stockEdit]) {
       expect(page, isNot(contains('expectedKgFor(')));
     }
   });

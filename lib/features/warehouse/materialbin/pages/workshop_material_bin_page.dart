@@ -2,6 +2,8 @@
 //
 // 车间看: 内料仓里每种料的账面、本期领入 / 退回 / 其它耗用、估计已用与估计还剩、
 // 仓库还有多少; 顶部是盘点与自动结算状态 ("差什么、谁来补")。
+// 只开通、还没开启整批领料的内料仓 (ADR-147 已开通, 收车间直送) 只列现有的料与数量。
+// 通用入口是车间总览 (唯一的车间清单, 开通/开启整批领料/撤销都在总览里批量办)。
 // 操作: 申请领料、退回、其它耗用、盘点、记录。按钮只按服务端下发的 allowedActions 显示。
 // 车间成员只看本车间 (服务端按对象范围过滤); 多个车间时顶部切换。
 import 'package:flutter/material.dart';
@@ -39,6 +41,7 @@ import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
 import '../widgets/workshop_material_close_poller.dart';
 import '../widgets/workshop_material_close_status_banner.dart';
+import '../widgets/workshop_material_enable_panel.dart';
 import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_other_issue_dialog.dart';
 import '../widgets/workshop_material_overview.dart';
@@ -122,9 +125,10 @@ class _WorkshopMaterialBinPageState
   WorkshopMaterialRepository get _repo =>
       ref.read(workshopMaterialRepositoryProvider);
 
+  /// 已开通内料仓的车间 (收车间直送; 可能也在整批领料)。
   List<WmSetting> get _enabled => [
     for (final s in _settings ?? const <WmSetting>[])
-      if (s.periodicEnabled && s.binWarehouseId != null) s,
+      if (s.opened) s,
   ];
 
   WmSetting? get _current {
@@ -166,12 +170,21 @@ class _WorkshopMaterialBinPageState
     if (mounted) await _loadAll();
   }
 
+  /// 打开开通面板 (单个车间); 办成后重读。
+  Future<void> _openBinPanel(
+    WmSetting setting, [
+    WmBinPanelMode mode = WmBinPanelMode.open,
+  ]) async {
+    final saved = await showWorkshopBinOpeningPanel(
+      context,
+      settings: [setting],
+      mode: mode,
+    );
+    if (saved != null && mounted) await _loadAll();
+  }
+
   Future<void> _openWorkshop(WmSetting setting) async {
-    if (!_canViewStock ||
-        !setting.periodicEnabled ||
-        setting.binWarehouseId == null) {
-      return;
-    }
+    if (!_canViewStock || !setting.opened) return;
     await context.push(
       RoutePath.workshopMaterialBin(workshopId: setting.workshopDepartmentId),
     );
@@ -324,13 +337,14 @@ class _WorkshopMaterialBinPageState
       return;
     }
     final binId = setting.binWarehouseId!;
+    // 只开通、没开整批领料的内料仓没有期间。
     final results = await Future.wait<Object>([
       _repo.position(binId),
-      _repo.periods(binId),
+      if (setting.periodic) _repo.periods(binId),
     ]);
     if (!mounted || seq != _loadSeq || !_canViewStock) return;
     final position = results[0] as WmPosition;
-    final periods = [...results[1] as List<WmPeriod>]
+    final periods = [if (setting.periodic) ...results[1] as List<WmPeriod>]
       ..sort((a, b) => a.periodNo.compareTo(b.periodNo));
     // 顶部状态说的是最早一期"盘点中 / 已盘点未结算"的那一期 (期间按顺序结算)。
     WmPeriod? statusPeriod;
@@ -665,7 +679,8 @@ class _WorkshopMaterialBinPageState
         loading: _loading,
         error: _error,
         onOpen: _openWorkshop,
-        onConfigure: _openSetup,
+        onChanged: _loadAll,
+        onOpenMachines: _canSetup ? () => _openSetup() : null,
         onRetry: _loadAll,
       );
     }
@@ -711,19 +726,17 @@ class _WorkshopMaterialBinPageState
       );
     }
     if (_current == null) {
-      final canSetup =
-          _canSetup && (selected == null || selected.can(WmAction.setup));
+      final canOpen = selected != null && selected.can(WmAction.open);
       return UtenEmpty(
         icon: Icons.inventory_2_outlined,
         message: selected == null
-            ? '还没有开启整批领料的车间'
-            : '「${selected.workshopName}」尚未开启整批领料',
-        description:
-            '颗粒等原料整批存放在车间时，先开启车间；申请时直接选料、填数量。'
-            '首次只需认料，不必逐工单领料。'
-            '${canSetup ? '' : '请找仓库在「${l10n.workshopMaterialSetup}」里办理。'}',
-        actionLabel: canSetup ? '去开启整批领料' : null,
-        onAction: canSetup ? () => _openSetup(selected) : null,
+            ? l10n.wmBinNoneOpened
+            : l10n.wmBinNotOpenTitle(selected.workshopName),
+        description: canOpen
+            ? l10n.wmBinNotOpenDescription
+            : l10n.wmBinNotOpenAskWarehouse,
+        actionLabel: canOpen ? l10n.wmBinMenuOpen : null,
+        onAction: canOpen ? () => _openBinPanel(selected) : null,
       );
     }
     final position = _position;
@@ -763,6 +776,13 @@ class _WorkshopMaterialBinPageState
           ),
           const SizedBox(height: UtenSpacing.s8),
         ],
+        if (_current?.periodic == false) ...[
+          UtenInlineNotice(
+            key: const Key('wm-bin-direct-only'),
+            message: l10n.wmBinDirectOnlyNotice,
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
           child: UtenFilterToolbar<String>(
@@ -798,21 +818,10 @@ class _WorkshopMaterialBinPageState
 
   Widget? _floatingActions(AppLocalizations l10n) {
     if (_busyTitle != null) return null;
-    if (_workshopId == null) {
-      if (!_canSetup) return null;
-      return UtenFloatingActionGroup(
-        children: [
-          UtenButton(
-            key: const Key('wm-overview-manage'),
-            size: UtenButtonSize.large,
-            icon: Icons.settings_outlined,
-            onPressed: _loading ? null : () => _openSetup(),
-            child: const Text('开通与设置'),
-          ),
-        ],
-      );
-    }
-    if (_current == null || !_canViewStock) {
+    // 总览的开通/开启整批领料/撤销是表格自己的右下批量动作。
+    if (_workshopId == null) return null;
+    if (_current == null || !_canViewStock || !_current!.periodic) {
+      final current = _current;
       return UtenFloatingActionGroup(
         children: [
           UtenButton(
@@ -823,6 +832,15 @@ class _WorkshopMaterialBinPageState
             onPressed: _openOverview,
             child: const Text('车间总览'),
           ),
+          if (current != null && current.can(WmAction.enablePeriodic))
+            UtenButton(
+              key: const Key('wm-bin-enable-periodic'),
+              type: UtenButtonType.success,
+              size: UtenButtonSize.large,
+              icon: Icons.inventory_outlined,
+              onPressed: () => _openBinPanel(current, WmBinPanelMode.periodic),
+              child: Text(l10n.wmEnable),
+            ),
         ],
       );
     }
@@ -945,18 +963,8 @@ class _WorkshopMaterialBinPageState
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           // 2026-10-02 用户口径：盘点说明放最左、选填；「库存盘点 · 已改 N 项」计数退役。
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 320),
-            child: TextField(
-              key: const Key('stock-count-reason'),
-              controller: _countEditor.reason,
-              enabled: !_countEditor.busy,
-              decoration: const InputDecoration(
-                isDense: true,
-                labelText: '盘点说明（选填）',
-              ),
-            ),
-          ),
+          // 与即时库存页同一个 controller 自带的说明框(ADR-151)。
+          StockCountReasonField(controller: _countEditor),
         ],
       ),
       if (_countEditor.error != null)

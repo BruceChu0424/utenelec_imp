@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,6 +48,9 @@ Future<void> _pumpPage(
       ],
       // 带路由壳：2026-09-05 起「批量审批」会 push 汇总页。
       child: MaterialApp.router(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: GoRouter(
           routes: [
             GoRoute(
@@ -261,8 +265,9 @@ void main() {
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(api.decisionBody?['decision'], 'PASS');
+    // 整批判定：合格 10、不良 0(服务端按瀑布分给批内各份)。
     expect(api.decisionBody?['passQty'], 10);
+    expect(api.decisionBody?['failQty'], 0);
     // 单内已无待检行 → 完成态；返回队列后检查单行消失。
     expect(find.text('本检查单当前待检已全部处理完成'), findsOneWidget);
     await tester.tap(find.byType(UtenBackButton));
@@ -531,9 +536,12 @@ class _FqcApi extends ApiClient {
     }
     if (path == '$listPath/sheets/$_sheetId') {
       sheetDetailCalls++;
+      final row = decided ? _decidedInspection : _sheetInspection;
       return {
         'sheet': _sheet,
-        'inspections': [decided ? _decidedInspection : _sheetInspection],
+        'inspections': [row],
+        // ADR-148：办理页一行 = 一批实物；这里一份自成一批(批号 = 任务号)。
+        'lots': [_lotOf(row)],
       };
     }
     if (path.startsWith('$listPath/') && !path.endsWith('/decisions')) {
@@ -576,13 +584,54 @@ class _FqcApi extends ApiClient {
         ],
       };
     }
-    expect(path, '/production/quality-inspections/$_inspectionId/decisions');
     decisionBody = Map<String, dynamic>.from(body! as Map<String, dynamic>);
     decided = true;
+    // 检查单办理页按批判定；单任务办理页(无检查单历史任务)逐份判定。
+    if (path ==
+        '/production/quality-inspections/lots/$_inspectionId/decisions') {
+      return {
+        'lotCommandId': '10000000-0000-0000-0000-000000000012',
+        'lot': _lotOf(_decidedInspection),
+        'replay': false,
+      };
+    }
+    expect(path, '/production/quality-inspections/$_inspectionId/decisions');
     return {
       'decisionEventId': '10000000-0000-0000-0000-000000000011',
       'inspection': _decidedInspection,
       'replay': false,
     };
   }
+
+  Map<String, dynamic> _lotOf(Map<String, dynamic> row) => {
+    'lotId': row['id'],
+    'sourceReportId': row['sourceReportId'],
+    'reportNo': row['reportNo'],
+    'planNo': row['planNo'],
+    'goodsCode': row['goodsCode'],
+    'goodsName': row['goodsName'],
+    'colorName': row['colorName'],
+    'unitName': row['unitName'],
+    'reportedQty': row['reportedQty'],
+    'passedQty': row['passedQty'],
+    'failedQty': row['failedQty'],
+    'remainingQty': row['remainingQty'],
+    'status': row['status'],
+    'warehouseName': row['warehouseName'],
+    'place': row['place'],
+    if (row['preStocked'] != null) 'preStocked': row['preStocked'],
+    'members': [
+      {
+        'inspectionId': row['id'],
+        'sourceReportItemId': row['sourceReportItemId'],
+        'sliceRank': 0,
+        'kind': 'DEMAND',
+        'reportedQty': row['reportedQty'],
+        'passedQty': row['passedQty'],
+        'failedQty': row['failedQty'],
+        'remainingQty': row['remainingQty'],
+        'status': row['status'],
+      },
+    ],
+  };
 }

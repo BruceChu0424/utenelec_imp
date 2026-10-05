@@ -89,7 +89,6 @@ public class GoodsOwningWarehouseWriteService {
         if (byGoods.isEmpty()) {
             return Map.of("updated", 0, "skipped", 0);
         }
-        requireWarehousesSelectable(byGoods.values());
 
         List<UUID> ids = byGoods.keySet().stream().sorted(PostgresUuidOrder.INSTANCE).toList();
         String placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
@@ -102,6 +101,13 @@ public class GoodsOwningWarehouseWriteService {
                     rs.getObject("id", UUID.class),
                     rs.getObject("owning_warehouse_id", UUID.class));
         }, ids.toArray());
+
+        // ADR-145: 只有值真的变化的行才按「可选良品子仓」校验(原样带回的旧值不重新判定)。
+        List<OwningWarehouseRequest> changing = byGoods.values().stream()
+                .filter(request -> current.containsKey(request.goodsId())
+                        && !Objects.equals(current.get(request.goodsId()), request.owningWarehouseId()))
+                .toList();
+        requireWarehousesSelectable(changing);
 
         UUID actor = currentUser.requireId();
         int updated = 0;
@@ -132,11 +138,9 @@ public class GoodsOwningWarehouseWriteService {
     }
 
     /**
-     * 目标仓库校验：只要求仓库存在且未软删。
-     *
-     * <p>**不加叶子仓限制**：V476 的「只允许落到具体 (叶子) 仓」是给单据过账定的，
-     * 所属仓库是主档分类不是过账落点；而且「成品仓库」这类合法值本身可能挂着不良
-     * 子仓，leaf-only 会把它误拒。null 目标 = 清空，不参与校验。
+     * 目标仓库校验(ADR-145): 所属仓库只能是启用中的良品子仓, 与仓库字典 selectableForNew 同一个
+     * SQL 定义 fn_warehouse_is_good_stock_leaf(不能是主仓、停用仓、不良品仓、车间内料仓)。
+     * null 目标 = 清空，不参与校验; 数据库守卫 fn_guard_goods_ordinary_owning_warehouse 兜底。
      */
     private void requireWarehousesSelectable(
             Collection<OwningWarehouseRequest> requests) {
@@ -153,13 +157,13 @@ public class GoodsOwningWarehouseWriteService {
         String placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
         Set<UUID> selectable = new LinkedHashSet<>();
         jdbc.query("SELECT id FROM warehouses WHERE id IN (" + placeholders
-                + ") AND is_deleted = FALSE AND NOT is_line_side", rs -> {
+                + ") AND fn_warehouse_is_good_stock_leaf(id)", rs -> {
             selectable.add(rs.getObject("id", UUID.class));
         }, ids.toArray());
         if (selectable.size() != ids.size()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "所属仓库不存在、已删除或是车间流转位置，请选择正常存放仓");
+                    "所属仓库只能选启用中的良品子仓，不能是主仓、停用仓、不良品仓或车间内料仓");
         }
     }
 }

@@ -48,19 +48,12 @@ public class AiJobUsageAdapter implements AiJobUsagePort {
         return repository.ownedUsableResult(jobId, userId).flatMap(this::parse);
     }
 
-    @Override
-    @Transactional
-    public boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId) {
-        return reserveLearning(jobId,userId,docType,docId,java.time.OffsetDateTime.now().plusDays(30));
-    }
-
+    /** 期限上下界在 SQL 里按数据库时钟与日历判(与回执默认 now()+30 天同一算法), 跨夏令时不会误拒。 */
     @Override
     @Transactional
     public boolean reserveLearning(UUID jobId, UUID userId, String docType, UUID docId, java.time.OffsetDateTime retryUntil) {
         boolean reserved=jobId != null && userId != null && docId != null && docType != null && DOC_TYPE.matcher(docType).matches()
-                && retryUntil != null && retryUntil.isAfter(java.time.OffsetDateTime.now())
-                && !retryUntil.isAfter(java.time.OffsetDateTime.now().plusDays(30).plusMinutes(1))
-                && repository.reserveLearning(jobId,userId,docType,docId,retryUntil) > 0;
+                && retryUntil != null && repository.reserveLearning(jobId,userId,docType,docId,retryUntil) > 0;
         if(reserved)originals.bind(jobId,userId,docType,docId);
         return reserved;
     }

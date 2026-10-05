@@ -4,11 +4,11 @@ import com.uten.imp.application.port.PreplanAnalysisPegPort;
 import com.uten.imp.application.port.ProductionCompletionReversePort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.notice.ChainNoticeService;
-import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.features.stock.allocation.ProductionMaterialStockLedgerService;
 import com.uten.imp.features.stock.dto.FinishedInboundConfirmRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -287,14 +287,11 @@ class StockDocFinishedInboundConfirmationTest {
     void exactIdempotentReplayReturnsExistingDocumentWithoutStockMutation() {
         String key = "confirm-replay-01";
         FinishedInboundConfirmRequest request = request("10.0000", null, key);
-        String hash = PlanningPackageFingerprint.sha256(List.of(
-                "PRODUCTION-FINISHED-IN-CONFIRM-V1",
-                documentId.toString(),
-                itemId + "|10",
-                ""));
+        // ADR-148：确认记录里存的是「请求本身」的指纹(单据 + 每个实物批的实收 + 差异原因)，
+        // 不是按当前明细展开后的逐行数；同一请求重放必须拿同一个批指纹比对。
         arrangeConfirmationQueries(
                 java.util.Collections.<Object[]>singletonList(
-                        new Object[]{key, hash}));
+                        new Object[]{key, lotRequestHash("10", "")}));
         when(documents.findById(documentId)).thenReturn(Optional.of(document));
         when(balanceAdjustments.existsByStockDocumentId(documentId)).thenReturn(false);
 
@@ -303,6 +300,25 @@ class StockDocFinishedInboundConfirmationTest {
 
         verifyNoInteractions(stock);
         verify(documents, never()).save(document);
+        // 重放不再按当前明细把批实收展开到行：短收确认后收到 0 的份已软删，展开结果会和原请求对不上。
+        verify(em, never()).createNativeQuery(org.mockito.ArgumentMatchers.<String>argThat(
+                sql -> sql != null && sql.contains("SELECT source.output_lot_id, item.id, item.qty")));
+    }
+
+    @Test
+    void sameKeyWithDifferentLotQuantityIsAConflictNotAReplay() {
+        String key = "confirm-replay-02";
+        arrangeConfirmationQueries(
+                java.util.Collections.<Object[]>singletonList(
+                        new Object[]{key, lotRequestHash("10", "")}));
+
+        ApiException error = assertThrows(
+                ApiException.class,
+                () -> service.confirmFinishedInbound(
+                        documentId, request("9.0000", "差一件", key)));
+
+        assertThat(error.getMessage()).contains("已按另一组实收数量确认");
+        verifyNoInteractions(stock);
     }
 
     @Test
@@ -400,6 +416,14 @@ class StockDocFinishedInboundConfirmationTest {
         // ADR-148：仓库按实物交接批点收，一批一个实收数，服务端按批内优先级分到各行。
         request.setLots(List.of(lot(lotId, acceptedQty)));
         return request;
+    }
+
+    private String lotRequestHash(String acceptedQty, String varianceReason) {
+        return CanonicalFingerprint.sha256(List.of(
+                "PRODUCTION-FINISHED-IN-LOT-CONFIRM-V1",
+                documentId.toString(),
+                lotId + "|" + acceptedQty,
+                varianceReason));
     }
 
     private static FinishedInboundConfirmRequest.Lot lot(

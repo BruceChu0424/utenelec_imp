@@ -302,8 +302,12 @@ class ProcurementArrivalWorkflowContractTest {
         assertThat(notices)
                 .contains("financeReviewerUserIds()")
                 .contains("sendToUser(reviewer, TYPE_URGENT")
-                .contains("departmentUserIdsWithAuthorities(")
-                .contains("\"SUB_WH\", NOTICE_READ_AUTHORITY")
+                // 财务审核结果通知仓库：池仍是仓库部门(SUB_WH 子树)里同时持有通知查看 + 到货入库权限的人,
+                // 但 ADR-149 起所有仓库通知都经统一分发(WarehouseNoticeRouter：子仓负责人 → 主管 → 池)，
+                // 按这条到货异常的收货仓分发，不再直接群发整个仓库部门。
+                .contains("departmentUserIdsWithAuthorities(\"SUB_WH\", authorities)")
+                .contains("warehouseRecipients(warehousePool(NOTICE_READ_AUTHORITY, \"warehouse_inbound:stock_in\"),\n"
+                        + "                    warehouseIdsOf(arrival.get(\"warehouse_id\")))")
                 .contains("notifyUser(ownerUser, TYPE_TASK")
                 .doesNotContain("到货超量待决定")
                 .doesNotContain("原下单人已决定接收");

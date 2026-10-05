@@ -62,6 +62,7 @@ public class AuditEventInterpreter {
             "search", "tree", "subtree", "arrivals", "unread-count");
     private static final Map<String, String> DETAIL_VIEW_ACTION_LABELS = Map.ofEntries(
             Map.entry("view_ai_provider_history_detail", "查看 AI 服务配置历史"),
+            Map.entry("view_ai_chat_action_proposal_detail", "查看 AI 操作确认卡"),
             Map.entry("view_attachment_history_detail", "查看附件历史"),
             Map.entry("view_platform_field_history_detail", "查看业务扩展字段历史"),
             Map.entry("view_sales_quote_detail", "查看销售报价详情"),
@@ -1028,6 +1029,7 @@ public class AuditEventInterpreter {
         values.put("platform_record_field_versions", "业务扩展字段历史");
         values.put("ai_jobs", "AI 识别任务");
         values.put("ai_call_logs", "AI 调用记录");
+        values.put("ai_chat_action_proposals", "AI 操作确认卡");
         values.put("client_goods_aliases", "客户货品对照");
         values.put("sales_intake_layouts", "客户文件版式");
         values.put("sales_quote_revision_logs", "报价修订记录");

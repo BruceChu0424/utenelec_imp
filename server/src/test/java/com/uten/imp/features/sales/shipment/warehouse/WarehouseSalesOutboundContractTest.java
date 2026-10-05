@@ -6,10 +6,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.lang.reflect.RecordComponent;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -65,9 +69,11 @@ class WarehouseSalesOutboundContractTest {
                 .isEqualTo("hasAuthority('warehouse_sales_outbound:view')");
 
         // 2026-09-25 单号列统一：list 追加 sort/order/billNo（透传出货单号排序/筛选）。
+        // ADR-149：仓库数据范围由服务端按本人强制, 客户端不再传 warehouseScope(MINE/全部)字符串,
+        // 只能用可选的 scopeWarehouseId 在自己的范围内再挑一个仓(含下级)。
         Method list = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "list", String.class, String.class, LocalDate.class, LocalDate.class, int.class, int.class,
-                String.class, UUID.class, String.class, String.class, String.class);
+                UUID.class, String.class, String.class, String.class);
         Method detail = WarehouseSalesOutboundController.class.getDeclaredMethod(
                 "detail", UUID.class);
         Method command = WarehouseSalesOutboundController.class.getDeclaredMethod(
@@ -81,9 +87,22 @@ class WarehouseSalesOutboundContractTest {
                 .isEqualTo("hasAuthority('warehouse_sales_outbound:view')"
                         + " and hasAuthority('warehouse_sales_outbound:execute')");
         // 角标计数两个只读端点: /count = 待出库张数(hub 卡/父分类), /counts = 按仓库作业状态分组(小类行).
-        Method pendingCount = WarehouseSalesOutboundController.class.getDeclaredMethod("pendingCount");
-        Method counts = WarehouseSalesOutboundController.class.getDeclaredMethod("counts");
+        // ADR-149：徽章与列表同一仓库范围谓词, 同样只接受可选的 scopeWarehouseId。
+        Method pendingCount = WarehouseSalesOutboundController.class.getDeclaredMethod("pendingCount", UUID.class);
+        Method counts = WarehouseSalesOutboundController.class.getDeclaredMethod("counts", UUID.class);
+        Method facets = WarehouseSalesOutboundController.class.getDeclaredMethod(
+                "facets", String.class, String.class, LocalDate.class, LocalDate.class, UUID.class);
         assertThat(pendingCount.getAnnotation(GetMapping.class).value()).containsExactly("/count");
         assertThat(counts.getAnnotation(GetMapping.class).value()).containsExactly("/counts");
+        assertThat(facets.getAnnotation(GetMapping.class).value()).containsExactly("/facets");
+        for (Method scoped : List.of(list, pendingCount, counts, facets)) {
+            List<Parameter> scopeParameters = Arrays.stream(scoped.getParameters())
+                    .filter(parameter -> parameter.getType() == UUID.class)
+                    .toList();
+            assertThat(scopeParameters).as("%s 只有一个可选仓库筛选", scoped.getName()).hasSize(1);
+            RequestParam scope = scopeParameters.get(0).getAnnotation(RequestParam.class);
+            assertThat(scope).as("%s.scopeWarehouseId", scoped.getName()).isNotNull();
+            assertThat(scope.required()).as("%s.scopeWarehouseId 必须可选", scoped.getName()).isFalse();
+        }
     }
 }

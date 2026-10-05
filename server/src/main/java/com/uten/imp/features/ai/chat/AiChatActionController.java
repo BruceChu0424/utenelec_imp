@@ -1,5 +1,6 @@
 package com.uten.imp.features.ai.chat;
 
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -25,14 +26,27 @@ import java.util.UUID;
 @PreAuthorize("isAuthenticated() and !principal.visitor")
 public class AiChatActionController {
     private final AiChatActionProposalService proposals;
+    private final AuditDetailViewRecorder detailViews;
 
-    public AiChatActionController(AiChatActionProposalService proposals) { this.proposals = proposals; }
+    public AiChatActionController(AiChatActionProposalService proposals, AuditDetailViewRecorder detailViews) {
+        this.proposals = proposals;
+        this.detailViews = detailViews;
+    }
 
     public record ReceiptRequest(@NotBlank @Pattern(regexp = "SUCCEEDED|FAILED") String outcome,
                                  @Size(max = 500) String message) {}
 
+    /**
+     * Owner-only card re-read (unknown network outcome, or after a refusal; not polled). One detail-view
+     * event per successful read; a foreign or missing card is a 404 and records nothing.
+     */
     @GetMapping("/{id}")
-    public Map<String, Object> view(@PathVariable UUID id) { return proposals.view(id); }
+    public Map<String, Object> view(@PathVariable UUID id) {
+        Map<String, Object> card = proposals.view(id);
+        detailViews.record("view_ai_chat_action_proposal_detail", "ai_chat_action_proposals", id,
+                null, null, "AI 操作确认卡");
+        return card;
+    }
 
     /** One-time consumption; the response carries the exact arguments the page handler must use. */
     @PostMapping("/{id}/confirm")

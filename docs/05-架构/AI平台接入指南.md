@@ -509,7 +509,7 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
 
 | 端点 | 用途 | 成功 | 失败 |
 | --- | --- | --- | --- |
-| `GET /api/ai/chat/actions/{id}` | 查当前状态(网络结果不明时用它判断, 不要重放确认) | 200 卡片 | 404 不存在或不是本人的 |
+| `GET /api/ai/chat/actions/{id}` | 查当前状态(网络结果不明时用它判断, 不要重放确认; 只在需要时读, 不要轮询: 每次成功读取记一条「查看 AI 操作确认卡」详情查看审计 `view_ai_chat_action_proposal_detail`) | 200 卡片 | 404 不存在或不是本人的(不记查看审计) |
 | `POST /api/ai/chat/actions/{id}/confirm` | CLIENT 动作一次性核销 | 200 卡片(`status=CONFIRMED`) + 权威 `args` | 404; 409 + `errorCode`: `AI_ACTION_HANDLED`(已确认/已取消/已过期处理过, 包括并发双击的第二次)、`AI_ACTION_EXPIRED`、`AI_ACTION_AUTH_CHANGED`(账号授权版本、全局授权纪元或部门变化)、`AI_ACTION_SERVER_ONLY`(SERVER 动作走专用端点) |
 | `POST /api/ai/chat/actions/{id}/cancel` | 取消未确认的卡; 重复取消无害 | 200 卡片(`CANCELLED`, 已处理过的返回当前状态) | 404 |
 | `POST /api/ai/chat/actions/{id}/receipt` body `{"outcome":"SUCCEEDED"或"FAILED","message":"≤500 字, 可省略"}` | CLIENT 动作执行回执, 只记一次(相同结果重复提交无害) | 200 卡片(含 outcome) | 404; 409 `AI_ACTION_NOT_CONFIRMED`(没确认或已记过不同结果); 422 |

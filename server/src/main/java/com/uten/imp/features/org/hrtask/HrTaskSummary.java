@@ -13,7 +13,7 @@ import java.util.UUID;
  * @param confirmUpcoming        30 天内到预计转正日（days = 剩余天数）
  * @param confirmOverdue         已过预计转正日仍未办理（days = 逾期天数；只跟踪近 12 个月入职）
  * @param unconfirmedLegacyCount 入职超过 12 个月仍未登记转正日期的人数（数据补录提示，不逐人列）
- * @param birthdayToday          今日生日（days = 周岁）
+ * @param birthdayToday          今日生日(days = 0；按 birth_month_day 匹配，V282 起出生年份只存密文，不派生周岁)
  * @param birthdayUpcoming       30 天内生日（days = 剩余天数）
  * @param anniversaryToday       今日入职周年（days = 满年数）
  * @param newHires               近 30 天新入职（days = 已入职天数）
@@ -41,7 +41,7 @@ public record HrTaskSummary(
      * 单条提醒。
      *
      * @param date 相关日期(预计转正日 / 生日(今年或明年落在)/ 入职日期；证件核对为入职日期，可为 null)
-     * @param days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数
+     * @param days 语义随区块：剩余天数(生日今日 = 0)/ 逾期天数 / 满年数 / 已入职天数
      * @param note 补充说明（如「入职满 1 年」），可为 null
      * @param claimedByName 软认领人姓名（ADR-021：任务不隐藏，显示「XXX 处理中」），null = 未认领
      * @param claimedByMe   是否当前用户认领（本人可继续/释放，他人快捷操作禁用）

@@ -486,8 +486,8 @@ void main() {
     final hrTasks = _FakeHrTaskRepository(
       _summary(
         birthdayToday: [
-          _item('a', days: 30),
-          _item('b', days: 28, blessed: true),
+          _item('a'),
+          _item('b', blessed: true),
         ],
         birthdayUpcoming: [_item('c', days: 5)],
       ),
@@ -524,7 +524,7 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
     final hrTasks = _FakeHrTaskRepository(
-      _summary(birthdayToday: [_item('a', days: 30)]),
+      _summary(birthdayToday: [_item('a')]),
     );
     final notices = _FakeNoticeRepository();
     await tester.pumpWidget(

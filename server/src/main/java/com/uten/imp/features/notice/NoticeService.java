@@ -3,7 +3,9 @@ package com.uten.imp.features.notice;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.validation.RequestLimits;
+import com.uten.imp.common.time.BirthMonthDay;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.time.WorkAnniversary;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
@@ -32,7 +34,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.Period;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -445,7 +446,7 @@ public class NoticeService {
             subjectEmployeeId = subject.getId();
             subjectName = subject.getFullName();
             Integer years = subject.getHireDate() == null
-                    ? null : Period.between(subject.getHireDate(), BusinessTime.today()).getYears();
+                    ? null : WorkAnniversary.completedYears(subject.getHireDate(), BusinessTime.today());
             eventLabel = eventLabelFor(type, years);
             if (title == null || title.isBlank()) {
                 title = "祝 " + subjectName + " " + eventLabel + "！";
@@ -681,7 +682,7 @@ public class NoticeService {
         Employee e = employeeRepo.findById(employeeId)
                 .orElseThrow(() -> new ApiException(ErrorCode.VALIDATION_FAILED, "员工不存在"));
         Integer years = e.getHireDate() == null
-                ? null : Period.between(e.getHireDate(), BusinessTime.today()).getYears();
+                ? null : WorkAnniversary.completedYears(e.getHireDate(), BusinessTime.today());
         String eventLabel = eventLabelFor(type, years);
         String subjectName = e.getFullName();
         String suggestedTitle = "祝 " + subjectName + " " + eventLabel + "！";
@@ -775,14 +776,20 @@ public class NoticeService {
     /**
      * 当前登录员工「今日庆典」（登录弹窗 / 今日概览庆典卡片，notice:read）。
      *
-     * <p>生日 / 周年由服务端按 birth_date / hire_date 月日判定（满 1 年才记周年）；
+     * <p>生日按 birth_month_day(MM-DD，非闰年 2/28 含 2/29 生日)、周年按 hire_date 判定(满 1 年才记周年，
+     * 非闰年 2/28 含 2/29 入职，口径见 {@link WorkAnniversary})；
      * 新婚 / 新生儿由「今日发布且本人为祝福对象」的庆典通知判定。noticeId 用于跳转祝福墙，
      * 可能为 null（调度器关闭且 HR 未手动发）。
      *
-     * <p><b>PII</b>：birth_date / hire_date 仅服务端读取，绝不外泄日期原值。
+     * <p><b>PII</b>：birth_month_day / hire_date 仅服务端读取，绝不外泄日期原值。
      */
     @Transactional(readOnly = true)
     public List<MyCelebrationTodayDto> myCelebrationToday() {
+        return myCelebrationToday(BusinessTime.today());
+    }
+
+    /** 按指定业务日判定本人今日庆典(接口传今天；测试用固定日期覆盖 2/29 等边界)。 */
+    List<MyCelebrationTodayDto> myCelebrationToday(LocalDate today) {
         AuthUser u = requireStaff();
         UUID empId = u.getEmployeeId();
         if (empId == null) {
@@ -792,28 +799,23 @@ public class NoticeService {
         if (me == null) {
             return List.of();
         }
-        LocalDate today = LocalDate.now(SHANGHAI);
         int year = today.getYear();
         Instant yearStart = LocalDate.of(year, 1, 1).atStartOfDay(SHANGHAI).toInstant();
         List<MyCelebrationTodayDto> out = new ArrayList<>();
 
-        // 生日祝福：birth_date 已加密，改用低敏个人属性 birth_month_day（MM-DD）匹配今日。
-        // V454：跳转目标按主角表口径（聚合卡/单人卡统一）。
-        String todayMonthDay = String.format("%02d-%02d", today.getMonthValue(), today.getDayOfMonth());
-        if (todayMonthDay.equals(me.getBirthMonthDay())) {
+        // 生日祝福：birth_date 已加密，改用低敏个人属性 birth_month_day(MM-DD)匹配今日
+        // (与 HR 任务中心 / 自动庆典同一口径 BirthMonthDay)。V454：跳转目标按主角表口径(聚合卡/单人卡统一)。
+        if (BirthMonthDay.isBirthdayOn(me.getBirthMonthDay(), today)) {
             out.add(new MyCelebrationTodayDto(
                     "birthday", me.getFullName(), "生日快乐",
                     firstNoticeId(subjectRepo.findCelebrationNoticeIds(empId, "birthday", yearStart))));
         }
-        if (me.getHireDate() != null
-                && me.getHireDate().getMonthValue() == today.getMonthValue()
-                && me.getHireDate().getDayOfMonth() == today.getDayOfMonth()) {
-            int years = Period.between(me.getHireDate(), today).getYears();
-            if (years >= 1) {
-                out.add(new MyCelebrationTodayDto(
-                        "anniversary", me.getFullName(), "入职" + years + "周年",
-                        firstNoticeId(subjectRepo.findCelebrationNoticeIds(empId, "anniversary", yearStart))));
-            }
+        // 入职周年：满 1 年起，2/29 入职非闰年按 2/28、当天即记满 N 年(与 HR 任务中心 / 自动庆典同一口径 WorkAnniversary)。
+        if (WorkAnniversary.isAnniversaryOn(me.getHireDate(), today)) {
+            int years = WorkAnniversary.completedYears(me.getHireDate(), today);
+            out.add(new MyCelebrationTodayDto(
+                    "anniversary", me.getFullName(), "入职" + years + "周年",
+                    firstNoticeId(subjectRepo.findCelebrationNoticeIds(empId, "anniversary", yearStart))));
         }
         Instant dayStart = today.atStartOfDay(SHANGHAI).toInstant();
         for (Notice n : subjectRepo.findBySubjectAndTypesSince(
@@ -859,7 +861,7 @@ public class NoticeService {
                 continue;
             }
             Integer years = e.getHireDate() == null
-                    ? null : Period.between(e.getHireDate(), today).getYears();
+                    ? null : WorkAnniversary.completedYears(e.getHireDate(), today);
             toPublish.add(new CelebrationSubject(
                     e.getId(), e.getFullName(), eventLabelFor(type, years)));
         }

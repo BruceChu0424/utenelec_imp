@@ -118,8 +118,7 @@ Future<void> showHrIdentityCorrection(
 /// 祝福只针对今日在册（与一键批量同口径）：生日列表把今日与未来 30 天合并展示，
 /// 但只有今日（birthdayToday）者才显示送祝福按钮，未来临近者不显示；
 /// 周年列表本就只有今日（anniversaryToday），恒为今日。
-/// 注意：不能用 item.days==0 判断——今日生日的 days 存的是年龄（非 0），
-/// 后端仅以 note=="今日生日" 与否区分，故这里直接用服务端已分好的列表为准。
+/// 以服务端已分好的 birthdayToday 列表为准，不靠 days 数值推断(今日行 days 虽为 0)。
 bool hrTaskIsToday(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
   return switch (type) {
     HrTaskType.birthday => s.birthdayToday.any(

@@ -21,12 +21,16 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
@@ -44,8 +48,10 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -1288,6 +1294,74 @@ class NoticeServiceTest {
         assertEquals(1, items.size());
         assertEquals("anniversary", items.get(0).type());
         assertEquals("入职5周年", items.get(0).eventLabel());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            // 2/29 入职：非闰年 2/28 过周年并记满 N 年(Period.between 此日只算 N-1)；闰年等到 2/29
+            "2024-02-29,2027-02-28,入职3周年",
+            "2024-02-29,2027-03-01,",
+            "2024-02-29,2028-02-28,",
+            "2024-02-29,2028-02-29,入职4周年",
+            "2024-02-29,2025-02-28,入职1周年",
+            // 普通 2/28 入职不受影响；入职当天未满 1 年不算周年
+            "2020-02-28,2027-02-28,入职7周年",
+            "2020-02-28,2028-02-29,",
+            "2027-02-28,2027-02-28,"
+    })
+    void myCelebrationTodayMatchesLeapDayHireAnniversaryOnFeb28InCommonYears(
+            String hireDate, String day, String expectedLabel) {
+        UUID empId = UUID.randomUUID();
+        Employee me = celebrationSubject(empId, "闰日入职", LocalDate.parse(hireDate));
+        me.setBirthMonthDay(null);
+        when(authUser.getEmployeeId()).thenReturn(empId);
+        when(employeeRepository.findById(empId)).thenReturn(Optional.of(me));
+        UUID noticeId = UUID.randomUUID();
+        when(subjectRepo.findCelebrationNoticeIds(eq(empId), eq("anniversary"), any()))
+                .thenReturn(List.of(noticeId));
+
+        List<MyCelebrationTodayDto> items = service.myCelebrationToday(LocalDate.parse(day));
+
+        if (expectedLabel == null) {
+            assertTrue(items.isEmpty(), () -> "items=" + items);
+        } else {
+            assertEquals(1, items.size());
+            assertEquals("anniversary", items.get(0).type());
+            assertEquals(expectedLabel, items.get(0).eventLabel());
+            assertEquals(noticeId, items.get(0).noticeId());
+        }
+    }
+
+    @Test
+    void celebrationBatchLabelsLeapDayHireWithFullYearsOnCommonYearFeb28() {
+        UUID leap = UUID.randomUUID();
+        when(employeeRepository.findById(leap)).thenReturn(
+                Optional.of(celebrationSubject(leap, "闰日入职", LocalDate.of(2024, 2, 29))));
+        when(subjectRepo.existsCelebrationSince(any(), any(), any())).thenReturn(false);
+        when(noticeRepository.saveAndFlush(any())).thenAnswer(i -> {
+            Notice n = i.getArgument(0);
+            n.setId(UUID.randomUUID());
+            return n;
+        });
+        when(authUser.getEmployeeId()).thenReturn(null);
+        when(authUser.getLoginAccount()).thenReturn("hr");
+
+        // 一键祝福与预览按「今天」派生年数：固定在上海 2027-02-28 中午
+        Clock fixed = Clock.fixed(
+                LocalDate.of(2027, 2, 28).atTime(12, 0).atZone(BusinessTime.ZONE).toInstant(),
+                BusinessTime.ZONE);
+        try (var clocks = mockStatic(Clock.class, CALLS_REAL_METHODS)) {
+            clocks.when(() -> Clock.system(any(ZoneId.class)))
+                    .thenAnswer(invocation -> fixed.withZone(invocation.getArgument(0)));
+
+            assertEquals("入职3周年", service.celebrationPreview(leap, "anniversary").eventLabel());
+            service.publishCelebrationBatch(new CelebrationBatchRequest("anniversary", List.of(leap)));
+        }
+
+        ArgumentCaptor<List<NoticeCelebrationSubject>> subjectsCaptor = ArgumentCaptor.captor();
+        verify(subjectRepo).saveAll(subjectsCaptor.capture());
+        assertEquals(List.of("入职3周年"),
+                subjectsCaptor.getValue().stream().map(NoticeCelebrationSubject::getEventLabel).toList());
     }
 
     @Test

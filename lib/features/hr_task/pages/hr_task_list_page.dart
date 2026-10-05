@@ -397,7 +397,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
   String get _daysColumnInfo => switch (_type) {
     HrTaskType.confirm => '距预计转正日的天数；已过期显示负数并标红（服务端 days 为逾期天数）。',
-    HrTaskType.birthday => '距生日的天数；今日生日显示 0（服务端今日行的 days 存的是年龄）。',
+    HrTaskType.birthday => '距生日的天数；今日生日显示 0。',
     HrTaskType.anniversary => '今日满的入职年数。',
     HrTaskType.newhire || HrTaskType.identity => '入职至今的天数(今日入职 = 0)。',
   };
@@ -412,7 +412,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           HrTaskWindow.upcoming => '${item.days}',
         };
       case HrTaskType.birthday:
-        return hrTaskIsToday(s, _type, item) ? '0' : '${item.days}';
       case HrTaskType.anniversary:
       case HrTaskType.newhire:
       case HrTaskType.identity:

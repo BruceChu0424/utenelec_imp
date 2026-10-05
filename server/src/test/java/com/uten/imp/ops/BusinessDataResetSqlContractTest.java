@@ -269,8 +269,8 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("legacy_measurement_exceptions", 743),
             Map.entry("legacy_measurement_profile_snapshots", 743),
             Map.entry("legacy_measurement_source_registry", 743),
-            // V798 / ADR-155：签名意图票据整套机制删除(临时号，合并时随迁移改号)。
-            Map.entry("business_test_object_cleanup_intents", 798));
+            // V808 / ADR-155：签名意图票据整套机制删除(临时号，合并时随迁移改号)。
+            Map.entry("business_test_object_cleanup_intents", 808));
 
     private String migrationSql;
     private String serviceSource;
@@ -309,7 +309,7 @@ public class BusinessDataResetSqlContractTest {
                 .containsEntry("sales_order_qty_change_logs", 484);
     }
 
-    /** V798 patches business_data_reset() by anchors and replaces two small functions after a byte check. */
+    /** V808 patches business_data_reset() by anchors and replaces two small functions after a byte check. */
     @Test
     void singleObjectRuleMigrationPatchesByAnchorsAndFailsClosed() throws IOException {
         String migration = singleObjectRuleMigration();
@@ -322,7 +322,7 @@ public class BusinessDataResetSqlContractTest {
                 .contains("CREATE OR REPLACE FUNCTION public.fn_attachment_retained_identity_guard()")
                 .contains("REVOKE ALL ON FUNCTION public.fn_business_test_reset_verify_purged(), public.fn_clear_business_test_object_metadata() FROM uten")
                 .contains("DROP TABLE public.business_test_object_cleanup_intents;")
-                .contains("V798 changed reset catalog rows other than business_test_object_cleanup_intents")
+                .contains("V808 changed reset catalog rows other than business_test_object_cleanup_intents")
                 .doesNotContain("CREATE OR REPLACE FUNCTION public.business_data_reset()")
                 .doesNotContain("CASCADE;");
         assertThat(policy(migration)).as("tuples only as doubled-quote literals").isEmpty();

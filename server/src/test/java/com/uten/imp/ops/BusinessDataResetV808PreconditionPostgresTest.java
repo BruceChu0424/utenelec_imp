@@ -19,13 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
- * The single object rule migration (V798, renumbered at merge) patches business_data_reset() by anchors
+ * The single object rule migration (V808, renumbered at merge) patches business_data_reset() by anchors
  * and replaces two small functions only after a byte check. The migration versions are located by
  * content, so renumbering needs no change here: P = the version just before it, R = the migration.
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class BusinessDataResetV798PreconditionPostgresTest {
+class BusinessDataResetV808PreconditionPostgresTest {
     private PostgreSQLContainer<?> postgres;
     private String previous;
     private String current;
@@ -62,7 +62,7 @@ class BusinessDataResetV798PreconditionPostgresTest {
         String database = cloneOfPrevious();
         JdbcTemplate jdbc = jdbc(database);
         String line = "    -- Goods safety stock and cost settings remain master configuration.";
-        String changed = "    -- Goods safety stock and cost settings remain master configuration (probe kept by V798).";
+        String changed = "    -- Goods safety stock and cost settings remain master configuration (probe kept by V808).";
         patchResetFunction(jdbc, line, changed);
         assertThat(migrate(database)).isNull();
         assertThat(jdbc.queryForObject("SELECT pg_get_functiondef('public.business_data_reset()'::regprocedure)", String.class))
@@ -77,7 +77,7 @@ class BusinessDataResetV798PreconditionPostgresTest {
                 "    PERFORM  public.fn_clear_business_test_object_metadata();");
         Throwable failure = migrate(database);
         assertThat(failure).isNotNull();
-        assertThat(failure.getMessage()).contains("V798 edit E2 expected 1 occurrence(s)").contains("found 0");
+        assertThat(failure.getMessage()).contains("V808 edit E2 expected 1 occurrence(s)").contains("found 0");
         assertThat(jdbc.queryForObject("SELECT to_regprocedure('public.fn_business_test_reset_objects()') IS NULL", Boolean.class))
                 .as("the whole migration rolled back").isTrue();
     }

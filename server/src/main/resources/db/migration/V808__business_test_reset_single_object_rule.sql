@@ -1,4 +1,4 @@
--- V798 (temporary number, renumber at merge): one server-side rule for the test files that
+-- V808 (temporary number, renumber at merge): one server-side rule for the test files that
 -- the workbench "clear business data" must physically delete (ADR-155).
 --
 -- One function lists the physical objects; the dialog preview, the check before draining,
@@ -14,23 +14,23 @@
 -- BusinessDataResetSqlContractTest parses that tuple form.
 
 -- ============ 0. Byte preconditions for the two wholly replaced functions ============
-DO $v798_preconditions$
+DO $v808_preconditions$
 DECLARE
     actual text;
 BEGIN
     SELECT md5(replace(prosrc, chr(13), '')) INTO actual
     FROM pg_catalog.pg_proc WHERE oid = 'public.fn_clear_business_test_object_metadata()'::regprocedure;
     IF actual IS DISTINCT FROM '73195ce907a32825dea7923b838e6b21' THEN
-        RAISE EXCEPTION 'V798 was written against fn_clear_business_test_object_metadata() body md5 %, installed is %; another migration changed it: merge that change into V798 section 2 and update the hash',
+        RAISE EXCEPTION 'V808 was written against fn_clear_business_test_object_metadata() body md5 %, installed is %; another migration changed it: merge that change into V808 section 2 and update the hash',
             '73195ce907a32825dea7923b838e6b21', actual;
     END IF;
     SELECT md5(replace(prosrc, chr(13), '')) INTO actual
     FROM pg_catalog.pg_proc WHERE oid = 'public.fn_attachment_retained_identity_guard()'::regprocedure;
     IF actual IS DISTINCT FROM 'e8b80397f53496ba32613a22040a7fa1' THEN
-        RAISE EXCEPTION 'V798 was written against fn_attachment_retained_identity_guard() body md5 %, installed is %; another migration changed it: merge that change into V798 section 2 and update the hash',
+        RAISE EXCEPTION 'V808 was written against fn_attachment_retained_identity_guard() body md5 %, installed is %; another migration changed it: merge that change into V808 section 2 and update the hash',
             'e8b80397f53496ba32613a22040a7fa1', actual;
     END IF;
-END $v798_preconditions$;
+END $v808_preconditions$;
 
 -- ============ 1. New functions ============
 
@@ -487,7 +487,7 @@ END $function$;
 -- ============ 3. Anchor patch of business_data_reset() ============
 -- Every edit must find its anchor the expected number of times, otherwise fail closed.
 -- Other migrations' edits to this function (classification rows or logic) are kept as they are.
-DO $v798_reset_patch$
+DO $v808_reset_patch$
 DECLARE
     definition text;
     edits text[][];
@@ -575,7 +575,7 @@ BEGIN
         expected := edits[i][4]::integer;
         found := (length(definition) - length(replace(definition, needle, ''))) / length(needle);
         IF found <> expected THEN
-            RAISE EXCEPTION 'V798 edit % expected % occurrence(s) of its anchor in business_data_reset(), found %; another migration changed this part - adjust V798 by hand',
+            RAISE EXCEPTION 'V808 edit % expected % occurrence(s) of its anchor in business_data_reset(), found %; another migration changed this part - adjust V808 by hand',
                 edit_name, expected, found;
         END IF;
         definition := replace(definition, needle, replacement);
@@ -602,7 +602,7 @@ BEGIN
         replacement := edits[i][3];
         IF (length(definition) - length(replace(definition, needle, ''))) / length(needle) <> 1
            OR (length(definition) - length(replace(definition, replacement, ''))) / length(replacement) <> 1 THEN
-            RAISE EXCEPTION 'V798 edit % expected 1 occurrence of each range marker in business_data_reset(), found % and %; another migration changed this part - adjust V798 by hand',
+            RAISE EXCEPTION 'V808 edit % expected 1 occurrence of each range marker in business_data_reset(), found % and %; another migration changed this part - adjust V808 by hand',
                 edit_name,
                 (length(definition) - length(replace(definition, needle, ''))) / length(needle),
                 (length(definition) - length(replace(definition, replacement, ''))) / length(replacement);
@@ -610,7 +610,7 @@ BEGIN
         range_start := strpos(definition, needle);
         range_end := strpos(definition, replacement);
         IF range_start >= range_end THEN
-            RAISE EXCEPTION 'V798 edit % range markers are out of order in business_data_reset(); adjust V798 by hand', edit_name;
+            RAISE EXCEPTION 'V808 edit % range markers are out of order in business_data_reset(); adjust V808 by hand', edit_name;
         END IF;
         definition := left(definition, range_start - 1) || substr(definition, range_end);
     END LOOP;
@@ -626,15 +626,15 @@ BEGIN
             UNION ALL
             (SELECT unnest(after_rows) EXCEPT ALL SELECT unnest(before_rows))
         ) difference(row_text);
-        RAISE EXCEPTION 'V798 changed reset catalog rows other than business_test_object_cleanup_intents: %', changed;
+        RAISE EXCEPTION 'V808 changed reset catalog rows other than business_test_object_cleanup_intents: %', changed;
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc WHERE oid = 'public.business_data_reset()'::regprocedure
                    AND prosecdef = before_secdef AND proconfig IS NOT DISTINCT FROM before_config
                    AND proowner = before_owner) THEN
-        RAISE EXCEPTION 'V798 changed the security attributes or owner of business_data_reset()';
+        RAISE EXCEPTION 'V808 changed the security attributes or owner of business_data_reset()';
     END IF;
-END $v798_reset_patch$;
+END $v808_reset_patch$;
 
 -- ============ 4. Drop the signed intent ticket chain (no CASCADE: hidden dependencies fail closed) ============
 DROP FUNCTION public.fn_assert_business_test_objects_cleared();
@@ -650,7 +650,7 @@ DROP VIEW public.v_business_test_object_sources;
 DROP FUNCTION public.fn_business_attachment_reset_blockers();
 
 -- ============ 5. Privileges (V782 form) ============
-DO $v798_privileges$
+DO $v808_privileges$
 DECLARE
     reset_owner_name text := pg_catalog.pg_get_userbyid((SELECT proowner FROM pg_catalog.pg_proc
         WHERE oid = 'public.business_data_reset()'::regprocedure));
@@ -673,10 +673,10 @@ BEGIN
                    runtime_functions, reset_owner_name);
     -- the owner of the DEFINER helpers (uten_migrator after a role split) must reach the caller check
     EXECUTE format('GRANT EXECUTE ON FUNCTION public.fn_require_runtime_maintenance(boolean) TO %I', helper_owner_name);
-END $v798_privileges$;
+END $v808_privileges$;
 
 -- ============ 6. Self check ============
-DO $v798_self_check$
+DO $v808_self_check$
 DECLARE
     leftover text;
 BEGIN
@@ -689,13 +689,13 @@ BEGIN
        OR to_regprocedure('public.fn_test_object_intent_guard()') IS NOT NULL
        OR to_regprocedure('public.fn_test_object_require_actor(uuid,uuid,bigint)') IS NOT NULL
        OR to_regprocedure('public.fn_test_object_claim(uuid,uuid,bigint)') IS NOT NULL THEN
-        RAISE EXCEPTION 'V798 left a retired test intent object behind';
+        RAISE EXCEPTION 'V808 left a retired test intent object behind';
     END IF;
     SELECT string_agg(p.proname, ', ' ORDER BY p.proname) INTO leftover
     FROM pg_catalog.pg_proc p
     WHERE p.pronamespace = 'public'::regnamespace
       AND p.prosrc ~ '(v_business_test_object_sources|fn_business_test_object_sources|business_test_object_cleanup_intents|fn_test_object_|fn_assert_business_test_objects_cleared|fn_business_attachment_reset_blockers)';
     IF leftover IS NOT NULL THEN
-        RAISE EXCEPTION 'V798 left references to retired test intent objects in: %', leftover;
+        RAISE EXCEPTION 'V808 left references to retired test intent objects in: %', leftover;
     END IF;
-END $v798_self_check$;
+END $v808_self_check$;

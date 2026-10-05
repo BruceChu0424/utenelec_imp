@@ -648,7 +648,7 @@ BEGIN
   IF to_regprocedure('public.fn_require_runtime_maintenance(boolean)') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.fn_require_runtime_maintenance(boolean) FROM PUBLIC, uten;
   END IF;
-  -- ADR-155 (V798): only the reset function owner may verify the test file list and clear
+  -- ADR-155 (V808): only the reset function owner may verify the test file list and clear
   -- its metadata inside an explicit test reset; the blanket grant above must not expose them.
   IF to_regprocedure('public.fn_business_test_reset_verify_purged()') IS NOT NULL THEN
     REVOKE ALL ON FUNCTION public.fn_business_test_reset_verify_purged() FROM PUBLIC, uten;

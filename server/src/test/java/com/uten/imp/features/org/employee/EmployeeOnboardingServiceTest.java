@@ -8,11 +8,14 @@ import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
+import com.uten.imp.features.org.employee.dto.EmployeeAccountReadiness;
 import com.uten.imp.features.org.employee.dto.EmployeeOnboardingResult;
+import com.uten.imp.features.org.employee.dto.IdNumberIssue;
 import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -31,6 +34,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,6 +68,7 @@ class EmployeeOnboardingServiceTest {
     @Mock private EmployeeSensitiveWritePolicy sensitiveWritePolicy;
     @Mock private com.uten.imp.features.admin.systemsetting.SystemSettingsService settings;
     @Mock private com.uten.imp.features.auth.CredentialIssuancePolicy credentialIssuance;
+    @Mock private TemporaryPasswordGenerator passwordGenerator;
     @Mock private Query positionNameLockQuery;
 
     @InjectMocks
@@ -125,7 +130,7 @@ class EmployeeOnboardingServiceTest {
         when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000001");
-        when(tx.decrypt("id-cipher")).thenReturn("CARD-123456");
+        when(tx.tryDecrypt("id-cipher")).thenReturn(Optional.of("CARD-123456"));
         when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
                 .thenReturn(72);
         when(passwordEncoder.encode("123456")).thenReturn("argon2-provisioned");
@@ -135,7 +140,7 @@ class EmployeeOnboardingServiceTest {
         ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
         verify(userRepo).save(account.capture());
         // 仅在实际开户注册时解密证件，候选查询仍不返回 PII。
-        verify(tx).decrypt("id-cipher");
+        verify(tx).tryDecrypt("id-cipher");
         assertEquals("123456", result.temporaryPassword());
         assertEquals("13800000001", result.loginAccount());
         assertEquals("argon2-provisioned", account.getValue().getPasswordHash());
@@ -158,7 +163,7 @@ class EmployeeOnboardingServiceTest {
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000002");
         sensitive.setIdCardEnc("id-cipher");
-        when(tx.decrypt("id-cipher")).thenReturn("CARD-123456");
+        when(tx.tryDecrypt("id-cipher")).thenReturn(Optional.of("CARD-123456"));
         when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
                 .thenReturn(72);
         when(passwordEncoder.encode("123456")).thenReturn("argon2-provisioned");
@@ -248,18 +253,24 @@ class EmployeeOnboardingServiceTest {
     }
 
     @Test
-    void initialPasswordPreservesLeadingZeroesAndNormalizesIdentityX() {
-        assertEquals("001234", EmployeeOnboardingService.initialPassword("其他", "AB001234"));
-        assertEquals("31002X", EmployeeOnboardingService.initialPassword("身份证", " 11010519491231002x "));
+    void idSuffixPasswordPreservesLeadingZeroesAndNormalizesIdentityX() {
+        assertEquals(Optional.of("001234"), EmployeeOnboardingService.idSuffixPassword("其他", "AB001234"));
+        assertEquals(Optional.of("31002X"),
+                EmployeeOnboardingService.idSuffixPassword("身份证", " 11010519491231002x "));
     }
 
     @Test
-    void initialPasswordRejectsMissingShortAndInvalidIdentity() {
+    void idSuffixPasswordEmptyForMissingOrShort() {
         for (String value : new String[] {null, "", "  ", "12345"}) {
-            assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
-                    () -> EmployeeOnboardingService.initialPassword("其他", value)).getCode());
+            assertEquals(Optional.empty(), EmployeeOnboardingService.idSuffixPassword("其他", value));
+            assertEquals(Optional.empty(), EmployeeOnboardingService.idSuffixPassword("身份证", value));
         }
-        assertThrows(ApiException.class, () -> EmployeeOnboardingService.initialPassword("身份证", "110105194912310021"));
+        // 18 位但校验不通过的身份证号：仍取档案号码后六位 (只提醒不阻塞)。
+        assertEquals(Optional.of("310021"),
+                EmployeeOnboardingService.idSuffixPassword("身份证", "110105194912310021"));
+        // 不足 18 位但够六位：同样取后六位。
+        assertEquals(Optional.of("231002"),
+                EmployeeOnboardingService.idSuffixPassword("身份证", "11010519491231002"));
     }
 
     @Test
@@ -276,18 +287,192 @@ class EmployeeOnboardingServiceTest {
     }
 
     @Test
-    void missingProvisionIdentityCannotCreateOrHashAnAccount() {
+    void missingProvisionIdentityStillCreatesAccountWithRandomPassword() {
         Employee employee = new Employee();
         employee.setStatus("active");
+        employee.setIdType("身份证");
         EmployeeSensitive sensitive = new EmployeeSensitive();
         sensitive.setPhoneEnc("phone-cipher");
         when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000001");
-        assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class,
-                () -> service.provisionAccount(employee.getId())).getCode());
+        when(passwordGenerator.generate()).thenReturn("Rnd-Temp-Pass-20ch!x");
+        when(passwordEncoder.encode("Rnd-Temp-Pass-20ch!x")).thenReturn("argon2-random");
+
+        EmployeeOnboardingResult result = service.provisionAccount(employee.getId());
+
+        ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
+        verify(userRepo).save(account.capture());
+        verify(passwordEncoder).encode("Rnd-Temp-Pass-20ch!x");
+        assertEquals("Rnd-Temp-Pass-20ch!x", result.temporaryPassword());
+        assertEquals("argon2-random", account.getValue().getPasswordHash());
+        assertTrue(account.getValue().isMustChangePassword());
+        verify(credentialIssuance).requireCanIssueCredentials(account.getValue());
+    }
+
+    @Test
+    void invalidResidentIdentityStillProvisionsWithTheStoredLastSix() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        employee.setIdType("身份证");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setPhoneEnc("phone-cipher");
+        sensitive.setIdCardEnc("id-cipher");
+        sensitive.setIdCardCheck("check_digit");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn("13800000003");
+        when(tx.tryDecrypt("id-cipher")).thenReturn(Optional.of("110105194912310021"));
+        when(passwordEncoder.encode("310021")).thenReturn("argon2-suffix");
+
+        EmployeeOnboardingResult result = service.provisionAccount(employee.getId());
+
+        // 只提醒不阻塞：仍按档案号码后六位开号，不改用随机密码。
+        assertEquals("310021", result.temporaryPassword());
+        assertEquals("13800000003", result.loginAccount());
+        verify(passwordGenerator, never()).generate();
+        verify(userRepo).save(any(UserAccount.class));
+    }
+
+    /** 证件号密文解不开 (数据损坏、缺旧密钥) 也不拦开号：按派生不出来处理，改用随机临时密码。 */
+    @Test
+    void undecryptableIdentityStillProvisionsWithARandomPassword() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        employee.setIdType("身份证");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setPhoneEnc("phone-cipher");
+        sensitive.setIdCardEnc("corrupt-cipher");
+        sensitive.setIdCardCheck("unchecked");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn("13800000005");
+        when(tx.tryDecrypt("corrupt-cipher")).thenReturn(Optional.empty());
+        when(passwordGenerator.generate()).thenReturn("Rnd-Unreadable-20ch!");
+        when(passwordEncoder.encode("Rnd-Unreadable-20ch!")).thenReturn("argon2-unreadable");
+
+        EmployeeOnboardingResult result = service.provisionAccount(employee.getId());
+
+        ArgumentCaptor<UserAccount> account = ArgumentCaptor.forClass(UserAccount.class);
+        verify(userRepo).save(account.capture());
+        assertEquals("Rnd-Unreadable-20ch!", result.temporaryPassword());
+        assertEquals("13800000005", result.loginAccount());
+        assertEquals("argon2-unreadable", account.getValue().getPasswordHash());
+        assertTrue(account.getValue().isMustChangePassword());
+        verify(credentialIssuance).requireCanIssueCredentials(account.getValue());
+        // 只走不会让事务作废的解密；严格解密碰都不碰证件密文。
+        verify(tx, never()).decrypt("corrupt-cipher");
+    }
+
+    @Test
+    void loginConflictIsReportedBeforeAnyPasswordIsDerived() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setPhoneEnc("phone-cipher");
+        sensitive.setIdCardEnc("id-cipher");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn("13800000004");
+        when(userRepo.existsByLoginAccount("13800000004")).thenReturn(true);
+
+        ApiException conflict = assertThrows(ApiException.class,
+                () -> service.provisionAccount(employee.getId()));
+
+        assertEquals(ErrorCode.CONFLICT, conflict.getCode());
+        verify(tx, never()).tryDecrypt("id-cipher");
+        verify(passwordGenerator, never()).generate();
         verify(passwordEncoder, never()).encode(anyString());
         verify(userRepo, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void missingPhoneStillBlocksProvisioning() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setIdCardEnc("id-cipher");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+
+        ApiException missing = assertThrows(ApiException.class,
+                () -> service.provisionAccount(employee.getId()));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, missing.getCode());
+        assertEquals("该员工缺少手机号，无法开通账号", missing.getMessage());
+        verify(tx, never()).tryDecrypt("id-cipher");
+        verify(userRepo, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void onboardingWithShortNonResidentDocumentUsesRandomPassword() {
+        Department center = managementCenter();
+        when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
+        when(masterCodeService.nextCode(MasterCodePrefix.EMPLOYEE)).thenReturn("UT0008");
+        when(passwordGenerator.generate()).thenReturn("Onboard-Random-20ch!");
+
+        EmployeeOnboardingResult result = service.onboard(request(
+                center.getId(), null, null, "IGNORED", "其他", "A1234"));
+
+        verify(passwordEncoder).encode("Onboard-Random-20ch!");
+        assertEquals("Onboard-Random-20ch!", result.temporaryPassword());
+    }
+
+    @Test
+    void onboardingStillRejectsAnInvalidResidentIdentityWithTheSpecificReason() {
+        ApiException error = assertThrows(ApiException.class, () -> service.onboard(request(
+                UUID.randomUUID(), null, null, "IGNORED", "身份证", "11010519491231002")));
+
+        assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
+        assertEquals("身份证号应为18位，当前为17位", error.getMessage());
+        verify(empRepo, never()).save(any(Employee.class));
+        verify(userRepo, never()).save(any(UserAccount.class));
+        verify(passwordGenerator, never()).generate();
+    }
+
+    @Test
+    void readinessReportsPhoneAndTheStoredIdentityProblemWithoutDecrypting() {
+        Employee employee = new Employee();
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setPhoneEnc("phone-cipher");
+        sensitive.setIdCardEnc("id-cipher");
+        sensitive.setIdCardCheck("length:17");
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+
+        EmployeeAccountReadiness readiness = service.accountReadiness(employee.getId());
+
+        assertTrue(readiness.hasPhone());
+        assertEquals(new IdNumberIssue("invalid", "身份证号应为18位，当前为17位"), readiness.idNumberIssue());
+        verify(tx, never()).decrypt(anyString());
+        verify(tx, never()).tryDecrypt(anyString());
+    }
+
+    @Test
+    void readinessWithoutSensitiveRowReportsMissingPhoneAndIdentity() {
+        Employee employee = new Employee();
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+
+        EmployeeAccountReadiness readiness = service.accountReadiness(employee.getId());
+
+        assertFalse(readiness.hasPhone());
+        assertEquals("missing", readiness.idNumberIssue().kind());
+        assertEquals("档案里没有证件号码", readiness.idNumberIssue().reason());
+    }
+
+    @Test
+    void readinessSkipsSuperAdminIdentityAndRejectsUnknownEmployees() {
+        Employee employee = new Employee();
+        UserAccount superAdmin = new UserAccount();
+        superAdmin.setSuperAdmin(true);
+        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(superAdmin));
+
+        assertNull(service.accountReadiness(employee.getId()).idNumberIssue());
+
+        UUID unknown = UUID.randomUUID();
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> service.accountReadiness(unknown)).getCode());
     }
 
     private void stubCustomPositionLock() {

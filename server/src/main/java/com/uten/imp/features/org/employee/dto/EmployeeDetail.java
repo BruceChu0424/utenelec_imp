@@ -65,6 +65,13 @@ public class EmployeeDetail {
     private String phone;           // 本人或有 PII 权限时明文，否则 138****1234
     private String bankAccount;     // 仅有 employee:pii:view 时明文，否则 null
     private String bankBranch;      // 仅有 employee:pii:view 时明文，否则 null
+    /**
+     * 证件号码需要人事核对的原因 (V807，数据质量提示，不是 PII)：null = 无需处理；
+     * kind 为 missing / invalid / unchecked，reason 是服务端拼好的具体原因 (只含位置和长度，
+     * 不含号码)。只由 EmployeeIdentityCheck.issueOf 给出：按已存的校验结果，详情显示号码时解密失败则按
+     * 「读取不出来」；超管账号的员工不报。
+     */
+    private IdNumberIssue idNumberIssue;
 
     // 薪资（仅 employee:compensation:view 可见，否则为 null）
     private String baseSalary;

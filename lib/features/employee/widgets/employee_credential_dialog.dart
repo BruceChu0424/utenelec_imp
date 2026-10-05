@@ -1,6 +1,8 @@
 // 账号凭据弹窗（共享）：入职成功 / 给存量员工补开登录账号 后，向 HR 一次性展示
 // 登录账号（默认手机号）与一次性临时密码，强制确认（不可返回兜藏）。
 // 抽自 employee_onboarding_page 的 _showOnboardingCredential，供入职页与员工详情页复用。
+// 返回的员工资料带证件问题(idNumberIssue)时，在临时密码上方加红/黄提醒：开号不受影响，
+// 但初始密码可能和员工本人证件后六位对不上，要以弹窗显示的为准(入职时证件一定合规，不会出现)。
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +10,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../repositories/employee_repository.dart';
+import 'employee_identity_issue_notice.dart';
 
 /// 展示一次性账号凭据（登录账号 + 临时密码）。barrier 不可消失，必须点「我已安全保存」关闭。
 Future<void> showEmployeeCredentialDialog(
@@ -15,12 +18,14 @@ Future<void> showEmployeeCredentialDialog(
   EmployeeOnboardingResult result,
 ) {
   final l10n = AppLocalizations.of(context);
+  final idIssue = result.employee.idNumberIssue;
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (dialogContext) => PopScope(
       canPop: false,
       child: AlertDialog(
+        scrollable: true,
         title: Row(
           children: [
             const Icon(Icons.key_rounded),
@@ -48,6 +53,13 @@ Future<void> showEmployeeCredentialDialog(
               ),
               SelectableText(result.loginAccount),
               const SizedBox(height: UtenSpacing.s12),
+              if (idIssue != null) ...[
+                EmployeeIdentityIssueNotice(
+                  issue: idIssue,
+                  where: EmployeeIdentityNoticeContext.credential,
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+              ],
               Text(
                 l10n.employeeOnboardTemporaryPasswordLabel,
                 style: Theme.of(dialogContext).textTheme.labelMedium,

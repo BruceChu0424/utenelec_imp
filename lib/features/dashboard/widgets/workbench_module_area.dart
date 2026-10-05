@@ -326,7 +326,8 @@ const _allGroups = <_ModuleGroup>[
     title: '行政与人力资源部',
     color: UtenColors.info,
     items: [
-      // 任务中心置顶：转正/生日/周年/新入职集中提醒，徽标=今日事项+逾期转正
+      // 任务中心置顶：转正/生日/周年/新入职/证件核对集中提醒，
+      // 徽标=今日事项+逾期转正+证件待核对(只给能修改证件的人计)
       _ModuleItem(
         icon: Icons.task_alt_outlined,
         label: '任务中心',

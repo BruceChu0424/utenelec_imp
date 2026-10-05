@@ -764,6 +764,11 @@ List<String> requiredAllPermsFor(String rawLocation) {
     // 部门页首屏会加载直属员工花名册，不能只有 department:view。
     return const [Perm.employeeView];
   }
+  // HR 任务中心「证件核对」：只有能修改证件的人看得到(服务端同口径过滤)；
+  // 通用的 /hr/tasks 规则 employee:view 照旧在 requiredAnyPermFor 里。
+  if (location == RouteName.hrTaskList('identity')) {
+    return const [Perm.employeePiiEdit];
+  }
 
   if (location == RouteName.financeReportCustomerPrepayment) {
     return const [

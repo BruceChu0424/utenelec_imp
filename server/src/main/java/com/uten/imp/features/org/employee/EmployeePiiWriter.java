@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.util.ChinaMobileNumber;
+import com.uten.imp.common.util.IdCardProblem;
 import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -20,6 +21,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EmployeePiiWriter {
 
+    static final String DUPLICATE_IDENTITY_MESSAGE =
+            "该证件号码已被其他员工使用，请核对是否录错或与其他员工档案重复";
+
     private final TxSessionVars tx;
     private final EmployeeSensitiveRepository sensitiveRepo;
 
@@ -34,16 +38,24 @@ public class EmployeePiiWriter {
         String normalized = "身份证".equals(idType)
                 ? IdCardUtil.normalize(idNumber)
                 : idNumber.trim();
-        if ("身份证".equals(idType) && !IdCardUtil.isValid(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "身份证号校验未通过");
+        if ("身份证".equals(idType)) {
+            // 录入与修改证件仍严格把关：报出具体哪一位、哪一项不对 (不带号码本身)。
+            IdCardProblem problem = IdCardUtil.check(normalized);
+            if (problem != null) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, problem.message());
+            }
         }
         String hash = tx.hmac(normalized);
         if (hash != null && sensitiveRepo.existsByIdCardHashAndEmployeeIdNot(hash, employeeId)) {
-            throw new ApiException(ErrorCode.CONFLICT, "该身份证号已被其他员工使用");
+            // 各类证件共用一句话 (护照、港澳台通行证也走这里)；不说出是哪位员工，免得借查重探出别人的证件号。
+            throw new ApiException(ErrorCode.CONFLICT, DUPLICATE_IDENTITY_MESSAGE);
         }
         target.setIdCardEnc(tx.encrypt(normalized));
         target.setIdCardLast4(IdCardUtil.last4(normalized));
         target.setIdCardHash(hash);
+        // V807: 密文与校验结果同写 (有密文必有结果，数据库约束兜底)；规则只走 EmployeeIdentityCheck 一份。
+        // 每次保存都按新号码重判，所以 unchecked / unreadable 和旧问题码都随之改写 (人事重新登记即结案)。
+        target.setIdCardCheck(EmployeeIdentityCheck.classify(idType, normalized));
     }
 
     public void applyPhone(EmployeeSensitive target, String phone) {

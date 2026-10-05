@@ -2,6 +2,7 @@
 // 全部字段为服务端按「今天」动态计算结果，前端不重算。
 
 /// 单条提醒。days 语义随区块：剩余天数 / 逾期天数 / 周岁 / 满年数 / 已入职天数。
+/// 证件核对(identityReview)：date=入职日，note=服务端写好的具体原因(不含号码)。
 /// 软认领（ADR-021）：任务不隐藏，claimedByName 非空显示「XXX 处理中」。
 class HrTaskItem {
   const HrTaskItem({
@@ -71,6 +72,7 @@ class HrTaskSummary {
     required this.birthdayUpcoming,
     required this.anniversaryToday,
     required this.newHires,
+    required this.identityReview,
     required this.badgeCount,
   });
 
@@ -84,6 +86,10 @@ class HrTaskSummary {
   final List<HrTaskItem> birthdayUpcoming;
   final List<HrTaskItem> anniversaryToday;
   final List<HrTaskItem> newHires;
+
+  /// 证件待核对(缺失 / 校验未通过 / 尚未校验)：只发给能修改证件的人
+  /// (超管或 employee:pii:edit)，其他人收到空列表、也不计数。
+  final List<HrTaskItem> identityReview;
   final int badgeCount;
 
   static List<HrTaskItem> _items(Map<String, dynamic> json, String key) =>
@@ -103,6 +109,7 @@ class HrTaskSummary {
     birthdayUpcoming: _items(json, 'birthdayUpcoming'),
     anniversaryToday: _items(json, 'anniversaryToday'),
     newHires: _items(json, 'newHires'),
+    identityReview: _items(json, 'identityReview'),
     badgeCount: (json['badgeCount'] as num?)?.toInt() ?? 0,
   );
 }

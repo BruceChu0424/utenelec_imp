@@ -583,6 +583,38 @@ void main() {
         );
       }
     });
+
+    test('HR identity review page requires the identity edit grant', () {
+      final location = RouteName.hrTaskList('identity');
+      expect(requiredAnyPermFor(location), const [Perm.employeeView]);
+      expect(requiredAllPermsFor(location), const [Perm.employeePiiEdit]);
+      // employee:view 发得很广(总经理等)：只有它进不了证件核对页。
+      expect(
+        employeePermissionRedirect(_userWith([Perm.employeeView]), location),
+        RouteName.accessDenied,
+      );
+      expect(
+        employeePermissionRedirect(
+          _userWith([Perm.employeeView, Perm.employeePiiEdit]),
+          location,
+        ),
+        isNull,
+      );
+      // 其他 HR 子页不受影响。
+      expect(requiredAllPermsFor(RouteName.hrTaskList('confirm')), isEmpty);
+      expect(
+        employeePermissionRedirect(
+          _userWith([Perm.employeeView]),
+          RouteName.hrTaskList('confirm'),
+        ),
+        isNull,
+      );
+      expect(
+        locationAllowedFor(const {}, true, location),
+        isTrue,
+        reason: '超管照常放行',
+      );
+    });
   });
 }
 

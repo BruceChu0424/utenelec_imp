@@ -1,6 +1,8 @@
 package com.uten.imp.features.org.hrtask;
 
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.AuthUser;
@@ -10,8 +12,13 @@ import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -103,6 +110,63 @@ class HrTaskClaimTakeoverAuditTest {
                 eq("hr_task_claims"), eq("confirm · 目标员工"), eq("success"));
         verify(audit, never()).logCommitted(
                 any(), any(), eq("hr_task_claim"), any(), any(), any());
+    }
+
+    @Test
+    void identityTaskClaimAndReleaseAreAuditedForUsersWhoCanFixIdentity() {
+        when(user.getPermissions()).thenReturn(Set.of("employee:view", "employee:pii:edit"));
+        when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
+                "identity", employeeId)).thenReturn(Optional.empty());
+
+        HrTaskClaimService.HrTaskClaimView view = service.claim("identity", employeeId);
+
+        assertTrue(view.claimedByMe());
+        assertEquals("identity", view.taskType());
+        verify(audit).logCommitted(
+                eq(user.getId()), eq("hr-auditor"), eq("hr_task_claim"),
+                eq("hr_task_claims"), eq("identity · 目标员工"), eq("success"));
+
+        HrTaskClaim mine = active(me);
+        mine.setTaskType("identity");
+        when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
+                "identity", employeeId)).thenReturn(Optional.of(mine));
+        service.release("identity", employeeId);
+
+        assertNotNull(mine.getReleasedAt());
+        verify(audit).logCommitted(
+                eq(user.getId()), eq("hr-auditor"), eq("hr_task_release"),
+                eq("hr_task_claims"), eq("identity · 目标员工"), eq("success"));
+    }
+
+    @Test
+    void identityTaskCannotBeClaimedOrTakenOverWithoutIdentityEditPermission() {
+        when(user.getPermissions()).thenReturn(Set.of("employee:view", "employee:task_takeover"));
+        HrTaskClaim othersClaim = active(other);
+        othersClaim.setTaskType("identity");
+        when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
+                "identity", employeeId)).thenReturn(Optional.of(othersClaim));
+
+        ApiException claim = assertThrows(ApiException.class,
+                () -> service.claim("identity", employeeId));
+        ApiException takeover = assertThrows(ApiException.class,
+                () -> service.takeover("identity", employeeId));
+
+        assertEquals(ErrorCode.FORBIDDEN, claim.getCode());
+        assertEquals(ErrorCode.FORBIDDEN, takeover.getCode());
+        // 接管在任何改动之前就被拒：别人的认领原样保留。
+        assertNull(othersClaim.getReleasedAt());
+        verify(repository, never()).save(any(HrTaskClaim.class));
+        verify(audit, never()).logCommitted(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void superAdminMayClaimIdentityTasks() {
+        when(user.isSuperAdmin()).thenReturn(true);
+        when(user.getPermissions()).thenReturn(Set.of());
+        when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(
+                "identity", employeeId)).thenReturn(Optional.empty());
+
+        assertTrue(service.claim("identity", employeeId).claimedByMe());
     }
 
     private HrTaskClaim active(UUID owner) {

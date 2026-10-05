@@ -12,11 +12,10 @@ abstract final class InputValidators {
     return null;
   }
 
+  /// 身份证给出具体哪里不对(与后端同一句话)，其他证件只要求非空。
   static String? idNumber(String? v, {String type = '身份证'}) {
     if (v == null || v.trim().isEmpty) return '证件号码不能为空';
-    if (type == '身份证' && !IdCardUtils.isValid(v.trim())) {
-      return '身份证号格式不正确';
-    }
+    if (type == '身份证') return IdCardUtils.problemOf(v);
     return null;
   }
 

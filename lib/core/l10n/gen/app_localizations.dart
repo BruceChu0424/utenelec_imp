@@ -1282,12 +1282,6 @@ abstract class AppLocalizations {
   /// **'请输入姓名'**
   String get visitorApplyValidateName;
 
-  /// No description provided for @visitorApplyValidateIdCard.
-  ///
-  /// In zh, this message translates to:
-  /// **'请输入正确的 18 位居民身份证号'**
-  String get visitorApplyValidateIdCard;
-
   /// No description provided for @visitorApplyValidatePurpose.
   ///
   /// In zh, this message translates to:
@@ -2077,7 +2071,7 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并由系统随机生成一次性临时密码(只显示一次，限时有效)；首次登录必须修改密码。'**
+  /// **'提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，初始密码为证件号码后六位，不足六位时由系统随机生成(只显示一次，限时有效)；首次登录必须修改密码。'**
   String get employeeOnboardNote;
 
   /// No description provided for @employeeOnboardCodeAutoNote.
@@ -2193,12 +2187,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请输入身份证号'**
   String get employeeOnboardHintIdNumber;
-
-  /// No description provided for @employeeOnboardIdNumberInvalid.
-  ///
-  /// In zh, this message translates to:
-  /// **'身份证号格式不正确'**
-  String get employeeOnboardIdNumberInvalid;
 
   /// No description provided for @employeeOnboardHintPhone.
   ///
@@ -2341,8 +2329,140 @@ abstract class AppLocalizations {
   /// No description provided for @employeeProvisionConfirm.
   ///
   /// In zh, this message translates to:
-  /// **'将为该员工开通登录账号：账号默认为手机号，初始密码由系统随机生成(只显示一次，限时有效)，首次登录需修改。是否继续？'**
+  /// **'将为该员工开通登录账号：账号默认为手机号；初始密码为档案证件号码的后六位，档案没有证件号码或不足六位时由系统随机生成(只显示一次，限时有效)；首次登录需修改。是否继续？'**
   String get employeeProvisionConfirm;
+
+  /// No description provided for @employeeIdIssueBadge.
+  ///
+  /// In zh, this message translates to:
+  /// **'待核对'**
+  String get employeeIdIssueBadge;
+
+  /// No description provided for @employeeIdIssueInvalidTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件号码校验未通过'**
+  String get employeeIdIssueInvalidTitle;
+
+  /// No description provided for @employeeIdIssueMissingTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'未登记证件号码'**
+  String get employeeIdIssueMissingTitle;
+
+  /// No description provided for @employeeIdIssueUncheckedTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件号码尚未校验'**
+  String get employeeIdIssueUncheckedTitle;
+
+  /// No description provided for @employeeIdIssueReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'具体问题：{reason}'**
+  String employeeIdIssueReason(Object reason);
+
+  /// No description provided for @employeeIdIssueDetailInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请人事对照员工证件核对后修改。不影响开通和使用登录账号。'**
+  String get employeeIdIssueDetailInvalid;
+
+  /// No description provided for @employeeIdIssueDetailMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'请人事补录证件号码。不影响开通和使用登录账号。'**
+  String get employeeIdIssueDetailMissing;
+
+  /// No description provided for @employeeIdIssueDetailUnchecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'请人事对照员工证件核对，必要时修改。不影响开通和使用登录账号。'**
+  String get employeeIdIssueDetailUnchecked;
+
+  /// No description provided for @employeeIdIssueProvisionHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'可以继续开通，不受影响。人事任务中心会提醒人事核对修改。'**
+  String get employeeIdIssueProvisionHint;
+
+  /// No description provided for @employeeIdIssueCredentialInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'初始密码按档案里的证件号码生成(不足六位时随机生成)，可能和员工本人证件后六位不一样，请把这里显示的密码告诉员工。'**
+  String get employeeIdIssueCredentialInvalid;
+
+  /// No description provided for @employeeIdIssueCredentialMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'初始密码由系统随机生成，请复制后交给员工。'**
+  String get employeeIdIssueCredentialMissing;
+
+  /// No description provided for @employeeIdIssueCredentialUnchecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'初始密码按档案证件号码后六位生成；号码读取不出来或不足六位时由系统随机生成。请以这里显示的密码为准告诉员工。'**
+  String get employeeIdIssueCredentialUnchecked;
+
+  /// No description provided for @employeeIdentityCorrectAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改证件信息'**
+  String get employeeIdentityCorrectAction;
+
+  /// No description provided for @employeeIdentityCorrectTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改证件信息'**
+  String get employeeIdentityCorrectTitle;
+
+  /// No description provided for @employeeIdentityCorrectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'身份证号码会自动校验，并按号码更新出生日期和性别。'**
+  String get employeeIdentityCorrectHint;
+
+  /// No description provided for @employeeIdentityCorrectNoPrefill.
+  ///
+  /// In zh, this message translates to:
+  /// **'你没有查看证件号码明文的权限，请直接输入完整的新号码。'**
+  String get employeeIdentityCorrectNoPrefill;
+
+  /// No description provided for @employeeIdentityCorrectNumberRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件号码不能为空'**
+  String get employeeIdentityCorrectNumberRequired;
+
+  /// No description provided for @employeeIdentityCorrectNumberTooLong.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件号码不能超过64个字符'**
+  String get employeeIdentityCorrectNumberTooLong;
+
+  /// No description provided for @employeeIdentityCorrectLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能读取员工当前的证件信息，可以直接填写新的证件信息。'**
+  String get employeeIdentityCorrectLoadFailed;
+
+  /// No description provided for @employeeIdentityCorrectFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存证件信息失败，请稍后重试'**
+  String get employeeIdentityCorrectFailed;
+
+  /// No description provided for @employeeIdentityCorrectSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存中'**
+  String get employeeIdentityCorrectSaving;
+
+  /// No description provided for @employeeIdentityCorrectSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件信息已更新'**
+  String get employeeIdentityCorrectSaved;
 
   /// No description provided for @employeeTransferTitle.
   ///
@@ -4836,6 +4956,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'开通中'**
   String get accountProvisionInProgress;
+
+  /// No description provided for @accountProvisionMissingPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'该员工档案没有手机号，无法开通账号。请先在员工档案中补录手机号。'**
+  String get accountProvisionMissingPhone;
 
   /// No description provided for @accountStatusNotProvisioned.
   ///

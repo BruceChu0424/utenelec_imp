@@ -633,9 +633,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get visitorApplyValidateName => '请输入姓名';
 
   @override
-  String get visitorApplyValidateIdCard => '请输入正确的 18 位居民身份证号';
-
-  @override
   String get visitorApplyValidatePurpose => '请填写来访事由';
 
   @override
@@ -1050,7 +1047,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，并由系统随机生成一次性临时密码(只显示一次，限时有效)；首次登录必须修改密码。';
+      '提交后将自动生成工号(UT 前缀)、以手机号作为登录账号，初始密码为证件号码后六位，不足六位时由系统随机生成(只显示一次，限时有效)；首次登录必须修改密码。';
 
   @override
   String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
@@ -1111,9 +1108,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardHintIdNumber => '请输入身份证号';
-
-  @override
-  String get employeeOnboardIdNumberInvalid => '身份证号格式不正确';
 
   @override
   String get employeeOnboardHintPhone => '11 位手机号';
@@ -1188,7 +1182,78 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeProvisionConfirm =>
-      '将为该员工开通登录账号：账号默认为手机号，初始密码由系统随机生成(只显示一次，限时有效)，首次登录需修改。是否继续？';
+      '将为该员工开通登录账号：账号默认为手机号；初始密码为档案证件号码的后六位，档案没有证件号码或不足六位时由系统随机生成(只显示一次，限时有效)；首次登录需修改。是否继续？';
+
+  @override
+  String get employeeIdIssueBadge => '待核对';
+
+  @override
+  String get employeeIdIssueInvalidTitle => '证件号码校验未通过';
+
+  @override
+  String get employeeIdIssueMissingTitle => '未登记证件号码';
+
+  @override
+  String get employeeIdIssueUncheckedTitle => '证件号码尚未校验';
+
+  @override
+  String employeeIdIssueReason(Object reason) {
+    return '具体问题：$reason';
+  }
+
+  @override
+  String get employeeIdIssueDetailInvalid => '请人事对照员工证件核对后修改。不影响开通和使用登录账号。';
+
+  @override
+  String get employeeIdIssueDetailMissing => '请人事补录证件号码。不影响开通和使用登录账号。';
+
+  @override
+  String get employeeIdIssueDetailUnchecked =>
+      '请人事对照员工证件核对，必要时修改。不影响开通和使用登录账号。';
+
+  @override
+  String get employeeIdIssueProvisionHint => '可以继续开通，不受影响。人事任务中心会提醒人事核对修改。';
+
+  @override
+  String get employeeIdIssueCredentialInvalid =>
+      '初始密码按档案里的证件号码生成(不足六位时随机生成)，可能和员工本人证件后六位不一样，请把这里显示的密码告诉员工。';
+
+  @override
+  String get employeeIdIssueCredentialMissing => '初始密码由系统随机生成，请复制后交给员工。';
+
+  @override
+  String get employeeIdIssueCredentialUnchecked =>
+      '初始密码按档案证件号码后六位生成；号码读取不出来或不足六位时由系统随机生成。请以这里显示的密码为准告诉员工。';
+
+  @override
+  String get employeeIdentityCorrectAction => '修改证件信息';
+
+  @override
+  String get employeeIdentityCorrectTitle => '修改证件信息';
+
+  @override
+  String get employeeIdentityCorrectHint => '身份证号码会自动校验，并按号码更新出生日期和性别。';
+
+  @override
+  String get employeeIdentityCorrectNoPrefill => '你没有查看证件号码明文的权限，请直接输入完整的新号码。';
+
+  @override
+  String get employeeIdentityCorrectNumberRequired => '证件号码不能为空';
+
+  @override
+  String get employeeIdentityCorrectNumberTooLong => '证件号码不能超过64个字符';
+
+  @override
+  String get employeeIdentityCorrectLoadFailed => '没能读取员工当前的证件信息，可以直接填写新的证件信息。';
+
+  @override
+  String get employeeIdentityCorrectFailed => '保存证件信息失败，请稍后重试';
+
+  @override
+  String get employeeIdentityCorrectSaving => '保存中';
+
+  @override
+  String get employeeIdentityCorrectSaved => '证件信息已更新';
 
   @override
   String get employeeTransferTitle => '员工调岗';
@@ -2505,6 +2570,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get accountProvisionInProgress => '开通中';
+
+  @override
+  String get accountProvisionMissingPhone => '该员工档案没有手机号，无法开通账号。请先在员工档案中补录手机号。';
 
   @override
   String get accountStatusNotProvisioned => '未开通账号';

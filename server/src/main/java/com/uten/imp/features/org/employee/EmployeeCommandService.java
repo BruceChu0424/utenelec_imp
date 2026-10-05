@@ -177,18 +177,8 @@ public class EmployeeCommandService {
             ns.setEmployeeId(id);
             return ns;
         });
-        // employee:pii:edit 层：身份证/手机/银行/备用号（写敏感表）。身份证改动顺带派生生日与性别。
+        // employee:pii:edit 层：手机/银行/备用号(写敏感表)。证件号只走 changeIdentity 一条写入路径。
         if (writesPii) {
-            if (!isBlank(r.idNumber())) {
-                piiWriter.applyIdentity(s, id, employee.getIdType(), r.idNumber());
-                if ("身份证".equals(employee.getIdType())) {
-                    String normalized = IdCardUtil.normalize(r.idNumber());
-                    LocalDate derived = IdCardUtil.birthDate(normalized);
-                    piiWriter.applyBirthDate(s, derived);
-                    employee.setBirthMonthDay(EmployeeOnboardingService.birthMonthDayOf(derived));
-                    employee.setGender(IdCardUtil.gender(normalized));
-                }
-            }
             if (!isBlank(r.phone())) {
                 piiWriter.applyPhone(s, r.phone());
                 // 登录账号 = 手机号：HR 直改手机号必须同步登录账号并踢会话（ADR-021 §三）
@@ -492,6 +482,46 @@ public class EmployeeCommandService {
         empRepo.save(e);
         // 同步登录账号并吊销会话；员工无登录账号时仅改档案
         loginAccountSync.syncLoginAccount(id, normalized);
+    }
+
+    /**
+     * 修改证件信息 (V807)：证件类型和号码一起改，人事对照证件核对后修正，证件核对任务随之结案。
+     * 身份证号严格校验 (报出具体哪一位、哪一项不对)，HMAC 查重，校验结果随密文同写；
+     * 身份证顺带按号码重推出生日期、生日月日与性别。没有敏感行时新建一行 (老库只有部分资料的员工)。
+     */
+    @PreAuthorize("hasAuthority('employee:pii:edit')")
+    @Transactional
+    public void changeIdentity(UUID id, String idType, String idNumber) {
+        tx.bind();
+        Employee e = queryService.requireEmployee(id);
+        // 超管账号的证件同样禁止经员工管理修改(与 update / changePhone 一致)
+        userRepo.findByEmployeeId(id).ifPresent(account -> {
+            if (account.isSuperAdmin()) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "禁止通过员工管理修改超级管理员的证件信息");
+            }
+        });
+        String type = idType == null ? null : idType.strip();
+        if (type == null || !EmployeeIdentityCheck.ID_TYPES.contains(type)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "证件类型不正确");
+        }
+        EmployeeSensitive s = sensitiveRepo.findByEmployeeId(id).orElseGet(() -> {
+            EmployeeSensitive created = new EmployeeSensitive();
+            created.setEmployeeId(id);
+            return created;
+        });
+        // 严格校验 + 查重 + 密文/后四位/哈希/校验结果同写；不合格时在任何写入之前抛错。
+        piiWriter.applyIdentity(s, id, type, idNumber);
+        e.setIdType(type);
+        if (EmployeeIdentityCheck.RESIDENT_ID.equals(type)) {
+            String normalized = IdCardUtil.normalize(idNumber);
+            LocalDate derived = IdCardUtil.birthDate(normalized);
+            piiWriter.applyBirthDate(s, derived);
+            e.setBirthMonthDay(EmployeeOnboardingService.birthMonthDayOf(derived));
+            e.setGender(IdCardUtil.gender(normalized));
+        }
+        sensitiveRepo.save(s);
+        e.setVersion(e.getVersion() + 1);   // 乐观锁：使在途资料变更申请审批时 409(防丢更新)
+        empRepo.save(e);
     }
 
     /** 复职：离职员工恢复在职，写一条 rehire 任职记录并重新启用登录账号。 */

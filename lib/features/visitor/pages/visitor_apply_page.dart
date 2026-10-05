@@ -175,8 +175,10 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
       return;
     }
     final idCard = _idCardCtl.text.trim();
-    if (idCard.isNotEmpty && !IdCardUtils.isValid(idCard)) {
-      setState(() => _error = l10n.visitorApplyValidateIdCard);
+    // 身份证选填；填了就要合法，并说清具体哪一位/长度不对(与后端同一句话)。
+    final idCardProblem = idCard.isEmpty ? null : IdCardUtils.problemOf(idCard);
+    if (idCardProblem != null) {
+      setState(() => _error = idCardProblem);
       return;
     }
     if (_purposeCtl.text.trim().isEmpty) {

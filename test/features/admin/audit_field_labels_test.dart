@@ -1,5 +1,8 @@
 // 审计字段值可读化：ISO 时间戳 →「yyyy-MM-dd HH:mm(北京时间)」。
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/utils/id_card_utils.dart';
 import 'package:uten_imp/features/admin/models/audit_field_labels.dart';
 
 void main() {
@@ -130,5 +133,169 @@ void main() {
       AuditFieldLabels.valueOf('READY', table: 'rd_tasks', field: 'status'),
       '已就绪',
     );
+  });
+
+  group('employee identity and encrypted columns (V807)', () {
+    const table = 'employee_sensitive';
+    const labels = {
+      'id_type': '证件类型',
+      'id_card_enc': '证件号码',
+      'id_card_hash': '证件号码查重值',
+      'id_card_last4': '证件号码后四位',
+      'id_card_check': '证件号校验结果',
+      'phone_enc': '手机号',
+      'phone_hash': '手机号查重值',
+      'birth_date_enc': '出生日期',
+      'email_enc': '电子邮箱',
+      'office_phone_enc': '办公电话',
+      'huji_address_enc': '户籍地址',
+      'residence_address_enc': '现居住地址',
+      'marital_status_enc': '婚姻状况',
+      'political_status_enc': '政治面貌',
+      'bank_account_enc': '银行账号',
+      'bank_branch_enc': '开户行',
+    };
+    final server = File(
+      'server/src/main/java/com/uten/imp/audit/AuditEventInterpreter.java',
+    ).readAsStringSync();
+
+    String checkText(String code) =>
+        AuditFieldLabels.valueOf(code, table: table, field: 'id_card_check');
+
+    test('every column has the same Chinese label as the server summary', () {
+      for (final MapEntry(:key, :value) in labels.entries) {
+        expect(AuditFieldLabels.labelOf(key, table: table), value, reason: key);
+        expect(server, contains('values.put("$key", "$value");'), reason: key);
+      }
+    });
+
+    test(
+      'every encrypted column in the schema has a label and hides values',
+      () {
+        final columns = <String>{};
+        final migrations = Directory('server/src/main/resources/db/migration');
+        for (final file in migrations.listSync().whereType<File>()) {
+          if (!file.path.endsWith('.sql')) continue;
+          columns.addAll(
+            RegExp(
+              r'\b([a-z][a-z0-9_]*_enc)\b',
+            ).allMatches(file.readAsStringSync()).map((m) => m.group(1)!),
+          );
+        }
+        expect(columns, containsAll(['id_card_enc', 'birth_date_enc']));
+        for (final column in columns) {
+          expect(
+            AuditFieldLabels.labelOf(column),
+            isNot('其他字段'),
+            reason: column,
+          );
+          expect(AuditFieldLabels.hidesValue(column), isTrue, reason: column);
+        }
+      },
+    );
+
+    test('check results read like data entry, never as the stored code', () {
+      expect(checkText('valid'), '通过');
+      expect(checkText('unchecked'), '未校验');
+      expect(checkText('unreadable'), '读取不出来');
+      expect(checkText('check_digit'), IdCardProblem.checkDigit.message);
+      expect(checkText('length:17'), '身份证号应为18位，当前为17位');
+      expect(checkText('length:19'), '身份证号应为18位，当前为19位');
+      expect(checkText('character:5'), '身份证号第5位不是数字(只有第18位可以是X)');
+      expect(checkText('character:18'), '身份证号第18位只能是数字或X');
+      expect(checkText('birth_date'), IdCardProblem.birthDate.message);
+      expect(checkText('birth_future'), IdCardProblem.birthFuture.message);
+      // 不认识的码只说未通过，绝不把原码显示出来。
+      for (final code in ['length:18', 'character:19', 'surprise', 'VALID']) {
+        expect(checkText(code), '未通过', reason: code);
+      }
+      // 与服务端审计摘要的固定说法逐字一致。
+      for (final word in ['通过', '未校验', '读取不出来', '未通过']) {
+        expect(server, contains('"$word"'), reason: word);
+      }
+      // 只在 employee_sensitive.id_card_check 这一列翻译。
+      expect(
+        AuditFieldLabels.valueOf('valid', table: 'rd_tasks', field: 'status'),
+        'valid',
+      );
+    });
+
+    test('every code the database accepts has a plain-Chinese result', () {
+      final migration = Directory('server/src/main/resources/db/migration')
+          .listSync()
+          .whereType<File>()
+          .singleWhere(
+            (file) =>
+                file.path.endsWith('__employee_identity_check_status.sql'),
+          );
+      final pattern = RegExp(
+        r"id_card_check ~ '\^\(([^)]*)\)\$'",
+      ).firstMatch(migration.readAsStringSync())!.group(1)!;
+      final codes = pattern
+          .split('|')
+          .map(
+            (alternative) => alternative
+                .replaceAll('[0-9]{1,3}', '17')
+                .replaceAll('[0-9]{1,2}', '5'),
+          );
+      expect(codes, containsAll(['valid', 'unchecked', 'check_digit']));
+      final rawCode = RegExp(r'[a-z]+(_[a-z]+)*(:\d+)?');
+      for (final code in codes) {
+        final text = checkText(code);
+        expect(text, isNot('未通过'), reason: code);
+        expect(rawCode.hasMatch(text), isFalse, reason: '$code -> $text');
+      }
+    });
+
+    test('ciphertext and lookup values never render', () {
+      expect(
+        AuditFieldLabels.valueOf(
+          'ww0EBwMCtestOnly',
+          table: table,
+          field: 'birth_date_enc',
+        ),
+        '(内容不显示)',
+      );
+      expect(
+        AuditFieldLabels.valueOf('abc123', table: table, field: 'id_card_hash'),
+        '(内容不显示)',
+      );
+      expect(AuditFieldLabels.valueOf(null, field: 'phone_enc'), '—');
+      expect(AuditFieldLabels.hidesValue('id_card_check'), isFalse);
+      expect(AuditFieldLabels.hidesValue('id_type'), isFalse);
+      expect(AuditFieldLabels.hiddenChangeText(null, 'x'), '已填写(内容不显示)');
+      expect(AuditFieldLabels.hiddenChangeText('x', null), '已清空');
+      expect(AuditFieldLabels.hiddenChangeText('x', 'y'), '已修改(内容不显示)');
+      expect(
+        AuditFieldLabels.maskHiddenValues({
+          'id_card_check': 'valid',
+          'birth_date_enc': 'ww0EBwMCtestOnly',
+          'email_enc': null,
+          'nested': [
+            {'phone_enc': 'ww0EBwMCtestOnly'},
+          ],
+          '_redacted_changes': ['id_card_enc'],
+        }),
+        {
+          'id_card_check': 'valid',
+          'birth_date_enc': '(内容不显示)',
+          'email_enc': null,
+          'nested': [
+            {'phone_enc': '(内容不显示)'},
+          ],
+          '_redacted_changes': ['id_card_enc'],
+        },
+      );
+    });
+
+    test('redacted column names come back as names only', () {
+      expect(
+        AuditFieldLabels.redactedFieldsOf({
+          '_redacted_changes': ['id_card_enc', ' id_card_hash ', 7, ''],
+        }),
+        ['id_card_enc', 'id_card_hash'],
+      );
+      expect(AuditFieldLabels.redactedFieldsOf({'status': 'READY'}), isEmpty);
+    });
   });
 }

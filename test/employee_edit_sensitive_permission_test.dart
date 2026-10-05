@@ -38,6 +38,21 @@ void main() {
     expect(filtered, isNot(contains('confirmedAt')));
   });
 
+  test('identity fields only go through the change-identity dialog', () {
+    final filtered = filterEmployeeEditPayloadForPermissions(
+      {...payload, 'idType': '护照', 'idNumber': 'E12345678'},
+      const {
+        Perm.employeeEdit,
+        Perm.employeePiiEdit,
+        Perm.employeeCompensationEdit,
+      },
+    );
+
+    expect(filtered, isNot(contains('idType')));
+    expect(filtered, isNot(contains('idNumber')));
+    expect(filtered, containsPair('phone', '13800138000'));
+  });
+
   test('status control is read-only and build payload has no status write', () {
     final source = File(
       'lib/features/employee/pages/employee_edit_page.dart',

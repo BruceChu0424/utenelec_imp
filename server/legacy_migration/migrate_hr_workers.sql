@@ -13,6 +13,8 @@
 --   · 职位：老库 Post/Duty 全空，实际工种在 Emp_Style → 按 (工种, 映射部门) 建 positions（LEG-P-* 码）。
 --   · PII：身份证/手机按服务端同口径 pgcrypto 加密 + HMAC 查重哈希（密钥经 :legacy_key_file
 --     注入，migrate.sh 用后即时删除，不落库不明文）。
+--     证件号不在 SQL 里校验，id_card_check 记为 unchecked；服务端下次启动时自动完成
+--     证件号校验 (V807)。
 -- 幂等：全量 upsert（employees 按 legacy_id、positions 按 (code,department_id)、
 --   sensitive 按 employee_id），重跑安全。
 -- =====================================================================
@@ -131,7 +133,7 @@ WHERE s.legacy_id IS NOT NULL AND s.legacy_id <> 0
 -- enc/hash/last4 同源同空：源值空白时三者均为 NULL，非空时才生成版本化密文及派生值。
 -- 老库可能存在同一人的重复档案：id_card_hash 有唯一约束，
 -- 同证号只给最小 legacy_id 那行挂哈希，其余留 NULL（查重语义保留给唯一档）。
-INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, phone_enc, phone_hash)
+INSERT INTO employee_sensitive (employee_id, id_card_enc, id_card_last4, id_card_hash, id_card_check, phone_enc, phone_hash)
 SELECT e.id,
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL
             THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.id_card), :'pgp_key'), 'base64') END,
@@ -144,6 +146,9 @@ SELECT e.id,
                      SELECT 1 FROM employee_sensitive existing
                      WHERE existing.id_card_hash = encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex'))
             THEN encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex') END,
+       -- V807: 证件号校验结果随密文同写。SQL 里没有解密密钥也不做校验，先记 unchecked，
+       -- 服务端下次启动时 EmployeeIdentityCheckRunner 解密判定 (同一把 advisory lock 串行)。
+       CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN 'unchecked' END,
        CASE WHEN NULLIF(BTRIM(s.mobile), '') IS NOT NULL
             THEN :'pgp_ver' || ':' || encode(pgp_sym_encrypt(BTRIM(s.mobile), :'pgp_key'), 'base64') END,
        CASE WHEN NULLIF(BTRIM(s.mobile), '') IS NOT NULL
@@ -156,6 +161,7 @@ ON CONFLICT (employee_id) DO UPDATE
     SET id_card_enc   = EXCLUDED.id_card_enc,
         id_card_last4 = EXCLUDED.id_card_last4,
         id_card_hash  = EXCLUDED.id_card_hash,
+        id_card_check = EXCLUDED.id_card_check,
         phone_enc     = EXCLUDED.phone_enc,
         phone_hash    = EXCLUDED.phone_hash;
 

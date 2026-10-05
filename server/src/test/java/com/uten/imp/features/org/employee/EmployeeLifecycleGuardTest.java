@@ -136,7 +136,7 @@ class EmployeeLifecycleGuardTest {
                 null, null, null, null, null, null, null, null,
                 null, positionId, null, null, null, null, null, null,
                 null, status, null, confirmedAt,
-                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
                 null, null, null, null);
     }
 }

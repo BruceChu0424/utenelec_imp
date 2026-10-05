@@ -99,7 +99,13 @@ def parse_id_card(idc: str):
     return f"{y:04d}-{mo:02d}-{d:02d}", ("male" if int(m.group(5)) % 2 == 1 else "female")
 
 
+def id_shape_ok(idc: str) -> bool:
+    """18 位、前 17 位是 ASCII 数字、第 18 位是数字或 X：只有这样才能算校验位。"""
+    return re.fullmatch(r"\d{17}[\dXx]", idc or "", flags=re.ASCII) is not None
+
+
 def id_checksum_ok(idc: str) -> bool:
+    """调用前先用 id_shape_ok 判形状；长度不对或含非数字时这里会越界/转换失败。"""
     w = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
     codes = "10X98765432"
     s = sum(int(idc[i]) * w[i] for i in range(17))
@@ -181,17 +187,22 @@ def main() -> int:
         id_parsed = parse_id_card(idc)
         sheet_birth = parse_sheet_date(r["出生日期"])
         sheet_gender = {"男": "male", "女": "female"}.get(str(r["性别"]).strip())
+        # 证件相关告警只写序号和原因：不打印证件号或其中任何一段 (含由它推出的出生日期、性别)、
+        # 表内出生日期和姓名 (标准输出会进终端/日志)；HR 按序号回表格核对。
         if id_parsed:
             birth, gender = id_parsed
             if sheet_birth and sheet_birth != birth:
-                warns.append(f"#{seq} {name}: 表内出生 {sheet_birth} 与身份证 {birth} 不一致 → 以身份证为准")
+                warns.append(f"#{seq}: 表内出生日期与身份证不一致 → 以身份证为准")
             if sheet_gender and sheet_gender != gender:
-                warns.append(f"#{seq} {name}: 表内性别 {r['性别']} 与身份证 {'男' if gender=='male' else '女'} 不一致 → 以身份证为准")
+                warns.append(f"#{seq}: 表内性别与身份证不一致 → 以身份证为准")
         else:
             birth, gender = sheet_birth, sheet_gender
-            warns.append(f"#{seq} {name}: 身份证 {idc!r} 无法解析有效出生日期 → 以表内 {birth} 为准，身份证原样入库，请 HR 核实")
-        if not id_checksum_ok(idc):
-            warns.append(f"#{seq} {name}: 身份证 {idc} 校验位不符 → 原样入库，请 HR 核实")
+            warns.append(f"#{seq}: 身份证无法解析有效出生日期 → 以表内出生日期为准，身份证原样入库，请 HR 核实")
+        if not id_shape_ok(idc):
+            # 长度不对、含非数字或空(读成 'nan')：算不了校验位，只告警，不让脚本崩在坏数据上。
+            warns.append(f"#{seq}: 身份证号长度或字符不对 → 原样入库，请 HR 核实 (服务端启动后进人事任务「证件核对」)")
+        elif not id_checksum_ok(idc):
+            warns.append(f"#{seq}: 身份证校验位不符 → 原样入库，请 HR 核实 (服务端启动后进人事任务「证件核对」)")
 
         # --- 入职时间 ---
         hire = parse_hire_date(r["入职时间"], warns, seq, name)

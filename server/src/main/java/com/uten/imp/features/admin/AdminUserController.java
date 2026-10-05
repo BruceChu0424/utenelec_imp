@@ -86,7 +86,7 @@ public class AdminUserController {
     }
 
     /**
-     * 开通账号候选：在册且尚无登录账号的员工（姓名/工号/部门 + 是否已登记手机号/证件）。
+     * 开通账号候选：在册且尚无登录账号的员工(姓名/工号/部门 + 是否已登记手机号)。
      * 仅 account:support；最小信息集，不回传 PII；最多 20 条。
      */
     @GetMapping("/users/provision-candidates")

@@ -117,8 +117,6 @@ void main() {
                   'code': 'UT0001',
                   'departmentName': '生产部',
                   'hasPhone': true,
-                  // 初始密码改为系统随机生成后，证件号不再是开通条件。
-                  'hasIdCard': false,
                 },
                 {
                   'employeeId': 'emp-2',
@@ -126,7 +124,6 @@ void main() {
                   'code': 'UT0002',
                   'departmentName': null,
                   'hasPhone': false,
-                  'hasIdCard': true,
                 },
               ],
             ),

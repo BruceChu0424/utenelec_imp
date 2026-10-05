@@ -23,7 +23,7 @@ import java.util.UUID;
 public class HrTaskClaim extends BaseEntity {
 
     @Column(name = "task_type", nullable = false)
-    private String taskType;   // confirm / birthday / anniversary / newhire
+    private String taskType;   // confirm / birthday / anniversary / newhire / identity
 
     @Column(name = "employee_id", nullable = false)
     private UUID employeeId;

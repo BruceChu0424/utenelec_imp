@@ -53,7 +53,7 @@ BEGIN
     FROM flyway_schema_history WHERE success AND type='SQL' AND version ~ '^[0-9]+$';
     -- Historical catalog accounting remains independently recountable. Execution
     -- requires V784+ so earlier reset functions cannot erase goods master settings.
-    -- V507/469、V508/470及V511至V799完整目录
+    -- V507/469、V508/470及V511至V807完整目录
     IF applied_max_version<784 OR (applied_max_version, applied_migration_count) NOT IN (
         (443, 405),
         (446, 408),
@@ -382,9 +382,21 @@ BEGIN
         -- V798(ADR-143)：委外按工序领直属物料与分批回厂, 删除前置自制全家九张表。
         (798, 724),
         -- V799(ADR-144)：采购允许超收比例与超出部分财务审批。
-        (799, 725)
+        (799, 725),
+        -- V800-V804 仓库整改(ADR-145~149)：单主仓主档、不良品仓规则、车间内料仓开通(workshop_bins PRESERVE)、
+        -- 产成品实物交接批(production_fqc_lot_decision_commands CLEAR)、仓库数据范围。
+        (800, 726),
+        (801, 727),
+        (802, 728),
+        (803, 729),
+        (804, 730),
+        -- V805/V806 AI 助手确认卡一次性提案(ai_chat_action_proposals CLEAR)与对话思考参数写法。
+        (805, 731),
+        (806, 732),
+        -- V807 员工证件号校验状态(employee_sensitive 加一列与两个约束，不加表)。
+        (807, 733)
     ) THEN
-        RAISE EXCEPTION '测试清空要求已核对的完整目录（最低 V784/710，现已登记 V799/725），实际 V%/%',applied_max_version,applied_migration_count;
+        RAISE EXCEPTION '测试清空要求已核对的完整目录（最低 V784/710，现已登记 V807/733），实际 V%/%',applied_max_version,applied_migration_count;
     END IF;
     IF to_regprocedure('public.fn_business_test_reset_active()') IS NULL THEN
         RAISE EXCEPTION '显式测试清空能力未安装，拒绝执行';

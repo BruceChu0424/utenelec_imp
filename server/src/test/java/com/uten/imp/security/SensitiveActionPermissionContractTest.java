@@ -3,6 +3,7 @@ package com.uten.imp.security;
 import com.uten.imp.features.attachment.AttachmentController;
 import com.uten.imp.features.org.employee.EmployeeCommandService;
 import com.uten.imp.features.org.employee.EmployeeController;
+import com.uten.imp.features.org.employee.EmployeeOnboardingService;
 import com.uten.imp.features.org.hrtask.HrTaskClaimService;
 import com.uten.imp.features.org.hrtask.HrTaskController;
 import com.uten.imp.features.rd_task.RdTaskController;
@@ -47,6 +48,11 @@ class SensitiveActionPermissionContractTest {
                 "setAvatar", "employee:avatar_edit");
         assertBoth(HrTaskController.class, HrTaskClaimService.class,
                 "takeover", "employee:task_takeover");
+        // V807：修改证件信息只认 employee:pii:edit；开号就绪检查与开号同级 account:support。
+        assertBoth(EmployeeController.class, EmployeeCommandService.class,
+                "changeIdentity", "employee:pii:edit");
+        assertBoth(EmployeeController.class, EmployeeOnboardingService.class,
+                "accountReadiness", "account:support");
     }
 
     @Test

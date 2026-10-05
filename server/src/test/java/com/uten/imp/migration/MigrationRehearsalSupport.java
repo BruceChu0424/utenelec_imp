@@ -328,6 +328,12 @@ public final class MigrationRehearsalSupport {
                        AND (id_card_last4 IS NOT NULL OR id_card_hash IS NOT NULL))
                    OR (phone_enc IS NULL AND phone_hash IS NOT NULL)
                 """)).isZero();
+        // V807: 有证件号密文必有校验结果，没有密文就没有结果。
+        assertThat(scalarLong(connection, """
+                SELECT count(*)
+                FROM employee_sensitive
+                WHERE (id_card_enc IS NULL) <> (id_card_check IS NULL)
+                """)).isZero();
     }
 
     static String identifierConflictDigest(Connection connection) throws SQLException {

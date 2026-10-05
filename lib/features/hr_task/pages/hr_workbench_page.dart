@@ -1,6 +1,8 @@
 // HR 工作台主页（行政与人力资源部）：今日概览统计 + 我处理中的事项 + 事务入口。
 // 数据来自服务端按「今天」动态计算（hrTaskSummaryProvider），任务软认领见 ADR-021。
-// 子页面：/hr/tasks/:type（转正办理/生日关怀/入职周年/新近入职）。
+// 子页面：/hr/tasks/:type(转正办理/生日关怀/入职周年/新近入职/证件核对)。
+// 2026-10-05 证件核对：有待核对员工时概览上方红色横幅「去处理」；入口只给能修改证件的人
+// (超管或 employee:pii:edit)。4 张统计卡布局不动。
 // 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList，区块卡片统一 UtenCard。
 // 文档：docs/03-页面/HR任务中心.md
 import 'dart:math' as math;
@@ -11,11 +13,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -33,9 +37,16 @@ class HrWorkbenchPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(hrTaskSummaryProvider);
     final isCompact = context.breakpoint.isCompact;
-    final canPublish =
-        ref.watch(isSuperAdminProvider) ||
-        ref.watch(currentPermissionsProvider).contains(Perm.noticePublish);
+    final isSuperAdmin = ref.watch(isSuperAdminProvider);
+    final perms = ref.watch(currentPermissionsProvider);
+    final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
+    // 证件核对入口与子页路由守卫同一份判定(超管或 employee:pii:edit；
+    // 服务端同口径过滤列表与计数)。
+    final canFixIdentity = locationAllowedFor(
+      perms,
+      isSuperAdmin,
+      RouteName.hrTaskList(HrTaskType.identity.taskType),
+    );
 
     Widget body = async.when(
       loading: () => const UtenSkeletonList(itemCount: 6),
@@ -53,9 +64,10 @@ class HrWorkbenchPage extends ConsumerWidget {
             bottom: math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
           ),
           children: [
+            if (s.identityReview.isNotEmpty) _identityBanner(context, s),
             _overview(context, s, isCompact),
             _myClaims(context, s),
-            _entries(context, s, isCompact),
+            _entries(context, s, isCompact, canFixIdentity: canFixIdentity),
             if (canPublish) _quickNotice(context, isCompact),
             if (s.unconfirmedLegacyCount > 0) _legacyBanner(context, s),
           ],
@@ -129,6 +141,30 @@ class HrWorkbenchPage extends ConsumerWidget {
         0,
       ),
       child: grid,
+    );
+  }
+
+  // ---- 证件待核对横幅(红)：有人就显示，「去处理」进证件核对子页 ----
+  Widget _identityBanner(BuildContext context, HrTaskSummary s) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        0,
+      ),
+      child: UtenInlineNotice(
+        key: const ValueKey('hr-identity-review-banner'),
+        level: UtenInlineNoticeLevel.error,
+        title: '有 ${s.identityReview.length} 名员工的证件号码待核对',
+        message: '证件号码缺失、校验未通过或尚未校验，请对照员工证件核对修改。不影响员工开通和使用登录账号。',
+        trailing: FilledButton.tonal(
+          key: const ValueKey('hr-identity-review-go'),
+          onPressed: () =>
+              context.push(RouteName.hrTaskList(HrTaskType.identity.taskType)),
+          child: const Text('去处理'),
+        ),
+      ),
     );
   }
 
@@ -298,8 +334,13 @@ class HrWorkbenchPage extends ConsumerWidget {
     );
   }
 
-  // ---- 事务入口：四个子页面 ----
-  Widget _entries(BuildContext context, HrTaskSummary s, bool isCompact) {
+  // ---- 事务入口：四个子页面(能修改证件的人再加「证件核对」) ----
+  Widget _entries(
+    BuildContext context,
+    HrTaskSummary s,
+    bool isCompact, {
+    required bool canFixIdentity,
+  }) {
     final theme = Theme.of(context);
     final entries = [
       (
@@ -318,6 +359,12 @@ class HrWorkbenchPage extends ConsumerWidget {
         '入职满年纪念，及时送上祝福',
       ),
       (HrTaskType.newhire, '${s.newHires.length} 人近 30 天入职', '适应期跟进，7 天内高亮'),
+      if (canFixIdentity)
+        (
+          HrTaskType.identity,
+          '${s.identityReview.length} 人证件待核对',
+          '缺失、校验未通过或尚未校验的证件号码',
+        ),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -343,6 +390,7 @@ class HrWorkbenchPage extends ConsumerWidget {
           ),
           for (final (type, headline, caption) in entries)
             UtenCard(
+              key: ValueKey('hr-workbench-entry-${type.taskType}'),
               margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
               padding: EdgeInsets.zero,
               child: ListTile(

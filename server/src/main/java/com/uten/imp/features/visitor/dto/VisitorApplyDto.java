@@ -22,10 +22,8 @@ public final class VisitorApplyDto {
                     regexp = "^$|^(?:\\+?86)?1[3-9]\\d{9}$",
                     message = "手机号格式不正确")
             String phone,
-            @Size(max = 18, message = "证件号码过长")
-            @Pattern(
-                    regexp = "^$|^(?:\\d{15}|\\d{17}[0-9Xx])$",
-                    message = "身份证号码格式不正确")
+            // 只挡明显的超长输入；格式由服务层 IdCardUtil.check 判定，报出具体哪一位、哪一项不对。
+            @Size(max = 32, message = "身份证号过长，应为18位")
             String idCardNo,
             @Size(max = 200, message = "来访单位不能超过200个字符")
             String company,

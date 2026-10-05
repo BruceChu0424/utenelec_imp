@@ -134,8 +134,9 @@ public class UserAccountAdminService {
     }
 
     /**
-     * 开通账号候选：在册且尚未开通登录账号的员工（姓名/工号/部门 + 是否已登记手机号/证件）。
+     * 开通账号候选：在册且尚未开通登录账号的员工(姓名/工号/部门 + 是否已登记手机号)。
      * 最小信息集，不解密、不回传 PII；最多返回 {@value #PROVISION_CANDIDATE_LIMIT} 条。
+     * 只有缺手机号会开不了号；证件号码有问题不拦开号 (V807)。
      */
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
@@ -159,8 +160,7 @@ public class UserAccountAdminService {
                             e.getFullName(),
                             e.getCode(),
                             department == null ? null : department.getName(),
-                            s != null && hasText(s.getPhoneEnc()),
-                            s != null && hasText(s.getIdCardEnc()));
+                            s != null && hasText(s.getPhoneEnc()));
                 })
                 .toList();
     }

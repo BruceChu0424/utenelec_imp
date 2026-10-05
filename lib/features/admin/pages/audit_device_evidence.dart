@@ -1281,10 +1281,13 @@ class _AuditJsonPanel extends StatelessWidget {
   final String? rawJson;
   final IconData icon;
 
+  /// 原始快照排版；密文列和查重值的内容换成「(内容不显示)」后再给人看。
   static String _pretty(String? value) {
     if (value == null || value.trim().isEmpty) return '无';
     try {
-      return const JsonEncoder.withIndent('  ').convert(jsonDecode(value));
+      return const JsonEncoder.withIndent(
+        '  ',
+      ).convert(AuditFieldLabels.maskHiddenValues(jsonDecode(value)));
     } catch (_) {
       return value;
     }

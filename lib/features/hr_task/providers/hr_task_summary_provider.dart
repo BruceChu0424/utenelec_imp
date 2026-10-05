@@ -16,10 +16,11 @@ final hrTaskSummaryProvider =
 
 class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
   /// 员工档案页的转正/复聘/离职办结会改变 HR 任务口径（待转正少一条、生日/周年
-  /// 队列换人）。employee 模块不 import 本模块（架构边界测试锁方向），统一走
-  /// 网络层写路径通道：这三个端点成功写入后静默重算（与徽章汇总的写后补拉同款）。
+  /// 队列换人)；修改证件信息会让证件核对少一条。employee 模块不 import 本模块
+  /// (架构边界测试锁方向)，统一走网络层写路径通道：这些端点成功写入后静默重算
+  /// (与徽章汇总的写后补拉同款)。
   static final _employeeLifecycleWrites = RegExp(
-    r'^/org/employees/[^/]+/(confirm|rehire|offboard|onboard)$',
+    r'^/org/employees/[^/]+/(confirm|rehire|offboard|onboard|change-identity)$',
   );
 
   @override

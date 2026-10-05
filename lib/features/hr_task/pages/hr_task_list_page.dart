@@ -1,4 +1,9 @@
-// HR 工作台子页面：按类型展示任务列表（转正办理/生日关怀/入职周年/新近入职）。
+// HR 工作台子页面：按类型展示任务列表(转正办理/生日关怀/入职周年/新近入职/证件核对)。
+//
+// 2026-10-05 证件核对(identity)：列 工号/姓名/原因(红字，服务端原话，紧跟姓名，
+// 表格与窄屏卡片都折行不截断)/部门/岗位/入职日/认领，
+// 没有天数、区间两列，也不开多选；行菜单「修改证件信息」(他人处理中不显示)。本页路由守卫
+// 要求 employee:pii:edit，服务端也只把证件核对条目下发给能修改证件的人。
 //
 // 2026-09-17 庆典类页面新增「自动发送祝福」开关（V600 口径）：默认关——祝福由
 // 人事在本页手动批量发布；开关打开后每天 08:00（北京时间）服务端自动代发。
@@ -86,6 +91,9 @@ HrTaskWindow hrTaskWindowOf(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
       return HrTaskWindow.today;
     case HrTaskType.newhire:
       return item.days == 0 ? HrTaskWindow.today : HrTaskWindow.upcoming;
+    case HrTaskType.identity:
+      // 证件核对没有时间线(表格不显示区间列)，统一归「今日」待办。
+      return HrTaskWindow.today;
   }
 }
 
@@ -225,7 +233,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final showBatch = switch (_type) {
       HrTaskType.confirm => canBatchConfirm,
       HrTaskType.birthday || HrTaskType.anniversary => canPublish,
-      HrTaskType.newhire => false,
+      HrTaskType.newhire || HrTaskType.identity => false,
     };
     return Column(
       children: [
@@ -278,6 +286,32 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       // 卡片形态标题列。
       cardRole: MasterColumnCardRole.title,
     ),
+    if (_type == HrTaskType.identity)
+      MasterColumnDef(
+        key: 'note',
+        label: '原因',
+        width: 320,
+        info: '证件号码具体哪里有问题(服务端判定，不含号码本身)。',
+        value: (item) => item.note,
+        // 紧跟姓名：原因是人事要办的事，普通宽度下不用横向滚动就能看到。
+        // 窄屏卡片也用这份红字(而不是灰色「原因 …」明细)，且两种形态都折行
+        // 不截断：原因就是人事去改的依据，最长的校验码原因被省略号截掉就看不全。
+        cardRendersBuilder: true,
+        cellBuilder: (context, item) {
+          final scope = MasterDataTableCellScope.maybeOf(context);
+          return Text(
+            item.note ?? '证件待核对',
+            style: TextStyle(
+              // 选中行换成表格统一的前景色，红字压在深色选中底上看不清。
+              color: scope?.selected == true
+                  ? scope?.foregroundColor
+                  : Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+            softWrap: true,
+          );
+        },
+      ),
     MasterColumnDef(
       key: 'deptName',
       label: '部门',
@@ -297,35 +331,38 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       type: 'date',
       value: (item) => item.date,
     ),
-    MasterColumnDef(
-      key: 'days',
-      label: _daysColumnLabel,
-      width: 110,
-      type: 'number',
-      info: _daysColumnInfo,
-      value: (item) => _daysText(s, item),
-      cellBuilder: (context, item) {
-        final overdue = hrTaskWindowOf(s, _type, item) == HrTaskWindow.overdue;
-        final text = _daysText(s, item) ?? '';
-        return Text(
-          text,
-          style: overdue
-              ? TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontWeight: FontWeight.w600,
-                )
-              : null,
-          overflow: TextOverflow.ellipsis,
-        );
-      },
-    ),
-    MasterColumnDef(
-      key: 'window',
-      label: '区间',
-      width: 90,
-      info: '逾期 / 今日 / 即将——与服务端分组一致，用于表头快速筛选。',
-      value: (item) => hrTaskWindowOf(s, _type, item).label,
-    ),
+    if (_type.hasTimeline)
+      MasterColumnDef(
+        key: 'days',
+        label: _daysColumnLabel,
+        width: 110,
+        type: 'number',
+        info: _daysColumnInfo,
+        value: (item) => _daysText(s, item),
+        cellBuilder: (context, item) {
+          final overdue =
+              hrTaskWindowOf(s, _type, item) == HrTaskWindow.overdue;
+          final text = _daysText(s, item) ?? '';
+          return Text(
+            text,
+            style: overdue
+                ? TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  )
+                : null,
+            overflow: TextOverflow.ellipsis,
+          );
+        },
+      ),
+    if (_type.hasTimeline)
+      MasterColumnDef(
+        key: 'window',
+        label: '区间',
+        width: 90,
+        info: '逾期 / 今日 / 即将——与服务端分组一致，用于表头快速筛选。',
+        value: (item) => hrTaskWindowOf(s, _type, item).label,
+      ),
     MasterColumnDef(
       key: 'claim',
       label: '认领',
@@ -348,21 +385,21 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     HrTaskType.confirm => '转正预计日',
     HrTaskType.birthday => '生日',
     HrTaskType.anniversary => '周年日',
-    HrTaskType.newhire => '入职日',
+    HrTaskType.newhire || HrTaskType.identity => '入职日',
   };
 
   String get _daysColumnLabel => switch (_type) {
     HrTaskType.confirm => '距转正(天)',
     HrTaskType.birthday => '距生日(天)',
     HrTaskType.anniversary => '入职年数',
-    HrTaskType.newhire => '已入职(天)',
+    HrTaskType.newhire || HrTaskType.identity => '已入职(天)',
   };
 
   String get _daysColumnInfo => switch (_type) {
     HrTaskType.confirm => '距预计转正日的天数；已过期显示负数并标红（服务端 days 为逾期天数）。',
     HrTaskType.birthday => '距生日的天数；今日生日显示 0（服务端今日行的 days 存的是年龄）。',
     HrTaskType.anniversary => '今日满的入职年数。',
-    HrTaskType.newhire => '入职至今的天数（今日入职 = 0）。',
+    HrTaskType.newhire || HrTaskType.identity => '入职至今的天数(今日入职 = 0)。',
   };
 
   /// 天数列文本：逾期取负数（列头已注明口径），今日取 0。
@@ -378,6 +415,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         return hrTaskIsToday(s, _type, item) ? '0' : '${item.days}';
       case HrTaskType.anniversary:
       case HrTaskType.newhire:
+      case HrTaskType.identity:
         return '${item.days}';
     }
   }
@@ -463,9 +501,10 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
     return {
       'deptName': bucketsOf(items.map((item) => item.deptName ?? '')),
-      'window': bucketsOf(
-        items.map((item) => hrTaskWindowOf(s, _type, item).label),
-      ),
+      if (_type.hasTimeline)
+        'window': bucketsOf(
+          items.map((item) => hrTaskWindowOf(s, _type, item).label),
+        ),
       'claim': bucketsOf(items.map((item) => hrTaskClaimStateOf(item).label)),
       if (_isCelebration)
         'blessed': bucketsOf(items.map((item) => item.blessed ? '已祝福' : '')),
@@ -494,6 +533,12 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           label: '登记转正',
           icon: Icons.how_to_reg_outlined,
           onTap: () => showHrConfirmDialog(context, ref, item),
+        ),
+      if (hrTaskCanCorrectIdentity(_type, item))
+        UtenMenuItem(
+          label: '修改证件信息',
+          icon: Icons.edit_note_rounded,
+          onTap: () => showHrIdentityCorrection(context, ref, item),
         ),
       if (_isCelebration &&
           canPublish &&
@@ -594,7 +639,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           child: Text('批量送祝福(${selectedIds.length})'),
         ),
       ],
-      HrTaskType.newhire => const <Widget>[],
+      HrTaskType.newhire || HrTaskType.identity => const <Widget>[],
     };
   }
 

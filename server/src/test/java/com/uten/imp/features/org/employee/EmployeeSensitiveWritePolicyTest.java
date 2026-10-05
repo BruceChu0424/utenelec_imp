@@ -36,7 +36,7 @@ class EmployeeSensitiveWritePolicyTest {
 
         ApiException error = assertThrows(
                 ApiException.class,
-                () -> policy.assertUpdateAllowed(update(null, null, null, null,
+                () -> policy.assertUpdateAllowed(update(null, null, null,
                         null, null, null, null, null, null)));
 
         assertEquals(ErrorCode.UNAUTHORIZED, error.getCode());
@@ -51,17 +51,18 @@ class EmployeeSensitiveWritePolicyTest {
         authenticateWith();
 
         assertDoesNotThrow(() -> policy.assertUpdateAllowed(
-                update("  ", "", null, "\t",
+                update("", null, "\t",
                         "", " ", null, null, "", "\n")));
     }
 
     @Test
     void piiAndCompensationPermissionsAreIndependent() {
+        // 证件号已不走 PUT(只走 change-identity)，手机号仍是这条路径上的 PII 写入。
         UpdateEmployeeRequest piiUpdate =
-                update("110101199001010011", null, null, null,
+                update("13800138000", null, null,
                         null, null, null, null, null, null);
         UpdateEmployeeRequest compensationUpdate =
-                update(null, null, null, null,
+                update(null, null, null,
                         "12000", null, null, null, null, null);
 
         authenticateWith(EmployeeSensitiveWritePolicy.COMPENSATION_EDIT);
@@ -80,7 +81,7 @@ class EmployeeSensitiveWritePolicyTest {
     @Test
     void updateWithBothSensitiveGroupsRequiresBothPermissions() {
         UpdateEmployeeRequest both =
-                update(null, "13800138000", null, null,
+                update("13800138000", null, null,
                         null, null, "12000", null, null, null);
 
         authenticateWith(EmployeeSensitiveWritePolicy.PII_EDIT);
@@ -161,7 +162,6 @@ class EmployeeSensitiveWritePolicyTest {
     }
 
     private static UpdateEmployeeRequest update(
-            String idNumber,
             String phone,
             String bankAccount,
             String bankBranch,
@@ -192,7 +192,6 @@ class EmployeeSensitiveWritePolicyTest {
                 null,
                 null,
                 null,
-                idNumber,
                 phone,
                 bankAccount,
                 bankBranch,

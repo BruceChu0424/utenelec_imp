@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * HR 任务中心(今日转正/逾期转正/生日/周年)的计数来源。
+ * HR 任务中心(今日转正/逾期转正/生日/周年/证件待核对)的计数来源。
  *
  * <p>工作台徽章汇总(ADR-108)的计数来源: 读取函数直接调用原计数端点的控制器方法,
  * 资格判定与数字都沿用端点本身, 不另写口径。

@@ -1,6 +1,7 @@
 // 员工 API 模型（对应后端 EmployeeListItem / EmployeeDetail / 入职 payload）。
 
 import '../../../shared/attachments/attachment.dart';
+import 'employee_id_number_issue.dart';
 
 /// 员工列表项（无敏感 PII）。
 class EmployeeSummary {
@@ -193,6 +194,7 @@ class EmployeeProfile {
     this.email,
     this.paperArchiveNo,
     this.idNumber,
+    this.idNumberIssue,
     this.phone,
     this.bankAccount,
     this.bankBranch,
@@ -251,6 +253,10 @@ class EmployeeProfile {
 
   // 敏感（按角色脱敏）
   final String? idNumber;
+
+  /// 证件号码问题(服务端判定，不含号码)：null = 不用处理。
+  /// 对所有能看详情的人返回；修改入口只给 employee:pii:edit。
+  final EmployeeIdNumberIssue? idNumberIssue;
   final String? phone;
   final String? bankAccount;
   final String? bankBranch;
@@ -323,6 +329,7 @@ class EmployeeProfile {
       email: json['email'] as String?,
       paperArchiveNo: json['paperArchiveNo'] as String?,
       idNumber: json['idNumber'] as String?,
+      idNumberIssue: EmployeeIdNumberIssue.fromJson(json['idNumberIssue']),
       phone: json['phone'] as String?,
       bankAccount: json['bankAccount'] as String?,
       bankBranch: json['bankBranch'] as String?,

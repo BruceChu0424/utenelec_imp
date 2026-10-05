@@ -51,8 +51,7 @@ public class EmployeeSensitiveWritePolicy {
 
     static boolean hasPiiWrite(UpdateEmployeeRequest request) {
         return request != null
-                && (!isBlank(request.idNumber())
-                || !isBlank(request.phone())
+                && (!isBlank(request.phone())
                 || !isBlank(request.bankAccount())
                 || !isBlank(request.bankBranch())
                 // 备用手机号同属联系方式 PII（ADR-021）：写入需 employee:pii:edit

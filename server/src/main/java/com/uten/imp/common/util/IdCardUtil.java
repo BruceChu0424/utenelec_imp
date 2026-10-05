@@ -17,49 +17,72 @@ public final class IdCardUtil {
     private IdCardUtil() {}
 
     public static boolean isValid(String id) {
-        String normalized = normalize(id);
-        if (normalized == null || normalized.length() != 18) {
-            return false;
+        return check(id) == null;
+    }
+
+    /**
+     * 唯一的身份证号判定规则：合格返回 null，否则返回第一处具体问题。
+     *
+     * <p>按固定顺序逐项检查 (空 → 长度 → 第1-17位数字 → 第18位 → 出生日期 → 地区码
+     * → 顺序码 → 校验码)，只报第一处，说明里只写位置和长度，不带号码本身。
+     * Flutter 端 {@code IdCardUtils.problemOf} 按同一顺序给出同样的文字。
+     */
+    public static IdCardProblem check(String raw) {
+        String normalized = normalize(raw);
+        if (normalized == null) {
+            return IdCardProblem.empty();
         }
-        if ("000000".contentEquals(normalized.subSequence(0, 6))
-                || "000".contentEquals(normalized.subSequence(14, 17))) {
-            return false;
+        int[] chars = normalized.codePoints().toArray();
+        if (chars.length != 18) {
+            return IdCardProblem.length(chars.length);
+        }
+        for (int i = 0; i < 17; i++) {
+            if (!isAsciiDigit(chars[i])) {
+                return IdCardProblem.character(i + 1);
+            }
+        }
+        if (!isAsciiDigit(chars[17]) && chars[17] != 'X') {
+            return IdCardProblem.character(18);
+        }
+        // 到这里 18 位全是 ASCII，按 char 下标取子串是安全的。
+        LocalDate birthDate;
+        try {
+            birthDate = parseBirthDate(normalized);
+        } catch (DateTimeException ignored) {
+            return IdCardProblem.birthDate();
+        }
+        if (birthDate.getYear() < 1800) {
+            return IdCardProblem.birthTooEarly();
+        }
+        if (birthDate.isAfter(BusinessTime.today())) {
+            return IdCardProblem.birthFuture();
+        }
+        if ("000000".contentEquals(normalized.subSequence(0, 6))) {
+            return IdCardProblem.regionCode();
+        }
+        if ("000".contentEquals(normalized.subSequence(14, 17))) {
+            return IdCardProblem.sequenceCode();
         }
         int sum = 0;
         for (int i = 0; i < 17; i++) {
-            char c = normalized.charAt(i);
-            if (c < '0' || c > '9') {
-                return false;
-            }
-            sum += (c - '0') * W[i];
+            sum += (normalized.charAt(i) - '0') * W[i];
         }
-        char expected = CHECK[sum % 11];
-        if (expected != normalized.charAt(17)) {
-            return false;
+        if (CHECK[sum % 11] != normalized.charAt(17)) {
+            return IdCardProblem.checkDigit();
         }
-        try {
-            LocalDate birthDate = parseBirthDate(normalized);
-            return birthDate.getYear() >= 1800
-                    && !birthDate.isAfter(BusinessTime.today());
-        } catch (DateTimeException ignored) {
-            return false;
-        }
+        return null;
     }
 
     public static LocalDate birthDate(String id) {
         String normalized = normalize(id);
-        if (!isValid(normalized)) {
-            throw new IllegalArgumentException("身份证号校验未通过");
-        }
+        requireValid(normalized);
         return parseBirthDate(normalized);
     }
 
     /** 第 17 位奇数=男，偶数=女。 */
     public static String gender(String id) {
         String normalized = normalize(id);
-        if (!isValid(normalized)) {
-            throw new IllegalArgumentException("身份证号校验未通过");
-        }
+        requireValid(normalized);
         int seq = normalized.charAt(16) - '0';
         return (seq % 2 == 1) ? "male" : "female";
     }
@@ -81,6 +104,17 @@ public final class IdCardUtil {
 
     public static String mask(String id) {
         return id == null || id.length() < 4 ? null : "****" + id.substring(id.length() - 4);
+    }
+
+    private static void requireValid(String normalized) {
+        IdCardProblem problem = check(normalized);
+        if (problem != null) {
+            throw new IllegalArgumentException(problem.message());
+        }
+    }
+
+    private static boolean isAsciiDigit(int codePoint) {
+        return codePoint >= '0' && codePoint <= '9';
     }
 
     private static LocalDate parseBirthDate(String normalized) {

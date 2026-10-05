@@ -59,7 +59,7 @@ public class HrTaskController {
         return claimService.takeover(taskType, employeeId);
     }
 
-    /** 认领请求：taskType = confirm/birthday/anniversary/newhire。 */
+    /** 认领请求：taskType = confirm/birthday/anniversary/newhire/identity(identity 另需能改证件)。 */
     public record ClaimRequest(
             @jakarta.validation.constraints.NotBlank String taskType,
             @jakarta.validation.constraints.NotNull UUID employeeId) {}

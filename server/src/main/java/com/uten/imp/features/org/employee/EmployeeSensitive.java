@@ -38,6 +38,11 @@ public class EmployeeSensitive extends AuditableEntity {
     @Column(name = "id_card_hash")
     private String idCardHash;
 
+    // V807: 证件号校验结果 (非敏感元数据，不含号码)。只由 EmployeePiiWriter 与启动回填任务
+    // EmployeeIdentityCheckRunner 写入；取值见 EmployeeIdentityCheck，有密文必有结果。
+    @Column(name = "id_card_check")
+    private String idCardCheck;
+
     @Column(name = "phone_enc")
     private String phoneEnc;
 

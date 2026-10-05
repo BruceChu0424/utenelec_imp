@@ -485,10 +485,7 @@ void main() {
     final preferences = await SharedPreferences.getInstance();
     final hrTasks = _FakeHrTaskRepository(
       _summary(
-        birthdayToday: [
-          _item('a'),
-          _item('b', blessed: true),
-        ],
+        birthdayToday: [_item('a'), _item('b', blessed: true)],
         birthdayUpcoming: [_item('c', days: 5)],
       ),
     );

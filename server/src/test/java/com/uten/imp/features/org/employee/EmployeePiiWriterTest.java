@@ -67,7 +67,7 @@ class EmployeePiiWriterTest {
         assertEquals("v2:id-cipher", target.getIdCardEnc());
         assertEquals("id-hmac", target.getIdCardHash());
         assertEquals("002X", target.getIdCardLast4());
-        // V798: 密文与校验结果同写
+        // V807: 密文与校验结果同写
         assertEquals("valid", target.getIdCardCheck());
     }
 

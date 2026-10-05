@@ -1,5 +1,5 @@
 -- =====================================================================
--- V798: employee_sensitive.id_card_check, the stored identity-number check result
+-- V807: employee_sensitive.id_card_check, the stored identity-number check result
 -- =====================================================================
 -- Opening a login account for an existing employee no longer stops on a
 -- wrong or missing identity number; it warns and gives HR a correction task.

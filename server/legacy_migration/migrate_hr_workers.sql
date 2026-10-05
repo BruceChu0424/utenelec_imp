@@ -14,7 +14,7 @@
 --   · PII：身份证/手机按服务端同口径 pgcrypto 加密 + HMAC 查重哈希（密钥经 :legacy_key_file
 --     注入，migrate.sh 用后即时删除，不落库不明文）。
 --     证件号不在 SQL 里校验，id_card_check 记为 unchecked；服务端下次启动时自动完成
---     证件号校验 (V798)。
+--     证件号校验 (V807)。
 -- 幂等：全量 upsert（employees 按 legacy_id、positions 按 (code,department_id)、
 --   sensitive 按 employee_id），重跑安全。
 -- =====================================================================
@@ -146,7 +146,7 @@ SELECT e.id,
                      SELECT 1 FROM employee_sensitive existing
                      WHERE existing.id_card_hash = encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex'))
             THEN encode(hmac(BTRIM(s.id_card), :'hmac_key', 'sha256'), 'hex') END,
-       -- V798: 证件号校验结果随密文同写。SQL 里没有解密密钥也不做校验，先记 unchecked，
+       -- V807: 证件号校验结果随密文同写。SQL 里没有解密密钥也不做校验，先记 unchecked，
        -- 服务端下次启动时 EmployeeIdentityCheckRunner 解密判定 (同一把 advisory lock 串行)。
        CASE WHEN NULLIF(BTRIM(s.id_card), '') IS NOT NULL THEN 'unchecked' END,
        CASE WHEN NULLIF(BTRIM(s.mobile), '') IS NOT NULL

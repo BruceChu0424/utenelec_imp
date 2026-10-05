@@ -27,7 +27,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/** 证件核对任务 (V798)：只读已存的校验结果，只给能改证件的人列出并计红。 */
+/** 证件核对任务 (V807)：只读已存的校验结果，只给能改证件的人列出并计红。 */
 class HrTaskServiceIdentityReviewTest {
 
     private JdbcTemplate jdbc;

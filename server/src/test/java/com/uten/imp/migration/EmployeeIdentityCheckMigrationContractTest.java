@@ -12,12 +12,12 @@ import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** V798 证件号校验状态：只加一列两约束、存量标 unchecked、解不开的存 unreadable、所有写入口同写校验结果。 */
+/** V807 证件号校验状态：只加一列两约束、存量标 unchecked、解不开的存 unreadable、所有写入口同写校验结果。 */
 class EmployeeIdentityCheckMigrationContractTest {
 
     private static final Path ROOT = Path.of("src/main");
     private static final Path MIGRATION = ROOT.resolve(
-            "resources/db/migration/V798__employee_identity_check_status.sql");
+            "resources/db/migration/V807__employee_identity_check_status.sql");
 
     @Test
     void migrationAddsOneColumnWithValueAndPresenceConstraintsAndNoTable() throws IOException {

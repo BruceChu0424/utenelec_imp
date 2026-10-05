@@ -78,7 +78,7 @@ class EmployeePiiExtraProtectionMigrationContractTest {
         assertThat(onboarding)
                 .contains("if (isblank(loginaccount))")
                 // New onboarding/provisioning uses the normalized original identity's last six;
-                // a missing/short identity falls back to a one-time random credential (V798),
+                // a missing/short identity falls back to a one-time random credential (V807),
                 // and an invalid resident identity no longer refuses provisioning.
                 .contains("initialpassword(p.idtype(), normalizedidnumber)")
                 // An undecryptable stored identity is treated as "not derivable" (random credential)

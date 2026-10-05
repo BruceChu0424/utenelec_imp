@@ -481,7 +481,7 @@ class ArchitectureBoundaryTest {
     }
 
     /**
-     * V798: 员工证件号密文与它的校验结果只有一个写入口 (EmployeePiiWriter)，存量判定只由启动回填任务写；
+     * V807: 员工证件号密文与它的校验结果只有一个写入口 (EmployeePiiWriter)，存量判定只由启动回填任务写；
      * 对外的证件问题只由 EmployeeIdentityCheck.issueOf 构造。新写入口忘了同写校验结果时数据库约束也会拒绝，
      * 这里在编译期就把口子堵住。
      */

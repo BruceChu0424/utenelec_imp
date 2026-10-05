@@ -35,7 +35,7 @@ public class HrTaskClaimService {
 
     static final long LEASE_HOURS = 24;
 
-    /** 证件核对(V798)：只有能改证件的人看得到，也只有他们能认领 / 接管。 */
+    /** 证件核对(V807)：只有能改证件的人看得到，也只有他们能认领 / 接管。 */
     static final String IDENTITY_TASK_TYPE = "identity";
 
     /** 合法任务类型(与 HrTaskService 装配口径一致：confirm/birthday/anniversary/newhire/identity)。 */

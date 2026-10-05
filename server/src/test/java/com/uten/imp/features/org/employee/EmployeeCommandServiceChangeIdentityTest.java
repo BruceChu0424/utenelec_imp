@@ -28,7 +28,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-/** 修改证件信息 (V798)：严格校验、查重、证件类型一起改、身份证重推出生日期与性别。 */
+/** 修改证件信息 (V807)：严格校验、查重、证件类型一起改、身份证重推出生日期与性别。 */
 @ExtendWith(MockitoExtension.class)
 class EmployeeCommandServiceChangeIdentityTest {
 

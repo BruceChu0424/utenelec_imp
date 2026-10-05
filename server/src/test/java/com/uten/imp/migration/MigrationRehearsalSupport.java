@@ -321,7 +321,7 @@ public final class MigrationRehearsalSupport {
                        AND (id_card_last4 IS NOT NULL OR id_card_hash IS NOT NULL))
                    OR (phone_enc IS NULL AND phone_hash IS NOT NULL)
                 """)).isZero();
-        // V798: 有证件号密文必有校验结果，没有密文就没有结果。
+        // V807: 有证件号密文必有校验结果，没有密文就没有结果。
         assertThat(scalarLong(connection, """
                 SELECT count(*)
                 FROM employee_sensitive

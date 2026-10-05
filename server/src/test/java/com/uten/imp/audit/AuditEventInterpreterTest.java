@@ -255,7 +255,7 @@ class AuditEventInterpreterTest {
     }
 
     /**
-     * V798 证件号校验结果列：列名与取值都读成中文，问题码还原成录入时同一句说明，
+     * V807 证件号校验结果列：列名与取值都读成中文，问题码还原成录入时同一句说明，
      * 不出现原始代码，也不出现「未登记字段」。
      */
     @Test
@@ -837,7 +837,7 @@ class AuditEventInterpreterTest {
         assertEquals("认领HR任务 转正任务 · 张三", claimEvent.summary());
         assertEquals("人事 · HR任务中心", claimEvent.pageLabel());
 
-        // V798 证件核对任务：标签照常翻译，目标里只有任务类型与姓名，不含证件号。
+        // V807 证件核对任务：标签照常翻译，目标里只有任务类型与姓名，不含证件号。
         AuditLog identityClaim = new AuditLog();
         identityClaim.setAction("hr_task_claim");
         identityClaim.setTargetType("hr_task_claims");

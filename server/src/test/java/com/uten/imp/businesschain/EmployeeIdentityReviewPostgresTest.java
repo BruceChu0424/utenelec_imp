@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /**
- * 证件号问题只提醒、不阻塞开号，并给人事生成「证件核对」任务 (V798) 的全链路：真库 + 完整安全过滤链 +
+ * 证件号问题只提醒、不阻塞开号，并给人事生成「证件核对」任务 (V807) 的全链路：真库 + 完整安全过滤链 +
  * 真实账号切换 (超管 / 人事 / 总经办)。老库导入的坏证件号经启动回填判定后，开号照常成功并带出提醒；
  * 只有能改证件的人看到并计红；人事改对之后任务消失、计数减一。
  */
@@ -71,8 +71,8 @@ class EmployeeIdentityReviewPostgresTest extends AuthSessionPostgresTestSupport 
         String wrongId = correctId.substring(0, 17) + wrongCheckDigit(correctId);
         String phoneWrong = "1370000" + String.format("%04d", salt);
         String phoneMissing = "1371000" + String.format("%04d", salt);
-        UUID wrongEmployee = legacyEmployee("V798-E2E-WRONG-" + salt, "身份证", wrongId, phoneWrong);
-        UUID missingEmployee = legacyEmployee("V798-E2E-MISSING-" + salt, "其他", null, phoneMissing);
+        UUID wrongEmployee = legacyEmployee("V807-E2E-WRONG-" + salt, "身份证", wrongId, phoneWrong);
+        UUID missingEmployee = legacyEmployee("V807-E2E-MISSING-" + salt, "其他", null, phoneMissing);
         assertEquals("unchecked", check(wrongEmployee));
 
         try {
@@ -188,11 +188,11 @@ class EmployeeIdentityReviewPostgresTest extends AuthSessionPostgresTestSupport 
         String phoneUnknownKey = "1373000" + String.format("%04d", salt);
         String phoneStale = "1374000" + String.format("%04d", salt);
         UUID corruptEmployee = legacyEmployeeWithCipher(
-                "V798-E2E-CORRUPT-" + salt, corrupt, "unchecked", phoneCorrupt);
+                "V807-E2E-CORRUPT-" + salt, corrupt, "unchecked", phoneCorrupt);
         UUID unknownKeyEmployee = legacyEmployeeWithCipher(
-                "V798-E2E-OLDKEY-" + salt, unknownKey, "unchecked", phoneUnknownKey);
+                "V807-E2E-OLDKEY-" + salt, unknownKey, "unchecked", phoneUnknownKey);
         UUID staleEmployee = legacyEmployeeWithCipher(
-                "V798-E2E-STALE-" + salt, corrupt, "valid", phoneStale);
+                "V807-E2E-STALE-" + salt, corrupt, "valid", phoneStale);
 
         // ---- 启动回填：解不开的存成 unreadable，一条 WARN 汇总，没有 ERROR ----
         List<ILoggingEvent> firstRun = runIdentityCheckCapturingLogs();

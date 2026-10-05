@@ -7,7 +7,7 @@ import com.uten.imp.features.org.employee.dto.IdNumberIssue;
 import java.util.Set;
 
 /**
- * 员工证件号码校验结果的唯一口径 (V798 {@code employee_sensitive.id_card_check})。
+ * 员工证件号码校验结果的唯一口径 (V807 {@code employee_sensitive.id_card_check})。
  *
  * <p>写入侧 {@link #classify}：写证件号密文时判定一次存成一列 (EmployeePiiWriter 与启动回填任务共用；
  * 回填任务解不开的密文存 {@link #UNREADABLE})；读取侧 {@link #issueOf}：员工详情、开号就绪检查、

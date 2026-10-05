@@ -41,7 +41,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * V798 启动回填的真库证据：存量 unchecked 判定为 valid 或具体问题码；解不开的存成 unreadable、
+ * V807 启动回填的真库证据：存量 unchecked 判定为 valid 或具体问题码；解不开的存成 unreadable、
  * 不阻止启动、以后启动不再重试；解不开的行不连累同一批里排在它后面的行；重复跑结果不变；
  * 并发修改的结果不被覆盖；日志只有一条数量汇总 (有解不开的行时为 WARN)，没有 ERROR，也没有号码。
  *
@@ -92,8 +92,8 @@ class EmployeeIdentityCheckRunnerPostgresTest {
     @BeforeEach
     void setUp() {
         jdbc.update("DELETE FROM employee_sensitive WHERE employee_id IN "
-                + "(SELECT id FROM employees WHERE code LIKE 'V798-RUNNER-%')");
-        jdbc.update("DELETE FROM employees WHERE code LIKE 'V798-RUNNER-%'");
+                + "(SELECT id FROM employees WHERE code LIKE 'V807-RUNNER-%')");
+        jdbc.update("DELETE FROM employees WHERE code LIKE 'V807-RUNNER-%'");
 
         tx = mock(TxSessionVars.class);
         when(tx.tryDecrypt(anyString())).thenAnswer(invocation -> {
@@ -269,7 +269,7 @@ class EmployeeIdentityCheckRunnerPostgresTest {
                 .map(ILoggingEvent::getFormattedMessage)
                 .toList());
         assertThat(all).doesNotContain(VALID_ID, BAD_CHECK_DIGIT, "002X", "0021", "garbage-for-log",
-                "V798-RUNNER", "V798 runner", "enc:");
+                "V807-RUNNER", "V807 runner", "enc:");
     }
 
     @Test
@@ -334,7 +334,7 @@ class EmployeeIdentityCheckRunnerPostgresTest {
                 SELECT ?, ?, ?, ?, department_id, DATE '2026-01-01', 'active', 'regular'
                 FROM employees
                 WHERE code = 'ADMIN'
-                """, id, "V798-RUNNER-" + tag, "V798 runner " + tag, idType);
+                """, id, "V807-RUNNER-" + tag, "V807 runner " + tag, idType);
         return id;
     }
 

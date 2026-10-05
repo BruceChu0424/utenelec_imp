@@ -48,7 +48,7 @@ class HrTasksAiChatToolTest {
         assertThat(tool.parameters().toString()).doesNotContain("BIRTHDAY");
     }
     @Test void identityReviewTasksNeverReachTheAiReply() {
-        // ADR-141: AI 工具承诺不输出证件信息；证件核对任务 (V798) 不在任何分类里。
+        // ADR-141: AI 工具承诺不输出证件信息；证件核对任务 (V807) 不在任何分类里。
         actor=actor("employee:view","employee:pii:view","employee:pii:edit");
         var identity=new HrTaskSummary.Item(UUID.randomUUID(),"E009","IDENTITY_TASK_PERSON","生产部",null,
                 LocalDate.of(2026,1,5),0,"身份证号应为18位，当前为17位",null,false,null,false);

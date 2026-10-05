@@ -194,7 +194,7 @@ public class AuditEventInterpreter {
     private static final String REDACTED_CHANGES_KEY = "_redacted_changes";
     /** 加密存储的列名后缀 (如 employee_sensitive.birth_date_enc)：变更明细只列名字，不显示密文。 */
     private static final String ENCRYPTED_COLUMN_SUFFIX = "_enc";
-    /** 员工证件号校验结果列(V798)：取值含问题码(如 length:17)，按 {@link #idCardCheckLabel} 翻译。 */
+    /** 员工证件号校验结果列(V807)：取值含问题码(如 length:17)，按 {@link #idCardCheckLabel} 翻译。 */
     private static final String ID_CARD_CHECK_COLUMN = "employee_sensitive.id_card_check";
 
     public InterpretedEvent interpret(AuditLog value) {
@@ -1401,7 +1401,7 @@ public class AuditEventInterpreter {
         values.put("employment_type", "用工类型");
         values.put("work_location", "工作地点");
         values.put("birth_month_day", "生日(月-日)");
-        // 员工证件 (V798)：密文/查重值只出现在「敏感信息已修改」的列名清单里，内容不记录。
+        // 员工证件 (V807)：密文/查重值只出现在「敏感信息已修改」的列名清单里，内容不记录。
         values.put("id_type", "证件类型");
         values.put("id_card_enc", "证件号码");
         values.put("id_card_hash", "证件号码查重值");
@@ -1600,7 +1600,7 @@ public class AuditEventInterpreter {
     }
 
     /**
-     * 员工证件号校验结果 (V798) 的存储码 → 中文：valid 通过、unchecked 未校验、unreadable 读取不出来，其余是问题码
+     * 员工证件号校验结果 (V807) 的存储码 → 中文：valid 通过、unchecked 未校验、unreadable 读取不出来，其余是问题码
      * (如 check_digit、length:17)，按 {@link IdCardProblem#fromCode} 还原成和录入时同一句说明；
      * 不认识的码只说「未通过」，不把原码显示出来。
      */

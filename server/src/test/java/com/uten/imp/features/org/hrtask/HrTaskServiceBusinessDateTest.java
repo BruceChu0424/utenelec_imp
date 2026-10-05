@@ -45,7 +45,7 @@ class HrTaskServiceBusinessDateTest {
         when(row.getString("dept_name")).thenReturn("生产部");
         when(row.getDate("hire_date")).thenReturn(Date.valueOf("2026-07-03"));
         when(row.getDate("birth_date")).thenReturn(Date.valueOf("1990-10-03"));
-        // V798 证件核对列：证件号已通过校验，不产生证件核对任务，不影响本用例的日期口径。
+        // V807 证件核对列：证件号已通过校验，不产生证件核对任务，不影响本用例的日期口径。
         when(row.getBoolean("id_card_missing")).thenReturn(false);
         when(row.getString("id_card_check")).thenReturn("valid");
         when(row.getBoolean("super_admin_account")).thenReturn(false);

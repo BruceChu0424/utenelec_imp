@@ -475,7 +475,7 @@ class AccountSupportBoundaryTest {
         Employee li = new Employee();
         li.setCode("UT0002");
         li.setFullName("李四");
-        // 无敏感记录：hasPhone 为 false，前端据此置灰(证件号码有问题不拦开号，V798)
+        // 无敏感记录：hasPhone 为 false，前端据此置灰(证件号码有问题不拦开号，V807)
         when(employees.findProvisionCandidates(eq("李"), any(Pageable.class)))
                 .thenReturn(List.of(li));
         when(sensitive.findAllByEmployeeIdIn(any())).thenReturn(List.of());

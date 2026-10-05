@@ -32,7 +32,7 @@ public record UpdateEmployeeRequest(
         String employmentType,
         LocalDate confirmedAt,
         // 敏感（提供则重新加密）
-        // 证件类型与号码不在这里改：只走 POST /{id}/change-identity 一条写入路径 (V798)。
+        // 证件类型与号码不在这里改：只走 POST /{id}/change-identity 一条写入路径 (V807)。
         String phone,
         String bankAccount,
         String bankBranch,

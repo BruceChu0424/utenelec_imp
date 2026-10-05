@@ -26,7 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * V798 启动回填：把还是 {@code unchecked} 的证件号 (老库人事导入写进来的) 解密后判定一次，
+ * V807 启动回填：把还是 {@code unchecked} 的证件号 (老库人事导入写进来的) 解密后判定一次，
  * 写回 {@code employee_sensitive.id_card_check}；解不开的密文存 {@code unreadable}，以后启动不再重试。
  *
  * <p>数据库拿不到解密密钥，所以只能在 JVM 里做。和 V282 回填任务、老库人事导入脚本共用同一把

@@ -84,7 +84,7 @@ public class EmployeeController {
     @RequiresStepUp
     public EmployeeOnboardingResult provisionAccount(@PathVariable UUID id) {
         // 给批量导入等「未开通账号」的存量员工补开登录账号 (账号=手机号，初始密码=证件号后六位，
-        // 证件号缺失或不足六位时随机生成；限时有效、首登必改)。证件号有问题只提醒不阻塞 (V798)，
+        // 证件号缺失或不足六位时随机生成；限时有效、首登必改)。证件号有问题只提醒不阻塞 (V807)，
         // 结果里 employee.idNumberIssue 带出原因。操作人会看到明文临时密码：要求再认证，
         // 目标持有高危权限时只有超管能开 (ADR-110)。
         return onboardingService.provisionAccount(id);

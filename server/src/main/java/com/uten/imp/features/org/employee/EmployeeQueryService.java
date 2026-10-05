@@ -181,7 +181,7 @@ public class EmployeeQueryService {
         UserAccount account = userRepo.findByEmployeeId(id).orElse(null);
         d.setAccountStatus(account == null ? null
                 : account.isDeleted() ? "disabled" : account.getStatus());
-        // 证件号码问题 (V798)：按已存的校验结果；修好之前详情页一直提醒。详情要显示号码本来就得解密，
+        // 证件号码问题 (V807)：按已存的校验结果；修好之前详情页一直提醒。详情要显示号码本来就得解密，
         // 此刻解不开 (数据损坏、换密钥后没配旧密钥) 时不管存的是什么都按「读取不出来」提醒，和人事任务、
         // 就绪检查读到回填任务存的 unreadable 是同一句原因；号码留空，不让整个详情报错 (补开账号的返回结果也走这里)。
         // 解密在保存点里做，不会让本事务作废。

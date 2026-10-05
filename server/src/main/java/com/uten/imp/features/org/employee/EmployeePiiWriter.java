@@ -53,7 +53,7 @@ public class EmployeePiiWriter {
         target.setIdCardEnc(tx.encrypt(normalized));
         target.setIdCardLast4(IdCardUtil.last4(normalized));
         target.setIdCardHash(hash);
-        // V798: 密文与校验结果同写 (有密文必有结果，数据库约束兜底)；规则只走 EmployeeIdentityCheck 一份。
+        // V807: 密文与校验结果同写 (有密文必有结果，数据库约束兜底)；规则只走 EmployeeIdentityCheck 一份。
         // 每次保存都按新号码重判，所以 unchecked / unreadable 和旧问题码都随之改写 (人事重新登记即结案)。
         target.setIdCardCheck(EmployeeIdentityCheck.classify(idType, normalized));
     }

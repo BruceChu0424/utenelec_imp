@@ -17,7 +17,7 @@ import java.util.UUID;
  * @param birthdayUpcoming       30 天内生日（days = 剩余天数）
  * @param anniversaryToday       今日入职周年（days = 满年数）
  * @param newHires               近 30 天新入职（days = 已入职天数）
- * @param identityReview         证件核对(V798)：档案没有证件号码 / 身份证号没通过校验 / 历史导入还没校验；
+ * @param identityReview         证件核对(V807)：档案没有证件号码 / 身份证号没通过校验 / 历史导入还没校验；
  *                               date = 入职日期，days = 0，note = 具体原因(只含位置和长度，不含号码)；
  *                               只给能改证件的人(超管或 employee:pii:edit)列出，其他人为空列表
  * @param badgeCount             工作台徽标数 = 今日转正 + 逾期转正 + 今日生日 + 今日周年 + 证件待核对

@@ -876,17 +876,6 @@ class _QualityBatchApprovalPageState
         UtenFloatingActionGroup.scrollClearance,
       ),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
-          child: Text(
-            _submission == null
-                ? '按行核对检验明细，合格部分提交后转仓库待入库。'
-                : '已确认 ${_submission!.completedReceiptCount} 单；重试原报告核对未完成部分。需修改请返回待检重新读取。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
         for (final failure in failures)
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s4),

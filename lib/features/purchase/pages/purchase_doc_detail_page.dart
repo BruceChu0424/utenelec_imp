@@ -19,6 +19,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -1261,6 +1262,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
             tableKey: 'purchase.${widget.docType.name}.items',
             primary: true,
             selectable: _canGenerateRequestOrder,
+            // 已选胶囊随右下悬浮组（与「按所选生成采购订货单」同框），表头不驻留。
+            showSelectionSummary: false,
             idOf: (item) => _canSelectRequestItem(item) ? item.id : null,
             rowKeyOf: (item) => item.id,
             rowWidgetKeyOf: (item) =>
@@ -1926,7 +1929,18 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     // 2026-09-14 UI 统一口径：底部吸底操作条改右下悬浮组（UtenFloatingActionGroup），
     // 按钮统一 large 尺寸；SizedBox 间距占位是历史写法，这里过滤掉（组自带 8px 间距）。
     return UtenFloatingActionGroup(
-      children: children.where((child) => child is! SizedBox).toList(),
+      children: [
+        // 已选胶囊随悬浮组首位（2026-10-04 全站口径：已选恒右下悬浮，不驻表头），
+        // 与「按所选生成采购订货单」同框；✕ 清空勾选。
+        if (_canGenerateRequestOrder)
+          UtenSelectionSummaryPill(
+            count: _selectedRequestItemIds.length,
+            onClear: _selectedRequestItemIds.isEmpty || _busy
+                ? null
+                : () => setState(_selectedRequestItemIds.clear),
+          ),
+        ...children.where((child) => child is! SizedBox),
+      ],
     );
   }
 }

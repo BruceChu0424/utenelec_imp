@@ -14,6 +14,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -477,6 +478,14 @@ class _ProductionDrawRequestPageState
               ? null
               : UtenFloatingActionGroup(
                   children: [
+                    // 已选胶囊随悬浮组（2026-10-04 全站口径：已选恒右下悬浮，
+                    // 不驻表头工具条）；✕ 清空即回到全不选。
+                    UtenSelectionSummaryPill(
+                      count: _selected.length,
+                      onClear: _selected.isEmpty || _saving || _uncertain
+                          ? null
+                          : () => setState(_selected.clear),
+                    ),
                     UtenButton(
                       type: UtenButtonType.secondary,
                       size: UtenButtonSize.large,
@@ -554,6 +563,8 @@ class _ProductionDrawRequestPageState
     key: const Key('production-draw-request-summary-table'),
     primary: true,
     selectable: true,
+    // 已选胶囊在右下悬浮组（本页 FAB），表头不驻留。
+    showSelectionSummary: false,
     idOf: (row) => row.identity,
     rowKeyOf: (row) => row.identity,
     selectedIds: _selected,

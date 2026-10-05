@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -340,14 +341,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('暂无草稿'), findsOneWidget);
       // 2026-10-01 用户口径：空草稿列表也渲染包装表——「已选 N 项」胶囊与删除
-      // 按钮的右下悬浮组常驻，不再滞留表头工具条。
+      // 按钮的右下悬浮组常驻，不再滞留表头工具条（2026-10-04 组件级改造落地：
+      // standalone 恒挂 batchActionsBuilder，删除按钮未选禁用但可见）。
       expect(
         find.byType(MasterDataTableView<FormDraftCategoryRow<Object>>),
         findsOneWidget,
       );
       expect(find.text('已选 0 项'), findsOneWidget);
-      // 空草稿时删除按钮暂不出现（batchActionsBuilder 为 null）；
-      // 悬浮组常驻需组件级后续改造，先锁住表格与已选胶囊在。
+      expect(find.byType(UtenFloatingActionGroup), findsOneWidget);
+      expect(find.text('删除填写草稿 (0)'), findsOneWidget);
       expect(find.text('本机草稿历史'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

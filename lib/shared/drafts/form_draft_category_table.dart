@@ -514,7 +514,15 @@ class _FormDraftCategoryTableState<T>
           : (ctx, row) => row.isLocal
                 ? null
                 : table.leadingOverlayBuilder!(ctx, row.record as T),
-      batchActionsBuilder: table.batchActionsBuilder == null && local.isEmpty
+      // 纯草稿页（standalone，宿主表没有自家批量动作）：悬浮组（已选胶囊+删除
+      // 按钮）恒在右下角——空草稿/筛选空态也常驻，删除按钮禁用但可见。业务列表
+      // 保持原条件：无草稿可合并且无自家动作时不挂悬浮组。
+      // 2026-09-27 口径「已选 N 项放右下角悬浮」+ 2026-10-04 用户口径「草稿的
+      // 已选不得滞留分类栏下」。
+      batchActionsBuilder:
+          table.batchActionsBuilder == null &&
+              local.isEmpty &&
+              !widget.standalone
           ? null
           : (ctx, ids) => [
               ...?table.batchActionsBuilder?.call(
@@ -527,9 +535,6 @@ class _FormDraftCategoryTableState<T>
                     )
                     .toSet(),
               ),
-              // 纯草稿页（宿主表没有自家批量动作）删除按钮常驻：悬浮组（已选胶囊+
-              // 按钮）恒在右下角、未选时按钮禁用但可见——2026-09-27 用户口径「已选
-              // N 项放右下角悬浮」。业务列表保持原条件：选中草稿行才追加。
               if (table.batchActionsBuilder == null ||
                   _localSelected.isNotEmpty)
                 UtenButton(

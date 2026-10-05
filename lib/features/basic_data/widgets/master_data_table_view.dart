@@ -4195,7 +4195,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final ids = widget.selectedIds;
     final actions =
         widget.batchActionsBuilder?.call(context, ids) ?? const <Widget>[];
-    if (actions.isEmpty) return const SizedBox.shrink();
+    // 动作列表可能运行态为空（如物料分析 FQC 补料视图没有可下单按钮）：
+    // 表格自管已选胶囊（showSelectionSummary=true）时悬浮组保留胶囊单独成组，
+    // 不随空动作一起消失——否则胶囊被 builder 非空压制在表头之外又无处渲染，
+    // 选择数整页不见（2026-10-04 用户口径：已选恒右下悬浮）。页面自摆胶囊
+    //（showSelectionSummary=false）时整组隐藏，避免同一选择数出现两枚。
+    if (actions.isEmpty && !widget.showSelectionSummary) {
+      return const SizedBox.shrink();
+    }
 
     // 已选摘要与业务动作同框（悬浮组首位），选择数与按钮零距离——
     // 全站统一口径：有悬浮批量动作的表格，已选胶囊不再驻表头工具条。
@@ -4354,8 +4361,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : UtenFrozenTrailingColumn(
             horizontal: _headerH,
             width: 48,
-            cell: ColoredBox(
-              color: theme.colorScheme.surfaceContainerHigh,
+            // 左线隔开滚过的列头（与行内形态靠末列右线分隔等价），右线收表格
+            // 右缘（2026-10-04 用户口径「最后操作列右边没竖杠」）。
+            cell: DecoratedBox(
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHigh,
+                border: Border(
+                  left: BorderSide(color: theme.colorScheme.outline),
+                  right: BorderSide(color: theme.colorScheme.outline),
+                ),
+              ),
               child: _platformAddButton(),
             ),
             row: row,
@@ -4415,7 +4430,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               for (final i in _visibleIndices)
                 _headerColumnCell(theme, i, frozen: false),
               if (widget.showColumnChooser)
-                SizedBox(width: 48, height: 48, child: _platformAddButton()),
+                SizedBox(
+                  width: 48,
+                  height: 48,
+                  // 尾部 48px 列设置格补右线：末列右线之后这一格原先不描边，
+                  // 表头右缘没封口（与数据行行级右线同位收口）。
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        right: BorderSide(color: theme.colorScheme.outline),
+                      ),
+                    ),
+                    child: _platformAddButton(),
+                  ),
+                ),
             ],
           ),
         ),
@@ -4753,8 +4781,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           );
     final undecoratedRow = DecoratedBox(
       // 行间横线：逐行分隔；选中行也用常态横线（底色由下面的 ColoredBox 统一给）。
+      // 右缘竖线：showColumnChooser 时末列右线之后还有 48px 列设置空档（行内
+      // SizedBox 无内容无高度、描不了边），行级补一条把表格右缘收口；无 chooser
+      // 的表末格右线已在原位，行级再画会同位叠加变粗，故条件关掉。
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: lineColor, width: 0.5)),
+        border: Border(
+          bottom: BorderSide(color: lineColor, width: 0.5),
+          right: widget.showColumnChooser
+              ? BorderSide(color: lineColor, width: 0.5)
+              : BorderSide.none,
+        ),
       ),
       child: ColoredBox(
         color: rowBg,

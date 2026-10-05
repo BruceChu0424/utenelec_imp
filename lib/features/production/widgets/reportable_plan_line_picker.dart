@@ -415,6 +415,8 @@ class _ReportablePlanLineSheetState
         // 勾选列与点行是同一个选择集：点行切换、勾选框也切换，
         // 不可报工的行 idOf 返回 null → 勾不上（与点行的拦截同口径）。
         selectable: true,
+        // 已选计数只在底部确认条（UtenPickerConfirmBar），表头不再重复胶囊。
+        showSelectionSummary: false,
         idOf: (item) => item.canReport ? _lineKey(item) : null,
         selectedIds: {for (final picked in _picked) _lineKey(picked)},
         onSelectedIdsChanged: (next) => setState(() {

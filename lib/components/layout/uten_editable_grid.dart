@@ -2162,7 +2162,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   /// 表头行尾操作列的冻结包裹：无行尾操作列时原样返回。占位格与行内同款
-  /// surfaceContainerHigh 底 + 左竖线，横滚时钉在视口右缘盖住滚过的列头。
+  /// surfaceContainerHigh 底 + 左右竖线（右线收表格右缘，2026-10-04 用户口径
+  /// 「最后操作列右边没竖杠」——行内尾格自带右线，冻结副本原先只画左线，
+  /// 横滚态下右缘就整条没线了），横滚时钉在视口右缘盖住滚过的列头。
   Widget _withFrozenTrailingAction(ThemeData theme, Widget row) {
     if (!widget._showRowActionColumn) return row;
     return UtenFrozenTrailingColumn(
@@ -2171,7 +2173,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
       cell: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHigh,
-          border: Border(left: BorderSide(color: theme.colorScheme.outline)),
+          border: Border(
+            left: BorderSide(color: theme.colorScheme.outline),
+            right: BorderSide(color: theme.colorScheme.outline),
+          ),
         ),
         child: _addColumnHeader(),
       ),
@@ -3503,7 +3508,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          border: Border(left: divider, bottom: divider),
+          // 右线与行内尾格对齐：冻结副本贴在视口右缘，没它表格右缘整条没竖线。
+          border: Border(left: divider, right: divider, bottom: divider),
         ),
         child: deleteButton,
       ),

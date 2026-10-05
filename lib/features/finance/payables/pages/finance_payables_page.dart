@@ -1007,6 +1007,9 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             sortAscending: _columnFilters.sortAscending,
             onSortChange: _onSortChange,
             selectable: canCreatePayment || canApplyOffset,
+            // 已选胶囊由页面右下悬浮组自摆（_payablesFloatingActions），
+            // 表头不再重复一枚（2026-10-04 全站口径：已选恒右下悬浮）。
+            showSelectionSummary: false,
             idOf: (item) => item.id,
             selectedIds: _selectedIds,
             onSelectedIdsChanged: _setSelectedIds,

@@ -29,6 +29,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
@@ -1189,7 +1190,9 @@ class _FinanceQuoteReviewPageState
           ..clear()
           ..addAll(next);
       }),
-      batchActionsBuilder: editable ? (_, _) => const <Widget>[] : null,
+      // 已选胶囊由本页悬浮组自摆（_floatingActions 首位）；空 builder 压表头
+      // 胶囊的旧写法已退役（组件层动作空列表时仍渲染胶囊组，会双胶囊）。
+      showSelectionSummary: false,
       toolbarActions: editable
           ? [
               UtenButton(
@@ -1720,6 +1723,15 @@ class _FinanceQuoteReviewPageState
       _claim?.failureMessage ?? l10n.quoteFinanceClaimNotReady,
     );
     final children = <Widget>[
+      // 已选胶囊随悬浮组首位（2026-10-04 全站口径：已选恒右下悬浮）——本表
+      // batchActionsBuilder 传空列表正是为压掉表头胶囊，选择数在这里落地。
+      if (_editable)
+        UtenSelectionSummaryPill(
+          count: _selected.length,
+          onClear: _selected.isEmpty || _busy
+              ? null
+              : () => setState(_selected.clear),
+        ),
       if (review.allows(SalesQuoteFinanceAction.returnToSales))
         UtenButton(
           key: const Key('quote-finance-return'),

@@ -647,6 +647,14 @@ class _FinanceSalesOrderConfirmationPageState
     const disabledReason = '请先选择至少一笔待确认订单';
     return UtenFloatingActionGroup(
       children: [
+        // 已选胶囊随悬浮组首位（2026-10-04 全站口径：已选恒右下悬浮）；
+        // 紧凑端选择条与本组同用 UtenSelectionSummaryPill，口径一致。
+        UtenSelectionSummaryPill(
+          count: selectedCount,
+          onClear: selectedCount == 0 || _loading || _batchBusy
+              ? null
+              : () => _setSelectedIds(<String>{}),
+        ),
         UtenButton(
           key: const Key('sales-order-finance-open-selected'),
           size: UtenButtonSize.large,
@@ -770,10 +778,9 @@ class _FinanceSalesOrderConfirmationPageState
         idOf: (item) => item.orderId,
         selectedIds: _selectedIds,
         onSelectedIdsChanged: _setSelectedIds,
-        // 传空动作只启用共享选择摘要；真正业务动作由页面右下 FAB 渲染。
-        batchActionsBuilder: !_showRejected && canConfirm
-            ? (_, _) => const <Widget>[]
-            : null,
+        // 已选胶囊由页面右下 FAB 自摆（_floatingSelectionActions 首位）；
+        // 空 builder 旧写法退役（组件层动作空列表时仍渲染胶囊组，会双胶囊）。
+        showSelectionSummary: false,
         columns: _columns(),
         items: result.items,
         // 销售单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。

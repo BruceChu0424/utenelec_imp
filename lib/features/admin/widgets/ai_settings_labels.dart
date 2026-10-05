@@ -40,6 +40,8 @@ extension AiThinkingControlLabel on AiThinkingControl {
     AiThinkingControl.deepseek => l10n.aiSettingsThinkingDeepseek,
     AiThinkingControl.dashscope => l10n.aiSettingsThinkingDashscope,
     AiThinkingControl.openAiReasoning => l10n.aiSettingsThinkingOpenAi,
+    AiThinkingControl.zhipu => l10n.aiSettingsThinkingZhipu,
+    AiThinkingControl.anthropicEffort => l10n.aiSettingsThinkingAnthropic,
   };
 }
 
@@ -50,6 +52,7 @@ String aiTestStepLabel(AppLocalizations l10n, AiConnectionTestStep step) =>
       AiConnectionTestStep.auth => l10n.aiSettingsStepAuth,
       AiConnectionTestStep.model => l10n.aiSettingsStepModel,
       AiConnectionTestStep.json => l10n.aiSettingsStepJson,
+      AiConnectionTestStep.thinking => l10n.aiSettingsStepThinking,
       _ => step.label ?? step.key,
     };
 

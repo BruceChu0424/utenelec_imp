@@ -216,6 +216,7 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
       label: '库存金额',
       width: 120,
       type: 'money',
+      aiSensitive: true,
       sortable: true,
       exactValueOf: (r) => r.costMasked ? null : r.amountLocalText,
       value: (r) =>

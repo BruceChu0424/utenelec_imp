@@ -94,6 +94,8 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
         liveRegion:
             (widget.errorMessage?.isNotEmpty ?? false) ||
             (autofillMessage?.isNotEmpty ?? false),
+        error: widget.errorMessage,
+        autofill: autofillMessage,
       );
       return const SizedBox.shrink();
     }

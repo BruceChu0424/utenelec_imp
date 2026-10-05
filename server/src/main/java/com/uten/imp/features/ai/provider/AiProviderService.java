@@ -249,7 +249,7 @@ public class AiProviderService {
         }
         AiJsonMode jsonMode = parseEnum(AiJsonMode.class, request.jsonMode(), preset.jsonMode(), "JSON 输出方式");
         AiThinkingControl thinking = parseEnum(AiThinkingControl.class, request.thinkingControl(),
-                preset.thinkingControl(), "关闭深度思考方式");
+                preset.thinkingControl(), "思考参数写法");
         boolean temperature = request.sendTemperature() == null ? preset.sendTemperature() : request.sendTemperature();
         int timeout = boundedInt(request.timeoutSeconds(), 120, 10, 600, "超时秒数");
         return new AiProviderRuntime(null, "连接测试", preset, region, protocol, endpoint, model, apiKey,
@@ -511,7 +511,7 @@ public class AiProviderService {
         AiJsonMode jsonMode = parseEnum(AiJsonMode.class, request.jsonMode(),
                 existing == null ? preset.jsonMode() : existing.getJsonMode(), "JSON 输出方式");
         AiThinkingControl thinking = parseEnum(AiThinkingControl.class, request.thinkingControl(),
-                existing == null ? preset.thinkingControl() : existing.getThinkingControl(), "关闭深度思考方式");
+                existing == null ? preset.thinkingControl() : existing.getThinkingControl(), "思考参数写法");
         boolean temperature = request.sendTemperature() != null ? request.sendTemperature()
                 : existing == null ? preset.sendTemperature() : existing.isSendTemperature();
         boolean vision = request.supportsVision() != null ? request.supportsVision()
@@ -565,7 +565,7 @@ public class AiProviderService {
             changes.add("JSON 输出方式 " + row.getJsonMode() + " → " + input.jsonMode());
         }
         if (row.getThinkingControl() != input.thinkingControl()) {
-            changes.add("关闭深度思考 " + row.getThinkingControl() + " → " + input.thinkingControl());
+            changes.add("思考参数写法 " + row.getThinkingControl() + " → " + input.thinkingControl());
         }
         if (row.isSendTemperature() != input.sendTemperature()) {
             changes.add("发送温度参数 " + yesNo(row.isSendTemperature()) + " → " + yesNo(input.sendTemperature()));

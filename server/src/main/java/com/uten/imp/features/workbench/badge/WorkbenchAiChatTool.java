@@ -46,6 +46,10 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
                 MODULES.stream().filter(value->"ALL".equals(value)||allowed.contains(value)).sorted().toList())),"required",List.of());
     }
     @Override public boolean available() { try { access.requireChat(); return true; } catch(ApiException denied) { return false; } }
+    /** ADR-150: the already-authorized detail text (quantities and tasks, no costs) may be composed by the model. */
+    @Override public Map<String, Object> modelFacts(Map<String, Object> result) {
+        return result.get("detailReply") instanceof String text ? Map.of("facts", text) : Map.of();
+    }
     @Override public Map<String,Object> execute(Map<String,Object> arguments) {
         access.requireChat(); String module=module(arguments); var snapshot=read(module);
         return Map.of("reply",render(snapshot,false),"detailReply",render(snapshot,true),"actions",List.of(),

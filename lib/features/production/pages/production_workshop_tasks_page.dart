@@ -48,6 +48,7 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -3027,6 +3028,27 @@ class _ProductionWorkshopTasksPageState
   bool get _selectable =>
       _isPreparing ? _canStart : (_status == 'IN_PROGRESS' && _canCreateReport);
 
+  /// Meaning of each preparing-stage readiness colour (status legend).
+  String? _readinessMeaning(ProductionFlowTone tone) {
+    final l10n =
+        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizationsZh();
+    return switch (tone) {
+      ProductionFlowTone.ready => l10n.productionReadinessMeaningReady,
+      ProductionFlowTone.readyPartial =>
+        l10n.productionReadinessMeaningReadyPartial,
+      ProductionFlowTone.toDraw => l10n.productionReadinessMeaningToDraw,
+      ProductionFlowTone.toDrawPartial =>
+        l10n.productionReadinessMeaningToDrawPartial,
+      ProductionFlowTone.pending => l10n.productionReadinessMeaningPending,
+      ProductionFlowTone.waiting => l10n.productionReadinessMeaningWaiting,
+      ProductionFlowTone.waitPlanning =>
+        l10n.productionReadinessMeaningWaitPlanning,
+      ProductionFlowTone.decide => l10n.productionReadinessMeaningDecide,
+      ProductionFlowTone.active || ProductionFlowTone.done => null,
+    };
+  }
+
   /// 列随分类变化（2026-09-06 用户口径）：进度列只在「生产中」显示——
   /// 等待物料阶段没有报工进度可言，历史任务已完工无需再看进度条。
   List<MasterColumnDef<ProductionExecutionWorkbenchSegment>> _columnsFor(
@@ -3050,6 +3072,10 @@ class _ProductionWorkshopTasksPageState
               context,
               productionFlowBadgeType(_flowStageOf(task)),
             ),
+      // ADR-150: what each readiness colour means, read by the AI assistant
+      // when someone asks about the status colours (same tones as above).
+      legendOf: (task) =>
+          _isPreparing ? _readinessMeaning(_flowStageOf(task).tone) : null,
       cellBuilder: (_, task) {
         final stage = _flowStageOf(task);
         final badge = Row(

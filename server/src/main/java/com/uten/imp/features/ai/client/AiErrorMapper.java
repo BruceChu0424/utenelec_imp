@@ -35,6 +35,9 @@ public final class AiErrorMapper {
                     "密钥无效或没有权限(也可能是账号所在区域不匹配)", status);
             case 404 -> new AiCallException(AiErrorCategory.NOT_FOUND, "接口地址或模型名称不对", status);
             case 400, 422 -> {
+                if (contentFiltered(body)) {
+                    yield AiCallException.contentFiltered(status);
+                }
                 String message = providerMessage(body, apiKey);
                 yield new AiCallException(AiErrorCategory.BAD_REQUEST,
                         message.isEmpty() ? "服务商不接受这个请求" : "服务商不接受这个请求: " + message, status);
@@ -45,6 +48,42 @@ public final class AiErrorMapper {
                     ? new AiCallException(AiErrorCategory.SERVER, "AI 服务暂时出错(服务商返回 " + status + "), 请稍后再试", status)
                     : new AiCallException(AiErrorCategory.BAD_REQUEST, "服务商返回了无法识别的状态 " + status, status);
         };
+    }
+
+    /**
+     * 服务商内容审核的拒绝标记(按各家公开文档与实测, 2026-10): 智谱 error.code=1301「不安全或敏感内容」、
+     * 通义 data_inspection_failed、DeepSeek「Content Exists Risk」、OpenAI/Azure content_policy_violation /
+     * content management policy / content_filter。只看错误码与错误说明, 从不回显。
+     */
+    private static final Pattern CONTENT_FILTER = Pattern.compile("(?i)\\b1301\\b|content[_\\s-]?filter|data_inspection_failed"
+            + "|content\\s+exists\\s+risk|content[_\\s-]?policy|content\\s+management\\s+policy|inappropriate\\s+content"
+            + "|safety\\s+system|不安全或敏感|敏感内容|内容安全|违规内容");
+
+    /** 错误体是不是服务商内容审核的拒绝。 */
+    static boolean contentFiltered(byte[] body) {
+        if (body == null || body.length == 0) {
+            return false;
+        }
+        try {
+            JsonNode node = JSON.readTree(new String(body, StandardCharsets.UTF_8));
+            if (node == null) {
+                return false;
+            }
+            JsonNode error = node.path("error");
+            StringBuilder marks = new StringBuilder();
+            for (JsonNode part : java.util.List.of(error.path("code"), error.path("type"), error.path("message"), node.path("code"),
+                    node.path("message"), node.path("msg"))) {
+                if (part.isValueNode()) {
+                    marks.append(part.asText()).append(' ');
+                }
+            }
+            if (error.isTextual()) {
+                marks.append(error.asText());
+            }
+            return CONTENT_FILTER.matcher(marks).find();
+        } catch (Exception notJson) {
+            return false;
+        }
     }
 
     /** 服务商错误 JSON 里的 message(OpenAI/Anthropic/通义等都放在 error.message 或 message)。 */

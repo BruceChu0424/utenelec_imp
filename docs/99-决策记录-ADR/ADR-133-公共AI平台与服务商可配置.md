@@ -29,7 +29,7 @@
   - `AiCompletionPort`: `availability()`(不发网络请求) 与 `completeJson(request)`(阻塞, **绝不能在事务里调用**, 网关发现事务直接拒绝);
   - `AiJobHandler`: 上传文件类的长任务(提交时授权 → 有界读取 → 嗅探 → 校验输入 → 入队 → 后台以提交人身份处理 → 本人查询, 每次查询重新授权并按当前权限过滤);
   - `AiJobUsagePort`: 保存单据时读取服务端保存的识别结果并标记已采用。
-- 协议只做两种: OpenAI Chat Completions(DeepSeek、通义、Kimi、智谱、豆包、硅基流动、OpenAI、Gemini 兼容端点、Ollama、vLLM)与 Anthropic Messages(Claude 以及各家的 Anthropic 兼容端点)。差异用能力开关表达: JSON 输出方式(NONE / JSON_OBJECT / JSON_SCHEMA)、关闭深度思考方式(DeepSeek `thinking` / 通义 `enable_thinking` / OpenAI `reasoning_effort`)、是否发送温度、是否支持图片、最大输出长度、超时。
+- 协议只做两种: OpenAI Chat Completions(DeepSeek、通义、Kimi、智谱、豆包、硅基流动、OpenAI、Gemini 兼容端点、Ollama、vLLM)与 Anthropic Messages(Claude 以及各家的 Anthropic 兼容端点)。差异用能力开关表达: JSON 输出方式(NONE / JSON_OBJECT / JSON_SCHEMA)、关闭深度思考方式(DeepSeek `thinking` / 通义 `enable_thinking` / OpenAI `reasoning_effort`; 2026-10-04 起扩展为「思考参数写法」, 增加智谱与 Anthropic effort, 并支持与服务商无关的思考程度, 见 [ADR-152](ADR-152-AI对话设置与连续对话.md))、是否发送温度、是否支持图片、最大输出长度、超时。
 - 预设只预填, 每一项都能改; 有登记域名的预设(DeepSeek → deepseek.com, 通义 → dashscope.aliyuncs.com 与 cn-beijing.maas.aliyuncs.com(北京业务空间), Kimi → moonshot.cn, 智谱 → bigmodel.cn, 豆包 → volces.com, 硅基流动 → siliconflow.cn, OpenAI → openai.com, Claude → anthropic.com, Gemini → googleapis.com)要求接口地址等于登记域名或是它的子域名, 其他地址必须选「自定义」并由管理员声明区域, 防止把境外地址挂在境内预设下绕过出境开关。登记域名要尽量窄: 通义不登记 `aliyuncs.com`, 因为百炼国际版与境外地域(新加坡 `dashscope-intl.aliyuncs.com`、美国 `dashscope-us.aliyuncs.com`、境外业务空间 `*.ap-southeast-1.maas.aliyuncs.com`, 以及 2026-09-28 核对官方文档时列出的中国香港 `*.cn-hongkong.maas.aliyuncs.com`、东京 `*.ap-northeast-1.maas.aliyuncs.com`)与 OSS、函数计算等其他阿里云产品都在它下面; 同理 Kimi 国际站接口 `api.moonshot.ai` 不在 `moonshot.cn` 下。国际版账号只能走「自定义 + 境外」, 受境外开关与出境确认约束(`AiEndpointPolicyTest`、`AiProviderServiceTest` 锁住)。
 
 ### 2. 密钥进入配置页的例外与控制

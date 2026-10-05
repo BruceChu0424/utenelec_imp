@@ -1,6 +1,6 @@
 # AI 平台接入指南
 
-权限内对话接入见 [ADR-140](../99-决策记录-ADR/ADR-140-权限内对话助手与页面示例指导.md): ERP_CHAT 使用内部有界 JSON 入队，业务工具实现 AiChatToolPort。模型只选择已授权工具或已审核页面指南，不获得任意 SQL、接口或写库能力；成本结果在本地生成，历史重新检查原对象范围。
+AI 助手(ERP_CHAT)接入见 [第八章](#八ai-助手页面上下文有据作答与确认卡契约adr-150) 与 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md): 前端随问题发送有界的页面快照, 模型基于服务端发出的来源组织完整回答, 回答经事实守卫, 不通过时按页面内容确定性整理; AI 提出的操作只来自页面登记的动作集, 先生成一次性确认卡, 用户确认后才由页面原按钮路径或原业务端点执行。业务工具仍实现 AiChatToolPort, 成本等敏感结果默认不外送(ADR-140 的权限与历史复核规则不变)。
 
 > 适用: 任何想用大模型的新功能(第一个接入方是销售客户文件识别, ADR-134)。设计与安全决定见
 > [ADR-133 公共 AI 平台与服务商可配置](../99-决策记录-ADR/ADR-133-公共AI平台与服务商可配置.md)。
@@ -69,9 +69,40 @@ class SupplierNoteSummarizer {
   「没有就填 null」的字段写成类型联合, 例如 `"type": ["string", "null"]`, 而不是从 `required` 里去掉。
   满足这两条时 OpenAI 客户端发 `strict: true`(输出保证符合 schema); 不满足时自动改发 `strict: false`
   (schema 只作指引, 输出仍要自己校验) —— 否则 OpenAI 会以 400 拒绝整个请求(类别 BAD_REQUEST)。
-- 只发**完成任务所必需**的内容: 不发银行账号、证件号、私人联系方式、价格、成本等; 需要发送的字段写进你的 ADR,
-  并登记到《中国大陆部署与兼容性》。
+- 只发**完成任务所必需**的内容: 不发银行账号、证件号、私人联系方式、成本、工资、密码与凭证等; 需要发送的字段写进你的 ADR,
+  并登记到《中国大陆部署与兼容性》。AI 助手的页面快照(第八章)是用户拍板的例外: 会发送屏幕上可见的业务值(含销售价格),
+  但同一组敏感类别仍只发标签(8.2 敏感兜底), 工资/人事/个人资料页面整页不读。
 - 日志只记用途、耗时与错误类别, 不记提示词、文件内容与回复。
+- **思考程度 `reasoningEffort`**(ADR-152): `AiCompletionRequest` 的第 8 个字段, 取 `DEFAULT / OFF / LOW / MEDIUM / HIGH`
+  (7 参构造器默认 `DEFAULT`)。`DEFAULT` = 不要求, 保持服务商配置的原有行为(识别、抽取类用途都用它: DeepSeek/通义/OpenAI 写法关思考,
+  智谱与 Anthropic 写法不发参数); 其余档由网关按服务商的「思考参数写法」(`ai_providers.thinking_control`)映射, 唯一映射表是
+  `AiReasoningParams`。「能否调整」只有一个判定 `AiReasoningParams.supported(runtime)`: 写法 + 生效协议 + 模型三者都接受才算;
+  不能调整时**一律按 `DEFAULT` 写请求体**, 所以账号里存的任何档位都不会让请求被服务商拒绝:
+
+  | 写法(协议) | OFF | LOW | MEDIUM | HIGH |
+  | --- | --- | --- | --- | --- |
+  | DEEPSEEK | `thinking:{type:disabled}` | `thinking:{type:enabled}` + `reasoning_effort:low` | 同左 + `high` | 同左 + `max` |
+  | ZHIPU(OpenAI 兼容 `/api/paas/v4`) | `thinking:{type:enabled}` + `reasoning_effort:low`(GLM-5.3 关不掉思考) | 同左 `low` | `high` | `max` |
+  | ZHIPU(Anthropic 兼容 `/api/anthropic`) | `output_config.effort:low` | `low` | `high` | `max` |
+  | DASHSCOPE(不可调整) | `enable_thinking:false` | 同左 | 同左 | 同左 |
+  | OPENAI_REASONING | `reasoning_effort:none` | `low` | `medium` | `high` |
+  | ANTHROPIC_EFFORT(Opus 4.5 / Sonnet 4.6 及以上) | `output_config.effort:low` | `low` | `medium` | `high` |
+  | ANTHROPIC_EFFORT + 不认 effort 的模型(Claude 3、Haiku 4.x、Sonnet 4/4.5、Opus 4/4.1, 含云厂商前缀) | 不发 | 不发 | 不发 | 不发 |
+  | NONE、写法与生效协议不匹配 | 不发 | 不发 | 不发 | 不发 |
+
+  - 通义千问的思考模式只支持流式输出、且不能和 JSON 模式同用(百炼错误码: 非流式调用 `enable_thinking` 必须为 false; 开思考时不支持
+    JSON 模式), 本平台是非流式 JSON 调用, 所以通义写法只用来关掉思考, `reasoningEffortSupported=false`。
+  - OpenAI 推理模型只在 `reasoning_effort:none` 时接受 `temperature`: 管理员打开「固定输出(温度 0)」时, 带了 low/medium/high 的请求
+    不发 `temperature`(`AiReasoningParams.allowsTemperature`); DeepSeek 开思考时 temperature 不生效, 同样不发。
+
+  支持调整时网关在回答上限之外另给思考额度(LOW +2048、MEDIUM +4096、HIGH +16384 输出 token), 但**单次输出永远不超过管理员配置的
+  「最大输出长度」**(那是单次输出含思考的硬上限, 往往就是模型本身的上限, 也是成本上限; 想给「深入」更多思考空间由管理员调大); 并调整超时
+  (OFF ≤60 秒, HIGH 为配置的 1.5 倍且 ≤240 秒), 写一行 `AI call reasoning: purpose=…, effort=…, params=[…]` 日志(只有参数名与档位,
+  不能调整时 `params=[none]`)。调用方只给回答需要的上限, 不要按思考档自己缩放(对话固定 8192, 详略决定长短)。
+  `availability().supportsReasoningEffort()` 告诉调用方当前默认服务商能否调整; 不能时请求照常成功, 只是不发思考参数、额度和超时都不变。
+  不发 `budget_tokens`(GLM 忽略、新 Claude 模型直接 400)。
+  「测试连接」在能调整时多一步「思考程度」(`THINKING`): 按对话默认档「标准」(MEDIUM)用同一套写法再发一次小对话, 服务商 400/404
+  = 这个模型不认思考参数, 判失败并提示把写法改为「不发送」或换模型; 超时、限流只提示。
 
 ## 三、写一个异步任务处理器 `AiJobHandler`
 
@@ -210,7 +241,8 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
 
 ## 四、新增服务商预设或协议
 
-- **新预设**: 在 `AiProviderPreset` 加一项(显示名称、区域、协议、默认接口地址、建议模型、JSON 方式、关闭思考方式、
+- **新预设**: 在 `AiProviderPreset` 加一项(显示名称、区域、协议、默认接口地址、建议模型、JSON 方式、思考参数写法
+  (ADR-152, `AiThinkingControl`; 新写法要在 `AiReasoningParams` 补映射并同步 `ai_providers.thinking_control` 的 CHECK)、
   温度、图片、是否必须密钥、**登记域名**)。境内预设必须同时把域名、发送字段与留存登记到
   《中国大陆部署与兼容性》的外部服务清单; 境外预设默认被 `uten.ai.allow-overseas-providers=false` 挡住。
   数据库 `ai_providers.preset` 的 CHECK 需要同一个迁移补上新值。
@@ -222,7 +254,7 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
 
 - [ ] 端口调用在事务外; 没有在请求线程上同步等一个可能超过 45 秒的 AI 调用。
 - [ ] 外部内容全部 `AiText(..., untrusted = true)`; AI 返回的 id/金额/状态都在服务端校验, 从不直接落库。
-- [ ] 发送字段最少必要, 已写进 ADR 并登记; 没有发送价格、成本、账号、证件号、私人联系方式。
+- [ ] 发送字段最少必要, 已写进 ADR 并登记; 没有发送成本、工资、信用额度、账号、证件号、私人联系方式(AI 助手的页面快照按 ADR-150 只含屏幕可见内容, 敏感数值默认不发送)。
 - [ ] 没有记录提示词、文件内容、回复与密钥。
 - [ ] 异步任务: `authorizeSubmit` 与 `authorizeRead` 都做了权限校验; `filterResultForReader` 去掉当前读者不该看的字段;
       处理器有「只用固定规则」的退路; 解析阶段报告 READING/PARSING/LAYOUT。
@@ -276,3 +308,319 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
 - **用量**: 设置页的用量卡片(`GET /api/admin/ai/usage?days=30`)按服务商汇总调用次数、成功率、token 与平均耗时, 并显示今日用量与每日额度;
   明细在 `ai_call_logs`(不含提示词与回复)。
 - **服务器迁移/恢复到别的环境**: AAD 绑定 JWT 签发者, 换环境后已保存的密钥会显示「密钥无法解密, 请重新填写」, 在设置页重新填写即可。
+
+## 八、AI 助手页面上下文、有据作答与确认卡契约(ADR-150 / ADR-152 / ADR-153)
+
+> 设计与取舍见 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md)、
+> [ADR-152 对话设置与连续对话](../99-决策记录-ADR/ADR-152-AI对话设置与连续对话.md) 与
+> [ADR-153 范围闸门与平台知识检索](../99-决策记录-ADR/ADR-153-AI助手范围闸门与平台知识检索.md)。本章是前后端共同遵守的**请求/响应契约**:
+> 前端工程师照本章实现快照登记、确认卡和执行回执; 后端以本章为准做校验。字段名区分大小写, 未列出的字段服务端忽略。
+
+### 8.1 发消息
+
+`POST /api/ai/chat/messages`(需要 `ai:use`), 返回 202 + 任务视图(`jobId`), 再轮询 `GET /api/ai/jobs/{jobId}`。
+
+```json
+{
+  "message": "不同的状态分别是什么颜色",
+  "conversationId": "当前对话 UUID(ADR-152); 省略时服务端新开一个并在结果里返回",
+  "locale": "zh | en | ko(界面语言; 回答语言设为「跟随界面」时按它回答), 可省略",
+  "intentHint": "PAGE_HELP(只在点「这个页面怎么填写」快捷入口时带, 其它时候省略)",
+  "pageContext": {
+    "route": "/production/workshop-tasks",
+    "fieldKey": "可省略; 已审核页面说明里的字段键",
+    "snapshot": { "...": "见 8.2; 页面感知关闭时整个 pageContext 不发" }
+  }
+}
+```
+
+- `message` 1..2000 字, 不能含控制字符(换行/制表除外)。`route` 只能是 `/[A-Za-z0-9/_-]*` 的路径, 不带查询串和 `#`。
+  路由只在服务端用于页面权限与页面说明; 发给模型的是页面形状, 含数字或长十六进制的段一律换成 `:id`(`/expense/:id/edit`), 记录 UUID 不外送。
+- 内容不读的页面: `/payroll`、`/hr`、`/employee`、`/profile`、`/change-password`、`/admin/permissions`、`/admin/audit-logs`
+  及其子路径(工资、人事、员工档案、个人资料、凭证、权限与审计)。前端不采集快照, 对话框写「这个页面含工资或个人信息, 不读取页面内容, 只发送问题」;
+  服务端即使收到也直接丢弃(`AiChatPageSnapshot.contentWithheld`)。两边是同一张清单, 改动要一起改并更新本节。
+- 旧字段 `attachmentJobId`、`previousJobId` 已删除(服务端忽略); 文件一律走 `ERP_DOCUMENT_ROUTE` 任务(8.7)。
+- 账号的对话设置(ADR-152)在提交时由服务端读取并写进任务输入, 客户端不能在请求里带设置; 「读取当前页面」关闭时服务端丢弃
+  `pageContext`(即使客户端发了)。
+- 整个任务输入(问题 + 快照 + 授权戳)上限 64 KB; 快照本身上限 24 KB(按服务端 JSON 序列化后字节数)。
+- 快照只保存在任务的临时输入里, 任务结束即清空(沿用 `ai_jobs.input_bytes` 清理); 结果和审计摘要里都不保存快照。
+- 页面受已审核目录保护时(例如车间任务、销售订货), 服务端照旧校验页面权限, 没权限 403, 快照不会被读取。
+
+### 8.2 页面快照 `snapshot`
+
+快照是「当前顶层页面上你看得见的东西」, 由 `AiPageContextController` 在**发送时**从登记的提供器计算(不在每帧重建)。
+所有文本都是不可信数据: 服务端只把它当资料放进模型的不可信段, 绝不当指令。
+
+```json
+{
+  "version": 1,
+  "title": "我的车间任务",
+  "tables": [{
+    "title": "车间任务",
+    "totalRows": 24, "visibleRows": 24, "selectedRows": 0,
+    "columns": [{"label": "货品编号"}, {"label": "状态", "info": "按物料齐套和领料进度显示"}, {"label": "成本单价", "sensitive": true}],
+    "rows": [{"no": 1, "cells": ["V50001", "可开工", ""], "selected": false, "flagged": false}],
+    "legend": [{"column": "状态", "value": "可开工", "color": "绿", "tone": "success", "meaning": "材料齐了, 可以开工", "count": 6}],
+    "flaggedCells": [{"rowNo": 3, "rowLabel": "V50003 V5二开右按钮", "column": "单价", "value": "0",
+                      "state": "REVIEW", "reason": "标价为0, 要先做报价单交给财务定价"}],
+    "truncated": false
+  }],
+  "fields": [{"label": "客户", "value": "", "state": "REQUIRED_EMPTY", "required": true, "message": "", "info": "选对客户, 核对结账条件"}],
+  "badges": [{"label": "待领料", "tone": "danger", "color": "红", "count": 3}],
+  "notices": [{"kind": "BANNER", "title": "AI 识别结果", "text": "已按客户文件填入 5 行, 其中 4 行需要核对"}],
+  "pageActions": [{"name": "setLineField", "title": "修改明细行", "kind": "FORM", "risk": "LOW", "params": {"...": "见 8.3"}}],
+  "focusField": "数量",
+  "withheld": ["成本单价"]
+}
+```
+
+| 部分 | 字段 | 规则(超限一律 422, 不截断) |
+| --- | --- | --- |
+| 顶层 | `version` | 省略或 1 |
+| | `title` | 页面标题, ≤80 字 |
+| | `focusField` | 当前焦点字段的标签, ≤40 字 |
+| | `withheld` | 前端因敏感未发送数值的列/字段标签, ≤30 个 |
+| `tables[]` | 最多 4 张 | 只取顶层当前路由里的表; 一个页面多张表按屏幕顺序 |
+| | `title` | ≤80 字 |
+| | `totalRows`/`visibleRows`/`selectedRows` | 0..10000000 的整数, 服务端算的总数优先 |
+| | `columns[]` | 最多 12 列(可见列, 按屏幕顺序); `label` ≤40 字, `info` 列头说明 ≤200 字, `sensitive` 见下 |
+| | `rows[]` | 最多 30 行(屏幕上靠前的行); `no` 为 1 起的屏幕行号(用户说「第3行」就是 3); `cells` 与 `columns` 一一对应, 不得多于列数, 单值 ≤80 字, 用单元格最终**显示文本**; `selected`/`flagged`(标红行) 可选 |
+| | `legend[]` | 最多 40 条, 按最终单元格底色 + 状态组件聚合: `column` 列标签, `value` 状态文字(必填), `color` 中文颜色名(≤8 字, 如 灰/蓝/绿/黄/红/品红/紫/青绿/琥珀), `tone` 共享色调名(neutral/info/success/warning/danger/fuchsia/violet/accent), `meaning` 含义(≤120 字, 来自列定义的 legend 或组件说明; 没有就省略, 不要编), `count` 本表该值的行数 |
+| | `flaggedCells[]` | 最多 80 条: `rowNo`、`rowLabel`(行的识别文字 ≤80 字, 取该行前两个非空且**非敏感**列, 如「货品编号 品名」; 服务端对样本里的行按清空敏感格后的单元格重算, 样本外的行只在表里没有敏感列时保留)、`column`、`value` 当前显示值、`state` 取 REVIEW(黄框待核对)/REQUIRED_EMPTY(红框必填空)/WARNING/ERROR/FLAGGED(整行标红, 无列)、`reason` 原因 ≤200 字(例如销售识别的 aiReview/warnings 文案); 敏感列的 `value` 与 `reason` 都不发 |
+| `fields[]` | 最多 60 个 | 输入组件(UtenInput/UtenDropdownField/UtenDateField/选择器/工具栏筛选字段): `label`(必填 ≤40 字)、`value` 显示值 ≤80 字、`state` 取 NORMAL/REQUIRED_EMPTY/AUTOFILLED(黄框预填)/WARNING/ERROR、`required`、`message` 黄框/错误提示 ≤200 字、`info` ⓘ 说明 ≤200 字。只读信息行(UtenInfoRow)不登记。**密码/obscure 字段与凭证类标签一律不登记**; 敏感字段只发 `label`、`state`、`required` 与 `sensitive: true` |
+| `badges[]` | 最多 30 个 | 状态胶囊、分段徽章、模块红黄徽章: `label`(≤40 字, 前端按同口径截断, 空标签/编号/网址整条不发)、`tone`(只认 8 个共享色调名, 其它不发)、`color`(≤8 字)、`count` |
+| `notices[]` | 最多 10 条 | `kind` 取 BANNER(顶部横幅)/INLINE(行内提示)/DIALOG(当前弹窗正文); `title` ≤80 字, `text` 必填 ≤600 字(可含换行) |
+| `pageActions[]` | 最多 16 个 | 见 8.3 |
+
+服务端校验与清理(前端不要依赖, 但要知道):
+
+- 标签(列名、字段名、颜色名、动作标题、参数标题)不能是 UUID 或网址, 不能含控制字符, 否则 422。
+- 值里出现的 UUID 换成 `[编号]`, 网址换成 `[链接]`; Unicode 格式控制字符(如方向覆盖)被删除。
+- **敏感数值默认不发送**: 页面作者对成本、工资、信用额度、个人信息等列/字段写 `aiSensitive: true`(MasterColumnDef / EditableGridColumn / 输入组件);
+  前端与服务端还按同一张标签词表兜底(`aiSensitiveLabel` / `AiChatPageSnapshot.SENSITIVE_LABEL`):
+  成本/毛利/利润、工资/薪/奖金/年终奖/提成/佣金/社保/公积金/应发/实发/扣减/扣款/扣除合计/个税/所得税/加班费/津贴/补贴/绩效、
+  信用额度/信用余额/授信、身份证/证件号/护照/银行卡/银行账号/开户账号/卡号/手机/电话/联系方式/邮箱/住址/户籍, 以及对应英文。
+  命中的列: 单元格留空、列说明不发、图例不发、待核对的值与原因不发、标签写进 `withheld`; 命中的字段: 只发标签与状态, 值、`message`、`info` 都不发。
+  词表管不到的通用标签(例如成本报表里的「单价」「金额」)必须由页面写 `aiSensitive: true`。
+- **凭证整条不发**: 标签像密码/口令/验证码/校验码/动态码/密钥/私钥/令牌/password/secret/api key/access token 的字段整条丢弃, 列的值按敏感处理。
+- 清理是幂等的: 清理结果再清理一次不变(`withheld` 输出封顶 30 个)。
+- 快照为空(没有表、字段、徽章、提示、动作且没有标题)时按「没带快照」处理。
+
+### 8.3 页面动作描述符 `pageActions[]`
+
+AI 能提出的操作**只来自当前页面登记的闭合动作集**; 模型提出不在集合里的名字一律回「这个页面没有登记这项操作」。
+
+```json
+{
+  "name": "setLineField",
+  "title": "修改明细行",
+  "kind": "FORM",
+  "risk": "LOW",
+  "params": {
+    "type": "object", "additionalProperties": false,
+    "properties": {
+      "row":   {"type": "integer", "title": "行号", "minimum": 1, "maximum": 500},
+      "field": {"type": "string",  "title": "字段", "enum": ["数量", "单价"]},
+      "value": {"type": "string",  "title": "新值", "maxLength": 40}
+    },
+    "required": ["row", "field", "value"]
+  }
+}
+```
+
+| 字段 | 规则 |
+| --- | --- |
+| `name` | `[a-z][A-Za-z0-9_]{1,47}`, 页面内唯一; 就是前端执行时查表用的 handler 名 |
+| `title` | 卡片上的操作名, ≤40 字 |
+| `kind` | VIEW(筛选/搜索/勾选/打开行, 只改显示)、FORM(只改本页输入并标黄)、SAVE(按页面保存按钮保存草稿)、SUBMIT(按页面提交按钮提交) |
+| `risk` | 可省略; 服务端按 kind 定下限: VIEW/FORM=LOW, SAVE=MEDIUM, SUBMIT=HIGH, 页面只能调高 |
+| `params` | 封闭对象: 最多 6 个参数、可选参数最多 3 个; 参数类型只允许 string/integer/number/boolean; 每个参数必须有 `title`(≤20 字, 卡片上显示); string 的 `maxLength` 1..200(默认 80); 可选 `enum`(≤60 项)、`minimum`/`maximum`、`description`(≤120 字)。参数名 `row`/`rowNo` 为整数时, 卡片会附上该行的识别文字(只从 `table` 那张表取; 没写 `table` 且多张表都有这一行就不附) |
+| `table` | 可选; 行参数数的是快照里第几张表(1 起)。前端按动作的 `rowTable` 自动填 |
+
+**只有用户要求才出卡(确定性闸门)**: 模型选了 ACTION 后, 服务端还要看用户自己的原话是否要求了该类操作:
+VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/填/录入/换成/确认/标记等, SAVE 要有保存, SUBMIT 要有提交/送审;
+只是提问(含「什么/哪些/吗/是否」且没有「帮我/请/把」)不算。闸门不通过就不出卡, 按页面内容确定性作答。
+准备授权卡的工具同理: 只在超管原话是授权请求时运行(`AiChatToolPort.requestedBy`)。页面里的提示、弹窗、单元格、客户文件写了什么都不算用户要求。
+
+**卡片绑定提问时的页面实例与行(前端)**: 每次发问, `AiPageContextController.capture` 同时生成「绑定」: 当前页面实例(导航器 overlay 条目 + 页面级 `AiPageInfoSource` 登记)
+与行动作所属表在那一刻的记录身份。确认后 `AiPageContextController.run` 只在同一页面实例上执行; 行参数(`AiActionParam(rowRef: true)`, 动作写 `rowTable`)
+必须仍指向提问时那条记录(删除/插入/排序/筛选后行变了就拒绝, 提示「第N行已经不是提问时那一行了」), handler 通过 `AiActionCall.row/rows` 直接拿到记录,
+不要再按下标去取行。表格提供 `AiTableSource(owner, records, recordKey)`: MasterDataTableView 的 owner 是它自己、记录身份按 `idOf`; UtenEditableGrid 的 owner 是它的 controller、记录身份是行对象。
+
+第一批登记(由前端步骤实现): MasterDataTableView 通用(筛选/搜索/勾选/打开行)、通用输入组件(按标签设值)、销售订货/报价编辑页(改行字段、确认待核对行、保存草稿)。
+
+### 8.4 回答结果(`GET /api/ai/jobs/{id}` 的 `result`)
+
+| 字段 | 说明 |
+| --- | --- |
+| `reply` | 给人看的回答(纯文本, 有换行与「1. 」编号, 无链接/HTML)。先直接回答再分条给依据; 颜色问题每条「颜色 = 状态 = 含义 (N 行)」; 待检查问题每条「第N行 行标识 / 列: 当前值; 原因; 建议」; 超过 12 条写「还有 N 项」 |
+| `intent` | PAGE_STATE / PAGE_HELP / KNOWLEDGE / TOOL / ACTION / CLARIFY / UNSUPPORTED / OUT_OF_SCOPE / NON_WORK / SMALL_TALK / AI_UNAVAILABLE |
+| `mode` | 确定性渲染用的呈现方式: OVERVIEW / SUMMARY / EXAMPLE / STEPS |
+| `detail` | 这一句实际用的详略档 COMPREHENSIVE / STANDARD / CONCISE: 账号设置为默认, 用户这句话里明说「简单点/详细点/展开说」时只对这一句改档 |
+| `conversationId` | 这一轮所属对话(ADR-152); 前端用它继续同一对话 |
+| `pageTitle` | 提问时所在页面的标题(快照标题或页面说明标题, ≤80 字), 恢复对话时显示用 |
+| `sources` | `[{"id","label"}]` 回答依据, 如 `{"id":"page.legend","label":"当前页面状态颜色"}`、`guide.sales_order`、`knowledge.UI_CONVENTIONS`、`tool.inventory_lookup`、平台设计文档片段 `knowledge.doc-<12 位十六进制>`(label「平台说明: 文档标题 / 章节」, ADR-153); 前端可显示为「依据: 当前页面状态颜色」 |
+| `fallback` | true 表示模型没用上(不可用、失败或回答没通过事实守卫), 这是服务端按页面内容的确定性整理; 前端可加一行小字「AI 暂时没回上来, 以下按页面内容整理」 |
+| `replyShareable` | 服务端内部用于对话记忆(这一轮回答能否带进后续轮次; 敏感工具结果为 false, 后续只带问题), 前端忽略 |
+| `actions` | 确认卡列表(8.5); 每次读取都按数据库刷新状态, 已删除/别人的提案不会出现 |
+| `question` / `knowledgeId` / `helpContext` / `queryContext` | 同 ADR-140, 供追问与历史展示 |
+
+### 8.5 确认卡(`actions[]` 元素)
+
+```json
+{
+  "type": "CONFIRM_ACTION",
+  "proposalId": "39a3c832-b0e5-4fe2-8040-7cb4247741b9",
+  "actionType": "PAGE_ACTION",
+  "handler": "setLineField",
+  "execution": "CLIENT",
+  "title": "修改明细行",
+  "summaryLines": ["页面: 新建销售订货单", "操作: 修改明细行", "行号: 3 (V50003 V5二开右按钮)", "字段: 数量", "新值: 100",
+                   "只改本页输入，改动处会标黄「AI 填入，请核对」；保存仍由你点保存。"],
+  "risk": "LOW",
+  "riskNote": "MEDIUM/HIGH 时才有",
+  "requiresStepUp": false,
+  "route": "/sales/orders/new",
+  "args": {"row": 3, "field": "数量", "value": "100"},
+  "issuedAt": "2026-10-04T22:29:10Z",
+  "expiresAt": "2026-10-04T22:39:10Z",
+  "status": "PROPOSED",
+  "outcome": "SUCCEEDED(有回执后才有)",
+  "outcomeMessage": "可选"
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `actionType` | PAGE_ACTION(页面登记的动作) / OPEN_GUIDED_FORM(文件识别后打开表单, 8.7) / PERMISSION_GRANT(超管单项授权) |
+| `execution` | CLIENT: 确认后由前端调用页面登记的 handler(与页面按钮同一代码路径); SERVER: 确认即调用对应业务端点, 由服务端执行 |
+| `summaryLines` | **服务端渲染**的卡片正文(1..16 行), 模型文字不会出现在这里; 前端逐行原样显示 |
+| `risk` / `riskNote` | LOW/MEDIUM/HIGH; MEDIUM/HIGH 时卡片显示风险提示 |
+| `requiresStepUp` | 只有 SERVER 动作可能为 true: 确认前弹出「输入登录密码」, 拿到再认证凭证后再调用端点 |
+| `route` | CLIENT 动作所属页面; 前端执行前必须确认当前顶层页面就是它, 否则卡片显示「请回到原页面再确认」 |
+| `args` | 只有 CLIENT 动作有; 仅供展示, **执行一律用确认接口返回的 args** |
+| `status` | 有效状态: PROPOSED(可确认) / CONFIRMED / CANCELLED / EXPIRED / FAILED; 已过 `expiresAt` 或身份变化的 PROPOSED 在读取时直接显示 EXPIRED 或 CANCELLED(outcome=AUTH_CHANGED) |
+| `outcome` | SUCCEEDED / FAILED(执行回执) / AUTH_CHANGED(身份变化作废) |
+
+卡片 UI 要求: 标题、逐行摘要、风险提示、「确认」「取消」按钮、到期倒计时(过期后按钮变灰并提示重新提问)、执行中状态、
+成功/失败回执; 确认按钮防重复点击(`ClickGuard`/`UtenActionButton`); 账号/权限/服务器地址变化时清空会话(沿用 ADR-140)。
+
+### 8.6 确认卡端点
+
+| 端点 | 用途 | 成功 | 失败 |
+| --- | --- | --- | --- |
+| `GET /api/ai/chat/actions/{id}` | 查当前状态(网络结果不明时用它判断, 不要重放确认) | 200 卡片 | 404 不存在或不是本人的 |
+| `POST /api/ai/chat/actions/{id}/confirm` | CLIENT 动作一次性核销 | 200 卡片(`status=CONFIRMED`) + 权威 `args` | 404; 409 + `errorCode`: `AI_ACTION_HANDLED`(已确认/已取消/已过期处理过, 包括并发双击的第二次)、`AI_ACTION_EXPIRED`、`AI_ACTION_AUTH_CHANGED`(账号授权版本、全局授权纪元或部门变化)、`AI_ACTION_SERVER_ONLY`(SERVER 动作走专用端点) |
+| `POST /api/ai/chat/actions/{id}/cancel` | 取消未确认的卡; 重复取消无害 | 200 卡片(`CANCELLED`, 已处理过的返回当前状态) | 404 |
+| `POST /api/ai/chat/actions/{id}/receipt` body `{"outcome":"SUCCEEDED"或"FAILED","message":"≤500 字, 可省略"}` | CLIENT 动作执行回执, 只记一次(相同结果重复提交无害) | 200 卡片(含 outcome) | 404; 409 `AI_ACTION_NOT_CONFIRMED`(没确认或已记过不同结果); 422 |
+| `POST /api/ai/chat/permission-grants/confirm` body `{"proposalId":"uuid"}` + 请求头 `X-Uten-Step-Up` | PERMISSION_GRANT(超管, `ai:use` + `authorization:manage`) | 200 `{"status":"GRANTED"或"ALREADY_GRANTED","reply"}` | 403 REAUTH_REQUIRED(没有/过期的再认证凭证); 404; 409(已用过/过期/身份或授权对象变化; 业务拒绝后该卡记为 FAILED, 不能盲目重试) |
+
+确认需要 `ai:use`(现有聊天权限), 不新增 `ai:act`; 执行时由页面 handler 或业务端点原有的权限、再认证、版本与状态校验决定能不能做成。
+每次提议/确认/取消/回执/作废都写审计日志(`ai_action.propose/confirm/cancel/receipt/void/failed`), 提案行本身保存 10 分钟有效期内的状态,
+清理任务把过期未确认的标为 EXPIRED, 超过任务留存天数的行删除(审计日志永久保留)。
+
+### 8.7 前端执行顺序(CLIENT 动作)
+
+1. 用户点「确认」→ 本地检查: 当前顶层路由 == `route`、`expiresAt` 未到、页面仍登记了 `handler`; 不满足就提示并不调用接口。
+2. `POST .../confirm` → 拿到 200 的 `args`(权威参数); 409/404 按 `errorCode` 显示原因并把卡片置灰。
+3. 用页面登记表里写死的映射找到 handler 执行(与页面按钮同一代码路径)。FORM 动作只改本页输入, 改动处标黄「AI 填入, 请核对」
+   (`setAutomaticText` / `applyAutofillHint` 一类既有机制); SAVE/SUBMIT 动作调用页面自己的保存/提交方法, 服务端校验照旧。
+4. `POST .../receipt`, 成功写 SUCCEEDED, 执行抛错写 FAILED + 一句原因; 回执请求失败不重放确认, 改用 `GET` 核对状态。
+5. SERVER 动作(授权卡): 先走再认证弹窗拿 `X-Uten-Step-Up`, 再调用专用端点; 用户关闭密码弹窗视为没确认。
+
+**文件识别(OPEN_GUIDED_FORM)**: `ERP_DOCUMENT_ROUTE` 任务结果不再意味着「正在打开」, 而是带 `actions`:
+认出用途时 1 张卡(`args = {"workflow": "SALES_ORDER|SALES_QUOTE|EXPENSE_CLAIM", "sourceJobId": "<本识别任务 id>"}`),
+需要用户选择用途时每个可选用途 1 张卡(最多 3 张, 与 `choices` 一一对应), 只分析/文件混杂/多张发票时没有卡。
+前端**不得**识别完自动跳页; 用户确认后才 `confirm` → 打开对应新建页并按 `AiGuidedFilePlan` 填入 → 回执。读取历史时用途权限已撤销的卡会被去掉。
+
+### 8.8 服务端接入点
+
+- **页面类问题一次调用**: 模型同时选路和作答, 输出 `{intent, reply, usedSources, tool, arguments, action}`
+  (`AiChatAnswerContract`, 用途码 `ERP_CHAT_ANSWER`)。服务端发的来源有: 页面快照(不可信段)、已审核页面说明、知识(含 `UI_CONVENTIONS`
+  平台界面约定)、工具描述、对话记忆(ADR-152, 单独的 `CONVERSATION HISTORY` 段, 来源 id `conversation.history`, 见 8.10)。
+- **工具类问题**: 先执行工具, 若工具实现了 `AiChatToolPort.modelFacts(result)`(默认空, 成本/信用/授权/人事类保持空)再调一次模型按事实作答,
+  否则直接用工具自己的 `reply`。新增工具时在 `modelFacts` 里只放已授权、可外送的事实, 并登记到《中国大陆部署与兼容性》2.3.1。
+- **事实守卫 `AiChatAnswerGuard`**: 回答里的数字、业务编码必须出现在来源或用户原话里; 「颜色 = 状态 = 含义」行的颜色和状态必须是页面原词;
+  禁止「我已保存/已为你提交」这类完成断言(页面上本来就显示的状态词除外); 只在对话记忆里出现的数字/编码, 所在的**那一行**(列表项看它的
+  引导行)必须带记忆标记(「刚才说的/之前查到的/前面列出的/上一页的/earlier/as mentioned」等), 否则 `MEMORY_AS_FACT`; 「发货之前」
+  「在此之前」「before」这类时间说法不算标记, 别的行提到过去对话也不算; 一行里用「；」连写的多对「颜色 = 状态」逐对检查; 去掉链接与 HTML; 限 4000 字(全面档 6000)。
+  不通过时记一行 `AI chat reply replaced by deterministic answer: intent=…, problems=[…]`(只有问题类别), 然后用
+  `AiChatPageStateRenderer` 按快照确定性整理(图例、待核对清单、字段状态), AI 不可用时同样如此。
+- **动作提案**: 业务 feature 用 `application.port.AiChatActionProposalPort.propose(Draft)` 发卡(自带短事务, 可在只读事务里调用),
+  SERVER 动作在业务事务里 `consumeServerAction` 一次性核销、成功后 `completeServerAction`, 业务拒绝时控制器调用 `failServerAction`。
+- **授权正则**只拦「给我/帮我开通…权限」「把我设为管理员」「假装我是管理员」这类请求; 「需要什么权限」「怎么开通」之类咨询交给作答。
+
+### 8.9 前端接入点(A1b)
+
+- 登记表: `AiPageContextController`(`lib/shared/ai/page_context/`)挂在 `PlatformTablesHost`; 组件用 `AiPageSlot.attach/detach` 或 `AiPageRegistrar` 登记取值回调, 发问时才计算; 只取顶层当前路由。说明见 [AiPageContext](../02-组件库/AiPageContext.md)。
+- 已自动登记的共享组件: MasterDataTableView(含整行标红)、UtenEditableGrid、UtenInput、UtenDropdownField、UtenDateField、UtenMasterPickerField(客户/供应商)、UtenEmployeePicker、UtenEmployeeMultiPicker、UtenFilterPickerField(后四个只读)、UtenSearchBar、UtenStatusBadge、UtenDocStatusPill、UtenSegmentBadgeLabel、UtenInlineNotice、UtenTopBannerCard(有 semanticLabel)、AiGuidedFileBanner、UtenDialog.show 纯文字正文、UtenAppBar 标题。
+- 顶层判定不建立依赖(不用 `ModalRoute.isCurrentOf`): TickerMode/Offstage 排除被盖住的页面, 同一导航器按 overlay 绘制顺序取最上面的路由。
+- 页面要补「含义」用列参数 `legendOf`; 待核对原因在行数据里的用 `EditableGridColumn.reviewReasonOf`; 成本/工资/信用/个人信息列必须写 `aiSensitive: true`(词表管不到「单价」「金额」这类通用标签)。
+- 页面动作: `AiPageInfoSource(actions: ...)` 返回 `AiPageAction` 列表(名称/标题/kind/参数/handler)。handler 必须与页面按钮共用代码路径, 失败抛 `AiActionFailure(给人看的原因)`; 签名是 `(AiActionCall call)`, 参数在 `call.args`。按行操作的动作: 行参数写 `rowRef: true`, 动作写 `rowTable`(表格的 owner, UtenEditableGrid 即其 controller), handler 用 `call.row('row')` 拿提问时那条记录, 不要按下标取行。
+- 对话框(`AiChatOverlay`): 发送时把 `capture().snapshot` 放进 `pageContext.snapshot`, 把 `capture().binding` 记在这条消息上; 卡片用 `AiChatActionCard`; 确认后由 `AiPageContextController.run(l10n, binding, handler, args)` 执行(同一页面实例、参数再校验、行绑定核对); 网络结果不明只 `GET` 查状态, 不重放确认。在对话设置里关掉「读取当前页面」后, 之前消息存的快照与绑定丢弃, 重试只发问题。
+
+### 8.10 对话设置与连续对话(ADR-152)
+
+- `GET /api/ai/chat/capabilities` 增加 `settings`(下表)与 `reasoningEffortSupported`(当前默认服务商能否调整思考程度)。
+- `PATCH /api/ai/chat/settings`(需要 `ai:use`): body 是含一个或几个字段的对象, 未知字段、错误类型或不在白名单的值整体 422;
+  返回 `{settings, reasoningEffortSupported}`。存放在 `user_preferences` 的功能自管键 `ai.chat.settings`, 通用接口
+  `PUT /api/user/preferences/{key}` 对 `ai.` 开头的键返回 422。
+
+  | 字段 | 取值(默认) |
+  | --- | --- |
+  | `detail` | COMPREHENSIVE / **STANDARD** / CONCISE |
+  | `reasoning` | FAST / **STANDARD** / DEEP(→ `AiReasoningEffort` OFF / MEDIUM / HIGH) |
+  | `pageAware` | **true** / false |
+  | `showSources` | **true** / false(只影响前端显示, 事实守卫照做) |
+  | `memoryTurns` | 0 / 3 / **6** / 10 |
+  | `replyLanguage` | **AUTO** / ZH / EN / KO |
+  | `sendKey` | **ENTER** / CTRL_ENTER(纯前端) |
+  | `explanationStyle` | **PLAIN** / PROFESSIONAL |
+  | `showSuggestions` | **true** / false(纯前端) |
+
+- `GET /api/ai/chat/conversations/current?conversationId=`(可省略, 省略取最近一次): 返回
+  `{conversationId, turns:[{jobId, createdAt, result}], hiddenTurns}`, 最多 20 轮、旧的在前; 每轮的 `result` 与 `GET /api/ai/jobs/{id}`
+  同样经读者过滤(身份戳、域、工具、页面、知识复核, 确认卡按库刷新); 身份或访问不通过的只计入 `hiddenTurns`。只查本人(`submitted_by_user`)。
+  工具回答引用的业务数据已经变化(工具的 `authorizeResultRead` 复核不再认可)不算权限变化: 这一轮只返回问题和 `dataChanged: true`,
+  没有 `reply`/来源/卡片。前端在**第一次打开对话框时**才请求(对话框常驻, 不随每次页面加载请求)。
+- 复核按请求记忆(`AiChatJobHandler.Reader`): 一次恢复或一次组装记忆里, 同一身份戳、域、工具、页面、知识条目、工具证据各只查一次,
+  确认卡按一个身份戳一次查回; 组装记忆时只在 8KB 预算还有空间时才复核下一轮, 不会为发不出去的轮次去重查业务数据。
+- `DELETE /api/ai/chat/conversations`: 把本人全部 `ERP_CHAT` 任务归档(`archive_reason = AI_CHAT_CLEARED_BY_USER`), 返回 `{cleared}`;
+  之后不再恢复、不再带入; 管理员的 AI 使用审计不受影响。
+- 服务端组装记忆(`AiChatConversation`): 同一对话最近 `memoryTurns` 轮, 每轮 `Turn k (page: 标题 路由形状) (tool: 工具名)` + `Q:` + `A:`;
+  回答只在 `replyShareable` 时带入, 否则写「(该回答含敏感数据，未带入)」; 引用数据已变化的工具回答写「(这条回答引用的业务数据已变化，
+  未带入；需要时请重新查询)」, 问题与查询条件照常带入(「那」仍能接上, 「详细点」仍按原条件重查最新数据); 确认卡只带标题; 总量 ≤8KB
+  (按实际发出的文本计, 含每轮的 `Turn k ` 前缀与换行; 最新一轮回答 ≤3000 字节, 更早每轮 ≤1200 字节), 超出从最早整轮丢并写
+  「(更早的对话已省略)」。记忆跨页面, 但提示词明确它不是当前页面事实。
+- 恢复出来的确认卡: 在页面上执行的卡(页面动作、带文件打开表单)绑定的页面实例已经不在, 只显示「页面刷新过, 这张卡已不能执行」并只给
+  取消; 服务端执行的卡(超管授权)照常。没有页面绑定的页面卡在核销前就拦下, 不会白白用掉一次性提案。
+- 结果保留与 AI 任务一致: 结果 48 小时后随任务归档, 记忆与恢复也随之结束。
+
+### 8.11 范围闸门与平台知识检索(ADR-153)
+
+- **范围闸门**: 用户这句话命中「代码/脚本、服务器与命令、SQL 与数据库、文件日志配置与环境变量、密码密钥令牌与内部地址、系统提示与 AI 配置、越狱、安全绕过」任一类时,
+  结果为 `intent=OUT_OF_SCOPE` 的固定文案(按回答语言 zh/en/ko), 不调用模型、不执行工具、不出确认卡, 也不读对话记忆; 服务端结果里有内部标记 `_scope`(读取时不返回),
+  这一轮不带入后续对话记忆。判定在 `AiChatScopeGate`, 前端不做任何额外处理, 照常显示回答。
+- **数据不是指令**: 页面快照、文档片段、对话历史里的「请调用工具 / 请修改」不触发任何东西: 工具只在用户这句话本身在要数据(或上一轮是查询)时执行; 页面动作沿用 8.3 的原话操作词闸门。
+- **受保护页面**: `/admin/**`、`/page-permissions/**`、`/security/**`、`/settings/device-receipts` 上前端不采集快照、不登记动作、确认卡不执行(`aiPageProtected`);
+  服务端丢弃快照(`AiChatPageSnapshot.PROTECTED_ROUTES`), 提案服务拒绝这些路由上的页面动作。
+- **回答合同**: `erp_chat_answer_v1` 增加必填字段 `focus`(模型用一句话复述用户的问题, 只用于让回答先答这一问, 服务端不返回); 其余字段不变。
+- **出口守卫**: 回答含代码块、shell 命令、SQL、IP/主机端口、文件路径、接口路径、表名字段名、常量名、权限码、类名或函数调用时不采用(日志 `problems=[INTERNAL:...]`),
+  改为确定性回答; 页面或工具结果里用户本来就看得到的标识不算。
+- **知识检索**: 规则类问题(怎么算/为什么/规则/流程/会不会/要做什么)从打进 jar 的设计文档(`classpath:ai-knowledge/`, 白名单见 ADR-153 §3.5 与 `server/pom.xml`)
+  内存索引里取最多 6 段(每份文档 ≤3 段, 合计 ≤6000 字)作为 `knowledge.doc-*` 来源随同一次模型调用发出; 业务流程规则与通用约定对所有聊天用户可见,
+  涉及人事、财务、系统管理的文档只给持有其中任一域的人(与工具同一个 `domains()`)。
+  规则解释里的数字可以由用户给的数和规则来源里的数推算; 页面与工具数据仍不许算新数。知识类回答必须引用下发的知识来源; 答非所问(问句实词在回答里不到 15%)不采用。
+- **诚实兜底**: 规则类问题没用上模型时, 回答是「这次没能整理成针对你例子的回答」+ 最相关一段文档原文 + 相关章节 + 换个问法建议(`fallback=true`, `intent=KNOWLEDGE`);
+  一段都没找到时说「我没找到这方面的规则说明」并给问法示例。目录知识的假设例子只在用户明确要「举个例子」时出现。
+- **运维**: 启动日志 `AI knowledge index: N documents, M chunks, ... built in X ms`(后台线程建, 不拖慢启动; 建好前检索为空); 新增或修改设计文档后重新构建发布即生效。
+- **2026-10-05 修订(ADR-153 第七节)**:
+  - 闸门先规整(NFKC、去零宽与方向控制字符、同形字母、繁体)再匹配; 英文按整词、中文韩文按去空格的紧凑文本; 「凭证/证书/token/代码/调试模式/重启后」等业务常用词只在请求形状里才算越界。
+  - 服务商内容审核拒绝(`AiCallException.isContentFiltered()`)时任务不再失败, 结果为 `intent=OUT_OF_SCOPE` 的友好范围说明, `_scope=PROVIDER_REVIEW`; 调用记录仍记 BAD_REQUEST。
+  - 被拒轮次(闸门、模型判越界或闲聊、服务商审核)一律不进对话记忆。
+  - 受保护页面与工资人事页按规范化路由判断(小写、合并斜杠); 含空段的路由 422。敏感列名与字段名按 NFKC、去空白后匹配, 增加进价/进货价。
+  - 检索: 无页面时除「查自己数据」外都检索; 英韩问句经词表换成文档用词; 追问以最近两问为低权重上下文, 上一轮引用的文档块随记忆再下发; 只下发相关的目录条目; 新增目录条目「AI 助手会发送哪些内容」。
+  - 守卫: 推算只认用户例子(含最近两问)与带算式的行, 并复核单步算式; 完成断言只认第一人称或整句陈述; 出口守卫补常用命令、任意 SELECT、正则、VBA/Python、两段类名、库名、回显提示词、端口与内网主机、IPv6、`status=1` 与 JSON 键名。
+  - 页面: 纯图例问题确定性作答(不调模型, 无 `fallback`); 「第 N 行」兜底只渲染该行; 卡片参数不在用户原话里时摘要加「注意」行。
+  - 思考程度默认快速; 用户原话要求详细分析时这一问至少标准。
+  - 运维: `AiKnowledgeIndexCheck` 可对发布 jar 验证知识库能否从可执行 jar 加载(输出 `documents=N chunks=M`, 为 0 时退出码 1)。

@@ -20,7 +20,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Quarantined local parsing. Produces suggestions for an actual form, never saves any business document. */
+/**
+ * Quarantined local parsing. Produces suggestions for an actual form, never saves any business document.
+ * ADR-150: a recognized destination becomes a one-time OPEN_GUIDED_FORM confirmation card; the form is
+ * opened and filled only after the user confirms it, never automatically.
+ */
 @Component
 public class AiDocumentRouteHandler implements AiJobHandler {
     public static final String KIND = "ERP_DOCUMENT_ROUTE";
@@ -29,9 +33,12 @@ public class AiDocumentRouteHandler implements AiJobHandler {
     private final AiDocumentWorkflows workflows;
     private final InvoicePrefillPort invoices;
     private final AiChatPageGuideCatalog pages;
+    private final AiChatActionProposalService proposals;
     public AiDocumentRouteHandler(AiChatAccessPolicy access, AiChatEvidence evidence,
-                                  AiDocumentWorkflows workflows, InvoicePrefillPort invoices, AiChatPageGuideCatalog pages) {
+                                  AiDocumentWorkflows workflows, InvoicePrefillPort invoices, AiChatPageGuideCatalog pages,
+                                  AiChatActionProposalService proposals) {
         this.access = access; this.evidence = evidence; this.workflows = workflows; this.invoices = invoices; this.pages = pages;
+        this.proposals = proposals;
     }
     @Override public String kind() { return KIND; }
     @Override public long maxInputBytes() { return 15L * 1024 * 1024; }
@@ -68,6 +75,8 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         Set<String> permitted = workflows.available().stream().map(value -> value.get("workflow")).collect(java.util.stream.Collectors.toSet());
         if (safe.get("choices") instanceof List<?> choices)
             safe.put("choices", choices.stream().filter(value -> value instanceof Map<?, ?> choice && permitted.contains(choice.get("workflow"))).toList());
+        safe.put("actions", proposals.refreshCards(result.get("actions")).stream()
+                .filter(card -> card.get("args") instanceof Map<?, ?> args && permitted.contains(args.get("workflow"))).toList());
         return safe;
     }
     @Override public Map<String, Object> process(AiJobContext ctx) {
@@ -171,7 +180,8 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         else if (partialExpense && selected.equals("EXPENSE_CLAIM")) summary = "已读到部分信息，请核对后填写报销单。";
         else if (!limitation.isBlank()) summary = limitation;
         else if (selected.equals("NONE")) summary = "暂时没看出文件用途，请选要做的单据。";
-        else summary = "已识别为" + label(classification.type()) + "，正在打开填写页面。";
+        else summary = "已识别为" + label(classification.type()) + "。请在下面的确认卡里确认后，我再打开" + formName(selected)
+                + "并填入识别结果。";
         var result = new LinkedHashMap<String, Object>();
         result.put("documentType", classification.type()); result.put("workflow", selected);
         result.put("title", label(classification.type())); result.put("summary", summary);
@@ -185,6 +195,16 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         result.put("missingFields", workflow.equals("EXPENSE_CLAIM")
                 ? List.of("invoiceNo", "issueDate", "totalAmount").stream().filter(key -> !confidence.containsKey(key)).toList() : List.of());
         result.put("source", Map.of("fileName", ctx.input().fileName(), "sha256", ctx.input().sha256()));
+        evidence.requireStamp(stamp);
+        String pageRoute = ctx.params().getOrDefault("pageRoute", "");
+        List<Map<String, Object>> actions = new ArrayList<>();
+        if (!selected.equals("NONE")) {
+            actions.add(guidedCard(ctx, selected, classification.type(), pageRoute, invoiceFields.size()));
+        } else {
+            for (var choice : choices.stream().limit(3).toList())
+                actions.add(guidedCard(ctx, choice.get("workflow"), classification.type(), pageRoute, invoiceFields.size()));
+        }
+        result.put("actions", List.copyOf(actions));
         result.put("_access", stamp);
         result.put("_routing", routing);
         evidence.requireStamp(stamp);
@@ -193,6 +213,33 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         ctx.progress("READY_TO_FILL", 100);
         return result;
     }
+    /** One-time card: opening the form and filling it happens only after the user confirms. */
+    private Map<String, Object> guidedCard(AiJobContext ctx, String workflow, String type, String pageRoute, int fieldCount) {
+        List<String> lines = new ArrayList<>();
+        lines.add("文件: " + truncate(ctx.input().fileName(), 120));
+        lines.add("识别为: " + label(type));
+        lines.add("将打开: " + formName(workflow));
+        lines.add(workflow.startsWith("SALES_")
+                ? "打开后由页面逐行识别并填入货品，黄框是需要你核对的值。"
+                : fieldCount > 0 ? "会填入识别出的 " + fieldCount + " 项发票信息，黄框是需要你核对的值。"
+                : "会打开空白申请，由你补填内容。");
+        lines.add("保存和提交仍由你在页面上操作。");
+        return proposals.propose(new com.uten.imp.application.port.AiChatActionProposalPort.Draft(
+                com.uten.imp.application.port.AiChatActionProposalPort.OPEN_GUIDED_FORM,
+                com.uten.imp.application.port.AiChatActionProposalPort.OPEN_GUIDED_FORM, "CLIENT",
+                "打开" + formName(workflow) + "并填入识别结果", List.copyOf(lines), "LOW", null, false,
+                pageRoute.isBlank() ? null : pageRoute, "AI_JOB", ctx.jobId().toString(), null,
+                Map.of("workflow", workflow, "sourceJobId", ctx.jobId().toString()), ctx.jobId()));
+    }
+    private static String formName(String workflow) {
+        return switch (workflow) {
+            case "SALES_ORDER" -> "新建销售订货单";
+            case "SALES_QUOTE" -> "新建销售报价单";
+            case "EXPENSE_CLAIM" -> "新建报销申请";
+            default -> "对应的填写页面";
+        };
+    }
+    private static String truncate(String value, int max) { return value.length() <= max ? value : value.substring(0, max); }
     private boolean canExpense() { return workflows.available().stream().anyMatch(value -> value.get("workflow").equals("EXPENSE_CLAIM")); }
     private static boolean credibleInvoiceFields(Map<String, Object> fields) {
         if (!(fields.get("invoiceNo") instanceof String number) || !number.matches("(?:[0-9]{8}|[0-9]{20})")

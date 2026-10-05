@@ -25,7 +25,8 @@ class AiDocumentRouteHandlerTest {
     final InvoicePrefillPort invoices = mock(InvoicePrefillPort.class);
     final AiChatPageGuideCatalog pages = mock(AiChatPageGuideCatalog.class);
     final AiJobHandler.AiJobContext ctx = mock(AiJobHandler.AiJobContext.class);
-    final AiDocumentRouteHandler handler = new AiDocumentRouteHandler(access, evidence, workflows, invoices, pages);
+    final AiChatActionProposalService proposals = mock(AiChatActionProposalService.class);
+    final AiDocumentRouteHandler handler = new AiDocumentRouteHandler(access, evidence, workflows, invoices, pages, proposals);
     final List<Map<String, String>> all = List.of(
             Map.of("workflow", "SALES_ORDER", "title", "订货"), Map.of("workflow", "SALES_QUOTE", "title", "报价"),
             Map.of("workflow", "EXPENSE_CLAIM", "title", "报销"));
@@ -36,6 +37,12 @@ class AiDocumentRouteHandlerTest {
         when(access.contextualDomains()).thenReturn(Set.of());
         when(access.contextualMembershipFingerprint()).thenReturn("actual-department-a");
         when(invoices.fromText(anyList())).thenReturn(Map.of());
+        when(ctx.jobId()).thenReturn(java.util.UUID.randomUUID());
+        when(proposals.propose(any())).thenAnswer(call -> {
+            var draft = (com.uten.imp.application.port.AiChatActionProposalPort.Draft) call.getArgument(0);
+            return Map.of("type", "CONFIRM_ACTION", "proposalId", java.util.UUID.randomUUID().toString(),
+                    "actionType", draft.actionType(), "args", draft.args(), "summaryLines", draft.summaryLines());
+        });
     }
     void file(String name, String text) {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
@@ -67,6 +74,34 @@ class AiDocumentRouteHandlerTest {
         assertThat(handler.process(ctx)).containsEntry("workflow", "NONE").containsEntry("choices", List.of())
                 .containsEntry("fields", Map.of());
         verifyNoInteractions(invoices);
+    }
+    @Test void recognizedFileOffersOneTimeCardsInsteadOfOpeningAForm() {
+        file("报价.csv", "报价单\n品名,数量,单价\n产品A,10,20\n");
+        when(ctx.params()).thenReturn(Map.of("pageRoute", "/sales/orders/new"));
+        var selected = handler.process(ctx);
+        assertThat(selected.get("summary").toString()).contains("确认卡").doesNotContain("正在打开");
+        var cards = (List<?>) selected.get("actions");
+        assertThat(cards).hasSize(1);
+        var draft = org.mockito.ArgumentCaptor.forClass(com.uten.imp.application.port.AiChatActionProposalPort.Draft.class);
+        verify(proposals).propose(draft.capture());
+        assertThat(draft.getValue().actionType()).isEqualTo("OPEN_GUIDED_FORM");
+        assertThat(draft.getValue().execution()).isEqualTo("CLIENT");
+        assertThat(draft.getValue().route()).isEqualTo("/sales/orders/new");
+        assertThat(draft.getValue().args()).containsEntry("workflow", "SALES_ORDER").containsEntry("sourceJobId", ctx.jobId().toString());
+        assertThat(draft.getValue().summaryLines()).contains("文件: 报价.csv", "将打开: 新建销售订货单");
+
+        clearInvocations(proposals);
+        file("unknown.csv", "随便写点什么\n没有业务用途\n");
+        when(ctx.params()).thenReturn(Map.of());
+        var choices = handler.process(ctx);
+        assertThat(choices).containsEntry("workflow", "NONE").containsEntry("needsChoice", true);
+        assertThat((List<?>) choices.get("actions")).hasSize(((List<?>) choices.get("choices")).size()).isNotEmpty();
+
+        clearInvocations(proposals);
+        file("报价.csv", "报价单\n品名,数量,单价\n产品A,10,20\n");
+        when(ctx.params()).thenReturn(Map.of("message", "只识别文件类型"));
+        assertThat(handler.process(ctx)).containsEntry("actions", List.of());
+        verify(proposals, never()).propose(any());
     }
     @Test void mixedBusinessSheetsCannotBeFlattenedIntoOneWorkflow() throws Exception {
         for (String second : List.of("工资表", "合同", "电子发票\n发票号码:12345678\n价税合计:100.00")) {

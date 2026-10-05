@@ -19,6 +19,7 @@ import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../shared/ai/page_context/ai_page_context.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
@@ -88,6 +89,10 @@ class SalesGridRow extends EditableGridRow
     goodsNotifier.addListener(_clearAiReviewIfChanged);
     qty.addListener(_clearAiReviewIfChanged);
     discount.addListener(_clearAiReviewIfChanged);
+    // AI 助手填入的格子(ADR-150)：用户再改这一格即视为已核对，黄框消失。
+    for (final controller in _aiFillableControllers.values) {
+      controller.addListener(_clearAiFilledIfEdited);
+    }
     // 新销售订单默认原价倍率；货品主档折扣或用户输入随后可覆盖。
     if (amountUsesDiscount) discount.text = '1';
   }
@@ -207,12 +212,38 @@ class SalesGridRow extends EditableGridRow
   String? _aiReviewQty;
   String? _aiReviewDiscount;
 
+  /// 黄标原因里属于「货品没对准」的那一段(在原因开头; 核对面板的「确认」只清它)。
+  String? _aiReviewGoodsMatch;
+
+  /// 当前黄标里的货品对应提醒; 只有单位/金额/重复/定价提醒时为 null。
+  String? get aiReviewGoodsMatch =>
+      aiReview == null ? null : _aiReviewGoodsMatch;
+
   /// 标记(或清除)识别黄标：记下当前内容，之后内容一变就自动清除。
-  void markAiReview(String? reason) {
+  /// [goodsMatch] 是 [reason] 开头那段货品对应提醒(没有就不传)。
+  void markAiReview(String? reason, {String? goodsMatch}) {
     aiReviewNotifier.value = reason;
+    _aiReviewGoodsMatch =
+        reason != null && goodsMatch != null && reason.startsWith(goodsMatch)
+        ? goodsMatch
+        : null;
     _aiReviewGoodsId = goods?.id;
     _aiReviewQty = qty.text;
     _aiReviewDiscount = discount.text;
+  }
+
+  /// 用户确认「这一行的货品对得上」(ADR-150 确认卡, 与核对面板的「确认」同口径):
+  /// 只去掉货品对应提醒并记为人工确认(保存时据此学习客户料号); 单位换算、金额对不上、
+  /// 重复货品和定价提醒照样保留, 要核对数量/货品后直接改。没有货品对应提醒时返回 false。
+  bool confirmGoodsMatch() {
+    final reason = aiReview;
+    final match = aiReviewGoodsMatch;
+    if (reason == null || match == null) return false;
+    var rest = reason.substring(match.length).trim();
+    if (rest.startsWith('/')) rest = rest.substring(1).trim();
+    userConfirmed = true;
+    markAiReview(rest.isEmpty ? null : rest);
+    return true;
   }
 
   void _clearAiReviewIfChanged() {
@@ -221,7 +252,47 @@ class SalesGridRow extends EditableGridRow
         qty.text != _aiReviewQty ||
         discount.text != _aiReviewDiscount) {
       aiReviewNotifier.value = null;
+      _aiReviewGoodsMatch = null;
     }
+  }
+
+  /// AI 助手(确认卡确认后)填入、等用户核对的格子：列键 -> 填入时的文本(ADR-150)。
+  /// 对应格子显示黄框「AI 填入，请核对」；用户改动该格后自动去掉。
+  final aiFilledNotifier = ValueNotifier<Map<String, String>>(const {});
+
+  /// AI 可以按行改写的文本格(列键 -> 控制器)。
+  Map<String, TextEditingController> get _aiFillableControllers => {
+    'qty': qty,
+    'price': price,
+    'discount': discount,
+    'remark': remark,
+    'clientModel': clientModel,
+    'clientGoodsName': clientGoodsName,
+  };
+
+  /// 由 AI 写入 [key] 格并标黄。识别黄标(aiReview)保留：AI 改值不算人工核对。
+  void applyAiValue(String key, String value) {
+    final controller = _aiFillableControllers[key];
+    if (controller == null) return;
+    final review = aiReview;
+    final goodsMatch = aiReviewGoodsMatch;
+    controller.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+    if (review != null) markAiReview(review, goodsMatch: goodsMatch);
+    aiFilledNotifier.value = {...aiFilledNotifier.value, key: value};
+  }
+
+  void _clearAiFilledIfEdited() {
+    final filled = aiFilledNotifier.value;
+    if (filled.isEmpty) return;
+    final controllers = _aiFillableControllers;
+    final kept = {
+      for (final entry in filled.entries)
+        if (controllers[entry.key]?.text == entry.value) entry.key: entry.value,
+    };
+    if (kept.length != filled.length) aiFilledNotifier.value = kept;
   }
 
   /// 行级校验红标：保存拦截时置 true（货品/数量/单价缺失的格变红），
@@ -292,7 +363,7 @@ class SalesGridRow extends EditableGridRow
     r.clientModel.text = p.clientModel ?? '';
     r.clientGoodsName.text = p.clientGoodsName ?? '';
     r.remark.text = p.remark ?? '';
-    r.markAiReview(p.reviewReason);
+    r.markAiReview(p.reviewReason, goodsMatch: p.goodsMatchReason);
     return r;
   }
 
@@ -370,6 +441,7 @@ class SalesGridRow extends EditableGridRow
     'userConfirmed': userConfirmed,
     'setNameEn': setNameEn,
     'aiReview': aiReview,
+    'aiReviewGoodsMatch': aiReviewGoodsMatch,
     'prefilledNameEn': prefilledNameEn,
   };
 
@@ -407,7 +479,10 @@ class SalesGridRow extends EditableGridRow
     row.restoreExtraColumns(data['extraColumns']);
     if (row.canEditTotal) row.pricing.restoreState(data['pricing']);
     row.requiresOrderPriceRefresh = data['requiresOrderPriceRefresh'] == true;
-    row.markAiReview(data['aiReview'] as String?);
+    row.markAiReview(
+      data['aiReview'] as String?,
+      goodsMatch: data['aiReviewGoodsMatch'] as String?,
+    );
     return row;
   }
 
@@ -470,6 +545,7 @@ class SalesGridRow extends EditableGridRow
     clientModel.dispose();
     clientGoodsName.dispose();
     aiReviewNotifier.dispose();
+    aiFilledNotifier.dispose();
     invalidNotifier.dispose();
     super.dispose();
   }
@@ -546,6 +622,12 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       required: true,
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
+      // ADR-150：识别结果的待核对原因(含标价/单位等 warnings)进入 AI 页面快照。
+      reviewReasonOf: (r) => r.aiReview == null
+          ? null
+          : priceMasked
+          ? intakeText.salesIntakeStatusReview
+          : r.aiReview,
       // 格尾搜索图标(16)计入自动加宽量宽，不再吃文本宽；识别黄标另占一个状态图标位。
       chromeWidth: hasClientText
           ? UtenEditableGridCellSpec.dropdownChevronWidth +
@@ -646,9 +728,13 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         headerInfo: intakeText.salesIntakeColClientModelInfo,
         textOf: (r) => r.clientModel.text,
         listenableOf: (r) => r.clientModel,
-        cellBuilder: (context, row) => TextField(
-          controller: row.clientModel,
-          decoration: const InputDecoration(isDense: true),
+        cellBuilder: (context, row) => _aiFilledField(
+          row,
+          'clientModel',
+          (decorate) => TextField(
+            controller: row.clientModel,
+            decoration: decorate(const InputDecoration(isDense: true)),
+          ),
         ),
       ),
       EditableGridColumn<SalesGridRow>(
@@ -659,9 +745,13 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         headerInfo: intakeText.salesIntakeColClientGoodsNameInfo,
         textOf: (r) => r.clientGoodsName.text,
         listenableOf: (r) => r.clientGoodsName,
-        cellBuilder: (context, row) => TextField(
-          controller: row.clientGoodsName,
-          decoration: const InputDecoration(isDense: true),
+        cellBuilder: (context, row) => _aiFilledField(
+          row,
+          'clientGoodsName',
+          (decorate) => TextField(
+            controller: row.clientGoodsName,
+            decoration: decorate(const InputDecoration(isDense: true)),
+          ),
         ),
       ),
     ],
@@ -700,12 +790,18 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
-        child: TextField(
-          controller: row.qty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+        child: _aiFilledField(
+          row,
+          'qty',
+          (decorate) => TextField(
+            controller: row.qty,
+            textAlign: TextAlign.right,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: decorate(
+              const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '0'),
+              ),
+            ),
           ),
         ),
       ),
@@ -761,17 +857,23 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                             ? intakeText.salesIntakeQuotePriceHint
                             : null,
                       )
-                    : TextField(
-                        key: ValueKey(
-                          'sales-price-${row.documentItemId ?? row.goods?.id ?? 'new'}',
-                        ),
-                        controller: row.price,
-                        textAlign: TextAlign.right,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: const UtenInputDecoration(
-                          InputDecoration(isDense: true, hintText: '0'),
+                    : _aiFilledField(
+                        row,
+                        'price',
+                        (decorate) => TextField(
+                          key: ValueKey(
+                            'sales-price-${row.documentItemId ?? row.goods?.id ?? 'new'}',
+                          ),
+                          controller: row.price,
+                          textAlign: TextAlign.right,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: decorate(
+                            const UtenInputDecoration(
+                              InputDecoration(isDense: true, hintText: '0'),
+                            ),
+                          ),
                         ),
                       ),
               ),
@@ -820,24 +922,30 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                 ? row.discount.text.trim().isNotEmpty &&
                       !isValidSalesOrderDiscountText(row.discount.text)
                 : !isValidSalesOrderDiscountText(row.discount.text),
-            child: ValueListenableBuilder<String?>(
-              valueListenable: row.aiReviewNotifier,
-              builder: (context, review, _) => TextField(
-                controller: row.discount,
-                textAlign: TextAlign.right,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: applyAutofillHint(
-                  InputDecoration(
-                    isDense: true,
-                    hintText: isQuote
-                        ? intakeText.salesIntakeQuoteDiscountPending
-                        : null,
+            child: _aiFilledField(
+              row,
+              'discount',
+              (decorate) => ValueListenableBuilder<String?>(
+                valueListenable: row.aiReviewNotifier,
+                builder: (context, review, _) => TextField(
+                  controller: row.discount,
+                  textAlign: TextAlign.right,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
-                  Theme.of(context),
-                  autofilled:
-                      review != null && row.discount.text.trim().isEmpty,
+                  decoration: decorate(
+                    applyAutofillHint(
+                      InputDecoration(
+                        isDense: true,
+                        hintText: isQuote
+                            ? intakeText.salesIntakeQuoteDiscountPending
+                            : null,
+                      ),
+                      Theme.of(context),
+                      autofilled:
+                          review != null && row.discount.text.trim().isEmpty,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -998,9 +1106,13 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       width: 160,
       textOf: (r) => r.remark.text,
       listenableOf: (r) => r.remark,
-      cellBuilder: (context, row) => TextField(
-        controller: row.remark,
-        decoration: const InputDecoration(isDense: true),
+      cellBuilder: (context, row) => _aiFilledField(
+        row,
+        'remark',
+        (decorate) => TextField(
+          controller: row.remark,
+          decoration: decorate(const InputDecoration(isDense: true)),
+        ),
       ),
     ),
     ...businessEditableColumns<SalesGridRow>(
@@ -1121,3 +1233,28 @@ Widget _returnDropdown(ValueNotifier<String?> notifier, List<String> options) {
     ),
   );
 }
+
+/// AI 助手填入的格子黄框「AI 填入，请核对」(ADR-150)：[build] 拿到一个装饰函数，
+/// 未被 AI 填入时原样返回传入的装饰(一字不变)。控件结构恒定，黄框出现/消失不重建
+/// 输入框、不丢焦点。
+Widget _aiFilledField(
+  SalesGridRow row,
+  String key,
+  Widget Function(InputDecoration Function(InputDecoration base) decorate)
+  build,
+) => ValueListenableBuilder<Map<String, String>>(
+  valueListenable: row.aiFilledNotifier,
+  builder: (context, filled, _) => build((base) {
+    if (!filled.containsKey(key)) return base;
+    final message = UtenFieldMessage.autofill(
+      aiPageL10n(context).fieldAiFilledReview,
+    );
+    return applyAutofillHint(
+      base is UtenInputDecoration
+          ? base.copyWith(helper: message)
+          : UtenInputDecoration(base.copyWith(helper: message)),
+      Theme.of(context),
+      autofilled: true,
+    );
+  }),
+);

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 提示档位。
 enum UtenInlineNoticeLevel {
@@ -71,52 +72,60 @@ class UtenInlineNotice extends StatelessWidget {
     final dark = theme.brightness == Brightness.dark;
     final accent = level.accent;
     final titleText = title;
-    return Semantics(
-      container: true,
-      liveRegion: level == UtenInlineNoticeLevel.error,
-      label:
-          semanticLabel ??
-          (titleText == null ? message : '$titleText。$message'),
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: accent.withValues(alpha: dark ? 0.18 : 0.10),
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(color: accent.withValues(alpha: 0.45)),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(level.icon, size: 20, color: accent),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (titleText != null && titleText.isNotEmpty) ...[
-                    Text(
-                      titleText,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: level == UtenInlineNoticeLevel.info
-                            ? theme.colorScheme.onSurface
-                            : accent,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s4),
-                  ],
-                  Text(
-                    message,
-                    style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-                  ),
-                ],
-              ),
-            ),
-            if (trailing != null) ...[
+    // ADR-150: an on-page notice is part of what the AI assistant can read.
+    return AiPageRegistrar(
+      source: AiNoticeSource(
+        kind: AiNoticeKind.inline,
+        title: titleText,
+        text: message,
+      ),
+      child: Semantics(
+        container: true,
+        liveRegion: level == UtenInlineNoticeLevel.error,
+        label:
+            semanticLabel ??
+            (titleText == null ? message : '$titleText。$message'),
+        child: Container(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: dark ? 0.18 : 0.10),
+            borderRadius: UtenRadius.mdAll,
+            border: Border.all(color: accent.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(level.icon, size: 20, color: accent),
               const SizedBox(width: UtenSpacing.s8),
-              trailing!,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (titleText != null && titleText.isNotEmpty) ...[
+                      Text(
+                        titleText,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: level == UtenInlineNoticeLevel.info
+                              ? theme.colorScheme.onSurface
+                              : accent,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: UtenSpacing.s4),
+                    ],
+                    Text(
+                      message,
+                      style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: UtenSpacing.s8),
+                trailing!,
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

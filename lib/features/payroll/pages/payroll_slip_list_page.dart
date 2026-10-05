@@ -161,6 +161,7 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     label: '应发合计',
     width: 110,
     type: 'money',
+    aiSensitive: true,
     value: (s) => s.grossIncome.toStringAsFixed(2),
   ),
   MasterColumnDef(
@@ -168,6 +169,7 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     label: '扣除合计',
     width: 110,
     type: 'money',
+    aiSensitive: true,
     value: (s) => s.totalDeduction.toStringAsFixed(2),
   ),
   MasterColumnDef(
@@ -175,6 +177,7 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     label: '实发合计',
     width: 120,
     type: 'money',
+    aiSensitive: true,
     value: (s) => s.netIncome.toStringAsFixed(2),
   ),
   MasterColumnDef(

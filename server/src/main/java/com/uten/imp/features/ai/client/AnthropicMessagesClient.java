@@ -51,6 +51,10 @@ public class AnthropicMessagesClient implements AiProtocolClient {
         }
         JsonNode root = parse(exchange.body());
         AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("content").isArray());
+        // 模型按安全规则拒答(stop_reason=refusal): 内容审核, 不是格式错误。
+        if ("refusal".equals(root.path("stop_reason").asText(""))) {
+            throw AiCallException.contentFiltered(exchange.status());
+        }
         StringBuilder text = new StringBuilder();
         for (JsonNode block : root.path("content")) {
             if ("text".equals(block.path("type").asText()) && block.path("text").isTextual()) {
@@ -106,13 +110,19 @@ public class AnthropicMessagesClient implements AiProtocolClient {
                         .put("data", Base64.getEncoder().encodeToString(image.bytes()));
             }
         }
-        if (runtime.sendTemperature()) {
+        if (runtime.sendTemperature() && AiReasoningParams.allowsTemperature(runtime, request.reasoningEffort())) {
             body.put("temperature", 0);
         }
         if (runtime.jsonMode() == AiJsonMode.JSON_SCHEMA && request.jsonSchema() != null) {
             body.putObject("output_config").putObject("format")
                     .put("type", "json_schema")
                     .set("schema", json.valueToTree(request.jsonSchema()));
+        }
+        String effort = AiReasoningParams.anthropicEffort(runtime, request.reasoningEffort());
+        if (effort != null) {
+            // Thinking depth only through effort: budget_tokens is ignored by GLM and rejected by new Claude models.
+            (body.has("output_config") ? (ObjectNode) body.get("output_config") : body.putObject("output_config"))
+                    .put("effort", effort);
         }
         try {
             return json.writeValueAsBytes(body);

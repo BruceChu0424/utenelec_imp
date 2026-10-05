@@ -17,6 +17,7 @@ import 'uten_employee_picker.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
 import 'uten_search_bar.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 class UtenEmployeeMultiPicker extends StatefulWidget {
   const UtenEmployeeMultiPicker({
@@ -68,10 +69,47 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
   final _fieldKey = GlobalKey<FormFieldState<List<UtenEmployeePickerItem>>>();
   List<UtenEmployeePickerItem> _selection = const [];
 
+  // ADR-150: the chosen people are readable by the AI assistant (names only,
+  // computed on capture); choosing people stays with the user (no setter).
+  final _aiSlot = AiPageSlot();
+
   @override
   void initState() {
     super.initState();
     _selection = List.of(widget.initialSelection);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiSlot.attach(
+      context,
+      widget.label == null ? null : AiFieldSource(capture: _aiField),
+    );
+  }
+
+  @override
+  void dispose() {
+    _aiSlot.detach();
+    super.dispose();
+  }
+
+  AiFieldSnapshot? _aiField(AiCaptureContext ctx) {
+    final label = aiSnapshotLabel(widget.label);
+    if (!mounted || label == null) return null;
+    final requiredEmpty =
+        widget.enabled && widget.required && _selection.isEmpty;
+    return AiFieldSnapshot(
+      label: label,
+      value: _selection.isEmpty
+          ? null
+          : aiSnapshotValue(
+              _selection.map((item) => item.displayName).join('、'),
+            ),
+      state: requiredEmpty ? AiFieldState.requiredEmpty : AiFieldState.normal,
+      required: widget.required,
+      info: aiSnapshotValue(widget.info, AiSnapshotLimits.info),
+    );
   }
 
   @override

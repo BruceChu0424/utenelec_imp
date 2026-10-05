@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../chat/ai_chat_l10n.dart';
+import '../page_context/ai_page_context.dart';
 import 'ai_guided_file_plan.dart';
 
 /// Reports observed work only. Suggested route steps are never painted as done.
@@ -40,6 +41,33 @@ class AiGuidedFileBanner extends ConsumerWidget {
               ? 'documentManualSave'
               : activeStage
         : null;
+    // ADR-150: what the banner says (status, filled fields, next step) is part
+    // of the page the AI assistant reads (a short text, registered as a notice).
+    final notice = [
+      plan.file.name,
+      if (filledFields.isNotEmpty) ...[
+        aiChatText(context, 'guidedFilledFields'),
+        ...filledFields,
+      ],
+      if (detail?.isNotEmpty == true) detail!,
+      if (nextStep != null) aiChatText(context, nextStep),
+    ].join('\n');
+    return AiPageRegistrar(
+      source: AiNoticeSource(
+        kind: AiNoticeKind.banner,
+        title: aiChatText(context, status),
+        text: notice,
+      ),
+      child: _card(context, colors, progressStages, nextStep),
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    ColorScheme colors,
+    Iterable<String> progressStages,
+    String? nextStep,
+  ) {
     return Container(
       key: const ValueKey('ai-guided-file-progress'),
       margin: const EdgeInsets.only(bottom: UtenSpacing.s12),

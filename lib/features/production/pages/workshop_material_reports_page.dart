@@ -893,6 +893,7 @@ class _WorkshopMaterialReportsPageState
             label: '材料金额',
             width: 120,
             type: 'money',
+            aiSensitive: true,
             value: (r) => _money(r.materialAmount),
           ),
           MasterColumnDef(
@@ -900,6 +901,7 @@ class _WorkshopMaterialReportsPageState
             label: '结算时金额',
             width: 120,
             type: 'money',
+            aiSensitive: true,
             value: (r) => _money(r.valueAtClose),
           ),
           MasterColumnDef(
@@ -907,6 +909,7 @@ class _WorkshopMaterialReportsPageState
             label: '单件材料成本',
             width: 120,
             type: 'money',
+            aiSensitive: true,
             value: (r) => _money(r.unitMaterialCost, digits: 4),
           ),
         ],
@@ -1232,6 +1235,8 @@ class _WorkshopMaterialReportsPageState
     width: 110,
     type: 'money',
     info: info,
+    // Material cost (cost permission): never sent to the AI assistant.
+    aiSensitive: true,
     value: (r) => _money(read(r)),
   );
 

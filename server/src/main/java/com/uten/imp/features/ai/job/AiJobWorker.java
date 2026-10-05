@@ -622,9 +622,7 @@ public class AiJobWorker implements AutoCloseable {
             }
             aiCalls = count;
             AiCompletionPort.AiCompletionRequest bound = request.jobId() != null ? request
-                    : new AiCompletionPort.AiCompletionRequest(request.purpose(), request.systemPrompt(),
-                    request.userParts(), request.jsonSchemaName(), request.jsonSchema(), request.maxOutputTokens(),
-                    job.id());
+                    : request.withJobId(job.id());
             // 一次调用可能比租约还长(等名额 + 服务商超时 + 重试一次): 调用期间定时续租, 结束立即再续一次。
             ScheduledFuture<?> heartbeat = keepLeaseDuringCall();
             try {

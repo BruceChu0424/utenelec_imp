@@ -830,6 +830,11 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       label: label,
       width: width,
       type: 'number',
+      aiSensitive: const {
+        'unitPrice',
+        'amount',
+        'unitContribution',
+      }.contains(key),
       info: switch (key) {
         'unitPrice' => _l.costPriceNormalizedHelp,
         'amount' => _l.costEstimateAmountHelp,
@@ -995,6 +1000,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           label: costText(column['name']) ?? '',
           width: 110,
           type: 'money',
+          aiSensitive: true,
           value: (r) => _priceCell(
             r['path'].toString(),
             column['key'].toString(),
@@ -1021,6 +1027,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           label: '${column['name']} · ${_l.costLineAmount}',
           width: 150,
           type: 'money',
+          aiSensitive: true,
           defaultVisible: false,
           value: (r) => costText(costMap(r['extraCosts'])[column['key']]),
           cellBuilder: (_, r) => _oneLine(
@@ -1681,6 +1688,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             label: label,
             width: width,
             numeric: key != 'name',
+            // Fee rates and amounts are costs (the name column is not).
+            aiSensitive: key != 'name' && key != 'quantity',
             exactValueOf: key == 'name' ? null : (r) => r.controller(key).text,
             exactListenableOf: key == 'name' ? null : (r) => r.controller(key),
             cellBuilder: (_, r) => field(r, key),
@@ -1749,6 +1758,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           label: _l.costLineAmount,
           width: 160,
           numeric: true,
+          aiSensitive: true,
           exactValueOf: amount,
           cellBuilder: (_, r) =>
               _oneLine(_stale ? '…' : amount(r), align: TextAlign.right),

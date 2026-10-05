@@ -5,8 +5,9 @@ import java.util.Map;
 /**
  * A bounded chat capability owned by a business feature. The model may suggest arguments, never
  * authority. Implementations recheck current identity, permissions and row scope on every call.
- * Only read operations and operation previews belong here; writes require a separate authenticated
- * confirmation endpoint with the normal business validation, step-up and audit trail.
+ * Only read operations and operation previews belong here; a write is offered as a one-time
+ * confirmation card ({@link AiChatActionProposalPort}) and executed by the normal business endpoint
+ * with its validation, step-up and audit trail (ADR-150).
  */
 public interface AiChatToolPort {
     String name();
@@ -20,12 +21,25 @@ public interface AiChatToolPort {
     /** Opt-in for read-query parameters only. Never retain results, proposals or authorization actions. */
     default boolean rememberQueryArguments() { return false; }
     /**
-     * Returns a short, plain-language {@code reply} with business results (normally at most five
-     * rows), plus optional {@code detailReply} for an explicit request to expand. Keep units,
-     * periods and material uncertainty; do not append access-policy, source-system or audit prose.
-     * Authorization and evidence remain server-side. Neither reply is sent back to the model.
+     * ADR-150 deterministic gate on the user's own words. Page content now reaches the model, so a tool
+     * that prepares a change (a confirmation card) must run only when the user's message itself asks for
+     * that change; the model's choice alone never suffices. Read tools keep the default.
+     */
+    default boolean requestedBy(String userMessage) { return true; }
+    /**
+     * Returns a plain-language {@code reply} with the business result, plus optional {@code detailReply}
+     * for an explicit request to expand. Keep units, periods and material uncertainty. These texts are
+     * the deterministic answer whenever the model does not compose one. Authorization and evidence remain
+     * server-side. Confirmation cards created through {@link AiChatActionProposalPort} go in {@code actions}.
      */
     Map<String, Object> execute(Map<String, Object> arguments);
+    /**
+     * ADR-150 model-safe projection of an {@link #execute} result, sent to the configured AI provider so
+     * it can compose a complete answer. Empty (the default) means nothing from this result leaves the
+     * application and the deterministic reply is shown. Cost, payroll, credit and authorization data
+     * stay empty unless an explicit decision registers them in the outbound-data inventory.
+     */
+    default Map<String, Object> modelFacts(Map<String, Object> result) { return Map.of(); }
     /**
      * Recheck server-owned object evidence before returning a stored answer. Implementations which
      * expose rows must override this: functional permission stamps do not track object reassignment.

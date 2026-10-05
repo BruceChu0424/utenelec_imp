@@ -5270,20 +5270,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsJsonModeSchema => '按结构输出';
 
   @override
-  String get aiSettingsThinking => '关闭深度思考';
+  String get aiSettingsThinking => '思考参数写法';
 
   @override
   String get aiSettingsThinkingInfo =>
-      '识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对';
+      'AI 对话的「思考程度」按这里的写法发给服务商; 识别表格等不需要思考的用途仍会关掉思考。选好服务商会自动选对; 选「不发送」时对话设置里不能调整思考程度。通义千问写法只用来关掉思考(通义的思考只支持流式输出、不能和 JSON 同用); Claude Haiku 4.5 等不认思考参数的模型会自动不发。「测试连接」会按对话默认档实测一次。';
 
   @override
-  String get aiSettingsThinkingNone => '不处理';
+  String get aiSettingsThinkingNone => '不发送';
 
   @override
   String get aiSettingsThinkingDeepseek => 'DeepSeek 写法';
 
   @override
-  String get aiSettingsThinkingDashscope => '通义千问写法';
+  String get aiSettingsThinkingDashscope => '通义千问写法(只关掉思考)';
 
   @override
   String get aiSettingsThinkingOpenAi => 'OpenAI 写法';
@@ -5304,7 +5304,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsMaxTokens => '最大输出长度';
 
   @override
-  String get aiSettingsMaxTokensInfo => '256 ~ 65536; 行数多的文件需要更长';
+  String get aiSettingsMaxTokensInfo =>
+      '256 ~ 65536; 行数多的文件需要更长。这是单次输出(含思考)的上限, 对话选「深入」时不会超过它, 想多留思考空间可以调大';
 
   @override
   String get aiSettingsTimeout => '超时秒数';
@@ -5359,6 +5360,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiSettingsStepJson => 'JSON 输出';
+
+  @override
+  String get aiSettingsStepThinking => '思考程度';
 
   @override
   String get aiSettingsStepSkipped => '未进行';
@@ -7866,7 +7870,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatResetTitle => '开始新对话？';
 
   @override
-  String get aiChatResetHint => '当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。';
+  String get aiChatResetHint =>
+      '开始新对话后, AI 不再关联前面的问答。之前的记录仍会保留, 可以在对话设置里清空。已执行的业务操作不会撤销。';
 
   @override
   String get aiChatCancel => '取消';
@@ -7878,7 +7883,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatWelcome => '今天需要处理什么？';
 
   @override
-  String get aiChatBoundary => '按当前账号权限回答；数据查询与操作由系统逐次校验。';
+  String get aiChatBoundary =>
+      '按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍按你的权限和系统校验。';
 
   @override
   String get aiChatUnavailable => '暂时只能回答部分业务问题。';
@@ -7945,15 +7951,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatPermissionChanged => '当前权限或会话已变化，对话已清除。请刷新后重试。';
 
   @override
-  String get aiChatOpenDraft => '核对并新建订货单';
-
-  @override
-  String get aiChatDraftHint => '请核对客户、货品、数量和价格后保存。';
-
-  @override
-  String get aiChatUnsupported => '此操作暂不支持，请到对应业务页面处理。';
-
-  @override
   String get aiChatEmptyReply => '本次未返回可显示的答复，请重新描述你的问题。';
 
   @override
@@ -7961,15 +7958,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatAssistant => '助手';
-
-  @override
-  String get aiChatDraftUnavailable => '无法打开此草稿，请重新上传文件。';
-
-  @override
-  String get aiChatConfirmPermission => '核对授权内容';
-
-  @override
-  String get aiChatPermissionDone => '授权已完成';
 
   @override
   String get aiChatMoveUp => '向上移动助手';
@@ -7981,43 +7969,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatPageAware => '正在帮助：当前页面';
 
   @override
-  String get aiChatPageOff => '结合当前页面回答';
+  String get aiChatPageOff => '未读取当前页面(可在对话设置里打开)';
 
   @override
-  String get aiChatPageHint => '只使用页面与字段说明，不读取你的表单内容。';
+  String get aiChatPageHint =>
+      '会读取当前页面你能看到的表格和字段, 发给管理员配置的 AI 服务。成本、工资、信用额度和证件号、银行账号、手机号等个人信息只发名称不发数值; 工资、人事和个人资料页面, 以及系统设置、AI 服务、权限、审计、服务器状态等系统管理页面不读取。';
 
   @override
   String get aiChatPageQuestion => '这个页面怎么填写？请举个例子。';
 
   @override
-  String get aiChatGrantDetails => '请核对目标人员、权限和范围，确认后需重新验证密码。';
-
-  @override
-  String get aiChatGrantExpired => '授权建议已过期，请重新发起。';
-
-  @override
-  String get aiChatGrantUnknown => '授权结果暂未确认。请在权限管理页核查，再决定是否重试。';
-
-  @override
   String get aiChatAttachmentQuestion => '请分析这份文件，判断适合办理的业务并辅助填写。';
 
   @override
-  String get aiChatLimit => '本次对话较长，请开始新对话后继续。';
-
-  @override
-  String get aiChatPermissionTarget => '目标人员';
-
-  @override
-  String get aiChatPermissionItem => '授予权限';
-
-  @override
-  String get aiChatPermissionScope => '数据范围';
-
-  @override
-  String get aiChatPermissionExpiry => '有效期至';
-
-  @override
-  String get aiChatPendingGrant => '待你核对确认';
+  String get aiChatLimit => '这个窗口里的对话较长, 请开始新对话后继续。';
 
   @override
   String get aiChatFileReady => '已读取文件，可继续发送问题';
@@ -8026,13 +7991,8 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSendAgain => '再次发送';
 
   @override
-  String get aiChatDraftOpened => '已打开核对页面';
-
-  @override
-  String get aiChatFileMissing => '原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。';
-
-  @override
-  String get aiChatPrivacyNotice => '对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。';
+  String get aiChatPrivacyNotice =>
+      '对话文字、同一对话里最近几轮的问答和当前页面上你能看到的内容, 由管理员配置的 AI 服务处理, 请勿输入密码等敏感信息。回答以页面为准。AI 只解答平台怎么用、业务规则和你有权限看的业务数据, 不处理代码、服务器、命令、数据库或密码。';
 
   @override
   String get aiChatReceived => '已送达，正在等待回复…';
@@ -8482,4 +8442,429 @@ class AppLocalizationsZh extends AppLocalizations {
   String aiAuditProviders(String names) {
     return '服务：$names';
   }
+
+  @override
+  String get aiActionSetField => '填写字段';
+
+  @override
+  String get aiActionParamField => '字段';
+
+  @override
+  String get aiActionParamValue => '新值';
+
+  @override
+  String aiActionFieldMissing(String label) {
+    return '页面上没有「$label」这个可填写的字段';
+  }
+
+  @override
+  String aiActionFieldReadOnly(String label) {
+    return '「$label」现在不能修改';
+  }
+
+  @override
+  String aiActionOptionMissing(String value) {
+    return '没有「$value」这个选项';
+  }
+
+  @override
+  String get aiActionDateInvalid => '日期要写成 2026-10-04 这样的格式';
+
+  @override
+  String get aiActionFilterTable => '筛选表格';
+
+  @override
+  String get aiActionParamColumn => '列';
+
+  @override
+  String get aiActionParamFilterValue => '筛选值(留空=全部)';
+
+  @override
+  String get aiActionSelectRows => '勾选行';
+
+  @override
+  String get aiActionParamRows => '行号(如 1,3,5-8; 0=清空)';
+
+  @override
+  String get aiActionOpenRow => '打开行';
+
+  @override
+  String get aiActionParamRow => '行号';
+
+  @override
+  String aiActionTableSuffix(int index) {
+    return ' (第$index张表)';
+  }
+
+  @override
+  String aiActionRowMissing(int row) {
+    return '没有第$row行';
+  }
+
+  @override
+  String aiActionRowNotOpenable(int row) {
+    return '第$row行不能打开';
+  }
+
+  @override
+  String aiActionRowNotSelectable(int row) {
+    return '第$row行不能勾选';
+  }
+
+  @override
+  String get aiActionRowsInvalid => '行号写法不对, 例如 1,3,5-8';
+
+  @override
+  String aiActionColumnMissing(String column) {
+    return '表格里没有可筛选的「$column」列';
+  }
+
+  @override
+  String aiActionFilterValueMissing(String value) {
+    return '这一列没有「$value」这个值';
+  }
+
+  @override
+  String get fieldAiFilledReview => 'AI 填入, 请核对';
+
+  @override
+  String get salesAiActionSetLine => '修改明细行';
+
+  @override
+  String get salesAiActionConfirmReview => '确认货品对应无误(保存时记住客户料号)';
+
+  @override
+  String get salesAiConfirmReviewRowHint =>
+      '只用于货品对应待核对的行(如颜色没对上、型号不一致); 只是单位换算、金额对不上或重复货品提醒的行要直接改数值';
+
+  @override
+  String get salesAiActionSave => '保存单据';
+
+  @override
+  String salesAiValueInvalid(String field) {
+    return '「$field」的值不对, 请检查后再说一次';
+  }
+
+  @override
+  String salesAiNotReviewLine(int row) {
+    return '第$row行没有待核对的标记';
+  }
+
+  @override
+  String salesAiReviewNeedsEdit(int row) {
+    return '第$row行要核对的是数量、单位、金额或定价, 请核对后直接修改';
+  }
+
+  @override
+  String get salesAiSaveFailed => '没有保存成功, 请看页面上的提示';
+
+  @override
+  String get salesAiPageBusy => '页面正在处理, 请稍后再确认';
+
+  @override
+  String salesAiLineEmpty(int row) {
+    return '第$row行还没有选货品';
+  }
+
+  @override
+  String aiChatAttachSummary(int rows, int fields, int flagged) {
+    return '将附带当前页面: 表格$rows行/字段$fields个/待核对$flagged项';
+  }
+
+  @override
+  String get aiChatAttachRouteOnly => '将附带当前页面的名称(页面上没有可读取的表格或字段)';
+
+  @override
+  String get aiChatAttachWithheld => '这个页面含工资或个人信息, 不读取页面内容, 只发送问题';
+
+  @override
+  String get aiChatAttachProtected =>
+      '系统管理页面(系统设置、AI 服务、权限、审计、服务器状态等)不读取页面内容, AI 也不能在这里代办操作, 只发送问题';
+
+  @override
+  String get aiChatCardProtectedPage => '系统管理页面不能由 AI 代办操作, 请在页面上直接办理';
+
+  @override
+  String aiChatSources(String sources) {
+    return '依据: $sources';
+  }
+
+  @override
+  String get aiChatVerifyOnPage => '以页面为准';
+
+  @override
+  String get aiChatFallback => 'AI 暂时没回上来, 以下按页面内容整理';
+
+  @override
+  String get aiChatCardConfirm => '确认执行';
+
+  @override
+  String aiChatCardExpiresIn(String time) {
+    return '$time 后过期';
+  }
+
+  @override
+  String get aiChatCardExpired => '已过期, 请重新提问';
+
+  @override
+  String get aiChatCardCancelled => '已取消';
+
+  @override
+  String get aiChatCardRunning => '正在执行';
+
+  @override
+  String get aiChatCardSucceeded => '已完成';
+
+  @override
+  String get aiChatCardFailed => '没有完成';
+
+  @override
+  String get aiChatCardAuthChanged => '账号权限有变化, 这张卡已作废, 请重新提问';
+
+  @override
+  String get aiChatCardConfirmed => '已确认, 等待执行结果';
+
+  @override
+  String get aiChatCardWrongPage => '请回到原页面再确认';
+
+  @override
+  String get aiChatCardHandlerMissing => '这个页面现在没有这项操作, 请重新提问';
+
+  @override
+  String get aiChatCardPageChanged => '页面已经换成另一张单据或重新打开过, 这张卡没有执行, 请重新提问';
+
+  @override
+  String get aiChatCardDetached => '页面刷新过, 这张卡已不能执行, 请重新提问';
+
+  @override
+  String aiActionRowChanged(int row) {
+    return '第$row行已经不是提问时那一行了(行被删除、插入、排序或筛选过), 没有执行, 请重新提问';
+  }
+
+  @override
+  String get aiChatCardRisk => '请注意';
+
+  @override
+  String get aiChatCardStepUp => '确认时需要输入登录密码';
+
+  @override
+  String get aiChatCardUnknown => '结果暂未确认, 请先查看结果, 不要重复确认';
+
+  @override
+  String get aiChatCardInvalidArgs => '操作内容与当前页面不一致, 没有执行';
+
+  @override
+  String get aiChatCardCheck => '查看结果';
+
+  @override
+  String get aiChatCardSourceMissing => '原文件已不在这个对话里, 请重新上传';
+
+  @override
+  String get aiAuditPurposePageState => '看懂当前页面';
+
+  @override
+  String get aiAuditPurposeAction => '确认后执行操作';
+
+  @override
+  String get productionReadinessMeaningReady => '物料齐了(或不用领料), 可以开工';
+
+  @override
+  String get productionReadinessMeaningReadyPartial => '部分物料已投, 可以先开工';
+
+  @override
+  String get productionReadinessMeaningToDraw => '物料已备齐, 去领料';
+
+  @override
+  String get productionReadinessMeaningToDrawPartial => '部分物料可领, 去领料';
+
+  @override
+  String get productionReadinessMeaningPending => '已提交领料, 等仓库发料';
+
+  @override
+  String get productionReadinessMeaningWaiting => '缺料, 等到货或物料到齐';
+
+  @override
+  String get productionReadinessMeaningWaitPlanning => '缺料且还没人下单, 等计划下单';
+
+  @override
+  String get productionReadinessMeaningDecide => '要先选生产路线, 其它动作都锁着';
+
+  @override
+  String get aiActionSearch => '搜索';
+
+  @override
+  String get aiActionParamSearch => '搜索词(留空=清除)';
+
+  @override
+  String get salesAiNoGoods => '请先在明细表选择货品';
+
+  @override
+  String get aiChatSettings => '对话设置';
+
+  @override
+  String get aiChatSettingsBack => '返回对话';
+
+  @override
+  String get aiChatSettingsSynced => '设置跟着账号保存, 换设备也一样。改了马上生效。';
+
+  @override
+  String get aiChatSettingsSaving => '正在保存…';
+
+  @override
+  String get aiChatSettingsSaveFailed => '设置没保存成功, 已恢复原来的选择, 请稍后再试。';
+
+  @override
+  String get aiChatSettingsDetail => '回答详略';
+
+  @override
+  String get aiChatSettingsDetailHint => '提问时说「简单点」或「详细点」, 只对那一句按你的话来。';
+
+  @override
+  String get aiChatSettingsDetailComprehensive => '全面';
+
+  @override
+  String get aiChatSettingsDetailStandard => '标准';
+
+  @override
+  String get aiChatSettingsDetailConcise => '精简';
+
+  @override
+  String get aiChatSettingsReasoning => '思考程度';
+
+  @override
+  String get aiChatSettingsReasoningHint =>
+      '默认快速回答; 问题里写「详细分析」时这一次会想得更深。深入更周到但更慢。';
+
+  @override
+  String get aiChatSettingsReasoningFast => '快速';
+
+  @override
+  String get aiChatSettingsReasoningStandard => '标准';
+
+  @override
+  String get aiChatSettingsReasoningDeep => '深入';
+
+  @override
+  String get aiChatSettingsReasoningUnsupported => '当前 AI 服务不支持调整思考程度';
+
+  @override
+  String get aiChatSettingsPageAware => '读取当前页面';
+
+  @override
+  String get aiChatSettingsShowSources => '显示回答依据';
+
+  @override
+  String get aiChatSettingsShowSourcesHint =>
+      '关掉后不显示「依据」那一行; AI 仍按页面和资料核对后再回答。';
+
+  @override
+  String get aiChatSettingsMemory => '连续对话记忆';
+
+  @override
+  String get aiChatSettingsMemoryHint =>
+      'AI 会参考同一对话里最近几轮的问答, 换了页面也接得上; 含敏感数据的回答不会带入。';
+
+  @override
+  String get aiChatSettingsMemoryOff => '关闭';
+
+  @override
+  String aiChatSettingsMemoryTurns(int count) {
+    return '$count 轮';
+  }
+
+  @override
+  String get aiChatSettingsLanguage => '回答语言';
+
+  @override
+  String get aiChatSettingsLanguageAuto => '跟随界面';
+
+  @override
+  String get aiChatSettingsLanguageZh => '中文';
+
+  @override
+  String get aiChatSettingsLanguageEn => 'English';
+
+  @override
+  String get aiChatSettingsLanguageKo => '한국어';
+
+  @override
+  String get aiChatSettingsSendKey => '发送方式';
+
+  @override
+  String get aiChatSettingsSendEnter => 'Enter 发送';
+
+  @override
+  String get aiChatSettingsSendCtrlEnter => 'Ctrl+Enter 发送';
+
+  @override
+  String get aiChatSettingsSendEnterHint => 'Enter 发送, Shift+Enter 换行。';
+
+  @override
+  String get aiChatSettingsSendCtrlEnterHint => 'Ctrl+Enter 发送, Enter 换行。';
+
+  @override
+  String get aiChatSettingsStyle => '表达方式';
+
+  @override
+  String get aiChatSettingsStylePlain => '通俗易懂';
+
+  @override
+  String get aiChatSettingsStyleProfessional => '专业简洁';
+
+  @override
+  String get aiChatSettingsStyleHint => '通俗易懂会顺带解释业务用词, 适合新同事; 专业简洁直接用业务术语。';
+
+  @override
+  String get aiChatSettingsSuggestions => '显示推荐问题';
+
+  @override
+  String get aiChatSettingsSuggestionsHint => '在对话框里显示可以直接点的问题。';
+
+  @override
+  String get aiChatSettingsConfirm => '操作前确认';
+
+  @override
+  String get aiChatSettingsConfirmAlways => '始终开启';
+
+  @override
+  String get aiChatSettingsConfirmHint =>
+      'AI 要做任何操作, 都先给你一张确认卡, 你点确认后才执行; 这一项不能关闭。';
+
+  @override
+  String get aiChatSettingsClear => '清空对话记录';
+
+  @override
+  String get aiChatSettingsClearHint => '清空后, 之前的问答不再显示, 也不再关联到新问题。只影响你自己的账号。';
+
+  @override
+  String get aiChatSettingsClearTitle => '清空全部对话记录?';
+
+  @override
+  String get aiChatSettingsClearBody =>
+      '会清空你账号下全部 AI 对话记录, 清空后不能恢复。已经执行的业务操作不受影响。';
+
+  @override
+  String get aiChatSettingsClearDone => '对话记录已清空';
+
+  @override
+  String get aiChatSettingsClearFailed => '没能清空对话记录, 请稍后再试。';
+
+  @override
+  String aiChatHiddenTurns(int count) {
+    return '有 $count 条较早的对话因账号权限变化, 不再显示。';
+  }
+
+  @override
+  String get aiChatRestored => '以下是你最近的对话, 继续提问会接着聊。';
+
+  @override
+  String get aiChatRestoredDataChanged =>
+      '这条回答引用的业务数据已经变化, 不再显示旧内容; 需要的话请重新问一次。';
+
+  @override
+  String get aiSettingsThinkingZhipu => '智谱 GLM 写法';
+
+  @override
+  String get aiSettingsThinkingAnthropic =>
+      'Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)';
 }

@@ -98,6 +98,7 @@ import '../intake/sales_guided_routing.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import '../../../shared/ai/guided/ai_guided_file_banner.dart';
 import '../../../shared/ai/chat/ai_chat_l10n.dart';
+import '../../../shared/ai/page_context/ai_page_context.dart';
 import '../../../shared/ai/ai_job_repository.dart';
 import '../../../shared/ai/ai_job_models.dart';
 import '../models/sales_doc.dart';
@@ -668,8 +669,170 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
+  // ADR-150: the closed set of actions the AI assistant may propose on this
+  // editor. Every handler is the same code path as the page's own controls;
+  // nothing runs until the user confirms the card.
+  final _aiPage = AiPageSlot();
+
+  /// Successful server saves, so an AI "save" can report what really happened.
+  int _aiSaveCount = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiPage.attach(
+      context,
+      _hasClientPricing ? AiPageInfoSource(actions: _aiActions) : null,
+    );
+  }
+
+  List<AiPageAction> _aiActions(AiCaptureContext ctx) {
+    if (!mounted ||
+        _loading ||
+        _initializationError != null ||
+        (_guidedPlan != null && !_guidedValidated)) {
+      return const [];
+    }
+    final l10n = ctx.l10n;
+    final intake = salesIntakeL10n(context);
+    final rows = _grid.rows;
+    final masked = _priceMasked;
+    // Labels are the grid's column labels, so 「第3行数量」 maps to one field.
+    final fields = <String, String>{
+      '数量': 'qty',
+      if (widget.docType == SalesDocType.quote && !masked) '单价': 'price',
+      if (!masked) '折扣': 'discount',
+      '备注': 'remark',
+      intake.salesIntakeColClientModel: 'clientModel',
+      intake.salesIntakeColClientGoodsName: 'clientGoodsName',
+    };
+    // The record bound when the question was sent (the grid's screen row
+    // then); the controller already checked it is still on that screen row.
+    SalesGridRow line(AiActionCall call) {
+      final record = call.row('row');
+      final no = call.args['row'] as int? ?? 0;
+      if (!mounted || record is! SalesGridRow || !_grid.rows.contains(record)) {
+        throw AiActionFailure(l10n.aiActionRowMissing(no));
+      }
+      return record;
+    }
+
+    return [
+      if (rows.isNotEmpty)
+        AiPageAction(
+          name: 'setLineField',
+          title: l10n.salesAiActionSetLine,
+          kind: AiActionKind.form,
+          rowTable: _grid,
+          params: [
+            AiActionParam(
+              'row',
+              type: AiParamType.integer,
+              title: l10n.aiActionParamRow,
+              minimum: 1,
+              maximum: rows.length,
+              rowRef: true,
+            ),
+            AiActionParam(
+              'field',
+              type: AiParamType.string,
+              title: l10n.aiActionParamField,
+              maxLength: AiSnapshotLimits.label,
+              options: fields.keys.toList(),
+            ),
+            AiActionParam(
+              'value',
+              type: AiParamType.string,
+              title: l10n.aiActionParamValue,
+              maxLength: AiSnapshotLimits.value,
+            ),
+          ],
+          handler: (call) async {
+            if (_saving || _guidedBusy) {
+              throw AiActionFailure(l10n.salesAiPageBusy);
+            }
+            final args = call.args;
+            final row = line(call);
+            final label = args['field']! as String;
+            final key = fields[label];
+            if (key == null) {
+              throw AiActionFailure(l10n.aiActionFieldMissing(label));
+            }
+            final value = (args['value']! as String).trim();
+            final number = double.tryParse(value);
+            final valid = switch (key) {
+              'qty' => number != null && number.isFinite && number > 0,
+              'price' => number != null && number.isFinite && number >= 0,
+              'discount' =>
+                widget.docType == SalesDocType.quote && value.isEmpty ||
+                    isValidSalesOrderDiscountText(value),
+              _ => true,
+            };
+            if (key == 'discount' && row.quoteDiscountLocked) {
+              throw AiActionFailure(l10n.aiActionFieldReadOnly(label));
+            }
+            if (!valid) throw AiActionFailure(l10n.salesAiValueInvalid(label));
+            row.applyAiValue(key, value);
+            return null;
+          },
+        ),
+      // Same as the review panel's "confirm": only a goods-match reminder can be
+      // confirmed (and the customer's part number is learned on save); unit,
+      // amount, duplicate and pricing reminders need the value itself fixed.
+      if (rows.any((row) => row.aiReviewGoodsMatch != null))
+        AiPageAction(
+          name: 'confirmReviewLine',
+          title: l10n.salesAiActionConfirmReview,
+          kind: AiActionKind.form,
+          rowTable: _grid,
+          params: [
+            AiActionParam(
+              'row',
+              type: AiParamType.integer,
+              title: l10n.aiActionParamRow,
+              minimum: 1,
+              maximum: rows.length,
+              rowRef: true,
+              description: l10n.salesAiConfirmReviewRowHint,
+            ),
+          ],
+          handler: (call) async {
+            final row = line(call);
+            final no = call.args['row']! as int;
+            if (row.aiReview == null) {
+              throw AiActionFailure(l10n.salesAiNotReviewLine(no));
+            }
+            if (!row.confirmGoodsMatch()) {
+              throw AiActionFailure(l10n.salesAiReviewNeedsEdit(no));
+            }
+            return null;
+          },
+        ),
+      AiPageAction(
+        name: 'saveDraft',
+        title: l10n.salesAiActionSave,
+        kind: AiActionKind.save,
+        handler: (call) async {
+          if (_saving || _guidedBusy) {
+            throw AiActionFailure(l10n.salesAiPageBusy);
+          }
+          if (!_hasCreatedDocuments && !_hasGoodsRows) {
+            throw AiActionFailure(l10n.salesAiNoGoods);
+          }
+          final before = _aiSaveCount;
+          await _save();
+          if (_aiSaveCount == before) {
+            throw AiActionFailure(l10n.salesAiSaveFailed);
+          }
+          return null;
+        },
+      ),
+    ];
+  }
+
   @override
   void dispose() {
+    _aiPage.detach();
     _grid.removeListener(_onGridRowsChanged);
     _gridPinned.dispose();
     for (final c in _qtyListened) {
@@ -1996,6 +2159,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
+      _aiSaveCount++;
       if (!mounted || !isCurrent()) return;
       if (widget.id == null) {
         setState(() {

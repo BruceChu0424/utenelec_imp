@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -30,13 +31,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /** Real loopback HTTP and both protocol adapters; no credentials, database or outbound provider. */
-class AiChatRouteContractHttpTest {
+class AiChatAnswerContractHttpTest {
     private final ObjectMapper json = new ObjectMapper();
     private final AiProviderService providers = mock(AiProviderService.class);
     private final AiCallLogService logs = mock(AiCallLogService.class);
     private FakeAiProviderServer fake;
     private AiGateway gateway;
-    private AiChatRouteContract contract;
+    private AiChatAnswerContract contract;
 
     @BeforeEach void setUp() {
         fake = FakeAiProviderServer.start();
@@ -46,10 +47,13 @@ class AiChatRouteContractHttpTest {
         when(current.id()).thenReturn(Optional.empty());
         when(logs.captureResetGeneration()).thenReturn(1L);
         gateway = new AiGateway(providers, List.of(new OpenAiChatClient(transport), new AnthropicMessagesClient(transport)), logs, properties, current);
-        contract = AiChatRouteContract.create(List.of(),
-                List.of(new AiChatKnowledge.Entry("SALES_ORDER", "SALES", "销售", "PRIVATE_SALES_REPLY", List.of())),
-                Optional.of(new AiChatPageGuideCatalog.PageGuide("sales_quote", "销售报价单", "SALES", "guide",
-                        List.of(new AiChatPageGuideCatalog.FieldGuide("quantity", "数量", "PRIVATE_FIELD_FACT", "PRIVATE_EXAMPLE")))), false);
+        // Source texts never enter the schema: only issued ids, intents and the page's closed action shapes.
+        contract = AiChatAnswerContract.create(List.of(), List.of("guide.sales_quote", "knowledge.SALES_ORDER", "page.tables"),
+                true, true, true, List.of(new AiChatPageSnapshot.PageAction("setLineField", "改行字段", "FORM", "LOW",
+                        Map.of("type", "object", "additionalProperties", false,
+                                "properties", Map.of("row", Map.of("type", "integer", "title", "行号", "minimum", 1),
+                                        "value", Map.of("type", "string", "title", "新值", "maxLength", 80)),
+                                "required", List.of("row", "value")))));
     }
     @AfterEach void close() { fake.close(); }
 
@@ -123,7 +127,7 @@ class AiChatRouteContractHttpTest {
         when(providers.resolveDefault()).thenReturn(new AiProviderService.Resolution(runtime, runtime.name(), runtime.model(), runtime.supportsVision(), null));
     }
     private AiCompletionPort.AiCompletionRequest request(int limit) {
-        return new AiCompletionPort.AiCompletionRequest("ERP_CHAT_ROUTE", "Select a permitted route. Example JSON: " + contract.exampleJson(),
+        return new AiCompletionPort.AiCompletionRequest("ERP_CHAT_ANSWER", "Answer from the sources. Example JSON: " + contract.exampleJson(),
                 List.of(new AiCompletionPort.AiText("这个页面怎么填写？请举个例子。", true)), contract.schemaName(), contract.schema(), limit, null);
     }
     private void assertNoBusinessReplyWasSent() {

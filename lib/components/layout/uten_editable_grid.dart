@@ -52,6 +52,10 @@ import 'uten_grid_header_filter_cell.dart';
 import 'uten_h_scroll_area.dart';
 import 'uten_sticky_header.dart';
 import 'uten_table_column_kit.dart';
+import '../data_display/uten_color_name.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
+
+part 'uten_editable_grid_ai.dart';
 
 /// 行模型基类。行持有自己的 TextEditingController / ValueNotifier（跨重建存活）。
 /// 删行/清空/替换时由 [UtenEditableGridController] 调 [dispose] 释放，避免泄漏。
@@ -131,12 +135,25 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.fillsCellHeight = false,
     this.cellColor,
     this.cellColorListenableOf,
+    this.legendOf,
+    this.reviewReasonOf,
+    this.aiSensitive = false,
   });
 
   final String key;
   final String label;
   final double width;
   final Widget Function(BuildContext context, T row) cellBuilder;
+
+  /// 状态图例「值 -> 含义」(ADR-150, 可选)：AI 读页面时给本列底色/状态值附上含义。
+  final String? Function(T row)? legendOf;
+
+  /// 本格「黄框待核对」的原因(ADR-150, 可选, 如销售识别的 aiReview 文案)：
+  /// 非空时 AI 读页面把它列入待核对清单(行/列/当前值/原因)。只在发问时读取。
+  final String? Function(T row)? reviewReasonOf;
+
+  /// 敏感数值列(成本/工资/信用额度等)：AI 读页面时只发列名不发值。
+  final bool aiSensitive;
   final bool numeric;
   final bool defaultVisible;
   final Map<String, dynamic>? exportDefinition;
@@ -262,6 +279,20 @@ class RequiredCellFrame extends StatefulWidget {
 
 class _RequiredCellFrameState extends State<RequiredCellFrame> {
   bool _empty = false;
+  UtenTableCellHintRegistration? _hints;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // ADR-150: the enclosing grid cell reports "red frame = required empty"
+    // to the AI assistant; the probe runs only when the page is captured.
+    final hints = UtenTableCellHints.registrationOf(context);
+    if (!identical(hints, _hints)) {
+      _hints?.setRequiredProbe(this, null);
+      _hints = hints;
+      _hints?.setRequiredProbe(this, () => widget.isEmpty());
+    }
+  }
 
   @override
   void initState() {
@@ -289,6 +320,7 @@ class _RequiredCellFrameState extends State<RequiredCellFrame> {
 
   @override
   void dispose() {
+    _hints?.setRequiredProbe(this, null);
     widget.listenable.removeListener(_onChange);
     super.dispose();
   }
@@ -944,6 +976,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
   TableColumnProjectionController? _projection;
   bool _platformRefreshScheduled = false;
   bool _projectionScheduled = false;
+  final _aiSlot = AiPageSlot();
+  final _aiCells = AiCellRegistry();
   List<EditableGridColumn<T>> get _columns {
     if (_platformColumnCache != null &&
         identical(_platformBaseCache, widget.columns)) {
@@ -1584,6 +1618,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _configurePlatform();
+    _aiSlot.attach(context, _aiTableSource);
     // 页面上下滑（最近的祖先 Scrollable）时：先同帧快路径（锚点+pixels 纯算术，
     // 表头零滞后），再 post-frame 全量量位刷新锚点（布局变化对账）。
     final pos = Scrollable.maybeOf(context)?.position;
@@ -2112,6 +2147,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void dispose() {
     _projection?.remove(this);
+    _aiSlot.detach();
     _platform.dispose();
     _pagePos?.removeListener(_onPagePosChanged);
     widget.controller.rowsListenable.removeListener(_onControllerChanged);
@@ -2363,7 +2399,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   Widget build(BuildContext context) => TableColumnProjectionTarget(
     tableKey: _platform.tableKey,
     owner: this,
-    child: _buildProjectedGrid(context),
+    child: AiCellRegistryScope(
+      registry: _aiCells,
+      child: _buildProjectedGrid(context),
+    ),
   );
   Widget _buildProjectedGrid(BuildContext context) {
     _publishProjection();
@@ -3521,6 +3560,18 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     );
   }
 
+  /// ADR-150: lets this cell report its review/error/required state to the
+  /// grid's AI registry (read only when the assistant captures the page).
+  AiCellIdentity? _aiCellOf(
+    BuildContext context,
+    EditableGridColumn<T> column,
+  ) {
+    final registry = AiCellRegistryScope.maybeOf(context);
+    return registry == null
+        ? null
+        : AiCellIdentity(registry: registry, row: row, column: column.label);
+  }
+
   /// 单个数据格：列宽 + 语义底色（cellColor，2026-09-27 用户口径）+ 右竖线 +
   /// 内边距 + 内容。铺色格补上/下边框（口径同 MasterDataTableView：底色不能
   /// 淹没行的横向分隔线），文字黑白自适应；选中行让位给统一高亮、无语义底色。
@@ -3567,6 +3618,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                     : null,
               ),
               child: UtenTableCellHints(
+                aiCell: _aiCellOf(context, column),
                 child: Builder(
                   builder: (cellContext) => UtenStatusCellScope(
                     enabled: utenIsStatusColumn(column.key, column.label),

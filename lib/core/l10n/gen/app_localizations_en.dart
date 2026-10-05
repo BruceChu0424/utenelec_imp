@@ -5543,20 +5543,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsJsonModeSchema => 'Structured (schema)';
 
   @override
-  String get aiSettingsThinking => 'Turn off deep thinking';
+  String get aiSettingsThinking => 'Thinking parameter style';
 
   @override
   String get aiSettingsThinkingInfo =>
-      'Reading tables does not need deep thinking; turning it off is faster and cheaper. Each provider uses a different parameter, and choosing the provider selects the right one';
+      'The chat thinking-depth setting is sent in this provider style; table reading and similar tasks still switch thinking off. Choosing the provider selects the right style; with \"Do not send\" the chat cannot adjust thinking depth. The Qwen style only switches thinking off (Qwen thinking needs streaming output and cannot be combined with JSON); models that reject thinking parameters, such as Claude Haiku 4.5, are never sent them. \"Test connection\" tries the chat default once.';
 
   @override
-  String get aiSettingsThinkingNone => 'Leave as is';
+  String get aiSettingsThinkingNone => 'Do not send';
 
   @override
   String get aiSettingsThinkingDeepseek => 'DeepSeek style';
 
   @override
-  String get aiSettingsThinkingDashscope => 'Qwen style';
+  String get aiSettingsThinkingDashscope => 'Qwen style (thinking off only)';
 
   @override
   String get aiSettingsThinkingOpenAi => 'OpenAI style';
@@ -5580,7 +5580,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiSettingsMaxTokensInfo =>
-      '256 to 65536; files with many lines need more';
+      '256 to 65536; files with many lines need more. This caps one output including thinking; \"Deep\" chat thinking never goes beyond it, so raise it to leave more room';
 
   @override
   String get aiSettingsTimeout => 'Timeout (seconds)';
@@ -5638,6 +5638,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiSettingsStepJson => 'JSON output';
+
+  @override
+  String get aiSettingsStepThinking => 'Thinking depth';
 
   @override
   String get aiSettingsStepSkipped => 'Not run';
@@ -8328,7 +8331,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatResetHint =>
-      'This clears this window’s conversation and unused files. Completed business actions remain in effect.';
+      'A new chat no longer uses earlier questions and answers. Earlier history is kept and can be cleared in chat settings. Completed business actions remain in effect.';
 
   @override
   String get aiChatCancel => 'Cancel';
@@ -8341,7 +8344,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatBoundary =>
-      'Answers follow your account permissions. The system checks access for every query and action.';
+      'Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, with the same permission and validation checks.';
 
   @override
   String get aiChatUnavailable =>
@@ -8414,17 +8417,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your access or session changed. This chat was cleared. Refresh and try again.';
 
   @override
-  String get aiChatOpenDraft => 'Review and create order';
-
-  @override
-  String get aiChatDraftHint =>
-      'Check the customer, items, quantities and prices before saving.';
-
-  @override
-  String get aiChatUnsupported =>
-      'Use the relevant business page to perform this action.';
-
-  @override
   String get aiChatEmptyReply =>
       'No answer was returned. Please rephrase your question.';
 
@@ -8433,16 +8425,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatAssistant => 'Assistant';
-
-  @override
-  String get aiChatDraftUnavailable =>
-      'This draft cannot be opened. Attach the file again.';
-
-  @override
-  String get aiChatConfirmPermission => 'Review authorization';
-
-  @override
-  String get aiChatPermissionDone => 'Authorization completed';
 
   @override
   String get aiChatMoveUp => 'Move assistant up';
@@ -8454,26 +8436,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatPageAware => 'Helping with this page';
 
   @override
-  String get aiChatPageOff => 'Use the current page';
+  String get aiChatPageOff =>
+      'Not reading this page (turn it on in chat settings)';
 
   @override
   String get aiChatPageHint =>
-      'Uses page and field guidance, without reading your form values.';
+      'Reads the tables and fields you can see on this page and sends them to the AI service configured by your administrator. Costs, salaries, credit limits and personal data such as ID numbers, bank accounts and phone numbers are sent by name only, without values; payroll, HR and personal pages and system administration pages (settings, AI service, permissions, audit, server status) are not read.';
 
   @override
   String get aiChatPageQuestion =>
       'How do I fill in this page? Show an example.';
-
-  @override
-  String get aiChatGrantDetails =>
-      'Review the person, permission and scope. Confirmation requires password verification.';
-
-  @override
-  String get aiChatGrantExpired => 'This proposal expired. Request a new one.';
-
-  @override
-  String get aiChatGrantUnknown =>
-      'The result could not be confirmed. Check permission management before retrying.';
 
   @override
   String get aiChatAttachmentQuestion =>
@@ -8481,22 +8453,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatLimit =>
-      'This chat is getting long. Start a new chat to continue.';
-
-  @override
-  String get aiChatPermissionTarget => 'Person';
-
-  @override
-  String get aiChatPermissionItem => 'Permission';
-
-  @override
-  String get aiChatPermissionScope => 'Data scope';
-
-  @override
-  String get aiChatPermissionExpiry => 'Expires';
-
-  @override
-  String get aiChatPendingGrant => 'Awaiting your confirmation';
+      'This chat window is getting long. Start a new chat to continue.';
 
   @override
   String get aiChatFileReady => 'File ready; send your question';
@@ -8505,15 +8462,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiChatSendAgain => 'Send again';
 
   @override
-  String get aiChatDraftOpened => 'Review page opened';
-
-  @override
-  String get aiChatFileMissing =>
-      'Attach the file again before creating the order so its source is preserved.';
-
-  @override
   String get aiChatPrivacyNotice =>
-      'Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information.';
+      'Your messages, the last few questions and answers of this chat and what you can see on this page are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information. Always check answers against the page. The assistant only answers how to use the platform, its business rules and business data you may see; it does not handle code, servers, commands, databases or passwords.';
 
   @override
   String get aiChatReceived => 'Delivered. Waiting for a reply…';
@@ -8998,4 +8948,461 @@ class AppLocalizationsEn extends AppLocalizations {
   String aiAuditProviders(String names) {
     return 'Service: $names';
   }
+
+  @override
+  String get aiActionSetField => 'Fill in a field';
+
+  @override
+  String get aiActionParamField => 'Field';
+
+  @override
+  String get aiActionParamValue => 'New value';
+
+  @override
+  String aiActionFieldMissing(String label) {
+    return 'The field \"$label\" is not on this page';
+  }
+
+  @override
+  String aiActionFieldReadOnly(String label) {
+    return '\"$label\" cannot be changed now';
+  }
+
+  @override
+  String aiActionOptionMissing(String value) {
+    return 'There is no option \"$value\"';
+  }
+
+  @override
+  String get aiActionDateInvalid => 'Write the date like 2026-10-04';
+
+  @override
+  String get aiActionFilterTable => 'Filter the table';
+
+  @override
+  String get aiActionParamColumn => 'Column';
+
+  @override
+  String get aiActionParamFilterValue => 'Filter value (empty = all)';
+
+  @override
+  String get aiActionSelectRows => 'Select rows';
+
+  @override
+  String get aiActionParamRows => 'Rows (e.g. 1,3,5-8; 0 = clear)';
+
+  @override
+  String get aiActionOpenRow => 'Open a row';
+
+  @override
+  String get aiActionParamRow => 'Row';
+
+  @override
+  String aiActionTableSuffix(int index) {
+    return ' (table $index)';
+  }
+
+  @override
+  String aiActionRowMissing(int row) {
+    return 'Row $row does not exist';
+  }
+
+  @override
+  String aiActionRowNotOpenable(int row) {
+    return 'Row $row cannot be opened';
+  }
+
+  @override
+  String aiActionRowNotSelectable(int row) {
+    return 'Row $row cannot be selected';
+  }
+
+  @override
+  String get aiActionRowsInvalid =>
+      'Row numbers are not valid, for example 1,3,5-8';
+
+  @override
+  String aiActionColumnMissing(String column) {
+    return 'The table has no filterable column \"$column\"';
+  }
+
+  @override
+  String aiActionFilterValueMissing(String value) {
+    return 'This column has no value \"$value\"';
+  }
+
+  @override
+  String get fieldAiFilledReview => 'Filled in by AI. Please review.';
+
+  @override
+  String get salesAiActionSetLine => 'Change a line';
+
+  @override
+  String get salesAiActionConfirmReview =>
+      'Confirm goods match (learned on save)';
+
+  @override
+  String get salesAiConfirmReviewRowHint =>
+      'Only rows whose matched goods need checking; unit, amount or duplicate reminders need the value fixed';
+
+  @override
+  String get salesAiActionSave => 'Save the document';
+
+  @override
+  String salesAiValueInvalid(String field) {
+    return 'The value for \"$field\" is not valid';
+  }
+
+  @override
+  String salesAiNotReviewLine(int row) {
+    return 'Row $row has nothing to review';
+  }
+
+  @override
+  String salesAiReviewNeedsEdit(int row) {
+    return 'Row $row needs its quantity, unit, amount or price checked. Fix the value directly.';
+  }
+
+  @override
+  String get salesAiSaveFailed =>
+      'The document was not saved. Check the message on the page.';
+
+  @override
+  String get salesAiPageBusy => 'The page is busy. Confirm again shortly.';
+
+  @override
+  String salesAiLineEmpty(int row) {
+    return 'Row $row has no item yet';
+  }
+
+  @override
+  String aiChatAttachSummary(int rows, int fields, int flagged) {
+    return 'This page will be attached: $rows table rows, $fields fields, $flagged items to review';
+  }
+
+  @override
+  String get aiChatAttachRouteOnly =>
+      'Only the page name will be attached (nothing readable on this page)';
+
+  @override
+  String get aiChatAttachWithheld =>
+      'This page holds payroll or personal data. Its content is not read; only your question is sent.';
+
+  @override
+  String get aiChatAttachProtected =>
+      'System administration page (settings, AI service, permissions, audit, server status): its content is not read and the assistant cannot act here; only your question is sent.';
+
+  @override
+  String get aiChatCardProtectedPage =>
+      'Actions on system administration pages are never done through the assistant. Please do it on the page yourself.';
+
+  @override
+  String aiChatSources(String sources) {
+    return 'Based on: $sources';
+  }
+
+  @override
+  String get aiChatVerifyOnPage => 'Check against the page';
+
+  @override
+  String get aiChatFallback =>
+      'The AI did not answer in time. This summary comes from the page.';
+
+  @override
+  String get aiChatCardConfirm => 'Confirm';
+
+  @override
+  String aiChatCardExpiresIn(String time) {
+    return 'Expires in $time';
+  }
+
+  @override
+  String get aiChatCardExpired => 'Expired. Ask again.';
+
+  @override
+  String get aiChatCardCancelled => 'Cancelled';
+
+  @override
+  String get aiChatCardRunning => 'Running';
+
+  @override
+  String get aiChatCardSucceeded => 'Done';
+
+  @override
+  String get aiChatCardFailed => 'Not completed';
+
+  @override
+  String get aiChatCardAuthChanged =>
+      'Your access changed, so this card was voided. Ask again.';
+
+  @override
+  String get aiChatCardConfirmed => 'Confirmed, waiting for the result';
+
+  @override
+  String get aiChatCardWrongPage => 'Go back to the original page to confirm.';
+
+  @override
+  String get aiChatCardHandlerMissing =>
+      'This page no longer offers this action. Ask again.';
+
+  @override
+  String get aiChatCardPageChanged =>
+      'The page was replaced or reopened since you asked. Nothing was done; ask again.';
+
+  @override
+  String get aiChatCardDetached =>
+      'The page was reloaded, so this card can no longer run. Ask again.';
+
+  @override
+  String aiActionRowChanged(int row) {
+    return 'Row $row is no longer the row you asked about (rows were deleted, added, sorted or filtered). Nothing was done; ask again.';
+  }
+
+  @override
+  String get aiChatCardRisk => 'Please note';
+
+  @override
+  String get aiChatCardStepUp => 'You will be asked for your sign-in password.';
+
+  @override
+  String get aiChatCardUnknown =>
+      'The result is not confirmed yet. Check the result before trying again.';
+
+  @override
+  String get aiChatCardInvalidArgs =>
+      'The details no longer match this page. Nothing was done.';
+
+  @override
+  String get aiChatCardCheck => 'Check result';
+
+  @override
+  String get aiChatCardSourceMissing =>
+      'The original file is no longer in this chat. Upload it again.';
+
+  @override
+  String get aiAuditPurposePageState => 'Understand this page';
+
+  @override
+  String get aiAuditPurposeAction => 'Action after confirmation';
+
+  @override
+  String get productionReadinessMeaningReady =>
+      'Materials ready (or none needed); can start';
+
+  @override
+  String get productionReadinessMeaningReadyPartial =>
+      'Some materials issued; can start now';
+
+  @override
+  String get productionReadinessMeaningToDraw =>
+      'Materials prepared; go draw them';
+
+  @override
+  String get productionReadinessMeaningToDrawPartial =>
+      'Some materials available; draw them';
+
+  @override
+  String get productionReadinessMeaningPending =>
+      'Draw submitted; waiting for the warehouse';
+
+  @override
+  String get productionReadinessMeaningWaiting =>
+      'Short of materials; waiting for arrival';
+
+  @override
+  String get productionReadinessMeaningWaitPlanning =>
+      'Short and not yet ordered; waiting for planning';
+
+  @override
+  String get productionReadinessMeaningDecide =>
+      'Choose a production route first; other actions are locked';
+
+  @override
+  String get aiActionSearch => 'Search';
+
+  @override
+  String get aiActionParamSearch => 'Search text (empty = clear)';
+
+  @override
+  String get salesAiNoGoods => 'Choose items in the line table first';
+
+  @override
+  String get aiChatSettings => 'Chat settings';
+
+  @override
+  String get aiChatSettingsBack => 'Back to chat';
+
+  @override
+  String get aiChatSettingsSynced =>
+      'Settings are saved with your account and apply on every device right away.';
+
+  @override
+  String get aiChatSettingsSaving => 'Saving…';
+
+  @override
+  String get aiChatSettingsSaveFailed =>
+      'The setting was not saved and has been restored. Please try again later.';
+
+  @override
+  String get aiChatSettingsDetail => 'Answer length';
+
+  @override
+  String get aiChatSettingsDetailHint =>
+      'Saying \"keep it short\" or \"in detail\" in a question applies to that question only.';
+
+  @override
+  String get aiChatSettingsDetailComprehensive => 'Detailed';
+
+  @override
+  String get aiChatSettingsDetailStandard => 'Standard';
+
+  @override
+  String get aiChatSettingsDetailConcise => 'Brief';
+
+  @override
+  String get aiChatSettingsReasoning => 'Thinking depth';
+
+  @override
+  String get aiChatSettingsReasoningHint =>
+      'Fast is the default; writing \"analyse in detail\" makes that one answer think deeper. Deep is more thorough but slower.';
+
+  @override
+  String get aiChatSettingsReasoningFast => 'Fast';
+
+  @override
+  String get aiChatSettingsReasoningStandard => 'Standard';
+
+  @override
+  String get aiChatSettingsReasoningDeep => 'Deep';
+
+  @override
+  String get aiChatSettingsReasoningUnsupported =>
+      'The current AI service cannot adjust thinking depth';
+
+  @override
+  String get aiChatSettingsPageAware => 'Read the current page';
+
+  @override
+  String get aiChatSettingsShowSources => 'Show answer sources';
+
+  @override
+  String get aiChatSettingsShowSourcesHint =>
+      'Turning this off hides the sources line; answers are still checked against the page and references.';
+
+  @override
+  String get aiChatSettingsMemory => 'Conversation memory';
+
+  @override
+  String get aiChatSettingsMemoryHint =>
+      'The AI uses the last few questions and answers of this chat, even across pages; answers with sensitive data are not carried over.';
+
+  @override
+  String get aiChatSettingsMemoryOff => 'Off';
+
+  @override
+  String aiChatSettingsMemoryTurns(int count) {
+    return '$count turns';
+  }
+
+  @override
+  String get aiChatSettingsLanguage => 'Answer language';
+
+  @override
+  String get aiChatSettingsLanguageAuto => 'Interface';
+
+  @override
+  String get aiChatSettingsLanguageZh => '中文';
+
+  @override
+  String get aiChatSettingsLanguageEn => 'English';
+
+  @override
+  String get aiChatSettingsLanguageKo => '한국어';
+
+  @override
+  String get aiChatSettingsSendKey => 'Send with';
+
+  @override
+  String get aiChatSettingsSendEnter => 'Enter';
+
+  @override
+  String get aiChatSettingsSendCtrlEnter => 'Ctrl+Enter';
+
+  @override
+  String get aiChatSettingsSendEnterHint =>
+      'Enter sends; Shift+Enter starts a new line.';
+
+  @override
+  String get aiChatSettingsSendCtrlEnterHint =>
+      'Ctrl+Enter sends; Enter starts a new line.';
+
+  @override
+  String get aiChatSettingsStyle => 'Wording';
+
+  @override
+  String get aiChatSettingsStylePlain => 'Plain';
+
+  @override
+  String get aiChatSettingsStyleProfessional => 'Professional';
+
+  @override
+  String get aiChatSettingsStyleHint =>
+      'Plain explains business terms along the way; professional uses business terms directly.';
+
+  @override
+  String get aiChatSettingsSuggestions => 'Show suggested questions';
+
+  @override
+  String get aiChatSettingsSuggestionsHint =>
+      'Shows questions you can tap in the chat.';
+
+  @override
+  String get aiChatSettingsConfirm => 'Confirm before actions';
+
+  @override
+  String get aiChatSettingsConfirmAlways => 'Always on';
+
+  @override
+  String get aiChatSettingsConfirmHint =>
+      'Any action the AI proposes appears as a confirmation card first and runs only after you confirm. This cannot be turned off.';
+
+  @override
+  String get aiChatSettingsClear => 'Clear chat history';
+
+  @override
+  String get aiChatSettingsClearHint =>
+      'Earlier questions and answers will no longer show or be used for new questions. Only your own account is affected.';
+
+  @override
+  String get aiChatSettingsClearTitle => 'Clear all chat history?';
+
+  @override
+  String get aiChatSettingsClearBody =>
+      'All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.';
+
+  @override
+  String get aiChatSettingsClearDone => 'Chat history cleared';
+
+  @override
+  String get aiChatSettingsClearFailed =>
+      'Chat history could not be cleared. Please try again later.';
+
+  @override
+  String aiChatHiddenTurns(int count) {
+    return '$count earlier messages are no longer shown because your account permissions changed.';
+  }
+
+  @override
+  String get aiChatRestored => 'Your recent chat. New questions continue it.';
+
+  @override
+  String get aiChatRestoredDataChanged =>
+      'The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.';
+
+  @override
+  String get aiSettingsThinkingZhipu => 'Zhipu GLM style';
+
+  @override
+  String get aiSettingsThinkingAnthropic =>
+      'Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)';
 }

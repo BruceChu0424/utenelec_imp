@@ -7,47 +7,59 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-class AiChatRouteContractTest {
+class AiChatAnswerContractTest {
     private final ObjectMapper json = new ObjectMapper();
+    private static final Map<String, Object> ROW_VALUE = Map.of("type", "object", "additionalProperties", false,
+            "properties", Map.of("row", Map.of("type", "integer", "title", "行号", "minimum", 1, "maximum", 500),
+                    "value", Map.of("type", "string", "title", "新值", "maxLength", 80)),
+            "required", List.of("row", "value"));
 
-    @Test void onlyCurrentCapabilitiesAndFieldKeysAppearInTheContract() throws Exception {
-        var knowledge = List.of(new AiChatKnowledge.Entry("SALES_GUIDE", "SALES", "销售", "PRIVATE_WORKFLOW_REPLY", List.of()));
-        var page = Optional.of(new AiChatPageGuideCatalog.PageGuide("quote", "报价单", "SALES", "guide",
-                List.of(new AiChatPageGuideCatalog.FieldGuide("quantity", "数量", "PRIVATE_FIELD_INSTRUCTION", "PRIVATE_FIELD_EXAMPLE"))));
-        var contract = AiChatRouteContract.create(List.of(), knowledge, page, false);
+    @Test void onlyIssuedSourceIdsIntentsAndCurrentPageActionsAppearInTheContract() throws Exception {
+        var action = new AiChatPageSnapshot.PageAction("setLineQty", "改数量", "FORM", "LOW", ROW_VALUE);
+        var contract = AiChatAnswerContract.create(List.of(), List.of("page.tables", "page.legend", "knowledge.UI_CONVENTIONS"),
+                true, false, true, List.of(action));
         JsonNode schema = json.valueToTree(contract.schema());
-        assertThat(schema.path("properties").path("intent").path("enum").toString()).contains("PAGE_HELP", "KNOWLEDGE").doesNotContain("TOOL", "SALES_DRAFT");
+        assertThat(schema.path("properties").path("intent").path("enum").toString())
+                .contains("PAGE_STATE", "PAGE_HELP", "KNOWLEDGE", "ACTION").doesNotContain("TOOL", "SALES_DRAFT");
         assertThat(schema.path("properties").path("tool").path("enum").toString()).isEqualTo("[\"\"]");
-        assertThat(schema.path("properties").path("knowledgeId").path("enum").toString()).isEqualTo("[\"\",\"SALES_GUIDE\"]");
-        assertThat(schema.path("properties").path("fieldKey").path("enum").toString()).isEqualTo("[\"\",\"quantity\"]");
-        assertThat(contract.toString()).doesNotContain("PRIVATE_", "query_goods_cost", "prepare_permission_grant");
+        assertThat(schema.path("properties").path("usedSources").path("items").path("enum").toString())
+                .isEqualTo("[\"page.tables\",\"page.legend\",\"knowledge.UI_CONVENTIONS\"]");
+        assertThat(schema.path("properties").path("action").path("properties").path("name").path("enum").toString())
+                .isEqualTo("[\"\",\"setLineQty\"]");
+        assertThat(schema.path("properties").path("action").path("properties").path("args").path("anyOf").size()).isEqualTo(2);
+        assertThat(schema.toString()).doesNotContain("mode", "fieldKey", "knowledgeId");
         assertStrictObjects(schema);
         JsonNode example = json.readTree(contract.exampleJson());
-        assertThat(example.path("intent").asText()).isEqualTo("PAGE_HELP");
-        assertThat(example.size()).isEqualTo(6);
-        assertThat(example.path("mode").asText()).isEqualTo("OVERVIEW");
-        assertThat(schema.path("properties").path("mode").path("enum").toString())
-                .contains("EXAMPLE", "STEPS", "SUMMARY");
-        assertThat(example.path("arguments").isObject()).isTrue();
+        assertThat(example.path("intent").asText()).isEqualTo("PAGE_STATE");
+        // ADR-153: focus (the restated question) comes first.
+        assertThat(example.size()).isEqualTo(7);
+        assertThat(example.has("focus")).isTrue();
+        assertThat(example.path("action").path("args").isObject()).isTrue();
+    }
+
+    @Test void withoutPageOrToolsTheModelCannotChooseThem() {
+        JsonNode schema = json.valueToTree(AiChatAnswerContract.create(List.of(), List.of(), false, false, false, List.of()).schema());
+        assertThat(schema.path("properties").path("intent").path("enum").toString())
+                .doesNotContain("PAGE_STATE", "PAGE_HELP", "TOOL", "ACTION", "KNOWLEDGE").contains("CLARIFY", "UNSUPPORTED");
+        assertThat(schema.path("properties").path("usedSources").path("items").path("enum").toString()).isEqualTo("[\"none\"]");
     }
 
     @Test void eachToolGetsItsOwnClosedArgumentShapeAndNoReturnValueIsRead() {
         AiChatToolPort tool = tool("query_goods_cost", Map.of("type", "object", "additionalProperties", false,
                 "properties", Map.of("goodsKeyword", Map.of("type", "string", "minLength", 1, "maxLength", 100)),
                 "required", List.of("goodsKeyword")));
-        var contract = AiChatRouteContract.create(List.of(tool), List.of(), Optional.empty(), true);
+        var contract = AiChatAnswerContract.create(List.of(tool), List.of("tool.query_goods_cost"), false, false, false, List.of());
         JsonNode schema = json.valueToTree(contract.schema());
         JsonNode variants = schema.path("properties").path("arguments").path("anyOf");
         assertThat(variants.size()).isEqualTo(2);
         assertThat(variants.get(0).path("properties").size()).isZero();
         assertThat(variants.get(1).path("required").get(0).asText()).isEqualTo("goodsKeyword");
         assertThat(variants.get(1).path("properties").path("goodsKeyword").path("maxLength").asInt()).isEqualTo(100);
-        assertThat(schema.path("properties").path("intent").path("enum").toString()).contains("TOOL", "SALES_DRAFT");
+        assertThat(schema.path("properties").path("intent").path("enum").toString()).contains("TOOL");
         assertStrictObjects(schema);
         verify(tool, never()).execute(any());
     }
@@ -56,23 +68,31 @@ class AiChatRouteContractTest {
         AiChatToolPort tool = tool("lookup", Map.of("type", "object", "additionalProperties", false,
                 "properties", Map.of("query", Map.of("type", "string"), "limit", Map.of("type", "integer", "minimum", 1, "maximum", 5)),
                 "required", List.of("query")));
-        JsonNode schema = json.valueToTree(AiChatRouteContract.create(List.of(tool), List.of(), Optional.empty(), false).schema());
+        JsonNode schema = json.valueToTree(AiChatAnswerContract.create(List.of(tool), List.of(), false, false, false, List.of()).schema());
         assertStrictObjects(schema);
         assertThat(schema.path("properties").path("arguments").path("anyOf").size()).isEqualTo(3);
         assertThat(schema.toString()).doesNotContain("\"null\"");
     }
 
-    @Test void openEndedToolSchemasCannotEnterTheRoutingContract() {
+    @Test void openEndedToolSchemasCannotEnterTheContract() {
         AiChatToolPort tool = tool("unsafe", Map.of("type", "object", "properties", Map.of(), "required", List.of(), "additionalProperties", true));
-        assertThatThrownBy(() -> AiChatRouteContract.create(List.of(tool), List.of(), Optional.empty(), false))
+        assertThatThrownBy(() -> AiChatAnswerContract.create(List.of(tool), List.of(), false, false, false, List.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test void missingPropertyTypeFailsAsInvalidSchemaWithoutNullDereference() {
         AiChatToolPort tool = tool("invalid", Map.of("type", "object", "additionalProperties", false,
                 "properties", Map.of("query", Map.of("maxLength", 10)), "required", List.of("query")));
-        assertThatThrownBy(() -> AiChatRouteContract.create(List.of(tool), List.of(), Optional.empty(), false))
+        assertThatThrownBy(() -> AiChatAnswerContract.create(List.of(tool), List.of(), false, false, false, List.of()))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("property type");
+    }
+
+    @Test void toolAnswerContractOnlyCarriesReplyAndItsOwnSource() {
+        JsonNode schema = json.valueToTree(AiChatAnswerContract.toolAnswer(List.of("tool.inventory_lookup")).schema());
+        assertThat(schema.path("required").toString()).isEqualTo("[\"reply\",\"usedSources\"]");
+        assertThat(schema.path("properties").path("usedSources").path("items").path("enum").toString())
+                .isEqualTo("[\"tool.inventory_lookup\"]");
+        assertStrictObjects(schema);
     }
 
     private AiChatToolPort tool(String name, Map<String,Object> schema) {

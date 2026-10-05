@@ -164,28 +164,59 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         assertEquals(415, spoofed.getResponse().getStatus(), body(spoofed));
     }
 
-    @Test void actualNewOrderSourcePassesJsonbGuardAndOtherSourceKindsOwnersUsageAndRevocationFailClosed() throws Exception {
-        Staff owner = newEmployee(adminToken(), "DEPT_SALES"), other = newEmployee(adminToken(), "DEPT_SALES");
-        String token = fresh(owner), stranger = fresh(other);
+    @Test void intakeOriginalIsCapturedAndTheRetiredChatAttachmentPathOpensNothing() throws Exception {
+        Staff owner = newEmployee(adminToken(), "DEPT_SALES");
+        String token = fresh(owner);
         byte[] input = "品名,数量,单价\r\n测试产品A,2,10.00\r\n".getBytes(StandardCharsets.UTF_8);
         String order = upload(token, "SALES_DOCUMENT_INTAKE", "source.csv", input, Map.of("docType", "order"));
         succeeded(token, order);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_input_originals WHERE job_id=?::uuid", Long.class, order)).isEqualTo(1);
+        // ADR-150: the old attachmentJobId field is ignored; no draft action and no proposal can come from it.
         MvcResult accepted = chatAttachment(token, order);
         assertEquals(202, accepted.getResponse().getStatus(), body(accepted));
         JsonNode answer = succeeded(token, json(accepted).path("jobId").asText());
-        assertThat(answer.path("intent").asText()).isEqualTo("SALES_DRAFT");
-        assertThat(answer.path("actions").get(0).path("jobId").asText()).isEqualTo(order);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_input_originals WHERE job_id=?::uuid", Long.class, order)).isEqualTo(1);
-        MvcResult foreign = chatAttachment(stranger, order); assertEquals(404, foreign.getResponse().getStatus(), body(foreign));
-        String quote = upload(token, "SALES_DOCUMENT_INTAKE", "quote.csv", input, Map.of("docType", "quote")); succeeded(token, quote);
-        MvcResult quoteRejected = chatAttachment(token, quote); assertEquals(403, quoteRejected.getResponse().getStatus(), body(quoteRejected));
-        String editing = upload(token, "SALES_DOCUMENT_INTAKE", "edit.csv", input, Map.of("docType", "order", "docId", UUID.randomUUID().toString())); succeeded(token, editing);
-        MvcResult editRejected = chatAttachment(token, editing); assertEquals(403, editRejected.getResponse().getStatus(), body(editRejected));
-        jdbc.update("UPDATE ai_jobs SET used_at=now() WHERE id=?::uuid", order);
-        MvcResult used = chatAttachment(token, order); assertEquals(404, used.getResponse().getStatus(), body(used));
-        revoke(owner, "sales_order:create");
-        MvcResult revoked = chatAttachment(fresh(owner), editing); assertEquals(403, revoked.getResponse().getStatus(), body(revoked));
-        assertThat(body(revoked)).contains("新建订货单"); assertThat(FAKE.requests()).isEmpty();
+        assertThat(answer.path("intent").asText()).isNotEqualTo("SALES_DRAFT");
+        assertThat(answer.path("actions").size()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_chat_action_proposals WHERE actor_user_id=?::uuid",
+                Long.class, owner.userId())).isZero();
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
+    @Test void recognizedFileOnlyOffersOneTimeOpenGuidedFormCardsAndNeverOpensByItself() throws Exception {
+        Staff owner = newEmployee(adminToken(), "DEPT_SALES"), other = newEmployee(adminToken(), "DEPT_SALES");
+        String token = fresh(owner), stranger = fresh(other);
+        long orders = count("sales_orders");
+        byte[] input = csv("报价单", "品名,数量,单价", "产品A,10,20");
+        String id = upload(token, AiDocumentRouteHandler.KIND, "card.csv", input, Map.of("pageRoute", "/sales/orders/new"));
+        JsonNode result = succeeded(token, id);
+        assertThat(result.path("workflow").asText()).isEqualTo("SALES_ORDER");
+        assertThat(result.path("summary").asText()).contains("确认卡").doesNotContain("正在打开");
+        JsonNode card = result.path("actions").get(0);
+        assertThat(result.path("actions").size()).isEqualTo(1);
+        assertThat(card.path("type").asText()).isEqualTo("CONFIRM_ACTION");
+        assertThat(card.path("actionType").asText()).isEqualTo("OPEN_GUIDED_FORM");
+        assertThat(card.path("execution").asText()).isEqualTo("CLIENT");
+        assertThat(card.path("status").asText()).isEqualTo("PROPOSED");
+        assertThat(card.path("route").asText()).isEqualTo("/sales/orders/new");
+        assertThat(card.path("args").path("workflow").asText()).isEqualTo("SALES_ORDER");
+        assertThat(card.path("args").path("sourceJobId").asText()).isEqualTo(id);
+        assertThat(card.path("summaryLines").toString()).contains("card.csv", "新建销售订货单", "保存和提交仍由你");
+        String proposal = card.path("proposalId").asText();
+        assertThat(jdbc.queryForObject("SELECT source_job_id::text FROM ai_chat_action_proposals WHERE id=?::uuid",
+                String.class, proposal)).isEqualTo(id);
+
+        MvcResult foreign = mvc.perform(authed(post("/api/ai/chat/actions/" + proposal + "/confirm"), stranger)).andReturn();
+        assertEquals(404, foreign.getResponse().getStatus(), body(foreign));
+        MvcResult confirmed = mvc.perform(authed(post("/api/ai/chat/actions/" + proposal + "/confirm"), token)).andReturn();
+        assertEquals(200, confirmed.getResponse().getStatus(), body(confirmed));
+        assertThat(json(confirmed).path("args").path("workflow").asText()).isEqualTo("SALES_ORDER");
+        MvcResult replay = mvc.perform(authed(post("/api/ai/chat/actions/" + proposal + "/confirm"), token)).andReturn();
+        assertEquals(409, replay.getResponse().getStatus(), body(replay));
+        assertThat(body(replay)).contains("AI_ACTION_HANDLED");
+        JsonNode reread = succeeded(token, id);
+        assertThat(reread.path("actions").get(0).path("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(count("sales_orders")).isEqualTo(orders);
+        assertThat(FAKE.requests()).isEmpty();
     }
 
     @Test void creditPermissionMigrationIsIndividualOnlySensitiveAndNeverDefaultGranted() {

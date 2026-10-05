@@ -49,6 +49,7 @@ app.*.map.json
 server/target/
 server/dependency-reduced-pom.xml
 server/logs/
+server/logs-*.out
 # Runtime private objects are transferred with paired database backups, never source releases.
 server/data/attachments/
 server/.env

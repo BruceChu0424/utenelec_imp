@@ -415,3 +415,16 @@ return MasterDataTableView<Map<String, dynamic>>(
 - **服务端**：JPA 列表 `TableSort`(排序白名单) + `TableFacets.groupCount`(与列表同一 Specification 分组计数)；原生 SQL 服务用 `NativeFacets` 桶助手 + 谓词共用基座。端点约定：列表加精确值筛选参数 + `GET {base}/facets` 返回该列桶（同权限、同过滤、不含该列自身筛选）。
 - **报表页**：`isSortableReportType` 已含 text（服务端 ReportSort 本就支持全列 key）；单号值筛选由各报表服务的 `FacetSpec` 提供，前端自动渲染。
 - 表头字体区分（可筛列非选中态加粗+主色）、菜单「取消排序」置顶——见上一节，对所有表格生效。
+
+## AI 助手读表格(2026-10-04, ADR-150)
+
+表格挂载时向 [AiPageContext](AiPageContext.md) 登记一个取值回调, **只在用户向 AI 助手发问或确认卡片时计算**, 不参与 build、滚动与重建:
+
+- 可见列(按屏幕顺序, 最多 12 列; 列名 + 列头 `info`)、显示行数(本地筛选/排序后的 `_displayItems`)、勾选数、前 30 行显示文本(`value`), 行号 = 屏幕行号(从 1 起)。
+- **状态图例**: 对每个可见列, 取单元格**最终底色**(`cellColor`, 或状态列按 `utenStatusLabelType` 自动铺的徽章底色), 用 `utenNamedColor` 反查颜色中文名与共享色调, 按「列/值/颜色」聚合计数; 含义来自新增的可选参数 `legendOf: (row) => String?`(没有就不发, 不编)。
+- `aiSensitive: true` 的列(或列名命中敏感词表: 成本/毛利、工资类、信用额度、证件号/银行账号/手机等个人信息)只发列名, 值、列说明、图例都不发。成本报表里「单价」「金额」这类通用列名词表管不到, 页面必须标 `aiSensitive: true`。
+- 整行底色 `rowColor` 反查为红(如财务退回、急单)的行: 样本行带 `flagged`, 并在 `flaggedCells` 记一条 `FLAGGED`(行号 + 前两个非空且**非敏感**列的识别文字, 用户把成本列拖到最前也不会带出), 最多扫描 3000 行。
+- 通用页面动作(AI 只能在确认卡确认后执行, 与表头/行上的点击同一段代码): `filterTable`(按列名 + 桶显示值筛选, 留空清除; 服务端分页表走 `onFilterChanged`, `filterFromRows` 列走本地筛选)、`selectRows`(多选表, 行号写法 `1,3,5-8`, `0` 清空)、`openRow`(调 `onRowTap`, 尊重 `canOpenRow`)。同页多张表时动作名带序号(`filterTable2`)。`selectRows`/`openRow` 的行号绑定到提问时那几行的记录(按 `idOf`, 没有就按记录对象): 排序、筛选、刷新后那一行换了记录就不执行。
+- picker 列表形态(`listItemBuilder`)不登记。
+
+实现集中在 `master_data_table_view_ai.dart`(part 文件), 主文件只多了两个列参数、登记/注销两行和一个 `_aiRebuild`。

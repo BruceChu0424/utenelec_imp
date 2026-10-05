@@ -1,18 +1,21 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_en.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
+import 'package:uten_imp/shared/ai/page_context/ai_page_context.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
@@ -25,18 +28,58 @@ import 'package:uten_imp/shared/ai/guided/ai_guided_file_plan.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
+const _p1 = '39a3c832-b0e5-4fe2-8040-7cb4247741b9';
+const _p2 = '5f0c7a3e-2b1d-4c8e-9a6f-0d1e2f3a4b5c';
+const _docCard = '7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d';
+const _c1 = '0b5c43f4-5ad4-4e5b-9e4f-2f6f3b0f7a11';
+final _en = AppLocalizationsEn();
+
+/// Server-side state of every card the fakes know about (chat + file jobs).
+final _serverCards = <String, Map<String, dynamic>>{};
+
 void main() {
-  test('capabilities fail closed and identifiers cannot supply routes', () {
-    expect(AiChatCapabilities.fromJson({}).canChat, isFalse);
-    expect(AiChatCapabilities.fromJson({'canChat': 'true'}).canChat, isFalse);
-    final action = AiChatAction.fromJson({
-      'type': 'OPEN_SALES_ORDER_DRAFT',
-      'jobId': '../admin?grant=true',
-      'route': '/admin/permissions',
-    });
-    expect(action.jobId, isNull);
-    expect(checkedAiChatId('valid-job-1'), 'valid-job-1');
-  });
+  setUp(_serverCards.clear);
+
+  test(
+    'cards fail closed: unknown types, ids, handlers and routes are dropped',
+    () {
+      expect(AiChatCapabilities.fromJson({}).canChat, isFalse);
+      expect(AiChatCapabilities.fromJson({'canChat': 'true'}).canChat, isFalse);
+      expect(AiChatAction.tryParse(_card()), isNotNull);
+      for (final bad in [
+        {..._card(), 'type': 'OPEN_SALES_ORDER_DRAFT'},
+        {..._card(), 'actionType': 'EXECUTE_SQL'},
+        {..._card(), 'proposalId': '../admin?grant=true'},
+        {..._card(), 'handler': 'drop table'},
+        {..._card(), 'route': 'https://evil.test/admin'},
+        {..._card(), 'route': '/admin?x=1'},
+        {..._card(), 'summaryLines': <String>[]},
+        {..._card(), 'status': 'DONE'},
+        {..._card(), 'execution': 'BROWSER'},
+      ]) {
+        expect(AiChatAction.tryParse(bad), isNull, reason: '$bad');
+      }
+      final reply = AiChatReply.fromJson({
+        'reply': 'ok',
+        'fallback': true,
+        'sources': [
+          {'id': 'page.legend', 'label': 'Current page colours'},
+          {'id': 'x', 'label': ''},
+          'bad',
+        ],
+        'actions': [
+          _card(),
+          {'type': 'CONFIRM_PERMISSION_GRANT'},
+        ],
+      });
+      expect(reply.fallback, isTrue);
+      expect(reply.sources.map((source) => source.label), [
+        'Current page colours',
+      ]);
+      expect(reply.actions.single.proposalId, _p1);
+      expect(checkedAiChatId('valid-job-1'), 'valid-job-1');
+    },
+  );
 
   test('page context strips values and rejects foreign or malformed paths', () {
     expect(
@@ -56,28 +99,782 @@ void main() {
   });
 
   test(
-    'repository sends only supported context and server job references',
+    'repository sends the route with the bounded snapshot and uses UUID card endpoints',
     () async {
       final api = _RecordingApi();
       final repository = DioAiChatRepository(api);
       await repository.send(
         message: 'How do I fill this in?',
-        previousJobId: 'previous-1',
+        conversationId: _c1.toUpperCase(),
         currentRoute: '/sales/orders/new?amount=private',
+        snapshot: const {'version': 1, 'title': 'Order'},
+        locale: 'en',
       );
       expect(api.path, '/ai/chat/messages');
       expect(api.body, {
         'message': 'How do I fill this in?',
-        'previousJobId': 'previous-1',
-        'pageContext': {'route': '/sales/orders/new'},
+        'conversationId': _c1,
+        'locale': 'en',
+        'pageContext': {
+          'route': '/sales/orders/new',
+          'snapshot': {'version': 1, 'title': 'Order'},
+        },
       });
+      // Without a sendable route nothing about the page is sent; unknown
+      // interface languages are not sent either.
+      await repository.send(
+        message: 'Hi',
+        conversationId: _c1,
+        currentRoute: 'https://evil.test',
+        snapshot: const {'title': 'x'},
+        locale: 'fr',
+      );
+      expect(api.body, {'message': 'Hi', 'conversationId': _c1});
       await expectLater(
-        repository.send(message: 'test', previousJobId: '../../other'),
+        repository.send(message: 'test', conversationId: '../../other'),
         throwsFormatException,
       );
-      await repository.confirmPermissionGrant('opaque.signed-token');
+      await expectLater(
+        repository.conversation(conversationId: '../x'),
+        throwsFormatException,
+      );
+      api.cardResult = {
+        ..._card(status: 'CONFIRMED'),
+        'args': {'row': 3},
+      };
+      final confirmed = await repository.confirmAction(_p1.toUpperCase());
+      expect(api.path, '/ai/chat/actions/$_p1/confirm');
+      expect(confirmed.args, {'row': 3});
+      api.cardResult = _card(status: 'CONFIRMED', outcome: 'SUCCEEDED');
+      await repository.actionReceipt(_p1, succeeded: true, message: ' Done ');
+      expect(api.path, '/ai/chat/actions/$_p1/receipt');
+      expect(api.body, {'outcome': 'SUCCEEDED', 'message': 'Done'});
+      api.cardResult = _card(status: 'CANCELLED');
+      await repository.cancelAction(_p1);
+      expect(api.path, '/ai/chat/actions/$_p1/cancel');
+      api.cardResult = _card(id: _p2);
+      await expectLater(repository.actionStatus(_p1), throwsFormatException);
+      await expectLater(
+        repository.confirmAction('../admin'),
+        throwsFormatException,
+      );
+      await repository.confirmPermissionGrant(_p2);
       expect(api.path, '/ai/chat/permission-grants/confirm');
-      expect(api.body, {'proposalId': 'opaque.signed-token'});
+      expect(api.body, {'proposalId': _p2});
+      await expectLater(
+        repository.confirmPermissionGrant('opaque.signed.token'),
+        throwsFormatException,
+      );
+    },
+  );
+
+  testWidgets(
+    'the composer says what will be attached and the message carries the page snapshot',
+    (tester) async {
+      final harness = await _pump(tester, page: const _OrderPage());
+      await _open(tester);
+      expect(
+        find.text(_en.aiChatAttachSummary(0, 2, 0)),
+        findsOneWidget,
+        reason: 'two inputs; the password field is never attached',
+      );
+      await _send(tester, 'Which values must I check?');
+      final sent = harness.repository.messages.single;
+      expect(sent['currentRoute'], '/sales/orders/new');
+      final snapshot = sent['snapshot']! as Map<String, Object?>;
+      final fields = (snapshot['fields']! as List).cast<Map<String, Object?>>();
+      expect(fields.map((field) => field['label']), ['Customer', 'Quantity']);
+      expect(fields.first['state'], 'REQUIRED_EMPTY');
+      expect(snapshot.toString(), isNot(contains('hunter2')));
+      expect(
+        (snapshot['pageActions']! as List).map(
+          (action) => (action as Map)['name'],
+        ),
+        containsAll(['setLineField', 'setField']),
+      );
+      // Page awareness off: neither the route nor the snapshot is sent.
+      await _togglePageAware(tester);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('ai-chat-attach-preview')),
+        findsNothing,
+      );
+      await _send(tester, 'Generic question');
+      expect(harness.repository.messages.last['currentRoute'], isNull);
+      expect(harness.repository.messages.last['snapshot'], isNull);
+    },
+  );
+
+  testWidgets(
+    'a fallback reply shows its basis and that the page is authoritative',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..extraResult = {
+          'fallback': true,
+          'sources': [
+            {'id': 'page.legend', 'label': 'Current page colours'},
+          ],
+        };
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await _send(tester, 'What do the colours mean?');
+      await tester.pumpAndSettle();
+      expect(find.text(_en.aiChatFallback), findsOneWidget);
+      expect(
+        find.text(
+          '${_en.aiChatSources('Current page colours')} · ${_en.aiChatVerifyOnPage}',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'a page action runs only after confirm, with the confirmed arguments, and records one receipt',
+    (tester) async {
+      final executed = <Map<String, Object?>>[];
+      final repository = _FakeChatRepository()
+        ..actions = [_card()]
+        ..confirmArgs = {'row': 3, 'field': 'Quantity', 'value': '100'};
+      await _pump(
+        tester,
+        repository: repository,
+        page: _OrderPage(onSetLine: executed.add),
+      );
+      await _open(tester);
+      await _send(tester, 'Change row 3 quantity to 100');
+      await tester.pumpAndSettle();
+      expect(find.text('Row: 3 (V50003)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-action-countdown-$_p1')),
+        findsOneWidget,
+      );
+      expect(executed, isEmpty, reason: 'nothing runs before confirmation');
+      expect(repository.actionCalls, isEmpty);
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(repository.actionCalls, [
+        'confirm:$_p1',
+        'receipt:$_p1:SUCCEEDED',
+      ]);
+      expect(executed, [
+        {'row': 3, 'field': 'Quantity', 'value': '100'},
+      ]);
+      expect(find.text(_en.aiChatCardSucceeded), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-action-confirm-$_p1')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'a retry after switching page awareness off sends only the question',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..sendFailure = NetworkException();
+      await _pump(tester, repository: repository, page: const _OrderPage());
+      await _open(tester);
+      await _send(tester, 'Which values must I check?');
+      await tester.pumpAndSettle();
+      expect(repository.messages.single['snapshot'], isNotNull);
+      repository.sendFailure = null;
+      await _togglePageAware(tester);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+      await tester.pumpAndSettle();
+      final retried = repository.messages.last;
+      expect(retried['message'], 'Which values must I check?');
+      expect(retried['currentRoute'], isNull);
+      expect(retried['snapshot'], isNull);
+      expect(retried['intentHint'], isNull);
+    },
+  );
+
+  testWidgets('payroll and personal pages attach nothing but the question', (
+    tester,
+  ) async {
+    final harness = await _pump(tester, page: const _OrderPage());
+    harness.container.read(harness.route.notifier).state = '/payroll/review';
+    await tester.pumpAndSettle();
+    await _open(tester);
+    expect(find.text(_en.aiChatAttachWithheld), findsOneWidget);
+    await _send(tester, 'What is on this page?');
+    final sent = harness.repository.messages.single;
+    expect(sent['currentRoute'], '/payroll/review');
+    expect(sent['snapshot'], isNull);
+  });
+
+  testWidgets(
+    'system administration pages attach nothing and run no card (ADR-153)',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..actions = [_card(route: '/admin/ai-settings')];
+      final harness = await _pump(
+        tester,
+        repository: repository,
+        page: const _OrderPage(),
+      );
+      harness.container.read(harness.route.notifier).state =
+          '/admin/ai-settings';
+      await tester.pumpAndSettle();
+      await _open(tester);
+      expect(find.text(_en.aiChatAttachProtected), findsOneWidget);
+      await _send(tester, 'Save this page for me');
+      await tester.pumpAndSettle();
+      final sent = harness.repository.messages.single;
+      expect(sent['currentRoute'], '/admin/ai-settings');
+      expect(sent['snapshot'], isNull);
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(repository.actionCalls, isEmpty);
+      expect(find.text(_en.aiChatCardProtectedPage), findsOneWidget);
+    },
+  );
+
+  testWidgets('a card does not run on another instance of the same page', (
+    tester,
+  ) async {
+    final executed = <Map<String, Object?>>[];
+    final generation = ValueNotifier(0);
+    addTearDown(generation.dispose);
+    final repository = _FakeChatRepository()
+      ..actions = [_card()]
+      ..confirmArgs = {'row': 3, 'field': 'Quantity', 'value': '100'};
+    await _pump(
+      tester,
+      repository: repository,
+      page: ValueListenableBuilder<int>(
+        valueListenable: generation,
+        builder: (_, value, _) =>
+            _OrderPage(key: ValueKey(value), onSetLine: executed.add),
+      ),
+    );
+    await _open(tester);
+    await _send(tester, 'Change row 3 quantity to 100');
+    await tester.pumpAndSettle();
+    // The user saved and opened another new order on the same route.
+    generation.value++;
+    await tester.pumpAndSettle();
+    await _tapCard(tester, 'ai-action-confirm-$_p1');
+    expect(executed, isEmpty);
+    expect(repository.actionCalls, ['confirm:$_p1', 'receipt:$_p1:FAILED']);
+    expect(repository.receiptMessages[_p1], _en.aiChatCardPageChanged);
+  });
+
+  testWidgets('a double click confirms the card exactly once', (tester) async {
+    final gate = Completer<void>();
+    final executed = <Map<String, Object?>>[];
+    final repository = _FakeChatRepository()
+      ..actions = [_card()]
+      ..confirmGate = gate;
+    await _pump(
+      tester,
+      repository: repository,
+      page: _OrderPage(onSetLine: executed.add),
+    );
+    await _open(tester);
+    await _send(tester, 'Change row 3');
+    await tester.pumpAndSettle();
+    final confirm = find.byKey(const ValueKey('ai-action-confirm-$_p1'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey('ai-action-running-$_p1')),
+      findsOneWidget,
+    );
+    expect(confirm, findsNothing);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(
+      repository.actionCalls.where((call) => call.startsWith('confirm')),
+      hasLength(1),
+    );
+    expect(executed, hasLength(1));
+  });
+
+  testWidgets('cancel closes the card without running anything', (
+    tester,
+  ) async {
+    final executed = <Map<String, Object?>>[];
+    final repository = _FakeChatRepository()..actions = [_card()];
+    await _pump(
+      tester,
+      repository: repository,
+      page: _OrderPage(onSetLine: executed.add),
+    );
+    await _open(tester);
+    await _send(tester, 'Change row 3');
+    await tester.pumpAndSettle();
+    await _tapCard(tester, 'ai-action-cancel-$_p1');
+    expect(repository.actionCalls, ['cancel:$_p1']);
+    expect(executed, isEmpty);
+    expect(find.text(_en.aiChatCardCancelled), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-action-confirm-$_p1')), findsNothing);
+  });
+
+  testWidgets('an expired card shows why and offers no buttons', (
+    tester,
+  ) async {
+    final repository = _FakeChatRepository()
+      ..actions = [_card(ttl: const Duration(seconds: -5))];
+    await _pump(tester, repository: repository, page: const _OrderPage());
+    await _open(tester);
+    await _send(tester, 'Change row 3');
+    await tester.pumpAndSettle();
+    expect(find.text(_en.aiChatCardExpired), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai-action-confirm-$_p1')), findsNothing);
+    expect(repository.actionCalls, isEmpty);
+  });
+
+  testWidgets(
+    'a card for another page is refused locally before anything is consumed',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..actions = [_card(route: '/sales/quotes/new')];
+      await _pump(tester, repository: repository, page: const _OrderPage());
+      await _open(tester);
+      await _send(tester, 'Change row 3');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(repository.actionCalls, isEmpty);
+      expect(find.text(_en.aiChatCardWrongPage), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-action-confirm-$_p1')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'a handler failure is reported as a FAILED receipt with its reason',
+    (tester) async {
+      final repository = _FakeChatRepository()..actions = [_card()];
+      await _pump(
+        tester,
+        repository: repository,
+        page: _OrderPage(
+          onSetLine: (_) =>
+              throw const AiActionFailure('Row 3 has no item yet'),
+        ),
+      );
+      await _open(tester);
+      await _send(tester, 'Change row 3');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(repository.actionCalls, ['confirm:$_p1', 'receipt:$_p1:FAILED']);
+      expect(repository.receiptMessages[_p1], 'Row 3 has no item yet');
+      expect(find.text(_en.aiChatCardFailed), findsOneWidget);
+      expect(find.text('Row 3 has no item yet'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'an identity change seen by the server voids the card instead of running it',
+    (tester) async {
+      final executed = <Map<String, Object?>>[];
+      final repository = _FakeChatRepository()
+        ..actions = [_card()]
+        ..confirmFailure = ApiException(
+          'CONFLICT',
+          'Access changed',
+          httpStatus: 409,
+          fieldErrors: const [
+            ApiFieldError(
+              field: 'errorCode',
+              message: 'AI_ACTION_AUTH_CHANGED',
+            ),
+          ],
+        )
+        ..afterConfirmFailure = {
+          'status': 'CANCELLED',
+          'outcome': 'AUTH_CHANGED',
+        };
+      await _pump(
+        tester,
+        repository: repository,
+        page: _OrderPage(onSetLine: executed.add),
+      );
+      await _open(tester);
+      await _send(tester, 'Change row 3');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(repository.actionCalls, ['confirm:$_p1', 'status:$_p1']);
+      expect(executed, isEmpty);
+      expect(find.text(_en.aiChatCardAuthChanged), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'an unknown network result offers a status check and never confirms twice',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..actions = [_card()]
+        ..confirmFailure = NetworkException();
+      await _pump(tester, repository: repository, page: const _OrderPage());
+      await _open(tester);
+      await _send(tester, 'Change row 3');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(find.text(_en.aiChatCardUnknown), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-action-confirm-$_p1')),
+        findsNothing,
+      );
+      _serverCards[_p1] = {..._serverCards[_p1]!, 'status': 'CONFIRMED'};
+      await _tapCard(tester, 'ai-action-check-$_p1');
+      expect(repository.actionCalls, ['confirm:$_p1', 'status:$_p1']);
+      expect(find.text(_en.aiChatCardConfirmed), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'super-admin grant card uses the step-up endpoint once and shows the result',
+    (tester) async {
+      final repository = _FakeChatRepository()..actions = [_grant()];
+      await _pump(
+        tester,
+        repository: repository,
+        initial: _identity(superAdmin: true),
+      );
+      await _open(tester);
+      await _send(tester, 'Grant inventory access to the warehouse employee');
+      await tester.pumpAndSettle();
+      expect(find.text('Person: Warehouse employee'), findsOneWidget);
+      expect(find.text(_en.aiChatCardStepUp), findsOneWidget);
+      expect(find.byKey(const ValueKey('ai-action-risk-$_p2')), findsOneWidget);
+      expect(repository.confirmations, isEmpty);
+      await _tapCard(tester, 'ai-action-confirm-$_p2');
+      expect(repository.confirmations, [_p2]);
+      expect(repository.actionCalls, ['status:$_p2']);
+      expect(find.text('Permission granted'), findsOneWidget);
+      expect(find.text(_en.aiChatCardSucceeded), findsOneWidget);
+    },
+  );
+
+  testWidgets('an identity change discards cards and late replies', (
+    tester,
+  ) async {
+    final repository = _FakeChatRepository()..actions = [_grant()];
+    final harness = await _pump(
+      tester,
+      repository: repository,
+      initial: _identity(superAdmin: true),
+    );
+    await _open(tester);
+    await _send(tester, 'Grant access');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai-action-card-$_p2')), findsOneWidget);
+    harness.container.read(harness.identity.notifier).state = _identity(
+      user: 'bob',
+      superAdmin: true,
+    );
+    await tester.pumpAndSettle();
+    await _open(tester);
+    expect(find.byKey(const ValueKey('ai-action-card-$_p2')), findsNothing);
+    expect(find.textContaining('Warehouse employee'), findsNothing);
+    expect(repository.confirmations, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('unknown or legacy actions never render or navigate', (
+    tester,
+  ) async {
+    final repository = _FakeChatRepository()
+      ..actions = [
+        {
+          'type': 'EXECUTE_SQL',
+          'title': 'Unexpected command',
+          'route': '/admin',
+          'summary': 'Ignored',
+        },
+        {
+          'type': 'OPEN_SALES_ORDER_DRAFT',
+          'title': 'Unsafe draft',
+          'jobId': '../admin',
+        },
+        {'type': 'CONFIRM_PERMISSION_GRANT', 'proposalId': 'opaque.token'},
+      ];
+    await _pump(tester, repository: repository);
+    await _open(tester);
+    await _send(tester, 'Test');
+    await tester.pumpAndSettle();
+    expect(find.text('Unexpected command'), findsNothing);
+    expect(find.text('Unsafe draft'), findsNothing);
+    expect(repository.confirmations, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'file-only invoice uses a neutral request and opens expense only after the card is confirmed',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'invoice.pdf',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'workflow': 'EXPENSE_CLAIM',
+          'documentType': 'INVOICE',
+          'title': 'Prepare expense',
+        };
+      Uri? opened;
+      final harness = await _pump(
+        tester,
+        jobs: jobs,
+        initial: _identity(permissions: 'ai:use\nexpense:apply'),
+        onDraftOpened: (uri, extra) => opened = uri,
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, '');
+      await tester.pumpAndSettle();
+      expect(
+        jobs.requests.single.params['message'],
+        AppLocalizationsEn().aiChatAttachmentQuestion,
+      );
+      expect(
+        opened,
+        isNull,
+        reason: 'recognition never opens a page by itself',
+      );
+      expect(
+        find.byKey(const ValueKey('ai-action-card-$_docCard')),
+        findsOneWidget,
+      );
+      await _tapCard(tester, 'ai-action-confirm-$_docCard');
+      expect(opened?.path, '/expense/new');
+      expect(harness.repository.messages, isEmpty);
+      expect(harness.repository.actionCalls, [
+        'confirm:$_docCard',
+        'receipt:$_docCard:SUCCEEDED',
+      ]);
+      expect(jobs.reads, ['file-job-1']);
+    },
+  );
+
+  testWidgets(
+    'long file instructions are cut for the server and nothing opens automatically',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'quote.csv',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository();
+      var opens = 0;
+      await _pump(tester, jobs: jobs, onDraftOpened: (_, _) => opens++);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(
+        tester,
+        '${List.filled(550, 'x').join()} Analyze only. Do not create anything.',
+      );
+      await tester.pumpAndSettle();
+      expect(
+        jobs.requests.single.params['message']!.length,
+        lessThanOrEqualTo(512),
+      );
+      expect(opens, 0);
+    },
+  );
+
+  for (final page in [
+    (
+      route: '/sales/quotes/new?customer=private#total',
+      enabled: true,
+      expected: '/sales/quotes/new',
+    ),
+    (route: '/sales/orders/new', enabled: false, expected: null),
+    (
+      route: 'https://foreign.invalid/sales/orders/new',
+      enabled: true,
+      expected: null,
+    ),
+    (route: '/${'a' * 240}', enabled: true, expected: null),
+  ]) {
+    testWidgets(
+      'document page context is optional and bounded: ${page.route}',
+      (tester) async {
+        final file = PlatformFile(
+          name: 'quote.csv',
+          size: 4,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        );
+        FilePicker.platform = _Picker(file);
+        addTearDown(() => FilePicker.platform = _Picker(null));
+        final jobs = _FakeJobRepository();
+        AiGuidedFilePlan? opened;
+        final harness = await _pump(
+          tester,
+          jobs: jobs,
+          onDraftOpened: (_, extra) => opened = extra as AiGuidedFilePlan,
+        );
+        harness.container.read(harness.route.notifier).state = page.route;
+        await tester.pump();
+        await _open(tester);
+        if (!page.enabled) {
+          await _togglePageAware(tester);
+          await tester.pump();
+        }
+        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+        await tester.pumpAndSettle();
+        await _send(tester, 'Prepare this document');
+        await tester.pumpAndSettle();
+        expect(jobs.requests.single.params, {
+          'message': 'Prepare this document',
+          'pageRoute': ?page.expected,
+        });
+        expect(opened, isNull);
+        await _tapCard(tester, 'ai-action-confirm-$_docCard');
+        expect(opened?.pageRoute, page.expected);
+      },
+    );
+  }
+
+  for (final scenario in [
+    'unsupported',
+    'revoked',
+    'changed_identity',
+    'retry',
+  ]) {
+    testWidgets(
+      'document route $scenario cannot navigate or write unexpectedly',
+      (tester) async {
+        final file = PlatformFile(
+          name: 'quote.csv',
+          size: 4,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        );
+        FilePicker.platform = _Picker(file);
+        addTearDown(() => FilePicker.platform = _Picker(null));
+        final jobs = _FakeJobRepository();
+        var opens = 0;
+        if (scenario == 'unsupported') {
+          jobs.routeOverride = {
+            'workflow': 'NONE',
+            'needsChoice': true,
+            'choices': <Object>[],
+          };
+        }
+        if (scenario == 'changed_identity') {
+          jobs.pendingRead = Completer<AiJobSnapshot>();
+        }
+        if (scenario == 'retry') jobs.submitFailure = NetworkException();
+        final harness = await _pump(
+          tester,
+          jobs: jobs,
+          onDraftOpened: (_, _) => opens++,
+        );
+        await _open(tester);
+        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+        await tester.pumpAndSettle();
+        await _send(tester, 'Prepare this document');
+        if (scenario == 'changed_identity') {
+          harness.container.read(harness.identity.notifier).state = _identity(
+            user: 'bob',
+          );
+          await tester.pump();
+          jobs.pendingRead!.complete(jobs.routed!);
+        }
+        await tester.pumpAndSettle();
+        if (scenario == 'unsupported') {
+          expect(
+            find.byKey(const ValueKey('ai-action-card-$_docCard')),
+            findsNothing,
+          );
+        }
+        if (scenario == 'revoked') {
+          // The source job read is refused at confirmation: the card records
+          // a failed receipt and no page opens.
+          jobs.readFailure = ApiException(
+            'FORBIDDEN',
+            'Access changed',
+            httpStatus: 403,
+          );
+          await _tapCard(tester, 'ai-action-confirm-$_docCard');
+          expect(
+            harness.repository.actionCalls.last,
+            'receipt:$_docCard:FAILED',
+          );
+          expect(find.text('Access changed'), findsWidgets);
+        }
+        expect(opens, 0);
+        expect(harness.repository.messages, isEmpty);
+        if (scenario == 'retry') {
+          jobs.submitFailure = null;
+          harness.container.read(harness.route.notifier).state =
+              '/sales/quotes/new';
+          await tester.pump();
+          await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
+          await tester.pumpAndSettle();
+          expect(opens, 0);
+          expect(jobs.requests, hasLength(2));
+          expect(jobs.requests.first.bytes, jobs.requests.last.bytes);
+          expect(jobs.requests.last.params, jobs.requests.first.params);
+          expect(jobs.requests.last.params['pageRoute'], '/sales/orders/new');
+          await _tapCard(tester, 'ai-action-confirm-$_docCard');
+          expect(opens, 1);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'file first routes as a document and opens a typed unsaved order only after confirmation',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'quotation.xlsx',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository();
+      Object? handedFile;
+      Uri? destination;
+      final harness = await _pump(
+        tester,
+        jobs: jobs,
+        onDraftOpened: (uri, extra) {
+          destination = uri;
+          handedFile = extra;
+        },
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      expect(find.text('quotation.xlsx'), findsOneWidget);
+      await _send(tester, 'Prepare an order');
+      expect(jobs.requests, hasLength(1));
+      expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
+      expect(jobs.requests.single.params, {
+        'message': 'Prepare an order',
+        'pageRoute': '/sales/orders/new',
+      });
+      expect(jobs.requests.single.bytes, file.bytes);
+      await tester.pumpAndSettle();
+      expect(harness.repository.messages, isEmpty);
+      expect(destination, isNull);
+      expect(find.text('Open: New sales order'), findsOneWidget);
+      await _tapCard(tester, 'ai-action-confirm-$_docCard');
+      expect(destination?.path, '/sales/orders/new');
+      expect(destination?.queryParameters, isEmpty);
+      final plan = handedFile as AiGuidedFilePlan;
+      expect(plan.file.bytes, file.bytes);
+      expect(plan.file.name, file.name);
+      expect(plan.jobId, 'file-job-1');
+      expect(plan.pageRoute, '/sales/orders/new');
+      expect(harness.repository.confirmations, isEmpty);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -160,8 +957,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(repository.messages.last['message'], 'Quote validity?');
       expect(repository.messages.last['currentRoute'], '/sales/quotes/new');
-      expect(repository.messages.last['previousJobId'], 'chat-job-1');
-      await tester.tap(find.byType(Switch));
+      // ADR-152: moving to another page keeps the same conversation.
+      expect(
+        repository.messages.last['conversationId'],
+        repository.messages.first['conversationId'],
+      );
+      await _togglePageAware(tester);
       await tester.pumpAndSettle();
       expect(find.text('Quote customer?'), findsNothing);
       expect(
@@ -220,7 +1021,7 @@ void main() {
         harness.container.read(harness.route.notifier).state =
             '/sales/quotes/new';
       } else if (boundary == 'disabled') {
-        await tester.tap(find.byType(Switch));
+        await _togglePageAware(tester);
       } else {
         repository.pendingPages.clear();
         harness.container.read(harness.identity.notifier).state = _identity(
@@ -301,203 +1102,6 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-
-  testWidgets(
-    'file-only invoice uses a neutral request and opens expense without a business write',
-    (tester) async {
-      final file = PlatformFile(
-        name: 'invoice.pdf',
-        size: 4,
-        bytes: Uint8List.fromList([1, 2, 3, 4]),
-      );
-      FilePicker.platform = _Picker(file);
-      addTearDown(() => FilePicker.platform = _Picker(null));
-      final jobs = _FakeJobRepository()
-        ..routeOverride = {
-          'workflow': 'EXPENSE_CLAIM',
-          'documentType': 'INVOICE',
-          'title': 'Prepare expense',
-        };
-      Uri? opened;
-      final harness = await _pump(
-        tester,
-        jobs: jobs,
-        initial: _identity(permissions: 'ai:use\nexpense:apply'),
-        onDraftOpened: (uri, extra) => opened = uri,
-      );
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
-      await tester.pumpAndSettle();
-      await _send(tester, '');
-      await tester.pumpAndSettle();
-      expect(
-        jobs.requests.single.params['message'],
-        AppLocalizationsEn().aiChatAttachmentQuestion,
-      );
-      expect(opened?.path, '/expense/new');
-      expect(harness.repository.messages, isEmpty);
-      expect(harness.repository.confirmations, isEmpty);
-      expect(jobs.reads, ['file-job-1']);
-    },
-  );
-
-  testWidgets(
-    'long file instructions cannot auto-open when intent after 512 characters is unseen',
-    (tester) async {
-      final file = PlatformFile(
-        name: 'quote.csv',
-        size: 4,
-        bytes: Uint8List.fromList([1, 2, 3, 4]),
-      );
-      FilePicker.platform = _Picker(file);
-      addTearDown(() => FilePicker.platform = _Picker(null));
-      final jobs = _FakeJobRepository();
-      var opens = 0;
-      await _pump(tester, jobs: jobs, onDraftOpened: (_, _) => opens++);
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
-      await tester.pumpAndSettle();
-      await _send(
-        tester,
-        '${List.filled(550, 'x').join()} Analyze only. Do not create anything.',
-      );
-      await tester.pumpAndSettle();
-      expect(
-        jobs.requests.single.params['message']!.length,
-        lessThanOrEqualTo(512),
-      );
-      expect(
-        opens,
-        0,
-        reason: 'The server did not receive the final no-create instruction',
-      );
-    },
-  );
-
-  for (final page in [
-    (
-      route: '/sales/quotes/new?customer=private#total',
-      enabled: true,
-      expected: '/sales/quotes/new',
-    ),
-    (route: '/sales/orders/new', enabled: false, expected: null),
-    (
-      route: 'https://foreign.invalid/sales/orders/new',
-      enabled: true,
-      expected: null,
-    ),
-    (route: '/${'a' * 240}', enabled: true, expected: null),
-  ]) {
-    testWidgets(
-      'document page context is optional and bounded: ${page.route}',
-      (tester) async {
-        final file = PlatformFile(
-          name: 'quote.csv',
-          size: 4,
-          bytes: Uint8List.fromList([1, 2, 3, 4]),
-        );
-        FilePicker.platform = _Picker(file);
-        addTearDown(() => FilePicker.platform = _Picker(null));
-        final jobs = _FakeJobRepository();
-        AiGuidedFilePlan? opened;
-        final harness = await _pump(
-          tester,
-          jobs: jobs,
-          onDraftOpened: (_, extra) => opened = extra as AiGuidedFilePlan,
-        );
-        harness.container.read(harness.route.notifier).state = page.route;
-        await tester.pump();
-        await _open(tester);
-        if (!page.enabled) {
-          await tester.tap(find.byType(Switch));
-          await tester.pump();
-        }
-        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
-        await tester.pumpAndSettle();
-        await _send(tester, 'Prepare this document');
-        await tester.pumpAndSettle();
-        expect(jobs.requests.single.params, {
-          'message': 'Prepare this document',
-          'pageRoute': ?page.expected,
-        });
-        expect(opened?.pageRoute, page.expected);
-        expect(opened, isNotNull);
-      },
-    );
-  }
-
-  for (final scenario in [
-    'unsupported',
-    'revoked',
-    'changed_identity',
-    'retry',
-  ]) {
-    testWidgets(
-      'document route $scenario cannot navigate or write unexpectedly',
-      (tester) async {
-        final file = PlatformFile(
-          name: 'quote.csv',
-          size: 4,
-          bytes: Uint8List.fromList([1, 2, 3, 4]),
-        );
-        FilePicker.platform = _Picker(file);
-        addTearDown(() => FilePicker.platform = _Picker(null));
-        final jobs = _FakeJobRepository();
-        var opens = 0;
-        if (scenario == 'unsupported') {
-          jobs.routeOverride = {
-            'workflow': 'NONE',
-            'needsChoice': true,
-            'choices': <Object>[],
-          };
-        }
-        if (scenario == 'revoked') {
-          jobs.readFailure = ApiException(
-            'FORBIDDEN',
-            'Access changed',
-            httpStatus: 403,
-          );
-        }
-        if (scenario == 'changed_identity') {
-          jobs.pendingRead = Completer<AiJobSnapshot>();
-        }
-        if (scenario == 'retry') jobs.submitFailure = NetworkException();
-        final harness = await _pump(
-          tester,
-          jobs: jobs,
-          onDraftOpened: (_, _) => opens++,
-        );
-        await _open(tester);
-        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
-        await tester.pumpAndSettle();
-        await _send(tester, 'Prepare this document');
-        if (scenario == 'changed_identity') {
-          harness.container.read(harness.identity.notifier).state = _identity(
-            user: 'bob',
-          );
-          await tester.pump();
-          jobs.pendingRead!.complete(jobs.routed!);
-        }
-        await tester.pumpAndSettle();
-        expect(opens, 0);
-        expect(harness.repository.messages, isEmpty);
-        if (scenario == 'retry') {
-          jobs.submitFailure = null;
-          harness.container.read(harness.route.notifier).state =
-              '/sales/quotes/new';
-          await tester.pump();
-          await tester.tap(find.byKey(const ValueKey('ai-chat-retry-1')));
-          await tester.pumpAndSettle();
-          expect(opens, 1);
-          expect(jobs.requests, hasLength(2));
-          expect(jobs.requests.first.bytes, jobs.requests.last.bytes);
-          expect(jobs.requests.last.params, jobs.requests.first.params);
-          expect(jobs.requests.last.params['pageRoute'], '/sales/orders/new');
-        }
-        expect(tester.takeException(), isNull);
-      },
-    );
-  }
 
   testWidgets('no signed-in identity leaves the business surface unchanged', (
     tester,
@@ -659,7 +1263,7 @@ void main() {
     },
   );
 
-  testWidgets('retrying an earlier message keeps a newer conversation branch', (
+  testWidgets('retries and later messages stay in one conversation', (
     tester,
   ) async {
     final repository = _FakeChatRepository()..sendFailure = NetworkException();
@@ -673,8 +1277,395 @@ void main() {
     await tester.pumpAndSettle();
     await _send(tester, 'Continue the newer conversation');
     expect(repository.messages[2]['message'], 'Earlier message');
-    expect(repository.messages[2]['previousJobId'], isNull);
-    expect(repository.messages[3]['previousJobId'], 'chat-job-2');
+    final ids = repository.messages.map((m) => m['conversationId']).toSet();
+    expect(ids, hasLength(1));
+    expect(aiChatUuid.hasMatch(ids.single! as String), isTrue);
+    expect(repository.messages.last['locale'], 'en');
+  });
+
+  group('ADR-152 chat settings and conversation', () {
+    testWidgets(
+      'the settings button opens the panel; each change saves at once with a busy row',
+      (tester) async {
+        final repository = _FakeChatRepository()
+          ..settingsGate = Completer<void>();
+        await _pump(tester, repository: repository);
+        await _open(tester);
+        final button = find.byKey(const ValueKey('ai-chat-settings'));
+        expect(tester.widget<IconButton>(button).tooltip, _en.aiChatSettings);
+        await tester.tap(button);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('ai-chat-settings')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('ai-chat-settings-panel')),
+          findsOneWidget,
+        );
+        expect(find.text(_en.aiChatSettings), findsOneWidget);
+        expect(find.byKey(const ValueKey('ai-chat-composer')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('ai-settings-confirm-always')),
+          findsOneWidget,
+        );
+        expect(find.text(_en.aiChatSettingsConfirmAlways), findsOneWidget);
+
+        await tester.tap(find.text(_en.aiChatSettingsDetailConcise));
+        await tester.pump();
+        expect(repository.settingChanges.single, {'detail': 'CONCISE'});
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('ai-settings-detail')),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+        // Other rows wait while one is saving.
+        await tester.tap(find.text(_en.aiChatSettingsReasoningDeep));
+        await tester.pump();
+        expect(repository.settingChanges, hasLength(1));
+        repository.settingsGate!.complete();
+        await tester.pumpAndSettle();
+        expect(repository.settings.detail, AiChatDetail.concise);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('ai-settings-detail')),
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsNothing,
+        );
+        for (final entry in {
+          _en.aiChatSettingsReasoningDeep: {'reasoning': 'DEEP'},
+          _en.aiChatSettingsMemoryTurns(10): {'memoryTurns': 10},
+          _en.aiChatSettingsLanguageKo: {'replyLanguage': 'KO'},
+          _en.aiChatSettingsStyleProfessional: {
+            'explanationStyle': 'PROFESSIONAL',
+          },
+          _en.aiChatSettingsSendCtrlEnter: {'sendKey': 'CTRL_ENTER'},
+        }.entries) {
+          final choice = find.text(entry.key);
+          await tester.ensureVisible(choice);
+          await tester.tap(choice);
+          await tester.pumpAndSettle();
+          expect(repository.settingChanges.last, entry.value);
+        }
+        for (final field in ['showSources', 'showSuggestions']) {
+          final toggle = find.byKey(ValueKey('ai-settings-$field'));
+          await tester.ensureVisible(toggle);
+          await tester.tap(toggle);
+          await tester.pumpAndSettle();
+          expect(repository.settingChanges.last, {field: false});
+        }
+        await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('ai-chat-composer')), findsOneWidget);
+      },
+    );
+
+    testWidgets('a failed save rolls the choice back and says so', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..settingsFailure = NetworkException();
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+      await tester.pumpAndSettle();
+      final toggle = find.byKey(const ValueKey('ai-settings-pageAware'));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+      expect(find.byKey(const ValueKey('ai-settings-error')), findsOneWidget);
+      expect(find.text(_en.aiChatSettingsSaveFailed), findsOneWidget);
+      // The page is still read: the next question carries the snapshot route.
+      await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
+      await tester.pumpAndSettle();
+      await _send(tester, 'Still on the page?');
+      expect(repository.messages.last['currentRoute'], '/sales/orders/new');
+    });
+
+    testWidgets(
+      'a service without thinking depth shows the note and keeps the choice locked',
+      (tester) async {
+        final repository = _FakeChatRepository()..reasoningSupported = false;
+        await _pump(tester, repository: repository);
+        await _open(tester);
+        await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('ai-settings-reasoning-unsupported')),
+          findsOneWidget,
+        );
+        expect(
+          find.text(_en.aiChatSettingsReasoningUnsupported),
+          findsOneWidget,
+        );
+        await tester.tap(
+          find.text(_en.aiChatSettingsReasoningDeep),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+        expect(repository.settingChanges, isEmpty);
+      },
+    );
+
+    testWidgets('Enter sends by default; Shift+Enter does not', (tester) async {
+      final repository = _FakeChatRepository();
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('ai-chat-input')),
+        'Enter question',
+      );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(repository.messages, isEmpty);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(repository.messages.single['message'], 'Enter question');
+    });
+
+    testWidgets('Ctrl+Enter mode: Enter is a new line, Ctrl+Enter sends', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..settings = const AiChatSettings(sendKey: AiChatSendKey.ctrlEnter);
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await tester.enterText(
+        find.byKey(const ValueKey('ai-chat-input')),
+        'Ctrl question',
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(repository.messages, isEmpty);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+      expect(
+        repository.messages.single['message'],
+        startsWith('Ctrl question'),
+      );
+    });
+
+    testWidgets(
+      'the latest conversation is restored and continued; new chat starts another',
+      (tester) async {
+        final repository = _FakeChatRepository()
+          ..restored = AiChatConversationView(
+            conversationId: _c1,
+            hiddenTurns: 2,
+            turns: [
+              AiChatTurn(
+                jobId: 'job-a',
+                reply: AiChatReply.fromJson({
+                  'question': 'Which tasks lack material?',
+                  'reply': 'Task A01 lacks material.',
+                  'conversationId': _c1,
+                  'sources': [
+                    {'id': 'page.tables', 'label': 'Current page table'},
+                  ],
+                }),
+              ),
+            ],
+          );
+        await _pump(tester, repository: repository);
+        await _open(tester);
+        expect(find.text('Which tasks lack material?'), findsOneWidget);
+        expect(find.text('Task A01 lacks material.'), findsOneWidget);
+        expect(find.byKey(const ValueKey('ai-chat-restored')), findsOneWidget);
+        expect(find.text(_en.aiChatHiddenTurns(2)), findsOneWidget);
+        await _send(tester, 'And the first one, why?');
+        await tester.pumpAndSettle();
+        expect(repository.messages.single['conversationId'], _c1);
+
+        await tester.tap(find.byKey(const ValueKey('ai-chat-new')));
+        await tester.pumpAndSettle();
+        expect(find.text(_en.aiChatResetHint), findsOneWidget);
+        await tester.tap(find.text(_en.aiChatConfirm));
+        await tester.pumpAndSettle();
+        expect(find.text('Task A01 lacks material.'), findsNothing);
+        await _send(tester, 'Fresh topic');
+        await tester.pumpAndSettle();
+        final fresh = repository.messages.last['conversationId']! as String;
+        expect(fresh, isNot(_c1));
+        expect(aiChatUuid.hasMatch(fresh), isTrue);
+      },
+    );
+
+    testWidgets('the conversation is restored only when the panel opens', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..restored = AiChatConversationView(
+          conversationId: _c1,
+          turns: [
+            AiChatTurn(
+              jobId: 'job-a',
+              reply: AiChatReply.fromJson({
+                'question': 'Which tasks lack material?',
+                'reply': 'Task A01 lacks material.',
+                'conversationId': _c1,
+              }),
+            ),
+          ],
+        );
+      await _pump(tester, repository: repository);
+      // Page loads alone never re-read the conversation.
+      expect(repository.conversationCalls, 0);
+      await _open(tester);
+      expect(repository.conversationCalls, 1);
+      expect(find.text('Task A01 lacks material.'), findsOneWidget);
+    });
+
+    testWidgets('a changed answer comes back as its question only', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..restored = AiChatConversationView(
+          conversationId: _c1,
+          turns: [
+            AiChatTurn(
+              jobId: 'job-a',
+              reply: AiChatReply.fromJson({
+                'question': 'How much stock of HP035754?',
+                'dataChanged': true,
+                'conversationId': _c1,
+              }),
+            ),
+          ],
+        );
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      expect(find.text('How much stock of HP035754?'), findsOneWidget);
+      expect(find.text(_en.aiChatRestoredDataChanged), findsOneWidget);
+      expect(find.text(_en.aiChatHiddenTurns(1)), findsNothing);
+    });
+
+    testWidgets('a restored page card can be cancelled but never run', (
+      tester,
+    ) async {
+      final executed = <Map<String, Object?>>[];
+      _serverCards[_p1] = _card();
+      final repository = _FakeChatRepository()
+        ..restored = AiChatConversationView(
+          conversationId: _c1,
+          turns: [
+            AiChatTurn(
+              jobId: 'job-b',
+              reply: AiChatReply.fromJson({
+                'question': 'Change row 3 quantity to 100',
+                'reply': 'Please check the card.',
+                'conversationId': _c1,
+                'actions': [_card()],
+              }),
+            ),
+          ],
+        );
+      await _pump(
+        tester,
+        repository: repository,
+        page: _OrderPage(onSetLine: executed.add),
+      );
+      await _open(tester);
+      expect(
+        find.byKey(const ValueKey('ai-action-detached-$_p1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('ai-action-confirm-$_p1')),
+        findsNothing,
+      );
+      await _tapCard(tester, 'ai-action-cancel-$_p1');
+      // Cancelling is allowed; the one-time proposal is never consumed.
+      expect(repository.actionCalls, ['cancel:$_p1']);
+      expect(executed, isEmpty);
+    });
+
+    testWidgets(
+      'clearing history asks first, clears on the server and starts over',
+      (tester) async {
+        final repository = _FakeChatRepository();
+        await _pump(tester, repository: repository);
+        await _open(tester);
+        await _send(tester, 'Something to clear');
+        await tester.pumpAndSettle();
+        final before = repository.messages.single['conversationId'];
+        await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+        await tester.pumpAndSettle();
+        final clear = find.byKey(const ValueKey('ai-settings-clear'));
+        await tester.ensureVisible(clear);
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        expect(find.text(_en.aiChatSettingsClearBody), findsOneWidget);
+        await tester.tap(find.text(_en.aiChatCancel));
+        await tester.pumpAndSettle();
+        expect(repository.clearCalls, 0);
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(_en.aiChatConfirm));
+        await tester.pumpAndSettle();
+        expect(repository.clearCalls, 1);
+        await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
+        await tester.pumpAndSettle();
+        expect(find.text('Scoped answer 1'), findsNothing);
+        await _send(tester, 'After clearing');
+        expect(repository.messages.last['conversationId'], isNot(before));
+      },
+    );
+
+    testWidgets(
+      'settings stay reachable on a narrow keyboard viewport at text scale 2',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final repository = _FakeChatRepository();
+        await _pump(tester, repository: repository, size: const Size(360, 740));
+        await _open(tester);
+        tester.view.viewInsets = const FakeViewPadding(bottom: 360);
+        await tester.pumpAndSettle();
+        final settings = find.byKey(const ValueKey('ai-chat-settings'));
+        await tester.ensureVisible(settings);
+        await tester.tap(settings);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final clear = find.byKey(const ValueKey('ai-settings-clear'));
+        await tester.ensureVisible(clear);
+        await tester.pumpAndSettle();
+        expect(clear.hitTestable(), findsOneWidget);
+        final toggle = find.byKey(const ValueKey('ai-settings-showSources'));
+        await tester.ensureVisible(toggle);
+        await tester.pumpAndSettle();
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(repository.settingChanges.single, {'showSources': false});
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('sources and suggestions follow their settings', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..settings = const AiChatSettings(
+          showSources: false,
+          showSuggestions: false,
+        )
+        ..suggestions = const ['Suggested question']
+        ..extraResult = {
+          'sources': [
+            {'id': 'page.legend', 'label': 'Current page colours'},
+          ],
+        };
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      expect(find.text('Suggested question'), findsNothing);
+      await _send(tester, 'What do the colours mean?');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Current page colours'), findsNothing);
+    });
   });
 
   testWidgets(
@@ -725,11 +1716,13 @@ void main() {
       final repository = DioAiChatRepository(api);
       await repository.send(
         message: 'Page help',
+        conversationId: _c1,
         currentRoute: '/sales/quotes/new?private=value',
         intentHint: 'PAGE_HELP',
       );
       expect(api.body, {
         'message': 'Page help',
+        'conversationId': _c1,
         'intentHint': 'PAGE_HELP',
         'pageContext': {'route': '/sales/quotes/new'},
       });
@@ -737,6 +1730,7 @@ void main() {
         await expectLater(
           repository.send(
             message: 'Question',
+            conversationId: _c1,
             currentRoute: '/sales/quotes/new',
             intentHint: hint,
           ),
@@ -744,12 +1738,17 @@ void main() {
         );
       }
       await expectLater(
-        repository.send(message: 'Question', intentHint: 'PAGE_HELP'),
+        repository.send(
+          message: 'Question',
+          conversationId: _c1,
+          intentHint: 'PAGE_HELP',
+        ),
         throwsFormatException,
       );
       await expectLater(
         repository.send(
           message: 'Question',
+          conversationId: _c1,
           currentRoute: 'https://untrusted.example/admin',
           intentHint: 'PAGE_HELP',
         ),
@@ -809,13 +1808,13 @@ void main() {
       final repository = _FakeChatRepository()..suggestions = [question];
       await _pump(tester, repository: repository);
       await _open(tester);
-      await tester.tap(find.byType(Switch));
+      await _togglePageAware(tester);
       await tester.pumpAndSettle();
       expect(find.text(question), findsNothing);
       await _send(tester, question);
       expect(repository.messages.single['currentRoute'], isNull);
       expect(repository.messages.single['intentHint'], isNull);
-      await tester.tap(find.byType(Switch));
+      await _togglePageAware(tester);
       await tester.pumpAndSettle();
       await _send(tester, question);
       expect(repository.messages.last['currentRoute'], '/sales/orders/new');
@@ -935,186 +1934,127 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+}
 
-  testWidgets(
-    'page follows navigation and can be disabled without sending form values',
-    (tester) async {
-      final harness = await _pump(tester);
-      await _open(tester);
-      await _send(tester, 'First question');
-      expect(
-        harness.repository.messages.last['currentRoute'],
-        '/sales/orders/new',
-      );
-      harness.container.read(harness.route.notifier).state =
-          '/production/plans/new?private=value';
-      await tester.pumpAndSettle();
-      await _send(tester, 'Second question');
-      expect(
-        harness.repository.messages.last['currentRoute'],
-        '/production/plans/new',
-      );
-      expect(harness.repository.messages.last['previousJobId'], 'chat-job-1');
-      await tester.tap(find.byType(Switch));
-      await tester.pumpAndSettle();
-      await _send(tester, 'Third question');
-      expect(harness.repository.messages.last['currentRoute'], isNull);
-    },
-  );
+Map<String, dynamic> _card({
+  String id = _p1,
+  String actionType = 'PAGE_ACTION',
+  String handler = 'setLineField',
+  String execution = 'CLIENT',
+  String status = 'PROPOSED',
+  String? route = '/sales/orders/new',
+  Map<String, Object?> args = const {
+    'row': 3,
+    'field': 'Quantity',
+    'value': '100',
+  },
+  List<String> lines = const [
+    'Page: New sales order',
+    'Action: Change a line',
+    'Row: 3 (V50003)',
+    'Field: Quantity',
+    'New value: 100',
+  ],
+  Duration ttl = const Duration(minutes: 10),
+  String risk = 'LOW',
+  String? riskNote,
+  bool stepUp = false,
+  String? outcome,
+  String title = 'Change a line',
+}) => {
+  'type': 'CONFIRM_ACTION',
+  'proposalId': id,
+  'actionType': actionType,
+  'handler': handler,
+  'execution': execution,
+  'title': title,
+  'summaryLines': lines,
+  'risk': risk,
+  'riskNote': ?riskNote,
+  'requiresStepUp': stepUp,
+  'route': ?route,
+  if (execution == 'CLIENT') 'args': args,
+  'issuedAt': DateTime.now().toUtc().toIso8601String(),
+  'expiresAt': DateTime.now().add(ttl).toUtc().toIso8601String(),
+  'status': status,
+  'outcome': ?outcome,
+};
 
-  testWidgets(
-    'permission grants require a concrete review and a separate confirm',
-    (tester) async {
-      final repository = _FakeChatRepository()..actions = [_grant()];
-      await _pump(
-        tester,
-        repository: repository,
-        initial: _identity(superAdmin: true),
-      );
-      await _open(tester);
-      await _send(tester, 'Grant access to the employee');
-      final review = find.text('Review authorization');
-      await tester.ensureVisible(review);
-      await tester.tap(review);
-      await tester.pumpAndSettle();
-      expect(repository.confirmations, isEmpty);
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(find.textContaining('Warehouse employee'), findsWidgets);
-      expect(find.textContaining('View inventory'), findsWidgets);
-      expect(find.textContaining('Existing warehouse scope'), findsWidgets);
-      await tester.tap(find.text('Cancel').last);
-      await tester.pumpAndSettle();
-      expect(repository.confirmations, isEmpty);
-      await tester.tap(review);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Confirm').last);
-      await tester.pumpAndSettle();
-      expect(repository.confirmations, ['opaque.signed.token']);
-      expect(find.text('Permission granted'), findsOneWidget);
-    },
-  );
+Map<String, dynamic> _grant() => _card(
+  id: _p2,
+  actionType: 'PERMISSION_GRANT',
+  handler: 'PERMISSION_GRANT',
+  execution: 'SERVER',
+  route: null,
+  title: 'Grant one permission',
+  lines: const [
+    'Person: Warehouse employee',
+    'Permission: View inventory',
+    'Scope: Existing warehouse scope',
+  ],
+  risk: 'HIGH',
+  riskNote: 'Granting takes effect at once.',
+  stepUp: true,
+);
 
-  testWidgets('identity change closes an open authorization confirmation', (
-    tester,
-  ) async {
-    final repository = _FakeChatRepository()..actions = [_grant()];
-    final harness = await _pump(
-      tester,
-      repository: repository,
-      initial: _identity(superAdmin: true),
-    );
-    await _open(tester);
-    await _send(tester, 'Grant access');
-    final review = find.text('Review authorization');
-    await tester.ensureVisible(review);
-    await tester.tap(review);
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    harness.container.read(harness.identity.notifier).state = _identity(
-      user: 'bob',
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(find.textContaining('Warehouse employee'), findsNothing);
-    expect(repository.confirmations, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+/// A page that registers like the sales editor: two inputs (a password field
+/// is present but never attached) and one closed page action.
+class _OrderPage extends StatelessWidget {
+  const _OrderPage({super.key, this.onSetLine});
+  final void Function(Map<String, Object?> args)? onSetLine;
 
-  testWidgets('unknown actions and malicious job routes cannot navigate', (
-    tester,
-  ) async {
-    final repository = _FakeChatRepository()
-      ..actions = [
-        {
-          'type': 'EXECUTE_SQL',
-          'title': 'Unexpected command',
-          'route': '/admin',
-          'summary': 'Ignored',
-        },
-        {
-          'type': 'OPEN_SALES_ORDER_DRAFT',
-          'title': 'Unsafe draft',
-          'jobId': '../admin',
-        },
-      ];
-    await _pump(tester, repository: repository);
-    await _open(tester);
-    await _send(tester, 'Test');
-    expect(find.text('Review and create order'), findsNothing);
-    expect(repository.confirmations, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-    'file first routes as a document then automatically opens a typed unsaved order',
-    (tester) async {
-      final file = PlatformFile(
-        name: 'quotation.xlsx',
-        size: 4,
-        bytes: Uint8List.fromList([1, 2, 3, 4]),
-      );
-      FilePicker.platform = _Picker(file);
-      addTearDown(() => FilePicker.platform = _Picker(null));
-      final repository = _FakeChatRepository()
-        ..actions = [
-          {
-            'type': 'OPEN_SALES_ORDER_DRAFT',
-            'title': 'Prepare order',
-            'summary': 'Review the imported lines.',
-            'jobId': 'file-job-1',
-            'route': '/admin/permissions',
+  @override
+  Widget build(BuildContext context) => AiPageRegistrar(
+    source: AiPageInfoSource(
+      title: (_) => 'New sales order',
+      actions: (ctx) => [
+        AiPageAction(
+          name: 'setLineField',
+          title: 'Change a line',
+          kind: AiActionKind.form,
+          params: const [
+            AiActionParam(
+              'row',
+              type: AiParamType.integer,
+              title: 'Row',
+              minimum: 1,
+              maximum: 50,
+            ),
+            AiActionParam(
+              'field',
+              type: AiParamType.string,
+              title: 'Field',
+              options: ['Quantity', 'Discount'],
+            ),
+            AiActionParam(
+              'value',
+              type: AiParamType.string,
+              title: 'New value',
+            ),
+          ],
+          handler: (call) async {
+            onSetLine?.call(call.args);
+            return null;
           },
-        ];
-      final jobs = _FakeJobRepository();
-      Object? handedFile;
-      Uri? destination;
-      final harness = await _pump(
-        tester,
-        repository: repository,
-        jobs: jobs,
-        onDraftOpened: (uri, extra) {
-          destination = uri;
-          handedFile = extra;
-        },
-      );
-      await _open(tester);
-      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
-      await tester.pumpAndSettle();
-      expect(find.text('quotation.xlsx'), findsOneWidget);
-      await _send(tester, 'Prepare an order');
-      expect(jobs.requests, hasLength(1));
-      expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
-      expect(jobs.requests.single.params, {
-        'message': 'Prepare an order',
-        'pageRoute': '/sales/orders/new',
-      });
-      expect(jobs.requests.single.bytes, file.bytes);
-      await tester.pumpAndSettle();
-      expect(harness.repository.messages, isEmpty);
-      expect(destination?.path, '/sales/orders/new');
-      expect(destination?.queryParameters, isEmpty);
-      final plan = handedFile as AiGuidedFilePlan;
-      expect(plan.file.bytes, file.bytes);
-      expect(plan.file.name, file.name);
-      expect(plan.jobId, 'file-job-1');
-      expect(plan.pageRoute, '/sales/orders/new');
-      expect(repository.confirmations, isEmpty);
-      expect(tester.takeException(), isNull);
-    },
+        ),
+      ],
+    ),
+    child: const Column(
+      children: [
+        UtenInput(label: 'Customer', required: true),
+        UtenInput(label: 'Quantity'),
+        UtenInput(label: 'Password', isPassword: true, hint: 'hunter2'),
+      ],
+    ),
   );
 }
 
-Map<String, dynamic> _grant() => {
-  'type': 'CONFIRM_PERMISSION_GRANT',
-  'proposalId': 'opaque.signed.token',
-  'title': 'Grant one permission',
-  'summary': 'Review the proposal',
-  'targetName': 'Warehouse employee',
-  'permissionCode': 'stock:view',
-  'permissionName': 'View inventory',
-  'scopeSummary': 'Existing warehouse scope',
-  'expiresAt': DateTime.now().add(const Duration(minutes: 5)).toIso8601String(),
-};
+Future<void> _tapCard(WidgetTester tester, String key) async {
+  final button = find.byKey(ValueKey(key));
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pumpAndSettle();
+}
 
 AiChatIdentity _identity({
   String user = 'alice',
@@ -1140,12 +2080,25 @@ AiJobSnapshot _success(
   String reply, {
   String id = 'chat-job-1',
   List<Map<String, dynamic>> actions = const [],
+  Map<String, Object?> extra = const {},
 }) => AiJobSnapshot(
   id: id,
   kind: 'ERP_CHAT',
   status: AiJobStatus.succeeded,
-  result: {'reply': reply, 'actions': actions},
+  result: {'reply': reply, 'actions': actions, ...extra},
 );
+
+/// ADR-152: "read the current page" is a chat setting, saved at once.
+Future<void> _togglePageAware(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+  await tester.pumpAndSettle();
+  final toggle = find.byKey(const ValueKey('ai-settings-pageAware'));
+  await tester.ensureVisible(toggle);
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
+  await tester.pumpAndSettle();
+}
 
 Future<void> _open(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('ai-chat-launcher')));
@@ -1170,6 +2123,7 @@ Future<_Harness> _pump(
   _FakeJobRepository? jobs,
   void Function(Uri, Object?)? onDraftOpened,
   Size size = const Size(1000, 850),
+  Widget page = const SizedBox(key: ValueKey('business-surface')),
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -1180,6 +2134,9 @@ Future<_Harness> _pump(
   final identity = StateProvider<AiChatIdentity?>((ref) => actualInitial);
   final route = StateProvider<String>((ref) => '/sales/orders/new');
   final repo = repository ?? _FakeChatRepository();
+  final jobRepo = jobs ?? _FakeJobRepository();
+  final pageContext = AiPageContextController();
+  addTearDown(pageContext.dispose);
   final container = ProviderContainer(
     overrides: [
       aiChatIdentityProvider.overrideWith((ref) => ref.watch(identity)),
@@ -1194,9 +2151,9 @@ Future<_Harness> _pump(
               );
       }),
       aiChatRepositoryProvider.overrideWithValue(repo),
-      aiJobRepositoryProvider.overrideWithValue(jobs ?? _FakeJobRepository()),
+      aiJobRepositoryProvider.overrideWithValue(jobRepo),
       aiJobRunnerProvider.overrideWithValue(
-        AiJobRunner(jobs ?? _FakeJobRepository(), maxConsecutivePollErrors: 1),
+        AiJobRunner(jobRepo, maxConsecutivePollErrors: 1),
       ),
       currentPermissionsProvider.overrideWith(
         (ref) => (ref.watch(identity)?.permissions ?? '').split('\n').toSet(),
@@ -1207,9 +2164,11 @@ Future<_Harness> _pump(
   final home = Consumer(
     builder: (context, ref, _) => AiChatOverlay(
       currentRoute: ref.watch(route),
-      child: const Scaffold(body: SizedBox(key: ValueKey('business-surface'))),
+      child: Scaffold(body: page),
     ),
   );
+  Widget scoped(BuildContext context, Widget? child) =>
+      AiPageContextScope(controller: pageContext, child: child!);
   final router = onDraftOpened == null
       ? null
       : GoRouter(
@@ -1241,11 +2200,13 @@ Future<_Harness> _pump(
               locale: const Locale('en'),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
+              builder: scoped,
             )
           : MaterialApp(
               locale: const Locale('en'),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
+              builder: scoped,
               home: home,
             ),
     ),
@@ -1323,9 +2284,16 @@ class _Harness {
 }
 
 class _FakeChatRepository implements AiChatRepository {
-  final messages = <Map<String, String?>>[];
+  final messages = <Map<String, Object?>>[];
   final confirmations = <String>[];
+  final actionCalls = <String>[];
+  final receiptMessages = <String, String?>{};
   List<Map<String, dynamic>> actions = [];
+  Map<String, Object?> extraResult = const {};
+  Map<String, Object?>? confirmArgs;
+  Object? confirmFailure;
+  Map<String, Object?>? afterConfirmFailure;
+  Completer<void>? confirmGate;
   Completer<AiJobSnapshot>? pending;
   AiJobSnapshot? response;
   Object? sendFailure;
@@ -1335,6 +2303,45 @@ class _FakeChatRepository implements AiChatRepository {
   final pageResults = <String, AiChatPageSuggestions>{};
   final pendingPages = <String, Completer<AiChatPageSuggestions>>{};
   final deniedPages = <String>{};
+
+  /// ADR-152 settings and conversation state of the fake server.
+  AiChatSettings settings = AiChatSettings.defaults;
+  bool reasoningSupported = true;
+  final settingChanges = <Map<String, Object>>[];
+  Object? settingsFailure;
+  Completer<void>? settingsGate;
+  AiChatConversationView restored = const AiChatConversationView();
+  Object? restoreFailure;
+  int clearCalls = 0;
+  Object? clearFailure;
+
+  @override
+  Future<({AiChatSettings settings, bool reasoningEffortSupported})>
+  updateSettings(Map<String, Object> change) async {
+    settingChanges.add(change);
+    await settingsGate?.future;
+    if (settingsFailure case final failure?) throw failure;
+    for (final entry in change.entries) {
+      settings = settings.withField(entry.key, entry.value);
+    }
+    return (settings: settings, reasoningEffortSupported: reasoningSupported);
+  }
+
+  int conversationCalls = 0;
+
+  @override
+  Future<AiChatConversationView> conversation({String? conversationId}) async {
+    conversationCalls++;
+    if (restoreFailure case final failure?) throw failure;
+    return restored;
+  }
+
+  @override
+  Future<void> clearConversations() async {
+    clearCalls++;
+    if (clearFailure case final failure?) throw failure;
+    restored = const AiChatConversationView();
+  }
 
   @override
   Future<AiChatPageSuggestions> pageSuggestions(String pageRoute) async {
@@ -1365,25 +2372,34 @@ class _FakeChatRepository implements AiChatRepository {
       canManagePermissions: true,
       scopeSummary: 'Only data permitted for this account.',
       suggestions: suggestions,
+      settings: settings,
+      reasoningEffortSupported: reasoningSupported,
     );
   }
 
   @override
   Future<AiJobSnapshot> send({
     required String message,
-    String? previousJobId,
-    String? attachmentJobId,
+    required String conversationId,
     String? currentRoute,
     String? intentHint,
+    Map<String, Object?>? snapshot,
+    String? locale,
   }) async {
     messages.add({
       'message': message,
-      'previousJobId': previousJobId,
-      'attachmentJobId': attachmentJobId,
+      'conversationId': conversationId,
       'currentRoute': currentRoute,
       'intentHint': intentHint,
+      'snapshot': snapshot,
+      'locale': locale,
     });
     if (sendFailure case final error?) throw error;
+    for (final card in actions) {
+      if (card['proposalId'] is String) {
+        _serverCards[card['proposalId'] as String] = card;
+      }
+    }
     return pending?.future ??
         (response != null
             ? Future.value(response!)
@@ -1392,13 +2408,78 @@ class _FakeChatRepository implements AiChatRepository {
                   'Scoped answer ${messages.length}',
                   id: 'chat-job-${messages.length}',
                   actions: actions,
+                  extra: extraResult,
                 ),
               ));
+  }
+
+  AiChatAction _parse(String id) => AiChatAction.tryParse(_serverCards[id])!;
+
+  @override
+  Future<AiChatAction> actionStatus(String proposalId) async {
+    actionCalls.add('status:$proposalId');
+    return _parse(proposalId);
+  }
+
+  @override
+  Future<({AiChatAction card, Map<String, Object?> args})> confirmAction(
+    String proposalId,
+  ) async {
+    actionCalls.add('confirm:$proposalId');
+    await confirmGate?.future;
+    if (confirmFailure case final failure?) {
+      if (afterConfirmFailure case final change?) {
+        _serverCards[proposalId] = {..._serverCards[proposalId]!, ...change};
+      }
+      throw failure;
+    }
+    final card = {..._serverCards[proposalId]!, 'status': 'CONFIRMED'};
+    _serverCards[proposalId] = card;
+    return (
+      card: _parse(proposalId),
+      args:
+          confirmArgs ??
+          Map<String, Object?>.of(card['args'] as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<AiChatAction> cancelAction(String proposalId) async {
+    actionCalls.add('cancel:$proposalId');
+    _serverCards[proposalId] = {
+      ..._serverCards[proposalId]!,
+      'status': 'CANCELLED',
+    };
+    return _parse(proposalId);
+  }
+
+  @override
+  Future<AiChatAction> actionReceipt(
+    String proposalId, {
+    required bool succeeded,
+    String? message,
+  }) async {
+    actionCalls.add(
+      'receipt:$proposalId:${succeeded ? 'SUCCEEDED' : 'FAILED'}',
+    );
+    receiptMessages[proposalId] = message;
+    _serverCards[proposalId] = {
+      ..._serverCards[proposalId]!,
+      'status': succeeded ? 'CONFIRMED' : 'FAILED',
+      'outcome': succeeded ? 'SUCCEEDED' : 'FAILED',
+      'outcomeMessage': ?message,
+    };
+    return _parse(proposalId);
   }
 
   @override
   Future<String> confirmPermissionGrant(String proposalId) async {
     confirmations.add(proposalId);
+    _serverCards[proposalId] = {
+      ..._serverCards[proposalId]!,
+      'status': 'CONFIRMED',
+      'outcome': 'SUCCEEDED',
+    };
     return 'Permission granted';
   }
 }
@@ -1409,6 +2490,7 @@ class _RecordingApi extends ApiClient {
   Object? body;
   Map<String, dynamic>? query;
   Map<String, dynamic> pageResult = const {};
+  Map<String, dynamic> cardResult = const {};
 
   @override
   Future<Map<String, dynamic>> get(
@@ -1417,7 +2499,7 @@ class _RecordingApi extends ApiClient {
   }) async {
     this.path = path;
     this.query = query;
-    return pageResult;
+    return path.startsWith('/ai/chat/actions/') ? cardResult : pageResult;
   }
 
   @override
@@ -1429,6 +2511,7 @@ class _RecordingApi extends ApiClient {
   }) async {
     this.path = path;
     this.body = body;
+    if (path.startsWith('/ai/chat/actions/')) return cardResult;
     return path.endsWith('/confirm')
         ? {'status': 'GRANTED', 'reply': 'Done'}
         : {'jobId': 'job-1', 'status': 'PENDING'};
@@ -1460,6 +2543,21 @@ class _FakeJobRepository implements AiJobRepository {
     requests.add(request);
     if (submitFailure case final failure?) throw failure;
     if (request.kind == aiGuidedRouteKind) {
+      final workflow = (routeOverride?['workflow'] as String?) ?? 'SALES_ORDER';
+      final card = _card(
+        id: _docCard,
+        actionType: 'OPEN_GUIDED_FORM',
+        handler: 'OPEN_GUIDED_FORM',
+        route: request.params['pageRoute'],
+        title: 'Open the form and fill it in',
+        lines: [
+          'File: ${request.fileName}',
+          'Open: ${workflow == 'EXPENSE_CLAIM' ? 'New expense claim' : 'New sales order'}',
+          'Saving stays with you on the page.',
+        ],
+        args: {'workflow': workflow, 'sourceJobId': 'file-job-1'},
+      );
+      if (workflow != 'NONE') _serverCards[_docCard] = card;
       routed = AiJobSnapshot(
         id: 'file-job-1',
         kind: aiGuidedRouteKind,
@@ -1468,7 +2566,7 @@ class _FakeJobRepository implements AiJobRepository {
           'documentType': 'SALES_QUOTATION',
           'workflow': 'SALES_ORDER',
           'title': 'Prepare order',
-          'summary': 'Ready to fill an unsaved form',
+          'summary': 'Recognized. Confirm the card to open the form.',
           'needsChoice': false,
           'choices': <Object>[],
           'steps': ['Read file', 'Fill form'],
@@ -1478,6 +2576,7 @@ class _FakeJobRepository implements AiJobRepository {
             'fileName': request.fileName,
             'sha256': sha256.convert(request.bytes).toString(),
           },
+          'actions': [if (workflow != 'NONE') card],
           ...?routeOverride,
         },
       );

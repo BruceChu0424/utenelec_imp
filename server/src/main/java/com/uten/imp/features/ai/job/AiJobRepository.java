@@ -197,6 +197,55 @@ class AiJobRepository {
                 """, new MapSqlParameterSource().addValue("id", id).addValue("user", userId));
     }
 
+    // ------------------------------------------------------------------ 对话(ADR-152)
+
+    record StoredResult(UUID id, OffsetDateTime createdAt, String resultJson) {
+    }
+
+    /** 本人同一对话的有效结果(成功、未归档、未采用、未清空), 新的在前。 */
+    List<StoredResult> conversationResults(String kind, UUID userId, UUID conversationId, int limit) {
+        return jdbc.query("""
+                SELECT id, created_at, result::text AS result_json FROM ai_jobs
+                WHERE submitted_by_user = :user AND kind = :kind AND status = 'SUCCEEDED' AND archived_at IS NULL
+                  AND result IS NOT NULL AND used_at IS NULL AND result_purged_at IS NULL
+                  AND result->>'conversationId' = :conversation
+                ORDER BY created_at DESC, id DESC
+                LIMIT :limit
+                """, new MapSqlParameterSource().addValue("user", userId).addValue("kind", kind)
+                .addValue("conversation", conversationId.toString()).addValue("limit", limit),
+                (rs, rowNum) -> new StoredResult(rs.getObject("id", UUID.class),
+                        rs.getObject("created_at", OffsetDateTime.class), rs.getString("result_json")));
+    }
+
+    Optional<UUID> latestConversation(String kind, UUID userId) {
+        return jdbc.queryForList("""
+                SELECT result->>'conversationId' FROM ai_jobs
+                WHERE submitted_by_user = :user AND kind = :kind AND status = 'SUCCEEDED' AND archived_at IS NULL
+                  AND result IS NOT NULL AND used_at IS NULL AND result_purged_at IS NULL
+                  AND jsonb_typeof(result->'conversationId') = 'string'
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """, new MapSqlParameterSource().addValue("user", userId).addValue("kind", kind), String.class)
+                .stream().findFirst().flatMap(AiJobRepository::uuid);
+    }
+
+    /** 本人某类任务全部归档(含仍在处理的: 它们结束后也不会回到对话里)。 */
+    int archiveOwned(String kind, UUID userId, String reason) {
+        return jdbc.update("""
+                UPDATE ai_jobs SET archived_at = now(), archived_by = :by, archive_reason = :reason, updated_at = now()
+                WHERE submitted_by_user = :user AND kind = :kind AND archived_at IS NULL
+                """, new MapSqlParameterSource().addValue("user", userId).addValue("kind", kind)
+                .addValue("by", "user:" + userId).addValue("reason", reason));
+    }
+
+    private static Optional<UUID> uuid(String raw) {
+        try {
+            return Optional.of(UUID.fromString(raw));
+        } catch (IllegalArgumentException malformed) {
+            return Optional.empty();
+        }
+    }
+
     // ------------------------------------------------------------------ 结果使用(AiJobUsagePort)
 
     /** 本人、成功、从未被单据采用且未清空的结果。 */

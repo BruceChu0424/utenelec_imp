@@ -9,6 +9,8 @@
 // xStatusColor 映射驱动）。
 import 'package:flutter/material.dart';
 import 'uten_status_cell_color.dart';
+import 'uten_color_name.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 class UtenDocStatusPill extends StatelessWidget {
   const UtenDocStatusPill({
@@ -28,18 +30,26 @@ class UtenDocStatusPill extends StatelessWidget {
       return Text(label, maxLines: 2, overflow: TextOverflow.ellipsis);
     }
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+    final named = utenNamedColor(color);
+    return AiPageRegistrar(
+      source: AiBadgeSource(
+        label: label,
+        tone: named?.tone.name,
+        color: named?.name,
       ),
-      child: Text(
-        label,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w600,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );

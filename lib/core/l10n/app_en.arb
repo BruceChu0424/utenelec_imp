@@ -2466,18 +2466,18 @@
   "aiSettingsJsonModeNone": "Not required",
   "aiSettingsJsonModeObject": "JSON object",
   "aiSettingsJsonModeSchema": "Structured (schema)",
-  "aiSettingsThinking": "Turn off deep thinking",
-  "aiSettingsThinkingInfo": "Reading tables does not need deep thinking; turning it off is faster and cheaper. Each provider uses a different parameter, and choosing the provider selects the right one",
-  "aiSettingsThinkingNone": "Leave as is",
+  "aiSettingsThinking": "Thinking parameter style",
+  "aiSettingsThinkingInfo": "The chat thinking-depth setting is sent in this provider style; table reading and similar tasks still switch thinking off. Choosing the provider selects the right style; with \"Do not send\" the chat cannot adjust thinking depth. The Qwen style only switches thinking off (Qwen thinking needs streaming output and cannot be combined with JSON); models that reject thinking parameters, such as Claude Haiku 4.5, are never sent them. \"Test connection\" tries the chat default once.",
+  "aiSettingsThinkingNone": "Do not send",
   "aiSettingsThinkingDeepseek": "DeepSeek style",
-  "aiSettingsThinkingDashscope": "Qwen style",
+  "aiSettingsThinkingDashscope": "Qwen style (thinking off only)",
   "aiSettingsThinkingOpenAi": "OpenAI style",
   "aiSettingsTemperature": "Consistent output (temperature 0)",
   "aiSettingsTemperatureInfo": "Keeps results consistent for the same file. Turn off if the model rejects this parameter",
   "aiSettingsVision": "Can read images and scans",
   "aiSettingsVisionInfo": "Turn on if the model can read images; needed for photos and scanned PDFs uploaded by sales",
   "aiSettingsMaxTokens": "Max output length",
-  "aiSettingsMaxTokensInfo": "256 to 65536; files with many lines need more",
+  "aiSettingsMaxTokensInfo": "256 to 65536; files with many lines need more. This caps one output including thinking; \"Deep\" chat thinking never goes beyond it, so raise it to leave more room",
   "aiSettingsTimeout": "Timeout (seconds)",
   "aiSettingsTimeoutInfo": "10 to 600; a reply slower than this counts as a failure",
   "aiSettingsNumberRange": "Enter a whole number from {min} to {max}",
@@ -2505,6 +2505,7 @@
   "aiSettingsStepAuth": "API key check",
   "aiSettingsStepModel": "Model available",
   "aiSettingsStepJson": "JSON output",
+  "aiSettingsStepThinking": "Thinking depth",
   "aiSettingsStepSkipped": "Not run",
   "aiSettingsLatency": "{ms} ms",
   "@aiSettingsLatency": {
@@ -3327,11 +3328,11 @@
   "aiChatClose": "Minimize chat",
   "aiChatReset": "New chat",
   "aiChatResetTitle": "Start a new chat?",
-  "aiChatResetHint": "This clears this window’s conversation and unused files. Completed business actions remain in effect.",
+  "aiChatResetHint": "A new chat no longer uses earlier questions and answers. Earlier history is kept and can be cleared in chat settings. Completed business actions remain in effect.",
   "aiChatCancel": "Cancel",
   "aiChatConfirm": "Confirm",
   "aiChatWelcome": "What can I help with today?",
-  "aiChatBoundary": "Answers follow your account permissions. The system checks access for every query and action.",
+  "aiChatBoundary": "Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, with the same permission and validation checks.",
   "aiChatUnavailable": "Only supported business questions are available right now.",
   "aiChatLoadFailed": "The assistant could not connect. Please retry.",
   "aiChatRetry": "Retry",
@@ -3353,36 +3354,20 @@
   "aiChatTimeout": "Processing took too long. Please try again later.",
   "aiChatGone": "This request has expired. Start a new chat.",
   "aiChatPermissionChanged": "Your access or session changed. This chat was cleared. Refresh and try again.",
-  "aiChatOpenDraft": "Review and create order",
-  "aiChatDraftHint": "Check the customer, items, quantities and prices before saving.",
-  "aiChatUnsupported": "Use the relevant business page to perform this action.",
   "aiChatEmptyReply": "No answer was returned. Please rephrase your question.",
   "aiChatYou": "You",
   "aiChatAssistant": "Assistant",
-  "aiChatDraftUnavailable": "This draft cannot be opened. Attach the file again.",
-  "aiChatConfirmPermission": "Review authorization",
-  "aiChatPermissionDone": "Authorization completed",
   "aiChatMoveUp": "Move assistant up",
   "aiChatMoveDown": "Move assistant down",
   "aiChatPageAware": "Helping with this page",
-  "aiChatPageOff": "Use the current page",
-  "aiChatPageHint": "Uses page and field guidance, without reading your form values.",
+  "aiChatPageOff": "Not reading this page (turn it on in chat settings)",
+  "aiChatPageHint": "Reads the tables and fields you can see on this page and sends them to the AI service configured by your administrator. Costs, salaries, credit limits and personal data such as ID numbers, bank accounts and phone numbers are sent by name only, without values; payroll, HR and personal pages and system administration pages (settings, AI service, permissions, audit, server status) are not read.",
   "aiChatPageQuestion": "How do I fill in this page? Show an example.",
-  "aiChatGrantDetails": "Review the person, permission and scope. Confirmation requires password verification.",
-  "aiChatGrantExpired": "This proposal expired. Request a new one.",
-  "aiChatGrantUnknown": "The result could not be confirmed. Check permission management before retrying.",
   "aiChatAttachmentQuestion": "Analyze this file, identify the appropriate workflow and help fill in its form.",
-  "aiChatLimit": "This chat is getting long. Start a new chat to continue.",
-  "aiChatPermissionTarget": "Person",
-  "aiChatPermissionItem": "Permission",
-  "aiChatPermissionScope": "Data scope",
-  "aiChatPermissionExpiry": "Expires",
-  "aiChatPendingGrant": "Awaiting your confirmation",
+  "aiChatLimit": "This chat window is getting long. Start a new chat to continue.",
   "aiChatFileReady": "File ready; send your question",
   "aiChatSendAgain": "Send again",
-  "aiChatDraftOpened": "Review page opened",
-  "aiChatFileMissing": "Attach the file again before creating the order so its source is preserved.",
-  "aiChatPrivacyNotice": "Your messages are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information.",
+  "aiChatPrivacyNotice": "Your messages, the last few questions and answers of this chat and what you can see on this page are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information. Always check answers against the page. The assistant only answers how to use the platform, its business rules and business data you may see; it does not handle code, servers, commands, databases or passwords.",
   "aiChatReceived": "Delivered. Waiting for a reply…",
   "aiChatRequestRejected": "This message was not submitted successfully.",
   "aiChatDeliveryUnknown": "Delivery is unconfirmed. Sending again starts a new request.",
@@ -3632,5 +3617,256 @@
         "type": "String"
       }
     }
-  }
+  },
+  "aiActionSetField": "Fill in a field",
+  "aiActionParamField": "Field",
+  "aiActionParamValue": "New value",
+  "aiActionFieldMissing": "The field \"{label}\" is not on this page",
+  "@aiActionFieldMissing": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionFieldReadOnly": "\"{label}\" cannot be changed now",
+  "@aiActionFieldReadOnly": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionOptionMissing": "There is no option \"{value}\"",
+  "@aiActionOptionMissing": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionDateInvalid": "Write the date like 2026-10-04",
+  "aiActionFilterTable": "Filter the table",
+  "aiActionParamColumn": "Column",
+  "aiActionParamFilterValue": "Filter value (empty = all)",
+  "aiActionSelectRows": "Select rows",
+  "aiActionParamRows": "Rows (e.g. 1,3,5-8; 0 = clear)",
+  "aiActionOpenRow": "Open a row",
+  "aiActionParamRow": "Row",
+  "aiActionTableSuffix": " (table {index})",
+  "@aiActionTableSuffix": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowMissing": "Row {row} does not exist",
+  "@aiActionRowMissing": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowNotOpenable": "Row {row} cannot be opened",
+  "@aiActionRowNotOpenable": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowNotSelectable": "Row {row} cannot be selected",
+  "@aiActionRowNotSelectable": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowsInvalid": "Row numbers are not valid, for example 1,3,5-8",
+  "aiActionColumnMissing": "The table has no filterable column \"{column}\"",
+  "@aiActionColumnMissing": {
+    "placeholders": {
+      "column": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionFilterValueMissing": "This column has no value \"{value}\"",
+  "@aiActionFilterValueMissing": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldAiFilledReview": "Filled in by AI. Please review.",
+  "salesAiActionSetLine": "Change a line",
+  "salesAiActionConfirmReview": "Confirm goods match (learned on save)",
+  "salesAiConfirmReviewRowHint": "Only rows whose matched goods need checking; unit, amount or duplicate reminders need the value fixed",
+  "salesAiActionSave": "Save the document",
+  "salesAiValueInvalid": "The value for \"{field}\" is not valid",
+  "@salesAiValueInvalid": {
+    "placeholders": {
+      "field": {
+        "type": "String"
+      }
+    }
+  },
+  "salesAiNotReviewLine": "Row {row} has nothing to review",
+  "@salesAiNotReviewLine": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "salesAiReviewNeedsEdit": "Row {row} needs its quantity, unit, amount or price checked. Fix the value directly.",
+  "@salesAiReviewNeedsEdit": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "salesAiSaveFailed": "The document was not saved. Check the message on the page.",
+  "salesAiPageBusy": "The page is busy. Confirm again shortly.",
+  "salesAiLineEmpty": "Row {row} has no item yet",
+  "@salesAiLineEmpty": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatAttachSummary": "This page will be attached: {rows} table rows, {fields} fields, {flagged} items to review",
+  "@aiChatAttachSummary": {
+    "placeholders": {
+      "rows": {
+        "type": "int"
+      },
+      "fields": {
+        "type": "int"
+      },
+      "flagged": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatAttachRouteOnly": "Only the page name will be attached (nothing readable on this page)",
+  "aiChatAttachWithheld": "This page holds payroll or personal data. Its content is not read; only your question is sent.",
+  "aiChatAttachProtected": "System administration page (settings, AI service, permissions, audit, server status): its content is not read and the assistant cannot act here; only your question is sent.",
+  "aiChatCardProtectedPage": "Actions on system administration pages are never done through the assistant. Please do it on the page yourself.",
+  "aiChatSources": "Based on: {sources}",
+  "@aiChatSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatVerifyOnPage": "Check against the page",
+  "aiChatFallback": "The AI did not answer in time. This summary comes from the page.",
+  "aiChatCardConfirm": "Confirm",
+  "aiChatCardExpiresIn": "Expires in {time}",
+  "@aiChatCardExpiresIn": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatCardExpired": "Expired. Ask again.",
+  "aiChatCardCancelled": "Cancelled",
+  "aiChatCardRunning": "Running",
+  "aiChatCardSucceeded": "Done",
+  "aiChatCardFailed": "Not completed",
+  "aiChatCardAuthChanged": "Your access changed, so this card was voided. Ask again.",
+  "aiChatCardConfirmed": "Confirmed, waiting for the result",
+  "aiChatCardWrongPage": "Go back to the original page to confirm.",
+  "aiChatCardHandlerMissing": "This page no longer offers this action. Ask again.",
+  "aiChatCardPageChanged": "The page was replaced or reopened since you asked. Nothing was done; ask again.",
+  "aiChatCardDetached": "The page was reloaded, so this card can no longer run. Ask again.",
+  "aiActionRowChanged": "Row {row} is no longer the row you asked about (rows were deleted, added, sorted or filtered). Nothing was done; ask again.",
+  "@aiActionRowChanged": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatCardRisk": "Please note",
+  "aiChatCardStepUp": "You will be asked for your sign-in password.",
+  "aiChatCardUnknown": "The result is not confirmed yet. Check the result before trying again.",
+  "aiChatCardInvalidArgs": "The details no longer match this page. Nothing was done.",
+  "aiChatCardCheck": "Check result",
+  "aiChatCardSourceMissing": "The original file is no longer in this chat. Upload it again.",
+  "aiAuditPurposePageState": "Understand this page",
+  "aiAuditPurposeAction": "Action after confirmation",
+  "productionReadinessMeaningReady": "Materials ready (or none needed); can start",
+  "productionReadinessMeaningReadyPartial": "Some materials issued; can start now",
+  "productionReadinessMeaningToDraw": "Materials prepared; go draw them",
+  "productionReadinessMeaningToDrawPartial": "Some materials available; draw them",
+  "productionReadinessMeaningPending": "Draw submitted; waiting for the warehouse",
+  "productionReadinessMeaningWaiting": "Short of materials; waiting for arrival",
+  "productionReadinessMeaningWaitPlanning": "Short and not yet ordered; waiting for planning",
+  "productionReadinessMeaningDecide": "Choose a production route first; other actions are locked",
+  "aiActionSearch": "Search",
+  "aiActionParamSearch": "Search text (empty = clear)",
+  "salesAiNoGoods": "Choose items in the line table first",
+  "aiChatSettings": "Chat settings",
+  "aiChatSettingsBack": "Back to chat",
+  "aiChatSettingsSynced": "Settings are saved with your account and apply on every device right away.",
+  "aiChatSettingsSaving": "Saving…",
+  "aiChatSettingsSaveFailed": "The setting was not saved and has been restored. Please try again later.",
+  "aiChatSettingsDetail": "Answer length",
+  "aiChatSettingsDetailHint": "Saying \"keep it short\" or \"in detail\" in a question applies to that question only.",
+  "aiChatSettingsDetailComprehensive": "Detailed",
+  "aiChatSettingsDetailStandard": "Standard",
+  "aiChatSettingsDetailConcise": "Brief",
+  "aiChatSettingsReasoning": "Thinking depth",
+  "aiChatSettingsReasoningHint": "Fast is the default; writing \"analyse in detail\" makes that one answer think deeper. Deep is more thorough but slower.",
+  "aiChatSettingsReasoningFast": "Fast",
+  "aiChatSettingsReasoningStandard": "Standard",
+  "aiChatSettingsReasoningDeep": "Deep",
+  "aiChatSettingsReasoningUnsupported": "The current AI service cannot adjust thinking depth",
+  "aiChatSettingsPageAware": "Read the current page",
+  "aiChatSettingsShowSources": "Show answer sources",
+  "aiChatSettingsShowSourcesHint": "Turning this off hides the sources line; answers are still checked against the page and references.",
+  "aiChatSettingsMemory": "Conversation memory",
+  "aiChatSettingsMemoryHint": "The AI uses the last few questions and answers of this chat, even across pages; answers with sensitive data are not carried over.",
+  "aiChatSettingsMemoryOff": "Off",
+  "aiChatSettingsMemoryTurns": "{count} turns",
+  "aiChatSettingsLanguage": "Answer language",
+  "aiChatSettingsLanguageAuto": "Interface",
+  "aiChatSettingsLanguageZh": "中文",
+  "aiChatSettingsLanguageEn": "English",
+  "aiChatSettingsLanguageKo": "한국어",
+  "aiChatSettingsSendKey": "Send with",
+  "aiChatSettingsSendEnter": "Enter",
+  "aiChatSettingsSendCtrlEnter": "Ctrl+Enter",
+  "aiChatSettingsSendEnterHint": "Enter sends; Shift+Enter starts a new line.",
+  "aiChatSettingsSendCtrlEnterHint": "Ctrl+Enter sends; Enter starts a new line.",
+  "aiChatSettingsStyle": "Wording",
+  "aiChatSettingsStylePlain": "Plain",
+  "aiChatSettingsStyleProfessional": "Professional",
+  "aiChatSettingsStyleHint": "Plain explains business terms along the way; professional uses business terms directly.",
+  "aiChatSettingsSuggestions": "Show suggested questions",
+  "aiChatSettingsSuggestionsHint": "Shows questions you can tap in the chat.",
+  "aiChatSettingsConfirm": "Confirm before actions",
+  "aiChatSettingsConfirmAlways": "Always on",
+  "aiChatSettingsConfirmHint": "Any action the AI proposes appears as a confirmation card first and runs only after you confirm. This cannot be turned off.",
+  "aiChatSettingsClear": "Clear chat history",
+  "aiChatSettingsClearHint": "Earlier questions and answers will no longer show or be used for new questions. Only your own account is affected.",
+  "aiChatSettingsClearTitle": "Clear all chat history?",
+  "aiChatSettingsClearBody": "All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.",
+  "aiChatSettingsClearDone": "Chat history cleared",
+  "aiChatSettingsClearFailed": "Chat history could not be cleared. Please try again later.",
+  "aiChatHiddenTurns": "{count} earlier messages are no longer shown because your account permissions changed.",
+  "aiChatRestored": "Your recent chat. New questions continue it.",
+  "aiChatRestoredDataChanged": "The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.",
+  "aiSettingsThinkingZhipu": "Zhipu GLM style",
+  "aiSettingsThinkingAnthropic": "Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)"
 }

@@ -5398,20 +5398,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiSettingsJsonModeSchema => '구조 지정(스키마)';
 
   @override
-  String get aiSettingsThinking => '심층 추론 끄기';
+  String get aiSettingsThinking => '사고 파라미터 방식';
 
   @override
   String get aiSettingsThinkingInfo =>
-      '표 인식에는 심층 추론이 필요 없어 끄면 더 빠르고 저렴합니다. 제공업체마다 방식이 달라 제공업체를 고르면 자동으로 맞춰집니다';
+      'AI 대화의 사고 깊이는 이 방식으로 제공업체에 전달되며, 표 인식처럼 사고가 필요 없는 작업은 계속 사고를 끕니다. 제공업체를 고르면 자동으로 맞춰지며, \"보내지 않음\"이면 대화에서 사고 깊이를 조정할 수 없습니다. Qwen 방식은 사고를 끄는 데만 쓰입니다(Qwen 사고는 스트리밍 출력만 지원하고 JSON과 함께 쓸 수 없음). Claude Haiku 4.5처럼 사고 파라미터를 받지 않는 모델에는 자동으로 보내지 않습니다. \"연결 테스트\"는 대화 기본 단계로 한 번 시험합니다.';
 
   @override
-  String get aiSettingsThinkingNone => '그대로 두기';
+  String get aiSettingsThinkingNone => '보내지 않음';
 
   @override
   String get aiSettingsThinkingDeepseek => 'DeepSeek 방식';
 
   @override
-  String get aiSettingsThinkingDashscope => 'Qwen 방식';
+  String get aiSettingsThinkingDashscope => 'Qwen 방식(사고 끄기만)';
 
   @override
   String get aiSettingsThinkingOpenAi => 'OpenAI 방식';
@@ -5434,7 +5434,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiSettingsMaxTokens => '최대 출력 길이';
 
   @override
-  String get aiSettingsMaxTokensInfo => '256 ~ 65536, 행이 많은 파일은 더 길게 필요합니다';
+  String get aiSettingsMaxTokensInfo =>
+      '256 ~ 65536, 행이 많은 파일은 더 길게 필요합니다. 한 번의 출력(사고 포함) 상한이며 대화의 \"깊게\"도 이를 넘지 않으니, 사고 여유를 더 주려면 늘리세요';
 
   @override
   String get aiSettingsTimeout => '시간 제한(초)';
@@ -5491,6 +5492,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiSettingsStepJson => 'JSON 출력';
+
+  @override
+  String get aiSettingsStepThinking => '사고 깊이';
 
   @override
   String get aiSettingsStepSkipped => '진행 안 함';
@@ -8036,7 +8040,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatResetTitle => '새 대화를 시작할까요?';
 
   @override
-  String get aiChatResetHint => '이 창의 대화와 사용하지 않은 파일을 지웁니다. 완료된 업무 작업은 유지됩니다.';
+  String get aiChatResetHint =>
+      '새 대화는 이전 질문과 답변을 이어서 쓰지 않습니다. 이전 기록은 남아 있으며 대화 설정에서 지울 수 있습니다. 완료된 업무 작업은 유지됩니다.';
 
   @override
   String get aiChatCancel => '취소';
@@ -8048,7 +8053,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatWelcome => '어떤 업무를 도와드릴까요?';
 
   @override
-  String get aiChatBoundary => '현재 계정 권한에 따라 답변하며, 조회와 작업마다 접근 권한을 확인합니다.';
+  String get aiChatBoundary =>
+      '현재 계정 권한에 따라 답변합니다. AI가 제안한 작업은 확인 카드로 표시되며, 확인한 후에만 같은 권한과 검증으로 실행됩니다.';
 
   @override
   String get aiChatUnavailable => '지금은 지원되는 업무 질문에만 답할 수 있습니다.';
@@ -8116,15 +8122,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '권한 또는 세션이 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.';
 
   @override
-  String get aiChatOpenDraft => '검토 후 주문서 만들기';
-
-  @override
-  String get aiChatDraftHint => '고객, 품목, 수량과 가격을 확인한 후 저장하세요.';
-
-  @override
-  String get aiChatUnsupported => '이 작업은 해당 업무 페이지에서 처리하세요.';
-
-  @override
   String get aiChatEmptyReply => '답변이 반환되지 않았습니다. 질문을 다시 작성하세요.';
 
   @override
@@ -8132,15 +8129,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatAssistant => '도우미';
-
-  @override
-  String get aiChatDraftUnavailable => '초안을 열 수 없습니다. 파일을 다시 첨부하세요.';
-
-  @override
-  String get aiChatConfirmPermission => '권한 부여 검토';
-
-  @override
-  String get aiChatPermissionDone => '권한 부여 완료';
 
   @override
   String get aiChatMoveUp => '도우미 위로 이동';
@@ -8152,45 +8140,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatPageAware => '현재 페이지 도움말';
 
   @override
-  String get aiChatPageOff => '현재 페이지 사용';
+  String get aiChatPageOff => '현재 페이지를 읽지 않음(대화 설정에서 켤 수 있음)';
 
   @override
-  String get aiChatPageHint => '입력 값을 읽지 않고 페이지와 필드 안내를 사용합니다.';
+  String get aiChatPageHint =>
+      '현재 페이지에서 보이는 표와 필드를 읽어 관리자가 설정한 AI 서비스로 보냅니다. 원가, 급여, 신용 한도와 신분증 번호, 은행 계좌, 휴대폰 번호 같은 개인 정보는 항목 이름만 보내고 값은 보내지 않으며, 급여·인사·개인 정보 페이지와 설정, AI 서비스, 권한, 감사, 서버 상태 같은 시스템 관리 페이지는 읽지 않습니다.';
 
   @override
   String get aiChatPageQuestion => '이 페이지는 어떻게 작성하나요? 예를 보여주세요.';
-
-  @override
-  String get aiChatGrantDetails =>
-      '대상 직원, 권한, 범위를 검토하세요. 확인하려면 비밀번호 인증이 필요합니다.';
-
-  @override
-  String get aiChatGrantExpired => '권한 제안이 만료되었습니다. 다시 요청하세요.';
-
-  @override
-  String get aiChatGrantUnknown => '결과를 확인하지 못했습니다. 다시 시도하기 전에 권한 관리에서 확인하세요.';
 
   @override
   String get aiChatAttachmentQuestion =>
       '이 파일을 분석하여 적절한 업무를 판단하고 양식 입력을 도와주세요.';
 
   @override
-  String get aiChatLimit => '대화가 길어졌습니다. 새 대화를 시작해 주세요.';
-
-  @override
-  String get aiChatPermissionTarget => '대상 직원';
-
-  @override
-  String get aiChatPermissionItem => '부여할 권한';
-
-  @override
-  String get aiChatPermissionScope => '데이터 범위';
-
-  @override
-  String get aiChatPermissionExpiry => '만료 시간';
-
-  @override
-  String get aiChatPendingGrant => '확인 대기 중';
+  String get aiChatLimit => '이 대화창이 길어졌습니다. 새 대화를 시작해 주세요.';
 
   @override
   String get aiChatFileReady => '파일 준비 완료. 질문을 보내세요';
@@ -8199,14 +8163,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatSendAgain => '다시 보내기';
 
   @override
-  String get aiChatDraftOpened => '검토 페이지 열림';
-
-  @override
-  String get aiChatFileMissing => '원본을 보존하려면 주문서를 만들기 전에 파일을 다시 첨부하세요.';
-
-  @override
   String get aiChatPrivacyNotice =>
-      '대화는 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요.';
+      '대화 내용, 같은 대화의 최근 질문과 답변, 현재 페이지에 보이는 내용은 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요. 답변은 페이지 기준으로 확인하세요. AI는 플랫폼 사용 방법, 업무 규칙, 권한이 있는 업무 데이터만 답하며 코드, 서버, 명령, 데이터베이스, 비밀번호는 다루지 않습니다.';
 
   @override
   String get aiChatReceived => '전송 완료. 답변을 기다리는 중…';
@@ -8664,4 +8622,440 @@ class AppLocalizationsKo extends AppLocalizations {
   String aiAuditProviders(String names) {
     return '서비스: $names';
   }
+
+  @override
+  String get aiActionSetField => '필드 입력';
+
+  @override
+  String get aiActionParamField => '필드';
+
+  @override
+  String get aiActionParamValue => '새 값';
+
+  @override
+  String aiActionFieldMissing(String label) {
+    return '이 페이지에 \"$label\" 필드가 없습니다';
+  }
+
+  @override
+  String aiActionFieldReadOnly(String label) {
+    return '\"$label\" 필드는 지금 수정할 수 없습니다';
+  }
+
+  @override
+  String aiActionOptionMissing(String value) {
+    return '\"$value\" 옵션이 없습니다';
+  }
+
+  @override
+  String get aiActionDateInvalid => '날짜는 2026-10-04 형식으로 입력하세요';
+
+  @override
+  String get aiActionFilterTable => '표 필터';
+
+  @override
+  String get aiActionParamColumn => '열';
+
+  @override
+  String get aiActionParamFilterValue => '필터 값(비우면 전체)';
+
+  @override
+  String get aiActionSelectRows => '행 선택';
+
+  @override
+  String get aiActionParamRows => '행 번호(예: 1,3,5-8; 0=선택 해제)';
+
+  @override
+  String get aiActionOpenRow => '행 열기';
+
+  @override
+  String get aiActionParamRow => '행 번호';
+
+  @override
+  String aiActionTableSuffix(int index) {
+    return ' (표 $index)';
+  }
+
+  @override
+  String aiActionRowMissing(int row) {
+    return '$row행이 없습니다';
+  }
+
+  @override
+  String aiActionRowNotOpenable(int row) {
+    return '$row행은 열 수 없습니다';
+  }
+
+  @override
+  String aiActionRowNotSelectable(int row) {
+    return '$row행은 선택할 수 없습니다';
+  }
+
+  @override
+  String get aiActionRowsInvalid => '행 번호 형식이 올바르지 않습니다. 예: 1,3,5-8';
+
+  @override
+  String aiActionColumnMissing(String column) {
+    return '표에 필터할 수 있는 \"$column\" 열이 없습니다';
+  }
+
+  @override
+  String aiActionFilterValueMissing(String value) {
+    return '이 열에는 \"$value\" 값이 없습니다';
+  }
+
+  @override
+  String get fieldAiFilledReview => 'AI가 입력했습니다. 확인하세요.';
+
+  @override
+  String get salesAiActionSetLine => '명세 행 수정';
+
+  @override
+  String get salesAiActionConfirmReview => '품목 매칭 확인(저장 시 고객 품번 학습)';
+
+  @override
+  String get salesAiConfirmReviewRowHint =>
+      '품목 매칭 확인이 필요한 행만 해당; 단위·금액·중복 알림만 있는 행은 값을 직접 고치세요';
+
+  @override
+  String get salesAiActionSave => '문서 저장';
+
+  @override
+  String salesAiValueInvalid(String field) {
+    return '\"$field\" 값이 올바르지 않습니다';
+  }
+
+  @override
+  String salesAiNotReviewLine(int row) {
+    return '$row행에는 확인할 표시가 없습니다';
+  }
+
+  @override
+  String salesAiReviewNeedsEdit(int row) {
+    return '$row행은 수량·단위·금액·가격을 확인해야 합니다. 확인 후 값을 직접 고치세요.';
+  }
+
+  @override
+  String get salesAiSaveFailed => '저장되지 않았습니다. 페이지의 안내를 확인하세요.';
+
+  @override
+  String get salesAiPageBusy => '페이지가 처리 중입니다. 잠시 후 다시 확인하세요.';
+
+  @override
+  String salesAiLineEmpty(int row) {
+    return '$row행에 아직 품목이 없습니다';
+  }
+
+  @override
+  String aiChatAttachSummary(int rows, int fields, int flagged) {
+    return '현재 페이지 첨부: 표 $rows행, 필드 $fields개, 확인 $flagged건';
+  }
+
+  @override
+  String get aiChatAttachRouteOnly => '페이지 이름만 첨부합니다(읽을 수 있는 표나 필드 없음)';
+
+  @override
+  String get aiChatAttachWithheld =>
+      '급여나 개인 정보가 있는 페이지입니다. 페이지 내용은 읽지 않고 질문만 보냅니다.';
+
+  @override
+  String get aiChatAttachProtected =>
+      '시스템 관리 페이지(설정, AI 서비스, 권한, 감사, 서버 상태 등)는 내용을 읽지 않으며 AI가 여기서 작업을 대신하지 않습니다. 질문만 보냅니다.';
+
+  @override
+  String get aiChatCardProtectedPage =>
+      '시스템 관리 페이지의 작업은 AI가 대신하지 않습니다. 페이지에서 직접 처리해 주세요.';
+
+  @override
+  String aiChatSources(String sources) {
+    return '근거: $sources';
+  }
+
+  @override
+  String get aiChatVerifyOnPage => '페이지 기준으로 확인';
+
+  @override
+  String get aiChatFallback => 'AI가 응답하지 않아 페이지 내용으로 정리했습니다.';
+
+  @override
+  String get aiChatCardConfirm => '확인 실행';
+
+  @override
+  String aiChatCardExpiresIn(String time) {
+    return '$time 후 만료';
+  }
+
+  @override
+  String get aiChatCardExpired => '만료되었습니다. 다시 질문하세요.';
+
+  @override
+  String get aiChatCardCancelled => '취소됨';
+
+  @override
+  String get aiChatCardRunning => '실행 중';
+
+  @override
+  String get aiChatCardSucceeded => '완료';
+
+  @override
+  String get aiChatCardFailed => '완료되지 않음';
+
+  @override
+  String get aiChatCardAuthChanged => '권한이 바뀌어 이 카드는 무효가 되었습니다. 다시 질문하세요.';
+
+  @override
+  String get aiChatCardConfirmed => '확인됨, 결과 대기 중';
+
+  @override
+  String get aiChatCardWrongPage => '원래 페이지로 돌아가 확인하세요.';
+
+  @override
+  String get aiChatCardHandlerMissing => '이 페이지에는 이제 이 작업이 없습니다. 다시 질문하세요.';
+
+  @override
+  String get aiChatCardPageChanged =>
+      '질문한 뒤 페이지가 바뀌었거나 다시 열렸습니다. 실행하지 않았습니다. 다시 질문하세요.';
+
+  @override
+  String get aiChatCardDetached =>
+      '페이지가 새로 고쳐져 이 카드는 더 이상 실행할 수 없습니다. 다시 질문하세요.';
+
+  @override
+  String aiActionRowChanged(int row) {
+    return '$row행이 질문할 때의 그 행이 아닙니다(행 삭제·추가·정렬·필터). 실행하지 않았습니다. 다시 질문하세요.';
+  }
+
+  @override
+  String get aiChatCardRisk => '주의';
+
+  @override
+  String get aiChatCardStepUp => '확인 시 로그인 비밀번호가 필요합니다.';
+
+  @override
+  String get aiChatCardUnknown => '결과가 아직 확인되지 않았습니다. 다시 확인하기 전에 결과를 확인하세요.';
+
+  @override
+  String get aiChatCardInvalidArgs => '작업 내용이 현재 페이지와 맞지 않아 실행하지 않았습니다.';
+
+  @override
+  String get aiChatCardCheck => '결과 확인';
+
+  @override
+  String get aiChatCardSourceMissing => '원본 파일이 대화에 없습니다. 다시 업로드하세요.';
+
+  @override
+  String get aiAuditPurposePageState => '현재 페이지 이해';
+
+  @override
+  String get aiAuditPurposeAction => '확인 후 작업';
+
+  @override
+  String get productionReadinessMeaningReady => '자재 준비 완료(또는 불필요), 착공 가능';
+
+  @override
+  String get productionReadinessMeaningReadyPartial => '일부 자재 투입, 먼저 착공 가능';
+
+  @override
+  String get productionReadinessMeaningToDraw => '자재 준비됨, 출고 요청';
+
+  @override
+  String get productionReadinessMeaningToDrawPartial => '일부 자재 출고 가능, 출고 요청';
+
+  @override
+  String get productionReadinessMeaningPending => '출고 요청됨, 창고 출고 대기';
+
+  @override
+  String get productionReadinessMeaningWaiting => '자재 부족, 입고 대기';
+
+  @override
+  String get productionReadinessMeaningWaitPlanning => '자재 부족·미발주, 계획 발주 대기';
+
+  @override
+  String get productionReadinessMeaningDecide =>
+      '생산 경로를 먼저 선택해야 하며 다른 작업은 잠겨 있음';
+
+  @override
+  String get aiActionSearch => '검색';
+
+  @override
+  String get aiActionParamSearch => '검색어(비우면 지우기)';
+
+  @override
+  String get salesAiNoGoods => '먼저 명세 표에서 품목을 선택하세요';
+
+  @override
+  String get aiChatSettings => '대화 설정';
+
+  @override
+  String get aiChatSettingsBack => '대화로 돌아가기';
+
+  @override
+  String get aiChatSettingsSynced => '설정은 계정에 저장되어 모든 기기에 바로 적용됩니다.';
+
+  @override
+  String get aiChatSettingsSaving => '저장 중…';
+
+  @override
+  String get aiChatSettingsSaveFailed =>
+      '설정이 저장되지 않아 원래대로 되돌렸습니다. 잠시 후 다시 시도해 주세요.';
+
+  @override
+  String get aiChatSettingsDetail => '답변 길이';
+
+  @override
+  String get aiChatSettingsDetailHint =>
+      '질문에 \"간단히\" 또는 \"자세히\"라고 하면 그 질문에만 적용됩니다.';
+
+  @override
+  String get aiChatSettingsDetailComprehensive => '자세히';
+
+  @override
+  String get aiChatSettingsDetailStandard => '표준';
+
+  @override
+  String get aiChatSettingsDetailConcise => '간단히';
+
+  @override
+  String get aiChatSettingsReasoning => '사고 깊이';
+
+  @override
+  String get aiChatSettingsReasoningHint =>
+      '기본은 빠르게입니다. 질문에 \'자세히 분석\'이라고 쓰면 그 답변만 더 깊이 생각합니다. 깊게는 더 꼼꼼하지만 느립니다.';
+
+  @override
+  String get aiChatSettingsReasoningFast => '빠르게';
+
+  @override
+  String get aiChatSettingsReasoningStandard => '표준';
+
+  @override
+  String get aiChatSettingsReasoningDeep => '깊게';
+
+  @override
+  String get aiChatSettingsReasoningUnsupported =>
+      '현재 AI 서비스는 사고 깊이 조정을 지원하지 않습니다';
+
+  @override
+  String get aiChatSettingsPageAware => '현재 페이지 읽기';
+
+  @override
+  String get aiChatSettingsShowSources => '답변 근거 표시';
+
+  @override
+  String get aiChatSettingsShowSourcesHint =>
+      '끄면 근거 줄만 숨기고, 답변은 여전히 페이지와 자료로 확인합니다.';
+
+  @override
+  String get aiChatSettingsMemory => '대화 기억';
+
+  @override
+  String get aiChatSettingsMemoryHint =>
+      'AI가 같은 대화의 최근 질문과 답변을 참고하며 페이지를 옮겨도 이어집니다. 민감한 데이터가 담긴 답변은 넘기지 않습니다.';
+
+  @override
+  String get aiChatSettingsMemoryOff => '끄기';
+
+  @override
+  String aiChatSettingsMemoryTurns(int count) {
+    return '$count회';
+  }
+
+  @override
+  String get aiChatSettingsLanguage => '답변 언어';
+
+  @override
+  String get aiChatSettingsLanguageAuto => '화면 언어';
+
+  @override
+  String get aiChatSettingsLanguageZh => '中文';
+
+  @override
+  String get aiChatSettingsLanguageEn => 'English';
+
+  @override
+  String get aiChatSettingsLanguageKo => '한국어';
+
+  @override
+  String get aiChatSettingsSendKey => '보내기 키';
+
+  @override
+  String get aiChatSettingsSendEnter => 'Enter';
+
+  @override
+  String get aiChatSettingsSendCtrlEnter => 'Ctrl+Enter';
+
+  @override
+  String get aiChatSettingsSendEnterHint => 'Enter로 보내고 Shift+Enter로 줄을 바꿉니다.';
+
+  @override
+  String get aiChatSettingsSendCtrlEnterHint =>
+      'Ctrl+Enter로 보내고 Enter로 줄을 바꿉니다.';
+
+  @override
+  String get aiChatSettingsStyle => '표현 방식';
+
+  @override
+  String get aiChatSettingsStylePlain => '쉽게';
+
+  @override
+  String get aiChatSettingsStyleProfessional => '전문적으로';
+
+  @override
+  String get aiChatSettingsStyleHint =>
+      '쉽게는 업무 용어를 함께 설명하고, 전문적으로는 업무 용어를 그대로 씁니다.';
+
+  @override
+  String get aiChatSettingsSuggestions => '추천 질문 표시';
+
+  @override
+  String get aiChatSettingsSuggestionsHint => '대화창에 바로 누를 수 있는 질문을 표시합니다.';
+
+  @override
+  String get aiChatSettingsConfirm => '실행 전 확인';
+
+  @override
+  String get aiChatSettingsConfirmAlways => '항상 켜짐';
+
+  @override
+  String get aiChatSettingsConfirmHint =>
+      'AI가 제안하는 모든 작업은 먼저 확인 카드로 표시되고, 확인해야만 실행됩니다. 끌 수 없습니다.';
+
+  @override
+  String get aiChatSettingsClear => '대화 기록 지우기';
+
+  @override
+  String get aiChatSettingsClearHint =>
+      '이전 질문과 답변이 더 이상 표시되지 않고 새 질문에도 쓰이지 않습니다. 내 계정에만 적용됩니다.';
+
+  @override
+  String get aiChatSettingsClearTitle => '모든 대화 기록을 지울까요?';
+
+  @override
+  String get aiChatSettingsClearBody =>
+      '내 계정의 모든 AI 대화 기록이 지워지며 복구할 수 없습니다. 이미 실행된 업무 작업에는 영향이 없습니다.';
+
+  @override
+  String get aiChatSettingsClearDone => '대화 기록을 지웠습니다';
+
+  @override
+  String get aiChatSettingsClearFailed => '대화 기록을 지우지 못했습니다. 잠시 후 다시 시도해 주세요.';
+
+  @override
+  String aiChatHiddenTurns(int count) {
+    return '계정 권한이 바뀌어 이전 대화 $count건은 더 이상 표시되지 않습니다.';
+  }
+
+  @override
+  String get aiChatRestored => '최근 대화입니다. 이어서 질문하면 계속됩니다.';
+
+  @override
+  String get aiChatRestoredDataChanged =>
+      '이 답변이 인용한 업무 데이터가 바뀌어 이전 내용은 표시하지 않습니다. 필요하면 다시 질문하세요.';
+
+  @override
+  String get aiSettingsThinkingZhipu => 'Zhipu GLM 방식';
+
+  @override
+  String get aiSettingsThinkingAnthropic =>
+      'Anthropic effort 방식(Opus 4.5 / Sonnet 4.6 이상)';
 }

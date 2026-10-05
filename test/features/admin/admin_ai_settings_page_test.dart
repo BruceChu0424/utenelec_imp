@@ -262,6 +262,13 @@ final _serverWarnResult = AiConnectionTestResult.fromJson({
       'message': '返回了 JSON 但内容和要求不一致, 识别客户文件可能不稳定',
       'latencyMs': 300,
     },
+    // ADR-152: reported only when the provider can adjust thinking depth.
+    {
+      'key': 'THINKING',
+      'status': 'OK',
+      'message': '能按思考程度调用, AI 对话里的「思考程度」设置可以使用',
+      'latencyMs': 400,
+    },
   ],
   'testedAt': '2026-09-27T12:00:00+08:00',
 });
@@ -858,7 +865,10 @@ void main() {
 
     expect(find.text('返回了 JSON 但内容和要求不一致, 识别客户文件可能不稳定'), findsOneWidget);
     expect(find.byIcon(Icons.error_rounded), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle_rounded), findsNWidgets(3));
+    expect(find.byIcon(Icons.check_circle_rounded), findsNWidgets(4));
+    // The thinking step has a readable name, never its code.
+    expect(find.text(_zh.aiSettingsStepThinking), findsOneWidget);
+    expect(find.text('THINKING'), findsNothing);
     expect(find.byIcon(Icons.radio_button_unchecked_rounded), findsNothing);
     // 总结用服务端的话, 徽标是「需留意」, 不再说「连接正常, 可以使用」。
     expect(

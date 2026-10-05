@@ -9788,19 +9788,19 @@ abstract class AppLocalizations {
   /// No description provided for @aiSettingsThinking.
   ///
   /// In zh, this message translates to:
-  /// **'关闭深度思考'**
+  /// **'思考参数写法'**
   String get aiSettingsThinking;
 
   /// No description provided for @aiSettingsThinkingInfo.
   ///
   /// In zh, this message translates to:
-  /// **'识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对'**
+  /// **'AI 对话的「思考程度」按这里的写法发给服务商; 识别表格等不需要思考的用途仍会关掉思考。选好服务商会自动选对; 选「不发送」时对话设置里不能调整思考程度。通义千问写法只用来关掉思考(通义的思考只支持流式输出、不能和 JSON 同用); Claude Haiku 4.5 等不认思考参数的模型会自动不发。「测试连接」会按对话默认档实测一次。'**
   String get aiSettingsThinkingInfo;
 
   /// No description provided for @aiSettingsThinkingNone.
   ///
   /// In zh, this message translates to:
-  /// **'不处理'**
+  /// **'不发送'**
   String get aiSettingsThinkingNone;
 
   /// No description provided for @aiSettingsThinkingDeepseek.
@@ -9812,7 +9812,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiSettingsThinkingDashscope.
   ///
   /// In zh, this message translates to:
-  /// **'通义千问写法'**
+  /// **'通义千问写法(只关掉思考)'**
   String get aiSettingsThinkingDashscope;
 
   /// No description provided for @aiSettingsThinkingOpenAi.
@@ -9854,7 +9854,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiSettingsMaxTokensInfo.
   ///
   /// In zh, this message translates to:
-  /// **'256 ~ 65536; 行数多的文件需要更长'**
+  /// **'256 ~ 65536; 行数多的文件需要更长。这是单次输出(含思考)的上限, 对话选「深入」时不会超过它, 想多留思考空间可以调大'**
   String get aiSettingsMaxTokensInfo;
 
   /// No description provided for @aiSettingsTimeout.
@@ -9958,6 +9958,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'JSON 输出'**
   String get aiSettingsStepJson;
+
+  /// No description provided for @aiSettingsStepThinking.
+  ///
+  /// In zh, this message translates to:
+  /// **'思考程度'**
+  String get aiSettingsStepThinking;
 
   /// No description provided for @aiSettingsStepSkipped.
   ///
@@ -14491,7 +14497,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatResetHint.
   ///
   /// In zh, this message translates to:
-  /// **'当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。'**
+  /// **'开始新对话后, AI 不再关联前面的问答。之前的记录仍会保留, 可以在对话设置里清空。已执行的业务操作不会撤销。'**
   String get aiChatResetHint;
 
   /// No description provided for @aiChatCancel.
@@ -14515,7 +14521,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatBoundary.
   ///
   /// In zh, this message translates to:
-  /// **'按当前账号权限回答；数据查询与操作由系统逐次校验。'**
+  /// **'按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍按你的权限和系统校验。'**
   String get aiChatBoundary;
 
   /// No description provided for @aiChatUnavailable.
@@ -14644,24 +14650,6 @@ abstract class AppLocalizations {
   /// **'当前权限或会话已变化，对话已清除。请刷新后重试。'**
   String get aiChatPermissionChanged;
 
-  /// No description provided for @aiChatOpenDraft.
-  ///
-  /// In zh, this message translates to:
-  /// **'核对并新建订货单'**
-  String get aiChatOpenDraft;
-
-  /// No description provided for @aiChatDraftHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'请核对客户、货品、数量和价格后保存。'**
-  String get aiChatDraftHint;
-
-  /// No description provided for @aiChatUnsupported.
-  ///
-  /// In zh, this message translates to:
-  /// **'此操作暂不支持，请到对应业务页面处理。'**
-  String get aiChatUnsupported;
-
   /// No description provided for @aiChatEmptyReply.
   ///
   /// In zh, this message translates to:
@@ -14679,24 +14667,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'助手'**
   String get aiChatAssistant;
-
-  /// No description provided for @aiChatDraftUnavailable.
-  ///
-  /// In zh, this message translates to:
-  /// **'无法打开此草稿，请重新上传文件。'**
-  String get aiChatDraftUnavailable;
-
-  /// No description provided for @aiChatConfirmPermission.
-  ///
-  /// In zh, this message translates to:
-  /// **'核对授权内容'**
-  String get aiChatConfirmPermission;
-
-  /// No description provided for @aiChatPermissionDone.
-  ///
-  /// In zh, this message translates to:
-  /// **'授权已完成'**
-  String get aiChatPermissionDone;
 
   /// No description provided for @aiChatMoveUp.
   ///
@@ -14719,13 +14689,13 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatPageOff.
   ///
   /// In zh, this message translates to:
-  /// **'结合当前页面回答'**
+  /// **'未读取当前页面(可在对话设置里打开)'**
   String get aiChatPageOff;
 
   /// No description provided for @aiChatPageHint.
   ///
   /// In zh, this message translates to:
-  /// **'只使用页面与字段说明，不读取你的表单内容。'**
+  /// **'会读取当前页面你能看到的表格和字段, 发给管理员配置的 AI 服务。成本、工资、信用额度和证件号、银行账号、手机号等个人信息只发名称不发数值; 工资、人事和个人资料页面, 以及系统设置、AI 服务、权限、审计、服务器状态等系统管理页面不读取。'**
   String get aiChatPageHint;
 
   /// No description provided for @aiChatPageQuestion.
@@ -14733,24 +14703,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'这个页面怎么填写？请举个例子。'**
   String get aiChatPageQuestion;
-
-  /// No description provided for @aiChatGrantDetails.
-  ///
-  /// In zh, this message translates to:
-  /// **'请核对目标人员、权限和范围，确认后需重新验证密码。'**
-  String get aiChatGrantDetails;
-
-  /// No description provided for @aiChatGrantExpired.
-  ///
-  /// In zh, this message translates to:
-  /// **'授权建议已过期，请重新发起。'**
-  String get aiChatGrantExpired;
-
-  /// No description provided for @aiChatGrantUnknown.
-  ///
-  /// In zh, this message translates to:
-  /// **'授权结果暂未确认。请在权限管理页核查，再决定是否重试。'**
-  String get aiChatGrantUnknown;
 
   /// No description provided for @aiChatAttachmentQuestion.
   ///
@@ -14761,38 +14713,8 @@ abstract class AppLocalizations {
   /// No description provided for @aiChatLimit.
   ///
   /// In zh, this message translates to:
-  /// **'本次对话较长，请开始新对话后继续。'**
+  /// **'这个窗口里的对话较长, 请开始新对话后继续。'**
   String get aiChatLimit;
-
-  /// No description provided for @aiChatPermissionTarget.
-  ///
-  /// In zh, this message translates to:
-  /// **'目标人员'**
-  String get aiChatPermissionTarget;
-
-  /// No description provided for @aiChatPermissionItem.
-  ///
-  /// In zh, this message translates to:
-  /// **'授予权限'**
-  String get aiChatPermissionItem;
-
-  /// No description provided for @aiChatPermissionScope.
-  ///
-  /// In zh, this message translates to:
-  /// **'数据范围'**
-  String get aiChatPermissionScope;
-
-  /// No description provided for @aiChatPermissionExpiry.
-  ///
-  /// In zh, this message translates to:
-  /// **'有效期至'**
-  String get aiChatPermissionExpiry;
-
-  /// No description provided for @aiChatPendingGrant.
-  ///
-  /// In zh, this message translates to:
-  /// **'待你核对确认'**
-  String get aiChatPendingGrant;
 
   /// No description provided for @aiChatFileReady.
   ///
@@ -14806,22 +14728,10 @@ abstract class AppLocalizations {
   /// **'再次发送'**
   String get aiChatSendAgain;
 
-  /// No description provided for @aiChatDraftOpened.
-  ///
-  /// In zh, this message translates to:
-  /// **'已打开核对页面'**
-  String get aiChatDraftOpened;
-
-  /// No description provided for @aiChatFileMissing.
-  ///
-  /// In zh, this message translates to:
-  /// **'原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。'**
-  String get aiChatFileMissing;
-
   /// No description provided for @aiChatPrivacyNotice.
   ///
   /// In zh, this message translates to:
-  /// **'对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。'**
+  /// **'对话文字、同一对话里最近几轮的问答和当前页面上你能看到的内容, 由管理员配置的 AI 服务处理, 请勿输入密码等敏感信息。回答以页面为准。AI 只解答平台怎么用、业务规则和你有权限看的业务数据, 不处理代码、服务器、命令、数据库或密码。'**
   String get aiChatPrivacyNotice;
 
   /// No description provided for @aiChatReceived.
@@ -15669,6 +15579,762 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'服务：{names}'**
   String aiAuditProviders(String names);
+
+  /// No description provided for @aiActionSetField.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写字段'**
+  String get aiActionSetField;
+
+  /// No description provided for @aiActionParamField.
+  ///
+  /// In zh, this message translates to:
+  /// **'字段'**
+  String get aiActionParamField;
+
+  /// No description provided for @aiActionParamValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'新值'**
+  String get aiActionParamValue;
+
+  /// No description provided for @aiActionFieldMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面上没有「{label}」这个可填写的字段'**
+  String aiActionFieldMissing(String label);
+
+  /// No description provided for @aiActionFieldReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{label}」现在不能修改'**
+  String aiActionFieldReadOnly(String label);
+
+  /// No description provided for @aiActionOptionMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有「{value}」这个选项'**
+  String aiActionOptionMissing(String value);
+
+  /// No description provided for @aiActionDateInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'日期要写成 2026-10-04 这样的格式'**
+  String get aiActionDateInvalid;
+
+  /// No description provided for @aiActionFilterTable.
+  ///
+  /// In zh, this message translates to:
+  /// **'筛选表格'**
+  String get aiActionFilterTable;
+
+  /// No description provided for @aiActionParamColumn.
+  ///
+  /// In zh, this message translates to:
+  /// **'列'**
+  String get aiActionParamColumn;
+
+  /// No description provided for @aiActionParamFilterValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'筛选值(留空=全部)'**
+  String get aiActionParamFilterValue;
+
+  /// No description provided for @aiActionSelectRows.
+  ///
+  /// In zh, this message translates to:
+  /// **'勾选行'**
+  String get aiActionSelectRows;
+
+  /// No description provided for @aiActionParamRows.
+  ///
+  /// In zh, this message translates to:
+  /// **'行号(如 1,3,5-8; 0=清空)'**
+  String get aiActionParamRows;
+
+  /// No description provided for @aiActionOpenRow.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开行'**
+  String get aiActionOpenRow;
+
+  /// No description provided for @aiActionParamRow.
+  ///
+  /// In zh, this message translates to:
+  /// **'行号'**
+  String get aiActionParamRow;
+
+  /// No description provided for @aiActionTableSuffix.
+  ///
+  /// In zh, this message translates to:
+  /// **' (第{index}张表)'**
+  String aiActionTableSuffix(int index);
+
+  /// No description provided for @aiActionRowMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有第{row}行'**
+  String aiActionRowMissing(int row);
+
+  /// No description provided for @aiActionRowNotOpenable.
+  ///
+  /// In zh, this message translates to:
+  /// **'第{row}行不能打开'**
+  String aiActionRowNotOpenable(int row);
+
+  /// No description provided for @aiActionRowNotSelectable.
+  ///
+  /// In zh, this message translates to:
+  /// **'第{row}行不能勾选'**
+  String aiActionRowNotSelectable(int row);
+
+  /// No description provided for @aiActionRowsInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'行号写法不对, 例如 1,3,5-8'**
+  String get aiActionRowsInvalid;
+
+  /// No description provided for @aiActionColumnMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'表格里没有可筛选的「{column}」列'**
+  String aiActionColumnMissing(String column);
+
+  /// No description provided for @aiActionFilterValueMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'这一列没有「{value}」这个值'**
+  String aiActionFilterValueMissing(String value);
+
+  /// No description provided for @fieldAiFilledReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 填入, 请核对'**
+  String get fieldAiFilledReview;
+
+  /// No description provided for @salesAiActionSetLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改明细行'**
+  String get salesAiActionSetLine;
+
+  /// No description provided for @salesAiActionConfirmReview.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认货品对应无误(保存时记住客户料号)'**
+  String get salesAiActionConfirmReview;
+
+  /// No description provided for @salesAiConfirmReviewRowHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只用于货品对应待核对的行(如颜色没对上、型号不一致); 只是单位换算、金额对不上或重复货品提醒的行要直接改数值'**
+  String get salesAiConfirmReviewRowHint;
+
+  /// No description provided for @salesAiActionSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存单据'**
+  String get salesAiActionSave;
+
+  /// No description provided for @salesAiValueInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'「{field}」的值不对, 请检查后再说一次'**
+  String salesAiValueInvalid(String field);
+
+  /// No description provided for @salesAiNotReviewLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'第{row}行没有待核对的标记'**
+  String salesAiNotReviewLine(int row);
+
+  /// No description provided for @salesAiReviewNeedsEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'第{row}行要核对的是数量、单位、金额或定价, 请核对后直接修改'**
+  String salesAiReviewNeedsEdit(int row);
+
+  /// No description provided for @salesAiSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有保存成功, 请看页面上的提示'**
+  String get salesAiSaveFailed;
+
+  /// No description provided for @salesAiPageBusy.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面正在处理, 请稍后再确认'**
+  String get salesAiPageBusy;
+
+  /// No description provided for @salesAiLineEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'第{row}行还没有选货品'**
+  String salesAiLineEmpty(int row);
+
+  /// No description provided for @aiChatAttachSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'将附带当前页面: 表格{rows}行/字段{fields}个/待核对{flagged}项'**
+  String aiChatAttachSummary(int rows, int fields, int flagged);
+
+  /// No description provided for @aiChatAttachRouteOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'将附带当前页面的名称(页面上没有可读取的表格或字段)'**
+  String get aiChatAttachRouteOnly;
+
+  /// No description provided for @aiChatAttachWithheld.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个页面含工资或个人信息, 不读取页面内容, 只发送问题'**
+  String get aiChatAttachWithheld;
+
+  /// No description provided for @aiChatAttachProtected.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统管理页面(系统设置、AI 服务、权限、审计、服务器状态等)不读取页面内容, AI 也不能在这里代办操作, 只发送问题'**
+  String get aiChatAttachProtected;
+
+  /// No description provided for @aiChatCardProtectedPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统管理页面不能由 AI 代办操作, 请在页面上直接办理'**
+  String get aiChatCardProtectedPage;
+
+  /// No description provided for @aiChatSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'依据: {sources}'**
+  String aiChatSources(String sources);
+
+  /// No description provided for @aiChatVerifyOnPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'以页面为准'**
+  String get aiChatVerifyOnPage;
+
+  /// No description provided for @aiChatFallback.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 暂时没回上来, 以下按页面内容整理'**
+  String get aiChatFallback;
+
+  /// No description provided for @aiChatCardConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认执行'**
+  String get aiChatCardConfirm;
+
+  /// No description provided for @aiChatCardExpiresIn.
+  ///
+  /// In zh, this message translates to:
+  /// **'{time} 后过期'**
+  String aiChatCardExpiresIn(String time);
+
+  /// No description provided for @aiChatCardExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'已过期, 请重新提问'**
+  String get aiChatCardExpired;
+
+  /// No description provided for @aiChatCardCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消'**
+  String get aiChatCardCancelled;
+
+  /// No description provided for @aiChatCardRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在执行'**
+  String get aiChatCardRunning;
+
+  /// No description provided for @aiChatCardSucceeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成'**
+  String get aiChatCardSucceeded;
+
+  /// No description provided for @aiChatCardFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'没有完成'**
+  String get aiChatCardFailed;
+
+  /// No description provided for @aiChatCardAuthChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'账号权限有变化, 这张卡已作废, 请重新提问'**
+  String get aiChatCardAuthChanged;
+
+  /// No description provided for @aiChatCardConfirmed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已确认, 等待执行结果'**
+  String get aiChatCardConfirmed;
+
+  /// No description provided for @aiChatCardWrongPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'请回到原页面再确认'**
+  String get aiChatCardWrongPage;
+
+  /// No description provided for @aiChatCardHandlerMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个页面现在没有这项操作, 请重新提问'**
+  String get aiChatCardHandlerMissing;
+
+  /// No description provided for @aiChatCardPageChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面已经换成另一张单据或重新打开过, 这张卡没有执行, 请重新提问'**
+  String get aiChatCardPageChanged;
+
+  /// No description provided for @aiChatCardDetached.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面刷新过, 这张卡已不能执行, 请重新提问'**
+  String get aiChatCardDetached;
+
+  /// No description provided for @aiActionRowChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'第{row}行已经不是提问时那一行了(行被删除、插入、排序或筛选过), 没有执行, 请重新提问'**
+  String aiActionRowChanged(int row);
+
+  /// No description provided for @aiChatCardRisk.
+  ///
+  /// In zh, this message translates to:
+  /// **'请注意'**
+  String get aiChatCardRisk;
+
+  /// No description provided for @aiChatCardStepUp.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认时需要输入登录密码'**
+  String get aiChatCardStepUp;
+
+  /// No description provided for @aiChatCardUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'结果暂未确认, 请先查看结果, 不要重复确认'**
+  String get aiChatCardUnknown;
+
+  /// No description provided for @aiChatCardInvalidArgs.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作内容与当前页面不一致, 没有执行'**
+  String get aiChatCardInvalidArgs;
+
+  /// No description provided for @aiChatCardCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看结果'**
+  String get aiChatCardCheck;
+
+  /// No description provided for @aiChatCardSourceMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'原文件已不在这个对话里, 请重新上传'**
+  String get aiChatCardSourceMissing;
+
+  /// No description provided for @aiAuditPurposePageState.
+  ///
+  /// In zh, this message translates to:
+  /// **'看懂当前页面'**
+  String get aiAuditPurposePageState;
+
+  /// No description provided for @aiAuditPurposeAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后执行操作'**
+  String get aiAuditPurposeAction;
+
+  /// No description provided for @productionReadinessMeaningReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料齐了(或不用领料), 可以开工'**
+  String get productionReadinessMeaningReady;
+
+  /// No description provided for @productionReadinessMeaningReadyPartial.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分物料已投, 可以先开工'**
+  String get productionReadinessMeaningReadyPartial;
+
+  /// No description provided for @productionReadinessMeaningToDraw.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料已备齐, 去领料'**
+  String get productionReadinessMeaningToDraw;
+
+  /// No description provided for @productionReadinessMeaningToDrawPartial.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分物料可领, 去领料'**
+  String get productionReadinessMeaningToDrawPartial;
+
+  /// No description provided for @productionReadinessMeaningPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'已提交领料, 等仓库发料'**
+  String get productionReadinessMeaningPending;
+
+  /// No description provided for @productionReadinessMeaningWaiting.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺料, 等到货或物料到齐'**
+  String get productionReadinessMeaningWaiting;
+
+  /// No description provided for @productionReadinessMeaningWaitPlanning.
+  ///
+  /// In zh, this message translates to:
+  /// **'缺料且还没人下单, 等计划下单'**
+  String get productionReadinessMeaningWaitPlanning;
+
+  /// No description provided for @productionReadinessMeaningDecide.
+  ///
+  /// In zh, this message translates to:
+  /// **'要先选生产路线, 其它动作都锁着'**
+  String get productionReadinessMeaningDecide;
+
+  /// No description provided for @aiActionSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索'**
+  String get aiActionSearch;
+
+  /// No description provided for @aiActionParamSearch.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索词(留空=清除)'**
+  String get aiActionParamSearch;
+
+  /// No description provided for @salesAiNoGoods.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先在明细表选择货品'**
+  String get salesAiNoGoods;
+
+  /// No description provided for @aiChatSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'对话设置'**
+  String get aiChatSettings;
+
+  /// No description provided for @aiChatSettingsBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回对话'**
+  String get aiChatSettingsBack;
+
+  /// No description provided for @aiChatSettingsSynced.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置跟着账号保存, 换设备也一样。改了马上生效。'**
+  String get aiChatSettingsSynced;
+
+  /// No description provided for @aiChatSettingsSaving.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在保存…'**
+  String get aiChatSettingsSaving;
+
+  /// No description provided for @aiChatSettingsSaveFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置没保存成功, 已恢复原来的选择, 请稍后再试。'**
+  String get aiChatSettingsSaveFailed;
+
+  /// No description provided for @aiChatSettingsDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'回答详略'**
+  String get aiChatSettingsDetail;
+
+  /// No description provided for @aiChatSettingsDetailHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'提问时说「简单点」或「详细点」, 只对那一句按你的话来。'**
+  String get aiChatSettingsDetailHint;
+
+  /// No description provided for @aiChatSettingsDetailComprehensive.
+  ///
+  /// In zh, this message translates to:
+  /// **'全面'**
+  String get aiChatSettingsDetailComprehensive;
+
+  /// No description provided for @aiChatSettingsDetailStandard.
+  ///
+  /// In zh, this message translates to:
+  /// **'标准'**
+  String get aiChatSettingsDetailStandard;
+
+  /// No description provided for @aiChatSettingsDetailConcise.
+  ///
+  /// In zh, this message translates to:
+  /// **'精简'**
+  String get aiChatSettingsDetailConcise;
+
+  /// No description provided for @aiChatSettingsReasoning.
+  ///
+  /// In zh, this message translates to:
+  /// **'思考程度'**
+  String get aiChatSettingsReasoning;
+
+  /// No description provided for @aiChatSettingsReasoningHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认快速回答; 问题里写「详细分析」时这一次会想得更深。深入更周到但更慢。'**
+  String get aiChatSettingsReasoningHint;
+
+  /// No description provided for @aiChatSettingsReasoningFast.
+  ///
+  /// In zh, this message translates to:
+  /// **'快速'**
+  String get aiChatSettingsReasoningFast;
+
+  /// No description provided for @aiChatSettingsReasoningStandard.
+  ///
+  /// In zh, this message translates to:
+  /// **'标准'**
+  String get aiChatSettingsReasoningStandard;
+
+  /// No description provided for @aiChatSettingsReasoningDeep.
+  ///
+  /// In zh, this message translates to:
+  /// **'深入'**
+  String get aiChatSettingsReasoningDeep;
+
+  /// No description provided for @aiChatSettingsReasoningUnsupported.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前 AI 服务不支持调整思考程度'**
+  String get aiChatSettingsReasoningUnsupported;
+
+  /// No description provided for @aiChatSettingsPageAware.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取当前页面'**
+  String get aiChatSettingsPageAware;
+
+  /// No description provided for @aiChatSettingsShowSources.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示回答依据'**
+  String get aiChatSettingsShowSources;
+
+  /// No description provided for @aiChatSettingsShowSourcesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'关掉后不显示「依据」那一行; AI 仍按页面和资料核对后再回答。'**
+  String get aiChatSettingsShowSourcesHint;
+
+  /// No description provided for @aiChatSettingsMemory.
+  ///
+  /// In zh, this message translates to:
+  /// **'连续对话记忆'**
+  String get aiChatSettingsMemory;
+
+  /// No description provided for @aiChatSettingsMemoryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 会参考同一对话里最近几轮的问答, 换了页面也接得上; 含敏感数据的回答不会带入。'**
+  String get aiChatSettingsMemoryHint;
+
+  /// No description provided for @aiChatSettingsMemoryOff.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get aiChatSettingsMemoryOff;
+
+  /// No description provided for @aiChatSettingsMemoryTurns.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 轮'**
+  String aiChatSettingsMemoryTurns(int count);
+
+  /// No description provided for @aiChatSettingsLanguage.
+  ///
+  /// In zh, this message translates to:
+  /// **'回答语言'**
+  String get aiChatSettingsLanguage;
+
+  /// No description provided for @aiChatSettingsLanguageAuto.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟随界面'**
+  String get aiChatSettingsLanguageAuto;
+
+  /// No description provided for @aiChatSettingsLanguageZh.
+  ///
+  /// In zh, this message translates to:
+  /// **'中文'**
+  String get aiChatSettingsLanguageZh;
+
+  /// No description provided for @aiChatSettingsLanguageEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'English'**
+  String get aiChatSettingsLanguageEn;
+
+  /// No description provided for @aiChatSettingsLanguageKo.
+  ///
+  /// In zh, this message translates to:
+  /// **'한국어'**
+  String get aiChatSettingsLanguageKo;
+
+  /// No description provided for @aiChatSettingsSendKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送方式'**
+  String get aiChatSettingsSendKey;
+
+  /// No description provided for @aiChatSettingsSendEnter.
+  ///
+  /// In zh, this message translates to:
+  /// **'Enter 发送'**
+  String get aiChatSettingsSendEnter;
+
+  /// No description provided for @aiChatSettingsSendCtrlEnter.
+  ///
+  /// In zh, this message translates to:
+  /// **'Ctrl+Enter 发送'**
+  String get aiChatSettingsSendCtrlEnter;
+
+  /// No description provided for @aiChatSettingsSendEnterHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'Enter 发送, Shift+Enter 换行。'**
+  String get aiChatSettingsSendEnterHint;
+
+  /// No description provided for @aiChatSettingsSendCtrlEnterHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'Ctrl+Enter 发送, Enter 换行。'**
+  String get aiChatSettingsSendCtrlEnterHint;
+
+  /// No description provided for @aiChatSettingsStyle.
+  ///
+  /// In zh, this message translates to:
+  /// **'表达方式'**
+  String get aiChatSettingsStyle;
+
+  /// No description provided for @aiChatSettingsStylePlain.
+  ///
+  /// In zh, this message translates to:
+  /// **'通俗易懂'**
+  String get aiChatSettingsStylePlain;
+
+  /// No description provided for @aiChatSettingsStyleProfessional.
+  ///
+  /// In zh, this message translates to:
+  /// **'专业简洁'**
+  String get aiChatSettingsStyleProfessional;
+
+  /// No description provided for @aiChatSettingsStyleHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'通俗易懂会顺带解释业务用词, 适合新同事; 专业简洁直接用业务术语。'**
+  String get aiChatSettingsStyleHint;
+
+  /// No description provided for @aiChatSettingsSuggestions.
+  ///
+  /// In zh, this message translates to:
+  /// **'显示推荐问题'**
+  String get aiChatSettingsSuggestions;
+
+  /// No description provided for @aiChatSettingsSuggestionsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'在对话框里显示可以直接点的问题。'**
+  String get aiChatSettingsSuggestionsHint;
+
+  /// No description provided for @aiChatSettingsConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作前确认'**
+  String get aiChatSettingsConfirm;
+
+  /// No description provided for @aiChatSettingsConfirmAlways.
+  ///
+  /// In zh, this message translates to:
+  /// **'始终开启'**
+  String get aiChatSettingsConfirmAlways;
+
+  /// No description provided for @aiChatSettingsConfirmHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 要做任何操作, 都先给你一张确认卡, 你点确认后才执行; 这一项不能关闭。'**
+  String get aiChatSettingsConfirmHint;
+
+  /// No description provided for @aiChatSettingsClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空对话记录'**
+  String get aiChatSettingsClear;
+
+  /// No description provided for @aiChatSettingsClearHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空后, 之前的问答不再显示, 也不再关联到新问题。只影响你自己的账号。'**
+  String get aiChatSettingsClearHint;
+
+  /// No description provided for @aiChatSettingsClearTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空全部对话记录?'**
+  String get aiChatSettingsClearTitle;
+
+  /// No description provided for @aiChatSettingsClearBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'会清空你账号下全部 AI 对话记录, 清空后不能恢复。已经执行的业务操作不受影响。'**
+  String get aiChatSettingsClearBody;
+
+  /// No description provided for @aiChatSettingsClearDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'对话记录已清空'**
+  String get aiChatSettingsClearDone;
+
+  /// No description provided for @aiChatSettingsClearFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能清空对话记录, 请稍后再试。'**
+  String get aiChatSettingsClearFailed;
+
+  /// No description provided for @aiChatHiddenTurns.
+  ///
+  /// In zh, this message translates to:
+  /// **'有 {count} 条较早的对话因账号权限变化, 不再显示。'**
+  String aiChatHiddenTurns(int count);
+
+  /// No description provided for @aiChatRestored.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下是你最近的对话, 继续提问会接着聊。'**
+  String get aiChatRestored;
+
+  /// No description provided for @aiChatRestoredDataChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'这条回答引用的业务数据已经变化, 不再显示旧内容; 需要的话请重新问一次。'**
+  String get aiChatRestoredDataChanged;
+
+  /// No description provided for @aiSettingsThinkingZhipu.
+  ///
+  /// In zh, this message translates to:
+  /// **'智谱 GLM 写法'**
+  String get aiSettingsThinkingZhipu;
+
+  /// No description provided for @aiSettingsThinkingAnthropic.
+  ///
+  /// In zh, this message translates to:
+  /// **'Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)'**
+  String get aiSettingsThinkingAnthropic;
 }
 
 class _AppLocalizationsDelegate

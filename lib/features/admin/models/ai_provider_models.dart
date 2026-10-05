@@ -52,12 +52,15 @@ enum AiJsonMode {
   );
 }
 
-/// 关闭「深度思考」的写法(各家参数不同; 识别表格不需要思考, 关掉更快更省)。
+/// 思考参数写法(ADR-152): AI 对话的「思考程度」按它发给服务商; 识别表格等用途
+/// 仍按它关掉思考。各家参数不同, 选好服务商会自动选对。
 enum AiThinkingControl {
   none('NONE'),
   deepseek('DEEPSEEK'),
   dashscope('DASHSCOPE'),
-  openAiReasoning('OPENAI_REASONING');
+  openAiReasoning('OPENAI_REASONING'),
+  zhipu('ZHIPU'),
+  anthropicEffort('ANTHROPIC_EFFORT');
 
   const AiThinkingControl(this.code);
 
@@ -483,6 +486,10 @@ class AiConnectionTestStep {
   static const auth = 'AUTH';
   static const model = 'MODEL';
   static const json = 'JSON';
+
+  /// Only reported when the provider can adjust thinking depth (ADR-152), so
+  /// it is not part of the fixed [order].
+  static const thinking = 'THINKING';
 
   /// 固定展示顺序。
   static const order = [network, auth, model, json];

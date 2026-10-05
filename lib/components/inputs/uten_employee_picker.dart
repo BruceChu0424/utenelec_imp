@@ -20,6 +20,7 @@ import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
 import 'uten_search_bar.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 人员候选项：id / 姓名 / 工号 / 部门名。
 class UtenEmployeePickerItem {
@@ -127,6 +128,38 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   final _fieldKey = GlobalKey<FormFieldState<UtenEmployeePickerItem?>>();
   UtenEmployeePickerItem? _selected;
   int _hydrateSerial = 0;
+
+  // ADR-150: the chosen person (name and employee code) is readable by the AI
+  // assistant; choosing someone stays with the user (no setter).
+  final _aiSlot = AiPageSlot();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiSlot.attach(
+      context,
+      widget.label == null ? null : AiFieldSource(capture: _aiField),
+    );
+  }
+
+  @override
+  void dispose() {
+    _aiSlot.detach();
+    super.dispose();
+  }
+
+  AiFieldSnapshot? _aiField(AiCaptureContext ctx) {
+    final label = aiSnapshotLabel(widget.label);
+    if (!mounted || label == null) return null;
+    final selected = _selected;
+    final requiredEmpty = widget.required && widget.enabled && selected == null;
+    return AiFieldSnapshot(
+      label: label,
+      value: selected == null ? null : aiSnapshotValue(selected.displayName),
+      state: requiredEmpty ? AiFieldState.requiredEmpty : AiFieldState.normal,
+      required: widget.required,
+    );
+  }
 
   @override
   void initState() {

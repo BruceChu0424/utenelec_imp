@@ -1215,6 +1215,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
               label: label,
               width: width,
               type: key == 'knownTotal' ? 'money' : 'number',
+              aiSensitive: key == 'knownTotal',
               value: (r) => costText(r[key]),
               exactValueOf: (r) => costText(r[key]),
               cellBuilder: (_, r) => _oneLine(r[key], align: TextAlign.right),

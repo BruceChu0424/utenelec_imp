@@ -57,6 +57,10 @@ public class InventoryAiChatTool implements AiChatToolPort {
                 "required", List.of("keyword"), "additionalProperties", false);
     }
     @Override public boolean available() { return query.available(); }
+    /** ADR-150: the already-authorized detail text (quantities and tasks, no costs) may be composed by the model. */
+    @Override public Map<String, Object> modelFacts(Map<String, Object> result) {
+        return result.get("detailReply") instanceof String text ? Map.of("facts", text) : Map.of();
+    }
 
     @Override public Map<String, Object> execute(Map<String, Object> arguments) {
         if (!available()) throw new ApiException(ErrorCode.FORBIDDEN);

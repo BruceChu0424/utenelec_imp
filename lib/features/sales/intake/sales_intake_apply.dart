@@ -559,6 +559,7 @@ class SalesIntakePatchRow {
     this.userConfirmed = false,
     this.setNameEn = false,
     this.reviewReason,
+    this.goodsMatchReason,
     this.remark,
     this.extraValues = const {},
   });
@@ -587,6 +588,9 @@ class SalesIntakePatchRow {
 
   /// 非 null → 明细表黄色提醒核对(只有需要核对的行才有)。
   final String? reviewReason;
+
+  /// [reviewReason] 开头那段「货品没对准」提醒(确认货品对应后只清它; 单位/金额/重复/定价提醒保留)。
+  final String? goodsMatchReason;
 
   /// 行备注(组合件拆开后, 第一行记下整套的文件单价供参考)。
   final String? remark;
@@ -682,21 +686,39 @@ String _lineRemarkLabel(SalesIntakeLine line, AppLocalizations l10n) {
   return qty == null ? label : l10n.salesIntakeRemarkLineItem(label, qty);
 }
 
+/// 「货品没对准」提醒(核对面板里「确认」就清掉的那一项)。
+String? _goodsMatchReasonFor(
+  SalesIntakeLine line,
+  SalesIntakeLineDecision decision,
+  AppLocalizations l10n,
+) => line.status != SalesIntakeLineStatus.matched && !decision.userConfirmed
+    ? line.reasonText ?? l10n.salesIntakeMarkerDefault
+    : null;
+
 String? _reviewReasonFor(
   SalesIntakeLine line,
   SalesIntakeLineDecision decision,
   AppLocalizations l10n,
 ) {
-  final reasons = <String>[];
-  if (line.status != SalesIntakeLineStatus.matched && !decision.userConfirmed) {
-    reasons.add(line.reasonText ?? l10n.salesIntakeMarkerDefault);
-  }
+  final reasons = <String>[?_goodsMatchReasonFor(line, decision, l10n)];
   if (line.suggestedQty != null ||
       line.warning(SalesIntakeWarningCode.unitNotPcs) != null) {
     reasons.add(
       line.warning(SalesIntakeWarningCode.unitNotPcs)?.message ??
           l10n.salesIntakeMarkerUnit,
     );
+  }
+  // The other "please check" warnings the review panel shows for this line
+  // (amount mismatch, duplicate goods) stay on the imported row too, so the
+  // yellow mark and the AI page snapshot (ADR-150) carry the same reason.
+  for (final code in const [
+    SalesIntakeWarningCode.amountMismatch,
+    SalesIntakeWarningCode.duplicateGoods,
+  ]) {
+    final message = line.warning(code)?.message?.trim();
+    if (message != null && message.isNotEmpty && !reasons.contains(message)) {
+      reasons.add(message);
+    }
   }
   return reasons.isEmpty ? null : reasons.join(' / ');
 }
@@ -745,9 +767,11 @@ SalesIntakePatch buildSalesIntakePatch({
     required bool userConfirmed,
     required bool setNameEn,
     required List<String?> reasons,
+    String? goodsMatchReason,
     String? remark,
     Map<String, String> extraValues = const {},
   }) {
+    // The goods-match reason, when present, comes first (see SalesGridRow.confirmGoodsMatch).
     final shown = reasons.whereType<String>().toList();
     final reason = shown.isEmpty ? null : shown.join(' / ');
     if (reason != null) reviewRows++;
@@ -769,6 +793,9 @@ SalesIntakePatch buildSalesIntakePatch({
         userConfirmed: userConfirmed,
         setNameEn: setNameEn,
         reviewReason: reason,
+        goodsMatchReason: reason != null && goodsMatchReason != null
+            ? goodsMatchReason
+            : null,
         remark: remark,
         extraValues: extraValues,
       ),
@@ -876,6 +903,7 @@ SalesIntakePatch buildSalesIntakePatch({
             priceMasked: masked,
           ),
       reasons: [_reviewReasonFor(line, decision, l10n), pricingReason(goods)],
+      goodsMatchReason: _goodsMatchReasonFor(line, decision, l10n),
       extraValues: {
         for (final entry in line.extraValues.entries)
           if (decisions.includedExtraColumns.contains(entry.key))

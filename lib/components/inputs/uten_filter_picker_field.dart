@@ -18,6 +18,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 class UtenFilterPickerField extends StatelessWidget {
   const UtenFilterPickerField({
@@ -123,6 +124,20 @@ class UtenFilterPickerField extends StatelessWidget {
       ),
     );
 
-    return width == null ? field : SizedBox(width: width, child: field);
+    // ADR-150: the active filter is part of what the AI assistant reads.
+    return AiPageRegistrar(
+      source: AiFieldSource(
+        capture: (_) {
+          final name = aiSnapshotLabel(label);
+          return name == null
+              ? null
+              : AiFieldSnapshot(
+                  label: name,
+                  value: aiSnapshotValue(active ? value! : placeholder),
+                );
+        },
+      ),
+      child: width == null ? field : SizedBox(width: width, child: field),
+    );
   }
 }

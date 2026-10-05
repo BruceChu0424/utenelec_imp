@@ -21,7 +21,8 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
     private static final String QUESTION = "这个页面怎么填写？请举个例子。";
     private static final Map<String, Object> QUOTE_PAGE = Map.of("route", "/sales/quotes/new");
     private static final String PAGE_HELP = """
-            {"intent":"PAGE_HELP","tool":"","arguments":{},"knowledgeId":"","fieldKey":"validUntil"}
+            {"intent":"PAGE_HELP","reply":"有效期填双方约定的截止日期，过期后要重新处理报价。\\n举例(假设): 约定 11 月 30 日截止，就选这一天。",
+             "usedSources":["guide.sales_quote"],"tool":"","arguments":{},"action":{"name":"","args":{}}}
             """;
 
     private String token;
@@ -72,14 +73,16 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode result = awaitSucceeded(token, id);
         assertThat(result.path("intent").asText()).isEqualTo("PAGE_HELP");
         assertThat(result.path("reply").asText()).contains("有效期", "举例", "11 月 30 日");
+        assertThat(result.path("sources").get(0).path("id").asText()).isEqualTo("guide.sales_quote");
+        assertThat(result.path("replyShareable").asBoolean()).isTrue();
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
         JsonNode request = objectMapper.readTree(FAKE.lastChatRequest().body());
         assertThat(request.path("response_format").path("type").asText()).isEqualTo("json_schema");
-        assertThat(request.path("response_format").path("json_schema").path("name").asText()).isEqualTo("erp_chat_route_v1");
+        assertThat(request.path("response_format").path("json_schema").path("name").asText()).isEqualTo("erp_chat_answer_v1");
         assertThat(request.path("response_format").path("json_schema").path("strict").asBoolean()).isTrue();
         assertThat(request.path("max_tokens").asInt()).isEqualTo(4096);
         assertThat(request.path("response_format").path("json_schema").path("schema").path("properties")
-                .path("fieldKey").path("enum").toString()).contains("validUntil");
+                .path("usedSources").path("items").path("enum").toString()).contains("guide.sales_quote");
     }
 
     @Test
@@ -118,24 +121,31 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
     @Test
     void turningPageContextOffNeverRestoresPreviousPageEvenIfProviderDemandsPageHelp() throws Exception {
         String first = submit(token, Map.of("message", QUESTION, "pageContext", QUOTE_PAGE, "intentHint", "PAGE_HELP"));
-        assertQuoteExplanation(awaitSucceeded(token, first));
+        JsonNode firstResult = awaitSucceeded(token, first);
+        assertQuoteExplanation(firstResult);
+        // ADR-152: the server started a conversation and returned its id; follow-ups continue it.
+        String conversation = firstResult.path("conversationId").asText();
+        assertThat(conversation).matches("[0-9a-f-]{36}");
         // Same typed preset with the page switch off stays local and explicitly asks for a page.
-        String local = submit(token, Map.of("message", QUESTION, "previousJobId", first));
+        String local = submit(token, Map.of("message", QUESTION, "conversationId", conversation));
         JsonNode localResult = awaitSucceeded(token, local);
         assertThat(localResult.path("intent").asText()).isEqualTo("UNSUPPORTED");
         assertThat(localResult.path("reply").asText()).contains("请先打开要填写的页面").doesNotContain("销售报价单");
         assertThat(FAKE.chatRequestCount()).isZero();
         // A provider may ignore its schema. Missing current context must still be handled safely.
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(PAGE_HELP));
-        String free = submit(token, Map.of("message", "我想知道刚才讨论的那个项目要如何决定？", "previousJobId", first));
+        String free = submit(token, Map.of("message", "我想知道刚才讨论的那个项目要如何决定？", "conversationId", conversation));
         JsonNode freeResult = awaitSucceeded(token, free);
         assertThat(freeResult.path("intent").asText()).isEqualTo("UNSUPPORTED");
         assertThat(freeResult.path("reply").asText()).contains("请先打开要填写的页面").doesNotContain("销售报价单", "2026-11-30");
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
         JsonNode request = objectMapper.readTree(FAKE.lastChatRequest().body());
         JsonNode schema = request.path("response_format").path("json_schema").path("schema");
-        assertThat(schema.path("properties").path("intent").path("enum").toString()).doesNotContain("PAGE_HELP");
-        assertThat(schema.path("properties").path("fieldKey").path("enum").toString()).isEqualTo("[\"\"]");
+        assertThat(schema.path("properties").path("intent").path("enum").toString()).doesNotContain("PAGE_HELP", "PAGE_STATE");
+        assertThat(schema.path("properties").path("usedSources").path("items").path("enum").toString())
+                .doesNotContain("guide.", "page.").contains("conversation.history");
+        // The earlier quote-page turn is memory in the prompt, never a current page snapshot.
+        assertThat(request.toString()).contains("CONVERSATION HISTORY (source id").doesNotContain("PAGE SNAPSHOT (current page");
     }
 
     @Test
@@ -156,31 +166,34 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         Staff production = newEmployee(adminToken(), "WS_ZHUSU");
         String staffToken = login(production.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent("""
-                {"intent":"KNOWLEDGE","tool":"","arguments":{},"knowledgeId":"PRODUCTION_FLOW","fieldKey":"","mode":"STEPS"}
+                {"intent":"KNOWLEDGE","reply":"先报工，再质检和入库:\\n1. 先领料、再生产\\n2. 报工填本次实际产量\\n3. 报工后还要质检和入库",
+                 "usedSources":["knowledge.PRODUCTION_FLOW"],"tool":"","arguments":{},"action":{"name":"","args":{}}}
                 """));
-        String firstId = submit(staffToken, Map.of("message", "我想按先后关系理解生产日报和仓库点收怎么衔接"));
+        String firstId = submit(staffToken, Map.of("message", "请按步骤说明生产日报和仓库点收怎么衔接"));
         JsonNode first = awaitSucceeded(staffToken, firstId);
         assertThat(first.path("intent").asText()).isEqualTo("KNOWLEDGE");
         assertThat(first.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
-        assertThat(first.path("mode").asText()).isEqualTo("STEPS");
+        assertThat(first.path("mode").asText()).as("presentation follows the user's words").isEqualTo("STEPS");
         assertThat(first.path("reply").asText()).contains("1. ", "报工后还要质检和入库").doesNotContain("来源:");
+        assertThat(objectMapper.readTree(FAKE.lastChatRequest().body()).toString()).contains("numbered steps");
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(""));
 
-        String exampleId = submit(staffToken, Map.of("message", "举例", "previousJobId", firstId));
+        String conversation = first.path("conversationId").asText();
+        String exampleId = submit(staffToken, Map.of("message", "举例", "conversationId", conversation));
         JsonNode example = awaitSucceeded(staffToken, exampleId);
         assertThat(example.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
         assertThat(example.path("mode").asText()).isEqualTo("EXAMPLE");
         assertThat(example.path("reply").asText()).contains("假设", "昨天报 60 个", "本次报 40 个")
                 .doesNotContain("成本", "工资", "已授权");
 
-        String thanksId = submit(staffToken, Map.of("message", "谢谢", "previousJobId", exampleId));
+        String thanksId = submit(staffToken, Map.of("message", "谢谢", "conversationId", conversation));
         JsonNode thanks = awaitSucceeded(staffToken, thanksId);
         assertThat(thanks.path("intent").asText()).isEqualTo("SMALL_TALK");
         assertThat(thanks.path("reply").asText()).contains("不客气");
         assertThat(thanks.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
 
-        JsonNode next = awaitSucceeded(staffToken, submit(staffToken, Map.of("message", "下一步", "previousJobId", thanksId)));
+        JsonNode next = awaitSucceeded(staffToken, submit(staffToken, Map.of("message", "下一步", "conversationId", conversation)));
         assertThat(next.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
         assertThat(next.path("mode").asText()).isEqualTo("STEPS");
         assertThat(next.path("reply").asText()).contains("1. ", "报工后还要质检和入库");
@@ -197,15 +210,18 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         // An untrusted provider may ignore JSON Schema and add prose while selecting a valid source.
         // Six fields deliberately exercise the handler's local rendering, not its object-size limit.
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(objectMapper.writeValueAsString(Map.of(
-                "intent", "KNOWLEDGE", "tool", "", "arguments", Map.of(), "knowledgeId", "PRODUCTION_FLOW",
-                "mode", "OVERVIEW", "reply", forbiddenProse))));
+                "intent", "KNOWLEDGE", "tool", "", "arguments", Map.of(), "usedSources", List.of("knowledge.PRODUCTION_FLOW"),
+                "action", Map.of("name", "", "args", Map.of()), "reply", forbiddenProse))));
         JsonNode result = awaitSucceeded(staffToken, submit(staffToken,
                 Map.of("message", "我想听听日产量记录时本次和累计怎么区分")));
         assertThat(result.path("intent").asText()).isEqualTo("KNOWLEDGE");
-        assertThat(result.path("knowledgeId").asText()).isEqualTo("PRODUCTION_FLOW");
-        assertThat(result.path("reply").asText()).contains("本次报 40 个", "假设")
-                .doesNotContain("FORBIDDEN_MODEL_PROSE", "765432", "工资", "超级管理员", "已授权");
+        // ADR-153: the rejected reply falls back to the platform's documentation for this question, never to a
+        // catalog example the user did not ask for.
+        assertThat(result.has("knowledgeId")).isFalse();
+        assertThat(result.path("reply").asText()).contains("平台说明")
+                .doesNotContain("FORBIDDEN_MODEL_PROSE", "765432", "工资", "超级管理员", "已授权", "本次报 40 个");
         assertThat(result.path("actions").size()).isZero();
+        assertThat(result.path("fallback").asBoolean()).isTrue();
         assertThat(FAKE.chatRequestCount()).isEqualTo(1);
     }
 

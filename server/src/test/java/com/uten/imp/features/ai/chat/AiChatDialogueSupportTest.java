@@ -22,6 +22,23 @@ class AiChatDialogueSupportTest {
         }
     }
 
+    @Test void onlyTheUsersOwnOperationRequestOfTheRightKindQualifiesForAnActionCard() {
+        for (String request : List.of("把第3行数量改成100", "第3行数量改成100", "能不能帮我把第3行改成100？", "第3行确认一下",
+                "请把客户填成示例客户", "Set row 3 quantity to 100", "could you change the discount of row 2?")) {
+            org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction(request, "FORM")).as(request).isTrue();
+        }
+        for (String question : List.of("有什么值需要检查", "有什么需要确认的", "请问有什么需要确认的", "这页说了什么", "需要改哪些？",
+                "what should I check?", "show the credit limit")) {
+            org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction(question, "FORM")).as(question).isFalse();
+        }
+        org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("帮我保存一下", "SAVE")).isTrue();
+        org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("帮我保存一下", "SUBMIT")).isFalse();
+        org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("可以提交了吗？", "SUBMIT")).isFalse();
+        org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("帮我提交这张单", "SUBMIT")).isTrue();
+        org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("只看缺料的行", "VIEW")).isTrue();
+        org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("打开第2行", "DELETE")).isFalse();
+    }
+
     @Test void greetingUsesOnlyRealDepartmentAndToolCapabilities() {
         String reply = AiChatDialogueSupport.socialReply(" ＨＥＬＬＯ！ ", PRODUCTION, ALL_TOOLS).orElseThrow();
         assertThat(reply).contains("你好").doesNotContain("成本", "授权", "报价", "员工资料").hasSizeLessThan(35);
@@ -72,12 +89,13 @@ class AiChatDialogueSupportTest {
     @Test void briefOrNegativeDetailRequestsDoNotExpandBusinessResults() {
         for (String question : List.of("查 A1 成本，不需要详细说明", "别太详细，查 A1 成本", "所有结果简单一点",
                 "所有库存简洁一点", "查 A1 成本，无需展开", "查明细，不必说得太详细")) {
-            assertThat(AiChatDialogueSupport.wantsDetails(question)).as(question).isFalse();
+            assertThat(AiChatPresentation.resolve(AiChatSettings.Detail.COMPREHENSIVE, question).wantsDetails())
+                    .as(question).isFalse();
             assertThat(AiChatDialogueSupport.isQueryPresentationFollowUp(question)).as(question).isFalse();
         }
         assertThat(AiChatDialogueSupport.isQueryPresentationFollowUp("简单一点")).isTrue();
-        assertThat(AiChatDialogueSupport.wantsDetails("展开")).isTrue();
-        assertThat(AiChatDialogueSupport.wantsDetails("请详细列出 A1 成本")).isTrue();
+        assertThat(AiChatPresentation.resolve(AiChatSettings.Detail.STANDARD, "展开").wantsDetails()).isTrue();
+        assertThat(AiChatPresentation.resolve(AiChatSettings.Detail.CONCISE, "请详细列出 A1 成本").wantsDetails()).isTrue();
     }
 
     @Test void mixedOrDifferentTopicFollowUpsMustReachNormalAuthorization() {
@@ -122,7 +140,8 @@ class AiChatDialogueSupportTest {
             for (String mode : List.of("OVERVIEW", "EXAMPLE", "STEPS", "SUMMARY")) {
                 String rendered = AiChatDialogueSupport.renderKnowledge(entry, mode);
                 assertThat(rendered).as(entry.id() + "/" + mode).doesNotContain("来源:", "权限范围");
-                if (!"SUMMARY".equals(mode)) assertThat(rendered).contains("假设");
+                // The AI data notice is a plain statement of fact: it has no hypothetical example.
+                if (!"SUMMARY".equals(mode) && !AiChatKnowledge.AI_PRIVACY.equals(entry.id())) assertThat(rendered).contains("假设");
             }
         }
     }

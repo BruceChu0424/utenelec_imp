@@ -304,6 +304,38 @@ public class AiJobService {
         }
     }
 
+    /** 一条仍有效的已完成结果(本人、未归档、未被单据采用)。结果是存储原样, 调用方的处理器负责过滤后再给人看。 */
+    public record OwnedResult(UUID id, java.time.OffsetDateTime createdAt, Map<String, Object> result) {
+    }
+
+    /**
+     * ADR-152 对话: 本人某类任务里带同一对话 id 的有效结果, 新的在前, 最多 {@code limit} 条。结果保留期与
+     * AI 任务一致(到期归档后不再出现); 清空对话记录也是归档。
+     */
+    @Transactional(readOnly = true)
+    public List<OwnedResult> conversationResults(String kind, AuthUser user, UUID conversationId, int limit) {
+        requireStaff(user);
+        if (conversationId == null || limit <= 0) {
+            return List.of();
+        }
+        return repository.conversationResults(kind, user.getId(), conversationId, Math.min(limit, 50)).stream()
+                .map(row -> new OwnedResult(row.id(), row.createdAt(), parseResult(row.resultJson()))).toList();
+    }
+
+    /** 本人最近一次有效对话的 id(刷新页面后恢复); 没有时为空。 */
+    @Transactional(readOnly = true)
+    public java.util.Optional<UUID> latestConversation(String kind, AuthUser user) {
+        requireStaff(user);
+        return repository.latestConversation(kind, user.getId());
+    }
+
+    /** 清空本人某类任务的对话记录: 全部归档(审计与用量记录不受影响), 返回归档条数。 */
+    @Transactional
+    public int archiveConversations(String kind, AuthUser user, String reason) {
+        requireStaff(user);
+        return repository.archiveOwned(kind, user.getId(), reason);
+    }
+
     Map<String, Object> parseResult(String json) {
         try {
             Map<String, Object> parsed = objectMapper.readValue(json, new TypeReference<LinkedHashMap<String, Object>>() {

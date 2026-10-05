@@ -28,9 +28,12 @@ class AiChatCapabilityCatalogTest {
         when(ai.availability()).thenReturn(new AiCompletionPort.AiAvailability(false,null,null,false,null));
         var workflows=mock(AiDocumentWorkflows.class); when(workflows.available()).thenReturn(List.of());
         var jobs=mock(AiJobService.class);
+        var settings=mock(AiChatSettingsService.class); when(settings.current()).thenReturn(AiChatSettings.DEFAULTS);
         var controller=new AiChatController(jobs,access,mock(AiChatEvidence.class),ai,
-                mock(AiChatPageGuideCatalog.class),new ObjectMapper(),registry,workflows);
+                mock(AiChatPageGuideCatalog.class),new ObjectMapper(),registry,workflows,settings,mock(AiChatJobHandler.class));
         var first=controller.capabilities();
+        assertThat(first.get("settings")).isEqualTo(AiChatSettings.DEFAULTS.toJson());
+        assertThat(first.get("reasoningEffortSupported")).isEqualTo(false);
         assertThat(first.get("tools").toString()).contains("registered_inventory");
         assertThat(first.get("catalogVersion").toString()).matches("[a-f0-9]{64}");
         assertThat(controller.capabilities().get("catalogVersion")).isEqualTo(first.get("catalogVersion"));

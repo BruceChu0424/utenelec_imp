@@ -38,6 +38,15 @@ class ServerJarPackagingIT {
                     .filter(name -> name.matches("BOOT-INF/lib/postgresql-[^/]+\\.jar"))
                     .toList();
             assertThat(postgresDrivers).hasSize(1);
+            // ADR-153: whitelisted design documents are packaged read-only for the AI assistant's knowledge;
+            // administration, security and AI-assistant documents are not.
+            assertThat(entries)
+                    .contains("BOOT-INF/classes/ai-knowledge/99-决策记录-ADR/ADR-135-仓库重量账与单重自学习.md",
+                            "BOOT-INF/classes/ai-knowledge/00-项目准则/14-徽章与计数口径.md")
+                    .noneMatch(name -> name.startsWith("BOOT-INF/classes/ai-knowledge/")
+                            && (name.contains("登录页") || name.contains("AI服务设置页") || name.contains("ADR-150")
+                            || name.contains("代码总结") || name.contains("10-安全准则") || name.contains("99-项目治理")
+                            || !name.matches("BOOT-INF/classes/ai-knowledge/(?:(?:99-决策记录-ADR|03-页面|07-业务链路|98-模块总结|00-项目准则)(?:/.*)?)?")));
         }
 
         List<String> expectedMigrations;
@@ -64,6 +73,7 @@ class ServerJarPackagingIT {
                             "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
                             "org/postgresql/util/LazyCleaner.class")
                     .noneMatch(name -> name.startsWith("BOOT-INF/"))
+                    .noneMatch(name -> name.startsWith("ai-knowledge/"))
                     .noneMatch(name -> name.startsWith("org/springframework/"));
             assertThat(entries.stream()
                     .filter(name -> name.startsWith("db/migration/") && name.endsWith(".sql"))
@@ -81,6 +91,29 @@ class ServerJarPackagingIT {
                     java.nio.charset.StandardCharsets.UTF_8);
             assertThat(notices).contains("Jackson");
         }
+    }
+
+    /**
+     * ADR-153 revision: the packaged design documents load through the executable jar's own nested-jar class loader
+     * (not only from exploded target/classes), so a release never silently answers every rule question with "no
+     * description found".
+     */
+    @Test
+    void theAssistantsKnowledgeLoadsFromTheExecutableJar() throws Exception {
+        Path applicationJar = configuredPath(APPLICATION_JAR_PROPERTY);
+        assertThat(applicationJar).isRegularFile();
+        String javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        Process process = new ProcessBuilder(javaBin, "-Dfile.encoding=UTF-8", "-cp", applicationJar.toString(),
+                "-Dloader.main=com.uten.imp.features.ai.chat.AiKnowledgeIndexCheck",
+                "org.springframework.boot.loader.launch.PropertiesLauncher")
+                .redirectErrorStream(true).start();
+        String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(process.exitValue()).as(output).isZero();
+        var counts = java.util.regex.Pattern.compile("documents=(\\d+) chunks=(\\d+)").matcher(output);
+        assertThat(counts.find()).as(output).isTrue();
+        assertThat(Integer.parseInt(counts.group(1))).as(output).isGreaterThan(150);
+        assertThat(Integer.parseInt(counts.group(2))).as(output).isGreaterThan(1000);
     }
 
     @Test

@@ -34,6 +34,8 @@ import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/ai/ai_status_provider.dart';
+import 'package:uten_imp/shared/ai/page_context/ai_page_context.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -59,11 +61,14 @@ const _orderPerms = {
 };
 
 class _Env {
-  _Env(this.api, this.runner, this.repo);
+  _Env(this.api, this.runner, this.repo, this.pageContext);
 
   final _IntakeApi api;
   final FakeAiJobRunner runner;
   final FakeSalesIntakeRepository repo;
+
+  /// The app-level AI page context (PlatformTablesHost in the real app).
+  final AiPageContextController pageContext;
 }
 
 Future<_Env> _pump(
@@ -85,6 +90,8 @@ Future<_Env> _pump(
   final presenter = FakeProgressPresenter();
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
+  final pageContext = AiPageContextController();
+  addTearDown(pageContext.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -124,7 +131,9 @@ Future<_Env> _pump(
         ),
         builder: (context, child) => Stack(
           children: [
-            Positioned.fill(child: child!),
+            Positioned.fill(
+              child: AiPageContextScope(controller: pageContext, child: child!),
+            ),
             const Positioned(
               top: 0,
               left: 0,
@@ -137,7 +146,7 @@ Future<_Env> _pump(
     ),
   );
   await tester.pumpAndSettle();
-  return _Env(api, runner, repo);
+  return _Env(api, runner, repo, pageContext);
 }
 
 /// 把假文件直接加进暂存附件区(与「添加文件」同一条校验链)。
@@ -198,6 +207,131 @@ Map<String, dynamic> _draftSnapshot(WidgetTester tester) =>
         .captureFormDraft();
 
 void main() {
+  testWidgets(
+    'AI page snapshot carries recognition review reasons and the editor closed action set',
+    (tester) async {
+      final zh = AppLocalizationsZh();
+      final env = await _pump(
+        tester,
+        docType: SalesDocType.order,
+        permissions: _orderPerms,
+      );
+      await _runIntake(tester);
+      final capture = env.pageContext.capture(zh);
+      final snapshot = capture.snapshot!;
+      final table = (snapshot['tables']! as List).first as Map<String, Object?>;
+      final flagged = (table['flaggedCells']! as List)
+          .cast<Map<String, Object?>>();
+      final reviews = flagged
+          .where((cell) => cell['state'] == 'REVIEW')
+          .toList();
+      expect(reviews, isNotEmpty);
+      expect(
+        reviews.map((cell) => cell['reason']),
+        containsAll(['颜色没对上', contains('箱(CTN)')]),
+        reason: 'review reasons and warnings reach the page snapshot',
+      );
+      for (final review in reviews) {
+        expect(review['column'], '货品名称');
+        expect(review['rowLabel'], isNotEmpty);
+      }
+      expect(capture.flagged, flagged.length);
+      final actions = (snapshot['pageActions']! as List)
+          .map((action) => (action as Map)['name'])
+          .toList();
+      expect(
+        actions,
+        containsAll(['setLineField', 'confirmReviewLine', 'saveDraft']),
+      );
+      // Cards run through the controller, bound to this capture: the page
+      // instance and the record on each screen row when the question was sent.
+      Future<String?> run(String name, Map<String, Object?> args) =>
+          env.pageContext.run(zh, capture.binding, name, args);
+      // setLineField: same validation as the page; the cell turns yellow and
+      // the recognition mark stays (an AI change is not a human review).
+      final grid = tester
+          .widget<UtenEditableGrid<SalesGridRow>>(
+            find.byType(UtenEditableGrid<SalesGridRow>),
+          )
+          .controller;
+      final reviewRow =
+          reviews.firstWhere((cell) => cell['reason'] == '颜色没对上')['rowNo']!
+              as int;
+      final unitRow =
+          reviews.firstWhere(
+                (cell) => (cell['reason']! as String).contains('箱(CTN)'),
+              )['rowNo']!
+              as int;
+      await run('setLineField', {
+        'row': reviewRow,
+        'field': '数量',
+        'value': '100',
+      });
+      await tester.pumpAndSettle();
+      final line = grid.rows[reviewRow - 1];
+      expect(line.qty.text, '100');
+      expect(line.aiReview, contains('颜色没对上'));
+      expect(line.aiFilledNotifier.value, {'qty': '100'});
+      await expectLater(
+        run('setLineField', {'row': reviewRow, 'field': '数量', 'value': '-1'}),
+        throwsA(isA<AiActionFailure>()),
+      );
+      await expectLater(
+        run('setLineField', {'row': 999, 'field': '数量', 'value': '1'}),
+        throwsA(isA<AiActionFailure>()),
+      );
+      // confirmReviewLine = the review panel's "confirm": only the goods-match
+      // reminder goes (and it is learned on save); a line whose reminder is
+      // the unit conversion keeps it and needs the value itself checked.
+      final unitLine = grid.rows[unitRow - 1];
+      final unitReason = unitLine.aiReview;
+      expect(unitReason, contains('箱(CTN)'));
+      expect(unitLine.aiReviewGoodsMatch, isNull);
+      await run('confirmReviewLine', {'row': reviewRow});
+      await tester.pumpAndSettle();
+      expect(line.aiReview ?? '', isNot(contains('颜色没对上')));
+      expect(line.userConfirmed, isTrue);
+      await expectLater(
+        run('confirmReviewLine', {'row': unitRow}),
+        throwsA(
+          isA<AiActionFailure>().having(
+            (error) => error.message,
+            'message',
+            zh.salesAiReviewNeedsEdit(unitRow),
+          ),
+        ),
+      );
+      expect(unitLine.aiReview, unitReason);
+      expect(unitLine.userConfirmed, isFalse);
+      // A card is bound to the record that was on that screen row: once a
+      // line above it is deleted, "row N" names another record and the card
+      // fails closed instead of editing a different goods.
+      final before = grid.rows[unitRow - 1].qty.text;
+      grid.removeAt(0);
+      await tester.pumpAndSettle();
+      await expectLater(
+        run('setLineField', {'row': unitRow, 'field': '数量', 'value': '7'}),
+        throwsA(
+          isA<AiActionFailure>().having(
+            (error) => error.message,
+            'message',
+            zh.aiActionRowChanged(unitRow),
+          ),
+        ),
+      );
+      expect(grid.rows.map((row) => row.qty.text), isNot(contains('7')));
+      expect(unitLine.qty.text, before);
+      // A fresh capture after the change binds to the new screen rows.
+      final again = env.pageContext.capture(zh);
+      await env.pageContext.run(zh, again.binding, 'setLineField', {
+        'row': unitRow - 1,
+        'field': '数量',
+        'value': '7',
+      });
+      expect(unitLine.qty.text, '7');
+    },
+  );
+
   for (final fromQuote in [false, true]) {
     testWidgets(
       'order header locks customer and currency only when derived from accepted quote: $fromQuote',

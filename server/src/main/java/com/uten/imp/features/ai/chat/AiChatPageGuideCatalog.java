@@ -12,7 +12,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/** Reviewed page semantics, never a screenshot, DOM, form payload or arbitrary repository retrieval. */
+/**
+ * Reviewed page semantics (supplementary since ADR-150). What is actually on screen arrives in the
+ * bounded page snapshot; this catalog only adds reviewed filling guidance and hypothetical examples.
+ */
 @Component
 public class AiChatPageGuideCatalog {
     public record FieldGuide(String key, String label, String instruction, String example) { }
@@ -62,31 +65,45 @@ public class AiChatPageGuideCatalog {
         return answer(guide, fieldKey, "OVERVIEW");
     }
 
+    /**
+     * Full reviewed guide (ADR-150): every permitted field, hypothetical examples kept in every mode.
+     * SUMMARY shortens each instruction to its first sentence only because the user asked for brevity.
+     */
     public String answer(PageGuide guide, String fieldKey, String mode) {
         if (guide == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先打开需要帮助的页面");
         List<FieldGuide> chosen = fieldKey == null || fieldKey.isBlank() ? guide.fields()
                 : guide.fields().stream().filter(f -> f.key().equals(fieldKey)).toList();
         if (chosen.isEmpty()) throw new ApiException(ErrorCode.FORBIDDEN, "这个字段暂时不能说明，请联系管理员。");
         boolean overview = fieldKey == null || fieldKey.isBlank();
-        if (overview && !"STEPS".equals(mode)) chosen = chosen.stream().limit(3).toList();
-        if ("EXAMPLE".equals(mode)) return "举例（假设）：\n" + String.join("\n", chosen.stream()
+        if ("EXAMPLE".equals(mode)) return "举例(假设):\n" + String.join("\n", chosen.stream()
                 .map(field -> field.label() + ": " + field.example()).toList());
         StringBuilder reply = new StringBuilder();
+        if (overview) reply.append(guide.title()).append(" 的填写要点:");
+        int index = 1;
         for (FieldGuide field : chosen) {
             if (!reply.isEmpty()) reply.append("\n");
+            if (overview) reply.append(index++).append(". ");
             reply.append(field.label()).append(": ");
             if ("STEPS".equals(mode)) {
                 int step = 1;
                 for (String sentence : field.instruction().split("[。；]")) {
-                    if (!sentence.isBlank()) reply.append("\n").append(step++).append(". ").append(sentence.strip());
+                    if (!sentence.isBlank()) reply.append("\n   ").append(step++).append(") ").append(sentence.strip());
                 }
-            } else if (!"EXAMPLE".equals(mode)) {
+            } else if ("SUMMARY".equals(mode)) {
+                reply.append(field.instruction().split("(?<=[。；])")[0].strip());
+            } else {
                 reply.append(field.instruction());
             }
-            if (!overview && !"SUMMARY".equals(mode)) reply.append("\n举例（假设）：").append(field.example());
+            reply.append(overview ? "\n   举例(假设): " : "\n举例(假设): ").append(field.example());
         }
-        if (overview && !"SUMMARY".equals(mode)) reply.append("\n举例（假设）：").append(chosen.getFirst().example());
         return reply.toString();
+    }
+
+    /** Reviewed guide text offered to the model as a trusted source. */
+    public java.util.Map<String, Object> modelView(PageGuide guide) {
+        return java.util.Map.of("title", guide.title(), "fields", guide.fields().stream().map(field -> java.util.Map.of(
+                "key", field.key(), "label", field.label(), "instruction", field.instruction(),
+                "hypotheticalExample", field.example())).toList());
     }
 
     private boolean fieldAllowed(AuthUser user, Field field) {

@@ -3,6 +3,7 @@ package com.uten.imp.features.preference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.UserPreferenceReadPort;
+import com.uten.imp.application.port.UserPreferenceWritePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AuthUser;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -24,7 +26,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
-public class UserPreferenceService implements UserPreferenceReadPort {
+public class UserPreferenceService implements UserPreferenceReadPort, UserPreferenceWritePort {
 
     /** 与 user_preferences.pref_key VARCHAR(100) 一致。 */
     static final int MAX_KEY_LENGTH = 100;
@@ -48,7 +50,20 @@ public class UserPreferenceService implements UserPreferenceReadPort {
         return result;
     }
 
-    /** upsert 单个偏好（body 为任意 JSON value，含 null 字面量）。 */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<JsonNode> currentUserPreference(String key) {
+        UUID userId = requireStaffId();
+        if (key == null || key.isBlank() || key.length() > MAX_KEY_LENGTH) {
+            return Optional.empty();
+        }
+        return repo.findById(new UserPreferenceId(userId, key)).map(pref -> parse(pref.getPrefValue()));
+    }
+
+    /**
+     * upsert 单个偏好(body 为任意 JSON value, 含 null 字面量)。功能自管的键(ADR-152, 如 AI 对话设置)由
+     * 通用接口在入口处拒绝, 只能经所属功能按白名单校验后用 {@link #putOwnedPreference} 写入。
+     */
     @Transactional
     public void put(String key, JsonNode value) {
         UUID userId = requireStaffId();
@@ -77,6 +92,20 @@ public class UserPreferenceService implements UserPreferenceReadPort {
         pref.setPrefValue(json);
         pref.setUpdatedAt(Instant.now());
         repo.save(pref);
+    }
+
+    @Override
+    @Transactional
+    public void putOwnedPreference(String key, JsonNode value) {
+        if (key == null || !key.startsWith(RESERVED_PREFIX)) {
+            throw new IllegalArgumentException("Not a feature-owned preference key");
+        }
+        put(key, value);
+    }
+
+    /** 功能自管的偏好键(只能经所属功能的接口写)。 */
+    public static boolean featureOwned(String key) {
+        return key != null && key.startsWith(RESERVED_PREFIX);
     }
 
     /** 必须已登录且为员工账号（与 profilechange 域 ProfileChangeAccess 一致拒绝访客）。 */

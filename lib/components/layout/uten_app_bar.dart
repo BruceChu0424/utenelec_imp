@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// Uten 自适应顶栏
 ///
@@ -111,13 +112,23 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           : null,
     );
 
-    if (!blurred) return appBar;
+    // ADR-150: the page title tells the AI assistant which page it reads.
+    final pageTitle = title;
+    Widget titled(Widget child) => pageTitle == null || pageTitle.isEmpty
+        ? child
+        : AiPageRegistrar(
+            source: AiPageInfoSource(title: (_) => pageTitle),
+            child: child,
+          );
+    if (!blurred) return titled(appBar);
 
     // 毛玻璃：裁剪矩形内做背景模糊（AppBar 自身无圆角，ClipRect 即可）
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: appBar,
+    return titled(
+      ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: appBar,
+        ),
       ),
     );
   }

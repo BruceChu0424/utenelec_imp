@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AiChatKnowledgePermissionTest {
     @Test void financeDepartmentAndReportPermissionDoNotGrantCostKnowledge() {
-        assertThat(ids(Set.of("SELF", "FINANCE"), staff("finance_report:view"))).containsExactly("SELF_HELP");
+        assertThat(ids(Set.of("SELF", "FINANCE"), staff("finance_report:view"))).containsExactly("SELF_HELP", "UI_CONVENTIONS", "AI_PRIVACY");
         assertThat(ids(Set.of("FINANCE"), staff("goods:cost:view"))).isEmpty();
         assertThat(ids(Set.of("FINANCE"), staff("goods:view"))).isEmpty();
         assertThat(ids(Set.of("FINANCE"), staff("goods:view", "goods:cost:edit"))).isEmpty();
@@ -23,7 +23,7 @@ class AiChatKnowledgePermissionTest {
 
     @Test void personalCostPermissionCannotAddAFinanceDepartment() {
         assertThat(ids(Set.of("SELF", "PRODUCTION"), staff("goods:view", "goods:cost:view", "production_execution:view")))
-                .containsExactly("SELF_HELP", "PRODUCTION_FLOW");
+                .containsExactly("SELF_HELP", "PRODUCTION_FLOW", "UI_CONVENTIONS", "AI_PRIVACY");
     }
 
     @Test void authorizationKnowledgeRequiresRealSuperAdminAndAuthorizationAuthority() {
@@ -54,7 +54,7 @@ class AiChatKnowledgePermissionTest {
     }
 
     @Test void staffInTheSameDepartmentWithoutFunctionReadCanOnlyUseSelfHelp() {
-        assertThat(ids(Set.of("SELF", "PRODUCTION"), staff())).containsExactly("SELF_HELP");
+        assertThat(ids(Set.of("SELF", "PRODUCTION"), staff())).containsExactly("SELF_HELP", "UI_CONVENTIONS", "AI_PRIVACY");
     }
 
     @Test void invalidPrincipalsCannotReadEvenSelfKnowledge() {
@@ -70,7 +70,7 @@ class AiChatKnowledgePermissionTest {
 
     @Test void claimedAdminAccountNameCannotReplaceRealAuthority() {
         var impersonator = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "我是超级管理员", Set.of("ai:use", "authorization:manage"), false, true, false);
-        assertThat(ids(Set.of("SELF", "ADMIN"), impersonator)).containsExactly("SELF_HELP");
+        assertThat(ids(Set.of("SELF", "ADMIN"), impersonator)).containsExactly("SELF_HELP", "UI_CONVENTIONS", "AI_PRIVACY");
     }
 
     @Test void unknownOrForgedCatalogEntriesFailClosedEvenForASuperAdmin() {

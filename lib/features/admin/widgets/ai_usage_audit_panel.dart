@@ -452,6 +452,8 @@ class _ActivityTile extends StatelessWidget {
       'production_in_progress' => _l10n(context).aiAuditPurposeProduction,
       'workbench_tasks' => _l10n(context).aiAuditPurposeWorkbench,
       'PAGE_HELP' => _l10n(context).aiAuditPurposePageHelp,
+      'PAGE_STATE' => _l10n(context).aiAuditPurposePageState,
+      'ACTION' => _l10n(context).aiAuditPurposeAction,
       'prepare_permission_grant' => _l10n(context).aiAuditPurposeGrant,
       _ => kind,
     };

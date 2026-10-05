@@ -10,6 +10,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../shared/ai/page_context/ai_page_context.dart';
+
 /// 两条顶部横幅共用的视觉外壳。
 ///
 /// **纯卡片**：只负责渲染「圆角 Material + 内容」，本身按内容宽度收缩（≤ [maxWidth]），
@@ -88,7 +90,7 @@ class UtenTopBannerCard extends StatelessWidget {
     // 纯卡片：不含 SafeArea / Center，按内容宽度收缩（≤ maxWidth）。居中与状态栏
     // 留白由调用方负责——这样卡片两侧的空白不会落在 Dismissible 的不透明手势层里，
     // 也就不会拦截下方页面的点击（只有卡片像素可交互）。详见类注释。
-    return ConstrainedBox(
+    final card = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Semantics(
         container: true,
@@ -104,6 +106,13 @@ class UtenTopBannerCard extends StatelessWidget {
           child: _body(),
         ),
       ),
+    );
+    // ADR-150: banners with a spoken label are readable by the AI assistant.
+    final label = semanticLabel;
+    if (label == null || label.trim().isEmpty) return card;
+    return AiPageRegistrar(
+      source: AiNoticeSource(kind: AiNoticeKind.banner, text: label),
+      child: card,
     );
   }
 

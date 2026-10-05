@@ -120,3 +120,7 @@
 - `test/features/stock/instant_inventory_page_test.dart` /
   `test/features/warehouse/pages/shelf_label_page_test.dart`：点字段拉面板 → 选节点 → 带
   `categoryId` / `warehouseId` 重查。
+
+## AI 助手读筛选条件(2026-10-04, ADR-150)
+
+字段挂载时向 [AiPageContext](AiPageContext.md) 只读登记「标签 + 当前值」(未筛选时为占位文案, 如「全部」), 只在用户向 AI 助手发问时读取; 不提供设值动作, 换筛选仍由用户自己点开面板选。

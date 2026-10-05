@@ -2713,18 +2713,18 @@
   "aiSettingsJsonModeNone": "不要求",
   "aiSettingsJsonModeObject": "JSON 对象",
   "aiSettingsJsonModeSchema": "按结构输出",
-  "aiSettingsThinking": "关闭深度思考",
-  "aiSettingsThinkingInfo": "识别表格不需要深度思考, 关掉更快更省钱; 各服务商写法不同, 选好服务商会自动选对",
-  "aiSettingsThinkingNone": "不处理",
+  "aiSettingsThinking": "思考参数写法",
+  "aiSettingsThinkingInfo": "AI 对话的「思考程度」按这里的写法发给服务商; 识别表格等不需要思考的用途仍会关掉思考。选好服务商会自动选对; 选「不发送」时对话设置里不能调整思考程度。通义千问写法只用来关掉思考(通义的思考只支持流式输出、不能和 JSON 同用); Claude Haiku 4.5 等不认思考参数的模型会自动不发。「测试连接」会按对话默认档实测一次。",
+  "aiSettingsThinkingNone": "不发送",
   "aiSettingsThinkingDeepseek": "DeepSeek 写法",
-  "aiSettingsThinkingDashscope": "通义千问写法",
+  "aiSettingsThinkingDashscope": "通义千问写法(只关掉思考)",
   "aiSettingsThinkingOpenAi": "OpenAI 写法",
   "aiSettingsTemperature": "固定输出(温度为 0)",
   "aiSettingsTemperatureInfo": "同一份文件每次识别结果尽量一致; 个别模型不接受这个参数时关掉",
   "aiSettingsVision": "能识别图片和扫描件",
   "aiSettingsVisionInfo": "模型支持看图时打开, 销售上传的照片和扫描版 PDF 才能识别",
   "aiSettingsMaxTokens": "最大输出长度",
-  "aiSettingsMaxTokensInfo": "256 ~ 65536; 行数多的文件需要更长",
+  "aiSettingsMaxTokensInfo": "256 ~ 65536; 行数多的文件需要更长。这是单次输出(含思考)的上限, 对话选「深入」时不会超过它, 想多留思考空间可以调大",
   "aiSettingsTimeout": "超时秒数",
   "aiSettingsTimeoutInfo": "10 ~ 600; 超过这个时间还没回复就算失败",
   "aiSettingsNumberRange": "请输入 {min} ~ {max} 之间的整数",
@@ -4147,11 +4147,11 @@
   "aiChatClose": "收起对话",
   "aiChatReset": "新对话",
   "aiChatResetTitle": "开始新对话？",
-  "aiChatResetHint": "当前对话和未使用的文件将从此窗口清除。已执行的业务操作不会撤销。",
+  "aiChatResetHint": "开始新对话后, AI 不再关联前面的问答。之前的记录仍会保留, 可以在对话设置里清空。已执行的业务操作不会撤销。",
   "aiChatCancel": "取消",
   "aiChatConfirm": "确认",
   "aiChatWelcome": "今天需要处理什么？",
-  "aiChatBoundary": "按当前账号权限回答；数据查询与操作由系统逐次校验。",
+  "aiChatBoundary": "按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍按你的权限和系统校验。",
   "aiChatUnavailable": "暂时只能回答部分业务问题。",
   "aiChatLoadFailed": "暂时无法连接 AI 助手，请重试。",
   "aiChatRetry": "重试",
@@ -4173,36 +4173,20 @@
   "aiChatTimeout": "处理时间较长，已停止等待。请稍后重试。",
   "aiChatGone": "这次处理已过期，请开始新对话。",
   "aiChatPermissionChanged": "当前权限或会话已变化，对话已清除。请刷新后重试。",
-  "aiChatOpenDraft": "核对并新建订货单",
-  "aiChatDraftHint": "请核对客户、货品、数量和价格后保存。",
-  "aiChatUnsupported": "此操作暂不支持，请到对应业务页面处理。",
   "aiChatEmptyReply": "本次未返回可显示的答复，请重新描述你的问题。",
   "aiChatYou": "你",
   "aiChatAssistant": "助手",
-  "aiChatDraftUnavailable": "无法打开此草稿，请重新上传文件。",
-  "aiChatConfirmPermission": "核对授权内容",
-  "aiChatPermissionDone": "授权已完成",
   "aiChatMoveUp": "向上移动助手",
   "aiChatMoveDown": "向下移动助手",
   "aiChatPageAware": "正在帮助：当前页面",
-  "aiChatPageOff": "结合当前页面回答",
-  "aiChatPageHint": "只使用页面与字段说明，不读取你的表单内容。",
+  "aiChatPageOff": "未读取当前页面(可在对话设置里打开)",
+  "aiChatPageHint": "会读取当前页面你能看到的表格和字段, 发给管理员配置的 AI 服务。成本、工资、信用额度和证件号、银行账号、手机号等个人信息只发名称不发数值; 工资、人事和个人资料页面, 以及系统设置、AI 服务、权限、审计、服务器状态等系统管理页面不读取。",
   "aiChatPageQuestion": "这个页面怎么填写？请举个例子。",
-  "aiChatGrantDetails": "请核对目标人员、权限和范围，确认后需重新验证密码。",
-  "aiChatGrantExpired": "授权建议已过期，请重新发起。",
-  "aiChatGrantUnknown": "授权结果暂未确认。请在权限管理页核查，再决定是否重试。",
   "aiChatAttachmentQuestion": "请分析这份文件，判断适合办理的业务并辅助填写。",
-  "aiChatLimit": "本次对话较长，请开始新对话后继续。",
-  "aiChatPermissionTarget": "目标人员",
-  "aiChatPermissionItem": "授予权限",
-  "aiChatPermissionScope": "数据范围",
-  "aiChatPermissionExpiry": "有效期至",
-  "aiChatPendingGrant": "待你核对确认",
+  "aiChatLimit": "这个窗口里的对话较长, 请开始新对话后继续。",
   "aiChatFileReady": "已读取文件，可继续发送问题",
   "aiChatSendAgain": "再次发送",
-  "aiChatDraftOpened": "已打开核对页面",
-  "aiChatFileMissing": "原文件已不在此对话中，请重新上传后新建，确保来源文件一同保存。",
-  "aiChatPrivacyNotice": "对话文字由管理员配置的 AI 服务处理，请勿输入密码等敏感信息。",
+  "aiChatPrivacyNotice": "对话文字、同一对话里最近几轮的问答和当前页面上你能看到的内容, 由管理员配置的 AI 服务处理, 请勿输入密码等敏感信息。回答以页面为准。AI 只解答平台怎么用、业务规则和你有权限看的业务数据, 不处理代码、服务器、命令、数据库或密码。",
   "aiChatReceived": "已送达，正在等待回复…",
   "aiChatRequestRejected": "这条消息未成功提交。",
   "aiChatDeliveryUnknown": "送达状态未确认；再次发送会发起新请求。",
@@ -4716,7 +4700,13 @@
   "handoffLotRegistrationTitle": "登记实际入库",
   "handoffLotRegistrationFooter": "一行一批实物(同一报工、同一次录入、送入仓库的需求份 / 计划公共 / 实际超产)：库位、实点、称重都是整批一个。入库仓库、库位号必填(仓库按货品归属仓或上次所选仓预填，库位按该仓记住的库位或货品资料带出，黄框请核对)；同一张报工的不同批可以登记到不同仓库。明细默认全选，提交只含勾选行。",
   "handoffLotBatchesTitle": "登记批次 ({count})",
-  "@handoffLotBatchesTitle": {"placeholders": {"count": {"type": "int"}}},
+  "@handoffLotBatchesTitle": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "handoffLotBatchesHint": "一张报工可按入库仓库分成几个登记批次，每个仓库一张品质检查单；品质尚未处理的批次可撤回登记，撤回后这些批重新回到待登记。",
   "handoffLotSplitColumn": "其中",
   "handoffLotSplitColumnInfo": "同一批实物里需求份、计划公共备货、实际超产各多少(服务端算出)。品质判定和仓库点收都按整批：合格 / 实收先满足需求份，不良 / 短收先扣实际超产。",
@@ -4726,12 +4716,24 @@
   "warehouseScopeAllWarehouses": "全部仓库",
   "warehouseScopeAllMine": "我负责的全部仓库",
   "warehouseScopeKeeperLabel": "我负责：{name}",
-  "@warehouseScopeKeeperLabel": {"placeholders": {"name": {"type": "String"}}},
+  "@warehouseScopeKeeperLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "warehouseScopePickerTitle": "选择仓库范围",
   "warehouseScopeSupervisorTooltip": "你是仓库主管：可看全部仓库，也可只看某一个仓。任务列表、分段计数都按所选范围由服务端给出，不改变办理权限。",
   "warehouseScopeKeeperTooltip": "任务中心只显示你负责的仓库的任务，徽章和通知也只算这些仓。要调整负责的仓库，请联系仓库主管在「仓库资料」里设置负责人。",
   "warehouseKeeperDialogTitle": "设置负责人 · {name}",
-  "@warehouseKeeperDialogTitle": {"placeholders": {"name": {"type": "String"}}},
+  "@warehouseKeeperDialogTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "warehouseKeeperRolesHint": "负责人决定谁看、谁收这个仓的任务：\n1. 登记在主仓「仓库(14年版)」上的人和仓储部负责人是仓库主管，能看全部仓库，也能在任务中心挑任一个仓；\n2. 登记在子仓上的人只看、只收自己负责的仓的任务(徽章也只算这些仓)，负责多个仓时可以在它们之间切换；\n3. 没登记负责人的同事看还没人负责的仓和还没定仓的任务；某个仓没登记负责人时，它的通知发给仓库主管。\n有同名员工时请按工号核对，没有登录账号的人不算有效负责人。",
   "warehouseKeeperNoAccount": "没有启用的登录账号，看不到任务也收不到通知",
   "warehouseKeeperOutsideDepartment": "不在仓库部门：要另有仓库任务权限才能看到任务、收到通知",
@@ -4739,7 +4741,13 @@
   "warehouseKeeperCleared": "已清空负责人：这个仓的任务和通知交给仓库主管，没登记负责人的同事也能看到",
   "warehouseKeeperSaved": "负责人已保存",
   "warehouseKeeperSavedWithWarnings": "负责人已保存。{warnings}",
-  "@warehouseKeeperSavedWithWarnings": {"placeholders": {"warnings": {"type": "String"}}},
+  "@warehouseKeeperSavedWithWarnings": {
+    "placeholders": {
+      "warnings": {
+        "type": "String"
+      }
+    }
+  },
   "defectiveMoveUncertain": "上次提交的结果还没确认, 内容已锁定: 请按原内容重试, 确认结果后才能修改",
   "defectiveMoveReservationWarning": "这些预留已经没有实物, 请通知相关人员",
   "wmBinSourceFollowOwning": "不指定来源仓, 按货品所属仓库发料",
@@ -4748,9 +4756,290 @@
   "wmMachinesBatchCreate": "批量新增机台",
   "wmMachinesSaveChanges": "保存修改",
   "qualityBatchSubmitDone": "检验报告已提交: 来料检验 {iqcLines} 行、自制产成品全部合格 {fqcLots} 批; 合格部分已转仓库待入库",
-  "@qualityBatchSubmitDone": {"placeholders": {"iqcLines": {"type": "int"}, "fqcLots": {"type": "int"}}},
+  "@qualityBatchSubmitDone": {
+    "placeholders": {
+      "iqcLines": {
+        "type": "int"
+      },
+      "fqcLots": {
+        "type": "int"
+      }
+    }
+  },
   "qualityBatchColumnSplit": "本批拆分",
   "qualityBatchWholeLot": "整批 {count} 份一起判",
-  "@qualityBatchWholeLot": {"placeholders": {"count": {"type": "int"}}},
-  "qualityBatchWholeLotPass": "勾选即整批全部合格"
+  "@qualityBatchWholeLot": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "qualityBatchWholeLotPass": "勾选即整批全部合格",
+  "aiSettingsStepThinking": "思考程度",
+  "aiActionSetField": "填写字段",
+  "aiActionParamField": "字段",
+  "aiActionParamValue": "新值",
+  "aiActionFieldMissing": "页面上没有「{label}」这个可填写的字段",
+  "@aiActionFieldMissing": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionFieldReadOnly": "「{label}」现在不能修改",
+  "@aiActionFieldReadOnly": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionOptionMissing": "没有「{value}」这个选项",
+  "@aiActionOptionMissing": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionDateInvalid": "日期要写成 2026-10-04 这样的格式",
+  "aiActionFilterTable": "筛选表格",
+  "aiActionParamColumn": "列",
+  "aiActionParamFilterValue": "筛选值(留空=全部)",
+  "aiActionSelectRows": "勾选行",
+  "aiActionParamRows": "行号(如 1,3,5-8; 0=清空)",
+  "aiActionOpenRow": "打开行",
+  "aiActionParamRow": "行号",
+  "aiActionTableSuffix": " (第{index}张表)",
+  "@aiActionTableSuffix": {
+    "placeholders": {
+      "index": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowMissing": "没有第{row}行",
+  "@aiActionRowMissing": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowNotOpenable": "第{row}行不能打开",
+  "@aiActionRowNotOpenable": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowNotSelectable": "第{row}行不能勾选",
+  "@aiActionRowNotSelectable": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiActionRowsInvalid": "行号写法不对, 例如 1,3,5-8",
+  "aiActionColumnMissing": "表格里没有可筛选的「{column}」列",
+  "@aiActionColumnMissing": {
+    "placeholders": {
+      "column": {
+        "type": "String"
+      }
+    }
+  },
+  "aiActionFilterValueMissing": "这一列没有「{value}」这个值",
+  "@aiActionFilterValueMissing": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "fieldAiFilledReview": "AI 填入, 请核对",
+  "salesAiActionSetLine": "修改明细行",
+  "salesAiActionConfirmReview": "确认货品对应无误(保存时记住客户料号)",
+  "salesAiConfirmReviewRowHint": "只用于货品对应待核对的行(如颜色没对上、型号不一致); 只是单位换算、金额对不上或重复货品提醒的行要直接改数值",
+  "salesAiActionSave": "保存单据",
+  "salesAiValueInvalid": "「{field}」的值不对, 请检查后再说一次",
+  "@salesAiValueInvalid": {
+    "placeholders": {
+      "field": {
+        "type": "String"
+      }
+    }
+  },
+  "salesAiNotReviewLine": "第{row}行没有待核对的标记",
+  "@salesAiNotReviewLine": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "salesAiReviewNeedsEdit": "第{row}行要核对的是数量、单位、金额或定价, 请核对后直接修改",
+  "@salesAiReviewNeedsEdit": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "salesAiSaveFailed": "没有保存成功, 请看页面上的提示",
+  "salesAiPageBusy": "页面正在处理, 请稍后再确认",
+  "salesAiLineEmpty": "第{row}行还没有选货品",
+  "@salesAiLineEmpty": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatAttachSummary": "将附带当前页面: 表格{rows}行/字段{fields}个/待核对{flagged}项",
+  "@aiChatAttachSummary": {
+    "placeholders": {
+      "rows": {
+        "type": "int"
+      },
+      "fields": {
+        "type": "int"
+      },
+      "flagged": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatAttachRouteOnly": "将附带当前页面的名称(页面上没有可读取的表格或字段)",
+  "aiChatAttachWithheld": "这个页面含工资或个人信息, 不读取页面内容, 只发送问题",
+  "aiChatAttachProtected": "系统管理页面(系统设置、AI 服务、权限、审计、服务器状态等)不读取页面内容, AI 也不能在这里代办操作, 只发送问题",
+  "aiChatCardProtectedPage": "系统管理页面不能由 AI 代办操作, 请在页面上直接办理",
+  "aiChatSources": "依据: {sources}",
+  "@aiChatSources": {
+    "placeholders": {
+      "sources": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatVerifyOnPage": "以页面为准",
+  "aiChatFallback": "AI 暂时没回上来, 以下按页面内容整理",
+  "aiChatCardConfirm": "确认执行",
+  "aiChatCardExpiresIn": "{time} 后过期",
+  "@aiChatCardExpiresIn": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatCardExpired": "已过期, 请重新提问",
+  "aiChatCardCancelled": "已取消",
+  "aiChatCardRunning": "正在执行",
+  "aiChatCardSucceeded": "已完成",
+  "aiChatCardFailed": "没有完成",
+  "aiChatCardAuthChanged": "账号权限有变化, 这张卡已作废, 请重新提问",
+  "aiChatCardConfirmed": "已确认, 等待执行结果",
+  "aiChatCardWrongPage": "请回到原页面再确认",
+  "aiChatCardHandlerMissing": "这个页面现在没有这项操作, 请重新提问",
+  "aiChatCardPageChanged": "页面已经换成另一张单据或重新打开过, 这张卡没有执行, 请重新提问",
+  "aiChatCardDetached": "页面刷新过, 这张卡已不能执行, 请重新提问",
+  "aiActionRowChanged": "第{row}行已经不是提问时那一行了(行被删除、插入、排序或筛选过), 没有执行, 请重新提问",
+  "@aiActionRowChanged": {
+    "placeholders": {
+      "row": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatCardRisk": "请注意",
+  "aiChatCardStepUp": "确认时需要输入登录密码",
+  "aiChatCardUnknown": "结果暂未确认, 请先查看结果, 不要重复确认",
+  "aiChatCardInvalidArgs": "操作内容与当前页面不一致, 没有执行",
+  "aiChatCardCheck": "查看结果",
+  "aiChatCardSourceMissing": "原文件已不在这个对话里, 请重新上传",
+  "aiAuditPurposePageState": "看懂当前页面",
+  "aiAuditPurposeAction": "确认后执行操作",
+  "productionReadinessMeaningReady": "物料齐了(或不用领料), 可以开工",
+  "productionReadinessMeaningReadyPartial": "部分物料已投, 可以先开工",
+  "productionReadinessMeaningToDraw": "物料已备齐, 去领料",
+  "productionReadinessMeaningToDrawPartial": "部分物料可领, 去领料",
+  "productionReadinessMeaningPending": "已提交领料, 等仓库发料",
+  "productionReadinessMeaningWaiting": "缺料, 等到货或物料到齐",
+  "productionReadinessMeaningWaitPlanning": "缺料且还没人下单, 等计划下单",
+  "productionReadinessMeaningDecide": "要先选生产路线, 其它动作都锁着",
+  "aiActionSearch": "搜索",
+  "aiActionParamSearch": "搜索词(留空=清除)",
+  "salesAiNoGoods": "请先在明细表选择货品",
+  "aiChatSettings": "对话设置",
+  "aiChatSettingsBack": "返回对话",
+  "aiChatSettingsSynced": "设置跟着账号保存, 换设备也一样。改了马上生效。",
+  "aiChatSettingsSaving": "正在保存…",
+  "aiChatSettingsSaveFailed": "设置没保存成功, 已恢复原来的选择, 请稍后再试。",
+  "aiChatSettingsDetail": "回答详略",
+  "aiChatSettingsDetailHint": "提问时说「简单点」或「详细点」, 只对那一句按你的话来。",
+  "aiChatSettingsDetailComprehensive": "全面",
+  "aiChatSettingsDetailStandard": "标准",
+  "aiChatSettingsDetailConcise": "精简",
+  "aiChatSettingsReasoning": "思考程度",
+  "aiChatSettingsReasoningHint": "默认快速回答; 问题里写「详细分析」时这一次会想得更深。深入更周到但更慢。",
+  "aiChatSettingsReasoningFast": "快速",
+  "aiChatSettingsReasoningStandard": "标准",
+  "aiChatSettingsReasoningDeep": "深入",
+  "aiChatSettingsReasoningUnsupported": "当前 AI 服务不支持调整思考程度",
+  "aiChatSettingsPageAware": "读取当前页面",
+  "aiChatSettingsShowSources": "显示回答依据",
+  "aiChatSettingsShowSourcesHint": "关掉后不显示「依据」那一行; AI 仍按页面和资料核对后再回答。",
+  "aiChatSettingsMemory": "连续对话记忆",
+  "aiChatSettingsMemoryHint": "AI 会参考同一对话里最近几轮的问答, 换了页面也接得上; 含敏感数据的回答不会带入。",
+  "aiChatSettingsMemoryOff": "关闭",
+  "aiChatSettingsMemoryTurns": "{count} 轮",
+  "@aiChatSettingsMemoryTurns": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatSettingsLanguage": "回答语言",
+  "aiChatSettingsLanguageAuto": "跟随界面",
+  "aiChatSettingsLanguageZh": "中文",
+  "aiChatSettingsLanguageEn": "English",
+  "aiChatSettingsLanguageKo": "한국어",
+  "aiChatSettingsSendKey": "发送方式",
+  "aiChatSettingsSendEnter": "Enter 发送",
+  "aiChatSettingsSendCtrlEnter": "Ctrl+Enter 发送",
+  "aiChatSettingsSendEnterHint": "Enter 发送, Shift+Enter 换行。",
+  "aiChatSettingsSendCtrlEnterHint": "Ctrl+Enter 发送, Enter 换行。",
+  "aiChatSettingsStyle": "表达方式",
+  "aiChatSettingsStylePlain": "通俗易懂",
+  "aiChatSettingsStyleProfessional": "专业简洁",
+  "aiChatSettingsStyleHint": "通俗易懂会顺带解释业务用词, 适合新同事; 专业简洁直接用业务术语。",
+  "aiChatSettingsSuggestions": "显示推荐问题",
+  "aiChatSettingsSuggestionsHint": "在对话框里显示可以直接点的问题。",
+  "aiChatSettingsConfirm": "操作前确认",
+  "aiChatSettingsConfirmAlways": "始终开启",
+  "aiChatSettingsConfirmHint": "AI 要做任何操作, 都先给你一张确认卡, 你点确认后才执行; 这一项不能关闭。",
+  "aiChatSettingsClear": "清空对话记录",
+  "aiChatSettingsClearHint": "清空后, 之前的问答不再显示, 也不再关联到新问题。只影响你自己的账号。",
+  "aiChatSettingsClearTitle": "清空全部对话记录?",
+  "aiChatSettingsClearBody": "会清空你账号下全部 AI 对话记录, 清空后不能恢复。已经执行的业务操作不受影响。",
+  "aiChatSettingsClearDone": "对话记录已清空",
+  "aiChatSettingsClearFailed": "没能清空对话记录, 请稍后再试。",
+  "aiChatHiddenTurns": "有 {count} 条较早的对话因账号权限变化, 不再显示。",
+  "@aiChatHiddenTurns": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiChatRestored": "以下是你最近的对话, 继续提问会接着聊。",
+  "aiChatRestoredDataChanged": "这条回答引用的业务数据已经变化, 不再显示旧内容; 需要的话请重新问一次。",
+  "aiSettingsThinkingZhipu": "智谱 GLM 写法",
+  "aiSettingsThinkingAnthropic": "Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)"
 }

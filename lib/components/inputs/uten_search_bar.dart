@@ -15,6 +15,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../shared/ai/page_context/ai_page_context.dart';
+
 /// Uten 搜索栏
 ///
 /// 内置防抖（默认 300ms）+ 清除按钮 + 自动聚焦控制。
@@ -65,6 +67,54 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   Timer? _debounce;
   bool _ownsController = false;
 
+  // ADR-150: the page search box is a generic AI view action ("search for").
+  final _aiSlot = AiPageSlot();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiSlot.attach(
+      context,
+      widget.onChanged == null && widget.onSubmitted == null
+          ? null
+          : AiPageInfoSource(actions: _aiActions),
+    );
+  }
+
+  List<AiPageAction> _aiActions(AiCaptureContext ctx) => [
+    AiPageAction(
+      name: 'searchPage',
+      title: ctx.l10n.aiActionSearch,
+      kind: AiActionKind.view,
+      params: [
+        AiActionParam(
+          'text',
+          type: AiParamType.string,
+          title: ctx.l10n.aiActionParamSearch,
+          required: false,
+          maxLength: 80,
+        ),
+      ],
+      handler: (call) async {
+        if (!mounted) throw AiActionFailure(ctx.l10n.aiChatCardHandlerMissing);
+        final text = (call.args['text'] as String? ?? '').trim();
+        _debounce?.cancel();
+        _controller.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+        widget.onInputChanged?.call(text);
+        if (widget.onChanged != null) {
+          widget.onChanged!(text);
+        } else {
+          widget.onSubmitted?.call(text);
+        }
+        setState(() {});
+        return null;
+      },
+    ),
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +142,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   @override
   void dispose() {
+    _aiSlot.detach();
     _debounce?.cancel();
     if (_ownsController) _controller.dispose();
     super.dispose();

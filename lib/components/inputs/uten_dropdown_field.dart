@@ -19,6 +19,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
 ///
@@ -65,7 +66,11 @@ class UtenDropdownField extends StatefulWidget {
     this.onAddNew,
     this.addNewLabel,
     this.dense = false,
+    this.aiSensitive = false,
   });
+
+  /// 敏感字段(ADR-150)：AI 读页面时只发标签不发值。
+  final bool aiSensitive;
 
   /// 紧凑形态（grid 单元格）：isDense 吃全局主题，与数量/单价等文本格等高
   ///（2026-09-12 用户口径：结账方式等网格下拉用统一 UI，不要原生 PopupMenu）。
@@ -126,6 +131,112 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   /// 浮层宽度 = 字段实测宽（打开时测得；120~480 夹紧）。
   double _fieldWidth = 240;
 
+  // ADR-150: AI page context registration; the value the assistant chose stays
+  // framed yellow ("AI filled, please review") until the user picks again.
+  final _aiSlot = AiPageSlot();
+  bool _aiFilled = false;
+  String? _aiFilledValue;
+
+  bool get _aiFilledNow =>
+      _aiFilled && widget.value != null && widget.value == _aiFilledValue;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiAttach();
+  }
+
+  @override
+  void didUpdateWidget(covariant UtenDropdownField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _aiAttach();
+  }
+
+  void _aiAttach() => _aiSlot.attach(
+    context,
+    widget.label == null
+        ? null
+        : AiFieldSource(
+            capture: _aiField,
+            setValue: widget.enabled ? _aiSetValue : null,
+          ),
+  );
+
+  AiFieldSnapshot? _aiField(AiCaptureContext ctx) {
+    final label = aiSnapshotLabel(widget.label);
+    if (!mounted || label == null) return null;
+    final hasValue = widget.value != null;
+    final requiredEmpty =
+        widget.enabled &&
+        widget.required &&
+        !hasValue &&
+        widget.errorMessage == null;
+    final autofilled =
+        widget.enabled &&
+        (widget.autofilled || widget.warningMessage != null || _aiFilledNow) &&
+        hasValue &&
+        widget.errorMessage == null;
+    return AiFieldSnapshot(
+      label: label,
+      value: hasValue ? aiSnapshotValue(_display) : null,
+      state: widget.errorMessage != null
+          ? AiFieldState.error
+          : requiredEmpty
+          ? AiFieldState.requiredEmpty
+          : autofilled
+          ? AiFieldState.autofilled
+          : AiFieldState.normal,
+      required: widget.required,
+      message: aiSnapshotValue(
+        widget.errorMessage ??
+            (autofilled
+                ? (_aiFilledNow
+                      ? ctx.l10n.fieldAiFilledReview
+                      // Same words the field shows under itself.
+                      : widget.warningMessage ?? '已按上次记录预填，请核对')
+                : null),
+        AiSnapshotLimits.info,
+      ),
+      info: aiSnapshotValue(widget.info, AiSnapshotLimits.info),
+      sensitive: widget.aiSensitive,
+    );
+  }
+
+  Future<void> _aiSetValue(String value, AiCaptureContext ctx) async {
+    if (!mounted || !widget.enabled) {
+      throw AiActionFailure(ctx.l10n.aiActionFieldReadOnly(widget.label ?? ''));
+    }
+    final wanted = value.trim();
+    final choices = widget.items
+        .where((item) => item.enabled && item.visible && item.value != null)
+        .toList();
+    UtenDropdownItem? match =
+        choices.where((item) => item.label.trim() == wanted).firstOrNull ??
+        choices
+            .where(
+              (item) => item.label.trim().toLowerCase() == wanted.toLowerCase(),
+            )
+            .firstOrNull;
+    if (match == null) {
+      final partial = choices
+          .where(
+            (item) =>
+                wanted.isNotEmpty &&
+                item.label.toLowerCase().contains(wanted.toLowerCase()),
+          )
+          .toList();
+      if (partial.length == 1) match = partial.single;
+    }
+    if (match == null) {
+      throw AiActionFailure(ctx.l10n.aiActionOptionMissing(wanted));
+    }
+    widget.onChanged(match.value);
+    setState(() {
+      _aiFilled = true;
+      _aiFilledValue = match!.value;
+    });
+  }
+
   /// 当前值的展示文本（孤儿值兜底显原值）。
   String get _display {
     if (widget.value == null) return '';
@@ -182,12 +293,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   }
 
   void _select(String? v) {
+    _aiFilled = false;
     widget.onChanged(v);
     _close();
   }
 
   @override
   void dispose() {
+    _aiSlot.detach();
     _close();
     super.dispose();
   }
@@ -204,7 +317,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     // 预填黄框仅在「有值、无错误、非必填空」时呈现（必填空/错误仍走红，优先级更高）。
     final autofillHint =
         widget.enabled &&
-        (widget.autofilled || widget.warningMessage != null) &&
+        (widget.autofilled || widget.warningMessage != null || _aiFilledNow) &&
         hasValue &&
         widget.errorMessage == null;
     return CompositedTransformTarget(
@@ -236,7 +349,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                   hintMaxLines: 1,
                   helper: autofillHint
                       ? UtenFieldMessage.autofill(
-                          widget.warningMessage ?? '已按上次记录预填，请核对',
+                          (_aiFilledNow
+                                  ? aiPageL10n(context).fieldAiFilledReview
+                                  : null) ??
+                              widget.warningMessage ??
+                              '已按上次记录预填，请核对',
                         )
                       : null,
                   error: widget.errorMessage == null

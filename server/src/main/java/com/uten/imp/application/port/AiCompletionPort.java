@@ -32,7 +32,33 @@ public interface AiCompletionPort {
      * 不可用时 {@code unavailableReason} 是给管理员看的一句话原因。
      */
     record AiAvailability(boolean available, String providerName, String model, boolean supportsVision,
-                          String unavailableReason) {
+                          String unavailableReason, boolean supportsReasoningEffort) {
+        public AiAvailability(boolean available, String providerName, String model, boolean supportsVision,
+                              String unavailableReason) {
+            this(available, providerName, model, supportsVision, unavailableReason, false);
+        }
+    }
+
+    /**
+     * 与服务商无关的思考程度提示(ADR-152)。调用方只说「要多深」, 网关按默认服务商配置的「思考参数写法」
+     * 映射成各家参数(DeepSeek/智谱 {@code thinking} + {@code reasoning_effort}、通义 {@code enable_thinking} +
+     * {@code thinking_budget}、OpenAI {@code reasoning_effort}、Anthropic Messages {@code output_config.effort});
+     * 服务商不支持时不发任何思考参数(见 {@link AiAvailability#supportsReasoningEffort()})。
+     *
+     * <ul>
+     *   <li>{@code DEFAULT}: 调用方不要求 —— 保持服务商配置的既有行为(配置了写法的 DeepSeek/通义/OpenAI 关掉思考,
+     *       其它不发参数)。识别类用途都用它。</li>
+     *   <li>{@code OFF}: 尽量不思考(不能关的模型取最轻档), 网关同时收紧超时。</li>
+     *   <li>{@code LOW}/{@code MEDIUM}/{@code HIGH}: 逐级加深; 思考预算另计、不占回答长度, {@code HIGH} 放宽超时。</li>
+     * </ul>
+     */
+    enum AiReasoningEffort {
+        DEFAULT, OFF, LOW, MEDIUM, HIGH;
+
+        /** 调用方明确要求了某一档(不是 DEFAULT)。 */
+        public boolean explicit() {
+            return this != DEFAULT;
+        }
     }
 
     /**
@@ -45,10 +71,11 @@ public interface AiCompletionPort {
      * @param jsonSchema      JSON Schema(服务商支持时原样下发, 否则由调用方在提示词里描述并在服务端校验); 可为空
      * @param maxOutputTokens 本次最大输出 token(网关再按服务商上限截断)
      * @param jobId           所属 AI 任务 id(写进调用技术记录); 非任务调用为空
+     * @param reasoningEffort 思考程度提示; 为空等同 {@link AiReasoningEffort#DEFAULT}
      */
     record AiCompletionRequest(String purpose, String systemPrompt, List<AiContentPart> userParts,
                                String jsonSchemaName, Map<String, Object> jsonSchema, int maxOutputTokens,
-                               UUID jobId) {
+                               UUID jobId, AiReasoningEffort reasoningEffort) {
         public AiCompletionRequest {
             Objects.requireNonNull(purpose, "purpose");
             Objects.requireNonNull(systemPrompt, "systemPrompt");
@@ -56,6 +83,22 @@ public interface AiCompletionPort {
             if (maxOutputTokens <= 0) {
                 throw new IllegalArgumentException("maxOutputTokens must be positive");
             }
+            if (reasoningEffort == null) {
+                reasoningEffort = AiReasoningEffort.DEFAULT;
+            }
+        }
+
+        public AiCompletionRequest(String purpose, String systemPrompt, List<AiContentPart> userParts,
+                                   String jsonSchemaName, Map<String, Object> jsonSchema, int maxOutputTokens,
+                                   UUID jobId) {
+            this(purpose, systemPrompt, userParts, jsonSchemaName, jsonSchema, maxOutputTokens, jobId,
+                    AiReasoningEffort.DEFAULT);
+        }
+
+        /** 同一请求挂到某个 AI 任务上(其余字段, 含思考程度, 原样保留)。 */
+        public AiCompletionRequest withJobId(UUID id) {
+            return new AiCompletionRequest(purpose, systemPrompt, userParts, jsonSchemaName, jsonSchema,
+                    maxOutputTokens, id, reasoningEffort);
         }
     }
 
@@ -98,8 +141,12 @@ public interface AiCompletionPort {
      */
     final class AiCallException extends RuntimeException {
 
+        /** 服务商内容审核拒绝时给人看的话(调用记录仍按 BAD_REQUEST 归类)。 */
+        public static final String CONTENT_FILTERED_MESSAGE = "服务商的内容审核没有通过这次请求";
+
         private final AiErrorCategory category;
         private final Integer httpStatus;
+        private final boolean contentFiltered;
 
         public AiCallException(AiErrorCategory category, String userMessage) {
             this(category, userMessage, null, null);
@@ -110,9 +157,23 @@ public interface AiCompletionPort {
         }
 
         public AiCallException(AiErrorCategory category, String userMessage, Integer httpStatus, Throwable cause) {
+            this(category, userMessage, httpStatus, cause, false);
+        }
+
+        private AiCallException(AiErrorCategory category, String userMessage, Integer httpStatus, Throwable cause,
+                                boolean contentFiltered) {
             super(userMessage, cause);
             this.category = Objects.requireNonNull(category, "category");
             this.httpStatus = httpStatus;
+            this.contentFiltered = contentFiltered;
+        }
+
+        /**
+         * 服务商的内容审核拒绝了请求或回答(ADR-153 修订): 不是服务故障, 也不是配置错误。调用记录按 BAD_REQUEST 记,
+         * 对话按「这个问题不能处理」友好回答, 不让用户去找管理员。
+         */
+        public static AiCallException contentFiltered(Integer httpStatus) {
+            return new AiCallException(AiErrorCategory.BAD_REQUEST, CONTENT_FILTERED_MESSAGE, httpStatus, null, true);
         }
 
         public AiErrorCategory category() {
@@ -121,6 +182,11 @@ public interface AiCompletionPort {
 
         public Integer httpStatus() {
             return httpStatus;
+        }
+
+        /** 服务商内容审核拒绝(见 {@link #contentFiltered(Integer)})。 */
+        public boolean isContentFiltered() {
+            return contentFiltered;
         }
     }
 }

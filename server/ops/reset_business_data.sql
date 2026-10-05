@@ -391,6 +391,7 @@ INSERT INTO reset_business_expected_policy(table_name,disposition) VALUES
 ('account_flow_monthly_summaries', 'CLEAR'),
 ('accounts', 'PRESERVE'),
 ('ai_call_logs', 'CLEAR'),
+('ai_chat_action_proposals', 'CLEAR'),
 ('ai_input_original_bindings', 'CLEAR'),
 ('ai_input_originals', 'CLEAR'),
 ('ai_jobs', 'CLEAR'),

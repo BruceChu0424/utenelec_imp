@@ -13,6 +13,9 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/pages/production_workshop_tasks_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/ai/page_context/ai_page_context.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 
 import '../../../support/filter_segment_tap.dart';
 
@@ -63,6 +66,81 @@ void main() {
     expect(find.textContaining('等待物料到齐 · 已备 2/3 种'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'AI snapshot lists each readiness colour with its status, meaning and row count',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final pageContext = AiPageContextController();
+      addTearDown(pageContext.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(_preparingApi()),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionExecutionStart,
+          }),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = GoRouter(
+        initialLocation: RouteName.productionWorkshopTasks,
+        routes: [
+          GoRoute(
+            path: RouteName.productionWorkshopTasks,
+            builder: (_, _) => const ProductionWorkshopTasksPage(),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(
+            routerConfig: router,
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            builder: (context, child) =>
+                AiPageContextScope(controller: pageContext, child: child!),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '开工准备');
+      await tester.pumpAndSettle();
+      final zh = AppLocalizationsZh();
+      final snapshot = pageContext.capture(zh).snapshot!;
+      final table = (snapshot['tables']! as List).first as Map<String, Object?>;
+      final legend = {
+        for (final entry
+            in (table['legend']! as List).cast<Map<String, Object?>>())
+          entry['value']: entry,
+      };
+      expect(legend['物料已领齐 · 可开工'], {
+        'column': '状态',
+        'value': '物料已领齐 · 可开工',
+        'color': '绿',
+        'tone': 'success',
+        'meaning': zh.productionReadinessMeaningReady,
+        'count': 1,
+      });
+      expect(legend['部分物料已投 · 可开工']!['color'], '琥珀');
+      expect(
+        legend['部分物料已投 · 可开工']!['meaning'],
+        zh.productionReadinessMeaningReadyPartial,
+      );
+      final waiting = legend.entries
+          .where((entry) => (entry.key! as String).startsWith('等待物料到齐'))
+          .single
+          .value;
+      expect(waiting['color'], '灰');
+      expect(waiting['count'], 2);
+      expect(waiting['meaning'], zh.productionReadinessMeaningWaiting);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 /// 四条等待物料任务的假 API（服务端按 plan_no 返回「越不齐越靠前」的乱序）。

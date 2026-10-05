@@ -3,6 +3,7 @@ package com.uten.imp.application.port;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 当前登录用户的偏好整表(只读)。会话快照(/api/auth/me, ADR-108)经本端口一次带回,
@@ -12,4 +13,7 @@ public interface UserPreferenceReadPort {
 
     /** 当前用户全部偏好: key → 任意 JSON value; 访客/未登录抛业务异常。 */
     Map<String, JsonNode> currentUserPreferences();
+
+    /** 当前用户的一个偏好; 没存过时为空。访客/未登录抛业务异常。 */
+    Optional<JsonNode> currentUserPreference(String key);
 }

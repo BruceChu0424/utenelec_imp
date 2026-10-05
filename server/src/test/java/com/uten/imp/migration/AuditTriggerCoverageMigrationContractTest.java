@@ -302,7 +302,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         "task_claims", "warehouse_arrival_registration_commands",
                         "workshop_material_commands", "goods_cost_commands",
                         // AI 识别任务协调态；原上传独立永久保全，提交人及原生单据范围控制读取。
-                        "ai_jobs")),
+                        "ai_jobs",
+                        // V805(ADR-150) AI 确认卡一次性提案: 提议/确认/取消/回执各写显式审计事件, 行本身是协调态。
+                        "ai_chat_action_proposals")),
             new NoneGroup("reservation",
                     "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",
                     Set.of(

@@ -7,7 +7,7 @@ import com.uten.imp.application.port.AiJobHandler;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.ai.job.AiJobView;
+import com.uten.imp.features.ai.job.AiJobService;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,13 +29,15 @@ class AiChatContinuationReviewTest {
     final AiChatToolRegistry tools = mock(AiChatToolRegistry.class);
     final AiChatPageGuideCatalog pages = mock(AiChatPageGuideCatalog.class);
     final AiChatToolPort cost = mock(AiChatToolPort.class);
-    final AiChatJobHandler handler = new AiChatJobHandler(access,evidence,tools,pages,json);
+    final AiChatActionProposalService proposals = mock(AiChatActionProposalService.class);
+    final AiChatJobHandler handler = new AiChatJobHandler(access,evidence,tools,pages,proposals,AiDocKnowledge.EMPTY,json);
     @BeforeEach void setup() {
         when(access.requireChat()).thenReturn(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"reader",
                 Set.of("ai:use","goods:view","goods:cost:view","client:view","client:create"),false,true,false));
         when(access.domains()).thenReturn(Set.of("SELF","FINANCE","SALES"));
         when(cost.name()).thenReturn("query_goods_cost"); when(cost.title()).thenReturn("查询货品成本");
         when(cost.domain()).thenReturn("FINANCE"); when(cost.description()).thenReturn("Read scoped goods costs");
+        when(cost.requestedBy(anyString())).thenReturn(true);
         when(cost.rememberQueryArguments()).thenReturn(true);
         when(cost.parameters()).thenReturn(Map.of("type","object","additionalProperties",false,
                 "properties",Map.of("goodsKeyword",Map.of("type","string","minLength",1,"maxLength",100),
@@ -45,31 +47,34 @@ class AiChatContinuationReviewTest {
         when(tools.available(anyString())).thenReturn(Optional.empty());
         when(tools.available("query_goods_cost")).thenReturn(Optional.of(cost));
         when(cost.execute(anyMap())).thenReturn(Map.of("reply","PRIVATE_VALUE_91234","_toolEvidence",Map.of("secretObject","PRIVATE_OBJECT")));
+        when(evidence.stampMatches(any())).thenReturn(true);
+        when(evidence.conversation(any(),anyInt())).thenReturn(List.of());
     }
-    AiJobHandler.AiJobContext context(String message, UUID previous, String output, boolean ai) throws Exception {
+    /** ADR-152: the earlier turn arrives as the owner's stored conversation result, newest first. */
+    AiJobHandler.AiJobContext context(String message, Map<String,Object> previous, String output, boolean ai) throws Exception {
         var ctx=mock(AiJobHandler.AiJobContext.class);
         var request=new java.util.LinkedHashMap<String,Object>(); request.put("message",message);
-        if(previous!=null) request.put("previousJobId",previous.toString());
+        request.put("conversationId",UUID.randomUUID().toString());
+        when(evidence.conversation(any(),anyInt())).thenReturn(previous==null ? List.of()
+                : List.of(new AiJobService.OwnedResult(UUID.randomUUID(),java.time.OffsetDateTime.now(),previous)));
         byte[] bytes=json.writeValueAsBytes(Map.of("request",request,"access",Map.of("actor","fixture")));
         when(ctx.input()).thenReturn(new AiJobHandler.AiJobInput("request.json","application/json","JSON",bytes.length,bytes,"hash"));
         when(ctx.params()).thenReturn(Map.of()); when(ctx.aiAllowed()).thenReturn(ai); when(ctx.jobId()).thenReturn(UUID.randomUUID());
         when(ctx.completeJson(any())).thenReturn(new AiCompletionPort.AiCompletionResult(output,"fixture","fixture",1,1,1));
         return ctx;
     }
-    UUID prior(Map<String,Object> result) {
-        UUID id=UUID.randomUUID();
-        Map<String,Object> filtered=handler.filterResultForReader(result);
-        when(evidence.previous(id)).thenReturn(new AiJobView(id,id,"ERP_CHAT","SUCCEEDED","DONE",100,false,
-                filtered,null,null,"request.json",null,null,null));
-        return id;
+    /** The stored result of an earlier turn (re-read through the reader filter when it is carried). */
+    Map<String,Object> prior(Map<String,Object> result) {
+        handler.filterResultForReader(result);
+        return result;
     }
     String selected(String args) { return "{\"intent\":\"TOOL\",\"tool\":\"query_goods_cost\",\"arguments\":"+args+"}"; }
     @Test void readFilterSurvivesPoliteTurnButFactsNeverEnterRoutingPrompt() throws Exception {
         var first=handler.process(context("查询 A001 成本",null,selected("{\"goodsKeyword\":\"A001\",\"basis\":\"ACTUAL\"}"),true));
-        UUID firstId=prior(first);
+        var firstId=prior(first);
         var thanks=handler.process(context("谢谢",firstId,"{}",true));
         assertThat(thanks).containsKey("_query").doesNotContainKey("_toolEvidence");
-        UUID thanksId=prior(thanks);
+        var thanksId=prior(thanks);
         var followup=context("再查这个产品的测算成本",thanksId,selected("{\"goodsKeyword\":\"A001\",\"basis\":\"ESTIMATE\"}"),true);
         handler.process(followup);
         var sent=ArgumentCaptor.forClass(AiCompletionPort.AiCompletionRequest.class);
@@ -120,8 +125,10 @@ class AiChatContinuationReviewTest {
         assertThatThrownBy(()->handler.process(ctx)).isInstanceOf(ApiException.class);
     }
     @Test void authorizedClientCreationGuideIncludesActualRequiredFieldsAndManualSave() throws Exception {
-        var result=handler.process(context("如何新增客户",null,"{\"intent\":\"KNOWLEDGE\",\"knowledgeId\":\"CLIENT_CREATE_GUIDE\"}",true));
-        assertThat(result.get("reply").toString()).contains("分类","名称与状态","编号由系统","由你点击保存","示例客户 A");
+        var result=handler.process(context("如何新增客户",null,"{\"intent\":\"KNOWLEDGE\",\"usedSources\":[\"knowledge.CLIENT_CREATE_GUIDE\"]}",true));
+        // ADR-153: the deterministic summary carries no hypothetical example unless the user asks for one.
+        assertThat(result.get("reply").toString()).contains("分类","名称与状态","编号由系统","由你点击保存")
+                .doesNotContain("示例客户 A", "举例");
         verify(cost,never()).execute(any());
     }
     @Test void detailIsShownOnlyOnRequestAndUsesTheSameAuthorizedReadFilters() throws Exception {
@@ -129,7 +136,7 @@ class AiChatContinuationReviewTest {
                 "detailReply","材料 2 元，加工 1 元；运费尚未核齐。"));
         var first=handler.process(context("A001成本多少",null,selected("{\"goodsKeyword\":\"A001\"}"),true));
         assertThat(first).containsEntry("reply","已知成本 3 元/个。");
-        UUID id=prior(first);
+        var id=prior(first);
         var expanded=context("展开",id,"{}",false);
         assertThat(handler.process(expanded)).containsEntry("reply","材料 2 元，加工 1 元；运费尚未核齐。");
         verify(expanded,never()).completeJson(any());
@@ -139,7 +146,7 @@ class AiChatContinuationReviewTest {
     }
     @Test void expandingCannotRecoverARevokedToolsFacts() throws Exception {
         var first=handler.process(context("A001成本",null,selected("{\"goodsKeyword\":\"A001\"}"),true));
-        UUID id=prior(first);
+        var id=prior(first);
         clearInvocations(cost);
         when(tools.available("query_goods_cost")).thenReturn(Optional.empty());
         var expanded=context("展开",id,"{}",false);

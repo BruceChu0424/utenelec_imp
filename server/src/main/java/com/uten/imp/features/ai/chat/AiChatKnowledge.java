@@ -9,6 +9,9 @@ import java.util.Set;
 /** Reviewed workflow facts, isolated by the same domain gate as tools. No database schema or secrets. */
 final class AiChatKnowledge {
     record Entry(String id, String domain, String title, String reply, List<String> keywords) {}
+    static final String UI_CONVENTIONS = "UI_CONVENTIONS";
+    /** ADR-153 revision: transparency about the data the assistant sends. */
+    static final String AI_PRIVACY = "AI_PRIVACY";
     static final List<Entry> ALL = List.of(
             entry("SELF_HELP", "SELF", "我的 AI 助手", "告诉我遇到的问题，或打开页面问我怎么填。", "帮助", "你好", "能做", "hello"),
             entry("CLIENT_CREATE_GUIDE", "SALES", "新增客户与基础资料填写", "打开基础资料里的客户资料，选分类后点新增。填写名称与状态，编号由系统自动生成，核对后由你点击保存。", "新增客户", "新建客户", "创建客户", "客户资料", "客户怎么", "客户如何"),
@@ -20,7 +23,29 @@ final class AiChatKnowledge {
             entry("QUALITY_FLOW", "QUALITY", "质量检验", "打开对应检验任务，分别填合格、不合格和待复检数量。待复检不能算合格。", "质检", "质量", "检验", "不合格"),
             entry("SUBCONTRACT_FLOW", "SUBCONTRACT", "委外业务", "按原委外订单发料、收货和结算。分批回厂就分批登记，保留剩余数量。", "委外", "外协"),
             entry("HR_FLOW", "HR", "人员与部门", "可以问我转正、入职等提醒。处理员工资料前，先核对姓名和工号。工资等详情请到对应页面查看。", "人事", "部门", "员工", "薪资", "工资"),
-            entry("ADMIN_GRANT", "ADMIN", "授权操作", "告诉我要给哪位员工开通哪项功能。核对确认卡后，再由你确认。", "授权", "权限", "赋予", "grant")
+            entry("ADMIN_GRANT", "ADMIN", "授权操作", "告诉我要给哪位员工开通哪项功能。核对确认卡后，再由你确认。", "授权", "权限", "赋予", "grant"),
+            // ADR-150: platform-wide visual conventions (guideline 13 and 14), answerable on every page.
+            new Entry(UI_CONVENTIONS, "SELF", "平台界面约定(颜色、边框和数字)", """
+                    全平台统一的界面约定:
+                    1. 红框: 必填但还没填，补填后才能保存或提交。
+                    2. 黄框: 系统预填或 AI 识别填入的值，需要你核对；旁边的小字写着原因，核对无误后可以保留。
+                    3. 红色数字徽章: 轮到你处理的事项数量。
+                    4. 黄色数字徽章: 正在办理中、球在别人手上的数量。
+                    5. 括号里的数字: 已结束或只供浏览的数量，不算待办。
+                    6. 状态颜色的通用色调: 灰=未开始/已关闭/无需处理，蓝=提示/进行中，绿=已完成/可以进行，黄=待处理/部分完成，红=有问题/被阻塞，品红、紫、青绿=页面自定义的其它状态；同一种颜色在不同页面的确切含义以该页面的图例和状态文字为准。
+
+                    举例(假设数据，不是系统当前事实): 客户栏是红框，表示还没选客户；单价格子是黄框并写着「标价为0」，表示要先核对价格再保存。""",
+                    List.of("红框", "黄框", "颜色", "徽章", "红色数字", "黄色数字", "括号", "必填", "预填", "待核对")),
+            // ADR-153 revision: what the assistant sends out is a platform question every user may ask (transparency).
+            new Entry(AI_PRIVACY, "SELF", "AI 助手会发送哪些内容", """
+                    AI 助手回答时，会把下面这些内容发给管理员在「AI 服务设置」里配置的 AI 服务，由它生成回答:
+                    1. 你在对话里输入的问题，以及同一对话里之前几轮的问答(在对话设置里可以关掉记忆)。
+                    2. 打开「读取当前页面」时，当前页面上你能看到的表格、字段和提示；成本、工资、信用额度等敏感数值默认不发送。
+                    3. 回答业务规则问题时，从平台设计说明里摘取的相关片段(不含任何业务数据)。
+                    4. 你有权限查询的业务数据查询结果。
+                    不会发送: 系统管理页面(系统设置、AI 服务、权限、审计、服务器状态)、工资和个人信息页面的内容、密码，以及被拒绝的越界问题。
+                    具体用的是哪家 AI 服务由系统管理员配置；想了解或希望关闭，请联系系统管理员。""",
+                    List.of("发给", "发送", "外部", "大模型", "隐私", "数据安全", "哪些数据", "ai服务", "ai 服务", "外送", "泄露"))
     );
     private static Entry entry(String id, String domain, String title, String reply, String... keywords) {
         String example = switch (id) {
@@ -62,7 +87,8 @@ final class AiChatKnowledge {
         if (!chatActor(actor) || entry == null || !ALL.contains(entry)) return false;
         Set<String> permissions = actor.getPermissions();
         if ("ADMIN_GRANT".equals(entry.id())) return actor.isSuperAdmin() && permissions.contains("authorization:manage");
-        if (actor.isSuperAdmin() || "SELF_HELP".equals(entry.id())) return true;
+        if (actor.isSuperAdmin() || "SELF_HELP".equals(entry.id()) || UI_CONVENTIONS.equals(entry.id())
+                || AI_PRIVACY.equals(entry.id())) return true;
         if ("CLIENT_CREATE_GUIDE".equals(entry.id())) return permissions.containsAll(Set.of("client:view", "client:create"));
         if ("FINANCE_COST".equals(entry.id())) return permissions.containsAll(Set.of("goods:view", "goods:cost:view"));
         return READ_PERMISSIONS.getOrDefault(entry.id(), Set.of()).stream().anyMatch(permissions::contains);

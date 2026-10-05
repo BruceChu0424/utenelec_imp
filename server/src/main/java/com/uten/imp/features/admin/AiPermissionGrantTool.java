@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin;
 
+import com.uten.imp.application.port.AiChatActionProposalPort;
 import com.uten.imp.application.port.AiChatToolPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -15,14 +16,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-/** The model can only request a preview. Every candidate and confirmation label comes from the server. */
+/**
+ * The model can only request a preview. Every candidate and confirmation line comes from the server and
+ * becomes a one-time ADR-150 confirmation card; the grant itself runs on the step-up endpoint.
+ */
 @Component
 @RequiredArgsConstructor
 public class AiPermissionGrantTool implements AiChatToolPort {
@@ -31,7 +34,7 @@ public class AiPermissionGrantTool implements AiChatToolPort {
     private final JdbcTemplate jdbc;
     private final PermissionRepository permissions;
     private final UserAccountRepository accounts;
-    private final AiPermissionProposalCodec codec;
+    private final AiChatActionProposalPort proposals;
 
     @Override public String name() { return "prepare_permission_grant"; }
     @Override public String title() { return "准备员工授权"; }
@@ -43,8 +46,17 @@ public class AiPermissionGrantTool implements AiChatToolPort {
                         "permissionKeyword", Map.of("type", "string", "minLength", 1, "maxLength", 100)),
                 "required", List.of("employeeKeyword", "permissionKeyword"));
     }
+    /** Grant wording in the super admin's own message (page text such as a notice body never counts). */
+    private static final java.util.regex.Pattern GRANT_INTENT = java.util.regex.Pattern.compile(
+            "开通|授予|授权|赋予|赋权|加.{0,8}权限|分配.{0,8}权限|开.{0,4}权限|给.{0,16}权限"
+                    + "|(?i:\\b(?:grant|permission|permissions|authorize|access)\\b)");
+    @Override public boolean requestedBy(String userMessage) { return grantRequested(userMessage); }
+    public static boolean grantRequested(String userMessage) {
+        return userMessage != null && userMessage.length() <= 2000 && GRANT_INTENT.matcher(
+                java.text.Normalizer.normalize(userMessage, java.text.Normalizer.Form.NFKC)).find();
+    }
     @Override public boolean available() {
-        return codec.available() && access.hasDomain(domain()) && current.get().filter(AiPermissionGrantTool::allowed).isPresent();
+        return access.hasDomain(domain()) && current.get().filter(AiPermissionGrantTool::allowed).isPresent();
     }
     static boolean allowed(AuthUser actor) {
         return !actor.isVisitor() && actor.isSuperAdmin() && actor.getImpersonatedBy() == null
@@ -90,18 +102,17 @@ public class AiPermissionGrantTool implements AiChatToolPort {
             return reply("这项不能单独授权。");
         }
         Candidate target = candidates.getFirst();
-        Instant now = Instant.now();
-        String token = codec.encode(new AiPermissionProposalCodec.Proposal(actor.getId(), actorState.getAuthVersion(),
-                actorState.getAuthorizationEpoch(), target.id(), target.authVersion(), selected.getId(), selected.getCode(),
-                now.getEpochSecond(), now.plusSeconds(600).getEpochSecond()));
-        String targetLabel = target.name() + "(" + target.code() + "，" + target.department() + ")";
-        String scope = "只增加这一项授权。"
-                + (selected.getDescription() == null || selected.getDescription().isBlank() ? "" : "\n" + selected.getDescription());
-        return Map.of("reply", "请核对员工和授权项。点确认并验证身份后生效。",
-                "actions", List.of(Map.of("type", "CONFIRM_PERMISSION_GRANT", "proposalId", token,
-                        "title", "确认授予权限", "summary", "为 " + targetLabel + " 授予 " + selected.getName(),
-                        "targetName", targetLabel, "permissionCode", selected.getCode(), "permissionName", selected.getName(),
-                        "scopeSummary", scope, "expiresAt", now.plusSeconds(600).toString())));
+        String targetLabel = target.name() + "(" + target.code() + ", " + target.department() + ")";
+        List<String> lines = new java.util.ArrayList<>(List.of("员工: " + targetLabel, "授予: " + selected.getName()
+                + (selected.getCategory() == null ? "" : " (" + selected.getCategory() + ")"), "只增加这一项授权，其它授权不变。"));
+        if (selected.getDescription() != null && !selected.getDescription().isBlank())
+            lines.add("说明: " + truncate(selected.getDescription().strip(), 200));
+        Map<String, Object> card = proposals.propose(new AiChatActionProposalPort.Draft(
+                AiChatActionProposalPort.PERMISSION_GRANT, AiChatActionProposalPort.PERMISSION_GRANT, "SERVER",
+                "确认授予权限", List.copyOf(lines), "HIGH", "确认前要再输入一次登录密码；授权立即生效并记入审计。", true,
+                null, "USER", target.id().toString(), target.authVersion(),
+                Map.of("permissionId", selected.getId().toString(), "permissionCode", selected.getCode()), null));
+        return Map.of("reply", "请核对员工和授权项。点确认并验证身份后才会生效。", "actions", List.of(card));
     }
 
     private record Candidate(UUID id, long authVersion, String code, String name, String department) {}
@@ -117,6 +128,7 @@ public class AiPermissionGrantTool implements AiChatToolPort {
         }
         return value.strip();
     }
+    private static String truncate(String value, int max) { return value.length() <= max ? value : value.substring(0, max); }
     private static String pattern(String value) { return "%" + value.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%"; }
     private static ApiException changed() { return new ApiException(ErrorCode.FORBIDDEN, "账号状态有变化，请重新登录"); }
 }

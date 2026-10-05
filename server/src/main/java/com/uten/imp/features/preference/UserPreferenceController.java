@@ -1,6 +1,8 @@
 package com.uten.imp.features.preference;
 
 import com.uten.imp.audit.AuditAutomaticWrite;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,6 +33,10 @@ public class UserPreferenceController {
     @AuditAutomaticWrite("列宽、筛选等界面偏好由页面自动保存")
     @PutMapping("/{key}")
     public void put(@PathVariable String key, @RequestBody JsonNode value) {
+        // ADR-152: feature-owned keys (e.g. AI chat settings) are written only through their feature's validated endpoint.
+        if (UserPreferenceService.featureOwned(key)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "这项设置请在对应功能的设置里修改");
+        }
         service.put(key, value);
     }
 }

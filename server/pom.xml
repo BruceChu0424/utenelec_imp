@@ -245,6 +245,69 @@
                 <targetPath>fonts</targetPath>
                 <includes><include>NotoSansSCFull.ttf</include><include>OFL.txt</include></includes>
             </resource>
+            <!-- ADR-153: read-only platform design documents the AI assistant may cite (AiDocKnowledgePolicy keeps
+                 the same lists; AiDocKnowledgePolicyTest compares them). Never source code, never deployment,
+                 security, governance or migration documents. -->
+            <resource>
+                <directory>../docs</directory>
+                <targetPath>ai-knowledge</targetPath>
+                <includes>
+                    <include>99-决策记录-ADR/ADR-*.md</include>
+                    <include>03-页面/*.md</include>
+                    <include>07-业务链路/*.md</include>
+                    <include>98-模块总结/*.md</include>
+                    <include>00-项目准则/13-适老化UX基线.md</include>
+                    <include>00-项目准则/14-徽章与计数口径.md</include>
+                </includes>
+                <excludes>
+                    <exclude>99-决策记录-ADR/ADR-001-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-002-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-003-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-004-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-005-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-006-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-007-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-008-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-009-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-013-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-014-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-015-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-016-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-017-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-022-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-031-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-037-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-044-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-045-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-060-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-061-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-067-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-074-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-105-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-106-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-107-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-108-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-109-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-110-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-133-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-140-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-141-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-150-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-152-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-153-*.md</exclude>
+                    <exclude>03-页面/系统设置页.md</exclude>
+                    <exclude>03-页面/AI服务设置页.md</exclude>
+                    <exclude>03-页面/权限管理页.md</exclude>
+                    <exclude>03-页面/页面总览.md</exclude>
+                    <exclude>03-页面/登录页.md</exclude>
+                    <exclude>03-页面/审计日志页.md</exclude>
+                    <exclude>03-页面/模拟身份(切换人).md</exclude>
+                    <exclude>07-业务链路/02-数据库设计-*.md</exclude>
+                    <exclude>07-业务链路/03-续作指引.md</exclude>
+                    <exclude>07-业务链路/2026-09-07-履约事务锁顺序与来源漂移处理.md</exclude>
+                    <exclude>98-模块总结/*代码总结.md</exclude>
+                </excludes>
+            </resource>
         </resources>
         <plugins>
             <plugin>

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../buttons/uten_button.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 abstract final class UtenDialog {
   /// 显示确认对话框。返回 true=确认，false/null=取消。
@@ -30,7 +31,21 @@ abstract final class UtenDialog {
               maxWidth: 460,
               maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
             ),
-            child: SingleChildScrollView(child: content),
+            // ADR-150: plain-text dialog bodies are readable by the AI
+            // assistant while the dialog is the top route.
+            child: AiPageRegistrar(
+              source: AiNoticeSource(
+                kind: AiNoticeKind.dialog,
+                title: title,
+                text: switch (content) {
+                  Text(:final data, :final textSpan) =>
+                    data ?? textSpan?.toPlainText() ?? title,
+                  RichText(:final text) => text.toPlainText(),
+                  _ => title,
+                },
+              ),
+              child: SingleChildScrollView(child: content),
+            ),
           ),
           // 按钮整体居中（全仓弹窗统一规范）
           actionsAlignment: MainAxisAlignment.center,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
@@ -6,12 +7,14 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../features/sales/intake/sales_intake_launcher.dart';
 import '../../../features/sales/models/sales_doc.dart';
@@ -20,9 +23,12 @@ import '../../providers/authenticated_scope_provider.dart';
 import '../ai_job_models.dart';
 import '../ai_job_runner.dart';
 import '../guided/ai_guided_file_plan.dart';
+import '../page_context/ai_page_context.dart';
+import 'ai_chat_action_card.dart';
 import 'ai_chat_l10n.dart';
 import 'ai_chat_models.dart';
 import 'ai_chat_repository.dart';
+import 'ai_chat_settings_panel.dart';
 
 typedef AiChatIdentity = ({
   AuthenticatedScope scope,
@@ -85,6 +91,8 @@ class _ChatMessage {
     this.user = false,
     this.fileName,
     this.actions = const [],
+    this.sources = const [],
+    this.fallback = false,
     this.attempt,
     this.documentResult,
     this.documentJobId,
@@ -94,7 +102,13 @@ class _ChatMessage {
   final String text;
   final bool user;
   final String? fileName;
+
+  /// Server-issued one-time confirmation cards (ADR-150).
   final List<AiChatAction> actions;
+  final List<({String id, String label})> sources;
+
+  /// Deterministic page summary (model unavailable or rejected by the guard).
+  final bool fallback;
   final _ChatAttempt? attempt;
   final AiGuidedFileResult? documentResult;
   final String? documentJobId;
@@ -119,17 +133,41 @@ class _ChatAttempt {
   _ChatAttempt({
     required this.id,
     required this.text,
+    required this.conversationId,
     this.file,
-    this.previousJobId,
+    this.locale,
     this.currentRoute,
     this.intentHint,
+    this.snapshot,
+    this.binding = AiCaptureBinding.none,
   });
   final int id;
   final String text;
   final PlatformFile? file;
-  final String? previousJobId;
-  final String? currentRoute;
-  final String? intentHint;
+
+  /// The conversation the message was written in; a retry stays in it.
+  final String conversationId;
+
+  /// Interface language when the message was written (zh/en/ko).
+  final String? locale;
+  String? currentRoute;
+  String? intentHint;
+
+  /// Page snapshot captured when the message was written; a retry resends it
+  /// only while page awareness is still on.
+  Map<String, Object?>? snapshot;
+
+  /// What cards proposed from this message are bound to (page instance, rows).
+  AiCaptureBinding binding;
+
+  /// Page reading was switched off: a retry sends only the question.
+  void dropPageContext() {
+    currentRoute = null;
+    intentHint = null;
+    snapshot = null;
+    binding = AiCaptureBinding.none;
+  }
+
   String? submittedJobId;
   String? failure;
   bool chatSubmissionStarted = false;
@@ -155,16 +193,37 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   final _focus = FocusNode();
   final _scroll = ScrollController();
   final _messages = <_ChatMessage>[];
-  final _sourceFiles = <String, PlatformFile>{};
-  final _completedActions = <AiChatAction>{};
-  final _guidedNavigatedJobs = <String>{};
-  final _guidedOpeningJobs = <String>{};
+
+  /// Latest state of every confirmation card, by proposal id.
+  final _cards = <String, AiChatCardUi>{};
+
+  /// Page instance and rows each page card was proposed for, by proposal id.
+  final _cardBindings = <String, AiCaptureBinding>{};
   final _dialogs = <DialogRoute<bool>>{};
+
+  /// What the next message would attach (computed while the panel is open).
+  AiPageCapture? _attachPreview;
+  bool _attachPreviewScheduled = false;
   AiChatCapabilities? _capabilities;
   AiChatPageSuggestions? _pageSuggestions;
   AiJobCancelToken? _cancel;
   PlatformFile? _attachment;
-  String? _previousJobId;
+
+  /// ADR-152: the current conversation. "New chat" starts a new id; after a
+  /// page refresh the latest conversation is restored from the server, which
+  /// reads earlier turns itself (the client never sends history).
+  String _conversationId = _newConversationId();
+  AiChatSettings _settings = AiChatSettings.defaults;
+  bool _reasoningSupported = false;
+  bool _settingsOpen = false;
+
+  /// Wire name of the setting being saved.
+  String? _settingsSaving;
+  String? _settingsError;
+  bool _clearingHistory = false;
+  bool _restoreStarted = false;
+  bool _restored = false;
+  int _hiddenTurns = 0;
   String? _error;
   String? _progressKey;
   double? _launcherBottom;
@@ -172,13 +231,21 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   bool _loadingCapabilities = true;
   bool _busy = false;
   bool _picking = false;
-  bool _pageAware = true;
   int _generation = 0;
   int _pageSuggestionGeneration = 0;
   int _nextMessageId = 0;
   _ChatMessage? _activeMessage;
 
   String _t(String key) => aiChatText(context, key);
+  bool get _pageAware => _settings.pageAware;
+  static String _newConversationId() => const Uuid().v4();
+
+  /// Interface language sent with each question (the default reply language).
+  String? get _locale {
+    final code = Localizations.maybeLocaleOf(context)?.languageCode;
+    return const {'zh', 'en', 'ko'}.contains(code) ? code : null;
+  }
+
   bool get _current =>
       mounted && ref.read(aiChatIdentityProvider) == widget.identity;
   bool _active(int generation) => _current && _generation == generation;
@@ -191,7 +258,36 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   }
 
   void _focusChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    if (_focus.hasFocus) _scheduleAttachPreview();
+  }
+
+  AiPageContextController? get _pageContext =>
+      AiPageContextScope.maybeOf(context);
+
+  /// Snapshot of the top page right now (send time). Empty when page
+  /// awareness is off or the path cannot be sent.
+  AiPageCapture _capturePage() {
+    final route = safeAiChatRoute(widget.currentRoute);
+    if (!_pageAware || route == null) return AiPageCapture.empty;
+    // System administration pages (ADR-153): nothing is read, no action runs.
+    if (aiPageProtected(route)) return AiPageCapture.systemPage;
+    // Payroll, HR and personal pages: only the question is sent.
+    if (aiPageContentWithheld(route)) return AiPageCapture.contentWithheld;
+    return _pageContext?.capture(aiPageL10n(context)) ?? AiPageCapture.empty;
+  }
+
+  /// Recomputes the "will attach ..." line after the current frame, so a page
+  /// that just opened is laid out first. Only while the panel is open.
+  void _scheduleAttachPreview() {
+    if (_attachPreviewScheduled || !_open) return;
+    _attachPreviewScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _attachPreviewScheduled = false;
+      if (!_current || !_open) return;
+      setState(() => _attachPreview = _capturePage());
+    });
   }
 
   @override
@@ -203,7 +299,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     _focus.removeListener(_focusChanged);
     _focus.dispose();
     _scroll.dispose();
-    _sourceFiles.clear();
+    _cards.clear();
+    _cardBindings.clear();
     _messages.clear();
     _attachment = null;
     // A root-navigator confirmation must not outlive the identity that opened
@@ -223,6 +320,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     if (safeAiGuidedPageRoute(oldWidget.currentRoute) !=
         safeAiGuidedPageRoute(widget.currentRoute)) {
       _loadPageSuggestions();
+      _scheduleAttachPreview();
     }
   }
 
@@ -262,16 +360,168 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (!_current) return;
       setState(() {
         _capabilities = result;
+        if (_settingsSaving == null) _settings = result.settings;
+        _reasoningSupported = result.reasoningEffortSupported;
         _loadingCapabilities = false;
         _error = null;
       });
       _loadPageSuggestions();
+      // The conversation is restored when the panel is first opened, not on
+      // every page load: the overlay is always mounted and most page loads
+      // never open the chat.
+      if (result.usable && _open) unawaited(_restoreConversation());
     } catch (_) {
       if (!_current) return;
       setState(() {
         _loadingCapabilities = false;
         _error = _t('loadFailed');
       });
+    }
+  }
+
+  /// ADR-152: after a page refresh the latest conversation is shown again the
+  /// first time the panel opens, re-read and re-checked by the server.
+  /// Restoring is optional: it never replaces messages the user already
+  /// started, and failures stay silent. A turn whose quoted data changed shows
+  /// its question and a note instead of the old answer; restored page cards
+  /// can no longer run (their page was reloaded) and only offer cancel.
+  Future<void> _restoreConversation() async {
+    if (_restoreStarted || !_current) return;
+    _restoreStarted = true;
+    final generation = _generation;
+    try {
+      final view = await ref.read(aiChatRepositoryProvider).conversation();
+      if (!mounted ||
+          !_current ||
+          generation != _generation ||
+          _messages.isNotEmpty) {
+        return;
+      }
+      final id = view.conversationId;
+      if (id == null || view.turns.isEmpty) {
+        if (view.hiddenTurns > 0) {
+          setState(() => _hiddenTurns = view.hiddenTurns);
+        }
+        return;
+      }
+      final dataChanged = aiPageL10n(context).aiChatRestoredDataChanged;
+      setState(() {
+        _conversationId = id;
+        _hiddenTurns = view.hiddenTurns;
+        _restored = true;
+        for (final turn in view.turns) {
+          final reply = turn.reply;
+          if (reply.question.isNotEmpty) {
+            _messages.add(_ChatMessage(text: reply.question, user: true));
+          }
+          if (reply.dataChanged) {
+            _messages.add(_ChatMessage(text: dataChanged));
+            continue;
+          }
+          _rememberCards(reply.actions, detached: true);
+          _messages.add(
+            _ChatMessage(
+              text: reply.reply.isEmpty ? _t('emptyReply') : reply.reply,
+              actions: reply.actions,
+              sources: reply.sources,
+              fallback: reply.fallback,
+            ),
+          );
+        }
+      });
+      _scrollToEnd();
+    } catch (_) {
+      // Restoring is a convenience; the chat works without it.
+    }
+  }
+
+  // ------------------------------------------------------------ settings
+
+  /// Saves one setting at once: optimistic, busy row, rolled back on failure.
+  Future<void> _updateSetting(String field, Object value) async {
+    if (!_current || _settingsSaving != null) return;
+    final previous = _settings;
+    final next = previous.withField(field, value);
+    if (next == previous) return;
+    final l10n = aiPageL10n(context);
+    setState(() {
+      _settings = next;
+      _settingsSaving = field;
+      _settingsError = null;
+      _applyPageAwareness();
+    });
+    try {
+      final saved = await ref.read(aiChatRepositoryProvider).updateSettings({
+        field: value,
+      });
+      if (!_current) return;
+      setState(() {
+        _settings = saved.settings;
+        _reasoningSupported = saved.reasoningEffortSupported;
+        _applyPageAwareness();
+      });
+    } catch (error) {
+      if (!_current) return;
+      setState(() {
+        _settings = previous;
+        _settingsError = l10n.aiChatSettingsSaveFailed;
+        _applyPageAwareness();
+      });
+      if (mounted) context.appError(l10n.aiChatSettingsSaveFailed);
+    } finally {
+      if (_current) setState(() => _settingsSaving = null);
+    }
+    if (field == 'pageAware' && _current) {
+      _loadPageSuggestions();
+      _scheduleAttachPreview();
+    }
+  }
+
+  /// Reading the page off means off for retries too: drop what earlier
+  /// messages captured from the page.
+  void _applyPageAwareness() {
+    _attachPreview = null;
+    if (_settings.pageAware) return;
+    for (final message in _messages) {
+      message.attempt?.dropPageContext();
+    }
+  }
+
+  Future<void> _clearHistory() async {
+    if (!_current || _busy || _picking || _clearingHistory) return;
+    final l10n = aiPageL10n(context);
+    final accepted = await _confirmForIdentity(
+      title: l10n.aiChatSettingsClearTitle,
+      content: Text(l10n.aiChatSettingsClearBody),
+    );
+    if (!_current || accepted != true || _busy) return;
+    setState(() {
+      _clearingHistory = true;
+      _settingsError = null;
+    });
+    try {
+      await ref.read(aiChatRepositoryProvider).clearConversations();
+      if (!_current) return;
+      setState(_clear);
+      if (mounted) context.appSuccess(l10n.aiChatSettingsClearDone);
+    } catch (_) {
+      if (!_current) return;
+      setState(() => _settingsError = l10n.aiChatSettingsClearFailed);
+      if (mounted) context.appError(l10n.aiChatSettingsClearFailed);
+    } finally {
+      if (_current) setState(() => _clearingHistory = false);
+    }
+  }
+
+  void _toggleSettings() {
+    if (!_current) return;
+    setState(() {
+      _settingsOpen = !_settingsOpen;
+      _settingsError = null;
+    });
+    if (!_settingsOpen) {
+      _scheduleAttachPreview();
+      _scrollToEnd();
     }
   }
 
@@ -306,8 +556,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         return;
       }
       final retained = <PlatformFile>{
-        ..._sourceFiles.values,
-        for (final message in _messages) ?message.attempt?.file,
+        for (final message in _messages) ...[
+          ?message.sourceFile,
+          ?message.attempt?.file,
+        ],
       }.fold<int>(0, (sum, source) => sum + (source.bytes?.length ?? 0));
       if (retained + bytes.length > 30 * 1024 * 1024) {
         setState(() => _error = _t('fileMemory'));
@@ -330,7 +582,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     final typed = (suggestion ?? _input.text).trim();
     final file = _attachment;
     if (typed.isEmpty && file == null) return;
-    if (_messages.length >= 40) {
+    if (_messages.length >= 80) {
       setState(() => _error = _t('limit'));
       return;
     }
@@ -339,6 +591,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     final currentRoute = _pageAware
         ? safeAiChatRoute(widget.currentRoute)
         : null;
+    // ADR-150: what is visible on the top page, computed once, now.
+    final capture = currentRoute == null || file != null
+        ? AiPageCapture.empty
+        : _capturePage();
     final outgoing = _ChatMessage(
       text: message,
       user: true,
@@ -347,9 +603,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         id: ++_nextMessageId,
         text: message,
         file: file,
-        previousJobId: _previousJobId,
+        conversationId: _conversationId,
+        locale: _locale,
         currentRoute: currentRoute,
         intentHint: currentRoute == null ? null : intentHint,
+        snapshot: capture.snapshot,
+        binding: capture.binding,
       ),
     );
     setState(() {
@@ -377,6 +636,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   }) async {
     if (!_current || _busy || _capabilities?.usable != true) return;
     final attempt = message.attempt!;
+    // A retry after page awareness was switched off sends only the question.
+    if (!_pageAware) attempt.dropPageContext();
     final file = attempt.file;
     final repository = ref.read(aiChatRepositoryProvider);
     final runner = ref.read(aiJobRunnerProvider);
@@ -420,9 +681,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         attempt.chatSubmissionStarted = true;
         final submitted = await repository.send(
           message: attempt.text,
-          previousJobId: attempt.previousJobId,
+          conversationId: attempt.conversationId,
           currentRoute: attempt.currentRoute,
           intentHint: attempt.intentHint,
+          snapshot: attempt.snapshot,
+          locale: attempt.locale,
         );
         if (!_active(generation) || cancel.isCancelled) {
           if (_current && cancel.isCancelled) {
@@ -448,19 +711,19 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       final reply = AiChatReply.fromJson(snapshot.result ?? const {});
       setState(() {
         final index = _messages.indexOf(message);
-        // Retrying an older bubble must not rewind a newer conversation branch.
-        if (!_messages.skip(index + 1).any((item) => item.user)) {
-          _previousJobId = snapshot.id;
-        }
         attempt.delivery = _ChatDelivery.answered;
+        _rememberCards(reply.actions, binding: attempt.binding);
         _messages.insert(
           index + 1,
           _ChatMessage(
             text: reply.reply.isEmpty ? _t('emptyReply') : reply.reply,
             actions: reply.actions,
+            sources: reply.sources,
+            fallback: reply.fallback,
           ),
         );
       });
+      _scheduleAttachPreview();
     } catch (error) {
       if (!_active(generation)) return;
       if ((error is ApiException &&
@@ -544,9 +807,15 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       );
     }
     final partialRequest = aiGuidedRequestIsTruncated(attempt.text);
+    // ADR-150: a recognized file never opens a page by itself. The server
+    // issues OPEN_GUIDED_FORM confirmation cards; the form opens on confirm.
+    final cards = AiChatAction.listFrom(snapshot.result?['actions'])
+        .where((card) => card.actionType == AiChatAction.openGuidedForm)
+        .toList(growable: false);
     final response = _ChatMessage(
       text:
           '${result.summary.isEmpty ? result.title : result.summary}${partialRequest ? '\n\n${_t('documentLongRequest')}' : ''}',
+      actions: cards,
       documentResult: result,
       documentJobId: snapshot.id,
       documentPageRoute: safeAiGuidedPageRoute(attempt.currentRoute),
@@ -554,18 +823,246 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
     setState(() {
       attempt.delivery = _ChatDelivery.answered;
-      _sourceFiles[snapshot.id] = file;
+      _rememberCards(cards);
       _messages.insert(_messages.indexOf(outgoing) + 1, response);
     });
-    if (!partialRequest &&
-        !result.needsChoice &&
-        result.workflow != AiGuidedWorkflow.none) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_current && _messages.contains(response)) {
-          _openGuided(response, result.workflow);
-        }
+  }
+
+  // ------------------------------------------------------------ cards
+
+  /// [detached]: restored cards whose page instance is gone. Cards that run
+  /// on the page (page actions, opening a form with this chat's file) can then
+  /// only be cancelled; server-executed cards stay confirmable.
+  void _rememberCards(
+    List<AiChatAction> cards, {
+    AiCaptureBinding binding = AiCaptureBinding.none,
+    bool detached = false,
+  }) {
+    for (final card in cards) {
+      final ui = _cards.putIfAbsent(card.proposalId, () => AiChatCardUi(card))
+        ..card = card;
+      if (detached && card.execution != 'SERVER') ui.detached = true;
+      _cardBindings.putIfAbsent(card.proposalId, () => binding);
+    }
+  }
+
+  AiChatCardUi _cardUi(AiChatAction card) =>
+      _cards.putIfAbsent(card.proposalId, () => AiChatCardUi(card));
+
+  bool get _cardRunning => _cards.values.any((ui) => ui.running);
+
+  /// Network/gateway failures leave the outcome unknown: check, never replay.
+  static bool _unknownOutcome(Object error) =>
+      error is NetworkException ||
+      error is NetworkTimeoutException ||
+      (error is ApiException &&
+          (error.httpStatus == null ||
+              error.httpStatus == 408 ||
+              error.httpStatus! >= 500));
+
+  String _cardError(Object error) {
+    final l10n = aiPageL10n(context);
+    if (error is AiActionFailure) {
+      return error.message.isEmpty ? l10n.aiChatCardInvalidArgs : error.message;
+    }
+    if (error is ApiException) {
+      final code = error.fieldErrors
+          ?.where((field) => field.field == 'errorCode')
+          .firstOrNull
+          ?.message;
+      return switch (code) {
+        'AI_ACTION_EXPIRED' => l10n.aiChatCardExpired,
+        'AI_ACTION_AUTH_CHANGED' => l10n.aiChatCardAuthChanged,
+        _ => error.message,
+      };
+    }
+    return _t('failed');
+  }
+
+  void _cardNote(AiChatCardUi ui, String? note, {bool error = true}) {
+    if (!_current) return;
+    setState(() {
+      ui
+        ..running = false
+        ..note = note
+        ..noteIsError = error;
+    });
+  }
+
+  /// Re-reads a card (unknown result, or after a refused request).
+  Future<void> _refreshCard(AiChatCardUi ui) async {
+    try {
+      final card = await ref
+          .read(aiChatRepositoryProvider)
+          .actionStatus(ui.card.proposalId);
+      if (!_current) return;
+      setState(() {
+        ui
+          ..card = card
+          ..unknown = false;
+      });
+    } catch (error) {
+      if (_current && !_unknownOutcome(error)) {
+        _cardNote(ui, _cardError(error));
+      }
+    }
+  }
+
+  Future<void> _cancelCard(AiChatCardUi ui) async {
+    if (!_current || ui.running) return;
+    try {
+      final card = await ref
+          .read(aiChatRepositoryProvider)
+          .cancelAction(ui.card.proposalId);
+      if (!_current) return;
+      setState(() {
+        ui
+          ..card = card
+          ..note = null
+          ..unknown = false;
+      });
+    } catch (error) {
+      _cardNote(ui, _cardError(error));
+    }
+  }
+
+  Future<void> _confirmCard(_ChatMessage message, AiChatCardUi ui) async {
+    if (!_current || ui.running || _cardRunning) return;
+    if (ui.detached) {
+      _cardNote(ui, aiPageL10n(context).aiChatCardDetached, error: false);
+      return;
+    }
+    if (!ui.card.openAt(DateTime.now())) {
+      setState(() {});
+      return;
+    }
+    switch (ui.card.actionType) {
+      case AiChatAction.permissionGrant:
+        await _executeGrantCard(ui);
+      case AiChatAction.openGuidedForm:
+        await _executeGuidedCard(message, ui);
+      default:
+        await _executePageCard(ui);
+    }
+  }
+
+  /// One-time consumption; null when the card could not be confirmed (the
+  /// reason is already shown on the card).
+  Future<Map<String, Object?>?> _consumeCard(AiChatCardUi ui) async {
+    setState(() {
+      ui
+        ..running = true
+        ..note = null
+        ..unknown = false
+        ..localSucceeded = null;
+    });
+    try {
+      final confirmed = await ref
+          .read(aiChatRepositoryProvider)
+          .confirmAction(ui.card.proposalId);
+      if (!_current) return null;
+      ui.card = confirmed.card;
+      return confirmed.args;
+    } catch (error) {
+      if (!_current) return null;
+      if (_unknownOutcome(error)) {
+        setState(() {
+          ui
+            ..running = false
+            ..unknown = true
+            ..note = aiPageL10n(context).aiChatCardUnknown
+            ..noteIsError = false;
+        });
+        return null;
+      }
+      _cardNote(ui, _cardError(error));
+      await _refreshCard(ui);
+      return null;
+    }
+  }
+
+  /// The execution receipt is recorded once; a lost receipt is never replayed
+  /// as a second confirmation.
+  Future<void> _receipt(
+    AiChatCardUi ui, {
+    required bool succeeded,
+    String? message,
+  }) async {
+    try {
+      final card = await ref
+          .read(aiChatRepositoryProvider)
+          .actionReceipt(
+            ui.card.proposalId,
+            succeeded: succeeded,
+            message: message,
+          );
+      if (!_current) return;
+      setState(() {
+        ui
+          ..card = card
+          ..running = false
+          ..unknown = false
+          ..localSucceeded = null
+          ..note = succeeded ? message : null
+          ..noteIsError = false;
+      });
+    } catch (_) {
+      if (!_current) return;
+      setState(() {
+        ui
+          ..running = false
+          ..localSucceeded = succeeded
+          ..note = succeeded ? message : message ?? _t('failed')
+          ..noteIsError = !succeeded;
       });
     }
+  }
+
+  /// CLIENT page action: route + handler check, confirm (authoritative args),
+  /// run the page's own handler against the page instance and rows the card
+  /// was proposed for (fail-closed otherwise), receipt.
+  Future<void> _executePageCard(AiChatCardUi ui) async {
+    final l10n = aiPageL10n(context);
+    final card = ui.card;
+    final binding = _cardBindings[card.proposalId] ?? AiCaptureBinding.none;
+    // ADR-153: nothing on a system administration page runs through the
+    // assistant, whatever card arrives.
+    if (aiPageProtected(card.route) ||
+        aiPageProtected(safeAiChatRoute(widget.currentRoute))) {
+      _cardNote(ui, l10n.aiChatCardProtectedPage);
+      return;
+    }
+    // Not bound to a page instance (restored after a refresh, or page reading
+    // was off): the handler could never run, so the one-time proposal is not
+    // used up for nothing.
+    if (binding.isNone) {
+      _cardNote(ui, l10n.aiChatCardDetached, error: false);
+      return;
+    }
+    if (safeAiChatRoute(widget.currentRoute) != card.route) {
+      _cardNote(ui, l10n.aiChatCardWrongPage);
+      return;
+    }
+    if (_pageContext?.actions(l10n)[card.handler] == null) {
+      _cardNote(ui, l10n.aiChatCardHandlerMissing);
+      return;
+    }
+    final args = await _consumeCard(ui);
+    if (args == null || !_current) return;
+    var succeeded = false;
+    String? outcome;
+    try {
+      final page = _pageContext;
+      if (page == null || safeAiChatRoute(widget.currentRoute) != card.route) {
+        throw AiActionFailure(l10n.aiChatCardHandlerMissing);
+      }
+      outcome = await page.run(l10n, binding, card.handler, args);
+      succeeded = true;
+    } catch (error) {
+      outcome = _cardError(error);
+    }
+    if (!_current) return;
+    await _receipt(ui, succeeded: succeeded, message: outcome);
   }
 
   bool _workflowAllowed(AiGuidedWorkflow workflow) =>
@@ -575,27 +1072,32 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       !widget.identity.scope.readOnly &&
       ref.read(currentPermissionsProvider).containsAll(workflow.permissions);
 
-  Future<void> _openGuided(
-    _ChatMessage message,
-    AiGuidedWorkflow workflow,
-  ) async {
-    if (!_current || _busy || !_workflowAllowed(workflow)) return;
+  /// OPEN_GUIDED_FORM: opens the new form with this chat's verified file only
+  /// after the user confirmed. Saving stays with the page's own button.
+  Future<void> _executeGuidedCard(_ChatMessage message, AiChatCardUi ui) async {
+    final l10n = aiPageL10n(context);
     final jobId = message.documentJobId;
     final result = message.documentResult;
     final file = message.sourceFile;
     final identity = ref.read(aiGuidedFileIdentityProvider);
+    final workflow = AiGuidedWorkflow.parse(ui.card.args['workflow']);
     if (jobId == null ||
         result == null ||
         file == null ||
         identity == null ||
-        _guidedNavigatedJobs.contains(jobId) ||
-        _guidedOpeningJobs.contains(jobId) ||
         !result.matchesSource(file)) {
+      _cardNote(ui, l10n.aiChatCardSourceMissing);
       return;
     }
+    if (!_workflowAllowed(workflow)) {
+      _cardNote(ui, _t('permissionChanged'));
+      return;
+    }
+    final args = await _consumeCard(ui);
+    if (args == null || !_current) return;
     // The destination is selected from this enum; server/model route strings
     // are never evaluated, and no save/submit/approve endpoint is called here.
-    final route = switch (workflow) {
+    final route = switch (AiGuidedWorkflow.parse(args['workflow'])) {
       AiGuidedWorkflow.salesOrder => RoutePath.salesDocNew(
         SalesDocType.order.pathSegment,
       ),
@@ -605,51 +1107,87 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       AiGuidedWorkflow.expenseClaim => RouteName.expenseNew,
       AiGuidedWorkflow.none => null,
     };
-    if (route == null) return;
-    final plan = AiGuidedFilePlan(
-      jobId: jobId,
-      file: file,
-      result: result,
-      workflow: workflow,
-      identity: identity,
-      pageRoute: message.documentPageRoute,
-    );
-    if (!plan.matches(ref)) return;
-    final generation = _generation;
-    setState(() => _guidedOpeningJobs.add(jobId));
+    if (route == null ||
+        args['sourceJobId'] != jobId ||
+        AiGuidedWorkflow.parse(args['workflow']) != workflow) {
+      await _receipt(ui, succeeded: false, message: l10n.aiChatCardInvalidArgs);
+      return;
+    }
     try {
-      final verified = await validateAiGuidedFilePlan(ref, plan);
-      if (!_active(generation) ||
-          !_messages.contains(message) ||
-          !_workflowAllowed(workflow) ||
-          !verified.matches(ref)) {
-        return;
+      final plan = AiGuidedFilePlan(
+        jobId: jobId,
+        file: file,
+        result: result,
+        workflow: workflow,
+        identity: identity,
+        pageRoute: message.documentPageRoute,
+      );
+      if (!plan.matches(ref)) {
+        throw ApiException('FORBIDDEN', _t('permissionChanged'));
       }
-      setState(() {
-        _guidedNavigatedJobs.add(jobId);
-        _open = false;
-      });
+      final verified = await validateAiGuidedFilePlan(ref, plan);
+      if (!_current || !_workflowAllowed(workflow) || !verified.matches(ref)) {
+        throw ApiException('FORBIDDEN', _t('permissionChanged'));
+      }
+      setState(() => _open = false);
       _focus.unfocus();
       if (!mounted) return;
-      await context.push(route, extra: verified);
+      unawaited(context.push(route, extra: verified));
     } catch (error) {
       if (!_current) return;
-      if (error is ApiException &&
-          (error.httpStatus == 401 ||
-              error.httpStatus == 403 ||
-              error.code == 'FORBIDDEN')) {
-        setState(_clear);
-        _loadCapabilities();
+      await _receipt(
+        ui,
+        succeeded: false,
+        message: error is ApiException
+            ? error.message
+            : _t('documentOpenFailed'),
+      );
+      return;
+    }
+    await _receipt(ui, succeeded: true);
+  }
+
+  bool get _canConfirmGrant =>
+      _capabilities?.canManagePermissions == true &&
+      widget.identity.superAdmin &&
+      widget.identity.scope.actorId == null &&
+      !widget.identity.scope.readOnly;
+
+  /// SERVER grant card: the dedicated endpoint consumes the proposal in the
+  /// grant transaction; the shared network layer asks for the password.
+  /// Closing the password prompt leaves the card open.
+  Future<void> _executeGrantCard(AiChatCardUi ui) async {
+    if (!_canConfirmGrant) {
+      _cardNote(ui, _t('permissionChanged'));
+      return;
+    }
+    setState(() {
+      ui
+        ..running = true
+        ..note = null
+        ..unknown = false;
+    });
+    try {
+      final reply = await ref
+          .read(aiChatRepositoryProvider)
+          .confirmPermissionGrant(ui.card.proposalId);
+      if (!_current) return;
+      _cardNote(ui, reply.isEmpty ? null : reply, error: false);
+    } catch (error) {
+      if (!_current) return;
+      if (_unknownOutcome(error)) {
+        setState(() {
+          ui
+            ..running = false
+            ..unknown = true
+            ..note = aiPageL10n(context).aiChatCardUnknown
+            ..noteIsError = false;
+        });
         return;
       }
-      setState(() {
-        _guidedNavigatedJobs.remove(jobId);
-        _open = true;
-        _error = _t('documentOpenFailed');
-      });
-    } finally {
-      if (_current) setState(() => _guidedOpeningJobs.remove(jobId));
+      _cardNote(ui, _cardError(error));
     }
+    await _refreshCard(ui);
   }
 
   _ChatDelivery _failedDelivery(_ChatAttempt attempt, Object error) {
@@ -707,12 +1245,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     _cancel?.cancel();
     _cancel = null;
     _messages.clear();
-    _sourceFiles.clear();
-    _completedActions.clear();
-    _guidedNavigatedJobs.clear();
-    _guidedOpeningJobs.clear();
+    _cards.clear();
+    _cardBindings.clear();
     _attachment = null;
-    _previousJobId = null;
+    _conversationId = _newConversationId();
+    _hiddenTurns = 0;
+    _restored = false;
     _error = null;
     _progressKey = null;
     _busy = false;
@@ -740,95 +1278,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       _scroll.jumpTo(_scroll.position.maxScrollExtent);
     });
   }
-
-  Future<void> _openDraft(AiChatAction action) async {
-    if (!_current ||
-        _busy ||
-        _completedActions.contains(action) ||
-        action.jobId == null ||
-        _capabilities?.canUploadSalesOrder != true ||
-        widget.identity.scope.readOnly ||
-        !ref.read(currentPermissionsProvider).contains(Perm.salesOrderCreate)) {
-      return;
-    }
-    final file = _sourceFiles[action.jobId];
-    if (file == null) {
-      setState(() => _error = _t('fileMissing'));
-      return;
-    }
-    // Only this hard-coded, permission-guarded route can leave the chat. Any
-    // path/url included in a model response is ignored by the model parser.
-    final uri = Uri(
-      path: RoutePath.salesDocNew(SalesDocType.order.pathSegment),
-      queryParameters: {'aiJobId': action.jobId!},
-    );
-    setState(() {
-      _open = false;
-      _completedActions.add(action);
-    });
-    _focus.unfocus();
-    await context.push(uri.toString(), extra: file);
-  }
-
-  Future<void> _confirmGrant(AiChatAction action) async {
-    if (!_current || _busy || !_canConfirmGrant(action)) return;
-    if (!action.expiresAt!.isAfter(DateTime.now())) {
-      setState(() => _error = _t('grantExpired'));
-      return;
-    }
-    final approved = await _confirmForIdentity(
-      title: _t('confirmPermission'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(_t('grantDetails')),
-          const SizedBox(height: UtenSpacing.s16),
-          _grantDetails(action),
-        ],
-      ),
-    );
-    if (!_current || approved != true || !_canConfirmGrant(action)) return;
-    final repository = ref.read(aiChatRepositoryProvider);
-    final generation = ++_generation;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      // The shared network interceptor performs the required step-up. No
-      // password, permission code, target, or scope is invented by this client.
-      final reply = await repository.confirmPermissionGrant(action.proposalId!);
-      if (!_active(generation)) return;
-      setState(() {
-        _completedActions.add(action);
-        _messages.add(
-          _ChatMessage(text: reply.isEmpty ? _t('permissionDone') : reply),
-        );
-      });
-    } catch (error) {
-      if (!_active(generation)) return;
-      setState(
-        () => _error =
-            error is NetworkException || error is NetworkTimeoutException
-            ? _t('grantUnknown')
-            : _errorText(error),
-      );
-    } finally {
-      if (_active(generation)) {
-        setState(() => _busy = false);
-        _scrollToEnd();
-      }
-    }
-  }
-
-  bool _canConfirmGrant(AiChatAction action) =>
-      _capabilities?.canManagePermissions == true &&
-      widget.identity.superAdmin &&
-      widget.identity.scope.actorId == null &&
-      !widget.identity.scope.readOnly &&
-      action.hasReviewableGrant &&
-      !_completedActions.contains(action);
 
   Future<bool?> _confirmForIdentity({
     required String title,
@@ -901,25 +1350,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
   }
 
-  Widget _grantDetails(AiChatAction action) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('${_t('permissionTarget')}：${action.targetName}'),
-      const SizedBox(height: UtenSpacing.s8),
-      Text(
-        '${_t('permissionItem')}：${action.permissionName} (${action.permissionCode})',
-      ),
-      const SizedBox(height: UtenSpacing.s8),
-      Text('${_t('permissionScope')}：${action.scopeSummary}'),
-      if (action.expiresAt != null) ...[
-        const SizedBox(height: UtenSpacing.s8),
-        Text(
-          '${_t('permissionExpiry')}：${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(action.expiresAt!.toLocal()))}',
-        ),
-      ],
-    ],
-  );
-
   @override
   Widget build(BuildContext context) {
     if (_loadingCapabilities || _capabilities?.canChat == false) {
@@ -986,7 +1416,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                       foregroundColor: colors.onPrimaryContainer,
                       onPressed: () {
                         setState(() => _open = true);
+                        if (_capabilities?.usable == true) {
+                          unawaited(_restoreConversation());
+                        }
                         _loadPageSuggestions();
+                        _scheduleAttachPreview();
                         _scrollToEnd();
                       },
                       child: const Icon(Icons.auto_awesome_outlined),
@@ -1004,12 +1438,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   bindings: {
                     const SingleActivator(LogicalKeyboardKey.escape): () =>
                         setState(() => _open = false),
-                    const SingleActivator(
-                      LogicalKeyboardKey.enter,
-                      control: true,
-                    ): _send,
-                    const SingleActivator(LogicalKeyboardKey.enter, meta: true):
-                        _send,
                   },
                   child: DecoratedBox(
                     decoration: BoxDecoration(
@@ -1057,31 +1485,50 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           ),
           child: Row(
             children: [
-              Icon(
-                Icons.auto_awesome_outlined,
-                size: 20,
-                color: colors.primary,
-              ),
+              if (_settingsOpen)
+                IconButton(
+                  key: const ValueKey('ai-settings-back'),
+                  tooltip: aiPageL10n(context).aiChatSettingsBack,
+                  onPressed: _toggleSettings,
+                  icon: const Icon(Icons.arrow_back, size: 20),
+                )
+              else
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  size: 20,
+                  color: colors.primary,
+                ),
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Text(
-                  _t('title'),
+                  _settingsOpen
+                      ? aiPageL10n(context).aiChatSettings
+                      : _t('title'),
                   style: Theme.of(context).textTheme.titleMedium,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconButton(
-                key: const ValueKey('ai-chat-info'),
-                tooltip: _t('info'),
-                onPressed: _showHelp,
-                icon: const Icon(Icons.info_outline, size: 20),
-              ),
-              IconButton(
-                tooltip: _t('reset'),
-                onPressed: _busy || _picking ? null : _newChat,
-                icon: const Icon(Icons.add_comment_outlined, size: 20),
-              ),
+              if (!_settingsOpen) ...[
+                IconButton(
+                  key: const ValueKey('ai-chat-settings'),
+                  tooltip: aiPageL10n(context).aiChatSettings,
+                  onPressed: _toggleSettings,
+                  icon: const Icon(Icons.tune, size: 20),
+                ),
+                IconButton(
+                  key: const ValueKey('ai-chat-info'),
+                  tooltip: _t('info'),
+                  onPressed: _showHelp,
+                  icon: const Icon(Icons.info_outline, size: 20),
+                ),
+                IconButton(
+                  key: const ValueKey('ai-chat-new'),
+                  tooltip: _t('reset'),
+                  onPressed: _busy || _picking ? null : _newChat,
+                  icon: const Icon(Icons.add_comment_outlined, size: 20),
+                ),
+              ],
               IconButton(
                 tooltip: _t('close'),
                 onPressed: () {
@@ -1094,36 +1541,50 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           ),
         ),
         const Divider(height: 1),
-        if (!tight)
+        if (_settingsOpen)
+          messagesViewport(
+            child: AiChatSettingsPanel(
+              settings: _settings,
+              reasoningSupported: _reasoningSupported,
+              savingField: _settingsSaving,
+              error: _settingsError,
+              clearing: _clearingHistory,
+              canClear: !_busy && !_picking,
+              onChange: _updateSetting,
+              onClearHistory: _clearHistory,
+            ),
+          ),
+        if (!tight && !_settingsOpen)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+            key: const ValueKey('ai-chat-page-line'),
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s6,
+            ),
             child: Row(
               children: [
                 const Icon(Icons.description_outlined, size: 16),
                 const SizedBox(width: UtenSpacing.s8),
                 Expanded(
-                  child: Text(
-                    _pageAware && _pageSuggestions?.pageTitle.isNotEmpty == true
-                        ? _pageSuggestions!.pageTitle
-                        : _t('pageOff'),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                Tooltip(
-                  message: _t('pageHint'),
-                  child: Switch.adaptive(
-                    value: _pageAware,
-                    onChanged: (value) {
-                      setState(() => _pageAware = value);
-                      _loadPageSuggestions();
-                    },
+                  child: Tooltip(
+                    message: _t('pageHint'),
+                    child: Text(
+                      !_pageAware
+                          ? _t('pageOff')
+                          : _pageSuggestions?.pageTitle.isNotEmpty == true
+                          ? _pageSuggestions!.pageTitle
+                          : _t('pageAware'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        if (_messages.isNotEmpty &&
+        if (!_settingsOpen &&
+            _messages.isNotEmpty &&
             _pageAware &&
+            _settings.showSuggestions &&
             _pageSuggestions?.suggestions.isNotEmpty == true)
           Padding(
             key: const ValueKey('ai-chat-page-suggestions'),
@@ -1152,63 +1613,76 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
               ),
             ),
           ),
-        messagesViewport(
-          child: ListView(
-            key: const ValueKey('ai-chat-messages'),
-            controller: scrollAll ? null : _scroll,
-            shrinkWrap: scrollAll,
-            physics: scrollAll ? const NeverScrollableScrollPhysics() : null,
-            padding: const EdgeInsets.all(UtenSpacing.s16),
-            children: [
-              if (_messages.isEmpty) _welcome(),
-              for (final message in _messages) _message(message),
-              if (_busy && _activeMessage == null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                  child: Row(
-                    children: [
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: UtenSpacing.s12),
-                      Expanded(child: Text(_t(_progressKey ?? 'pendingGrant'))),
-                      if (_cancel != null)
-                        TextButton(onPressed: _stop, child: Text(_t('stop'))),
-                    ],
+        if (!_settingsOpen)
+          messagesViewport(
+            child: ListView(
+              key: const ValueKey('ai-chat-messages'),
+              controller: scrollAll ? null : _scroll,
+              shrinkWrap: scrollAll,
+              physics: scrollAll ? const NeverScrollableScrollPhysics() : null,
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              children: [
+                if (_hiddenTurns > 0)
+                  _historyNote(
+                    aiPageL10n(context).aiChatHiddenTurns(_hiddenTurns),
+                    key: const ValueKey('ai-chat-hidden-turns'),
                   ),
-                ),
-              if (_error != null)
-                Semantics(
-                  liveRegion: true,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: UtenSpacing.s8),
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    decoration: BoxDecoration(
-                      color: colors.errorContainer,
-                      borderRadius: UtenRadius.controlAll,
+                if (_restored && _messages.isNotEmpty)
+                  _historyNote(
+                    aiPageL10n(context).aiChatRestored,
+                    key: const ValueKey('ai-chat-restored'),
+                  ),
+                if (_messages.isEmpty) _welcome(),
+                for (final message in _messages) _message(message),
+                if (_busy && _activeMessage == null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s8,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Text(
-                          _error!,
-                          style: TextStyle(color: colors.onErrorContainer),
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        if (_capabilities == null)
-                          TextButton(
-                            onPressed: _loadCapabilities,
-                            child: Text(_t('retry')),
-                          ),
+                        const SizedBox(width: UtenSpacing.s12),
+                        Expanded(child: Text(_t(_progressKey ?? 'sending'))),
+                        if (_cancel != null)
+                          TextButton(onPressed: _stop, child: Text(_t('stop'))),
                       ],
                     ),
                   ),
-                ),
-            ],
+                if (_error != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Container(
+                      margin: const EdgeInsets.only(top: UtenSpacing.s8),
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      decoration: BoxDecoration(
+                        color: colors.errorContainer,
+                        borderRadius: UtenRadius.controlAll,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _error!,
+                            style: TextStyle(color: colors.onErrorContainer),
+                          ),
+                          if (_capabilities == null)
+                            TextButton(
+                              onPressed: _loadCapabilities,
+                              child: Text(_t('retry')),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
-        _composer(tight),
+        if (!_settingsOpen) _composer(tight),
       ],
     );
     return scrollAll
@@ -1245,6 +1719,33 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_attachPreviewText() case final preview?)
+                  Padding(
+                    key: const ValueKey('ai-chat-attach-preview'),
+                    padding: const EdgeInsets.fromLTRB(
+                      UtenSpacing.s12,
+                      UtenSpacing.s8,
+                      UtenSpacing.s12,
+                      0,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.table_view_outlined,
+                          size: 14,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: UtenSpacing.s6),
+                        Expanded(
+                          child: Text(
+                            preview,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: colors.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_attachment != null)
                   Padding(
                     padding: const EdgeInsets.only(
@@ -1277,36 +1778,41 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   ),
                 Semantics(
                   label: _t('label'),
-                  child: TextField(
-                    key: const ValueKey('ai-chat-input'),
-                    controller: _input,
-                    focusNode: _focus,
-                    minLines: tight ? 1 : 2,
-                    maxLines: tight ? 2 : 4,
-                    inputFormatters: [LengthLimitingTextInputFormatter(2000)],
-                    enabled: _capabilities?.usable == true,
-                    textInputAction: TextInputAction.newline,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: _t(
-                        _capabilities?.canUploadDocument == true
-                            ? 'hint'
-                            : 'hintNoUpload',
+                  child: Focus(
+                    canRequestFocus: false,
+                    skipTraversal: true,
+                    onKeyEvent: _composerKey,
+                    child: TextField(
+                      key: const ValueKey('ai-chat-input'),
+                      controller: _input,
+                      focusNode: _focus,
+                      minLines: tight ? 1 : 2,
+                      maxLines: tight ? 2 : 4,
+                      inputFormatters: [LengthLimitingTextInputFormatter(2000)],
+                      enabled: _capabilities?.usable == true,
+                      textInputAction: TextInputAction.newline,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                      onChanged: (_) => setState(() {}),
+                      decoration: InputDecoration(
+                        hintText: _t(
+                          _capabilities?.canUploadDocument == true
+                              ? 'hint'
+                              : 'hintNoUpload',
+                        ),
+                        hintStyle: TextStyle(color: colors.onSurfaceVariant),
+                        contentPadding: const EdgeInsets.fromLTRB(
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s12,
+                          UtenSpacing.s4,
+                        ),
+                        isDense: true,
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                       ),
-                      hintStyle: TextStyle(color: colors.onSurfaceVariant),
-                      contentPadding: const EdgeInsets.fromLTRB(
-                        UtenSpacing.s12,
-                        UtenSpacing.s12,
-                        UtenSpacing.s12,
-                        UtenSpacing.s4,
-                      ),
-                      isDense: true,
-                      filled: false,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      disabledBorder: InputBorder.none,
                     ),
                   ),
                 ),
@@ -1365,15 +1871,72 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
   }
 
+  /// ADR-152 send key: Enter sends (Shift+Enter = new line), or Ctrl/Cmd+Enter
+  /// sends (Enter = new line). A key that confirms an input-method
+  /// composition never sends.
+  KeyEventResult _composerKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        (event.logicalKey != LogicalKeyboardKey.enter &&
+            event.logicalKey != LogicalKeyboardKey.numpadEnter)) {
+      return KeyEventResult.ignored;
+    }
+    final composing = _input.value.composing;
+    if (composing.isValid && !composing.isCollapsed) {
+      return KeyEventResult.ignored;
+    }
+    final keys = HardwareKeyboard.instance;
+    if (keys.isShiftPressed || keys.isAltPressed) return KeyEventResult.ignored;
+    final modified = keys.isControlPressed || keys.isMetaPressed;
+    final sends = _settings.sendKey == AiChatSendKey.enter || modified;
+    if (!sends) return KeyEventResult.ignored;
+    if (_cancel == null) _send();
+    return KeyEventResult.handled;
+  }
+
+  /// "This page will be attached: N rows / M fields / K to review" (ADR-150).
+  String? _attachPreviewText() {
+    final preview = _attachPreview;
+    if (!_pageAware ||
+        preview == null ||
+        _attachment != null ||
+        safeAiChatRoute(widget.currentRoute) == null) {
+      return null;
+    }
+    final l10n = aiPageL10n(context);
+    if (preview.protectedPage) return l10n.aiChatAttachProtected;
+    if (preview.withheld) return l10n.aiChatAttachWithheld;
+    return preview.snapshot == null
+        ? l10n.aiChatAttachRouteOnly
+        : l10n.aiChatAttachSummary(
+            preview.rows,
+            preview.fields,
+            preview.flagged,
+          );
+  }
+
+  Widget _historyNote(String text, {Key? key}) => Padding(
+    key: key,
+    padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+    child: Text(
+      text,
+      textAlign: TextAlign.center,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    ),
+  );
+
   Widget _welcome() {
     final suggestions = <String, bool>{
-      if (_pageAware)
+      if (_pageAware && _settings.showSuggestions)
         for (final text in _pageSuggestions?.suggestions ?? const <String>[])
           text: text == _t('pageQuestion'),
     };
-    for (final text in _capabilities?.suggestions ?? const <String>[]) {
-      if (text == _t('pageQuestion')) continue;
-      suggestions.putIfAbsent(text, () => false);
+    if (_settings.showSuggestions) {
+      for (final text in _capabilities?.suggestions ?? const <String>[]) {
+        if (text == _t('pageQuestion')) continue;
+        suggestions.putIfAbsent(text, () => false);
+      }
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1509,64 +2072,42 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 ),
               ),
             ),
+            if (!message.user &&
+                (message.fallback ||
+                    (_settings.showSources && message.sources.isNotEmpty)))
+              _replyBasis(message),
             if (message.attempt != null) _messageDelivery(message),
-            for (final action in message.actions) _action(action),
-            if (message.documentResult != null) _documentRouteCard(message),
+            for (final action in message.actions) _actionCard(message, action),
           ],
         ),
       ),
     );
   }
 
-  Widget _documentRouteCard(_ChatMessage message) {
-    final result = message.documentResult!;
-    final opened = _guidedNavigatedJobs.contains(message.documentJobId);
-    final choices = <AiGuidedWorkflow, String>{
-      if (result.workflow != AiGuidedWorkflow.none &&
-          _workflowAllowed(result.workflow))
-        result.workflow: result.title,
-      for (final choice in result.choices)
-        if (_workflowAllowed(choice.workflow)) choice.workflow: choice.title,
-    };
-    return Container(
-      key: ValueKey('ai-guided-route-${message.documentJobId}'),
-      margin: const EdgeInsets.only(top: UtenSpacing.s8),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
+  /// "Based on: ..." and the deterministic-summary note under a reply.
+  Widget _replyBasis(_ChatMessage message) {
+    final l10n = aiPageL10n(context);
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
+    final labels = message.sources.map((source) => source.label).toSet();
+    final page = message.sources.any((source) => source.id.startsWith('page.'));
+    return Padding(
+      key: const ValueKey('ai-chat-reply-basis'),
+      padding: const EdgeInsets.only(top: UtenSpacing.s4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(result.title, style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            message.sourceFile!.name,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (opened) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(_t('documentOpened')),
-          ],
-          if (!opened)
-            for (final entry in choices.entries)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                child: UtenButton(
-                  type: UtenButtonType.secondary,
-                  onPressed:
-                      _busy ||
-                          _guidedOpeningJobs.contains(message.documentJobId)
-                      ? null
-                      : () => _openGuided(message, entry.key),
-                  child: Flexible(
-                    child: Text(
-                      entry.value.isEmpty ? entry.key.code : entry.value,
-                    ),
-                  ),
-                ),
-              ),
+          if (message.fallback) Text(l10n.aiChatFallback, style: style),
+          // ADR-152: "show answer sources" off hides only this line; the
+          // server still checks every answer against its sources.
+          if (labels.isNotEmpty && _settings.showSources)
+            Text(
+              page || message.fallback
+                  ? '${l10n.aiChatSources(labels.join('、'))} · ${l10n.aiChatVerifyOnPage}'
+                  : l10n.aiChatSources(labels.join('、')),
+              style: style,
+            ),
         ],
       ),
     );
@@ -1658,83 +2199,15 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
   }
 
-  Widget _action(AiChatAction action) {
-    final colors = Theme.of(context).colorScheme;
-    final isOrder =
-        action.type == 'OPEN_SALES_ORDER_DRAFT' && action.jobId != null;
-    final isGrant =
-        action.type == 'CONFIRM_PERMISSION_GRANT' && action.hasReviewableGrant;
-    final completed = _completedActions.contains(action);
-    return Container(
-      margin: const EdgeInsets.only(top: UtenSpacing.s8),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        border: Border.all(color: colors.outlineVariant),
-        borderRadius: UtenRadius.lgAll,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                isGrant
-                    ? Icons.admin_panel_settings_outlined
-                    : Icons.description_outlined,
-                size: 20,
-                color: colors.primary,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  action.title,
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-              ),
-            ],
-          ),
-          if (action.summary.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(action.summary),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          if (isOrder) ...[
-            Text(_t('draftHint'), style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed:
-                  !_busy &&
-                      !completed &&
-                      _capabilities?.canUploadSalesOrder == true &&
-                      !widget.identity.scope.readOnly
-                  ? () => _openDraft(action)
-                  : null,
-              child: Flexible(
-                child: Text(_t(completed ? 'draftOpened' : 'openDraft')),
-              ),
-            ),
-          ] else if (isGrant) ...[
-            _grantDetails(action),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: !_busy && _canConfirmGrant(action)
-                  ? () => _confirmGrant(action)
-                  : null,
-              child: Flexible(
-                child: Text(
-                  _t(completed ? 'permissionDone' : 'confirmPermission'),
-                ),
-              ),
-            ),
-          ] else
-            Text(
-              _t('unsupported'),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-        ],
-      ),
+  Widget _actionCard(_ChatMessage message, AiChatAction action) {
+    final ui = _cardUi(action);
+    return AiChatActionCard(
+      key: ValueKey('ai-action-${action.proposalId}'),
+      ui: ui,
+      enabled: !_cardRunning || ui.running,
+      onConfirm: () => _confirmCard(message, ui),
+      onCancel: () => _cancelCard(ui),
+      onCheck: () => _refreshCard(ui),
     );
   }
 }

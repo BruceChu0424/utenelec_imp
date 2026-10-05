@@ -45,8 +45,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
+import '../../../components/data_display/uten_color_name.dart';
+import '../../../shared/ai/page_context/ai_page_context.dart';
 
 export '../../../components/data_display/master_data_table_rows_controller.dart';
+
+part 'master_data_table_view_ai.dart';
 
 class MasterDataTableHeaderAddition extends InheritedWidget {
   const MasterDataTableHeaderAddition({
@@ -105,11 +109,21 @@ class MasterColumnDef<T> {
     this.exportDefinition,
     this.exactValueOf,
     this.exactListenableOf,
+    this.legendOf,
+    this.aiSensitive = false,
   });
 
   final String key;
   final String label;
   final bool defaultVisible;
+
+  /// 状态图例「值 -> 含义」(ADR-150, 可选)：AI 助手读页面时, 本列每种底色/状态
+  /// 值附上这句含义(如车间任务「紫 = 部分物料可领, 去领料」)。只在发问时读取。
+  final String? Function(T item)? legendOf;
+
+  /// 敏感数值列(成本/工资/信用额度等, ADR-150)：AI 读页面时只发列名不发值。
+  /// 列名命中平台敏感词表的列即使不标也不会发送。
+  final bool aiSensitive;
   final Map<String, dynamic>? exportDefinition;
 
   /// Unformatted decimal source for display calculations; never inferred from a money/quantity label.
@@ -1447,6 +1461,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool _platformRefreshScheduled = false;
   bool _projectionScheduled = false;
   Object? _projectionOwner;
+  final _aiSlot = AiPageSlot();
+
+  /// [setState] for the AI part file (extension members cannot call it).
+  void _aiRebuild(VoidCallback change) => setState(change);
 
   List<MasterColumnDef<T>> get _columns {
     if (_platformColumnCache != null &&
@@ -2378,6 +2396,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _configurePlatform();
+    if (widget.listItemBuilder == null) {
+      _aiSlot.attach(context, _aiTableSource);
+    }
     // compact 悬浮胶囊避让：遮挡高度变化（进/出外壳、转屏改手势条）时重算
     // 表体底部留白。弹窗/picker 里查不到 scope 取 0，留白不受影响。
     final capsuleOcclusion = UtenCapsuleNavScope.occlusionOf(context);
@@ -2811,6 +2832,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   void dispose() {
     widget.rowsController?.detachPagination(this);
     _projection?.remove(this);
+    _aiSlot.detach();
     _platform.dispose();
     // 跟手浮层/拖拽态由 UtenColumnDragHideHost.dispose（super 链）统一卸除。
     _fsTick.dispose();

@@ -54,13 +54,25 @@ class AiChatPostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(capabilities.path("canManagePermissions").asBoolean()).isFalse();
         String id=submit(ownerToken,Map.of("message","生产日报怎么填写"));
         JsonNode result=awaitResult(ownerToken,id);
-        assertThat(result.path("reply").asText()).contains("本次实际产量");
+        // ADR-153: without the model a rule question shows the platform's own documentation, not a catalog example.
+        assertThat(result.path("intent").asText()).isEqualTo("KNOWLEDGE");
+        assertThat(result.path("reply").asText()).contains("平台说明").doesNotContain("举例");
         assertThat(result.has("_access")).isFalse();
         assertThat(jdbc.queryForObject("SELECT input_bytes IS NULL FROM ai_jobs WHERE id=?::uuid",Boolean.class,id)).isTrue();
         MvcResult foreign=mvc.perform(authed(get("/api/ai/jobs/"+id),strangerToken)).andReturn();
         assertEquals(404,foreign.getResponse().getStatus(),body(foreign));
-        MvcResult continuation=mvc.perform(json(post("/api/ai/chat/messages"),Map.of("message","继续","previousJobId",id),strangerToken)).andReturn();
-        assertEquals(404,continuation.getResponse().getStatus(),body(continuation));
+        // ADR-152: a conversation id is only a key inside the caller's own history; another person's id finds nothing.
+        String conversation=result.path("conversationId").asText();
+        JsonNode foreignView=getJson("/api/ai/chat/conversations/current?conversationId="+conversation,strangerToken);
+        assertThat(foreignView.path("turns").size()).isZero();
+        String strangerId=submit(strangerToken,Map.of("message","生产日报怎么填写","conversationId",conversation));
+        awaitResult(strangerToken,strangerId);
+        JsonNode ownerView=getJson("/api/ai/chat/conversations/current?conversationId="+conversation,ownerToken);
+        assertThat(ownerView.path("turns").size()).isEqualTo(1);
+        assertThat(ownerView.path("turns").get(0).path("jobId").asText()).isEqualTo(id);
+        assertThat(ownerView.path("turns").get(0).path("result").has("_access")).isFalse();
+        assertThat(getJson("/api/ai/chat/conversations/current?conversationId="+conversation,strangerToken)
+                .path("turns").get(0).path("jobId").asText()).isEqualTo(strangerId);
         assertThat(FAKE.chatRequestCount()).isZero();
     }
     @Test void departmentMoveInvalidatesOldResultEvenWithSameInheritedFunctionPermissions() throws Exception {

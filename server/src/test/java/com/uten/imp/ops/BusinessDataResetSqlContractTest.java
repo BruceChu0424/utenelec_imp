@@ -180,7 +180,9 @@ class BusinessDataResetSqlContractTest {
             Map.entry("workshop_material_count_adjustment_postings", 768),
             Map.entry("business_test_object_cleanup_intents", 782),
             // V803 (ADR-148): 品质整批决定命令是业务事实, 随业务数据清空。
-            Map.entry("production_fqc_lot_decision_commands", 803));
+            Map.entry("production_fqc_lot_decision_commands", 803),
+            // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
+            Map.entry("ai_chat_action_proposals", 805));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。

@@ -38,6 +38,7 @@ import '../../../core/theme/uten_tokens.dart';
 import 'uten_count_suffix.dart';
 import 'uten_in_progress_badge.dart';
 import 'uten_notification_badge.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 分段计数的三种呈现形态(默认 [browsing]，见本文件头部选择法)。
 enum UtenSegmentCountForm {
@@ -84,7 +85,32 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
   final double badgeSize;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AiPageRegistrar(
+    // ADR-150: segment counts are read by the AI assistant with their meaning
+    // (red = waiting for me, yellow = in progress, brackets = finished).
+    // A zero red/yellow count is not drawn, so it carries no colour either.
+    source: AiBadgeSource(
+      label: label,
+      tone: (count ?? 0) > 0
+          ? switch (countForm) {
+              UtenSegmentCountForm.actionable => 'danger',
+              UtenSegmentCountForm.inProgress => 'warning',
+              UtenSegmentCountForm.browsing => 'neutral',
+            }
+          : null,
+      color: (count ?? 0) > 0
+          ? switch (countForm) {
+              UtenSegmentCountForm.actionable => '红',
+              UtenSegmentCountForm.inProgress => '黄',
+              UtenSegmentCountForm.browsing => null,
+            }
+          : null,
+      count: count ?? inProgressCount,
+    ),
+    child: Builder(builder: _build),
+  );
+
+  Widget _build(BuildContext context) {
     final count = this.count;
     final inProgress = inProgressCount;
     final hasInProgress = inProgress != null && inProgress > 0;

@@ -54,6 +54,10 @@ public class OpenAiChatClient implements AiProtocolClient {
         JsonNode root = parse(exchange.body());
         AiProtocolEnvelope.requireSuccess(root, exchange.status(), root.path("choices").path(0).path("message").isObject());
         JsonNode choice = root.path("choices").path(0);
+        // 服务商的内容审核截断了回答(智谱 sensitive, OpenAI/Azure content_filter): 不是格式错误。
+        if (Set.of("sensitive", "content_filter").contains(choice.path("finish_reason").asText(""))) {
+            throw AiCallException.contentFiltered(exchange.status());
+        }
         JsonNode content = choice.path("message").path("content");
         String text = contentText(content);
         boolean truncated = "length".equals(choice.path("finish_reason").asText(""));
@@ -116,7 +120,7 @@ public class OpenAiChatClient implements AiProtocolClient {
         } else {
             body.put("max_tokens", request.maxOutputTokens());
         }
-        if (runtime.sendTemperature()) {
+        if (runtime.sendTemperature() && AiReasoningParams.allowsTemperature(runtime, request.reasoningEffort())) {
             body.put("temperature", 0);
         }
         if (runtime.jsonMode() == AiJsonMode.JSON_SCHEMA && request.jsonSchema() != null) {
@@ -130,13 +134,7 @@ public class OpenAiChatClient implements AiProtocolClient {
         } else if (runtime.jsonMode() != AiJsonMode.NONE) {
             body.putObject("response_format").put("type", "json_object");
         }
-        switch (runtime.thinkingControl()) {
-            case DEEPSEEK -> body.putObject("thinking").put("type", "disabled");
-            case DASHSCOPE -> body.put("enable_thinking", false);
-            case OPENAI_REASONING -> body.put("reasoning_effort", "none");
-            case NONE -> {
-            }
-        }
+        AiReasoningParams.applyOpenAi(body, runtime, request.reasoningEffort());
         try {
             return json.writeValueAsBytes(body);
         } catch (Exception e) {

@@ -1,6 +1,9 @@
 package com.uten.imp.features.admin;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.AiChatActionProposalPort;
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.GlobalExceptionHandler;
@@ -47,14 +50,15 @@ class AiPermissionGrantControllerSecurityTest {
     @Import(StepUpAdvisorConfig.class)
     static class Config {
         @Bean AiPermissionGrantService business() { return mock(AiPermissionGrantService.class); }
+        @Bean AiChatActionProposalPort proposals() { return mock(AiChatActionProposalPort.class); }
         @Bean AuthSessionService sessions() { return mock(AuthSessionService.class); }
         @Bean StepUpService stepUp(AuthSessionService sessions) {
             return new StepUpService(mock(UserAccountRepository.class), mock(PasswordEncoder.class), sessions,
                     mock(SystemSettingsService.class), mock(NamedParameterJdbcTemplate.class),
                     mock(AuditService.class), mock(SecurityContextCurrentUser.class));
         }
-        @Bean AiPermissionGrantController controller(AiPermissionGrantService business) {
-            return new AiPermissionGrantController(business);
+        @Bean AiPermissionGrantController controller(AiPermissionGrantService business, AiChatActionProposalPort proposals) {
+            return new AiPermissionGrantController(business, proposals);
         }
     }
 
@@ -62,6 +66,9 @@ class AiPermissionGrantControllerSecurityTest {
     private MockMvc mvc;
     private AiPermissionGrantService business;
     private AuthSessionService sessions;
+    private AiChatActionProposalPort proposals;
+    private static final UUID PROPOSAL = UUID.fromString("7d3c1f0e-4a8b-4c55-9d2e-1b2c3d4e5f60");
+    private static final String BODY = "{\"proposalId\":\"" + PROPOSAL + "\"}";
     private final UUID actorId = UUID.randomUUID(), sessionId = UUID.randomUUID();
     private static final String URL = "/api/ai/chat/permission-grants/confirm";
 
@@ -69,6 +76,7 @@ class AiPermissionGrantControllerSecurityTest {
         context = new AnnotationConfigApplicationContext(Config.class);
         business = AopTestUtils.getUltimateTargetObject(context.getBean(AiPermissionGrantService.class));
         sessions = context.getBean(AuthSessionService.class);
+        proposals = context.getBean(AiChatActionProposalPort.class);
         mvc = MockMvcBuilders.standaloneSetup(context.getBean(AiPermissionGrantController.class))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilters(new ImpersonationWriteGuardFilter(new ObjectMapper(), mock(AuditService.class))).build();
@@ -83,45 +91,61 @@ class AiPermissionGrantControllerSecurityTest {
     }
     @Test void superAdminWithoutStepUpIsRejectedBeforeBusinessWrite() throws Exception {
         login(staff(true, null));
-        mvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed\"}"))
+        mvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
         verifyNoInteractions(business, sessions);
     }
     @Test void ordinaryStaffCannotUseStrayAuthorizationAuthority() throws Exception {
         login(staff(false, null));
         mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "unused-token")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(business, sessions);
     }
     @Test void visitorCannotConsumeAConfirmation() throws Exception {
         login(AuthUser.visitor(UUID.randomUUID(), "visitor", "V-1", Set.of("ai:use", "authorization:manage")));
         mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "unused-token")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden());
         verifyNoInteractions(business, sessions);
     }
     @Test void impersonatedSuperAdminIsReadOnlyBeforeTokenConsumption() throws Exception {
         login(staff(true, UUID.randomUUID()));
         mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "unused-token")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("IMPERSONATION_READ_ONLY"));
         verifyNoInteractions(business, sessions);
     }
     @Test void successfulTokenIsConsumedBeforeBusinessAndReplayCannotWriteAgain() throws Exception {
         login(staff(true, null));
         when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("one-time-test-token"))).thenReturn(true, false);
-        when(business.confirm("signed")).thenReturn(Map.of("status", "GRANTED", "reply", "已授权"));
+        when(business.confirm(PROPOSAL)).thenReturn(Map.of("status", "GRANTED", "reply", "已授权"));
         mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "one-time-test-token")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("GRANTED"));
         mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "one-time-test-token")
-                        .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed\"}"))
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("REAUTH_REQUIRED"));
         var order = inOrder(sessions, business);
         order.verify(sessions).consumeStepUp(sessionId, actorId, HashUtil.sha256("one-time-test-token"));
-        order.verify(business).confirm("signed");
+        order.verify(business).confirm(PROPOSAL);
         verify(business, times(1)).confirm(any());
+    }
+    @Test void businessRejectionClosesTheOneTimeCardAndIsReportedUnchanged() throws Exception {
+        login(staff(true, null));
+        when(sessions.consumeStepUp(sessionId, actorId, HashUtil.sha256("one-time-test-token"))).thenReturn(true);
+        when(business.confirm(PROPOSAL)).thenThrow(new ApiException(ErrorCode.CONFLICT, "授权对象或权限状态已变化，请重新发起并确认授权"));
+        mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "one-time-test-token")
+                        .contentType(MediaType.APPLICATION_JSON).content(BODY))
+                .andExpect(status().isConflict());
+        verify(proposals).failServerAction(PROPOSAL, "", "授权对象或权限状态已变化，请重新发起并确认授权");
+    }
+    @Test void malformedProposalIdIsRejectedBeforeTheToken() throws Exception {
+        login(staff(true, null));
+        mvc.perform(post(URL).header(StepUpInterceptor.HEADER, "unused-token")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"proposalId\":\"signed.old-hmac\"}"))
+                .andExpect(status().is4xxClientError());
+        verifyNoInteractions(business, sessions, proposals);
     }
     @Test void invalidPayloadDoesNotConsumeAValidToken() throws Exception {
         login(staff(true, null));

@@ -46,6 +46,10 @@ public class DashboardAiChatTool implements AiChatToolPort {
                 && u.getImpersonatedBy() == null && !u.isMustChangePassword() && u.isAccountNonLocked())
                 .map(u -> u.isSuperAdmin() || u.getPermissions().contains("ai:use")).orElse(false);
     }
+    /** ADR-150: the already-authorized detail text (quantities and tasks, no costs) may be composed by the model. */
+    @Override public Map<String, Object> modelFacts(Map<String, Object> result) {
+        return result.get("detailReply") instanceof String text ? Map.of("facts", text) : Map.of();
+    }
 
     @Override public Map<String, Object> execute(Map<String, Object> arguments) {
         if (!available()) throw new ApiException(ErrorCode.FORBIDDEN);

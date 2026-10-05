@@ -3,14 +3,13 @@ package com.uten.imp.features.ai.chat;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.ai.job.AiJobService;
-import com.uten.imp.features.ai.job.AiJobView;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SubmitterPrincipalRestorer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -21,10 +20,9 @@ import static org.mockito.Mockito.*;
 
 class AiChatEvidenceTest {
     private final AiJobService jobs = mock(AiJobService.class);
-    private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
     private final AiChatAccessPolicy access = mock(AiChatAccessPolicy.class);
     private final SubmitterPrincipalRestorer principals = mock(SubmitterPrincipalRestorer.class);
-    private final AiChatEvidence evidence = new AiChatEvidence(jobs, jdbc, access, principals);
+    private final AiChatEvidence evidence = new AiChatEvidence(jobs, access, principals);
     private final AuthUser actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "actor", Set.of("ai:use", "sales_order:view", "sales_order:create"), false, true, false);
     @BeforeEach void before() {
         when(access.requireChat()).thenReturn(actor);
@@ -41,17 +39,17 @@ class AiChatEvidenceTest {
         when(access.membershipFingerprint()).thenReturn("b:DEPT_SALES");
         assertThatThrownBy(() -> evidence.requireStamp(stamp)).isInstanceOf(ApiException.class);
     }
-    @Test void foreignPreviousIdUsesOwnedJobReadAndFailsClosed() {
-        UUID id = UUID.randomUUID();
-        when(jobs.view(id, actor)).thenThrow(new ApiException(ErrorCode.NOT_FOUND));
-        assertThatThrownBy(() -> evidence.previous(id)).isInstanceOf(ApiException.class);
-        verify(jobs).view(id, actor);
+    @Test void conversationHistoryIsReadOnlyThroughTheOwnersChatJobs() {
+        UUID conversation = UUID.randomUUID();
+        when(jobs.conversationResults(AiChatJobHandler.KIND, actor, conversation, 6)).thenReturn(List.of());
+        assertThat(evidence.conversation(conversation, 6)).isEmpty();
+        verify(jobs).conversationResults(AiChatJobHandler.KIND, actor, conversation, 6);
     }
-    @Test void attachmentMustBeSuccessfulSalesIntakeBeforeAnyLookup() {
-        UUID id = UUID.randomUUID();
-        when(jobs.view(id, actor)).thenReturn(new AiJobView(id,id,"ERP_CHAT","SUCCEEDED","DONE",100,false,
-                Map.of("reply","hi"),null,null,"conversation.json",null,null,null));
-        assertThatThrownBy(() -> evidence.requireOrderAttachment(id)).isInstanceOf(ApiException.class);
-        verifyNoInteractions(jdbc);
+    @Test void changedIdentityIsReportedWithoutThrowing() {
+        Map<String, Object> stamp = evidence.stamp();
+        assertThat(evidence.stampMatches(stamp)).isTrue();
+        when(access.membershipFingerprint()).thenReturn("b:DEPT_SALES");
+        assertThat(evidence.stampMatches(stamp)).isFalse();
+        assertThat(evidence.stampMatches(null)).isFalse();
     }
 }

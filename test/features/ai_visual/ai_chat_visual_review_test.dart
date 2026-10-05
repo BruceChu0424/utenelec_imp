@@ -162,12 +162,30 @@ class _VisualChatRepository implements AiChatRepository {
   );
 
   @override
+  Future<({AiChatSettings settings, bool reasoningEffortSupported})>
+  updateSettings(Map<String, Object> change) async => (
+    settings: AiChatSettings.defaults.withField(
+      change.keys.single,
+      change.values.single,
+    ),
+    reasoningEffortSupported: true,
+  );
+
+  @override
+  Future<AiChatConversationView> conversation({String? conversationId}) async =>
+      const AiChatConversationView();
+
+  @override
+  Future<void> clearConversations() async {}
+
+  @override
   Future<AiJobSnapshot> send({
     required String message,
-    String? previousJobId,
-    String? attachmentJobId,
+    required String conversationId,
     String? currentRoute,
     String? intentHint,
+    Map<String, Object?>? snapshot,
+    String? locale,
   }) async => AiJobSnapshot(
     id: 'visual-chat-1',
     kind: 'ERP_CHAT',
@@ -179,17 +197,26 @@ class _VisualChatRepository implements AiChatRepository {
       'actions': <Map<String, dynamic>>[
         if (grant)
           {
-            'type': 'CONFIRM_PERMISSION_GRANT',
-            'proposalId': 'visual.only.token',
+            'type': 'CONFIRM_ACTION',
+            'proposalId': '5f0c7a3e-2b1d-4c8e-9a6f-0d1e2f3a4b5c',
+            'actionType': 'PERMISSION_GRANT',
+            'handler': 'PERMISSION_GRANT',
+            'execution': 'SERVER',
             'title': '确认授予个人权限',
-            'summary': '该操作仅加授以下一项权限，完成后可在权限管理中核查。',
-            'targetName': '示例员工(销售业务部)',
-            'permissionCode': 'sales_order:price:view',
-            'permissionName': '查看销售订货单价格、折扣与金额字段',
-            'scopeSummary': '保留该员工当前获准的数据范围；本次授权不扩大客户或部门范围。',
+            'summaryLines': [
+              '对象: 示例员工(销售业务部)',
+              '权限: 查看销售订货单价格、折扣与金额字段',
+              '范围: 保留该员工当前获准的数据范围',
+            ],
+            'risk': 'HIGH',
+            'riskNote': '确认后会正式授权, 请仔细核对。',
+            'requiresStepUp': true,
+            'issuedAt': DateTime.now().toUtc().toIso8601String(),
             'expiresAt': DateTime.now()
                 .add(const Duration(minutes: 5))
+                .toUtc()
                 .toIso8601String(),
+            'status': 'PROPOSED',
           },
       ],
     },
@@ -198,6 +225,26 @@ class _VisualChatRepository implements AiChatRepository {
   @override
   Future<String> confirmPermissionGrant(String proposalId) async =>
       throw StateError('Visual fixture does not grant access');
+
+  @override
+  Future<AiChatAction> actionStatus(String proposalId) async =>
+      throw StateError('Visual fixture has no card state');
+
+  @override
+  Future<({AiChatAction card, Map<String, Object?> args})> confirmAction(
+    String proposalId,
+  ) async => throw StateError('Visual fixture does not execute');
+
+  @override
+  Future<AiChatAction> cancelAction(String proposalId) async =>
+      throw StateError('Visual fixture does not cancel');
+
+  @override
+  Future<AiChatAction> actionReceipt(
+    String proposalId, {
+    required bool succeeded,
+    String? message,
+  }) async => throw StateError('Visual fixture has no receipts');
 }
 
 class _VisualJobs implements AiJobRepository {

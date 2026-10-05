@@ -3,6 +3,7 @@ package com.uten.imp.features.ai.gateway;
 import com.uten.imp.application.port.AiCompletionPort;
 import com.uten.imp.features.ai.AiProperties;
 import com.uten.imp.features.ai.client.AiJsonExtractor;
+import com.uten.imp.features.ai.client.AiReasoningParams;
 import com.uten.imp.features.ai.client.AiProtocolClient;
 import com.uten.imp.features.ai.provider.AiProtocol;
 import com.uten.imp.features.ai.provider.AiProviderRuntime;
@@ -66,8 +67,9 @@ public class AiGateway implements AiCompletionPort {
     @Override
     public AiAvailability availability() {
         AiProviderService.Resolution resolution = providers.resolveDefault();
+        boolean reasoning = resolution.available() && AiReasoningParams.supported(resolution.runtime());
         return new AiAvailability(resolution.available(), resolution.providerName(), resolution.model(),
-                resolution.supportsVision(), resolution.unavailableReason());
+                resolution.supportsVision(), resolution.unavailableReason(), reasoning);
     }
 
     @Override
@@ -80,7 +82,8 @@ public class AiGateway implements AiCompletionPort {
         if (!resolution.available()) {
             throw new AiCallException(AiErrorCategory.UNAVAILABLE, resolution.unavailableReason());
         }
-        AiProviderRuntime runtime = resolution.runtime();
+        AiProviderRuntime runtime = withTimeout(resolution.runtime(),
+                AiReasoningParams.timeoutSeconds(resolution.runtime(), request.reasoningEffort()));
         var pricing = callLogs.capturePricing(runtime.id(), runtime.model(), resetGeneration);
         boolean hasImage = request.userParts().stream().anyMatch(AiImage.class::isInstance);
         if (hasImage && !runtime.supportsVision()) {
@@ -91,6 +94,13 @@ public class AiGateway implements AiCompletionPort {
             throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达上限, 请明天再试或联系管理员");
         }
         AiProtocolClient.ChatRequest chat = prepare(request, runtime);
+        if (request.reasoningEffort().explicit()) {
+            // ADR-152: names and levels only (never prompt or business data), so the admin can verify what was sent.
+            log.info("AI call reasoning: purpose={}, provider={}, effort={}, params=[{}], maxOutputTokens={}, timeoutSeconds={}",
+                    request.purpose(), runtime.id(), request.reasoningEffort(),
+                    AiReasoningParams.describe(runtime, request.reasoningEffort()), chat.maxOutputTokens(),
+                    runtime.timeoutSeconds());
+        }
         AiProtocolClient.ChatResponse response;
         String json;
         long started = System.nanoTime();
@@ -208,9 +218,22 @@ public class AiGateway implements AiCompletionPort {
         if (untrusted) {
             system.append("\n").append(SPOTLIGHT_INSTRUCTION);
         }
-        int maxTokens = Math.max(1, Math.min(request.maxOutputTokens(), runtime.maxOutputTokens()));
+        // Thinking tokens count against the output limit: the reasoning allowance is added to the answer budget,
+        // never beyond the provider's configured maximum output (a hard model and cost limit).
+        int maxTokens = AiReasoningParams.maxOutputTokens(runtime, request.maxOutputTokens(), request.reasoningEffort());
         return new AiProtocolClient.ChatRequest(system.toString(), parts, request.jsonSchemaName(),
-                request.jsonSchema(), maxTokens);
+                request.jsonSchema(), maxTokens, request.reasoningEffort());
+    }
+
+    /** 本次调用的超时(思考程度可以收紧或放宽, 见 {@link AiReasoningParams#timeoutSeconds}); 配置本身不变。 */
+    private static AiProviderRuntime withTimeout(AiProviderRuntime runtime, int seconds) {
+        if (seconds == runtime.timeoutSeconds()) {
+            return runtime;
+        }
+        return new AiProviderRuntime(runtime.id(), runtime.name(), runtime.preset(), runtime.region(),
+                runtime.protocol(), runtime.endpoint(), runtime.model(), runtime.apiKey(), runtime.jsonMode(),
+                runtime.thinkingControl(), runtime.sendTemperature(), runtime.supportsVision(),
+                runtime.maxOutputTokens(), seconds);
     }
 
     /** 文件里伪造的隔离标记不能提前「结束」数据区。 */

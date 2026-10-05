@@ -7,6 +7,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/sales/intake/sales_intake_apply.dart';
 import 'package:uten_imp/features/sales/intake/sales_intake_models.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
+import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
 
 import 'sales_intake_fixture.dart';
 
@@ -254,6 +255,62 @@ void main() {
       expect(carton.qty, '600', reason: '按每箱个数换算后的数量(需核对)');
       expect(carton.reviewReason, contains('箱(CTN)'));
       expect(patch.reviewRowCount, 3);
+    });
+
+    test('对上的行带「金额对不上/重复货品」提醒: 导入后黄标原因就是这几句(AI 页面快照同源)', () {
+      final json = intakeResultJson();
+      final first = (json['lines'] as List).first as Map<String, dynamic>;
+      first['warnings'] = [
+        {'code': 'AMOUNT_MISMATCH', 'message': '文件金额与数量×单价对不上'},
+        {'code': 'DUPLICATE_GOODS', 'message': '同一个货品在文件里出现了两次'},
+        {'code': 'AMOUNT_MISMATCH', 'message': '文件金额与数量×单价对不上'},
+      ];
+      final result = SalesIntakeResult.fromJson(json);
+      final row = _row(_patch(result, docType: SalesDocType.order), 'S1R9');
+      expect(row.reviewReason, '文件金额与数量×单价对不上 / 同一个货品在文件里出现了两次');
+    });
+
+    test('货品对应提醒单独记下: 确认只清它, 单位/金额/定价提醒保留并照常学习(ADR-150 确认卡同口径)', () {
+      final json = intakeResultJson();
+      final second = (json['lines'] as List)[1] as Map<String, dynamic>;
+      second['warnings'] = [
+        {'code': 'AMOUNT_MISMATCH', 'message': '文件金额与数量×单价对不上'},
+      ];
+      final result = SalesIntakeResult.fromJson(json);
+      final patch = _patch(result, docType: SalesDocType.order);
+      final review = _row(patch, 'S1R10');
+      expect(review.goodsMatchReason, '颜色没对上');
+      expect(review.reviewReason, '颜色没对上 / 文件金额与数量×单价对不上');
+      final carton = _row(patch, 'S1R14');
+      expect(carton.goodsMatchReason, isNull, reason: '只是单位换算');
+      expect(_row(patch, 'S1R9').goodsMatchReason, isNull);
+
+      final row = SalesGridRow.fromIntake(review);
+      addTearDown(row.dispose);
+      expect(row.aiReviewGoodsMatch, '颜色没对上');
+      // An AI fill keeps both reminders (an AI change is not a review).
+      row.applyAiValue('qty', '10');
+      expect(row.aiReviewGoodsMatch, '颜色没对上');
+      expect(row.confirmGoodsMatch(), isTrue);
+      expect(row.aiReview, '文件金额与数量×单价对不上');
+      expect(row.aiReviewGoodsMatch, isNull);
+      expect(row.userConfirmed, isTrue);
+      expect(row.confirmGoodsMatch(), isFalse);
+
+      final unit = SalesGridRow.fromIntake(carton);
+      addTearDown(unit.dispose);
+      expect(unit.confirmGoodsMatch(), isFalse);
+      expect(unit.aiReview, contains('箱(CTN)'));
+      expect(unit.userConfirmed, isFalse);
+      // The goods-match part survives a draft round trip.
+      final restored = SalesGridRow.fromDraft(row.exportDraft());
+      addTearDown(restored.dispose);
+      expect(restored.aiReview, '文件金额与数量×单价对不上');
+      final draftReview = SalesGridRow.fromDraft(
+        SalesGridRow.fromIntake(review).exportDraft(),
+      );
+      addTearDown(draftReview.dispose);
+      expect(draftReview.aiReviewGoodsMatch, '颜色没对上');
     });
 
     test('表头: 客户、合同号=客户单号、本位币、文件币种; 备注=条款+没找到+没标价', () {

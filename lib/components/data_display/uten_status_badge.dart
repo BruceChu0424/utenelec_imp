@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import 'uten_status_cell_color.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// Uten 状态徽章
 ///
@@ -81,31 +82,40 @@ class UtenStatusBadge extends StatelessWidget {
     final colors = resolveStatusBadgeColors(type, isDark);
     final (padH, padV, textSize, iconSize) = _metrics(size);
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
-      decoration: BoxDecoration(
-        color: colors.$1,
-        borderRadius: BorderRadius.circular(UtenRadius.pill),
+    // ADR-150: a standalone pill is part of what the AI assistant can read
+    // (label + shared tone). Status cells are covered by the table legend.
+    return AiPageRegistrar(
+      source: AiBadgeSource(
+        label: label,
+        tone: type.name,
+        color: type.colorName,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: iconSize, color: colors.$2),
-            const SizedBox(width: _iconGap),
-          ],
-          Flexible(
-            child: Tooltip(
-              message: label,
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: _labelStyle(textSize).copyWith(color: colors.$2),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: padH, vertical: padV),
+        decoration: BoxDecoration(
+          color: colors.$1,
+          borderRadius: BorderRadius.circular(UtenRadius.pill),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: iconSize, color: colors.$2),
+              const SizedBox(width: _iconGap),
+            ],
+            Flexible(
+              child: Tooltip(
+                message: label,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _labelStyle(textSize).copyWith(color: colors.$2),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -137,7 +147,19 @@ enum UtenStatusBadgeType {
   violet,
 
   /// 品牌青绿（已查看/特殊状态）
-  accent,
+  accent;
+
+  /// 中文颜色名(ADR-150 状态图例; AI 读页面时用, 与 utenColorName 同一张色名表)。
+  String get colorName => switch (this) {
+    UtenStatusBadgeType.neutral => '灰',
+    UtenStatusBadgeType.info => '蓝',
+    UtenStatusBadgeType.success => '绿',
+    UtenStatusBadgeType.warning => '黄',
+    UtenStatusBadgeType.danger => '红',
+    UtenStatusBadgeType.fuchsia => '品红',
+    UtenStatusBadgeType.violet => '紫',
+    UtenStatusBadgeType.accent => '青绿',
+  };
 }
 
 /// 徽章尺寸

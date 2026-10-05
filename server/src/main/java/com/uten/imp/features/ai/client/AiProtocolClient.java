@@ -1,6 +1,7 @@
 package com.uten.imp.features.ai.client;
 
 import com.uten.imp.application.port.AiCompletionPort.AiContentPart;
+import com.uten.imp.application.port.AiCompletionPort.AiReasoningEffort;
 import com.uten.imp.features.ai.provider.AiProtocol;
 import com.uten.imp.features.ai.provider.AiProviderRuntime;
 
@@ -25,13 +26,22 @@ public interface AiProtocolClient {
     /**
      * 已由网关准备好的请求: 不可信文本已经包好隔离标记, 系统提示词已追加 JSON 与隔离说明。
      *
-     * @param jsonSchema 服务商用 JSON_SCHEMA 方式时下发的 schema; 可为空
+     * @param jsonSchema      服务商用 JSON_SCHEMA 方式时下发的 schema; 可为空
+     * @param reasoningEffort 思考程度(按服务商「思考参数写法」映射, 见 {@link AiReasoningParams}); 为空等同 DEFAULT
      */
     record ChatRequest(String systemPrompt, List<AiContentPart> parts, String jsonSchemaName,
-                       Map<String, Object> jsonSchema, int maxOutputTokens) {
+                       Map<String, Object> jsonSchema, int maxOutputTokens, AiReasoningEffort reasoningEffort) {
         public ChatRequest {
             Objects.requireNonNull(systemPrompt, "systemPrompt");
             parts = List.copyOf(Objects.requireNonNull(parts, "parts"));
+            if (reasoningEffort == null) {
+                reasoningEffort = AiReasoningEffort.DEFAULT;
+            }
+        }
+
+        public ChatRequest(String systemPrompt, List<AiContentPart> parts, String jsonSchemaName,
+                           Map<String, Object> jsonSchema, int maxOutputTokens) {
+            this(systemPrompt, parts, jsonSchemaName, jsonSchema, maxOutputTokens, AiReasoningEffort.DEFAULT);
         }
     }
 

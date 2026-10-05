@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// Uten 输入框
 class UtenInput extends StatefulWidget {
@@ -35,6 +36,7 @@ class UtenInput extends StatefulWidget {
     this.inputFormatters,
     this.textCapitalization = TextCapitalization.none,
     this.required = false,
+    this.aiSensitive = false,
   });
 
   /// 标签
@@ -103,6 +105,10 @@ class UtenInput extends StatefulWidget {
   /// 是否必填：标签后显红 *；内容为空且启用时输入框描红边，填好即恢复。
   final bool required;
 
+  /// 敏感数值字段(成本/工资/信用额度等, ADR-150)：AI 读页面时只发标签不发值。
+  /// 密码框(isPassword/obscureText)根本不登记。
+  final bool aiSensitive;
+
   @override
   State<UtenInput> createState() => _UtenInputState();
 }
@@ -112,6 +118,13 @@ class _UtenInputState extends State<UtenInput> {
   bool _isObscured = true;
   bool _ownsController = false;
   bool _empty = true;
+
+  // ADR-150: registered with the AI page context; computed only on capture.
+  final _aiSlot = AiPageSlot();
+
+  /// Text the AI assistant filled in (yellow "AI filled, please review")
+  /// until the user changes it.
+  String? _aiFilledText;
 
   @override
   void initState() {
@@ -125,7 +138,82 @@ class _UtenInputState extends State<UtenInput> {
 
   void _onTextChanged() {
     final e = _controller.text.trim().isEmpty;
-    if (e != _empty) setState(() => _empty = e);
+    final aiEdited = _aiFilledText != null && _controller.text != _aiFilledText;
+    if (e != _empty || aiEdited) {
+      setState(() {
+        _empty = e;
+        if (aiEdited) _aiFilledText = null;
+      });
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiAttach();
+  }
+
+  void _aiAttach() {
+    final secret = widget.isPassword || widget.obscureText;
+    _aiSlot.attach(
+      context,
+      secret || widget.label == null
+          ? null
+          : AiFieldSource(
+              capture: _aiField,
+              setValue: widget.enabled ? _aiSetValue : null,
+            ),
+    );
+  }
+
+  AiFieldSnapshot? _aiField(AiCaptureContext ctx) {
+    final label = aiSnapshotLabel(widget.label);
+    if (!mounted || label == null || widget.isPassword || widget.obscureText) {
+      return null;
+    }
+    final requiredEmpty = widget.required && widget.enabled && _empty;
+    final aiFilled = _aiFilledText != null && !_empty;
+    final autofilled =
+        !_empty &&
+        (widget.autofilled || widget.warningMessage != null || aiFilled);
+    return AiFieldSnapshot(
+      label: label,
+      value: aiSnapshotValue(_controller.text),
+      state: widget.errorMessage != null
+          ? AiFieldState.error
+          : requiredEmpty
+          ? AiFieldState.requiredEmpty
+          : autofilled
+          ? AiFieldState.autofilled
+          : AiFieldState.normal,
+      required: widget.required,
+      message: aiSnapshotValue(
+        widget.errorMessage ??
+            (autofilled
+                ? (aiFilled
+                      ? ctx.l10n.fieldAiFilledReview
+                      : widget.warningMessage ?? ctx.l10n.fieldAutofilledReview)
+                : null),
+        AiSnapshotLimits.info,
+      ),
+      info: aiSnapshotValue(widget.info, AiSnapshotLimits.info),
+      sensitive: widget.aiSensitive,
+    );
+  }
+
+  Future<void> _aiSetValue(String value, AiCaptureContext ctx) async {
+    if (!mounted || !widget.enabled) {
+      throw AiActionFailure(ctx.l10n.aiActionFieldReadOnly(widget.label ?? ''));
+    }
+    _controller.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+    setState(() {
+      _empty = value.trim().isEmpty;
+      _aiFilledText = value;
+    });
+    widget.onChanged?.call(value);
   }
 
   @override
@@ -144,10 +232,12 @@ class _UtenInputState extends State<UtenInput> {
     if (oldWidget.isPassword != widget.isPassword) {
       _isObscured = widget.isPassword;
     }
+    _aiAttach();
   }
 
   @override
   void dispose() {
+    _aiSlot.detach();
     _controller.removeListener(_onTextChanged);
     if (_ownsController) {
       _controller.dispose();
@@ -159,8 +249,13 @@ class _UtenInputState extends State<UtenInput> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final requiredEmpty = widget.required && widget.enabled && _empty;
+    final aiFilled = _aiFilledText != null && !_empty;
     final autofilled =
-        !_empty && (widget.autofilled || widget.warningMessage != null);
+        !_empty &&
+        (widget.autofilled || widget.warningMessage != null || aiFilled);
+    final autofillMessage = aiFilled
+        ? aiPageL10n(context).fieldAiFilledReview
+        : widget.warningMessage;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,8 +304,8 @@ class _UtenInputState extends State<UtenInput> {
                       ? Icon(widget.prefixIcon, size: 20)
                       : null,
                   suffixIcon: _buildSuffix(),
-                  helper: autofilled && widget.warningMessage != null
-                      ? UtenFieldMessage.autofill(widget.warningMessage!)
+                  helper: autofilled && autofillMessage != null
+                      ? UtenFieldMessage.autofill(autofillMessage)
                       : null,
                 ),
                 info: widget.info,

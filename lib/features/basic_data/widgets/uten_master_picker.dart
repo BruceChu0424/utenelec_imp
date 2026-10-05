@@ -31,6 +31,7 @@ import '../../../shared/models/paged_result.dart';
 import '../models/product_category_node.dart';
 import 'category_tree_search.dart';
 import 'uten_category_tree_view.dart';
+import '../../../shared/ai/page_context/ai_page_context.dart';
 
 /// 一种主档选择面板的全部差异点。
 class UtenMasterPickerSpec<TItem> {
@@ -615,6 +616,34 @@ class _UtenMasterPickerFieldState<TItem>
   late final TextEditingController _ctl;
   String? _id;
 
+  // ADR-150: the chosen record's display name is part of what the AI
+  // assistant reads (no setter: choosing a record stays with the user).
+  final _aiSlot = AiPageSlot();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiSlot.attach(context, AiFieldSource(capture: _aiField));
+  }
+
+  AiFieldSnapshot? _aiField(AiCaptureContext ctx) {
+    final label = aiSnapshotLabel(widget.label);
+    if (!mounted || label == null) return null;
+    final requiredEmpty =
+        widget.required && _id == null && widget.errorMessage == null;
+    return AiFieldSnapshot(
+      label: label,
+      value: _id == null ? null : aiSnapshotValue(_ctl.text),
+      state: widget.errorMessage != null
+          ? AiFieldState.error
+          : requiredEmpty
+          ? AiFieldState.requiredEmpty
+          : AiFieldState.normal,
+      required: widget.required,
+      message: aiSnapshotValue(widget.errorMessage, AiSnapshotLimits.info),
+    );
+  }
+
   static String? _normalizedId(String? id) =>
       (id == null || id.isEmpty) ? null : id;
 
@@ -637,6 +666,7 @@ class _UtenMasterPickerFieldState<TItem>
 
   @override
   void dispose() {
+    _aiSlot.detach();
     _ctl.dispose();
     super.dispose();
   }

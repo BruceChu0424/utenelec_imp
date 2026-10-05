@@ -20,6 +20,7 @@ import '../../core/utils/china_datetime.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
+import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
 class UtenDateField extends StatefulWidget {
@@ -59,6 +60,101 @@ class UtenDateField extends StatefulWidget {
 }
 
 class _UtenDateFieldState extends State<UtenDateField> {
+  // ADR-150: AI page context registration; an AI-chosen date stays framed
+  // yellow ("AI filled, please review") until the user picks a date.
+  final _aiSlot = AiPageSlot();
+  DateTime? _aiFilledDate;
+
+  bool get _aiFilledNow =>
+      _aiFilledDate != null &&
+      widget.value != null &&
+      DateUtils.isSameDay(widget.value, _aiFilledDate);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _aiAttach();
+  }
+
+  @override
+  void didUpdateWidget(covariant UtenDateField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _aiAttach();
+  }
+
+  @override
+  void dispose() {
+    _aiSlot.detach();
+    super.dispose();
+  }
+
+  void _aiAttach() => _aiSlot.attach(
+    context,
+    AiFieldSource(
+      capture: _aiField,
+      setValue: widget.enabled ? _aiSetValue : null,
+    ),
+  );
+
+  AiFieldSnapshot? _aiField(AiCaptureContext ctx) {
+    final label = aiSnapshotLabel(widget.label);
+    if (!mounted || label == null) return null;
+    final hasValue = widget.value != null;
+    final requiredEmpty =
+        widget.enabled &&
+        widget.required &&
+        !hasValue &&
+        widget.errorMessage == null;
+    final autofilled = (widget.autofilled || _aiFilledNow) && hasValue;
+    return AiFieldSnapshot(
+      label: label,
+      value: hasValue ? ChinaDateTime.formatDate(widget.value!) : null,
+      state: widget.errorMessage != null
+          ? AiFieldState.error
+          : requiredEmpty
+          ? AiFieldState.requiredEmpty
+          : autofilled
+          ? AiFieldState.autofilled
+          : AiFieldState.normal,
+      required: widget.required,
+      message: aiSnapshotValue(
+        widget.errorMessage ??
+            (_aiFilledNow
+                ? ctx.l10n.fieldAiFilledReview
+                : autofilled
+                ? ctx.l10n.fieldAutofilledReview
+                : null),
+        AiSnapshotLimits.info,
+      ),
+      info: aiSnapshotValue(widget.info, AiSnapshotLimits.info),
+    );
+  }
+
+  Future<void> _aiSetValue(String value, AiCaptureContext ctx) async {
+    if (!mounted || !widget.enabled) {
+      throw AiActionFailure(ctx.l10n.aiActionFieldReadOnly(widget.label));
+    }
+    final match = RegExp(
+      r'^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$',
+    ).firstMatch(value.trim());
+    final date = match == null
+        ? null
+        : DateTime(
+            int.parse(match.group(1)!),
+            int.parse(match.group(2)!),
+            int.parse(match.group(3)!),
+          );
+    if (date == null ||
+        date.month != int.parse(match!.group(2)!) ||
+        date.day != int.parse(match.group(3)!) ||
+        date.isBefore(widget.firstDate ?? DateTime(2010)) ||
+        date.isAfter(widget.lastDate ?? DateTime(2100))) {
+      throw AiActionFailure(ctx.l10n.aiActionDateInvalid);
+    }
+    widget.onChanged(date);
+    setState(() => _aiFilledDate = date);
+  }
+
   Future<void> _pick() async {
     final now = ChinaDateTime.today();
     final picked = await showDatePicker(
@@ -67,7 +163,10 @@ class _UtenDateFieldState extends State<UtenDateField> {
       firstDate: widget.firstDate ?? DateTime(2010),
       lastDate: widget.lastDate ?? DateTime(2100),
     );
-    if (picked != null && mounted) widget.onChanged(picked);
+    if (picked != null && mounted) {
+      _aiFilledDate = null;
+      widget.onChanged(picked);
+    }
   }
 
   @override
@@ -102,7 +201,7 @@ class _UtenDateFieldState extends State<UtenDateField> {
               ),
             ),
             theme,
-            autofilled: widget.autofilled,
+            autofilled: widget.autofilled || _aiFilledNow,
           ),
           theme,
           requiredEmpty: requiredEmpty,

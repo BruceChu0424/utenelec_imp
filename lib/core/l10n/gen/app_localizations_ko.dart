@@ -8511,6 +8511,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiAuditPurposeWorkbench => '업무 할 일 조회';
 
   @override
+  String get aiAuditPurposeDirectory => '기능 위치 찾기';
+
+  @override
+  String get aiAuditPurposeAccess => '내 권한 확인';
+
+  @override
+  String get aiAuditPurposeSalesOrder => '판매 주문 진행 조회';
+
+  @override
+  String get aiAuditPurposePurchaseOrder => '구매 주문 상태 조회';
+
+  @override
+  String get aiAuditPurposeSubcontract => '외주 상태 조회';
+
+  @override
   String get aiAuditPurposePageHelp => '페이지 입력 안내';
 
   @override

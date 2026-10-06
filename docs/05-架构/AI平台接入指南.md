@@ -1,6 +1,6 @@
 # AI 平台接入指南
 
-AI 助手(ERP_CHAT)接入见 [第八章](#八ai-助手页面上下文有据作答与确认卡契约adr-150--adr-152--adr-153--adr-158) 与 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md): 前端随问题发送有界的页面快照, 模型基于服务端发出的来源组织完整回答, 回答经事实守卫, 不通过时按页面内容确定性整理; AI 提出的操作只来自页面登记的动作集, 先生成一次性确认卡, 用户确认后才由页面原按钮路径或原业务端点执行。业务工具仍实现 AiChatToolPort, 成本等敏感结果默认不外送(ADR-140 的权限与历史复核规则不变)。
+AI 助手(ERP_CHAT)接入见 [第八章](#八ai-助手页面上下文有据作答与确认卡契约adr-150--adr-152--adr-153--adr-158--adr-159) 与 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md): 前端随问题发送有界的页面快照, 模型基于服务端发出的来源组织完整回答, 回答经事实守卫, 不通过时按页面内容确定性整理; AI 提出的操作只来自页面登记的动作集, 先生成一次性确认卡, 用户确认后才由页面原按钮路径或原业务端点执行。业务工具仍实现 AiChatToolPort, 成本等敏感结果默认不外送(ADR-140 的权限与历史复核规则不变); 功能目录、「我的权限」与单据进度工具见 [8.12](#812-有据作答功能目录与单据工具adr-159)(ADR-159)。
 
 > 适用: 任何想用大模型的新功能(第一个接入方是销售客户文件识别, ADR-134)。设计与安全决定见
 > [ADR-133 公共 AI 平台与服务商可配置](../99-决策记录-ADR/ADR-133-公共AI平台与服务商可配置.md)。
@@ -264,6 +264,10 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
       不发任何数据行的值、文件名与文件本身; 模型只回固定枚举, 不决定卡片、页面或权限; 外送字段登记进 ADR 与《中国大陆部署与兼容性》2.3.1(ADR-158)。
 - [ ] 给用户的去处(可填的单据、可去的页面)来自写死的固定目录, 按读者**当前**权限在每次读取时重算; 缺权限的写成中文原因(不出现权限码);
       页面路由与前端路由守卫用契约测试对齐(ADR-158 的 `ai_document_destinations_contract_test.dart`)。
+- [ ] AI 对话的只读工具(`AiChatToolPort`): 放在业务自己的 feature 里; 查看范围与对应详情页**同一判断**, 先判后读, 看不到与不存在回同一句话、同一证据摘要;
+      `modelFacts` 只放阶段、状态、日期、编码名称、数量与单号, 不放人名、客户供应商名称、金额与原因原文, 并在 `AiChatOutboundFactsContractTest` 登记、写进《中国大陆部署与兼容性》2.3.1;
+      `authorizeResultRead` 按读者当前范围重读复核; 工具只在 `AiChatDialogueSupport.toolEligible` 认可的问法下执行(ADR-159, 见 8.12)。
+- [ ] 给模型或用户的页面名称、菜单路径只来自功能目录 `ai-feature-map.json`(测试生成并逐字比对), 路由与权限码不外送、不显示; 缺权限只写中文权限名并以「请联系管理员开通」结尾, 不点名管理员。
 
 ## 六、测试
 
@@ -284,6 +288,12 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
   真实后台线程), 用 `resetToFakeDefaultProvider(adminToken())` 建一个指向假服务商的默认服务商, `aiUser()` 开一个持有
   `ai:use` 的员工, 再经 `POST /api/ai/jobs` 提交并轮询 `GET /api/ai/jobs/{id}`。需要 `UTEN_RUN_DB_TESTS=true` 与 Docker。
 - 平台自身的测试清单见 ADR-133「验证」。
+- **AI 助手检索评测** `AiKnowledgeGoldenQuestionsEvalTest`(不连库、不调模型, 约 5 秒): 76 道员工口吻问题, 按单一部门读者测前 1/3/5 命中与实际下发命中,
+  报告写到构建目录的 `ai-knowledge-golden-eval.txt`; 下限等于当前实测值(68/68/68, 无文档问题不发无关内容 ≥3), 改文档让命中变少就红:
+  先看报告里这一题的排序, 是文档写法的问题就改文档; 新文档也能答这一题时, 核对后把它加进这一题的期望清单。
+- **假模型端到端** `AiChatQuestionHandlingTest`: 换话题、追问、答非所问、工具执行条件、诚实没找到、跨部门页面、系统提示不含身份等作答链路规则。
+- **功能目录** `test/shared/ai/ai_feature_map_test.dart`(Flutter): 生成结果与 `server/src/main/resources/ai-feature-map.json` 逐字比对; 改了路由、守卫、工作台卡片、
+  中文界面文字或页面说明的 `路由：` / `> 别名：` 行之后, 运行 `UPDATE_AI_FEATURE_MAP=1 flutter test test/shared/ai/ai_feature_map_test.dart` 重新生成并提交。
 
 ## 七、运维
 
@@ -313,12 +323,13 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
   明细在 `ai_call_logs`(不含提示词与回复)。
 - **服务器迁移/恢复到别的环境**: AAD 绑定 JWT 签发者, 换环境后已保存的密钥会显示「密钥无法解密, 请重新填写」, 在设置页重新填写即可。
 
-## 八、AI 助手页面上下文、有据作答与确认卡契约(ADR-150 / ADR-152 / ADR-153 / ADR-158)
+## 八、AI 助手页面上下文、有据作答与确认卡契约(ADR-150 / ADR-152 / ADR-153 / ADR-158 / ADR-159)
 
 > 设计与取舍见 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md)、
 > [ADR-152 对话设置与连续对话](../99-决策记录-ADR/ADR-152-AI对话设置与连续对话.md) 与
 > [ADR-153 范围闸门与平台知识检索](../99-决策记录-ADR/ADR-153-AI助手范围闸门与平台知识检索.md)、
-> [ADR-158 AI 文件理解：一次作答与按权限给出去处](../99-决策记录-ADR/ADR-158-AI文件理解一次作答与按权限给出去处.md)。本章是前后端共同遵守的**请求/响应契约**:
+> [ADR-158 AI 文件理解：一次作答与按权限给出去处](../99-决策记录-ADR/ADR-158-AI文件理解一次作答与按权限给出去处.md)、
+> [ADR-159 AI 助手有据作答：检索门槛、功能目录与单据进度工具](../99-决策记录-ADR/ADR-159-AI助手有据作答-检索门槛目录与单据进度工具.md)。本章是前后端共同遵守的**请求/响应契约**:
 > 前端工程师照本章实现快照登记、确认卡和执行回执; 后端以本章为准做校验。字段名区分大小写, 未列出的字段服务端忽略。
 
 ### 8.1 发消息
@@ -349,7 +360,8 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
   `pageContext`(即使客户端发了)。
 - 整个任务输入(问题 + 快照 + 授权戳)上限 64 KB; 快照本身上限 24 KB(按服务端 JSON 序列化后字节数)。
 - 快照只保存在任务的临时输入里, 任务结束即清空(沿用 `ai_jobs.input_bytes` 清理); 结果和审计摘要里都不保存快照。
-- 页面受已审核目录保护时(例如车间任务、销售订货), 服务端照旧校验页面权限, 没权限 403, 快照不会被读取。
+- 页面受已审核目录保护时(例如车间任务、销售订货), 服务端照旧校验页面权限, 没权限时快照不会被读取: 带 `intentHint=PAGE_HELP`(明确问这个页面怎么填)时 403;
+  其它问题(2026-10-06 起, ADR-159)不再 403, 服务端丢弃整个 `pageContext`, 返回 202 照常作答, 页面内容不读、不存、不外送。前端不用改。
 
 ### 8.2 页面快照 `snapshot`
 
@@ -571,6 +583,7 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
   平台界面约定)、工具描述、对话记忆(ADR-152, 单独的 `CONVERSATION HISTORY` 段, 来源 id `conversation.history`, 见 8.10)。
 - **工具类问题**: 先执行工具, 若工具实现了 `AiChatToolPort.modelFacts(result)`(默认空, 成本/信用/授权/人事类保持空)再调一次模型按事实作答,
   否则直接用工具自己的 `reply`。新增工具时在 `modelFacts` 里只放已授权、可外送的事实, 并登记到《中国大陆部署与兼容性》2.3.1。
+  模型选了工具后, 还要用户这句话本身在问这个工具答的事才执行(`AiChatDialogueSupport.toolEligible`, 见 8.12)。
 - **事实守卫 `AiChatAnswerGuard`**: 回答里的数字、业务编码必须出现在来源或用户原话里; 「颜色 = 状态 = 含义」行的颜色和状态必须是页面原词;
   禁止「我已保存/已为你提交」这类完成断言(页面上本来就显示的状态词除外); 只在对话记忆里出现的数字/编码, 所在的**那一行**(列表项看它的
   引导行)必须带记忆标记(「刚才说的/之前查到的/前面列出的/上一页的/earlier/as mentioned」等), 否则 `MEMORY_AS_FACT`; 「发货之前」
@@ -662,3 +675,60 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
   - 页面: 纯图例问题确定性作答(不调模型, 无 `fallback`); 「第 N 行」兜底只渲染该行; 卡片参数不在用户原话里时摘要加「注意」行。
   - 思考程度默认快速; 用户原话要求详细分析时这一问至少标准。
   - 运维: `AiKnowledgeIndexCheck` 可对发布 jar 验证知识库能否从可执行 jar 加载(输出 `documents=N chunks=M`, 为 0 时退出码 1)。
+
+### 8.12 有据作答、功能目录与单据工具(ADR-159)
+
+> 设计、实测与取舍见 [ADR-159](../99-决策记录-ADR/ADR-159-AI助手有据作答-检索门槛目录与单据进度工具.md)。本节取代 8.11 中「数据不是指令」的工具执行条件、「知识检索」的可见范围与答非所问规则、「诚实兜底」里没找到时的说法; 8.11 其余照旧。
+
+- **知识源**: 白名单不变, 另有两份全员可见的知识: `docs/07-业务链路/00-业务术语与状态总表.md`(`AiDocGlossary` 解析; 表头固定
+  `| 术语 | 俗称/也叫 | 含义 | 出现在哪 | 相关文档 |`, 俗称用「、」分隔; 每行一块定义; 文件缺失时索引照建, 只是不认俗称)与
+  `docs/03-页面/AI工作助手使用说明.md`。AI 助手自身的决策按编号排除(新增时同时改 `server/pom.xml` 与 `AiDocKnowledgePolicy.EXCLUDES`,
+  `AiDocKnowledgePolicyTest` 比对两份清单)。可见范围先查复核表 `AiDocKnowledgePolicy.DOMAIN_OVERRIDES`, 没有再按文件名与标题归类。
+- **写文档时的开关**(给文档作者):
+  - 文首 15 行内写 `> **日期 整份被 [ADR-x](...) 取代**`(或状态行写「整份取代」): 整份文档只留一块「已被取代, 现行规则看 ADR-x」的指引。
+  - 文首 15 行内写 `> 别名：A、B`: 这些叫法参与标题匹配, 正文里不出现。
+  - 标题含「未实施提案」的页面说明不收; 文件名或标题以「方案」结尾的按 0.8 倍计。
+  - 章节标题含演进记录、历史实现、仅兼容、不作当前、设计与证据快照、事件目录等的整节不收; 标题括号里的端口号、克隆库、UAT/E2E 会被删掉。
+  - 页面说明的 `路由：` 行必须核对过真能打开这个页面: 功能目录按它把页面说明挂到页面上。
+- **检索**(`AiDocKnowledge.search`): 问句按整词读(内置词表 `AiDocIndex.CORE_WORDS`、同义词组、日常说法表 `AiDocIndex.COLLOQUIAL`、术语表、文档别名),
+  跨两个整词的字二元组不检索; 原有门槛不变(10 分, 一个词 15 分, 相对最高分 0.35, 最多 6 块 6000 字、每份文档 3 块), 另加: 最高分的块不含问句一半以上的词
+  且标题章节没点到其中一个时一块不发; 一两个词的问题按标题章节放行(分数 ≥7; 两个词都在章节标题里的不看分数); 问到的术语定义先下发(最多 2 条)。
+  评测与作答链路用 `ranking(question, domains, limit)` 看原始排序、用 `keyTerms(question)` 取问句的词(含术语与别名)。
+- **追问**: 只有以「那/如果/要是/第二次」开头、以「呢」结尾或没有自己的词的问题才是追问; 先按这一问单独检索, 追问且找不到或自己的词不到两个时
+  才带最近两问作 0.5 权重的上下文; 上一轮引用的块只在追问或新结果来自同一份文档时随记忆下发。
+- **有页面时**: 只问页面本身(页面操作、页面上写了什么、第几行、颜色含义、哪些要核对)不检索, 问规则与为什么都检索。
+- **工具执行条件**(`AiChatDialogueSupport.toolEligible(toolName, message)`): 查数据的问题(新增状态说法「还有吗、到了没、发货了没、批了没、到哪一步了、卡在」
+  与「业务单号 + 问句」)所有只读工具都可执行; `feature_directory` 另在问「在哪里、哪个页面、怎么进、有哪些功能」时执行; `my_access` 另在问「打不开、没权限、
+  看不到、点不了、按钮是灰的、缺少操作权限」时执行, 但问带单号的单据且没提权限时不执行。新工具要在别的问法下执行, 在这里加分支并加测试。
+- **结果**(8.4 的字段不变):
+  - 规则问题没找到依据: `intent=UNSUPPORTED`, 「我没在平台说明里找到关于「…」的说明。…」+ 用用户自己的词给的问法(三语); 查数据的问题: 「这个要查业务数据,
+    我这次没能查到可靠的结果, 不想猜。…」, 不贴文档原文。兜底贴原文只在最相关一段与问句共有两个以上的词时, 且去掉带空洞的句子。
+  - 模型判越界、但问题已过闸门且没有规则来源: `intent=UNSUPPORTED` 的「没找到」+ 助手能做什么, `_scope=MODEL`(不进对话记忆)。
+  - 贴来的系统内部报错: 闸门类别 `INTERNAL_ERROR`, `intent=UNSUPPORTED`, 固定求助说明(三语), 不调模型, `_scope=INTERNAL_ERROR`(不进对话记忆)。
+  - `UNSUPPORTED` / `CLARIFY` 回答没引用来源却写了步骤或去处: 换成确定性说明, 日志 `problems=[UNGROUNDED_STEPS]`。
+- **导航守卫**(`AiChatAnswerGuard.checkNavigation`): 回答让用户去的页面、菜单、按钮必须出现在来源、页面快照、工具结果、本人能打开的功能目录名称或对话里;
+  只查「去处」语境(去处词之后、页面/按钮词之前、以「工作台」开头的 `A > B`、箭头连着的「」), 强调规则的「」与写先后顺序的「>」不查。只有这一个问题时去掉
+  那几行、其余照给(`Verdict.dropped()`, 日志 `AI chat reply kept without its unverified navigation lines: intent=…, problems=[NAV]`); 剩下不到一半或不足 60 字,
+  或还有别的问题时整条不采用。
+- **系统提示**: 加一行 `USER ACCESS (from the user's permissions; no identity): modules the user can open: …; assistant domains: …`, 来自 `AiChatUserScope`
+  (经 `application.port.AiFeatureDirectoryPort.openable(permissions, superAdmin)`, 只返回模块名与页面名称、菜单路径); 这些名称算用户看得见的, 回答可以写。
+- **功能目录**: `server/src/main/resources/ai-feature-map.json`(ADR-153 唯一允许提交的生成文件), 由 `test/shared/ai/ai_feature_map_test.dart` 生成并逐字比对(见第六章)。
+  服务端 `features.rbac.directory.AiChatFeatureDirectory` 读取, 按客户端路由守卫同一规则判断能否打开(普通页面任一 + 全部; 模块首页任一张卡片能打开即可);
+  `AiFeatureAccess` 用参数化查询从 `permissions` 表取中文权限名。新页面上线: 加路由与守卫后重新生成; 有页面说明就写核对过的 `路由：` 行, 没有就把路由加进测试的
+  `_pagesWithoutDocs` 豁免清单(清单过期也会失败)。
+- **工具一览**(都只读, 零新增权限码):
+
+  | 工具 | 所在包 | 业务域与权限 | 外送(`modelFacts`) |
+  | --- | --- | --- | --- |
+  | `feature_directory` | `features.rbac.directory` | SELF; 读本人权限 | 找到的页面本人都能打开时: 页面名称、模块、用途、进入方法; 否则不外送 |
+  | `my_access` | `features.rbac.directory` | SELF; 读本人权限 | 不外送 |
+  | `sales_order_progress` | `features.sales.order` | SALES; `sales_order:view` + 订单详情页的归属范围 | 单号、阶段、日期、货品编码名称、数量、环节状态 |
+  | `purchase_order_status` | `features.purchase.order` | PURCHASE; `purchase_order:view` 或 `finance_order_approval:view` + 详情页 `readDetail` 的范围 | 同上 + 到货与检验数量 |
+  | `subcontract_order_status` | `features.subcontract.order` | SUBCONTRACT; 申请 `subcontract_application:view`, 订货单 `subcontract_order:view` + 归属范围 | 同上 + 缺料、需要、可用量(ADR-156) |
+
+  单号找不到或不在本人范围内: 三个单据工具回同一句「没有找到你能查看的这张单据。…」, 证据摘要也相同; 保存的回答再次读取时 `authorizeResultRead` 按读者当前范围
+  重读, 数据或范围变了 403「…已变化，请重新查询」(恢复对话时按 8.10 显示 `dataChanged`)。照这三个写新的单据工具时, Postgres 测试可复用
+  `application.port.AiDocumentStatusToolPostgresSupport`(经入职接口建员工、按库重建权限)。前端「AI 使用审计」的用途名称在
+  `lib/features/admin/widgets/ai_usage_audit_panel.dart` 按工具名加(三语)。
+- **运维**: 启动日志改为 `AI knowledge index: N documents, M chunks, G glossary terms, …`; `AiKnowledgeIndexCheck` 输出增加 `glossaryTerms=G`(为 0 表示术语表没打进 jar,
+  口语与俗称检索会变差, 但不阻断)。

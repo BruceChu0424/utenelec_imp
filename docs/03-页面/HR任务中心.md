@@ -1,5 +1,7 @@
 # HR 工作台（原「任务中心」，2026-08-05 v2 重构）
 
+> 别名：HR任务中心、转正提醒、转正办理、试用期到期、生日关怀、生日提醒、入职周年、新近入职
+
 > 路由：`/hr/tasks`（工作台主页）· `/hr/tasks/:type`（事务子页：confirm/birthday/anniversary/newhire）· `/hr/tasks/identity`(证件核对，另需 `employee:pii:edit`，见 §八)
 > 实现源：`lib/features/hr_task/`（`hr_workbench_page` / `hr_task_list_page` / `hr_task_widgets` /
 > `hr_task_summary_provider` / repository）

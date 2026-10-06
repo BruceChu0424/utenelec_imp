@@ -8828,6 +8828,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditPurposeWorkbench => 'Check work tasks';
 
   @override
+  String get aiAuditPurposeDirectory => 'Find a feature';
+
+  @override
+  String get aiAuditPurposeAccess => 'Check my access';
+
+  @override
+  String get aiAuditPurposeSalesOrder => 'Check sales order progress';
+
+  @override
+  String get aiAuditPurposePurchaseOrder => 'Check purchase order status';
+
+  @override
+  String get aiAuditPurposeSubcontract => 'Check subcontract status';
+
+  @override
   String get aiAuditPurposePageHelp => 'Page filling guidance';
 
   @override

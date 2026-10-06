@@ -194,8 +194,10 @@ class AiChatScopeAndKnowledgeTest {
         ask("随便聊聊你最近怎么样");
         model("OUT_OF_SCOPE", "不说这个。", List.of());
         Map<String, Object> result = handler.process(ctx);
-        assertThat(result).containsEntry("intent", "OUT_OF_SCOPE").containsEntry("_scope", "MODEL");
-        assertThat(result.get("reply").toString()).contains("我能帮你的是");
+        // P0-8: no rule source was issued, so the reply says "not found" instead of a permission-style refusal; the turn
+        // is still marked and never carried.
+        assertThat(result).containsEntry("intent", "UNSUPPORTED").containsEntry("_scope", "MODEL");
+        assertThat(result.get("reply").toString()).contains("我能帮你的是", "没在平台说明里找到").doesNotContain("你当前的权限");
     }
 
     /** A3 red team H10: the AI service's content review is a scope answer, not "暂时用不了，请联系管理员". */

@@ -192,6 +192,11 @@ void main() {
         'SALES_ORDER': l10n.aiAuditPurposeOrder,
         'SALES_QUOTE': l10n.aiAuditPurposeQuote,
         'EXPENSE_CLAIM': l10n.aiAuditPurposeExpense,
+        'feature_directory': l10n.aiAuditPurposeDirectory,
+        'my_access': l10n.aiAuditPurposeAccess,
+        'sales_order_progress': l10n.aiAuditPurposeSalesOrder,
+        'purchase_order_status': l10n.aiAuditPurposePurchaseOrder,
+        'subcontract_order_status': l10n.aiAuditPurposeSubcontract,
         'unknown_internal_code': l10n.aiAuditKindChat,
       };
       final repository = _Repository()..data = _data();

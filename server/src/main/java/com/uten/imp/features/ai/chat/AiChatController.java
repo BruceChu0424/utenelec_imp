@@ -161,7 +161,14 @@ public class AiChatController {
         AiChatSettings current = settings.current();
         // Page reading switched off: nothing from the page is stored or sent, whatever the client attached.
         if (!current.pageAware()) checked = checked.withoutPage();
-        if (checked.pageContext() != null) pages.resolve(checked.pageContext().route(), checked.pageContext().fieldKey());
+        if (checked.pageContext() != null) {
+            try {
+                pages.resolve(checked.pageContext().route(), checked.pageContext().fieldKey());
+            } catch (ApiException denied) {
+                // A page outside the user's chat departments: the question is answered without it, nothing of it is stored.
+                checked = AiChatJobHandler.withoutUnreadablePage(checked, denied);
+            }
+        }
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("request", checked); input.put("access", evidence.stamp());
         // Settings are read here on the server, once per question; the client never supplies them.

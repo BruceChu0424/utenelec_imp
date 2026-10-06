@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -34,13 +35,19 @@ import java.util.regex.Pattern;
  * "服务器状态页", "审计日志页", "密码锁", "客户数据库"). Words with an everyday business meaning only count in a
  * request shape: "凭证/证书/token" are never secrets by themselves, "代码" is code only with a programming verb,
  * "调试模式" only when the assistant is asked to switch into it, "重启系统后..." asks about an effect, not for a
- * restart. The password rules let "怎么修改我的登录密码" through while "管理员密码是多少" is refused. Page text,
+ * restart. The password rules let "怎么修改我的登录密码" through while "管理员密码是多少" is refused. The platform's own
+ * texts are read as business text: its permission codes ("缺少操作权限：sales_order:approve"), a field name inside an error
+ * it showed, "实现原理/程序逻辑/计算逻辑" without a request for code, and what a figure on the server status page means;
+ * a pasted internal error ("页面报错 NullPointerException") gets a fixed, helpful text. Page text,
  * knowledge and history are never classified here: they are data and cannot trigger anything (see the action and
  * tool gates in {@link AiChatJobHandler}).
  */
 final class AiChatScopeGate {
-    /** Why a question is outside the assistant's scope (also the log category; never shown to the user). */
-    enum Category { CODE, SERVER, SQL, FILES, SECRETS, PROMPT, JAILBREAK, SECURITY }
+    /**
+     * Why a question is outside the assistant's scope (also the log category; never shown to the user).
+     * {@code INTERNAL_ERROR} is a pasted internal error: answered with a fixed, helpful text, never sent to the model.
+     */
+    enum Category { CODE, SERVER, SQL, FILES, SECRETS, PROMPT, JAILBREAK, SECURITY, INTERNAL_ERROR }
 
     // ------------------------------------------------------------------ folding
 
@@ -338,8 +345,8 @@ final class AiChatScopeGate {
 
     private static final Pattern CODE_ZH = Pattern.compile(String.join("|",
             "源码|源代码|源程序|伪码|伪代码|正则表达式|正则|宏代码|代码块|代码片段|代码段|示例代码|代码示例|实现代码|后端代码|前端代码|系统代码|平台代码"
-                    + "|程序逻辑|二次开发|\\bstacktrace\\b|\\btraceback\\b|空指针|堆栈|\\bvba\\b|批处理|\\bbat\\b(?:批处理|脚本|文件)|\\bshell\\b脚本"
-                    + "|变量名|函数名|方法名|类名|英文变量|程序员(?:能)?看(?:得)?懂|实现原理|按类和方法|\\bif\\s?else\\b|判断语句|接口路径|后台接口"
+                    + "|二次开发|\\bstacktrace\\b|\\btraceback\\b|空指针|堆栈|\\bvba\\b|批处理|\\bbat\\b(?:批处理|脚本|文件)|\\bshell\\b脚本"
+                    + "|变量名|函数名|方法名|类名|英文变量|程序员(?:能)?看(?:得)?懂|按类和方法|\\bif\\s?else\\b|判断语句|接口路径|后台接口"
                     + "|后端接口|\\bapi\\b(?:路径|接口|文档|地址)|接口(?:地址|文档)|调用接口|调接口|调用(?:你的|系统的|平台的)?\\bapi\\b",
             "(?:后台|后端|系统|程序)(?:里|中)?(?:的)?(?:哪个|哪些|什么)(?:类(?!型|别|目|似)|方法|函数|接口(?!人)|代码)",
             "(?:哪个|什么)(?:函数|类(?!型|别|目|似))(?:出的?问题|报错|出错)",
@@ -354,6 +361,14 @@ final class AiChatScopeGate {
             + "|\\bkotlin\\b|\\bgolang\\b|\\bgo\\b语言|c\\+\\+|c#|\\bnode\\s?js\\b|\\bnode\\b|\\bphp\\b|\\bruby\\b|\\brust\\b|\\bscala\\b|\\bperl\\b"
             + "|\\blua\\b)");
     private static final Pattern PROGRAMMING_WORD = Pattern.compile("脚本|代码|程序|写|编写|实现|函数|语句|语法|开发|工具|\\bscript\\b|\\bcode\\b|\\bprogram\\b");
+    /**
+     * "实现原理/程序逻辑/计算逻辑" ask how a feature works, a rule question, unless the sentence asks for code: a programming
+     * verb next to it ("把程序逻辑写出来") or a code word anywhere ("后台的实现原理", "用代码讲实现原理").
+     */
+    private static final Pattern LOGIC_WORD = Pattern.compile("程序逻辑|实现原理|实现逻辑|计算逻辑");
+    private static final Pattern LOGIC_AS_CODE = Pattern.compile("(?:写|编写|改|修改|修复|调试|生成|重构|优化|开发|审查|\\breview\\b)(?:一下|下)?.{0,6}?"
+            + "(?:程序逻辑|实现原理|实现逻辑|计算逻辑)|(?:程序逻辑|实现原理|实现逻辑|计算逻辑).{0,6}?(?:怎么写|写出来|写成|写一下|改成|改为|怎么改)"
+            + "|代码|源码|脚本|函数|变量|类名|方法名|类和方法|接口|后台|后端|程序员|伪码|伪代码|编程");
     private static final Pattern CODE_EN = Pattern.compile(String.join("|",
             "\\bsource\\s+code\\b",
             "\\b(?:write|fix|debug|refactor|modify|change|edit|review|generate|patch|implement|draft|create|build|code|develop|make)\\s+"
@@ -377,10 +392,41 @@ final class AiChatScopeGate {
     /** The three views of one question that the rules run on (see the class comment). */
     record Forms(String original, String lower, String spaced, String compact) {}
 
-    /** The category that puts this question outside the assistant's scope, or empty when it may be answered. */
+    /**
+     * The category that puts this question outside the assistant's scope, or empty when it may be answered. A pasted
+     * internal error ("页面报错 NullPointerException 怎么办", "审核时提示触发器拦截") that asks for nothing else is
+     * {@link Category#INTERNAL_ERROR}: a fixed, helpful reply instead of "I don't debug code".
+     */
     static Optional<Category> classify(String message) {
         if (message == null || message.isBlank()) return Optional.empty();
-        Forms forms = forms(message);
+        Optional<Category> category = classifyForms(forms(message));
+        if (category.isPresent() && (category.get() == Category.CODE || category.get() == Category.SQL)
+                && pastedInternalError(message)) {
+            // The rest of the sentence is classified without the error's own words: any other request keeps its refusal.
+            Optional<Category> rest = classifyForms(forms(ERROR_TOKEN.matcher(fold(message)).replaceAll(" 系统报错 ")));
+            if (rest.isEmpty()) return Optional.of(Category.INTERNAL_ERROR);
+        }
+        return category;
+    }
+
+    /** Words that only appear in a pasted internal error: exception names, stack traces, database triggers. */
+    private static final Pattern ERROR_TOKEN = Pattern.compile("(?<![\\w])[A-Z][A-Za-z0-9]*(?:Exception|Error)(?![\\w])"
+            + "|空指针(?:异常)?|堆栈(?:信息)?|(?i:\\bstack\\s?trace\\b|\\btraceback\\b)|触发器|存储过程");
+    /** The user says the platform showed it ("报错", "提示", "弹出", "拦截", "失败"). */
+    private static final Pattern ERROR_CONTEXT = Pattern.compile("报错|报了|出错|错误|异常|提示|弹出|弹窗|出现|显示|拦截|拦住|失败|不让"
+            + "|(?i:\\berror\\b|\\bfailed\\b|\\bshows?\\b|\\bpopped\\b)");
+    /** Asking to fix, debug or locate code is a code request, whatever error it starts from. */
+    private static final Pattern FIX_REQUEST = Pattern.compile("(?<![填书抄描])写|(?<![更])改|修复|修一下|调试|重构|优化|开发|编程|代码|源码"
+            + "|后端|后台|哪个类|哪个方法|哪个函数|函数|接口|(?i:\\bfix\\b|\\bdebug\\b|\\bpatch\\b|\\bcode\\b)");
+
+    /** An internal error message the user saw and pasted, without asking for code, a fix or anything technical. */
+    static boolean pastedInternalError(String message) {
+        String text = fold(message);
+        String compact = withoutCjkSpaces(text.toLowerCase(Locale.ROOT));
+        return ERROR_TOKEN.matcher(text).find() && ERROR_CONTEXT.matcher(compact).find() && !FIX_REQUEST.matcher(compact).find();
+    }
+
+    private static Optional<Category> classifyForms(Forms forms) {
         String compact = forms.compact();
         String spaced = forms.spaced();
         if (JAILBREAK_ZH.matcher(compact).find() || JAILBREAK_EN.matcher(spaced).find()) return Optional.of(Category.JAILBREAK);
@@ -401,6 +447,7 @@ final class AiChatScopeGate {
             return Optional.of(Category.FILES);
         }
         if (CODE_ZH.matcher(compact).find() || CODE_EN.matcher(spaced).find() || languageForCode(compact)
+                || (LOGIC_WORD.matcher(compact).find() && LOGIC_AS_CODE.matcher(compact).find())
                 || INTERNAL_NAME.matcher(forms.original()).find()) {
             return Optional.of(Category.CODE);
         }
@@ -432,13 +479,58 @@ final class AiChatScopeGate {
         return false;
     }
 
+    /**
+     * A platform permission code ("sales_order:approve", "payroll:view:all"): the access-denied message itself says
+     * "缺少操作权限：sales_order:approve". Table names and URLs ("jdbc:postgresql://") never have this shape.
+     */
+    private static final Pattern PERMISSION_CODE = Pattern.compile("(?<![\\w/.@-])(?!(?:https?|s?ftp|ssh|file|mailto|jdbc|redis|mysql|postgres(?:ql)?"
+            + "|mongodb|wss?|tcp|udp|git|javascript|data|ldap|smtp|sql|select|insert|update|delete|drop|alter|create|truncate|exec"
+            + "|execute|cmd|bash|sh|shell|powershell|python|java|node|docker|kubectl|sudo|root|db|database|table|schema):)"
+            + "[a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*){1,2}(?![\\w:/.@-])");
+    /**
+     * A field name inside an error the platform showed ("导入报错 goods_code 不能为空"): the user reads it off the
+     * screen. A question about tables or field names ("stock_balances 这张表有哪些字段") is never one.
+     */
+    private static final Pattern SHOWN_ERROR = Pattern.compile("报错|提示|错误|出错|弹出|(?i:\\berror\\b)");
+    private static final Pattern SCHEMA_WORDS = Pattern.compile("表|字段名|列名|数据库|结构|(?i:\\btable\\b|\\bcolumn\\b|\\bschema\\b|\\bsql\\b)");
+    private static final Pattern SNAKE_NAME = Pattern.compile("(?<![\\w@.])[a-z]{2,}(?:_[a-z0-9]{2,})+(?![\\w@.])");
+    /**
+     * The server status page reports disk, memory, CPU, backup and database figures; asking what such a figure on that
+     * page means is a page question. Asking where something is stored, or to clean, restart or connect, is not.
+     */
+    private static final Pattern STATUS_PAGE = Pattern.compile("服务器状态(?:页|页面|监控)?(?:上|里|中)");
+    private static final Pattern STATUS_PAGE_QUESTION = Pattern.compile("是什么意思|什么意思|啥意思|代表什么|代表啥|含义|指什么|怎么理解|怎么看"
+            + "|正常吗|是否正常|高不高|多不多|显示什么|显示的是什么|为什么(?:是|显示|变|会|这么)");
+    private static final Pattern STATUS_PAGE_REQUEST = Pattern.compile("清理|删除|删掉|删|重启|关闭|关掉|停掉|停止|释放|扩容|登录|登陆|连接到|连上"
+            + "|执行|运行|命令|杀|结束|放在|存在|存放|位置|路径|地址|端口|\\bip\\b|密码|账号|帮我|给我|替我|怎么(?:处理|解决|办|弄|清)");
+    private static final Pattern STATUS_FIGURE = Pattern.compile("磁盘(?:空间|还剩|剩余|占用|满了|使用率|容量)?|内存(?:占用|使用率)?|\\bcpu\\b"
+            + "|备份(?:策略|周期|频率|机制|文件|状态|结果)?|数据库(?:连接数?|大小|容量|状态|备份)?");
+
+    /** A secret word inside a code-shaped name; no platform permission code holds one ("client:credit:view" does not). */
+    private static final Pattern SECRET_PART = Pattern.compile("(?i)password|passwd|passphrase|pwd|secret|token|api_?key|private_?key"
+            + "|credentials?|cookie|session|jwt");
+
+    private static boolean secretPart(String name) {
+        return SECRET_PART.matcher(name).find();
+    }
+
     /** Folds the question and builds its three views (package-private for tests). */
     static Forms forms(String message) {
-        String folded = fold(message);
+        // A name that holds a secret word ("datasource:password", "admin_password") is never read as business text.
+        String folded = PERMISSION_CODE.matcher(fold(message))
+                .replaceAll(code -> secretPart(code.group()) ? Matcher.quoteReplacement(code.group()) : "业务权限");
+        if (SHOWN_ERROR.matcher(folded).find() && !SCHEMA_WORDS.matcher(folded).find() && !FIX_REQUEST.matcher(folded).find()) {
+            folded = SNAKE_NAME.matcher(folded)
+                    .replaceAll(name -> secretPart(name.group()) ? Matcher.quoteReplacement(name.group()) : "业务字段");
+        }
         String lower = CODE_TOKEN.matcher(folded.toLowerCase(Locale.ROOT)).replaceAll(" bizcode ");
         String spaced = lower.replaceAll("[\\p{P}\\p{S}&&[^+#]]+", " ").replaceAll("\\s+", " ").strip();
         spaced = BUSINESS_CODE_EN.matcher(spaced).replaceAll("bizcode");
         String compact = withoutCjkSpaces(spaced);
+        if (STATUS_PAGE.matcher(compact).find() && STATUS_PAGE_QUESTION.matcher(compact).find()
+                && !STATUS_PAGE_REQUEST.matcher(compact).find()) {
+            compact = STATUS_FIGURE.matcher(compact).replaceAll("页面指标");
+        }
         // Business phrases are read as a whole; "X的代码" only while nothing asks to write or change code.
         compact = BUSINESS_PHRASES.matcher(compact).replaceAll("业务页");
         compact = BUSINESS_CODE.matcher(compact).replaceAll("业务编码");
@@ -513,9 +605,18 @@ final class AiChatScopeGate {
     static String refusal(Category category, String language) {
         String lang = language == null ? "zh" : language;
         return switch (lang) {
-            case "en" -> englishLead(category) + " " + englishOffer();
-            case "ko" -> koreanLead(category) + " " + koreanOffer();
-            default -> chineseLead(category) + chineseOffer();
+            case "en" -> category == Category.INTERNAL_ERROR ? englishLead(category) : englishLead(category) + " " + englishOffer();
+            case "ko" -> category == Category.INTERNAL_ERROR ? koreanLead(category) : koreanLead(category) + " " + koreanOffer();
+            default -> category == Category.INTERNAL_ERROR ? chineseLead(category) : chineseLead(category) + chineseOffer();
+        };
+    }
+
+    /** What the assistant can do, in the reply language (zh, en or ko): added to an honest "not found" answer. */
+    static String offer(String language) {
+        return switch (language == null ? "zh" : language) {
+            case "en" -> englishOffer();
+            case "ko" -> koreanOffer();
+            default -> chineseOffer();
         };
     }
 
@@ -573,6 +674,8 @@ final class AiChatScopeGate {
             case PROMPT -> "这个我帮不了：我的内部设置和 AI 服务配置不能透露。";
             case JAILBREAK -> "这个我帮不了：我会一直按平台的规则工作，不能切换角色或忽略这些规则。";
             case SECURITY -> "这个我帮不了：我不能协助绕过安全措施或攻击系统。";
+            case INTERNAL_ERROR -> "这像是系统内部出错的提示，不是你在页面上能改好的。请把报错截图和当时的操作(哪个页面、哪张单据、点了什么)"
+                    + "发给管理员。我能帮你的是：你告诉我当时在做什么操作，我按业务规则帮你看看这一步要满足什么条件、接下来怎么办。";
         };
     }
 
@@ -586,6 +689,10 @@ final class AiChatScopeGate {
             case PROMPT -> "I can't help with that: my internal setup and the AI service configuration are not shared.";
             case JAILBREAK -> "I can't help with that: I always work by this platform's rules and can't switch roles or ignore them.";
             case SECURITY -> "I can't help with that: I don't help bypass security or attack systems.";
+            case INTERNAL_ERROR -> "This looks like an internal system error, not something you can fix on the page. Please send a "
+                    + "screenshot of the error and what you were doing (which page, which document, what you clicked) to your "
+                    + "administrator. I can help with the business side: tell me what you were doing and I will explain what that "
+                    + "step requires and what to do next.";
         };
     }
 
@@ -599,6 +706,9 @@ final class AiChatScopeGate {
             case PROMPT -> "도와드릴 수 없습니다: 내부 설정과 AI 서비스 구성은 공개하지 않습니다.";
             case JAILBREAK -> "도와드릴 수 없습니다: 항상 플랫폼 규칙에 따라 일하며 역할을 바꾸거나 규칙을 무시할 수 없습니다.";
             case SECURITY -> "도와드릴 수 없습니다: 보안 우회나 시스템 공격은 돕지 않습니다.";
+            case INTERNAL_ERROR -> "시스템 내부 오류로 보이며, 화면에서 직접 고칠 수 있는 문제가 아닙니다. 오류 화면 캡처와 당시 작업(어느 페이지, "
+                    + "어느 전표, 무엇을 눌렀는지)을 관리자에게 보내 주세요. 당시 하던 작업을 알려 주시면 그 단계의 업무 조건과 다음에 할 일을 "
+                    + "도와드릴 수 있습니다.";
         };
     }
 

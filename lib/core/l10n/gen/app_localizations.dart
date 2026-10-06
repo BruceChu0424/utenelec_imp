@@ -15388,6 +15388,36 @@ abstract class AppLocalizations {
   /// **'查工作待办'**
   String get aiAuditPurposeWorkbench;
 
+  /// No description provided for @aiAuditPurposeDirectory.
+  ///
+  /// In zh, this message translates to:
+  /// **'查功能在哪'**
+  String get aiAuditPurposeDirectory;
+
+  /// No description provided for @aiAuditPurposeAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'查我的权限'**
+  String get aiAuditPurposeAccess;
+
+  /// No description provided for @aiAuditPurposeSalesOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'查销售订单进度'**
+  String get aiAuditPurposeSalesOrder;
+
+  /// No description provided for @aiAuditPurposePurchaseOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'查采购订单状态'**
+  String get aiAuditPurposePurchaseOrder;
+
+  /// No description provided for @aiAuditPurposeSubcontract.
+  ///
+  /// In zh, this message translates to:
+  /// **'查委外单状态'**
+  String get aiAuditPurposeSubcontract;
+
   /// No description provided for @aiAuditPurposePageHelp.
   ///
   /// In zh, this message translates to:

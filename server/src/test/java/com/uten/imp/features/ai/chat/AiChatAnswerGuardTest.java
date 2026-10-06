@@ -222,4 +222,152 @@ class AiChatAnswerGuardTest {
         assertThat(AiChatAnswerGuard.MEMORY_MARKER.matcher("在此之前").find()).isFalse();
         assertThat(AiChatAnswerGuard.MEMORY_MARKER.matcher("earlier than planned").find()).isFalse();
     }
+
+    /** P1-6: a page, menu or button name the reply quotes, or a menu path it writes, must come from what it was given. */
+    @Test void inventedPageNamesAndMenuPathsAreRejectedAsNavigationProblems() {
+        String noPlaces = "报工填本次实际产量，报工后还要质检和入库。";
+        // The live failure: a fluent menu path with nothing behind it.
+        var invented = AiChatAnswerGuard.check("在「生产管理 > 生产报工」点「新建」，填本次数量。", noPlaces, "怎么报工");
+        assertThat(invented.accepted()).isFalse();
+        assertThat(invented.problems()).contains("NAV:生产管理 > 生产报工", "NAV:新建");
+        assertThat(AiChatAnswerGuard.check("打开 生产管理 > 生产报工 页面即可。", noPlaces, "怎么报工").problems())
+                .as("an unquoted menu path is checked too").contains("NAV:生产管理 > 生产报工");
+        assertThat(AiChatAnswerGuard.check("当前下达入口在标题为「物料分析准备」的页面。", noPlaces, "").problems())
+                .contains("NAV:物料分析准备");
+
+        // Names the sources, the page, the directory or the user gave pass; spaces, punctuation and "页" do not matter.
+        String places = noPlaces + "\n生产报工页: 在生产管理里打开, 点 新建 按钮。";
+        assertThat(AiChatAnswerGuard.check("在「生产管理 > 生产报工」点「新建」。", places, "怎么报工").accepted()).isTrue();
+        assertThat(AiChatAnswerGuard.check("到「生产报工页面」去填。", places, "").accepted()).isTrue();
+        assertThat(AiChatAnswerGuard.check("在「生产报工」里填。", noPlaces, "生产报工在哪里").accepted())
+                .as("the user's own words").isTrue();
+        assertThat(AiChatAnswerGuard.check("在「仓库任务中心」里处理。", noPlaces, "", "", java.util.List.of(), 4000,
+                "仓库管理\n仓库任务中心\n工作台 > 仓库管理 > 仓库任务中心", null).accepted()).as("a directory title").isTrue();
+        assertThat(AiChatAnswerGuard.check("刚才说的「生产报工」页。", noPlaces, "Q: 怎么报工\nA: 在「生产报工」页填。", "",
+                java.util.List.of(), 4000).accepted()).as("named earlier in the conversation").isTrue();
+
+        // Symbols and comparisons are not names.
+        assertThat(AiChatAnswerGuard.check("估算值带「≈」。", noPlaces, "").accepted()).isTrue();
+        assertThat(AiChatAnswerGuard.check("实收 > 0 时才入库。", noPlaces + " 0", "").problems())
+                .noneMatch(problem -> problem.startsWith("NAV"));
+    }
+
+    /**
+     * Live regression 2026-10-06 (#3 单重, #5 汇率): the baseline's grounded answers quote rules in 「」 for emphasis and
+     * write an order of precedence with ">"; neither is a page, menu or button, so neither is checked as navigation.
+     * Lines of those two answers (brackets written half-width); nothing known is passed in, so only real navigation
+     * can be reported.
+     */
+    @Test void rulesQuotedForEmphasisAndPrecedenceChainsAreNotNavigation() {
+        String weight = """
+                没称重的入库行本身不参与单重的计算、也不会产生新的学习证据；页面上用到的单重是从其它「有独立数量又有实称重量」的证据(称样、盘点、称过重的到货/产成品/其它入库)学出来的，而这条没称的入库行的重量再反过来按「学到的单重(或库存均重)× 数量」估算，估算值带「≈」，实在推不出来就显示「未称」。
+                1. 没称的行不记观测：单重学习只认「独立数量 + 实称重量」。到货登记只对每条称过的收货行记一条观测(供应商取本行订货单的供应商)；没称的行、按称重改数量的行、按重量计的行都不记。手工其它入库、产成品进仓审核时同样只记「称过且数量不是按称重推算」的行。所以本次没称重，对单重学习没有贡献。
+                   - 否则按「入库未称」：单重可靠(绿/黄)→ 按学到的单重估算；否则按库存均重；再否则按任意单重估算；都没有 → 未知，界面显示「未称」，永远不显示成 0。
+                下一步：
+                - 想看或核对单重：货品详情「库存与出入库」页签里的单重学习(当前单重、供应商对比、观测记录、称样与设置)；仓库中心 → 库存查询 → 「库存分析」里的单重学习；单据行右键「称样校准...」，数个数、称重量，保存后立即刷新该货品单重。""";
+        String rate = """
+                1. 规则是「出货的记账汇率在财务放行这一刻确认并冻结到本单；仓库确认出库按冻结值折算本币立应收」。所以起决定作用的是放行日，财务可按放行当日汇率修改后确认。
+                2. 放行前财审页「记账汇率」框的预填顺序：本单已冻结的 > 本位币填 1 > 币种主档参考汇率 > 空(主档没维护时由财务填写)。主档只是默认值来源，没维护不会挡放行，但空着放行仍会被拦下。
+                8. 后续收款时「本批汇率报价」按币种预填主档参考汇率(本位币锁 1，主档没有则留空由财务按银行回单填)；收款汇率与应收记账汇率的差额进汇兑损益，不回调应收。""";
+        java.util.List<String> problems = new java.util.ArrayList<>();
+        AiChatAnswerGuard.checkNavigation(rate, "", problems);
+        assertThat(problems).isEmpty();
+        AiChatAnswerGuard.checkNavigation(weight, "", problems);
+        assertThat(problems).as("only the tab name is navigation").containsExactly("NAV:库存与出入库");
+        problems.clear();
+        AiChatAnswerGuard.checkNavigation(weight, "货品详情页的「库存与出入库」页签显示单重学习", problems);
+        assertThat(problems).isEmpty();
+        // Precedence with a step after a number is still not a path ("… 1 > 币种主档参考汇率 > 留空").
+        AiChatAnswerGuard.checkNavigation("预填顺序：本单已冻结的 > 本位币填 1 > 币种主档参考汇率 > 留空。", "", problems);
+        assertThat(problems).isEmpty();
+        // A path that starts at the workbench, or follows "路径：", is navigation wherever it stands.
+        AiChatAnswerGuard.checkNavigation("路径：仓库管理 > 库存台账。\n也可以走 工作台 > 仓库管理 > 库存台账。", "仓库管理", problems);
+        assertThat(problems).containsExactly("NAV:仓库管理 > 库存台账", "NAV:工作台 > 仓库管理 > 库存台账");
+        // The later steps of a quoted path continue it; a status flow written with arrows is not a path.
+        problems.clear();
+        AiChatAnswerGuard.checkNavigation("进入「设置」→「外观」→「字号」，往大一档点选。", "设置页", problems);
+        assertThat(problems).containsExactly("NAV:外观", "NAV:字号");
+        problems.clear();
+        AiChatAnswerGuard.checkNavigation("状态从「草稿」→「待财务审核」→「已审核」。", "", problems);
+        assertThat(problems).isEmpty();
+    }
+
+    /**
+     * When unverified navigation is the only problem, the lines that carry it are dropped and the verified rest is kept
+     * (with no lead-in left dangling); with any other problem, or too little left, the whole reply is rejected.
+     */
+    @Test void unverifiedNavigationLinesAreDroppedWhenTheRestIsGrounded() {
+        String rule = "超收：最多可收 = 订货量 + 允许超收量。允许超收量按订货单明细上的「允许超收%」计算；在这个范围以内照常入库、立应付；"
+                + "超过的话整张收货单先不入库、不立应付，转财务审批，财务可以全部接收、指定接收或拒收超量。";
+        String reply = "能收，但要看多送的部分有没有超过「订货量+允许超收量」。\n"
+                + "1. 最多可收 = 订货量 + 允许超收量，允许超收量按订货单明细上的「允许超收%」计算。\n"
+                + "2. 在这个范围以内照常入库、立应付；超过的话整张收货单先不入库、不立应付，转财务审批。\n"
+                + "3. 财务可以全部接收、指定接收或拒收超量。\n"
+                + "下一步：\n- 到「超收审批中心」里看审批进度。";
+        var kept = AiChatAnswerGuard.check(reply, rule, "供应商多送了能收吗");
+        assertThat(kept.accepted()).as(kept.problems().toString()).isTrue();
+        assertThat(kept.reply()).doesNotContain("超收审批中心").doesNotContain("下一步").contains("转财务审批");
+        assertThat(kept.dropped()).containsExactly("NAV:超收审批中心");
+        assertThat(kept.problems()).isEmpty();
+
+        var withNumber = AiChatAnswerGuard.check(reply + "\n4. 一般超收 7% 以内都能收。", rule, "供应商多送了能收吗");
+        assertThat(withNumber.accepted()).isFalse();
+        assertThat(withNumber.problems()).contains("NAV:超收审批中心", "NUMBER:7");
+        var mostlyNavigation = AiChatAnswerGuard.check("能收。\n到「超收审批中心」里点「批准超收」按钮，再到「到货异常」页签确认。", rule, "");
+        assertThat(mostlyNavigation.accepted()).as("too little would remain").isFalse();
+        assertThat(mostlyNavigation.dropped()).isEmpty();
+    }
+
+    /**
+     * ADR-159 (A7, live N2 「发布(PUBLISHED)」): internal status and type codes taken from the documents are dropped, or
+     * become the Chinese meaning the sources give them; business acronyms, document numbers and words the user typed or
+     * can see stay; an English reply is not touched.
+     */
+    @Test void internalStatusCodesAreRemovedOrSaidInChinese() {
+        // A code in brackets after the word it stands for goes with its brackets.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("复核通过后再由发布人发布\uFF08PUBLISHED\uFF09才算办结。", "发布\uFF08PUBLISHED\uFF09", ""))
+                .isEqualTo("复核通过后再由发布人发布才算办结。");
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("先在物料分析里选好路线(MAKE/BUY)再下达。", "", ""))
+                .isEqualTo("先在物料分析里选好路线再下达。");
+        // A hyphenated or numbered code is a document number, checked as a code elsewhere: it stays.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("刚才的 TASK-A01 还缺外壳，见 ADR-135 的规则。", "", ""))
+                .isEqualTo("刚才的 TASK-A01 还缺外壳，见 ADR-135 的规则。");
+        // A code on its own: the meaning the sources pair with it, in any of the three written forms.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("订单状态是 SHIPPED。", "出货单 SHIPPED\uFF08已发货\uFF09后不能再改", ""))
+                .isEqualTo("订单状态是已发货。");
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("订单状态是 SHIPPED。", "| 已发货\uFF08SHIPPED\uFF09 | 仓库确认出库 |", ""))
+                .isEqualTo("订单状态是已发货。");
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("计划状态为 WAITING，等物料齐了再开工。", "WAITING = 待开工", ""))
+                .isEqualTo("计划状态为待开工，等物料齐了再开工。");
+        // The meaning already said right before the code: the code just goes.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("状态变为已发货 SHIPPED 后不能再改。", "已发货\uFF08SHIPPED\uFF09", ""))
+                .isEqualTo("状态变为已发货后不能再改。");
+        // No meaning in the sources: the code goes, with the separators and spaces it leaves behind.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("BUY、SUBCONTRACT 是物料任务，根产品可先生成 WAITING 生产计划；MAKE child item 也可以。",
+                "", "")).isEqualTo("是物料任务，根产品可先生成生产计划；child item 也可以。");
+        // Business acronyms, document numbers and order numbers stay.
+        String acronyms = "下单前先核对 BOM 里每个子件的用量，到货后做 IQC 来料检验，完工后做 FQC 成品检验，出货前再做 OQC 抽检；"
+                + "这些检验统称 QC。采购按 SKU 和 MOQ 下单，清单可以导出成 PDF 或 Excel 交给 ERP 以外的同事，也可以问 AI 助手；"
+                + "详细规则见 ADR-135，订单号 XD20261006000003 的单位是 PCS。";
+        assertThat(AiChatAnswerGuard.withoutStatusCodes(acronyms, "", "")).isEqualTo(acronyms);
+        // The user's own word or what is on their screen stays.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("PUBLISHED 表示已经发布给员工查看。", "", "PUBLISHED 是什么意思"))
+                .isEqualTo("PUBLISHED 表示已经发布给员工查看。");
+        // An English reply's capitals are words.
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("Do NOT submit the order twice; it is SHIPPED once approved.", "", ""))
+                .isEqualTo("Do NOT submit the order twice; it is SHIPPED once approved.");
+        assertThat(AiChatAnswerGuard.withoutStatusCodes("没有代码的回答不变。", "", "")).isEqualTo("没有代码的回答不变。");
+    }
+
+    /** ADR-159 (A7) through the full check: a document's code is not on the user's screen, a page's own value is. */
+    @Test void theGuardDropsDocumentCodesButKeepsWhatThePageShows() {
+        String rule = "工资审核通过 → 发布人「待发布」卡\uFF08发布办结\uFF09；发布\uFF08PUBLISHED\uFF09后员工可以查看本人工资条。";
+        var verdict = AiChatAnswerGuard.check("审核通过后由发布人发布\uFF08PUBLISHED\uFF09，发布后员工才能看到本人工资条。", rule, "",
+                "工资条怎么发布", java.util.List.of(), 4000, "", null);
+        assertThat(verdict.accepted()).as(verdict.problems().toString()).isTrue();
+        assertThat(verdict.reply()).isEqualTo("审核通过后由发布人发布，发布后员工才能看到本人工资条。");
+        var onPage = AiChatAnswerGuard.check("第 3 行的路线是 MAKE，可以直接下达车间。", "第 3 行 路线 MAKE", "", "第3行怎么下达",
+                java.util.List.of(), 4000, "第 3 行 路线 MAKE", null);
+        assertThat(onPage.reply()).contains("MAKE");
+    }
 }

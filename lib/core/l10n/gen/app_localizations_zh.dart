@@ -8330,6 +8330,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAuditPurposeWorkbench => '查工作待办';
 
   @override
+  String get aiAuditPurposeDirectory => '查功能在哪';
+
+  @override
+  String get aiAuditPurposeAccess => '查我的权限';
+
+  @override
+  String get aiAuditPurposeSalesOrder => '查销售订单进度';
+
+  @override
+  String get aiAuditPurposePurchaseOrder => '查采购订单状态';
+
+  @override
+  String get aiAuditPurposeSubcontract => '查委外单状态';
+
+  @override
   String get aiAuditPurposePageHelp => '了解页面填写方法';
 
   @override

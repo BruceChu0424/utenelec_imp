@@ -1,0 +1,4248 @@
+{
+  "note": "由 test/shared/ai/ai_feature_map_test.dart 生成, 请勿手改; 重新生成: UPDATE_AI_FEATURE_MAP=1 flutter test test/shared/ai/ai_feature_map_test.dart",
+  "features": [
+    {
+      "route": "/admin/ai-settings",
+      "title": "AI 服务设置页",
+      "aliases": [
+        "AI服务设置页"
+      ],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/AI服务设置页.md"
+    },
+    {
+      "route": "/admin/audit-logs",
+      "title": "审计日志",
+      "aliases": [
+        "审计中心",
+        "审计日志页"
+      ],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "系统管理",
+          "审计日志"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "audit_log:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/审计日志页.md"
+    },
+    {
+      "route": "/admin/permissions",
+      "title": "权限管理",
+      "aliases": [
+        "权限管理页"
+      ],
+      "module": "系统管理",
+      "purpose": "权限管理页是当前“全员基础包 + 部门配置 + 个人覆盖 + 数据范围”的管理入口。",
+      "paths": [
+        [
+          "工作台",
+          "系统管理",
+          "权限管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "account:support",
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/权限管理页.md"
+    },
+    {
+      "route": "/admin/server-status",
+      "title": "服务器状态",
+      "aliases": [
+        "服务器状态页"
+      ],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "系统管理",
+          "服务器状态"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "server_status:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/服务器状态页.md"
+    },
+    {
+      "route": "/admin/system-settings",
+      "title": "系统设置",
+      "aliases": [
+        "系统设置页"
+      ],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "系统管理",
+          "系统设置"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/系统设置页.md"
+    },
+    {
+      "route": "/basicinfo",
+      "title": "基础资料",
+      "aliases": [
+        "基础资料页"
+      ],
+      "module": "基础资料",
+      "purpose": "包含：货品资料、颜色资料、账户资料、模具资料、基本单位、收付款类别、客户资料、币种资料。",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "account:view",
+        "client:view",
+        "color:view",
+        "currency:view",
+        "goods:view",
+        "mould:view",
+        "payment_style:view",
+        "settlement_method:view",
+        "supplier:view",
+        "unit:view",
+        "warehouse:view"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/basicinfo/goods",
+        "/basicinfo/mould",
+        "/basicinfo/client",
+        "/basicinfo/supplier",
+        "/basicinfo/color",
+        "/basicinfo/unit",
+        "/basicinfo/currency",
+        "/basicinfo/warehouse",
+        "/basicinfo/account",
+        "/basicinfo/payment-style",
+        "/basicinfo/settlement-methods"
+      ],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/account",
+      "title": "账户资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "账户·期初·余额",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "账户资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "account:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/client",
+      "title": "客户资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "客户分类与主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "客户资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "client:view"
+      ],
+      "allOf": [
+        "client_category:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/color",
+      "title": "颜色资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "颜色主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "颜色资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "color:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/currency",
+      "title": "币种资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "币种·参考汇率",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "币种资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "currency:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/goods",
+      "title": "货品资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "物料分类树与货品主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "货品资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "goods:view"
+      ],
+      "allOf": [
+        "material_category:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/mould",
+      "title": "模具资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "模具系列分类与主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "模具资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "mould:view"
+      ],
+      "allOf": [
+        "mould_category:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/payment-style",
+      "title": "收付款类别",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "资产负债等六大类",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "收付款类别"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "payment_style:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/settlement-methods",
+      "title": "结算方式",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "结账字典·账期口径",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "结算方式"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "settlement_method:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/supplier",
+      "title": "供应商资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "供应商分类与主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "供应商资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "supplier:view"
+      ],
+      "allOf": [
+        "supplier_category:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/unit",
+      "title": "基本单位",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "计量单位主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "基本单位"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "unit:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/basicinfo/warehouse",
+      "title": "仓库资料",
+      "aliases": [],
+      "module": "基础资料",
+      "purpose": "仓库主档",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "基础资料",
+          "仓库资料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "warehouse:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/基础资料页.md"
+    },
+    {
+      "route": "/dashboard",
+      "title": "工作台",
+      "aliases": [
+        "工作台首页"
+      ],
+      "module": "工作台",
+      "purpose": "给所有员工(全员可见)使用的登录后默认落地页，是 App 的\"门面\"，也是全部业务功能的集散中心。",
+      "paths": [
+        [
+          "导航栏",
+          "工作台"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": null,
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/工作台首页.md"
+    },
+    {
+      "route": "/department",
+      "title": "部门管理",
+      "aliases": [
+        "部门管理页"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "部门管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "department:view"
+      ],
+      "allOf": [
+        "employee:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/部门管理页.md"
+    },
+    {
+      "route": "/employee",
+      "title": "员工档案",
+      "aliases": [
+        "员工列表页",
+        "员工档案列表页"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "员工档案"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "employee:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/员工列表页.md"
+    },
+    {
+      "route": "/employee/:id",
+      "title": "员工详情页",
+      "aliases": [],
+      "module": "行政与人力资源部",
+      "purpose": "持相应权限的用户查看员工档案。",
+      "paths": [],
+      "parent": "/employee",
+      "record": true,
+      "anyOf": [
+        "employee:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/员工详情页.md"
+    },
+    {
+      "route": "/employee/:id/edit",
+      "title": "员工编辑页",
+      "aliases": [],
+      "module": "行政与人力资源部",
+      "purpose": "本页供持相应员工维护权限的人员编辑他人员工档案。",
+      "paths": [],
+      "parent": "/employee/:id",
+      "record": true,
+      "anyOf": [
+        "employee:edit"
+      ],
+      "allOf": [
+        "employee:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/员工编辑页.md"
+    },
+    {
+      "route": "/employee/:id/offboarding",
+      "title": "离职与数据交接页",
+      "aliases": [
+        "离职流程页"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [],
+      "parent": "/employee/:id",
+      "record": true,
+      "anyOf": [
+        "employee:offboard"
+      ],
+      "allOf": [
+        "employee:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/离职流程页.md"
+    },
+    {
+      "route": "/employee/onboarding",
+      "title": "入职向导",
+      "aliases": [
+        "入职流程页"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "入职向导"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "employee:create"
+      ],
+      "allOf": [
+        "department:view",
+        "employee:create",
+        "employee:pii:edit"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/入职流程页.md"
+    },
+    {
+      "route": "/expense",
+      "title": "我的报销",
+      "aliases": [
+        "报销列表页"
+      ],
+      "module": "常用功能",
+      "purpose": "员工管理自己报销单的列表入口。",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "我的报销"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "expense:apply"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/报销列表页.md"
+    },
+    {
+      "route": "/expense/:id",
+      "title": "报销详情页",
+      "aliases": [],
+      "module": "常用功能",
+      "purpose": "",
+      "paths": [],
+      "parent": "/expense",
+      "record": true,
+      "anyOf": [
+        "expense:apply"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/报销详情页.md"
+    },
+    {
+      "route": "/expense/approval",
+      "title": "报销审批",
+      "aliases": [
+        "报销审批列表页"
+      ],
+      "module": "钱流管理",
+      "purpose": "核对凭证、审批及登记付款",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "报销审批"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "expense:approve",
+        "expense:pay"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/报销审批列表页.md"
+    },
+    {
+      "route": "/expense/approval/:id",
+      "title": "报销审批详情页",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/expense/approval",
+      "record": true,
+      "anyOf": [
+        "expense:approve",
+        "expense:pay"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/报销审批详情页.md"
+    },
+    {
+      "route": "/expense/new",
+      "title": "新建报销页(新建)",
+      "aliases": [
+        "新建报销页"
+      ],
+      "module": "常用功能",
+      "purpose": "员工先保存申请，再到详情补齐原件和票据，最后提交。",
+      "paths": [],
+      "parent": "/expense",
+      "record": false,
+      "anyOf": [
+        "expense:apply"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/新建报销页.md"
+    },
+    {
+      "route": "/expense/settings",
+      "title": "报销设置",
+      "aliases": [
+        "报销业务设置页"
+      ],
+      "module": "钱流管理",
+      "purpose": "公司抬头、税号及提交凭证要求",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "报销设置"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "expense:settings"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/报销业务设置页.md"
+    },
+    {
+      "route": "/finance",
+      "title": "钱流管理",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "包含：业务审核中心、普通仓盘点审核、报价核价、报销审批、新建销售收款、新建银行存取款、新建采购付款、新建一般费用。",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "account:view",
+        "ar_ap_ledger:view",
+        "expense:approve",
+        "expense:pay",
+        "expense:settings",
+        "finance_asset:view",
+        "finance_bank_transfer:create",
+        "finance_expense:create",
+        "finance_order_approval:view",
+        "finance_other_income:create",
+        "finance_payment:create",
+        "finance_receipt:create",
+        "finance_report:view",
+        "procurement_iqc_rejection:view",
+        "sales_order_finance:view",
+        "sales_quote_finance:view",
+        "sales_shipment_finance:view",
+        "stock:count:finance_review",
+        "subcontract_loss_claim:view",
+        "supplier_settlement:view",
+        "workshop_material:view"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/finance/audits",
+        "/finance/quote-review",
+        "/finance/stock-count-review",
+        "/expense/approval",
+        "/expense/settings",
+        "/finance/receipts/new",
+        "/finance/payments/new",
+        "/finance/expenses/new",
+        "/finance/incomes/new",
+        "/finance/bank-transfers/new",
+        "/finance/checks",
+        "/finance/assets",
+        "/finance/payables",
+        "/finance/report/overview",
+        "/finance/report/detail",
+        "/finance/report/summary",
+        "/finance/report/statement",
+        "/finance/report/account-flow",
+        "/finance/report/customer-prepayment",
+        "/finance/report/recon",
+        "/finance/report/cost",
+        "/finance/report/gl",
+        "/reports/workshop-material"
+      ],
+      "doc": null
+    },
+    {
+      "route": "/finance/assets",
+      "title": "资产与待摊",
+      "aliases": [
+        "资产与待摊管理页"
+      ],
+      "module": "钱流管理",
+      "purpose": "管理资产价值及每月费用",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "资产与待摊"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_asset:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/资产与待摊管理页.md"
+    },
+    {
+      "route": "/finance/audits",
+      "title": "业务审核中心",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "销售订单 · 订单修改 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "业务审核中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_order_approval:view",
+        "procurement_iqc_rejection:view",
+        "sales_order_finance:view",
+        "sales_shipment_finance:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/finance/bank-transfers",
+      "title": "银行存取款列表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "finance_bank_transfer:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/bank-transfers/new",
+      "title": "新建银行存取款",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "账户之间转账",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "新建银行存取款"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_bank_transfer:create"
+      ],
+      "allOf": [
+        "finance_bank_transfer:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/checks",
+      "title": "支票管理",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "支票账户视图",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "支票管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "account:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/finance/expenses",
+      "title": "一般费用列表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "finance_expense:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/expenses/new",
+      "title": "新建一般费用",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "按部门分摊",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "新建一般费用"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_expense:create"
+      ],
+      "allOf": [
+        "finance_expense:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/incomes",
+      "title": "其它收入列表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "finance_other_income:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/incomes/new",
+      "title": "新建其它收入",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "按部门分摊",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "新建其它收入"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_other_income:create"
+      ],
+      "allOf": [
+        "finance_other_income:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/payables",
+      "title": "应付结算",
+      "aliases": [
+        "采购/委外应付结算工作台",
+        "采购委外应付结算工作台"
+      ],
+      "module": "钱流管理",
+      "purpose": "采购与委外应付、已付、抵销、未付及到期跟踪",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "应付结算"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "ar_ap_ledger:view",
+        "subcontract_loss_claim:view",
+        "supplier_settlement:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/采购委外应付结算工作台.md"
+    },
+    {
+      "route": "/finance/payments",
+      "title": "采购付款列表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "finance_payment:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/payments/new",
+      "title": "新建采购付款",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "支付供应商欠款，核对付款记录",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "新建采购付款"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_payment:create"
+      ],
+      "allOf": [
+        "finance_payment:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/quote-review",
+      "title": "报价核价",
+      "aliases": [
+        "销售报价财务核价页"
+      ],
+      "module": "钱流管理",
+      "purpose": "销售报价由财务定价格和折扣, 确认后销售才能转订货单",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "报价核价"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_quote_finance:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售报价财务核价页.md"
+    },
+    {
+      "route": "/finance/quote-review/:id",
+      "title": "核价详情",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance/quote-review",
+      "record": true,
+      "anyOf": [
+        "sales_quote_finance:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售报价财务核价页.md"
+    },
+    {
+      "route": "/finance/receipts",
+      "title": "销售收款列表",
+      "aliases": [
+        "钱流单据页"
+      ],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "finance_receipt:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/receipts/new",
+      "title": "新建销售收款",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "登记客户付款，核对尚未收清的款项",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "新建销售收款"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_receipt:create"
+      ],
+      "allOf": [
+        "finance_receipt:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/钱流单据页.md"
+    },
+    {
+      "route": "/finance/report",
+      "title": "钱流报表页",
+      "aliases": [
+        "财务报表页"
+      ],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/account-flow",
+      "title": "账户流水",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "账户进出流水",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "账户流水"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/cost",
+      "title": "成本核算",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "产品·销售成本",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "成本核算"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/customer-prepayment",
+      "title": "客户预收流水",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "查看预收款到账、抵扣、撤回及汇率差额",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "客户预收流水"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [
+        "customer_prepayment:view",
+        "finance:view:all",
+        "finance_report:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/finance/report/detail",
+      "title": "明细报表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "收款·付款·费用",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "明细报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/gl",
+      "title": "总账报表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "科目·资产·利润",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "总账报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/overview",
+      "title": "应收应付",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "客户·供应商余额",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "应收应付"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/recon",
+      "title": "对账单",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "月结对账",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "对账单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/statement",
+      "title": "往来对帐单",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "客户·供应商对账",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "往来对帐单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/report/summary",
+      "title": "汇总报表",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "收支汇总",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "汇总报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "finance_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/财务报表页.md"
+    },
+    {
+      "route": "/finance/sales-order-confirmations",
+      "title": "销售订单财务审核页",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "sales_order_finance:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售订单财务审核页.md"
+    },
+    {
+      "route": "/finance/sales-shipment-audits",
+      "title": "出货财务审核",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/finance",
+      "record": false,
+      "anyOf": [
+        "sales_shipment_finance:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售出货仓库作业页.md"
+    },
+    {
+      "route": "/finance/stock-count-review",
+      "title": "普通仓盘点审核",
+      "aliases": [],
+      "module": "钱流管理",
+      "purpose": "核对盘点前后数量与重量，审核通过后更新库存",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "普通仓盘点审核"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:count:finance_review"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/库存盘点审核页.md"
+    },
+    {
+      "route": "/hr/profile-changes",
+      "title": "信息变更审核",
+      "aliases": [],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "信息变更审核"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "profile:review"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/hr/tasks",
+      "title": "任务中心(行政与人力资源部)",
+      "aliases": [
+        "HR 工作台",
+        "HR任务中心",
+        "任务中心",
+        "入职周年",
+        "新近入职",
+        "生日关怀",
+        "生日提醒",
+        "试用期到期",
+        "转正办理",
+        "转正提醒"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "employee:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/HR任务中心.md"
+    },
+    {
+      "route": "/my-visitors",
+      "title": "我的访客",
+      "aliases": [],
+      "module": "常用功能",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "我的访客"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "visitor:host_confirm"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/访客预约系统.md"
+    },
+    {
+      "route": "/notice",
+      "title": "通知",
+      "aliases": [
+        "通知列表页"
+      ],
+      "module": "通知",
+      "purpose": "员工查看公司发布的所有通知公告的列表入口。",
+      "paths": [
+        [
+          "导航栏",
+          "通知"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "notice:read"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/通知列表页.md"
+    },
+    {
+      "route": "/notice/:id",
+      "title": "通知详情页",
+      "aliases": [],
+      "module": "通知",
+      "purpose": "员工阅读公司通知正文的详情页。",
+      "paths": [],
+      "parent": "/notice",
+      "record": true,
+      "anyOf": [
+        "notice:read"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/通知详情页.md"
+    },
+    {
+      "route": "/notice/publish",
+      "title": "通知发布",
+      "aliases": [
+        "通知发布页"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "通知发布"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "notice:publish"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/通知发布页.md"
+    },
+    {
+      "route": "/operations/workbench/purchase",
+      "title": "采购任务中心",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "按供应商拆订货",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "采购任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_order:view",
+        "purchase_receipt:view",
+        "purchase_request:view",
+        "purchase_return:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/operations/workbench/subcontract",
+      "title": "委外任务中心",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "按委外商拆订货",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_application:view",
+        "subcontract_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/payroll/generate",
+      "title": "工资条生成",
+      "aliases": [
+        "工资条生成页"
+      ],
+      "module": "财税部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "工资条生成"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "payroll:generate"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/工资条生成页.md"
+    },
+    {
+      "route": "/payroll/review",
+      "title": "工资条审核",
+      "aliases": [
+        "工资条审核页"
+      ],
+      "module": "财税部",
+      "purpose": "该页是工资批次的统一处理台：按权限显示草稿提交、财务审核、驳回和发布动作，并展示服务器返回的批次汇总与逐人工资明细。",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "工资条审核"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "payroll:publish",
+        "payroll:review"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/工资条审核页.md"
+    },
+    {
+      "route": "/payroll/slip",
+      "title": "工资条",
+      "aliases": [
+        "工资条列表页"
+      ],
+      "module": "常用功能",
+      "purpose": "给员工查看自己每个月工资条的列表入口。",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "工资条"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "payroll:view:all",
+        "payroll:view:self"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/工资条列表页.md"
+    },
+    {
+      "route": "/payroll/slip/:id",
+      "title": "工资条详情页",
+      "aliases": [],
+      "module": "常用功能",
+      "purpose": "员工查看某月工资条的明细页，是工资模块的核心交付物。",
+      "paths": [],
+      "parent": "/payroll/slip",
+      "record": true,
+      "anyOf": [
+        "payroll:view:all",
+        "payroll:view:self"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/工资条详情页.md"
+    },
+    {
+      "route": "/procurement/arrival-exceptions",
+      "title": "待退回供应商",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "待入库的退货量",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "待退回供应商"
+        ],
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "待退回供应商"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "supplier_return_task:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production",
+      "title": "生产管理",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "包含：生产任务中心、超产比例审批、追加用料审批、新建生产计划单、新建生产日报、计划明细、链路健康初筛、计划汇总。",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_daily_report:create",
+        "production_material_analysis:create",
+        "production_material_analysis:view",
+        "production_plan:approve",
+        "production_plan:create",
+        "production_plan:view",
+        "production_report:view",
+        "production_where_used:view",
+        "workshop_material:view"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/production/schedule",
+        "/production/overproduction-rate-requests",
+        "/production/material-increment-requests",
+        "/production/plans/new",
+        "/production/daily-reports/new",
+        "/production/reports/plan-detail",
+        "/production/reports/plan-summary",
+        "/production/where-used",
+        "/production/chain-health",
+        "/reports/workshop-material"
+      ],
+      "doc": null
+    },
+    {
+      "route": "/production/chain-health",
+      "title": "链路健康初筛",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "销售缺口→分析→计划→DRAW 关系的只读检查",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "链路健康初筛"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_material_analysis:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production/daily-reports",
+      "title": "生产日报列表",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production",
+      "record": false,
+      "anyOf": [
+        "production_daily_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production/daily-reports/:id/edit",
+      "title": "编辑生产日报",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production/daily-reports",
+      "record": true,
+      "anyOf": [
+        "production_daily_report:edit"
+      ],
+      "allOf": [
+        "production_daily_report:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产执行分段与报工页.md"
+    },
+    {
+      "route": "/production/daily-reports/new",
+      "title": "新建生产日报",
+      "aliases": [
+        "生产执行分段与报工页"
+      ],
+      "module": "生产管理",
+      "purpose": "进卡即新建，填本车间当日产量",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "新建生产日报"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_daily_report:create"
+      ],
+      "allOf": [
+        "production_daily_report:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产执行分段与报工页.md"
+    },
+    {
+      "route": "/production/material-analyses",
+      "title": "物料分析历史记录",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production",
+      "record": false,
+      "anyOf": [
+        "production_material_analysis:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产物料分析页.md"
+    },
+    {
+      "route": "/production/material-analyses/:id/sales-orders/:orderId",
+      "title": "分析关联订单货品清单页",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production/material-analyses",
+      "record": true,
+      "anyOf": [
+        "production_material_analysis:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/分析关联订单货品清单页.md"
+    },
+    {
+      "route": "/production/material-analysis",
+      "title": "物料分析准备",
+      "aliases": [
+        "生产物料分析准备",
+        "生产物料分析页"
+      ],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production",
+      "record": false,
+      "anyOf": [
+        "production_material_analysis:view"
+      ],
+      "allOf": [
+        "production_material_analysis:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产物料分析页.md"
+    },
+    {
+      "route": "/production/material-increment-requests",
+      "title": "追加用料审批",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "核对原定额与追加量，批准后安排领料",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "追加用料审批"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_plan:approve"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production/overproduction-rate-requests",
+      "title": "超产比例审批",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "核对原比例与申请比例，批准后生效",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "超产比例审批"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_plan:approve"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production/plans",
+      "title": "生产计划单列表",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production",
+      "record": false,
+      "anyOf": [
+        "production_plan:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产订单排产页.md"
+    },
+    {
+      "route": "/production/plans/new",
+      "title": "新建生产计划单",
+      "aliases": [
+        "新建生产计划单与历史记录页",
+        "生产订单排产页"
+      ],
+      "module": "生产管理",
+      "purpose": "手工新建排产计划，可引用销售订单",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "新建生产计划单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_material_analysis:create",
+        "production_plan:create"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产订单排产页.md"
+    },
+    {
+      "route": "/production/progress",
+      "title": "生产主管看板页",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/production",
+      "record": false,
+      "anyOf": [
+        "production_execution:overview"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产主管看板页.md"
+    },
+    {
+      "route": "/production/reports/plan-detail",
+      "title": "计划明细",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "日期·货品·状态",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "计划明细"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production/reports/plan-summary",
+      "title": "计划汇总",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "单号·制单·审核",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "计划汇总"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/production/schedule",
+      "title": "生产任务中心",
+      "aliases": [
+        "生产调度工作台"
+      ],
+      "module": "生产管理",
+      "purpose": "待排产·在产·完工",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "生产任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_plan:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产调度工作台.md"
+    },
+    {
+      "route": "/production/where-used",
+      "title": "物料反查产成品",
+      "aliases": [
+        "物料反查产成品页"
+      ],
+      "module": "工程研发部",
+      "purpose": "材料用在哪些产品",
+      "paths": [
+        [
+          "工作台",
+          "工程研发部",
+          "物料反查产成品"
+        ],
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "物料反查产成品"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_where_used:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/物料反查产成品页.md"
+    },
+    {
+      "route": "/production/workshop-tasks",
+      "title": "车间生产任务",
+      "aliases": [
+        "我的车间任务页"
+      ],
+      "module": "生产部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "车间生产任务"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_execution:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的车间任务页.md"
+    },
+    {
+      "route": "/profile",
+      "title": "我的",
+      "aliases": [
+        "我的页"
+      ],
+      "module": "我的",
+      "purpose": "给所有员工使用的个人资料中心 + 业务快捷入口。",
+      "paths": [
+        [
+          "导航栏",
+          "我的"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": null,
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/我的页.md"
+    },
+    {
+      "route": "/purchase",
+      "title": "采购管理",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "包含：采购任务中心、待退回供应商、新建采购订货单、新建采购收货单、新建采购退货单、采购催料、采购明细报表、采购汇总报表。",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_order:create",
+        "purchase_order:view",
+        "purchase_receipt:create",
+        "purchase_receipt:view",
+        "purchase_report:view",
+        "purchase_request:view",
+        "purchase_return:create",
+        "purchase_return:view",
+        "supplier_return_task:view"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/operations/workbench/purchase",
+        "/procurement/arrival-exceptions",
+        "/purchase/orders/new",
+        "/purchase/receipts/new",
+        "/purchase/returns/new",
+        "/purchase/report/expediting",
+        "/purchase/report/detail",
+        "/purchase/report/summary"
+      ],
+      "doc": null
+    },
+    {
+      "route": "/purchase/orders",
+      "title": "采购订货单列表",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/purchase",
+      "record": false,
+      "anyOf": [
+        "purchase_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/orders/:id/edit",
+      "title": "采购订货单编辑页(编辑)",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "采购员向供应商下单的页面：货品、数量、单价，以及每一行的供应商、结账方式、币种、汇率、税率和允许超收比例。",
+      "paths": [],
+      "parent": "/purchase/orders",
+      "record": true,
+      "anyOf": [
+        "purchase_order:edit"
+      ],
+      "allOf": [
+        "purchase_order:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/采购订货单编辑页.md"
+    },
+    {
+      "route": "/purchase/orders/new",
+      "title": "新建采购订货单",
+      "aliases": [
+        "下采购单",
+        "开采购单",
+        "改采购单",
+        "采购下单",
+        "采购订货单编辑页"
+      ],
+      "module": "采购管理",
+      "purpose": "下单·跟踪到货",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "新建采购订货单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_order:create"
+      ],
+      "allOf": [
+        "purchase_order:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/采购订货单编辑页.md"
+    },
+    {
+      "route": "/purchase/receipts",
+      "title": "采购收货单列表",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/purchase",
+      "record": false,
+      "anyOf": [
+        "purchase_receipt:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/receipts/new",
+      "title": "新建采购收货单",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "收货·入库",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "新建采购收货单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_receipt:create"
+      ],
+      "allOf": [
+        "purchase_receipt:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/report/detail",
+      "title": "采购明细报表",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "一行一货品",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "采购明细报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/report/expediting",
+      "title": "采购催料",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "跟单催料：订货未收与可用库存对照，逐单催办",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "采购催料"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/report/summary",
+      "title": "采购汇总报表",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "一行一单",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "采购汇总报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/returns",
+      "title": "采购退货单列表",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/purchase",
+      "record": false,
+      "anyOf": [
+        "purchase_return:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/purchase/returns/new",
+      "title": "新建采购退货单",
+      "aliases": [],
+      "module": "采购管理",
+      "purpose": "退货·出库",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "采购管理",
+          "新建采购退货单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "purchase_return:create"
+      ],
+      "allOf": [
+        "purchase_return:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/quality/inspection-records",
+      "title": "品质检测记录页",
+      "aliases": [],
+      "module": "品质管理部",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "procurement_inspection:view",
+        "production_quality_inspection:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/品质检测记录页.md"
+    },
+    {
+      "route": "/quality/production-inspections",
+      "title": "生产成品质检任务页",
+      "aliases": [],
+      "module": "品质管理部",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_quality_inspection:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产成品质检任务页.md"
+    },
+    {
+      "route": "/quality/task-center",
+      "title": "品质任务中心",
+      "aliases": [],
+      "module": "品质管理部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "品质管理部",
+          "品质任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "procurement_inspection:view",
+        "production_quality_inspection:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/品质任务中心.md"
+    },
+    {
+      "route": "/rd/tasks",
+      "title": "任务中心(工程研发部)",
+      "aliases": [
+        "任务中心",
+        "工程研发部任务中心"
+      ],
+      "module": "工程研发部",
+      "purpose": "工程研发部的统一任务队列。",
+      "paths": [
+        [
+          "工作台",
+          "工程研发部",
+          "任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "rd_task:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/工程研发部任务中心.md"
+    },
+    {
+      "route": "/reports/workshop-material",
+      "title": "车间内料仓用量",
+      "aliases": [
+        "车间内料仓用量与结算页"
+      ],
+      "module": "钱流管理",
+      "purpose": "按期间看盘点推算耗用、耗用差异率与结算状态",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "车间内料仓用量"
+        ],
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "车间内料仓用量"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "workshop_material:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/车间内料仓用量与结算页.md"
+    },
+    {
+      "route": "/sales",
+      "title": "销售管理",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "包含：销售任务中心、新建销售报价单、新建销售退货单、新建销售订货单、新建销售出货单、新建客户零星发货、销售明细报表、销售汇总报表。",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_order:create",
+        "sales_order:reallocate",
+        "sales_order:view",
+        "sales_other_shipment:create",
+        "sales_other_shipment:view",
+        "sales_quote:create",
+        "sales_quote:view",
+        "sales_report:view",
+        "sales_return:create",
+        "sales_return:view",
+        "sales_shipment:create",
+        "sales_shipment:view"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/sales/tasks",
+        "/sales/quotes/new",
+        "/sales/orders/new",
+        "/sales/shipments/new",
+        "/sales/customer-shipments/new",
+        "/sales/returns/new",
+        "/sales/report/detail",
+        "/sales/report/summary",
+        "/sales/scarcity"
+      ],
+      "doc": null
+    },
+    {
+      "route": "/sales/customer-shipments",
+      "title": "客户零星发货列表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales",
+      "record": false,
+      "anyOf": [
+        "sales_other_shipment:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/customer-shipments/new",
+      "title": "新建客户零星发货",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "样品、赠送及没有订货单的客户发货，统一财审后出库",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "新建客户零星发货"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_other_shipment:create"
+      ],
+      "allOf": [
+        "sales_other_shipment:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/orders",
+      "title": "销售订货单列表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales",
+      "record": false,
+      "anyOf": [
+        "sales_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/orders/:id/edit",
+      "title": "销售订货单编辑页(编辑)",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "销售业务员录入客户订货的页面：客户、货品、数量、交货日期和商业条款。",
+      "paths": [],
+      "parent": "/sales/orders",
+      "record": true,
+      "anyOf": [
+        "sales_order:edit"
+      ],
+      "allOf": [
+        "sales_order:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售订货单编辑页.md"
+    },
+    {
+      "route": "/sales/orders/new",
+      "title": "新建销售订货单",
+      "aliases": [
+        "下订单",
+        "开订单",
+        "录订单",
+        "改订单",
+        "新建订货单",
+        "销售订单",
+        "销售订货单编辑页"
+      ],
+      "module": "销售管理",
+      "purpose": "客户下单",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "新建销售订货单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_order:create"
+      ],
+      "allOf": [
+        "sales_order:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售订货单编辑页.md"
+    },
+    {
+      "route": "/sales/progress",
+      "title": "销售订单生产进度",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales",
+      "record": false,
+      "anyOf": [
+        "sales_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售订单生产进度.md"
+    },
+    {
+      "route": "/sales/progress/:orderId",
+      "title": "销售订单进度详情页",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales/progress",
+      "record": true,
+      "anyOf": [
+        "sales_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售订单进度详情页.md"
+    },
+    {
+      "route": "/sales/quotes",
+      "title": "销售报价单列表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales",
+      "record": false,
+      "anyOf": [
+        "sales_quote:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/quotes/:id/edit",
+      "title": "销售报价单编辑页(编辑)",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "销售给客户做价格方案的页面。",
+      "paths": [],
+      "parent": "/sales/quotes",
+      "record": true,
+      "anyOf": [
+        "sales_quote:edit"
+      ],
+      "allOf": [
+        "sales_quote:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售报价单编辑页.md"
+    },
+    {
+      "route": "/sales/quotes/new",
+      "title": "新建销售报价单",
+      "aliases": [
+        "做报价",
+        "报价",
+        "改报价",
+        "新建报价单",
+        "给客户报价",
+        "销售报价单编辑页"
+      ],
+      "module": "销售管理",
+      "purpose": "报价·有效期",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "新建销售报价单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_quote:create"
+      ],
+      "allOf": [
+        "sales_quote:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售报价单编辑页.md"
+    },
+    {
+      "route": "/sales/report/detail",
+      "title": "销售明细报表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "一行一货品",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "销售明细报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/report/summary",
+      "title": "销售汇总报表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "一行一单",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "销售汇总报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/returns",
+      "title": "销售退货单列表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales",
+      "record": false,
+      "anyOf": [
+        "sales_return:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/returns/new",
+      "title": "新建销售退货单",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "退货·红字应收",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "新建销售退货单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_return:create"
+      ],
+      "allOf": [
+        "sales_return:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/scarcity",
+      "title": "稀缺库存让单",
+      "aliases": [
+        "销售缺货仲裁页"
+      ],
+      "module": "销售管理",
+      "purpose": "释放低优先级占用",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "稀缺库存让单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_order:reallocate"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售缺货仲裁页.md"
+    },
+    {
+      "route": "/sales/shipments",
+      "title": "销售出货单列表",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/sales",
+      "record": false,
+      "anyOf": [
+        "sales_shipment:view",
+        "sales_shipment_finance:view",
+        "warehouse_sales_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/shipments/new",
+      "title": "新建销售出货单",
+      "aliases": [],
+      "module": "销售管理",
+      "purpose": "发货·立应收",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "新建销售出货单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_shipment:create"
+      ],
+      "allOf": [
+        "sales_shipment:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/sales/tasks",
+      "title": "销售任务中心",
+      "aliases": [
+        "销售任务中心页"
+      ],
+      "module": "销售管理",
+      "purpose": "出货与完工进度",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "销售管理",
+          "销售任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "sales_order:view",
+        "sales_other_shipment:view",
+        "sales_quote:view",
+        "sales_return:view",
+        "sales_shipment:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售任务中心页.md"
+    },
+    {
+      "route": "/security/blacklist",
+      "title": "访客黑名单",
+      "aliases": [],
+      "module": "安保部",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "visitor:blacklist"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/访客预约系统.md"
+    },
+    {
+      "route": "/security/scan",
+      "title": "访客核验",
+      "aliases": [],
+      "module": "安保部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "安保部",
+          "访客核验"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "visitor:verify"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/访客预约系统.md"
+    },
+    {
+      "route": "/settings",
+      "title": "设置",
+      "aliases": [
+        "设置页"
+      ],
+      "module": "设置",
+      "purpose": "给所有员工使用的应用级偏好与账号出口页。",
+      "paths": [
+        [
+          "导航栏",
+          "设置"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": null,
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/设置页.md"
+    },
+    {
+      "route": "/stock/count-requests",
+      "title": "我的盘点",
+      "aliases": [
+        "库存盘点审核页",
+        "库存盘点模式与审核"
+      ],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:count:submit"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/库存盘点审核页.md"
+    },
+    {
+      "route": "/stock/instant-inventory",
+      "title": "即时库存",
+      "aliases": [
+        "即时库存页"
+      ],
+      "module": "仓库管理",
+      "purpose": "按分类/仓库/关键字聚合查询；双击货品行进入库存详情(各仓余额、出入库流水、受控调整)",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "即时库存"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/即时库存页.md"
+    },
+    {
+      "route": "/stock/item/:goodsId",
+      "title": "库存详情页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": true,
+      "anyOf": [
+        "stock:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/库存详情页.md"
+    },
+    {
+      "route": "/subcontract",
+      "title": "委外管理",
+      "aliases": [
+        "委外专属工作台与页面权限"
+      ],
+      "module": "委外管理",
+      "purpose": "包含：委外任务中心、回厂短交判定、待退回供应商、新建委外订货、新建成品退回、新建余料退回、新建损耗与责任、委外材料出仓单。",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_application:view",
+        "subcontract_material_issue:view",
+        "subcontract_material_return:create",
+        "subcontract_order:create",
+        "subcontract_order:view",
+        "subcontract_report:view",
+        "subcontract_return:create",
+        "subcontract_waste:create",
+        "supplier_return_task:view"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/operations/workbench/subcontract",
+        "/subcontract/short-deliveries",
+        "/procurement/arrival-exceptions",
+        "/subcontract/orders/new",
+        "/subcontract/returns/new",
+        "/subcontract/material-returns/new",
+        "/subcontract/wastes/new",
+        "/subcontract/material-issues",
+        "/subcontract/report/detail",
+        "/subcontract/report/summary",
+        "/subcontract/report/in-out-status"
+      ],
+      "doc": "docs/03-页面/委外专属工作台与页面权限.md"
+    },
+    {
+      "route": "/subcontract/applications/:id",
+      "title": "委外申请详情",
+      "aliases": [
+        "为什么下不了委外单",
+        "外发申请",
+        "委外下单",
+        "委外任务",
+        "委外申请",
+        "委外申请页",
+        "委外锁住"
+      ],
+      "module": "委外管理",
+      "purpose": "委外申请是物料分析「下达委外」后生成的委外需求：哪个委外件、要多少、什么时候要。",
+      "paths": [],
+      "parent": "/subcontract",
+      "record": true,
+      "anyOf": [
+        "subcontract_application:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/委外申请页.md"
+    },
+    {
+      "route": "/subcontract/material-issues",
+      "title": "委外材料出仓单",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "发给委外商的直属物料出仓单：查看、核对与红冲",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外材料出仓单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_material_issue:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/material-returns",
+      "title": "余料退回列表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/subcontract",
+      "record": false,
+      "anyOf": [
+        "subcontract_material_return:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/material-returns/new",
+      "title": "新建余料退回",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "委外商处余料登记入库",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "新建余料退回"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_material_return:create"
+      ],
+      "allOf": [
+        "subcontract_material_return:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/orders",
+      "title": "委外订货列表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/subcontract",
+      "record": false,
+      "anyOf": [
+        "subcontract_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/orders/new",
+      "title": "新建委外订货",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "订货、财务审批与全链路进度(含回厂 IQC)",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "新建委外订货"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_order:create"
+      ],
+      "allOf": [
+        "subcontract_order:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/report/detail",
+      "title": "委外明细报表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "一行一货品",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外明细报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/report/in-out-status",
+      "title": "委外出入状况表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "进出综合状况",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外出入状况表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/report/summary",
+      "title": "委外汇总报表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "一行一单",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "委外汇总报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/returns",
+      "title": "成品退回列表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/subcontract",
+      "record": false,
+      "anyOf": [
+        "subcontract_return:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/returns/new",
+      "title": "新建成品退回",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "退回委外成品并反向应付",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "新建成品退回"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_return:create"
+      ],
+      "allOf": [
+        "subcontract_return:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/short-deliveries",
+      "title": "回厂短交判定",
+      "aliases": [
+        "委外回厂短交判定页"
+      ],
+      "module": "委外管理",
+      "purpose": "回厂数量少于订货量：判定分批到货继续等，还是接受损耗结案",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "回厂短交判定"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_order:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/委外回厂短交判定页.md"
+    },
+    {
+      "route": "/subcontract/wastes",
+      "title": "损耗与责任列表",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/subcontract",
+      "record": false,
+      "anyOf": [
+        "subcontract_waste:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/subcontract/wastes/new",
+      "title": "新建损耗与责任",
+      "aliases": [],
+      "module": "委外管理",
+      "purpose": "损耗、索赔与责任处理",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "委外管理",
+          "新建损耗与责任"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "subcontract_waste:create"
+      ],
+      "allOf": [
+        "subcontract_waste:view"
+      ],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/suggestion",
+      "title": "意见箱",
+      "aliases": [
+        "建议箱页"
+      ],
+      "module": "常用功能",
+      "purpose": "员工提建议、看同事建议、点赞互动、跟踪处理结果的统一入口。",
+      "paths": [
+        [
+          "工作台",
+          "常用功能",
+          "意见箱"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "suggestion:submit"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/建议箱页.md"
+    },
+    {
+      "route": "/visitor-approval",
+      "title": "访客审批",
+      "aliases": [
+        "访客预约管理系统",
+        "访客预约系统"
+      ],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "行政与人力资源部",
+          "访客审批"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "visitor:approve"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/访客预约系统.md"
+    },
+    {
+      "route": "/warehouse",
+      "title": "仓库管理",
+      "aliases": [
+        "仓库管理枢纽页"
+      ],
+      "module": "仓库管理",
+      "purpose": "包含：仓库任务中心、新建其它出库、新建调拨单、新建产成品出库、新建盘点单、新建其它入库、新建产成品进仓、即时库存。",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:count:warehouse_review",
+        "stock:view",
+        "stock_doc:create",
+        "stock_doc:view",
+        "stock_report:view",
+        "subcontract_outbound:view",
+        "warehouse_inbound:view",
+        "warehouse_iqc_return:view",
+        "warehouse_iqc_stock_in:view",
+        "warehouse_purchase_receipt_history:view",
+        "warehouse_sales_outbound:view",
+        "warehouse_subcontract_finished_return_history:view",
+        "warehouse_subcontract_receipt_history:view",
+        "warehouse_subcontract_waste_history:view",
+        "workshop_material:setup"
+      ],
+      "allOf": [],
+      "hubOf": [
+        "/warehouse/tasks",
+        "/warehouse/OTHER_OUT/new",
+        "/warehouse/FINISHED_OUT/new",
+        "/warehouse/OTHER_IN/new",
+        "/warehouse/FINISHED_IN/new",
+        "/warehouse/TRANSFER/new",
+        "/warehouse/CHECK/new",
+        "/stock/instant-inventory",
+        "/warehouse/shelf-labels",
+        "/warehouse/insights",
+        "/warehouse/weigh-count",
+        "/warehouse/report/detail",
+        "/warehouse/report/summary",
+        "/warehouse/workshop-material/setup"
+      ],
+      "doc": "docs/03-页面/仓库管理枢纽页.md"
+    },
+    {
+      "route": "/warehouse/CHECK",
+      "title": "盘点单列表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/CHECK/new",
+      "title": "新建盘点单",
+      "aliases": [
+        "仓库单据编辑页"
+      ],
+      "module": "仓库管理",
+      "purpose": "库存盘点与盈亏调整",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "新建盘点单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_doc:create"
+      ],
+      "allOf": [
+        "stock_doc:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库单据编辑页.md"
+    },
+    {
+      "route": "/warehouse/FINISHED_IN",
+      "title": "产成品进仓列表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/FINISHED_IN/new",
+      "title": "新建产成品进仓",
+      "aliases": [
+        "仓库单据编辑页"
+      ],
+      "module": "仓库管理",
+      "purpose": "产成品进仓单",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "新建产成品进仓"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_doc:create"
+      ],
+      "allOf": [
+        "stock_doc:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库单据编辑页.md"
+    },
+    {
+      "route": "/warehouse/FINISHED_OUT",
+      "title": "产成品出库列表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/FINISHED_OUT/new",
+      "title": "新建产成品出库",
+      "aliases": [
+        "仓库单据编辑页"
+      ],
+      "module": "仓库管理",
+      "purpose": "产成品出仓单",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "新建产成品出库"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_doc:create"
+      ],
+      "allOf": [
+        "stock_doc:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库单据编辑页.md"
+    },
+    {
+      "route": "/warehouse/OTHER_IN",
+      "title": "其它入库列表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/OTHER_IN/new",
+      "title": "新建其它入库",
+      "aliases": [
+        "仓库单据编辑页"
+      ],
+      "module": "仓库管理",
+      "purpose": "临时性、无上游单据的入库",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "新建其它入库"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_doc:create"
+      ],
+      "allOf": [
+        "stock_doc:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库单据编辑页.md"
+    },
+    {
+      "route": "/warehouse/OTHER_OUT",
+      "title": "其它出库列表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/OTHER_OUT/new",
+      "title": "新建其它出库",
+      "aliases": [
+        "仓库单据编辑页"
+      ],
+      "module": "仓库管理",
+      "purpose": "临时性、非销售/委外方向的出库",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "新建其它出库"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_doc:create"
+      ],
+      "allOf": [
+        "stock_doc:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库单据编辑页.md"
+    },
+    {
+      "route": "/warehouse/TRANSFER",
+      "title": "调拨单列表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/TRANSFER/new",
+      "title": "新建调拨单",
+      "aliases": [
+        "仓库单据编辑页"
+      ],
+      "module": "仓库管理",
+      "purpose": "仓与仓之间的库存调拨",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "新建调拨单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_doc:create"
+      ],
+      "allOf": [
+        "stock_doc:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库单据编辑页.md"
+    },
+    {
+      "route": "/warehouse/inbound/arrivals/register",
+      "title": "仓库到货登记页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "warehouse_inbound:stock_in"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库到货登记页.md"
+    },
+    {
+      "route": "/warehouse/insights",
+      "title": "库存分析",
+      "aliases": [
+        "库存分析页"
+      ],
+      "module": "仓库管理",
+      "purpose": "呆滞与库龄、今日建议盘点、称重异常、单重学习",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "库存分析"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/库存分析页.md"
+    },
+    {
+      "route": "/warehouse/inspections",
+      "title": "待检处置页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "procurement_inspection:view",
+        "production_quality_inspection:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/待检处置页.md"
+    },
+    {
+      "route": "/warehouse/production-finished-in/tasks",
+      "title": "产成品待点收任务页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/产成品待点收任务页.md"
+    },
+    {
+      "route": "/warehouse/quality-results",
+      "title": "品质部检查结果",
+      "aliases": [
+        "品质部检查结果页"
+      ],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "warehouse_iqc_return:view",
+        "warehouse_iqc_stock_in:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/品质部检查结果页.md"
+    },
+    {
+      "route": "/warehouse/report/detail",
+      "title": "仓库明细报表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "一行一货品",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "仓库明细报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/report/summary",
+      "title": "仓库汇总报表",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "一行一单",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "仓库汇总报表"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock_report:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": null
+    },
+    {
+      "route": "/warehouse/sales-outbound",
+      "title": "仓库出库",
+      "aliases": [
+        "销售出货仓库作业页",
+        "销售出货详情与仓库作业"
+      ],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "warehouse_sales_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售出货仓库作业页.md"
+    },
+    {
+      "route": "/warehouse/shelf-labels",
+      "title": "货架目视化清单",
+      "aliases": [
+        "货架目视化清单页"
+      ],
+      "module": "仓库管理",
+      "purpose": "按库行/层/位查找，打印张贴到货架",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "货架目视化清单"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/货架目视化清单页.md"
+    },
+    {
+      "route": "/warehouse/stock-count-review",
+      "title": "内料仓盘点仓库审核",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock:count:warehouse_review"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/库存盘点审核页.md"
+    },
+    {
+      "route": "/warehouse/subcontract-outbound",
+      "title": "待发料列表",
+      "aliases": [
+        "仓库委外出仓工作台页"
+      ],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "subcontract_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库委外出仓工作台页.md"
+    },
+    {
+      "route": "/warehouse/subcontract-outbound/:issueId",
+      "title": "拣货出仓页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse/subcontract-outbound",
+      "record": true,
+      "anyOf": [
+        "subcontract_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库委外出仓工作台页.md"
+    },
+    {
+      "route": "/warehouse/tasks",
+      "title": "仓库任务中心",
+      "aliases": [
+        "仓库任务中心页"
+      ],
+      "module": "仓库管理",
+      "purpose": "出库 · 入库 · 领料 · 品质结果 · 盘点审核",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "仓库任务中心"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:count:warehouse_review",
+        "stock_doc:view",
+        "subcontract_outbound:view",
+        "warehouse_inbound:view",
+        "warehouse_iqc_return:view",
+        "warehouse_iqc_stock_in:view",
+        "warehouse_purchase_receipt_history:view",
+        "warehouse_sales_outbound:view",
+        "warehouse_subcontract_finished_return_history:view",
+        "warehouse_subcontract_receipt_history:view",
+        "warehouse_subcontract_waste_history:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/仓库任务中心页.md"
+    },
+    {
+      "route": "/warehouse/tasks/draw",
+      "title": "生产领料任务中心页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse/tasks",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产领料任务中心页.md"
+    },
+    {
+      "route": "/warehouse/tasks/inbound",
+      "title": "入库任务中心页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse/tasks",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view",
+        "warehouse_inbound:view",
+        "warehouse_purchase_receipt_history:view",
+        "warehouse_subcontract_receipt_history:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/入库任务中心页.md"
+    },
+    {
+      "route": "/warehouse/tasks/outbound",
+      "title": "出库任务中心页",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/warehouse/tasks",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view",
+        "subcontract_outbound:view",
+        "warehouse_sales_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/出库任务中心页.md"
+    },
+    {
+      "route": "/warehouse/weigh-count",
+      "title": "称重计数",
+      "aliases": [
+        "称重计数页"
+      ],
+      "module": "仓库管理",
+      "purpose": "选货品放秤称重，按单重折算件数；可顺手抽样让单重越学越准",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "称重计数"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/称重计数页.md"
+    },
+    {
+      "route": "/warehouse/workshop-material/setup",
+      "title": "车间内料仓设置",
+      "aliases": [
+        "车间内料仓设置页"
+      ],
+      "module": "仓库管理",
+      "purpose": "机台与容器、上线准备 (产品的颗粒与单个重量); 开通内料仓、开启整批领料在「车间内料仓」总览里办",
+      "paths": [
+        [
+          "工作台",
+          "PMC运营部",
+          "仓库管理",
+          "车间内料仓设置"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "workshop_material:setup"
+      ],
+      "allOf": [
+        "workshop_material:setup"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/车间内料仓设置页.md"
+    },
+    {
+      "route": "/webinquiry",
+      "title": "官网询盘",
+      "aliases": [
+        "官网询盘页"
+      ],
+      "module": "综合营销部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "综合营销部",
+          "官网询盘"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "webinquiry:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/官网询盘页.md"
+    },
+    {
+      "route": "/webinquiry/:id",
+      "title": "官网询盘页(详情)",
+      "aliases": [],
+      "module": "综合营销部",
+      "purpose": "",
+      "paths": [],
+      "parent": "/webinquiry",
+      "record": true,
+      "anyOf": [
+        "webinquiry:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/官网询盘页.md"
+    },
+    {
+      "route": "/workshop-material/bin",
+      "title": "车间内料仓",
+      "aliases": [
+        "车间内料仓页"
+      ],
+      "module": "生产部",
+      "purpose": "",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "车间内料仓"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "workshop_material:setup",
+        "workshop_material:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/车间内料仓页.md"
+    },
+    {
+      "route": "/workshop-material/count",
+      "title": "车间内料仓盘点页",
+      "aliases": [],
+      "module": "生产部",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:count:warehouse_review",
+        "workshop_material:count"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/车间内料仓盘点页.md"
+    },
+    {
+      "route": "/workshop-material/issue",
+      "title": "车间内料仓发料页",
+      "aliases": [],
+      "module": "生产部",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "workshop_material:issue"
+      ],
+      "allOf": [
+        "workshop_material:issue"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/车间内料仓发料页.md"
+    }
+  ]
+}

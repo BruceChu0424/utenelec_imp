@@ -8511,6 +8511,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiAuditPurposeWorkbench => '업무 할 일 조회';
 
   @override
+  String get aiAuditPurposeDirectory => '기능 위치 찾기';
+
+  @override
+  String get aiAuditPurposeAccess => '내 권한 확인';
+
+  @override
+  String get aiAuditPurposeSalesOrder => '판매 주문 진행 조회';
+
+  @override
+  String get aiAuditPurposePurchaseOrder => '구매 주문 상태 조회';
+
+  @override
+  String get aiAuditPurposeSubcontract => '외주 상태 조회';
+
+  @override
   String get aiAuditPurposePageHelp => '페이지 입력 안내';
 
   @override
@@ -9270,6 +9285,33 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatCardSourceMissing => '원본 파일이 대화에 없습니다. 다시 업로드하세요.';
+
+  @override
+  String get aiChatCardFormNotOpened =>
+      '작성 화면이 열리지 않아 이 카드는 무효가 되었습니다. 파일을 다시 올려 주세요.';
+
+  @override
+  String get aiChatCardFormNoAccess =>
+      '이 계정은 해당 작성 화면을 열 권한이 없어 카드가 무효가 되었습니다. 관리자에게 권한을 요청한 뒤 파일을 다시 올려 주세요.';
+
+  @override
+  String aiChatDocumentChosen(String title) {
+    return '선택: $title';
+  }
+
+  @override
+  String aiChatDocumentOpenPage(String title) {
+    return '$title 열기';
+  }
+
+  @override
+  String aiChatDocumentBlockedLine(String title, String reason) {
+    return '$title: $reason';
+  }
+
+  @override
+  String get aiChatDocumentAiJudged =>
+      'AI가 표 제목과 형식만 보고 용도를 판단했습니다(셀 내용은 보내지 않음). 확인해 주세요.';
 
   @override
   String get aiAuditPurposePageState => '현재 페이지 이해';

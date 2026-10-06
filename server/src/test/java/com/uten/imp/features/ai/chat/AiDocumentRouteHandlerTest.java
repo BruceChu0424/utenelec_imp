@@ -26,11 +26,13 @@ class AiDocumentRouteHandlerTest {
     final AiChatPageGuideCatalog pages = mock(AiChatPageGuideCatalog.class);
     final AiJobHandler.AiJobContext ctx = mock(AiJobHandler.AiJobContext.class);
     final AiChatActionProposalService proposals = mock(AiChatActionProposalService.class);
-    final AiDocumentRouteHandler handler = new AiDocumentRouteHandler(access, evidence, workflows, invoices, pages, proposals);
+    final AiDocumentDestinations destinations = new AiDocumentDestinations(access, workflows);
+    final AiDocumentRouteHandler handler = new AiDocumentRouteHandler(access, evidence, workflows, invoices, pages, proposals, destinations);
     final List<Map<String, String>> all = List.of(
             Map.of("workflow", "SALES_ORDER", "title", "订货"), Map.of("workflow", "SALES_QUOTE", "title", "报价"),
             Map.of("workflow", "EXPENSE_CLAIM", "title", "报销"));
     @BeforeEach void before() {
+        actor(false, "ai:use");
         when(workflows.available()).thenReturn(all);
         when(evidence.stamp()).thenReturn(Map.of("actor", "A"));
         when(ctx.params()).thenReturn(Map.of());
@@ -94,8 +96,11 @@ class AiDocumentRouteHandlerTest {
         file("unknown.csv", "随便写点什么\n没有业务用途\n");
         when(ctx.params()).thenReturn(Map.of());
         var choices = handler.process(ctx);
-        assertThat(choices).containsEntry("workflow", "NONE").containsEntry("needsChoice", true);
-        assertThat((List<?>) choices.get("actions")).hasSize(((List<?>) choices.get("choices")).size()).isNotEmpty();
+        // One answer per file: an unknown purpose gets the permitted forms as choices and no card at all.
+        assertThat(choices).containsEntry("workflow", "NONE").containsEntry("needsChoice", true).containsEntry("actions", List.of());
+        assertThat((List<?>) choices.get("choices")).hasSize(3);
+        assertThat(choices.get("summary").toString()).contains("暂时没看出文件用途", "请在下面选要做的单据");
+        verify(proposals, never()).propose(any());
 
         clearInvocations(proposals);
         file("报价.csv", "报价单\n品名,数量,单价\n产品A,10,20\n");
@@ -186,7 +191,7 @@ class AiDocumentRouteHandlerTest {
     }
     @Test void hrTableIsNotAQuoteEvenWhenItContainsQuantityAndPrice() {
         file("data.csv","工资表\n品名,数量,单价\n");
-        assertThat(handler.process(ctx)).containsEntry("documentType","HR_DOCUMENT").containsEntry("workflow","NONE").containsEntry("choices",List.of());
+        assertThat(handler.process(ctx)).containsEntry("documentType","PAYROLL").containsEntry("workflow","NONE").containsEntry("choices",List.of());
     }
     @Test void oldResultRequiresCurrentStampAndWorkflowAuthority() {
         doThrow(new ApiException(ErrorCode.FORBIDDEN)).when(evidence).requireStamp(any());
@@ -199,7 +204,7 @@ class AiDocumentRouteHandlerTest {
         file("unknown.csv","一些无法确定用途的文字");
         var original = new java.util.LinkedHashMap<>(handler.process(ctx)); original.put("choices",all);
         var result=handler.filterResultForReader(original);
-        assertThat(result).doesNotContainKeys("_access","_routing").containsEntry("choices",List.of(all.get(2)));
+        assertThat(result).doesNotContainKeys("_access","_routing","_offer").containsEntry("choices",List.of(all.get(2)));
     }
     @Test void cancellationStopsBeforeExtraction() {
         file("报价.csv","报价单\n"); when(ctx.cancelled()).thenReturn(true);
@@ -332,7 +337,7 @@ class AiDocumentRouteHandlerTest {
         commercial(); when(access.contextualDomains()).thenReturn(new java.util.LinkedHashSet<>(List.of("SUBCONTRACT","SALES")));
         var original=handler.process(ctx);
         @SuppressWarnings("unchecked") var routing=(Map<String,Object>)original.get("_routing");
-        assertThat(routing).containsEntry("version","v2").containsEntry("domains",List.of("SALES","SUBCONTRACT"));
+        assertThat(routing).containsEntry("version","v3").containsEntry("domains",List.of("SALES","SUBCONTRACT"));
         assertThat(handler.filterResultForReader(original)).doesNotContainKeys("_access","_routing");
         var old = new java.util.LinkedHashMap<>(original); old.remove("_routing");
         assertThatThrownBy(()->handler.filterResultForReader(old)).isInstanceOf(ApiException.class);
@@ -418,6 +423,140 @@ class AiDocumentRouteHandlerTest {
         verify(ctx,never()).completeJson(any());
     }
 
+    @Test void rosterFromTheIncidentIsAnsweredHonestlyWithPermittedPagesAndNoCard() throws Exception {
+        actor(false, "ai:use", "employee:view");
+        when(workflows.available()).thenReturn(List.of());
+        workbook("花名册.xls", "XLS", AiDocumentFixtures.roster(true, 86, true));
+        when(ctx.params()).thenReturn(Map.of("message", "这是最新的人事统计出来的人员信息 你看看信息 对照系统里的 不对的补充 缺少的添加",
+                "pageRoute", "/dashboard"));
+        page("/dashboard","dashboard","SELF");
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("documentType", "EMPLOYEE_ROSTER").containsEntry("typeSource", "RULES")
+                .containsEntry("intent", "RECONCILE").containsEntry("workflow", "NONE").containsEntry("title", "员工花名册")
+                .containsEntry("choices", List.of()).containsEntry("actions", List.of()).containsEntry("fields", Map.of());
+        String summary = result.get("summary").toString();
+        assertThat(summary).contains("员工花名册", "标题和列名", "约 86 人", "姓名、性别、部门", "对照", "补充缺少的员工",
+                "还不能按花名册自动批量更正", "可以去「员工档案」").hasSizeLessThanOrEqualTo(1200).doesNotContain("可以去「证件核对」");
+        assertThat(result.get("pages")).isEqualTo(List.of(Map.of("key", "employee", "title", "员工档案", "route", "/employee")));
+        assertThat(result.get("blocked").toString()).contains("按花名册批量更正员工资料", "证件核对", "需要「员工档案编辑」权限");
+        @SuppressWarnings("unchecked") var profile = (Map<String, Object>) result.get("profile");
+        assertThat(profile.get("sheets").toString()).contains("花名册", "dataRows=86", "身份证号码", "手机号码");
+        String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(handler.filterResultForReader(result));
+        for (String value : AiDocumentFixtures.rosterValues(86)) assertThat(json).doesNotContain(value);
+        verify(proposals, never()).propose(any()); verify(ctx, never()).completeJson(any()); verifyNoInteractions(invoices);
+    }
+
+    @Test void uploadNeedsOnlyChatAccessAndAnExplicitWorkflowMustBeOneTheCallerMayUse() {
+        when(workflows.available()).thenReturn(List.of());
+        assertThatCode(() -> handler.authorizeSubmit(Map.of("message", "看看这是什么"))).doesNotThrowAnyException();
+        doThrow(new ApiException(ErrorCode.FORBIDDEN, "当前账号没有这项业务的填写权限")).when(workflows).require("SALES_ORDER");
+        assertThatThrownBy(() -> handler.authorizeSubmit(Map.of("workflow", "SALES_ORDER")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("没有这项业务的填写权限");
+        for (String forged : List.of("sales_order", "SALES-ORDER", "", "/sales/orders/new"))
+            assertThatThrownBy(() -> handler.authorizeSubmit(Map.of("workflow", forged))).as(forged)
+                    .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    @Test void anExplicitChoiceIssuesExactlyOneCardButAContradictingFileStillSaysInconsistent() throws Exception {
+        file("unknown.csv", "随便写点什么\n没有业务用途\n");
+        when(ctx.params()).thenReturn(Map.of("workflow", "SALES_QUOTE"));
+        var chosen = handler.process(ctx);
+        assertThat(chosen).containsEntry("workflow", "SALES_QUOTE").containsEntry("intent", "FILL").containsEntry("needsChoice", false);
+        assertThat((List<?>) chosen.get("actions")).hasSize(1);
+        assertThat(chosen.get("summary").toString()).contains("按你选的用途", "确认卡");
+        verify(proposals, times(1)).propose(any());
+        file("报价.csv", "报价单\n品名,数量,单价\n产品A,10,20\n");
+        when(ctx.params()).thenReturn(Map.of("message", "生成订货单", "workflow", "SALES_QUOTE"));
+        assertThat(handler.process(ctx)).as("the tapped choice overrides the earlier words").containsEntry("workflow", "SALES_QUOTE");
+        clearInvocations(proposals);
+        workbook("花名册.xlsx", "XLSX", AiDocumentFixtures.roster(false, 5, true));
+        when(ctx.params()).thenReturn(Map.of("workflow", "SALES_ORDER"));
+        var contradicted = handler.process(ctx);
+        assertThat(contradicted).containsEntry("documentType", "EMPLOYEE_ROSTER").containsEntry("workflow", "NONE").containsEntry("actions", List.of());
+        assertThat(contradicted.get("summary").toString()).startsWith("文件与要做的单据不一致：员工花名册不能用来填写新建销售订货单。");
+        file("票据.csv", "电子发票\n发票号码:12345678\n价税合计:100.00\n");
+        when(ctx.params()).thenReturn(Map.of("workflow", "SALES_ORDER"));
+        assertThat(handler.process(ctx).get("summary").toString()).contains("文件与要做的单据不一致");
+        verify(proposals, never()).propose(any());
+    }
+
+    @Test void neverMoreThanOneCardWhateverTheFileOrPurpose() {
+        when(access.contextualDomains()).thenReturn(Set.of("SALES","SUBCONTRACT"));
+        for (String text : List.of("报价单\n品名,数量,单价\n产品A,10,20\n", "品名 数量 单价\n", "Commercial Invoice\nITEM NO. Description QTY Unit Price\n",
+                "电子发票\n发票号码:12345678\n价税合计:100.00\n", "随便写点什么\n", "工资表\n姓名 应发工资\n"))
+            for (Map<String, String> params : List.<Map<String, String>>of(Map.of(), Map.of("message", "生成报价单"), Map.of("message", "帮我核对"),
+                    Map.of("workflow", "EXPENSE_CLAIM"), Map.of("workflow", "SALES_ORDER"))) {
+                file("any.csv", text);
+                when(ctx.params()).thenReturn(params);
+                var result = handler.process(ctx);
+                assertThat((List<?>) result.get("actions")).as(text + params).hasSizeLessThanOrEqualTo(1);
+                assertThat(((List<?>) result.get("actions")).isEmpty()).as(text + params).isEqualTo(result.get("workflow").equals("NONE"));
+            }
+    }
+
+    @Test void readTimeAnswerFollowsTheReadersCurrentPermissionsAndLeavesTheStoredResultUntouched() throws Exception {
+        actor(false, "ai:use", "employee:view");
+        workbook("花名册.xls", "XLS", AiDocumentFixtures.roster(true, 12, true));
+        when(ctx.params()).thenReturn(Map.of("message", "核对一下"));
+        var stored = handler.process(ctx);
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String before = mapper.writeValueAsString(stored);
+        assertThat(handler.filterResultForReader(stored).get("pages").toString()).doesNotContain("/hr/tasks/identity");
+        actor(false, "ai:use", "employee:view", "employee:edit", "employee:create", "employee:pii:edit", "department:view");
+        var granted = handler.filterResultForReader(stored);
+        assertThat(granted.get("pages").toString()).contains("/employee", "/hr/tasks/identity", "/employee/onboarding");
+        assertThat(granted.get("blocked").toString()).doesNotContain("需要「");
+        assertThat(granted.get("summary").toString()).contains("可以去「证件核对」");
+        actor(false, "ai:use");
+        var revoked = handler.filterResultForReader(stored);
+        assertThat(revoked.get("pages")).isEqualTo(List.of());
+        assertThat(revoked.get("summary").toString()).doesNotContain("可以去");
+        assertThat(mapper.writeValueAsString(stored)).as("filterResultForReader must not mutate its input").isEqualTo(before);
+        var tampered = new java.util.LinkedHashMap<>(stored);
+        tampered.remove("_offer");
+        assertThatThrownBy(() -> handler.filterResultForReader(tampered)).isInstanceOf(ApiException.class).hasMessageContaining("重新上传");
+    }
+
+    @Test void onlyAnUnknownFilesStructureMayGoToTheModelAndItsGuessNeverIssuesACard() throws Exception {
+        when(ctx.aiAllowed()).thenReturn(true);
+        when(ctx.remainingAiCalls()).thenReturn(5);
+        when(ctx.completeJson(any())).thenReturn(new com.uten.imp.application.port.AiCompletionPort.AiCompletionResult(
+                "{\"type\":\"EMPLOYEE_ROSTER\",\"intent\":\"RECONCILE\",\"confidence\":\"HIGH\"}", "p", "m", 1, 1, 1L));
+        var people = AiDocumentFixtures.people(6);
+        List<List<Object>> rows = new java.util.ArrayList<>(List.of(List.of("姓名", "车牌号", "停车位", "备注")));
+        for (var person : people) rows.add(List.of(person.name(), "粤T" + person.idNumber().substring(12, 17), person.idNumber(), "长期"));
+        workbook("车辆.xlsx", "XLSX", AiDocumentFixtures.table(false, "登记", rows));
+        when(ctx.params()).thenReturn(Map.of("message", "帮我看看 联系 13800000001"));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("documentType", "EMPLOYEE_ROSTER").containsEntry("typeSource", "AI")
+                .containsEntry("intent", "RECONCILE").containsEntry("workflow", "NONE").containsEntry("actions", List.of());
+        assertThat(result.get("summary").toString()).contains("推测", "不一定准确");
+        var request = org.mockito.ArgumentCaptor.forClass(com.uten.imp.application.port.AiCompletionPort.AiCompletionRequest.class);
+        verify(ctx).completeJson(request.capture());
+        String outbound = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request.getValue());
+        for (var person : people) assertThat(outbound).doesNotContain(person.name(), person.idNumber(), person.idNumber().substring(12, 17));
+        assertThat(outbound).contains("姓名 [SHORT_TEXT]", "停车位 [ID18]").doesNotContain("13800000001", "长期");
+        verify(proposals, never()).propose(any());
+
+        clearInvocations(ctx);
+        when(ctx.completeJson(any())).thenReturn(new com.uten.imp.application.port.AiCompletionPort.AiCompletionResult(
+                "{\"type\":\"EMPLOYEE_ROSTER\",\"intent\":\"RECONCILE\",\"confidence\":\"LOW\"}", "p", "m", 1, 1, 1L));
+        assertThat(handler.process(ctx)).containsEntry("documentType", "UNKNOWN").containsEntry("typeSource", "NONE");
+        when(ctx.completeJson(any())).thenThrow(new IllegalStateException("provider down"));
+        assertThat(handler.process(ctx)).containsEntry("documentType", "UNKNOWN").containsEntry("typeSource", "NONE");
+        clearInvocations(ctx);
+        workbook("花名册.xls", "XLS", AiDocumentFixtures.roster(true, 3, true));
+        assertThat(handler.process(ctx)).containsEntry("typeSource", "RULES");
+        verify(ctx, never()).completeJson(any());
+    }
+
+    private void actor(boolean superAdmin, String... permissions) {
+        when(access.requireChat()).thenReturn(new com.uten.imp.security.AuthUser(java.util.UUID.randomUUID(), java.util.UUID.randomUUID(),
+                "staff", Set.of(permissions), false, true, superAdmin));
+    }
+    private void workbook(String name, String kind, byte[] bytes) {
+        when(ctx.input()).thenReturn(new AiJobHandler.AiJobInput(name, "application/octet-stream", kind, bytes.length, bytes, "a".repeat(64)));
+    }
     private void image() throws Exception {
         byte[] bytes=png();
         when(ctx.input()).thenReturn(new AiJobHandler.AiJobInput("trade.png","image/png","PNG",bytes.length,bytes,"a".repeat(64)));

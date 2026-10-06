@@ -86,6 +86,18 @@ class AiChatInternalContentTest {
         }
     }
 
+    /** P2-4: a word pair such as "test/inspection" is not a repository path; a folder path or a file still is. */
+    @Test void aWordPairWithASlashIsNotAPath() {
+        for (String text : List.of("Each lot goes through test/inspection before stock-in.", "Use the web/app version of the page.",
+                "docs/README", "logs/archive")) {
+            assertThat(AiChatInternalContent.problems(text, "")).as(text).noneMatch(problem -> problem.startsWith("PATH"));
+        }
+        for (String text : List.of("看 lib/core/router 下的文件", "test/shared/ai_feature_map_test.dart", "web/index.html",
+                "docs/03-页面/仓库任务中心页.md")) {
+            assertThat(AiChatInternalContent.problems(text, "")).as(text).contains("PATH");
+        }
+    }
+
     @Test void identifiersTheUserCanSeeAreNotInternalButCommandsNeverPass() {
         String page = "货品编码 abc_def 状态 PAGE_READY";
         assertThat(AiChatInternalContent.problems("第1行货品是 abc_def，状态 PAGE_READY", page)).isEmpty();

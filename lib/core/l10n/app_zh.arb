@@ -4364,6 +4364,11 @@
   "aiAuditPurposeExpense": "准备报销申请",
   "aiAuditPurposeProduction": "查在产产品",
   "aiAuditPurposeWorkbench": "查工作待办",
+  "aiAuditPurposeDirectory": "查功能在哪",
+  "aiAuditPurposeAccess": "查我的权限",
+  "aiAuditPurposeSalesOrder": "查销售订单进度",
+  "aiAuditPurposePurchaseOrder": "查采购订单状态",
+  "aiAuditPurposeSubcontract": "查委外单状态",
   "aiAuditPurposePageHelp": "了解页面填写方法",
   "aiAuditPurposeGrant": "准备授权建议",
   "aiAuditProviders": "服务：{names}",
@@ -4899,6 +4904,36 @@
   "aiChatCardInvalidArgs": "操作内容与当前页面不一致, 没有执行",
   "aiChatCardCheck": "查看结果",
   "aiChatCardSourceMissing": "原文件已不在这个对话里, 请重新上传",
+  "aiChatCardFormNotOpened": "填写页面没有打开, 这张卡已作废, 请重新上传文件再试",
+  "aiChatCardFormNoAccess": "当前账号没有打开这个填写页面的权限, 这张卡已作废, 请联系管理员开通后重新上传文件",
+  "aiChatDocumentChosen": "选择：{title}",
+  "@aiChatDocumentChosen": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatDocumentOpenPage": "打开{title}",
+  "@aiChatDocumentOpenPage": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatDocumentBlockedLine": "{title}：{reason}",
+  "@aiChatDocumentBlockedLine": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "aiChatDocumentAiJudged": "文件用途是 AI 只看表头和格式判断的(具体内容没有发给 AI), 请核对",
   "aiAuditPurposePageState": "看懂当前页面",
   "aiAuditPurposeAction": "确认后执行操作",
   "productionReadinessMeaningReady": "物料齐了(或不用领料), 可以开工",

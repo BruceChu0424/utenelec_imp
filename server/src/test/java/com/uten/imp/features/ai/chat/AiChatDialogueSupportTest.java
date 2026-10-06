@@ -13,6 +13,68 @@ class AiChatDialogueSupportTest {
     private static final Set<String> ALL_TOOLS = Set.of("my_workbench", "query_goods_cost", "prepare_permission_grant");
     private static final String MARKER = "举例(假设数据，不是系统当前事实):";
 
+    /** P0-7: everyday status words and a document number with a question are data requests (the gate harness list). */
+    @Test void everydayStatusWordsAndADocumentNumberWithAQuestionAskForData() {
+        for (String question : List.of("螺丝还有吗", "螺丝够不够用", "A001还够做100个吗", "SO-127001发货了没有", "SO-127001现在到哪一步了",
+                "采购单PO-2026001到货了吗", "我的报销批了没有", "XD20261006000003这个订单发货了没", "这批货卡在哪了", "委外单什么时候到",
+                "XD20261006000003 呢？")) {
+            assertThat(AiChatDialogueSupport.asksForData(question)).as(question).isTrue();
+        }
+        for (String question : List.of("报价单怎么转成订货单", "让料是什么意思", "这个页面的提示写了什么", "到货以后是先入库还是先质检")) {
+            assertThat(AiChatDialogueSupport.asksForData(question)).as(question).isFalse();
+        }
+        // A status question about a numbered document is a plain lookup (no unrelated documents are sent for it).
+        for (String question : List.of("SO-127001发货了没有", "XD20261006000003这个订单发货了没", "采购单PO-2026001到货了吗")) {
+            assertThat(AiChatDialogueSupport.dataLookup(question)).as(question).isTrue();
+        }
+        for (String question : List.of("A001的单重是怎么算的", "到货以后是先入库还是先质检", "螺丝还有吗")) {
+            assertThat(AiChatDialogueSupport.dataLookup(question)).as(question).isFalse();
+        }
+    }
+
+    /** The directory, access and status tools are eligible on the user's own words for what each one answers. */
+    @Test void eachReadToolIsEligibleOnTheQuestionsItAnswers() {
+        for (String question : List.of("采购订货单在哪里", "哪个页面可以看库存", "怎么进仓库任务中心", "系统有哪些功能", "客户对账单在哪看",
+                "生产报工的入口在哪")) {
+            assertThat(AiChatDialogueSupport.toolEligible(AiChatDialogueSupport.FEATURE_DIRECTORY, question)).as(question).isTrue();
+        }
+        for (String question : List.of("为什么我打不开财务报表", "我没权限吗", "提交按钮是灰的", "点不了审核", "缺少操作权限：sales_order:approve",
+                "怎么开通权限", "采购页面在哪里，我能打开吗")) {
+            assertThat(AiChatDialogueSupport.toolEligible(AiChatDialogueSupport.MY_ACCESS, question)).as(question).isTrue();
+        }
+        for (String question : List.of("XD20261006000003到哪一步了", "SO-127001发货了没有", "PO-2026001到货了吗")) {
+            assertThat(AiChatDialogueSupport.toolEligible("sales_order_progress", question)).as(question).isTrue();
+        }
+        for (String tool : List.of(AiChatDialogueSupport.FEATURE_DIRECTORY, AiChatDialogueSupport.MY_ACCESS, "sales_order_progress")) {
+            assertThat(AiChatDialogueSupport.toolEligible(tool, "报价单怎么转成订货单")).as(tool).isFalse();
+        }
+        assertThat(AiChatDialogueSupport.toolEligible("sales_order_progress", "采购订货单在哪里")).isFalse();
+    }
+
+    /** P0-8: a "not found" answer suggests a question in the user's own words. */
+    @Test void theTopicOfAnUnansweredQuestionIsTheUsersOwnNoun() {
+        assertThat(AiChatDialogueSupport.topic("让料是什么意思")).isEqualTo("让料");
+        assertThat(AiChatDialogueSupport.topic("怎么报工？")).isEqualTo("报工");
+        assertThat(AiChatDialogueSupport.topic("汇率谁来定")).isEqualTo("汇率");
+        assertThat(AiChatDialogueSupport.topic("缺料怎么办")).isEqualTo("缺料");
+        assertThat(AiChatDialogueSupport.topic("生产多做了怎么办")).isEqualTo("生产多做");
+        assertThat(AiChatDialogueSupport.topic("客户退回来的货退货单审完了能直接再卖吗")).isEmpty();
+        assertThat(AiChatDialogueSupport.topic("How is weight estimated?")).isEmpty();
+    }
+
+    /** P0-8: where-to-click claims and "the platform has no such thing" are recognised in a reply. */
+    @Test void stepAndPlaceClaimsAreRecognised() {
+        for (String reply : List.of("在生产报工页面里点「新建」", "进入生产报工页面填写", "1. 打开报工\n2. 填数量",
+                "平台上目前没有关于让料的解释", "点击右上角的新建", "Go to the menu and click New")) {
+            assertThat(AiChatDialogueSupport.claimsStepsOrPlaces(reply)).as(reply).isTrue();
+        }
+        // Quoted names alone are checked by the navigation guard, not taken as steps.
+        for (String reply : List.of("这要看页面上的功能，找管理员开通对应的查看权限。", "你想查什么？请告诉我名称、编号或具体问题。",
+                "我没找到这方面的说明。", "你说的是「销售订货单」还是「销售报价单」？")) {
+            assertThat(AiChatDialogueSupport.claimsStepsOrPlaces(reply)).as(reply).isFalse();
+        }
+    }
+
     @Test void businessNamesAreNotMistakenForPersonalEntertainmentRequests() {
         for (String question : List.of("游戏机 A001 库存多少", "给客户电影公司创建订货单", "报价单怎么填写", "你好")) {
             assertThat(AiChatDialogueSupport.clearlyNonWork(question)).as(question).isFalse();
@@ -35,6 +97,14 @@ class AiChatDialogueSupportTest {
         org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("帮我保存一下", "SUBMIT")).isFalse();
         org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("可以提交了吗？", "SUBMIT")).isFalse();
         org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("帮我提交这张单", "SUBMIT")).isTrue();
+        // A numbered document that is stuck is a question for its status tool; the access check only when permissions are named.
+        for (String question : List.of("EB20261006000001为什么下不了单", "EB20261006000001 为什么按钮是灰的", "XD20261006000003 发货了没")) {
+            assertThat(AiChatDialogueSupport.toolEligible(AiChatDialogueSupport.MY_ACCESS, question)).as(question).isFalse();
+            assertThat(AiChatDialogueSupport.toolEligible("subcontract_order_status", question)).as(question).isTrue();
+        }
+        for (String question : List.of("XD20261006000003 打不开，是不是没权限", "缺少操作权限：sales_order:approve", "为什么按钮是灰的")) {
+            assertThat(AiChatDialogueSupport.toolEligible(AiChatDialogueSupport.MY_ACCESS, question)).as(question).isTrue();
+        }
         org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("只看缺料的行", "VIEW")).isTrue();
         org.assertj.core.api.Assertions.assertThat(AiChatDialogueSupport.requestsAction("打开第2行", "DELETE")).isFalse();
     }
@@ -53,6 +123,17 @@ class AiChatDialogueSupportTest {
         assertThat(enabled).contains("帮我查询某个货品编码", "开通一项查看权限");
         String missingGrant = AiChatDialogueSupport.socialReply("我能让你帮忙做什么？", Set.of("SELF", "ADMIN"), Set.of()).orElseThrow();
         assertThat(missingGrant).doesNotContain("开通一项查看权限");
+    }
+
+    /** The document status tools are offered as examples only to readers of their domain who have the tool. */
+    @Test void statusToolExamplesFollowDomainAndTool() {
+        Set<String> tools = Set.of("sales_order_progress", "purchase_order_status", "subcontract_order_status");
+        assertThat(AiChatDialogueSupport.socialReply("你能做什么", Set.of("SELF", "SALES"), tools).orElseThrow())
+                .contains("销售订货单(写上单号)现在到哪一步了").doesNotContain("采购订货单", "委外申请");
+        assertThat(AiChatDialogueSupport.socialReply("你能做什么", Set.of("SELF", "SUBCONTRACT"), tools).orElseThrow())
+                .contains("委外申请(写上单号)为什么还不能下单");
+        assertThat(AiChatDialogueSupport.socialReply("你能做什么", Set.of("SELF", "PURCHASE"), Set.of()).orElseThrow())
+                .doesNotContain("到货了吗");
     }
 
     @Test void salesHelpDoesNotPromiseOrderCreationWithoutAnActionCapability() {

@@ -73,7 +73,11 @@ final class AiChatInternalContent {
     static final Pattern PATH = Pattern.compile("(?i)\\b[a-z]:\\\\\\S*"
             + "|(?<![\\w.])/(?:etc|var|home|usr|opt|root|tmp|srv|mnt|proc|bin|sbin|data|app|deploy|backup)/\\S*"
             + "|(?<![\\w./])(?:\\.\\./|\\./)\\S+"
-            + "|(?<![\\w/])(?:lib|server|src|docs|deploy|scripts|test|web|android|ios|assets|target|logs)/[\\w\\-./\\p{IsHan}()]+"
+            // A repository folder counts with two or more segments or a file name ("lib/core/router", "test/a.dart");
+            // "test/inspection" or "web/app" in an English sentence is a word pair, not a path.
+            + "|(?<![\\w/])(?:lib|server|src|docs|deploy|scripts|test|web|android|ios|assets|target|logs)"
+            + "(?:/[\\w\\-\\p{IsHan}()]+){2,}[\\w\\-./\\p{IsHan}()]*"
+            + "|(?<![\\w/])(?:lib|server|src|docs|deploy|scripts|test|web|android|ios|assets|target|logs)/[\\w\\-\\p{IsHan}()]+\\.[A-Za-z]{1,5}\\b"
             + "|(?<![\\w\\-])[\\w\\-\\p{IsHan}]+\\.(?:java|dart|py|sh|bat|ps1|yml|yaml|properties|env|conf|cfg|ini|toml|log|jar|war"
             + "|sql|js|ts|kt|xml|gradle|md|arb)\\b");
     static final Pattern API_PATH = Pattern.compile("(?<![\\w])/api/[\\w/{}\\-.:?=&]*");

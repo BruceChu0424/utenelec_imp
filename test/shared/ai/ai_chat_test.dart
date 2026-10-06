@@ -8,13 +8,23 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_en.dart';
+import 'package:uten_imp/core/router/page_resume_provider.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
+import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
+import 'package:uten_imp/features/dashboard/providers/dashboard_overview_provider.dart';
+import 'package:uten_imp/features/notice/providers/notice_providers.dart';
+import 'package:uten_imp/features/settings/pages/settings_page.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
+import 'package:uten_imp/shared/ai/chat/ai_chat_action_card.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/ai/page_context/ai_page_context.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
@@ -31,6 +41,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 const _p1 = '39a3c832-b0e5-4fe2-8040-7cb4247741b9';
 const _p2 = '5f0c7a3e-2b1d-4c8e-9a6f-0d1e2f3a4b5c';
 const _docCard = '7a6b5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d';
+const _docCard2 = '8b7c6d5e-4f3a-4b2c-9d0e-1f2a3b4c5d6e';
 const _c1 = '0b5c43f4-5ad4-4e5b-9e4f-2f6f3b0f7a11';
 final _en = AppLocalizationsEn();
 
@@ -1801,6 +1812,505 @@ void main() {
     },
   );
 
+  // 2026-10-05 incident: a card confirmed on the dashboard closed the panel,
+  // reported success, and nothing appeared, because the shell judged
+  // "main tab or business page" from the location frozen before the push.
+  for (final tab in [RouteName.dashboard, RouteName.settings]) {
+    testWidgets(
+      'real MainShell shows a page pushed from the $tab tab, pops back to it, and its tab button leaves the page',
+      (tester) async {
+        final router = await _pumpRealShell(
+          tester,
+          _FakeChatRepository(),
+          initialLocation: tab,
+        );
+        final tabPage = find.byType(
+          tab == RouteName.dashboard ? DashboardPage : SettingsPage,
+        );
+        expect(tabPage.hitTestable(), findsOneWidget);
+        router.push('/expense/new');
+        await tester.pumpAndSettle();
+        expect(find.text('Expense handoff').hitTestable(), findsOneWidget);
+        expect(tabPage.hitTestable(), findsNothing);
+        router.pop();
+        await tester.pumpAndSettle();
+        expect(find.text('Expense handoff'), findsNothing);
+        expect(tabPage.hitTestable(), findsOneWidget);
+        router.push('/expense/new');
+        await tester.pumpAndSettle();
+        expect(find.text('Expense handoff').hitTestable(), findsOneWidget);
+        await tester.tap(
+          find.byTooltip(
+            tab == RouteName.dashboard ? _en.navDashboard : _en.navSettings,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Expense handoff'), findsNothing);
+        expect(tabPage.hitTestable(), findsOneWidget);
+        expect(topMatchedLocationOf(router), tab);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'a file card confirmed on the dashboard opens the form above it before reporting success',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'invoice.pdf',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'workflow': 'EXPENSE_CLAIM',
+          'documentType': 'INVOICE',
+          'title': 'Prepare expense',
+        };
+      final repository = _FakeChatRepository();
+      Uri? opened;
+      await _pumpRealShell(
+        tester,
+        repository,
+        initialLocation: RouteName.dashboard,
+        identity: _identity(permissions: 'ai:use\n${Perm.expenseApply}'),
+        jobs: jobs,
+        onDraftOpened: (uri, _) => opened = uri,
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, '');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_docCard');
+      expect(opened?.path, '/expense/new');
+      expect(find.text('Expense handoff').hitTestable(), findsOneWidget);
+      expect(find.byType(DashboardPage).hitTestable(), findsNothing);
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsNothing);
+      expect(repository.actionCalls, [
+        'confirm:$_docCard',
+        'receipt:$_docCard:SUCCEEDED',
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a form that does not become the top page keeps the panel open with a failed receipt',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'invoice.pdf',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'workflow': 'EXPENSE_CLAIM',
+          'documentType': 'INVOICE',
+          'title': 'Prepare expense',
+        };
+      final repository = _FakeChatRepository();
+      Uri? opened;
+      await _pumpRealShell(
+        tester,
+        repository,
+        initialLocation: RouteName.dashboard,
+        identity: _identity(permissions: 'ai:use\n${Perm.expenseApply}'),
+        jobs: jobs,
+        onDraftOpened: (uri, _) => opened = uri,
+        // The router's permission gate sends the form to the no-access page.
+        redirect: (path) =>
+            path == '/expense/new' ? RouteName.accessDenied : null,
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, '');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_docCard');
+      expect(opened, isNull);
+      expect(repository.actionCalls, [
+        'confirm:$_docCard',
+        'receipt:$_docCard:FAILED',
+      ]);
+      expect(repository.receiptMessages[_docCard], _en.aiChatCardFormNoAccess);
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsOneWidget);
+      expect(find.text(_en.aiChatCardFailed), findsOneWidget);
+      expect(find.text(_en.aiChatCardFormNoAccess), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'without a router the card fails visibly instead of closing the panel',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'invoice.pdf',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'workflow': 'EXPENSE_CLAIM',
+          'documentType': 'INVOICE',
+          'title': 'Prepare expense',
+        };
+      final harness = await _pump(
+        tester,
+        jobs: jobs,
+        initial: _identity(permissions: 'ai:use\n${Perm.expenseApply}'),
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, '');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_docCard');
+      expect(harness.repository.actionCalls.last, 'receipt:$_docCard:FAILED');
+      expect(
+        harness.repository.receiptMessages[_docCard],
+        _en.aiChatCardFormNotOpened,
+      );
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsOneWidget);
+      expect(find.text(_en.aiChatCardFormNotOpened), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test('file answers parse purpose, pages, blocked items and structure', () {
+    final bare = AiGuidedFileResult.fromJson(const {});
+    expect(bare.typeSource, 'NONE');
+    expect(bare.intent, 'NONE');
+    expect(bare.pages, isEmpty);
+    expect(bare.blocked, isEmpty);
+    expect(bare.sheets, isEmpty);
+    final odd = AiGuidedFileResult.fromJson({
+      'typeSource': 'MODEL',
+      'intent': 'DELETE_ALL',
+      'pages': 'employee',
+      'profile': ['Sheet1'],
+    });
+    expect(odd.typeSource, 'NONE');
+    expect(odd.intent, 'NONE');
+    expect(odd.pages, isEmpty);
+    expect(odd.sheets, isEmpty);
+    final result = AiGuidedFileResult.fromJson({
+      'typeSource': 'AI',
+      'intent': 'RECONCILE',
+      'pages': [
+        {'key': 'employee', 'title': ' Employee files ', 'route': '/employee'},
+        {'key': 'foreign', 'title': 'Foreign', 'route': 'https://evil.test/x'},
+        {'key': 'query', 'title': 'Query', 'route': '/employee?id=1'},
+        {'key': 'up', 'title': 'Up', 'route': '/employee/../admin'},
+        {'key': 'Bad Key', 'title': 'Bad key', 'route': '/employee'},
+        {'key': 'blank', 'title': '  ', 'route': '/employee'},
+        {'key': 'long', 'title': 'x' * 41, 'route': '/employee'},
+        'not a page',
+      ],
+      'blocked': [
+        {'title': 'Batch correction', 'reason': 'Not available yet.'},
+        {'title': '', 'reason': 'No title'},
+        {'title': 'No reason'},
+      ],
+      'profile': {
+        'sheets': [
+          {
+            'name': 'Sheet1',
+            'dataRows': 86,
+            'columns': ['Name', 'Department', 42, 'y' * 30],
+          },
+          {'name': 'Sheet2', 'dataRows': -3},
+        ],
+      },
+    });
+    expect(result.typeSource, 'AI');
+    expect(result.intent, 'RECONCILE');
+    expect(result.pages.map((page) => (page.key, page.title, page.route)), [
+      ('employee', 'Employee files', '/employee'),
+    ]);
+    expect(result.blocked.map((item) => (item.title, item.reason)), [
+      ('Batch correction', 'Not available yet.'),
+    ]);
+    expect(result.sheets.first.name, 'Sheet1');
+    expect(result.sheets.first.dataRows, 86);
+    expect(result.sheets.first.columns, ['Name', 'Department', 'y' * 24]);
+    expect(result.sheets.last.dataRows, 0);
+    expect(result.sheets.last.columns, isEmpty);
+    // Chat-only follow-ups never travel into a form draft.
+    expect(result.toJson().keys, isNot(contains('pages')));
+    expect(result.toJson().keys, isNot(contains('blocked')));
+  });
+
+  testWidgets(
+    'an unclear file gets no card and one chip per purpose; a chip resends the same file once and yields one card',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'list.xlsx',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'documentType': 'UNKNOWN',
+          'typeSource': 'NONE',
+          'workflow': 'NONE',
+          'needsChoice': true,
+          'summary': 'Not sure what this file is for. Pick what to do with it.',
+          'choices': [
+            {'workflow': 'SALES_ORDER', 'title': 'Make a sales order'},
+            {'workflow': 'SALES_QUOTE', 'title': 'Make a sales quote'},
+            {'workflow': 'EXPENSE_CLAIM', 'title': 'Make an expense claim'},
+          ],
+        };
+      AiGuidedFilePlan? opened;
+      final harness = await _pump(
+        tester,
+        jobs: jobs,
+        initial: _identity(
+          permissions: [
+            'ai:use',
+            Perm.salesOrderView,
+            Perm.salesOrderCreate,
+            Perm.salesQuoteView,
+            Perm.salesQuoteCreate,
+            Perm.expenseApply,
+          ].join('\n'),
+        ),
+        onDraftOpened: (_, extra) => opened = extra as AiGuidedFilePlan,
+      );
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, 'Check this file');
+      await tester.pumpAndSettle();
+      expect(find.byType(AiChatActionCard), findsNothing);
+      ValueKey<String> chip(String job, String workflow) =>
+          ValueKey('ai-doc-choice-$job-$workflow');
+      for (final workflow in ['SALES_ORDER', 'SALES_QUOTE', 'EXPENSE_CLAIM']) {
+        expect(find.byKey(chip('file-job-1', workflow)), findsOneWidget);
+      }
+      await _tapCard(tester, 'ai-doc-choice-file-job-1-SALES_QUOTE');
+      expect(jobs.requests, hasLength(2));
+      expect(jobs.requests.last.kind, aiGuidedRouteKind);
+      expect(jobs.requests.last.bytes, file.bytes);
+      expect(jobs.requests.last.fileName, file.name);
+      expect(jobs.requests.last.params, {
+        'message': 'Check this file',
+        'pageRoute': '/sales/orders/new',
+        'workflow': 'SALES_QUOTE',
+      });
+      // The pick is written as the user's own line (scrolled above the card).
+      expect(
+        find.text(
+          _en.aiChatDocumentChosen('Make a sales quote'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(AiChatActionCard), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-action-card-$_docCard2')),
+        findsOneWidget,
+      );
+      expect(find.byKey(chip('file-job-2', 'SALES_ORDER')), findsNothing);
+      // One pick per reply: the chips of the first answer are now inactive.
+      await _scrollMessagesTo(
+        tester,
+        find.byKey(chip('file-job-1', 'SALES_ORDER')),
+        up: true,
+      );
+      for (final workflow in ['SALES_ORDER', 'SALES_QUOTE', 'EXPENSE_CLAIM']) {
+        final widget = tester.widget<ChoiceChip>(
+          find.byKey(chip('file-job-1', workflow)),
+        );
+        expect(widget.onSelected, isNull);
+        expect(widget.selected, workflow == 'SALES_QUOTE');
+      }
+      await _scrollMessagesTo(
+        tester,
+        find.byKey(const ValueKey('ai-action-confirm-$_docCard2')),
+      );
+      await _tapCard(tester, 'ai-action-confirm-$_docCard2');
+      expect(opened?.jobId, 'file-job-2');
+      expect(opened?.workflow, AiGuidedWorkflow.salesQuote);
+      expect(harness.repository.actionCalls, [
+        'confirm:$_docCard2',
+        'receipt:$_docCard2:SUCCEEDED',
+      ]);
+      expect(harness.repository.messages, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('purposes this account cannot fill in are not offered as chips', (
+    tester,
+  ) async {
+    final file = PlatformFile(
+      name: 'list.xlsx',
+      size: 4,
+      bytes: Uint8List.fromList([1, 2, 3, 4]),
+    );
+    FilePicker.platform = _Picker(file);
+    addTearDown(() => FilePicker.platform = _Picker(null));
+    final jobs = _FakeJobRepository()
+      ..routeOverride = {
+        'workflow': 'NONE',
+        'needsChoice': true,
+        'choices': [
+          {'workflow': 'SALES_ORDER', 'title': 'Make a sales order'},
+          {'workflow': 'EXPENSE_CLAIM', 'title': 'Make an expense claim'},
+          {'workflow': 'RUN_SQL', 'title': 'Unknown purpose'},
+        ],
+      };
+    await _pump(tester, jobs: jobs);
+    await _open(tester);
+    await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+    await tester.pumpAndSettle();
+    await _send(tester, 'Check this file');
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('ai-doc-choice-file-job-1-SALES_ORDER')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-doc-choice-file-job-1-EXPENSE_CLAIM')),
+      findsNothing,
+    );
+    expect(find.text('Unknown purpose'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'any chat user may upload; page chips follow the route guard and blocked items are shown as text',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'roster.xls',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      // An HR account: no fill-in purposes at all, upload still available.
+      final repository = _FakeChatRepository()..workflows = const [];
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {
+          'documentType': 'EMPLOYEE_ROSTER',
+          'typeSource': 'RULES',
+          'intent': 'RECONCILE',
+          'workflow': 'NONE',
+          'needsChoice': false,
+          'title': 'Employee roster',
+          'summary': 'This is an employee roster (title and column headers).',
+          'choices': <Object>[],
+          'pages': [
+            {
+              'key': 'employee',
+              'title': 'Employee files',
+              'route': '/employee',
+            },
+            {
+              'key': 'identity_check',
+              'title': 'ID checks',
+              'route': '/hr/tasks/identity',
+            },
+          ],
+          'blocked': [
+            {
+              'title': 'Batch correction',
+              'reason': 'Not available yet; correct people one by one.',
+            },
+          ],
+        };
+      Uri? opened;
+      await _pump(
+        tester,
+        repository: repository,
+        jobs: jobs,
+        initial: _identity(permissions: 'ai:use\n${Perm.employeeView}'),
+        onDraftOpened: (uri, _) => opened = uri,
+      );
+      await _open(tester);
+      expect(find.byKey(const ValueKey('ai-chat-attach')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, 'Compare with the system and fix what differs');
+      await tester.pumpAndSettle();
+      expect(jobs.requests.single.params.containsKey('workflow'), isFalse);
+      expect(find.byType(AiChatActionCard), findsNothing);
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(
+        find.byKey(const ValueKey('ai-doc-page-file-job-1-employee')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(_en.aiChatDocumentOpenPage('Employee files')),
+        findsOneWidget,
+      );
+      // The ID check page needs the ID edit permission on the client guard.
+      expect(
+        find.byKey(const ValueKey('ai-doc-page-file-job-1-identity_check')),
+        findsNothing,
+      );
+      expect(
+        find.text(
+          _en.aiChatDocumentBlockedLine(
+            'Batch correction',
+            'Not available yet; correct people one by one.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      await _tapCard(tester, 'ai-doc-page-file-job-1-employee');
+      expect(opened?.path, '/employee');
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsNothing);
+      expect(repository.messages, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final withGuidedCard in [true, false]) {
+    testWidgets(
+      'a file answer keeps at most one guided form card, never a page or permission card (guided card: $withGuidedCard)',
+      (tester) async {
+        final file = PlatformFile(
+          name: 'quote.csv',
+          size: 4,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        );
+        FilePicker.platform = _Picker(file);
+        addTearDown(() => FilePicker.platform = _Picker(null));
+        final jobs = _FakeJobRepository()..extraActions = [_card(), _grant()];
+        if (!withGuidedCard) {
+          jobs.routeOverride = {'workflow': 'NONE', 'needsChoice': false};
+        }
+        await _pump(tester, jobs: jobs);
+        await _open(tester);
+        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+        await tester.pumpAndSettle();
+        await _send(tester, 'Prepare this document');
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(AiChatActionCard),
+          withGuidedCard ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('ai-action-card-$_docCard')),
+          withGuidedCard ? findsOneWidget : findsNothing,
+        );
+        expect(find.byKey(const ValueKey('ai-action-card-$_p1')), findsNothing);
+        expect(find.byKey(const ValueKey('ai-action-card-$_p2')), findsNothing);
+      },
+    );
+  }
+
   testWidgets(
     'typed text and suggestions with page awareness disabled do not send an intent hint',
     (tester) async {
@@ -2049,6 +2559,26 @@ class _OrderPage extends StatelessWidget {
   );
 }
 
+/// Scrolls the conversation until [finder] is built and visible.
+Future<void> _scrollMessagesTo(
+  WidgetTester tester,
+  Finder finder, {
+  bool up = false,
+}) async {
+  await tester.scrollUntilVisible(
+    finder,
+    up ? -120 : 120,
+    scrollable: find
+        .descendant(
+          of: find.byKey(const ValueKey('ai-chat-messages')),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+  // The final jump is laid out on the next frame.
+  await tester.pump();
+}
+
 Future<void> _tapCard(WidgetTester tester, String key) async {
   final button = find.byKey(ValueKey(key));
   await tester.ensureVisible(button);
@@ -2122,6 +2652,7 @@ Future<_Harness> _pump(
   _FakeChatRepository? repository,
   _FakeJobRepository? jobs,
   void Function(Uri, Object?)? onDraftOpened,
+  String? Function(String path)? redirect,
   Size size = const Size(1000, 850),
   Widget page = const SizedBox(key: ValueKey('business-surface')),
 }) async {
@@ -2172,6 +2703,9 @@ Future<_Harness> _pump(
   final router = onDraftOpened == null
       ? null
       : GoRouter(
+          redirect: redirect == null
+              ? null
+              : (context, state) => redirect(state.uri.path),
           routes: [
             GoRoute(path: '/', builder: (context, state) => home),
             GoRoute(
@@ -2187,6 +2721,18 @@ Future<_Harness> _pump(
                 onDraftOpened(state.uri, state.extra);
                 return const Scaffold(body: Text('Expense handoff'));
               },
+            ),
+            GoRoute(
+              path: '/employee',
+              builder: (context, state) {
+                onDraftOpened(state.uri, state.extra);
+                return const Scaffold(body: Text('Employee files'));
+              },
+            ),
+            GoRoute(
+              path: RouteName.accessDenied,
+              builder: (context, state) =>
+                  const Scaffold(body: Text('No access page')),
             ),
           ],
         );
@@ -2215,20 +2761,37 @@ Future<_Harness> _pump(
   return _Harness(container, identity, route, repo);
 }
 
+/// The real MainShellPage inside a ShellRoute, like app_router: the four main
+/// tabs are drawn by the shell itself and their routes only sit underneath.
 Future<GoRouter> _pumpRealShell(
   WidgetTester tester,
-  _FakeChatRepository repository,
-) async {
+  _FakeChatRepository repository, {
+  String initialLocation = '/sales/quotes',
+  AiChatIdentity? identity,
+  _FakeJobRepository? jobs,
+  void Function(Uri, Object?)? onDraftOpened,
+  String? Function(String path)? redirect,
+}) async {
   tester.view.physicalSize = const Size(1200, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final who = identity ?? _identity();
+  final jobRepo = jobs ?? _FakeJobRepository();
   final router = GoRouter(
-    initialLocation: '/sales/quotes',
+    initialLocation: initialLocation,
+    redirect: redirect == null
+        ? null
+        : (context, state) => redirect(state.uri.path),
     routes: [
       ShellRoute(
         builder: (_, _, child) => MainShellPage(child: child),
         routes: [
+          for (final tab in [RouteName.dashboard, RouteName.settings])
+            GoRoute(
+              path: tab,
+              builder: (_, _) => Scaffold(body: Text('Route page $tab')),
+            ),
           GoRoute(
             path: '/sales/quotes',
             builder: (_, _) => const Scaffold(body: Text('Quotes list')),
@@ -2238,21 +2801,53 @@ Future<GoRouter> _pumpRealShell(
             builder: (_, state) =>
                 Scaffold(body: Text('Editor ${state.pathParameters['seg']}')),
           ),
+          GoRoute(
+            path: '/expense/new',
+            builder: (_, state) {
+              onDraftOpened?.call(state.uri, state.extra);
+              return const Scaffold(body: Text('Expense handoff'));
+            },
+          ),
+          GoRoute(
+            path: RouteName.accessDenied,
+            builder: (_, _) => const Scaffold(body: Text('No access page')),
+          ),
         ],
       ),
     ],
   );
   addTearDown(router.dispose);
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        aiChatIdentityProvider.overrideWithValue(_identity()),
-        aiChatRepositoryProvider.overrideWithValue(repository),
-        aiJobRunnerProvider.overrideWithValue(
-          AiJobRunner(_FakeJobRepository()),
+        aiChatIdentityProvider.overrideWithValue(who),
+        aiGuidedFileIdentityProvider.overrideWithValue((
+          scope: who.scope,
+          server: who.server,
+          permissions: who.permissions,
+        )),
+        currentPermissionsProvider.overrideWithValue(
+          who.permissions.split('\n').toSet(),
         ),
+        aiChatRepositoryProvider.overrideWithValue(repository),
+        aiJobRepositoryProvider.overrideWithValue(jobRepo),
+        aiJobRunnerProvider.overrideWithValue(AiJobRunner(jobRepo)),
         badgeTotalTodoProvider.overrideWithValue(0),
         unreadNoticeCountProvider.overrideWithValue(0),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        // The dashboard tab is drawn by the shell; keep its own reads offline.
+        dashboardOverviewProvider.overrideWith(
+          (ref) async => DashboardOverview(
+            departmentCode: '',
+            departmentName: '',
+            generatedAt: DateTime(2026, 10, 5),
+            metrics: const [],
+            todos: const [],
+          ),
+        ),
+        myCelebrationTodayProvider.overrideWith((ref) async => const []),
         publicSettingsRepositoryProvider.overrideWithValue(
           const _ChatPublicSettings(),
         ),
@@ -2299,6 +2894,14 @@ class _FakeChatRepository implements AiChatRepository {
   Object? sendFailure;
   int capabilityCalls = 0;
   List<String> suggestions = const [];
+
+  /// Fill-in purposes the server allows this account (uploading itself is
+  /// open to every chat user).
+  List<String> workflows = const [
+    'SALES_ORDER',
+    'SALES_QUOTE',
+    'EXPENSE_CLAIM',
+  ];
   final pageRequests = <String>[];
   final pageResults = <String, AiChatPageSuggestions>{};
   final pendingPages = <String, Completer<AiChatPageSuggestions>>{};
@@ -2368,7 +2971,7 @@ class _FakeChatRepository implements AiChatRepository {
       available: true,
       canUploadSalesOrder: true,
       canUploadDocument: true,
-      workflows: const ['SALES_ORDER', 'SALES_QUOTE', 'EXPENSE_CLAIM'],
+      workflows: workflows,
       canManagePermissions: true,
       scopeSummary: 'Only data permitted for this account.',
       suggestions: suggestions,
@@ -2524,8 +3127,15 @@ class _FakeJobRepository implements AiJobRepository {
   Object? readFailure;
   Completer<AiJobSnapshot>? pendingRead;
   AiJobSnapshot? response;
+
+  /// The latest file job; every file job stays readable by its id.
   AiJobSnapshot? routed;
+  final _routedJobs = <String, AiJobSnapshot>{};
   Map<String, dynamic>? routeOverride;
+
+  /// Further cards a file result carries next to its own (the chat must keep
+  /// at most one).
+  List<Map<String, dynamic>> extraActions = const [];
   Object? submitFailure;
   @override
   Future<void> cancel(String jobId) async {}
@@ -2535,7 +3145,8 @@ class _FakeJobRepository implements AiJobRepository {
     if (readFailure case final error?) throw error;
     if (pendingRead != null) return pendingRead!.future;
     return response ??
-        (routed?.id == jobId ? routed! : _success('Scoped answer', id: jobId));
+        _routedJobs[jobId] ??
+        _success('Scoped answer', id: jobId);
   }
 
   @override
@@ -2543,23 +3154,38 @@ class _FakeJobRepository implements AiJobRepository {
     requests.add(request);
     if (submitFailure case final failure?) throw failure;
     if (request.kind == aiGuidedRouteKind) {
-      final workflow = (routeOverride?['workflow'] as String?) ?? 'SALES_ORDER';
+      final jobId = 'file-job-${_routedJobs.length + 1}';
+      final cardId = _routedJobs.isEmpty ? _docCard : _docCard2;
+      // Like the server: a purpose the user picked overrides what the file
+      // looked like and yields exactly one card.
+      final chosen = request.params['workflow'];
+      final override = chosen == null
+          ? routeOverride
+          : {'workflow': chosen, 'needsChoice': false, 'choices': <Object>[]};
+      final workflow = (override?['workflow'] as String?) ?? 'SALES_ORDER';
       final card = _card(
-        id: _docCard,
+        id: cardId,
         actionType: 'OPEN_GUIDED_FORM',
         handler: 'OPEN_GUIDED_FORM',
         route: request.params['pageRoute'],
         title: 'Open the form and fill it in',
         lines: [
           'File: ${request.fileName}',
-          'Open: ${workflow == 'EXPENSE_CLAIM' ? 'New expense claim' : 'New sales order'}',
+          'Open: ${switch (workflow) {
+            'EXPENSE_CLAIM' => 'New expense claim',
+            'SALES_QUOTE' => 'New sales quote',
+            _ => 'New sales order',
+          }}',
           'Saving stays with you on the page.',
         ],
-        args: {'workflow': workflow, 'sourceJobId': 'file-job-1'},
+        args: {'workflow': workflow, 'sourceJobId': jobId},
       );
-      if (workflow != 'NONE') _serverCards[_docCard] = card;
+      if (workflow != 'NONE') _serverCards[cardId] = card;
+      for (final extra in extraActions) {
+        _serverCards[extra['proposalId'] as String] = extra;
+      }
       routed = AiJobSnapshot(
-        id: 'file-job-1',
+        id: jobId,
         kind: aiGuidedRouteKind,
         status: AiJobStatus.succeeded,
         result: {
@@ -2576,10 +3202,11 @@ class _FakeJobRepository implements AiJobRepository {
             'fileName': request.fileName,
             'sha256': sha256.convert(request.bytes).toString(),
           },
-          'actions': [if (workflow != 'NONE') card],
-          ...?routeOverride,
+          'actions': [if (workflow != 'NONE') card, ...extraActions],
+          ...?override,
         },
       );
+      _routedJobs[jobId] = routed!;
       return routed!;
     }
     return _success('File read', id: 'file-job-1');

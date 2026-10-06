@@ -43,7 +43,9 @@ class AiDocKnowledgeTest {
     @Test void chunksAreBoundedLabelledAndFreeOfInternalNames() {
         List<String> leaks = new ArrayList<>();
         for (var chunk : docs.chunks()) {
-            assertThat(chunk.text().length()).as(chunk.label()).isBetween(AiDocChunker.SMALLEST, AiDocChunker.MAX_CHARS + 2);
+            // A glossary definition or the pointer left for a replaced document is short by nature.
+            int smallest = chunk.kind() == AiDocChunker.Kind.RULE ? AiDocChunker.SMALLEST : AiDocChunker.SMALLEST_ROW;
+            assertThat(chunk.text().length()).as(chunk.label()).isBetween(smallest, AiDocChunker.MAX_CHARS + 2);
             assertThat(chunk.docTitle()).as(chunk.path()).isNotBlank().doesNotStartWith("ADR-");
             assertThat(chunk.id()).matches("doc-[0-9a-f]{12}");
             var problems = AiChatInternalContent.problems(chunk.text(), "");
@@ -145,9 +147,123 @@ class AiDocKnowledgeTest {
     }
 
     @Test void unrelatedQuestionsFindNothing() {
-        for (String question : List.of("今天天气怎么样", "我有哪些待办", "黄框是什么意思", "你好")) {
+        // 我有哪些待办 is a data question (answered by a tool); 待办 alone is too common a word to pick a document.
+        for (String question : List.of("今天天气怎么样", "我有哪些待办", "你好", "帮我写首诗")) {
             assertThat(docs.search(question, ALL)).as(question).isEmpty();
         }
+    }
+
+    /** P0-4 short and everyday questions: the term's definition and the rules titled with it, not nothing. */
+    @Test void shortAndEverydayQuestionsFindTheirRules() {
+        var production = Set.of("SELF", "PRODUCTION");
+        assertThat(docs.search("让料是什么意思", production))
+                .anySatisfy(chunk -> assertThat(chunk.path()).contains("ADR-049"))
+                .anySatisfy(chunk -> assertThat(chunk.label()).isEqualTo("业务术语与状态总表 / 让料"));
+        assertThat(docs.search("黄框是什么意思", Set.of("SELF")).getFirst().label()).isEqualTo("业务术语与状态总表 / 黄框");
+        assertThat(docs.search("直送是什么意思", production)).anySatisfy(chunk -> assertThat(chunk.label()).contains("直送"));
+        assertThat(docs.search("待检是什么", Set.of("SELF", "QUALITY"))).anySatisfy(chunk -> assertThat(chunk.label()).contains("待检"));
+        assertThat(docs.search("在途数量怎么算", ALL)).anySatisfy(chunk -> assertThat(chunk.label()).contains("在途"));
+        // Spoken questions: 东西到了 / 收进去 are 到货 / 入库, and 那边 / 后仓 no longer pull in quoted wording elsewhere.
+        assertThat(docs.search("东西到了以后仓库那边要怎么收进去", Set.of("SELF", "WAREHOUSE")))
+                .anySatisfy(chunk -> assertThat(chunk.label()).contains("到货登记"));
+        assertThat(docs.search("为啥我下不了委外单 按钮是灰得", Set.of("SELF", "SUBCONTRACT")))
+                .anySatisfy(chunk -> assertThat(chunk.path()).contains("ADR-156"));
+        assertThat(docs.search("字太小了看不清 怎么调大", Set.of("SELF")))
+                .anySatisfy(chunk -> assertThat(chunk.path()).contains("设置页"));
+        // A term the many rules that use it outrank still gets its own definition.
+        for (String term : List.of("预留", "齐套", "在途")) {
+            assertThat(docs.search(term + "是什么", Set.of("SELF"))).as(term)
+                    .anySatisfy(chunk -> assertThat(chunk.label()).isEqualTo("业务术语与状态总表 / " + term));
+        }
+        // Two common words that an FAQ heading names together; a spoken lead-in and 日产量 (报工) around 本次 and 累计.
+        assertThat(docs.search("通知能删除吗", Set.of("SELF")))
+                .anySatisfy(chunk -> assertThat(chunk.label()).startsWith("通知列表页 / 十、常见问题"));
+        assertThat(docs.search("我想听听日产量记录时本次和累计怎么区分", production))
+                .anySatisfy(chunk -> assertThat(chunk.label()).contains("报工数量填本次还是累计"));
+    }
+
+    /** P0-5 a wholly replaced decision is one pointer to its successor; history and unbuilt pages are not rules. */
+    @Test void replacedDecisionsAndHistoryAreNotServedAsRules() {
+        for (String replaced : List.of("ADR-062-", "ADR-085-", "ADR-103-")) {
+            var chunks = docs.chunks().stream().filter(chunk -> chunk.path().contains(replaced)).toList();
+            assertThat(chunks).as(replaced).singleElement().satisfies(pointer -> {
+                assertThat(pointer.kind()).isEqualTo(AiDocChunker.Kind.POINTER);
+                assertThat(pointer.label()).endsWith(" / 已被取代");
+                assertThat(pointer.text()).contains("整份取代", "不是现行规则", "《委外按工序领直属物料与分批回厂》");
+            });
+        }
+        assertThat(docs.search("委外件要先自制再通知委外吗", Set.of("SELF", "SUBCONTRACT")).getFirst().path()).contains("ADR-143");
+        // Page change logs, compatibility-only history and pages that were never built are not indexed.
+        assertThat(docs.chunks()).noneSatisfy(chunk -> assertThat(chunk.label())
+                .containsPattern("演进记录|历史(?:实现|执行|调度|合同|说明)|仅兼容|不作当前|二轮历史"));
+        assertThat(docs.chunks()).noneSatisfy(chunk -> assertThat(chunk.path())
+                .containsAnyOf("产量录入页", "产量统计页", "流水线看板页"));
+    }
+
+    /** P2-1 a source label never names ports, cloned test databases, acceptance runs or security internals. */
+    @Test void labelsNeverNameInternals() {
+        List<String> leaks = new ArrayList<>();
+        for (var chunk : docs.chunks()) {
+            if (AiDocKnowledgePolicy.INTERNAL_LABEL.matcher(chunk.label()).find()
+                    || AiDocKnowledgePolicy.SECURITY_TEXT.matcher(chunk.label()).find()) leaks.add(chunk.label());
+        }
+        assertThat(leaks).isEmpty();
+        // The note is cut, the heading stays.
+        assertThat(AiDocChunker.label("1. 事实(调查与复现，克隆库 + 8085)")).isEqualTo("1. 事实");
+        assertThat(AiDocChunker.label("UAT 验收步骤")).isNull();
+        assertThat(AiDocChunker.label("3.2 重量账规则")).isEqualTo("3.2 重量账规则");
+    }
+
+    /** Eval #8: the file name and a {@code > 别名：} line near the top are searched with the title. */
+    @Test void theFileNameAndTheAliasesNameTheDocument() {
+        var documents = new java.util.LinkedHashMap<String, String>();
+        documents.put("03-页面/生产计划单一键生成与全链路溯源设计.md",
+                "# 联合排产、供给批次与全链路溯源设计\n\n> 别名：一键排产、子计划生成\n\n## 当前规则\n\n"
+                        + "在物料分析页勾选父件和下层，一次下达车间、采购和委外；下层的子计划随父件一起生成，不用逐层去建，生成后可以在计划详情里逐层追溯来源。\n");
+        for (int i = 0; i < 20; i++) {
+            documents.put("03-页面/其它页" + i + ".md", "# 其它页" + i + "\n\n## 规则\n\n仓库按单据逐行办理，提交后由负责人审核，"
+                    + "审核通过才生效；退回时写明原因，改完重新提交；同一张单据只能由一个人办理。第" + i + "页。\n");
+        }
+        AiDocKnowledge small = AiDocKnowledge.of(documents);
+        var chunk = small.chunks().stream().filter(c -> c.path().contains("一键生成")).findFirst().orElseThrow();
+        assertThat(chunk.documentName()).contains("联合排产", "生产计划单一键生成与全链路溯源设计", "一键排产", "子计划生成");
+        assertThat(chunk.text()).doesNotContain("别名");
+        assertThat(small.search("生产计划能一键生成吗", ALL)).anySatisfy(c -> assertThat(c.path()).contains("一键生成"));
+        assertThat(small.search("子计划生成在哪", ALL)).anySatisfy(c -> assertThat(c.path()).contains("一键生成"));
+    }
+
+    /**
+     * P0-6 who reads which rules (reviewed overrides): receiving and inspection rules for every department that works
+     * with them, the credit rule for sales and finance, personnel pages for personnel, data clearing for administrators,
+     * the glossary and the assistant's own guide for everyone.
+     */
+    @Test void visibilityMatrixOfTheReviewedDocuments() {
+        record Row(String path, Set<String> visibleTo, Set<String> hiddenFrom) {}
+        var self = Set.of("SELF");
+        List<Row> matrix = List.of(
+                new Row("ADR-090-", Set.of("PRODUCTION", "SALES", "WAREHOUSE", "QUALITY", "PURCHASE"), Set.of()),
+                new Row("ADR-144-", Set.of("WAREHOUSE", "PURCHASE", "SALES"), Set.of()),
+                new Row("ADR-128-", Set.of("SALES", "FINANCE"), Set.of("WAREHOUSE", "PRODUCTION")),
+                new Row("03-页面/员工详情页", Set.of("HR"), Set.of("SALES", "WAREHOUSE")),
+                new Row("03-页面/员工编辑页", Set.of("HR"), Set.of("SALES", "WAREHOUSE")),
+                new Row("ADR-155-", Set.of("ADMIN"), Set.of("SALES", "FINANCE", "HR")),
+                new Row(AiDocGlossary.PATH, Set.of("SALES", "WAREHOUSE"), Set.of()));
+        for (Row row : matrix) {
+            var chunks = docs.chunks().stream().filter(chunk -> chunk.path().contains(row.path())).toList();
+            assertThat(chunks).as(row.path()).isNotEmpty();
+            for (String domain : row.visibleTo()) {
+                assertThat(chunks).as(row.path() + " for " + domain)
+                        .allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", domain))).isTrue());
+            }
+            for (String domain : row.hiddenFrom()) {
+                assertThat(chunks).as(row.path() + " hidden from " + domain)
+                        .allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", domain))).isFalse());
+            }
+        }
+        // Every chat user reads the glossary and the assistant's guide, with no business domain at all.
+        assertThat(docs.chunks()).filteredOn(chunk -> chunk.path().equals(AiDocGlossary.PATH)
+                        || chunk.path().equals("03-页面/AI工作助手使用说明.md"))
+                .allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, self)).isTrue());
     }
 
     @Test void businessRulesAreSharedButPersonnelFinanceAndAdministrationStayInTheirDepartment() {
@@ -159,10 +275,143 @@ class AiDocKnowledgeTest {
         assertThat(docs.search("工资条审核的流程是什么", Set.of("SELF", "WAREHOUSE")))
                 .noneSatisfy(chunk -> assertThat(chunk.domains()).contains("HR"));
         assertThat(docs.search("工资条审核的流程是什么", ALL)).anySatisfy(chunk -> assertThat(chunk.domains()).contains("HR"));
+        // Live 2026-10-06 (N2): ADR-063's personnel event catalog (an unrestricted decision record) gave a sales reader the
+        // payroll review and publish chain; an event catalog is mechanics and is no longer indexed at all.
+        assertThat(docs.search("工资条怎么生成 生成完要谁审核", Set.of("SELF", "SALES", "SUBCONTRACT")))
+                .noneSatisfy(chunk -> assertThat(chunk.section()).contains("事件目录"));
+        assertThat(docs.chunks()).noneSatisfy(chunk -> assertThat(chunk.section()).contains("人事域事件目录"));
         assertThat(docs.search("服务器状态页显示什么", Set.of("SELF", "WAREHOUSE")))
                 .noneSatisfy(chunk -> assertThat(chunk.path()).contains("服务器状态页"));
         assertThat(docs.search("服务器状态页显示什么", ALL))
                 .anySatisfy(chunk -> assertThat(chunk.path()).contains("服务器状态页"));
+    }
+
+    /**
+     * ADR-159 section-level domains (root cure for live N2): inside a document every chat user reads, the sections about
+     * personnel or finance (by heading or a list item's bold lead) are for those departments only; the rest of the document
+     * stays shared, and documents about one's own matters, the glossary and the assistant's guide stay fully visible.
+     */
+    @Test void sectionVisibilityMatrix() {
+        record Row(String path, String text, Set<String> visibleTo, Set<String> hiddenFrom) {}
+        List<Row> matrix = List.of(
+                // ADR-063 2026-09-10 修订: items 4-6 (personnel notice routing, payroll review and publish) are personnel's;
+                // items 1-3 and 7-8 (login popup rules, manual notices) are everyone's.
+                new Row("ADR-063-", "人事域接收池", Set.of("HR"), Set.of("SALES", "FINANCE", "WAREHOUSE", "SUBCONTRACT")),
+                new Row("ADR-063-", "工资审核通过", Set.of("HR"), Set.of("SALES", "FINANCE")),
+                new Row("ADR-063-", "登录弹窗口径", Set.of("HR", "SALES", "FINANCE", "WAREHOUSE"), Set.of()),
+                new Row("ADR-063-", "人工通知登录弹窗与打卡", Set.of("HR", "SALES", "FINANCE"), Set.of()),
+                // ADR-131 §7 成本 is finance's; the rest of the workshop decision is production's and the warehouse's.
+                new Row("ADR-131-", "成本对象", Set.of("FINANCE"), Set.of("PRODUCTION", "WAREHOUSE", "SALES")),
+                new Row("ADR-131-", "整批", Set.of("PRODUCTION", "WAREHOUSE", "FINANCE"), Set.of()));
+        for (Row row : matrix) {
+            var chunks = docs.chunks().stream().filter(chunk -> chunk.path().contains(row.path()) && chunk.text().contains(row.text()))
+                    .filter(chunk -> row.hiddenFrom().isEmpty() ? chunk.sectionDomains().isEmpty() : !chunk.sectionDomains().isEmpty())
+                    .toList();
+            assertThat(chunks).as(row.path() + " " + row.text()).isNotEmpty();
+            for (String domain : row.visibleTo()) {
+                assertThat(chunks).as(row.path() + " " + row.text() + " for " + domain)
+                        .allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", domain))).isTrue());
+            }
+            for (String domain : row.hiddenFrom()) {
+                assertThat(chunks).as(row.path() + " " + row.text() + " hidden from " + domain)
+                        .allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", domain))).isFalse());
+            }
+        }
+        // The personnel chunk of ADR-063 holds nothing of the shared login popup rules (they never share a chunk).
+        assertThat(docs.chunks()).filteredOn(chunk -> chunk.path().contains("ADR-063-") && !chunk.sectionDomains().isEmpty())
+                .isNotEmpty().allSatisfy(chunk -> assertThat(chunk.text()).doesNotContain("登录弹窗口径", "人工通知登录弹窗"));
+        // The personnel event catalog is mechanics and indexed for nobody.
+        assertThat(docs.chunks()).noneSatisfy(chunk -> assertThat(chunk.section()).contains("事件目录"));
+        // Fully visible: documents about one's own matters (「我的部门」 roster under the department page too), the glossary,
+        // the assistant's guide, and a sales chain whose 「发货与正式应收」 is a shipping step as well.
+        var self = Set.of("SELF");
+        assertThat(docs.chunks()).filteredOn(chunk -> chunk.path().equals("03-页面/我的页.md") || chunk.path().equals(AiDocGlossary.PATH)
+                        || chunk.path().equals("03-页面/AI工作助手使用说明.md")
+                        || (chunk.path().equals("03-页面/部门管理页.md") && chunk.section().contains("我的部门")))
+                .isNotEmpty().allSatisfy(chunk -> {
+                    assertThat(chunk.sectionDomains()).as(chunk.label()).isEmpty();
+                    assertThat(AiDocKnowledge.visible(chunk, self)).as(chunk.label()).isTrue();
+                });
+        assertThat(docs.chunks()).filteredOn(chunk -> chunk.path().contains("01-销售订货到发货全链路") && chunk.section().contains("发货与正式应收"))
+                .isNotEmpty().allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", "SALES"))).isTrue());
+        // A section scope only narrows: a finance document's sections never open to a personnel reader.
+        assertThat(docs.chunks()).filteredOn(chunk -> chunk.domains().contains("FINANCE") && !chunk.domains().contains("HR"))
+                .isNotEmpty().allSatisfy(chunk -> assertThat(chunk.sectionDomains()).isEmpty());
+    }
+
+    /** ADR-159 section scoping on small documents: a heading and a list item's bold lead; the scope ends with the item. */
+    @Test void aPersonnelSectionOrItemInsideASharedDocumentIsScopedOnItsOwn() {
+        var documents = new java.util.LinkedHashMap<String, String>();
+        documents.put("99-决策记录-ADR/ADR-990-通知弹窗规则.md", "# ADR-990 通知弹窗规则\n\n## 一、决策\n\n"
+                + "1. **登录弹窗**：一条待办在未办结期间每次登录都弹，直到用户确认过它；稍后再看到期后重新弹出，右上角关闭只关本次，"
+                + "下次登录仍然提醒，已读或去工作台处理之后才静默。\n"
+                + "2. **人事办结**：工资审核通过后先办结审核卡，再给发布人发待发布卡；发布后办结，驳回时撤回两张卡。\n"
+                + "   工资批次的复核人和发布人按职能权限判定，不限部门子树，提交人本人一律排除。\n"
+                + "3. **车间任务**：开工即按段办结，完工入库由完工投递兜底办结，取消和红冲同样按段办结，换车间重投也按段办结，"
+                + "报工本身不办结。\n\n"
+                + "## 二、附：人事流程\n\n入职、离职和工资条的提醒都发给人事职能权限的持有人，不限部门，提交人本人不收，"
+                + "这些提醒在人事办完之后自动办结，驳回时撤回，员工撤销信息变更时也一并办结。\n");
+        AiDocKnowledge small = AiDocKnowledge.of(documents);
+        var hr = small.chunks().stream().filter(chunk -> !chunk.sectionDomains().isEmpty()).toList();
+        assertThat(hr).hasSize(2).allSatisfy(chunk -> assertThat(chunk.sectionDomains()).containsExactly("HR"));
+        assertThat(hr.getFirst().text()).contains("人事办结", "复核人").doesNotContain("登录弹窗", "车间任务");
+        assertThat(hr.get(1).section()).contains("附：人事流程");
+        var shared = small.chunks().stream().filter(chunk -> chunk.sectionDomains().isEmpty()).toList();
+        assertThat(shared).anySatisfy(chunk -> assertThat(chunk.text()).contains("登录弹窗"))
+                .anySatisfy(chunk -> assertThat(chunk.text()).contains("车间任务"))
+                .allSatisfy(chunk -> assertThat(chunk.text()).doesNotContain("工资"));
+        assertThat(hr).allSatisfy(chunk -> {
+            assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", "HR"))).isTrue();
+            assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF", "SALES", "FINANCE"))).isFalse();
+            assertThat(AiDocKnowledge.hiddenBy(chunk, Set.of("SELF", "SALES"))).containsExactly("HR");
+        });
+        assertThat(shared).allSatisfy(chunk -> assertThat(AiDocKnowledge.visible(chunk, Set.of("SELF"))).isTrue());
+    }
+
+    /** ADR-159 §十 6: sections of a partly replaced decision record marked as replaced are not indexed, the rest is. */
+    @Test void sectionsMarkedAsReplacedAreNotIndexed() {
+        var documents = new java.util.LinkedHashMap<String, String>();
+        documents.put("99-决策记录-ADR/ADR-991-委外解锁.md", "# ADR-991 委外解锁\n\n## 二、决策(已被 ADR-143 取代，不作当前规则)\n\n"
+                + "委外子件批准即派活，按申请量一次发料，回厂后按订货量结案，这是旧的做法，现在已经不用了，只留作追溯；"
+                + "发料不看库存够不够，缺料时由委外商自己垫料，回厂再按实收补扣。\n\n"
+                + "## 三、口径(部分被 ADR-143 取代)\n\n委外损耗按订货量的百分比计算，超出损耗的部分转财务责任判定，这一条仍然有效；"
+                + "损耗以内的短交自动结案，不再催委外商补货，超出的部分由财务审核组决定由谁承担。\n");
+        AiDocKnowledge small = AiDocKnowledge.of(documents);
+        assertThat(small.chunks()).noneSatisfy(chunk -> assertThat(chunk.text()).contains("批准即派活"));
+        assertThat(small.chunks()).anySatisfy(chunk -> assertThat(chunk.text()).contains("委外损耗按订货量"));
+        // The real records C2 marked: ADR-064 §二 and ADR-081 §三 are not indexed.
+        assertThat(docs.chunks()).noneSatisfy(chunk -> assertThat(chunk.label()).containsPattern("已被 ADR-\\d+.{0,40}取代"));
+    }
+
+    /**
+     * ADR-159 (live N2, N3): a question whose best match over every document is hidden from the reader and clearly outranks
+     * what the reader sees is about a restricted subject; the same question from the department that owns it is not.
+     */
+    @Test void aQuestionAboutAnotherDepartmentsRulesIsRecognized() {
+        var sales = Set.of("SELF", "SALES", "SUBCONTRACT");
+        assertThat(docs.restrictedTopic("货品成本是怎么算出来的", sales)).contains(Set.of("FINANCE"));
+        assertThat(docs.restrictedTopic("工资条怎么生成", sales)).contains(Set.of("HR"));
+        assertThat(docs.restrictedTopic("工资条怎么生成 生成完要谁审核", sales)).contains(Set.of("HR"));
+        assertThat(docs.restrictedTopic("货品成本是怎么算出来的", Set.of("SELF", "FINANCE"))).isEmpty();
+        assertThat(docs.restrictedTopic("工资条怎么生成 生成完要谁审核", Set.of("SELF", "HR"))).isEmpty();
+        assertThat(docs.restrictedTopic("货品成本是怎么算出来的", ALL)).isEmpty();
+        // The sales reader's own rules are not restricted, and an unrelated question matches nothing.
+        assertThat(docs.restrictedTopic("报价单怎么转成订货单", sales)).isEmpty();
+        assertThat(docs.restrictedTopic("今天天气怎么样", sales)).isEmpty();
+        // The margin: 1.5 times the best visible score, or a higher score with two more of the question's own words.
+        var hidden = Set.of("FINANCE");
+        assertThat(new AiDocKnowledge.TopicCheck(15.0, 10.0, 3, 3, true, hidden).restricted(true)).isTrue();
+        assertThat(new AiDocKnowledge.TopicCheck(14.9, 10.0, 3, 3, true, hidden).restricted(true)).isFalse();
+        assertThat(new AiDocKnowledge.TopicCheck(12.0, 10.0, 4, 2, true, hidden).restricted(true)).isTrue();
+        assertThat(new AiDocKnowledge.TopicCheck(12.0, 10.0, 4, 3, true, hidden).restricted(true)).isFalse();
+        assertThat(new AiDocKnowledge.TopicCheck(9.0, 10.0, 4, 1, true, hidden).restricted(true)).isFalse();
+        // Nothing the reader sees would be used: any hidden match that answers the question decides.
+        assertThat(new AiDocKnowledge.TopicCheck(11.0, 10.0, 2, 2, true, hidden).restricted(false)).isTrue();
+        // The hidden match must itself answer the question, and be hidden.
+        assertThat(new AiDocKnowledge.TopicCheck(30.0, 5.0, 3, 1, false, hidden).restricted(false)).isFalse();
+        assertThat(new AiDocKnowledge.TopicCheck(30.0, 5.0, 3, 1, true, Set.of()).restricted(false)).isFalse();
+        assertThat(AiDocKnowledge.RESTRICTED_MARGIN).isEqualTo(1.5);
+        assertThat(AiDocKnowledge.RESTRICTED_WORD_MARGIN).isEqualTo(2);
     }
 
     @Test void searchIsFastEnoughToRunOnEveryQuestion() {

@@ -22,7 +22,11 @@ class AiChatOutboundFactsContractTest {
             "com.uten.imp.features.dashboard.DashboardAiChatTool",
             "com.uten.imp.features.workbench.badge.WorkbenchAiChatTool",
             "com.uten.imp.features.production.execution.ProductionAiChatTool",
-            "com.uten.imp.features.stock.InventoryAiChatTool");
+            "com.uten.imp.features.stock.InventoryAiChatTool",
+            "com.uten.imp.features.rbac.directory.FeatureDirectoryAiChatTool",
+            "com.uten.imp.features.sales.order.SalesOrderAiChatTool",
+            "com.uten.imp.features.purchase.order.PurchaseOrderAiChatTool",
+            "com.uten.imp.features.subcontract.order.SubcontractOrderAiChatTool");
 
     @Test void onlyRegisteredToolsProjectModelFacts() throws Exception {
         var scanner = new ClassPathScanningCandidateComponentProvider(false);
@@ -38,7 +42,8 @@ class AiChatOutboundFactsContractTest {
                 .contains("com.uten.imp.features.master.goods.costing.AiGoodsCostTool",
                         "com.uten.imp.features.master.client.AiClientCreditTool",
                         "com.uten.imp.features.org.hrtask.HrTasksAiChatTool",
-                        "com.uten.imp.features.admin.AiPermissionGrantTool");
+                        "com.uten.imp.features.admin.AiPermissionGrantTool",
+                        "com.uten.imp.features.rbac.directory.MyAccessAiChatTool");
         assertThat(sharing).isEqualTo(REGISTERED_SHARING_TOOLS);
     }
 

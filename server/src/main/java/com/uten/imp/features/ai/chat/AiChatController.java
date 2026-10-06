@@ -66,7 +66,8 @@ public class AiChatController {
         var result = new LinkedHashMap<String, Object>();
         result.put("canChat", true); result.put("available", available);
         result.put("canUploadSalesOrder", destinations.contains("SALES_ORDER"));
-        result.put("canUploadDocument", !destinations.isEmpty()); result.put("workflows", destinations);
+        // Recognizing a file needs only chat access; what it may lead to is filtered per answer.
+        result.put("canUploadDocument", true); result.put("workflows", destinations);
         result.put("canManagePermissions", tools.available("prepare_permission_grant").isPresent());
         // ADR-153: the assistant's scope is stated up front (platform use, business rules, permitted data).
         result.put("scopeSummary", (actor.isSuperAdmin()
@@ -160,7 +161,14 @@ public class AiChatController {
         AiChatSettings current = settings.current();
         // Page reading switched off: nothing from the page is stored or sent, whatever the client attached.
         if (!current.pageAware()) checked = checked.withoutPage();
-        if (checked.pageContext() != null) pages.resolve(checked.pageContext().route(), checked.pageContext().fieldKey());
+        if (checked.pageContext() != null) {
+            try {
+                pages.resolve(checked.pageContext().route(), checked.pageContext().fieldKey());
+            } catch (ApiException denied) {
+                // A page outside the user's chat departments: the question is answered without it, nothing of it is stored.
+                checked = AiChatJobHandler.withoutUnreadablePage(checked, denied);
+            }
+        }
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("request", checked); input.put("access", evidence.stamp());
         // Settings are read here on the server, once per question; the client never supplies them.

@@ -265,7 +265,7 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode result = succeeded(token, replacement);
         assertThat(result.path("workflow").asText()).isEqualTo("SALES_ORDER");
         assertThat(result.has("_routing")).isFalse();
-        assertThat(jdbc.queryForObject("SELECT result->'_routing'->>'version' FROM ai_jobs WHERE id=?::uuid", String.class, replacement)).isEqualTo("v2");
+        assertThat(jdbc.queryForObject("SELECT result->'_routing'->>'version' FROM ai_jobs WHERE id=?::uuid", String.class, replacement)).isEqualTo("v3");
         assertThat(FAKE.requests()).isEmpty();
     }
 
@@ -308,6 +308,48 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         var denied = request(revoked, AiDocumentRouteHandler.KIND, "page-denied.csv", csv("报价单", "品名 数量 单价"),
                 Map.of("pageRoute", "/sales/quotes/new"));
         assertEquals(403, denied.getResponse().getStatus(), body(denied));
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
+    @Test void hrAccountWithoutAnyFillableFormHasTheRosterRecognizedLocallyWithPermittedPagesOnly() throws Exception {
+        jdbc.update("""
+                INSERT INTO department_permissions(department_id,permission_id)
+                SELECT d.id,p.id FROM departments d CROSS JOIN permissions p
+                WHERE d.code='DEPT_HR' AND p.code IN ('ai:use','employee:view')
+                ON CONFLICT DO NOTHING
+                """);
+        Staff hr = newEmployee(adminToken(), "DEPT_HR");
+        revoke(hr, "expense:apply");
+        revoke(hr, "employee:pii:edit");
+        String token = fresh(hr);
+        JsonNode capabilities = getJson("/api/ai/chat/capabilities", token);
+        assertThat(capabilities.path("workflows").size()).isZero();
+        assertThat(capabilities.path("canUploadDocument").asBoolean()).isTrue();
+        long employees = count("employees");
+        byte[] roster = AiDocumentFixtures.roster(true, 86, true);
+        String id = upload(token, AiDocumentRouteHandler.KIND, "花名册.xls", roster,
+                Map.of("message", "这是最新的人事统计出来的人员信息 你看看信息 对照系统里的 不对的补充 缺少的添加", "pageRoute", "/dashboard"));
+        JsonNode result = succeeded(token, id);
+        assertThat(result.path("documentType").asText()).isEqualTo("EMPLOYEE_ROSTER");
+        assertThat(result.path("intent").asText()).isEqualTo("RECONCILE");
+        assertThat(result.path("typeSource").asText()).isEqualTo("RULES");
+        assertThat(result.path("workflow").asText()).isEqualTo("NONE");
+        assertThat(result.path("actions").size()).isZero();
+        assertThat(result.path("choices").size()).isZero();
+        assertThat(result.path("profile").path("sheets").get(0).path("dataRows").asInt()).isEqualTo(86);
+        assertThat(result.path("pages").toString()).contains("/employee").doesNotContain("/hr/tasks/identity");
+        assertThat(result.path("blocked").toString()).contains("按花名册批量更正员工资料", "证件核对");
+        assertThat(result.path("summary").asText()).contains("员工花名册", "约 86 人", "还不能按花名册自动批量更正");
+        String stored = jdbc.queryForObject("SELECT result::text FROM ai_jobs WHERE id=?::uuid", String.class, id);
+        for (String value : AiDocumentFixtures.rosterValues(86)) {
+            assertThat(result.toString()).doesNotContain(value);
+            assertThat(stored).doesNotContain(value);
+        }
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_chat_action_proposals WHERE actor_user_id=?::uuid",
+                Long.class, hr.userId())).isZero();
+        assertThat(count("employees")).isEqualTo(employees);
+        MvcResult forged = request(token, AiDocumentRouteHandler.KIND, "花名册.xls", roster, Map.of("workflow", "SALES_ORDER"));
+        assertEquals(403, forged.getResponse().getStatus(), body(forged));
         assertThat(FAKE.requests()).isEmpty();
     }
 

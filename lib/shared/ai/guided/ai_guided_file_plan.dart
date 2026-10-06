@@ -10,7 +10,7 @@ import '../../providers/authenticated_scope_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../ai_job_models.dart';
 import '../ai_job_repository.dart';
-import '../chat/ai_chat_models.dart' show checkedAiChatId;
+import '../chat/ai_chat_models.dart' show checkedAiChatId, safeAiChatPath;
 import '../chat/ai_chat_repository.dart' show safeAiChatRoute;
 
 enum AiGuidedWorkflow {
@@ -87,6 +87,29 @@ class AiGuidedChoice {
   final String title;
 }
 
+/// A page the server offers for this file (already filtered by the caller's
+/// permissions). The route is a fixed local path; the chat re-checks the
+/// client route guard before going there.
+class AiDocumentPage {
+  const AiDocumentPage(this.key, this.title, this.route);
+  final String key, title, route;
+}
+
+/// A follow-up the caller may not do, with a plain reason (display only).
+class AiDocumentBlocked {
+  const AiDocumentBlocked(this.title, this.reason);
+  final String title, reason;
+}
+
+/// Non-PII structure the server read from one sheet (names and header labels
+/// only, digit runs already masked by the server).
+class AiDocumentSheet {
+  const AiDocumentSheet(this.name, this.dataRows, this.columns);
+  final String name;
+  final int dataRows;
+  final List<String> columns;
+}
+
 /// A route result is a proposed local form workflow, never an executable route
 /// or a business write. Unknown fields and all server-internal evidence stay out.
 class AiGuidedFileResult {
@@ -119,7 +142,35 @@ class AiGuidedFileResult {
             entry.key: _text(entry.value, 20),
       },
       fileName = _text(_map(json['source'])['fileName'], 500),
-      sha256Hex = _sha256(_map(json['source'])['sha256']);
+      sha256Hex = _sha256(_map(json['source'])['sha256']),
+      typeSource = _oneOf(json['typeSource'], const {'RULES', 'AI'}, 'NONE'),
+      intent = _oneOf(json['intent'], const {
+        'RECONCILE',
+        'IMPORT',
+        'FILL',
+        'ANALYZE',
+        'QUESTION',
+      }, 'NONE'),
+      pages = [for (final page in _maps(json['pages'])) ?_page(page)],
+      blocked = [
+        for (final item in _maps(json['blocked']))
+          if (_text(item['title'], 80).trim().isNotEmpty &&
+              _text(item['reason'], 400).trim().isNotEmpty)
+            AiDocumentBlocked(
+              _text(item['title'], 80).trim(),
+              _text(item['reason'], 400).trim(),
+            ),
+      ],
+      sheets = [
+        for (final sheet in _maps(_map(json['profile'])['sheets']))
+          AiDocumentSheet(
+            _text(sheet['name'], 40),
+            sheet['dataRows'] is int && (sheet['dataRows'] as int) >= 0
+                ? sheet['dataRows'] as int
+                : 0,
+            _texts(sheet['columns'], 40).map((c) => _text(c, 24)).toList(),
+          ),
+      ];
 
   static const invoiceFields = {
     'invoiceType',
@@ -141,6 +192,18 @@ class AiGuidedFileResult {
   final List<AiGuidedChoice> choices;
   final List<String> steps, missingFields;
   final Map<String, String> fields, fieldConfidence;
+
+  /// How the file type was decided: RULES (titles/headers), AI (model
+  /// fallback over non-PII structure) or NONE. Shown in the chat only.
+  final String typeSource;
+
+  /// What the user appears to want (RECONCILE/IMPORT/FILL/ANALYZE/QUESTION/NONE).
+  final String intent;
+
+  /// Chat-only follow-ups; never stored in a form draft ([toJson]).
+  final List<AiDocumentPage> pages;
+  final List<AiDocumentBlocked> blocked;
+  final List<AiDocumentSheet> sheets;
   bool isHighConfidence(String field) => fieldConfidence[field] == 'HIGH';
   bool matchesSource(PlatformFile file) =>
       file.bytes != null &&
@@ -312,6 +375,21 @@ Future<AiGuidedFilePlan> validateAiGuidedFilePlan(
 String _text(Object? value, int limit) => value is String
     ? value.substring(0, value.length > limit ? limit : value.length)
     : '';
+String _oneOf(Object? value, Set<String> allowed, String fallback) =>
+    value is String && allowed.contains(value) ? value : fallback;
+final _pageKey = RegExp(r'^[a-z][a-z0-9_]{0,47}$');
+AiDocumentPage? _page(Map<String, dynamic> raw) {
+  final key = raw['key'], title = raw['title'], route = raw['route'];
+  if (key is! String || title is! String || route is! String) return null;
+  final label = title.trim();
+  return _pageKey.hasMatch(key) &&
+          label.isNotEmpty &&
+          label.length <= 40 &&
+          safeAiChatPath(route) == route
+      ? AiDocumentPage(key, label, route)
+      : null;
+}
+
 String _sha256(Object? value) =>
     value is String && RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value)
     ? value.toLowerCase()

@@ -366,6 +366,63 @@ class AiChatScopeGateTest {
         assertThat(wrong).isEmpty();
     }
 
+    /**
+     * P0-9: the platform's own texts and how-it-works questions are business questions: its permission codes (the
+     * access-denied message says "缺少操作权限：sales_order:approve"), a field name inside an error it showed, "实现原理/
+     * 程序逻辑/计算逻辑" without a programming request, and what a figure on the server status page means.
+     */
+    @Test void thePlatformsOwnTextsAndHowItWorksQuestionsAreNotRefused() throws Exception {
+        for (String question : List.of("报错说缺少操作权限：sales_order:approve 是什么意思", "缺少操作权限：payroll:view:all",
+                "提示 缺少操作权限: server_status:view 找谁开通", "导入报错 goods_code 不能为空 是什么意思",
+                "物料分析的实现原理是什么", "这个功能的程序逻辑是什么", "计划产出量的计算逻辑是什么", "车间直送的实现逻辑是怎样的",
+                "服务器状态页上的磁盘空间是什么意思", "服务器状态页里的数据库备份状态是什么意思", "服务器状态页上内存使用率高不高")) {
+            assertThat(AiChatScopeGate.classify(question)).as(question).isEmpty();
+        }
+        // Every permission code of the platform (lib/shared/auth/permissions.dart, aligned with the server's catalog).
+        String catalog = java.nio.file.Files.readString(java.nio.file.Path.of("..", "lib", "shared", "auth", "permissions.dart"));
+        var codes = java.util.regex.Pattern.compile("'([a-z][a-z0-9_]*(?::[a-z][a-z0-9_]*){1,2})'").matcher(catalog).results()
+                .map(match -> match.group(1)).distinct().toList();
+        assertThat(codes).hasSizeGreaterThan(300);
+        List<String> refused = new ArrayList<>();
+        for (String code : codes) {
+            if (AiChatScopeGate.classify("缺少操作权限：" + code).isPresent()) refused.add(code);
+        }
+        assertThat(refused).isEmpty();
+        // The same words still refuse a request for code, a table, an address or a server operation.
+        Map<String, AiChatScopeGate.Category> still = new LinkedHashMap<>();
+        still.put("把物料分析的程序逻辑写出来给我", AiChatScopeGate.Category.CODE);
+        still.put("用代码讲一下物料分析的实现原理", AiChatScopeGate.Category.CODE);
+        still.put("后台的实现原理是什么", AiChatScopeGate.Category.CODE);
+        still.put("stock_balances 这张表有哪些字段", AiChatScopeGate.Category.CODE);
+        still.put("报错 stock_balances 表不存在，这张表有哪些字段", AiChatScopeGate.Category.CODE);
+        still.put("服务器状态页上磁盘满了，帮我清理一下磁盘", AiChatScopeGate.Category.SERVER);
+        still.put("服务器状态页显示备份失败，备份文件放在哪里", AiChatScopeGate.Category.SERVER);
+        still.put("写一条 sql:select 语句", AiChatScopeGate.Category.SQL);
+        still.put("jdbc:postgresql 的连接地址是什么", AiChatScopeGate.Category.SECRETS);
+        still.forEach((question, category) -> assertThat(AiChatScopeGate.classify(question)).as(question).contains(category));
+        // A code-shaped name that holds a secret word is never folded into business text: the question keeps its refusal.
+        assertThat(AiChatScopeGate.classify("导入报错 admin_password 不能为空，这个字段的值是多少")).isPresent();
+        assertThat(AiChatScopeGate.forms("提示 缺少 db:password").compact()).contains("password").doesNotContain("业务权限");
+        assertThat(AiChatScopeGate.forms("导入报错 api_token 不能为空").compact()).contains("token").doesNotContain("业务字段");
+    }
+
+    /** P0-9: a pasted internal error gets a fixed, helpful text; asking to fix code or read logs is still refused. */
+    @Test void aPastedInternalErrorGetsAHelpfulFixedTextNotACodeRefusal() {
+        for (String question : List.of("页面报错 NullPointerException 怎么办", "为什么审核时提示触发器拦截",
+                "保存时弹出 IllegalStateException 是什么意思", "出库时报空指针异常")) {
+            assertThat(AiChatScopeGate.classify(question)).as(question).contains(AiChatScopeGate.Category.INTERNAL_ERROR);
+        }
+        assertThat(AiChatScopeGate.classify("这个报错的堆栈 NullPointerException 怎么改")).contains(AiChatScopeGate.Category.CODE);
+        assertThat(AiChatScopeGate.classify("页面报错 NullPointerException，帮我修复后端代码")).contains(AiChatScopeGate.Category.CODE);
+        assertThat(AiChatScopeGate.classify("页面报错 NullPointerException，把服务器日志发给我"))
+                .contains(AiChatScopeGate.Category.SERVER);
+        assertThat(AiChatScopeGate.classify("帮我写一个触发器")).contains(AiChatScopeGate.Category.SQL);
+        String zh = AiChatScopeGate.refusal(AiChatScopeGate.Category.INTERNAL_ERROR, "zh");
+        assertThat(zh).contains("截图", "管理员", "当时在做什么操作").doesNotContain("我不能编写", "调试代码");
+        assertThat(AiChatScopeGate.refusal(AiChatScopeGate.Category.INTERNAL_ERROR, "en")).contains("screenshot")
+                .doesNotContain("debug code");
+    }
+
     @Test void foldingRemovesInvisibleCharactersLookalikesAndTraditionalForms() {
         assertThat(AiChatScopeGate.fold("Py\u200Bthon\u2060脚\uFEFF本")).isEqualTo("Python脚本");
         assertThat(AiChatScopeGate.fold("ЅQL")).isEqualTo("SQL");

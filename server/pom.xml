@@ -296,6 +296,8 @@
                     <exclude>99-决策记录-ADR/ADR-152-*.md</exclude>
                     <exclude>99-决策记录-ADR/ADR-153-*.md</exclude>
                     <exclude>99-决策记录-ADR/ADR-157-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-158-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-159-*.md</exclude>
                     <exclude>03-页面/系统设置页.md</exclude>
                     <exclude>03-页面/AI服务设置页.md</exclude>
                     <exclude>03-页面/权限管理页.md</exclude>

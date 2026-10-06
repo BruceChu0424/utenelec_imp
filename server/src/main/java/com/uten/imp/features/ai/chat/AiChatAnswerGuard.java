@@ -12,9 +12,13 @@ import java.util.regex.Pattern;
 /**
  * ADR-150 post-answer guard. A model reply may only present facts that exist in the sources it was
  * given: every number and business code must appear in the sources or the user's own words, every
- * "colour = status" line must be a pair the page itself reported (with its row count), no
- * first-person completion claim ("已保存/已提交 ...") is allowed, links, bare domains and markup are
- * removed and the length is bounded. A rejected reply is replaced by deterministic rendering.
+ * "colour = status" line must be a pair the page itself reported (with its row count), every page, menu or
+ * button the reply sends the user to (a 「…」 name or an "A > B" menu path in a navigation context) must be named
+ * by the sources, the page, the tool facts or the feature directory, no first-person completion claim
+ * ("已保存/已提交 ...") is allowed, links, bare domains and markup are removed and the length is bounded. A rejected
+ * reply is replaced by deterministic rendering; when unverified navigation is the only problem, the lines that carry
+ * it are dropped and the rest is kept if enough of it remains. Internal upper-case status and type codes taken from the
+ * documents (PUBLISHED, MAKE) are dropped or said in Chinese (ADR-159, {@link #withoutStatusCodes}).
  *
  * <p>ADR-152: conversation memory is a separate, weaker source. A number or code found only in earlier
  * turns (not in the current page, sources or question) may be repeated only where the reply says it comes
@@ -88,7 +92,153 @@ final class AiChatAnswerGuard {
                     + "|아까|앞서|이전\\s*(?:대화|답변|질문)");
     private static final Pattern LIST_ITEM = Pattern.compile("^\\s*(?:[-*•]|\\d{1,2}(?:[.、)\uFF09]|\\s*[.、]))");
 
-    record Verdict(boolean accepted, String reply, List<String> problems) {}
+    /** A name the reply quotes ("点「转订货单」", "在「仓库任务中心」里", but also a rule quoted for emphasis). */
+    private static final Pattern LABEL = Pattern.compile("「([^「」\\n]{1,40})」");
+    /** A menu path written in the reply ("生产管理 > 生产报工"); a comparison with a number ("库存 > 0") is not one. */
+    private static final Pattern MENU_PATH = Pattern.compile("[\\p{IsHan}A-Za-z][\\p{IsHan}A-Za-z0-9]{1,15}"
+            + "(?:\\s*[>＞›»]\\s*[\\p{IsHan}A-Za-z][\\p{IsHan}A-Za-z0-9]{1,15})+");
+    private static final Pattern PATH_STEP = Pattern.compile("\\s*[>＞›»]\\s*");
+    /**
+     * Words right before a quoted name or a path that send the user somewhere or to a control ("点「转订货单」",
+     * "在「仓库任务中心」里", "进入「生产报工」", "标题为「物料分析准备」的页面", "打开 生产管理 > 生产报工", "路径：…").
+     * A rule quoted for emphasis ("按「学到的单重 × 数量」估算", "其它「有独立数量又有实称重量」的证据") or an order of
+     * precedence ("预填顺序：本单已冻结的 > 本位币填 1 > …") is not navigation.
+     */
+    private static final Pattern NAV_BEFORE = Pattern.compile("(?:点击|点开|点选|单击|双击|(?<![重要特优缺节间地观一差])点(?:一下)?|按一下"
+            + "|进入|打开|切换到|切到|转到|跳到|跳转到|回到|(?<![收得达做遇想看听拿提等直学感受办变])到|(?<![过失除])去"
+            + "|(?<![存现正实自内所好])在|选择|勾选|选中|菜单|页签|标签页?|标题为|名为|叫做?|位于|(?:路径|位置|入口)[:：]?)\\s*$");
+    /** Words right after a quoted name or a path that make it a page, menu or control ("「库存与出入库」页签", "「新建」按钮"). */
+    private static final Pattern NAV_AFTER = Pattern.compile("^\\s*的?\\s*(?:页面|页签|页|菜单|按钮|标签页?|弹窗|对话框|窗口|入口|模块"
+            + "|栏目?|区域|选项卡|(?i:tab)\\b)");
+    /** A quoted name that names a page or control itself ("「生产报工页面」", "「保存按钮」") or holds a menu path. */
+    private static final Pattern NAV_NAME = Pattern.compile("(?:页面|页签|菜单|按钮)$|[>＞›»]");
+    /** Only an arrow between two quoted names: the second continues the first one's path. */
+    private static final Pattern STEP_ARROW = Pattern.compile("\\s*[→>＞›»]\\s*");
+    /** How far before a name its navigation verb is looked for (on the same line). */
+    private static final int NAV_WINDOW = 10;
+
+    /**
+     * ADR-159 (A7) an upper-case word of three or more letters standing on its own: in a Chinese reply that is an internal
+     * status or type code taken from the documents (PUBLISHED, SHIPPED, MAKE, WAITING), unless it is a business acronym
+     * people use at work ({@link #BUSINESS_ACRONYMS}). A word joined to digits or hyphenated ("ADR-135", "TASK-A01",
+     * "XD2026...") is a document number, checked as a code; one with an underscore is an internal constant, rejected as
+     * internal content.
+     */
+    private static final Pattern STATUS_CODE = Pattern.compile("(?<![A-Za-z0-9_\\-])[A-Z]{3,}(?![A-Za-z0-9_]|-[A-Za-z0-9])");
+    /** Business acronyms that stay in a reply (production, quality, trade, currencies, units and file types). */
+    static final Set<String> BUSINESS_ACRONYMS = Set.of("BOM", "IQC", "IPQC", "FQC", "OQC", "QC", "ERP", "AI", "PDF", "EXCEL",
+            "SKU", "MOQ", "PMC", "MRP", "SOP", "ECN", "FIFO", "KPI", "OCR", "ABC", "WMS", "OEM", "ODM", "FOB", "CIF", "EXW", "DDP",
+            "VIP", "APP", "USD", "CNY", "RMB", "EUR", "HKD", "JPY", "GBP", "PCS", "CSV", "XLS", "XLSX", "PNG", "JPG", "JPEG",
+            "LED", "USB", "PDA", "RFID", "ADR", "HR");
+    /** A run of internal codes in brackets (ASCII or full width) after the word they stand for ("发布(PUBLISHED)", "(MAKE/BUY)"). */
+    private static final Pattern BRACKETED_CODES = Pattern.compile("[ \\t]*[(\uFF08][ \\t]*([A-Z]{3,}(?:[ \\t]*[/\u3001,\uFF0C|][ \\t]*[A-Z]{3,})*)[ \\t]*[)\uFF09]");
+
+    /**
+     * ADR-159 (A7) the reply without internal status and type codes: a code in brackets after the word it stands for is
+     * dropped ("发布(PUBLISHED)" -> "发布"); a code on its own becomes its Chinese meaning when the sources pair them
+     * ("PUBLISHED(已发布)", "已发布(PUBLISHED)", "PUBLISHED = 已发布") and is dropped otherwise. Business acronyms, and
+     * words the user typed or can see on the page ({@code keep}), stay. Only a reply written in Chinese is changed (an
+     * English reply's capitals are words).
+     *
+     * @param sources the text the model was given (where the meaning of a code is looked up)
+     * @param keep    the user's question and what is on their screen
+     */
+    static String withoutStatusCodes(String reply, String sources, String keep) {
+        if (reply == null || reply.isBlank() || !STATUS_CODE.matcher(reply).find() || !mostlyChinese(reply)) return reply;
+        String kept = keep == null ? "" : keep;
+        java.util.function.Predicate<String> internal = code -> !BUSINESS_ACRONYMS.contains(code)
+                && !Pattern.compile("(?<![A-Za-z0-9_])" + code + "(?![A-Za-z0-9_])").matcher(kept).find();
+        boolean changed = false;
+        Matcher bracketed = BRACKETED_CODES.matcher(reply);
+        StringBuilder out = new StringBuilder();
+        while (bracketed.find()) {
+            boolean allInternal = java.util.Arrays.stream(bracketed.group(1).split("\\s*[/\u3001,\uFF0C|]\\s*")).allMatch(internal);
+            changed |= allInternal;
+            bracketed.appendReplacement(out, allInternal ? "" : Matcher.quoteReplacement(bracketed.group()));
+        }
+        bracketed.appendTail(out);
+        String text = out.toString();
+        Matcher code = STATUS_CODE.matcher(text);
+        out = new StringBuilder();
+        int last = 0;
+        while (code.find()) {
+            if (!internal.test(code.group())) continue;
+            changed = true;
+            String meaning = meaning(code.group(), sources == null ? "" : sources);
+            boolean said = meaning != null && text.substring(0, code.start()).stripTrailing().endsWith(meaning);
+            String replacement = meaning == null || said ? "" : meaning;
+            // The spaces around a removed code go with it ("生成 WAITING 生产计划" -> "生成生产计划"); one stays between
+            // two words that are not Chinese.
+            int from = code.start();
+            int to = code.end();
+            while (from > last && (text.charAt(from - 1) == ' ' || text.charAt(from - 1) == '\t')) from--;
+            while (to < text.length() && (text.charAt(to) == ' ' || text.charAt(to) == '\t')) to++;
+            out.append(text, last, from);
+            char left = from == 0 ? '\n' : text.charAt(from - 1);
+            char right = to == text.length() ? '\n' : text.charAt(to);
+            boolean spaced = from < code.start() || to > code.end();
+            if (replacement.isEmpty()) {
+                out.append(spaced && !tight(left) && !tight(right) && !(han(left) && han(right)) ? " " : "");
+            } else {
+                out.append(spaced && !tight(left) && !han(left) ? " " : "").append(replacement)
+                        .append(spaced && !tight(right) && !han(right) ? " " : "");
+            }
+            last = to;
+        }
+        out.append(text, last, text.length());
+        if (!changed) return reply;
+        // Leftovers of removed codes: empty brackets and quotes, doubled separators, a separator left at the start or end
+        // of a phrase ("BUY、SUBCONTRACT 是物料任务" -> "是物料任务").
+        return out.toString().replaceAll("[(\uFF08][ \\t]*[)\uFF09]|\u300C[ \\t]*\u300D", "")
+                .replaceAll("([\u3001/,\uFF0C])(?:[ \\t]*[\u3001/,\uFF0C])+", "$1")
+                .replaceAll("(?m)(^|[\u3002\uFF1B\uFF1A\uFF0C;:(\uFF08\u300C])[ \\t]*[\u3001/][ \\t]*", "$1")
+                .replaceAll("(?m)[ \\t]*[\u3001/][ \\t]*(?=[\u3002\uFF1B\uFF0C\uFF1A;:)\uFF09\u300D]|$)", "")
+                .replaceAll("(?m)[ \\t]+$", "");
+    }
+
+    /** A Chinese punctuation mark or a line break: no space is ever kept next to it. */
+    private static boolean tight(char c) {
+        return c == '\n' || (c >= '\u3000' && c <= '\u303F') || (c >= '\uFF00' && c <= '\uFF65');
+    }
+
+    private static boolean han(char c) {
+        return Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN;
+    }
+
+    /** The Chinese meaning the sources give an internal code ("PUBLISHED(已发布)", "已发布(PUBLISHED)", "PUBLISHED = 已发布"). */
+    static String meaning(String code, String sources) {
+        String quoted = Pattern.quote(code);
+        for (Pattern pattern : List.of(
+                Pattern.compile("(?<![A-Za-z0-9_])" + quoted + "\\s*[(\uFF08]\\s*([\\p{IsHan}]{1,8})\\s*[)\uFF09]"),
+                Pattern.compile("(?:^|[|\uFF5C\uFF0C,\u3001\uFF1A:\uFF1B;\\s(\uFF08\u300C])([\\p{IsHan}]{1,8})\\s*[(\uFF08]\\s*" + quoted
+                        + "\\s*[)\uFF09]", Pattern.MULTILINE),
+                Pattern.compile("(?<![A-Za-z0-9_])" + quoted + "\\s*[=\uFF1D]\\s*([\\p{IsHan}]{1,8})(?![\\p{IsHan}])"))) {
+            Matcher found = pattern.matcher(sources);
+            if (found.find()) return found.group(1);
+        }
+        return null;
+    }
+
+    /**
+     * The reply is written in Chinese (or Korean), not English: it has Chinese or Korean characters and no more lower-case
+     * Latin letters than them (the codes themselves are upper case and do not count).
+     */
+    private static boolean mostlyChinese(String text) {
+        long cjk = text.codePoints().filter(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN
+                || Character.UnicodeScript.of(cp) == Character.UnicodeScript.HANGUL).count();
+        long lower = text.codePoints().filter(cp -> cp >= 'a' && cp <= 'z').count();
+        return cjk > 0 && cjk >= lower;
+    }
+
+    /**
+     * @param dropped the unverified navigation names whose lines were removed from an otherwise accepted reply
+     *                (empty when nothing was removed)
+     */
+    record Verdict(boolean accepted, String reply, List<String> problems, List<String> dropped) {
+        Verdict(boolean accepted, String reply, List<String> problems) {
+            this(accepted, reply, problems, List.of());
+        }
+    }
 
     /** One colour the page reported: legend entry (count = rows) or badge (count = its number). */
     record ColourFact(String colour, String status, Integer count) {}
@@ -144,6 +294,10 @@ final class AiChatAnswerGuard {
         text = text.replaceAll("[\\p{Cf}]+", "").replaceAll("[\\p{Cc}&&[^\\n]]+", " ")
                 .replaceAll("(?m)^#{1,6}\\s*", "").replace("**", "").replaceAll("\\n{3,}", "\n\n").strip();
         if (text.isEmpty()) return new Verdict(false, "", List.of("EMPTY"));
+        // ADR-159 (A7): internal status codes become their Chinese meaning or go; the user's own words and what is on their
+        // screen (page, catalog, tool facts, module names) stay.
+        text = withoutStatusCodes(text, evidence, (question == null ? "" : question) + "\n" + (visible == null ? "" : visible));
+        if (text.isBlank()) return new Verdict(false, "", List.of("EMPTY"));
         String source = (evidence == null ? "" : evidence) + "\n" + (question == null ? "" : question);
         String remembered = memory == null ? "" : memory;
         String lowerSource = source.toLowerCase(Locale.ROOT);
@@ -187,6 +341,9 @@ final class AiChatAnswerGuard {
         }
         checkColourLines(text, source, colours == null ? List.of() : colours, problems);
         checkArithmetic(text, problems);
+        String places = source + "\n" + (visible == null ? "" : visible) + "\n" + remembered;
+        List<String> navigation = new ArrayList<>();
+        checkNavigation(text, places, navigation);
         if (FIRST_PERSON_DONE.matcher(text).find()) problems.add("COMPLETION_CLAIM");
         // A rule explanation describes states ("已提交的单据 ..."); only page and tool answers are checked for bare claims.
         if (derivation == null) {
@@ -197,12 +354,47 @@ final class AiChatAnswerGuard {
                 if (!source.contains(core)) problems.add("COMPLETION_CLAIM:" + core);
             }
         }
+        List<String> dropped = List.of();
+        if (!navigation.isEmpty()) {
+            // Only unverified navigation: the lines that send the user somewhere unknown go, the verified rest stays.
+            String kept = problems.isEmpty() ? withoutNavigationLines(text, places) : null;
+            if (kept == null) problems.addAll(navigation);
+            else {
+                text = kept;
+                dropped = List.copyOf(navigation);
+            }
+        }
         int limit = Math.max(200, maxChars);
         if (text.length() > limit) {
             int cut = text.lastIndexOf('\n', limit - 20);
             text = text.substring(0, cut > limit / 2 ? cut : limit - 20).strip() + "\n...(内容较长，已截断)";
         }
-        return new Verdict(problems.isEmpty(), text, List.copyOf(problems));
+        return new Verdict(problems.isEmpty(), text, List.copyOf(problems), dropped);
+    }
+
+    /**
+     * The reply without the lines that name an unverified page, menu or button, and without a lead-in line ("下一步：")
+     * left with nothing under it; null when too little would remain (under 60 characters or under half the reply) or
+     * when the rest still fails the navigation check.
+     */
+    static String withoutNavigationLines(String text, String known) {
+        List<String> kept = new ArrayList<>();
+        for (String line : text.split("\n", -1)) {
+            List<String> found = new ArrayList<>();
+            checkNavigation(line, known, found);
+            if (found.isEmpty()) kept.add(line);
+        }
+        for (int i = kept.size() - 1; i >= 0; i--) {
+            String line = kept.get(i).strip();
+            if (!line.endsWith("：") && !line.endsWith(":")) continue;
+            boolean itemFollows = i + 1 < kept.size() && LIST_ITEM.matcher(kept.get(i + 1)).find();
+            if (!itemFollows) kept.remove(i);
+        }
+        String rest = String.join("\n", kept).replaceAll("\n{3,}", "\n\n").strip();
+        if (rest.length() < Math.max(60, text.length() / 2)) return null;
+        List<String> still = new ArrayList<>();
+        checkNavigation(rest, known, still);
+        return still.isEmpty() ? rest : null;
     }
 
     /** One line of the reply and whether it says it comes from the earlier conversation. */
@@ -307,6 +499,60 @@ final class AiChatAnswerGuard {
             }
             if (!right) problems.add("ARITHMETIC:" + step.group().strip());
         }
+    }
+
+    /**
+     * P1-6 navigation guard: every page, menu or button the reply sends the user to must appear in what the model was
+     * given (sources, page snapshot, tool facts, the feature directory's titles, the question or the earlier
+     * conversation). That is a name quoted in 「…」 or a menu path ("A > B") in a navigation context: after a verb or
+     * place word ("点「新建」", "在「仓库任务中心」里", "打开 生产管理 > 生产报工"), before a page or control word
+     * ("「库存与出入库」页签"), naming a page or control itself ("「生产报工页面」") or a path starting at 工作台. An
+     * invented one is reported as {@code NAV}. A rule or status quoted for emphasis and an order of precedence written
+     * with ">" are not navigation. Spaces, punctuation and a trailing "页/页面" are ignored; quoted symbols ("「≈」") are
+     * not names.
+     */
+    static void checkNavigation(String text, String known, List<String> problems) {
+        String haystack = navigationKey(known);
+        Matcher label = LABEL.matcher(text);
+        int chainEnd = -1;
+        while (label.find()) {
+            // The next step of a quoted path ("进入「设置」→「外观」→「字号」") is navigation like the step before it.
+            boolean chained = chainEnd >= 0 && STEP_ARROW.matcher(text.substring(chainEnd, label.start())).matches();
+            boolean navigation = chained || NAV_NAME.matcher(label.group(1).strip()).find()
+                    || navigationAround(text, label.start(), label.end());
+            chainEnd = navigation ? label.end() : -1;
+            if (navigation && !named(label.group(1), haystack)) problems.add("NAV:" + label.group(1));
+        }
+        String unquoted = LABEL.matcher(text).replaceAll(" ");
+        Matcher path = MENU_PATH.matcher(unquoted);
+        while (path.find()) {
+            boolean navigation = path.group().startsWith("工作台") || navigationAround(unquoted, path.start(), path.end());
+            if (navigation && !named(path.group(), haystack)) problems.add("NAV:" + path.group());
+        }
+    }
+
+    /** A navigation verb or place word just before [start] or a page or control word just after [end], on the same line. */
+    private static boolean navigationAround(String text, int start, int end) {
+        int lineStart = text.lastIndexOf('\n', start - 1) + 1;
+        String before = text.substring(Math.max(lineStart, start - NAV_WINDOW), start);
+        int lineEnd = text.indexOf('\n', end);
+        String after = text.substring(end, lineEnd < 0 ? text.length() : lineEnd);
+        return NAV_BEFORE.matcher(before).find() || NAV_AFTER.matcher(after).find();
+    }
+
+    private static boolean named(String name, String haystack) {
+        for (String step : PATH_STEP.split(name)) {
+            String key = navigationKey(step);
+            if (key.codePoints().noneMatch(Character::isLetter)) continue;
+            String bare = key.replaceFirst("(?:页面|页)$", "");
+            if (!haystack.contains(key) && (bare.length() < 2 || !haystack.contains(bare))) return false;
+        }
+        return true;
+    }
+
+    private static String navigationKey(String text) {
+        return java.text.Normalizer.normalize(text == null ? "" : text, java.text.Normalizer.Form.NFKC).toLowerCase(Locale.ROOT)
+                .replaceAll("[\\s\\p{P}\\p{S}]+", "");
     }
 
     /** The source text itself puts this colour next to this status (within a few characters). */

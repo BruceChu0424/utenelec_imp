@@ -8330,6 +8330,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAuditPurposeWorkbench => '查工作待办';
 
   @override
+  String get aiAuditPurposeDirectory => '查功能在哪';
+
+  @override
+  String get aiAuditPurposeAccess => '查我的权限';
+
+  @override
+  String get aiAuditPurposeSalesOrder => '查销售订单进度';
+
+  @override
+  String get aiAuditPurposePurchaseOrder => '查采购订单状态';
+
+  @override
+  String get aiAuditPurposeSubcontract => '查委外单状态';
+
+  @override
   String get aiAuditPurposePageHelp => '了解页面填写方法';
 
   @override
@@ -9070,6 +9085,31 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatCardSourceMissing => '原文件已不在这个对话里, 请重新上传';
+
+  @override
+  String get aiChatCardFormNotOpened => '填写页面没有打开, 这张卡已作废, 请重新上传文件再试';
+
+  @override
+  String get aiChatCardFormNoAccess =>
+      '当前账号没有打开这个填写页面的权限, 这张卡已作废, 请联系管理员开通后重新上传文件';
+
+  @override
+  String aiChatDocumentChosen(String title) {
+    return '选择：$title';
+  }
+
+  @override
+  String aiChatDocumentOpenPage(String title) {
+    return '打开$title';
+  }
+
+  @override
+  String aiChatDocumentBlockedLine(String title, String reason) {
+    return '$title：$reason';
+  }
+
+  @override
+  String get aiChatDocumentAiJudged => '文件用途是 AI 只看表头和格式判断的(具体内容没有发给 AI), 请核对';
 
   @override
   String get aiAuditPurposePageState => '看懂当前页面';

@@ -58,6 +58,11 @@ final class AiChatDialogueSupport {
         if (scope.contains("SELF") && tools.contains("workbench_tasks") && !tools.contains("my_workbench")) examples.add("我有哪些待办？");
         if (scope.contains("PRODUCTION") && tools.contains("production_in_progress")) examples.add("有什么正在生产的产品？");
         if (scope.contains("WAREHOUSE") && tools.contains("inventory_lookup")) examples.add("A001 还有多少库存？");
+        if (scope.contains("SALES") && tools.contains("sales_order_progress")) examples.add("这张销售订货单(写上单号)现在到哪一步了？");
+        if (scope.contains("PURCHASE") && tools.contains("purchase_order_status")) examples.add("这张采购订货单(写上单号)到货了吗？");
+        if (scope.contains("SUBCONTRACT") && tools.contains("subcontract_order_status")) {
+            examples.add("这张委外申请(写上单号)为什么还不能下单？");
+        }
         if (scope.contains("SALES") && tools.contains("query_client_credit")) examples.add("客户有没有逾期欠款？");
         if (scope.contains("HR") && tools.contains("hr_tasks")) examples.add("有哪些待转正和近期入职的人事任务？");
         if (scope.contains("PRODUCTION")) examples.add("生产日报的本次数量怎么填写？请举例。");
@@ -89,7 +94,7 @@ final class AiChatDialogueSupport {
     /** The user asks what colours, status tones or legends on the page mean. */
     static boolean asksAboutColors(String message) {
         String value = normalized(message);
-        return value.matches(".*(?:颜色|什么色|哪种色|红色|黄色|绿色|蓝色|紫色|灰色|青色|青绿|品红|琥珀|橙色|底色|图例|标红|标黄|变红|变黄|color|colour|legend|색).*")
+        return asksAboutColourWords(message)
                 || value.matches(".*状态.*(?:含义|意思|代表|区别|分别|说明).*")
                 || value.matches(".*(?:红框|黄框|红色数字|黄色数字|红色徽章|黄色徽章|括号里?的数字).*(?:意思|含义|代表|是什么|干什么).*");
     }
@@ -118,19 +123,38 @@ final class AiChatDialogueSupport {
     }
 
     /**
-     * A plain lookup of the user's own business data ("A001 还有多少库存", "我有哪些待办", "订单 SO-1 现在什么状态"):
-     * answered by a tool, so no design document is searched for it. A question that asks how or why is never one.
+     * A plain lookup of the user's own business data ("A001 还有多少库存", "我有哪些待办", "订单 SO-1 现在什么状态",
+     * "XD20261006000003 发货了没"): answered by a tool, so no design document is searched for it. A question that asks
+     * how or why is never one; a yes/no question is one only when it asks for a status ("PO-2026001 到货了吗").
      */
     static boolean dataLookup(String message) {
         String value = normalized(message);
         if (value.isEmpty() || value.matches(".*(?:为什么|为何|为啥|怎么|如何|规则|口径|流程|逻辑|why|how|rule|왜|어떻게).*")) return false;
-        boolean code = Normalizer.normalize(message, Normalizer.Form.NFKC)
-                .matches("(?s).*(?<![A-Za-z0-9])[A-Za-z]{1,6}[-_]?\\d{2,}[A-Za-z0-9_-]*.*");
+        boolean code = businessCode(message);
         // "我的仓库" names a feature (a rule question); "我有哪些待办" asks for the user's own items.
         boolean mine = value.matches(".*(?:我有哪些|我有多少|我今天|我这周|我本月|待办|工作台|我的(?:待办|任务|订单|单据|申请|报销单)(?!中心)).*");
         boolean yesNo = value.matches(".*(?:吗|嘛|看得到|看得见|看不到|包含|算不算|会不会|能不能).*");
+        if (code && STATUS_WORDS.matcher(value).find()) return true;
         return (code || mine) && !yesNo && asksForData(message);
     }
+
+    /** A business code or document number the user typed ("XD20261006000003", "SO-127001", "PO-2026001", "A001"). */
+    static boolean businessCode(String message) {
+        return message != null && message.length() <= 2000 && BUSINESS_CODE.matcher(Normalizer.normalize(message, Normalizer.Form.NFKC)).find();
+    }
+
+    private static final java.util.regex.Pattern BUSINESS_CODE =
+            java.util.regex.Pattern.compile("(?<![A-Za-z0-9])[A-Za-z]{1,6}[-_]?\\d{2,}[A-Za-z0-9_-]*");
+    /**
+     * Everyday words that ask whether something is there, enough, done or where it stands (on the normalized text):
+     * "螺丝还有吗", "够不够用", "到了没", "发货了没有", "批了没", "到哪一步了", "卡在哪", "什么时候到", "做完没".
+     */
+    private static final java.util.regex.Pattern STATUS_WORDS = java.util.regex.Pattern.compile("还有吗|还有没有|有货|有没有货|够不够|够用|还够"
+            + "|缺不缺|到了没|到了吗|到没到|到货了没|到货了吗|到货没|发了没|发了吗|发货了没|发货了吗|发没发|批了没|批了吗|审了没|审了吗|了没有|了没|到哪(?:一步)?了"
+            + "|到哪一步|卡在|什么时候到|几时到|进展|做完没|做完了吗|几时");
+    /** A question in the user's own words ("…吗", "…多少", "…?"). */
+    private static final java.util.regex.Pattern QUESTION = java.util.regex.Pattern.compile("[?？]|吗|呢|么|没|多少|几|什么|哪|是否|怎样|如何"
+            + "|状态|进度|情况|(?i:\\b(?:what|when|where|which|how|is|has|did)\\b)");
 
     /**
      * The user's own words ask for a careful, step-by-step analysis: this answer thinks more deeply than the account's
@@ -148,10 +172,108 @@ final class AiChatDialogueSupport {
      */
     static boolean asksForData(String message) {
         String value = normalized(message);
-        return value.matches(".*(?:查|多少|几个|几条|几张|几单|几项|几种|几天|哪些|哪个|哪几|有没有|有什么|是否有|列出|列一下|看看|看一下|告诉我"
+        if (value.matches(".*(?:查|多少|几个|几条|几张|几单|几项|几种|几天|哪些|哪个|哪几|有没有|有什么|是否有|列出|列一下|看看|看一下|告诉我"
                 + "|统计|汇总|情况|进度|状态|还剩|剩余|余额|库存|存货|待办|任务|欠款|逾期|在产|正在|最近|今天|昨天|本周|上周|本月|上月|今年"
                 + "|成本|信用|额度|工作台|入职|转正|权限|授权|开通|howmany|howmuch|which|list|show|status|pending|stock|overdue|inprogress"
-                + "|cost|credit|몇|얼마|목록|재고).*");
+                + "|cost|credit|몇|얼마|목록|재고).*")) return true;
+        if (STATUS_WORDS.matcher(value).find()) return true;
+        // A business code or document number with a question ("XD20261006000003 这个订单呢", "A001 还够做100个吗").
+        return businessCode(message) && QUESTION.matcher(Normalizer.normalize(message, Normalizer.Form.NFKC)).find();
+    }
+
+    /**
+     * Whether the user's own words make this read tool eligible to run once the model chose it. A tool runs only on
+     * the user's own request (page text, documents or history never qualify): the feature directory on a question
+     * where something is or which features exist, the access check on a question why something cannot be opened or
+     * used (not on a question about a numbered document unless it names permissions), every other tool (document
+     * status, stock, tasks) on a data question.
+     */
+    static boolean toolEligible(String toolName, String message) {
+        // A question about a numbered document ("EB… 为什么下不了单", "按钮是灰的") is about that document's state, which its
+        // status tool explains; the access check runs on it only when the user asks about permissions.
+        if (MY_ACCESS.equals(toolName) && businessCode(message) && !asksAboutPermission(message)) return false;
+        if (asksForData(message)) return true;
+        return switch (toolName == null ? "" : toolName) {
+            case FEATURE_DIRECTORY -> asksWhere(message);
+            case MY_ACCESS -> asksAboutAccess(message) || asksWhere(message);
+            default -> false;
+        };
+    }
+
+    /** The read tool that answers where a page is and which features exist (feature and page directory). */
+    static final String FEATURE_DIRECTORY = "feature_directory";
+    /** The read tool that answers whether the user can open or do something and which permissions are missing. */
+    static final String MY_ACCESS = "my_access";
+
+    /** "采购单在哪里看", "哪个页面能看库存", "怎么进仓库任务中心", "系统有哪些功能". */
+    static boolean asksWhere(String message) {
+        return normalized(message).matches(".*(?:在哪里|在哪儿|在哪|哪个页面|哪个页|哪一页|哪个菜单|哪个模块|怎么进|如何进|从哪进|从哪里进|怎么打开"
+                + "|如何打开|入口|有哪些功能|有什么功能|哪些功能|能做什么|可以做什么|能干什么|有哪些模块|哪些模块|有哪些页面|哪些页面|什么页面"
+                + "|where|whichpage|whichmenu|howdoiopen|howtoopen|howdoiget|whatfeatures|어디|어느화면|어느페이지).*");
+    }
+
+    /** "为什么打不开", "没权限", "看不到", "点不了", "按钮是灰的", the platform's own "缺少操作权限：…", "怎么开通权限". */
+    static boolean asksAboutAccess(String message) {
+        return normalized(message).matches(".*(?:打不开|进不去|进不了|没权限|没有权限|无权限|无权|权限不够|权限不足|看不到|看不见|点不了|按不了|用不了"
+                + "|是灰的|变灰|按钮灰|缺少操作权限|缺少权限|开通权限|开权限|申请权限|什么权限|哪个权限|哪些权限|哪项权限|需要权限"
+                + "|accessdenied|nopermission|permission|cantopen|cannotopen|권한).*");
+    }
+
+    /** The user's words name permissions or a page that will not open, not just a button or a document that is stuck. */
+    private static boolean asksAboutPermission(String message) {
+        return normalized(message).matches(".*(?:权限|无权|打不开|进不去|进不了|accessdenied|permission|권한).*");
+    }
+
+    /**
+     * A reply that tells the user what to click or where to go ("进入采购订货单页面点击新建", "1. 打开… 2. 点击…"), or that
+     * claims the platform has no such thing: without a cited source such a reply is a guess. The names it quotes and the
+     * menu paths it writes are checked against the sources by the navigation guard.
+     */
+    static boolean claimsStepsOrPlaces(String reply) {
+        if (reply == null || reply.isBlank()) return false;
+        String text = Normalizer.normalize(reply, Normalizer.Form.NFKC);
+        return STEP_OR_PLACE.matcher(text).find() || NUMBERED_STEPS.matcher(text).results().count() >= 2;
+    }
+
+    private static final java.util.regex.Pattern STEP_OR_PLACE = java.util.regex.Pattern.compile("点击|点一下|点开|单击|点\\s*「"
+            + "|进入.{0,12}(?:页面|页|菜单|模块|界面)|打开.{0,12}(?:页面|页|菜单|模块|界面)"
+            + "|在.{1,16}(?:页面|菜单|模块|界面)(?:里|中|上|下)|菜单|入口|按钮|第[一二三四五六七八九十\\d]步"
+            + "|平台上?(?:目前)?没有|系统(?:里|中)?(?:目前)?没有|没有这个功能|不支持这个功能|(?i:\\bclick\\b|\\bgo\\s+to\\b|\\bopen\\s+the\\b"
+            + "|\\bmenu\\b|\\bbutton\\b)");
+    private static final java.util.regex.Pattern NUMBERED_STEPS = java.util.regex.Pattern.compile("(?m)^\\s*\\d{1,2}[.、)]\\s*\\S");
+
+    /** The question names colours ("红色是什么意思", "不同状态是什么颜色"): the page's legend answers it. */
+    static boolean asksAboutColourWords(String message) {
+        return normalized(message).matches(".*(?:颜色|什么色|哪种色|红色|黄色|绿色|蓝色|紫色|灰色|青色|青绿|品红|琥珀|橙色|底色|图例|标红|标黄"
+                + "|变红|变黄|color|colour|legend|색).*");
+    }
+
+    /** The question asks what a word, status or message means ("待料是啥", "这个提示是什么意思"). */
+    static boolean asksForMeaning(String message) {
+        return normalized(message).matches(".*(?:是什么意思|什么意思|啥意思|意思是|代表什么|代表啥|含义|指的是|指什么|是啥|是什么|mean|meaning|뜻|의미).*");
+    }
+
+    /** The question is only about the current page's own text ("这个页面写了什么", "页面上的提示是什么"). */
+    static boolean asksAboutPageText(String message) {
+        return normalized(message).matches(".*(?:这个?页面?(?:上|里)?(?:的)?(?:提示|文字|内容)?(?:写|显示|说|提示)(?:了|的是)?(?:什么|啥)"
+                + "|页面(?:上|里)?的?(?:提示|文字|内容|横幅|通知)(?:写|说)?(?:了|的是)?(?:什么|啥)|这个页面在说什么|这页在说什么"
+                + "|whatdoesthispagesay|whatisonthispage).*");
+    }
+
+    /**
+     * The user's own words for the topic of a question no rule covers ("让料是什么意思" gives "让料", "怎么报工" gives "报工",
+     * "汇率谁来定" gives "汇率"), so a "not found" answer suggests a better question in the user's words; empty when no
+     * short topic remains.
+     */
+    static String topic(String message) {
+        if (message == null || message.length() > 2000) return "";
+        String text = Normalizer.normalize(message, Normalizer.Form.NFKC).replaceAll("[\\s\\p{P}\\p{S}]+", "");
+        text = text.replaceAll("请问|麻烦|帮我|帮忙|我想知道|我想问|想问一下|问一下|想问|你知道|请", "");
+        text = text.replaceAll("是什么意思|什么意思|啥意思|是什么|是啥|指什么|代表什么|怎么办|怎么弄|怎么做|怎么填写|怎么填|怎么算|怎么操作"
+                + "|怎么处理|怎么|如何|怎样|为什么|为啥|为何|谁来定|谁来|谁负责|谁审核|谁审|谁批|在哪里|在哪儿|在哪|哪里|哪个|哪些"
+                + "|有没有|能不能|可不可以|可以吗|一下|还有|还剩|还够|够不够|够用|有货", "");
+        text = text.replaceAll("(?:吗|呢|吧|啊|呀|嘛|了|的)+$", "");
+        return text.matches("[\\p{IsHan}A-Za-z0-9]{2,8}") && text.codePoints().anyMatch(Character::isIdeographic) ? text : "";
     }
 
     private static final String REQUEST_MARKER ="帮我|帮忙|请(?!问)|麻烦|给我|替我|你来|直接|把|将";

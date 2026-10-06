@@ -15388,6 +15388,36 @@ abstract class AppLocalizations {
   /// **'查工作待办'**
   String get aiAuditPurposeWorkbench;
 
+  /// No description provided for @aiAuditPurposeDirectory.
+  ///
+  /// In zh, this message translates to:
+  /// **'查功能在哪'**
+  String get aiAuditPurposeDirectory;
+
+  /// No description provided for @aiAuditPurposeAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'查我的权限'**
+  String get aiAuditPurposeAccess;
+
+  /// No description provided for @aiAuditPurposeSalesOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'查销售订单进度'**
+  String get aiAuditPurposeSalesOrder;
+
+  /// No description provided for @aiAuditPurposePurchaseOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'查采购订单状态'**
+  String get aiAuditPurposePurchaseOrder;
+
+  /// No description provided for @aiAuditPurposeSubcontract.
+  ///
+  /// In zh, this message translates to:
+  /// **'查委外单状态'**
+  String get aiAuditPurposeSubcontract;
+
   /// No description provided for @aiAuditPurposePageHelp.
   ///
   /// In zh, this message translates to:
@@ -16665,6 +16695,42 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'原文件已不在这个对话里, 请重新上传'**
   String get aiChatCardSourceMissing;
+
+  /// No description provided for @aiChatCardFormNotOpened.
+  ///
+  /// In zh, this message translates to:
+  /// **'填写页面没有打开, 这张卡已作废, 请重新上传文件再试'**
+  String get aiChatCardFormNotOpened;
+
+  /// No description provided for @aiChatCardFormNoAccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号没有打开这个填写页面的权限, 这张卡已作废, 请联系管理员开通后重新上传文件'**
+  String get aiChatCardFormNoAccess;
+
+  /// No description provided for @aiChatDocumentChosen.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择：{title}'**
+  String aiChatDocumentChosen(String title);
+
+  /// No description provided for @aiChatDocumentOpenPage.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开{title}'**
+  String aiChatDocumentOpenPage(String title);
+
+  /// No description provided for @aiChatDocumentBlockedLine.
+  ///
+  /// In zh, this message translates to:
+  /// **'{title}：{reason}'**
+  String aiChatDocumentBlockedLine(String title, String reason);
+
+  /// No description provided for @aiChatDocumentAiJudged.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件用途是 AI 只看表头和格式判断的(具体内容没有发给 AI), 请核对'**
+  String get aiChatDocumentAiJudged;
 
   /// No description provided for @aiAuditPurposePageState.
   ///

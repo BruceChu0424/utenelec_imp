@@ -49,8 +49,9 @@ UtenDraftsButton(
 - **权限**：没有该单据 `*:view` 权限（且非超管）时**整个按钮隐藏**——跳过去也是空列表。
 - **降级**：计数加载中/失败按 0，按钮照常可点，只是暂不显示数字（不放大成异常态）。
 - **导航**：`goFrom(context, '$listLocation?status=draft')`。
-  必须用 `goFrom` 而不是 `push`——主 Tab 前缀下 `push` 会静默失效；`goFrom` 同时带
-  `?returnTo`，列表页返回能回到新建页。
+  必须用 `goFrom` 而不是 `push`——`goFrom` 带上 `?returnTo`，列表页返回能回到新建页。
+  (以前写的「主 Tab 前缀下 `push` 会静默失效」是外壳按 `matchedLocation` 判断主 Tab 的老问题，
+  2026-10-05 已改按栈顶叶子路由，见 [ADR-158](../99-决策记录-ADR/ADR-158-AI文件理解一次作答与按权限给出去处.md) §3.1。)
 - **测试锚点**：`Key('uten-drafts-button')`。
 
 接入点（全部是新建态、且 `skipListOnCreate` 的页面；编辑既有单据时不显示）：

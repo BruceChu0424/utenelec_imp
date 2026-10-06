@@ -8828,6 +8828,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditPurposeWorkbench => 'Check work tasks';
 
   @override
+  String get aiAuditPurposeDirectory => 'Find a feature';
+
+  @override
+  String get aiAuditPurposeAccess => 'Check my access';
+
+  @override
+  String get aiAuditPurposeSalesOrder => 'Check sales order progress';
+
+  @override
+  String get aiAuditPurposePurchaseOrder => 'Check purchase order status';
+
+  @override
+  String get aiAuditPurposeSubcontract => 'Check subcontract status';
+
+  @override
   String get aiAuditPurposePageHelp => 'Page filling guidance';
 
   @override
@@ -9613,6 +9628,33 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiChatCardSourceMissing =>
       'The original file is no longer in this chat. Upload it again.';
+
+  @override
+  String get aiChatCardFormNotOpened =>
+      'The form did not open, so this card is void. Upload the file again to retry.';
+
+  @override
+  String get aiChatCardFormNoAccess =>
+      'This account may not open that form, so this card is void. Ask an administrator for access, then upload the file again.';
+
+  @override
+  String aiChatDocumentChosen(String title) {
+    return 'Chosen: $title';
+  }
+
+  @override
+  String aiChatDocumentOpenPage(String title) {
+    return 'Open $title';
+  }
+
+  @override
+  String aiChatDocumentBlockedLine(String title, String reason) {
+    return '$title: $reason';
+  }
+
+  @override
+  String get aiChatDocumentAiJudged =>
+      'AI judged the purpose from the headers and layout only (no cell contents were sent to it). Please check it.';
 
   @override
   String get aiAuditPurposePageState => 'Understand this page';

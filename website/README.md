@@ -76,7 +76,7 @@ Local pages:
 - `INQUIRY_RATE_CLIENT_HOUR` (default 15)
 - `INQUIRY_RATE_GLOBAL_MINUTE` (default 30)
 - `INQUIRY_RATE_GLOBAL_HOUR` (default 300)
-- `IMP_INGEST_URL` (optional pair with `IMP_INGEST_TOKEN`; forwards each inquiry to the IMP platform's unified inbox at `/api/website-inquiries/ingest`. Leave both empty to keep inquiries local only — `/admin/inquiries` remains the fallback. Forwarding is fire-and-forget and never blocks the customer submit. See `docs/backend-consolidation-analysis.md`)
+- `IMP_INGEST_URL` (optional pair with `IMP_INGEST_TOKEN`; forwards each inquiry to the IMP platform's unified inbox at `/api/website-inquiries/ingest`. Leave both empty to keep inquiries local only — `/admin/inquiries` remains the fallback. Forwarding is fire-and-forget and never blocks the customer submit.)
 - `IMP_INGEST_TOKEN` (shared secret, must match IMP `UTEN_WEBSITE_INQUIRY_INGEST_TOKEN`)
 
 ## Useful scripts

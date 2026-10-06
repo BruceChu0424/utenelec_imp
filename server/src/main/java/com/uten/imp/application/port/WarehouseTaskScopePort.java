@@ -11,7 +11,8 @@ import java.util.stream.Collectors;
  *
  * <p>仓库主档(master)拥有负责关系 {@code warehouse_keepers}; 仓库任务的列表、facets、各级计数、
  * 工作台徽章与仓库类通知只经这一个端口问两件事: 「当前账号能看哪些仓」与「这张单据的仓该通知谁」。
- * 角色与可见仓由数据库函数 {@code fn_user_warehouse_access} 一处判定, 实现方按请求缓存。
+ * 角色与可见仓由数据库函数 {@code fn_user_warehouse_access} 一处判定, 每次调用实时解析;
+ * 只有 {@link #withScopeCache} 显式打开的窗口内才复用解析结果(见该方法的三种窗口)。
  *
  * <ul>
  *   <li>主管 SUPERVISOR: 超管、仓储部(SUB_WH 子树)部门负责人、登记在主仓上的负责人。默认看全部,
@@ -32,7 +33,10 @@ public interface WarehouseTaskScopePort {
     /** 三种角色。 */
     enum Role { SUPERVISOR, KEEPER, OTHER }
 
-    /** 当前账号的仓库数据范围(按请求解析一次)。 */
+    /**
+     * 当前账号的仓库数据范围。窗口外每次实时解析(一次数据库函数调用): 调离仓储部门、改负责人或部门负责人后,
+     * 下一次判定立即按新组织算, 不依赖「换一个 HTTP 请求」才正确; {@link #withScopeCache} 窗口内复用。
+     */
     WarehouseAccess access();
 
     /**
@@ -47,8 +51,26 @@ public interface WarehouseTaskScopePort {
     /**
      * 在「本次汇总按某仓计」的上下文里执行: 先校验所选仓(越界 403), 执行期间 {@code current(null)}
      * 取该仓范围。只给 /workbench/badges 的分段计数用, 各计数来源与列表因此同一谓词。
+     * 执行期间同时是一个 {@link #withScopeCache} 窗口。
      */
     <T> T withRequestedWarehouse(UUID requestedWarehouseId, Supplier<T> work);
+
+    /**
+     * 在一段不改组织与负责关系的工作里复用范围解析: 窗口内同一账号(同一所选仓)只解析一次, 范围解析次数
+     * ≤ 不同范围数(准则 14)。窗口只在当前线程、只在 {@code work} 执行期间有效, 可嵌套(内层沿用外层),
+     * 抛错也关闭; 窗口外 {@link #access()} / {@link #current} 每次实时解析, 授权判断不靠请求边界才正确。
+     *
+     * <p>只有三种窗口(ADR-149 §2.1):
+     * <ul>
+     *   <li>只读请求(GET/HEAD)整请求一个: 读请求不改组织, 列表逐行判定、详情加附件都只解析一次
+     *       ({@code WarehouseScopeReadSnapshotFilter});</li>
+     *   <li>只读汇总与走 POST 的批量读: 工作台徽章 / 本部门待办的一次汇总、扩展字段批量读;</li>
+     *   <li>批量办理: 循环体逐单复核范围、且不改组织、部门、兼职部门、负责人与账号(批量出库、批量点收、
+     *       领料发现批量出库)。</li>
+     * </ul>
+     * 其余写请求不开窗口: 同一请求里先改组织、后判定必须拿到新结果。
+     */
+    <T> T withScopeCache(Supplier<T> work);
 
     /**
      * 当前是不是在「本次汇总按某仓计」的上下文里({@link #withRequestedWarehouse} 执行期间)。

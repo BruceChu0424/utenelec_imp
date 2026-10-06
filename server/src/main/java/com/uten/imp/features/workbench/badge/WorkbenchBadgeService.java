@@ -1,5 +1,6 @@
 package com.uten.imp.features.workbench.badge;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.application.port.WorkbenchBadgeSources;
 import com.uten.imp.common.web.ApiException;
@@ -39,6 +40,9 @@ import java.util.function.Supplier;
  * {@code staleEntries}(前端保留上一次的数), 不连累其它入口; 无权访问的来源直接不出现。
  * 事务结尾一律回滚(只读, 回滚与提交等价), 来源内部把事务标成只可回滚也不会报错。
  *
+ * <p>一次汇总是一个仓库数据范围的复用窗口({@link WarehouseTaskScopePort#withScopeCache}): 十来个仓库类来源
+ * 共用一次范围解析(准则 14「范围解析次数 ≤ 不同范围数」); 汇总之外的范围与授权判断每次实时解析。
+ *
  * <p>同时实现 {@link WorkbenchBadgeReadPort}: 工作台「今日概览」的本部门待办只算自己要的
  * 几个入口(只读它们引用的来源), 数字与红徽章同一口径(permissions-08)。
  */
@@ -48,13 +52,15 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
 
     private final List<WorkbenchBadgeSources.Source> sources;
     private final TransactionTemplate readOnlyTransaction;
+    private final WarehouseTaskScopePort warehouseScopes;
 
     @PersistenceContext
     private EntityManager entityManager;
 
     public WorkbenchBadgeService(
             List<WorkbenchBadgeSources> contributors,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            WarehouseTaskScopePort warehouseScopes) {
         List<WorkbenchBadgeSources.Source> all = new ArrayList<>();
         Set<String> keys = new HashSet<>();
         for (WorkbenchBadgeSources contributor : contributors) {
@@ -79,6 +85,7 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         template.setReadOnly(true);
         template.setName("workbench-badges");
         this.readOnlyTransaction = template;
+        this.warehouseScopes = warehouseScopes;
     }
 
     /** 当前主体的徽章汇总(全部来源、全部入口)。 */
@@ -117,14 +124,14 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
     }
 
     private WorkbenchBadgeSummary readOnly(Supplier<WorkbenchBadgeSummary> work) {
-        return readOnlyTransaction.execute(status -> {
+        return warehouseScopes.withScopeCache(() -> readOnlyTransaction.execute(status -> {
             try {
                 return work.get();
             } finally {
                 // 只读事务: 回滚与提交等价; 显式标记可避免来源内部的只可回滚标记变成异常。
                 status.setRollbackOnly();
             }
-        });
+        }));
     }
 
     private WorkbenchBadgeSummary compute(

@@ -1,5 +1,6 @@
 package com.uten.imp.features.workbench.badge;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkbenchBadgeSources;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
@@ -43,7 +44,9 @@ class WorkbenchBadgeReadTransactionTest {
                 .map(WorkbenchBadgeCatalog::sourceOf).distinct().map(key->new WorkbenchBadgeSources.Source(key,
                         ()->Map.of("count",1L,"preparing",2L,"inProgress",3L))).toList();
         WorkbenchBadgeSources contributor=()->sources;
-        var target=new WorkbenchBadgeService(List.of(contributor),manager);
+        var scopes=mock(WarehouseTaskScopePort.class);
+        when(scopes.withScopeCache(any())).thenAnswer(call->((java.util.function.Supplier<?>)call.getArgument(0)).get());
+        var target=new WorkbenchBadgeService(List.of(contributor),manager,scopes);
         EntityManager em=mock(EntityManager.class); Session session=mock(Session.class); when(em.unwrap(Session.class)).thenReturn(session);
         when(session.doReturningWork(any())).thenAnswer(call->((ReturningWork<?>)call.getArgument(0)).execute(
                 ((ConnectionHolder)TransactionSynchronizationManager.getResource(dataSource)).getConnection()));
@@ -61,5 +64,6 @@ class WorkbenchBadgeReadTransactionTest {
         assertThat(connections).hasSize(2);
         verify(connections.get(0)).commit(); verify(connections.get(0),never()).rollback();
         verify(connections.get(1)).rollback(); verify(connections.get(1),never()).commit();
+        verify(scopes).withScopeCache(any()); // 一次汇总 = 一个范围解析复用窗口(准则 14)
     }
 }

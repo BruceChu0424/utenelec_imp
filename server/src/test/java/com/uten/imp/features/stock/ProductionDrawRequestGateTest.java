@@ -115,6 +115,9 @@ class ProductionDrawRequestGateTest {
         // Mockito constructor injection does not populate this Spring field dependency.
         org.springframework.test.util.ReflectionTestUtils.setField(
                 service, "drawIssueBatchReceipts", drawIssueBatchReceipts);
+        // 批量出库整批一个仓库范围窗口(ADR-149 §2.1): 窗口本身照常执行批量。
+        when(productionStockTaskAccess.withScopeCache(any())).thenAnswer(
+                call -> ((java.util.function.Supplier<?>) call.getArgument(0)).get());
         emptyExecutionGraph();
         StockDocument draw = unrequestedDraw();
         draw.setBillNo("LL-REQUEST-GATE");

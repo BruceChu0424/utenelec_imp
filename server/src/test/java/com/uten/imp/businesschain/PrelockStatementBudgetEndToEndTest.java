@@ -162,6 +162,50 @@ class PrelockStatementBudgetEndToEndTest {
     }
 
     /**
+     * ADR-149 §2.1: 非超管的仓储部门成员批量出库 5 张草稿领料单(出库即审核), 逐单复核的仓库任务办理范围
+     * (审核、出库、详情可读)整批只解析一次 fn_user_warehouse_access。超管在判定前提前返回, 上面的预算量不出这一项。
+     */
+    @Test
+    void warehouseMemberIssueBatchResolvesTheWarehouseScopeOnce() throws Exception {
+        var w = fixture.seedWorld("scope-issue-batch");
+        db.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsB(), new BigDecimal("100"));
+        db.update("insert into stock_balances(warehouse_id, goods_id, color_id, qty) values (?,?,NULL,?)",
+                w.warehouseId(), w.goodsE(), new BigDecimal("50"));
+        fixture.loginAs(w.superAdminUserId());
+        var generate = FullChainEndToEndTest.class.getDeclaredMethod(
+                "generateSingleWarehouseDraw", FullChainEndToEndTest.World.class, String.class);
+        generate.setAccessible(true);
+        List<UUID> draws = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            draws.add((UUID) generate.invoke(fixture, w, "scope-batch-" + index + "-" + w.warehouseId()));
+        }
+        fixture.requestWorkshopDraws("scope-batch", draws);
+        UUID member = fixture.createUserWithPerms(w, "scope-batch-" + w.warehouseId(),
+                "stock_doc:view", "stock_doc:approve", "stock_doc:issue");
+        db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='SUB_WH' AND NOT is_deleted)"
+                + " WHERE id=(SELECT employee_id FROM users WHERE id=?)", member);
+        fixture.loginAs(member);
+        var request = new StockDocIssueBatchRequest();
+        request.setIdempotencyKey("scope-batch-issue-" + w.warehouseId());
+        request.setDocIds(List.copyOf(draws));
+
+        var sample = ProductionJdbcMeasurement.begin();
+        try {
+            assertEquals(5, stockDocs.issueFullBatch(request).issuedCount());
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+
+        long resolutions = sample.labelsByFingerprint.entrySet().stream()
+                .filter(label -> "warehouse.scope_access".equals(label.getValue()))
+                .mapToLong(label -> sample.fingerprints.getOrDefault(label.getKey(), 0L))
+                .sum();
+        assertEquals(1, resolutions, "整批出库只解析一次仓库数据范围");
+        assertEquals(1, sample.commits, "批量出库必须是一笔事务");
+    }
+
+    /**
      * 服务端截止时间(ADR-107 / overhaul-gap-01): 应用连接带锁等待、单条语句、事务内空闲上限,
      * 事务默认 40 秒(小于客户端 45 秒)。等锁超时回可重跑 409, 不再无限排队占住连接。
      */

@@ -3,6 +3,7 @@ package com.uten.imp.common.platformcolumns;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.columns.BusinessColumnService;
 import com.uten.imp.common.columns.ExtraColumnCalculator;
 import com.uten.imp.common.text.IntakeTextNormalizer;
@@ -11,6 +12,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,8 @@ public class PlatformColumnService {
     private final ObjectMapper mapper;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
+    /** ADR-149 仓库数据范围; 未注入(直接 new 的契约测试)时批量读不开复用窗口。 */
+    private WarehouseTaskScopePort warehouseScopes;
 
     public PlatformColumnService(List<PlatformColumnResourceAdapter> resources, NamedParameterJdbcTemplate jdbc,
             ObjectMapper mapper, SecurityContextCurrentUser currentUser, TxSessionVars tx) {
@@ -48,6 +52,9 @@ public class PlatformColumnService {
         }
         this.adapters=Map.copyOf(registrations);this.jdbc=jdbc;this.mapper=mapper;this.currentUser=currentUser;this.tx=tx;
     }
+
+    @Autowired(required=false)
+    void setWarehouseScopes(WarehouseTaskScopePort warehouseScopes){this.warehouseScopes=warehouseScopes;}
 
     @Transactional(readOnly=true)
     public List<Scope> scopes() {
@@ -233,7 +240,10 @@ public class PlatformColumnService {
         Set<UUID> ids=ids(request.recordIds(),MAX_ROWS,"记录");
         Set<UUID> selected=request.columnIds()==null?Set.of():ids(request.columnIds(),MAX_COLUMNS,"列");
         if(ids.isEmpty())return List.of();
-        Map<UUID,PlatformColumnResourceAdapter.RecordAccess> access=authorize(adapter,ids,false);
+        // 逐条借领域详情判可见(仓库单据逐张复核仓库任务范围): 一次批量读共用一次仓库范围解析,
+        // 与 GET 同一规则, 走 POST 只因记录清单在请求体里(ADR-149 §2.1)。
+        Map<UUID,PlatformColumnResourceAdapter.RecordAccess> access=warehouseScopes==null?authorize(adapter,ids,false)
+                :warehouseScopes.withScopeCache(()->authorize(adapter,ids,false));
         Map<String,Object> parameters=params(scope);parameters.put("ids",ids);
         Map<UUID,Stored> records=new HashMap<>();
         jdbc.query("SELECT record_id,version,cells::text FROM platform_record_fields WHERE scope=:scope AND record_id IN(:ids)",parameters,

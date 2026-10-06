@@ -8,8 +8,6 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
-import org.springframework.web.context.request.RequestAttributes;
-import org.springframework.web.context.request.RequestContextHolder;
 
 import java.sql.Array;
 import java.sql.SQLException;
@@ -27,17 +25,22 @@ import java.util.stream.Collectors;
  * 仓库数据范围的唯一服务端判定(ADR-149 / V804), 实现 {@link WarehouseTaskScopePort} v2。
  *
  * <p>角色与默认可见仓只由数据库函数 {@code fn_user_warehouse_access} 回答, 本类只做三件事:
- * 按请求缓存一次解析结果(工作台徽章一次汇总十来个来源只解析一次)、校验页面选的仓
- * (越界 403)、把仓库类通知收件人交给 {@code fn_warehouse_notice_recipients}。
+ * 每次实时解析(显式打开的复用窗口内同一账号只解析一次, 见 {@link #withScopeCache})、
+ * 校验页面选的仓(越界 403)、把仓库类通知收件人交给 {@code fn_warehouse_notice_recipients}。
  * Java 不再自己算一遍「谁负责哪个仓」。
+ *
+ * <p>不按 HTTP 请求一律缓存: 授权与范围判断若靠「请求边界」才刷新, 同一请求(或绑定成一个请求的长流程)里
+ * 先改组织、后判定就会拿到旧结果——调离仓储部门的人照样能办理。写请求每次实时算; 只读请求(GET/HEAD)
+ * 不改组织, 由过滤器整请求开一个窗口; 只读汇总与批量办理循环由调用方显式开窗口(ADR-149 §2.1)。
  */
 @Service
 @RequiredArgsConstructor
 public class WarehouseDataScopeService implements WarehouseTaskScopePort {
 
-    private static final String CACHE_ATTRIBUTE = WarehouseDataScopeService.class.getName() + ".cache";
     /** 工作台徽章按任务中心所选仓汇总时的「本次所选仓」(只在同一线程的汇总执行期间有效)。 */
     private static final ThreadLocal<UUID> REQUESTED = new ThreadLocal<>();
+    /** 范围解析复用窗口(只在同一线程的 {@link #withScopeCache} 执行期间存在, 结束即移除)。 */
+    private static final ThreadLocal<Map<String, Object>> WINDOW = new ThreadLocal<>();
 
     private final JdbcClient jdbc;
     private final SecurityContextCurrentUser currentUser;
@@ -51,12 +54,7 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
             // 系统上下文(定时任务、事件投递)没有登录主体: 不按人裁剪; HTTP 端点都要求登录。
             return new WarehouseAccess(Role.SUPERVISOR, List.of(), WarehouseTaskScope.ALL, false);
         }
-        Map<Object, Object> cache = requestCache();
-        String key = "access:" + userId;
-        if (cache != null && cache.get(key) instanceof WarehouseAccess cached) return cached;
-        WarehouseAccess resolved = resolve(userId);
-        if (cache != null) cache.put(key, resolved);
-        return resolved;
+        return reuse("access:" + userId, WarehouseAccess.class, () -> resolve(userId));
     }
 
     @Override
@@ -64,28 +62,39 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
         UUID requested = requestedWarehouseId != null ? requestedWarehouseId : REQUESTED.get();
         WarehouseAccess access = access();
         if (requested == null) return access.defaultScope();
-        Map<Object, Object> cache = requestCache();
         String key = "scope:" + currentUser.id().map(UUID::toString).orElse("-") + ":" + requested;
-        if (cache != null && cache.get(key) instanceof WarehouseTaskScope cached) return cached;
-        if (!selectable(access, requested)) {
-            throw new ApiException(ErrorCode.FORBIDDEN, OUT_OF_SCOPE_MESSAGE);
-        }
-        WarehouseTaskScope scope = new WarehouseTaskScope(true, subtree(requested), false);
-        if (cache != null) cache.put(key, scope);
-        return scope;
+        return reuse(key, WarehouseTaskScope.class, () -> {
+            if (!selectable(access, requested)) {
+                throw new ApiException(ErrorCode.FORBIDDEN, OUT_OF_SCOPE_MESSAGE);
+            }
+            return new WarehouseTaskScope(true, subtree(requested), false);
+        });
     }
 
     @Override
     public <T> T withRequestedWarehouse(UUID requestedWarehouseId, Supplier<T> work) {
         if (requestedWarehouseId == null) return work.get();
-        current(requestedWarehouseId);
-        UUID previous = REQUESTED.get();
-        REQUESTED.set(requestedWarehouseId);
+        return withScopeCache(() -> {
+            current(requestedWarehouseId);
+            UUID previous = REQUESTED.get();
+            REQUESTED.set(requestedWarehouseId);
+            try {
+                return work.get();
+            } finally {
+                if (previous == null) REQUESTED.remove();
+                else REQUESTED.set(previous);
+            }
+        });
+    }
+
+    @Override
+    public <T> T withScopeCache(Supplier<T> work) {
+        if (WINDOW.get() != null) return work.get();
+        WINDOW.set(new HashMap<>());
         try {
             return work.get();
         } finally {
-            if (previous == null) REQUESTED.remove();
-            else REQUESTED.set(previous);
+            WINDOW.remove();
         }
     }
 
@@ -160,13 +169,18 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
                 selectable, keepers, defaultWarehouseId);
     }
 
-    /** 负责关系改了以后, 同一请求里后续的范围判定要重新解析。 */
-    void invalidate() {
-        Map<Object, Object> cache = requestCache();
-        if (cache != null) cache.clear();
-    }
-
     // ---- helpers -------------------------------------------------------------------
+
+    /** 窗口内同键只解析一次(解析抛错不记, 下次照样抛); 窗口外直接实时解析。 */
+    private static <T> T reuse(String key, Class<T> type, Supplier<T> resolver) {
+        Map<String, Object> window = WINDOW.get();
+        if (window == null) return resolver.get();
+        Object cached = window.get(key);
+        if (type.isInstance(cached)) return type.cast(cached);
+        T resolved = resolver.get();
+        window.put(key, resolved);
+        return resolved;
+    }
 
     private WarehouseAccess resolve(UUID userId) {
         return jdbc.sql("""
@@ -221,17 +235,6 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
                         rs.getObject("id", UUID.class), rs.getString("code"), rs.getString("name"),
                         rs.getObject("parent_id", UUID.class)))
                 .list();
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<Object, Object> requestCache() {
-        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
-        if (attributes == null) return null;
-        Object existing = attributes.getAttribute(CACHE_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
-        if (existing instanceof Map<?, ?> map) return (Map<Object, Object>) map;
-        Map<Object, Object> created = new HashMap<>();
-        attributes.setAttribute(CACHE_ATTRIBUTE, created, RequestAttributes.SCOPE_REQUEST);
-        return created;
     }
 
     private static List<UUID> distinct(Collection<UUID> ids) {

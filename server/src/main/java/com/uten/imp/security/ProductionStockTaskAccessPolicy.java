@@ -6,6 +6,8 @@ import com.uten.imp.common.web.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.function.Supplier;
+
 /**
  * Object scope for production-generated warehouse tasks.
  *
@@ -35,5 +37,16 @@ public class ProductionStockTaskAccessPolicy {
         if (!canAccessWarehouseTasks()) {
             throw new ApiException(ErrorCode.FORBIDDEN, message);
         }
+    }
+
+    /**
+     * One scope resolution for a whole batch command ({@link WarehouseTaskScopePort#withScopeCache}):
+     * only for loops that re-check this access per document and never change the organization,
+     * departments, keepers or accounts (batch issue, material-discovery batch issue, batch
+     * finished-inbound confirmation).
+     * Single-document commands stay live.
+     */
+    public <T> T withScopeCache(Supplier<T> work) {
+        return warehouseScopes.withScopeCache(work);
     }
 }

@@ -289,6 +289,8 @@ final class ProductionJdbcMeasurement {
         if (normalized.startsWith("with recursive roots(")) return "bom.expansion";
         if (normalized.startsWith("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
         if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
+        // ADR-149: Java 侧的仓库数据范围解析(一次汇总里的解析次数 ≤ 不同范围数, 准则 14)。
+        if (normalized.contains("fn_user_warehouse_access(")) return "warehouse.scope_access";
         String verb = normalized.startsWith("insert")
                 || normalized.startsWith("with incoming ") && normalized.contains("insert into production_material_analysis_materials")
                 ? "insert" : normalized.startsWith("update") ? "update" : "read";

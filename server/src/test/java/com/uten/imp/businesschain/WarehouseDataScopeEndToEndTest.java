@@ -27,17 +27,22 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionCo
 import com.uten.imp.features.warehouse.outbound.WarehouseSubcontractOutboundController;
 import com.uten.imp.features.workbench.badge.WorkbenchBadgeController;
 import com.uten.imp.features.workbench.badge.WorkbenchBadgeSummary;
+import com.uten.imp.security.ProductionStockTaskAccessPolicy;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -51,11 +56,13 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 /**
  * ADR-149 仓库数据范围服务端强制, 走真实服务与真实 PG(V804 fn_user_warehouse_access):
  * 七种身份的角色与默认范围; 越界选仓 403; 逐个仓库徽章来源「事实数 == 同身份同范围的列表 total」;
- * 通知收件人与列表同一套负责关系。
+ * 通知收件人与列表同一套负责关系; 范围每次实时解析(不靠请求边界), 一次徽章汇总、一次只读请求只解析一次。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
@@ -67,6 +74,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!",
         "uten.workshop-material.auto-close.enabled=false"})
+@AutoConfigureMockMvc(print = MockMvcPrint.NONE)
+@Import(ProductionJdbcMeasurement.Configuration.class)
 class WarehouseDataScopeEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -84,6 +93,7 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired WarehouseDataScopeService dataScope;
     @Autowired WarehouseKeeperService keepers;
     @Autowired WarehouseNoticeRouter router;
+    @Autowired ProductionStockTaskAccessPolicy productionTaskAccess;
     @Autowired WorkbenchBadgeController badges;
     @Autowired StockDocController stockDocs;
     @Autowired StockDocService stock;
@@ -97,6 +107,7 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired WorkshopMaterialRequisitionController requisitions;
     @Autowired StockCountRequestController stockCounts;
     @Autowired DocumentDraftCountController documentCounts;
+    @Autowired MockMvc http;
 
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
@@ -139,6 +150,7 @@ class WarehouseDataScopeEndToEndTest {
     }
 
     @AfterEach void clear() {
+        ProductionJdbcMeasurement.end();
         db.update("DELETE FROM warehouse_keepers WHERE warehouse_id IN (?,?,?) OR employee_id IN "
                         + "(SELECT employee_id FROM users WHERE id IN (?,?,?,?,?))",
                 warehouseA, warehouseB, warehouseC, manager, mainKeeper, keeperA, keeperAB, member);
@@ -303,7 +315,82 @@ class WarehouseDataScopeEndToEndTest {
                 Boolean.class, outsider)).isFalse();
     }
 
+    /**
+     * 授权与范围判断不靠请求边界: 整个测试方法是同一个 MOCK 请求, 中途撤掉负责登记、调离仓储部门,
+     * 下一次判定立即按新组织算。性能口径不退: 一次徽章汇总(十来个仓库来源)只解析一次范围(准则 14)。
+     */
+    @Test void organizationChangesApplyImmediatelyWhileOneBadgeSummaryResolvesTheScopeOnce() {
+        fixture.loginAs(keeperA);
+        assertThat(scopes.access().role()).isEqualTo(Role.KEEPER);
+        assertThat(scopes.current(null).warehouseIds()).contains(warehouseA);
+        db.update("DELETE FROM warehouse_keepers WHERE warehouse_id=? AND employee_id=(SELECT employee_id FROM users WHERE id=?)",
+                warehouseA, keeperA);
+        assertThat(scopes.access().role()).isEqualTo(Role.OTHER);
+        assertThat(scopes.current(null).warehouseIds()).doesNotContain(warehouseA);
+
+        fixture.loginAs(member);
+        assertThat(productionTaskAccess.canAccessWarehouseTasks()).isTrue();
+        db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",
+                world.departmentId(), member);
+        assertThat(productionTaskAccess.canAccessWarehouseTasks()).isFalse();
+
+        fixture.loginAs(keeperAB);
+        assertThat(scopeResolutions(() -> badges.badges(null))).isEqualTo(1);
+        assertThat(scopeResolutions(() -> badges.badges(warehouseB))).isEqualTo(1);
+        fixture.loginAs(manager);
+        assertThat(scopeResolutions(() -> badges.badges(null))).isEqualTo(1);
+        assertThat(scopeResolutions(() -> badges.badges(warehouseC))).isEqualTo(1);
+        // 汇总结束窗口即关: 之后的判定照样实时。
+        db.update("UPDATE departments SET manager_id=? WHERE id=?", previousManager, warehouseDepartment);
+        assertThat(scopes.access().role()).isNotEqualTo(Role.SUPERVISOR);
+    }
+
+    /**
+     * 只读请求整请求一个范围快照(ADR-149 §2.1): 非超管经真实过滤链 GET 仓库单据列表——控制器解析默认范围、
+     * 列表谓词再判一次仓库任务参与者——一次请求只调一次 fn_user_warehouse_access。
+     */
+    @Test void aReadRequestThroughTheFilterChainResolvesTheScopeOnce() {
+        fixture.loginAs(admin);
+        UUID docA = otherOutDraft(warehouseA);
+        UUID docC = otherOutDraft(warehouseC);
+        for (UUID user : List.of(keeperA, member)) {
+            fixture.loginAs(user);
+            var actor = SecurityContextHolder.getContext().getAuthentication();
+            String[] body = new String[1];
+            long resolutions = scopeResolutions(() -> {
+                try {
+                    var response = http.perform(get("/api/stock/docs").param("docType", "OTHER_OUT")
+                            .param("status", "0").param("size", "100").with(authentication(actor)))
+                            .andReturn().getResponse();
+                    assertThat(response.getStatus()).as(response.getContentAsString()).isEqualTo(200);
+                    body[0] = response.getContentAsString();
+                } catch (Exception failure) {
+                    throw new IllegalStateException(failure);
+                }
+            });
+            assertThat(resolutions).as(user.toString()).isEqualTo(1);
+            // 同一请求里的范围仍是本人的: 子仓负责人只看自己的仓, 其他人只看没人负责的仓。
+            UUID visible = user.equals(keeperA) ? docA : docC;
+            UUID hidden = user.equals(keeperA) ? docC : docA;
+            assertThat(body[0]).contains(visible.toString()).doesNotContain(hidden.toString());
+        }
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    /** 一段操作里 Java 侧调了几次 fn_user_warehouse_access。 */
+    private static long scopeResolutions(Runnable work) {
+        ProductionJdbcMeasurement.Sample sample = ProductionJdbcMeasurement.begin();
+        try {
+            work.run();
+        } finally {
+            ProductionJdbcMeasurement.end();
+        }
+        return sample.labelsByFingerprint.entrySet().stream()
+                .filter(label -> "warehouse.scope_access".equals(label.getValue()))
+                .mapToLong(label -> sample.fingerprints.getOrDefault(label.getKey(), 0L))
+                .sum();
+    }
 
     private void assertBadgeEqualsLists(UUID user, UUID selected) {
         WorkbenchBadgeSummary summary = badges.badges(selected);

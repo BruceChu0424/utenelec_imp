@@ -604,10 +604,19 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      * the final inventory quantity authority. A short acceptance approves only
      * the accepted slice and creates a new, traceable residual draft instead
      * of silently changing fqty or losing the outstanding quantity.
+     *
+     * <p>The per-document warehouse-task scope checks (confirm + approve) share one
+     * scope resolution for the whole batch (ADR-149 §2.1); the loop never changes
+     * the organization or keepers.
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:approve')")
     public FinishedInboundBatchConfirmResponse confirmFinishedInboundBatch(
+            FinishedInboundBatchConfirmRequest request) {
+        return productionStockTaskAccess.withScopeCache(() -> confirmFinishedInboundBatchInOneScope(request));
+    }
+
+    private FinishedInboundBatchConfirmResponse confirmFinishedInboundBatchInOneScope(
             FinishedInboundBatchConfirmRequest request) {
         tx.bind();
         FinishedInboundBatchCommand command =
@@ -1740,11 +1749,17 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      * <li>逐单 ApiException 统一包成「领料单 {单号}：{原因}」，错误码不变；
      *     不存在的单据 NOT_FOUND「仓库单据不存在」。</li>
      * <li>统一备注（reason）随每张单的出库追加到单据备注（{@link #appendIssueRemark}）。</li>
+     * <li>逐单复核的仓库任务办理范围(审核、出库、详情可读)整批共用一次范围解析(ADR-149 §2.1):
+     *     循环体不改组织与负责关系; 逐单实时解析时非超管一批 50 张要调上百次 fn_user_warehouse_access。</li>
      * </ul>
      */
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:issue')")
     public StockDocIssueBatchResponse issueFullBatch(StockDocIssueBatchRequest request) {
+        return productionStockTaskAccess.withScopeCache(() -> issueFullBatchInOneScope(request));
+    }
+
+    private StockDocIssueBatchResponse issueFullBatchInOneScope(StockDocIssueBatchRequest request) {
         tx.bind();
         var command = StockDrawIssueBatchReceipts.normalize(request);
         String batchKey = command.key();

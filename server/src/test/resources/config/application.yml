@@ -9,6 +9,17 @@ uten:
     # ADR-107: 全部 Spring Boot 真库用例里, 嵌套命令也重跑自己的来源发现并要求落在最外层预锁内,
     # 让全链路用例持续证明「嵌套足迹被预锁覆盖」。量语句数的用例在自己的 properties 里关掉, 量的是生产配置。
     verify-nested-footprint: true
+  production:
+    # 全公司范围的定时补做(备料自动核对每 60 秒、车间催计划核对每 5 分钟)在测试里默认不按计划跑:
+    # 同一 JVM 里缓存着几十个 Spring 上下文, 它们共用一个 PG 容器, 每个上下文各自的定时器都会扫到
+    # 「此刻正在跑的那个用例」的数据。例: 别的上下文的备料核对在 MaterialAnalysisReservationPreviewEndToEndTest
+    # 的预览前后两次计数之间给等料的执行段预留了库存, 被误判成「预览写了预留」。
+    # 要验证这两类补做的用例直接调用 runBatch()(ProductionExecutionRouteGateEndToEndTest、
+    # WorkshopPlanningUrgeEndToEndTest 等), 结果确定, 不靠定时器碰运气。
+    readiness-reconcile:
+      enabled: false
+    planning-urge-reconcile:
+      enabled: false
 
 # 全链 E2E 共享一个 PG 容器(FullChainEndToEndTest.POSTGRES, max_connections=400),
 # 73 个测试类各自的 Spring 上下文各持一个 Hikari 池同连该库: 顺序执行用不到

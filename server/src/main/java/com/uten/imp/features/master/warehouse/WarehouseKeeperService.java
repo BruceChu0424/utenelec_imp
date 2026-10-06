@@ -64,7 +64,6 @@ public class WarehouseKeeperService {
     private final JdbcClient jdbc;
     private final TxSessionVars tx;
     private final SecurityContextCurrentUser currentUser;
-    private final WarehouseDataScopeService dataScope;
 
     // ---- 维护(仓库资料) -------------------------------------------------------------
 
@@ -143,7 +142,6 @@ public class WarehouseKeeperService {
                     .param("ids", ids)
                     .update();
         }
-        dataScope.invalidate();
         return keepers(warehouseId);
     }
 

@@ -70,8 +70,16 @@ public class ProductionDrawDiscoveryBatchService {
                 "COMMITTED", key, (String) row[0], ids, readResponse((String) row[1]));
     }
 
+    /**
+     * 逐个申请登记材料(各自复核仓库岗位)再整批出库: 循环体不改组织与负责关系, 整批共用一次仓库范围解析
+     * (ADR-149 §2.1), 嵌套的批量出库沿用同一窗口。
+     */
     @Transactional
     public StockDocIssueBatchResponse issue(Request raw) {
+        return warehouseAccess.withScopeCache(() -> issueInOneScope(raw));
+    }
+
+    private StockDocIssueBatchResponse issueInOneScope(Request raw) {
         requireWarehouse();
         Request request=normalize(raw);
         tx.bind();

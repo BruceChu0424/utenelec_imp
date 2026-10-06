@@ -121,4 +121,4 @@ A2 只读审查的 10 条发现与处理(详见治理验证记录):
 
 - 后端: `AiChatSettingsTest`、`AiChatPresentationTest`、`AiChatConversationTest`(含前缀计入预算、数据变化只带问题)、`AiReasoningParamsTest`(含通义不开思考、OpenAI 不带温度、不认 effort 的 Claude 模型、输出上限不超配置)、`AiConnectionTesterTest`(思考程度一步)、`AiChatAnswerGuardTest`(记忆标记按行、时间说法不算、单行多对颜色)、`AiChatJobHandlerTest`(详略/语言/思考程度/跨页面记忆/敏感回答/身份变化/记忆关闭/页面读取关闭)、`AiChatConversationPostgresTest`(设置白名单与通用偏好拒写、跨页面三问、恢复、他人隔离、清空、身份变化、思考参数到达服务商)。
 - 前端: `test/shared/ai/ai_chat_test.dart` 新增 ADR-152 组(设置面板即改即存/忙碌/失败回滚、不支持思考程度提示、Enter 与 Ctrl+Enter、恢复历史与新对话、清空、依据与推荐问题开关)。
-- 真实链路记录: [2026-10-04 AI 对话设置与连续对话验证](../99-项目治理/2026-10-04-AI对话设置与连续对话验证.md)。
+- 真实链路记录: [2026-10-04 AI 对话设置与连续对话验证](../99-项目治理/AI助手验收合集.md#ai-20261004-settings)。

@@ -5,7 +5,7 @@
 | 项目 | 当前值 |
 |---|---|
 | 源码与运行版本 | 源码、隔离验证与已部署版本分别记录；本地检查不代表服务器已升级。见[本次验证记录](docs/99-项目治理/2026-09-29-全平台表格与AI学习本地验证.md)及[发布记录](docs/99-项目治理/当前版本验证.md) |
-| 数据库迁移头 | 当前整合源码 **V786 / 712** 个迁移文件；下一号先核对[迁移目录](server/src/main/resources/db/migration)和在途修改，避免撞号；说明见[迁移索引](docs/数据迁移/README.md)，[完整整合验收](docs/99-项目治理/2026-09-29-全量整合测试提速与发布验收.md) |
+| 数据库迁移头 | 当前整合源码 **V811 / 737** 个迁移文件；下一号先核对[迁移目录](server/src/main/resources/db/migration)和在途修改，避免撞号；说明见[迁移索引](docs/数据迁移/README.md)，[完整整合验收](docs/99-项目治理/2026-09-29-全量整合测试提速与发布验收.md) |
 | 前端 | Flutter 3.44.2 / Dart 3.12.2(Web、Windows、macOS、Linux、Android、iOS) |
 | 后端 | Java 21、Spring Boot 3.5.16、PostgreSQL 16、Flyway |
 | 发布方式 | GitHub Actions 签名构建 → 阿里云 OSS → 服务器更新器拉取激活([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)) |
@@ -39,7 +39,7 @@
 | 采购与委外 | 申请、订货、到货登记、IQC、退换货、委外出仓回厂、短交判定与损耗结清 | `lib/features/purchase`、`lib/features/subcontract` |
 | 仓库与品质 | 入库、领料、调拨、线边仓直送、先入库后质检、质检处置、库存实际成本；仓库重量账(数量后称重、六种重量单位自动换算、估算带「≈」未称不当 0、每个货品完整出入库明细账)、单重自学习与称重计数、库存分析(呆滞与库龄、盘点建议、称重异常) | `lib/features/warehouse`、`lib/features/quality`、`lib/shared/measurement`、`lib/shared/stock_ledger`、`server/.../features/stock` |
 | 财务 | 收付款、应收应付结算、银行账户流水、报销、工资、总账附表 | `lib/features/finance`、`lib/features/expense`、`lib/features/payroll` |
-| 组织与平台 | 员工与人事档案、部门树、访客、通知、工作台徽章、页面与数据范围权限、审计、系统设置 | `lib/features/admin`、`lib/features/dashboard`、`server/.../features/admin` |
+| 组织与平台 | 员工与人事档案、部门树、访客(访客门户前端已下线，后端与员工侧审批保留)、通知、工作台徽章、页面与数据范围权限、审计、系统设置 | `lib/features/admin`、`lib/features/dashboard`、`server/.../features/admin` |
 
 每条业务规则到页面、服务函数、迁移与测试的对照表见[文档索引](docs/README.md#业务到实现)。
 
@@ -48,7 +48,7 @@
 即时库存重量按显示单位换算并由服务端合计；库存详情与货品详情共用「库存余额 | 出入库流水 | 单重学习」面板；
 系统从称样、盘点、到货等独立点数的称重里按供应商学单重(稳健剔除离群、换批检测、给出可靠度)，称重计数按单重折算件数并给区间；
 新页面「库存分析」(`/warehouse/insights`)与手机用的「称重计数」(`/warehouse/weigh-count`)。决策见
-[ADR-135](docs/99-决策记录-ADR/ADR-135-仓库重量账与单重自学习.md)，迁移见 [V743 说明](docs/数据迁移/261-V743-仓库重量账与单重学习.md)(临时号，合并时按 main 头重编号)。
+[ADR-135](docs/99-决策记录-ADR/ADR-135-仓库重量账与单重自学习.md)，迁移见 [V743 说明](docs/数据迁移/261-V743-仓库重量账与单重学习.md)。
 
 ## 技术架构
 
@@ -88,7 +88,8 @@
 │  ├─ src/main/resources/db/migration   Flyway 正式迁移(唯一的表结构来源)
 │  ├─ ops/              运维 SQL(业务数据重置等)
 │  └─ legacy_migration/ 旧系统(YTDQ)数据导入脚本; 原始备份不入库, 由 UTEN_LEGACY_INPUT_DIR 指定
-├─ deploy/              部署: simple/(现役发布与运行手册) · updater · nginx · systemd · postgres · ocr
+├─ deploy/              部署: simple/(现役发布与运行手册) · updater · nginx · systemd · postgres · ocr；其余子目录(cloud、release、setup、monitoring、aliyun-oidc、watchdog 等)为退役旧发布链代码([ADR-060](docs/99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md))
+├─ scripts/             仓库级辅助脚本(平台表清单审计、表键登记、特性分支发布等)
 ├─ website/             官网独立工程(Node 22)
 ├─ docs/                项目文档(准则、组件、页面、数据模型、架构、业务链路、ADR、迁移、治理)
 └─ .github/workflows/   CI 质量门禁、CodeQL、依赖漏洞扫描、签名发布
@@ -147,13 +148,13 @@ CI(`.github/workflows/quality.yml`)在每次推送 main 与每个 PR 上运行, 
 | Flutter / Web | `dart format --output=none --set-exit-if-changed lib test` → `flutter analyze` → `flutter test` |
 | Backend 快道(单元 + 架构 + 契约) | `cd server && mvn verify` |
 | Backend 全量(真库 + 全链路) | `cd server && UTEN_RUN_DB_TESTS=true mvn verify`(Docker/Testcontainers, 约 1.5-2 小时) |
-| Deployment contracts | `python -m unittest discover -s deploy/updater -p "test*.py"`(以及 `deploy/postgres/backup`、`deploy/setup`) |
+| Deployment contracts | `python -m unittest discover -s deploy/updater -p "test*.py"`(以及 `deploy/postgres/backup`、`deploy/setup`、`deploy/monitoring`、`deploy/aliyun-oidc`、`deploy/ocr`；模板校验 `pwsh deploy/verify-templates.ps1`) |
 | Website / Node 22 | `cd website && node scripts/quality-gate.mjs` |
 | Secret history scan | gitleaks 全历史扫描 |
 
 > **本地验证必须与 CI 同口径**: CI 没有 `server/.env`, 未设 `UTEN_PROFILE` 时后端按 `prod` 启动(fail-closed)。在本机跑后端门禁前先把 `server/.env` 挪开, 否则 `dev` profile 会掩盖只在 `prod` 口径暴露的问题。
 
-业务正确性的主证据是 [`FullChainEndToEndTest`](server/src/test/java/com/uten/imp/businesschain/FullChainEndToEndTest.java)(160 个跨模块全链路场景, 真实 PostgreSQL, 切换账号走完整安全链)。定向测试只证明对应场景, 发布前必须在同一候选提交上完成全量检查。
+业务正确性的主证据是 [`FullChainEndToEndTest`](server/src/test/java/com/uten/imp/businesschain/FullChainEndToEndTest.java)(跨模块全链路场景, 真实 PostgreSQL, 切换账号走完整安全链)。定向测试只证明对应场景, 发布前必须在同一候选提交上完成全量检查。
 
 ## 数据库迁移规则
 

@@ -46,7 +46,7 @@ class ServerJarPackagingIT {
                     .noneMatch(name -> name.startsWith("BOOT-INF/classes/ai-knowledge/")
                             && (name.contains("登录页") || name.contains("AI服务设置页") || name.contains("ADR-150")
                             || name.contains("代码总结") || name.contains("10-安全准则") || name.contains("99-项目治理")
-                            || !name.matches("BOOT-INF/classes/ai-knowledge/(?:(?:99-决策记录-ADR|03-页面|07-业务链路|98-模块总结|00-项目准则)(?:/.*)?)?")));
+                            || !name.matches("BOOT-INF/classes/ai-knowledge/(?:(?:99-决策记录-ADR|03-页面|07-业务链路|00-项目准则)(?:/.*)?)?")));
         }
 
         List<String> expectedMigrations;

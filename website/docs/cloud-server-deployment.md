@@ -61,8 +61,9 @@ INQUIRY_RATE_GLOBAL_HOUR=300
 ALLOW_DESTRUCTIVE_SEED=false
 ```
 
-Optional inquiry forwarding to the IMP platform (sales' unified inbox; see
-`backend-consolidation-analysis.md`). Both keys must appear as a pair or not at
+Optional inquiry forwarding to the IMP platform (sales' unified inbox; the
+backend-consolidation-analysis.md design note has been retired after
+implementation). Both keys must appear as a pair or not at
 all; when absent the website only writes its local inbox:
 
 ```dotenv

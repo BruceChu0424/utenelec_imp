@@ -10,8 +10,8 @@ import java.util.regex.Pattern;
 
 /**
  * ADR-153 which project documents the assistant may cite. Only the platform's own design documents
- * (decision records, page documents, business chains with the business glossary, module summaries without
- * code-level content, and the two business-counting guidelines) are packaged and indexed; documents about
+ * (decision records, page documents, business chains with the business glossary, and the two
+ * business-counting guidelines) are packaged and indexed; documents about
  * deployment, servers, security internals, sessions, the AI assistant's own design decisions, project governance and
  * data migration are not (the assistant's user guide, a page document, is). Source code is never a knowledge source.
  *
@@ -26,7 +26,6 @@ final class AiDocKnowledgePolicy {
             "99-决策记录-ADR/ADR-*.md",
             "03-页面/*.md",
             "07-业务链路/*.md",
-            "98-模块总结/*.md",
             "00-项目准则/13-适老化UX基线.md",
             "00-项目准则/14-徽章与计数口径.md");
 
@@ -52,8 +51,7 @@ final class AiDocKnowledgePolicy {
             "03-页面/系统设置页.md", "03-页面/AI服务设置页.md", "03-页面/权限管理页.md", "03-页面/页面总览.md",
             "03-页面/登录页.md", "03-页面/审计日志页.md", "03-页面/模拟身份(切换人).md",
             "07-业务链路/02-数据库设计-*.md", "07-业务链路/03-续作指引.md",
-            "07-业务链路/2026-09-07-履约事务锁顺序与来源漂移处理.md",
-            "98-模块总结/*代码总结.md");
+            "07-业务链路/2026-09-07-履约事务锁顺序与来源漂移处理.md");
 
     /**
      * Sections about implementation rather than business rules are dropped with their subsections:

@@ -15,7 +15,7 @@ class ProcurementFinancePermissionDocumentationContractTest {
             "docs/03-页面/工作台首页.md",
             "docs/03-页面/页面总览.md",
             "docs/04-数据模型/ER草图.md",
-            "docs/04-数据模型/生产履约V1实体关系.md",
+            "docs/04-数据模型/生产履约V2实体关系.md",
             "docs/05-架构/路由设计.md",
             "docs/05-架构/安全策略.md",
             "docs/05-架构/全局机制.md",

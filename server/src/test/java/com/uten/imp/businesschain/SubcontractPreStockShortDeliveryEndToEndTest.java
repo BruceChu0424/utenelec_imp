@@ -68,6 +68,7 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
     @Autowired SubcontractShortDeliveryService shortDeliveries;
     @Autowired ProcurementInspectionService inspections;
     @Autowired ProcurementIqcStockInService iqcStockIn;
+    @Autowired com.uten.imp.features.subcontract.receipt.SubcontractReceiptService subcontractReceipts;
     FullChainEndToEndTest fixture;
     @BeforeEach void setup(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
     @AfterEach void logout(){org.springframework.security.core.context.SecurityContextHolder.clearContext();}
@@ -178,6 +179,44 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
         assertTrue(db.queryForObject("SELECT is_closed FROM subcontract_orders WHERE id=?",Boolean.class,o.orderId()));
     }
 
+    /**
+     * 2026-10-06 修正(与仓库到货批量登记同一类缺陷): 断点恢复的草稿收货单「继续送检」让案件自然完成时, 同一事务
+     * 把先前扣住的已上架合格品转正——它上架在另一个主仓。继续送检的首次预锁必须与登记实际到货同一份推导,
+     * 并上这些被扣住的货(上架仓的主仓、可用量维度与唤醒目标); 原来只锁草稿收货单自己的足迹, 转正时的入库足迹
+     * 落在预锁外(本类打开嵌套足迹诊断, 原代码在这里 409)。
+     */
+    @Test void interruptedDraftThatCompletesTheOrderReleasesAShelvedPassInAnotherMainWarehouse() {
+        var w=fixture.seedWorld("sc-prestock-hold-draft");fixture.loginAs(w.superAdminUserId());
+        Ordered o=orderApproveAndIssueAll(w,"sc-prestock-draft");
+        UUID otherMain=UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,parent_id,code,name,status,is_accountable) VALUES(?,NULL,?,?,'使用',TRUE)",
+                otherMain,"SCD-"+otherMain.toString().substring(0,8),"另一主仓-"+otherMain.toString().substring(0,8));
+        WarehouseArrivalRegisterResult first=arrivals.register(preStockArrival(w,otherMain,o.itemId(),"50",true,"d1"));
+        assertEquals("STOCKED_PENDING_INSPECTION",first.outcome());
+        passIqc(first.receiptId(),inspectionOf(first.receiptId()),"sc-prestock-draft-pass-1");
+        rate("0",onHand(w.goodsE(),otherMain));
+        UUID caseId=(UUID)caseRow(o.itemId()).get("id");
+
+        // 剩下的 50 只建了草稿(老流程 / 网络中断), 由任务中心「继续送检」完成。
+        var draft=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
+        draft.setBillDate(BusinessTime.today());draft.setSupplierId(w.supplierId());draft.setWarehouseId(w.warehouseId());
+        draft.setCurrencyId(w.currencyId());draft.setExchangeRate(BigDecimal.ONE);draft.setTaxRate(BigDecimal.ZERO);
+        draft.setSettlementMethodId(ReflectionTestUtils.invokeMethod(fixture,"activeSettlementMethodId"));
+        draft.setSenderId(w.employeeId());
+        var line=new com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine();
+        line.setLineNo(1);line.setGoodsId(w.goodsE());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal("50"));line.setOrderItemId(o.itemId());
+        draft.setItems(List.of(line));
+        UUID draftId=subcontractReceipts.createFromWarehouseArrival(draft).getId();
+
+        WarehouseArrivalRegisterResult completed=arrivals.complete(draftId);
+        assertEquals("SUBMITTED_FOR_INSPECTION",completed.outcome());
+        assertEquals("COMPLETED",db.queryForObject("SELECT status FROM subcontract_short_delivery_cases WHERE id=?",String.class,caseId));
+        rate("50",onHand(w.goodsE(),otherMain));
+        assertEquals(1,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=? AND origin='PRE_STOCKED_AUTO'",first.receiptId()),
+                "继续送检的同一事务把另一主仓里扣住的合格品按上架位置转正");
+    }
+
     // ===================== helpers =====================
 
     private record Ordered(UUID orderId,UUID itemId) {}
@@ -210,8 +249,12 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
 
     /** 先入库后质检(stockInBeforeInspection=true)登记: 每行带上架库位, 上架到本单入库仓。 */
     private WarehouseArrivalRegisterRequest preStockArrival(FullChainEndToEndTest.World w,UUID itemId,String qty,boolean acknowledged,String key){
+        return preStockArrival(w,w.warehouseId(),itemId,qty,acknowledged,key);
+    }
+
+    private WarehouseArrivalRegisterRequest preStockArrival(FullChainEndToEndTest.World w,UUID warehouseId,UUID itemId,String qty,boolean acknowledged,String key){
         return new WarehouseArrivalRegisterRequest(
-                "prestock-hold-"+key+"-"+itemId,"SUBCONTRACT",BusinessTime.today(),w.supplierId(),w.warehouseId(),
+                "prestock-hold-"+key+"-"+itemId,"SUBCONTRACT",BusinessTime.today(),w.supplierId(),warehouseId,
                 null,w.employeeId(),null,
                 List.of(new ArrivalLine(w.goodsE(),new BigDecimal(qty),itemId,null,w.unitId(),BigDecimal.ONE,null,null,null,SHELF)),
                 Boolean.TRUE,acknowledged?Boolean.TRUE:null);

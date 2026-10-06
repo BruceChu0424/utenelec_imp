@@ -899,6 +899,9 @@ public class SalesShipmentService {
     public java.util.List<Map<String, Object>> financeAuditBatch(
             com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest request) {
         tx.bind();
+        // 写任何一张之前对全部出货单合并预锁(2026-10-06 修正), 逐张放行的取锁只核对覆盖。
+        mutationFootprint.lockShipments(request.items().stream()
+                .map(com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest.Item::id).toList());
         java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
         for (var item : request.items()) {
             results.add(financeAudit(item.id(), item.toDecision(null)));
@@ -916,6 +919,8 @@ public class SalesShipmentService {
         if (reason == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写退回原因，方便销售修改");
         }
+        mutationFootprint.lockShipments(request.items().stream()
+                .map(com.uten.imp.features.sales.shipment.dto.ShipmentFinanceBatchDecisionRequest.Item::id).toList());
         java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
         for (var item : request.items()) {
             results.add(financeAuditReject(item.id(), item.toDecision(reason)));

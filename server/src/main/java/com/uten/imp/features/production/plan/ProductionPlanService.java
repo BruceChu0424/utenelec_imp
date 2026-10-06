@@ -400,7 +400,7 @@ public class ProductionPlanService {
             }
         }
         var readScope = access.scope("production_plan:approve");
-        List<PlanBatchResult.Done> done = new ArrayList<>();
+        List<PlanHead> eligible = new ArrayList<>();
         List<PlanBatchResult.Skipped> skipped = new ArrayList<>();
         for (UUID id : ordered) {
             PlanHead head = heads.get(id);
@@ -413,14 +413,25 @@ public class ProductionPlanService {
                 skipped.add(new PlanBatchResult.Skipped(id, head.billNo(), reason));
                 continue;
             }
+            eligible.add(head);
+        }
+        // 写任何一张之前对全部要办的计划合并预锁(2026-10-06 修正); 之后逐张走单张内核, 取锁只核对覆盖。
+        if (!eligible.isEmpty()) {
+            mutationFootprint.beginPlanBatch(eligible.stream().map(PlanHead::id).toList()).verifyUnchanged();
+        }
+        List<PlanBatchResult.Done> done = new ArrayList<>();
+        for (PlanHead head : eligible) {
+            String context = "计划 " + head.billNo() + " " + verb + "失败，本次批量" + verb + "全部未生效：";
             try {
-                action.accept(id);
+                action.accept(head.id());
+            } catch (com.uten.imp.application.concurrency.FulfillmentSourceConflictException conflict) {
+                // 保留可重跑标记: 瞬时冲突由最外层事务边界整批自动重跑。
+                throw new com.uten.imp.application.concurrency.FulfillmentSourceConflictException(
+                        conflict.internalReason(), conflict.retryable(), context + conflict.getMessage());
             } catch (ApiException failure) {
-                throw new ApiException(failure.getCode(),
-                        "计划 " + head.billNo() + " " + verb + "失败，本次批量" + verb
-                                + "全部未生效：" + failure.getMessage());
+                throw new ApiException(failure.getCode(), context + failure.getMessage());
             }
-            done.add(new PlanBatchResult.Done(id, head.billNo()));
+            done.add(new PlanBatchResult.Done(head.id(), head.billNo()));
         }
         return new PlanBatchResult(List.copyOf(done), List.copyOf(skipped));
     }

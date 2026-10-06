@@ -42,13 +42,8 @@ public class SalesMutationFootprintService {
     /** A historical quote may reference several terminated orders; acquire all S locks before any I lock. */
     public void lockOrders(Collection<UUID> orderIds) {
         List<UUID> ids = sorted(new LinkedHashSet<>(orderIds));
-        var sources = ids.stream().map(id -> new CommercialSource(CommercialType.SALES_ORDER, id)).toList();
-        locks.acquire(FulfillmentMutationLockPlan.declared(sources, Set.of(), Set.of()), () -> {
-            List<FulfillmentMutationLockPlan> parts = ids.stream()
-                    .map(id -> discover(Document.ORDER, id, List.of(), List.of())).toList();
-            return FulfillmentMutationLockPlan.merge(
-                    CanonicalFingerprint.sha256(parts.stream().map(FulfillmentMutationLockPlan::fingerprint).toList()), parts);
-        }).verifyUnchanged();
+        locks.acquireAll(ids.stream().map(id -> footprint(Document.ORDER, id, List.of(), List.of())).toList())
+                .verifyUnchanged();
     }
 
     public UUID lockOrderItem(UUID itemId) {
@@ -66,6 +61,24 @@ public class SalesMutationFootprintService {
     public void lockShipmentBatch(Collection<UUID> orderItemIds) {
         lock(Document.SHIPMENT, null, List.of(), orderItemIds);
     }
+
+    /**
+     * 出货单财务批量放行 / 批量退回(2026-10-06 修正): 写任何一张之前对全部出货单合并预锁——足迹与逐张
+     * {@link #lockShipment} 同一份推导(来源销售订单 + 库存维度), 出货单头按 UUID 序一次上锁。只按第一张
+     * 取锁时, 后面几张的来源订单在出货单行锁之后才被锁行写入, 违反「商业来源先于执行对象」。
+     */
+    public void lockShipments(Collection<UUID> shipmentIds) {
+        List<UUID> ids = sorted(shipmentIds.stream().filter(java.util.Objects::nonNull).distinct().toList());
+        var guard = locks.acquireAll(ids.stream()
+                .map(id -> footprint(Document.SHIPMENT, id, List.of(), List.of())).toList());
+        if (!ids.isEmpty()) {
+            List<?> found = em.createNativeQuery("SELECT id FROM " + Document.SHIPMENT.header
+                    + " WHERE id IN (:ids) ORDER BY id FOR UPDATE").setParameter("ids", ids).getResultList();
+            if (found.size()!=ids.size()) throw new ApiException(ErrorCode.NOT_FOUND, "销售单据不存在");
+        }
+        guard.verifyUnchanged();
+    }
+
     public void lockReturn(UUID id, Collection<RequestedLine> requested) {
         lock(Document.RETURN, id, requested, List.of());
     }
@@ -81,14 +94,8 @@ public class SalesMutationFootprintService {
     }
 
     private FulfillmentMutationLocks.Guard begin(Document kind, UUID id, Collection<RequestedLine> requested, Collection<UUID> orderItems) {
-        List<RequestedLine> proposed = requested == null ? List.of() : List.copyOf(requested);
-        List<UUID> selected = orderItems == null ? List.of() : List.copyOf(orderItems);
-        // ADR-107: 嵌套在已持有预锁的命令里时, 手里已知的订单与请求维度只在内存里核对覆盖。
-        var declaredInventory = new LinkedHashSet<InventoryDimension>();
-        proposed.forEach(line -> add(declaredInventory, line.goodsId(), line.colorId()));
-        var declared = FulfillmentMutationLockPlan.declared(kind == Document.ORDER && id != null
-                ? Set.of(new CommercialSource(CommercialType.SALES_ORDER, id)) : Set.of(), declaredInventory, Set.of());
-        var guard = locks.acquire(declared, () -> discover(kind, id, proposed, selected));
+        var request = footprint(kind, id, requested, orderItems);
+        var guard = locks.acquire(request.declared(), request.discovery());
         // Physical document heads are execution objects: never put them ahead of S/I.
         if (id != null && kind != Document.ORDER) {
             List<?> found = em.createNativeQuery("SELECT id FROM " + kind.header + " WHERE id=:id FOR UPDATE")
@@ -96,6 +103,19 @@ public class SalesMutationFootprintService {
             if (found.size()!=1) throw new ApiException(ErrorCode.NOT_FOUND, "销售单据不存在");
         }
         return guard;
+    }
+
+    /** 单张入口与批量入口共用的足迹: 声明(嵌套时内存核对) + 发现。 */
+    private FulfillmentMutationLocks.Footprint footprint(Document kind, UUID id, Collection<RequestedLine> requested,
+            Collection<UUID> orderItems) {
+        List<RequestedLine> proposed = requested == null ? List.of() : List.copyOf(requested);
+        List<UUID> selected = orderItems == null ? List.of() : List.copyOf(orderItems);
+        // ADR-107: 嵌套在已持有预锁的命令里时, 手里已知的订单与请求维度只在内存里核对覆盖。
+        var declaredInventory = new LinkedHashSet<InventoryDimension>();
+        proposed.forEach(line -> add(declaredInventory, line.goodsId(), line.colorId()));
+        var declared = FulfillmentMutationLockPlan.declared(kind == Document.ORDER && id != null
+                ? Set.of(new CommercialSource(CommercialType.SALES_ORDER, id)) : Set.of(), declaredInventory, Set.of());
+        return new FulfillmentMutationLocks.Footprint(declared, () -> discover(kind, id, proposed, selected));
     }
 
     private FulfillmentMutationLockPlan discover(Document kind, UUID id,

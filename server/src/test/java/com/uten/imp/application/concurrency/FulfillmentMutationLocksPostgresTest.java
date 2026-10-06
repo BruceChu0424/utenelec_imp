@@ -494,6 +494,73 @@ class FulfillmentMutationLocksPostgresTest {
         });
     }
 
+    /**
+     * 2026-10-06(仓库「登记实际到货」多张订货单批量登记整批 409): 一个事务逐项调用单项命令时, 只按第一项取锁,
+     * 第一项的足迹就成了整个事务的预锁集合, 第二项声明的来源超出集合是结构性缺口(不重跑)。批量命令改为先
+     * acquireAll: 一轮发现跑完每一项的足迹, 一次拿齐; 之后各项的嵌套取锁与写后回调只在内存里核对, 不再发现。
+     */
+    @Test void acquireAllPrelocksEveryItemSoEachItemOnlyChecksCoverage() {
+        var first=fixture(); var second=fixture();
+        transactions.executeWithoutResult(tx -> {
+            locks.acquire(plan(first),()->plan(first)).verifyUnchanged();
+            var gap=assertThrows(FulfillmentSourceConflictException.class,
+                    ()->locks.acquire(plan(second),()->plan(second)));
+            assertFalse(gap.retryable(),"Item-by-item prelocking leaves later items outside the prefix: a coding gap");
+            tx.setRollbackOnly();
+        });
+        var discoveries=new java.util.concurrent.atomic.AtomicInteger();
+        transactions.executeWithoutResult(tx -> {
+            var batch=locks.acquireAll(List.of(counted(first,discoveries),counted(second,discoveries)));
+            assertEquals(2,discoveries.get(),"One round runs every item's discovery once");
+            batch.verifyUnchanged();
+            assertEquals(4,discoveries.get(),"The post-lock recheck rereads the merged discovery exactly once");
+            assertOrderLocked(first.order,true);
+            assertOrderLocked(second.order,true);
+            for(var item:List.of(first,second)) {
+                locks.acquire(plan(item),()->{throw new AssertionError("nested discovery must not run");}).verifyUnchanged();
+                locks.requireCovered(plan(item));
+            }
+            assertEquals(4,discoveries.get());
+        });
+        var verifying=new FulfillmentMutationLocks(em,new FulfillmentInventoryMutationAdapter(inventory),true);
+        transactions.executeWithoutResult(tx -> {
+            verifying.acquireAll(List.of(FulfillmentMutationLocks.Footprint.undeclared(()->plan(first)),
+                    FulfillmentMutationLocks.Footprint.undeclared(()->plan(second)))).verifyUnchanged();
+            verifying.acquire(()->plan(second)).verifyUnchanged(); // diagnostics: rediscovered item stays inside
+        });
+    }
+
+    /** 两个批量把同样几项按相反顺序列出: 合并预锁按稳定顺序拿锁, 后到的排队等, 不会互相死锁。 */
+    @Test void batchesListingTheSameItemsInOppositeOrderQueueInsteadOfDeadlocking() {
+        assertTimeoutPreemptively(Duration.ofSeconds(30), () -> {
+            var first=fixture(); var second=fixture();
+            var acquired=new CountDownLatch(1); var release=new CountDownLatch(1); var attempting=new CountDownLatch(1);
+            try(var workers=Executors.newFixedThreadPool(2)) {
+                var holder=workers.submit(() -> transactions.executeWithoutResult(tx -> {
+                    locks.acquireAll(List.of(FulfillmentMutationLocks.Footprint.undeclared(()->plan(first)),
+                            FulfillmentMutationLocks.Footprint.undeclared(()->plan(second)))).verifyUnchanged();
+                    acquired.countDown(); await(release);
+                }));
+                assertTrue(acquired.await(5,TimeUnit.SECONDS));
+                var waiter=workers.submit(() -> transactions.executeWithoutResult(tx -> {
+                    attempting.countDown();
+                    locks.acquireAll(List.of(FulfillmentMutationLocks.Footprint.undeclared(()->plan(second)),
+                            FulfillmentMutationLocks.Footprint.undeclared(()->plan(first)))).verifyUnchanged();
+                }));
+                assertTrue(attempting.await(5,TimeUnit.SECONDS));
+                sleep(300);
+                assertFalse(waiter.isDone(),"The second batch queues behind the first on the same ordered prefix");
+                release.countDown();
+                holder.get(5,TimeUnit.SECONDS);
+                waiter.get(5,TimeUnit.SECONDS);
+            } finally { release.countDown(); }
+        });
+    }
+
+    private static FulfillmentMutationLocks.Footprint counted(Fixture f,java.util.concurrent.atomic.AtomicInteger discoveries) {
+        return new FulfillmentMutationLocks.Footprint(plan(f),()->{discoveries.incrementAndGet();return plan(f);});
+    }
+
     private static void lockTimeout(String value) {
         em.createNativeQuery("SELECT set_config('lock_timeout',:value,true)").setParameter("value",value).getSingleResult();
     }

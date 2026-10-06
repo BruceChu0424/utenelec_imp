@@ -1,6 +1,8 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
+import com.uten.imp.common.concurrency.ProcurementMutationLocks;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.purchase.receipt.PurchaseReceiptService;
@@ -80,7 +82,7 @@ public class WarehouseArrivalRegistrationService {
     private final SecurityContextCurrentUser currentUser;
     private final PurchaseReceiptService purchaseReceiptService;
     private final SubcontractReceiptService subcontractReceiptService;
-    private final com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    private final ProcurementMutationLocks mutationLocks;
     private final ProcurementIqcPreStockInService preStockIn;
     private final com.uten.imp.application.port.SubcontractShortDeliveryPort shortDelivery;
 
@@ -90,7 +92,7 @@ public class WarehouseArrivalRegistrationService {
             SecurityContextCurrentUser currentUser,
             PurchaseReceiptService purchaseReceiptService,
             SubcontractReceiptService subcontractReceiptService,
-            com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks,
+            ProcurementMutationLocks mutationLocks,
             ProcurementIqcPreStockInService preStockIn,
             com.uten.imp.application.port.SubcontractShortDeliveryPort shortDelivery) {
         this.jdbc = jdbc;
@@ -193,6 +195,23 @@ public class WarehouseArrivalRegistrationService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "这次登记的提交键已用于不同内容，请刷新预计到货任务后重新登记");
         }
+        Map<String, ArrivalCommand> existing = new java.util.HashMap<>();
+        for (BatchGroup group : groups) {
+            ArrivalCommand command = findRegistrationCommand(makerId, group.request().idempotencyKey());
+            if (command != null) {
+                existing.put(group.request().idempotencyKey(), command);
+                continue;
+            }
+            // 与单组登记同一组输入校验, 提前到取锁之前: 填错的行不必排队等锁。
+            validateActualWeights(group.request().items());
+            if (stockInFirst) validatePreStockPlaces(group.request().items());
+        }
+        // 写任何一组之前, 把要新登记的每一组的足迹合成一次预锁(2026-10-06 修正): 各组的订货单、库存维度、
+        // 主仓与分析都在里面, 之后逐组登记与送检回调只核对覆盖。只按第一组取锁时, 多张订货单的批量整批 409。
+        List<ProcurementMutationLocks.ArrivalInput> pending = groups.stream()
+                .filter(group -> !existing.containsKey(group.request().idempotencyKey()))
+                .map(group -> arrivalInput(group.order().orderType(), group.request())).toList();
+        var batchGuard = pending.isEmpty() ? null : mutationLocks.arrivals(pending);
         // 委外回厂短交(ADR-098)：先把全部委外组一起评估，需要确认就一次列全，任何一组都还没写。
         if (!replay && !request.shortDeliveryAcknowledgedRequested()) {
             List<com.uten.imp.application.port.SubcontractShortDeliveryPort.ShortDeliveryFinding> findings = new ArrayList<>();
@@ -204,15 +223,16 @@ public class WarehouseArrivalRegistrationService {
             }
             requireShortDeliveryAcknowledged(findings, false);
         }
+        if (batchGuard != null) batchGuard.verifyUnchanged();
         List<WarehouseArrivalBatchRegisterItem> items = new ArrayList<>(groups.size());
         for (BatchGroup group : groups) {
-            ArrivalCommand existing = findRegistrationCommand(makerId, group.request().idempotencyKey());
-            WarehouseArrivalRegisterResult result = existing != null
-                    ? replayGroup(existing, group.request())
+            ArrivalCommand previous = existing.get(group.request().idempotencyKey());
+            WarehouseArrivalRegisterResult result = previous != null
+                    ? replayGroup(previous, group.request())
                     : registerGroup(group.request(), batchKey, batchHash, true);
             items.add(new WarehouseArrivalBatchRegisterItem(group.order().orderType(), group.order().orderId(),
                     group.warehouseId(), result.outcome(), result.receiptId(), result.receiptBillNo(),
-                    result.exceptionId(), existing != null));
+                    result.exceptionId(), previous != null));
         }
         return new WarehouseArrivalBatchRegisterResult(items.size(), replay, items);
     }
@@ -262,6 +282,16 @@ public class WarehouseArrivalRegistrationService {
     private record OrderRef(String orderType, UUID orderId, UUID supplierId) {
     }
 
+    /** 一组登记的预锁输入: 单组取锁与批量合并预锁用同一份(订货明细、请求维度、入库仓)。 */
+    private static ProcurementMutationLocks.ArrivalInput arrivalInput(
+            String orderType, WarehouseArrivalRegisterRequest request) {
+        return new ProcurementMutationLocks.ArrivalInput(orderType, null,
+                request.items().stream().map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList(),
+                request.items().stream().map(item -> new FulfillmentMutationLockPlan.InventoryDimension(
+                        item.goodsId(), item.colorId())).toList(),
+                request.warehouseId());
+    }
+
     private record BatchGroup(OrderRef order, UUID warehouseId, WarehouseArrivalRegisterRequest request) {
     }
 
@@ -292,11 +322,8 @@ public class WarehouseArrivalRegistrationService {
             return replayResult(replay);
         }
         // 委外回厂: 首次预锁并进本次订货明细上被短交闸扣住的「先入库后质检」合格品(ADR-098 × ADR-090),
-        // 这次登记让累计回厂到齐或进入允许损耗范围时, 同一事务把它们自动转正。
-        var mutationGuard=mutationLocks.arrivalInputs(orderType,null,
-                request.items().stream().map(WarehouseArrivalRegisterRequest.ArrivalLine::orderItemId).toList(),
-                request.items().stream().map(item -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
-                        item.goodsId(),item.colorId())).toList(),request.warehouseId());
+        // 这次登记让累计回厂到齐或进入允许损耗范围时, 同一事务把它们自动转正。批量命令已对全部组预锁, 这里只核对覆盖。
+        var mutationGuard=mutationLocks.arrivalInputs(arrivalInput(orderType, request));
         OrderHeader header = resolveOrderHeader(
                 orderType,
                 request.items().stream()
@@ -492,7 +519,8 @@ public class WarehouseArrivalRegistrationService {
     public WarehouseArrivalRegisterResult complete(UUID receiptId) {
         tx.bind();
         DraftReceipt draft = requireDraft(receiptId);
-        var mutationGuard=mutationLocks.receipt(draft.orderType(),receiptId);
+        var mutationGuard=mutationLocks.arrivalDrafts(List.of(
+                new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef(draft.orderType(),receiptId)));
         lockReceiptHeaders(List.of(new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef(draft.orderType(),receiptId)));
         DraftReceipt locked=requireDraft(receiptId);
         if (!draft.equals(locked)) throw new ApiException(ErrorCode.CONFLICT,"收货来源已变化，请刷新后重试");
@@ -532,7 +560,7 @@ public class WarehouseArrivalRegistrationService {
                 "WAREHOUSE_ARRIVAL_BATCH_COMPLETE|" + makerId + "|" + key);
 
         List<com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef> sources=receiptSources(distinct);
-        var mutationGuard=mutationLocks.receipts(sources);
+        var mutationGuard=mutationLocks.arrivalDrafts(sources);
         lockReceiptHeaders(sources);
         if (!sources.equals(receiptSources(distinct))) throw new ApiException(ErrorCode.CONFLICT,"收货来源已变化，请刷新后重试");
         mutationGuard.verifyUnchanged();

@@ -3,6 +3,7 @@ package com.uten.imp.application.concurrency;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialSource;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.CommercialType;
 import com.uten.imp.application.port.InventoryMutationPort;
+import com.uten.imp.common.util.CanonicalFingerprint;
 import jakarta.persistence.EntityManager;
 import org.hibernate.Session;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,11 @@ import java.util.function.Supplier;
  * <p>嵌套命令自己的完整足迹在生产配置下<b>不再</b>于运行期重新发现: 没声明的商业来源、主仓在嵌套时
  * 没有运行期检查, 由各实际加锁入口的内存检查(库存维度、分析头)和测试里打开的
  * {@code uten.concurrency.verify-nested-footprint}(嵌套 acquire 重跑本命令的发现并要求被覆盖)兜底。</p>
+ *
+ * <p>批量命令(2026-10-06 修正, ADR-107 §1 补充): 一个事务里逐项调用单项命令时, 必须在写任何一项之前用
+ * {@link #acquireAll} 把每一项的 {@link Footprint} 合成一次预锁。否则排在第一项的足迹就成了整个事务的
+ * 完整预锁集合, 后面各项的来源、库存维度、主仓、分析都不在里面(仓库「登记实际到货」多张订货单批量登记
+ * 整批 409 即此)。单项入口与批量入口用同一个足迹工厂方法, 批量的声明与发现就是逐项的并集。</p>
  */
 @Component
 public class FulfillmentMutationLocks {
@@ -60,10 +66,45 @@ public class FulfillmentMutationLocks {
         this.verifyNestedFootprint = verifyNestedFootprint;
     }
 
+    /**
+     * 一项命令的预锁申请: 嵌套时在内存里核对的已知 id + 本事务第一次预锁时的只读发现。
+     * 适配器的单项入口与批量入口都从同一个工厂方法拿它, 两边的足迹是同一份推导。
+     */
+    public record Footprint(FulfillmentMutationLockPlan declared, Supplier<FulfillmentMutationLockPlan> discovery) {
+        public Footprint {
+            Objects.requireNonNull(declared);
+            Objects.requireNonNull(discovery);
+        }
+
+        public static Footprint undeclared(Supplier<FulfillmentMutationLockPlan> discovery) {
+            return new Footprint(FulfillmentMutationLockPlan.nothingDeclared(), discovery);
+        }
+    }
+
     /** Discovery is read-only. Caller keeps existing plan/package/segment/physical row locks after this prefix. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Guard acquire(Supplier<FulfillmentMutationLockPlan> discovery) {
         return acquire(FulfillmentMutationLockPlan.nothingDeclared(), discovery);
+    }
+
+    /**
+     * 批量命令的唯一预锁入口: 在同一轮发现里依次跑每一项的足迹(按方法+参数去重, 分析并集只展开一次),
+     * 合并后按偏序一次拿齐; 锁后复核、嵌套的覆盖复核都重读这份合并发现。之后逐项调用单项内核时,
+     * 它们自己的 acquire 都是嵌套的, 只核对覆盖。声明取各项声明之并, 本事务已持有预锁时照常只做覆盖检查。
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Guard acquireAll(Collection<Footprint> footprints) {
+        List<Footprint> parts = List.copyOf(footprints);
+        FulfillmentMutationLockPlan declared = FulfillmentMutationLockPlan.merge("declared",
+                parts.stream().map(Footprint::declared).toList());
+        return acquire(declared, () -> union(parts));
+    }
+
+    private static FulfillmentMutationLockPlan union(List<Footprint> parts) {
+        List<FulfillmentMutationLockPlan> plans = parts.stream()
+                .map(part -> Objects.requireNonNull(part.discovery().get())).toList();
+        return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(
+                plans.stream().map(FulfillmentMutationLockPlan::fingerprint).toList()), plans);
     }
 
     /**

@@ -62,13 +62,8 @@ public class ProcurementMutationLocks {
     public FulfillmentMutationLocks.Guard materialWaste(UUID id) { return locks.acquire(()->footprint.materialWaste(id)); }
     public FulfillmentMutationLocks.Guard iqcCase(UUID id) { return locks.acquire(()->footprint.iqcCase(id)); }
     public FulfillmentMutationLocks.Guard iqcCases(Collection<UUID> ids) {
-        var sorted=ids.stream().distinct().sorted().toList();
-        return locks.acquire(()->{
-            var parts=sorted.stream().map(footprint::iqcCase).toList();
-            return FulfillmentMutationLockPlan.merge(
-                    com.uten.imp.common.util.CanonicalFingerprint.sha256(parts.stream()
-                            .map(FulfillmentMutationLockPlan::fingerprint).toList()),parts);
-        });
+        return locks.acquireAll(ids.stream().distinct().sorted()
+                .map(id->FulfillmentMutationLocks.Footprint.undeclared(()->footprint.iqcCase(id))).toList());
     }
 
     /**
@@ -84,17 +79,55 @@ public class ProcurementMutationLocks {
         return locks.acquire(inventoryDeclared(dimensions),()->receiptInputsPlan(type,id,orderItems,dimensions,warehouse));
     }
 
+    /** 一张到货收货单(一张订货单 x 一个入库仓)的登记输入; 新建收货单时 receiptId 为空。 */
+    public record ArrivalInput(String type,UUID receiptId,List<UUID> orderItems,List<InventoryDimension> dimensions,UUID warehouse) {
+        public ArrivalInput {
+            orderItems=orderItems.stream().filter(java.util.Objects::nonNull).toList();
+            dimensions=dimensions.stream().filter(java.util.Objects::nonNull).toList();
+        }
+    }
+
     /**
      * ADR-098 × ADR-090(2026-10-05) 仓库到货登记: 委外回厂时在 {@link #receiptInputs} 之上并进这些订货明细上
      * 被短交闸扣住的「先入库后质检」合格品所在收货单——这次登记让累计回厂到齐或进入允许损耗范围时,
      * 同一事务就把它们自动转正(嵌套的品质 / 入库命令只剩覆盖检查, 不能事后补锁)。采购到货原样。
      */
-    public FulfillmentMutationLocks.Guard arrivalInputs(String type,UUID id,Collection<UUID> orderItems,
-            Collection<InventoryDimension> dimensions,UUID warehouse) {
-        if(!"SUBCONTRACT".equals(type))return receiptInputs(type,id,orderItems,dimensions,warehouse);
-        List<UUID> items=orderItems.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        return locks.acquire(inventoryDeclared(dimensions),
-                ()->withHeldPreStock(receiptInputsPlan(type,id,orderItems,dimensions,warehouse),items));
+    public FulfillmentMutationLocks.Guard arrivalInputs(ArrivalInput input) {
+        var arrival=arrivalFootprint(input);
+        return locks.acquire(arrival.declared(),arrival.discovery());
+    }
+
+    /**
+     * 「登记实际到货」一批(ADR-151 §5, 2026-10-06 修正): 服务端按「订货单 x 入库仓」分成多张收货单、一个事务建完,
+     * 在写任何一组之前把每一组的 {@link #arrivalInputs} 足迹合成一次预锁(全部订货单、库存维度、主仓、分析);
+     * 之后逐组登记里的取锁与送检回调都只核对覆盖。只按第一组取锁时, 后面各组的订货单不在预锁里,
+     * 送检回调判结构性缺口、整批 409(用户现场: 3 张订货单 x 2 个仓)。
+     */
+    public FulfillmentMutationLocks.Guard arrivals(Collection<ArrivalInput> inputs) {
+        return locks.acquireAll(inputs.stream().map(this::arrivalFootprint).toList());
+    }
+
+    private FulfillmentMutationLocks.Footprint arrivalFootprint(ArrivalInput input) {
+        var declared=inventoryDeclared(input.dimensions());
+        if(!"SUBCONTRACT".equals(input.type()))return new FulfillmentMutationLocks.Footprint(declared,
+                ()->receiptInputsPlan(input.type(),input.receiptId(),input.orderItems(),input.dimensions(),input.warehouse()));
+        List<UUID> items=input.orderItems().stream().distinct().toList();
+        return new FulfillmentMutationLocks.Footprint(declared,()->withHeldPreStock(
+                receiptInputsPlan(input.type(),input.receiptId(),input.orderItems(),input.dimensions(),input.warehouse()),items));
+    }
+
+    /**
+     * 断点恢复的草稿收货单继续送检(单张 / 批量): 收货单足迹; 委外收货单再并上它们的订货明细上被短交闸扣住的
+     * 「先入库后质检」合格品——送检后的短交登记会在同一事务把它们自动转正, 与登记实际到货
+     * ({@link #arrivalInputs})同一份推导(2026-10-06 修正, 原来只锁收货单足迹)。
+     */
+    public FulfillmentMutationLocks.Guard arrivalDrafts(Collection<ProcurementMutationFootprint.ReceiptRef> refs) {
+        var snapshot=List.copyOf(refs);
+        return locks.acquire(()->{
+            var receipts=footprint.receipts(snapshot);
+            List<UUID> items=footprint.subcontractReceiptOrderItems(snapshot);
+            return items.isEmpty()?receipts:withHeldPreStock(receipts,items);
+        });
     }
 
     /**

@@ -75,6 +75,25 @@ public class ProductionPlanMutationFootprintService {
         return guard;
     }
 
+    /**
+     * 计划批量审核 / 批量删除(2026-10-06 修正): 写任何一张之前对全部要办的计划合并预锁。足迹与逐张
+     * {@link #lockPlan} 是同一份推导(计划家族之并), 另并入实际超产追加计划的来源计划——这类计划的审核
+     * 走追加申请, 那里按「来源计划 + 追加计划」预锁。只按第一张取锁时, 后面几张的销售来源、库存维度、
+     * 分析与主仓都不在预锁里。计划行(含来源计划)按 UUID 序一次上锁。
+     */
+    public FulfillmentMutationLocks.Guard beginPlanBatch(Collection<UUID> planIds) {
+        List<UUID> ids=planIds==null?List.of():planIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if(ids.isEmpty())return beginPlans(ids);
+        var footprintPlans=new LinkedHashSet<>(ids);
+        footprintPlans.addAll(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT DISTINCT segment.plan_id
+                FROM production_actual_output_supplement_requests request
+                JOIN production_execution_segments segment ON segment.id=request.source_execution_segment_id
+                WHERE request.supplement_plan_id IN (:ids)
+                """).setParameter("ids",ids),UUID.class));
+        return beginPlans(footprintPlans);
+    }
+
     public FulfillmentMutationLockPlan discover(UUID id, Collection<RequestedLine> requested) {
         return discoverPlans(id==null?List.of():List.of(id),requested);
     }

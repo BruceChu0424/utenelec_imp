@@ -133,6 +133,21 @@ public class ProcurementMutationFootprint {
         return FulfillmentMutationLockPlan.merge(CanonicalFingerprint.sha256(parts), List.of(receipts));
     }
 
+    /**
+     * 这些委外收货单有效明细引用的订货明细(采购收货单不读)——与送检后短交登记补做自动转正时
+     * 读的是同一组订货明细({@code WarehouseArrivalRegistrationService#recordSubcontractShortDelivery})。
+     */
+    public List<UUID> subcontractReceiptOrderItems(Collection<ReceiptRef> refs) {
+        List<UUID> ids=refs.stream().filter(ref->"SUBCONTRACT".equals(ref.type())).map(ReceiptRef::id)
+                .distinct().sorted(Comparator.comparing(UUID::toString)).toList();
+        if(ids.isEmpty())return List.of();
+        return FulfillmentDiscoveryRound.memo("procurement.subcontract-receipt-order-items",ids,()->rows("""
+                SELECT DISTINCT order_item_id FROM subcontract_receipt_items
+                WHERE receipt_id IN (:ids) AND order_item_id IS NOT NULL AND NOT is_deleted
+                ORDER BY order_item_id
+                """,Map.of("ids",ids)).stream().map(row->(UUID)row[0]).toList());
+    }
+
     /** 收货单的已知声明: 明细引用的订货单与明细货品维度; 只读一次明细, 不展开依赖图(ADR-107)。 */
     public FulfillmentMutationLockPlan receiptDeclaration(String type,UUID id) {
         Set<CommercialSource> sources=new LinkedHashSet<>();

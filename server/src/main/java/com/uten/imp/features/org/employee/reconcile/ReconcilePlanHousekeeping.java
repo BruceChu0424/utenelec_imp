@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee.reconcile;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -18,6 +19,7 @@ import java.time.OffsetDateTime;
  */
 @Slf4j
 @Component
+@Profile("!cloud")
 public class ReconcilePlanHousekeeping {
 
     private final ReconcilePlanStore store;

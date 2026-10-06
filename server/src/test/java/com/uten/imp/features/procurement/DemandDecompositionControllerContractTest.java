@@ -52,11 +52,17 @@ class DemandDecompositionControllerContractTest {
     }
 
     @Test
-    void bothPreviewLinesExposeTheSameDemandOnlyJsonShape() {
+    void bothPreviewLinesShareTheDemandShapeAndSubcontractAppendsKitFields() {
         assertLineFields(
-                com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem.class);
+                com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem.class,
+                LINE_FIELDS);
+        // ADR-156: 委外行在同一份需求字段之后追加「够做的套数 / 这次能下单的数量」, 采购行不变。
+        String[] subcontractFields = Arrays.copyOf(LINE_FIELDS, LINE_FIELDS.length + 2);
+        subcontractFields[LINE_FIELDS.length] = "kitQty";
+        subcontractFields[LINE_FIELDS.length + 1] = "orderableQty";
         assertLineFields(
-                com.uten.imp.features.subcontract.application.dto.DecompositionPreviewItem.class);
+                com.uten.imp.features.subcontract.application.dto.DecompositionPreviewItem.class,
+                subcontractFields);
     }
 
     private static void assertReadOnlySurface(Class<?> controllerType) throws NoSuchMethodException {
@@ -100,14 +106,19 @@ class DemandDecompositionControllerContractTest {
                                         "decompositionPreview", "adjustItemQty"}
                                 // ADR-143 §二.3：委外申请面唯一的写口是缺 BOM 时「通知研发完善」，
                                 // 不改申请本身，权限与分解订货同一组。
+                                // ADR-156 §齐套: 每个申请行只读查看「够做的套数 / 可下单数量」。
                                 : new String[]{"list", "detail", "history", "historyRows", "facets",
-                                        "decompositionPreview", "forwardBom"});
+                                        "decompositionPreview", "forwardBom", "kit"});
         if (controllerType == SubcontractApplicationController.class) {
             Method forwardBom = controllerType.getDeclaredMethod("forwardBom", UUID.class);
             assertThat(forwardBom.getAnnotation(PostMapping.class).value())
                     .containsExactly("/items/{applicationItemId}/forward-bom");
             assertThat(forwardBom.getAnnotation(PreAuthorize.class).value())
                     .isEqualTo("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')");
+            Method kit = controllerType.getDeclaredMethod("kit", UUID.class);
+            assertThat(kit.getAnnotation(GetMapping.class).value())
+                    .containsExactly("/items/{applicationItemId}/kit");
+            assertThat(kit.getAnnotation(PreAuthorize.class).value()).isEqualTo(viewPermission);
         }
     }
 
@@ -119,9 +130,9 @@ class DemandDecompositionControllerContractTest {
                 .isEqualTo(permission);
     }
 
-    private static void assertLineFields(Class<?> lineType) {
+    private static void assertLineFields(Class<?> lineType, String... fields) {
         assertThat(Arrays.stream(lineType.getRecordComponents())
                         .map(component -> component.getName()))
-                .containsExactly(LINE_FIELDS);
+                .containsExactly(fields);
     }
 }

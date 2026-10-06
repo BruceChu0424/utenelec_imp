@@ -11675,7 +11675,10 @@ class FullChainEndToEndTest {
         line.setGoodsId(w.goodsE()); line.setUnitId(w.unitId()); line.setUnitRate(BigDecimal.ONE);
         line.setQty(new BigDecimal("0.001")); line.setPrice(new BigDecimal("0.5"));
         request.setItems(List.of(line));
+        // ADR-156: 下单、送审、批准时直属物料要齐; 暂存物料留到财务批准后再清掉(之后只减量, 减量不查齐套)。
+        KitStage stage=stageSubcontractKit(w,Map.of(w.goodsE(),"0.001"));
         var created=subcontractOrderService.create(request);
+        stageSubcontractKitUntilApproval(created.getId(),stage);
         UUID reviewer=createApprover(w);
         financeApproval.submit("SUBCONTRACT",created.getId());
         loginAs(reviewer); approvePendingFinance("SUBCONTRACT",created.getId());

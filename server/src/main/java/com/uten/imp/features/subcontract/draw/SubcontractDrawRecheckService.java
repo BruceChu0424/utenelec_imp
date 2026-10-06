@@ -24,6 +24,10 @@ import java.util.stream.Collectors;
  * 一张, 由通知侧按实时可领量更新); 减少只把水位降下来并 epoch+1, 不打扰人; 降到 0 收回行动卡。
  * 已结清、结束领料、计划关闭或订货红冲的明细一律按可领 0 处理。只锁水位行, 不锁任何业务单据。
  *
+ * <p>提醒时水位记通知侧卡上实际写的可领量, 不记本类先读到的数: 两次读取之间别的事务可能刚把库存用掉
+ * (2026-10-06 CI: 批准时重算读到可领 10, 发卡前这批物料被其它出库用掉, 卡按实时 0 只撤卡, 水位却记成 10,
+ * 之后物料再入库算出 10 = 水位, 再也不提醒)。
+ *
  * <p>按物料重算时也重算用到这种物料的委外申请可下单量(ADR-156, 见 SubcontractApplicationKitRecheckService)。
  *
  * <p>水位行的外键检查会给订货明细加 KEY SHARE 行锁(与 FOR UPDATE 冲突)。领料提交、财务批准、改量等命令按
@@ -108,12 +112,12 @@ public class SubcontractDrawRecheckService implements SubcontractDrawRecheckPort
                     """, BigDecimal.class, orderItemId);
             BigDecimal previous = mark == null ? BigDecimal.ZERO : mark;
             if (now.compareTo(previous) > 0) {
-                chainNotice.notifySubcontractDrawAvailable(orderItemId);
+                BigDecimal shown = chainNotice.refreshSubcontractDrawAvailable(orderItemId).max(BigDecimal.ZERO);
                 jdbc.update("""
                         UPDATE subcontract_draw_notice_marks
-                        SET notified_drawable = ?, updated_at = now()
+                        SET notified_drawable = ?, epoch = epoch + ?, updated_at = now()
                         WHERE order_item_id = ?
-                        """, now, orderItemId);
+                        """, shown, shown.compareTo(previous) < 0 ? 1 : 0, orderItemId);
             } else if (now.compareTo(previous) < 0) {
                 jdbc.update("""
                         UPDATE subcontract_draw_notice_marks

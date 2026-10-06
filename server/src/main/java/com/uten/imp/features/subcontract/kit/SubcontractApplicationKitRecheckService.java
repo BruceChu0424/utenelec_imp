@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
  * <p>高水位 {@code subcontract_application_kit_notice_marks}: 申请明细此刻可下单量比上次提醒时多才提醒
  * (行动卡每个申请明细一张, 通知侧按实时可下单量重建); 少了只把水位降下来并 epoch+1, 不打扰人;
  * 降到 0(物料被别的单占走、已全部下单、申请关闭)撤卡。只锁水位行, 不锁任何业务单据。
+ * 提醒时水位记通知侧卡上实际写的可下单量, 不记本类先读到的数(两次读取之间物料可能被别处用掉, 见
+ * SubcontractDrawRecheckService)。
  * 水位行按申请明细 id 一条语句插齐, 外键 KEY SHARE 与下单命令锁申请明细的顺序一致(都按 id)。
  */
 @Service
@@ -69,12 +71,12 @@ public class SubcontractApplicationKitRecheckService {
                     """, BigDecimal.class, applicationItemId);
             BigDecimal previous = mark == null ? BigDecimal.ZERO : mark;
             if (now.compareTo(previous) > 0) {
-                chainNotice.notifySubcontractOrderKitReady(applicationItemId);
+                BigDecimal shown = chainNotice.refreshSubcontractOrderKitReady(applicationItemId).max(BigDecimal.ZERO);
                 jdbc.update("""
                         UPDATE subcontract_application_kit_notice_marks
-                        SET notified_orderable = ?, updated_at = now()
+                        SET notified_orderable = ?, epoch = epoch + ?, updated_at = now()
                         WHERE application_item_id = ?
-                        """, now, applicationItemId);
+                        """, shown, shown.compareTo(previous) < 0 ? 1 : 0, applicationItemId);
             } else if (now.compareTo(previous) < 0) {
                 jdbc.update("""
                         UPDATE subcontract_application_kit_notice_marks

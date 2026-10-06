@@ -92,6 +92,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -948,6 +951,67 @@ class SubcontractStepDrawEndToEndTest {
     }
 
     // =====================================================================================
+    // 可领提醒水位只记卡上写的数: 重算读到可领之后、发卡之前物料被用掉, 不能「水位抬了、卡没发」
+    // =====================================================================================
+
+    /**
+     * 2026-10-06 CI 分区 1(上面嵌套委外用例偶发「现状 []」): 批准时的领料重算读到可领 10(下单时补齐的物料
+     * 还在), 发卡前这批物料被出库, 卡按实时 0 只撤卡, 水位却记成重算读到的 10; 之后物料再入库算出 10 = 水位,
+     * 再也不发卡。这里用水位行锁把重算固定在「读完可领、取水位」之间, 期间出库再放行: 水位只能记卡上的 0,
+     * 物料再到时照常提醒。
+     */
+    @Test
+    void materialUsedUpBetweenTheRecheckAndTheCardLeavesTheMarkAtWhatTheCardShows() throws Exception {
+        String tag = "scstep-mark-race";
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        UUID p = goods(w, tag, "P", "委外");
+        UUID a = goods(w, tag, "A", "采购");
+        fixture.insertBom(p, a, "1");
+        Set<UUID> mine = new LinkedHashSet<>(List.of(p, a));
+        // 下单那一刻 A 是齐的(暂存仓补齐); 由本用例自己决定何时清掉, 不交给批准顺带清。
+        var stage = fixture.stageSubcontractKit(w, Map.of(p, "10"));
+        UUID orderId = orders.create(orderRequest(w, p, "10", BusinessTime.today().plusDays(5), null)).getId();
+        UUID item = itemOf(orderId);
+        mine.add(item);
+        db.update("INSERT INTO subcontract_draw_notice_marks(order_item_id) VALUES (?)", item);
+        var markLocked = new CountDownLatch(1);
+        var releaseMark = new CountDownLatch(1);
+        var holderPid = new java.util.concurrent.atomic.AtomicInteger();
+        try (var holder = Executors.newSingleThreadExecutor()) {
+            var held = holder.submit(() -> new TransactionTemplate(transactions).executeWithoutResult(status -> {
+                holderPid.set(db.queryForObject("SELECT pg_backend_pid()", Integer.class));
+                db.queryForObject("SELECT notified_drawable FROM subcontract_draw_notice_marks WHERE order_item_id=? FOR UPDATE",
+                        BigDecimal.class, item);
+                markLocked.countDown();
+                try {
+                    assertTrue(releaseMark.await(60, TimeUnit.SECONDS));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(interrupted);
+                }
+            }));
+            try {
+                assertTrue(markLocked.await(60, TimeUnit.SECONDS));
+                // 批准追加领料重算; 投递时读到可领 10(暂存的 A), 停在被占住的水位行上。
+                approveSubcontract(w, orderId);
+                awaitBlockedBy(holderPid.get(), "批准后的领料重算没有停在水位行锁上");
+                fixture.releaseSubcontractKitStage(stage);
+            } finally {
+                releaseMark.countDown();
+            }
+            held.get(60, TimeUnit.SECONDS);
+        }
+        drainOutboxFor(mine);
+        assertNoDrawAvailableCard(item, w.superAdminUserId());
+        qty("0", db.queryForObject("SELECT notified_drawable FROM subcontract_draw_notice_marks WHERE order_item_id=?",
+                BigDecimal.class, item), "发卡时 A 已出库, 卡只撤不发, 水位记卡上的 0");
+        otherIn(w, w.warehouseId(), a, null, "10", "5");
+        drainOutboxFor(mine);
+        assertDrawAvailableCard(item, w.superAdminUserId(), "可领 10");
+    }
+
+    // =====================================================================================
     // 仓库整行不发: 软删保留提交量, 发料回执列出少发, 下次领料自动补齐
     // =====================================================================================
 
@@ -1363,6 +1427,16 @@ class SubcontractStepDrawEndToEndTest {
 
     private UUID subcontractOrder(FullChainEndToEndTest.World w, UUID goodsId, String qty, LocalDate deliverDate,
                                   BigDecimal allowedLossPct) {
+        // ADR-156: 下单到财务批准时直属物料要齐。本类测的是批准之后的领料, 缺的部分在暂存仓补齐、批准后清掉,
+        // 即「下单时物料是齐的, 之后被别处用掉了」。
+        var stage = fixture.stageSubcontractKit(w, Map.of(goodsId, qty));
+        UUID orderId = orders.create(orderRequest(w, goodsId, qty, deliverDate, allowedLossPct)).getId();
+        fixture.stageSubcontractKitUntilApproval(orderId, stage);
+        return orderId;
+    }
+
+    private OrderSaveRequest orderRequest(FullChainEndToEndTest.World w, UUID goodsId, String qty, LocalDate deliverDate,
+                                          BigDecimal allowedLossPct) {
         var request = new OrderSaveRequest();
         request.setBillDate(BusinessTime.today());
         request.setDeliverDate(deliverDate);
@@ -1380,12 +1454,7 @@ class SubcontractStepDrawEndToEndTest {
         line.setPrice(new BigDecimal("50"));
         line.setAllowedLossPct(allowedLossPct);
         request.setItems(List.of(line));
-        // ADR-156: 下单到财务批准时直属物料要齐。本类测的是批准之后的领料, 缺的部分在暂存仓补齐、批准后清掉,
-        // 即「下单时物料是齐的, 之后被别处用掉了」。
-        var stage = fixture.stageSubcontractKit(w, Map.of(goodsId, qty));
-        UUID orderId = orders.create(request).getId();
-        fixture.stageSubcontractKitUntilApproval(orderId, stage);
-        return orderId;
+        return request;
     }
 
     /** 送财务并由合格审核人批准; 返回审核人(改量复核用)。 */
@@ -1810,6 +1879,20 @@ class SubcontractStepDrawEndToEndTest {
                 WHERE status=2 AND aggregate_id = ANY(CAST(? AS uuid[]))
                 """, ids);
         assertTrue(dead.isEmpty(), "本用例有 outbox 事件投递失败进了死信: " + dead);
+    }
+
+    /** 等某个会话被指定后端(这里是占住水位行的事务)挡住。 */
+    private void awaitBlockedBy(int blockerPid, String message) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+        while (count("SELECT COUNT(*) FROM pg_stat_activity WHERE ? = ANY(pg_blocking_pids(pid))", blockerPid) == 0) {
+            assertTrue(System.nanoTime() < deadline, message);
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                fail(message);
+            }
+        }
     }
 
     private int count(String sql, Object... args) {

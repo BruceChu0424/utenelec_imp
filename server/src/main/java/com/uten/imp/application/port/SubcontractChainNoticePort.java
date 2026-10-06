@@ -1,22 +1,24 @@
 package com.uten.imp.application.port;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
  * Durable notice projections emitted by the subcontract draw lifecycle (ADR-143 §4.4).
  *
- * <p>Every method only appends a business-outbox event when called inside a business
- * transaction; the text is computed from live facts when the outbox worker delivers it.
+ * <p>Every notify/resolve method only appends a business-outbox event when called inside a
+ * business transaction; the text is computed from live facts when the outbox worker delivers it.
  * Called inside an outbox delivery (the draw recheck worker), the card is rebuilt directly
- * in that delivery transaction.
+ * in that delivery transaction. The two refresh methods exist only for the recheck worker.
  */
 public interface SubcontractChainNoticePort {
 
     /**
-     * 可领量比上次提醒时增加: 每个订货明细一张行动卡, 按投递时实时可领量覆盖。
-     * 投递时可领为 0 则只撤卡。
+     * 领料重算(只在 Outbox 投递事务里)发现可领量比上次提醒时增加: 按此刻实时可领量重建该订货明细的
+     * 行动卡(每个订货明细一张), 返回卡上写的可领量; 此刻已不可领时只撤卡, 返回 0。重算把返回值记作
+     * 提醒水位, 不用自己先前读到的数: 两次读取之间库存被别处用掉时不会「水位抬了、卡没发」。
      */
-    void notifySubcontractDrawAvailable(UUID orderItemId);
+    BigDecimal refreshSubcontractDrawAvailable(UUID orderItemId);
 
     /** 提交领料 / 结束领料 / 订单红冲 / 可领归零: 撤掉该订货明细的「可领料」行动卡。 */
     void resolveSubcontractDrawAvailable(UUID orderItemId);
@@ -37,10 +39,11 @@ public interface SubcontractChainNoticePort {
     void notifySubcontractOutboundReversed(UUID issueId);
 
     /**
-     * ADR-156 委外申请可下单量比上次提醒时增加(直属物料到了一部分或全部): 每个申请明细一张行动卡,
-     * 按投递时实时可下单量覆盖; 投递时可下单为 0 则只撤卡。
+     * ADR-156 委外申请可下单量比上次提醒时增加(直属物料到了一部分或全部; 只在 Outbox 投递事务里): 按此刻
+     * 实时可下单量重建该申请明细的行动卡(每个申请明细一张), 返回卡上写的可下单量; 此刻为 0 时只撤卡, 返回 0。
+     * 重算把返回值记作提醒水位(同 {@link #refreshSubcontractDrawAvailable})。
      */
-    void notifySubcontractOrderKitReady(UUID applicationItemId);
+    BigDecimal refreshSubcontractOrderKitReady(UUID applicationItemId);
 
     /** 可下单归零(物料被别的单占走、已全部下单、申请关闭): 撤掉该申请明细的「可下单」行动卡。 */
     void resolveSubcontractOrderKitReady(UUID applicationItemId);

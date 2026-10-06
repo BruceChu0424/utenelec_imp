@@ -39,6 +39,16 @@ class ProductionMaterialDiscoveryNoticeTest {
         clearInvocations(notices);row("CONFIGURED",true,warehouse);deliver("PENDING");verify(notices).resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",request,"STATE_CHANGED");
         verify(notices,never()).publishForUser(any(),anyString(),anyString(),anyString(),anyString(),anyString(),anyString(),any(),any());
     }
+    // 同一申请的投递按申请串行: 先拿锁再读现状, 待领料与可见性一样先撤后发(乱序或重复投递不留两张卡)。
+    @Test void pendingDeliveryRebuildsTheCardUnderThePerRequestLock(){
+        row("PENDING",true,warehouse);pool();when(keepers.noticeRecipients(List.of(keeper,other),List.of(warehouse))).thenReturn(List.of(keeper));
+        deliver("PENDING");
+        var order=inOrder(jdbc,notices);
+        order.verify(jdbc).queryForObject(contains("pg_advisory_xact_lock"),eq(String.class),eq("material-discovery-notice:"+request));
+        order.verify(jdbc).queryForList(contains("FROM production_material_discovery_requests"),eq(request));
+        order.verify(notices).resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",request,"REFRESHED");
+        order.verify(notices).publishForUser(eq(keeper),anyString(),anyString(),anyString(),anyString(),anyString(),anyString(),any(),eq(request));
+    }
     private void deliver(String event){service.deliverOutboxEvent("PRODUCTION_MATERIAL_DISCOVERY_"+event,request,new ObjectMapper().createObjectNode());}
     private void assertPublished(UUID user){verify(notices).publishForUser(eq(user),contains("待登记实际领料"),contains("车间申请生产"),eq("task"),eq("系统"),eq("/warehouse/tasks/draw"),eq("PRODUCTION_MATERIAL_DISCOVERY_PENDING"),isNull(),eq(request));}
     private void row(String status,boolean active,UUID warehouse){

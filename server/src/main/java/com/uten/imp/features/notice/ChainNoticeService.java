@@ -109,13 +109,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      */
     public static final String EVENT_SUBCONTRACT_DRAW_RECHECK =
             com.uten.imp.application.port.SubcontractDrawRecheckPort.EVENT_TYPE;
-    /** 委外可领料行动卡(每个订货明细一张, 按最新可领量覆盖)。 */
+    /** 委外可领料行动卡的通知来源(每个订货明细一张, 按最新可领量覆盖; 只由领料重算在投递里重建, 不走 outbox 事件)。 */
     static final String EVENT_SUBCONTRACT_DRAW_AVAILABLE =
             "SUBCONTRACT_DRAW_AVAILABLE";
     /** 内部事件: 撤掉某订货明细的可领料行动卡(提交领料、结束领料、订单红冲)。 */
     static final String EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED =
             "SUBCONTRACT_DRAW_AVAILABLE_RESOLVED";
-    /** ADR-156 委外申请可下单行动卡(每个申请明细一张, 按最新可下单量覆盖)。 */
+    /** ADR-156 委外申请可下单行动卡的通知来源(每个申请明细一张, 按最新可下单量覆盖; 只由可下单重算在投递里重建)。 */
     static final String EVENT_SUBCONTRACT_ORDER_KIT_READY =
             "SUBCONTRACT_ORDER_KIT_READY";
     /** 内部事件: 撤掉某委外申请明细的可下单行动卡(可下单归零、已下完、申请关闭)。 */
@@ -511,12 +511,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 }
                 case EVENT_SUBCONTRACT_DRAW_RECHECK ->
                         deliverSubcontractDrawRecheck(aggregateId, payload);
-                case EVENT_SUBCONTRACT_DRAW_AVAILABLE ->
-                        notifySubcontractDrawAvailable(aggregateId);
                 case EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED ->
                         resolveSubcontractDrawAvailable(aggregateId);
-                case EVENT_SUBCONTRACT_ORDER_KIT_READY ->
-                        notifySubcontractOrderKitReady(aggregateId);
                 case EVENT_SUBCONTRACT_ORDER_KIT_READY_RESOLVED ->
                         resolveSubcontractOrderKitReady(aggregateId);
                 case EVENT_SUBCONTRACT_DRAW_WITHDRAWN ->
@@ -832,8 +828,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         });
     }
 
+    /**
+     * 待登记实际领料卡只按投递时的现状重建: 先撤后发, 现状不在办只撤。同一申请的投递按申请串行(Outbox 按
+     * SKIP LOCKED 多消费者投递): 先拿锁再读现状, 在途投递在计划停止前读到「仍在办」插的卡, 必在停止后的
+     * 可见性投递办结之前提交; 任意先后到达的待领料/可见性事件都收敛到每人至多一张卡。
+     */
     private void deliverMaterialDiscovery(String event,UUID requestId) {
         deliverAtomically(()->{
+            lockMaterialDiscoveryNotices(requestId);
             Map<String,Object> request=one("""
                     SELECT request.status,segment.segment_code,package.warehouse_id,goods.name AS goods_name,
                            (NOT segment.is_deleted AND segment.status IN('READY','DISPATCHED') AND plan.status=1
@@ -849,13 +851,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",requestId,"STATE_CHANGED");return;
             }
             if(!"PRODUCTION_MATERIAL_DISCOVERY_PENDING".equals(event)&&!"PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY".equals(event))return;
-            if("PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY".equals(event))noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",requestId,"REFRESHED");
+            noticeService.resolveReviewNotices("PRODUCTION_MATERIAL_DISCOVERY_REQUEST",requestId,"REFRESHED");
             for(UUID user:warehouseRecipients(warehousePool("stock_doc:view","stock_doc:approve","stock_doc:issue"),warehouseIdsOf(request.get("warehouse_id")))) {
                 sendToUser(user,TYPE_TASK,"待登记实际领料："+str(request.get("segment_code")),
                         "车间申请生产「"+str(request.get("goods_name"))+"」。请与领料人核对材料，在生产领料任务中填写物料、数量和实际仓库。",
                         "/warehouse/tasks/draw","PRODUCTION_MATERIAL_DISCOVERY_PENDING",null,requestId);
             }
         });
+    }
+
+    /** 同一领料申请的待登记卡在投递之间串行重建; 只在 Outbox 投递事务里取, 业务事务从不取, 不参与业务锁顺序。 */
+    private void lockMaterialDiscoveryNotices(UUID requestId) {
+        jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text",
+                String.class, "material-discovery-notice:" + requestId);
     }
 
     /** ① 排产通知销售：计划单审核后，按订单聚合本次排产量。shortage=true 时另发缺料通知（⑧）。 */
@@ -2623,7 +2631,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /**
      * 领料重算(Outbox 投递, 业务事务已提交): 交给委外领料模块按实时数据算受影响订货明细的可领量,
-     * 由它比对提醒水位后回调 {@link #notifySubcontractDrawAvailable} / {@link #resolveSubcontractDrawAvailable}。
+     * 由它比对提醒水位后回调 {@link #refreshSubcontractDrawAvailable} / {@link #resolveSubcontractDrawAvailable}。
      * 载荷 {goodsId,colorId} 按物料找受影响的订货明细; 否则按 orderItemIds / orderItemId / 聚合 id。
      * 先取委外领料提醒的全局串行锁: 两个并发投递不会各自读到旧水位重复提醒, 旧快照也不会把刚撤掉的卡发回来。
      */
@@ -2669,24 +2677,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /**
      * 可领料行动卡(ADR-143 §4.4): 每个订货明细一张, 重要级, 收件人 = 订货单可见范围内持有
-     * 领料权限的人。文案在投递时按 fn_subcontract_draw_summary 的实时可领量生成, 每次先撤旧卡
-     * 再发新卡; 可领为 0、订货单已不在执行或领料计划已关闭时只撤卡。
+     * 领料权限的人。只由领料重算在 Outbox 投递事务里调用: 文案按 fn_subcontract_draw_summary 的实时
+     * 可领量生成, 每次先撤旧卡再发新卡; 可领为 0、订货单已不在执行或领料计划已关闭时只撤卡。
+     * 返回卡上写的可领量(只撤卡时 0), 重算按它记提醒水位。
      */
     @Override
-    public void notifySubcontractDrawAvailable(UUID orderItemId) {
-        if (orderItemId == null) return;
-        if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_SUBCONTRACT_DRAW_AVAILABLE, AGGREGATE_SUBCONTRACT_ORDER_ITEM,
-                    orderItemId, Map.of());
-            return;
-        }
-        deliverAtomically(() -> {
-            lockSubcontractDrawNotices();
-            publishSubcontractDrawAvailable(orderItemId);
-        });
+    public BigDecimal refreshSubcontractDrawAvailable(UUID orderItemId) {
+        if (orderItemId == null) return BigDecimal.ZERO;
+        requireOutboxDelivery();
+        lockSubcontractDrawNotices();
+        return publishSubcontractDrawAvailable(orderItemId);
     }
 
-    private void publishSubcontractDrawAvailable(UUID orderItemId) {
+    private BigDecimal publishSubcontractDrawAvailable(UUID orderItemId) {
         Map<String, Object> task = one("""
                 SELECT order_header.id AS order_id, order_header.bill_no AS order_bill_no,
                        order_header.maker_id,
@@ -2721,7 +2724,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         BigDecimal drawable = task == null ? BigDecimal.ZERO : bd(task.get("drawable_qty"));
         resolveReviewNotices(AGGREGATE_SUBCONTRACT_ORDER_ITEM, orderItemId,
                 drawable.signum() > 0 ? "STATE_CHANGED" : "NOT_DRAWABLE");
-        if (drawable.signum() <= 0) return;
+        if (drawable.signum() <= 0) return BigDecimal.ZERO;
         String orderNo = str(task.get("order_bill_no"));
         String target = subcontractTargetName(task);
         String quantity = qtyWithUnit(drawable, task.get("unit_name"));
@@ -2734,6 +2737,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             sendToUser(recipient, TYPE_TASK, title, content, route,
                     EVENT_SUBCONTRACT_DRAW_AVAILABLE, "important", orderItemId);
         }
+        return drawable;
     }
 
     /** 提交领料、结束领料、订单红冲或可领归零: 撤掉该订货明细的可领料行动卡。 */
@@ -2753,24 +2757,19 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /**
      * ADR-156 可下单行动卡: 每个委外申请明细一张, 重要级, 收件人 = 采购委外部门里能读通知、能看委外申请、
-     * 能生成委外订货单的人(与「新委外需求」同一批人)。文案在投递时按 fn_subcontract_application_orderable_qty
-     * 的实时可下单量生成, 每次先撤旧卡再发新卡; 可下单为 0 时只撤卡。
+     * 能生成委外订货单的人(与「新委外需求」同一批人)。只由可下单重算在 Outbox 投递事务里调用: 文案按
+     * fn_subcontract_application_orderable_qty 的实时可下单量生成, 每次先撤旧卡再发新卡; 可下单为 0 时只撤卡。
+     * 返回卡上写的可下单量(只撤卡时 0), 重算按它记提醒水位。
      */
     @Override
-    public void notifySubcontractOrderKitReady(UUID applicationItemId) {
-        if (applicationItemId == null) return;
-        if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_SUBCONTRACT_ORDER_KIT_READY, AGGREGATE_SUBCONTRACT_APPLICATION_ITEM,
-                    applicationItemId, Map.of());
-            return;
-        }
-        deliverAtomically(() -> {
-            lockSubcontractDrawNotices();
-            publishSubcontractOrderKitReady(applicationItemId);
-        });
+    public BigDecimal refreshSubcontractOrderKitReady(UUID applicationItemId) {
+        if (applicationItemId == null) return BigDecimal.ZERO;
+        requireOutboxDelivery();
+        lockSubcontractDrawNotices();
+        return publishSubcontractOrderKitReady(applicationItemId);
     }
 
-    private void publishSubcontractOrderKitReady(UUID applicationItemId) {
+    private BigDecimal publishSubcontractOrderKitReady(UUID applicationItemId) {
         Map<String, Object> task = one("""
                 SELECT application.bill_no, goods.code AS goods_code, goods.name AS goods_name,
                        unit.name AS unit_name,
@@ -2785,7 +2784,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         BigDecimal orderable = task == null ? BigDecimal.ZERO : bd(task.get("orderable_qty"));
         resolveReviewNotices(AGGREGATE_SUBCONTRACT_APPLICATION_ITEM, applicationItemId,
                 orderable.signum() > 0 ? "STATE_CHANGED" : "NOT_ORDERABLE");
-        if (orderable.signum() <= 0) return;
+        if (orderable.signum() <= 0) return BigDecimal.ZERO;
         String billNo = str(task.get("bill_no"));
         String target = subcontractTargetName(task);
         BigDecimal open = bd(task.get("open_qty"));
@@ -2804,6 +2803,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             sendToUser(recipient, TYPE_TASK, title, content, route,
                     EVENT_SUBCONTRACT_ORDER_KIT_READY, "important", applicationItemId);
         }
+        return orderable;
     }
 
     /** 可下单归零、已全部下单或申请关闭: 撤掉该申请明细的可下单行动卡。 */
@@ -6037,10 +6037,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /** 只允许已锁定 Outbox 事件的处理事务执行真实通知写入。 */
     private void deliverAtomically(Runnable task) {
+        requireOutboxDelivery();
+        task.run();
+    }
+
+    private void requireOutboxDelivery() {
         if (!isOutboxDelivery()) {
             throw new IllegalStateException("Notice delivery must be invoked by the outbox processor");
         }
-        task.run();
     }
 
     private boolean isOutboxDelivery() {

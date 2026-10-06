@@ -21,12 +21,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,7 +52,8 @@ class SubcontractChainNoticeTest {
                 mock(JdbcTemplate.class),
                 outbox);
 
-        service.notifySubcontractDrawAvailable(orderItemId);
+        // 可领卡只由领料重算在投递事务里重建(要返回卡上的数给重算记水位), 业务事务里调用是错误。
+        assertThrows(IllegalStateException.class, () -> service.refreshSubcontractDrawAvailable(orderItemId));
         service.resolveSubcontractDrawAvailable(orderItemId);
         service.notifySubcontractOutboundReady(issueId);
         service.notifySubcontractDrawWithdrawn(issueId);
@@ -57,11 +61,6 @@ class SubcontractChainNoticeTest {
         service.notifySubcontractOutboundCompleted(issueId);
         service.notifySubcontractOutboundReversed(issueId);
 
-        verify(outbox).publish(
-                ChainNoticeService.EVENT_SUBCONTRACT_DRAW_AVAILABLE,
-                "SUBCONTRACT_ORDER_ITEM",
-                orderItemId,
-                Map.of());
         verify(outbox).publish(
                 ChainNoticeService.EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED,
                 "SUBCONTRACT_ORDER_ITEM",
@@ -144,10 +143,8 @@ class SubcontractChainNoticeTest {
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
-        service.deliverOutboxEvent(
-                ChainNoticeService.EVENT_SUBCONTRACT_DRAW_AVAILABLE,
-                orderItemId,
-                new ObjectMapper().createObjectNode());
+        assertEquals(new BigDecimal("40.0000"), refreshInsideRecheckDelivery(service, orderItemId),
+                "重算按卡上写的可领量记水位");
 
         String route = "/operations/workbench/subcontract?segment=DRAW&orderItemId=" + orderItemId;
         verify(notice).resolveReviewNotices("SUBCONTRACT_ORDER_ITEM", orderItemId, "STATE_CHANGED");
@@ -183,10 +180,8 @@ class SubcontractChainNoticeTest {
                 mock(JdbcTemplate.class),
                 mock(BusinessEventPublisher.class));
 
-        service.deliverOutboxEvent(
-                ChainNoticeService.EVENT_SUBCONTRACT_DRAW_AVAILABLE,
-                orderItemId,
-                new ObjectMapper().createObjectNode());
+        assertEquals(BigDecimal.ZERO, refreshInsideRecheckDelivery(service, orderItemId),
+                "此刻不可领只撤卡, 水位记 0");
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED,
                 orderItemId,
@@ -690,6 +685,23 @@ class SubcontractChainNoticeTest {
                 anyString(),
                 eq("/production/material-analyses/" + analysisId + "/summary"),
                 eq(ChainNoticeService.EVENT_IQC_RESOLVED));
+    }
+
+    /** 领料重算投递里回调通知侧重建可领卡(与 SubcontractDrawRecheckService 同一路径), 返回卡上的可领量。 */
+    @SuppressWarnings("unchecked")
+    private static BigDecimal refreshInsideRecheckDelivery(ChainNoticeService service, UUID orderItemId) {
+        SubcontractDrawRecheckPort recheck = mock(SubcontractDrawRecheckPort.class);
+        var shown = new java.util.concurrent.atomic.AtomicReference<BigDecimal>();
+        doAnswer(invocation -> {
+            shown.set(service.refreshSubcontractDrawAvailable(orderItemId));
+            return null;
+        }).when(recheck).recheckForOrderItems(List.of(orderItemId));
+        ObjectProvider<SubcontractDrawRecheckPort> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(recheck);
+        service.setDrawRecheck(provider);
+        service.deliverOutboxEvent(ChainNoticeService.EVENT_SUBCONTRACT_DRAW_RECHECK, orderItemId,
+                new ObjectMapper().createObjectNode());
+        return shown.get();
     }
 
     private static ChainNoticeService service(

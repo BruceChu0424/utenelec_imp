@@ -337,6 +337,57 @@ class ProductionMaterialDiscoveryEndToEndTest {
         assertThrows(ApiException.class,()->discovery.configure(pending.requestId(),new Configure(pending.version(),"stop-config-"+segment,List.of(new Material(world.goodsD(),null,world.unitId(),world.warehouseId(),BigDecimal.ONE)))));
         assertEquals("PENDING",discovery.detail(pending.requestId()).status());
     }
+    // Outbox 按 SKIP LOCKED 多消费者投递(多实例; 测试 JVM 里每个缓存上下文各有一个消费者, 共用一个库)。
+    // 门闩固定 CI 分区 2 命中的窗口: 待领料投递在计划停止前读到「仍在办」并插好卡、尚未提交,
+    // 此时停止计划并投递可见性事件; 可见性投递不能先办结再让在途投递把卡提交回来。
+    @Test void visibilityDeliveredWhilePendingDeliveryIsInFlightLeavesNoOpenNotice() throws Exception {
+        UUID user=fixture.createUserWithPerms(world,"discovery-race-"+UUID.randomUUID(),"notice:read","stock_doc:view","stock_doc:approve","stock_doc:issue");
+        db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='SUB_WH' AND NOT is_deleted) WHERE id=(SELECT employee_id FROM users WHERE id=?)",user);
+        Detail pending=discovery.request(segment,new Request(version(),"race-request-"+segment));
+        var notices=beans.getBean(com.uten.imp.features.notice.ChainNoticeService.class);
+        var payload=beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class).createObjectNode();
+        var delivery=new org.springframework.transaction.support.TransactionTemplate(beans.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+        var pendingDelivered=new java.util.concurrent.CountDownLatch(1);var commitPending=new java.util.concurrent.CountDownLatch(1);
+        var visibilityPid=new java.util.concurrent.CompletableFuture<Integer>();
+        try(var consumers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var inFlight=consumers.submit(()->delivery.executeWithoutResult(transaction->{
+                notices.deliverOutboxEvent("PRODUCTION_MATERIAL_DISCOVERY_PENDING",pending.requestId(),payload);
+                pendingDelivered.countDown();
+                try{assertTrue(commitPending.await(60,java.util.concurrent.TimeUnit.SECONDS));}
+                catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new AssertionError(interrupted);}
+            }));
+            java.util.concurrent.Future<?> visibility=null;
+            try {
+                assertTrue(pendingDelivered.await(60,java.util.concurrent.TimeUnit.SECONDS));
+                db.update("UPDATE production_plans SET is_stopped=TRUE WHERE id=?",plan);
+                visibility=consumers.submit(()->delivery.executeWithoutResult(transaction->{
+                    visibilityPid.complete(db.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                    notices.deliverOutboxEvent("PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY",pending.requestId(),payload);
+                }));
+                int pid=visibilityPid.get(60,java.util.concurrent.TimeUnit.SECONDS);
+                // 放行在途投递前, 可见性投递要么已做完, 要么正等在途投递的同一申请投递锁(串行化后的唯一正确形态)。
+                long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
+                while(true) {
+                    try{visibility.get(50,java.util.concurrent.TimeUnit.MILLISECONDS);break;}
+                    catch(java.util.concurrent.TimeoutException running) {
+                        if(Boolean.TRUE.equals(db.queryForObject("SELECT wait_event_type='Lock' AND wait_event='advisory' FROM pg_stat_activity WHERE pid=?",Boolean.class,pid)))break;
+                        assertTrue(System.nanoTime()<deadline,"可见性投递既没做完也没在等投递锁");
+                    }
+                }
+            } finally {commitPending.countDown();}
+            inFlight.get(60,java.util.concurrent.TimeUnit.SECONDS);visibility.get(60,java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertEquals(0,openNotices(pending.requestId()));
+        // 乱序到达: 停止后才到的待领料事件只按现状撤卡; 恢复后可见性与迟到的待领料先后到达, 每人仍只有一张卡。
+        delivery.executeWithoutResult(transaction->notices.deliverOutboxEvent("PRODUCTION_MATERIAL_DISCOVERY_PENDING",pending.requestId(),payload));
+        assertEquals(0,openNotices(pending.requestId()));
+        db.update("UPDATE production_plans SET is_stopped=FALSE WHERE id=?",plan);
+        for(String event:List.of("VISIBILITY","PENDING"))
+            delivery.executeWithoutResult(transaction->notices.deliverOutboxEvent("PRODUCTION_MATERIAL_DISCOVERY_"+event,pending.requestId(),payload));
+        assertTrue(openNotices(pending.requestId())>0);
+        assertEquals(0,db.queryForObject("SELECT count(*)-count(DISTINCT audience_user_id) FROM notices WHERE aggregate_kind='PRODUCTION_MATERIAL_DISCOVERY_REQUEST' AND aggregate_id=? AND resolved_at IS NULL",Integer.class,pending.requestId()));
+    }
+    int openNotices(UUID request){return db.queryForObject("SELECT count(*) FROM notices WHERE aggregate_kind='PRODUCTION_MATERIAL_DISCOVERY_REQUEST' AND aggregate_id=? AND resolved_at IS NULL",Integer.class,request);}
     void issue(Detail defined){
         for(UUID draw:defined.drawDocIds()){
             var issue=new StockDocIssueRequest();issue.setIdempotencyKey("discovery-issue-"+draw);

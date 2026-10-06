@@ -241,7 +241,13 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("business_record_identities",775),
             Map.entry("notice_blessing_history",778),Map.entry("ai_provider_history",778),Map.entry("platform_record_field_versions",779),
             // V802 (ADR-147): 车间内料仓开通记录随仓库主档保留 (整批领料设置与期间仍清空)。
-            Map.entry("workshop_bins", 802));
+            Map.entry("workshop_bins", 802),
+            // V810 (ADR-160): 员工资料核对计划与更正回执随员工档案保留 (值列只有密文或统计,
+            // 与 profile_change_requests / employment_history 同类)。
+            Map.entry("employee_reconcile_plans", 810),
+            Map.entry("employee_reconcile_plan_rows", 810),
+            Map.entry("employee_reconcile_plan_items", 810),
+            Map.entry("employee_reconcile_applies", 810));
 
     private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
         "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",

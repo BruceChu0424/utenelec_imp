@@ -4129,5 +4129,143 @@
   "aiChatRestored": "Your recent chat. New questions continue it.",
   "aiChatRestoredDataChanged": "The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.",
   "aiSettingsThinkingZhipu": "Zhipu GLM style",
-  "aiSettingsThinkingAnthropic": "Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)"
+  "aiSettingsThinkingAnthropic": "Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)",
+  "hrReconcileTitle": "Employee Data Reconciliation",
+  "hrReconcileRecords": "Reconciliation records",
+  "hrReconcileRefresh": "Refresh",
+  "hrReconcileRetry": "Retry",
+  "hrReconcileGenerating": "Generating reconciliation plan…",
+  "hrReconcileApplying": "Updating employee records…",
+  "hrReconcileEmptyEntry": "Open this page by selecting employees on the identity check page",
+  "hrReconcilePlanEmpty": "This plan has no employees to process",
+  "hrReconcileReadOnlyNotice": "This is {name}'s reconciliation and is read-only",
+  "@hrReconcileReadOnlyNotice": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hrReconcileSummary": "{people} people · to update {update} · notice only {info} · match {same} · processed {applied}",
+  "@hrReconcileSummary": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      },
+      "update": {
+        "type": "int"
+      },
+      "info": {
+        "type": "int"
+      },
+      "same": {
+        "type": "int"
+      },
+      "applied": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileValidity": "Valid for 24 hours; unapplied changes are cleared after that",
+  "hrReconcileExpiredTitle": "This reconciliation is past 24 hours; unapplied changes were cleared",
+  "hrReconcileExpiredRetry": "Reconcile again",
+  "hrReconcileBack": "Back",
+  "hrReconcileLockTooltip": "{name} is working on it",
+  "@hrReconcileLockTooltip": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hrReconcileApplyButton": "Correct {people} people / {items} fields",
+  "@hrReconcileApplyButton": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      },
+      "items": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileApplyHintFirst": "Select employees and confirm their new ID numbers first",
+  "hrReconcileConfirmTitle": "Confirm employee data correction",
+  "hrReconcileConfirmButton": "Correct now",
+  "hrReconcileConfirmBodyPeople": "Correct ID numbers of {people} people ({items} fields)",
+  "@hrReconcileConfirmBodyPeople": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      },
+      "items": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileConfirmBodyDerived": "Gender and date of birth will be updated from the new ID number",
+  "hrReconcileConfirmBodyPassword": "Your login password is required to confirm",
+  "hrReconcileConfirmBodySkipped": "{people} people without a new number will not be changed this time",
+  "@hrReconcileConfirmBodySkipped": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileLeaveTitle": "Discard these changes?",
+  "hrReconcileLeaveBody": "The plan is kept for 24 hours; you can resume from reconciliation records",
+  "hrReconcileLeaveConfirm": "Discard",
+  "hrReconcileLeaveCancel": "Keep editing",
+  "hrReconcilePlanChanged": "This reconciliation was updated; the latest content has been reloaded",
+  "hrReconcilePlanBusyConflict": "A previous correction is still running; please wait and retry",
+  "hrReconcileGenerateFailed": "Failed to generate the reconciliation plan. Please try again later.",
+  "hrReconcileLoadFailed": "Failed to load the reconciliation plan. Please try again later.",
+  "hrReconcileApplyFailed": "The correction did not complete. Please try again later.",
+  "hrReconcileIdEmpty": "(empty)",
+  "hrReconcileColKind": "Type",
+  "hrReconcileColCode": "Employee No.",
+  "hrReconcileColName": "Name",
+  "hrReconcileColDept": "Department",
+  "hrReconcileColReason": "Reason",
+  "hrReconcileColIdNumber": "ID number",
+  "hrReconcileColBasis": "Basis",
+  "hrReconcileColTier": "Confidence",
+  "hrReconcileColNotes": "Notes / result",
+  "hrReconcileKindUpdate": "Update",
+  "hrReconcileKindInfo": "Notice only",
+  "hrReconcileKindSame": "Match",
+  "hrReconcileTierHigh": "High",
+  "hrReconcileTierMedium": "Medium",
+  "hrReconcileTierManual": "Manual",
+  "hrReconcileTierNone": "No candidate",
+  "hrReconcileResultApplied": "Corrected",
+  "hrReconcileResultPartial": "Partially corrected",
+  "hrReconcileResultSkipped": "Skipped",
+  "hrReconcileResultFailed": "Failed",
+  "hrReconcileAdopt": "Adopt",
+  "hrReconcileUnadopt": "Adopted; tap to undo",
+  "hrReconcileSuspectHint": "Possibly wrong digits: {positions}. Please check against the card.",
+  "@hrReconcileSuspectHint": {
+    "placeholders": {
+      "positions": {
+        "type": "String"
+      }
+    }
+  },
+  "hrReconcileManualHint": "Enter the new ID number",
+  "hrReconcileRecordsTitle": "Reconciliation records",
+  "hrReconcileRecordsEmpty": "No reconciliation records yet",
+  "hrReconcileRecordCount": "{people} people",
+  "@hrReconcileRecordCount": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatusOpen": "In progress",
+  "hrReconcileStatusClosed": "Completed",
+  "hrReconcileStatusExpired": "Expired",
+  "hrReconcileStatusDiscarded": "Discarded"
 }

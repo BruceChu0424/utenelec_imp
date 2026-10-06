@@ -46,3 +46,20 @@ UtenRevisionRow(
 - 各流程只对比本流程的前次与本次提交，不把资产初始确认、处置和终止三类申请互相配对。
 
 逐页接入与验证记录见[重新提交审批差异展示](../03-页面/重新提交审批差异展示.md)。
+
+## 单元格内旧新对照 UtenRevisionCell
+
+源码：[`uten_revision_cell.dart`](../../lib/components/data_display/uten_revision_cell.dart)。使用方：员工资料核对更正页（ADR-160）在表格单元格内对照单个字段的旧值与新值。
+
+`UtenRevisionCell(before, after, changedPositions, masked, emptyText, afterTrailing)` 在一个单元格里紧凑地渲染两行：上一行旧值红色删除线（为空时灰色占位文字、不加线）；下一行新值绿底加粗，`changedPositions`（1-based）指定的字符位红色加粗加下划线——证件号码这类逐位校对的字段，差在哪一位一眼可见。
+
+| 参数 | 说明 |
+|---|---|
+| `before` | 修改前的值；null 或空串显示 `emptyText ?? '(空)'` 灰字 |
+| `after` | 修改后的值；null 表示没有新值，不渲染新值行 |
+| `changedPositions` | 新值中实际变化的字符位（1-based） |
+| `masked` | 脱敏值不做逐位差异高亮（整行新值统一绿字） |
+| `emptyText` | 旧值为空时的占位文字，默认「(空)」 |
+| `afterTrailing` | 新值行尾部小部件（「采用」按钮/对勾） |
+
+颜色全部复用 [UtenRevisionTable](#明细表) 的 `utenRevisionForeground` / `utenRevisionBackground` token 函数，明暗主题自动适配；`Semantics` 读出「修改前 X，改为 Y」。与 `UtenRevisionFields` 的分工：`UtenRevisionFields` 用于表头级字段对照——带 −/+ 前缀的上下两个容器，适合标题、地址这类长文本；`UtenRevisionCell` 用于表格单元格内——无前缀、内边距紧凑（h6 v2、圆角 4）的两行，适合并排呈现多列字段。字段既有表头级对照又有单元格级对照时，各用各的，不要互相替代。

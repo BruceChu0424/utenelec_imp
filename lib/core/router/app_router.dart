@@ -73,6 +73,7 @@ import '../../features/finance/pages/finance_statement_page.dart';
 import '../../features/finance/pages/finance_account_flow_page.dart';
 import '../../features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import '../../features/hr_profile/pages/hr_profile_changes_list_page.dart';
+import '../../features/hr_task/pages/hr_reconcile_page.dart';
 import '../../features/hr_task/pages/hr_task_list_page.dart';
 import '../../features/hr_task/pages/hr_workbench_page.dart';
 import '../../features/hr_task/widgets/hr_task_widgets.dart';
@@ -1879,6 +1880,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'hr-task-center',
             builder: (_, _) => const HrWorkbenchPage(),
             routes: [
+              // 员工资料核对更正页(ADR-160)：静态段，须先于 :type 声明。
+              DraftAwareGoRoute(
+                path: RouteName.hrReconcile,
+                name: 'hr-reconcile',
+                builder: (_, _) => const HrReconcilePage(),
+              ),
               DraftAwareGoRoute(
                 path: ':type',
                 name: 'hr-task-list',

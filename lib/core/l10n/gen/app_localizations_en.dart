@@ -9882,4 +9882,230 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiSettingsThinkingAnthropic =>
       'Anthropic effort style (Opus 4.5 / Sonnet 4.6 and later)';
+
+  @override
+  String get hrReconcileTitle => 'Employee Data Reconciliation';
+
+  @override
+  String get hrReconcileRecords => 'Reconciliation records';
+
+  @override
+  String get hrReconcileRefresh => 'Refresh';
+
+  @override
+  String get hrReconcileRetry => 'Retry';
+
+  @override
+  String get hrReconcileGenerating => 'Generating reconciliation plan…';
+
+  @override
+  String get hrReconcileApplying => 'Updating employee records…';
+
+  @override
+  String get hrReconcileEmptyEntry =>
+      'Open this page by selecting employees on the identity check page';
+
+  @override
+  String get hrReconcilePlanEmpty => 'This plan has no employees to process';
+
+  @override
+  String hrReconcileReadOnlyNotice(String name) {
+    return 'This is $name\'s reconciliation and is read-only';
+  }
+
+  @override
+  String hrReconcileSummary(
+    int people,
+    int update,
+    int info,
+    int same,
+    int applied,
+  ) {
+    return '$people people · to update $update · notice only $info · match $same · processed $applied';
+  }
+
+  @override
+  String get hrReconcileValidity =>
+      'Valid for 24 hours; unapplied changes are cleared after that';
+
+  @override
+  String get hrReconcileExpiredTitle =>
+      'This reconciliation is past 24 hours; unapplied changes were cleared';
+
+  @override
+  String get hrReconcileExpiredRetry => 'Reconcile again';
+
+  @override
+  String get hrReconcileBack => 'Back';
+
+  @override
+  String hrReconcileLockTooltip(String name) {
+    return '$name is working on it';
+  }
+
+  @override
+  String hrReconcileApplyButton(int people, int items) {
+    return 'Correct $people people / $items fields';
+  }
+
+  @override
+  String get hrReconcileApplyHintFirst =>
+      'Select employees and confirm their new ID numbers first';
+
+  @override
+  String get hrReconcileConfirmTitle => 'Confirm employee data correction';
+
+  @override
+  String get hrReconcileConfirmButton => 'Correct now';
+
+  @override
+  String hrReconcileConfirmBodyPeople(int people, int items) {
+    return 'Correct ID numbers of $people people ($items fields)';
+  }
+
+  @override
+  String get hrReconcileConfirmBodyDerived =>
+      'Gender and date of birth will be updated from the new ID number';
+
+  @override
+  String get hrReconcileConfirmBodyPassword =>
+      'Your login password is required to confirm';
+
+  @override
+  String hrReconcileConfirmBodySkipped(int people) {
+    return '$people people without a new number will not be changed this time';
+  }
+
+  @override
+  String get hrReconcileLeaveTitle => 'Discard these changes?';
+
+  @override
+  String get hrReconcileLeaveBody =>
+      'The plan is kept for 24 hours; you can resume from reconciliation records';
+
+  @override
+  String get hrReconcileLeaveConfirm => 'Discard';
+
+  @override
+  String get hrReconcileLeaveCancel => 'Keep editing';
+
+  @override
+  String get hrReconcilePlanChanged =>
+      'This reconciliation was updated; the latest content has been reloaded';
+
+  @override
+  String get hrReconcilePlanBusyConflict =>
+      'A previous correction is still running; please wait and retry';
+
+  @override
+  String get hrReconcileGenerateFailed =>
+      'Failed to generate the reconciliation plan. Please try again later.';
+
+  @override
+  String get hrReconcileLoadFailed =>
+      'Failed to load the reconciliation plan. Please try again later.';
+
+  @override
+  String get hrReconcileApplyFailed =>
+      'The correction did not complete. Please try again later.';
+
+  @override
+  String get hrReconcileIdEmpty => '(empty)';
+
+  @override
+  String get hrReconcileColKind => 'Type';
+
+  @override
+  String get hrReconcileColCode => 'Employee No.';
+
+  @override
+  String get hrReconcileColName => 'Name';
+
+  @override
+  String get hrReconcileColDept => 'Department';
+
+  @override
+  String get hrReconcileColReason => 'Reason';
+
+  @override
+  String get hrReconcileColIdNumber => 'ID number';
+
+  @override
+  String get hrReconcileColBasis => 'Basis';
+
+  @override
+  String get hrReconcileColTier => 'Confidence';
+
+  @override
+  String get hrReconcileColNotes => 'Notes / result';
+
+  @override
+  String get hrReconcileKindUpdate => 'Update';
+
+  @override
+  String get hrReconcileKindInfo => 'Notice only';
+
+  @override
+  String get hrReconcileKindSame => 'Match';
+
+  @override
+  String get hrReconcileTierHigh => 'High';
+
+  @override
+  String get hrReconcileTierMedium => 'Medium';
+
+  @override
+  String get hrReconcileTierManual => 'Manual';
+
+  @override
+  String get hrReconcileTierNone => 'No candidate';
+
+  @override
+  String get hrReconcileResultApplied => 'Corrected';
+
+  @override
+  String get hrReconcileResultPartial => 'Partially corrected';
+
+  @override
+  String get hrReconcileResultSkipped => 'Skipped';
+
+  @override
+  String get hrReconcileResultFailed => 'Failed';
+
+  @override
+  String get hrReconcileAdopt => 'Adopt';
+
+  @override
+  String get hrReconcileUnadopt => 'Adopted; tap to undo';
+
+  @override
+  String hrReconcileSuspectHint(String positions) {
+    return 'Possibly wrong digits: $positions. Please check against the card.';
+  }
+
+  @override
+  String get hrReconcileManualHint => 'Enter the new ID number';
+
+  @override
+  String get hrReconcileRecordsTitle => 'Reconciliation records';
+
+  @override
+  String get hrReconcileRecordsEmpty => 'No reconciliation records yet';
+
+  @override
+  String hrReconcileRecordCount(int people) {
+    return '$people people';
+  }
+
+  @override
+  String get hrReconcileStatusOpen => 'In progress';
+
+  @override
+  String get hrReconcileStatusClosed => 'Completed';
+
+  @override
+  String get hrReconcileStatusExpired => 'Expired';
+
+  @override
+  String get hrReconcileStatusDiscarded => 'Discarded';
 }

@@ -255,6 +255,11 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.rdTaskCenter) {
     return const [Perm.rdTaskView];
   }
+  // HR 员工资料核对更正页(ADR-160)：能改员工档案或能改证件的人可进；
+  // 须在 /hr/tasks 前缀规则之前判定。
+  if (location == RouteName.hrReconcile) {
+    return const [Perm.employeeEdit, Perm.employeePiiEdit];
+  }
   // HR 任务中心（转正/生日/周年/新入职提醒；权限与员工档案查看一致）。
   // 子页深链（/hr/tasks/:type）同样受控——深链不可绕过守卫（2026-09-03 审计补口）。
   if (location == RouteName.hrTaskCenter ||
@@ -768,6 +773,11 @@ List<String> requiredAllPermsFor(String rawLocation) {
   // 通用的 /hr/tasks 规则 employee:view 照旧在 requiredAnyPermFor 里。
   if (location == RouteName.hrTaskList('identity')) {
     return const [Perm.employeePiiEdit];
+  }
+  // HR 员工资料核对更正页(ADR-160)：至少还要能看员工档案(明文/打码由服务端按
+  // employee:pii:view 决定)；进页的任一写权限(requiredAnyPermFor)已含 edit 或 pii:edit。
+  if (location == RouteName.hrReconcile) {
+    return const [Perm.employeeView];
   }
 
   if (location == RouteName.financeReportCustomerPrepayment) {

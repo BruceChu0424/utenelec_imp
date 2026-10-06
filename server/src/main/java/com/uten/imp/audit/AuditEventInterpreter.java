@@ -71,6 +71,7 @@ public class AuditEventInterpreter {
             Map.entry("view_sales_other_shipment_detail", "查看销售其他出库详情"),
             Map.entry("view_sales_return_detail", "查看销售退货详情"),
             Map.entry("view_employee_detail", "查看员工档案"),
+            Map.entry("view_employee_reconcile_plan_detail", "查看员工资料核对详情"),
             Map.entry("view_visitor_application_detail", "查看访客申请详情"),
             Map.entry("view_website_inquiry_detail", "查看官网询盘详情"),
             Map.entry("view_client_detail", "查看客户档案"),
@@ -138,8 +139,7 @@ public class AuditEventInterpreter {
             Map.entry("view_stock_document_detail", "查看库存单据详情"),
             Map.entry("view_stock_count_request_detail", "查看库存盘点申请详情"));
     /** 公共 AI 平台的语义/显式事件(ADR-133): 按「资源.方法」给出具体中文动作。 */
-    private static final Map<String, String> AI_ACTION_LABELS = Map.ofEntries(
-            Map.entry("ai_provider.create", "新增 AI 服务"),
+    private static final Map<String, String> AI_ACTION_LABELS = Map.ofEntries(            Map.entry("ai_provider.create", "新增 AI 服务"),
             Map.entry("ai_provider.update", "修改 AI 服务"),
             Map.entry("ai_provider.delete", "删除 AI 服务"),
             Map.entry("ai_provider.set_default", "设为默认 AI 服务"),
@@ -155,6 +155,24 @@ public class AuditEventInterpreter {
             Map.entry("attachment_logical_delete", "标记附件已删除并保留历史"),
             Map.entry("view_notice_history", "查看通知历史"),
             Map.entry("ai_job.cancel", "取消 AI 识别"));
+    /** 员工资料核对 (V810/ADR-160) 的显式业务事件：全码登记（动词 apply 与财务核销等控制器
+     *  方法同名，进 AuditActionNames 全局动词表会误标别的资源）。 */
+    private static final Map<String, String> RECONCILE_ACTION_LABELS = Map.of(
+            "employee_reconcile.plan_created", "生成员工资料核对",
+            "employee_reconcile.apply", "按核对更正员工资料",
+            "employee_reconcile.discarded", "放弃员工资料核对");
+    /** 核对建议依据码 → 中文，与客户端 ItemView.basis.label（ReconcilePlanViews.BASIS_LABELS）逐字一致。 */
+    private static final Map<String, String> RECONCILE_BASIS_LABELS = Map.ofEntries(
+            Map.entry("NORMALIZE", "去分隔符"),
+            Map.entry("MAP_CHAR", "字符纠正"),
+            Map.entry("UPGRADE15", "15位升18位"),
+            Map.entry("BIRTH_ANCHOR", "生日对齐"),
+            Map.entry("DEL_REPEAT", "删除重复数字"),
+            Map.entry("SWAP", "相邻对调"),
+            Map.entry("CHECK_SOLVED", "校验码推算"),
+            Map.entry("INS_X", "补末位X"),
+            Map.entry("ERASE_SOLVED", "擦除求解"),
+            Map.entry("TYPE_HINT", "可能是其他证件"));
     private static final Set<String> MASTER_HISTORY_ACTIONS = Set.of(
             "view_client_detail", "view_supplier_detail", "view_account_detail",
             "view_goods_detail", "view_mould_detail", "view_currency_detail",
@@ -245,6 +263,8 @@ public class AuditEventInterpreter {
     }
 
     private String actionLabel(String action, String path, String httpMethod) {
+        String reconcileLabel = RECONCILE_ACTION_LABELS.get(action);
+        if (reconcileLabel != null) return reconcileLabel;
         String aiLabel = AI_ACTION_LABELS.get(action);
         if (aiLabel != null) return aiLabel;
         String semanticVerb = AuditActionNames.verbOf(action);
@@ -558,6 +578,11 @@ public class AuditEventInterpreter {
                                  String beforeJson,
                                  String afterJson,
                                  List<String> changes) {
+        // 员工资料核对逐人更正 (V810)：change.fields 是结构化确认单（不含任何证件号），
+        // 渲染成「证件号码：已修改(依据 生日对齐)」；依据码无登记时不带括号说明。
+        if ("employee_reconcile.apply".equals(action)) {
+            return reconcileApplyChangeSummary(afterJson);
+        }
         if ("update".equals(action)) {
             if (changes.isEmpty()) {
                 return "";
@@ -588,8 +613,27 @@ public class AuditEventInterpreter {
         return "";
     }
 
-    private int businessFieldCount(JsonNode node) {
-        if (node == null || !node.isObject()) {
+    /** employee_reconcile.apply 的 change.fields → 「证件号码：已修改(依据 生日对齐)」列表。 */
+    private static String reconcileApplyChangeSummary(String afterJson) {
+        JsonNode after = parseAuditJson(afterJson);
+        if (after == null || !after.isObject()) {
+            return "";
+        }
+        JsonNode fields = after.get("fields");
+        if (fields == null || !fields.isArray() || fields.isEmpty()) {
+            return "";
+        }
+        List<String> entries = new ArrayList<>();
+        for (JsonNode field : fields) {
+            String label = "idNumber".equals(field.path("field").asText("")) ? "证件号码" : "字段";
+            String basis = field.path("basis").asText("");
+            String basisNote = basis.isBlank() ? "" : "(依据 " + RECONCILE_BASIS_LABELS.getOrDefault(basis, basis) + ")";
+            entries.add(label + "：" + (field.path("changed").asBoolean(false) ? "已修改" + basisNote : "未修改"));
+        }
+        return String.join("；", entries);
+    }
+
+    private int businessFieldCount(JsonNode node) {        if (node == null || !node.isObject()) {
             return 0;
         }
         int count = 0;
@@ -892,6 +936,7 @@ public class AuditEventInterpreter {
         values.put("/api/warehouse", "仓库");
         values.put("/api/notices", "工作台 · 通知");
         values.put("/api/org/hr-tasks", "人事 · HR任务中心");
+        values.put("/api/org/employee-reconcile", "人事 · 员工资料核对");
         values.put("/api/task-claims", "工作台 · 任务认领");
         values.put("/api/suggestions", "工作台 · 意见建议");
         values.put("/api/dashboard", "工作台");
@@ -945,6 +990,11 @@ public class AuditEventInterpreter {
         values.put("client_access_change_events", "客户权限变更记录");
         values.put("client_visibility_grants", "客户可见范围");
         values.put("profile_change_requests", "资料变更申请");
+        // 员工资料核对四张表 (V810/ADR-160)
+        values.put("employee_reconcile_plans", "员工资料核对");
+        values.put("employee_reconcile_plan_rows", "员工资料核对行");
+        values.put("employee_reconcile_plan_items", "员工资料核对建议项");
+        values.put("employee_reconcile_applies", "员工资料核对更正回执");
         values.put("task_claims", "任务");
         values.put("hr_task_claims", "HR任务");
         values.put("system_settings", "系统设置");
@@ -1320,6 +1370,7 @@ public class AuditEventInterpreter {
         values.put("/api/finance/fa/amortize", "待摊费用摊销");
         values.put("/api/notices", "通知");
         values.put("/api/org/hr-tasks", "HR任务中心");
+        values.put("/api/org/employee-reconcile", "员工资料核对");
         values.put("/api/task-claims", "任务认领");
         values.put("/api/suggestions", "意见建议");
         values.put("/api/visitor/applications", "访客申请");
@@ -1528,7 +1579,58 @@ public class AuditEventInterpreter {
         bom.put("learning_profile_goods_id", "系统学习标记");
         bom.put("learning_unit_id", "系统学习时的组件单位");
         bom.put("learning_released_at", "人工删除后不再自动加回的时间");
-        return Map.of("goods_bom_items", Collections.unmodifiableMap(bom));
+        // 员工资料核对四张表 (V810/ADR-160)：密文列 (old/new/candidates_value_enc) 沿用 *_enc
+        // 自动隐藏机制，只列名字；与前端 AuditFieldLabels._tableLabels 逐字一致。
+        Map<String, String> reconcilePlans = new LinkedHashMap<>();
+        reconcilePlans.put("source", "核对来源");
+        reconcilePlans.put("origin", "生成入口");
+        reconcilePlans.put("actor_user_id", "创建人账号");
+        reconcilePlans.put("actor_employee_id", "创建人员工档案");
+        reconcilePlans.put("counts", "统计");
+        reconcilePlans.put("closed_reason", "关闭原因");
+        reconcilePlans.put("applying_until", "更正执行租约至");
+        reconcilePlans.put("expires_at", "有效期至");
+        reconcilePlans.put("last_applied_at", "最近执行更正时间");
+        reconcilePlans.put("purged_at", "未执行值清空时间");
+        Map<String, String> reconcileRows = new LinkedHashMap<>();
+        reconcileRows.put("row_no", "行号");
+        reconcileRows.put("employee_version", "生成时员工版本");
+        reconcileRows.put("kind", "行类型");
+        reconcileRows.put("notice_codes", "提示码");
+        reconcileRows.put("result", "行结果");
+        Map<String, String> reconcileItems = new LinkedHashMap<>();
+        reconcileItems.put("item_no", "项号");
+        reconcileItems.put("field_code", "字段");
+        reconcileItems.put("write_path", "写入路径");
+        reconcileItems.put("required_permissions", "所需权限");
+        reconcileItems.put("diff_positions", "差异位置");
+        reconcileItems.put("suspect_positions", "可疑位置");
+        reconcileItems.put("basis_code", "修复依据");
+        reconcileItems.put("tier", "把握档位");
+        reconcileItems.put("probability", "把握度");
+        reconcileItems.put("preselected", "是否预选");
+        reconcileItems.put("note_codes", "提示码");
+        reconcileItems.put("applied_origin", "采用方式");
+        reconcileItems.put("outcome", "执行结果");
+        reconcileItems.put("outcome_code", "执行结果代码");
+        reconcileItems.put("outcome_message", "执行结果说明");
+        reconcileItems.put("apply_id", "更正回执");
+        reconcileItems.put("applied_at", "执行时间");
+        Map<String, String> reconcileApplies = new LinkedHashMap<>();
+        reconcileApplies.put("round_no", "轮次");
+        reconcileApplies.put("request_id", "请求标识");
+        reconcileApplies.put("actor_user_id", "执行人账号");
+        reconcileApplies.put("counts", "统计");
+        reconcileApplies.put("result", "执行结果");
+        reconcileApplies.put("started_at", "开始时间");
+        reconcileApplies.put("finished_at", "结束时间");
+        Map<String, Map<String, String>> values = new LinkedHashMap<>();
+        values.put("goods_bom_items", Collections.unmodifiableMap(bom));
+        values.put("employee_reconcile_plans", Collections.unmodifiableMap(reconcilePlans));
+        values.put("employee_reconcile_plan_rows", Collections.unmodifiableMap(reconcileRows));
+        values.put("employee_reconcile_plan_items", Collections.unmodifiableMap(reconcileItems));
+        values.put("employee_reconcile_applies", Collections.unmodifiableMap(reconcileApplies));
+        return Collections.unmodifiableMap(values);
     }
 
     /**

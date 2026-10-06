@@ -60,6 +60,8 @@ public final class ScheduledTaskCatalog {
                     "每天 08:23 提醒 3 天内到交货期仍未结案的销售订单。")),
             Map.entry("ReservationHoldScheduler.scan", new Entry("库存预留逾期提醒",
                     "每天 08:37 提醒交货期加宽限期已过仍占着库存的预留。")),
+            Map.entry("ReconcilePlanHousekeeping.purge", new Entry("员工核对清理",
+                    "每 10 分钟清除超过 24 小时未执行的员工资料核对内容，已执行的更正记录继续保留。")),
             Map.entry("SubcontractReturnDueScheduler.scan", new Entry("委外回厂到期提醒",
                     "每天 08:49 提醒 3 天内应回厂却还没回厂的委外单。")),
             Map.entry("SubcontractShortDeliveryOverdueScheduler.scan", new Entry("委外短交逾期提醒",

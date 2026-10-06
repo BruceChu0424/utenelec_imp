@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -370,6 +371,10 @@ public class TxSessionVars {
                 String[] bodies = parts.stream().map(CipherPart::body).toArray(String[]::new);
                 Array rawArray = connection.createArrayOf("text", raw);
                 Array bodyArray = connection.createArrayOf("text", bodies);
+                // 批里混进解不开的密文 (数据损坏、换密钥后没配旧密钥) 时，PostgreSQL 会把整个
+                // 事务作废——调用方的逐条兜底 (tryDecrypt) 连保存点都建不起来。整批语句套一层
+                // 保存点，失败回滚到保存点再抛错：异常语义不变，事务本身保住。
+                Savepoint savepoint = connection.getAutoCommit() ? null : connection.setSavepoint();
                 try (PreparedStatement statement = connection.prepareStatement("""
                              SELECT input.raw,
                                     pgp_sym_decrypt(decode(input.body, 'base64'), ?)
@@ -383,6 +388,14 @@ public class TxSessionVars {
                             decrypted.put(rows.getString(1), rows.getString(2));
                         }
                     }
+                    if (savepoint != null) {
+                        connection.releaseSavepoint(savepoint);
+                    }
+                } catch (SQLException unreadable) {
+                    if (savepoint != null) {
+                        connection.rollback(savepoint);
+                    }
+                    throw unreadable;
                 } finally {
                     rawArray.free();
                     bodyArray.free();
@@ -393,6 +406,44 @@ public class TxSessionVars {
     }
 
     private record CipherPart(String raw, String body) {
+    }
+
+    /**
+     * 批量加密一组明文(跳过 null/空白与重复), 一条参数化 SQL, 返回 明文 -&gt; {@code "<version>:<base64>"}
+     * (与 {@link #encrypt(String)} 单个加密同一格式, 供 decrypt/decryptAll 读回)。
+     */
+    public Map<String, String> encryptAll(Collection<String> plains) {
+        if (plains == null || plains.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashSet<String> distinct = new LinkedHashSet<>();
+        for (String plain : plains) {
+            if (plain != null && !plain.isBlank()) {
+                distinct.add(plain);
+            }
+        }
+        if (distinct.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> encrypted = new HashMap<>();
+        em.unwrap(Session.class).doWork(connection -> {
+            Array plainArray = connection.createArrayOf("text", distinct.toArray(String[]::new));
+            try (PreparedStatement statement = connection.prepareStatement("""
+                         SELECT input.plain, encode(pgp_sym_encrypt(input.plain, ?), 'base64')
+                         FROM unnest(?::text[]) AS input(plain)
+                         """)) {
+                statement.setString(1, crypto.getPgpMasterKey());
+                statement.setArray(2, plainArray);
+                try (ResultSet rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        encrypted.put(rows.getString(1), crypto.getPgpKeyVersion() + ":" + rows.getString(2));
+                    }
+                }
+            } finally {
+                plainArray.free();
+            }
+        });
+        return Map.copyOf(encrypted);
     }
 
     /** HMAC-SHA256(hex)，用于确定性查重（如身份证号）。 */

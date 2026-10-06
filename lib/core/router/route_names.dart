@@ -169,10 +169,6 @@ abstract final class RouteName {
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
-  // 业务页面内权限设置；surfaceKey 由前后端稳定注册表共同终审。
-  static const String pagePermissions = '/page-permissions/:surfaceKey';
-  static String pagePermissionsFor(String surfaceKey) =>
-      '/page-permissions/${Uri.encodeComponent(surfaceKey)}';
   // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
   static const String adminAuditSession =

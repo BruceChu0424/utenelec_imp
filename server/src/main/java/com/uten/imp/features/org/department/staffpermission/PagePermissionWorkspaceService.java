@@ -16,7 +16,6 @@ import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionEm
 import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionEmployeePermissionsDto.PermissionState;
 import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionStaffPageDto;
 import com.uten.imp.features.org.department.staffpermission.dto.PagePermissionStaffPageDto.StaffSummary;
-import com.uten.imp.features.org.department.staffpermission.dto.StaffDelegationResultDto;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.admin.PermissionChangeAudit;
@@ -179,8 +178,9 @@ public class PagePermissionWorkspaceService {
             String surfaceKey) {
         AuthUser actor = requireStaffSubject();
         featureGate.requireEnabled();
-        Set<String> surfacePermissions =
-                surfaceRegistry.permissionsFor(surfaceKey);
+        List<PermissionSurfaceRegistry.Surface> tree =
+                surfaceRegistry.surfaceTree(surfaceKey);
+        Set<String> surfacePermissions = surfaceRegistry.treePermissions(surfaceKey);
         Department department = requireManagedDepartment(departmentId, actor);
         Employee target = requireCurrentTargetEmployee(employeeId, department.getId());
         UserAccount actorAccount = requireActorAccount(actor);
@@ -224,14 +224,24 @@ public class PagePermissionWorkspaceService {
                 .filter(ManagerPermissionDelegation::isEnabled)
                 .map(row -> row.getId().getPermissionId())
                 .collect(Collectors.toSet());
-        List<PermissionState> states = new ArrayList<>();
+        // 树内码归属：子面优先(目录序第一个含该码的子面)，根面只留没被认领的码。
+        Map<String, List<PagePermissionEmployeePermissionsDto.PermissionState>> statesByGroup =
+                new LinkedHashMap<>();
+        for (PermissionSurfaceRegistry.Surface surface : tree) {
+            statesByGroup.put(surface.key(), new ArrayList<>());
+        }
         for (Permission permission : catalog) {
             if (!actor.isSuperAdmin()
                     && !actorEffective.contains(permission.getCode())
                     && !enabledHistorical.contains(permission.getId())) {
                 continue;
             }
-            states.add(permissionState(
+            String ownerKey = surfaceRegistry.treeOwnerSurface(
+                    surfaceKey, permission.getCode());
+            if (ownerKey == null) {
+                continue;
+            }
+            statesByGroup.get(ownerKey).add(permissionState(
                     actor,
                     targetAccount,
                     permission,
@@ -241,13 +251,27 @@ public class PagePermissionWorkspaceService {
                     delegationByPermission.get(permission.getId()),
                     overrideByPermission.get(permission.getId())));
         }
+        List<PagePermissionEmployeePermissionsDto.SurfaceGroupDto> groups = new ArrayList<>();
+        for (PermissionSurfaceRegistry.Surface surface : tree) {
+            List<PagePermissionEmployeePermissionsDto.PermissionState> states =
+                    statesByGroup.get(surface.key());
+            if (states.isEmpty()) {
+                continue;
+            }
+            groups.add(new PagePermissionEmployeePermissionsDto.SurfaceGroupDto(
+                    surface.key(),
+                    surface.name(),
+                    surface.key().equals(surfaceKey),
+                    List.copyOf(states)));
+        }
         return new PagePermissionEmployeePermissionsDto(
                 surfaceKey,
+                surfaceRegistry.nameOf(surfaceKey),
                 department.getId(),
                 department.getName(),
                 summary(target, targetAccount, department),
                 actor.isSuperAdmin() ? CENTRAL_OVERRIDE : MANAGER_DELEGATION,
-                List.copyOf(states));
+                List.copyOf(groups));
     }
 
     @Transactional
@@ -260,29 +284,6 @@ public class PagePermissionWorkspaceService {
                 employeeId, departmentId, surfaceKey, request.changes());
     }
 
-    @Transactional
-    public StaffDelegationResultDto setSinglePermission(
-            UUID employeeId,
-            UUID departmentId,
-            String surfaceKey,
-            String code,
-            boolean enabled,
-            long expectedVersion) {
-        BatchSetStaffPermissionsResultDto result = setPermissionsInternal(
-                employeeId,
-                departmentId,
-                surfaceKey,
-                List.of(new BatchSetStaffPermissionsRequest.Change(
-                        code, enabled, expectedVersion)));
-        BatchSetStaffPermissionsResultDto.ChangeResult changed =
-                result.changes().getFirst();
-        return new StaffDelegationResultDto(
-                changed.code(),
-                changed.enabled(),
-                changed.rowVersion(),
-                changed.effective());
-    }
-
     private BatchSetStaffPermissionsResultDto setPermissionsInternal(
             UUID employeeId,
             UUID departmentId,
@@ -290,8 +291,9 @@ public class PagePermissionWorkspaceService {
             List<BatchSetStaffPermissionsRequest.Change> rawChanges) {
         AuthUser actor = requireStaffSubject();
         featureGate.requireEnabled();
+        // hub 抽屉的树口径：根面 + 卡片子面的码都合法，委派面按码归属记在子面上。
         Set<String> surfacePermissions =
-                surfaceRegistry.permissionsFor(surfaceKey);
+                surfaceRegistry.treePermissions(surfaceKey);
         List<BatchSetStaffPermissionsRequest.Change> changes =
                 normalizeChanges(rawChanges);
         for (BatchSetStaffPermissionsRequest.Change change : changes) {
@@ -466,8 +468,7 @@ public class PagePermissionWorkspaceService {
                     permissionByCode,
                     snapshot,
                     resultVersions,
-                    changedCodes);
-        }
+                    changedCodes);        }
         if (changedAny) {
             refreshTokenRepo.revokeAllByUserId(targetAccount.getId());
             recordChange(actor, targetAccount, departmentId, surfaceKey, changes, changedCodes);
@@ -586,6 +587,9 @@ public class PagePermissionWorkspaceService {
         for (BatchSetStaffPermissionsRequest.Change change : changes) {
             String code = change.code();
             Permission permission = permissionByCode.get(code);
+            // 委派行记码归属面(子面优先)：解析器校验「面含该码」天然成立，
+            // 子页面抽屉与 hub 抽屉对同一码写出同一张面，幂等口径一致。
+            String ownerSurface = surfaceRegistry.treeOwnerSurface(surfaceKey, code);
             ManagerPermissionDelegationId id = new ManagerPermissionDelegationId(
                     targetAccount.getId(),
                     permission.getId(),
@@ -622,7 +626,7 @@ public class PagePermissionWorkspaceService {
                     && row.isEnabled() == change.enabled()
                     && (!change.enabled() || snapshot.matches(row))
                     && Objects.equals(row.getGrantedByUserId(), actorAccount.getId())
-                    && Objects.equals(row.getSurfaceKey(), surfaceKey)) {
+                    && Objects.equals(row.getSurfaceKey(), ownerSurface)) {
                 resultVersions.put(code, row.getRowVersion());
                 continue;
             }
@@ -636,7 +640,7 @@ public class PagePermissionWorkspaceService {
                 row.setRowVersion(row.getRowVersion() + 1L);
             }
             row.setEnabled(change.enabled());
-            row.setSurfaceKey(surfaceKey);
+            row.setSurfaceKey(ownerSurface);
             row.setGrantedByUserId(actorAccount.getId());
             snapshot.applyTo(row);
             row.setUpdatedAt(now);

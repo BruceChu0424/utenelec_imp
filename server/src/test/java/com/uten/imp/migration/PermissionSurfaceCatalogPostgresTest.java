@@ -258,6 +258,62 @@ class PermissionSurfaceCatalogPostgresTest {
                     join permissions permission on permission.id = link.permission_id
                     where 'SUPERADMIN_ONLY' = any(permission.grant_policy)
                     """));
+            // V812：hub → 卡片子面层级——单层、父启用、子面有码，七张 hub 各自包拢子页面。
+            assertEquals(7, scalarLong(statement, """
+                    select count(distinct parent_surface_key)
+                    from permission_surfaces
+                    where parent_surface_key is not null
+                    """));
+            assertEquals(58, scalarLong(statement, """
+                    select count(*) from permission_surfaces
+                    where parent_surface_key is not null
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permission_surfaces child
+                    join permission_surfaces parent
+                      on parent.surface_key = child.parent_surface_key
+                    where parent.parent_surface_key is not null
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permission_surfaces child
+                    where child.parent_surface_key is not null
+                      and not exists (
+                          select 1 from permission_surfaces parent
+                          where parent.surface_key = child.parent_surface_key
+                            and parent.enabled)
+                    """));
+            // 三张新面（任务中心/审核中心合并页）与合并后的 warehouse.tasks 码挂载。
+            assertEquals(5, scalarLong(statement, """
+                    select count(*) from permission_surface_permissions link
+                    join permission_surfaces surface on surface.id = link.surface_id
+                    where surface.surface_key = 'sales.tasks'
+                    """));
+            assertEquals(19, scalarLong(statement, """
+                    select count(*) from permission_surface_permissions link
+                    join permission_surfaces surface on surface.id = link.surface_id
+                    where surface.surface_key = 'warehouse.tasks'
+                    """));
+            assertEquals(1, linkCount(statement, "finance.audit-center", "sales_order_finance:view"));
+            // 旧三任务面与孤儿面已删；委派行已重写到合并面。
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permission_surfaces
+                    where surface_key in ('warehouse.outbound-tasks',
+                                          'warehouse.inbound-tasks',
+                                          'warehouse.draw-tasks',
+                                          'production.workshop-material')
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from manager_permission_delegations
+                    where surface_key in ('warehouse.outbound-tasks',
+                                          'warehouse.inbound-tasks',
+                                          'warehouse.draw-tasks',
+                                          'production.workshop-material')
+                    """));
+            // 车间侧内料仓动作码并入我的车间任务面；采购申请详情页可委派分解/下单。
+            assertEquals(1, linkCount(statement, "production.workshop-tasks", "workshop_material:request"));
+            assertEquals(1, linkCount(statement, "production.workshop-tasks", "workshop_material:choose"));
+            assertEquals(1, linkCount(statement, "purchase.request", "purchase_order:decompose"));
+            assertEquals(1, linkCount(statement, "purchase.request", "purchase_order:create"));
         }
     }
 

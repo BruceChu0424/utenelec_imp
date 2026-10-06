@@ -1,8 +1,8 @@
 // 全量路由 × 权限覆盖契约（2026-09-05 新增）：
 // 逐条枚举 appRouter 真实注册的 GoRoute（含 productionRoutes 等挂载子树），把动态段
 // 代入样本值后过 permission_by_path，要求——
-//   1. 除「文档豁免清单」（基础设施/访客门户/dashboard/profile/settings/
-//      page-permissions，见 权限体系总设计.md §二）外，任何路由都必须有 any/all 守卫；
+//   1. 除「文档豁免清单」（基础设施/访客门户/dashboard/profile/settings，
+//      见 权限体系总设计.md §二）外，任何路由都必须有 any/all 守卫；
 //   2. 豁免清单本身也不许漂移：清单里的路由若真的挂上了权限码，测试同样报错。
 // 新增页面忘记注册权限时，这里第一个红——不必等人工全量审计。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,8 +41,6 @@ const _documentedExempt = <String>{
   '/profile/me/changes',
   '/profile/me/department',
   '/settings',
-  // 业务页「本页权限」工作台：服务端按 surface 能力与负责人子树把关。
-  '/page-permissions/*',
   // 独立草稿页：本人表单草稿（本地+服务端按归属人），无业务权限概念。
   '/form-drafts/*',
   // 访客门户：独立访客会话。
@@ -82,18 +80,19 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 当前工作区逐条核对：203 条守卫 / 18 条豁免(2026-10-05 ADR-151 §5 入库登记单批合一：
-/// 采购/委外到货单张页 receipts/new 与批量页 receipts/batch 合成 arrivals/register、
-/// 产成品批量登记页 registrations/batch 并入单个登记页，守卫 205→203；
-/// 2026-10-04 ADR-143 删除
-/// /subcontract/preparations 兼容重定向，守卫 206→205；2026-09-27 独立草稿页
-/// /form-drafts/:categoryId 上线，豁免 17→18；此前 2026-09-25 入口选择页
-/// 下线 /entry 路由移除后豁免 18→17)。
+/// 当前工作区逐条核对：203 条守卫 / 17 条豁免(2026-10-06 V812 权限抽屉：
+/// /page-permissions/:surfaceKey 独立设置页退役为页面内抽屉，豁免 18→17；
+/// 2026-10-05 ADR-151 §5 入库登记单批合一：采购/委外到货单张页 receipts/new
+/// 与批量页 receipts/batch 合成 arrivals/register、产成品批量登记页
+/// registrations/batch 并入单个登记页，守卫 205→203；
+/// 2026-10-04 ADR-143 删除 /subcontract/preparations 兼容重定向，守卫 206→205；
+/// 2026-09-27 独立草稿页 /form-drafts/:categoryId 上线，豁免 17→18；此前
+/// 2026-09-25 入口选择页下线 /entry 路由移除后豁免 18→17)。
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
 const _legacyGuardedCount = 203;
-const _expectedExemptCount = 18;
+const _expectedExemptCount = 17;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{
@@ -126,6 +125,10 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   // sales_quote_finance:view(无组合门槛)，改价/退回/确认按服务端 allowedActions。
   '/finance/quote-review': <String>[],
   '/finance/quote-review/:id': <String>[],
+  // 2026-10-06 HR 员工资料核对更正页(ADR-160, ca1a5042c 加路由时漏登记，
+  // 基线 204≠203 即此)：any=[employee:edit, employee:pii:edit]，
+  // 组合门槛要求还要能看员工档案。
+  '/hr/tasks/reconcile': [Perm.employeeView],
 };
 
 /// 2026-09-28 ADR-135 新增的 any-of 守卫页面：逐条核对精确路径与权限码。

@@ -19,6 +19,13 @@ public final class PermissionSurfaceRegistryTestFixture {
 
     public static PermissionSurfaceRegistry registry(
             Map<String, Set<String>> catalog) {
+        return registry(catalog, Map.of());
+    }
+
+    /** Hierarchy-aware builder: child surface key → parent (hub) surface key. */
+    public static PermissionSurfaceRegistry registry(
+            Map<String, Set<String>> catalog,
+            Map<String, String> parents) {
         PermissionSurfaceCatalogRepository repository =
                 mock(PermissionSurfaceCatalogRepository.class);
         List<PermissionSurfaceCatalogRepository.CatalogRow> rows =
@@ -27,11 +34,13 @@ public final class PermissionSurfaceRegistryTestFixture {
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> {
                     UUID surfaceId = stableId("surface:" + entry.getKey());
+                    String parentKey = parents.get(entry.getKey());
                     if (entry.getValue().isEmpty()) {
                         rows.add(new PermissionSurfaceCatalogRepository.CatalogRow(
                                 surfaceId,
                                 entry.getKey(),
                                 entry.getKey(),
+                                parentKey,
                                 null,
                                 null,
                                 null,
@@ -49,6 +58,7 @@ public final class PermissionSurfaceRegistryTestFixture {
                                             surfaceId,
                                             entry.getKey(),
                                             entry.getKey(),
+                                            parentKey,
                                             stableId("permission:" + code),
                                             code,
                                             code,

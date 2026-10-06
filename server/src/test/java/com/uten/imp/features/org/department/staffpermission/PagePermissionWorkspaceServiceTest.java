@@ -11,6 +11,7 @@ import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.admin.PermissionChangeAudit;
 import com.uten.imp.features.rbac.GrantPolicy;
+import com.uten.imp.features.rbac.ManagerPermissionDelegation;
 import com.uten.imp.features.rbac.ManagerPermissionDelegationRepository;
 import com.uten.imp.features.rbac.PermissionGrantPolicyCatalog;
 import com.uten.imp.features.rbac.Permission;
@@ -62,13 +63,21 @@ class PagePermissionWorkspaceServiceTest {
     @Mock private PermissionResolver permissionResolver;
     @Mock private OrganizationPermissionManagementScopeService managementScope;
     @Captor private ArgumentCaptor<List<UserPermissionOverride>> savedOverrides;
+    @Captor private ArgumentCaptor<List<ManagerPermissionDelegation>> savedDelegations;
     @Mock private PermissionChangeAudit changeAudit;
 
     private PagePermissionWorkspaceService service;
 
     @BeforeEach
     void setUp() {
-        service = new PagePermissionWorkspaceService(
+        service = service(PermissionSurfaceRegistryTestFixture.registry(Map.of(
+                "basic.goods", Set.of("goods:edit", "goods:export"),
+                "warehouse.stock-balance",
+                Set.of("stock:view", "stock:balance:adjust"))));
+    }
+
+    private PagePermissionWorkspaceService service(PermissionSurfaceRegistry registry) {
+        return new PagePermissionWorkspaceService(
                 employeeRepo,
                 departmentRepo,
                 staffQuery,
@@ -85,10 +94,7 @@ class PagePermissionWorkspaceServiceTest {
                         "goods:export", Set.of(GrantPolicy.NORMAL),
                         "stock:view", Set.of(GrantPolicy.NORMAL),
                         "stock:balance:adjust", Set.of(GrantPolicy.INDIVIDUAL_ONLY)))),
-                PermissionSurfaceRegistryTestFixture.registry(Map.of(
-                        "basic.goods", Set.of("goods:edit", "goods:export"),
-                        "warehouse.stock-balance",
-                        Set.of("stock:view", "stock:balance:adjust"))),
+                registry,
                 new PagePermissionDelegationFeatureGate(true),
                 managementScope,
                 changeAudit);
@@ -195,16 +201,15 @@ class PagePermissionWorkspaceServiceTest {
                 "warehouse.stock-balance");
 
         assertEquals("CENTRAL_OVERRIDE", detail.settingMode());
-        assertThat(detail.permissions())
+        var flat = detail.groups().getFirst().permissions();
+        assertThat(flat)
                 .extracting(state -> state.code())
                 .containsExactly("stock:view", "stock:balance:adjust");
-        assertThat(detail.permissions()).allMatch(state -> state.editable());
-        assertEquals("VIEW", detail.permissions().getFirst().actionType());
-        assertEquals(
-                "查看当前库存余额",
-                detail.permissions().getFirst().description());
+        assertThat(flat).allMatch(state -> state.editable());
+        assertEquals("VIEW", flat.getFirst().actionType());
+        assertEquals("查看当前库存余额", flat.getFirst().description());
         // 超管在页面上写的是中央个人覆盖：个人专属码同样可以逐人授予(只有超管专属码不行)。
-        assertThat(detail.permissions())
+        assertThat(flat)
                 .allMatch(state -> !state.grantPolicy().contains("SUPERADMIN_ONLY"));
     }
 
@@ -256,13 +261,79 @@ class PagePermissionWorkspaceServiceTest {
                 "warehouse.stock-balance");
 
         assertEquals("MANAGER_DELEGATION", detail.settingMode());
-        assertThat(detail.permissions())
+        var flat = detail.groups().getFirst().permissions();
+        assertThat(flat)
                 .extracting(state -> state.code())
                 .containsExactly("stock:view", "stock:balance:adjust");
-        assertThat(detail.permissions().getFirst().editable()).isTrue();
-        assertThat(detail.permissions().get(1).editable()).isFalse();
-        assertThat(detail.permissions().get(1).reason())
+        assertThat(flat.getFirst().editable()).isTrue();
+        assertThat(flat.get(1).editable()).isFalse();
+        assertThat(flat.get(1).reason())
                 .contains("高风险");
+    }
+
+    @Test
+    void hubDrawerSplitsRootAndChildGroupsAndAttributesCodesToChildren() {
+        UUID actorUserId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID();
+        UUID departmentId = UUID.randomUUID();
+        AuthUser actor = actor(actorUserId, null, true);
+        Department department = department(departmentId);
+        Employee target = employee(targetEmployeeId, department);
+        UserAccount actorAccount = account(actorUserId, null, true);
+        UserAccount targetAccount =
+                account(UUID.randomUUID(), targetEmployeeId, false);
+        // hub 树：basic.hub 挂 goods:view；basic.goods 子面挂 edit/export。
+        // Fixture 按字母序排列子面，根面码被子面认领时归子面组。
+        service = service(PermissionSurfaceRegistryTestFixture.registry(
+                Map.of(
+                        "basic.hub", Set.of("goods:view"),
+                        "basic.goods", Set.of("goods:edit", "goods:export")),
+                Map.of("basic.goods", "basic.hub")));
+        Permission view = permission("goods:view", "查看货品", 1);
+        view.setActionType("VIEW");
+        Permission edit = permission("goods:edit", "编辑货品", 2);
+        edit.setActionType("EDIT");
+        Permission export = permission("goods:export", "导出货品", 3);
+        export.setActionType("EXPORT");
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        when(departmentRepo.findById(departmentId))
+                .thenReturn(Optional.of(department));
+        when(managementScope.resolveAuthority(actor, departmentId))
+                .thenReturn(Optional.of(superAuthority(actorUserId)));
+        when(employeeRepo.findById(targetEmployeeId))
+                .thenReturn(Optional.of(target));
+        when(userAccountRepo.findById(actorUserId))
+                .thenReturn(Optional.of(actorAccount));
+        when(userAccountRepo.findByEmployeeId(targetEmployeeId))
+                .thenReturn(Optional.of(targetAccount));
+        when(delegationRepo.findForEmployeePanel(
+                targetAccount.getId(), departmentId))
+                .thenReturn(List.of());
+        when(overrideRepo.findAllByIdUserId(targetAccount.getId()))
+                .thenReturn(List.of());
+        when(permissionResolver.breakdownOf(actorAccount))
+                .thenReturn(breakdown(Set.of("goods:view", "goods:edit", "goods:export")));
+        when(permissionResolver.breakdownsOf(targetAccount))
+                .thenReturn(new PermissionResolver.PermissionBreakdowns(
+                        breakdown(Set.of()), breakdown(Set.of())));
+        when(permissionRepo.findByCodeIn(any()))
+                .thenReturn(List.of(view, edit, export));
+
+        var detail = service.employeePermissions(
+                targetEmployeeId, departmentId, "basic.hub");
+
+        assertEquals("basic.hub", detail.surfaceTitle());
+        assertThat(detail.groups())
+                .extracting(group -> group.surfaceKey())
+                .containsExactly("basic.hub", "basic.goods");
+        assertThat(detail.groups().getFirst().root()).isTrue();
+        assertThat(detail.groups().getFirst().permissions())
+                .extracting(state -> state.code())
+                .containsExactly("goods:view");
+        assertThat(detail.groups().get(1).root()).isFalse();
+        assertThat(detail.groups().get(1).permissions())
+                .extracting(state -> state.code())
+                .containsExactly("goods:edit", "goods:export");
     }
 
     @Test
@@ -337,6 +408,76 @@ class PagePermissionWorkspaceServiceTest {
                 argThat(added -> java.util.Set.copyOf(added)
                         .equals(java.util.Set.of("grant:goods:export", "grant:goods:edit"))),
                 argThat(java.util.Collection::isEmpty), any());
+    }
+
+    @Test
+    void managerDelegationFromHubDrawerAttributesCodesToOwningChildSurface() {
+        UUID actorUserId = UUID.randomUUID();
+        UUID actorEmployeeId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID();
+        UUID targetUserId = UUID.randomUUID();
+        UUID departmentId = UUID.randomUUID();
+        AuthUser actor = actor(actorUserId, actorEmployeeId, false);
+        Department department = department(departmentId);
+        Employee actorEmployee = employee(actorEmployeeId, department);
+        Employee target = employee(targetEmployeeId, department);
+        UserAccount actorAccount = account(actorUserId, actorEmployeeId, false);
+        UserAccount targetAccount = account(targetUserId, targetEmployeeId, false);
+        Permission edit = permission("goods:edit", "编辑货品", 1);
+        // hub 树：从 basic.hub 抽屉授权 goods:edit，归属面应是子面 basic.goods。
+        service = service(PermissionSurfaceRegistryTestFixture.registry(
+                Map.of(
+                        "basic.hub", Set.of("goods:view"),
+                        "basic.goods", Set.of("goods:edit")),
+                Map.of("basic.goods", "basic.hub")));
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        when(employeeRepo.findAllByIdForUpdate(anyCollection()))
+                .thenReturn(List.of(target, actorEmployee));
+        when(userAccountRepo.findByEmployeeId(targetEmployeeId))
+                .thenReturn(Optional.of(targetAccount));
+        when(userAccountRepo.findAllByIdForUpdate(anyCollection()))
+                .thenReturn(List.of(actorAccount, targetAccount));
+        when(managementScope.resolveAuthority(actor, departmentId))
+                .thenReturn(Optional.of(managerAuthority(department)));
+        when(departmentRepo.findAllByIdForUpdate(anyCollection()))
+                .thenReturn(List.of(department));
+        when(delegationRepo.lockAuthorizationEpoch()).thenReturn(7L);
+        when(permissionRepo.findByCodeIn(Set.of("goods:edit")))
+                .thenReturn(List.of(edit));
+        when(permissionResolver.delegableCeilingOf(actorAccount))
+                .thenReturn(Set.of("goods:edit"));
+        when(permissionResolver.breakdownOf(targetAccount))
+                .thenReturn(breakdown(Set.of("goods:edit")));
+        when(permissionResolver.breakdownsOf(targetAccount))
+                .thenReturn(new PermissionResolver.PermissionBreakdowns(
+                        breakdown(Set.of()), breakdown(Set.of())));
+        when(delegationRepo.findAllByIdForUpdate(anyCollection()))
+                .thenReturn(List.of());
+
+        var result = service.setPermissions(
+                targetEmployeeId,
+                departmentId,
+                "basic.hub",
+                new BatchSetStaffPermissionsRequest(List.of(
+                        new BatchSetStaffPermissionsRequest.Change(
+                                "goods:edit", true, 0L))));
+
+        assertEquals("MANAGER_DELEGATION", result.settingMode());
+        assertTrue(result.changes().getFirst().effective());
+        verify(delegationRepo).saveAllAndFlush(savedDelegations.capture());
+        ManagerPermissionDelegation row = savedDelegations.getValue().getFirst();
+        assertEquals("basic.goods", row.getSurfaceKey());
+        assertTrue(row.isEnabled());
+        // 跨面码仍然 fail-closed：不在 hub 树内的码拒绝写入。
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.uten.imp.common.web.ApiException.class,
+                () -> service.setPermissions(
+                        targetEmployeeId,
+                        departmentId,
+                        "basic.hub",
+                        new BatchSetStaffPermissionsRequest(List.of(
+                                new BatchSetStaffPermissionsRequest.Change(
+                                        "stock:view", true, 0L)))));
     }
 
     private static PermissionResolver.PermBreakdown breakdown(

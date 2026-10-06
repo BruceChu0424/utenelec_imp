@@ -200,6 +200,37 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
         assertThat(commitments.get(dimension)).isEqualByComparingTo("5");
     }
 
+    /** 同主仓集合(每条语句只算一次)与逐行函数 fn_warehouse_same_main 对每一对仓结论相同。 */
+    @Test
+    void sameMainWarehouseSetMatchesThePerRowFunctionForEveryPair() {
+        UUID main=warehouse(null,false),childA=warehouse(main,false),childB=warehouse(main,false);
+        UUID grandchild=warehouse(childA,false);
+        UUID deletedChild=warehouse(main,true),underDeleted=warehouse(deletedChild,false);
+        UUID otherMain=warehouse(null,false),otherChild=warehouse(otherMain,false);
+        UUID deletedMain=warehouse(null,true),underDeletedMain=warehouse(deletedMain,false);
+        List<UUID> fixture=List.of(main,childA,childB,grandchild,deletedChild,underDeleted,
+                otherMain,otherChild,deletedMain,underDeletedMain);
+        var named=new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc);
+        for(UUID target:fixture){
+            Set<UUID> set=Set.copyOf(named.queryForList("WITH "+MaterialAnalysisService.SAME_MAIN_WAREHOUSES_CTE
+                    +" SELECT id FROM same_main_warehouses",Map.of("warehouseId",target),UUID.class));
+            for(UUID candidate:fixture){
+                Boolean expected=jdbc.queryForObject("SELECT fn_warehouse_same_main(?,?)",Boolean.class,candidate,target);
+                assertThat(set.contains(candidate)).as("%s 与 %s 是否同主仓",candidate,target).isEqualTo(expected);
+            }
+        }
+        assertThat(Set.copyOf(named.queryForList("WITH "+MaterialAnalysisService.SAME_MAIN_WAREHOUSES_CTE
+                +" SELECT id FROM same_main_warehouses",Map.of("warehouseId",childB),UUID.class)))
+                .containsExactlyInAnyOrder(main,childA,childB,grandchild);
+    }
+
+    private UUID warehouse(UUID parent,boolean deleted){
+        UUID id=UUID.randomUUID();
+        jdbc.update("INSERT INTO warehouses(id,code,name,status,parent_id,is_deleted) VALUES(?,?,?,'使用',?,?)",
+                id,"SAME-MAIN-"+id,"same main "+id,parent,deleted);
+        return id;
+    }
+
     @Test
     void batchLifecycleRequiresActualInboundAndPlanClaimsNeverClearMaterialDemand() {
         UUID employeeId = jdbc.queryForObject(

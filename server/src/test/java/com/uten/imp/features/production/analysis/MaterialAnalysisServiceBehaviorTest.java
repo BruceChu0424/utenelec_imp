@@ -2516,10 +2516,45 @@ class MaterialAnalysisServiceBehaviorTest {
                 .contains(
                         "balance.beneficiary_analysis_id = c.claim_analysis_id")
                 .contains("WHEN r.owner_id = c.claim_analysis_id")
-                .contains("fn_warehouse_same_main(r.warehouse_id,:warehouseId)")
-                .contains("fn_warehouse_same_main(formal.warehouse_id,:warehouseId)")
+                // 同主仓口径每条语句只算一次; 大表上不逐行递归找主仓, 正式预留走 demand_id 索引。
+                .contains("WITH " + MaterialAnalysisService.SAME_MAIN_WAREHOUSES_CTE
+                        .replaceAll("\\s+", " "))
+                .contains("analysis.warehouse_id IN (SELECT id FROM same_main_warehouses)")
+                .contains("r.warehouse_id IN (SELECT id FROM same_main_warehouses)")
+                .contains("formal.warehouse_id IN (SELECT id FROM same_main_warehouses)")
+                .contains("AND formal.demand_id=demand.id")
+                .doesNotContain("fn_warehouse_same_main(")
+                .doesNotContain("formal.owner_id")
                 .doesNotContain(
                         "AND r.owner_id = c.claim_analysis_id AND r.goods_id");
+        verify(query).setParameter("warehouseId", warehouseId);
+    }
+
+    @Test
+    void formalCoverageReadsReservationsByDemandIndexWithSameMainSetComputedOnce() {
+        UUID warehouseId = UUID.randomUUID();
+        Query query = query(List.of());
+        List<String> statements = new ArrayList<>();
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            statements.add(invocation.getArgument(0, String.class));
+            return query;
+        });
+        MaterialAnalysisService service = service(
+                em, mock(ProductionDocumentAccessPolicy.class));
+
+        invokePrivate(service, "formalMaterialCoverage",
+                new Class<?>[]{UUID.class, UUID.class}, UUID.randomUUID(), warehouseId);
+
+        assertThat(statements).singleElement().satisfies(statement ->
+                assertThat(statement.replaceAll("\\s+", " "))
+                        .startsWith("WITH " + MaterialAnalysisService.SAME_MAIN_WAREHOUSES_CTE
+                                .replaceAll("\\s+", " "))
+                        .contains("AND reservation.demand_id=demand.id")
+                        .contains("(reservation.warehouse_id IN (SELECT id FROM same_main_warehouses)"
+                                + " OR reservation.requires_qualified_origin)")
+                        .doesNotContain("fn_warehouse_same_main(")
+                        .doesNotContain("reservation.owner_id"));
         verify(query).setParameter("warehouseId", warehouseId);
     }
 

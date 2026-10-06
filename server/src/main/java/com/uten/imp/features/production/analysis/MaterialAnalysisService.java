@@ -2878,12 +2878,29 @@ public class MaterialAnalysisService {
     }
 
     /**
+     * fn_warehouse_same_main(x, :warehouseId) 的集合形式, 放进 WITH 每条语句只算一次:
+     * 本仓 + 本仓所属主仓及其全部未删后代(fn_warehouse_main_id 沿未删上级找到顶层仓,
+     * fn_warehouse_scope_ids 再沿未删下级展开, 正好是主仓相同的那些仓)。
+     * 预留、分析这类大表用 {@code IN (SELECT id FROM same_main_warehouses)} 过滤, 不要逐行调用
+     * fn_warehouse_same_main——它每行递归找两次主仓, 放在相关子查询或嵌套循环里就是
+     * 「外层行数 x 全部预留行数」次递归, 预留一多单条语句就几十秒(2026-10-06 CI 物料分析刷新超时)。
+     */
+    static final String SAME_MAIN_WAREHOUSES_CTE = """
+            same_main_warehouses AS MATERIALIZED (
+                SELECT CAST(:warehouseId AS uuid) AS id
+                UNION
+                SELECT unnest(fn_warehouse_scope_ids(
+                    ARRAY[fn_warehouse_main_id(CAST(:warehouseId AS uuid))]))
+            )""";
+
+    /**
      * Cross-analysis soft commitments come from other analyses' batch snapshots.
      * Draft-plan quantities are already included in those snapshots. Formal
      * reservations and issued quantities are netted out because neither belongs
      * to the public pool exposed by {@code v_stock_available}.
      * V298：其它分析已收货绑定的量（owner_type='PREPLAN_ANALYSIS' 生效预留）已被
      * {@code v_stock_available} 物理扣除，其快照承诺须按绑定量净额扣除，避免重复扣减。
+     * 同主仓范围见 {@link #SAME_MAIN_WAREHOUSES_CTE}; 正式预留经 demand_id 索引按需求取。
      */
     private Map<MaterialDimension, BigDecimal> softCommittedStock(
             UUID analysisId, UUID warehouseId, Set<MaterialDimension> dimensions,
@@ -2896,7 +2913,8 @@ public class MaterialAnalysisService {
         Set<UUID> goodsIds = dimensions.stream().map(MaterialDimension::goodsId)
                 .collect(Collectors.toSet());
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                WITH raw_commitments AS (
+                WITH %s,
+                raw_commitments AS (
                     SELECT analysis.id AS claim_analysis_id,
                            material.goods_id, material.color_id, material.unit_id,
                            SUM(LEAST(
@@ -2910,7 +2928,7 @@ public class MaterialAnalysisService {
                       ON source.id = material.analysis_item_id
                      AND source.analysis_id = material.analysis_id
                      AND source.is_deleted = FALSE
-                    WHERE fn_warehouse_same_main(analysis.warehouse_id,:warehouseId)
+                    WHERE analysis.warehouse_id IN (SELECT id FROM same_main_warehouses)
                       AND analysis.id <> :analysisId
                       AND analysis.is_deleted = FALSE
                       AND analysis.status IN ('ACTIVE','PARTIALLY_PLANNED')
@@ -2930,17 +2948,19 @@ public class MaterialAnalysisService {
                     SELECT c.goods_id, c.color_id, c.unit_id,
                            GREATEST(c.qty - COALESCE((
                                SELECT SUM(GREATEST(formal.qty-formal.released_qty,0))
-                               FROM stock_reservations formal
+                               FROM production_plans plan
                                JOIN production_material_demands demand
-                                 ON formal.owner_type='PRODUCTION_MATERIAL_DEMAND'
-                                 AND formal.owner_id=demand.id AND demand.is_deleted=FALSE
+                                 ON demand.plan_id=plan.id AND demand.is_deleted=FALSE
                                  AND demand.status NOT IN ('RELEASED','REVERSED')
-                               JOIN production_plans plan ON plan.id=demand.plan_id
-                                 AND plan.material_analysis_id=c.claim_analysis_id
+                               -- 生产物料预留的 owner_id 恒等于 demand_id(owner_shape CHECK), 按 demand_id 索引取
+                               JOIN stock_reservations formal
+                                 ON formal.owner_type='PRODUCTION_MATERIAL_DEMAND'
+                                 AND formal.demand_id=demand.id
+                               WHERE plan.material_analysis_id=c.claim_analysis_id
                                  AND plan.status=1 AND plan.is_deleted=FALSE
                                  AND plan.is_canceled=FALSE
-                               WHERE formal.is_deleted=FALSE
-                                 AND fn_warehouse_same_main(formal.warehouse_id,:warehouseId)
+                                 AND formal.is_deleted=FALSE
+                                 AND formal.warehouse_id IN (SELECT id FROM same_main_warehouses)
                                  AND demand.goods_id=c.goods_id
                                  AND demand.color_id IS NOT DISTINCT FROM c.color_id
                                  AND demand.unit_id=c.unit_id
@@ -2984,7 +3004,7 @@ public class MaterialAnalysisService {
                                WHERE r.is_deleted = FALSE
                                  AND r.status = 0
                                  AND r.owner_type = 'PREPLAN_ANALYSIS'
-                                 AND fn_warehouse_same_main(r.warehouse_id,:warehouseId)
+                                 AND r.warehouse_id IN (SELECT id FROM same_main_warehouses)
                                  AND r.goods_id = c.goods_id
                                  AND r.color_id IS NOT DISTINCT FROM c.color_id
                                GROUP BY r.warehouse_id
@@ -3000,7 +3020,7 @@ public class MaterialAnalysisService {
                 SELECT goods_id, color_id, unit_id, SUM(qty)::numeric
                 FROM netted
                 GROUP BY goods_id, color_id, unit_id
-                """).setParameter("analysisId", analysisId)
+                """.formatted(SAME_MAIN_WAREHOUSES_CTE)).setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId)
                 .setParameter("includedStages", effectiveStages)
                 .setParameter("goodsIds", uuidArrayText(goodsIds)));
@@ -3248,6 +3268,7 @@ public class MaterialAnalysisService {
         // output is finished. Subcontract draws are covered per child by
         // subcontractChildCoverage (ADR-143 §4.5), not through plan demands.
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH %s
                 SELECT demand.id, material.analysis_item_id, material.node_key,
                        SUM(GREATEST(reservation.qty-reservation.released_qty,0))::numeric,
                        CASE WHEN source.source_type IN ('MAKE_COMPONENT','AGGREGATE_MAKE')
@@ -3273,10 +3294,11 @@ public class MaterialAnalysisService {
                     AND document.is_deleted=FALSE
                   WHERE item.execution_segment_id=segment.id AND item.is_deleted=FALSE
                 ) finished ON TRUE
+                -- 生产物料预留的 owner_id 恒等于 demand_id(owner_shape CHECK), 按 demand_id 索引取
                 JOIN stock_reservations reservation
                   ON reservation.owner_type='PRODUCTION_MATERIAL_DEMAND'
-                  AND reservation.owner_id=demand.id AND reservation.is_deleted=FALSE
-                  AND (fn_warehouse_same_main(reservation.warehouse_id,:warehouseId)
+                  AND reservation.demand_id=demand.id AND reservation.is_deleted=FALSE
+                  AND (reservation.warehouse_id IN (SELECT id FROM same_main_warehouses)
                        OR reservation.requires_qualified_origin)
                 JOIN production_material_analysis_materials material
                   ON material.analysis_id=:analysisId AND material.active=TRUE
@@ -3289,7 +3311,7 @@ public class MaterialAnalysisService {
                          source.id,source.source_type,segment.id,segment.planned_qty,segment.product_unit_rate,
                          plan_item.qty,plan_item.iqty,plan_item.unit_rate,finished.qty
                 ORDER BY demand.id,material.path,material.node_key
-                """).setParameter("analysisId", analysisId)
+                """.formatted(SAME_MAIN_WAREHOUSES_CTE)).setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId));
         return rows.stream().map(row -> new FormalMaterialCoverage(uuid(row[0]),uuid(row[1]),string(row[2]),
                 decimal(row[3]),row[4]==null ? null : decimal(row[4]))).toList();

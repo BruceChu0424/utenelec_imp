@@ -66,7 +66,8 @@ public class AiChatController {
         var result = new LinkedHashMap<String, Object>();
         result.put("canChat", true); result.put("available", available);
         result.put("canUploadSalesOrder", destinations.contains("SALES_ORDER"));
-        result.put("canUploadDocument", !destinations.isEmpty()); result.put("workflows", destinations);
+        // Recognizing a file needs only chat access; what it may lead to is filtered per answer.
+        result.put("canUploadDocument", true); result.put("workflows", destinations);
         result.put("canManagePermissions", tools.available("prepare_permission_grant").isPresent());
         // ADR-153: the assistant's scope is stated up front (platform use, business rules, permitted data).
         result.put("scopeSummary", (actor.isSuperAdmin()

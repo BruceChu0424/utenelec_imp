@@ -32,6 +32,7 @@
 - medium+ 只允许点击 Rail 切换，不做大屏整页横移动画；
 - 深链、路由守卫和导航点击都通过 go_router 同步 URL；
 - 业务子页覆盖在保活主 Tab 之上，返回时不重建主 Tab。
+- 「当前是主 Tab 还是业务子页」、导航高亮归属、点 Tab 时「已在本 Tab 就不动」三处一律按栈顶叶子路由 `uri.path` 判断。go_router 14 的 ShellRoute 在命令式 push 后外壳的 `matchedLocation` 仍停在 push 前的位置; 按它判断时, 从工作台/通知/我的/设置 push 进业务页, 页面不会挂载(点了没反应), 再点「工作台」也回不去(2026-10-05 AI 确认卡「确认执行没反应」即此, 见 [ADR-158](../99-决策记录-ADR/ADR-158-AI文件理解一次作答与按权限给出去处.md) §3.1)。现在从主 Tab push 的页面照常显示, 返回回到原 Tab, 点 Tab 离开业务页; 传给 AI 对话框的 `currentRoute` 也是这个值。主 Tab 上进业务页仍首选 `go` / `goFrom`: push 时主 Tab 自己的路由会在被 push 的页面下面再建一份该 Tab 页面(看不见, 白建一次)。回归见 `test/shared/ai/ai_chat_test.dart`「real MainShell shows a page pushed from the ... tab」。
 - 「返回即刷新」由外壳统一承接（详见 [路由设计 §九](../05-架构/路由设计.md)）：任何导航落定都 bump `pageResumeProvider`；外壳**仅当落点 = 工作台时**才刷新全部全局角标（生产/采购/委外/研发/访客/HR/通知未读）+ 今日概览——落到 list/detail 等不显示角标的页面不再空刷 16 个不可见计数、不再抢返回转场帧。各模块 hub 自带 `ref.onPageResume` 按粒度刷新各自任务徽标；通知徽标由 60s 轮询 / 切前台 / 新通知到达联动保持。单据列表页返回用 `_load(_pageNum, silent: true)` 静默换数据、不闪 loading。
 
 ## 三、可信服务器选择与全局连接恢复

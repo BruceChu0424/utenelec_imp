@@ -1,6 +1,6 @@
 # AI 平台接入指南
 
-AI 助手(ERP_CHAT)接入见 [第八章](#八ai-助手页面上下文有据作答与确认卡契约adr-150) 与 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md): 前端随问题发送有界的页面快照, 模型基于服务端发出的来源组织完整回答, 回答经事实守卫, 不通过时按页面内容确定性整理; AI 提出的操作只来自页面登记的动作集, 先生成一次性确认卡, 用户确认后才由页面原按钮路径或原业务端点执行。业务工具仍实现 AiChatToolPort, 成本等敏感结果默认不外送(ADR-140 的权限与历史复核规则不变)。
+AI 助手(ERP_CHAT)接入见 [第八章](#八ai-助手页面上下文有据作答与确认卡契约adr-150--adr-152--adr-153--adr-158) 与 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md): 前端随问题发送有界的页面快照, 模型基于服务端发出的来源组织完整回答, 回答经事实守卫, 不通过时按页面内容确定性整理; AI 提出的操作只来自页面登记的动作集, 先生成一次性确认卡, 用户确认后才由页面原按钮路径或原业务端点执行。业务工具仍实现 AiChatToolPort, 成本等敏感结果默认不外送(ADR-140 的权限与历史复核规则不变)。
 
 > 适用: 任何想用大模型的新功能(第一个接入方是销售客户文件识别, ADR-134)。设计与安全决定见
 > [ADR-133 公共 AI 平台与服务商可配置](../99-决策记录-ADR/ADR-133-公共AI平台与服务商可配置.md)。
@@ -260,6 +260,10 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
       处理器有「只用固定规则」的退路; 解析阶段报告 READING/PARSING/LAYOUT。
 - [ ] 保存单据时只用 `AiJobUsagePort.resultFor` 读服务端结果, 不信任请求体里的识别内容。
 - [ ] 报销、工资等敏感模块不接入(ADR-094 与 ArchitectureBoundaryTest)。
+- [ ] 处理用户上传的文件时先用本地确定性规则; 只有规则认不出才可把**结构**交给模型(表名、表头列名、值形状、行数, 数字与像人名的名称打码),
+      不发任何数据行的值、文件名与文件本身; 模型只回固定枚举, 不决定卡片、页面或权限; 外送字段登记进 ADR 与《中国大陆部署与兼容性》2.3.1(ADR-158)。
+- [ ] 给用户的去处(可填的单据、可去的页面)来自写死的固定目录, 按读者**当前**权限在每次读取时重算; 缺权限的写成中文原因(不出现权限码);
+      页面路由与前端路由守卫用契约测试对齐(ADR-158 的 `ai_document_destinations_contract_test.dart`)。
 
 ## 六、测试
 
@@ -309,11 +313,12 @@ final result = snapshot.result;            // 失败时抛 AiJobFailure(message 
   明细在 `ai_call_logs`(不含提示词与回复)。
 - **服务器迁移/恢复到别的环境**: AAD 绑定 JWT 签发者, 换环境后已保存的密钥会显示「密钥无法解密, 请重新填写」, 在设置页重新填写即可。
 
-## 八、AI 助手页面上下文、有据作答与确认卡契约(ADR-150 / ADR-152 / ADR-153)
+## 八、AI 助手页面上下文、有据作答与确认卡契约(ADR-150 / ADR-152 / ADR-153 / ADR-158)
 
 > 设计与取舍见 [ADR-150](../99-决策记录-ADR/ADR-150-AI助手页面上下文有据作答与确认后执行.md)、
 > [ADR-152 对话设置与连续对话](../99-决策记录-ADR/ADR-152-AI对话设置与连续对话.md) 与
-> [ADR-153 范围闸门与平台知识检索](../99-决策记录-ADR/ADR-153-AI助手范围闸门与平台知识检索.md)。本章是前后端共同遵守的**请求/响应契约**:
+> [ADR-153 范围闸门与平台知识检索](../99-决策记录-ADR/ADR-153-AI助手范围闸门与平台知识检索.md)、
+> [ADR-158 AI 文件理解：一次作答与按权限给出去处](../99-决策记录-ADR/ADR-158-AI文件理解一次作答与按权限给出去处.md)。本章是前后端共同遵守的**请求/响应契约**:
 > 前端工程师照本章实现快照登记、确认卡和执行回执; 后端以本章为准做校验。字段名区分大小写, 未列出的字段服务端忽略。
 
 ### 8.1 发消息
@@ -492,7 +497,7 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
 
 | 字段 | 说明 |
 | --- | --- |
-| `actionType` | PAGE_ACTION(页面登记的动作) / OPEN_GUIDED_FORM(文件识别后打开表单, 8.7) / PERMISSION_GRANT(超管单项授权) |
+| `actionType` | PAGE_ACTION(页面登记的动作) / OPEN_GUIDED_FORM(文件识别后打开表单, 一个文件最多一张, 8.7) / PERMISSION_GRANT(超管单项授权) |
 | `execution` | CLIENT: 确认后由前端调用页面登记的 handler(与页面按钮同一代码路径); SERVER: 确认即调用对应业务端点, 由服务端执行 |
 | `summaryLines` | **服务端渲染**的卡片正文(1..16 行), 模型文字不会出现在这里; 前端逐行原样显示 |
 | `risk` / `riskNote` | LOW/MEDIUM/HIGH; MEDIUM/HIGH 时卡片显示风险提示 |
@@ -528,10 +533,36 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
 4. `POST .../receipt`, 成功写 SUCCEEDED, 执行抛错写 FAILED + 一句原因; 回执请求失败不重放确认, 改用 `GET` 核对状态。
 5. SERVER 动作(授权卡): 先走再认证弹窗拿 `X-Uten-Step-Up`, 再调用专用端点; 用户关闭密码弹窗视为没确认。
 
-**文件识别(OPEN_GUIDED_FORM)**: `ERP_DOCUMENT_ROUTE` 任务结果不再意味着「正在打开」, 而是带 `actions`:
-认出用途时 1 张卡(`args = {"workflow": "SALES_ORDER|SALES_QUOTE|EXPENSE_CLAIM", "sourceJobId": "<本识别任务 id>"}`),
-需要用户选择用途时每个可选用途 1 张卡(最多 3 张, 与 `choices` 一一对应), 只分析/文件混杂/多张发票时没有卡。
-前端**不得**识别完自动跳页; 用户确认后才 `confirm` → 打开对应新建页并按 `AiGuidedFilePlan` 填入 → 回执。读取历史时用途权限已撤销的卡会被去掉。
+**文件识别(`ERP_DOCUMENT_ROUTE`, ADR-158)**: 一个文件一个回答, **最多 1 张确认卡**, 且只能是 `OPEN_GUIDED_FORM`。任务结果不意味着「正在打开」, 前端**不得**识别完自动跳页。
+
+提交: `POST /api/ai/jobs?kind=ERP_DOCUMENT_ROUTE`, 参数只有 `message`(用户原话, ≤512 字)、`pageRoute`(提问时的页面)、可选 `workflow`
+(用户点的选项: `SALES_ORDER` / `SALES_QUOTE` / `EXPENSE_CLAIM`)。任何能用对话的员工都可上传(`capabilities.canUploadDocument` 恒为 true);
+`workflow` 在提交、后台处理和每次读取时都校验, 必须是本人当前可用的单据, 否则 403「当前账号没有这项业务的填写权限」。
+
+读取结果(`filterResultForReader` 之后):
+
+| 字段 | 说明 |
+| --- | --- |
+| `documentType` | 文件类型, 如 `EMPLOYEE_ROSTER`、`PAYROLL`、`ATTENDANCE`、`GOODS_LIST`、`BOM_LIST`、`CUSTOMER_LIST`、`SUPPLIER_LIST`、`STOCK_LIST`、`BANK_STATEMENT`、`INVOICE`、`SALES_ORDER`、`SALES_QUOTATION`、`SALES_TABLE`、`COMMERCIAL_INVOICE`、`MIXED_DOCUMENT`、`UNKNOWN` 等(完整清单与识别依据见 ADR-158 §3.4) |
+| `typeSource` | `RULES`(本地规则按标题/表头认出) / `AI`(规则认不出, 模型按结构推测; 不会因此出卡) / `NONE`(认不出) |
+| `intent` | `RECONCILE` / `IMPORT` / `FILL` / `ANALYZE` / `QUESTION` / `NONE`, 只看用户自己的话(点了选项即 `FILL`) |
+| `workflow` | 选中的单据; `NONE` 表示没有选中 |
+| `title` | 类型的中文叫法 |
+| `summary` | 给人看的回答(纯文本, 一句一行, ≤1200 字): 是什么、凭什么看出来、你想做什么、能做/做不到什么、去哪里; 不含任何数据行的值 |
+| `needsChoice` | true 时没有卡, 用户要从 `choices` 里选 |
+| `choices` | `[{workflow, title}]` 这份文件能填、而且读者当前有权限填的单据; 前端显示为选项 |
+| `pages` | `[{key, title, route}]` 可去的页面, 来自服务端固定目录 `AiDocumentDestinations`, 读者持有该页**全部**权限才给 |
+| `blocked` | `[{title, reason}]` 读者做不了的事项与中文原因(缺什么权限或系统做不到), 不出现权限码; 只显示 |
+| `profile` | `{sheets: [{name, dataRows, columns}]}` 表格结构: 最多 8 张表 × 40 列, 列名 ≤24 字, 连续 3 位以上的数字与邮箱已换成 #, 不含数据行的值; 只在对话里用, 不进表单草稿 |
+| `steps` / `fields` / `fieldConfidence` / `requiresReview` / `missingFields` / `source` | 同原契约(发票字段只在选中报销申请且有权限时才有) |
+| `actions` | 最多 1 张 `OPEN_GUIDED_FORM`, `args = {"workflow": "...", "sourceJobId": "<本识别任务 id>"}` |
+
+- 什么时候出卡: 只有用途明确、本人能填、文件可靠(不是多张发票、不是多种业务混杂、没被截断、用户没说只分析)时才出 1 张; 否则 0 张。文件类型与所选单据明显不符时回答「文件与要做的单据不一致」, 不出卡。
+- 每次读取都按读者**当前**权限重算 `summary`、`choices`、`pages`、`blocked` 与卡片(只保留绑定了读者仍可用单据的卡); 识别规则版本 v3 之前保存的结果读取时 403「文件识别方式已更新，请重新上传。」。
+- 前端选项(chip): 只在 `needsChoice` 为 true 时、只列本账号能填的单据; 点一个就把**同一个文件**连同原话、原页面与 `workflow=<所选>` 再提交一次(用户侧显示「选择：…」), 新回答最多 1 张卡; 每个回答只能选一次。
+- 前端页面按钮: 跳转前再过 `safeAiChatPath` 与路由守卫同一份判断 `locationAllowedFor`, 通过才 `go` 并收起对话框; `blocked` 以灰字「事项：原因」显示; `typeSource=AI` 时加一行「文件用途是 AI 只看表头和格式判断的(具体内容没有发给 AI), 请核对」。
+- 确认卡执行: `confirm` 一次性核销 → `push` 对应新建页(不等待返回) → 等一帧取栈顶路由 → 是该表单才收起对话框并回执 SUCCEEDED; 否则回执 FAILED, 对话框保持打开, 卡上写原因(被路由守卫转到无权限页 / 没打开)。
+  外壳判断主 Tab 与业务子页按栈顶叶子路由 `uri.path`(App 外壳), 所以从工作台等主 Tab push 的表单也能显示。
 
 ### 8.8 服务端接入点
 
@@ -548,6 +579,12 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
   `AiChatPageStateRenderer` 按快照确定性整理(图例、待核对清单、字段状态), AI 不可用时同样如此。
 - **动作提案**: 业务 feature 用 `application.port.AiChatActionProposalPort.propose(Draft)` 发卡(自带短事务, 可在只读事务里调用),
   SERVER 动作在业务事务里 `consumeServerAction` 一次性核销、成功后 `completeServerAction`, 业务拒绝时控制器调用 `failServerAction`。
+- **文件识别**(ADR-158): `AiDocumentRouteHandler` 先用本地确定性规则判断文件类型(标题 + `AiDocumentProfiler` 找到的表头: 标题行下方的表头、合并单元格的两行表头、列含义与值形状;
+  「键 值 键 值」的登记表与表头下的第一行数据不会被当成表头), 用户想做什么只看用户自己的话(`AiDocumentIntent`), 文件里的文字不当指令。仍认不出、且本人有 AI 使用权限并已配置服务时,
+  才由 `AiDocumentModelAssist`(用途码 `ERP_DOCUMENT_ROUTE_TYPE`)把结构发给模型一次, 模型只回类型/意图/把握三个枚举, 把握低、认不出或答非所问一律当认不出; 模型猜的类型不会选出确认卡。
+  可去页面只改 `AiDocumentDestinations` 目录(一行一个 `new Destination(...)`, 前端契约测试 `ai_document_destinations_contract_test.dart` 按行解析并核对路由守卫);
+  做不了的事项与按类型的如实说明也在这个类里, 缺权限的原因写中文权限名。存下的结果带内部字段 `_access` / `_routing`(规则版本 v3) / `_offer`(这份文件能填哪些单据与固定说明句),
+  读取时先校验再去掉, 并按读者当前权限重新生成选项、页面、做不了的事项与回答正文。
 - **授权正则**只拦「给我/帮我开通…权限」「把我设为管理员」「假装我是管理员」这类请求; 「需要什么权限」「怎么开通」之类咨询交给作答。
 
 ### 8.9 前端接入点(A1b)
@@ -557,6 +594,7 @@ VIEW 要有筛选/过滤/只看/搜索/勾选/打开等, FORM 要有改/设为/�
 - 顶层判定不建立依赖(不用 `ModalRoute.isCurrentOf`): TickerMode/Offstage 排除被盖住的页面, 同一导航器按 overlay 绘制顺序取最上面的路由。
 - 页面要补「含义」用列参数 `legendOf`; 待核对原因在行数据里的用 `EditableGridColumn.reviewReasonOf`; 成本/工资/信用/个人信息列必须写 `aiSensitive: true`(词表管不到「单价」「金额」这类通用标签)。
 - 页面动作: `AiPageInfoSource(actions: ...)` 返回 `AiPageAction` 列表(名称/标题/kind/参数/handler)。handler 必须与页面按钮共用代码路径, 失败抛 `AiActionFailure(给人看的原因)`; 签名是 `(AiActionCall call)`, 参数在 `call.args`。按行操作的动作: 行参数写 `rowRef: true`, 动作写 `rowTable`(表格的 owner, UtenEditableGrid 即其 controller), handler 用 `call.row('row')` 拿提问时那条记录, 不要按下标取行。
+- 外壳(`MainShellPage`): 判断主 Tab 还是业务子页、导航高亮、点 Tab 时是否已在本 Tab, 一律按栈顶叶子路由 `uri.path`, 传给对话框的 `currentRoute` 也是它(ADR-158 §3.1)。
 - 对话框(`AiChatOverlay`): 发送时把 `capture().snapshot` 放进 `pageContext.snapshot`, 把 `capture().binding` 记在这条消息上; 卡片用 `AiChatActionCard`; 确认后由 `AiPageContextController.run(l10n, binding, handler, args)` 执行(同一页面实例、参数再校验、行绑定核对); 网络结果不明只 `GET` 查状态, 不重放确认。在对话设置里关掉「读取当前页面」后, 之前消息存的快照与绑定丢弃, 重试只发问题。
 
 ### 8.10 对话设置与连续对话(ADR-152)

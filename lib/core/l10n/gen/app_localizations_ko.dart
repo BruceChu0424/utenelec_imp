@@ -9272,6 +9272,33 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatCardSourceMissing => '원본 파일이 대화에 없습니다. 다시 업로드하세요.';
 
   @override
+  String get aiChatCardFormNotOpened =>
+      '작성 화면이 열리지 않아 이 카드는 무효가 되었습니다. 파일을 다시 올려 주세요.';
+
+  @override
+  String get aiChatCardFormNoAccess =>
+      '이 계정은 해당 작성 화면을 열 권한이 없어 카드가 무효가 되었습니다. 관리자에게 권한을 요청한 뒤 파일을 다시 올려 주세요.';
+
+  @override
+  String aiChatDocumentChosen(String title) {
+    return '선택: $title';
+  }
+
+  @override
+  String aiChatDocumentOpenPage(String title) {
+    return '$title 열기';
+  }
+
+  @override
+  String aiChatDocumentBlockedLine(String title, String reason) {
+    return '$title: $reason';
+  }
+
+  @override
+  String get aiChatDocumentAiJudged =>
+      'AI가 표 제목과 형식만 보고 용도를 판단했습니다(셀 내용은 보내지 않음). 확인해 주세요.';
+
+  @override
   String get aiAuditPurposePageState => '현재 페이지 이해';
 
   @override

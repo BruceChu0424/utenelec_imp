@@ -33,6 +33,7 @@ class AiChatCapabilityCatalogTest {
                 mock(AiChatPageGuideCatalog.class),new ObjectMapper(),registry,workflows,settings,mock(AiChatJobHandler.class));
         var first=controller.capabilities();
         assertThat(first.get("settings")).isEqualTo(AiChatSettings.DEFAULTS.toJson());
+        assertThat(first.get("canUploadDocument")).as("recognizing a file needs only chat access").isEqualTo(true);
         assertThat(first.get("reasoningEffortSupported")).isEqualTo(false);
         assertThat(first.get("tools").toString()).contains("registered_inventory");
         assertThat(first.get("catalogVersion").toString()).matches("[a-f0-9]{64}");

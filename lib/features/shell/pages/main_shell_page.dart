@@ -119,7 +119,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
 
   /// 横滑切到相邻 Tab 落定：同步路由（与点击导航终点一致）。
   void _onTabChanged(int index) {
-    final location = GoRouterState.of(context).matchedLocation;
+    final location = GoRouterState.of(context).uri.path;
     if (location != _tabLocations[index]) {
       context.go(_tabLocations[index]);
     }
@@ -128,7 +128,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
   void _onTabTap(int index) {
     // 收起键盘/焦点，避免切页后键盘残留
     FocusManager.instance.primaryFocus?.unfocus();
-    final location = GoRouterState.of(context).matchedLocation;
+    // 取栈顶落点：从工作台 push 进业务页后再点「工作台」须真的回去，
+    // 用外壳冻结的 matchedLocation 会判成「已在本 Tab」而不动。
+    final location = GoRouterState.of(context).uri.path;
     if (location == _tabLocations[index]) return;
     context.go(_tabLocations[index]);
   }
@@ -159,10 +161,12 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     final l10n = AppLocalizations.of(context);
     // 根级 build 取一次路由状态复用（GoRouterState.of 调用点受闸门测试锁定，
     // 见 test/shared/auth/go_router_state_usage_gate_test.dart）。
-    // ShellRoute 的 matchedLocation 在 push 后可能停在上一路由；URI 跟随活动
-    // 叶子路由，AI 聊天浮层需要的是后者。
+    // 落点一律取栈顶叶子路由 uri.path：go_router 14 的 ShellRoute 在命令式
+    // push 后 matchedLocation 仍停在 push 前的位置。从主 Tab(如 /dashboard)
+    // push 业务页时若按它判 Tab，业务页永远不挂载(2026-10-05 AI 确认卡
+    // 「确认执行没反应」即此)。Tab/子页判定、高亮归属、点 Tab 回调三处同口径。
     final routerState = GoRouterState.of(context);
-    final location = routerState.matchedLocation;
+    final location = routerState.uri.path;
 
     // 「返回即刷新」(ADR-108)：回到工作台时按需重拉——期间本端写过数据或距上次
     // 超过 30 秒才动，且推迟到转场结束：徽章汇总一次请求 + 今日概览(重聚合)按需一次，
@@ -216,7 +220,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
     return IdleTimeoutGuard(
-      child: AiChatOverlay(currentRoute: routerState.uri.path, child: shell),
+      child: AiChatOverlay(currentRoute: location, child: shell),
     );
   }
 

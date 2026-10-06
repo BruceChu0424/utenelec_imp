@@ -12,6 +12,8 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -97,6 +99,7 @@ class _ChatMessage {
     this.documentResult,
     this.documentJobId,
     this.documentPageRoute,
+    this.documentRequest,
     this.sourceFile,
   });
   final String text;
@@ -113,7 +116,14 @@ class _ChatMessage {
   final AiGuidedFileResult? documentResult;
   final String? documentJobId;
   final String? documentPageRoute;
+
+  /// The user's own words sent with the file; a purpose chosen afterwards is
+  /// sent together with them for the same file.
+  final String? documentRequest;
   final PlatformFile? sourceFile;
+
+  /// The purpose picked from this reply's choices; one pick per reply.
+  AiGuidedWorkflow? chosenWorkflow;
 }
 
 enum _ChatDelivery {
@@ -140,10 +150,14 @@ class _ChatAttempt {
     this.intentHint,
     this.snapshot,
     this.binding = AiCaptureBinding.none,
+    this.workflow,
   });
   final int id;
   final String text;
   final PlatformFile? file;
+
+  /// The purpose the user picked for [file]; a retry keeps it.
+  final AiGuidedWorkflow? workflow;
 
   /// The conversation the message was written in; a retry stays in it.
   final String conversationId;
@@ -525,14 +539,14 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
   }
 
+  /// Any chat user may upload a file to have it recognized (the server says so
+  /// per account); what may be done with it afterwards is gated separately.
+  bool get _canUpload =>
+      _capabilities?.canUploadDocument == true &&
+      !widget.identity.scope.readOnly;
+
   Future<void> _pickFile() async {
-    if (!_current ||
-        _busy ||
-        _picking ||
-        widget.identity.scope.readOnly ||
-        _capabilities?.canUploadDocument != true) {
-      return;
-    }
+    if (!_current || _busy || _picking || !_canUpload) return;
     setState(() => _picking = true);
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -789,6 +803,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           params: {
             'message': aiGuidedRequestMessage(attempt.text),
             'pageRoute': ?safeAiGuidedPageRoute(attempt.currentRoute),
+            'workflow': ?attempt.workflow?.code,
           },
           bytes: file.bytes!,
           fileName: file.name,
@@ -808,9 +823,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     final partialRequest = aiGuidedRequestIsTruncated(attempt.text);
     // ADR-150: a recognized file never opens a page by itself. The server
-    // issues OPEN_GUIDED_FORM confirmation cards; the form opens on confirm.
+    // issues at most one confirmation card per file, always a guided form
+    // that opens on confirm; any other card type is not part of a file
+    // answer and is dropped.
     final cards = AiChatAction.listFrom(snapshot.result?['actions'])
         .where((card) => card.actionType == AiChatAction.openGuidedForm)
+        .take(1)
         .toList(growable: false);
     final response = _ChatMessage(
       text:
@@ -819,6 +837,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       documentResult: result,
       documentJobId: snapshot.id,
       documentPageRoute: safeAiGuidedPageRoute(attempt.currentRoute),
+      documentRequest: attempt.text,
       sourceFile: file,
     );
     setState(() {
@@ -1065,10 +1084,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     await _receipt(ui, succeeded: succeeded, message: outcome);
   }
 
+  /// Filling a form from the file (purpose chips and guided cards); uploading
+  /// itself does not depend on it.
   bool _workflowAllowed(AiGuidedWorkflow workflow) =>
       workflow != AiGuidedWorkflow.none &&
-      _capabilities?.canUploadDocument == true &&
-      _capabilities!.workflows.contains(workflow.code) &&
+      _capabilities?.workflows.contains(workflow.code) == true &&
       !widget.identity.scope.readOnly &&
       ref.read(currentPermissionsProvider).containsAll(workflow.permissions);
 
@@ -1113,6 +1133,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       await _receipt(ui, succeeded: false, message: l10n.aiChatCardInvalidArgs);
       return;
     }
+    final AiGuidedFilePlan verified;
     try {
       final plan = AiGuidedFilePlan(
         jobId: jobId,
@@ -1125,14 +1146,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (!plan.matches(ref)) {
         throw ApiException('FORBIDDEN', _t('permissionChanged'));
       }
-      final verified = await validateAiGuidedFilePlan(ref, plan);
+      verified = await validateAiGuidedFilePlan(ref, plan);
       if (!_current || !_workflowAllowed(workflow) || !verified.matches(ref)) {
         throw ApiException('FORBIDDEN', _t('permissionChanged'));
       }
-      setState(() => _open = false);
-      _focus.unfocus();
-      if (!mounted) return;
-      unawaited(context.push(route, extra: verified));
     } catch (error) {
       if (!_current) return;
       await _receipt(
@@ -1144,7 +1161,128 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       );
       return;
     }
+    // Navigate first and check that the form really is the top page; only
+    // then close the panel and report success. Otherwise the panel stays open
+    // with the reason on the card.
+    final landed = await _pushAndLand(route, verified);
+    if (!_current) return;
+    if (landed != route) {
+      await _receipt(
+        ui,
+        succeeded: false,
+        message: landed == RouteName.accessDenied
+            ? l10n.aiChatCardFormNoAccess
+            : l10n.aiChatCardFormNotOpened,
+      );
+      return;
+    }
+    _focus.unfocus();
+    setState(() => _open = false);
     await _receipt(ui, succeeded: true);
+  }
+
+  /// Pushes [route] and returns the top route one frame later (null without
+  /// a router or when the push throws). A redirect, e.g. for missing access,
+  /// lands elsewhere. The push future completes only when the page closes,
+  /// so it is not awaited.
+  Future<String?> _pushAndLand(String route, Object extra) async {
+    final router = GoRouter.maybeOf(context);
+    if (router == null) return null;
+    try {
+      router.push<Object?>(route, extra: extra).ignore();
+    } catch (_) {
+      return null;
+    }
+    await WidgetsBinding.instance.endOfFrame;
+    return mounted ? topMatchedLocationOf(router) : null;
+  }
+
+  // ------------------------------------------------------------ file answers
+
+  /// Purposes offered for a file whose use was not clear: only when the
+  /// server asked for a choice, only those this account may fill in, and
+  /// only while the reply still holds the file (checked against the result
+  /// when the reply arrived; the resent job is checked again).
+  List<AiGuidedChoice> _documentChoices(_ChatMessage reply) {
+    final result = reply.documentResult;
+    if (result == null ||
+        !result.needsChoice ||
+        reply.sourceFile == null ||
+        !_canUpload) {
+      return const [];
+    }
+    final seen = <AiGuidedWorkflow>{};
+    return [
+      for (final choice in result.choices)
+        if (_workflowAllowed(choice.workflow) && seen.add(choice.workflow))
+          choice,
+    ];
+  }
+
+  /// Pages offered for the file, re-checked against the same route guard the
+  /// router applies (the server already filtered them by permission).
+  List<AiDocumentPage> _documentPages(_ChatMessage reply) => [
+    for (final page in reply.documentResult?.pages ?? const <AiDocumentPage>[])
+      if (_pageAllowed(page.route)) page,
+  ];
+
+  bool _pageAllowed(String route) =>
+      safeAiChatPath(route) == route &&
+      locationAllowedFor(
+        ref.read(currentPermissionsProvider),
+        widget.identity.superAdmin,
+        route,
+      );
+
+  /// One pick per reply: the same file is sent again with the chosen purpose,
+  /// and the answer to that carries at most one confirmation card.
+  Future<void> _chooseWorkflow(
+    _ChatMessage reply,
+    AiGuidedChoice choice,
+  ) async {
+    final file = reply.sourceFile;
+    if (!_current ||
+        _busy ||
+        _picking ||
+        reply.chosenWorkflow != null ||
+        file == null ||
+        !_documentChoices(reply).contains(choice)) {
+      return;
+    }
+    if (_messages.length >= 80) {
+      setState(() => _error = _t('limit'));
+      return;
+    }
+    final outgoing = _ChatMessage(
+      text: aiPageL10n(context).aiChatDocumentChosen(choice.title),
+      user: true,
+      fileName: file.name,
+      attempt: _ChatAttempt(
+        id: ++_nextMessageId,
+        text: reply.documentRequest ?? _t('attachmentQuestion'),
+        file: file,
+        conversationId: _conversationId,
+        locale: _locale,
+        currentRoute: reply.documentPageRoute,
+        workflow: choice.workflow,
+      ),
+    );
+    setState(() {
+      reply.chosenWorkflow = choice.workflow;
+      _error = null;
+      _messages.add(outgoing);
+    });
+    await _performMessage(outgoing);
+  }
+
+  /// Goes to a page offered for the file (never a form fill, never a write).
+  void _openDocumentPage(AiDocumentPage page) {
+    if (!_current || !_pageAllowed(page.route)) return;
+    final router = GoRouter.maybeOf(context);
+    if (router == null) return;
+    _focus.unfocus();
+    router.go(page.route);
+    setState(() => _open = false);
   }
 
   bool get _canConfirmGrant =>
@@ -1794,11 +1932,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                       style: Theme.of(context).textTheme.bodyMedium,
                       onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
-                        hintText: _t(
-                          _capabilities?.canUploadDocument == true
-                              ? 'hint'
-                              : 'hintNoUpload',
-                        ),
+                        hintText: _t(_canUpload ? 'hint' : 'hintNoUpload'),
                         hintStyle: TextStyle(color: colors.onSurfaceVariant),
                         contentPadding: const EdgeInsets.fromLTRB(
                           UtenSpacing.s12,
@@ -1825,8 +1959,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   ),
                   child: Row(
                     children: [
-                      if (_capabilities?.canUploadDocument == true &&
-                          !widget.identity.scope.readOnly)
+                      if (_canUpload)
                         IconButton(
                           key: const ValueKey('ai-chat-attach'),
                           tooltip: _t('attach'),
@@ -2077,9 +2210,107 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     (_settings.showSources && message.sources.isNotEmpty)))
               _replyBasis(message),
             if (message.attempt != null) _messageDelivery(message),
+            if (!message.user && message.documentResult != null)
+              _documentFollowUps(message),
             for (final action in message.actions) _actionCard(message, action),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Under a file answer: how the purpose was judged (when AI helped), the
+  /// purposes to pick, the pages to go to, and what this account cannot do.
+  Widget _documentFollowUps(_ChatMessage reply) {
+    final result = reply.documentResult!;
+    final choices = _documentChoices(reply);
+    final pages = _documentPages(reply);
+    final aiJudged = result.typeSource == 'AI';
+    if (!aiJudged &&
+        choices.isEmpty &&
+        pages.isEmpty &&
+        result.blocked.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final l10n = aiPageL10n(context);
+    final colors = Theme.of(context).colorScheme;
+    final muted = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(color: colors.onSurfaceVariant);
+    final job = reply.documentJobId ?? '';
+    final canPick = reply.chosenWorkflow == null && !_busy && !_picking;
+    return Padding(
+      key: ValueKey('ai-doc-followups-$job'),
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (aiJudged)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s6),
+              child: Text(l10n.aiChatDocumentAiJudged, style: muted),
+            ),
+          if (choices.isNotEmpty)
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s4,
+              children: [
+                for (final choice in choices)
+                  ChoiceChip(
+                    key: ValueKey('ai-doc-choice-$job-${choice.workflow.code}'),
+                    label: Text(choice.title),
+                    selected: reply.chosenWorkflow == choice.workflow,
+                    onSelected: canPick
+                        ? (_) => _chooseWorkflow(reply, choice)
+                        : null,
+                  ),
+              ],
+            ),
+          if (pages.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(
+                top: choices.isEmpty ? 0 : UtenSpacing.s4,
+              ),
+              child: Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s4,
+                children: [
+                  for (final page in pages)
+                    ActionChip(
+                      key: ValueKey('ai-doc-page-$job-${page.key}'),
+                      avatar: const Icon(Icons.open_in_new, size: 16),
+                      label: Text(l10n.aiChatDocumentOpenPage(page.title)),
+                      onPressed: () => _openDocumentPage(page),
+                    ),
+                ],
+              ),
+            ),
+          for (final (index, item) in result.blocked.indexed)
+            Padding(
+              key: ValueKey('ai-doc-blocked-$job-$index'),
+              padding: const EdgeInsets.only(top: UtenSpacing.s6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s2),
+                    child: Icon(
+                      Icons.lock_outline,
+                      size: 14,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s6),
+                  Expanded(
+                    child: Text(
+                      l10n.aiChatDocumentBlockedLine(item.title, item.reason),
+                      style: muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

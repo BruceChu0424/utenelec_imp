@@ -9615,6 +9615,33 @@ class AppLocalizationsEn extends AppLocalizations {
       'The original file is no longer in this chat. Upload it again.';
 
   @override
+  String get aiChatCardFormNotOpened =>
+      'The form did not open, so this card is void. Upload the file again to retry.';
+
+  @override
+  String get aiChatCardFormNoAccess =>
+      'This account may not open that form, so this card is void. Ask an administrator for access, then upload the file again.';
+
+  @override
+  String aiChatDocumentChosen(String title) {
+    return 'Chosen: $title';
+  }
+
+  @override
+  String aiChatDocumentOpenPage(String title) {
+    return 'Open $title';
+  }
+
+  @override
+  String aiChatDocumentBlockedLine(String title, String reason) {
+    return '$title: $reason';
+  }
+
+  @override
+  String get aiChatDocumentAiJudged =>
+      'AI judged the purpose from the headers and layout only (no cell contents were sent to it). Please check it.';
+
+  @override
   String get aiAuditPurposePageState => 'Understand this page';
 
   @override

@@ -1119,11 +1119,4 @@ public class PreplanInboundAllocationProjectionService
     private static List<String> warehouseNames(String value) {
         return value == null || value.isBlank() ? List.of() : List.of(value);
     }
-
-    private static boolean sameMainWarehouse(Map<UUID, UUID> roots, UUID left, UUID right) {
-        if (left == null || right == null) return false;
-        if (left.equals(right)) return true;
-        UUID main = roots.get(left);
-        return main != null && main.equals(roots.get(right));
-    }
 }

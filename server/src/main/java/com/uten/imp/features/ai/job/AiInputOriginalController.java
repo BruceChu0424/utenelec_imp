@@ -6,7 +6,6 @@ import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -15,9 +14,6 @@ import java.util.UUID;
 public class AiInputOriginalController {
     private final AiInputOriginalStore originals;
     public AiInputOriginalController(AiInputOriginalStore originals){this.originals=originals;}
-    @GetMapping public List<AiInputOriginalStore.OriginalView> list(@PathVariable String documentKind,@PathVariable UUID docId) {
-        return originals.list(type(documentKind),docId);
-    }
     @GetMapping("/{jobId}/download")
     public ResponseEntity<byte[]> download(@PathVariable String documentKind,@PathVariable UUID docId,@PathVariable UUID jobId) {
         var file=originals.download(type(documentKind),docId,jobId);

@@ -235,33 +235,15 @@ class LegacyMigrationSafetyContractTest {
 
     @Test
     void runtimeErpDoesNotExposeALegacyDatabaseMigrationChannel() throws IOException {
+        // 2026-10-06 平台清扫：legacy 运行时整包删除（分类灌入只存在于离线受审脚本
+        // legacy_migration/migrate.sh）。通道从「@Profile("dev") 关闭」升格为「代码不存在」；
+        // app.legacy.enabled 保留为关闭哨兵，由 InternalTestRuntimeSafetyGate 恒断言 false。
         Path javaRoot = Path.of("src/main/java/com/uten/imp/legacy");
-        assertThat(Files.exists(javaRoot.resolve("config/LegacyProperties.java"))).isFalse();
-        assertThat(Files.exists(javaRoot.resolve("reader/LegacySystemItemReader.java"))).isFalse();
-        assertThat(Files.exists(javaRoot.resolve(
-                "migration/LegacyMigrationOrchestrator.java"))).isFalse();
+        assertThat(Files.notExists(javaRoot))
+                .as("runtime legacy migration package must stay deleted").isTrue();
 
         String pom = compact(Files.readString(Path.of("pom.xml")));
         assertThat(pom).doesNotContain("mssql-jdbc");
-
-        String controller = compact(Files.readString(
-                javaRoot.resolve("web/LegacyMigrationController.java")));
-        assertThat(controller)
-                .contains("@profile(\"dev\")")
-                .contains("@requestmapping(\"/api/admin/dev/legacy-category-seed\")")
-                .doesNotContain("/api/admin/legacy-migration")
-                .doesNotContain("@postmapping(\"/all\")");
-
-        for (String source : List.of(
-                "reader/LegacyCategoryCsvSource.java",
-                "migration/MaterialCategoryMigrator.java",
-                "migration/MouldCategoryMigrator.java",
-                "migration/ClientCategoryMigrator.java",
-                "migration/SupplierCategoryMigrator.java")) {
-            assertThat(compact(Files.readString(javaRoot.resolve(source))))
-                    .as(source)
-                    .contains("@profile(\"dev\")");
-        }
 
         String application = compact(Files.readString(
                 Path.of("src/main/resources/application.yml")));

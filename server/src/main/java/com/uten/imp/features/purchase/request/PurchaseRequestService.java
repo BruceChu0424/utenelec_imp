@@ -180,12 +180,6 @@ public class PurchaseRequestService {
      * （否则订货行多来源 FIFO 分摊（ADR-069）的血缘会被破坏）。修正不重拍审批
      * 快照、不动来源锚定；分解任务台的剩余量随新数量自然重算。</p>
      */
-    /** Unsafe historical callers must refresh to obtain the persistent item version. */
-    @Deprecated
-    public RequestDetail adjustItemQty(UUID requestId, UUID itemId, java.math.BigDecimal qty) {
-        throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量修正必须携带当前明细版本，请刷新后重试");
-    }
-
     @Transactional
     @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')")
     public RequestDetail adjustItemQty(UUID requestId, UUID itemId, java.math.BigDecimal qty, Long expectedVersion) {

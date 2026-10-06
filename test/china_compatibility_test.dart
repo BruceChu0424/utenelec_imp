@@ -234,7 +234,6 @@ void main() {
 
     test('金额与报表数值使用中国千分位，小数和整数语义分开', () {
       expect(formatChinaNumber(1234567.8), '1,234,567.80');
-      expect(formatCny(-1234.5), '-¥1,234.50');
 
       const money = ReportColumn(key: 'v', label: '金额', type: 'money');
       const integer = ReportColumn(key: 'v', label: '数量', type: 'int');

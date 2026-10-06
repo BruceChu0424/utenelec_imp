@@ -2212,12 +2212,6 @@ abstract class AppLocalizations {
   /// **'可选'**
   String get employeeOnboardEmailOptional;
 
-  /// No description provided for @employeeOnboardHireDateHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'yyyy-MM-dd'**
-  String get employeeOnboardHireDateHint;
-
   /// No description provided for @employeeOnboardPickHireDate.
   ///
   /// In zh, this message translates to:
@@ -3295,12 +3289,6 @@ abstract class AppLocalizations {
   /// **'快捷发布祝福'**
   String get noticeQuickCelebrationTitle;
 
-  /// No description provided for @noticeQuickCelebrationSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'选择类型，系统自动套用模板'**
-  String get noticeQuickCelebrationSubtitle;
-
   /// No description provided for @noticeQuickPublish.
   ///
   /// In zh, this message translates to:
@@ -3408,24 +3396,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请联系人事修改'**
   String get profileChangeFieldHrOnly;
-
-  /// No description provided for @profileChangePasswordHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'为安全起见，请输入当前登录密码'**
-  String get profileChangePasswordHint;
-
-  /// No description provided for @profileChangePasswordLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'当前密码'**
-  String get profileChangePasswordLabel;
-
-  /// No description provided for @profileChangePasswordWrong.
-  ///
-  /// In zh, this message translates to:
-  /// **'密码错误，请重试'**
-  String get profileChangePasswordWrong;
 
   /// No description provided for @profileChangeSubmitSuccess.
   ///
@@ -3853,12 +3823,6 @@ abstract class AppLocalizations {
   /// **'销售管理'**
   String get salesHubTitle;
 
-  /// No description provided for @salesHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'销售报表'**
-  String get salesHubSectionReports;
-
   /// No description provided for @salesHubSectionScarcity.
   ///
   /// In zh, this message translates to:
@@ -3967,12 +3931,6 @@ abstract class AppLocalizations {
   /// **'采购管理'**
   String get purchaseHubTitle;
 
-  /// No description provided for @purchaseHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'采购报表'**
-  String get purchaseHubSectionReports;
-
   /// No description provided for @purchaseHubTaskCenter.
   ///
   /// In zh, this message translates to:
@@ -4063,12 +4021,6 @@ abstract class AppLocalizations {
   /// **'委外管理'**
   String get subcontractHubTitle;
 
-  /// No description provided for @subcontractHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'委外报表'**
-  String get subcontractHubSectionReports;
-
   /// No description provided for @subcontractHubTaskCenter.
   ///
   /// In zh, this message translates to:
@@ -4117,12 +4069,6 @@ abstract class AppLocalizations {
   /// **'生产管理'**
   String get productionHubTitle;
 
-  /// No description provided for @productionHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产报表'**
-  String get productionHubSectionReports;
-
   /// No description provided for @productionHubSchedule.
   ///
   /// In zh, this message translates to:
@@ -4147,35 +4093,11 @@ abstract class AppLocalizations {
   /// **'手工新建排产计划，可引用销售订单'**
   String get productionHubPlanSub;
 
-  /// No description provided for @productionHubPlanHistory.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产计划历史'**
-  String get productionHubPlanHistory;
-
-  /// No description provided for @productionHubPlanHistorySub.
-  ///
-  /// In zh, this message translates to:
-  /// **'查看计划、审批与分批记录'**
-  String get productionHubPlanHistorySub;
-
   /// No description provided for @productionHubMaterialAnalysis.
   ///
   /// In zh, this message translates to:
   /// **'物料分析准备'**
   String get productionHubMaterialAnalysis;
-
-  /// No description provided for @productionHubDaily.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产日报表'**
-  String get productionHubDaily;
-
-  /// No description provided for @productionHubDailySub.
-  ///
-  /// In zh, this message translates to:
-  /// **'完工日报·红冲'**
-  String get productionHubDailySub;
 
   /// No description provided for @productionHubReportPlanDetail.
   ///
@@ -4219,12 +4141,6 @@ abstract class AppLocalizations {
   /// **'钱流管理'**
   String get financeHubTitle;
 
-  /// No description provided for @financeHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'钱流报表'**
-  String get financeHubSectionReports;
-
   /// No description provided for @financeHubTaskApproval.
   ///
   /// In zh, this message translates to:
@@ -4248,30 +4164,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'销售订单修改'**
   String get financeSalesChangesQueueLabel;
-
-  /// No description provided for @financeSalesQueueCountLoading.
-  ///
-  /// In zh, this message translates to:
-  /// **'正在加载{queue}待办数量'**
-  String financeSalesQueueCountLoading(String queue);
-
-  /// No description provided for @financeSalesQueueCountFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'{queue}待办数量加载失败，请进入任务页重试'**
-  String financeSalesQueueCountFailed(String queue);
-
-  /// No description provided for @financeSalesQueueCountEmpty.
-  ///
-  /// In zh, this message translates to:
-  /// **'没有待处理的{queue}'**
-  String financeSalesQueueCountEmpty(String queue);
-
-  /// No description provided for @financeSalesQueueCountPending.
-  ///
-  /// In zh, this message translates to:
-  /// **'待处理{queue}：{count}项'**
-  String financeSalesQueueCountPending(String queue, int count);
 
   /// No description provided for @financeHubTaskApprovalSub.
   ///
@@ -4495,30 +4387,6 @@ abstract class AppLocalizations {
   /// **'明细(一行一货品)·汇总(一行一单)'**
   String get warehouseHubSectionReportsDesc;
 
-  /// No description provided for @warehouseHubDocTransfer.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库调拨'**
-  String get warehouseHubDocTransfer;
-
-  /// No description provided for @warehouseHubDocTransferSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库间调拨'**
-  String get warehouseHubDocTransferSub;
-
-  /// No description provided for @warehouseHubDocCheck.
-  ///
-  /// In zh, this message translates to:
-  /// **'盘点'**
-  String get warehouseHubDocCheck;
-
-  /// No description provided for @warehouseHubDocCheckSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'盘点盈亏'**
-  String get warehouseHubDocCheckSub;
-
   /// No description provided for @warehouseHubInventoryLive.
   ///
   /// In zh, this message translates to:
@@ -4680,24 +4548,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'切换人'**
   String get impersonationSwitchPerson;
-
-  /// No description provided for @impersonationEnterPasswordTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认切换人'**
-  String get impersonationEnterPasswordTitle;
-
-  /// No description provided for @impersonationEnterPasswordHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。'**
-  String get impersonationEnterPasswordHint;
-
-  /// No description provided for @impersonationPasswordLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'登录密码'**
-  String get impersonationPasswordLabel;
 
   /// No description provided for @impersonationTargetPickerTitle.
   ///
@@ -5083,12 +4933,6 @@ abstract class AppLocalizations {
   /// **'还缺数量'**
   String get materialShortage;
 
-  /// No description provided for @materialPhysicalShortageHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。'**
-  String get materialPhysicalShortageHint;
-
   /// No description provided for @materialSupplyProgressHint.
   ///
   /// In zh, this message translates to:
@@ -5125,12 +4969,6 @@ abstract class AppLocalizations {
   /// **'负责人'**
   String get materialResponsible;
 
-  /// No description provided for @materialFutureSupply.
-  ///
-  /// In zh, this message translates to:
-  /// **'在途未到'**
-  String get materialFutureSupply;
-
   /// No description provided for @materialProgress.
   ///
   /// In zh, this message translates to:
@@ -5148,12 +4986,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{products} 个产品 · {paths} 条路径'**
   String materialAggregateSources(int products, int paths);
-
-  /// No description provided for @materialRouteChangedRetry.
-  ///
-  /// In zh, this message translates to:
-  /// **'分析已更新，请核对当前所选路线后重试'**
-  String get materialRouteChangedRetry;
 
   /// No description provided for @materialWarehouseFacts.
   ///

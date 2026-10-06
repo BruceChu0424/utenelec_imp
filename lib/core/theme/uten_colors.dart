@@ -11,8 +11,6 @@
 
 import 'package:flutter/material.dart';
 
-import 'uten_tokens.dart';
-
 /// Uten 品牌色板常量
 abstract final class UtenColors {
   // ===== 品牌主色 =====
@@ -277,17 +275,4 @@ abstract final class UtenColors {
   static const Color darkTextPrimary = Color(0xFFF1F5F9);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
   static const Color darkTextTertiary = Color(0xFF64748B);
-
-  // ===== 阴影 token（已收敛到 UtenElevation 双层柔和阴影，此处保留兼容签名）=====
-  /// 常规卡片阴影（= UtenElevation.low）
-  static List<BoxShadow> cardShadow({bool isDark = false}) =>
-      UtenElevation.low(isDark: isDark);
-
-  /// 悬浮卡片阴影（= UtenElevation.mid）
-  static List<BoxShadow> cardShadowLg({bool isDark = false}) =>
-      UtenElevation.mid(isDark: isDark);
-
-  /// 弹层/对话框阴影（= UtenElevation.high）
-  static List<BoxShadow> popoverShadow({bool isDark = false}) =>
-      UtenElevation.high(isDark: isDark);
 }

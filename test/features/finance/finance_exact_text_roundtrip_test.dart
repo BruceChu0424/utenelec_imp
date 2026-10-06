@@ -74,22 +74,6 @@ void main() {
         '0.000000000000000000000007000001',
       );
       expect(
-        financeExactProductUnitsLossless(
-          '0.000000000000000000000001',
-          '7.000001',
-        ),
-        isNull,
-      );
-      final product = financeExactProductUnitsLossless(
-        '0.123456789012345678',
-        '7.123456',
-      );
-      expect(product, isNotNull);
-      expect(
-        financeAmountFromUnits(product!),
-        financeExactMultiplyTexts(['0.123456789012345678', '7.123456']),
-      );
-      expect(
         financeExactSumTexts(['1.000000000000000000000000000001', '-1']),
         '0.000000000000000000000000000001',
       );

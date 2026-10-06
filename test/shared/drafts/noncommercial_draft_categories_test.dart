@@ -21,7 +21,6 @@ import 'package:uten_imp/features/warehouse/widgets/warehouse_form_draft_categor
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
-import 'package:uten_imp/shared/drafts/form_drafts_panel.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -112,7 +111,6 @@ void main() {
         filters.segments.singleWhere((segment) => segment.label == '草稿').count,
         2,
       );
-      expect(find.byType(FormDraftsPanel), findsNothing);
       filters.onSelectionChanged!(1);
       await tester.pumpAndSettle();
       expect(
@@ -171,7 +169,6 @@ void main() {
             'offline server errors must not replace the recoverable input row',
       );
       expect(find.byType(UtenFilterToolbar<int?>), findsOneWidget);
-      expect(find.byType(FormDraftsPanel), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -190,7 +187,6 @@ void main() {
         _draft('onboarding-local', BadgeModule.people, '/employee/onboarding'),
       ]);
       expect(find.byType(FormDraftCategoryTable<ExpenseClaim>), findsNothing);
-      expect(find.byType(FormDraftsPanel), findsNothing);
       final toolbar = tester.widget<UtenFilterToolbar<ExpenseFilter>>(
         find.byType(UtenFilterToolbar<ExpenseFilter>),
       );
@@ -255,7 +251,6 @@ void main() {
         [...table.unpagedItems, ...table.items].map((row) => row.draft?.id),
         ['in-local'],
       );
-      expect(find.byType(FormDraftsPanel), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -305,7 +300,6 @@ void main() {
       expect(find.textContaining('arrival-local'), findsWidgets);
       expect(find.textContaining('outbound-local'), findsNothing);
       expect(find.textContaining('stock-local'), findsNothing);
-      expect(find.byType(FormDraftsPanel), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

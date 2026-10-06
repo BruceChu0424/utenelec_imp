@@ -11,25 +11,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/auth/document_permission_set.dart';
-import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../models/sales_doc.dart';
-
-/// 销售权限点常量（与后端 V51__sales_documents.sql 的 seed 对齐）。
-/// 保留模块别名以兼容既有调用，实际值统一来自全局 [Perm]。
-class SalesPerm {
-  static const quoteView = Perm.salesQuoteView;
-  static const quoteEdit = Perm.salesQuoteEdit;
-  static const orderView = Perm.salesOrderView;
-  static const orderEdit = Perm.salesOrderEdit;
-  static const shipmentView = Perm.salesShipmentView;
-  static const shipmentEdit = Perm.salesShipmentEdit;
-  static const otherShipmentView = Perm.salesOtherShipmentView;
-  static const otherShipmentEdit = Perm.salesOtherShipmentEdit;
-  static const returnView = Perm.salesReturnView;
-  static const returnEdit = Perm.salesReturnEdit;
-  static const reportView = Perm.salesReportView;
-}
 
 class SalesDocConfig {
   const SalesDocConfig({

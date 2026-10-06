@@ -28,11 +28,6 @@ class AccountHistoryStore {
     return const [];
   }
 
-  Future<String?> getLast() async {
-    final all = await getAll();
-    return all.isEmpty ? null : all.first;
-  }
-
   /// 登录成功后调用：加到首位（去重，最多 _maxAccounts 个）。
   Future<void> add(String account) async {
     final a = account.trim();

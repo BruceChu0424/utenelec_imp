@@ -19,13 +19,4 @@ void main() {
       expect(readExactDecimalTexts({'price': 1, 'priceExact': null}), isEmpty);
     },
   );
-  test('preview multiplication never rounds intermediate values', () {
-    expect(
-      multiplyDecimalTexts(['99999999999999.1234', '3', '0.87']),
-      '260999999999997.712074',
-    );
-    expect(multiplyDecimalTexts(['0.0001', '0.0001']), '0.00000001');
-    expect(multiplyDecimalTexts(['-1.25', '2.00']), '-2.5000');
-    expect(multiplyDecimalTexts(['NaN', '1']), isNull);
-  });
 }

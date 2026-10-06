@@ -1032,69 +1032,6 @@ class WeightProfileUpdate {
   };
 }
 
-/// POST /balances/set (核重) 请求体。
-class WeightBalanceSetRequest {
-  const WeightBalanceSetRequest({
-    required this.warehouseId,
-    required this.goodsId,
-    required this.targetWeightKg,
-    required this.reason,
-    required this.idempotencyKey,
-    this.colorId,
-    this.expectedWeightKg,
-  });
-
-  final String warehouseId;
-  final String goodsId;
-  final String? colorId;
-
-  /// 当前账面重量 (乐观校验; null = 当前未知)。
-  final double? expectedWeightKg;
-  final double targetWeightKg;
-
-  /// 2-200 字。
-  final String reason;
-  final String idempotencyKey;
-
-  Map<String, Object?> toJson() => {
-    'warehouseId': warehouseId,
-    'goodsId': goodsId,
-    'colorId': colorId,
-    'expectedWeightKg': expectedWeightKg,
-    'targetWeightKg': targetWeightKg,
-    'reason': reason.trim(),
-    'idempotencyKey': idempotencyKey,
-  };
-}
-
-/// 核重结果 (服务端 BalanceWeightView: 核重后的库存维度)。
-class WeightBalanceSetResult {
-  const WeightBalanceSetResult({
-    this.adjustmentId,
-    this.qty,
-    this.weightKg,
-    this.weightEstimated = false,
-  });
-
-  /// 本次人工核重调整行。
-  final String? adjustmentId;
-
-  /// 库存数量 (基本单位, 核重不改)。
-  final double? qty;
-
-  /// 核重后的库存重量 (千克); null = 未知。
-  final double? weightKg;
-  final bool weightEstimated;
-
-  factory WeightBalanceSetResult.fromJson(Map<String, dynamic> j) =>
-      WeightBalanceSetResult(
-        adjustmentId: _str(j['adjustmentId']),
-        qty: _num(j['qty']),
-        weightKg: _num(j['weightKg']),
-        weightEstimated: j['weightEstimated'] == true,
-      );
-}
-
 class WeightRepository {
   WeightRepository(this.api);
 
@@ -1193,17 +1130,6 @@ class WeightRepository {
   /// 从今天起重新学习 (manual_regime_start_at = now)。
   Future<void> resetRegime(String goodsId) =>
       api.post(ApiEndpoints.stockWeightGoodsResetRegime(goodsId));
-
-  /// 核重: 只改库存重量 (一条人工核重调整行), 不动数量。
-  Future<WeightBalanceSetResult> setBalanceWeight(
-    WeightBalanceSetRequest request,
-  ) async {
-    final json = await api.post(
-      ApiEndpoints.stockWeightBalanceSet,
-      body: request.toJson(),
-    );
-    return WeightBalanceSetResult.fromJson(json);
-  }
 }
 
 final weightRepositoryProvider = Provider<WeightRepository>(

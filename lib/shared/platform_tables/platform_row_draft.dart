@@ -31,26 +31,6 @@ class PlatformRowDraft extends ChangeNotifier {
     canWrite: canWrite,
     cells: cells.toList(),
   );
-  TextEditingController controllerFor(PlatformColumnDefinition definition) =>
-      _controllers.putIfAbsent(definition.id, () {
-        _cells.putIfAbsent(
-          definition.id,
-          () => PlatformColumnCell(
-            columnId: definition.id,
-            definition: definition,
-            persisted: false,
-          ),
-        );
-        final controller = TextEditingController(
-          text: _cells[definition.id]?.value ?? '',
-        );
-        controller.addListener(() {
-          _touched.add(definition.id);
-          dirty = true;
-          notifyListeners();
-        });
-        return controller;
-      });
   void adopt(PlatformRowValues row) {
     canWrite = row.canWrite;
     if (dirty ||

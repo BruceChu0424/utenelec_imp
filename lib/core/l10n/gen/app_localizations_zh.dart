@@ -1122,9 +1122,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardEmailOptional => '可选';
 
   @override
-  String get employeeOnboardHireDateHint => 'yyyy-MM-dd';
-
-  @override
   String get employeeOnboardPickHireDate => '请选择入职日期';
 
   @override
@@ -1698,9 +1695,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeQuickCelebrationTitle => '快捷发布祝福';
 
   @override
-  String get noticeQuickCelebrationSubtitle => '选择类型，系统自动套用模板';
-
-  @override
   String get noticeQuickPublish => '发通知';
 
   @override
@@ -1769,15 +1763,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileChangeFieldHrOnly => '请联系人事修改';
-
-  @override
-  String get profileChangePasswordHint => '为安全起见，请输入当前登录密码';
-
-  @override
-  String get profileChangePasswordLabel => '当前密码';
-
-  @override
-  String get profileChangePasswordWrong => '密码错误，请重试';
 
   @override
   String get profileChangeSubmitSuccess => '修改已提交，HR 审核后生效';
@@ -2000,9 +1985,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesHubTitle => '销售管理';
 
   @override
-  String get salesHubSectionReports => '销售报表';
-
-  @override
   String get salesHubSectionScarcity => '稀缺仲裁';
 
   @override
@@ -2057,9 +2039,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get purchaseHubTitle => '采购管理';
 
   @override
-  String get purchaseHubSectionReports => '采购报表';
-
-  @override
   String get purchaseHubTaskCenter => '采购任务中心';
 
   @override
@@ -2105,9 +2084,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subcontractHubTitle => '委外管理';
 
   @override
-  String get subcontractHubSectionReports => '委外报表';
-
-  @override
   String get subcontractHubTaskCenter => '委外任务中心';
 
   @override
@@ -2132,9 +2108,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubTitle => '生产管理';
 
   @override
-  String get productionHubSectionReports => '生产报表';
-
-  @override
   String get productionHubSchedule => '生产调度与进度';
 
   @override
@@ -2147,19 +2120,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubPlanSub => '手工新建排产计划，可引用销售订单';
 
   @override
-  String get productionHubPlanHistory => '生产计划历史';
-
-  @override
-  String get productionHubPlanHistorySub => '查看计划、审批与分批记录';
-
-  @override
   String get productionHubMaterialAnalysis => '物料分析准备';
-
-  @override
-  String get productionHubDaily => '生产日报表';
-
-  @override
-  String get productionHubDailySub => '完工日报·红冲';
 
   @override
   String get productionHubReportPlanDetail => '计划明细';
@@ -2183,9 +2144,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeHubTitle => '钱流管理';
 
   @override
-  String get financeHubSectionReports => '钱流报表';
-
-  @override
   String get financeHubTaskApproval => '订货审批任务中心';
 
   @override
@@ -2196,26 +2154,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get financeSalesChangesQueueLabel => '销售订单修改';
-
-  @override
-  String financeSalesQueueCountLoading(String queue) {
-    return '正在加载$queue待办数量';
-  }
-
-  @override
-  String financeSalesQueueCountFailed(String queue) {
-    return '$queue待办数量加载失败，请进入任务页重试';
-  }
-
-  @override
-  String financeSalesQueueCountEmpty(String queue) {
-    return '没有待处理的$queue';
-  }
-
-  @override
-  String financeSalesQueueCountPending(String queue, int count) {
-    return '待处理$queue：$count项';
-  }
 
   @override
   String get financeHubTaskApprovalSub => '采购与委外订货审批';
@@ -2329,18 +2267,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionReportsDesc => '明细(一行一货品)·汇总(一行一单)';
 
   @override
-  String get warehouseHubDocTransfer => '仓库调拨';
-
-  @override
-  String get warehouseHubDocTransferSub => '仓库间调拨';
-
-  @override
-  String get warehouseHubDocCheck => '盘点';
-
-  @override
-  String get warehouseHubDocCheckSub => '盘点盈亏';
-
-  @override
   String get warehouseHubInventoryLive => '即时库存';
 
   @override
@@ -2420,16 +2346,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get impersonationSwitchPerson => '切换人';
-
-  @override
-  String get impersonationEnterPasswordTitle => '确认切换人';
-
-  @override
-  String get impersonationEnterPasswordHint =>
-      '为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。';
-
-  @override
-  String get impersonationPasswordLabel => '登录密码';
 
   @override
   String get impersonationTargetPickerTitle => '选择要查看的员工';
@@ -2638,10 +2554,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialShortage => '还缺数量';
 
   @override
-  String get materialPhysicalShortageHint =>
-      '本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。';
-
-  @override
   String get materialSupplyProgressHint =>
       '跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。';
 
@@ -2661,9 +2573,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialResponsible => '负责人';
 
   @override
-  String get materialFutureSupply => '在途未到';
-
-  @override
   String get materialProgress => '进度 / 待办';
 
   @override
@@ -2673,9 +2582,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String materialAggregateSources(int products, int paths) {
     return '$products 个产品 · $paths 条路径';
   }
-
-  @override
-  String get materialRouteChangedRetry => '分析已更新，请核对当前所选路线后重试';
 
   @override
   String get materialWarehouseFacts => '仓库与供给明细';

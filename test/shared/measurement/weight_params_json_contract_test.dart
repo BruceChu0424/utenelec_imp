@@ -253,20 +253,4 @@ void main() {
       reason: '来源类型未知 (null) 不算已清空',
     );
   });
-
-  test('balance weight result follows BalanceWeightView', () {
-    final result = WeightBalanceSetResult.fromJson({
-      'adjustmentId': 'adj-1',
-      'warehouseId': 'w1',
-      'goodsId': 'g1',
-      'colorId': null,
-      'qty': 5000,
-      'weightKg': 0.85,
-      'weightEstimated': false,
-    });
-    expect(result.adjustmentId, 'adj-1');
-    expect(result.qty, 5000);
-    expect(result.weightKg, 0.85);
-    expect(result.weightEstimated, isFalse);
-  });
 }

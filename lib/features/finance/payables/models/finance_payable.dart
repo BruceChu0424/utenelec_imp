@@ -99,12 +99,6 @@ class FinancePayablesSummary {
   final String? prepaymentLocal;
   final int pendingLossCases;
 
-  @Deprecated('Use offsetLocal')
-  String? get writeOffLocal => offsetLocal;
-
-  @Deprecated('Use dueThisMonthLocal')
-  String? get dueLocal => dueThisMonthLocal;
-
   factory FinancePayablesSummary.fromJson(Map<String, dynamic>? json) {
     final source = json ?? const <String, dynamic>{};
     return FinancePayablesSummary(
@@ -235,12 +229,6 @@ class FinancePayableItem {
   bool get canApplyCredit =>
       !legacyImported &&
       (openItemKind == 'CREDIT' || openItemKind == 'CLAIM_CREDIT');
-
-  @Deprecated('Use grossOriginal')
-  String? get payableOriginal => grossOriginal;
-
-  @Deprecated('Use offsetOriginal')
-  String? get writeOffOriginal => offsetOriginal;
 
   factory FinancePayableItem.fromJson(Map<String, dynamic> json) {
     final supplier = _mapValue(json['supplier']);

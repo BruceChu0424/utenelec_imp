@@ -1178,9 +1178,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardEmailOptional => 'Optional';
 
   @override
-  String get employeeOnboardHireDateHint => 'yyyy-MM-dd';
-
-  @override
   String get employeeOnboardPickHireDate => 'Please pick a hire date';
 
   @override
@@ -1779,10 +1776,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeQuickCelebrationTitle => 'Quick celebration';
 
   @override
-  String get noticeQuickCelebrationSubtitle =>
-      'Pick a type; the template fills automatically';
-
-  @override
   String get noticeQuickPublish => 'New notice';
 
   @override
@@ -1851,16 +1844,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileChangeFieldHrOnly => 'Contact HR';
-
-  @override
-  String get profileChangePasswordHint =>
-      'For your safety, please enter your current password';
-
-  @override
-  String get profileChangePasswordLabel => 'Current password';
-
-  @override
-  String get profileChangePasswordWrong => 'Incorrect password';
 
   @override
   String get profileChangeSubmitSuccess => 'Submitted, pending HR review';
@@ -2088,9 +2071,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesHubTitle => 'Sales';
 
   @override
-  String get salesHubSectionReports => 'Sales reports';
-
-  @override
   String get salesHubSectionScarcity => 'Stock arbitration';
 
   @override
@@ -2145,9 +2125,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get purchaseHubTitle => 'Purchasing';
 
   @override
-  String get purchaseHubSectionReports => 'Purchase reports';
-
-  @override
   String get purchaseHubTaskCenter => 'Purchasing tasks';
 
   @override
@@ -2193,9 +2170,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get subcontractHubTitle => 'Subcontracting';
 
   @override
-  String get subcontractHubSectionReports => 'Subcontract reports';
-
-  @override
   String get subcontractHubTaskCenter => 'Subcontracting tasks';
 
   @override
@@ -2220,9 +2194,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubTitle => 'Production';
 
   @override
-  String get productionHubSectionReports => 'Production reports';
-
-  @override
   String get productionHubSchedule => 'Scheduling & progress';
 
   @override
@@ -2236,20 +2207,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Create a plan manually, optionally referencing a sales order';
 
   @override
-  String get productionHubPlanHistory => 'Production plan history';
-
-  @override
-  String get productionHubPlanHistorySub =>
-      'View plans, approvals, and batch records';
-
-  @override
   String get productionHubMaterialAnalysis => 'Material readiness analysis';
-
-  @override
-  String get productionHubDaily => 'Production daily';
-
-  @override
-  String get productionHubDailySub => 'Daily output & reversal';
 
   @override
   String get productionHubReportPlanDetail => 'Plan detail';
@@ -2273,9 +2231,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeHubTitle => 'Finance';
 
   @override
-  String get financeHubSectionReports => 'Finance reports';
-
-  @override
   String get financeHubTaskApproval => 'Order approval tasks';
 
   @override
@@ -2287,26 +2242,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get financeSalesChangesQueueLabel => 'sales order changes';
-
-  @override
-  String financeSalesQueueCountLoading(String queue) {
-    return 'Loading pending $queue';
-  }
-
-  @override
-  String financeSalesQueueCountFailed(String queue) {
-    return 'Could not load pending $queue. Open the task page to retry.';
-  }
-
-  @override
-  String financeSalesQueueCountEmpty(String queue) {
-    return 'No pending $queue';
-  }
-
-  @override
-  String financeSalesQueueCountPending(String queue, int count) {
-    return 'Pending $queue: $count';
-  }
 
   @override
   String get financeHubTaskApprovalSub =>
@@ -2422,18 +2357,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Detail (per item) & summary (per doc)';
 
   @override
-  String get warehouseHubDocTransfer => 'Stock transfer';
-
-  @override
-  String get warehouseHubDocTransferSub => 'Between warehouses';
-
-  @override
-  String get warehouseHubDocCheck => 'Stocktake';
-
-  @override
-  String get warehouseHubDocCheckSub => 'Count & adjustment';
-
-  @override
   String get warehouseHubInventoryLive => 'Live stock';
 
   @override
@@ -2514,16 +2437,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get impersonationSwitchPerson => 'Switch person';
-
-  @override
-  String get impersonationEnterPasswordTitle => 'Confirm switch person';
-
-  @override
-  String get impersonationEnterPasswordHint =>
-      'For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.';
-
-  @override
-  String get impersonationPasswordLabel => 'Login password';
 
   @override
   String get impersonationTargetPickerTitle => 'Select an employee to view';
@@ -2745,10 +2658,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialShortage => 'Still short';
 
   @override
-  String get materialPhysicalShortageHint =>
-      'Batch demand still lacking qualified material. Issuing purchase, subcontract or workshop work does not reduce this shortage; qualified stock-in allocated to this batch does. Additional supply separately deducts incoming supply to prevent duplicate requests.';
-
-  @override
   String get materialSupplyProgressHint =>
       'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
 
@@ -2768,9 +2677,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialResponsible => 'Owner';
 
   @override
-  String get materialFutureSupply => 'In transit';
-
-  @override
   String get materialProgress => 'Progress / next step';
 
   @override
@@ -2780,10 +2686,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
   }
-
-  @override
-  String get materialRouteChangedRetry =>
-      'Analysis updated. Review the selected routes and try again.';
 
   @override
   String get materialWarehouseFacts => 'Warehouse and supply details';

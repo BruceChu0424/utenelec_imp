@@ -18,7 +18,6 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/draft_workspace_table.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
-import 'package:uten_imp/shared/drafts/form_drafts_panel.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
 
@@ -263,28 +262,6 @@ void main() {
       },
     );
   }
-  testWidgets(
-    'unknown delete UI old panel disables removal but keeps recovery available',
-    (tester) async {
-      final drafts = _Drafts(_draft());
-      await _mount(tester, drafts, const FormDraftsPanel());
-      final delete = tester.widget<IconButton>(
-        find.byKey(const ValueKey('delete-form-draft-local')),
-      );
-      expect(delete.onPressed, isNull);
-      expect(delete.tooltip, '先核对提交');
-      expect(
-        tester
-            .widget<UtenButton>(
-              find.byKey(const ValueKey('resume-form-draft-local')),
-            )
-            .onPressed,
-        isNotNull,
-      );
-      expect(drafts.deleted, isEmpty);
-    },
-  );
-
   testWidgets('unknown delete UI category disables row and bulk deletion', (
     tester,
   ) async {

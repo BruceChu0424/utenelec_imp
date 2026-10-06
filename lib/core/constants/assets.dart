@@ -24,10 +24,4 @@ abstract final class UtenAssets {
       'assets/celebration/xiaoyou_wedding.png';
   static const String celebrationNewborn =
       'assets/celebration/xiaoyou_newborn.png';
-
-  // —— 目录（pubspec.yaml 同步声明的 asset 根）——
-  static const String dirImages = 'assets/images/';
-  static const String dirIcons = 'assets/icons/';
-  static const String dirLottie = 'assets/lottie/';
-  static const String dirCelebration = 'assets/celebration/';
 }

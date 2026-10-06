@@ -1144,9 +1144,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeOnboardEmailOptional => '선택';
 
   @override
-  String get employeeOnboardHireDateHint => 'yyyy-MM-dd';
-
-  @override
   String get employeeOnboardPickHireDate => '입사일을 선택해 주세요';
 
   @override
@@ -1731,9 +1728,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeQuickCelebrationTitle => '빠른 축하 발행';
 
   @override
-  String get noticeQuickCelebrationSubtitle => '유형을 고르면 템플릿이 자동 적용됩니다';
-
-  @override
   String get noticeQuickPublish => '알림 작성';
 
   @override
@@ -1802,15 +1796,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get profileChangeFieldHrOnly => '인사 문의';
-
-  @override
-  String get profileChangePasswordHint => '보안을 위해 현재 로그인 비밀번호를 입력해 주세요';
-
-  @override
-  String get profileChangePasswordLabel => '현재 비밀번호';
-
-  @override
-  String get profileChangePasswordWrong => '비밀번호가 올바르지 않습니다';
 
   @override
   String get profileChangeSubmitSuccess => '제출되었습니다. 인사 검토 후 반영됩니다';
@@ -2034,9 +2019,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesHubTitle => '영업';
 
   @override
-  String get salesHubSectionReports => '영업 보고서';
-
-  @override
   String get salesHubSectionScarcity => '재고 조정';
 
   @override
@@ -2091,9 +2073,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get purchaseHubTitle => '구매';
 
   @override
-  String get purchaseHubSectionReports => '구매 보고서';
-
-  @override
   String get purchaseHubTaskCenter => '구매 작업';
 
   @override
@@ -2139,9 +2118,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subcontractHubTitle => '외주';
 
   @override
-  String get subcontractHubSectionReports => '외주 보고서';
-
-  @override
   String get subcontractHubTaskCenter => '외주 작업';
 
   @override
@@ -2166,9 +2142,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubTitle => '생산';
 
   @override
-  String get productionHubSectionReports => '생산 보고서';
-
-  @override
   String get productionHubSchedule => '일정 및 진행';
 
   @override
@@ -2181,19 +2154,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionHubPlanSub => '판매 주문을 참조해 직접 생성';
 
   @override
-  String get productionHubPlanHistory => '생산 계획 이력';
-
-  @override
-  String get productionHubPlanHistorySub => '계획, 승인 및 배치 기록 조회';
-
-  @override
   String get productionHubMaterialAnalysis => '자재 준비 분석';
-
-  @override
-  String get productionHubDaily => '생산 일보';
-
-  @override
-  String get productionHubDailySub => '일일 완료·취소';
 
   @override
   String get productionHubReportPlanDetail => '계획 상세';
@@ -2217,9 +2178,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get financeHubTitle => '자금';
 
   @override
-  String get financeHubSectionReports => '자금 보고서';
-
-  @override
   String get financeHubTaskApproval => '주문 승인 작업';
 
   @override
@@ -2230,26 +2188,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get financeSalesChangesQueueLabel => '판매 주문 변경';
-
-  @override
-  String financeSalesQueueCountLoading(String queue) {
-    return '$queue 대기 건수 불러오는 중';
-  }
-
-  @override
-  String financeSalesQueueCountFailed(String queue) {
-    return '$queue 대기 건수를 불러오지 못했습니다. 작업 페이지에서 다시 시도하세요.';
-  }
-
-  @override
-  String financeSalesQueueCountEmpty(String queue) {
-    return '대기 중인 $queue 없음';
-  }
-
-  @override
-  String financeSalesQueueCountPending(String queue, int count) {
-    return '대기 중인 $queue: $count건';
-  }
 
   @override
   String get financeHubTaskApprovalSub => '구매 및 외주 주문 승인';
@@ -2363,18 +2301,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseHubSectionReportsDesc => '상세(품목별)·요약(전표별)';
 
   @override
-  String get warehouseHubDocTransfer => '창고 이동';
-
-  @override
-  String get warehouseHubDocTransferSub => '창고 간 이동';
-
-  @override
-  String get warehouseHubDocCheck => '재고조사';
-
-  @override
-  String get warehouseHubDocCheckSub => '실사·조정';
-
-  @override
   String get warehouseHubInventoryLive => '실시간 재고';
 
   @override
@@ -2454,16 +2380,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get impersonationSwitchPerson => '사용자 전환';
-
-  @override
-  String get impersonationEnterPasswordTitle => '사용자 전환 확인';
-
-  @override
-  String get impersonationEnterPasswordHint =>
-      '보안을 위해 로그인 비밀번호를 입력하세요. 통과 후 15분간 자유롭게 전환할 수 있습니다.';
-
-  @override
-  String get impersonationPasswordLabel => '로그인 비밀번호';
 
   @override
   String get impersonationTargetPickerTitle => '조회할 직원 선택';
@@ -2678,10 +2594,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialShortage => 'Kit shortage';
 
   @override
-  String get materialPhysicalShortageHint =>
-      '이번 생산분에 배정된 합격 자재를 제외한 실제 부족 수량입니다. 구매, 외주 또는 작업 지시만으로는 줄어들지 않으며, 합격 입고 후 이번 생산분에 배정되어야 줄어듭니다. 추가 발주량은 입고 예정 수량을 별도로 차감하여 중복 발주를 방지합니다.';
-
-  @override
   String get materialSupplyProgressHint =>
       '발주, 재무 승인, 도착, 검사 및 입고 진행을 추적합니다. 행을 두 번 클릭하면 상세 내용을 확인할 수 있습니다. 지시 후에도 실제 부족 수량은 유지되며 합격 입고 후 갱신됩니다.';
 
@@ -2701,9 +2613,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get materialResponsible => '담당자';
 
   @override
-  String get materialFutureSupply => 'Expected supply';
-
-  @override
   String get materialProgress => 'Progress / next step';
 
   @override
@@ -2713,10 +2622,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
   }
-
-  @override
-  String get materialRouteChangedRetry =>
-      'Analysis updated. Review the selected routes and try again.';
 
   @override
   String get materialWarehouseFacts => 'Warehouse and supply details';

@@ -14,7 +14,7 @@
 //     2026-09-21 用户口径：黄色在红色左边; 2026-09-23 起两枚一起挪到图标行最右边并放大 1.4 倍。
 //     同样逐级累加(服务端徽章目录的黄数一链, ADR-108)，与红色互不相干。
 //   · [labelSuffix]（标题文字右侧行内）= 次要计数位。一张卡同时有「别人给我的待办」
-//     和「我自己的草稿」时，待办占 [badge]，草稿退到这里（仍是红色 UtenDraftBadge）
+//     和「我自己的草稿」时，待办占 [badge]，草稿退到这里
 //     ——一个 badge 槽塞两个红圆点读不懂。浏览型计数（历史/记录）也走这里，
 //     用中性 [UtenCountSuffix]。
 //
@@ -58,7 +58,7 @@ class UtenHubCard extends StatelessWidget {
   /// 图标底色与图标色；默认 theme.colorScheme.primary（基础资料按条目传绿/青）。
   final Color? color;
 
-  /// 图标行最右边的「待办」徽章(如 PurchaseTaskBadge / UtenNotificationBadge)，
+  /// 图标行最右边的「待办」徽章(如 UtenNotificationBadge)，
   /// 并排两枚时在**右**。
   ///
   /// 只放「轮到我动手」的数字(含本人草稿)；「在办中」的数字请用 [progressBadge]，
@@ -79,7 +79,7 @@ class UtenHubCard extends StatelessWidget {
   final bool badgeShowLabel;
 
   /// 标题右侧的次要计数位：卡片已用 [badge] 放待办时，草稿徽章
-  /// （`UtenDraftBadge`）退到这里；浏览型计数用 `UtenCountSuffix`。
+  /// 退到这里；浏览型计数用 `UtenCountSuffix`。
   ///
   /// 与标题同一行；标题过长时先压标题（Flexible 换行），后缀始终完整可见。
   /// 2026-09-11 起全部 hub 的草稿都占得到 [badge]（那几张卡本就没有别的待办徽章），

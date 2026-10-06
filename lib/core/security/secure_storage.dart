@@ -60,13 +60,6 @@ class AuthTokenSnapshot {
       accessToken == other.accessToken &&
       refreshToken == other.refreshToken;
 
-  bool isSameLineage(AuthTokenSnapshot other) {
-    final lineage = sessionLineage;
-    return lineage != null &&
-        lineage.isNotEmpty &&
-        lineage == other.sessionLineage;
-  }
-
   Map<String, Object?> toJson() => <String, Object?>{
     'version': 2,
     'generation': generation,
@@ -433,9 +426,6 @@ class SecureStorage {
       );
     }
   });
-
-  Future<AuthTokenSnapshot> clearAndReturnPreviousTokens() async =>
-      (await clearForLogoutIntent()).previous;
 
   Future<void> clear() async {
     await clearForLogoutIntent();

@@ -6,7 +6,3 @@ String formatChinaNumber(num value, {int decimalDigits = 2}) {
   final decimals = digits == 0 ? '' : '.${List.filled(digits, '0').join()}';
   return NumberFormat('#,##0$decimals', 'zh_CN').format(value);
 }
-
-/// 人民币展示。业务同时支持多币种时，应使用 [formatChinaNumber] 并另显币种代码。
-String formatCny(num value, {int decimalDigits = 2}) =>
-    '${value.isNegative ? '-' : ''}¥${formatChinaNumber(value.abs(), decimalDigits: decimalDigits)}';

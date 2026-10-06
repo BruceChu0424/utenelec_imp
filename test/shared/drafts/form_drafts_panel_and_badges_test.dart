@@ -1,15 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
-import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/badges/badge_scope.dart';
 import 'package:uten_imp/shared/badges/effective_badge_summary_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
-import 'package:uten_imp/shared/drafts/form_drafts_panel.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
@@ -115,81 +110,5 @@ void main() {
     expect(local.total.todo, 1);
     expect(local.loaded, isFalse);
     expect(local.hasSource('drafts'), isFalse);
-  });
-
-  testWidgets('panel filters module and resumes original route with draft id', (
-    tester,
-  ) async {
-    final drafts = FixedFormDrafts([
-      draft('sales-1', BadgeModule.sales),
-      draft('purchase-1', BadgeModule.purchase),
-    ]);
-    final router = GoRouter(
-      routes: [
-        GoRoute(
-          path: '/',
-          builder: (_, _) =>
-              const Scaffold(body: FormDraftsPanel(module: BadgeModule.sales)),
-        ),
-        GoRoute(
-          path: '/sales/orders/new',
-          builder: (_, state) => Scaffold(
-            body: Text(
-              '${state.uri.queryParameters['draftId']}:'
-              '${state.uri.queryParameters['customerId']}',
-            ),
-          ),
-        ),
-      ],
-    );
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [formDraftsProvider.overrideWith(() => drafts)],
-        child: MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-        ),
-      ),
-    );
-    expect(find.text('新建sales单据 sales-1'), findsOneWidget);
-    expect(find.text('新建purchase单据 purchase-1'), findsNothing);
-    expect(
-      tester
-          .widget<UtenNotificationBadge>(find.byType(UtenNotificationBadge))
-          .count,
-      1,
-    );
-    await tester.tap(find.byKey(const ValueKey('resume-form-draft-sales-1')));
-    await tester.pumpAndSettle();
-    expect(find.text('sales-1:original'), findsOneWidget);
-  });
-
-  testWidgets('delete confirms, removes local record, and hides empty panel', (
-    tester,
-  ) async {
-    final drafts = FixedFormDrafts([draft('sales-1', BadgeModule.sales)]);
-    await tester.binding.setSurfaceSize(const Size(360, 640));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [formDraftsProvider.overrideWith(() => drafts)],
-        child: const MaterialApp(home: Scaffold(body: FormDraftsPanel())),
-      ),
-    );
-    expect(tester.takeException(), isNull);
-    await tester.tap(find.byKey(const ValueKey('delete-form-draft-sales-1')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('取消'));
-    await tester.pumpAndSettle();
-    expect(drafts.deleted, isEmpty);
-    await tester.tap(find.byKey(const ValueKey('delete-form-draft-sales-1')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('删除'));
-    await tester.pumpAndSettle();
-    expect(drafts.deleted, ['sales-1']);
-    expect(find.text('未完成草稿'), findsNothing);
-    expect(find.byType(UtenNotificationBadge), findsNothing);
   });
 }

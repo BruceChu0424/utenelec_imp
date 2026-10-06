@@ -1035,6 +1035,8 @@ class _ProductionDailyReportEditPageState
       ..maxReportQty = source.fqcRecoveryRequiresMaterial
           ? 0
           : source.maxReportQty
+      ..remainingActualSurplusQty = source.remainingActualSurplusQty
+      ..pendingSupplementQty = source.pendingSupplementQty
       ..remainingPlanQty = source.remainingCompletionQty
       ..fqcRecoveryDispositionCode = source.fqcRecoveryDispositionCode
       ..fqcSourceReportNo = source.fqcSourceReportNo
@@ -1243,6 +1245,8 @@ class _ProductionDailyReportEditPageState
         ..orderQty = source.orderQty
         ..maxReportQty = source.maxReportQty
         ..allowActualOverproduction = source.allowActualOverproduction
+        ..remainingActualSurplusQty = source.remainingActualSurplusQty
+        ..pendingSupplementQty = source.pendingSupplementQty
         ..supplementRequestId = null
         ..supplementProofId = null
         ..supplementApprovedActualQty = null
@@ -2375,11 +2379,19 @@ class _ProductionDailyReportEditPageState
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
         return;
       }
-      if (r.hasReportQuantityLimit &&
-          r.maxReportQty != null &&
-          qty > r.maxReportQty! + 0.000001) {
+      // 2026-10-06 口径：上限 = 计划剩余 + 剩余有效超产额度(服务端已扣待续报追加量)。
+      // 固定追加批次行走上面的整批锁量校验；无上限(null)的行不在这里拦。
+      final cap = r.reportQtyCap;
+      if (cap != null && qty > cap + 0.000001) {
+        final pending = r.pendingSupplementQty ?? 0;
+        final beyondPlan = r.maxReportQty == null ||
+            qty > r.maxReportQty! + 0.000001;
         context.appError(
-          '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(r.maxReportQty!)}',
+          pending > 0 && beyondPlan
+              ? '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(cap)}；'
+                    '已批准的固定追加量还有 ${_quantityText(pending)} 待续报，'
+                    '请从「我的车间任务 → 固定追加量·续报」入口申报'
+              : '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(cap)}',
         );
         return;
       }
@@ -2390,8 +2402,10 @@ class _ProductionDailyReportEditPageState
     }
     final sourceTotals = <String, double>{};
     final sourceCaps = <String, double>{};
+    // 同源累计口径(2026-10-06)：有上限(reportQtyCap 非空)的行才参与；cap 取该来源
+    // 行自己的「计划剩余 + 剩余有效超产额度」，固定追加批次行与真无上限行不在此列。
     for (final r in rows.where(
-      (row) => row.hasLinkedSource && row.hasReportQuantityLimit,
+      (row) => row.hasLinkedSource && row.reportQtyCap != null,
     )) {
       final key =
           r.fqcRecoveryAuthorizationId ??
@@ -2400,7 +2414,7 @@ class _ProductionDailyReportEditPageState
               '${r.salesOrderItemId ?? 'internal'}';
       sourceTotals[key] =
           (sourceTotals[key] ?? 0) + (double.tryParse(r.qty.text) ?? 0);
-      if (r.maxReportQty != null) sourceCaps[key] = r.maxReportQty!;
+      sourceCaps[key] = r.reportQtyCap!;
     }
     for (final entry in sourceTotals.entries) {
       final cap = sourceCaps[entry.key];

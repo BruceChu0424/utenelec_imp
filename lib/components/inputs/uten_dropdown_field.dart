@@ -66,6 +66,7 @@ class UtenDropdownField extends StatefulWidget {
     this.onAddNew,
     this.addNewLabel,
     this.dense = false,
+    this.flat = false,
     this.aiSensitive = false,
   });
 
@@ -75,6 +76,12 @@ class UtenDropdownField extends StatefulWidget {
   /// 紧凑形态（grid 单元格）：isDense 吃全局主题，与数量/单价等文本格等高
   ///（2026-09-12 用户口径：结账方式等网格下拉用统一 UI，不要原生 PopupMenu）。
   final bool dense;
+
+  /// 无边框形态（MasterDataTableView 只读表的内联下拉，2026-10-06 行高统一
+  /// 口径）：渲染为「文本 + 小箭头」，高度=单行文本，与同行文本格等高；39 高
+  /// 的描边框会把只读行撑到 55。状态提示走文字色（无框可描红/黄）。
+  /// 与 [dense] 同时传时 flat 优先。
+  final bool flat;
 
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
   final String? label;
@@ -320,6 +327,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         (widget.autofilled || widget.warningMessage != null || _aiFilledNow) &&
         hasValue &&
         widget.errorMessage == null;
+    if (widget.flat) {
+      return _buildFlat(theme, hasValue, requiredEmpty, autofillHint);
+    }
     return CompositedTransformTarget(
       link: _link,
       child: InkWell(
@@ -333,7 +343,13 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                   // 收窄内边距，收起时与同行文本格等高；非 dense 走主题默认。
                   isDense: widget.dense,
                   contentPadding: widget.dense
-                      ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+                      ? const EdgeInsets.symmetric(horizontal: 10, vertical: 12)
+                      : null,
+                  // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
+                  // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填
+                  // 黄标时 UtenInputDecoration 的提示包装也按本约束收敛。
+                  suffixIconConstraints: widget.dense
+                      ? const BoxConstraints(minWidth: 20, minHeight: 20)
                       : null,
                   label: widget.label == null
                       ? null
@@ -379,11 +395,73 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             // 由网格列 textOf 自动加宽兜底，表单里就省略号。
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: hasValue
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
+            // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
+            // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
+            style:
+                (widget.dense
+                        ? theme.textTheme.bodyLarge
+                        : theme.textTheme.bodyMedium)
+                    ?.copyWith(
+                      color: hasValue
+                          ? theme.colorScheme.onSurface
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 无边框形态：文本 + 小箭头，高度=单行文本（继承宿主格 DefaultTextStyle，
+  /// 不写死字号——MDTV 读表是 bodySmall、其它宿主各自跟随）；弹层与描边形态
+  /// 同一个 [_open]/[_buildOverlay]。状态提示没有框可描：错误/必填空走 error
+  /// 文字色，预填走 warning 色，完整说明挂 Tooltip。
+  Widget _buildFlat(
+    ThemeData theme,
+    bool hasValue,
+    bool requiredEmpty,
+    bool autofillHint,
+  ) {
+    final display = hasValue ? _display : (widget.hintText ?? '请选择');
+    final message = widget.errorMessage ?? widget.warningMessage;
+    return CompositedTransformTarget(
+      link: _link,
+      child: Tooltip(
+        message: message ?? display,
+        child: InkWell(
+          onTap: _open,
+          borderRadius: BorderRadius.circular(4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  display,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: !widget.enabled
+                        ? theme.colorScheme.onSurfaceVariant
+                        : widget.errorMessage != null || requiredEmpty
+                        ? theme.colorScheme.error
+                        : !hasValue
+                        ? theme.colorScheme.onSurfaceVariant
+                        : autofillHint
+                        ? UtenColors.warning
+                        : null,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 16,
+                color: widget.enabled
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+              ),
+            ],
           ),
         ),
       ),

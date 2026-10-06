@@ -80,6 +80,7 @@ public class ReportablePlanLineQueryService {
                     segment.allowed_overproduction_rate,
                     trunc(segment.planned_qty*(1+segment.allowed_overproduction_rate),4) AS overproduction_limit_qty,
                     fn_execution_actual_surplus_available(segment.id,NULL) AS remaining_actual_surplus_qty,
+                    fn_actual_supplement_pending_qty(segment.id,NULL) AS pending_supplement_qty,
                     l.order_item_id,
                     p.bill_no AS plan_no,
                     i.product_no,
@@ -110,7 +111,10 @@ public class ReportablePlanLineQueryService {
                          THEN COALESCE(segment_done.internal_reported_qty, 0)
                          ELSE COALESCE(l.produced_qty, 0)
                     END AS linked_produced_qty,
-                    LEAST(CASE
+                    -- 2026-10-06：与保存侧 capacity() 对齐——LEAST 结果再扣「已批准未续报」的
+                    -- 追加请求预留的原份额(销售行按 source_sales_allocation_id，公共行按内部量)，
+                    -- 否则前端显示可报 1000、提交才 409。FQC 恢复行本段无追加请求，函数返回 0。
+                    GREATEST(LEAST(CASE
                         WHEN recovery.authorization_id IS NOT NULL
                             THEN CASE
                                 WHEN recovery.disposition_code = 'REWORK'
@@ -148,7 +152,7 @@ public class ReportablePlanLineQueryService {
                     -- ordinary quantity is a planning suggestion; actual material use is recorded separately.
                     CASE WHEN recovery.authorization_id IS NOT NULL THEN recovery.available_qty
                          ELSE segment.planned_qty
-                    END) AS max_report_qty,
+                    END) - fn_actual_supplement_reserved_original_qty(segment.id, sales_allocation.id, NULL), 0) AS max_report_qty,
                     so.bill_no AS order_no,
                     oi.qty AS order_qty,
                     cl.name AS client_name,
@@ -533,7 +537,8 @@ public class ReportablePlanLineQueryService {
                         rs.getBoolean("allow_actual_overproduction"),
                         rs.getBigDecimal("allowed_overproduction_rate"),
                         rs.getBigDecimal("overproduction_limit_qty"),
-                        rs.getBigDecimal("remaining_actual_surplus_qty")),
+                        rs.getBigDecimal("remaining_actual_surplus_qty"),
+                        rs.getBigDecimal("pending_supplement_qty")),
                 dataArgs.toArray());
 
         int totalPages = total == 0 ? 0 : (int) ((total + size - 1) / size);

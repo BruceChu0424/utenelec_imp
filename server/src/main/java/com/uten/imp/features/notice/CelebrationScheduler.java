@@ -114,11 +114,12 @@ public class CelebrationScheduler {
         args.add(today.getYear());
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT e.id, e.full_name FROM employees e
-                WHERE
-                """ + ACTIVE_EMPLOYEE_PREDICATE + """
+                WHERE %s
                   AND e.birth_month_day IN (%s)
-                """.formatted(String.join(",", Collections.nCopies(monthDays.size(), "?")))
-                + ALREADY_CELEBRATED,
+                %s
+                """.formatted(ACTIVE_EMPLOYEE_PREDICATE,
+                        String.join(",", Collections.nCopies(monthDays.size(), "?")),
+                        ALREADY_CELEBRATED),
                 args.toArray());
         if (rows.isEmpty()) {
             return 0;
@@ -147,13 +148,14 @@ public class CelebrationScheduler {
         args.add(today.getYear());
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT e.id, e.full_name, e.hire_date FROM employees e
-                WHERE
-                """ + ACTIVE_EMPLOYEE_PREDICATE + """
+                WHERE %s
                   AND e.hire_date IS NOT NULL
                   AND to_char(e.hire_date, 'MM-DD') IN (%s)
                   AND EXTRACT(YEAR FROM e.hire_date) < ?
-                """.formatted(String.join(",", Collections.nCopies(monthDays.size(), "?")))
-                + ALREADY_CELEBRATED,
+                %s
+                """.formatted(ACTIVE_EMPLOYEE_PREDICATE,
+                        String.join(",", Collections.nCopies(monthDays.size(), "?")),
+                        ALREADY_CELEBRATED),
                 args.toArray());
         if (rows.isEmpty()) {
             return 0;

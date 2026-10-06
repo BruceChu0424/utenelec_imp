@@ -330,20 +330,20 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   List<MasterColumnDef<MaterialAnalysisListItem>> get _columns => [
     MasterColumnDef(
-      key: 'analysisNo',
-      label: '编号',
-      width: 150,
-      value: (item) => item.analysisNo ?? '—',
-    ),
-    MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 120,
+      width: 72,
       value: (item) => _statusLabel(item.status),
       // 2026-09-27 用户口径「表格状态列整格底色」：进行中=青 / 部分下达=蓝 /
       // 全部下达=绿 / 取消=中性灰。
       cellColor: (context, item) =>
           udenStatusBadgeCellColor(context, _statusType(item.status)),
+    ),
+    MasterColumnDef(
+      key: 'analysisNo',
+      label: '编号',
+      width: 150,
+      value: (item) => item.analysisNo ?? '—',
     ),
     const MasterColumnDef(
       key: 'source',

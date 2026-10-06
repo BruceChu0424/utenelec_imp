@@ -70,7 +70,7 @@ public class SubcontractDrawQueryService {
         int pageSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         int pageNo = Math.max(page, 1);
         Filters filters = filters(keyword, orderId, orderItemIds);
-        String sql = classifiedCte(SubcontractDrawSql.OPEN_ITEM_PREDICATE + filters.sql()) + """
+        String sql = (classifiedCte(SubcontractDrawSql.OPEN_ITEM_PREDICATE + filters.sql()) + """
                 , counts AS (
                     SELECT COUNT(*) FILTER (WHERE status IN ('DRAWABLE','DRAWABLE_PARTIAL')) AS drawable_rows,
                            COUNT(*) FILTER (WHERE status = 'DRAW_SUBMITTED') AS submitted_rows,
@@ -91,7 +91,7 @@ public class SubcontractDrawQueryService {
                 FROM counts LEFT JOIN page ON TRUE
                 ORDER BY page.status_rank, page.deliver_date ASC NULLS LAST, page.order_bill_no,
                          page.line_no ASC NULLS LAST, page.order_item_id
-                """.replace("{STATUS_FILTER}", statusFilter).replace("{ROW_SELECT}", rowSelect("page"));
+                """).replace("{STATUS_FILTER}", statusFilter).replace("{ROW_SELECT}", rowSelect("page"));
         Query query = em.createNativeQuery(sql);
         filters.binder().accept(query);
         query.setParameter("pageLimit", pageSize);

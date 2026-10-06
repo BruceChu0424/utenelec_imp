@@ -770,12 +770,19 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
             child: Semantics(
               label: reason ?? '选择${row.item.billNo ?? _ledgerNoun}',
               enabled: reason == null,
-              child: Checkbox(
-                key: ValueKey('ar-ap-select-${row.item.id}'),
-                value: sel,
-                onChanged: _canSelect(row.item)
-                    ? (v) => _toggleRow(row, v ?? false)
-                    : null,
+              // 2026-10-06 表格控件统一口径：Checkbox 默认 40 点击区会撑高
+              // 编辑行（行高标准=39 输入格），收紧点击区到控件本身。
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Checkbox(
+                  key: ValueKey('ar-ap-select-${row.item.id}'),
+                  value: sel,
+                  onChanged: _canSelect(row.item)
+                      ? (v) => _toggleRow(row, v ?? false)
+                      : null,
+                ),
               ),
             ),
           );

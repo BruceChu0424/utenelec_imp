@@ -289,6 +289,17 @@ class _ReportablePlanLineSheetState
         onRetry: () => _load(page: _retryPage),
         columns: [
           MasterColumnDef(
+            key: 'segmentStatus',
+            label: '任务状态',
+            width: 72,
+            value: (item) => switch (item.executionSegmentStatus) {
+              'IN_PROGRESS' when item.fqcRecoveryRequiresMaterial => '待补料/待发料',
+              'IN_PROGRESS' when item.isFqcRecovery => '恢复报工',
+              'IN_PROGRESS' => '普通报工',
+              _ => item.executionSegmentStatus ?? '历史计划',
+            },
+          ),
+          MasterColumnDef(
             key: 'planNo',
             label: '计划 / 执行子计划',
             width: 180,
@@ -297,17 +308,6 @@ class _ReportablePlanLineSheetState
               item.executionSegmentCode,
               item.productNo,
             ].where((value) => value?.isNotEmpty == true).join('\n'),
-          ),
-          MasterColumnDef(
-            key: 'segmentStatus',
-            label: '任务状态',
-            width: 100,
-            value: (item) => switch (item.executionSegmentStatus) {
-              'IN_PROGRESS' when item.fqcRecoveryRequiresMaterial => '待补料/待发料',
-              'IN_PROGRESS' when item.isFqcRecovery => '恢复报工',
-              'IN_PROGRESS' => '普通报工',
-              _ => item.executionSegmentStatus ?? '历史计划',
-            },
           ),
           MasterColumnDef(
             key: 'sourceType',

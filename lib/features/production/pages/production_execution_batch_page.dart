@@ -876,24 +876,33 @@ class _ProductionExecutionBatchPageState
                   width: 190,
                   value: (row) => row.warehouseName,
                   // 线边仓（车间直送）行标注「自动投入」：这些料不走领料申请。
+                  // 2026-10-06 行高统一口径：单行（仓库名 + 徽章横排），
+                  // 全名与直送说明走 Tooltip，不再上下两层把行撑高。
                   cellBuilder: (context, row) {
-                    final name = Text(
-                      row.warehouseName ?? '—',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    );
-                    if (!preview.lineSideWarehouseIds.contains(
+                    final name = row.warehouseName ?? '—';
+                    final lineSide = preview.lineSideWarehouseIds.contains(
                       row.warehouseId,
-                    )) {
-                      return name;
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        name,
-                        const SizedBox(height: UtenSpacing.s2),
-                        _directTransferBadge(context),
-                      ],
+                    );
+                    return Tooltip(
+                      message: lineSide
+                          ? '$name · ${l10n.productionBatchDirectTransferBadge}'
+                          : name,
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
+                          if (lineSide) ...[
+                            const SizedBox(width: UtenSpacing.s4),
+                            _directTransferBadge(context),
+                          ],
+                        ],
+                      ),
                     );
                   },
                 ),

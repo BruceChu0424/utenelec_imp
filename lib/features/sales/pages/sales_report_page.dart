@@ -497,18 +497,27 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
-    final columns = data.columns
+    // 状态类列（label 含「状态」，如 单据状态）在客户端映射处排到最前，并收紧
+    // 声明宽（value 即显示文案 → 72；表格仍按内容自动适配加宽）；其余列保持
+    // 服务端元数据的顺序与宽度。
+    final mapped = data.columns
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
             key: c.key,
             label: c.label,
-            width: (c.width ?? 120).toDouble(),
+            width: _isReportStatusLabel(c.label)
+                ? 72
+                : (c.width ?? 120).toDouble(),
             type: c.type,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
         )
         .toList();
+    final columns = [
+      ...mapped.where((col) => _isReportStatusLabel(col.label)),
+      ...mapped.where((col) => !_isReportStatusLabel(col.label)),
+    ];
     return MasterDataTableView<Map<String, dynamic>>(
       tableKey:
           'features.sales.pages.sales_report_page.SalesReportPageState._buildTable.1',
@@ -577,6 +586,11 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
     );
   }
 }
+
+/// 报表动态列的状态列判定：label 含「状态」（状态 / 单据状态 / 审核状态…）。
+/// 报表列来自服务端元数据，客户端映射时据此把状态列排到最前并收紧声明宽；
+/// 「是否审核」这类布尔列不含「状态」，不在其列。
+bool _isReportStatusLabel(String label) => label.contains('状态');
 
 /// 汇总表钻取对话框：某客户在日期范围内的全部明细（表格）。
 ///
@@ -737,18 +751,25 @@ class _SalesClientDetailDialogState
     final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
     final data = _data;
-    final columns = (data?.columns ?? const [])
+    // 状态类列排到最前（与主表同口径，见 _buildTable）。
+    final mapped = (data?.columns ?? const [])
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
             key: c.key,
             label: c.label,
-            width: (c.width ?? 120).toDouble(),
+            width: _isReportStatusLabel(c.label)
+                ? 72
+                : (c.width ?? 120).toDouble(),
             type: c.type,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
           ),
         )
         .toList();
+    final columns = [
+      ...mapped.where((col) => _isReportStatusLabel(col.label)),
+      ...mapped.where((col) => !_isReportStatusLabel(col.label)),
+    ];
     return Dialog(
       insetPadding: const EdgeInsets.all(UtenSpacing.s16),
       child: SizedBox(

@@ -279,6 +279,16 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
         primary: true,
         columns: [
           MasterColumnDef(
+            key: 'status',
+            label: '状态',
+            width: 72,
+            value: (r) => wmRequisitionStatusLabel(r.status),
+            cellColor: (context, r) => udenStatusBadgeCellColor(
+              context,
+              wmRequisitionStatusBadgeType(r.status),
+            ),
+          ),
+          MasterColumnDef(
             key: 'requestNo',
             label: '单号',
             width: 160,
@@ -328,16 +338,6 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
               label: '来源',
               width: 120,
               value: (r) => wmRequisitionOriginLabel(r.origin),
-            ),
-            MasterColumnDef(
-              key: 'status',
-              label: '状态',
-              width: 90,
-              value: (r) => wmRequisitionStatusLabel(r.status),
-              cellColor: (context, r) => udenStatusBadgeCellColor(
-                context,
-                wmRequisitionStatusBadgeType(r.status),
-              ),
             ),
             MasterColumnDef(
               key: 'receiver',
@@ -528,6 +528,38 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
         primary: true,
         columns: [
           MasterColumnDef(
+            key: 'status',
+            label: '盘点',
+            width: 72,
+            value: (r) =>
+                r.period == null ? null : wmPeriodStatusLabel(r.period!.status),
+            // 2026-10-01 口径「不同状态不同颜色」：开着绿 / 盘点中蓝 /
+            // 已盘点待结算琥珀 / 已结算灰。
+            cellColor: (context, r) => r.period == null
+                ? null
+                : udenStatusBadgeCellColor(
+                    context,
+                    wmPeriodStatusBadgeType(r.period!.status),
+                  ),
+          ),
+          MasterColumnDef(
+            key: 'close',
+            label: '结算',
+            width: 72,
+            value: (r) => r.period == null
+                ? null
+                : wmCloseStateLabel(r.period!.closeState),
+            // 自动结算中蓝 / 差资料琥珀 / 结算没成功红 / 已撤销灰；开着不上色。
+            cellColor: (context, r) {
+              final type = r.period == null
+                  ? null
+                  : wmCloseStateBadgeType(r.period!.closeState);
+              return type == null
+                  ? null
+                  : udenStatusBadgeCellColor(context, type);
+            },
+          ),
+          MasterColumnDef(
             key: 'workshop',
             label: '车间',
             width: 140,
@@ -544,38 +576,6 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             label: '期间',
             width: 240,
             value: (r) => r.period == null ? null : wmPeriodLabel(r.period!),
-          ),
-          MasterColumnDef(
-            key: 'status',
-            label: '盘点',
-            width: 130,
-            value: (r) =>
-                r.period == null ? null : wmPeriodStatusLabel(r.period!.status),
-            // 2026-10-01 口径「不同状态不同颜色」：开着绿 / 盘点中蓝 /
-            // 已盘点待结算琥珀 / 已结算灰。
-            cellColor: (context, r) => r.period == null
-                ? null
-                : udenStatusBadgeCellColor(
-                    context,
-                    wmPeriodStatusBadgeType(r.period!.status),
-                  ),
-          ),
-          MasterColumnDef(
-            key: 'close',
-            label: '结算',
-            width: 200,
-            value: (r) => r.period == null
-                ? null
-                : wmCloseStateLabel(r.period!.closeState),
-            // 自动结算中蓝 / 差资料琥珀 / 结算没成功红 / 已撤销灰；开着不上色。
-            cellColor: (context, r) {
-              final type = r.period == null
-                  ? null
-                  : wmCloseStateBadgeType(r.period!.closeState);
-              return type == null
-                  ? null
-                  : udenStatusBadgeCellColor(context, type);
-            },
           ),
         ],
         items: rows,

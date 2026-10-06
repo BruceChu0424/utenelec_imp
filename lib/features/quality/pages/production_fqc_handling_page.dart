@@ -1235,7 +1235,7 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'submissionState',
       label: '提交状态',
-      width: 100,
+      width: 72,
       value: (row) => row.submissionLabel,
     ),
     MasterColumnDef<FqcReportRow>(

@@ -24,6 +24,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -487,18 +488,29 @@ class _ProgressList extends ConsumerWidget {
         label: '生产入库进度',
         width: 160,
         value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
-        cellBuilder: (context, line) => Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        cellBuilder: (context, line) => Row(
           children: [
-            Text('${_fmt(line.producedQty)} / ${_fmt(line.qty)}'),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: (line.qty ?? 0) > 0
-                  ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
-                  : 0,
-              // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
-              minHeight: 8,
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (line.qty ?? 0) > 0
+                      ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
+                      : 0,
+                  // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
+                  minHeight: 8,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 2026-10-06 全站表格行高统一：进度格改单层 Row（条 + 数量同排），
+            // 不再上下两层撑高读行。
+            Text(
+              '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ],
         ),
@@ -508,11 +520,11 @@ class _ProgressList extends ConsumerWidget {
         label: '进度来源',
         width: 110,
         value: (_) => '查看进度',
-        cellBuilder: (context, line) => TextButton(
+        cellBuilder: (context, line) => UtenTableCellAction(
+          label: '查看进度',
           onPressed: busy
               ? null
               : () => _showLineProgress(context, theme, line, canViewPlan),
-          child: const Text('查看进度'),
         ),
       ),
     ],

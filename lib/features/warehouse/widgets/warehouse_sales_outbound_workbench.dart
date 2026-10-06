@@ -558,6 +558,12 @@ class _WarehouseSalesOutboundWorkbenchState
 
   List<MasterColumnDef<WarehouseSalesOutboundSummary>> get _columns => [
     MasterColumnDef(
+      key: 'warehouseWorkStatus',
+      label: '仓库作业',
+      width: 72,
+      value: (item) => item.statusLabel,
+    ),
+    MasterColumnDef(
       // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
       key: 'billNo',
       sortable: true,
@@ -583,12 +589,6 @@ class _WarehouseSalesOutboundWorkbenchState
       label: '仓库',
       width: 150,
       value: (item) => item.warehouseName ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'warehouseWorkStatus',
-      label: '仓库作业',
-      width: 160,
-      value: (item) => item.statusLabel,
     ),
     MasterColumnDef(
       key: 'nextStep',

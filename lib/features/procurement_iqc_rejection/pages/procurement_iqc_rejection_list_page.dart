@@ -544,6 +544,17 @@ class _ProcurementIqcRejectionListPageState
 
   List<MasterColumnDef<ProcurementIqcRejectionCase>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (item) => item.status.label,
+      // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
+      cellColor: (context, item) => udenStatusBadgeCellColor(
+        context,
+        procurementIqcRejectionBadgeType(item.status),
+      ),
+    ),
+    MasterColumnDef(
       key: 'receiptType',
       label: '来源',
       width: 90,
@@ -605,17 +616,6 @@ class _ProcurementIqcRejectionListPageState
       width: 150,
       type: 'money',
       value: (item) => item.localAmountLabel(item.failedAmountLocal),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 180,
-      value: (item) => item.status.label,
-      // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
-      cellColor: (context, item) => udenStatusBadgeCellColor(
-        context,
-        procurementIqcRejectionBadgeType(item.status),
-      ),
     ),
     MasterColumnDef(
       key: 'holdReason',

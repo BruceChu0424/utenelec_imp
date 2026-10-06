@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../components/inputs/uten_dropdown_field.dart';
+import '../../../../components/inputs/uten_table_cell_action.dart';
 import '../../../../components/layout/uten_editable_grid.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../models/workshop_material_models.dart';
@@ -180,8 +181,11 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
             builder: (context, selected, _) => RequiredCellFrame(
               listenable: row.material,
               isEmpty: () => row.material.value == null,
-              child: TextButton(
+              // 2026-10-06 行高统一口径：选料动作改单行文字动作，
+              // 不用 min40 的 TextButton 把行撑过 39 的编辑行高标准。
+              child: UtenTableCellAction(
                 key: ValueKey('wm-line-material-${row.id}'),
+                label: selected?.displayName ?? '选择物料',
                 onPressed: !enabled
                     ? null
                     : () async {
@@ -192,7 +196,6 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                         }
                         onChanged?.call();
                       },
-                child: Text(selected?.displayName ?? '选择物料'),
               ),
             ),
           );
@@ -243,11 +246,12 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                 builder: (context, material, _) => RequiredCellFrame(
                   listenable: row.leafWarehouseId,
                   isEmpty: () => row.leafWarehouseId.value == null,
-                  child: TextButton(
+                  // 2026-10-06 行高统一口径：出库叶仓动作改单行文字动作
+                  // （超宽省略号 + Tooltip 兜底），不再用 min40 的 TextButton。
+                  child: UtenTableCellAction(
                     key: ValueKey('wm-line-leaf-${row.id}'),
-                    style: TextButton.styleFrom(
-                      alignment: AlignmentDirectional.centerStart,
-                    ),
+                    label: value == null ? l10n.wmLeafPick : leafText(row),
+                    tooltip: value == null ? null : leafText(row),
                     onPressed:
                         !enabled ||
                             pickLeafWarehouse == null ||
@@ -261,11 +265,6 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
                             }
                             onChanged?.call();
                           },
-                    child: Text(
-                      value == null ? l10n.wmLeafPick : leafText(row),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
                   ),
                 ),
               ),

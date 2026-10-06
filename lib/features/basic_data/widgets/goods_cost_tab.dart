@@ -16,6 +16,7 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -1132,16 +1133,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
                 label: _l.costAdjustment,
                 width: 130,
                 value: (_) => _l.costAdjustment,
-                cellBuilder: (_, r) => UtenButton(
-                  type: UtenButtonType.tonal,
+                cellBuilder: (_, r) => UtenTableCellAction(
+                  label: _l.costAdjustment,
                   onPressed: () => Navigator.pop(dialog, r),
-                  child: Flexible(
-                    child: Text(
-                      _l.costAdjustment,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
                 ),
               ),
             ],
@@ -1198,13 +1192,13 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
           }
         },
         columns: [
-          _readColumn('name', _l.costName, 220),
           _readColumn(
             'status',
             _l.costStatus,
-            130,
+            72,
             text: (r) => _status(r['status']),
           ),
+          _readColumn('name', _l.costName, 220),
           for (final (key, label, width) in [
             ('version', _l.costVersion, 90.0),
             ('batchQty', _l.costBatch, 120.0),
@@ -1226,10 +1220,9 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
             label: _l.costAction,
             width: 120,
             value: (_) => _l.costOpen,
-            cellBuilder: (_, row) => UtenButton(
-              type: UtenButtonType.tonal,
+            cellBuilder: (_, row) => UtenTableCellAction(
+              label: _l.costOpen,
               onPressed: _busy ? null : () => _open(row['id'].toString()),
-              child: Text(_l.costOpen),
             ),
           ),
         ],

@@ -190,6 +190,8 @@ class ProductionExecutionWorkbenchSegment {
     this.pendingOverproductionRateRequestId,
     this.overproductionPolicyApplies = true,
     this.actualOutputSupplementRequestId,
+    this.pendingSupplementQty,
+    this.pendingSupplementRequestId,
     double? plannedInboundQty,
     this.canRecheckMaterial = false,
     this.drawRequested = false,
@@ -291,6 +293,19 @@ class ProductionExecutionWorkbenchSegment {
   final String? pendingOverproductionRateRequestId;
   final bool overproductionPolicyApplies;
   final String? actualOutputSupplementRequestId;
+
+  /// 2026-10-06：本任务已批准、尚未续报承接的固定追加量合计——它占住了公共
+  /// 超产额度，超出的量只能从「固定追加量·续报」入口带回原批次申报。
+  final double? pendingSupplementQty;
+
+  /// 最近的待续报追加请求 id；没有待续报为 null。
+  final String? pendingSupplementRequestId;
+
+  /// 2026-10-06：生产中的原任务行还有已批准未续报的固定追加量（有明确请求可跳转）。
+  bool get hasPendingSupplementClaim =>
+      pendingSupplementRequestId != null &&
+      (pendingSupplementQty ?? 0) > 0 &&
+      segmentStatus == 'IN_PROGRESS';
   final double plannedInboundQty;
 
   double? get plannedInboundProgressRatio =>
@@ -503,6 +518,9 @@ class ProductionExecutionWorkbenchSegment {
     overproductionPolicyApplies: json['overproductionPolicyApplies'] != false,
     actualOutputSupplementRequestId:
         json['actualOutputSupplementRequestId'] as String?,
+    pendingSupplementQty: (json['pendingSupplementQty'] as num?)?.toDouble(),
+    pendingSupplementRequestId:
+        json['pendingSupplementRequestId'] as String?,
     plannedInboundQty: (json['plannedInboundQty'] as num?)?.toDouble(),
     segmentStatus: json['segmentStatus'] as String? ?? '',
     materialStatus: json['materialStatus'] as String? ?? '',

@@ -279,11 +279,12 @@ public class WorkshopMachineService {
         if (!Set.of("workshop_machines", "workshop_machine_containers").contains(table)) {
             throw new IllegalArgumentException(table);
         }
-        db.update("UPDATE " + table + """
-                 SET is_deleted = TRUE, deleted_at = now(), row_version = row_version + 1, updated_by = :actor,
-                     updated_at = now()
-                WHERE id = :id
-                """, new MapSqlParameterSource("actor", actor).addValue("id", id));
+        db.update("""
+                UPDATE %s
+                   SET is_deleted = TRUE, deleted_at = now(), row_version = row_version + 1, updated_by = :actor,
+                       updated_at = now()
+                 WHERE id = :id
+                """.formatted(table), new MapSqlParameterSource("actor", actor).addValue("id", id));
     }
 
     private Map<String, Object> lockMachine(UUID machineId) {
@@ -312,10 +313,10 @@ public class WorkshopMachineService {
                 FROM workshop_machine_containers container
                 JOIN workshop_machines machine ON machine.id = container.machine_id
                 WHERE machine.workshop_department_id = :workshop AND NOT machine.is_deleted
-                  AND NOT container.is_deleted""" + filter + """
-
+                  AND NOT container.is_deleted
+                  %s
                 ORDER BY container.sort_order, container.name
-                """, params)) {
+                """.formatted(filter), params)) {
             containers.computeIfAbsent((UUID) row.get("machine_id"), key -> new ArrayList<>())
                     .add(new ContainerView((UUID) row.get("id"), (UUID) row.get("machine_id"), (String) row.get("name"),
                             WorkshopMaterialBinSupport.decimal(row.get("capacity_qty")),
@@ -328,10 +329,10 @@ public class WorkshopMachineService {
                 SELECT machine.id, machine.workshop_department_id, machine.code, machine.name, machine.model,
                        machine.tonnage, machine.enabled, machine.sort_order, machine.remark, machine.row_version
                 FROM workshop_machines machine
-                WHERE machine.workshop_department_id = :workshop AND NOT machine.is_deleted""" + filter + """
-
+                WHERE machine.workshop_department_id = :workshop AND NOT machine.is_deleted
+                  %s
                 ORDER BY machine.sort_order, machine.code
-                """, params)) {
+                """.formatted(filter), params)) {
             UUID id = (UUID) row.get("id");
             out.add(new MachineView(id, (UUID) row.get("workshop_department_id"), (String) row.get("code"),
                     (String) row.get("name"), (String) row.get("model"),

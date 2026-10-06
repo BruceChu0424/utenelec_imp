@@ -661,9 +661,17 @@ class _FinanceAssetDetailSurfaceState
             ),
             columns: [
               MasterColumnDef(
+                key: 'status',
+                label: '状态',
+                width: 72,
+                value: (row) => financeAssetStatusLabel(row.status),
+                cellBuilder: (_, row) => financeAssetStatusCell(row.status),
+              ),
+              MasterColumnDef(
                 key: 'period',
                 label: '期间',
                 width: 110,
+                cardRole: MasterColumnCardRole.title,
                 value: (row) => row.period,
               ),
               MasterColumnDef(
@@ -693,13 +701,6 @@ class _FinanceAssetDetailSurfaceState
                 width: 120,
                 type: 'money',
                 value: (row) => formatFinanceDecimal(row.closingBalance),
-              ),
-              MasterColumnDef(
-                key: 'status',
-                label: '状态',
-                width: 120,
-                value: (row) => financeAssetStatusLabel(row.status),
-                cellBuilder: (_, row) => financeAssetStatusCell(row.status),
               ),
             ],
             items: detail.schedule,

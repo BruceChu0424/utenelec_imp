@@ -418,7 +418,7 @@ class _ProductionFqcInspectionsPageState
     const MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 130,
+      width: 72,
       value: fqcStatusLabel,
     ),
     MasterColumnDef(

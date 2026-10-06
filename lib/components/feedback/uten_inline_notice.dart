@@ -37,7 +37,7 @@ enum UtenInlineNoticeLevel {
   };
 }
 
-/// 页内提示框：左图标 + 可选标题 + 正文 + 可选右侧动作。
+/// 页内提示框：左图标 + 可选标题 + 可选正文 + 可选右侧动作。
 ///
 /// ```dart
 /// UtenInlineNotice(
@@ -49,14 +49,14 @@ enum UtenInlineNoticeLevel {
 class UtenInlineNotice extends StatelessWidget {
   const UtenInlineNotice({
     super.key,
-    required this.message,
+    this.message,
     this.level = UtenInlineNoticeLevel.info,
     this.title,
     this.trailing,
     this.semanticLabel,
   });
 
-  final String message;
+  final String? message;
   final UtenInlineNoticeLevel level;
   final String? title;
 
@@ -72,19 +72,23 @@ class UtenInlineNotice extends StatelessWidget {
     final dark = theme.brightness == Brightness.dark;
     final accent = level.accent;
     final titleText = title;
+    final messageText = message;
     // ADR-150: an on-page notice is part of what the AI assistant can read.
     return AiPageRegistrar(
       source: AiNoticeSource(
         kind: AiNoticeKind.inline,
         title: titleText,
-        text: message,
+        text: messageText ?? '',
       ),
       child: Semantics(
         container: true,
         liveRegion: level == UtenInlineNoticeLevel.error,
         label:
             semanticLabel ??
-            (titleText == null ? message : '$titleText。$message'),
+            [
+              if (titleText != null && titleText.isNotEmpty) titleText,
+              if (messageText != null && messageText.isNotEmpty) messageText,
+            ].join('。'),
         child: Container(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           decoration: BoxDecoration(
@@ -93,13 +97,20 @@ class UtenInlineNotice extends StatelessWidget {
             border: Border.all(color: accent.withValues(alpha: 0.45)),
           ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // 无正文的单行提示：标题与右侧动作垂直居中；有正文时顶部对齐。
+            crossAxisAlignment: messageText == null || messageText.isEmpty
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
               Icon(level.icon, size: 20, color: accent),
               const SizedBox(width: UtenSpacing.s8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: messageText == null ||
+                          messageText.isEmpty
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
                   children: [
                     if (titleText != null && titleText.isNotEmpty) ...[
                       Text(
@@ -111,12 +122,16 @@ class UtenInlineNotice extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: UtenSpacing.s4),
+                      if (messageText != null && messageText.isNotEmpty)
+                        const SizedBox(height: UtenSpacing.s4),
                     ],
-                    Text(
-                      message,
-                      style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-                    ),
+                    if (messageText != null && messageText.isNotEmpty)
+                      Text(
+                        messageText,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          height: 1.45,
+                        ),
+                      ),
                   ],
                 ),
               ),

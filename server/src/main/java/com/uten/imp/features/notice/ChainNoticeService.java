@@ -3840,6 +3840,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                        task.planned_qty, task.workshop_department_id, task.workshop_name,
                        task.responsible_employee_id,
                        route.start_route, route.continuous_supply,
+                       route.auto_promote_when_ready,
+                       fn_execution_route_allows_auto_promote(task.segment_id) AS route_allows_auto_promote,
                        fn_execution_start_material_ready(task.segment_id) AS start_material_ready,
                        fn_execution_material_output_capacity(task.segment_id, FALSE) AS prepared_capacity
                 FROM v_production_execution_workbench_segments task
@@ -3881,6 +3883,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         Map<UUID, BigDecimal> arrivedByDemand = workshopWarehouseAvailableByDemand(segmentId,
                 missingRows.stream().map(row -> (UUID) row.get("demand_id")).toList());
         String route = str(task.get("start_route"));
+        // 2026-10-06 用户口径：部分到货不再发行动卡。只有仓库口径已全齐，或分批/持续
+        // 路线已能支撑部分生产，且齐套提升链路不会另发行动卡（分批永不自动提升、
+        // 暂缓/未确认路线不自动提升）时才发到货进展；其余静默，缺口以「我的车间任务」
+        // 页内徽章为准。到货撤销（validArrival=false）不受此闸门约束，仍即时通知。
+        if (validArrival && !arrivalProgressWarrantsNotice(task, status, route, missingRows, arrivedByDemand)) {
+            return;
+        }
         String nextStep;
         if (route.isBlank()) {
             nextStep = "请先在「我的车间任务」确认生产路线（齐套 / 分批 / 持续生产）";
@@ -3945,6 +3954,41 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
                     "normal", segmentId);
         }
+    }
+
+    /**
+     * 到货进展是否值得发行动卡（2026-10-06 口径）。
+     * <ul>
+     *   <li>路线未确认或已在生产中：不发——页面内自办。</li>
+     *   <li>仓库口径已全齐（每种缺口都被同口径可用量盖住，或本就无缺口）：
+     *       值得发。</li>
+     *   <li>分批/持续路线已能支撑部分生产（start_material_ready 或
+     *       prepared_capacity&gt;0）：值得发。</li>
+     *   <li>其余（只到了一部分物料、部分生产还撑不起来）：不发。</li>
+     *   <li>会自动提升的段（含已提升的 READY/DISPATCHED）不发——齐套/可开工
+     *       行动卡由 publishWorkshopTask 体系负责（tryPromote→
+     *       notifyExecutionSegmentReady），到货进展再发就是同一件事弹两次，
+     *       而且发送前的 ARRIVAL_PROGRESS 办结还会把刚投递的 important 卡撤掉。
+     *       分批路线 {@code fn_execution_route_allows_auto_promote} 恒 FALSE、
+     *       暂缓段 auto_promote_when_ready=FALSE，全齐感知只能靠这里补位。</li>
+     * </ul>
+     */
+    private boolean arrivalProgressWarrantsNotice(Map<String, Object> task, String status, String route,
+            List<Map<String, Object>> missingRows, Map<UUID, BigDecimal> arrivedByDemand) {
+        if (route.isBlank() || "IN_PROGRESS".equals(status)) return false;
+        boolean warehouseCovered = missingRows.stream().allMatch(row -> {
+            BigDecimal shortage = bd(row.get("stock_shortage_qty"));
+            BigDecimal arrived = arrivedByDemand.getOrDefault((UUID) row.get("demand_id"), BigDecimal.ZERO)
+                    .max(BigDecimal.ZERO);
+            return arrived.compareTo(shortage) >= 0;
+        });
+        boolean partialStartCapable = Set.of("BATCH", "CONTINUOUS").contains(route)
+                && (Boolean.TRUE.equals(task.get("start_material_ready"))
+                        || bd(task.get("prepared_capacity")).signum() > 0);
+        if (!warehouseCovered && !partialStartCapable) return false;
+        return "WAITING".equals(status)
+                && !(Boolean.TRUE.equals(task.get("auto_promote_when_ready"))
+                        && Boolean.TRUE.equals(task.get("route_allows_auto_promote")));
     }
 
     /**

@@ -1013,6 +1013,12 @@ abstract class _MaterialAnalysisCandidatesState
   List<MasterColumnDef<MaterialAnalysisSalesCandidateLine>>
   get _candidateColumns => [
     MasterColumnDef(
+      key: 'analysisStatus',
+      label: '分析状态',
+      width: 72,
+      value: (line) => _analysisStatusText(line.analysisStatus),
+    ),
+    MasterColumnDef(
       key: 'orderNo',
       label: '销售单号',
       width: 150,
@@ -1088,15 +1094,7 @@ abstract class _MaterialAnalysisCandidatesState
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: Theme.of(context).textTheme.bodyMedium,
             decoration: const UtenInputDecoration(
-              InputDecoration(
-                isDense: true,
-                hintText: '0',
-                // 收紧到与纯文本行同高：勾选/取消时整行不跳高。
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-              ),
+              InputDecoration(isDense: true, hintText: '0'),
             ),
           ),
         );
@@ -1108,12 +1106,6 @@ abstract class _MaterialAnalysisCandidatesState
       width: 120,
       type: 'date',
       value: (line) => _dateOnly(line.deliveryDate),
-    ),
-    MasterColumnDef(
-      key: 'analysisStatus',
-      label: '分析状态',
-      width: 120,
-      value: (line) => _analysisStatusText(line.analysisStatus),
     ),
   ];
 

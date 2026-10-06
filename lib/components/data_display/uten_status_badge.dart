@@ -76,7 +76,9 @@ class UtenStatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (UtenStatusCellScope.isCell(context)) {
-      return Text(label, maxLines: 2, overflow: TextOverflow.ellipsis);
+      // 格内降级单行（2026-10-06 行高统一口径）：两行降级文本会把整行撑高，
+      // 超出单行文本格的基线；超长状态词交给省略号 + 宿主列宽自动加宽。
+      return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
     }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colors = resolveStatusBadgeColors(type, isDark);

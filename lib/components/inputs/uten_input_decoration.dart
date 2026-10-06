@@ -126,9 +126,17 @@ class UtenInputDecoration extends InputDecoration {
                 children: [
                   hint,
                   ConstrainedBox(
+                    // 格内不套默认 48×48 触控槽（2026-10-06 表格控件统一口径）：
+                    // 那会把整个单元格撑高到 48，与同行 39 高的输入格不齐。
+                    // 图标自然高度即所得；需要最小触控面由调用方自带约束。
                     constraints:
                         base.suffixIconConstraints ??
-                        const BoxConstraints(minWidth: 48, minHeight: 48),
+                        (inCell
+                            ? const BoxConstraints()
+                            : const BoxConstraints(
+                                minWidth: 48,
+                                minHeight: 48,
+                              )),
                     child: original,
                   ),
                 ],

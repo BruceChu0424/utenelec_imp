@@ -455,11 +455,11 @@ public class StockCountRequestService {
         if(status!=null){where+=" AND r.status=:status";params.addValue("status",status);}
         if(keyword!=null&&!keyword.isBlank()) {
             params.addValue("keyword",keyword.strip());
-            where+="""
-                     AND (strpos(lower(concat_ws(' ',r.request_no,r.reason,
-                           (SELECT count_warehouse.name FROM warehouses count_warehouse WHERE count_warehouse.id=r.warehouse_id))),lower(:keyword))>0
-                       OR EXISTS(SELECT 1 FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id
-                           AND strpos(lower(concat_ws(' ',count_line.goods_code,count_line.goods_name,count_line.color_name)),lower(:keyword))>0))
+            where+="\n"+"""
+                    AND (strpos(lower(concat_ws(' ',r.request_no,r.reason,
+                          (SELECT count_warehouse.name FROM warehouses count_warehouse WHERE count_warehouse.id=r.warehouse_id))),lower(:keyword))>0
+                      OR EXISTS(SELECT 1 FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id
+                          AND strpos(lower(concat_ws(' ',count_line.goods_code,count_line.goods_name,count_line.color_name)),lower(:keyword))>0))
                     """;
         }
         long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM stock_count_requests r"+where,params,Long.class));

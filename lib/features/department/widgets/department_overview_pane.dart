@@ -584,6 +584,15 @@ class _DepartmentOverviewPaneState
     AppLocalizations l10n,
   ) => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
+      // 员工状态色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+      cellColor: (context, e) =>
+          udenStatusBadgeCellColor(context, employeeStatusBadgeType(e.status)),
+    ),
+    MasterColumnDef(
       key: 'code',
       label: '工号',
       width: 90,
@@ -618,15 +627,6 @@ class _DepartmentOverviewPaneState
       label: '岗位',
       width: 140,
       value: (e) => e.positionName,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
-      // 员工状态色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
-      cellColor: (context, e) =>
-          udenStatusBadgeCellColor(context, employeeStatusBadgeType(e.status)),
     ),
     MasterColumnDef(
       key: 'hireDate',

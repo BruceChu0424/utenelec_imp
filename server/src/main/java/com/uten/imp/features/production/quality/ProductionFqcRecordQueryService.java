@@ -232,18 +232,17 @@ public class ProductionFqcRecordQueryService {
             DocNoFilter docNo,
             NativeReadScope ownerScope,
             boolean includeDecision) {
-        StringBuilder predicate = new StringBuilder(
-                ownerScope == null ? "1=1" : ownerScope.predicate());
-        predicate.append("""
-                 AND (:keyword = '' OR LOWER(CONCAT_WS(' ',
-                    record.source_no, record.reference_no,
-                    record.partner_name, record.warehouse_name,
-                    record.goods_code, record.goods_name,
-                    record.color_name, record.unit_name,
-                    record.inspector_name, record.reason,
-                    record.disposition_code
-                )) LIKE :keywordLike)
-                """);
+        StringBuilder predicate = new StringBuilder("""
+                %s
+                  AND (:keyword = '' OR LOWER(CONCAT_WS(' ',
+                      record.source_no, record.reference_no,
+                      record.partner_name, record.warehouse_name,
+                      record.goods_code, record.goods_name,
+                      record.color_name, record.unit_name,
+                      record.inspector_name, record.reason,
+                      record.disposition_code
+                  )) LIKE :keywordLike)
+                """.formatted(ownerScope == null ? "1=1" : ownerScope.predicate()));
         if (filter.from() != null) {
             predicate.append(" AND record.decided_at >= :fromAt");
         }

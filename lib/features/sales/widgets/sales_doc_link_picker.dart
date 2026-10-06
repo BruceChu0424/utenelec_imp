@@ -221,6 +221,12 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
   SalesDocType upstream,
 ) => [
   MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 72,
+    value: (d) => salesStatusLabel(d.status),
+  ),
+  MasterColumnDef(
     key: 'billNo',
     label: '单据号',
     width: 140,
@@ -256,12 +262,6 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     value: (d) =>
         (upstream == SalesDocType.order ? d.totalOriginal : d.totalLocal)
             ?.toStringAsFixed(2),
-  ),
-  MasterColumnDef(
-    key: 'status',
-    label: '状态',
-    width: 90,
-    value: (d) => salesStatusLabel(d.status),
   ),
 ];
 

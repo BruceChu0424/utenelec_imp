@@ -539,6 +539,17 @@ class _FinanceAssetLedgerPanelState
         key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
         columns: [
           MasterColumnDef(
+            key: 'status',
+            label: '状态',
+            width: 72,
+            value: (item) => financeAssetStatusLabel(item.status),
+            // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
+            cellColor: (context, item) => udenStatusBadgeCellColor(
+              context,
+              financeAssetStatusType(item.status),
+            ),
+          ),
+          MasterColumnDef(
             key: 'code',
             cardRole: MasterColumnCardRole.subtitle,
             label: '编号',
@@ -589,17 +600,6 @@ class _FinanceAssetLedgerPanelState
             label: '开始期间',
             width: 110,
             value: (item) => item.startPeriod ?? '—',
-          ),
-          MasterColumnDef(
-            key: 'status',
-            label: '状态',
-            width: 100,
-            value: (item) => financeAssetStatusLabel(item.status),
-            // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
-            cellColor: (context, item) => udenStatusBadgeCellColor(
-              context,
-              financeAssetStatusType(item.status),
-            ),
           ),
         ],
         items: result?.items ?? const [],

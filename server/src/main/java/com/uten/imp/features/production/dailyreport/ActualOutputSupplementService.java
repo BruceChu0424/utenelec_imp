@@ -463,7 +463,7 @@ public class ActualOutputSupplementService {
                 null,null,null,recoveryId,Objects.toString(recovery.get("disposition_code"),null),number(recovery,"available_qty"),
                 uuid(recovery,"source_inspection_id"),uuid(recovery,"source_report_item_id"),Objects.toString(recovery.get("source_report_no"),null),
                 Boolean.TRUE.equals(recovery.get("requires_material")),uuid(c,"plan_id"),recoveryId==null,
-                rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),BigDecimal.ZERO);
+                rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),BigDecimal.ZERO,BigDecimal.ZERO);
     }
     /** Identity metadata for the authorized captured input, independent of current free quota. */
     private List<InputSource> inputSources(com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest input) {

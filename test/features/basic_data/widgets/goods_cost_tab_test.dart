@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -2490,7 +2491,7 @@ void main() {
                 tester.element(find.byType(GoodsCostTab)),
                 table.items.first,
               )
-              as UtenButton;
+              as UtenTableCellAction;
       button.onPressed!();
       await tester.pumpAndSettle();
       await tester.tap(find.text('恢复推荐值'));

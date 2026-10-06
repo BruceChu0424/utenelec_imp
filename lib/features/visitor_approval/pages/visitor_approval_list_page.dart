@@ -483,6 +483,12 @@ class _VisitorApprovalListPageState
 
   List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     MasterColumnDef(
+      key: 'status',
+      label: l10n.visitorColStatus,
+      width: 72,
+      value: (app) => visitorStatusLabel(app.status, l10n),
+    ),
+    MasterColumnDef(
       key: 'visitorName',
       label: l10n.visitorColVisitorName,
       width: 130,
@@ -519,12 +525,6 @@ class _VisitorApprovalListPageState
       width: 180,
       type: 'date',
       value: (app) => fmtDateTime(app.plannedVisitAt),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: l10n.visitorColStatus,
-      width: 110,
-      value: (app) => visitorStatusLabel(app.status, l10n),
     ),
   ];
 }

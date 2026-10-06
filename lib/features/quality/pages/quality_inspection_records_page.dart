@@ -563,7 +563,7 @@ class _QualityInspectionRecordsPageState
     MasterColumnDef(
       key: 'decision',
       label: '检验结果',
-      width: 120,
+      width: 72,
       value: (record) => record.decisionLabel,
       // 2026-09-27 用户口径「表格状态列整格底色」：合格=绿 / 部分合格=琥珀 /
       // 不合格=红 / 已撤销=中性灰。

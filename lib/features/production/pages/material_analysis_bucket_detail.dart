@@ -402,9 +402,11 @@ class _MaterialAnalysisBucketPageState
     }
     // 2026-09-16 用户口径：表格内下拉统一用自家 UtenDropdownField（统一弹层/
     // 单行省略号/描边与同行格一致），不再用原生 DropdownButton。
+    // 2026-10-06 行高统一口径：本表没有其它输入控件（读表），下拉走 flat——
+    // 高度与单行文本格一致，不再用编辑表的 dense 控件高。
     return UtenDropdownField(
       key: ValueKey('material-bucket-route-${row.id}'),
-      dense: true,
+      flat: true,
       value: current?.name,
       hintText: '请选择供应方式',
       items: [

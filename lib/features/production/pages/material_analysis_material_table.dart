@@ -336,6 +336,16 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 视图按聚合行聚合）；始终从「未套表头筛选」的行集算出。
   Map<String, List<MasterFacetBucket>> _materialRowsFacetsCache = const {};
 
+  /// 按物料汇总视图最近一次投影里，路径行(聚合组内)materialLineId → 所属
+  /// [_MaterialAggregate]。路径行只在该投影里诞生，单元格拿不到所属组时用它
+  /// 找回（2026-10-06 还缺数量的最粗守恒整分用）。
+  Map<String, _MaterialAggregate> _aggregateByLineId = const {};
+
+  /// 聚合组「还缺数量」最粗守恒整分的缓存：键 = 聚合键 + 净/毛口径，值 =
+  /// (各路径原始值指纹, materialLineId → 整分份额)。指纹一致直接复用——
+  /// 敲键改数/快照刷新都会改变指纹，缓存随之失效，不需要手动清。
+  final Map<String, (String, Map<String, double>)> _coarseShareCache = {};
+
   List<_MaterialTableRow> _materialTableRows(
     ProductionMaterialAnalysisView analysis,
   ) {
@@ -560,6 +570,12 @@ abstract class _MaterialAnalysisMaterialTableState
   ) {
     final indexes = _analysisIndexes(analysis);
     final aggregates = _materialAggregates(analysis, indexes);
+    // 路径行单元格拿不到自己所属的聚合组，投影时顺手留一份映射
+    // (还缺数量的最粗守恒整分用，见 [_coarseAggregateShares])。
+    _aggregateByLineId = {
+      for (final aggregate in aggregates)
+        for (final path in aggregate.paths) path.materialLineId: aggregate,
+    };
     final aggregateRows = <_MaterialTableRow>[
       for (var index = 0; index < aggregates.length; index++)
         _MaterialTableRow(
@@ -2055,9 +2071,10 @@ abstract class _MaterialAnalysisMaterialTableState
   ) {
     final foreground = _materialTableForeground(theme);
     final text = _materialTableOwningWarehouseText(row) ?? '—';
+    // 2026-10-06 行高统一口径：格内文本单行省略号，全名走 Tooltip。
     final label = Text(
       text,
-      maxLines: 2,
+      maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodyMedium?.copyWith(color: foreground),
     );
@@ -2066,7 +2083,7 @@ abstract class _MaterialAnalysisMaterialTableState
         row.isAggregateSource ||
         goodsId == null ||
         goodsId.isEmpty) {
-      return label;
+      return Tooltip(message: text, child: label);
     }
     return Tooltip(
       message: '$text\n点击改这个货品的所属仓库(货品主档归属, 不是本次分析范围仓, 也不是入库落点仓)',
@@ -2238,6 +2255,72 @@ abstract class _MaterialAnalysisMaterialTableState
         )
       : row.material?.sharedFutureClaimedQty;
 
+  /// 按物料汇总视图的「还缺数量」最粗守恒整分（2026-10-06 用户口径「优先整数
+  /// 呈现，只有真实分数值才保留小数」）：服务端把共享缺口按订单权重 1e-4 定点
+  /// 分摊，逐路径落在 83.3334 这类值上，父行裸求和就成了 1000.0002。展示层按
+  /// 最粗守恒粒度整分（优先整数），父行 = 各路径整分之和，小数尾巴不上屏。
+  /// **只影响汇总视图组行/路径行的展示**；按产品看、下单下限与一切提交读数
+  /// 仍用原始残差（[_tableGroupResidual] 是权威数值来源，不改）。
+  ///
+  /// [net] = 净口径（「还缺数量」列），否则毛口径（建议量，与「下单数量」
+  /// 同一份来源）。返回 materialLineId → 该路径的整分份额。
+  Map<String, double> _coarseAggregateShares(
+    _MaterialAggregate aggregate, {
+    required bool net,
+  }) {
+    final parts = [
+      for (final path in aggregate.paths)
+        net ? _tableShownQty(path).net : _tableShownQty(path).residual,
+    ];
+    final cacheKey = '${aggregate.key}|${net ? 'net' : 'gross'}';
+    final fingerprint = parts.join(';');
+    final cached = _coarseShareCache[cacheKey];
+    if (cached != null && cached.$1 == fingerprint) return cached.$2;
+    var total = 0.0;
+    for (final part in parts) {
+      total += part;
+    }
+    final shares = apportionLargestRemainder(
+      total,
+      parts,
+      coarsestDisplayScale(total, parts),
+    );
+    final byLine = {
+      for (var i = 0; i < aggregate.paths.length; i++)
+        aggregate.paths[i].materialLineId: shares[i],
+    };
+    _coarseShareCache[cacheKey] = (fingerprint, byLine);
+    return byLine;
+  }
+
+  /// 聚合组行的整分合计（= 各路径份额之和，守恒恒成立）。
+  double _coarseAggregateTotal(
+    _MaterialAggregate aggregate, {
+    required bool net,
+  }) => _coarseAggregateShares(
+    aggregate,
+    net: net,
+  ).values.fold(0, (sum, share) => sum + share);
+
+  /// 汇总视图路径行的整分份额；拿不到所属组（投影未建好）时退回自身原始值。
+  double _coarseShareOfPath(
+    ProductionMaterialAnalysisMaterial material, {
+    required bool net,
+  }) {
+    final aggregate = _aggregateByLineId[material.materialLineId];
+    return aggregate == null
+        ? (net
+              ? _tableShownQty(material).net
+              : _tableShownQty(material).residual)
+        : _coarseAggregateShares(
+                aggregate,
+                net: net,
+              )[material.materialLineId] ??
+              (net
+                  ? _tableShownQty(material).net
+                  : _tableShownQty(material).residual);
+  }
+
   double? _materialTableAdditionalRecommendedQty(_MaterialTableRow row) =>
       row.contextOnly
       ? null
@@ -2246,14 +2329,16 @@ abstract class _MaterialAnalysisMaterialTableState
       // 的补货走「下达车间」，不在此列。
       : row.product != null && !_rootExternalSupplyRow(row)
       ? null
+      // 汇总视图组行取最粗守恒整分（2026-10-06）：整数计量的组父行不再显示
+      // 1000.0002 这类定点分摊尾巴。
       : row.aggregate != null
-      ? row.aggregate!.paths.fold<double>(
-          0,
-          (sum, material) => sum + _tableShownQty(material).residual,
-        )
+      ? _coarseAggregateTotal(row.aggregate!, net: false)
       : row.material == null
       ? null
+      // 汇总视图的路径行显示组内整分份额，父行 = 各路径之和；
       // 与「还缺数量」「下单数量」同一份来源：父行改量之后三列必须一起变。
+      : row.kind == _MaterialTableRowKind.aggregatePath
+      ? _coarseShareOfPath(row.material!, net: false)
       : _tableShownQty(row.material!).residual;
 
   // ==================== ADR-102 一张表：数量、办理与指派 ====================
@@ -2428,18 +2513,21 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 2026-09-22：顶层放开办理后，这一列与办理/下单两列收口到同一条判据 ——
   /// 有根供给组的产品行照常显示它自己的缺口，没有的才是横杠。原来只对
   /// 「已确认非自制路线」的顶层行显示，顶层自制明明也能下达车间却看不到缺口。
+  ///
+  /// 2026-10-06 用户口径「优先整数呈现」：按物料汇总视图的组行/路径行走最粗
+  /// 守恒整分（[_coarseAggregateShares]）——服务端 1e-4 定点分摊的 83.3334
+  /// 尾巴不再上屏，父行 = 各子行之和；按产品看行保持原始净缺口。
   double? _materialTableNetShortageQty(_MaterialTableRow row) => row.contextOnly
       ? null
       : row.product != null && row.group == null
       ? null
       : _tableBudgetOf(row)?.netShortageQty ??
             (row.aggregate != null
-                ? row.aggregate!.paths.fold<double>(
-                    0,
-                    (sum, material) => sum + _tableShownQty(material).net,
-                  )
+                ? _coarseAggregateTotal(row.aggregate!, net: true)
                 : row.material == null
                 ? null
+                : row.kind == _MaterialTableRowKind.aggregatePath
+                ? _coarseShareOfPath(row.material!, net: true)
                 : _tableShownQty(row.material!).net);
 
   /// 本提交单元累计已下单量。
@@ -4043,14 +4131,14 @@ abstract class _MaterialAnalysisMaterialTableState
 
   Widget _materialTableHandleCell(ThemeData theme, _MaterialTableRow row) {
     if (_bomAggregateByMaterial && row.product != null) {
-      return TextButton(
+      return UtenTableCellAction(
+        label: '按产品办理',
         onPressed: _busy
             ? null
             : () => setState(() {
                 _bomAggregateByMaterial = false;
                 _pruneMaterialTableFilters();
               }),
-        child: const Text('按产品办理'),
       );
     }
     if (row.aggregate case final aggregate?) {
@@ -4925,12 +5013,6 @@ abstract class _MaterialAnalysisMaterialTableState
       pending,
       blocked,
       hiddenSelected: fromShortagePage ? 0 : _selectedIssuableGroups().hidden,
-      mergedKinds: split.merged.isEmpty
-          ? 0
-          : split.merged
-                .map((group) => _aggregateKeyOf(group.representative))
-                .toSet()
-                .length,
     )) {
       return false;
     }
@@ -5259,11 +5341,13 @@ abstract class _MaterialAnalysisMaterialTableState
     return view != null;
   }
 
+  /// 下单确认弹窗（2026-10-06 用户口径）：不逐行罗列——明细和数量在表格里
+  /// 核对，弹窗只做最后一道闸：有问题的行红色点名（本次下不成/与所见不一致
+  /// 的事实），没问题就只给「几种 + 共多少」的汇总。
   Future<bool> _confirmMaterialTableSubmit(
     Map<_MaterialGroup, double> pending,
     List<String> blocked, {
     required int hiddenSelected,
-    int mergedKinds = 0,
   }) async {
     final includedHidden = _aggregateTable.includedOutsideCurrentRows(
       pending.keys,
@@ -5280,67 +5364,89 @@ abstract class _MaterialAnalysisMaterialTableState
       (sum, value) => sum + value,
     );
     final total = pending.values.fold<double>(0, (sum, value) => sum + value);
-    final sameMaterials = <String, List<MapEntry<_MaterialGroup, double>>>{};
+    // 品种数按 goods/color/unit 身份去重（与「按物料汇总」同一把键）：同料多
+    // 来源算一种。路线分账一行带过，扫一眼下单去向；顺序即提交顺序。
+    final routeKinds = <String, Set<String>>{};
+    final routeQty = <String, double>{};
+    var handoffOnlyRows = 0;
     for (final entry in pending.entries) {
-      sameMaterials
-          .putIfAbsent(_aggregateKeyOf(entry.key.representative), () => [])
-          .add(entry);
+      final label = _tableIssueTarget(entry.key).label;
+      routeKinds
+          .putIfAbsent(label, () => <String>{})
+          .add(_aggregateKeyOf(entry.key.representative));
+      routeQty[label] = (routeQty[label] ?? 0) + entry.value;
+      final route = _draftRoute(entry.key);
+      if (entry.value <= 0.0001 &&
+          route != null &&
+          _hasRootStockToAllocate(entry.key, route)) {
+        handoffOnlyRows++;
+      }
     }
-    final combined = sameMaterials.values
-        .where((entries) => entries.length > 1)
-        .toList();
-    final lines = <String>[
-      for (final entry in pending.entries)
-        '· ${_tableGroupLabel(entry.key)}'
-            ' ${_tableIssueTarget(entry.key).label} ${_qty(entry.value)}'
-            '${_tableGroupIssued(entry.key) ? "(追加)" : ""}'
-            '${entry.value <= 0.0001 && _draftRoute(entry.key) != null && _hasRootStockToAllocate(entry.key, _draftRoute(entry.key)!) ? "（交接已分配现货，不新增订货）" : ""}',
+    // 品种数全局去重：同料跨路线（不同来源选了不同路线）也只算一种，
+    // 路线分账里的种数各自计各自的，两边不必相等。
+    final kinds = <String>{
+      for (final group in pending.keys) _aggregateKeyOf(group.representative),
+    }.length;
+    final routeLine = [
+      for (final label in const ['下达车间', '下达委外', '下达采购'])
+        if (routeKinds[label] != null)
+          '${label.replaceFirst('下达', '')} ${routeKinds[label]!.length} 种'
+              ' ${_qty(routeQty[label] ?? 0)}',
+    ].join(' · ');
+    // 红色问题区：只放「本次下不成」或「和你在表格里看到的不一样」的事实；
+    // 检查全部通过时整块不出现。
+    final warnings = <String>[
+      if (blocked.isNotEmpty) ...[
+        '${blocked.length} 行本次不会下单：',
+        ...blocked.take(5).map((reason) => '· $reason'),
+        if (blocked.length > 5) '…… 以及其余 ${blocked.length - 5} 行',
+      ],
+      if (handoffOnlyRows > 0) '$handoffOnlyRows 行数量为 0，只交接已分配现货，不新增订货',
+      if (includedHidden > 0) '$includedHidden 行在折叠分支或筛选之外，会随本次一起下单',
+      // 只排除不再属于当前来源投影的选择；完整产品树中的折叠/跨页行已计入。
+      if (hiddenSelected > 0) '$hiddenSelected 行勾选已不在当前产品/来源范围，本次不提交',
     ];
+    final theme = Theme.of(context);
     final confirmed = await UtenDialog.show(
       context,
-      title: '确认下达 ${pending.length} 行？',
-      content: SingleChildScrollView(
-        child: Text(
-          [
-            if (_preparationUseAvailableQty != null)
-              '本次下单方式：$_preparationUsageLabel。',
-            if (combined.isNotEmpty) ...[
-              '同货品填写合计（仅本次选中行）：',
-              for (final entries in combined.take(8))
-                '${_tableGroupLabel(entries.first.key)}：${_qty(entries.fold<double>(0, (sum, entry) => sum + entry.value))} ${entries.first.key.representative.unitName ?? ""}'
-                    '（${entries.take(6).map((entry) => _qty(entry.value)).join(" + ")}${entries.length > 6 ? " + …" : ""}）',
-              '',
-            ],
-            if (safety > 0.0001)
-              '本批下单 ${_qty(total)} + 公共安全补库 ${_qty(safety)}，合计 ${_qty(total + safety)}。',
-            ...lines.take(12),
-            if (lines.length > 12) '…… 以及其余 ${lines.length - 12} 行',
-            if (includedHidden > 0)
-              '其中 $includedHidden 行在折叠分支或筛选之外，已按你的产品/来源选择计入本次。',
-            if (mergedKinds > 0) ...[
-              '',
-              '本次 $mergedKinds 种组件按来源一次下达，相同物料自动合单'
-                  '——车间件并成一张计划、采购/委外并成一条申请明细；'
-                  '未开工或未订货的原单直接追加；已有执行事实时另建单据。',
-            ],
-            if (blocked.isNotEmpty) ...[
-              '',
-              '以下 ${blocked.length} 行本次跳过：',
-              ...blocked.take(5).map((reason) => '· $reason'),
-              if (blocked.length > 5) '…… 以及其余 ${blocked.length - 5} 行',
-            ],
-            // 只排除不再属于当前来源投影的选择；完整产品树中的折叠/跨页行已计入。
-            if (hiddenSelected > 0) ...[
-              '',
-              '另有 $hiddenSelected 行不属于当前产品/来源范围，本次不提交。',
-            ],
-            '',
-            '按物料依赖父先子后提交，互不依赖的物料批量办理；'
-                '中途失败会停下并告诉你停在哪一步。',
-          ].join('\n'),
+      title: '确认下单 $kinds 种？',
+      // Text.rich 而非拼 Column：ADR-150 弹窗正文保持纯文本可被 AI 助手读到。
+      content: Text.rich(
+        key: const Key('material-submit-confirm-body'),
+        TextSpan(
+          children: [
+            TextSpan(
+              text:
+                  '共 $kinds 种，合计 ${_qty(total + safety)}'
+                  '${safety > 0.0001 ? '（含公共安全补库 ${_qty(safety)}）' : ''}。',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            if (routeLine.isNotEmpty)
+              TextSpan(
+                text: '\n$routeLine',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (warnings.isNotEmpty)
+              TextSpan(
+                text: '\n\n${warnings.join('\n')}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.error,
+                ),
+              ),
+          ],
         ),
+        style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
       ),
-      confirmLabel: '下达',
+      confirmLabel: '确认下单',
     );
     return confirmed == true;
   }
@@ -5732,25 +5838,33 @@ abstract class _MaterialAnalysisMaterialTableState
         label:
             '合格库存保障 ${_qty(aggregate.qualifiedCoveredQty)}/${_qty(aggregate.totalRequired)}，百分之 ${(ratio * 100).toStringAsFixed(0)}',
         child: ExcludeSemantics(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          // 2026-10-06 行高统一口径：进度形态改单层 Row（参考
+          // ProductionFlowProgress 的「进度条 + 文字」横排），不再上下两层。
+          child: Row(
             children: [
-              Text(
-                '保障 ${_qty(aggregate.qualifiedCoveredQty)}/'
-                '${_qty(aggregate.totalRequired)} '
-                '(${(ratio * 100).toStringAsFixed(0)}%)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: LinearProgressIndicator(
+                  value: ratio,
+                  minHeight: 8,
+                  // 2026-09-27 用户口径：进度条颜色全站统一主题主色，不随状态色变。
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
                 ),
               ),
-              const SizedBox(height: UtenSpacing.s4),
-              LinearProgressIndicator(
-                value: ratio,
-                minHeight: 8,
-                // 2026-09-27 用户口径：进度条颜色全站统一主题主色，不随状态色变。
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              const SizedBox(width: UtenSpacing.s8),
+              // 文字与进度条分剩余宽度：窄列/放大字号时省略号截断，全量数字由
+              // 上面 Semantics 的 label 播报。
+              Flexible(
+                child: Text(
+                  '保障 ${_qty(aggregate.qualifiedCoveredQty)}/'
+                  '${_qty(aggregate.totalRequired)} '
+                  '(${(ratio * 100).toStringAsFixed(0)}%)',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
@@ -5775,24 +5889,23 @@ abstract class _MaterialAnalysisMaterialTableState
     final status = _materialStatus(theme, group);
     Widget result = label(status);
     if (_notifiedTargetOf(group.representative) != null) {
+      // 2026-10-06 行高统一口径：去掉格内 minHeight 48 定高与竖向内边距，
+      // 点击区由整格（InkWell 撑满单元格）提供。
       result = InkWell(
         key: ValueKey(
           'material-table-supply-progress-${group.representative.materialLineId}',
         ),
         onTap: _busy ? null : () => _showSupplyProgress(group),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-            child: Align(alignment: Alignment.centerLeft, child: result),
-          ),
-        ),
+        child: Align(alignment: Alignment.centerLeft, child: result),
       );
     }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [result, _borrowBadges(theme, group.representative)],
+    // 借用徽章与状态文字同一行（2026-10-06 行高统一口径：徽章单行省略号，
+    // 全量明细在行详情与悬浮里）。
+    return Row(
+      children: [
+        Flexible(child: result),
+        Expanded(child: _borrowBadges(theme, group.representative)),
+      ],
     );
   }
 

@@ -878,6 +878,13 @@ extension _GoodsCostEditor on _GoodsCostTabState {
             ),
     );
     final columns = <MasterColumnDef<Map<String, dynamic>>>[
+      _readColumn(
+        'valueState',
+        _l.costStatus,
+        72,
+        defaultVisible: false,
+        text: (r) => _status(r['valueState']),
+      ),
       MasterColumnDef(
         key: 'goodsName',
         label: _l.costGoodsName,
@@ -1036,13 +1043,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           ),
         ),
       ],
-      _readColumn(
-        'valueState',
-        _l.costStatus,
-        130,
-        defaultVisible: false,
-        text: (r) => _status(r['valueState']),
-      ),
       MasterColumnDef(
         key: 'adjust',
         label: _l.costAdjustment,
@@ -1050,22 +1050,15 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         value: (_) => _l.costAdjustment,
         cellBuilder: (_, row) => !_editable
             ? const SizedBox.shrink()
-            : UtenButton(
+            : UtenTableCellAction(
                 key: ValueKey('cost-adjust-${row['path']}'),
-                type: UtenButtonType.tonal,
+                label: _adjustingPaths.contains(row['path'])
+                    ? _l.commonConfirm
+                    : _l.costAdjustment,
                 onPressed: () => setState(() {
                   final path = row['path'].toString();
                   if (!_adjustingPaths.add(path)) _adjustingPaths.remove(path);
                 }),
-                child: Flexible(
-                  child: Text(
-                    _adjustingPaths.contains(row['path'])
-                        ? _l.commonConfirm
-                        : _l.costAdjustment,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
               ),
       ),
       MasterColumnDef(
@@ -1073,10 +1066,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         label: _l.costExplanation,
         width: 90,
         value: (_) => _l.costExplanation,
-        cellBuilder: (_, r) => UtenButton(
-          type: UtenButtonType.tonal,
+        cellBuilder: (_, r) => UtenTableCellAction(
+          label: _l.costOpen,
           onPressed: () => _showEvidence(r),
-          child: Text(_l.costOpen, maxLines: 1),
         ),
       ),
     ];
@@ -1973,17 +1965,17 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           child: MasterDataTableView<Map<String, dynamic>>(
             tableKey: 'master.goods.cost.snapshots',
             columns: [
+              _readColumn('kind', _l.costStatus, 72),
               _readColumn('sheetVersion', _l.costVersion, 100),
-              _readColumn('kind', _l.costStatus, 150),
               _readColumn('createdAt', _l.costUpdated, 200),
               MasterColumnDef(
                 key: 'open',
                 label: _l.costOpen,
                 width: 120,
                 value: (_) => _l.costOpen,
-                cellBuilder: (_, row) => UtenButton(
+                cellBuilder: (_, row) => UtenTableCellAction(
+                  label: _l.costOpen,
                   onPressed: () => Navigator.pop(dialog, row['id'].toString()),
-                  child: Text(_l.costOpen),
                 ),
               ),
             ],

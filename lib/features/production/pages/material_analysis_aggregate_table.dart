@@ -440,46 +440,26 @@ final class _MaterialAggregateTableController {
       (double.tryParse(value)?.isFinite ?? false) &&
       (double.tryParse(value) ?? -1) >= 0;
 
-  /// 手输总量 → 各来源的平分份额(与 [needs] 同序)：先盖住每条来源自己的
-  /// 「还需安排」，富余在有需求的来源之间平均分；全都无需求才全体均分；
-  /// 总量低于需要合计时按需求占比缩放。分单数量([partQuantities])与敲键
-  /// 平分([_applyLocalSplit])共用这一份。
-  static List<double> _localShares(double total, List<double> needs) {
-    var needTotal = 0.0;
-    for (final need in needs) {
-      if (need > 0) needTotal += need;
-    }
-    final shares = List<double>.filled(needs.length, 0);
-    void evenShare(double amount, List<int> indexes) {
-      if (indexes.isEmpty || amount <= 0) return;
-      // 输入最多四位小数：按万分之一整分、余数逐份 +1，让各行合计与总量
-      // 不差毫(浮点均分 6000/3 之类的尾差会把两视图的合计对不齐)。
-      final units = (amount * 10000).round();
-      final base = units ~/ indexes.length;
-      final extra = units - base * indexes.length;
-      for (var i = 0; i < indexes.length; i++) {
-        shares[indexes[i]] += (base + (i < extra ? 1 : 0)) / 10000;
-      }
-    }
+  /// 用户敲的总量文本的小数位数（无小数=0，封顶 4）：平分粒度跟着输入走——
+  /// 整数总量平分成整数份额，敲了四位小数才落四位小数。
+  static int _typedScale(String text) {
+    final trimmed = text.trim();
+    final dot = trimmed.indexOf('.');
+    if (dot < 0) return 0;
+    return (trimmed.length - dot - 1).clamp(0, 4);
+  }
 
-    if (total > 0.0000001 && needTotal <= 0.0000001) {
-      evenShare(total, [for (var i = 0; i < needs.length; i++) i]);
-    } else if (total > 0.0000001 && total + 0.0001 >= needTotal) {
-      final withNeed = <int>[];
-      for (var i = 0; i < needs.length; i++) {
-        if (needs[i] > 0.0000001) {
-          shares[i] = needs[i];
-          withNeed.add(i);
-        }
-      }
-      evenShare(total - needTotal, withNeed);
-    } else if (total > 0.0000001) {
-      for (var i = 0; i < needs.length; i++) {
-        if (needs[i] <= 0.0000001) continue;
-        shares[i] = total * needs[i] / needTotal;
-      }
+  /// 各来源「还需安排」合计的最粗守恒整值（2026-10-06 用户口径「优先整数
+  /// 呈现」）：服务端把共享缺口按订单权重 1e-4 定点分摊，逐来源落在
+  /// 83.3334 这类值上，裸求和就成了 1000.0002——下限取整成 1000，红框与
+  /// 提交拦截才不会逼用户输 ≥1000.0002。只动展示与编辑层；提交读数与
+  /// 服务端守恒仍是 1e-4 口径。
+  static double _coarseFloor(List<double> residuals) {
+    var total = 0.0;
+    for (final residual in residuals) {
+      total += residual;
     }
-    return shares;
+    return roundToScale(total, coarsestDisplayScale(total, residuals));
   }
 
   /// 汇总「下单数量」格的下限：参与来源(可选下单的组)的「还需安排」
@@ -489,12 +469,10 @@ final class _MaterialAggregateTableController {
   /// 追加是额外量、填多少都行，没有下限。
   double orderFloor(_MaterialAggregate aggregate) {
     if (orderedQty(aggregate) > 0.000000001) return 0;
-    var total = 0.0;
-    for (final group in groupsOf(aggregate)) {
-      if (!selectableForOrder(group)) continue;
-      total += owner._tableGroupResidual(group);
-    }
-    return total;
+    return _coarseFloor([
+      for (final group in groupsOf(aggregate))
+        if (selectableForOrder(group)) owner._tableGroupResidual(group),
+    ]);
   }
 
   /// 手输总量 → 各来源行的本地平分（2026-09-27 用户口径「按物料汇总输入的值
@@ -522,9 +500,13 @@ final class _MaterialAggregateTableController {
     if (groups.isEmpty) return;
     final total = double.tryParse(draft.totalText.trim());
     if (total == null || !total.isFinite || total < 0) return;
-    final shares = _localShares(total, [
-      for (final group in groups) owner._tableGroupResidual(group),
-    ]);
+    // 平分粒度跟着用户敲的小数位走(2026-10-06 用户口径「优先整数」)：整数
+    // 总量落整数份额，83.3334 这类服务端分摊尾巴不再层层上屏。
+    final shares = splitTypedTotal(
+      total,
+      [for (final group in groups) owner._tableGroupResidual(group)],
+      _typedScale(draft.totalText),
+    );
     for (var i = 0; i < groups.length; i++) {
       final group = groups[i];
       final line = group.representative.materialLineId;
@@ -701,7 +683,7 @@ final class _MaterialAggregateTableController {
   /// 各张工单本次的数量(与 [parts] 同序)，合计恰为草稿总量。
   /// - 逐行带数的草稿(按产品全选下单、汇总前各行已有数)：每张工单 = 它那几行
   ///   自己的数，逐行数量原样随这张工单提交；
-  /// - 手输总量的草稿：先按平分规则([_localShares])把总量落到
+  /// - 手输总量的草稿：先按平分规则([splitTypedTotal])把总量落到
   ///   各来源行，再按工单相加。
   /// 按万分之一整数累加，尾差归最后一张，合计与总量一毫不差。
   List<({String qty, Map<String, String>? sourceRequested})> partQuantities(
@@ -730,9 +712,11 @@ final class _MaterialAggregateTableController {
       ];
     }
     final sources = draftSources(draft);
-    final shares = _localShares(double.parse(draft.totalText), [
-      for (final source in sources) owner._tableGroupResidual(source.group),
-    ]);
+    final shares = splitTypedTotal(
+      double.parse(draft.totalText),
+      [for (final source in sources) owner._tableGroupResidual(source.group)],
+      _typedScale(draft.totalText),
+    );
     final shareByLine = {
       for (var i = 0; i < sources.length; i++) sources[i].line: shares[i],
     };
@@ -862,14 +846,14 @@ final class _MaterialAggregateTableController {
       // 2026-09-27 用户口径「输入的值不能低于还缺数量」：手输总量的下单流草稿
       // 在红框之外由提交通道再拦一道。按产品「全选下单」并进来的草稿
       // (sourceRequested 逐行带着用户自己填的数，分批少下合法)与追加流(额外量)
-      // 都不套这条下限。
+      // 都不套这条下限。下限与红框([orderFloor])同为最粗守恒整值(2026-10-06
+      // 口径「优先整数」)：显示 1000 就拦 <1000，不再逼用户输 ≥1000.0002。
       if (draft.userEntered &&
           draft.sourceRequestedQtyByMaterialLineId == null &&
           !draft.appendFlow) {
-        var floor = 0.0;
-        for (final group in groups) {
-          floor += owner._tableGroupResidual(group);
-        }
+        final floor = _coarseFloor([
+          for (final group in groups) owner._tableGroupResidual(group),
+        ]);
         if ((double.parse(draft.totalText) + 0.0001) < floor) {
           throw FormatException(
             '「${draft.label}」本次总量 ${draft.totalText} 不能低于各来源'
@@ -1346,32 +1330,34 @@ final class _MaterialAggregateTableController {
         return false;
       }
       final request = _previewRequest!, preview = _preview!;
+      // 与主表确认框同一口径（2026-10-06）：不逐行罗列来源与下层明细——那是
+      // 汇总表自己核对的职责；弹窗只给汇总和会改变行为的事实。
+      final requestedTotal = preview.groups.fold<double>(
+        0,
+        (sum, group) => sum + group.requestedQty,
+      );
+      final appendCount = preview.groups
+          .where((g) => g.existingBatchId != null)
+          .length;
+      final publicExtraTotal = preview.groups.fold<double>(
+        0,
+        (sum, group) => sum + group.publicExtraQty,
+      );
       final userConfirmed =
           confirmed ||
           (await UtenDialog.show(
                 owner.context,
-                title: '确认下达 ${keys.length} 种物料？',
-                content: SingleChildScrollView(
-                  child: Text(
-                    [
-                      for (final group in preview.groups) ...[
-                        '${nameOf(group)}：本次 ${owner._qty(group.requestedQty)} ${group.unitName}',
-                        if (group.existingBatchId != null)
-                          '追加原单，原下单量 ${owner._qty(group.priorOutputQty)}；下层只办理本次净增量。',
-                        '来源分配 ${owner._qty(group.sources.fold<double>(0.0, (sum, source) => sum + source.allocatedQty))}，公共备货 ${owner._qty(group.publicExtraQty)}',
-                        for (final source in group.sources.take(6))
-                          '${source.sourceLabel}：${owner._qty(source.allocatedQty)}',
-                        if (group.sources.length > 6)
-                          '另有 ${group.sources.length - 6} 个来源，详见汇总展开明细',
-                        for (final child in group.sharedBomChildren.take(8))
-                          '下层本批需 ${child.goodsName} ${owner._qty(child.requiredQty)} ${child.unitName}',
-                        '',
-                      ],
-                      '按以上总量和来源分配一次下达；库存与生产开工条件仍按真实业务状态核对。',
-                    ].join('\n'),
-                  ),
+                title: '确认下单 ${keys.length} 种物料？',
+                content: Text(
+                  [
+                    '共 ${keys.length} 种物料，合计 ${owner._qty(requestedTotal)}。',
+                    if (appendCount > 0) '$appendCount 种为追加原单，只办理本次净增量。',
+                    if (publicExtraTotal > 0.0001)
+                      '含公共备货 ${owner._qty(publicExtraTotal)}（超出本批需求的部分）。',
+                  ].join('\n'),
+                  key: const Key('aggregate-submit-confirm-body'),
                 ),
-                confirmLabel: '下达',
+                confirmLabel: '确认下单',
               )) ==
               true;
       if (!userConfirmed || !owner.mounted) return false;

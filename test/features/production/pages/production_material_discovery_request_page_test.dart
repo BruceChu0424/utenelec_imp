@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -283,7 +284,9 @@ void main() {
       expect(notice.level, UtenInlineNoticeLevel.error);
       expect(notice.message, contains('可选填'));
       expect(
-        tester.widget<Text>(find.text(notice.message)).style!.color,
+        // 本例断言的就是带正文的提示；UtenInlineNotice.message 已可空（在途
+        // 口径），这里用 ! 只解类型，不改变断言语义。
+        tester.widget<Text>(find.text(notice.message!)).style!.color,
         UtenInlineNoticeLevel.error.accent,
       );
       expect(find.textContaining('累计学习 BOM'), findsNothing);
@@ -292,18 +295,19 @@ void main() {
           .widget<MasterDataTableView<DiscoveryRequestMaterialRow>>(
             find.byKey(const Key('discovery-request-table')),
           );
+      // 2026-10-06 全站口径：状态列（submissionStatus）排最前。
       expect(table.columns.take(4).map((column) => column.key), [
+        'submissionStatus',
         'task',
         'planNo',
         'workshop',
-        'submissionStatus',
       ]);
       for (final column in table.columns.take(4)) {
         expect(column.cellBuilder, isNull);
       }
       expect(
         table.columns.take(4).map((column) => column.value(table.items.single)),
-        ['ZX-a', 'SJ-a', '注塑车间', '待提交'],
+        ['待提交', 'ZX-a', 'SJ-a', '注塑车间'],
       );
       expect(
         tester.getTopLeft(find.text('ZX-a')).dy,
@@ -682,8 +686,10 @@ void main() {
       isNull,
     );
     expect(
+      // 2026-10-06 行高统一口径：该格由 TextButton 换成 UtenTableCellAction，
+      // 断言语义不变（查看者不可选材料）。
       tester
-          .widget<TextButton>(
+          .widget<UtenTableCellAction>(
             find.byKey(
               ValueKey('discovery-request-goods-${_rows(tester).single.id}'),
             ),

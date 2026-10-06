@@ -578,6 +578,12 @@ class _AccountPageState extends ConsumerState<AccountPage> {
 
   List<MasterColumnDef<AccountListItem>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (account) => account.status,
+    ),
+    MasterColumnDef(
       key: 'code',
       label: '编号',
       width: 125,
@@ -617,12 +623,6 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         value: (account) =>
             financeExactMoneyDisplay(account.balanceCurrentText),
       ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 95,
-      value: (account) => account.status,
-    ),
   ];
 
   List<MasterDataGroup<AccountListItem>> get _leadingGroups {

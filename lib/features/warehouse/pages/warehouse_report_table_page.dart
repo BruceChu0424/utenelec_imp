@@ -466,12 +466,21 @@ class _WarehouseReportTablePageState
     // 重量列 (type 'weight', 千克) 按用户显示单位换算; 估算行前缀「≈」, 没称留空。
     final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final hasWeight = data.columns.any((c) => c.type == 'weight');
-    final columns = data.columns
+    // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列
+    // 排到最前，其余列保持服务端顺序；两个分区各自保持原有相对顺序。
+    final orderedColumns = [
+      ...data.columns.where((c) => _isStatusColumnLabel(c.label)),
+      ...data.columns.where((c) => !_isStatusColumnLabel(c.label)),
+    ];
+    final columns = orderedColumns
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
             key: c.key,
             label: c.label,
-            width: (c.width ?? 120).toDouble(),
+            // 状态列收窄为声明下限 72（value 即显示文案，表格按内容自适应加宽）。
+            width: _isStatusColumnLabel(c.label)
+                ? 72
+                : (c.width ?? 120).toDouble(),
             type: c.type,
             sortable: isSortableReportType(c.type),
             value: (row) =>
@@ -547,4 +556,6 @@ class _WarehouseReportTablePageState
       ),
     );
   }
+
+  static bool _isStatusColumnLabel(String label) => label.contains('状态');
 }

@@ -1118,6 +1118,17 @@ class _WorkshopMaterialBinPageState
       key: const Key('wm-bin-history-table'),
       columns: [
         MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          width: 72,
+          value: (r) => wmRequisitionStatusLabel(r.status),
+          // 2026-10-01 口径「不同状态不同颜色」：待处理琥珀 / 已完成绿 / 已取消灰。
+          cellColor: (context, r) => udenStatusBadgeCellColor(
+            context,
+            wmRequisitionStatusBadgeType(r.status),
+          ),
+        ),
+        MasterColumnDef(
           key: 'requestNo',
           label: '单号',
           width: 160,
@@ -1147,17 +1158,6 @@ class _WorkshopMaterialBinPageState
           width: 100,
           type: 'number',
           value: (r) => wmQty(r.totalQty),
-        ),
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 90,
-          value: (r) => wmRequisitionStatusLabel(r.status),
-          // 2026-10-01 口径「不同状态不同颜色」：待处理琥珀 / 已完成绿 / 已取消灰。
-          cellColor: (context, r) => udenStatusBadgeCellColor(
-            context,
-            wmRequisitionStatusBadgeType(r.status),
-          ),
         ),
         MasterColumnDef(
           key: 'receiver',

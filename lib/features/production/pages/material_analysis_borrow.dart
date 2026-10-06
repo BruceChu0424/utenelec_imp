@@ -39,8 +39,7 @@ class MaterialAnalysisBorrowBadgeContent extends StatelessWidget {
             TextSpan(text: label),
           ],
         ),
-        maxLines: 2,
-        softWrap: true,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
     );
@@ -139,13 +138,15 @@ abstract class _MaterialAnalysisBorrowState
         ),
       );
     }
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s4),
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s4,
-        children: chips,
-      ),
+    // 2026-10-06 行高统一口径：徽章与状态文字同一行、单行省略号——不再折到
+    // 第二层把行撑高；逐笔全量信息在行详情里。
+    return Row(
+      children: [
+        for (var index = 0; index < chips.length; index++) ...[
+          if (index > 0) const SizedBox(width: UtenSpacing.s8),
+          Flexible(child: chips[index]),
+        ],
+      ],
     );
   }
 

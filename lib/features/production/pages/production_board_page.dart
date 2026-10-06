@@ -995,6 +995,20 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
 
   List<MasterColumnDef<SchedulePendingRow>> get _pendingColumns => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      // 2026-09-15(ADR-088)分支顺序重排：本段的行一律是「还有未承接残量」的行，
+      // 所以先说清这个残量的来历(部分已分析 / 部分已排 / 待审批)，再落到紧急/待分析。
+      // 旧口径里「已分析」「已分析·暂不可生产」两档在这里已无意义——全量分析过的行
+      // 根本不在本段，齐套情况去「进行中」那张分析里看。
+      // 2026-09-27 用户口径「表格状态列整格底色」：已排/已分析=绿(在途有进展)、
+      // 待审批=蓝(球在审核方)、紧急=红、待分析=中性灰。
+      value: _statusText,
+      cellColor: (context, r) =>
+          udenStatusBadgeCellColor(context, _statusType(r)),
+    ),
+    MasterColumnDef(
       key: 'orderBillNo',
       label: '销售单号',
       width: 140,
@@ -1083,20 +1097,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       sortable: true,
       value: (r) =>
           r.deliverDate == null ? '—' : r.deliverDate!.substring(0, 10),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 150,
-      // 2026-09-15(ADR-088)分支顺序重排：本段的行一律是「还有未承接残量」的行，
-      // 所以先说清这个残量的来历(部分已分析 / 部分已排 / 待审批)，再落到紧急/待分析。
-      // 旧口径里「已分析」「已分析·暂不可生产」两档在这里已无意义——全量分析过的行
-      // 根本不在本段，齐套情况去「进行中」那张分析里看。
-      // 2026-09-27 用户口径「表格状态列整格底色」：已排/已分析=绿(在途有进展)、
-      // 待审批=蓝(球在审核方)、紧急=红、待分析=中性灰。
-      value: _statusText,
-      cellColor: (context, r) =>
-          udenStatusBadgeCellColor(context, _statusType(r)),
     ),
   ];
 

@@ -582,29 +582,51 @@ class _WorkshopBinOpeningPanelState
       label: l10n.wmBinColProduct,
       width: 200,
       textOf: (row) => row.product.productDisplay,
-      cellBuilder: (context, row) => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(row.product.productDisplay, maxLines: 1),
-          if (row.product.productSubline != null)
-            Text(
-              row.product.productSubline!,
-              maxLines: 1,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+      // 2026-10-06 行高统一口径：名称 + 小字注记并到单行（注记挂 Tooltip），
+      // 不再用 Column 两层把行撑高。
+      cellBuilder: (context, row) {
+        final subline = row.product.productSubline;
+        if (subline == null) {
+          return Text(
+            row.product.productDisplay,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
+        }
+        return Tooltip(
+          message: '${row.product.productDisplay}\n$subline',
+          child: Text.rich(
+            TextSpan(
+              text: row.product.productDisplay,
+              children: [
+                TextSpan(
+                  text: ' · $subline',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-        ],
-      ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      },
     ),
     EditableGridColumn<WmPendingChoiceRow>(
       key: 'workshops',
       label: l10n.wmBinColInProgressWorkshops,
       width: 150,
       textOf: (row) => row.product.workshopNames.join('、'),
-      cellBuilder: (context, row) =>
-          Text(row.product.workshopNames.join('、'), maxLines: 2),
+      // 2026-10-06 行高统一口径：单行省略号 + Tooltip，不用两行文本撑高行。
+      cellBuilder: (context, row) => Tooltip(
+        message: row.product.workshopNames.join('、'),
+        child: Text(
+          row.product.workshopNames.join('、'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
     ),
     EditableGridColumn<WmPendingChoiceRow>(
       key: 'tasks',
@@ -663,18 +685,25 @@ class _WorkshopBinOpeningPanelState
           }
           return ValueListenableBuilder<bool>(
             valueListenable: row.alsoOrder,
-            builder: (context, value, _) => Checkbox(
-              key: Key('wm-enable-also-order-${row.product.productGoodsId}'),
-              value: value,
-              onChanged: _saving
-                  ? null
-                  : (next) {
-                      for (final target in _targets(row)) {
-                        if (target.product.canAlsoOrderMaterials) {
-                          target.alsoOrder.value = next ?? false;
+            // 2026-10-06 行高统一口径：编辑表内 Checkbox 收掉 48dp 触控槽，
+            // 不把行撑过 39 的控件行高标准。
+            builder: (context, value, _) => Theme(
+              data: Theme.of(context).copyWith(
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Checkbox(
+                key: Key('wm-enable-also-order-${row.product.productGoodsId}'),
+                value: value,
+                onChanged: _saving
+                    ? null
+                    : (next) {
+                        for (final target in _targets(row)) {
+                          if (target.product.canAlsoOrderMaterials) {
+                            target.alsoOrder.value = next ?? false;
+                          }
                         }
-                      }
-                    },
+                      },
+              ),
             ),
           );
         },

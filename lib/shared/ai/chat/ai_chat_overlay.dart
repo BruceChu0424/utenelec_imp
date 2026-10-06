@@ -240,7 +240,19 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   int _hiddenTurns = 0;
   String? _error;
   String? _progressKey;
-  double? _launcherBottom;
+  /// Launcher circle center in overlay coordinates; null = never moved (default
+  /// anchored bottom-right). Persisted only for this session, like the previous
+  /// vertical-only offset.
+  Offset? _launcherCenter;
+
+  /// Edge the launcher is stuck to: 0 none, -1 left, 1 right. While docked the
+  /// circle sits half outside the border at reduced opacity (2026-10-06 user
+  /// ask: draggable round AI button that can be pushed off the edge and stays
+  /// as a translucent half circle).
+  int _launcherDockEdge = 0;
+
+  /// Suppresses the snap animation while the pointer is down.
+  bool _launcherDragging = false;
   bool _open = false;
   bool _loadingCapabilities = true;
   bool _busy = false;
@@ -1508,9 +1520,6 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           minimumBottom,
           constraints.maxHeight - media.padding.top - 72,
         );
-        final bottom = (_launcherBottom ?? minimumBottom + 72)
-            .clamp(minimumBottom, maximumBottom)
-            .toDouble();
         final panelBottom = inset + UtenSpacing.s16;
         final panelHeight = math.min(
           660.0,
@@ -1526,17 +1535,65 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           440.0,
           math.max(0.0, constraints.maxWidth - UtenSpacing.s32),
         );
-        void move(double delta) => setState(
-          () => _launcherBottom = (bottom + delta)
-              .clamp(minimumBottom, maximumBottom)
-              .toDouble(),
+
+        // Launcher geometry: a draggable circle; pushed onto a side edge it
+        // docks half-out at reduced opacity. FloatingActionButton.small is 40
+        // visually but MaterialTapTargetSize.padded grows its box to 48 (a 4px
+        // transparent ring each side) — position math uses the 48 box.
+        const launcherSize = 48.0;
+        const launcherHalf = launcherSize / 2;
+        const launcherMargin = 16.0;
+        // Release this close to a side edge (center within 20px of it) docks;
+        // the resting margin keeps the center 36px away, so plain vertical
+        // drags never dock by accident.
+        const launcherDockRange = 20.0;
+        final launcherTopLimit =
+            constraints.maxHeight - maximumBottom - launcherHalf;
+        final launcherBottomLimit =
+            constraints.maxHeight - minimumBottom - launcherHalf;
+        final defaultLauncherCenter = Offset(
+          constraints.maxWidth - launcherMargin - launcherHalf,
+          (constraints.maxHeight - minimumBottom - 72 - launcherHalf).clamp(
+            launcherTopLimit,
+            launcherBottomLimit,
+          ),
         );
+        Offset clampLauncherCenter(Offset center) => Offset(
+          center.dx.clamp(0.0, constraints.maxWidth),
+          center.dy.clamp(launcherTopLimit, launcherBottomLimit),
+        );
+
+        // Derived every build so window resizing re-clamps and a docked circle
+        // follows its edge without mutating the stored offset.
+        final storedCenter = _launcherCenter ?? defaultLauncherCenter;
+        final docked = _launcherDockEdge != 0;
+        Offset settleLauncherCenter(Offset center) => Offset(
+          center.dx.clamp(launcherHalf, constraints.maxWidth - launcherHalf),
+          center.dy.clamp(launcherTopLimit, launcherBottomLimit),
+        );
+        final launcherCenter = docked
+            ? Offset(
+                _launcherDockEdge > 0 ? constraints.maxWidth : 0.0,
+                storedCenter.dy.clamp(launcherTopLimit, launcherBottomLimit),
+              )
+            : settleLauncherCenter(storedCenter);
+
+        void move(double delta) => setState(() {
+          _launcherDockEdge = 0;
+          _launcherCenter = settleLauncherCenter(
+            (_launcherCenter ?? defaultLauncherCenter) + Offset(0, delta),
+          );
+        });
         return Stack(
           children: [
             if (!_open)
-              Positioned(
-                right: UtenSpacing.s16,
-                bottom: bottom,
+              AnimatedPositioned(
+                duration: _launcherDragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                left: launcherCenter.dx - launcherHalf,
+                top: launcherCenter.dy - launcherHalf,
                 child: Semantics(
                   label: _t('open'),
                   customSemanticsActions: {
@@ -1545,23 +1602,80 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                         move(-72),
                   },
                   child: GestureDetector(
-                    onVerticalDragUpdate: (details) => move(-details.delta.dy),
-                    child: FloatingActionButton.small(
-                      key: const ValueKey('ai-chat-launcher'),
-                      heroTag: null,
-                      tooltip: _t('open'),
-                      backgroundColor: colors.primaryContainer,
-                      foregroundColor: colors.onPrimaryContainer,
-                      onPressed: () {
-                        setState(() => _open = true);
-                        if (_capabilities?.usable == true) {
-                          unawaited(_restoreConversation());
-                        }
-                        _loadPageSuggestions();
-                        _scheduleAttachPreview();
-                        _scrollToEnd();
-                      },
-                      child: const Icon(Icons.auto_awesome_outlined),
+                    onPanStart: (details) => setState(() {
+                      _launcherDragging = true;
+                      _launcherCenter ??= defaultLauncherCenter;
+                    }),
+                    onPanUpdate: (details) => setState(() {
+                      _launcherDockEdge = 0;
+                      _launcherCenter = clampLauncherCenter(
+                        (_launcherCenter ?? defaultLauncherCenter) +
+                            details.delta,
+                      );
+                    }),
+                    onPanEnd: (_) => setState(() {
+                      _launcherDragging = false;
+                      final center = _launcherCenter ?? defaultLauncherCenter;
+                      final nearRight =
+                          constraints.maxWidth - center.dx <=
+                          launcherDockRange;
+                      final nearLeft = center.dx <= launcherDockRange;
+                      if (nearRight || nearLeft) {
+                        _launcherDockEdge = nearRight ? 1 : -1;
+                      } else {
+                        _launcherCenter = clampLauncherCenter(
+                          Offset(
+                            center.dx.clamp(
+                              launcherHalf,
+                              constraints.maxWidth - launcherHalf,
+                            ),
+                            center.dy,
+                          ),
+                        );
+                      }
+                    }),
+                    onPanCancel: () =>
+                        setState(() => _launcherDragging = false),
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 150),
+                      opacity: docked ? 0.55 : 1.0,
+                      child: FloatingActionButton.small(
+                        key: const ValueKey('ai-chat-launcher'),
+                        heroTag: null,
+                        tooltip: _t('open'),
+                        shape: const CircleBorder(),
+                        backgroundColor: colors.primaryContainer,
+                        foregroundColor: colors.onPrimaryContainer,
+                        onPressed: () {
+                          if (_launcherDockEdge != 0) {
+                            // Docked: tap pulls the circle back inside first,
+                            // then the chat opens as usual.
+                            final edge = _launcherDockEdge;
+                            setState(() {
+                              _launcherDockEdge = 0;
+                              _launcherCenter = settleLauncherCenter(
+                                Offset(
+                                  edge > 0
+                                      ? constraints.maxWidth -
+                                            launcherMargin -
+                                            launcherHalf
+                                      : launcherMargin + launcherHalf,
+                                  (_launcherCenter ?? defaultLauncherCenter)
+                                      .dy,
+                                ),
+                              );
+                            });
+                          }
+                          setState(() => _open = true);
+                          if (_capabilities?.usable == true) {
+                            unawaited(_restoreConversation());
+                          }
+                          _loadPageSuggestions();
+                          _scheduleAttachPreview();
+                          _scrollToEnd();
+                        },
+                        child: const Icon(Icons.auto_awesome_outlined),
+                      ),
                     ),
                   ),
                 ),
@@ -1668,6 +1782,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 ),
               ],
               IconButton(
+                key: const ValueKey('ai-chat-close'),
                 tooltip: _t('close'),
                 onPressed: () {
                   _focus.unfocus();

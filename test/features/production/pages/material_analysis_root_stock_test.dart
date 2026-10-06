@@ -56,7 +56,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.text('下达'),
+          matching: find.text('确认下单'),
         ),
       );
       await tester.pumpAndSettle();
@@ -101,11 +101,11 @@ void main() {
         await _openBuy(tester);
         await _selectAndOpenQuantity(tester);
         expect(tester.widget<TextField>(_seedQty()).controller!.text, '7');
-        expect(find.text('确认下达 1 行？'), findsOneWidget);
+        expect(find.text('确认下单 1 种？'), findsOneWidget);
         await tester.tap(
           find.descendant(
             of: find.byType(AlertDialog),
-            matching: find.text('下达'),
+            matching: find.text('确认下单'),
           ),
         );
         await tester.pumpAndSettle();

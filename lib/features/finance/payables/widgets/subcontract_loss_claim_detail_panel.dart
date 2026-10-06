@@ -435,10 +435,19 @@ class _SubcontractLossClaimDetailPanelState
         ),
         columns: [
           MasterColumnDef(
+            key: 'valuationStatus',
+            label: '估值状态',
+            width: 72,
+            value: (row) => _valuationStatusText(row.valuationStatus),
+            cellBuilder: (_, row) => _ValuationStatusCell(row.valuationStatus),
+          ),
+          MasterColumnDef(
             key: 'goodsName',
             label: '材料名称',
             width: 180,
             value: (row) => row.goodsName,
+            // 状态列前置后，卡片形态标题显式落在材料名称列。
+            cardRole: MasterColumnCardRole.title,
           ),
           MasterColumnDef(
             key: 'goodsCode',
@@ -489,13 +498,6 @@ class _SubcontractLossClaimDetailPanelState
               value: (row) => row.lossBookValueLocal,
             ),
           ],
-          MasterColumnDef(
-            key: 'valuationStatus',
-            label: '估值状态',
-            width: 130,
-            value: (row) => _valuationStatusText(row.valuationStatus),
-            cellBuilder: (_, row) => _ValuationStatusCell(row.valuationStatus),
-          ),
         ],
         items: lines,
         facets: const {},

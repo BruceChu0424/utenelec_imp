@@ -57,24 +57,26 @@ class WarehouseInboundAllocationSummary extends StatelessWidget {
         : visible.isEmpty
         ? theme.colorScheme.onSurfaceVariant
         : theme.colorScheme.primary;
-    final child = Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
-      child: Row(
-        children: [
-          Icon(
-            mismatch
-                ? Icons.warning_amber_rounded
-                : visible.isEmpty
-                ? Icons.help_outline_rounded
-                : Icons.account_tree_outlined,
-            size: 18,
-            color: color,
-          ),
-          const SizedBox(width: UtenSpacing.s4),
-          Expanded(
+    // 2026-10-06 行高统一口径：去向摘要单行省略号，完整文本挂 Tooltip；
+    // 不再用两行文本 + 上下 Padding 把表格行撑高。
+    final child = Row(
+      children: [
+        Icon(
+          mismatch
+              ? Icons.warning_amber_rounded
+              : visible.isEmpty
+              ? Icons.help_outline_rounded
+              : Icons.account_tree_outlined,
+          size: 18,
+          color: color,
+        ),
+        const SizedBox(width: UtenSpacing.s4),
+        Expanded(
+          child: Tooltip(
+            message: text,
             child: Text(
               text,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: color,
@@ -84,8 +86,8 @@ class WarehouseInboundAllocationSummary extends StatelessWidget {
               ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
     return Semantics(
       button: onTap != null,

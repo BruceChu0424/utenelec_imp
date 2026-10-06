@@ -216,7 +216,7 @@ class _ProductionExecutionGroupPanelState
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 170,
+      width: 72,
       value: (row) => row.statusLabel,
       // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格底，
       // 替代原格内 _GroupStatusBadge 胶囊。

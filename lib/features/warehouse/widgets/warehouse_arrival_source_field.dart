@@ -43,6 +43,9 @@ class WarehouseArrivalSourceField extends StatelessWidget {
     enabled: enabled,
     allowClear: false,
     searchable: false,
+    // 2026-10-06 行高统一口径：编辑表（到货登记明细格）内下拉用紧凑形态，
+    // 与同行 39 高的实收/重量输入格等高。
+    dense: true,
     items: [
       for (final source in WarehouseArrivalSource.values)
         UtenDropdownItem(value: source.name, label: source.label(context)),

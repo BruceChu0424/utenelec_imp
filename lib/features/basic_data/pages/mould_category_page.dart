@@ -670,6 +670,12 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   ///   （下拉只显示"所有"），后端忽略其 query 参数。
   static final _mouldColumns = <MasterColumnDef<MouldListItem>>[
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (m) => m.status,
+    ),
+    MasterColumnDef(
       key: 'code',
       label: '模具编号',
       width: 120,
@@ -717,12 +723,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       label: '备注',
       width: 200,
       value: (m) => m.remark,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 80,
-      value: (m) => m.status,
     ),
   ];
 }

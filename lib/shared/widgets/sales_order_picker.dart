@@ -336,6 +336,12 @@ class _SalesOrderPickerSheetState
   /// 不含客户、不含金额。销售员姓名由后端按 seller_id 解析下发。
   List<MasterColumnDef<SalesDocListItem>> _columns() => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (d) => salesStatusLabel(d.status),
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: '单据号',
       width: 150,
@@ -364,12 +370,6 @@ class _SalesOrderPickerSheetState
       value: (d) => (d.sellerName != null && d.sellerName!.isNotEmpty)
           ? d.sellerName!
           : '—',
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 90,
-      value: (d) => salesStatusLabel(d.status),
     ),
   ];
 

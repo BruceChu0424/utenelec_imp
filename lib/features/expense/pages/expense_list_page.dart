@@ -412,6 +412,23 @@ void _onFilterChanged(WidgetRef ref, String key, String? value) {
 
 final List<MasterColumnDef<ExpenseClaim>> _columns = [
   MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 72,
+    value: (claim) => claim.status.label,
+    // 2026-09-27 用户口径「表格状态列整格底色」：草稿=灰 / 在审=蓝 /
+    // 待打款=青 / 驳回=红 / 已打款=绿。
+    cellColor: (context, claim) =>
+        udenStatusBadgeCellColor(context, switch (claim.status) {
+          ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+          ExpenseClaimStatus.submitted ||
+          ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
+          ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+          ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+          ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+        }),
+  ),
+  MasterColumnDef(
     key: 'claimNo',
     label: '报销单号',
     width: 160,
@@ -438,23 +455,6 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     width: 110,
     type: 'money',
     value: (claim) => claim.totalAmount.toStringAsFixed(2),
-  ),
-  MasterColumnDef(
-    key: 'status',
-    label: '状态',
-    width: 90,
-    value: (claim) => claim.status.label,
-    // 2026-09-27 用户口径「表格状态列整格底色」：草稿=灰 / 在审=蓝 /
-    // 待打款=青 / 驳回=红 / 已打款=绿。
-    cellColor: (context, claim) =>
-        udenStatusBadgeCellColor(context, switch (claim.status) {
-          ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
-          ExpenseClaimStatus.submitted ||
-          ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
-          ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
-          ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
-          ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
-        }),
   ),
   MasterColumnDef(
     key: 'submittedAt',

@@ -217,8 +217,10 @@ void main() {
 
     final table = _table(tester);
     expect(table.facets['claimNo']!.single.value, 'BX2026073000001');
-    expect(table.columns.first.key, 'claimNo');
-    expect(table.columns.first.sortable, isTrue);
+    // 2026-10-06 全站口径：状态列排第一可见列；单号列按 key 定位。
+    expect(table.columns.first.key, 'status');
+    final claimNo = table.columns.singleWhere((c) => c.key == 'claimNo');
+    expect(claimNo.sortable, isTrue);
 
     table.onFilterChanged('claimNo', 'BX2026073000001');
     await tester.pumpAndSettle();

@@ -704,6 +704,22 @@ class _WarehouseArrivalExceptionsViewState
 
   List<MasterColumnDef<ProcurementArrivalException>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      label: '当前状态',
+      width: 72,
+      value: (task) => task.statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：等审批=琥珀 / 等仓库重审=蓝 /
+      // 待退供应商=紫 / 已完成=绿 / 已取消=中性灰。
+      cellColor: (context, task) =>
+          udenStatusBadgeCellColor(context, switch (task.status) {
+            'PENDING_FINANCE' => UtenStatusBadgeType.warning,
+            'RECEIPT_ADJUSTED' => UtenStatusBadgeType.info,
+            'RETURN_REQUIRED' => UtenStatusBadgeType.violet,
+            'RECEIPT_POSTED' || 'CLOSED' => UtenStatusBadgeType.success,
+            _ => UtenStatusBadgeType.neutral,
+          }),
+    ),
+    MasterColumnDef(
       key: 'orderType',
       label: '来源',
       width: 90,
@@ -801,22 +817,6 @@ class _WarehouseArrivalExceptionsViewState
       type: 'number',
       value: (task) =>
           task.unacceptedQty > 0 ? procurementQty(task.unacceptedQty) : '—',
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '当前状态',
-      width: 260,
-      value: (task) => task.statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：等审批=琥珀 / 等仓库重审=蓝 /
-      // 待退供应商=紫 / 已完成=绿 / 已取消=中性灰。
-      cellColor: (context, task) =>
-          udenStatusBadgeCellColor(context, switch (task.status) {
-            'PENDING_FINANCE' => UtenStatusBadgeType.warning,
-            'RECEIPT_ADJUSTED' => UtenStatusBadgeType.info,
-            'RETURN_REQUIRED' => UtenStatusBadgeType.violet,
-            'RECEIPT_POSTED' || 'CLOSED' => UtenStatusBadgeType.success,
-            _ => UtenStatusBadgeType.neutral,
-          }),
     ),
     const MasterColumnDef(
       key: 'nextAction',

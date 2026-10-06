@@ -384,6 +384,13 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
 
   List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     MasterColumnDef(
+      key: 'status',
+      label: l10n.visitorColStatus,
+      width: 72,
+      info: l10n.myVisitorsStatusColInfo,
+      value: (app) => visitorStatusLabel(app.status, l10n),
+    ),
+    MasterColumnDef(
       key: 'visitorName',
       label: l10n.visitorColVisitorName,
       width: 130,
@@ -407,13 +414,6 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       width: 180,
       type: 'date',
       value: (app) => fmtDateTime(app.plannedVisitAt),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: l10n.visitorColStatus,
-      width: 110,
-      info: l10n.myVisitorsStatusColInfo,
-      value: (app) => visitorStatusLabel(app.status, l10n),
     ),
   ];
 }

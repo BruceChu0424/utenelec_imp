@@ -3,7 +3,12 @@
 // 子页面：/hr/tasks/:type(转正办理/生日关怀/入职周年/新近入职/证件核对)。
 // 2026-10-05 证件核对：有待核对员工时概览上方红色横幅「去处理」；入口只给能修改证件的人
 // (超管或 employee:pii:edit)。4 张统计卡布局不动。
-// 2026-09-18 UI 统一收口：加载态改 UtenSkeletonList，区块卡片统一 UtenCard。
+// 2026-10-06 版式改版：
+//  - 事务入口从整行 ListTile 改为自适应小卡网格(UtenResponsiveGrid：
+//    手机 2 列 / 中宽 3 列 / 桌面 5 列)，图标行右端放待办总数(0 弱化为中性灰)；
+//  - 「快捷发布祝福」三张大瓦片改为内容宽度的紧凑横排胶囊(图标+文字，Wrap 自适应换行)；
+//  - 右下角悬浮操作组：有入职权限者给「入职登记」主按钮(与员工列表页 FAB 同动作)；
+//  - 正文统一包 UtenContentContainer(与各 hub 页同款 gutter)，区块内边距收口为 s4。
 // 文档：docs/03-页面/HR任务中心.md
 import 'dart:math' as math;
 
@@ -11,12 +16,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -37,6 +45,7 @@ class HrWorkbenchPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(hrTaskSummaryProvider);
     final isCompact = context.breakpoint.isCompact;
+    final l10n = AppLocalizations.of(context);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     final perms = ref.watch(currentPermissionsProvider);
     final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
@@ -46,6 +55,13 @@ class HrWorkbenchPage extends ConsumerWidget {
       perms,
       isSuperAdmin,
       RouteName.hrTaskList(HrTaskType.identity.taskType),
+    );
+    // 右下悬浮「入职登记」与员工列表页/工作台入口同一份守卫(any-of employee:create
+    // 再加 all-of 档案三码，permission_by_path 两段都拦)。
+    final canOnboard = locationAllowedFor(
+      perms,
+      isSuperAdmin,
+      '/employee/onboarding',
     );
 
     Widget body = async.when(
@@ -59,22 +75,27 @@ class HrWorkbenchPage extends ConsumerWidget {
         onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          // compact 悬浮胶囊避让：滚到底末卡要能越过胶囊
+          // compact 悬浮胶囊 + 右下悬浮按钮避让：滚到底末卡要能越过胶囊与按钮
           padding: EdgeInsets.only(
-            bottom: math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
+            bottom: canOnboard
+                ? math.max(
+                    UtenSpacing.s32,
+                    UtenCapsuleNavScope.occlusionOf(context) + 76,
+                  )
+                : math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
           ),
           children: [
             if (s.identityReview.isNotEmpty) _identityBanner(context, s),
             _overview(context, s, isCompact),
             _myClaims(context, s),
-            _entries(context, s, isCompact, canFixIdentity: canFixIdentity),
-            if (canPublish) _quickNotice(context, isCompact),
+            _entries(context, s, canFixIdentity: canFixIdentity),
+            if (canPublish) _quickNotice(context, l10n),
             if (s.unconfirmedLegacyCount > 0) _legacyBanner(context, s),
           ],
         ),
       ),
     );
-    if (isCompact) body = UtenContentContainer(child: body);
+    body = UtenContentContainer(child: body);
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -90,6 +111,20 @@ class HrWorkbenchPage extends ConsumerWidget {
           const FormDraftsAppBarButton(categoryId: 'hr'),
         ],
       ),
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: canOnboard
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  key: const ValueKey('hr-workbench-fab-onboard'),
+                  size: UtenButtonSize.large,
+                  icon: Icons.person_add_rounded,
+                  onPressed: () => context.push('/employee/onboarding'),
+                  child: Text(l10n.employeeFabOnboard),
+                ),
+              ],
+            )
+          : null,
       body: body,
     );
   }
@@ -135,9 +170,9 @@ class HrWorkbenchPage extends ConsumerWidget {
         : _statRow(built);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s4,
         UtenSpacing.s12,
-        UtenSpacing.s12,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         0,
       ),
       child: grid,
@@ -148,16 +183,17 @@ class HrWorkbenchPage extends ConsumerWidget {
   Widget _identityBanner(BuildContext context, HrTaskSummary s) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s4,
         UtenSpacing.s12,
-        UtenSpacing.s12,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         0,
       ),
       child: UtenInlineNotice(
         key: const ValueKey('hr-identity-review-banner'),
         level: UtenInlineNoticeLevel.error,
+        // 只留标题一行(2026-10-06 用户口径：标题下说明小字不要)；
+        // 具体哪里缺/错在证件核对子页每行的红字原因里。
         title: '有 ${s.identityReview.length} 名员工的证件号码待核对',
-        message: '证件号码缺失、校验未通过或尚未校验，请对照员工证件核对修改。不影响员工开通和使用登录账号。',
         trailing: FilledButton.tonal(
           key: const ValueKey('hr-identity-review-go'),
           onPressed: () =>
@@ -177,15 +213,16 @@ class HrWorkbenchPage extends ConsumerWidget {
     return Row(children: children);
   }
 
-  // ---- 快捷发布祝福：点类型瓦片直达通知发布页并预填对应类型模板 ----
-  Widget _quickNotice(BuildContext context, bool isCompact) {
-    final l10n = AppLocalizations.of(context);
+  // ---- 快捷发布祝福：内容宽度的紧凑胶囊横排(图标+文字)，Wrap 自适应换行 ----
+  // 生日/周年的按人祝福在对应子页(一键批量 + 逐行送祝福)，主页只留通用与
+  // 新婚/新生儿三类模板直达；「发通知」是发布页裸入口(不预选类型)。
+  Widget _quickNotice(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
     String publishWith(String type) => '${RouteName.noticePublish}?type=$type';
     final tiles = <(IconData, Color, String, VoidCallback)>[
       (
         Icons.campaign_rounded,
-        UtenColors.teal500,
+        UtenColors.teal600,
         l10n.noticeQuickPublish,
         () => context.push(RouteName.noticePublish),
       ),
@@ -204,9 +241,9 @@ class HrWorkbenchPage extends ConsumerWidget {
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         UtenSpacing.s20,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         0,
       ),
       child: Column(
@@ -217,31 +254,16 @@ class HrWorkbenchPage extends ConsumerWidget {
               left: UtenSpacing.s4,
               bottom: UtenSpacing.s8,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.noticeQuickCelebrationTitle,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  l10n.noticeQuickCelebrationSubtitle,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+            child: Text(
+              l10n.noticeQuickCelebrationTitle,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: UtenSpacing.s8,
-            crossAxisSpacing: UtenSpacing.s8,
-            childAspectRatio: 1.05,
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
             children: [
               for (final (icon, color, label, onTap) in tiles)
                 _QuickTile(
@@ -269,9 +291,9 @@ class HrWorkbenchPage extends ConsumerWidget {
     // UtenCard 的 Material 即 ink 表面：内部 HrTaskTile 的点按涟漪照常渲染。
     return UtenCard(
       margin: const EdgeInsets.fromLTRB(
+        UtenSpacing.s4,
         UtenSpacing.s12,
-        UtenSpacing.s12,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         0,
       ),
       padding: EdgeInsets.zero,
@@ -334,43 +356,56 @@ class HrWorkbenchPage extends ConsumerWidget {
     );
   }
 
-  // ---- 事务入口：四个子页面(能修改证件的人再加「证件核对」) ----
+  // ---- 事务办理：自适应小卡网格(手机 2 列 / 中宽 3 列 / 桌面 5 列) ----
+  // 卡片 = 图标 + 待办总数(图标行右端，0 弱化为中性灰) + 标题 + 口径说明两行；
+  // 与今日概览的配色同源(confirm=teal/birthday=粉/anniversary=琥珀/newhire=祖母绿，
+  // 证件核对=error 红，与横幅、子页红标一致)。
   Widget _entries(
     BuildContext context,
-    HrTaskSummary s,
-    bool isCompact, {
+    HrTaskSummary s, {
     required bool canFixIdentity,
   }) {
     final theme = Theme.of(context);
-    final entries = [
+    final entries = <(HrTaskType, int, String, Color)>[
       (
         HrTaskType.confirm,
-        '${s.confirmOverdue.length + s.confirmToday.length + s.confirmUpcoming.length} 人待办理',
+        s.confirmOverdue.length +
+            s.confirmToday.length +
+            s.confirmUpcoming.length,
         '逾期 ${s.confirmOverdue.length} · 今日 ${s.confirmToday.length} · 临近 ${s.confirmUpcoming.length}',
+        UtenColors.teal600,
       ),
       (
         HrTaskType.birthday,
-        '${s.birthdayToday.length + s.birthdayUpcoming.length} 人生日临近',
+        s.birthdayToday.length + s.birthdayUpcoming.length,
         '今日 ${s.birthdayToday.length} · 30 天内 ${s.birthdayUpcoming.length}',
+        UtenColors.catPink,
       ),
       (
         HrTaskType.anniversary,
-        '${s.anniversaryToday.length} 人今日周年',
+        s.anniversaryToday.length,
         '入职满年纪念，及时送上祝福',
+        UtenColors.catAmber,
       ),
-      (HrTaskType.newhire, '${s.newHires.length} 人近 30 天入职', '适应期跟进，7 天内高亮'),
+      (
+        HrTaskType.newhire,
+        s.newHires.length,
+        '适应期跟进，7 天内高亮',
+        UtenColors.catEmerald,
+      ),
       if (canFixIdentity)
         (
           HrTaskType.identity,
-          '${s.identityReview.length} 人证件待核对',
-          '缺失、校验未通过或尚未校验的证件号码',
+          s.identityReview.length,
+          '缺失、校验未通过或尚未校验',
+          theme.colorScheme.error,
         ),
     ];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s4,
         UtenSpacing.s12,
-        UtenSpacing.s12,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         0,
       ),
       child: Column(
@@ -388,34 +423,27 @@ class HrWorkbenchPage extends ConsumerWidget {
               ),
             ),
           ),
-          for (final (type, headline, caption) in entries)
-            UtenCard(
-              key: ValueKey('hr-workbench-entry-${type.taskType}'),
-              margin: const EdgeInsets.only(bottom: UtenSpacing.s12),
-              padding: EdgeInsets.zero,
-              child: ListTile(
-                onTap: () => context.push(RouteName.hrTaskList(type.taskType)),
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: UtenRadius.lgAll,
-                  ),
-                  child: Icon(
-                    type.icon,
-                    size: 20,
-                    color: theme.colorScheme.onPrimaryContainer,
-                  ),
-                ),
-                title: Text(
-                  type.title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                subtitle: Text('$headline · $caption'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-              ),
+          UtenResponsiveGrid(
+            itemCount: entries.length,
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
+            columns: const UtenResponsiveColumns(
+              compact: 2,
+              medium: 3,
+              expanded: 5,
             ),
+            itemBuilder: (context, i, _) {
+              final (type, count, detail, accent) = entries[i];
+              return _EntryCard(
+                key: ValueKey('hr-workbench-entry-${type.taskType}'),
+                type: type,
+                count: count,
+                detail: detail,
+                accent: accent,
+                onTap: () => context.push(RouteName.hrTaskList(type.taskType)),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -426,9 +454,9 @@ class HrWorkbenchPage extends ConsumerWidget {
     final theme = Theme.of(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(
+        UtenSpacing.s4,
         UtenSpacing.s12,
-        UtenSpacing.s12,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
         0,
       ),
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -536,6 +564,86 @@ class _StatCard extends StatelessWidget {
   }
 }
 
+/// 事务办理小卡：图标行(左图标、右待办总数) + 标题 + 口径说明；count=0 弱化为中性灰。
+class _EntryCard extends StatelessWidget {
+  const _EntryCard({
+    super.key,
+    required this.type,
+    required this.count,
+    required this.detail,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final HrTaskType type;
+  final int count;
+
+  /// 口径说明（逾期/今日/临近的拆分或补充说明），最多两行。
+  final String detail;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final active = count > 0;
+    final color = active ? accent : theme.colorScheme.onSurfaceVariant;
+    return Semantics(
+      button: true,
+      label: '${type.title}，$count，$detail',
+      child: UtenCard(
+        padding: const EdgeInsets.all(UtenSpacing.s12),
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: active ? 0.14 : 0.08),
+                    borderRadius: UtenRadius.mdAll,
+                  ),
+                  child: Icon(type.icon, size: 20, color: color),
+                ),
+                const Spacer(),
+                Text(
+                  '$count',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            Text(
+              type.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              detail,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 快捷发布祝福紧凑胶囊：彩色小图标 + 文字，高度 48，宽度随内容。
 class _QuickTile extends StatelessWidget {
   const _QuickTile({
     required this.icon,
@@ -551,29 +659,31 @@ class _QuickTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return UtenCard(
-      padding: const EdgeInsets.all(UtenSpacing.s8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: UtenSpacing.s16,
+        vertical: UtenSpacing.s12,
+      ),
       onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(UtenSpacing.s8),
+            width: 28,
+            height: 28,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
+              borderRadius: UtenRadius.mdAll,
             ),
-            child: Icon(icon, color: color),
+            child: Icon(icon, size: 16, color: color),
           ),
-          const SizedBox(height: UtenSpacing.s8),
+          const SizedBox(width: UtenSpacing.s8),
           Text(
             label,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

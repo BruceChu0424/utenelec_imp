@@ -112,6 +112,13 @@ public record ProductionExecutionWorkbenchSegment(
         boolean overproductionPolicyApplies,
         UUID actualOutputSupplementRequestId,
         /**
+         * 2026-10-06：本段已批准、尚未续报承接的固定追加量合计——它占住了公共超产
+         * 额度，超出的量只能从「固定追加量·续报」入口带回原批次申报。
+         */
+        BigDecimal pendingSupplementQty,
+        /** 最近的待续报追加请求（已批准、有 proof、未红冲、无活跃承接）；没有为 null。 */
+        UUID pendingSupplementRequestId,
+        /**
          * ADR-117：缺料里「计划还没下单」的种数——物料分析那一行此刻还缺(与主表「还缺数量」
          * 同一个数)。0 = 缺的料计划都已下过单(在途 / 在产)，只是在等到货。
          */

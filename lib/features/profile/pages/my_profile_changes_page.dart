@@ -244,6 +244,13 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     AppLocalizations l10n,
   ) => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
+      value: (item) => _statusLabel(l10n, item.status),
+    ),
+    MasterColumnDef(
       key: 'fields',
       label: '变更字段',
       width: 320,
@@ -256,13 +263,6 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       width: 80,
       type: 'number',
       value: (item) => item.itemCount.toString(),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 90,
-      info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
-      value: (item) => _statusLabel(l10n, item.status),
     ),
     MasterColumnDef(
       key: 'submittedAt',

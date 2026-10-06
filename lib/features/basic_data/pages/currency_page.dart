@@ -330,6 +330,12 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   ];
 
   static final _columns = <MasterColumnDef<CurrencyListItem>>[
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (c) => c.status,
+    ),
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (c) => c.code),
     MasterColumnDef(
       key: 'name',
@@ -344,12 +350,6 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
       type: 'money',
       sortable: true,
       value: (c) => c.exchangeRate?.toStringAsFixed(4),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (c) => c.status,
     ),
   ];
 

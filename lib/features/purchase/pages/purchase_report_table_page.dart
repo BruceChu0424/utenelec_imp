@@ -440,18 +440,32 @@ class _PurchaseReportTablePageState
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
-    final columns = data.columns
-        .map(
-          (c) => MasterColumnDef<Map<String, dynamic>>(
-            key: c.key,
-            label: c.label,
-            width: (c.width ?? 120).toDouble(),
-            type: c.type,
-            sortable: isSortableReportType(c.type),
-            value: (row) => formatReportCell(c, row),
-          ),
-        )
+    // 报表列来自服务端元数据：映射后在客户端把状态列（label 为「状态」或
+    // 含「状态」，如 审核状态/审批状态/单据状态）排到最前——多个状态列保持
+    // 原有相对顺序，其余列原顺序跟后；状态列宽度收紧为声明下限 72
+    //（value 即显示文案，内容超宽时表格自动适配加宽）。
+    final mappedColumns = data.columns
+        .map((c) {
+          final isStatusColumn = c.label == '状态' || c.label.contains('状态');
+          return (
+            def: MasterColumnDef<Map<String, dynamic>>(
+              key: c.key,
+              label: c.label,
+              width: isStatusColumn ? 72 : (c.width ?? 120).toDouble(),
+              type: c.type,
+              sortable: isSortableReportType(c.type),
+              value: (row) => formatReportCell(c, row),
+            ),
+            isStatus: isStatusColumn,
+          );
+        })
         .toList();
+    final columns = [
+      for (final entry in mappedColumns)
+        if (entry.isStatus) entry.def,
+      for (final entry in mappedColumns)
+        if (!entry.isStatus) entry.def,
+    ];
     return MasterDataTableView<Map<String, dynamic>>(
       tableKey:
           'features.purchase.pages.purchase_report_table_page.PurchaseReportTablePageState._buildTable.1',

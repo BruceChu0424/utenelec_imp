@@ -329,6 +329,12 @@ class _WarehouseDocumentHistoryViewState
 
   List<MasterColumnDef<WarehouseDocumentHistorySummary>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (item) => item.statusLabel,
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: '单据号',
       width: 170,
@@ -341,12 +347,6 @@ class _WarehouseDocumentHistoryViewState
       width: 116,
       type: 'date',
       value: (item) => item.billDate ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (item) => item.statusLabel,
     ),
     MasterColumnDef(
       key: 'supplierName',

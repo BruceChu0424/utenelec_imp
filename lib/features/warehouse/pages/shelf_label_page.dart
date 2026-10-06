@@ -267,6 +267,19 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     final qtyInfo = l10n.shelfLocationQuantityHint;
     return <MasterColumnDef<ShelfLabelRow>>[
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: _statusLabel,
+        // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+        cellColor: (context, r) => udenStatusBadgeCellColor(
+          context,
+          r.disabled
+              ? UtenStatusBadgeType.neutral
+              : UtenStatusBadgeType.success,
+        ),
+      ),
+      MasterColumnDef(
         key: 'warehouse',
         label: l10n.shelfActualWarehouse,
         width: 150,
@@ -331,19 +344,6 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         type: 'number',
         info: qtyInfo,
         value: (r) => _num(r.qty),
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 96,
-        value: _statusLabel,
-        // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-        cellColor: (context, r) => udenStatusBadgeCellColor(
-          context,
-          r.disabled
-              ? UtenStatusBadgeType.neutral
-              : UtenStatusBadgeType.success,
-        ),
       ),
     ];
   }

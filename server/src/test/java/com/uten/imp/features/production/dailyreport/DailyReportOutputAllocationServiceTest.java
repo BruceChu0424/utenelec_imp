@@ -2,6 +2,7 @@ package com.uten.imp.features.production.dailyreport;
 
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportItemLine;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocationLine;
 import jakarta.persistence.EntityManager;
@@ -164,6 +165,34 @@ class DailyReportOutputAllocationServiceTest {
         assertThrows(ApiException.class,()->capacity.take(new BigDecimal("120")));
         assertEquals(new BigDecimal("40"),capacity.take(new BigDecimal("40")));
     }
+    @Test void approvedUnclaimedSupplementRejectsProoflessSurplusAndPointsToTheSupplementEntry() {
+        // 2026-10-06：已批准未续报的固定追加量占住公共超产额度——无 proof 的超额行 409，
+        // 文案指路「固定追加量·续报」，不让工人在原工单反复试错或再造一张追加计划。
+        var line=new DailyReportItemLine();
+        line.setExecutionSegmentId(UUID.fromString("00000000-0000-0000-0000-0000000000f1"));
+        line.setQty(new BigDecimal("25"));line.setActualSurplus(true);
+        var error=assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(allowance("0","25"))
+                .requireAllowance(UUID.randomUUID(),List.of(line)));
+        assertEquals(ErrorCode.CONFLICT,error.getCode());
+        assertTrue(error.getMessage().contains("已批准剩余超产额度 0"),error.getMessage());
+        assertTrue(error.getMessage().contains("已批准的固定追加量还有 25 未续报"),error.getMessage());
+        assertTrue(error.getMessage().contains("「我的车间任务 → 固定追加量·续报」"),error.getMessage());
+        assertNotNull(error.getFieldErrors());
+        assertEquals("overproductionSupplement",error.getFieldErrors().getFirst().field());
+    }
+    @Test void claimedSupplementRestoresThePublicSurplusAllowance() {
+        // 续报写入活跃 CLAIM 后待续报量归零、额度恢复：同一批超额此时按公共超产口径放行。
+        var line=new DailyReportItemLine();
+        line.setExecutionSegmentId(UUID.fromString("00000000-0000-0000-0000-0000000000f1"));
+        line.setQty(new BigDecimal("20"));line.setActualSurplus(true);
+        assertDoesNotThrow(()->new DailyReportOutputAllocationService(allowance("20","0"))
+                .requireAllowance(UUID.randomUUID(),List.of(line)));
+        // 额度真耗尽时仍按原口径拦下并引导提交追加计划，不提续报。
+        var rejected=assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(allowance("0","0"))
+                .requireAllowance(UUID.randomUUID(),List.of(line)));
+        assertTrue(rejected.getMessage().contains("请为本次全部超出原计划的数量提交追加计划"),rejected.getMessage());
+        assertFalse(rejected.getMessage().contains("固定追加量·续报"),rejected.getMessage());
+    }
     @Test void approvedRemainingIsConsumedBeforeNewPhysicalSurplus() {
         var capacity=new DailyReportOutputAllocationService.Capacity(new BigDecimal("100"),new BigDecimal("100"));
         assertEquals(new BigDecimal("60"),capacity.take(new BigDecimal("60")));
@@ -263,6 +292,23 @@ class DailyReportOutputAllocationServiceTest {
         });
         return em;
     }
+    /**
+     * requireAllowance 读的两个额度函数：公共超产可用额度与已批准未续报的固定追加量
+     * (均为数据库函数，这里按服务读法各自给值，验证拦截与文案分流)。
+     */
+    private static EntityManager allowance(String available,String pending) {
+        var em=Mockito.mock(EntityManager.class);
+        Mockito.when(em.createNativeQuery(ArgumentMatchers.anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);
+            var query=Mockito.mock(Query.class);
+            Mockito.when(query.setParameter(ArgumentMatchers.anyString(),ArgumentMatchers.any())).thenReturn(query);
+            Mockito.when(query.getSingleResult()).thenAnswer(ignored->
+                    sql.contains("fn_execution_actual_surplus_available")?new BigDecimal(available):new BigDecimal(pending));
+            return query;
+        });
+        return em;
+    }
+
     private static Object value(List<Object[]> bound,String name) {
         for(Object[] entry:bound)if(name.equals(entry[0]))return entry[1];
         return null;

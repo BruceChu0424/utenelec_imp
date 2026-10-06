@@ -543,6 +543,13 @@ class _WarehouseDrawTaskSegmentState
   // 两边都不留。
   List<MasterColumnDef<WarehouseDrawTask>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      sortable: true,
+      label: '状态',
+      width: 72,
+      value: (task) => task.statusLabel,
+    ),
+    MasterColumnDef(
       key: 'drawBillNo',
       sortable: true,
       label: '领料单号',
@@ -582,10 +589,15 @@ class _WarehouseDrawTaskSegmentState
       label: '货品名称',
       width: 200,
       value: (task) => task.materialLabel,
-      cellBuilder: (context, task) => Text(
-        task.materialLabel,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
+      // 2026-10-06 行高统一口径：读表格内文本一律单行（完整名称挂 Tooltip），
+      // 不用两行文本把行撑高。
+      cellBuilder: (context, task) => Tooltip(
+        message: task.materialLabel,
+        child: Text(
+          task.materialLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
     ),
     MasterColumnDef(
@@ -666,13 +678,6 @@ class _WarehouseDrawTaskSegmentState
       width: 130,
       type: 'number',
       value: (task) => task.remainingQtyText,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      sortable: true,
-      label: '状态',
-      width: 150,
-      value: (task) => task.statusLabel,
     ),
     MasterColumnDef(
       key: 'planNo',

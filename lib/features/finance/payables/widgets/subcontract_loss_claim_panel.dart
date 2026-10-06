@@ -160,6 +160,12 @@ class _SubcontractLossClaimPanelState
     required bool canViewFinancialAmounts,
   }) => [
     MasterColumnDef(
+      key: 'status',
+      label: '责任状态',
+      width: 72,
+      value: (item) => item.statusLabel,
+    ),
+    MasterColumnDef(
       key: 'wasteBillNo',
       label: '损耗单号',
       width: 160,
@@ -212,12 +218,6 @@ class _SubcontractLossClaimPanelState
         value: (item) => item.claimAmountLocal,
       ),
     ],
-    MasterColumnDef(
-      key: 'status',
-      label: '责任状态',
-      width: 130,
-      value: (item) => item.statusLabel,
-    ),
     MasterColumnDef(
       key: 'createdAt',
       label: '生成时间',

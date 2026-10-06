@@ -133,9 +133,16 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
                   label: _l.costImportReviewed,
                   width: 90,
                   value: (r) => r.reviewed ? _l.costYes : _l.costNo,
-                  cellBuilder: (_, r) => Checkbox(
-                    value: r.reviewed,
-                    onChanged: (v) => setState(() => r.reviewed = v == true),
+                  // 2026-10-06 全站表格行高统一：Checkbox 默认 40 点击区会把行撑高，
+                  // 编辑行行高以 39 输入控件为准——收紧点击区到控件本身。
+                  cellBuilder: (_, r) => Theme(
+                    data: Theme.of(context).copyWith(
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Checkbox(
+                      value: r.reviewed,
+                      onChanged: (v) => setState(() => r.reviewed = v == true),
+                    ),
                   ),
                 ),
                 MasterColumnDef(

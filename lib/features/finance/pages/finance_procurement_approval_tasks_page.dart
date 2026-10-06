@@ -846,6 +846,26 @@ class _FinanceProcurementApprovalTasksPageState
   List<MasterColumnDef<FinanceProcurementApprovalTask>> _columns(
     BuildContext context,
   ) => [
+    // 批准后改量（2026-09-05）：改过数量的任务显示浅黄底徽标，
+    // 改量与退回重提都提示财务查看审核详情中的整行前后对比。
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (task) => task.changeCount > 0
+          ? AppLocalizations.of(
+              context,
+            ).procurementApprovalStatusChanged(task.changeCount)
+          : (task.attempt ?? 1) > 1
+          ? '重新提交待审核'
+          : AppLocalizations.of(context).procurementApprovalStatusPending,
+      cellColor: (context, task) =>
+          task.changeCount > 0 || (task.attempt ?? 1) > 1
+          ? (Theme.of(context).brightness == Brightness.dark
+                ? UtenColors.warning.withValues(alpha: 0.18)
+                : UtenColors.warningBg)
+          : null,
+    ),
     MasterColumnDef(
       key: 'orderType',
       label: '订货类型',
@@ -912,26 +932,6 @@ class _FinanceProcurementApprovalTasksPageState
       width: 100,
       type: 'number',
       value: (task) => task.attempt?.toString() ?? '—',
-    ),
-    // 批准后改量（2026-09-05）：改过数量的任务显示浅黄底徽标，
-    // 改量与退回重提都提示财务查看审核详情中的整行前后对比。
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 200,
-      value: (task) => task.changeCount > 0
-          ? AppLocalizations.of(
-              context,
-            ).procurementApprovalStatusChanged(task.changeCount)
-          : (task.attempt ?? 1) > 1
-          ? '重新提交待审核'
-          : AppLocalizations.of(context).procurementApprovalStatusPending,
-      cellColor: (context, task) =>
-          task.changeCount > 0 || (task.attempt ?? 1) > 1
-          ? (Theme.of(context).brightness == Brightness.dark
-                ? UtenColors.warning.withValues(alpha: 0.18)
-                : UtenColors.warningBg)
-          : null,
     ),
   ];
 

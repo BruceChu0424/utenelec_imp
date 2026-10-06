@@ -426,6 +426,9 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('discovery-save')));
     await tester.pumpAndSettle();
+    // 行高统一后表格更矮，提交期间外层折叠头会被滚出缓存区——先拉回再点
+    // 头部的「核对提交结果」（与本文件其它用例的 _revealHeader 同一处理）。
+    await _revealHeader(tester);
     await tester.tap(find.text('核对提交结果'));
     await tester.pumpAndSettle();
     expect(_row(tester).qty.text, '9.75');

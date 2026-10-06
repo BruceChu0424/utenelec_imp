@@ -11,6 +11,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -647,10 +648,6 @@ class _ProductionDrawRequestPageState
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 8,
-              ),
               error: _quantityErrors[row.identity] == null
                   ? null
                   : UtenFieldMessage.error(_quantityErrors[row.identity]!),
@@ -671,13 +668,9 @@ class _ProductionDrawRequestPageState
         label: '任务来源',
         width: 180,
         value: (row) => _sourcesLabel(preview, row),
-        cellBuilder: (context, row) => TextButton(
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            alignment: Alignment.centerLeft,
-          ),
+        cellBuilder: (context, row) => UtenTableCellAction(
+          label: _sourcesLabel(preview, row),
           onPressed: () => _showSources(preview, row),
-          child: Text(_sourcesLabel(preview, row)),
         ),
       ),
     ],

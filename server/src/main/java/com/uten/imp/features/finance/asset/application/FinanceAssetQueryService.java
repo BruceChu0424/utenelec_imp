@@ -406,7 +406,7 @@ public class FinanceAssetQueryService {
     }
 
     private boolean hasReadyCategory(String objectType) {
-        String accumulated = "FIXED_ASSET".equals(objectType) ? "AND accumulated_style_id IS NOT NULL" : "";
+        String accumulated = "FIXED_ASSET".equals(objectType) ? " AND accumulated_style_id IS NOT NULL" : "";
         Number count = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_asset_categories
                 WHERE object_type=:type AND status='ACTIVE' AND is_deleted=false

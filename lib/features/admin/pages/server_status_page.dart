@@ -700,23 +700,23 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
       stickyHeaderPinned: _jobsPinned,
       columns: [
         MasterColumnDef(
-          key: 'label',
-          // TODO(l10n): 补 arb
-          label: '任务',
-          width: 240,
-          value: (job) => job.label,
-        ),
-        MasterColumnDef(
           key: 'status',
           // TODO(l10n): 补 arb
           label: '状态',
-          width: 120,
+          width: 72,
           value: (job) => _statusLabel(_effective(job.status)),
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：健康色铺整格。
           cellColor: (context, job) => udenStatusBadgeCellColor(
             context,
             _serverStatusBadgeType(_effective(job.status)),
           ),
+        ),
+        MasterColumnDef(
+          key: 'label',
+          // TODO(l10n): 补 arb
+          label: '任务',
+          width: 240,
+          value: (job) => job.label,
         ),
         MasterColumnDef(
           key: 'lastStartAt',

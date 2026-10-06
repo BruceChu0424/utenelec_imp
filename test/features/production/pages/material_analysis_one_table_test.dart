@@ -173,7 +173,7 @@ Future<void> _submitSelected(WidgetTester tester) async {
     await tester.pumpAndSettle();
   }
   await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
   // 假后端可能按 delayMs 延迟应答, 期间没有动画帧, pumpAndSettle 会提前返回;
   // 先把假时钟推够几段的量, 再等落定。
@@ -504,7 +504,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('本次下单是否使用可用数量抵扣？'), findsNothing);
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认下单'),
+      ),
     );
     await _settlePreview(tester);
     expect(_aggregateSubmits(), hasLength(2));
@@ -698,7 +701,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.text('下达'),
+          matching: find.text('确认下单'),
         ),
       );
       await tester.pumpAndSettle();
@@ -758,9 +761,9 @@ void main() {
     await _check(tester, _rowCheckbox('shared-2'));
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
-    expect(find.textContaining('同货品填写合计'), findsOneWidget);
-    expect(find.textContaining('12000'), findsOneWidget);
-    expect(find.textContaining('10000 + 1000 + 1000'), findsOneWidget);
+    // 2026-10-06 弹窗精简：不再逐行罗列，同料合计并入「共 N 种，合计 X」。
+    expect(find.textContaining('共 1 种，合计 12000'), findsOneWidget);
+    expect(find.textContaining('采购 1 种 12000'), findsOneWidget);
     expect(_aggregateSubmits(), isEmpty);
   });
 
@@ -1674,6 +1677,80 @@ void main() {
     expect(_qtyText(tester, _appendQty('shared-0')), '0');
   });
 
+  testWidgets(
+    '多订单按物料汇总：还缺父行=子行之和且为整数，红框下限与平分都是整数(2026-10-06)',
+    (tester) async {
+      await _pump(
+        tester,
+        overSupply: true,
+        permissions: _overSupplyPermissions,
+        mutate: _tailedSharedResiduals,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-table-toggle-AGGREGATE|g-m-2|本色|unit-1')),
+      );
+      await tester.pumpAndSettle();
+      // 父行 1000.0002 的最粗守恒整分 = 1000，子行 84/83/833 恰为父行之和；
+      // 整数计量的物料不再把服务端 1e-4 定点分摊的尾巴层层上屏。
+      final parentShortage = find.byKey(
+        const ValueKey('material-analysis-net-shortage-AGGREGATE|g-m-2|本色|unit-1'),
+      );
+      expect(
+        find.descendant(of: parentShortage, matching: find.text('1000')),
+        findsOneWidget,
+        reason: '还缺父行必须显示整分后的整数合计',
+      );
+      const childShortages = ['84', '83', '833'];
+      for (var i = 0; i < 3; i++) {
+        final cell = find.byKey(
+          ValueKey('material-analysis-net-shortage-shared-$i'),
+        );
+        expect(
+          find.descendant(of: cell, matching: find.text(childShortages[i])),
+          findsOneWidget,
+          reason: '还缺子行 $i 必须显示整分份额 ${childShortages[i]}',
+        );
+      }
+      // 红框下限同口径取整：敲 1000 不红（不再逼人输 ≥1000.0002），999 仍红。
+      final field = find.byKey(
+        const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1'),
+      );
+      final frame = find
+          .ancestor(of: field, matching: find.byType(RequiredCellFrame))
+          .first;
+      await tester.enterText(field, '1000');
+      await tester.pump();
+      expect(
+        tester.widget<RequiredCellFrame>(frame).isEmpty(),
+        isFalse,
+        reason: '整分后的下限是 1000，敲 1000 必须放行',
+      );
+      await tester.enterText(field, '999');
+      await tester.pump();
+      expect(tester.widget<RequiredCellFrame>(frame).isEmpty(), isTrue);
+      // 敲整数总量平分成整数份额，切回按产品看每行的下单数量还是整数。
+      await tester.enterText(field, '1002');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+      await tester.pumpAndSettle();
+      const expected = ['84', '84', '834'];
+      for (var i = 0; i < 3; i++) {
+        final row = find.byKey(ValueKey('material-table-row-shared-$i'));
+        expect(row, findsOneWidget);
+        expect(
+          find.descendant(of: row, matching: find.text(expected[i])),
+          findsOneWidget,
+          reason: '总量 1002 必须平分成整数份额 ${expected[i]}(ceil 给足后无富余)',
+        );
+      }
+      await _settlePreview(tester);
+    },
+  );
+
   testWidgets('左上角全选连折叠分支一起选上；清全选也连折叠一起撤(2026-09-27)', (tester) async {
     await _pump(
       tester,
@@ -1836,11 +1913,15 @@ void main() {
     requests.clear();
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
-    // 主确认框要说明同料将合并，不再各下各的。
-    expect(find.textContaining('1 种组件按来源一次下达'), findsOneWidget);
-    expect(find.textContaining('本次跳过'), findsNothing);
+    // 主确认框的路线分账说明同料合并：3 行同料只算 1 种采购，不再各下各的。
+    expect(find.textContaining('车间 3 种'), findsOneWidget);
+    expect(find.textContaining('采购 1 种'), findsOneWidget);
+    expect(find.textContaining('本次不会下单'), findsNothing);
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认下单'),
+      ),
     );
     for (var i = 0; i < 40; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -2037,7 +2118,7 @@ void main() {
           expect(
             find.descendant(
               of: find.byType(AlertDialog),
-              matching: find.text('下达'),
+              matching: find.text('确认下单'),
             ),
             findsNothing,
             reason: '第二轮不得丢失confirmed后暗中再弹确认',
@@ -2284,7 +2365,7 @@ void main() {
           'h',
         ]);
         expect(
-          find.textContaining('确认下达'),
+          find.textContaining('种物料？'),
           findsOneWidget,
           reason: '第二轮是P，M不能因较浅来源提前办理',
         );
@@ -3411,10 +3492,13 @@ void main() {
     requests.clear();
     await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
     await tester.pumpAndSettle();
-    // 单行也要说明合并语义(追加并回共享批次)。
-    expect(find.textContaining('相同物料自动合单'), findsOneWidget);
+    // 单行合并(追加并回共享批次)：确认框按品种汇总为一种。
+    expect(find.textContaining('共 1 种，合计 600'), findsOneWidget);
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认下单'),
+      ),
     );
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 100));
@@ -5063,7 +5147,7 @@ void main() {
     );
   }
 
-  testWidgets('汇总视图手输总量分成两张：预览逐张回来归回同一汇总行，确认框逐张列出后一次提交', (tester) async {
+  testWidgets('汇总视图手输总量分成两张：预览逐张回来归回同一汇总行，确认框按种汇总后一次提交', (tester) async {
     await _pumpSplit(
       tester,
       mutate: _threeSharedMakeSources,
@@ -5113,21 +5197,12 @@ void main() {
     await tester.pumpAndSettle();
     final dialog = find.byType(AlertDialog);
     expect(dialog, findsOneWidget, reason: _notices(tester));
+    // 2026-10-06 弹窗精简：逐张明细不再进确认框（汇总行的分单说明仍在上表
+    // 5107-5109 处锁定），确认框只按品种给「共 N 种，合计 X」。
     expect(
       find.descendant(
         of: dialog,
-        matching: find.textContaining(
-          '(第 1 张，共 2 张：装配二车间 / 李四 / 超产 0%)：本次 1500',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(
-        of: dialog,
-        matching: find.textContaining(
-          '(第 2 张，共 2 张：装配一车间 / 张三 / 超产 0%)：本次 3000',
-        ),
+        matching: find.textContaining('共 1 种物料，合计 4500'),
       ),
       findsOneWidget,
     );
@@ -5925,9 +6000,28 @@ Map<String, dynamic> _threeSharedBuySources(Map<String, dynamic> data) {
   return data;
 }
 
+/// 服务端把共享缺口按订单权重 1e-4 定点分摊后的三来源还缺形状：
+/// 83.3334 + 83.3334 + 833.3334 = 1000.0002。按物料汇总的展示与编辑层
+/// 要按最粗守恒粒度整分（2026-10-06 用户口径「优先整数呈现」）。
+Map<String, dynamic> _tailedSharedResiduals(Map<String, dynamic> data) {
+  _threeSharedBuySources(data);
+  const tails = [83.3334, 83.3334, 833.3334];
+  for (var i = 0; i < 3; i++) {
+    _fixtureMaterial(data, 'shared-$i').addAll({
+      'requiredQty': tails[i],
+      'sourceRequiredQty': tails[i],
+      'shortageQty': tails[i],
+      'demandSupplyGapQty': tails[i],
+      'additionalSupplyRecommendedQty': tails[i],
+      'netShortageQty': tails[i],
+    });
+  }
+  return data;
+}
+
 Future<void> _confirmAggregateRound(WidgetTester tester) async {
   await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 100));

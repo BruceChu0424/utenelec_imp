@@ -845,6 +845,25 @@ class _FinanceSalesOrderConfirmationPageState
 
   List<MasterColumnDef<SalesOrderFinancePendingItem>> _columns() => [
     MasterColumnDef(
+      key: 'status',
+      label: '审核状态 / 原因',
+      width: 72,
+      value: (item) => item.financeRejected
+          ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
+          : item.changeCount > 0
+          ? '修改后待确认 · ${item.changeCount} 次变更'
+          // 报价转入且各行单价/折扣与财务核定的报价一致(ADR-134)：本次只核信用与条款。
+          : item.sourceQuote != null && item.matchesQuote == true
+          ? '待财务确认 · ${AppLocalizations.of(context).quoteFinanceOrderAllMatch}'
+          : '待财务确认',
+      cellColor: (context, item) =>
+          item.changeCount > 0 && !item.financeRejected
+          ? (Theme.of(context).brightness == Brightness.dark
+                ? UtenColors.warning.withValues(alpha: 0.18)
+                : UtenColors.warningBg)
+          : null,
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: '销售单号',
       width: 172,
@@ -921,25 +940,6 @@ class _FinanceSalesOrderConfirmationPageState
       width: 120,
       type: 'date',
       value: (item) => item.billDate ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '审核状态 / 原因',
-      width: 260,
-      value: (item) => item.financeRejected
-          ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
-          : item.changeCount > 0
-          ? '修改后待确认 · ${item.changeCount} 次变更'
-          // 报价转入且各行单价/折扣与财务核定的报价一致(ADR-134)：本次只核信用与条款。
-          : item.sourceQuote != null && item.matchesQuote == true
-          ? '待财务确认 · ${AppLocalizations.of(context).quoteFinanceOrderAllMatch}'
-          : '待财务确认',
-      cellColor: (context, item) =>
-          item.changeCount > 0 && !item.financeRejected
-          ? (Theme.of(context).brightness == Brightness.dark
-                ? UtenColors.warning.withValues(alpha: 0.18)
-                : UtenColors.warningBg)
-          : null,
     ),
   ];
 
@@ -1079,9 +1079,9 @@ class _ClientBalanceCell extends StatelessWidget {
     final note = _clientBalanceNote(item);
     final text = Text(
       _clientBalanceText(item),
-      // 2 行：卡片形态（cardRendersBuilder）复用本格时标题能完整换行显示
-      //（表格列宽 170 下长文案同样受益）；补充说明随金额悬停显示。
-      maxLines: 2,
+      // 单行 + 省略号（2026-10-06 全站表格行高统一口径：读表格内内容不超过
+      // 单行文本高度）；补充说明随金额悬停显示（无说明不挂提示，见表测试）。
+      maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: item.clientBalance?.overCredit == true
           ? TextStyle(

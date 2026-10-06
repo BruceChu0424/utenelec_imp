@@ -256,12 +256,13 @@ public class FinanceReportService {
                     + dateClause("bill_date") + " GROUP BY supplier_id) ap ON ap.supplier_id=s.id "
                     + "WHERE COALESCE(s.is_deleted,false)=false" + supplierCatFilter);
         }
-        // 显示方式过滤
+        // 显示方式过滤。含 OR 的条件必须自带括号: 后面还要拼 " AND (关键字)", AND 优先级高于 OR,
+        // 不加括号就成了 receivable <> 0 OR (payable <> 0 AND 关键字), 应收非零的单位全部绕过关键字。
         String mode = displayMode == null ? "" : displayMode.trim();
         String having = switch (mode) {
             case "AR_ONLY" -> " WHERE receivable <> 0";
             case "AP_ONLY" -> " WHERE payable <> 0";
-            case "ANY" -> " WHERE receivable <> 0 OR payable <> 0";
+            case "ANY" -> " WHERE (receivable <> 0 OR payable <> 0)";
             default -> "";
         };
         // keyword 过滤

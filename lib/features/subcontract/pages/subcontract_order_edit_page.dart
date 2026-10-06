@@ -1300,6 +1300,21 @@ class _SubcontractOrderEditPageState
       if (_deliverDate != null) 'deliverDate': _fmt(_deliverDate!),
       'items': itemsBody,
     };
+    // 「保存并提交财务审核」一步直通锁单进财务共享待办，误触代价高：与详情页
+    // 「提交财务审核」同款二次确认；保存草稿路径不弹。
+    if (_canSubmitFinance) {
+      if (!mounted) return;
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '提交财务审核',
+        confirmLabel: '确认提交',
+        content: const Text(
+          '保存后将立即提交财务审核组：委外订货单随即锁定并进入财务共享待办，'
+          '下一步由财务在「订货审批任务中心」审核。确认提交？',
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     setState(() => _saving = true);
     try {
       final repo = ref.read(

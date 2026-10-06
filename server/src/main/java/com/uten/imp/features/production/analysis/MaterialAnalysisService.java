@@ -1041,7 +1041,7 @@ public class MaterialAnalysisService {
         if (billNoFilter) countQuery.setParameter("orderBillNo", orderBillNo.strip());
         long total = ((Number) countQuery.getSingleResult()).longValue();
         Query idsQuery = em.createNativeQuery(
-                "SELECT o.id\n" + salesCandidatesFromWhere(kw, billNoFilter) + """
+                "SELECT o.id\n" + salesCandidatesFromWhere(kw, billNoFilter) + "\n" + """
                 GROUP BY o.id, o.deliver_date, o.bill_date, o.bill_no
                 """ + salesCandidatesOrderBy(sort, order));
         if (!kw.isEmpty()) idsQuery.setParameter("kw", "%" + kw + "%");
@@ -5885,7 +5885,7 @@ public class MaterialAnalysisService {
                 LEFT JOIN goods parent_goods ON parent_goods.id = parent_item.goods_id
                 LEFT JOIN production_material_analysis_materials root_material ON root_material.id=ai.root_material_id
                 WHERE ai.analysis_id = :id AND ai.is_deleted = FALSE
-                """+(selectedItemIds==null?"":" AND ai.id IN(SELECT id FROM selected_source_ids)")+"""
+                """+(selectedItemIds==null?"":" AND ai.id IN(SELECT id FROM selected_source_ids)\n")+"""
                 ORDER BY ai.line_priority, ai.delivery_date NULLS LAST, ai.id
                 """).setParameter("id", analysisId);
         if(selectedItemIds!=null)sourceQuery.setParameter("selectedItemIds",selectedItemIds);

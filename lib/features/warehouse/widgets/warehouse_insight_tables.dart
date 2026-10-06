@@ -11,11 +11,11 @@
 // 重量一律千克进来, 按用户显示单位换算 (≈ 估算, 未称显示「未称」, 绝不显示成 0)。
 import 'package:flutter/material.dart';
 
-import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/formatters/china_number_format.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/measurement_totals.dart';
@@ -670,20 +670,19 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
       final tooltip = !r.learningEnabled
           ? '本货品已关闭单重学习'
           : (canSample ? '保存这次抽样, 立即重算单重' : '没有称样权限');
+      // 2026-10-06 行高统一口径：保存动作用单行文字动作（原 UtenButton 会把
+      // 抽样行撑高）；保存中文案切换替代转圈，已保存勾图标收敛到 16。
       return Tooltip(
         message: tooltip,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            UtenButton(
+            UtenTableCellAction(
               key: ValueKey('insight-sample-save-${r.goodsId}'),
-              size: UtenButtonSize.small,
-              type: UtenButtonType.secondary,
-              isLoading: draft.saving,
+              label: draft.saving ? '保存中…' : '保存',
               onPressed: canSample && r.learningEnabled && !draft.saving
                   ? () => onSave(r)
                   : null,
-              child: const Text('保存'),
             ),
             if (draft.saved)
               Padding(
@@ -691,7 +690,7 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
                 child: Icon(
                   Icons.check_circle,
                   key: ValueKey('insight-sample-saved-${r.goodsId}'),
-                  size: 18,
+                  size: 16,
                   color: Theme.of(context).colorScheme.primary,
                 ),
               ),

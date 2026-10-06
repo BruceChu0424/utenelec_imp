@@ -151,6 +151,22 @@ void _onFilterChanged(WidgetRef ref, String key, String? value) {
 
 final List<MasterColumnDef<PayrollSlip>> _columns = [
   MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 72,
+    info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
+    value: (s) => s.status.label,
+    // 2026-09-27 用户口径「表格状态列整格底色」：待发布=灰 / 已发布=品牌青 /
+    // 已查看=蓝 / 已下载=绿。
+    cellColor: (context, s) =>
+        udenStatusBadgeCellColor(context, switch (s.status) {
+          PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
+          PayrollSlipStatus.published => UtenStatusBadgeType.accent,
+          PayrollSlipStatus.viewed => UtenStatusBadgeType.info,
+          PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
+        }),
+  ),
+  MasterColumnDef(
     key: 'period',
     label: '期间',
     width: 110,
@@ -179,22 +195,6 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     type: 'money',
     aiSensitive: true,
     value: (s) => s.netIncome.toStringAsFixed(2),
-  ),
-  MasterColumnDef(
-    key: 'status',
-    label: '状态',
-    width: 100,
-    info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
-    value: (s) => s.status.label,
-    // 2026-09-27 用户口径「表格状态列整格底色」：待发布=灰 / 已发布=品牌青 /
-    // 已查看=蓝 / 已下载=绿。
-    cellColor: (context, s) =>
-        udenStatusBadgeCellColor(context, switch (s.status) {
-          PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
-          PayrollSlipStatus.published => UtenStatusBadgeType.accent,
-          PayrollSlipStatus.viewed => UtenStatusBadgeType.info,
-          PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
-        }),
   ),
   MasterColumnDef(
     key: 'publishedAt',

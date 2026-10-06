@@ -30,4 +30,29 @@ void main() {
     expect(find.text('只落位置，不改库存'), findsOneWidget);
     expect(find.byIcon(Icons.info_outline_rounded), findsOneWidget);
   });
+
+  testWidgets('title-only notice renders one line without message gap', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: UtenInlineNotice(
+            level: UtenInlineNoticeLevel.error,
+            title: '有 22 名员工的证件号码待核对',
+          ),
+        ),
+      ),
+    );
+    expect(find.text('有 22 名员工的证件号码待核对'), findsOneWidget);
+    expect(find.textContaining('证件号码缺失'), findsNothing);
+    // 标题与正文之间不再留 4px 间隙槽位：Column 里只有标题一个子节点。
+    final column = tester.widget<Column>(
+      find.ancestor(
+        of: find.text('有 22 名员工的证件号码待核对'),
+        matching: find.byType(Column),
+      ).first,
+    );
+    expect(column.children, hasLength(1));
+  });
 }

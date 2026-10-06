@@ -21,6 +21,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -397,6 +398,16 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
 
     return [
       MasterColumnDef(
+        key: 'learnState',
+        label: '状态',
+        width: 72,
+        value: (row) => learnStateText(row) ?? '—',
+        cellColor: (context, row) {
+          final type = learnStateType(row);
+          return type == null ? null : udenStatusBadgeCellColor(context, type);
+        },
+      ),
+      MasterColumnDef(
         key: 'material',
         label: l10n.bomLearningMaterial,
         width: 190,
@@ -413,16 +424,6 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.materialDiscoveryUnit,
         width: 56,
         value: (row) => row.unitName,
-      ),
-      MasterColumnDef(
-        key: 'learnState',
-        label: '状态',
-        width: 150,
-        value: (row) => learnStateText(row) ?? '—',
-        cellColor: (context, row) {
-          final type = learnStateType(row);
-          return type == null ? null : udenStatusBadgeCellColor(context, type);
-        },
       ),
       MasterColumnDef(
         key: 'designQty',
@@ -501,10 +502,10 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
               row.actual.updatedAt == null ? null : l10n.bomLearningRelearn,
           cellBuilder: (context, row) => row.actual.updatedAt == null
               ? const SizedBox.shrink()
-              : TextButton(
+              : UtenTableCellAction(
                   key: ValueKey('goods-bom-relearn-${row.componentGoodsId}'),
+                  label: l10n.bomLearningRelearn,
                   onPressed: _relearning == null ? () => _relearn(row) : null,
-                  child: Text(l10n.bomLearningRelearn),
                 ),
         ),
     ];

@@ -2358,6 +2358,34 @@ void main() {
     },
   );
 
+  testWidgets(
+    'round launcher docks half-out at the edge and tap pulls it back',
+    (tester) async {
+      await _pump(tester, size: const Size(800, 600));
+      final launcher = find.byKey(const ValueKey('ai-chat-launcher'));
+      final fab = tester.widget<FloatingActionButton>(launcher);
+      expect(fab.shape, isA<CircleBorder>());
+      // 拖到右缘：半圆出界、半透明吸住。
+      await tester.drag(launcher, const Offset(120, 0));
+      await tester.pumpAndSettle();
+      expect(tester.getCenter(launcher).dx, 800);
+      final fade = tester.widget<AnimatedOpacity>(
+        find.ancestor(of: launcher, matching: find.byType(AnimatedOpacity)),
+      );
+      expect(fade.opacity, 0.55);
+      // 点半圆（圆心已出界，点屏内可见的一半）：拉回界内并照常打开聊天。
+      final dockedCenter = tester.getCenter(launcher);
+      await tester.tapAt(Offset(790, dockedCenter.dy));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsOneWidget);
+      // 关掉面板后按钮回到界内正常位置，不再吸边。
+      await tester.tap(find.byKey(const ValueKey('ai-chat-close')));
+      await tester.pumpAndSettle();
+      expect(tester.getCenter(launcher).dx, lessThan(780));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final scale in [1.0, 1.5, 2.0]) {
     testWidgets(
       'narrow keyboard viewport remains usable at text scale $scale',

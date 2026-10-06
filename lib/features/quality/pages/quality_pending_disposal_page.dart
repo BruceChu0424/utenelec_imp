@@ -793,6 +793,16 @@ class _QualityPendingDisposalPageState
 
   List<MasterColumnDef<_DisposalRow>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: _statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：待检=琥珀 / 部分已决定=蓝 /
+      // 已全部决定=绿 / 已取消=中性灰。
+      cellColor: (context, row) =>
+          udenStatusBadgeCellColor(context, _statusBadgeType(row)),
+    ),
+    MasterColumnDef(
       key: 'docType',
       label: '单据类型',
       width: 110,
@@ -875,16 +885,6 @@ class _QualityPendingDisposalPageState
           : null,
       cellBuilder: (_, row) =>
           UtenGoodsAttributeCell(row.isFqc ? row.inspection!.colorName : null),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: _statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：待检=琥珀 / 部分已决定=蓝 /
-      // 已全部决定=绿 / 已取消=中性灰。
-      cellColor: (context, row) =>
-          udenStatusBadgeCellColor(context, _statusBadgeType(row)),
     ),
     // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域
     // 检验（2026-09-18 用户口径：直接给「仓库 / 库位号」两列，不用逐单点进明细找位置）。
@@ -1671,6 +1671,17 @@ class _ProcurementInspectionDetailPageState
   }
 
   List<MasterColumnDef<ProcurementInspectionItem>> get _itemColumns => [
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (item) => switch (item.status) {
+        'PARTIAL' => '部分处置',
+        'RESOLVED' => '已结案',
+        'REVERSED' => '已撤销',
+        _ => '待检',
+      },
+    ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
     // 同名不同编号的来料必须分得清再填数量；颜色与验收单位本表已有独立列。
     MasterColumnDef(
@@ -1805,17 +1816,6 @@ class _ProcurementInspectionDetailPageState
       type: 'number',
       value: (item) => _fmt(item.remainingBaseQty ?? 0),
       exactValueOf: (item) => item.remainingBaseQty?.toString(),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 90,
-      value: (item) => switch (item.status) {
-        'PARTIAL' => '部分处置',
-        'RESOLVED' => '已结案',
-        'REVERSED' => '已撤销',
-        _ => '待检',
-      },
     ),
   ];
 }

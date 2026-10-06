@@ -254,6 +254,12 @@ List<MasterColumnDef<SubcontractDocListItem>> _docColumns(
   mn.MasterNameService names,
 ) => [
   MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 72,
+    value: (d) => subcontractStatusLabel(d.status),
+  ),
+  MasterColumnDef(
     key: 'billNo',
     label: '单据号',
     width: 140,
@@ -280,12 +286,6 @@ List<MasterColumnDef<SubcontractDocListItem>> _docColumns(
     type: 'money',
     sortable: true,
     value: (d) => d.totalLocal?.toStringAsFixed(2),
-  ),
-  MasterColumnDef(
-    key: 'status',
-    label: '状态',
-    width: 90,
-    value: (d) => subcontractStatusLabel(d.status),
   ),
 ];
 

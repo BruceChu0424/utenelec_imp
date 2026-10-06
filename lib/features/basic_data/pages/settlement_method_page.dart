@@ -311,14 +311,14 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   // ---- 列定义 -----------------------------------------------------------
 
   static final _columns = <MasterColumnDef<SettlementMethodAdminItem>>[
-    MasterColumnDef(key: 'code', label: '编号', width: 110, value: (m) => m.code),
-    MasterColumnDef(key: 'name', label: '名称', width: 170, value: (m) => m.name),
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 90,
+      width: 72,
       value: (m) => m.status,
     ),
+    MasterColumnDef(key: 'code', label: '编号', width: 110, value: (m) => m.code),
+    MasterColumnDef(key: 'name', label: '名称', width: 170, value: (m) => m.name),
     MasterColumnDef(
       key: 'systemRole',
       label: '系统角色',

@@ -4714,13 +4714,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final rowSelectionState = widget.selectionStateOf == null
         ? selected
         : widget.selectionStateOf!(item);
-    final Widget checkbox = Checkbox(
-      tristate: widget.selectionStateOf != null,
-      value: rowSelectionState,
-      // 无业务 id 的行禁用勾选(不计入全选)。
-      onChanged: !rowSelectable
-          ? null
-          : (_) => _toggleRow(item, rowSelectionState != true),
+    final Widget checkbox = Theme(
+      // 勾选框按视觉尺寸(约18)参与布局而非默认 40 触控位(2026-10-06 行高统一
+      // 口径)：这一格没有 v8 留白兜底，40 会把所有多选表的数据行都抬到 40+，
+      // 高于只读表的 37 基准；点击切换有整行单击兜底，不缺触控面。
+      data: Theme.of(
+        context,
+      ).copyWith(materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      child: Checkbox(
+        tristate: widget.selectionStateOf != null,
+        value: rowSelectionState,
+        // 无业务 id 的行禁用勾选(不计入全选)。
+        onChanged: !rowSelectable
+            ? null
+            : (_) => _toggleRow(item, rowSelectionState != true),
+      ),
     );
     final selectionCheckbox = Center(
       child: !rowSelectable && widget.unselectableLeadingBuilder != null

@@ -4703,7 +4703,7 @@ void main() {
 
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(find.textContaining('合计 22'), findsOneWidget);
-      expect(find.textContaining('本批下单 16 + 公共安全补库 6'), findsOneWidget);
+      expect(find.textContaining('含公共安全补库 6'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
       await _confirmSupplyQuantityDialog(tester);
@@ -5759,7 +5759,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.text('下达'),
+          matching: find.text('确认下单'),
         ),
       );
 
@@ -8999,8 +8999,10 @@ void _expectBucketCount(WidgetTester tester, String bucket, int count) {
 
 /// 分桶表格的表头三态全选框。MasterDataTableView 与 UtenEditableGrid 的
 /// 用稳定键定位表头；物料父行和汇总行同样支持三态。
+// 横滚/全选后冻结前导列会挂第二份同 key 副本（UtenTableColumnKit §测试
+// 口径：冻结副本取 .first），恒取第一份防「Too many elements」。
 Finder _bucketHeaderCheckbox() =>
-    find.byKey(const Key('master-data-table-select-all'));
+    find.byKey(const Key('master-data-table-select-all')).first;
 
 /// 详情页里的竖向滚动视图（横向滚动条在树序上更靠前，需按方向过滤）。
 Finder _verticalScrollable() => find.byWidgetPredicate(
@@ -11204,7 +11206,7 @@ String? _lastNotice(WidgetTester tester) {
 Future<void> _confirmSupplyQuantityDialog(WidgetTester tester) async {
   final confirm = find.descendant(
     of: find.byType(AlertDialog),
-    matching: find.text('下达'),
+    matching: find.text('确认下单'),
   );
   await tester.ensureVisible(confirm);
   await tester.pumpAndSettle();
@@ -11365,7 +11367,7 @@ Future<void> _submitIssuePage(
   if (!confirm) return;
   final confirmation = find.descendant(
     of: find.byType(AlertDialog),
-    matching: find.text('下达'),
+    matching: find.text('确认下单'),
   );
   if (confirmation.evaluate().isNotEmpty) {
     await tester.tap(confirmation);

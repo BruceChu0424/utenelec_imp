@@ -5,6 +5,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
@@ -286,6 +287,24 @@ class ProductionDrawDetailTable extends StatelessWidget {
           : null,
       columns: [
         MasterColumnDef(
+          key: 'issueStatus',
+          label: '状态',
+          width: 72,
+          value: (row) => row.isMergedGroup
+              ? (row.group!
+                        .map((r) => r.document!.issueStatus)
+                        .toSet()
+                        .length ==
+                    1
+                ? drawIssueStatusLabel(
+                    row.group!.first.document!.issueStatus,
+                  )
+                : '—')
+              : row.discovery == null
+              ? drawIssueStatusLabel(row.document!.issueStatus)
+              : '待确认出库',
+        ),
+        MasterColumnDef(
           // 2026-09-25 单号列统一：明细就地排序+按值筛选。
           key: 'billNo',
           sortable: true,
@@ -549,24 +568,6 @@ class ProductionDrawDetailTable extends StatelessWidget {
             },
           ),
         MasterColumnDef(
-          key: 'issueStatus',
-          label: '状态',
-          width: 120,
-          value: (row) => row.isMergedGroup
-              ? (row.group!
-                            .map((r) => r.document!.issueStatus)
-                            .toSet()
-                            .length ==
-                        1
-                    ? drawIssueStatusLabel(
-                        row.group!.first.document!.issueStatus,
-                      )
-                    : '—')
-              : row.discovery == null
-              ? drawIssueStatusLabel(row.document!.issueStatus)
-              : '待确认出库',
-        ),
-        MasterColumnDef(
           key: 'planNo',
           label: '生产计划',
           width: 170,
@@ -649,6 +650,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
             cellBuilder: (_, row) {
               final discovery = row.discovery;
               if (discovery == null) return const Text('—');
+              // 2026-10-06 行高统一口径：紧凑 IconButton（不超过同行输入格的 39 高）。
               return Wrap(
                 children: [
                   IconButton(
@@ -657,6 +659,13 @@ class ProductionDrawDetailTable extends StatelessWidget {
                     onPressed: issueSaving || onSplitDiscoveryRow == null
                         ? null
                         : () => onSplitDiscoveryRow!(discovery),
+                    style: IconButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    iconSize: 16,
                     icon: const Icon(Icons.add),
                   ),
                   IconButton(
@@ -668,6 +677,13 @@ class ProductionDrawDetailTable extends StatelessWidget {
                             canRemoveDiscoveryRow?.call(discovery) != true
                         ? null
                         : () => onRemoveDiscoveryRow!(discovery),
+                    style: IconButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    iconSize: 16,
                     icon: const Icon(Icons.remove_circle_outline),
                   ),
                 ],
@@ -775,6 +791,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
     onPressed: issueSaving || onPickDiscoveryWarehouse == null
         ? null
         : () => onPickDiscoveryWarehouse!(row),
+    // 2026-10-06 行高统一口径：关掉 TextButton 的 min40（子级 InputDecorator
+    // 自带必填红框/错误提示，不能换成纯文字动作），高度交给 isDense 装饰。
+    style: TextButton.styleFrom(
+      minimumSize: Size.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    ),
     child: InputDecorator(
       decoration: applyRequiredEmpty(
         UtenInputDecoration(
@@ -801,13 +825,12 @@ class ProductionDrawDetailTable extends StatelessWidget {
         !locationAllowedFor(permissions, superAdmin, path)) {
       return Text(label);
     }
-    return TextButton(
-      style: TextButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        padding: EdgeInsets.zero,
-      ),
+    // 2026-10-06 行高统一口径：单号链接用单行文字动作，不再用 min40 的
+    // TextButton 把行撑高（批量出库只读行回到 37 单行文本基线）。
+    return UtenTableCellAction(
+      label: label,
+      tooltip: label,
       onPressed: () => context.push(path),
-      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 

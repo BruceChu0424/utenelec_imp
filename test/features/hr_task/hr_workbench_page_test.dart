@@ -1,5 +1,7 @@
 // HR 工作台「证件核对」：有待核对员工时概览上方红色横幅(人数 + 去处理)；
 // 事务入口只给能修改证件的人(超管或 employee:pii:edit)。
+// 2026-10-06 版式改版回归：事务办理=自适应小卡网格(桌面 5 列)、快捷发布祝福=
+// 紧凑胶囊横排、右下悬浮「入职登记」按权限出没。
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +20,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 const _banner = ValueKey('hr-identity-review-banner');
 const _go = ValueKey('hr-identity-review-go');
 const _identityEntry = ValueKey('hr-workbench-entry-identity');
+const _onboardFab = ValueKey('hr-workbench-fab-onboard');
 
 class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   _FakeHrTaskRepository(this.value);
@@ -75,6 +78,16 @@ Future<void> _pump(
         builder: (context, state) =>
             Scaffold(body: Text('task-list:${state.pathParameters['type']}')),
       ),
+      GoRoute(
+        path: '/employee/onboarding',
+        builder: (context, state) => const Scaffold(body: Text('onboarding')),
+      ),
+      GoRoute(
+        path: '/notice/publish',
+        builder: (context, state) => Scaffold(
+          body: Text('notice-publish:${state.uri.queryParameters['type'] ?? ''}'),
+        ),
+      ),
     ],
   );
   addTearDown(router.dispose);
@@ -115,7 +128,11 @@ void main() {
     expect(banner.level, UtenInlineNoticeLevel.error);
     expect(banner.title, '有 2 名员工的证件号码待核对');
     expect(find.byKey(_identityEntry), findsOneWidget);
-    expect(find.textContaining('2 人证件待核对'), findsOneWidget);
+    // 小卡右端的待办总数。
+    expect(
+      find.descendant(of: find.byKey(_identityEntry), matching: find.text('2')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byKey(_go));
     await tester.pumpAndSettle();
@@ -132,6 +149,93 @@ void main() {
       findsOneWidget,
       reason: '其他入口照旧',
     );
+  });
+
+  testWidgets('事务办理为自适应小卡网格：桌面一行多卡，点卡片进子页', (tester) async {
+    await _pump(tester, _summary(const []));
+
+    expect(find.text('事务办理'), findsOneWidget);
+    // 四个基础入口都在。
+    for (final key in const [
+      ValueKey('hr-workbench-entry-confirm'),
+      ValueKey('hr-workbench-entry-birthday'),
+      ValueKey('hr-workbench-entry-anniversary'),
+      ValueKey('hr-workbench-entry-newhire'),
+    ]) {
+      expect(find.byKey(key), findsOneWidget);
+    }
+    // 桌面(1200 宽)下一行放多张：前两张卡的 top 相同、left 不同。
+    final first = tester.getTopLeft(find.byKey(const ValueKey('hr-workbench-entry-confirm')));
+    final second = tester.getTopLeft(
+      find.byKey(const ValueKey('hr-workbench-entry-birthday')),
+    );
+    expect(second.dx, greaterThan(first.dx), reason: '同行多卡');
+    expect(second.dy, closeTo(first.dy, 0.1), reason: '桌面端同一行');
+
+    await tester.tap(find.byKey(const ValueKey('hr-workbench-entry-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('task-list:confirm'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: '不溢出');
+  });
+
+  testWidgets('快捷发布祝福为紧凑胶囊：不超过 56 高，点新婚直达带模板参数', (tester) async {
+    await _pump(
+      tester,
+      _summary(const []),
+      permissions: const {Perm.employeeView, Perm.noticePublish},
+    );
+
+    expect(find.text('快捷发布祝福'), findsOneWidget);
+    final wedding = find.text('新婚');
+    expect(wedding, findsOneWidget);
+    final rect = tester.getRect(wedding);
+    expect(rect.height, lessThanOrEqualTo(24), reason: '胶囊内文字行高紧凑');
+    // 整颗胶囊(含图标与内边距)控制在 56 内：以文字中心向上/向下各 28 仍有卡片范围。
+    final tileRect = tester.getRect(
+      find.ancestor(of: wedding, matching: find.byType(Material)).first,
+    );
+    expect(tileRect.height, lessThanOrEqualTo(56), reason: '胶囊高度 ≤56');
+
+    await tester.tap(wedding);
+    await tester.pumpAndSettle();
+    expect(find.text('notice-publish:wedding'), findsOneWidget);
+  });
+
+  testWidgets('无发布权限不显示快捷发布祝福区', (tester) async {
+    await _pump(tester, _summary(const []));
+
+    expect(find.text('快捷发布祝福'), findsNothing);
+    expect(find.text('新婚'), findsNothing);
+  });
+
+  testWidgets('有入职权限显示右下悬浮「入职登记」，点击进入职页', (tester) async {
+    await _pump(
+      tester,
+      _summary(const []),
+      permissions: const {
+        Perm.employeeView,
+        Perm.employeeCreate,
+        Perm.employeePiiEdit,
+        Perm.departmentView,
+      },
+    );
+
+    final fab = find.byKey(_onboardFab);
+    expect(fab, findsOneWidget);
+    // 悬浮在右下角。
+    final rect = tester.getRect(fab);
+    expect(rect.right, lessThanOrEqualTo(1200));
+    expect(rect.bottom, greaterThan(2400 / 2), reason: '位于视口下半部');
+
+    await tester.tap(fab);
+    await tester.pumpAndSettle();
+    expect(find.text('onboarding'), findsOneWidget);
+  });
+
+  testWidgets('无入职权限不显示悬浮按钮', (tester) async {
+    await _pump(tester, _summary(const []));
+
+    expect(find.byKey(_onboardFab), findsNothing);
   });
 
   testWidgets('我认领的证件核对出现在「我处理中的事项」，带原因和修改入口', (tester) async {
@@ -223,7 +327,10 @@ void main() {
     await _pump(tester, _summary(const []), superAdmin: true);
 
     expect(find.byKey(_identityEntry), findsOneWidget);
-    expect(find.textContaining('0 人证件待核对'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(_identityEntry), matching: find.text('0')),
+      findsOneWidget,
+    );
     expect(find.byKey(_banner), findsNothing);
   });
 }

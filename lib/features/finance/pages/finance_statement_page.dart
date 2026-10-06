@@ -536,12 +536,21 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
     if (data == null) {
       return const Center(child: Text('点击「查询」加载'));
     }
-    final columns = data.columns
+    // 状态列前置（全站口径）：列元数据来自服务端，客户端映射时把「状态」类列
+    // 排到最前，其余列保持服务端顺序；两个分区各自保持原有相对顺序。
+    final orderedColumns = [
+      ...data.columns.where((c) => _isStatusColumnLabel(c.label)),
+      ...data.columns.where((c) => !_isStatusColumnLabel(c.label)),
+    ];
+    final columns = orderedColumns
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
             key: c.key,
             label: c.label,
-            width: (c.width ?? 120).toDouble(),
+            // 状态列收窄为声明下限 72（value 即显示文案，表格按内容自适应加宽）。
+            width: _isStatusColumnLabel(c.label)
+                ? 72
+                : (c.width ?? 120).toDouble(),
             type: c.type,
             sortable: isSortableReportType(c.type),
             value: (row) => formatReportCell(c, row),
@@ -617,4 +626,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
       ),
     );
   }
+
+  /// 状态类列判定：label 为「状态」或含「状态」（如 单据状态/审核状态）。
+  static bool _isStatusColumnLabel(String label) => label.contains('状态');
 }

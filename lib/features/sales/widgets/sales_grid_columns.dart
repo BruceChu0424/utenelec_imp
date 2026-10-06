@@ -645,12 +645,20 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                   ? null
                   : ValueKey('sales-goods-ai-review-${row.goods?.id}'),
               decoration: review == null
-                  ? const InputDecoration(isDense: true)
+                  // 选择格统一内边距（2026-10-06 表格控件统一口径）：
+                  // 与同行输入格等高。
+                  ? const InputDecoration(
+                      isDense: true,
+                      contentPadding:
+                          UtenEditableGridCellSpec.pickerCellPadding,
+                    )
                   // 原因走 UtenFieldMessage.autofill(格内黄标披露, 与带记忆的框同款)。
                   : applyAutofillHint(
                       UtenInputDecoration(
                         InputDecoration(
                           isDense: true,
+                          contentPadding:
+                              UtenEditableGridCellSpec.pickerCellPadding,
                           helper: UtenFieldMessage.autofill(
                             priceMasked
                                 ? intakeText.salesIntakeStatusReview

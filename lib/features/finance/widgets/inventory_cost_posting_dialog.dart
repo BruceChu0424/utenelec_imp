@@ -5,6 +5,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
@@ -488,7 +489,7 @@ class _InventoryCostPostingDialogState
           row['targetPeriod'] == _period && row['postingStatus'] == 'READY',
     );
     final fields = <(String, String, double)>[
-      ('postingStatus', l10n.inventoryCostStatus, 230),
+      ('postingStatus', l10n.inventoryCostStatus, 72),
       ('amountLocal', l10n.inventoryCostAmount, 175),
       ('businessDate', l10n.inventoryCostBusinessDate, 120),
       ('sourcePeriod', l10n.inventoryCostSourcePeriod, 115),
@@ -529,16 +530,16 @@ class _InventoryCostPostingDialogState
         )
         .toList();
     if (canPost) {
+      // 状态列（postingStatus）保持全分支首位，操作列插在其后。
       columns.insert(
-        0,
+        1,
         MasterColumnDef<Map<String, dynamic>>(
           key: 'choosePeriod',
           label: l10n.inventoryCostAssignPeriod,
           width: 140,
           value: (_) => '',
-          cellBuilder: (context, row) => UtenButton(
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.small,
+          cellBuilder: (context, row) => UtenTableCellAction(
+            label: l10n.inventoryCostAssignPeriod,
             onPressed:
                 !_busy &&
                     {
@@ -548,11 +549,6 @@ class _InventoryCostPostingDialogState
                     }.contains(row['postingStatus'])
                 ? () => _choosePeriod(row)
                 : null,
-            child: Text(
-              l10n.inventoryCostAssignPeriod,
-              maxLines: 1,
-              softWrap: false,
-            ),
           ),
         ),
       );

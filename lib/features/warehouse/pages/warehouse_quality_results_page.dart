@@ -707,7 +707,7 @@ class _WarehouseQualityResultsPageState
     MasterColumnDef(
       key: 'workStatus',
       label: '作业状态',
-      width: 190,
+      width: 72,
       // 先入库后检(V596)：等待结果时补「已上架 n 行」，仓库一眼看出实物已在库位。
       value: (task) => task.workStatusLabel,
     ),

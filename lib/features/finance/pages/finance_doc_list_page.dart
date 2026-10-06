@@ -292,6 +292,16 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   List<MasterColumnDef<FinanceDocListItem>> _columns(FinanceNameService names) {
     return <MasterColumnDef<FinanceDocListItem>>[
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: (it) => financeStatusLabel(it.status),
+        // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
+        // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
+        cellColor: (context, it) =>
+            udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
+      ),
+      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,
@@ -352,16 +362,6 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         label: '来源',
         width: 130,
         value: (it) => it.legacyImported ? '历史记录（只读）' : '当前单据',
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 100,
-        value: (it) => financeStatusLabel(it.status),
-        // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
-        // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
-        cellColor: (context, it) =>
-            udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
       ),
     ];
   }

@@ -155,8 +155,9 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
    点击落空（实测 4 个用例炸在这上面）。所以只切 `IgnorePointer`/`Visibility`、不动挂载，
    重建全部收敛在 `AnimatedBuilder` 内部。
 
-**为什么不拆「左固定窗格 + 右滚动窗格」**：两张表的行高由内容决定（备注列会换行、多选态用
-`IntrinsicHeight` 拉齐），两个窗格各自布局必然对不齐行高，还要再做一套竖向滚动同步。
+**为什么不拆「左固定窗格 + 右滚动窗格」**：两张表的行高由内容决定（各格一律单行、多选态用
+`IntrinsicHeight` 拉齐；2026-10-06 起读表内容不得超过单行文本高度，见
+[MasterDataTableView · 行高统一口径](MasterDataTableView.md#行高统一口径2026-10-06)），两个窗格各自布局必然对不齐行高，还要再做一套竖向滚动同步。
 
 **测试注意**：横滚后同一行会出现**两个** `Checkbox`（行内原位 + 冻结副本），按行定位勾选框
 要用 `.first`；按 `find.ancestor(..., matching: find.byType(Row))` 取整行的老写法在冻结表上

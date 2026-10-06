@@ -41,6 +41,16 @@ class WorkshopDraftSegment extends StatelessWidget {
   final String search;
 
   List<MasterColumnDef<ProductionDailyReportListItem>> get _columns => [
+    // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
+    // 本地草稿行由合并表统一显示「草稿」。
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (it) => productionStatusLabel(it.status),
+      cellColor: (context, it) =>
+          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
+    ),
     MasterColumnDef(
       key: 'draftCategory',
       label: '类别',
@@ -69,16 +79,6 @@ class WorkshopDraftSegment extends StatelessWidget {
       label: '车间',
       width: 140,
       value: (it) => it.workshopName ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (it) => productionStatusLabel(it.status),
-      // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
-      // 本地草稿行由合并表统一显示「草稿」。
-      cellColor: (context, it) =>
-          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
     ),
   ];
 

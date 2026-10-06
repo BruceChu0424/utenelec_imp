@@ -122,6 +122,12 @@ class _IncrementListState
                   tableKey:
                       'features.production.pages.production_material_increment_pages.IncrementListState.build.1',
                   columns: [
+                    MasterColumnDef(
+                      key: 'status',
+                      label: '状态',
+                      width: 72,
+                      value: (row) => materialIncrementStatus(row.status),
+                    ),
                     for (final field in const [
                       ('planNo', '计划号', 150.0),
                       ('segmentCode', '工单号', 145.0),
@@ -136,12 +142,6 @@ class _IncrementListState
                         width: field.$3,
                         value: (row) => row.text(field.$1),
                       ),
-                    MasterColumnDef(
-                      key: 'status',
-                      label: '状态',
-                      width: 140,
-                      value: (row) => materialIncrementStatus(row.status),
-                    ),
                   ],
                   items: _data?.items ?? const [],
                   facets: const {},

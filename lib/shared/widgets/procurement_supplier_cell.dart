@@ -73,7 +73,9 @@ class ProcurementSupplierCell extends StatelessWidget {
           hasName ? entries[displayId]! : (requiredEmpty ? '必选供应商' : '点击选择供应商'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyMedium?.copyWith(
+          // 字号对齐同行 TextField 输入文本（bodyLarge）：委外商格与数量/单价
+          // 等输入格同高同字号（2026-10-06 表格控件统一口径）。
+          style: theme.textTheme.bodyLarge?.copyWith(
             color: hasName
                 ? theme.colorScheme.onSurface
                 : (requiredEmpty

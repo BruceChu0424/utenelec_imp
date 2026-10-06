@@ -27,7 +27,8 @@ class UtenDocStatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (UtenStatusCellScope.isCell(context)) {
-      return Text(label, maxLines: 2, overflow: TextOverflow.ellipsis);
+      // 格内降级单行（2026-10-06 行高统一口径），与 UtenStatusBadge 同款。
+      return Text(label, maxLines: 1, overflow: TextOverflow.ellipsis);
     }
     final theme = Theme.of(context);
     final named = utenNamedColor(color);

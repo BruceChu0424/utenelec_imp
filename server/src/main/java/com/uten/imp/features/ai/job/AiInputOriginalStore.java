@@ -136,8 +136,8 @@ public class AiInputOriginalStore {
     public Download download(String type,UUID doc,UUID job) {
         authorize(type,doc,true);
         if(current.get().orElseThrow().getImpersonatedBy()!=null)throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);
-        Original original=jdbc.query("SELECT "+metadata("original")+"""
-                 FROM ai_input_originals original JOIN ai_input_original_bindings binding ON binding.job_id=original.job_id
+        Original original=jdbc.query("SELECT "+metadata("original")+"\n"+"""
+                FROM ai_input_originals original JOIN ai_input_original_bindings binding ON binding.job_id=original.job_id
                 WHERE original.job_id=:job AND binding.doc_type=:type AND binding.doc_id=:doc
                 """,Map.of("job",job,"type",type,"doc",doc),this::row).stream().findFirst().orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
         if(!readable(original)||!"AVAILABLE".equals(original.lifecycle()))throw new ApiException(ErrorCode.CONFLICT,"历史原文件不可用或校验异常，不能下载");

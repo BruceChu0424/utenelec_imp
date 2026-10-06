@@ -80,6 +80,7 @@ public class DepartmentPermissionStaffQuery {
                                (department.manager_id = employee.id) AS department_manager
                         """
                         + filter
+                        + "\n"
                         + """
                         ORDER BY employee.full_name, employee.code, employee.id
                         LIMIT ? OFFSET ?

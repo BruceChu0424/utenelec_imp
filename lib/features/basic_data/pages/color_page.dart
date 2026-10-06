@@ -500,18 +500,18 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   // ---- 列定义 -----------------------------------------------------------
 
   static final _columns = <MasterColumnDef<ColorListItem>>[
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (c) => c.status,
+    ),
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (c) => c.code),
     MasterColumnDef(
       key: 'name',
       label: '颜色名称',
       width: 220,
       value: (c) => c.name,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (c) => c.status,
     ),
   ];
 

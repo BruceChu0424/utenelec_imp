@@ -376,6 +376,12 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     'features.production.widgets.plan_order_import_sheet.ImportSheetState._lineCard.1',
                 embedded: true,
                 columns: [
+                  MasterColumnDef(
+                    key: 'status',
+                    label: '初筛状态',
+                    width: 72,
+                    value: _availabilityStatus,
+                  ),
                   // 2026-09-14 全站列序统一：名称 → 编号 → 颜色 → …
                   MasterColumnDef(
                     key: 'name',
@@ -429,12 +435,6 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
                     width: 90,
                     type: 'number',
                     value: (item) => _fmt(item.onhand),
-                  ),
-                  MasterColumnDef(
-                    key: 'status',
-                    label: '初筛状态',
-                    width: 180,
-                    value: _availabilityStatus,
                   ),
                 ],
                 items: line.bom,

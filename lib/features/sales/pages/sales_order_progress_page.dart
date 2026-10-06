@@ -760,6 +760,19 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   List<MasterColumnDef<SalesOrderProgressRow>> get _columns {
     return <MasterColumnDef<SalesOrderProgressRow>>[
       MasterColumnDef(
+        key: 'stage',
+        label: '状态',
+        width: 72,
+        sortable: true,
+        value: (r) => _stageText(r),
+        // 2026-09-27 用户口径「表格格内胶囊改单元格背景色」：每档独立色相的
+        // 映射不变（2026-09-21 ADR-100「不同状态不同颜色，色差要大」），只是
+        // 从格内 UtenStatusBadge 胶囊换成整格铺底色；边框由 MasterDataTableView
+        // 的 cellColor 通道自动保留（用户口径「背景变色但边框要还在」）。
+        cellColor: (context, r) =>
+            udenStatusBadgeCellColor(context, _stageBadgeType(r)),
+      ),
+      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,
@@ -786,20 +799,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         width: 110,
         type: 'date',
         value: (r) => _date(r.deliverDate),
-      ),
-      MasterColumnDef(
-        key: 'stage',
-        label: '状态',
-        // 部分排产文案「待排产·部分已排 4/10」需要更宽（V545）。
-        width: 190,
-        sortable: true,
-        value: (r) => _stageText(r),
-        // 2026-09-27 用户口径「表格格内胶囊改单元格背景色」：每档独立色相的
-        // 映射不变（2026-09-21 ADR-100「不同状态不同颜色，色差要大」），只是
-        // 从格内 UtenStatusBadge 胶囊换成整格铺底色；边框由 MasterDataTableView
-        // 的 cellColor 通道自动保留（用户口径「背景变色但边框要还在」）。
-        cellColor: (context, r) =>
-            udenStatusBadgeCellColor(context, _stageBadgeType(r)),
       ),
       MasterColumnDef(
         key: 'orderQty',

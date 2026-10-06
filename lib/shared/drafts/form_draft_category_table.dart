@@ -359,10 +359,20 @@ class _FormDraftCategoryTableState<T>
                 ? _value(row.draft!, column.key)
                 : column.value(row.record as T),
             cellBuilder: (ctx, row) => row.isLocal
-                ? Text(
-                    _value(row.draft!, column.key) ?? '—',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                ? Builder(
+                    // 2026-10-06 全站表格行高统一：本地草稿格单行 + 省略号，
+                    // 完整值悬停查看。
+                    builder: (_) {
+                      final text = _value(row.draft!, column.key) ?? '—';
+                      return Tooltip(
+                        message: text,
+                        child: Text(
+                          text,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    },
                   )
                 : column.cellBuilder?.call(ctx, row.record as T) ??
                       Text(column.value(row.record as T) ?? '—'),

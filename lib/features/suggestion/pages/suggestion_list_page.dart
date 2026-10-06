@@ -180,19 +180,19 @@ Future<void> _toggleLike(BuildContext context, WidgetRef ref, String id) async {
 }
 
 final List<MasterColumnDef<Suggestion>> _columns = [
+  MasterColumnDef(
+    key: 'status',
+    label: '状态',
+    width: 72,
+    info: '表头筛选下推后端 status 参数（与「建议广场/我的建议」分段正交），选中即回第 1 页。',
+    value: (s) => s.status.label,
+  ),
   MasterColumnDef(key: 'title', label: '标题', width: 260, value: (s) => s.title),
   MasterColumnDef(
     key: 'category',
     label: '类别',
     width: 110,
     value: (s) => s.category.label,
-  ),
-  MasterColumnDef(
-    key: 'status',
-    label: '状态',
-    width: 90,
-    info: '表头筛选下推后端 status 参数（与「建议广场/我的建议」分段正交），选中即回第 1 页。',
-    value: (s) => s.status.label,
   ),
   MasterColumnDef(
     key: 'submitter',

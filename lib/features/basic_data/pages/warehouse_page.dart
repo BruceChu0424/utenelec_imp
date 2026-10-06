@@ -585,6 +585,12 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         : l10n.warehouseMasterUseGood;
     return [
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: (w) => w.status,
+      ),
+      MasterColumnDef(
         key: 'code',
         label: '编号',
         width: 110,
@@ -650,12 +656,6 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
         label: '负责人',
         width: 160,
         value: (w) => _keeperLabel(w.id),
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 100,
-        value: (w) => w.status,
       ),
     ];
   }

@@ -55,5 +55,7 @@ public record ReportablePlanLine(
         boolean allowActualOverproduction,
         BigDecimal allowedOverproductionRate,
         BigDecimal overproductionLimitQty,
-        BigDecimal remainingActualSurplusQty) {
+        BigDecimal remainingActualSurplusQty,
+        /** 2026-10-06：本段已批准、尚未续报承接的固定追加量合计（公共超产额度已被它占用）。 */
+        BigDecimal pendingSupplementQty) {
 }

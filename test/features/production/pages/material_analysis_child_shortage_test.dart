@@ -109,26 +109,26 @@ Future<void> _chooseFullOrderNoClaim(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// 主表「下单(N)」→ (可用数量抵扣询问) → 确认框「下达」。
+/// 主表「下单(N)」→ (可用数量抵扣询问) → 确认框「确认下单」。
 Future<void> _submitMainTable(WidgetTester tester) async {
   requests.clear();
   await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
   await tester.pumpAndSettle();
   await _dismissClaimUsageAskIfPresent(tester);
   await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
   await _drain(tester);
 }
 
-/// 补料页「一键下单」→ (可用数量抵扣询问) → 确认框「下达」。
+/// 补料页「一键下单」→ (可用数量抵扣询问) → 确认框「确认下单」。
 Future<void> _submitShortagePage(WidgetTester tester) async {
   requests.clear();
   await tester.tap(find.byKey(const Key('child-shortage-submit')));
   await tester.pumpAndSettle();
   await _dismissClaimUsageAskIfPresent(tester);
   await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
   await _drain(tester);
 }
@@ -244,7 +244,10 @@ void main() {
     await tester.pumpAndSettle();
     await _chooseFullOrderNoClaim(tester);
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认下单'),
+      ),
     );
     await _drain(tester);
     expect(_writes(), isNotEmpty);

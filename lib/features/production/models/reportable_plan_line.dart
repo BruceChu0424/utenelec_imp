@@ -51,6 +51,8 @@ class ReportablePlanLine {
     this.fqcSourceReportNo,
     this.fqcRecoveryRequiresMaterial = false,
     this.allowActualOverproduction = false,
+    this.remainingActualSurplusQty,
+    this.pendingSupplementQty,
   });
 
   final String planItemId;
@@ -96,6 +98,13 @@ class ReportablePlanLine {
 
   /// 服务端明确允许实际超产；旧服务端和品质恢复默认继续遵守上限。
   final bool allowActualOverproduction;
+
+  /// 剩余有效公共超产额度（服务端已扣「已批准未续报」的固定追加量）。
+  final double? remainingActualSurplusQty;
+
+  /// 2026-10-06：本来源工单已批准、尚未续报承接的固定追加量合计——它占住了
+  /// 公共超产额度，超出的量只能从「固定追加量·续报」入口申报。
+  final double? pendingSupplementQty;
 
   bool get isFqcRecovery => fqcRecoveryAuthorizationId?.isNotEmpty == true;
 
@@ -178,6 +187,8 @@ class ReportablePlanLine {
     fqcSourceReportNo: json['fqcSourceReportNo'] as String?,
     fqcRecoveryRequiresMaterial: json['fqcRecoveryRequiresMaterial'] == true,
     allowActualOverproduction: json['allowActualOverproduction'] == true,
+    remainingActualSurplusQty: _asDouble(json['remainingActualSurplusQty']),
+    pendingSupplementQty: _asDouble(json['pendingSupplementQty']),
   );
 }
 

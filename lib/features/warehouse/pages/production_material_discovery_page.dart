@@ -8,6 +8,7 @@ import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../models/warehouse_form_draft_codec.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -409,15 +410,13 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       width: 220,
       value: (row) => row.values['goodsName'] as String? ?? '需要填写',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => TextButton(
+      // 2026-10-06 行高统一口径：编辑表动作不再用 min40 的 TextButton 撑行。
+      cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-goods-${row.id}'),
+        label: row.values['goodsName'] as String? ?? '需要填写',
+        // 必填未填红字提示（原 TextButton 的 foregroundColor:error 语义）。
+        error: row.values['goodsId'] == null,
         onPressed: _editable ? () => _pickGoods(row) : null,
-        style: row.values['goodsId'] == null
-            ? TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-              )
-            : null,
-        child: Text(row.values['goodsName'] as String? ?? '需要填写'),
       ),
     ),
     MasterColumnDef(
@@ -490,15 +489,11 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       width: 200,
       value: (row) => row.values['warehouseName'] as String? ?? '需要填写',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => TextButton(
+      cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-warehouse-${row.id}'),
+        label: row.values['warehouseName'] as String? ?? '需要填写',
+        error: row.values['warehouseId'] == null,
         onPressed: _editable ? () => _pickWarehouse(row) : null,
-        style: row.values['warehouseId'] == null
-            ? TextButton.styleFrom(
-                foregroundColor: Theme.of(context).colorScheme.error,
-              )
-            : null,
-        child: Text(row.values['warehouseName'] as String? ?? '需要填写'),
       ),
     ),
     MasterColumnDef(
@@ -515,10 +510,18 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
         width: 100,
         value: (_) => '',
         cellBuilderHandlesSemantics: true,
+        // 2026-10-06 行高统一口径：紧凑 IconButton（不超 39 的编辑行高标准）。
         cellBuilder: (_, row) => IconButton(
           key: ValueKey('discovery-remove-${row.id}'),
           tooltip: '删除此行材料',
           onPressed: _editable ? () => _removeRow(row) : null,
+          style: IconButton.styleFrom(
+            minimumSize: Size.zero,
+            padding: EdgeInsets.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+          iconSize: 16,
           icon: const Icon(Icons.remove_circle_outline),
         ),
       ),

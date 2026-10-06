@@ -464,7 +464,7 @@ Future<void> _submit(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('material-preparation-order-submit')));
   await tester.pumpAndSettle();
   await tester.tap(
-    find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+    find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );
   for (var i = 0; i < 20; i++) {
     await tester.pump(const Duration(milliseconds: 100));

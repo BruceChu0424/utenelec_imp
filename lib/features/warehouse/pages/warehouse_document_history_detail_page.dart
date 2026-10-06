@@ -236,6 +236,13 @@ class _WarehouseDocumentHistoryDetailPageState
 
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final columns = <MasterColumnDef<WarehouseDocumentPhysicalItem>>[
+      if (has((item) => item.inspectionStatus))
+        MasterColumnDef(
+          key: 'iqcStatus',
+          label: '质量状态',
+          width: 72,
+          value: (item) => item.inspectionStatusLabel,
+        ),
       MasterColumnDef(
         key: 'lineNumber',
         label: '行号',
@@ -396,13 +403,6 @@ class _WarehouseDocumentHistoryDetailPageState
           width: 96,
           type: 'number',
           value: (item) => item.wasteRate ?? '—',
-        ),
-      if (has((item) => item.inspectionStatus))
-        MasterColumnDef(
-          key: 'iqcStatus',
-          label: '质量状态',
-          width: 112,
-          value: (item) => item.inspectionStatusLabel,
         ),
       if (has((item) => item.passedBaseQty))
         MasterColumnDef(

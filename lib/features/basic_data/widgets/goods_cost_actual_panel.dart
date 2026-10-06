@@ -13,6 +13,7 @@ import '../../../core/theme/uten_anim.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -241,24 +242,22 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     label: _l.costSourceDocument,
     width: 125,
     value: (_) => _l.costViewSource,
-    cellBuilder: (_, row) => UtenButton(
-      key: ValueKey(
-        'cost-actual-source-${row['sourceDocId'] ?? row['inputNodeId'] ?? row['sourceNodeId']}',
-      ),
-      type: UtenButtonType.tonal,
-      onPressed: () {
-        final path = _sourceRoute(row);
-        if (path == null) {
-          _showEvidence(row);
-        } else {
-          context.push(path);
-        }
-      },
-      child: Text(
-        _sourceRoute(row) == null ? _l.costViewEvidence : _l.costViewSource,
-        maxLines: 1,
-      ),
-    ),
+    cellBuilder: (_, row) {
+      final path = _sourceRoute(row);
+      return UtenTableCellAction(
+        key: ValueKey(
+          'cost-actual-source-${row['sourceDocId'] ?? row['inputNodeId'] ?? row['sourceNodeId']}',
+        ),
+        label: path == null ? _l.costViewEvidence : _l.costViewSource,
+        onPressed: () {
+          if (path == null) {
+            _showEvidence(row);
+          } else {
+            context.push(path);
+          }
+        },
+      );
+    },
   );
   Future<void> _showPending() async {
     final pending = _pendingItems();
@@ -289,10 +288,9 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                 label: _l.costViewEvidence,
                 width: 110,
                 value: (_) => _l.costViewEvidence,
-                cellBuilder: (_, r) => UtenButton(
-                  type: UtenButtonType.tonal,
+                cellBuilder: (_, r) => UtenTableCellAction(
+                  label: _l.costOpen,
                   onPressed: () => Navigator.pop(dialog, r),
-                  child: Text(_l.costOpen, maxLines: 1),
                 ),
               ),
             ],
@@ -418,6 +416,15 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                       cellBuilder: (_, r) => IconButton(
                         key: ValueKey('cost-actual-copy-${r['key']}'),
                         tooltip: _l.costCopyValue,
+                        // 2026-10-06 全站表格行高统一：默认 40 最小点击区撑高
+                        // 读行，收紧到 16 图标本身，点击区由宿主格提供。
+                        style: IconButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        iconSize: 16,
                         icon: const Icon(Icons.copy_outlined),
                         onPressed: () async {
                           await Clipboard.setData(
@@ -568,6 +575,22 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
       }],
     );
     final columns = <MasterColumnDef<Map<String, dynamic>>>[
+      if (_tab != 2)
+        MasterColumnDef(
+          key: 'pending',
+          label: _l.costStatus,
+          width: 72,
+          value: (r) => r['pending'] == true ? _l.costPending : _l.costComplete,
+          cellBuilder: (_, r) => InkWell(
+            onTap: () => _showEvidence(r),
+            child: Tooltip(
+              message: _l.costViewEvidence,
+              child: _text(
+                r['pending'] == true ? _l.costPending : _l.costComplete,
+              ),
+            ),
+          ),
+        ),
       if (_tab == 0) ...[
         _column('goodsName', _l.costGoodsName, 220),
         _column('goodsCode', _l.costGoodsCode, 150),
@@ -590,6 +613,19 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
         _column('sourceDocType', _l.costSourceType, 150, visible: false),
         _sourceColumn(),
       ] else ...[
+        MasterColumnDef(
+          key: 'state',
+          label: _l.costStatus,
+          width: 72,
+          value: (r) => _state(r['state']),
+          cellBuilder: (_, r) => InkWell(
+            onTap: () => _showEvidence(r),
+            child: Tooltip(
+              message: _l.costViewEvidence,
+              child: _text(_state(r['state'])),
+            ),
+          ),
+        ),
         _column('executionNo', _l.costSegment, 200),
         _column('revisionVersion', _l.costVersion, 110),
         _column('scopeOutputQtyBase', _l.costActualQty, 150, numeric: true),
@@ -600,36 +636,7 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
           numeric: true,
         ),
         _column('heldWipLocal', _l.costActualWip, 150, numeric: true),
-        MasterColumnDef(
-          key: 'state',
-          label: _l.costStatus,
-          width: 140,
-          value: (r) => _state(r['state']),
-          cellBuilder: (_, r) => InkWell(
-            onTap: () => _showEvidence(r),
-            child: Tooltip(
-              message: _l.costViewEvidence,
-              child: _text(_state(r['state'])),
-            ),
-          ),
-        ),
       ],
-      if (_tab != 2)
-        MasterColumnDef(
-          key: 'pending',
-          label: _l.costStatus,
-          width: 140,
-          value: (r) => r['pending'] == true ? _l.costPending : _l.costComplete,
-          cellBuilder: (_, r) => InkWell(
-            onTap: () => _showEvidence(r),
-            child: Tooltip(
-              message: _l.costViewEvidence,
-              child: _text(
-                r['pending'] == true ? _l.costPending : _l.costComplete,
-              ),
-            ),
-          ),
-        ),
     ];
     return UtenCollapsingHeaderScrollView(
       controller: _outer,

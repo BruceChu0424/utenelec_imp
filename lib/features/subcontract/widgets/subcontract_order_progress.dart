@@ -392,10 +392,19 @@ class _SubcontractOrderProgressSectionState
         filters: const {},
         onFilterChanged: (_, _) {},
         columns: [
+          const MasterColumnDef(
+            key: 'state',
+            label: '状态',
+            width: 72,
+            value: subcontractDrawMaterialStateLabel,
+          ),
           MasterColumnDef(
             key: 'goodsName',
             label: '物料名称',
             width: 180,
+            // 状态列已排首位，窄屏卡片标题显式钉在物料名称（compactCards 默认取
+            // 第一可见列，即状态列；状态列不当标题）。
+            cardRole: MasterColumnCardRole.title,
             value: (row) => _label(row.goodsName),
           ),
           MasterColumnDef(
@@ -428,12 +437,6 @@ class _SubcontractOrderProgressSectionState
             label: '供应来源',
             width: 240,
             value: subcontractDrawSupplyText,
-          ),
-          const MasterColumnDef(
-            key: 'state',
-            label: '状态',
-            width: 110,
-            value: subcontractDrawMaterialStateLabel,
           ),
         ],
         items: item.materials,

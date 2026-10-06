@@ -12,7 +12,7 @@ final class WarehouseHistoryQueries {
 
     /** 2026-09-25 单号列统一：列表排序接白名单 ORDER BY（未知/空回落默认单据日期倒序）。 */
     static String listSql(WarehouseHistoryType type, String orderBy) {
-        return headerSelect(type) + searchJoins(type) + where(type, true) + orderBy + """
+        return headerSelect(type) + searchJoins(type) + where(type, true) + orderBy + "\n" + """
                 LIMIT :limit OFFSET :offset
                 """;
     }

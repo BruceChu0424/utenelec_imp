@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
+import '../../../../components/inputs/uten_table_cell_action.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_filter_toolbar.dart';
@@ -461,6 +462,12 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           tableKey: 'stock.count-requests',
           columns: [
             MasterColumnDef(
+              key: 'status',
+              label: '状态',
+              width: 72,
+              value: (r) => _statusText(r.status),
+            ),
+            MasterColumnDef(
               key: 'requestNo',
               label: '盘点单号',
               width: 190,
@@ -471,12 +478,6 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               label: '仓库',
               width: 180,
               value: (r) => r.warehouseName,
-            ),
-            MasterColumnDef(
-              key: 'status',
-              label: '状态',
-              width: 95,
-              value: (r) => _statusText(r.status),
             ),
             MasterColumnDef(
               key: 'reviewRoute',
@@ -507,9 +508,10 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               label: '查看',
               width: 90,
               value: (_) => '查看明细',
-              cellBuilder: (_, r) => TextButton(
+              // 2026-10-06 行高统一口径：单行文字动作，不用 min40 的 TextButton。
+              cellBuilder: (_, r) => UtenTableCellAction(
                 onPressed: () => _open(r.id),
-                child: const Text('查看明细'),
+                label: '查看明细',
               ),
             ),
           ],
@@ -724,21 +726,21 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
         !_setupLoading.contains(line.goodsId) &&
         _canConfigureMaterials &&
         (preview != null || _setupErrors.containsKey(line.goodsId));
-    return Tooltip(
-      message: _setupErrors[line.goodsId] ?? label,
-      child: TextButton(
-        key: ValueKey('stock-count-impact-${line.goodsId}'),
-        onPressed: !canOpen
-            ? null
-            : () {
-                if (preview == null) {
-                  _loadSetupPreview(line, detail, _sequence);
-                } else {
-                  _showSetupImpact(line, preview);
-                }
-              },
-        child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
-      ),
+    // 2026-10-06 行高统一口径：影响格改单行文字动作（原来是 maxLines 2 的
+    // TextButton，会把明细行撑高）；完整说明仍挂 Tooltip。
+    return UtenTableCellAction(
+      key: ValueKey('stock-count-impact-${line.goodsId}'),
+      label: label,
+      tooltip: _setupErrors[line.goodsId] ?? label,
+      onPressed: !canOpen
+          ? null
+          : () {
+              if (preview == null) {
+                _loadSetupPreview(line, detail, _sequence);
+              } else {
+                _showSetupImpact(line, preview);
+              }
+            },
     );
   }
 

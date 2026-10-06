@@ -238,6 +238,28 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
     ThemeData theme,
   ) => [
     EditableGridColumn<WmPrepRow>(
+      key: 'status',
+      label: '状态',
+      width: 80,
+      textOf: (r) => wmPrepStatusLabel(r.source.status),
+      filterValueOf: (r) => wmPrepStatusLabel(r.source.status),
+      // 2026-09-27 用户口径「表格状态列整格底色」：已填单重=绿 / 待填=琥珀 /
+      // 待准备=中性灰；不用内料仓的行不铺色。
+      cellColor: (context, r) => switch (r.source.status) {
+        'WEIGHED' => udenStatusBadgeCellColor(
+          context,
+          UtenStatusBadgeType.success,
+        ),
+        'CHOSEN' => udenStatusBadgeCellColor(
+          context,
+          UtenStatusBadgeType.warning,
+        ),
+        'NOT_FROM_STORE' => null,
+        _ => udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
+      },
+      cellBuilder: (_, r) => Text(wmPrepStatusLabel(r.source.status)),
+    ),
+    EditableGridColumn<WmPrepRow>(
       key: 'productCode',
       label: '产品编号',
       width: 120,
@@ -363,28 +385,6 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       textOf: (r) => wmQty(r.source.goodsWeightGrams, maxDecimals: 3),
       cellBuilder: (_, r) =>
           Text(wmQty(r.source.goodsWeightGrams, maxDecimals: 3)),
-    ),
-    EditableGridColumn<WmPrepRow>(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      textOf: (r) => wmPrepStatusLabel(r.source.status),
-      filterValueOf: (r) => wmPrepStatusLabel(r.source.status),
-      // 2026-09-27 用户口径「表格状态列整格底色」：已填单重=绿 / 待填=琥珀 /
-      // 待准备=中性灰；不用内料仓的行不铺色。
-      cellColor: (context, r) => switch (r.source.status) {
-        'WEIGHED' => udenStatusBadgeCellColor(
-          context,
-          UtenStatusBadgeType.success,
-        ),
-        'CHOSEN' => udenStatusBadgeCellColor(
-          context,
-          UtenStatusBadgeType.warning,
-        ),
-        'NOT_FROM_STORE' => null,
-        _ => udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
-      },
-      cellBuilder: (_, r) => Text(wmPrepStatusLabel(r.source.status)),
     ),
   ];
 

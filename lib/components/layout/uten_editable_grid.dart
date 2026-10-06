@@ -238,6 +238,17 @@ abstract final class UtenEditableGridCellSpec {
     vertical: 12,
   );
 
+  /// 选择格（InkWell + InputDecorator 结构）内边距：水平同 [contentPadding]，
+  /// 垂直 13——选择格正文是 bodyMedium（行高 21），比 TextField 输入文本
+  /// bodyLarge（行高 22.5）矮，垂直 +1 才与同行输入格等高（2026-10-06
+  /// 表格控件统一口径：格高一律 39 逻辑像素，见 grid_cell_height_uniformity_test）。
+  static const EdgeInsets pickerCellPadding = EdgeInsets.fromLTRB(
+    14,
+    13,
+    14,
+    13,
+  );
+
   /// 兼容既有列宽定义。单元格说明/预填/错误提示已无图标，不再额外占宽。
   static const double hintIconWidth = 0;
 

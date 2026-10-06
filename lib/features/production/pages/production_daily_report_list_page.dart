@@ -194,6 +194,16 @@ class _ProductionDailyReportListPageState
     MasterNameService names,
   ) => <MasterColumnDef<ProductionDailyReportListItem>>[
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (it) => productionStatusLabel(it.status),
+      // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
+      // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
+      cellColor: (context, it) =>
+          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: '单据号',
       width: 140,
@@ -212,16 +222,6 @@ class _ProductionDailyReportListPageState
       label: '车间',
       width: 140,
       value: (it) => names.department(it.departmentId),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (it) => productionStatusLabel(it.status),
-      // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
-      // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
-      cellColor: (context, it) =>
-          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
     ),
   ];
 

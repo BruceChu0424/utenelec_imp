@@ -1111,6 +1111,39 @@ class _AuditEventTable extends StatelessWidget {
       stickyHeaderPinned: stickyHeaderPinned,
       columns: [
         MasterColumnDef(
+          key: 'outcome',
+          label: '结果',
+          width: 72,
+          value: (row) =>
+              _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
+          // 2026-09-27 用户口径「表格状态列整格底色」：失败=红 / 成功=绿 /
+          // 未知结果=中性灰。
+          cellColor: (context, row) => udenStatusBadgeCellColor(
+            context,
+            _isAuditFailure(row.result, row.statusCode)
+                ? UtenStatusBadgeType.danger
+                : (row.statusCode != null &&
+                          row.statusCode! >= 200 &&
+                          row.statusCode! < 400) ||
+                      _isAuditSuccess(row.result, row.statusCode)
+                ? UtenStatusBadgeType.success
+                : UtenStatusBadgeType.neutral,
+          ),
+        ),
+        MasterColumnDef(
+          key: 'risk',
+          label: '风险',
+          width: 72,
+          value: (row) => _riskLabel(row.riskLevel),
+          // 风险分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+          cellColor: (context, row) =>
+              udenStatusBadgeCellColor(context, switch (row.riskLevel) {
+                'critical' || 'high' => UtenStatusBadgeType.danger,
+                'medium' => UtenStatusBadgeType.warning,
+                _ => UtenStatusBadgeType.success,
+              }),
+        ),
+        MasterColumnDef(
           key: 'summary',
           label: '操作内容',
           width: 290,
@@ -1124,10 +1157,14 @@ class _AuditEventTable extends StatelessWidget {
                 '在${_AdminAuditLogPageState._fmtTime(row.createdAt)}，${_summary(row)}，'
                 '${_auditOutcomeLabel(row.result, row.resultLabel, row.statusCode)}，点击查看详情',
             onTap: () => onOpen(row),
-            child: Text(
-              _summary(row),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            // 2026-10-06 全站表格行高统一：格内单行 + 省略号，完整操作内容悬停查看。
+            child: Tooltip(
+              message: _summary(row),
+              child: Text(
+                _summary(row),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
         ),
@@ -1152,39 +1189,6 @@ class _AuditEventTable extends StatelessWidget {
           label: '业务对象',
           width: 230,
           value: (row) => auditEventObjectEvidence(row) ?? '—',
-        ),
-        MasterColumnDef(
-          key: 'outcome',
-          label: '结果',
-          width: 120,
-          value: (row) =>
-              _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
-          // 2026-09-27 用户口径「表格状态列整格底色」：失败=红 / 成功=绿 /
-          // 未知结果=中性灰。
-          cellColor: (context, row) => udenStatusBadgeCellColor(
-            context,
-            _isAuditFailure(row.result, row.statusCode)
-                ? UtenStatusBadgeType.danger
-                : (row.statusCode != null &&
-                          row.statusCode! >= 200 &&
-                          row.statusCode! < 400) ||
-                      _isAuditSuccess(row.result, row.statusCode)
-                ? UtenStatusBadgeType.success
-                : UtenStatusBadgeType.neutral,
-          ),
-        ),
-        MasterColumnDef(
-          key: 'risk',
-          label: '风险',
-          width: 100,
-          value: (row) => _riskLabel(row.riskLevel),
-          // 风险分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
-          cellColor: (context, row) =>
-              udenStatusBadgeCellColor(context, switch (row.riskLevel) {
-                'critical' || 'high' => UtenStatusBadgeType.danger,
-                'medium' => UtenStatusBadgeType.warning,
-                _ => UtenStatusBadgeType.success,
-              }),
         ),
         MasterColumnDef(
           key: 'department',
@@ -1279,6 +1283,18 @@ class _AuditSessionTable extends StatelessWidget {
       stickyHeaderPinned: stickyHeaderPinned,
       columns: [
         const MasterColumnDef(
+          key: 'status',
+          label: '会话状态',
+          width: 72,
+          value: auditSessionStatusLabel,
+        ),
+        MasterColumnDef(
+          key: 'credential',
+          label: '凭证状态',
+          width: 72,
+          value: (row) => row.refreshCredentialStatusLabel ?? '—',
+        ),
+        const MasterColumnDef(
           key: 'actor',
           label: '操作人',
           width: 170,
@@ -1289,12 +1305,6 @@ class _AuditSessionTable extends StatelessWidget {
           label: '登录时间 (北京时间)',
           width: 200,
           value: (row) => auditBeijingTime(row.loginAt, fallback: '开始时间未知'),
-        ),
-        const MasterColumnDef(
-          key: 'status',
-          label: '会话状态',
-          width: 130,
-          value: auditSessionStatusLabel,
         ),
         MasterColumnDef(
           key: 'device',
@@ -1334,12 +1344,6 @@ class _AuditSessionTable extends StatelessWidget {
             row.logoutAt ?? row.lastActivityAt ?? row.firstActivityAt,
             fallback: '暂无活动时间',
           ),
-        ),
-        MasterColumnDef(
-          key: 'credential',
-          label: '凭证状态',
-          width: 170,
-          value: (row) => row.refreshCredentialStatusLabel ?? '—',
         ),
       ],
       items: sessions,

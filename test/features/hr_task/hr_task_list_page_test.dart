@@ -272,10 +272,18 @@ void main() {
     final noteColumn = table.columns.firstWhere((c) => c.key == 'note');
     expect(noteColumn.value(table.items.first), '身份证号应为18位，当前为17位');
     expect(find.text('身份证号应为18位，当前为17位'), findsWidgets);
+    // 2026-10-06 全站表格行高统一：表格里原因单行 + 省略号，完整原因挂 Tooltip。
     for (final cell in tester.widgetList<Text>(find.text('身份证号应为18位，当前为17位'))) {
-      expect(cell.overflow, isNot(TextOverflow.ellipsis), reason: '表格里原因折行不截断');
-      expect(cell.maxLines, isNull);
+      expect(cell.maxLines, 1, reason: '表格里原因单行，不撑高行');
+      expect(cell.overflow, TextOverflow.ellipsis);
     }
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Tooltip && w.message == '身份证号应为18位，当前为17位',
+      ),
+      findsWidgets,
+      reason: '省略截断的原因悬停可看全',
+    );
 
     await tester.pumpWidget(const SizedBox());
   });

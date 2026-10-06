@@ -839,6 +839,37 @@ class _DesktopTaskTable extends StatelessWidget {
       onSelectedIdsChanged: selectable ? onSelectedIdsChanged : null,
       columns: [
         MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          // 合并段下这列是唯一能分辨「在财务手上 / 已放行 / 被驳回」的地方,
+          // 允许排序(服务端按 display_stage 排, 见 orderSql)；宽度声明下限，
+          // 实际列宽由表格按最长文案自动适配。
+          width: 72,
+          sortable: mergedStageColumn,
+          value: (item) =>
+              mergedStageColumn ? stageLabelOf(item) : item.statusLabel,
+          // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
+          // 合并段（采购）按阶段档；仓库段沿用窄屏卡同款 _statusTone 语义上色，
+          // 不再是纯文本。
+          cellColor: mergedStageColumn
+              ? (context, item) => udenStatusBadgeCellColor(
+                  context,
+                  _OperationsWorkbenchPageState._stageBadgeType(
+                    item.progressStatus,
+                  ),
+                )
+              : (context, item) => udenStatusBadgeCellColor(
+                  context,
+                  switch (_statusTone(item.taskStatus)) {
+                    'warning' => UtenStatusBadgeType.warning,
+                    'info' => UtenStatusBadgeType.info,
+                    'success' => UtenStatusBadgeType.success,
+                    'danger' => UtenStatusBadgeType.danger,
+                    _ => UtenStatusBadgeType.neutral,
+                  },
+                ),
+        ),
+        MasterColumnDef(
           key: 'planNo',
           // 与委外任务中心同款（V719）：来源计划可排序——值是 WL 分析编号
           // 或旧日期标签，服务端 orderSql 按 plan_no 文本排序。
@@ -941,36 +972,6 @@ class _DesktopTaskTable extends StatelessWidget {
               : item.isDocumentGrouped
               ? '${item.openLineCount} 行'
               : _quantity(item.openQty, item.unitName),
-        ),
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          // 合并段下这列是唯一能分辨「在财务手上 / 已放行 / 被驳回」的地方,
-          // 所以给足宽度并允许排序(服务端按 display_stage 排, 见 orderSql)。
-          width: mergedStageColumn ? 150 : 120,
-          sortable: mergedStageColumn,
-          value: (item) =>
-              mergedStageColumn ? stageLabelOf(item) : item.statusLabel,
-          // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
-          // 合并段（采购）按阶段档；仓库段沿用窄屏卡同款 _statusTone 语义上色，
-          // 不再是纯文本。
-          cellColor: mergedStageColumn
-              ? (context, item) => udenStatusBadgeCellColor(
-                  context,
-                  _OperationsWorkbenchPageState._stageBadgeType(
-                    item.progressStatus,
-                  ),
-                )
-              : (context, item) => udenStatusBadgeCellColor(
-                  context,
-                  switch (_statusTone(item.taskStatus)) {
-                    'warning' => UtenStatusBadgeType.warning,
-                    'info' => UtenStatusBadgeType.info,
-                    'success' => UtenStatusBadgeType.success,
-                    'danger' => UtenStatusBadgeType.danger,
-                    _ => UtenStatusBadgeType.neutral,
-                  },
-                ),
         ),
         MasterColumnDef(
           key: 'exception',

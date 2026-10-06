@@ -409,15 +409,9 @@ class _WorkshopMaterialOverviewState
 
   List<MasterColumnDef<WmSetting>> _columns(AppLocalizations l10n) => [
     MasterColumnDef(
-      key: 'workshop',
-      label: l10n.wmBinColWorkshop,
-      width: 170,
-      value: (s) => s.workshopName,
-    ),
-    MasterColumnDef(
       key: 'status',
       label: l10n.wmBinColStatus,
-      width: 120,
+      width: 72,
       value: (s) => wmBinStatusLabel(l10n, s.status),
       // 三态三色: 未开通灰 / 已开通蓝 / 整批领料中绿。
       cellColor: (context, s) =>
@@ -426,6 +420,12 @@ class _WorkshopMaterialOverviewState
             WmBinStatus.open => UtenStatusBadgeType.info,
             _ => UtenStatusBadgeType.neutral,
           }),
+    ),
+    MasterColumnDef(
+      key: 'workshop',
+      label: l10n.wmBinColWorkshop,
+      width: 170,
+      value: (s) => s.workshopName,
     ),
     MasterColumnDef(
       key: 'bin',

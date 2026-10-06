@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -258,7 +259,7 @@ void main() {
     (tester) async {
       final api = _Api()..status = 'TARGET_PERIOD_REQUIRED';
       await _open(tester, api, canPost: true);
-      final assign = find.widgetWithText(UtenButton, '指定入账期间');
+      final assign = find.widgetWithText(UtenTableCellAction, '指定入账期间');
       await tester.tap(assign);
       await tester.pumpAndSettle();
       await tester.tap(find.byType(DropdownButtonFormField<String>).last);

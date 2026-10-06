@@ -154,6 +154,29 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 CREATE TABLE production_material_settlement_events(id uuid PRIMARY KEY, event_type text);
                 CREATE TABLE production_material_settlement_postings(id uuid PRIMARY KEY, demand_id uuid,
                     event_id uuid, settlement_type text, qty_base numeric);
+                -- 2026-10-06 待续报固定追加量：segmentSelect 引用真实判定(函数 + requests/proofs/
+                -- reversals/claims/daily_reports 表)，这里给出同形状的最小真表版。
+                CREATE TABLE production_daily_reports(id uuid PRIMARY KEY, status integer DEFAULT 0, is_deleted boolean DEFAULT FALSE);
+                CREATE TABLE production_actual_output_supplement_requests(id uuid PRIMARY KEY,
+                    source_execution_segment_id uuid, status text, supplement_qty numeric DEFAULT 0, created_at timestamptz DEFAULT now());
+                CREATE TABLE production_actual_output_supplement_proofs(id uuid PRIMARY KEY, command_id uuid);
+                CREATE TABLE production_actual_output_supplement_reversals(proof_id uuid);
+                CREATE TABLE production_actual_output_supplement_claims(id uuid PRIMARY KEY, proof_id uuid,
+                    report_id uuid, event_type text, source_claim_id uuid);
+                CREATE FUNCTION fn_actual_supplement_pending_qty(p_segment uuid, p_exclude_report uuid)
+                    RETURNS numeric LANGUAGE sql STABLE AS $$
+                    SELECT COALESCE(SUM(request.supplement_qty),0)
+                    FROM production_actual_output_supplement_requests request
+                    LEFT JOIN production_actual_output_supplement_proofs proof ON proof.command_id=request.id
+                    WHERE request.source_execution_segment_id=p_segment AND request.status='APPROVED'
+                      AND proof.id IS NOT NULL
+                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
+                      AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
+                          JOIN production_daily_reports report ON report.id=claim.report_id
+                          WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
+                            AND (report.status IN(0,1) OR report.id=p_exclude_report)
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id));
+                $$;
                 """);
         String requestMigration = Files.readString(Path.of("src/main/resources/db/migration/V559__production_workshop_draw_request.sql"));
         int functionStart = requestMigration.indexOf("CREATE OR REPLACE FUNCTION fn_production_draw_requested(");
@@ -597,6 +620,30 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             jdbc.update("DELETE FROM workbench_execution_policy_facts WHERE segment_id=?", segment);
             jdbc.update("UPDATE v_production_execution_workbench_segments SET issued=?,material_status=?,preparation_status=? WHERE segment_id=?",
                     old.get("issued"),old.get("material_status"),old.get("preparation_status"),segment);
+        }
+    }
+
+    /** 2026-10-06 待续报固定追加量：已批准未承接时原任务行给出待续报量与请求 id；
+     * 活跃报告写入 CLAIM 承接后归零——追加量只能从续报入口回来，不再留在公共额度外。 */
+    @Test
+    void pendingSupplementIsExposedUntilItsBatchIsClaimedByAnActiveReport() {
+        UUID segment = new UUID(0, 4), request = UUID.randomUUID(), proof = UUID.randomUUID(), report = UUID.randomUUID();
+        try {
+            jdbc.update("INSERT INTO production_actual_output_supplement_requests(id,source_execution_segment_id,status,supplement_qty) VALUES(?,?,'APPROVED',25)", request, segment);
+            jdbc.update("INSERT INTO production_actual_output_supplement_proofs(id,command_id) VALUES(?,?)", proof, request);
+            var pending = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(pending.pendingSupplementQty()).isEqualByComparingTo("25");
+            assertThat(pending.pendingSupplementRequestId()).isEqualTo(request);
+            jdbc.update("INSERT INTO production_daily_reports(id,status,is_deleted) VALUES(?,0,FALSE)", report);
+            jdbc.update("INSERT INTO production_actual_output_supplement_claims(id,proof_id,report_id,event_type) VALUES(?,?,?,'CLAIM')", UUID.randomUUID(), proof, report);
+            var claimed = service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(claimed.pendingSupplementQty()).isEqualByComparingTo("0");
+            assertThat(claimed.pendingSupplementRequestId()).isNull();
+        } finally {
+            jdbc.update("DELETE FROM production_actual_output_supplement_claims WHERE proof_id=?", proof);
+            jdbc.update("DELETE FROM production_daily_reports WHERE id=?", report);
+            jdbc.update("DELETE FROM production_actual_output_supplement_proofs WHERE id=?", proof);
+            jdbc.update("DELETE FROM production_actual_output_supplement_requests WHERE id=?", request);
         }
     }
 

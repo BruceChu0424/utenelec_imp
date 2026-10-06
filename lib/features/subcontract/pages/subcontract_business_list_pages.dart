@@ -1043,6 +1043,16 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
   String statusLabel = '状态',
 }) => [
   MasterColumnDef(
+    key: 'status',
+    label: statusLabel,
+    width: 72,
+    value: (row) => row.statusOverride ?? subcontractStatusLabel(row.status),
+    // 状态分类色铺整格底色（2026-09-27 用户口径「格内胶囊改单元格背景色」，
+    // 草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
+    cellColor: (context, row) =>
+        udenStatusBadgeCellColor(context, docStatusBadgeType(row.status)),
+  ),
+  MasterColumnDef(
     // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
     key: 'billNo',
     sortable: true,
@@ -1090,16 +1100,6 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
       type: 'number',
       value: (row) => row.totalWeight?.toStringAsFixed(3),
     ),
-  MasterColumnDef(
-    key: 'status',
-    label: statusLabel,
-    width: 170,
-    value: (row) => row.statusOverride ?? subcontractStatusLabel(row.status),
-    // 状态分类色铺整格底色（2026-09-27 用户口径「格内胶囊改单元格背景色」，
-    // 草稿中性/已审绿/红冲红）；value 仍是纯文本供列宽/排序/筛选。
-    cellColor: (context, row) =>
-        udenStatusBadgeCellColor(context, docStatusBadgeType(row.status)),
-  ),
   if (closed)
     MasterColumnDef(
       key: 'closed',
@@ -1123,7 +1123,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
   columns[statusIndex] = MasterColumnDef(
     key: 'status',
     label: '财务 / 执行状态',
-    width: 190,
+    width: 177,
     value: _orderStatusText,
     // 财务态分类色铺整格底色（2026-09-27 用户口径「格内胶囊改单元格背景色」）：
     // 等待财务审核=警告黄 / 财务退回=危险红 / 财务已通过=成功绿 /

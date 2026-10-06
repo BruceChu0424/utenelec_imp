@@ -151,7 +151,11 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
         child: InkWell(
           onTap: () => onPickGoods(row),
           child: InputDecorator(
-            decoration: const InputDecoration(isDense: true),
+            // 选择格统一内边距（2026-10-06 表格控件统一口径）。
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -261,7 +265,10 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       cellBuilder: (context, row) => InkWell(
         onTap: () => onPickSalesOrder(row),
         child: InputDecorator(
-          decoration: const InputDecoration(isDense: true),
+          decoration: const InputDecoration(
+            isDense: true,
+            contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+          ),
           child: Row(
             children: [
               Expanded(

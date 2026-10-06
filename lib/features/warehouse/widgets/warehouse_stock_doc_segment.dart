@@ -395,6 +395,19 @@ class _WarehouseStockDocSegmentState
     final isDraw = widget.docType == StockDocType.draw;
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: (it) => widget.docType == StockDocType.wdraw
+            ? switch (it.status) {
+                0 => '待仓库收料',
+                1 => '仓库已收料',
+                -1 => '已红冲',
+                _ => stockStatusLabel(it.status),
+              }
+            : stockStatusLabel(it.status),
+      ),
+      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,
@@ -437,19 +450,6 @@ class _WarehouseStockDocSegmentState
           value: (it) =>
               ref.read(masterNameServiceProvider).warehouse(it.toWarehouseId),
         ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 100,
-        value: (it) => widget.docType == StockDocType.wdraw
-            ? switch (it.status) {
-                0 => '待仓库收料',
-                1 => '仓库已收料',
-                -1 => '已红冲',
-                _ => stockStatusLabel(it.status),
-              }
-            : stockStatusLabel(it.status),
-      ),
       if (isDraw)
         MasterColumnDef(
           key: 'issueStatus',

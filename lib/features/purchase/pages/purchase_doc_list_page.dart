@@ -450,6 +450,16 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   }) {
     return <MasterColumnDef<PurchaseDocListItem>>[
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: _statusLabel,
+        // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
+        // value 仍是纯文本供列宽/排序/筛选。
+        cellColor: (context, it) =>
+            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
+      ),
+      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,
@@ -491,16 +501,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
               ? '原始表头值 ${it.totalLocal?.toStringAsFixed(2) ?? '未知'}'
               : it.totalLocal?.toStringAsFixed(2),
         ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: widget.docType == PurchaseDocType.order ? 140 : 100,
-        value: _statusLabel,
-        // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
-        // value 仍是纯文本供列宽/排序/筛选。
-        cellColor: (context, it) =>
-            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
-      ),
     ];
   }
 

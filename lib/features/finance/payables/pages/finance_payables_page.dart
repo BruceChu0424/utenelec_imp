@@ -386,6 +386,25 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
 
   List<MasterColumnDef<FinancePayableItem>> get _columns => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (item) => item.statusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」：未付=琥珀 / 部分付款=蓝 /
+      // 已结清=绿 / 已逾期=红 / 预付款=品牌青 / 其余贷项冻结类=中性灰。
+      cellColor: (context, item) => udenStatusBadgeCellColor(
+        context,
+        switch (item.status?.toUpperCase()) {
+          'OPEN' => UtenStatusBadgeType.warning,
+          'PARTIAL' => UtenStatusBadgeType.info,
+          'SETTLED' => UtenStatusBadgeType.success,
+          'OVERDUE' => UtenStatusBadgeType.danger,
+          'PREPAYMENT' => UtenStatusBadgeType.accent,
+          _ => UtenStatusBadgeType.neutral,
+        },
+      ),
+    ),
+    MasterColumnDef(
       key: 'businessType',
       label: '业务类型',
       width: 90,
@@ -509,25 +528,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       width: 120,
       type: 'money',
       value: (item) => item.outstandingLocal,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (item) => item.statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：未付=琥珀 / 部分付款=蓝 /
-      // 已结清=绿 / 已逾期=红 / 预付款=品牌青 / 其余贷项冻结类=中性灰。
-      cellColor: (context, item) => udenStatusBadgeCellColor(
-        context,
-        switch (item.status?.toUpperCase()) {
-          'OPEN' => UtenStatusBadgeType.warning,
-          'PARTIAL' => UtenStatusBadgeType.info,
-          'SETTLED' => UtenStatusBadgeType.success,
-          'OVERDUE' => UtenStatusBadgeType.danger,
-          'PREPAYMENT' => UtenStatusBadgeType.accent,
-          _ => UtenStatusBadgeType.neutral,
-        },
-      ),
     ),
     MasterColumnDef(
       key: 'overdueDays',

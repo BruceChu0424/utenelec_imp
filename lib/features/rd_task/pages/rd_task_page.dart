@@ -629,6 +629,21 @@ class _DesktopTaskTable extends StatelessWidget {
       bottomContentPadding: UtenCapsuleNavScope.occlusionOf(context),
       columns: [
         MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          width: 72,
+          value: (item) => rdTaskStatusLabel(item.status),
+          // 2026-09-27 用户口径「表格状态列整格底色」：待处理=品牌青(沿用指标卡
+          // 主色口径) / 进行中=琥珀 / 已完成=绿 / 已取消=中性灰。
+          cellColor: (context, item) =>
+              udenStatusBadgeCellColor(context, switch (item.status) {
+                'OPEN' => UtenStatusBadgeType.accent,
+                'IN_PROGRESS' => UtenStatusBadgeType.warning,
+                'DONE' => UtenStatusBadgeType.success,
+                _ => UtenStatusBadgeType.neutral,
+              }),
+        ),
+        MasterColumnDef(
           key: 'taskNo',
           label: '任务号',
           width: 148,
@@ -683,21 +698,6 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '负责人',
           width: 120,
           value: (item) => item.assigneeName,
-        ),
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 100,
-          value: (item) => rdTaskStatusLabel(item.status),
-          // 2026-09-27 用户口径「表格状态列整格底色」：待处理=品牌青(沿用指标卡
-          // 主色口径) / 进行中=琥珀 / 已完成=绿 / 已取消=中性灰。
-          cellColor: (context, item) =>
-              udenStatusBadgeCellColor(context, switch (item.status) {
-                'OPEN' => UtenStatusBadgeType.accent,
-                'IN_PROGRESS' => UtenStatusBadgeType.warning,
-                'DONE' => UtenStatusBadgeType.success,
-                _ => UtenStatusBadgeType.neutral,
-              }),
         ),
         MasterColumnDef(
           key: 'priority',

@@ -93,12 +93,46 @@ class WorkshopArrivalNoticeRegressionTest {
         assertThat(f.content()).contains("共同支持部分产量，可以开工");
     }
 
+    @Test void partialArrivalNoLongerPublishesTheArrivalCard() {
+        // 2026-10-06 口径：只到了一部分物料、部分生产还撑不起来——静默，不发行动卡。
+        Fixture f=new Fixture("WAITING","FULL_KIT",false);
+        f.task.put("auto_promote_when_ready",true);f.task.put("route_allows_auto_promote",true);
+        f.shortage("V5一开铁架","83.3334");
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 100 件"));
+        verify(f.notices,never()).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verify(f.notices,never()).resolveReviewNotices(any(),any(),eq("ARRIVAL_PROGRESS"));
+    }
+
+    @Test void autoPromotableFullKitLeavesThePopupToTheReadyCard() {
+        // 会自动提升的段由齐套/可开工行动卡负责弹窗，到货进展不发第二张。
+        Fixture f=new Fixture("WAITING","FULL_KIT",false);
+        f.task.put("auto_promote_when_ready",true);f.task.put("route_allows_auto_promote",true);
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 1000 件"));
+        verify(f.notices,never()).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verify(f.notices,never()).resolveReviewNotices(any(),any(),eq("ARRIVAL_PROGRESS"));
+    }
+
+    @Test void batchFullKitStillGetsTheArrivalCardBecauseBatchNeverAutoPromotes() {
+        // 分批路线 fn_execution_route_allows_auto_promote 恒 FALSE，全齐感知只能靠到货卡补位。
+        Fixture f=new Fixture("WAITING","BATCH",false);
+        f.task.put("auto_promote_when_ready",true);f.task.put("route_allows_auto_promote",false);
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 1000 件"));
+        assertThat(f.content()).contains("合格入库 1000 件","当前物料没有缺口");
+    }
+
     private static final class Fixture {
         final UUID segment=UUID.randomUUID(), workshop=UUID.randomUUID(), person=UUID.randomUUID(), user=UUID.randomUUID();
         final JdbcTemplate jdbc=mock(JdbcTemplate.class);
         final NoticeService notices=mock(NoticeService.class);
         final BusinessEventPublisher outbox=mock(BusinessEventPublisher.class);
         final Map<String,Object> task=new HashMap<>();
+        UUID sourceId;
         final ChainNoticeService service;
         Fixture(String status,String route,boolean continuous) {
             UserAccountRepository users=mock(UserAccountRepository.class);
@@ -114,6 +148,28 @@ class WorkshopArrivalNoticeRegressionTest {
             task.put("segment_code","GD-001");task.put("workshop_department_id",workshop);
             task.put("responsible_employee_id",person);task.put("start_material_ready",false);
             task.put("prepared_capacity",BigDecimal.ZERO);
+        }
+        void shortage(String name,String qty) {
+            Map<String,Object> row=new HashMap<>();
+            row.put("demand_id",UUID.randomUUID());
+            row.put("goods_code","V5-"+name.hashCode()%1000);
+            row.put("goods_name",name);row.put("color_name","");
+            row.put("stock_shortage_qty",new BigDecimal(qty));
+            row.put("unit_name","个");row.put("in_house_child",false);
+            when(jdbc.queryForList(contains("FROM v_production_execution_segment_materials"),eq(segment)))
+                    .thenReturn(List.of(row));
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode arrivalPayload(String summary) {
+            var payload=new ObjectMapper().createObjectNode().put("arrival",summary)
+                    .put("evidenceType","FINISHED_IN");
+            payload.putArray("evidenceIds").add(sourceId.toString());
+            return payload;
+        }
+        void validArrival() {
+            sourceId=UUID.randomUUID();
+            when(jdbc.queryForList(contains("SELECT document.id FROM stock_documents"),eq(UUID.class),eq(sourceId.toString())))
+                    .thenReturn(List.of(sourceId));
+            doReturn(true).when(service).workshopArrivalCanBenefit(segment,"FINISHED_IN",List.of(sourceId));
         }
         String content() {
             var value=ArgumentCaptor.forClass(String.class);

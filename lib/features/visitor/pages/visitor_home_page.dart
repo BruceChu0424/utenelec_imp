@@ -196,6 +196,15 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
 
 List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
   MasterColumnDef(
+    key: 'status',
+    label: l10n.visitorColStatus,
+    width: 72,
+    value: (app) => visitorStatusLabel(app.status, l10n),
+    // 2026-09-27 用户口径「表格状态列整格底色」：与详情页徽章同源分类色。
+    cellColor: (context, app) =>
+        udenStatusBadgeCellColor(context, visitorBadgeType(app.status)),
+  ),
+  MasterColumnDef(
     key: 'visitorName',
     label: l10n.visitorColName,
     width: 110,
@@ -222,14 +231,5 @@ List<MasterColumnDef<VisitorApplication>> _columns(AppLocalizations l10n) => [
     width: 150,
     type: 'date',
     value: (app) => fmtDateTime(app.plannedVisitAt),
-  ),
-  MasterColumnDef(
-    key: 'status',
-    label: l10n.visitorColStatus,
-    width: 90,
-    value: (app) => visitorStatusLabel(app.status, l10n),
-    // 2026-09-27 用户口径「表格状态列整格底色」：与详情页徽章同源分类色。
-    cellColor: (context, app) =>
-        udenStatusBadgeCellColor(context, visitorBadgeType(app.status)),
   ),
 ];

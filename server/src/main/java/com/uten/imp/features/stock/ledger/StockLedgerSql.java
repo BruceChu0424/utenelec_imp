@@ -175,12 +175,12 @@ final class StockLedgerSql {
                 + "    SELECT 'M'::text AS row_kind, m.movement_type, m.warehouse_id, m.color_id,\n"
                 + "           " + warehouseOk("m", q) + " AS wh_ok, " + colorOk("m", q) + " AS color_ok\n"
                 + "    FROM stock_movements m\n"
-                + "    WHERE m.goods_id = :goods" + dates("m", q) + "\n"
+                + "    WHERE m.goods_id = :goods " + dates("m", q) + "\n"
                 + "    UNION ALL\n"
                 + "    SELECT 'W', CAST(NULL AS smallint), a.warehouse_id, a.color_id,\n"
                 + "           " + warehouseOk("a", q) + ", " + colorOk("a", q) + "\n"
                 + "    FROM stock_weight_adjustments a\n"
-                + "    WHERE a.goods_id = :goods" + dates("a", q) + "\n"
+                + "    WHERE a.goods_id = :goods " + dates("a", q) + "\n"
                 + ")\n"
                 + "SELECT 'movementType' AS dim,\n"
                 + "       CASE WHEN f.row_kind = 'W' THEN 'W' ELSE f.movement_type::text END AS v,\n"
@@ -204,7 +204,8 @@ final class StockLedgerSql {
                            CASE WHEN bool_or(b.qty <> 0 AND b.weight IS NULL) THEN NULL
                                 ELSE COALESCE(SUM(b.weight), 0) END AS weight_now
                     FROM stock_balances b
-                    WHERE b.goods_id = :goods""" + scope("b", q) + "\n)";
+                    WHERE b.goods_id = :goods
+                """ + scope("b", q) + "\n)";
     }
 
     /** 范围内的流水与重量调整 (起始日期可裁; 截止日期不裁, 倒推需要更新的行)。 */
@@ -220,7 +221,8 @@ final class StockLedgerSql {
                                AS weight_source,
                            CAST(NULL AS text) AS adj_kind, m.remark, m.created_by, m.amount_local
                     FROM stock_movements m
-                    WHERE m.goods_id = :goods""" + scope("m", q) + from.formatted("m") + """
+                    WHERE m.goods_id = :goods
+                """ + scope("m", q) + from.formatted("m") + """
 
                     UNION ALL
                     SELECT 'W', a.id, a.transaction_date, a.ledger_seq, CAST(NULL AS smallint), CAST(NULL AS smallint),
@@ -228,7 +230,8 @@ final class StockLedgerSql {
                            CAST(0 AS numeric), a.delta_kg, CAST(NULL AS text), a.kind, a.reason, a.created_by,
                            CAST(NULL AS numeric)
                     FROM stock_weight_adjustments a
-                    WHERE a.goods_id = :goods""" + scope("a", q) + from.formatted("a") + "\n)";
+                    WHERE a.goods_id = :goods
+                """ + scope("a", q) + from.formatted("a") + "\n)";
     }
 
     /** 范围条件: 仓库 (含下级) + 颜色。 */

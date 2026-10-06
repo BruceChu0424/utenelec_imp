@@ -485,12 +485,13 @@ public class ProcurementFinanceApprovalService {
             "CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'currencyName'"
                     + " ELSE currency.name END AS currency_name";
 
+    // Leading space: this fragment is glued straight onto filters.sql(), whose last fragment may end in '?'.
     private static String taskOrderBy(String sort, String order) {
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
         return switch (sort == null ? "" : sort) {
-            case "billNo" -> "ORDER BY c.bill_no_snapshot " + dir
+            case "billNo" -> " ORDER BY c.bill_no_snapshot " + dir
                     + " NULLS LAST, c.submitted_at, c.id\n";
-            default -> "ORDER BY c.submitted_at, c.id\n";
+            default -> " ORDER BY c.submitted_at, c.id\n";
         };
     }
 

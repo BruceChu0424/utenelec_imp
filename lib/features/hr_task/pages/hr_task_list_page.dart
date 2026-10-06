@@ -1,7 +1,7 @@
 // HR 工作台子页面：按类型展示任务列表(转正办理/生日关怀/入职周年/新近入职/证件核对)。
 //
 // 2026-10-05 证件核对(identity)：列 工号/姓名/原因(红字，服务端原话，紧跟姓名，
-// 表格与窄屏卡片都折行不截断)/部门/岗位/入职日/认领，
+// 表格单行省略+悬停看全文，窄屏卡片折行完整显示)/部门/岗位/入职日/认领，
 // 没有天数、区间两列，也不开多选；行菜单「修改证件信息」(他人处理中不显示)。本页路由守卫
 // 要求 employee:pii:edit，服务端也只把证件核对条目下发给能修改证件的人。
 //
@@ -39,6 +39,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
@@ -294,21 +295,35 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         info: '证件号码具体哪里有问题(服务端判定，不含号码本身)。',
         value: (item) => item.note,
         // 紧跟姓名：原因是人事要办的事，普通宽度下不用横向滚动就能看到。
-        // 窄屏卡片也用这份红字(而不是灰色「原因 …」明细)，且两种形态都折行
-        // 不截断：原因就是人事去改的依据，最长的校验码原因被省略号截掉就看不全。
+        // 窄屏卡片也用这份红字(而不是灰色「原因 …」明细)。
+        // 2026-10-06 全站表格行高统一：表格格里单行 + 省略号，完整原因悬停查看；
+        // 卡片形态（cardRendersBuilder 复用本格）不受行高约束，红字原样折行——
+        // 表格格才挂在 UtenStatusCellScope 作用域下（见 MDTV._dataCell），
+        // 卡片明细没有该作用域（见 MasterDataCardList._detail），据此区分形态。
         cardRendersBuilder: true,
         cellBuilder: (context, item) {
           final scope = MasterDataTableCellScope.maybeOf(context);
-          return Text(
-            item.note ?? '证件待核对',
-            style: TextStyle(
-              // 选中行换成表格统一的前景色，红字压在深色选中底上看不清。
-              color: scope?.selected == true
-                  ? scope?.foregroundColor
-                  : Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.w600,
+          final note = item.note ?? '证件待核对';
+          final style = TextStyle(
+            // 选中行换成表格统一的前景色，红字压在深色选中底上看不清。
+            color: scope?.selected == true
+                ? scope?.foregroundColor
+                : Theme.of(context).colorScheme.error,
+            fontWeight: FontWeight.w600,
+          );
+          if (context
+                  .dependOnInheritedWidgetOfExactType<UtenStatusCellScope>() ==
+              null) {
+            return Text(note, style: style);
+          }
+          return Tooltip(
+            message: note,
+            child: Text(
+              note,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: style,
             ),
-            softWrap: true,
           );
         },
       ),

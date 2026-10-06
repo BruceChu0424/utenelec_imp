@@ -205,7 +205,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 LEFT JOIN goods product ON product.id = item.goods_id
                 JOIN LATERAL (
                     SELECT SUM(original.remaining_qty) AS qty FROM (
-                """ + originalLots + """
+                %1$s
                     ) original
                 ) lendable ON lendable.qty > 0
                 WHERE analysis.id <> :targetAnalysisId
@@ -228,8 +228,9 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                       WHERE borrow.status = 'ACTIVE'
                         AND (borrow.from_material_id IN (material.id, :targetMaterialId)
                              OR borrow.to_material_id IN (material.id, :targetMaterialId)))
-                  AND %s
-                """.formatted(ownerPredicate) + keywordPredicate;
+                  AND %2$s
+                %3$s
+                """.formatted(originalLots, ownerPredicate, keywordPredicate);
         Query countQuery = em.createNativeQuery("SELECT COUNT(*) " + fromAndWhere);
         bindSourceCandidateQuery(countQuery, target, scope, normalized);
         long total = ((Number) countQuery.getSingleResult()).longValue();
@@ -333,7 +334,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                  AND item.is_deleted = FALSE
                 JOIN LATERAL (
                     SELECT SUM(original.remaining_qty) AS qty FROM (
-                """ + originalLots + """
+                %1$s
                     ) original
                 ) lendable ON lendable.qty > 0
                 WHERE analysis.id <> :analysisId
@@ -360,9 +361,9 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                         AND mine.goods_id = material.goods_id
                         AND mine.color_id IS NOT DISTINCT FROM material.color_id
                         AND mine.unit_id = material.unit_id)
-                  AND %s
+                  AND %2$s
                 GROUP BY material.goods_id, material.color_id, material.unit_id
-                """.formatted(ownerPredicate))
+                """.formatted(originalLots, ownerPredicate))
                 .setParameter("analysisId", analysisId)
                 .setParameter("warehouseId", warehouseId);
         if (!scope.seeAll()) donorQuery.setParameter("visibleOwners", scope.visibleOwners());

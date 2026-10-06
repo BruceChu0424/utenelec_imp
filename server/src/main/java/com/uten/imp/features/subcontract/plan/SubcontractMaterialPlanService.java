@@ -994,7 +994,7 @@ public class SubcontractMaterialPlanService {
                 SELECT issue.id, issue.bill_no, plan.id, plan.order_id, plan.order_bill_no, supplier.name,
                        issue.warehouse_id, warehouse.name, draft_lines.line_count, draft_lines.kind_count,
                        issue.created_at, creator_employee.full_name
-                """ + from + """
+                """ + from + "\n" + """
                 ORDER BY issue.created_at ASC, issue.bill_no
                 LIMIT :pageLimit OFFSET :pageOffset
                 """);

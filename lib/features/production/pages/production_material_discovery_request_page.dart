@@ -11,6 +11,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -451,6 +452,14 @@ class _RequestState
 
   List<MasterColumnDef<DiscoveryRequestMaterialRow>> get _columns => [
     MasterColumnDef(
+      key: 'submissionStatus',
+      label: '提交状态',
+      width: 72,
+      value: (row) => _completed.contains(row.task.segmentId)
+          ? '已提交'
+          : (_uncertain || _sourceChanged ? '待核对' : '待提交'),
+    ),
+    MasterColumnDef(
       key: 'task',
       label: '车间任务',
       width: 150,
@@ -467,14 +476,6 @@ class _RequestState
       label: '领料车间',
       width: 140,
       value: (row) => row.task.workshopName ?? '—',
-    ),
-    MasterColumnDef(
-      key: 'submissionStatus',
-      label: '提交状态',
-      width: 100,
-      value: (row) => _completed.contains(row.task.segmentId)
-          ? '已提交'
-          : (_uncertain || _sourceChanged ? '待核对' : '待提交'),
     ),
     MasterColumnDef(
       key: 'productName',
@@ -507,10 +508,10 @@ class _RequestState
       width: 200,
       value: (row) => row.values['goodsName'] as String? ?? '',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => TextButton(
+      cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-request-goods-${row.id}'),
+        label: row.values['goodsName'] as String? ?? '选择材料（可留空）',
         onPressed: _editable(row) ? () => _pickGoods(row) : null,
-        child: Text(row.values['goodsName'] as String? ?? '选择材料（可留空）'),
       ),
     ),
     MasterColumnDef(
@@ -570,18 +571,34 @@ class _RequestState
       width: 136,
       value: (_) => '',
       cellBuilderHandlesSemantics: true,
+      // 2026-10-06 行高统一口径：编辑表行高由 39 高的输入控件定，行内图标钮
+      // 关掉 IconButton 主题的最小 40 尺寸，改为 16 图标紧凑形态。
       cellBuilder: (_, row) => Wrap(
         children: [
           IconButton(
             key: ValueKey('discovery-request-add-${row.id}'),
             tooltip: '为此任务添加材料',
             onPressed: _editable(row) ? () => _addRow(row) : null,
+            style: IconButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            iconSize: 16,
             icon: const Icon(Icons.add),
           ),
           IconButton(
             key: ValueKey('discovery-request-remove-${row.id}'),
             tooltip: '清除此行材料',
             onPressed: _editable(row) ? () => _removeRow(row) : null,
+            style: IconButton.styleFrom(
+              minimumSize: Size.zero,
+              padding: EdgeInsets.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+            iconSize: 16,
             icon: const Icon(Icons.remove_circle_outline),
           ),
         ],

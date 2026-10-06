@@ -202,6 +202,13 @@ warehouseSalesOutboundTableColumns({
   );
 
   return [
+    if (includeShipment)
+      column(
+        'warehouseWorkStatus',
+        l10n.warehouseOutboundStatus,
+        72,
+        (r) => r.detail.header.statusLabel,
+      ),
     if (includeShipment) ...[
       column(
         'billNo',
@@ -385,13 +392,6 @@ warehouseSalesOutboundTableColumns({
         l10n.warehouseOutboundSourceOrder,
         170,
         (r) => r.line.sourceDocumentNo,
-      ),
-    if (includeShipment)
-      column(
-        'warehouseWorkStatus',
-        l10n.warehouseOutboundStatus,
-        170,
-        (r) => r.detail.header.statusLabel,
       ),
     if (!includeShipment && resultOf != null)
       column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),

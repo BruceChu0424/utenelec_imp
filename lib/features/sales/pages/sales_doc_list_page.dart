@@ -693,6 +693,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   ) {
     return <MasterColumnDef<SalesDocListItem>>[
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: (it) => _statusText(it, l10n),
+        // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
+        // value 仍是纯文本供列宽/排序/筛选。
+        cellColor: (context, it) =>
+            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
+      ),
+      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,
@@ -767,16 +777,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         value: (it) => it.priceMasked
             ? '***'
             : (_isOrder ? it.totalOriginal : it.totalLocal)?.toStringAsFixed(2),
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 130,
-        value: (it) => _statusText(it, l10n),
-        // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
-        // value 仍是纯文本供列宽/排序/筛选。
-        cellColor: (context, it) =>
-            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
       ),
       // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
       if (_cfg.hasDeliverDate)

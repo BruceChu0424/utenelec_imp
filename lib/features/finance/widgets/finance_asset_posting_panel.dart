@@ -639,6 +639,13 @@ class _FinanceAssetPostingPanelState
       ),
       columns: [
         MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          width: 72,
+          value: (row) => financeAssetStatusLabel(row.status),
+          cellBuilder: (_, row) => financeAssetStatusCell(row.status),
+        ),
+        MasterColumnDef(
           key: 'code',
           label: '编号',
           width: 140,
@@ -657,13 +664,6 @@ class _FinanceAssetPostingPanelState
           width: 130,
           type: 'money',
           value: (row) => formatFinanceDecimal(row.amount),
-        ),
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 120,
-          value: (row) => financeAssetStatusLabel(row.status),
-          cellBuilder: (_, row) => financeAssetStatusCell(row.status),
         ),
         MasterColumnDef(
           key: 'message',

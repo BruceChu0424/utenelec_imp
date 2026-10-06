@@ -146,6 +146,12 @@ class _RateListState
                       'features.production.pages.production_overproduction_rate_pages.RateListState.build.1',
                   columns: [
                     MasterColumnDef(
+                      key: 'status',
+                      label: '状态',
+                      width: 72,
+                      value: (row) => productionRateStatus(row.status),
+                    ),
+                    MasterColumnDef(
                       key: 'plan',
                       label: '计划号',
                       width: 150,
@@ -177,12 +183,6 @@ class _RateListState
                       label: '申请比例',
                       width: 115,
                       value: (row) => productionRateText(row.requestedRate),
-                    ),
-                    MasterColumnDef(
-                      key: 'status',
-                      label: '状态',
-                      width: 140,
-                      value: (row) => productionRateStatus(row.status),
                     ),
                     MasterColumnDef(
                       key: 'maker',

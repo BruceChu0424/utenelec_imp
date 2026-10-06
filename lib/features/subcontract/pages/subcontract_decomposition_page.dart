@@ -1192,6 +1192,25 @@ class _SubcontractDecompositionPageState
       primary: true,
       columns: [
         MasterColumnDef(
+          key: 'status',
+          sortable: true,
+          label: '状态',
+          width: 72,
+          value: _progressLabelOf,
+          cellBuilderHandlesSemantics: true,
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格，
+          // 格内只剩文字与「紧急」前缀（_ProgressStatusCell 保留点击/悬浮行为）。
+          cellColor: (context, t) => udenStatusBadgeCellColor(
+            context,
+            _progressType(t.progressStatus),
+          ),
+          cellBuilder: (context, t) => _ProgressStatusCell(
+            label: _progressLabelOf(t),
+            urgent: _shortDelivery(t),
+            action: _statusActionOf(t),
+          ),
+        ),
+        MasterColumnDef(
           key: 'planNo',
           sortable: true,
           label: '来源计划',
@@ -1271,25 +1290,6 @@ class _SubcontractDecompositionPageState
           width: 120,
           type: 'date',
           value: (t) => t.needDate,
-        ),
-        MasterColumnDef(
-          key: 'status',
-          sortable: true,
-          label: '状态',
-          width: 190,
-          value: _progressLabelOf,
-          cellBuilderHandlesSemantics: true,
-          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格，
-          // 格内只剩文字与「紧急」前缀（_ProgressStatusCell 保留点击/悬浮行为）。
-          cellColor: (context, t) => udenStatusBadgeCellColor(
-            context,
-            _progressType(t.progressStatus),
-          ),
-          cellBuilder: (context, t) => _ProgressStatusCell(
-            label: _progressLabelOf(t),
-            urgent: _shortDelivery(t),
-            action: _statusActionOf(t),
-          ),
         ),
         // ADR-156：紧挨状态列，「可部分下单 | 4 / 剩余 6 件」一眼读完。
         MasterColumnDef(
@@ -1434,7 +1434,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'status',
           label: '状态',
-          width: 230,
+          width: 72,
           value: (row) =>
               subcontractDrawStatusLabel(row, actionable: actionable(row)),
           cellBuilderHandlesSemantics: true,
@@ -1632,10 +1632,9 @@ class _DrawStatusCell extends StatelessWidget {
         child: InkWell(
           key: ValueKey('subcontract-draw-go-${row.orderItemId}'),
           onTap: onDraw,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-            child: content,
-          ),
+          // 不垫垂直内边距（2026-10-06 行高统一口径）：格子的 8×2 纵向留白
+          // 已是点击区，再叠 16px 会把整行撑到 51+，与其它任务表不齐。
+          child: content,
         ),
       ),
     );

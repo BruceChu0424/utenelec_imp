@@ -323,10 +323,10 @@ public class ProductionExecutionWorkbenchService {
                     + " OR task.plan_end_date <= CAST(:dateTo AS date))";
         }
         if (workshopDepartmentId != null) {
-            predicate += " AND task.workshop_department_id = :workshopId ";
+            predicate += " AND task.workshop_department_id = :workshopId";
         }
         if (keyword != null && !keyword.isBlank()) {
-            predicate += """
+            predicate += "\n" + """
                     AND (
                         lower(COALESCE(task.plan_no, '')) LIKE :keyword
                         OR lower(COALESCE(task.segment_code, '')) LIKE :keyword
@@ -1137,6 +1137,20 @@ public class ProductionExecutionWorkbenchService {
                        rate_segment.overproduction_rate_version,rate_request.id,rate_request.requested_rate,
                        fn_execution_overproduction_policy_applies(rate_segment.id),
                        (SELECT actual_output_supplement_request_id FROM production_plans WHERE id=task.plan_id),
+                       -- 2026-10-06：原任务行上「已批准未续报承接」的固定追加量——它占住了公共超产
+                       -- 额度，页面据此给出「回原批次续报」入口与待续报提示；无待续报为 0/null。
+                       fn_actual_supplement_pending_qty(rate_segment.id, NULL),
+                       (SELECT request.id FROM production_actual_output_supplement_requests request
+                          LEFT JOIN production_actual_output_supplement_proofs proof ON proof.command_id=request.id
+                          WHERE request.source_execution_segment_id=rate_segment.id AND request.status='APPROVED'
+                            AND proof.id IS NOT NULL
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_reversals reversal WHERE reversal.proof_id=proof.id)
+                            AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims claim
+                                JOIN production_daily_reports report ON report.id=claim.report_id
+                                WHERE claim.proof_id=proof.id AND claim.event_type='CLAIM' AND NOT report.is_deleted
+                                  AND report.status IN(0,1)
+                                  AND NOT EXISTS(SELECT 1 FROM production_actual_output_supplement_claims release WHERE release.source_claim_id=claim.id))
+                          ORDER BY request.created_at DESC LIMIT 1),
                        fn_material_discovery_pending(task.segment_id),
                        discovery.id, discovery.status,
                        (:allowRequestDraw AND fn_material_discovery_pending(task.segment_id)
@@ -1264,7 +1278,7 @@ public class ProductionExecutionWorkbenchService {
                               AND task.root_id=root.root_id
                               AND lower(COALESCE(client.name,'')) LIKE :keyword)
                     """ : "";
-            filter += """
+            filter += "\n" + """
                     AND (
                         lower(COALESCE(root.root_label, '')) LIKE :keyword
                         OR EXISTS (
@@ -1300,7 +1314,7 @@ public class ProductionExecutionWorkbenchService {
                     """;
         }
         if (workshopDepartmentId != null) {
-            filter += """
+            filter += "\n" + """
                     AND EXISTS (
                         SELECT 1
                         FROM v_production_execution_workbench_segments task
@@ -1312,7 +1326,7 @@ public class ProductionExecutionWorkbenchService {
         if (mine) {
             filter += employeeId == null
                     ? " AND FALSE"
-                    : """
+                    : "\n" + """
                     AND EXISTS (
                         SELECT 1
                         FROM v_production_execution_workbench_segments task
@@ -1384,8 +1398,8 @@ public class ProductionExecutionWorkbenchService {
         boolean executable = bool(row[46]);
         boolean custodyValid = bool(row[47]);
         // ADR-131 §5.4：待认料或路线未确认的行要先过开工确认表(车间没开启整批领料的不算)。
-        String binMaterialState = text(row[74]);
-        boolean needsStartConfirmation = executable && custodyValid && bool(row[75]);
+        String binMaterialState = text(row[76]);
+        boolean needsStartConfirmation = executable && custodyValid && bool(row[77]);
         List<String> allowedActions = segmentAllowedActions(
                 binMaterialState, text(row[20]), needsStartConfirmation, canChooseMaterial);
         // 路线记忆(ADR-096)：本产品的历史优先；没有才退回操作者上次的选择。只作预填展示。
@@ -1414,10 +1428,11 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[58]), decimal(row[59]),
                 decimal(row[60]), decimal(row[61]), decimal(row[62]),decimal(row[63]),
                 ((Number)row[64]).longValue(),uuid(row[65]),row[66]==null?null:decimal(row[66]),bool(row[67]),uuid(row[68]),
+                decimal(row[69]),uuid(row[70]),
                 planning.gapKindCount(), planning.gapSummary(), planning.urgeCount(), planning.urgedAt(),
                 planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge(),
-                bool(row[69]), uuid(row[70]), text(row[71]), executable && bool(row[72]),
-                text(row[73]),
+                bool(row[71]), uuid(row[72]), text(row[73]), executable && bool(row[74]),
+                text(row[75]),
                 binMaterialState, needsStartConfirmation, allowedActions);
     }
 

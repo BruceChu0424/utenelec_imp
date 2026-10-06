@@ -4357,7 +4357,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                             + " FROM plan_order_item_links l"
                             + " LEFT JOIN sales_order_items soi ON soi.id = l.order_item_id"
                             + " LEFT JOIN sales_orders so ON so.id = soi.order_id"
-                            + " WHERE l.plan_item_id = :planItemId AND l.is_deleted = false"
+                            + " WHERE l.plan_item_id = :planItemId AND l.is_deleted = false "
                             + exactFilter
                             + linkOrder
                             + " FOR UPDATE OF l")

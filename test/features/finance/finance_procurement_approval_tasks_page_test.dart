@@ -396,7 +396,9 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(375, 812));
 
-    await tester.tap(find.text('PO-2026-001'));
+    // 2026-10-06 状态列全站前置：窄屏下首列是状态格，点它选行（单号格可能已
+    // 横向挤出 375 视口）。
+    await tester.tap(find.text('待财务复核'));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('已选 1 项'), findsOneWidget);
     // 2026-10-02 用户口径：「共 N 笔」/操作说明提示文字退役。

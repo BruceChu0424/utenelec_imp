@@ -40,6 +40,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -229,6 +230,22 @@ class _ProductionWorkshopTasksPageState
     ProductionExecutionWorkbenchSegment task,
   ) async {
     final id = task.actualOutputSupplementRequestId;
+    if (id == null || _navigating) return;
+    setState(() => _navigating = true);
+    try {
+      await context.push(RoutePath.productionActualOutputSupplement(id));
+      if (mounted) await _reloadAfterChange();
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+  }
+
+  /// 2026-10-06：原任务行的「待续报」入口——已批准未承接的固定追加量只能从
+  /// 续报入口带回原批次申报(与 _openSupplementTask 同一跳转，换待续报请求 id)。
+  Future<void> _openPendingSupplementTask(
+    ProductionExecutionWorkbenchSegment task,
+  ) async {
+    final id = task.pendingSupplementRequestId;
     if (id == null || _navigating) return;
     setState(() => _navigating = true);
     try {
@@ -605,6 +622,15 @@ class _ProductionWorkshopTasksPageState
           enabled: !busy,
           onTap: () => _openSupplementTask(task),
         ),
+      // 2026-10-06：原任务行(非追加批次)有已批准未续报的固定追加量时，右键直达续报。
+      if (task.hasPendingSupplementClaim)
+        UtenMenuItem(
+          label:
+              '回原批次续报（待续报 ${_taskQuantity(task.pendingSupplementQty ?? 0)}）',
+          icon: Icons.assignment_return_outlined,
+          enabled: !busy,
+          onTap: () => _openPendingSupplementTask(task),
+        ),
       if (_isPreparing && _canStart && _canEnterStart(task))
         UtenMenuItem(
           label: '开工',
@@ -773,7 +799,9 @@ class _ProductionWorkshopTasksPageState
                 : _routeChangeHint(task),
             child: UtenDropdownField(
               key: ValueKey('workshop-next-step-${task.segmentId}'),
-              dense: true,
+              // flat（2026-10-06 行高统一口径）：本表是只读任务表，39 高的
+              // 描边下拉会把行撑到 55；无边框形态=文本+箭头，与同行文本格等高。
+              flat: true,
               allowClear: false,
               searchable: false,
               value: current ?? remembered,
@@ -3057,7 +3085,7 @@ class _ProductionWorkshopTasksPageState
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 260,
+      width: 72,
       value: (task) => _flowStageOf(task).displayLabel,
       // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」：等待物料的
       // 状态列整格铺实底（绿=物料齐可开工 / 琥珀=部分齐 / 蓝=去领料 / 紫=部分
@@ -3101,10 +3129,9 @@ class _ProductionWorkshopTasksPageState
             child: InkWell(
               key: ValueKey('workshop-confirm-material-${task.segmentId}'),
               onTap: _navigating || _loading ? null : () => _startTasks([task]),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                child: badge,
-              ),
+              // 不垫垂直内边距（2026-10-06 行高统一口径）：格子的 8×2 纵向
+              // 留白已是点击区，再叠会把整行撑高，与其它任务表不齐。
+              child: badge,
             ),
           );
         }
@@ -3119,10 +3146,7 @@ class _ProductionWorkshopTasksPageState
               onTap: _navigating || _loading
                   ? null
                   : () => _requestDraw([task]),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                child: badge,
-              ),
+              child: badge,
             ),
           );
         }
@@ -3230,7 +3254,9 @@ class _ProductionWorkshopTasksPageState
                 ],
               ),
               key: ValueKey('workshop-material-summary-${task.segmentId}'),
-              maxLines: 2,
+              // 单行（2026-10-06 行高统一口径）：两行物料摘要把整行撑高，
+              // 全量明细已有上方 Tooltip 与双击行详情兜底。
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           );
@@ -3279,13 +3305,12 @@ class _ProductionWorkshopTasksPageState
       cellBuilder: (_, task) {
         if (!task.overproductionPolicyApplies) {
           if (task.actualOutputSupplementRequestId != null) {
-            return TextButton(
+            return UtenTableCellAction(
+              key: ValueKey('production-supplement-open-${task.segmentId}'),
+              label: task.segmentStatus == 'IN_PROGRESS'
+                  ? '固定追加量 · 续报'
+                  : '固定追加量 · 查看',
               onPressed: _navigating ? null : () => _openSupplementTask(task),
-              child: Text(
-                task.segmentStatus == 'IN_PROGRESS'
-                    ? '固定追加量 · 续报'
-                    : '固定追加量 · 查看',
-              ),
             );
           }
           return const Tooltip(
@@ -3293,19 +3318,31 @@ class _ProductionWorkshopTasksPageState
             child: Text('固定追加量'),
           );
         }
+        // 2026-10-06：原任务行有待续报的固定追加量时，比例后追加「· 待续报 N」
+        // 纯文本提示——追加量不走公共超产额度，颜色跟随本列现有样式。
+        // 同日行高统一口径：单行（待审批等追加信息横排「·」连接），全量信息
+        // 挂 Tooltip，两行文本会把只读任务行撑高。
+        final pendingSupplement =
+            task.pendingSupplementQty != null && task.pendingSupplementQty! > 0
+            ? ' · 待续报 ${_taskQuantity(task.pendingSupplementQty!)}'
+            : '';
+        final pendingRate = task.pendingOverproductionRate != null
+            ? ' · 申请 ${productionRateText(task.pendingOverproductionRate)}待审批'
+            : '';
         final label =
             '${productionRateText(task.allowedOverproductionRate)}'
-            '${task.pendingOverproductionRate != null ? '\n申请 ${productionRateText(task.pendingOverproductionRate)} · 待审批' : ''}';
-        if (!_canOpenRateRequest) return Text(label, maxLines: 2);
-        return TextButton(
+            '$pendingSupplement$pendingRate';
+        final tooltip = '允许超产 $label';
+        if (!_canOpenRateRequest) {
+          return Tooltip(message: tooltip, child: Text(label, maxLines: 1));
+        }
+        return UtenTableCellAction(
           key: ValueKey('production-rate-request-${task.segmentId}'),
+          label: _rateLoadingSegment == task.segmentId ? '正在读取' : label,
+          tooltip: tooltip,
           onPressed: _rateLoadingSegment == null
               ? () => _openRateRequest(task)
               : null,
-          child: Text(
-            _rateLoadingSegment == task.segmentId ? '正在读取' : label,
-            maxLines: 2,
-          ),
         );
       },
     ),

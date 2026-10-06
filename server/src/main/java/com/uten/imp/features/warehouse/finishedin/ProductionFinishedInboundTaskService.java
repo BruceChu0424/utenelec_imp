@@ -276,8 +276,7 @@ public class ProductionFinishedInboundTaskService {
                        pending_qty, created_at, residual_task,
                        public_qty, actual_surplus_qty
                 FROM task_documents
-                """ + filter + """
-                """ + taskOrderBy(sort, order) + """
+                """ + filter + "\n" + taskOrderBy(sort, order) + """
                 OFFSET :offset LIMIT :limit
                 """);
         bindTaskFilters(rowsQuery, normalized, normalizedStage, warehouseId,

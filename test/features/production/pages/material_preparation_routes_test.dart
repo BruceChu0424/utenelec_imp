@@ -423,7 +423,10 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('下达')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认下单'),
+      ),
     );
     await tester.pumpAndSettle();
     // 三桶与主表同一条组件命令，保留原行与原输入，不能绕回旧 notify。

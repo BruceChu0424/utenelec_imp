@@ -359,6 +359,15 @@ class _FinanceQuoteReviewListPageState
     AppLocalizations l10n,
   ) => [
     MasterColumnDef(
+      key: 'status',
+      label: l10n.quoteFinanceColStatus,
+      width: 72,
+      value: (item) => _statusText(l10n, item),
+      // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+      cellColor: (context, item) =>
+          udenStatusBadgeCellColor(context, _statusType(item)),
+    ),
+    MasterColumnDef(
       key: 'billNo',
       label: l10n.quoteFinanceColBillNo,
       width: 160,
@@ -401,15 +410,6 @@ class _FinanceQuoteReviewListPageState
       width: 150,
       type: 'money',
       value: _amountText,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: l10n.quoteFinanceColStatus,
-      width: 280,
-      value: (item) => _statusText(l10n, item),
-      // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-      cellColor: (context, item) =>
-          udenStatusBadgeCellColor(context, _statusType(item)),
     ),
   ];
 

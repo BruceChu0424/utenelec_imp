@@ -161,14 +161,14 @@ final class WarehouseInsightSql {
                            COUNT(*) FILTER (WHERE b.qty > 0 AND b.weight IS NOT NULL AND NOT b.weight_estimated)
                                AS dims_weighed
                     FROM stock_balances b JOIN scope_wh s ON s.id = b.warehouse_id
-                    WHERE TRUE%2$s
+                    WHERE TRUE %2$s
                     GROUP BY 1, 2
                     HAVING SUM(b.qty) > 0
                 ),
                 internal AS (
                     SELECT DISTINCT p.source_doc_type, p.source_doc_id, p.source_item_id
                     FROM stock_movements p JOIN scope_wh s ON s.id = p.warehouse_id
-                    WHERE p.movement_type = 8%3$s
+                    WHERE p.movement_type = 8 %3$s
                 ),
                 lines AS (
                     SELECT m.goods_id, COALESCE(m.color_id, %1$s) AS ck,
@@ -256,7 +256,7 @@ final class WarehouseInsightSql {
                                AS draw_over_30d
                     FROM goods_weight_observations o
                     WHERE o.observed_at >= :t30 AND o.observed_at < :asOfEnd AND o.alert_level <> 'NONE'
-                      AND o.stage = 'ACTIVE' AND o.excluded_reason IS NULL%1$s
+                      AND o.stage = 'ACTIVE' AND o.excluded_reason IS NULL %1$s
                 )
                 SELECT
                     (SELECT COUNT(*) FROM stock_movements m JOIN scope_wh s ON s.id = m.warehouse_id
@@ -388,7 +388,7 @@ final class WarehouseInsightSql {
                     LEFT JOIN clients cl ON o.counterpart_kind = 'CLIENT' AND cl.id = o.counterpart_id
                     LEFT JOIN suppliers cs ON o.counterpart_kind IN ('SUBCONTRACTOR', 'SUPPLIER')
                         AND cs.id = o.counterpart_id
-                    """ + StockLedgerSource.joins("o") + """
+                    """ + StockLedgerSource.joins("o") + "\n" + """
                     WHERE o.observed_at >= :since AND o.observed_at < :asOfEnd AND o.alert_level <> 'NONE'
                       AND o.stage = 'ACTIVE' AND o.excluded_reason IS NULL"""
                     + (kindFilter ? " AND o.source_kind = :kind" : "")

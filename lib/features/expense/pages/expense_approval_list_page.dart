@@ -267,6 +267,22 @@ class _ExpenseApprovalListPageState
 
   final List<MasterColumnDef<ExpenseClaim>> _columns = [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (claim) => claim.status.label,
+      // 2026-09-27 用户口径「表格状态列整格底色」（口径同报销列表）。
+      cellColor: (context, claim) =>
+          udenStatusBadgeCellColor(context, switch (claim.status) {
+            ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
+            ExpenseClaimStatus.submitted ||
+            ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
+            ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+            ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
+            ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
+          }),
+    ),
+    MasterColumnDef(
       key: 'claimNo',
       label: '报销单号',
       width: 160,
@@ -312,22 +328,6 @@ class _ExpenseApprovalListPageState
       width: 90,
       info: '报销单创建月份（业务时区）；表头筛选按此月份下推后端 year/month 参数。',
       value: (claim) => expenseYearMonth(claim.createdAt),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (claim) => claim.status.label,
-      // 2026-09-27 用户口径「表格状态列整格底色」（口径同报销列表）。
-      cellColor: (context, claim) =>
-          udenStatusBadgeCellColor(context, switch (claim.status) {
-            ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
-            ExpenseClaimStatus.submitted ||
-            ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
-            ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
-            ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
-            ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
-          }),
     ),
     MasterColumnDef(
       key: 'submittedAt',

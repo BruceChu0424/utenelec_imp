@@ -534,6 +534,8 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       cellBuilder: (context, row) {
         final styles = names.stylesFor(cat);
         return UtenDropdownField(
+          // dense：与同行数量/单价等输入格同高（2026-10-06 表格控件统一口径）。
+          dense: true,
           value: row.styleId,
           items: [
             for (final s in styles)
@@ -591,6 +593,15 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
             if (names.departmentLoadError != null)
               IconButton(
                 tooltip: '${names.departmentLoadError} 点击重试',
+                // 2026-10-06 表格控件统一口径：默认 40 最小点击区会撑高编辑行
+                //（行高标准=39 输入格），收紧到图标本身。
+                style: IconButton.styleFrom(
+                  minimumSize: Size.zero,
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+                iconSize: 16,
                 onPressed: () => names.ensureDepartmentsLoaded(),
                 icon: const Icon(Icons.refresh),
               ),
@@ -658,6 +669,8 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
       listenableOf: (row) => row.inAccountIdNotifier,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) => UtenDropdownField(
+        // dense：与同行金额输入格同高（2026-10-06 表格控件统一口径）。
+        dense: true,
         value: row.inAccountId,
         items: [
           for (final e in names.accountEntries.entries)
@@ -696,7 +709,11 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
               }
             },
             child: InputDecorator(
-              decoration: const InputDecoration(isDense: true),
+              // 选择格统一内边距（2026-10-06 表格控件统一口径）。
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+              ),
               child: Text(
                 v == null ? '未选择' : v.substring(0, 10),
                 style: TextStyle(

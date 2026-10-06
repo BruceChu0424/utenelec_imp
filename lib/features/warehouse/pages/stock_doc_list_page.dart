@@ -335,6 +335,12 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     final isDraw = widget.docType == StockDocType.draw;
     return <MasterColumnDef<StockDocListItem>>[
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: (it) => stockStatusLabel(it.status),
+      ),
+      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,
@@ -377,12 +383,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
           value: (it) =>
               ref.read(masterNameServiceProvider).warehouse(it.toWarehouseId),
         ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 100,
-        value: (it) => stockStatusLabel(it.status),
-      ),
       if (isDraw)
         MasterColumnDef(
           key: 'issueStatus',

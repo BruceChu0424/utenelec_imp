@@ -576,6 +576,18 @@ class _GoodsWeightLearningViewState
     final integer = _resolved?.integerQty ?? true;
     return [
       MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 72,
+        value: weightObservationStatusLabel,
+        cellBuilder: (_, o) {
+          final label = weightObservationStatusLabel(o);
+          final reason = weightObservationExcludedReasonLabel(o.excludedReason);
+          final text = Text(label, style: label == '正常' ? null : muted);
+          return reason.isEmpty ? text : Tooltip(message: reason, child: text);
+        },
+      ),
+      MasterColumnDef(
         key: 'observedAt',
         label: '日期',
         width: 130,
@@ -645,18 +657,6 @@ class _GoodsWeightLearningViewState
         label: '称重人',
         width: 90,
         value: (o) => o.recordedByName ?? '',
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '状态',
-        width: 90,
-        value: weightObservationStatusLabel,
-        cellBuilder: (_, o) {
-          final label = weightObservationStatusLabel(o);
-          final reason = weightObservationExcludedReasonLabel(o.excludedReason);
-          final text = Text(label, style: label == '正常' ? null : muted);
-          return reason.isEmpty ? text : Tooltip(message: reason, child: text);
-        },
       ),
       if (_canManage)
         MasterColumnDef(

@@ -305,6 +305,12 @@ class _SubcontractDrawTaskDetailDialogState
     onFilterChanged: (_, _) {},
     showFullscreenToggle: false,
     columns: [
+      const MasterColumnDef(
+        key: 'state',
+        label: '状态',
+        width: 72,
+        value: subcontractDrawMaterialStateLabel,
+      ),
       MasterColumnDef(
         key: 'goodsName',
         label: '物料名称',
@@ -341,12 +347,6 @@ class _SubcontractDrawTaskDetailDialogState
         label: '供应来源',
         width: 240,
         value: subcontractDrawSupplyText,
-      ),
-      const MasterColumnDef(
-        key: 'state',
-        label: '状态',
-        width: 110,
-        value: subcontractDrawMaterialStateLabel,
       ),
     ],
     items: detail.materials,

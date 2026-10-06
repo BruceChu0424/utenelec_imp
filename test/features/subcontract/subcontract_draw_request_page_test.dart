@@ -154,6 +154,15 @@ String _text(WidgetTester tester, String id) =>
 UtenButton _submit(WidgetTester tester) =>
     tester.widget<UtenButton>(find.byKey(_submitKey));
 
+/// 首次提交现在先弹二次确认（防误触）：点提交 → 点「确认提交」。
+/// 「重试领料」（结果未确认的续传）不弹，直接 tap 即可。
+Future<void> _tapSubmitAndConfirm(WidgetTester tester) async {
+  await tester.tap(find.byKey(_submitKey));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('确认提交'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'first preview allocates shared material and defaults to batch drawable',
@@ -234,8 +243,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.previews.last.map((item) => item.orderItemId), ['item-1']);
     expect(find.text('1 个委外任务 · 2 种物料 · 预计 1 张出仓单'), findsOneWidget);
-    await tester.tap(find.byKey(_submitKey));
-    await tester.pumpAndSettle();
+    await _tapSubmitAndConfirm(tester);
     expect(
       gateway.submits.single.$1.map((item) => (item.orderItemId, item.qty)),
       [('item-1', 40)],
@@ -248,8 +256,7 @@ void main() {
     (tester) async {
       final (gateway, _) = _gateway();
       final results = await _pump(tester, gateway);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
+      await _tapSubmitAndConfirm(tester);
       final (items, key) = gateway.submits.single;
       expect(items.map((item) => (item.orderItemId, item.qty)), [
         ('item-1', 40),
@@ -272,8 +279,7 @@ void main() {
       throw ApiException('CONFLICT', '委外件B 实时本批可领 50', httpStatus: 409);
     };
     final results = await _pump(tester, gateway);
-    await tester.tap(find.byKey(_submitKey));
-    await tester.pumpAndSettle();
+    await _tapSubmitAndConfirm(tester);
     expect(gateway.submits, hasLength(1));
     expect(gateway.previews, hasLength(2));
     expect(gateway.previews.last.map((item) => item.qty), everyElement(isNull));
@@ -295,13 +301,11 @@ void main() {
       // 撤回 / 退料后已领、可领回到原值：同样的数量再领也是一次新的领料。
       final (gateway, _) = _gateway();
       final results = await _pump(tester, gateway);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
+      await _tapSubmitAndConfirm(tester);
       expect(results, [true]);
       await tester.tap(find.text('打开领料页'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
+      await _tapSubmitAndConfirm(tester);
       expect(gateway.submits, hasLength(2));
       expect(
         gateway.submits.first.$1.map((item) => (item.orderItemId, item.qty)),
@@ -331,12 +335,10 @@ void main() {
       );
     };
     final results = await _pump(tester, gateway);
-    await tester.tap(find.byKey(_submitKey));
-    await tester.pumpAndSettle();
+    await _tapSubmitAndConfirm(tester);
     expect(find.text('委外商已停用'), findsOneWidget);
     expect(results, isEmpty);
-    await tester.tap(find.byKey(_submitKey));
-    await tester.pumpAndSettle();
+    await _tapSubmitAndConfirm(tester);
     expect(gateway.submits, hasLength(2));
     expect(gateway.submits.first.$2, isNot(gateway.submits.last.$2));
     expect(results, [true]);
@@ -402,8 +404,7 @@ void main() {
         );
       };
       final results = await _pump(tester, gateway);
-      await tester.tap(find.byKey(_submitKey));
-      await tester.pumpAndSettle();
+      await _tapSubmitAndConfirm(tester);
       expect(find.text('重试领料'), findsOneWidget);
       expect(tester.widget<TextField>(_qty('item-1')).enabled, isFalse);
       await tester.tap(find.byKey(_submitKey));
@@ -414,4 +415,23 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('submit asks for confirmation first; cancel keeps the batch', (
+    tester,
+  ) async {
+    final (gateway, _) = _gateway();
+    await _pump(tester, gateway);
+    await tester.tap(find.byKey(_submitKey));
+    await tester.pumpAndSettle();
+    expect(find.text('提交领料'), findsOneWidget);
+    expect(find.textContaining('将提交 2 个委外任务的领料'), findsOneWidget);
+    expect(find.textContaining('预计生成 2 张出仓单'), findsOneWidget);
+    expect(gateway.submits, isEmpty);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(gateway.submits, isEmpty);
+    expect(find.text('提交领料(2)'), findsOneWidget);
+    expect(tester.widget<TextField>(_qty('item-1')).enabled, isTrue);
+    expect(tester.takeException(), isNull);
+  });
 }

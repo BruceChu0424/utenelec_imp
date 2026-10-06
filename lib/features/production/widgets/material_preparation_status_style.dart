@@ -183,6 +183,10 @@ class MaterialPreparationStatusLabel extends StatelessWidget {
           Flexible(
             child: Text(
               label,
+              // 2026-10-06 行高统一口径：状态文字单行省略号，全量文字由本组件
+              // 的 Semantics(container) 播报，行高不随状态文案折行变化。
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: style.foreground,
                 fontWeight: FontWeight.w700,

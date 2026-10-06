@@ -87,6 +87,12 @@ class DailyGridRow extends EditableGridRow {
   double? orderQty;
   double? maxReportQty;
   bool allowActualOverproduction = false;
+
+  /// 剩余有效公共超产额度（服务端已扣「已批准未续报」的固定追加量）。
+  double? remainingActualSurplusQty;
+
+  /// 本来源工单已批准、尚未续报承接的固定追加量合计；>0 时上限提示指路续报入口。
+  double? pendingSupplementQty;
   String? supplementRequestId;
   String? supplementProofId;
   double? supplementApprovedActualQty;
@@ -94,9 +100,20 @@ class DailyGridRow extends EditableGridRow {
       !isFqcRecovery &&
       (supplementProofId != null ||
           (supplementRequestId != null && supplementApprovedActualQty != null));
-  bool get hasReportQuantityLimit =>
-      isFqcRecovery ||
-      (!allowActualOverproduction && supplementProofId == null);
+
+  /// 2026-10-06 口径：完工申报上限 = 计划剩余 + 剩余有效超产额度。
+  /// 已批准未承接的固定追加量已由服务端从额度里扣除——追加量只能走
+  /// 「固定追加量·续报」入口，原任务行不再无上限。固定追加批次行另由
+  /// hasFixedSupplement 的整批锁量校验，不在这里。
+  double? get reportQtyCap {
+    if (isFqcRecovery) return maxReportQty;
+    if (hasFixedSupplement) return null;
+    if (!allowActualOverproduction) return maxReportQty;
+    final surplus = remainingActualSurplusQty ?? 0;
+    return maxReportQty == null && surplus <= 0
+        ? null
+        : (maxReportQty ?? 0) + surplus;
+  }
 
   /// Remaining output target, distinct from this delivery's material capacity.
   double? remainingPlanQty;
@@ -302,6 +319,8 @@ class DailyGridRow extends EditableGridRow {
       ..supplementProofId = null
       ..supplementApprovedActualQty = null
       ..remainingPlanQty = remainingPlanQty
+      ..remainingActualSurplusQty = remainingActualSurplusQty
+      ..pendingSupplementQty = pendingSupplementQty
       ..directTransferCandidates = List.of(directTransferCandidates)
       ..directTransferBlockedTargets = List.of(directTransferBlockedTargets)
       ..directTransferReceiverLimit = directTransferReceiverLimit
@@ -642,7 +661,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           child: InkWell(
             onTap: row.hasLinkedSource ? null : () => onPickGoods(row),
             child: InputDecorator(
-              decoration: const InputDecoration(isDense: true),
+              // 选择格统一内边距（2026-10-06 表格控件统一口径）。
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+              ),
               child: Row(
                 children: [
                   Expanded(

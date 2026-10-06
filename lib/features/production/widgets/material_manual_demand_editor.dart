@@ -476,7 +476,11 @@ materialManualDemandGridColumns({
         child: InkWell(
           onTap: enabled ? () => onPickGoods(line) : null,
           child: InputDecorator(
-            decoration: const InputDecoration(isDense: true),
+            // 选择格统一内边距（2026-10-06 表格控件统一口径）。
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -589,7 +593,11 @@ materialManualDemandGridColumns({
                   }
                 : null,
             child: InputDecorator(
-              decoration: const InputDecoration(isDense: true),
+              // 选择格统一内边距（2026-10-06 表格控件统一口径）。
+              decoration: const InputDecoration(
+                isDense: true,
+                contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+              ),
               child: Row(
                 children: [
                   Expanded(

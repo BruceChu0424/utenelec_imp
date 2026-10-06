@@ -419,18 +419,18 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   }
 
   static final _columns = <MasterColumnDef<UnitListItem>>[
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (u) => u.status,
+    ),
     MasterColumnDef(key: 'code', label: '编号', width: 120, value: (u) => u.code),
     MasterColumnDef(
       key: 'name',
       label: '单位名称',
       width: 220,
       value: (u) => u.name,
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (u) => u.status,
     ),
     MasterColumnDef(
       key: 'dimension',

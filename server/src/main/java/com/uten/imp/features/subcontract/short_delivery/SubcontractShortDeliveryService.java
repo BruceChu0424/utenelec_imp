@@ -756,7 +756,8 @@ public class SubcontractShortDeliveryService
     private static String shortDeliveryWhere(
             com.uten.imp.security.DocumentAccessPolicy.NativeReadScope scope,
             LocalDate dateFrom, LocalDate dateTo, String orderBillNo) {
-        return scope.predicate() + """
+        return """
+                %s
                  AND (CAST(:supplierId AS uuid) IS NULL OR c.supplier_id = CAST(:supplierId AS uuid))
                  AND (CAST(:orderId AS uuid) IS NULL OR c.order_id = CAST(:orderId AS uuid))
                  AND (:keyword = '' OR LOWER(
@@ -767,7 +768,7 @@ public class SubcontractShortDeliveryService
                  AND (CAST(:dateFrom AS date) IS NULL OR COALESCE(c.closed_at, c.detected_at) >= CAST(:dateFrom AS date))
                  AND (CAST(:dateTo AS date) IS NULL
                       OR COALESCE(c.closed_at, c.detected_at) < CAST(:dateTo AS date) + INTERVAL '1 day')
-                """ + (orderBillNo == null || orderBillNo.isBlank()
+                """.formatted(scope.predicate()) + (orderBillNo == null || orderBillNo.isBlank()
                         ? "" : " AND c.order_bill_no_snapshot = :orderBillNo\n");
     }
 
@@ -1047,6 +1048,8 @@ public class SubcontractShortDeliveryService
                               UUID ownerEmployeeId, String severity) {}
 
     private List<ItemFacts> loadFacts(Collection<UUID> orderItemIds, boolean forUpdate) {
+        // An empty id list would render "IN ()", which PostgreSQL rejects.
+        if (orderItemIds.isEmpty()) return List.of();
         List<UUID> ids = List.copyOf(orderItemIds);
         String sql = FACT_SQL.formatted(DELIVERED_SQL, placeholders(ids.size()))
                 + (forUpdate ? " FOR UPDATE OF oi" : "");
@@ -1062,6 +1065,8 @@ public class SubcontractShortDeliveryService
     }
 
     private Map<UUID, OpenCase> openCases(Collection<UUID> orderItemIds, boolean forUpdate) {
+        // An empty id list would render "IN ()", which PostgreSQL rejects.
+        if (orderItemIds.isEmpty()) return Map.of();
         List<UUID> ids = List.copyOf(orderItemIds);
         Map<UUID, OpenCase> result = new LinkedHashMap<>();
         jdbc.query("""

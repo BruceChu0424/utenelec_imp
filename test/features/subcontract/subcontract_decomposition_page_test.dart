@@ -115,6 +115,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('计划下达日期'), findsOneWidget);
       expect(find.text('2026-09-08'), findsWidgets);
+      // 2026-10-06 状态列全站前置后，计划下达日期表头被挤出 1600 视口，先横向
+      // 滚到位再点排序菜单。
+      await tester.ensureVisible(find.text('计划下达日期'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('计划下达日期'));
       await tester.pumpAndSettle();
       expect(find.text('从近到远'), findsOneWidget);
@@ -123,6 +127,9 @@ void main() {
       expect(gateway.queries.last['sort'], 'issuedAt');
       expect(gateway.queries.last['order'], 'desc');
       expect(gateway.queries.last['page'], 1);
+      // 滚回来：上面的 ensureVisible 把表滚到了最右，委外件名称被甩出左缘。
+      await tester.ensureVisible(find.text('委外件名称'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('委外件名称'));
       await tester.pumpAndSettle();
       expect(find.text('完整范围物料 (125)'), findsOneWidget);
@@ -676,8 +683,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       final lockedStatus = find.byTooltip('$lockedHint；点击看齐套情况');
-      await tester.ensureVisible(lockedStatus);
-      await tester.pumpAndSettle();
+      // 2026-10-06 状态列前置后状态格就在表左上角、天然可见——不要 ensureVisible：
+      // 它会被 Tooltip 的 OverlayPortal 代理几何带偏，把横向滚动错误挪动、激活
+      // 行首冻结勾选框副本盖住状态格，点击就落到勾选框上。
       await tester.tap(lockedStatus);
       await tester.pumpAndSettle();
 
@@ -1181,7 +1189,9 @@ void main() {
             .widget<MasterDataTableView<SubcontractDrawMaterial>>(
               find.byKey(const Key('subcontract-draw-detail-materials')),
             );
+        // 2026-10-06 全站口径：状态列排最前。
         expect(materials.columns.map((column) => column.label).toList(), [
+          '状态',
           '物料名称',
           '编号',
           '颜色',
@@ -1194,7 +1204,6 @@ void main() {
           '本次可领',
           '还缺',
           '供应来源',
-          '状态',
         ]);
         expect(find.text('采购在途 50(PO-9)'), findsOneWidget);
         expect(find.text('未安排'), findsOneWidget);
@@ -1347,8 +1356,8 @@ void main() {
         expect(find.text('已提交领料·待仓库发料'), findsWidgets);
         expect(find.text('委外加工中'), findsWidgets);
         expect(find.byTooltip('点击去领料'), findsOneWidget);
-        await tester.ensureVisible(find.byTooltip('点击去领料'));
-        await tester.pumpAndSettle();
+        // 状态列前置后首行状态格天然可见；ensureVisible 对 Tooltip(OverlayPortal
+        // 代理几何)会错误横滚、激活行首冻结勾选框副本挡住点击，勿加。
         await tester.tap(find.byTooltip('点击去领料'));
         await tester.pumpAndSettle();
         expect(draw.listQueries.last['orderId'], 'order-drawable');

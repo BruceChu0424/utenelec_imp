@@ -397,6 +397,22 @@ class _HrProfileChangesListPageState
     AppLocalizations l10n,
   ) => [
     MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 72,
+      value: (m) => _statusLabel(l10n, m.status),
+      // 2026-09-27 用户口径「表格状态列整格底色」：待生效=灰 / 待审核=蓝 /
+      // 已生效=绿 / 已驳回=红 / 已取消=中性灰。
+      cellColor: (context, m) =>
+          udenStatusBadgeCellColor(context, switch (m.status) {
+            ProfileChangeStatus.pending => UtenStatusBadgeType.neutral,
+            ProfileChangeStatus.applied => UtenStatusBadgeType.info,
+            ProfileChangeStatus.approved => UtenStatusBadgeType.success,
+            ProfileChangeStatus.rejected => UtenStatusBadgeType.danger,
+            ProfileChangeStatus.cancelled => UtenStatusBadgeType.neutral,
+          }),
+    ),
+    MasterColumnDef(
       key: 'employeeName',
       label: '员工姓名',
       width: 130,
@@ -438,22 +454,6 @@ class _HrProfileChangesListPageState
       width: 150,
       type: 'date',
       value: (m) => _formatTime(m.submittedAt),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: '状态',
-      width: 100,
-      value: (m) => _statusLabel(l10n, m.status),
-      // 2026-09-27 用户口径「表格状态列整格底色」：待生效=灰 / 待审核=蓝 /
-      // 已生效=绿 / 已驳回=红 / 已取消=中性灰。
-      cellColor: (context, m) =>
-          udenStatusBadgeCellColor(context, switch (m.status) {
-            ProfileChangeStatus.pending => UtenStatusBadgeType.neutral,
-            ProfileChangeStatus.applied => UtenStatusBadgeType.info,
-            ProfileChangeStatus.approved => UtenStatusBadgeType.success,
-            ProfileChangeStatus.rejected => UtenStatusBadgeType.danger,
-            ProfileChangeStatus.cancelled => UtenStatusBadgeType.neutral,
-          }),
     ),
   ];
 }

@@ -50,7 +50,7 @@ final class MaterialAnalysisBomSnapshotReader {
             roots.append("(CAST(:source").append(i).append(" AS uuid),CAST(:goods")
                     .append(i).append(" AS uuid))");
         }
-        Query query = em.createNativeQuery(TREE_SQL.formatted(roots));
+        Query query = em.createNativeQuery(TREE_SQL.formatted(roots, EDGE_USAGE_LATERAL));
         for (int i = 0; i < sources.size(); i++) {
             var source = sources.get(i);
             query.setParameter("source" + i, source.analysisItemId())
@@ -144,7 +144,7 @@ final class MaterialAnalysisBomSnapshotReader {
      * LATERAL 读取，与递归边读取一样不把无关的历史 BOM 拉进来。
      */
     private static final String TREE_SQL = """
-                WITH RECURSIVE roots(analysis_item_id, goods_id) AS (%s), exp AS (
+                WITH RECURSIVE roots(analysis_item_id, goods_id) AS (%1$s), exp AS (
                     SELECT roots.analysis_item_id AS source_id, b.id AS bom_item_id, b.goods_id AS parent_goods_id,
                            b.component_goods_id AS goods_id,
                            resolved_color.id AS color_id,
@@ -215,9 +215,12 @@ final class MaterialAnalysisBomSnapshotReader {
                        exp.allow_partial_package, exp.hard_gate, exp.source_id,
                        edge_usage.sample_count, edge_usage.linear, edge_usage.defect_rate
                 FROM exp
-                """ + edgeUsageLateral("exp.bom_item_id") + """
+                %2$s
                 ORDER BY exp.source_id, exp.bom_path
                 """;
+
+    /** TREE_SQL's edge usage LATERAL, injected as a format argument so its text is never re-parsed as a format. */
+    private static final String EDGE_USAGE_LATERAL = edgeUsageLateral("exp.bom_item_id");
 
     /**
      * 一条 BOM 边的现时用量，别名 edge_usage，全部原样取 {@code v_goods_bom_item_usage} 的结果：

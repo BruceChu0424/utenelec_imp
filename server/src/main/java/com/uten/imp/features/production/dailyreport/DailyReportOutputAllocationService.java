@@ -358,9 +358,20 @@ public class DailyReportOutputAllocationService {
         for(var entry:requested.entrySet()) {
             BigDecimal available=number(em.createNativeQuery("SELECT fn_execution_actual_surplus_available(:segment,:report)")
                     .setParameter("segment",entry.getKey()).setParameter("report",reportId).getSingleResult());
-            if(entry.getValue().compareTo(available)>0)throw new ApiException(ErrorCode.CONFLICT,
-                    "本单同工单累计公共超产 "+entry.getValue().stripTrailingZeros().toPlainString()+"，已批准剩余超产额度 "+available.stripTrailingZeros().toPlainString()+"；请为本次全部超出原计划的数量提交追加计划，不会减少您填写的实际产量",
-                    List.of(new com.uten.imp.common.web.ApiError.FieldError("overproductionSupplement",entry.getKey().toString())));
+            if(entry.getValue().compareTo(available)>0) {
+                // 2026-10-06：可用额度已扣「已批准未续报承接」的固定追加量——若正是它占住了
+                // 额度，指路到续报入口，而不是让工人在原工单反复试错或再生成一张追加计划。
+                BigDecimal pending=number(em.createNativeQuery("SELECT fn_actual_supplement_pending_qty(:segment,:report)")
+                        .setParameter("segment",entry.getKey()).setParameter("report",reportId).getSingleResult());
+                throw new ApiException(ErrorCode.CONFLICT,
+                        "本单同工单累计公共超产 "+entry.getValue().stripTrailingZeros().toPlainString()
+                                +"，已批准剩余超产额度 "+available.stripTrailingZeros().toPlainString()
+                                +(pending.signum()>0
+                                ?"；已批准的固定追加量还有 "+pending.stripTrailingZeros().toPlainString()
+                                +" 未续报，请到「我的车间任务 → 固定追加量·续报」入口申报，不要在原工单直接超额报工"
+                                :"；请为本次全部超出原计划的数量提交追加计划，不会减少您填写的实际产量"),
+                        List.of(new com.uten.imp.common.web.ApiError.FieldError("overproductionSupplement",entry.getKey().toString())));
+            }
         }
     }
     public void requirePersistedAllowance(UUID reportId) {

@@ -467,6 +467,25 @@ class _SubcontractShortDeliveryPageState
       primary: true,
       columns: [
         MasterColumnDef(
+          key: 'severity',
+          label: '程度',
+          width: 72,
+          value: (c) => c.severityLabel,
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+          cellColor: (context, c) =>
+              udenStatusBadgeCellColor(context, _severityType(c)),
+        ),
+        MasterColumnDef(
+          key: 'status',
+          label: '状态',
+          width: 72,
+          value: (c) =>
+              c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
+          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
+          cellColor: (context, c) =>
+              udenStatusBadgeCellColor(context, _statusType(c)),
+        ),
+        MasterColumnDef(
           key: 'orderBillNo',
           label: '订货单号',
           width: 140,
@@ -544,15 +563,6 @@ class _SubcontractShortDeliveryPageState
           value: (c) => formatSubcontractPct(c.shortfallPct),
         ),
         MasterColumnDef(
-          key: 'severity',
-          label: '程度',
-          width: 130,
-          value: (c) => c.severityLabel,
-          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-          cellColor: (context, c) =>
-              udenStatusBadgeCellColor(context, _severityType(c)),
-        ),
-        MasterColumnDef(
           key: 'receiptBillNo',
           label: '最近收货单',
           width: 140,
@@ -614,16 +624,6 @@ class _SubcontractShortDeliveryPageState
                 ChinaDateTime.formatIsoInstant(c.closedAt, fallback: '—'),
           ),
         ],
-        MasterColumnDef(
-          key: 'status',
-          label: '状态',
-          width: 160,
-          value: (c) =>
-              c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
-          // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-          cellColor: (context, c) =>
-              udenStatusBadgeCellColor(context, _statusType(c)),
-        ),
         MasterColumnDef(
           key: 'ownerName',
           label: '负责人',

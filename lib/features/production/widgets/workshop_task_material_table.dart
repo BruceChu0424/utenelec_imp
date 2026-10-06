@@ -110,9 +110,32 @@ class _WorkshopTaskMaterialTableState
           ),
           columns: [
             MasterColumnDef(
+              key: 'state',
+              label: '状态',
+              width: 72,
+              value: (row) => row.stateLabel,
+              cellBuilder: (_, row) => Tooltip(
+                message: row.waitingForPlanning
+                    ? (row.planningRouteConfirmed
+                          ? '计划还差 ${_qty(row.planningGapQty, row.unitName)} 没下单，可以在任务详情里点「催计划」提醒计划员'
+                          : '计划还没定这种料怎么供（采购 / 委外 / 自制），还差 ${_qty(row.planningGapQty, row.unitName)}')
+                    : row.stateLabel,
+                child: WorkshopMaterialStateCell(
+                  key: ValueKey('workshop-task-material-state-${row.demandId}'),
+                  label: row.stateLabel,
+                  icon: row.waitingForPlanning ? Icons.campaign_rounded : null,
+                  type: row.waitingForPlanning
+                      ? UtenStatusBadgeType.fuchsia
+                      : _badgeType(row.state),
+                ),
+              ),
+            ),
+            MasterColumnDef(
               key: 'goodsName',
               label: '物料',
               width: 180,
+              // compactCards 卡片标题：状态列前置后名称列不再默认担任标题。
+              cardRole: MasterColumnCardRole.title,
               value: (row) => row.goodsName,
             ),
             MasterColumnDef(
@@ -199,27 +222,6 @@ class _WorkshopTaskMaterialTableState
                         fontWeight: FontWeight.w700,
                       )
                     : null,
-              ),
-            ),
-            MasterColumnDef(
-              key: 'state',
-              label: '状态',
-              width: 150,
-              value: (row) => row.stateLabel,
-              cellBuilder: (_, row) => Tooltip(
-                message: row.waitingForPlanning
-                    ? (row.planningRouteConfirmed
-                          ? '计划还差 ${_qty(row.planningGapQty, row.unitName)} 没下单，可以在任务详情里点「催计划」提醒计划员'
-                          : '计划还没定这种料怎么供（采购 / 委外 / 自制），还差 ${_qty(row.planningGapQty, row.unitName)}')
-                    : row.stateLabel,
-                child: WorkshopMaterialStateCell(
-                  key: ValueKey('workshop-task-material-state-${row.demandId}'),
-                  label: row.stateLabel,
-                  icon: row.waitingForPlanning ? Icons.campaign_rounded : null,
-                  type: row.waitingForPlanning
-                      ? UtenStatusBadgeType.fuchsia
-                      : _badgeType(row.state),
-                ),
               ),
             ),
             MasterColumnDef(

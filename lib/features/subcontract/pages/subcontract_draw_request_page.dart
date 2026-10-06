@@ -19,6 +19,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -344,6 +345,22 @@ class _SubcontractDrawRequestPageState
   Future<void> _submit() async {
     if (_blocked != null) return;
     final items = _submitItems;
+    // 提交即生成出仓单、仓库按单发料，误触代价高：先弹二次确认。「重试领料」
+    // 是结果未确认时的续传（数量保持原提交内容），不再多弹一道。
+    if (!_uncertain) {
+      final docCount = _preview?.documentCount;
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '提交领料',
+        confirmLabel: '确认提交',
+        content: Text(
+          '将提交 ${items.length} 个委外任务的领料'
+          '${docCount == null ? '' : '，预计生成 $docCount 张出仓单'}；'
+          '提交后由仓库按领料仓库发出直属物料，委外商加工后分批回厂。确认提交？',
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     final key = _pendingKey ?? _idempotencyKey(items);
     setState(() {
       _saving = true;

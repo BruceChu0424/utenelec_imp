@@ -615,6 +615,45 @@ void main() {
         reason: '超管照常放行',
       );
     });
+
+    test('HR reconcile page requires view plus an edit grant', () {
+      const location = RouteName.hrReconcile;
+      expect(requiredAnyPermFor(location), const [
+        Perm.employeeEdit,
+        Perm.employeePiiEdit,
+      ]);
+      expect(requiredAllPermsFor(location), const [Perm.employeeView]);
+      // 只有 employee:view(总经理等)进不了核对更正页。
+      expect(
+        employeePermissionRedirect(_userWith([Perm.employeeView]), location),
+        RouteName.accessDenied,
+      );
+      // edit 或 pii:edit 任一 + view 都能进。
+      expect(
+        employeePermissionRedirect(
+          _userWith([Perm.employeeView, Perm.employeePiiEdit]),
+          location,
+        ),
+        isNull,
+      );
+      expect(
+        employeePermissionRedirect(
+          _userWith([Perm.employeeView, Perm.employeeEdit]),
+          location,
+        ),
+        isNull,
+      );
+      // 证件核对子页守卫不受影响。
+      expect(
+        requiredAllPermsFor(RouteName.hrTaskList('identity')),
+        const [Perm.employeePiiEdit],
+      );
+      expect(
+        locationAllowedFor(const {}, true, location),
+        isTrue,
+        reason: '超管照常放行',
+      );
+    });
   });
 }
 

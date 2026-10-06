@@ -308,7 +308,10 @@ class AuditTriggerCoverageMigrationContractTest {
                         // AI 识别任务协调态；原上传独立永久保全，提交人及原生单据范围控制读取。
                         "ai_jobs",
                         // V805(ADR-150) AI 确认卡一次性提案: 提议/确认/取消/回执各写显式审计事件, 行本身是协调态。
-                        "ai_chat_action_proposals")),
+                        "ai_chat_action_proposals",
+                        // V810(ADR-160) 员工核对记录：密文列与统计，不入行级审计；操作由显式业务事件记录。
+                        "employee_reconcile_plans", "employee_reconcile_plan_rows",
+                        "employee_reconcile_plan_items", "employee_reconcile_applies")),
             new NoneGroup("reservation",
                     "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",
                     Set.of(

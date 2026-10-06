@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_card_list.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
@@ -147,6 +151,7 @@ Widget _app({
   _FakeEmployeeRepository? employees,
   _FakeNoticeRepository? notices,
   Set<String> permissions = const {},
+  GoRouter? router,
 }) => ProviderScope(
   overrides: [
     hrTaskRepositoryProvider.overrideWithValue(hrTasks),
@@ -156,11 +161,17 @@ Widget _app({
       employeeRepositoryProvider.overrideWithValue(employees),
     if (notices != null) noticeRepositoryProvider.overrideWithValue(notices),
   ],
-  child: MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    home: HrTaskListPage(type: type),
-  ),
+  child: router == null
+      ? MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: HrTaskListPage(type: type),
+        )
+      : MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
 );
 
 MasterDataTableView<HrTaskItem> _table(WidgetTester tester) =>
@@ -267,8 +278,10 @@ void main() {
     expect(table.columns.firstWhere((c) => c.key == 'note').label, '原因');
     expect(table.columns.firstWhere((c) => c.key == 'date').label, '入职日');
     expect(table.facets.containsKey('window'), isFalse);
-    expect(table.selectable, isFalse, reason: '证件核对逐人修改，不开多选');
-    expect(table.batchActionsBuilder, isNull);
+    // 2026-10-05 起开多选「批量核对(N)」进核对更正页(ADR-160)：能改档案或能改
+    // 证件(employee:pii:edit)即可，与 /hr/tasks/reconcile 路由守卫同源。
+    expect(table.selectable, isTrue, reason: '证件核对开多选批量核对');
+    expect(table.batchActionsBuilder, isNotNull);
     final noteColumn = table.columns.firstWhere((c) => c.key == 'note');
     expect(noteColumn.value(table.items.first), '身份证号应为18位，当前为17位');
     expect(find.text('身份证号应为18位，当前为17位'), findsWidgets);
@@ -406,6 +419,178 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('identity 批量核对按钮存在且文字随选中数变化', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(
+        identityReview: [
+          _item('a', note: 'x'),
+          _item('b', note: 'y'),
+        ],
+      ),
+    );
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(const Key('hr-task-batch-identity-review'));
+    expect(button, findsOneWidget, reason: '悬浮批量组里有「批量核对」');
+    expect(find.text('批量核对(0)'), findsOneWidget);
+    _table(tester).onSelectedIdsChanged!({'a'});
+    await tester.pumpAndSettle();
+    expect(find.text('批量核对(1)'), findsOneWidget);
+    _table(tester).onSelectedIdsChanged!({'a', 'b'});
+    await tester.pumpAndSettle();
+    expect(find.text('批量核对(2)'), findsOneWidget);
+    expect(find.text('批量核对(1)'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('identity 未勾选时批量核对禁用，点禁用提示先勾选', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(identityReview: [_item('a', note: 'x')]),
+    );
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = tester.widget<UtenButton>(
+      find.byKey(const Key('hr-task-batch-identity-review')),
+    );
+    expect(button.onPressed, isNull, reason: '未勾选时禁用');
+    expect(button.onDisabledTap, isNotNull);
+
+    await tester.tap(find.byKey(const Key('hr-task-batch-identity-review')));
+    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HrTaskListPage)),
+    );
+    expect(
+      container.read(appNotificationProvider).map((n) => n.message),
+      contains('请先勾选要核对的员工'),
+      reason: '点禁用态给引导提示，而不是毫无反应',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('identity 批量核对 push 核对更正页深链(排序 ids + returnTo)', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(
+        identityReview: [
+          _item('b', note: 'x'),
+          _item('a', note: 'y'),
+          _item('c', note: 'z', claimedByName: '李四'),
+        ],
+      ),
+    );
+    String? pushed;
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) =>
+              const HrTaskListPage(type: HrTaskType.identity),
+        ),
+        GoRoute(
+          path: RouteName.hrReconcile,
+          builder: (context, state) {
+            pushed = state.uri.toString();
+            return const Scaffold(body: SizedBox());
+          },
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+        router: router,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 故意乱序喂选中：深链里的 employeeIds 应排序(稳定可复盘)，
+    // 他人认领的 c 勾不上(onSelectedIdsChanged 也不会带它)。
+    _table(tester).onSelectedIdsChanged!({'b', 'a'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('hr-task-batch-identity-review')));
+    await tester.pumpAndSettle();
+
+    expect(pushed, isNotNull, reason: '点了批量核对应跳核对更正页');
+    expect(
+      pushed,
+      RoutePath.hrReconcile(
+        employeeIds: ['a', 'b'],
+        returnTo: RouteName.hrTaskList(HrTaskType.identity.taskType),
+      ),
+      reason: '查询参数只放排序后的员工 UUID 与 returnTo，绝不放证件号',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('identity 他人认领行不可勾选，勾选位换成带原因的锁', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final free = _item('a', note: 'x');
+    final mine = _item('b', note: 'y', claimedByMe: true);
+    final others = _item('c', note: 'z', claimedByName: '李四');
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(identityReview: [free, mine, others]),
+    );
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final table = _table(tester);
+    expect(table.idOf!(free), 'a');
+    expect(table.idOf!(mine), 'b');
+    expect(table.idOf!(others), isNull, reason: '他人处理中不可勾选');
+    expect(table.rowKeyOf!(others), 'c', reason: '不可勾选行仍有稳定行键');
+
+    expect(
+      tester.widgetList<Tooltip>(find.byType(Tooltip)).map((t) => t.message),
+      contains('李四 处理中'),
+      reason: '锁图标悬停可见认领人',
+    );
+    expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+    expect(
+      find.byType(Checkbox),
+      findsWidgets,
+      reason: '表头全选与未认领/我认领的行保持复选框(不是锁)',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('batch confirm skips rows claimed by others', (tester) async {
     SharedPreferences.setMockInitialValues(const {});

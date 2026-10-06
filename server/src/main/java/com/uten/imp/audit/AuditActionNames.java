@@ -94,7 +94,12 @@ public final class AuditActionNames {
             Map.entry("publish", "发布"),
             Map.entry("export", "导出数据"),
             Map.entry("learn_from_document", "从客户文件补全资料"),
-            Map.entry("update_name_en", "修改英文名称"));
+            Map.entry("update_name_en", "修改英文名称"),
+            // 员工资料核对 (V810/ADR-160)：显式业务事件的动词。employee_reconcile.apply 的
+            // 动词 apply 与供应商核销/客户预存/成本导入等控制器方法同名，不能进全局动词表，
+            // 全码登记在 AuditEventInterpreter 的核对专用标签里。
+            Map.entry("plan_created", "生成员工资料核对"),
+            Map.entry("discarded", "放弃员工资料核对"));
 
     private AuditActionNames() {
     }

@@ -42,6 +42,9 @@ final List<RegExp> _automaticWritePaths = [
   RegExp(r'/ai/jobs/[^/]+/cancel$'),
   // AI 服务连接测试 / 获取模型列表: 只探测服务商，不改配置(已存配置版只记测试结果)。
   RegExp(r'/admin/ai/providers(/[^/]+)?/(test|models)$'),
+  // 核对更正页(ADR-160)：生成计划(id-repair)与放弃计划(discard)只写计划表、
+  // 不改员工数据，不该触发全站「数据写刷新」；apply 是业务写，保持刷新。
+  RegExp(r'/org/employee-reconcile/plans/(id-repair|[^/]+/discard)$'),
 ];
 
 /// 该请求成功后是否算一次本端写操作。

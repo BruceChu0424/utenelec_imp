@@ -394,5 +394,16 @@ void main() {
         Perm.employeeView,
       ]);
     });
+
+    test('hr reconcile page requires an edit grant on top of view', () {
+      // ADR-160：核对更正页任一写权限可进(edit 或 pii:edit)，且必须能看员工档案。
+      expect(requiredAnyPermFor(RouteName.hrReconcile), const [
+        Perm.employeeEdit,
+        Perm.employeePiiEdit,
+      ]);
+      expect(requiredAllPermsFor(RouteName.hrReconcile), const [
+        Perm.employeeView,
+      ]);
+    });
   });
 }

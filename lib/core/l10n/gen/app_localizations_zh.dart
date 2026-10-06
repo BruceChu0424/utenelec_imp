@@ -9319,4 +9319,218 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get aiSettingsThinkingAnthropic =>
       'Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)';
+
+  @override
+  String get hrReconcileTitle => '员工资料核对更正';
+
+  @override
+  String get hrReconcileRecords => '核对记录';
+
+  @override
+  String get hrReconcileRefresh => '刷新';
+
+  @override
+  String get hrReconcileRetry => '重试';
+
+  @override
+  String get hrReconcileGenerating => '正在生成核对计划…';
+
+  @override
+  String get hrReconcileApplying => '正在更正员工资料…';
+
+  @override
+  String get hrReconcileEmptyEntry => '请从「证件核对」页勾选员工后进入';
+
+  @override
+  String get hrReconcilePlanEmpty => '这份核对没有需要处理的员工';
+
+  @override
+  String hrReconcileReadOnlyNotice(String name) {
+    return '这是 $name 的核对，只能查看';
+  }
+
+  @override
+  String hrReconcileSummary(
+    int people,
+    int update,
+    int info,
+    int same,
+    int applied,
+  ) {
+    return '共 $people 人 · 需更正 $update · 仅提示 $info · 一致 $same · 已处理 $applied';
+  }
+
+  @override
+  String get hrReconcileValidity => '24 小时内有效，超时未执行的改动自动清除';
+
+  @override
+  String get hrReconcileExpiredTitle => '这份核对已超过 24 小时，未执行的内容已清除';
+
+  @override
+  String get hrReconcileExpiredRetry => '重新核对';
+
+  @override
+  String get hrReconcileBack => '返回';
+
+  @override
+  String hrReconcileLockTooltip(String name) {
+    return '$name 处理中';
+  }
+
+  @override
+  String hrReconcileApplyButton(int people, int items) {
+    return '确认更正 $people 人 $items 处';
+  }
+
+  @override
+  String get hrReconcileApplyHintFirst => '请先勾选并确认要更正的员工';
+
+  @override
+  String get hrReconcileConfirmTitle => '确认更正员工资料';
+
+  @override
+  String get hrReconcileConfirmButton => '确认更正';
+
+  @override
+  String hrReconcileConfirmBodyPeople(int people, int items) {
+    return '将更正 $people 人共 $items 处证件号码';
+  }
+
+  @override
+  String get hrReconcileConfirmBodyDerived => '性别与出生日期将按新证件号自动更正';
+
+  @override
+  String get hrReconcileConfirmBodyPassword => '需要输入登录密码确认';
+
+  @override
+  String hrReconcileConfirmBodySkipped(int people) {
+    return '$people 人未给出新号码，本次不改';
+  }
+
+  @override
+  String get hrReconcileLeaveTitle => '放弃这些改动吗？';
+
+  @override
+  String get hrReconcileLeaveBody => '计划会保留 24 小时，可从「核对记录」回来继续';
+
+  @override
+  String get hrReconcileLeaveConfirm => '放弃';
+
+  @override
+  String get hrReconcileLeaveCancel => '继续编辑';
+
+  @override
+  String get hrReconcilePlanChanged => '这份核对已被更新，已重新加载最新内容';
+
+  @override
+  String get hrReconcilePlanBusyConflict => '正在执行上一次更正，请稍候再试';
+
+  @override
+  String get hrReconcileGenerateFailed => '生成核对计划失败，请稍后重试';
+
+  @override
+  String get hrReconcileLoadFailed => '加载核对计划失败，请稍后重试';
+
+  @override
+  String get hrReconcileApplyFailed => '更正没有完成，请稍后重试';
+
+  @override
+  String get hrReconcileIdEmpty => '（空）';
+
+  @override
+  String get hrReconcileColKind => '类型';
+
+  @override
+  String get hrReconcileColCode => '工号';
+
+  @override
+  String get hrReconcileColName => '姓名';
+
+  @override
+  String get hrReconcileColDept => '部门';
+
+  @override
+  String get hrReconcileColReason => '原因';
+
+  @override
+  String get hrReconcileColIdNumber => '证件号码';
+
+  @override
+  String get hrReconcileColBasis => '依据';
+
+  @override
+  String get hrReconcileColTier => '把握';
+
+  @override
+  String get hrReconcileColNotes => '说明/结果';
+
+  @override
+  String get hrReconcileKindUpdate => '修改';
+
+  @override
+  String get hrReconcileKindInfo => '仅提示';
+
+  @override
+  String get hrReconcileKindSame => '一致';
+
+  @override
+  String get hrReconcileTierHigh => '高';
+
+  @override
+  String get hrReconcileTierMedium => '中';
+
+  @override
+  String get hrReconcileTierManual => '需人工';
+
+  @override
+  String get hrReconcileTierNone => '无候选';
+
+  @override
+  String get hrReconcileResultApplied => '已更正';
+
+  @override
+  String get hrReconcileResultPartial => '部分更正';
+
+  @override
+  String get hrReconcileResultSkipped => '已跳过';
+
+  @override
+  String get hrReconcileResultFailed => '失败';
+
+  @override
+  String get hrReconcileAdopt => '采用';
+
+  @override
+  String get hrReconcileUnadopt => '已采用，点击撤销';
+
+  @override
+  String hrReconcileSuspectHint(String positions) {
+    return '可能出错的位置：第 $positions 位，请对照证件';
+  }
+
+  @override
+  String get hrReconcileManualHint => '手动输入新证件号码';
+
+  @override
+  String get hrReconcileRecordsTitle => '核对记录';
+
+  @override
+  String get hrReconcileRecordsEmpty => '还没有核对记录';
+
+  @override
+  String hrReconcileRecordCount(int people) {
+    return '共 $people 人';
+  }
+
+  @override
+  String get hrReconcileStatusOpen => '进行中';
+
+  @override
+  String get hrReconcileStatusClosed => '已完成';
+
+  @override
+  String get hrReconcileStatusExpired => '已过期';
+
+  @override
+  String get hrReconcileStatusDiscarded => '已放弃';
 }

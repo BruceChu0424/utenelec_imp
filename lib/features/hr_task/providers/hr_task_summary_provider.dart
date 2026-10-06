@@ -23,6 +23,12 @@ class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
     r'^/org/employees/[^/]+/(confirm|rehire|offboard|onboard|change-identity)$',
   );
 
+  /// 核对更正页(ADR-160)提交核对计划：apply 会改员工证件/档案数据，证件核对
+  /// 队列随之变化，同样静默重算。
+  static final _employeeReconcileApplyWrites = RegExp(
+    r'^/org/employee-reconcile/plans/[^/]+/apply$',
+  );
+
   @override
   Future<HrTaskSummary> build() {
     ref.listen<({int seq, String path})?>(lastDataWriteProvider, (
@@ -30,7 +36,10 @@ class HrTaskSummaryNotifier extends AsyncNotifier<HrTaskSummary> {
       next,
     ) {
       if (next == null || next.seq == previous?.seq) return;
-      if (!_employeeLifecycleWrites.hasMatch(next.path)) return;
+      final businessWrite =
+          _employeeLifecycleWrites.hasMatch(next.path) ||
+          _employeeReconcileApplyWrites.hasMatch(next.path);
+      if (!businessWrite) return;
       unawaited(reloadSilently());
     });
     return ref.watch(hrTaskRepositoryProvider).summary();

@@ -145,6 +145,9 @@ abstract final class RouteName {
   static const String hrTaskCenter = '/hr/tasks';
   static String hrTaskList(String type) => '/hr/tasks/$type';
 
+  /// 员工资料核对更正页(ADR-160)：静态段，注册时须先于 :type 子路由声明。
+  static const String hrReconcile = '/hr/tasks/reconcile';
+
   // 入口选择页已退役(2026-09-25)：/entry 仅作旧深链兼容，由 redirect 落到 /login。
   static const String entry = '/entry';
 
@@ -672,6 +675,32 @@ abstract final class RoutePath {
       '/warehouse/$code/$id';
   static String stockDocEdit(String code, String id) =>
       '/warehouse/$code/$id/edit';
+
+  /// 员工资料核对更正页深链(ADR-160)：[employeeIds] = 证件核对多选的员工
+  /// UUID(逗号拼接进 query)；[planId] = 核对记录回看。查询参数只放 UUID，绝不放证件号。
+  static String hrReconcile({
+    List<String>? employeeIds,
+    String? planId,
+    String? returnTo,
+  }) {
+    final ids = employeeIds
+        ?.map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .join(',');
+    final safeReturnTo = sanitizeReturnTo(
+      returnTo,
+      scope: ReturnToScope.employee,
+    );
+    final employeeParam = ids == null || ids.isEmpty ? null : ids;
+    return Uri(
+      path: RouteName.hrReconcile,
+      queryParameters: {
+        'employeeIds': ?employeeParam,
+        'planId': ?planId,
+        'returnTo': ?safeReturnTo,
+      },
+    ).toString();
+  }
 
   /// 产成品登记页深链(单张 = 1 个来源、多选 = N 个来源)：reportIds 逗号拼接进 query(可恢复)；
   /// [stockInBeforeInspection] = 任务中心多选时点的路线(`preStock=1|0`)，双击进来为空(两条路线并排)。

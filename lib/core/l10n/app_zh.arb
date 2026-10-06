@@ -5013,5 +5013,143 @@
   "aiChatRestored": "以下是你最近的对话, 继续提问会接着聊。",
   "aiChatRestoredDataChanged": "这条回答引用的业务数据已经变化, 不再显示旧内容; 需要的话请重新问一次。",
   "aiSettingsThinkingZhipu": "智谱 GLM 写法",
-  "aiSettingsThinkingAnthropic": "Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)"
+  "aiSettingsThinkingAnthropic": "Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)",
+  "hrReconcileTitle": "员工资料核对更正",
+  "hrReconcileRecords": "核对记录",
+  "hrReconcileRefresh": "刷新",
+  "hrReconcileRetry": "重试",
+  "hrReconcileGenerating": "正在生成核对计划…",
+  "hrReconcileApplying": "正在更正员工资料…",
+  "hrReconcileEmptyEntry": "请从「证件核对」页勾选员工后进入",
+  "hrReconcilePlanEmpty": "这份核对没有需要处理的员工",
+  "hrReconcileReadOnlyNotice": "这是 {name} 的核对，只能查看",
+  "@hrReconcileReadOnlyNotice": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hrReconcileSummary": "共 {people} 人 · 需更正 {update} · 仅提示 {info} · 一致 {same} · 已处理 {applied}",
+  "@hrReconcileSummary": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      },
+      "update": {
+        "type": "int"
+      },
+      "info": {
+        "type": "int"
+      },
+      "same": {
+        "type": "int"
+      },
+      "applied": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileValidity": "24 小时内有效，超时未执行的改动自动清除",
+  "hrReconcileExpiredTitle": "这份核对已超过 24 小时，未执行的内容已清除",
+  "hrReconcileExpiredRetry": "重新核对",
+  "hrReconcileBack": "返回",
+  "hrReconcileLockTooltip": "{name} 处理中",
+  "@hrReconcileLockTooltip": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "hrReconcileApplyButton": "确认更正 {people} 人 {items} 处",
+  "@hrReconcileApplyButton": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      },
+      "items": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileApplyHintFirst": "请先勾选并确认要更正的员工",
+  "hrReconcileConfirmTitle": "确认更正员工资料",
+  "hrReconcileConfirmButton": "确认更正",
+  "hrReconcileConfirmBodyPeople": "将更正 {people} 人共 {items} 处证件号码",
+  "@hrReconcileConfirmBodyPeople": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      },
+      "items": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileConfirmBodyDerived": "性别与出生日期将按新证件号自动更正",
+  "hrReconcileConfirmBodyPassword": "需要输入登录密码确认",
+  "hrReconcileConfirmBodySkipped": "{people} 人未给出新号码，本次不改",
+  "@hrReconcileConfirmBodySkipped": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileLeaveTitle": "放弃这些改动吗？",
+  "hrReconcileLeaveBody": "计划会保留 24 小时，可从「核对记录」回来继续",
+  "hrReconcileLeaveConfirm": "放弃",
+  "hrReconcileLeaveCancel": "继续编辑",
+  "hrReconcilePlanChanged": "这份核对已被更新，已重新加载最新内容",
+  "hrReconcilePlanBusyConflict": "正在执行上一次更正，请稍候再试",
+  "hrReconcileGenerateFailed": "生成核对计划失败，请稍后重试",
+  "hrReconcileLoadFailed": "加载核对计划失败，请稍后重试",
+  "hrReconcileApplyFailed": "更正没有完成，请稍后重试",
+  "hrReconcileIdEmpty": "（空）",
+  "hrReconcileColKind": "类型",
+  "hrReconcileColCode": "工号",
+  "hrReconcileColName": "姓名",
+  "hrReconcileColDept": "部门",
+  "hrReconcileColReason": "原因",
+  "hrReconcileColIdNumber": "证件号码",
+  "hrReconcileColBasis": "依据",
+  "hrReconcileColTier": "把握",
+  "hrReconcileColNotes": "说明/结果",
+  "hrReconcileKindUpdate": "修改",
+  "hrReconcileKindInfo": "仅提示",
+  "hrReconcileKindSame": "一致",
+  "hrReconcileTierHigh": "高",
+  "hrReconcileTierMedium": "中",
+  "hrReconcileTierManual": "需人工",
+  "hrReconcileTierNone": "无候选",
+  "hrReconcileResultApplied": "已更正",
+  "hrReconcileResultPartial": "部分更正",
+  "hrReconcileResultSkipped": "已跳过",
+  "hrReconcileResultFailed": "失败",
+  "hrReconcileAdopt": "采用",
+  "hrReconcileUnadopt": "已采用，点击撤销",
+  "hrReconcileSuspectHint": "可能出错的位置：第 {positions} 位，请对照证件",
+  "@hrReconcileSuspectHint": {
+    "placeholders": {
+      "positions": {
+        "type": "String"
+      }
+    }
+  },
+  "hrReconcileManualHint": "手动输入新证件号码",
+  "hrReconcileRecordsTitle": "核对记录",
+  "hrReconcileRecordsEmpty": "还没有核对记录",
+  "hrReconcileRecordCount": "共 {people} 人",
+  "@hrReconcileRecordCount": {
+    "placeholders": {
+      "people": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatusOpen": "进行中",
+  "hrReconcileStatusClosed": "已完成",
+  "hrReconcileStatusExpired": "已过期",
+  "hrReconcileStatusDiscarded": "已放弃"
 }

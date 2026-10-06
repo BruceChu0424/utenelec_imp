@@ -2,7 +2,8 @@
 //
 // 2026-10-05 证件核对(identity)：列 工号/姓名/原因(红字，服务端原话，紧跟姓名，
 // 表格单行省略+悬停看全文，窄屏卡片折行完整显示)/部门/岗位/入职日/认领，
-// 没有天数、区间两列，也不开多选；行菜单「修改证件信息」(他人处理中不显示)。本页路由守卫
+// 没有天数、区间两列；开多选「批量核对(N)」进 /hr/tasks/reconcile 员工资料核对更正页(ADR-160)，
+// 被他人认领的行不可勾选(勾选位换成锁)；行菜单「修改证件信息」(他人处理中不显示)。本页路由守卫
 // 要求 employee:pii:edit，服务端也只把证件核对条目下发给能修改证件的人。
 //
 // 2026-09-17 庆典类页面新增「自动发送祝福」开关（V600 口径）：默认关——祝福由
@@ -21,6 +22,8 @@
 //     跳过并计入失败（后端 confirm 无认领守卫）；门控 employee:confirm + employee:edit；
 //   * 生日/周年 →「批量送祝福(N)」：publishCelebrationBatch(今日∩未祝福的选中人)，
 //     门控 notice:publish；
+//   * 证件核对 →「批量核对(N)」：进 /hr/tasks/reconcile 员工资料核对更正页(ADR-160)，
+//     他人认领行不可勾选(锁)；门控与该页路由守卫同源(locationAllowedFor)。
 //   * 新近入职 → 无批量动作（无可批量的状态动作），故不开多选。
 //   批量后 hrTaskSummaryProvider.reloadSilently() 同步工作台/部门徽标。
 // 窄屏（compact）保留卡片 + HrTaskTile（移动端手感，与其他任务中心一致）。
@@ -44,6 +47,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -149,6 +153,13 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
     // 批量登记转正只走 confirm（后端覆盖试用期转正与在职未登记补登，无 PUT 回退）。
     final canBatchConfirm = perms.contains(Perm.employeeConfirm);
+    // 证件核对「批量核对」入口与 /hr/tasks/reconcile 路由守卫同源(ADR-160)：能改
+    // 档案或能改证件的人可进；页内不散落新的 Perm 字面量(权限基线只降不升)。
+    final canReconcile = locationAllowedFor(
+      perms,
+      isSuperAdmin,
+      RouteName.hrReconcile,
+    );
 
     Widget body = async.when(
       loading: () => const UtenSkeletonList(itemCount: 6),
@@ -194,6 +205,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                   toBless,
                   canPublish: canPublish,
                   canBatchConfirm: canBatchConfirm,
+                  canReconcile: canReconcile,
                 ),
               ),
             ],
@@ -230,11 +242,13 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     List<HrTaskItem> toBless, {
     required bool canPublish,
     required bool canBatchConfirm,
+    required bool canReconcile,
   }) {
     final showBatch = switch (_type) {
       HrTaskType.confirm => canBatchConfirm,
       HrTaskType.birthday || HrTaskType.anniversary => canPublish,
-      HrTaskType.newhire || HrTaskType.identity => false,
+      HrTaskType.identity => canReconcile,
+      HrTaskType.newhire => false,
     };
     return Column(
       children: [
@@ -255,7 +269,27 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             filters: _filters,
             onFilterChanged: _onFilterChanged,
             selectable: showBatch,
-            idOf: (item) => item.employeeId,
+            // 证件核对：被他人认领的行不可勾选(勾选位换成锁)，防止进批量核对后
+            // 撞别人的处理；其余类型保持全员可勾选(批量动作各自兜底跳过)。
+            idOf: (item) => _type == HrTaskType.identity && item.claimedByOther
+                ? null
+                : item.employeeId,
+            // idOf 会返回 null 的混合队列仍要有稳定行键(否则回落下标键)。
+            rowKeyOf: (item) => item.employeeId,
+            // 该 builder 只对「selectable 且 idOf 返回 null」的行渲染，即只有
+            // 证件核对被他人认领的行会真的画出来；其余分支返回 shrink 兜底
+            // (对可勾选行表格仍画复选框，不会用到这里的返回值)。
+            unselectableLeadingBuilder: (context, item) =>
+                _type == HrTaskType.identity && item.claimedByOther
+                ? Tooltip(
+                    message: '${item.claimedByName} 处理中',
+                    child: Icon(
+                      Icons.lock_outline_rounded,
+                      size: 20,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : const SizedBox.shrink(),
             selectedIds: _selectedIds,
             onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
             batchActionsBuilder: showBatch
@@ -653,8 +687,38 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           child: Text('批量送祝福(${selectedIds.length})'),
         ),
       ],
-      HrTaskType.newhire || HrTaskType.identity => const <Widget>[],
+      HrTaskType.identity => [
+        UtenButton(
+          key: const Key('hr-task-batch-identity-review'),
+          type: UtenButtonType.danger,
+          size: UtenButtonSize.large,
+          icon: Icons.fact_check_outlined,
+          onPressed: enabled
+              ? () => _openIdentityReconcile(Set<String>.of(selectedIds))
+              : null,
+          onDisabledTap: _hintSelectFirst,
+          child: Text('批量核对(${selectedIds.length})'),
+        ),
+      ],
+      HrTaskType.newhire => const <Widget>[],
     };
+  }
+
+  /// 未勾选时点「批量核对」的引导提示。
+  void _hintSelectFirst() => context.appWarning('请先勾选要核对的员工');
+
+  /// 批量核对：带着勾选的员工进核对更正页(ADR-160)。页内保存成功后 pop(true)，
+  /// 返回本页清空勾选并静默重取(已核对的条目随之消失，徽标同步)。
+  Future<void> _openIdentityReconcile(Set<String> ids) async {
+    final changed = await context.push<bool>(
+      RoutePath.hrReconcile(
+        employeeIds: ids.toList()..sort(),
+        returnTo: RouteName.hrTaskList(HrTaskType.identity.taskType),
+      ),
+    );
+    if (!mounted || changed != true) return;
+    setState(() => _selectedIds = {});
+    await ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
   }
 
   /// 批量登记转正：一次选日期，逐人 confirm。

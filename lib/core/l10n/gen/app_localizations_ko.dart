@@ -9528,4 +9528,218 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get aiSettingsThinkingAnthropic =>
       'Anthropic effort 방식(Opus 4.5 / Sonnet 4.6 이상)';
+
+  @override
+  String get hrReconcileTitle => '직원 자료 대조 수정';
+
+  @override
+  String get hrReconcileRecords => '대조 기록';
+
+  @override
+  String get hrReconcileRefresh => '새로 고침';
+
+  @override
+  String get hrReconcileRetry => '다시 시도';
+
+  @override
+  String get hrReconcileGenerating => '대조 계획 생성 중…';
+
+  @override
+  String get hrReconcileApplying => '직원 자료 수정 중…';
+
+  @override
+  String get hrReconcileEmptyEntry => '「신분증 확인」 페이지에서 직원을 선택한 뒤 들어오세요';
+
+  @override
+  String get hrReconcilePlanEmpty => '이 대조에 처리할 직원이 없습니다';
+
+  @override
+  String hrReconcileReadOnlyNotice(String name) {
+    return '$name 님의 대조입니다. 읽기 전용입니다.';
+  }
+
+  @override
+  String hrReconcileSummary(
+    int people,
+    int update,
+    int info,
+    int same,
+    int applied,
+  ) {
+    return '총 $people명 · 수정 $update · 안내만 $info · 일치 $same · 처리됨 $applied';
+  }
+
+  @override
+  String get hrReconcileValidity => '24시간 동안 유효하며, 실행하지 않은 변경은 자동으로 삭제됩니다';
+
+  @override
+  String get hrReconcileExpiredTitle => '이 대조는 24시간이 지나 실행하지 않은 내용이 삭제되었습니다';
+
+  @override
+  String get hrReconcileExpiredRetry => '다시 대조';
+
+  @override
+  String get hrReconcileBack => '돌아가기';
+
+  @override
+  String hrReconcileLockTooltip(String name) {
+    return '$name 님이 처리 중';
+  }
+
+  @override
+  String hrReconcileApplyButton(int people, int items) {
+    return '$people명 $items건 수정 확인';
+  }
+
+  @override
+  String get hrReconcileApplyHintFirst => '먼저 직원을 선택하고 새 번호를 확인해 주세요';
+
+  @override
+  String get hrReconcileConfirmTitle => '직원 자료 수정 확인';
+
+  @override
+  String get hrReconcileConfirmButton => '수정 실행';
+
+  @override
+  String hrReconcileConfirmBodyPeople(int people, int items) {
+    return '$people명의 신분증 번호 $items건을 수정합니다';
+  }
+
+  @override
+  String get hrReconcileConfirmBodyDerived => '성별과 생년월일은 새 신분증 번호에 따라 자동 수정됩니다';
+
+  @override
+  String get hrReconcileConfirmBodyPassword => '확인을 위해 로그인 비밀번호가 필요합니다';
+
+  @override
+  String hrReconcileConfirmBodySkipped(int people) {
+    return '새 번호가 없는 $people명은 이번에 수정하지 않습니다';
+  }
+
+  @override
+  String get hrReconcileLeaveTitle => '변경 사항을 버리시겠습니까?';
+
+  @override
+  String get hrReconcileLeaveBody => '계획은 24시간 보관되며, 대조 기록에서 이어서 할 수 있습니다';
+
+  @override
+  String get hrReconcileLeaveConfirm => '버리기';
+
+  @override
+  String get hrReconcileLeaveCancel => '계속 편집';
+
+  @override
+  String get hrReconcilePlanChanged => '이 대조가 갱신되어 최신 내용을 다시 불러왔습니다';
+
+  @override
+  String get hrReconcilePlanBusyConflict => '이전 수정이 실행 중입니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get hrReconcileGenerateFailed => '대조 계획 생성에 실패했습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get hrReconcileLoadFailed => '대조 계획을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get hrReconcileApplyFailed => '수정이 완료되지 않았습니다. 잠시 후 다시 시도해 주세요';
+
+  @override
+  String get hrReconcileIdEmpty => '(없음)';
+
+  @override
+  String get hrReconcileColKind => '유형';
+
+  @override
+  String get hrReconcileColCode => '사번';
+
+  @override
+  String get hrReconcileColName => '이름';
+
+  @override
+  String get hrReconcileColDept => '부서';
+
+  @override
+  String get hrReconcileColReason => '사유';
+
+  @override
+  String get hrReconcileColIdNumber => '신분증 번호';
+
+  @override
+  String get hrReconcileColBasis => '근거';
+
+  @override
+  String get hrReconcileColTier => '확신도';
+
+  @override
+  String get hrReconcileColNotes => '설명/결과';
+
+  @override
+  String get hrReconcileKindUpdate => '수정';
+
+  @override
+  String get hrReconcileKindInfo => '안내만';
+
+  @override
+  String get hrReconcileKindSame => '일치';
+
+  @override
+  String get hrReconcileTierHigh => '높음';
+
+  @override
+  String get hrReconcileTierMedium => '중간';
+
+  @override
+  String get hrReconcileTierManual => '수동';
+
+  @override
+  String get hrReconcileTierNone => '후보 없음';
+
+  @override
+  String get hrReconcileResultApplied => '수정됨';
+
+  @override
+  String get hrReconcileResultPartial => '일부 수정';
+
+  @override
+  String get hrReconcileResultSkipped => '건너뜀';
+
+  @override
+  String get hrReconcileResultFailed => '실패';
+
+  @override
+  String get hrReconcileAdopt => '채택';
+
+  @override
+  String get hrReconcileUnadopt => '채택됨, 눌러서 취소';
+
+  @override
+  String hrReconcileSuspectHint(String positions) {
+    return '오류 가능 위치: $positions번 자리, 증서와 대조해 주세요';
+  }
+
+  @override
+  String get hrReconcileManualHint => '새 신분증 번호 직접 입력';
+
+  @override
+  String get hrReconcileRecordsTitle => '대조 기록';
+
+  @override
+  String get hrReconcileRecordsEmpty => '아직 대조 기록이 없습니다';
+
+  @override
+  String hrReconcileRecordCount(int people) {
+    return '총 $people명';
+  }
+
+  @override
+  String get hrReconcileStatusOpen => '진행 중';
+
+  @override
+  String get hrReconcileStatusClosed => '완료';
+
+  @override
+  String get hrReconcileStatusExpired => '만료';
+
+  @override
+  String get hrReconcileStatusDiscarded => '폐기';
 }

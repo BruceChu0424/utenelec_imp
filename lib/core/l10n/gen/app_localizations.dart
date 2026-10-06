@@ -17127,6 +17127,396 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'Anthropic effort 写法(Opus 4.5 / Sonnet 4.6 及以上)'**
   String get aiSettingsThinkingAnthropic;
+
+  /// No description provided for @hrReconcileTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'员工资料核对更正'**
+  String get hrReconcileTitle;
+
+  /// No description provided for @hrReconcileRecords.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对记录'**
+  String get hrReconcileRecords;
+
+  /// No description provided for @hrReconcileRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新'**
+  String get hrReconcileRefresh;
+
+  /// No description provided for @hrReconcileRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重试'**
+  String get hrReconcileRetry;
+
+  /// No description provided for @hrReconcileGenerating.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在生成核对计划…'**
+  String get hrReconcileGenerating;
+
+  /// No description provided for @hrReconcileApplying.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在更正员工资料…'**
+  String get hrReconcileApplying;
+
+  /// No description provided for @hrReconcileEmptyEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'请从「证件核对」页勾选员工后进入'**
+  String get hrReconcileEmptyEntry;
+
+  /// No description provided for @hrReconcilePlanEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'这份核对没有需要处理的员工'**
+  String get hrReconcilePlanEmpty;
+
+  /// No description provided for @hrReconcileReadOnlyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'这是 {name} 的核对，只能查看'**
+  String hrReconcileReadOnlyNotice(String name);
+
+  /// No description provided for @hrReconcileSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'共 {people} 人 · 需更正 {update} · 仅提示 {info} · 一致 {same} · 已处理 {applied}'**
+  String hrReconcileSummary(
+    int people,
+    int update,
+    int info,
+    int same,
+    int applied,
+  );
+
+  /// No description provided for @hrReconcileValidity.
+  ///
+  /// In zh, this message translates to:
+  /// **'24 小时内有效，超时未执行的改动自动清除'**
+  String get hrReconcileValidity;
+
+  /// No description provided for @hrReconcileExpiredTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'这份核对已超过 24 小时，未执行的内容已清除'**
+  String get hrReconcileExpiredTitle;
+
+  /// No description provided for @hrReconcileExpiredRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新核对'**
+  String get hrReconcileExpiredRetry;
+
+  /// No description provided for @hrReconcileBack.
+  ///
+  /// In zh, this message translates to:
+  /// **'返回'**
+  String get hrReconcileBack;
+
+  /// No description provided for @hrReconcileLockTooltip.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 处理中'**
+  String hrReconcileLockTooltip(String name);
+
+  /// No description provided for @hrReconcileApplyButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认更正 {people} 人 {items} 处'**
+  String hrReconcileApplyButton(int people, int items);
+
+  /// No description provided for @hrReconcileApplyHintFirst.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先勾选并确认要更正的员工'**
+  String get hrReconcileApplyHintFirst;
+
+  /// No description provided for @hrReconcileConfirmTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认更正员工资料'**
+  String get hrReconcileConfirmTitle;
+
+  /// No description provided for @hrReconcileConfirmButton.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认更正'**
+  String get hrReconcileConfirmButton;
+
+  /// No description provided for @hrReconcileConfirmBodyPeople.
+  ///
+  /// In zh, this message translates to:
+  /// **'将更正 {people} 人共 {items} 处证件号码'**
+  String hrReconcileConfirmBodyPeople(int people, int items);
+
+  /// No description provided for @hrReconcileConfirmBodyDerived.
+  ///
+  /// In zh, this message translates to:
+  /// **'性别与出生日期将按新证件号自动更正'**
+  String get hrReconcileConfirmBodyDerived;
+
+  /// No description provided for @hrReconcileConfirmBodyPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要输入登录密码确认'**
+  String get hrReconcileConfirmBodyPassword;
+
+  /// No description provided for @hrReconcileConfirmBodySkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'{people} 人未给出新号码，本次不改'**
+  String hrReconcileConfirmBodySkipped(int people);
+
+  /// No description provided for @hrReconcileLeaveTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'放弃这些改动吗？'**
+  String get hrReconcileLeaveTitle;
+
+  /// No description provided for @hrReconcileLeaveBody.
+  ///
+  /// In zh, this message translates to:
+  /// **'计划会保留 24 小时，可从「核对记录」回来继续'**
+  String get hrReconcileLeaveBody;
+
+  /// No description provided for @hrReconcileLeaveConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'放弃'**
+  String get hrReconcileLeaveConfirm;
+
+  /// No description provided for @hrReconcileLeaveCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'继续编辑'**
+  String get hrReconcileLeaveCancel;
+
+  /// No description provided for @hrReconcilePlanChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'这份核对已被更新，已重新加载最新内容'**
+  String get hrReconcilePlanChanged;
+
+  /// No description provided for @hrReconcilePlanBusyConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在执行上一次更正，请稍候再试'**
+  String get hrReconcilePlanBusyConflict;
+
+  /// No description provided for @hrReconcileGenerateFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'生成核对计划失败，请稍后重试'**
+  String get hrReconcileGenerateFailed;
+
+  /// No description provided for @hrReconcileLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载核对计划失败，请稍后重试'**
+  String get hrReconcileLoadFailed;
+
+  /// No description provided for @hrReconcileApplyFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更正没有完成，请稍后重试'**
+  String get hrReconcileApplyFailed;
+
+  /// No description provided for @hrReconcileIdEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'（空）'**
+  String get hrReconcileIdEmpty;
+
+  /// No description provided for @hrReconcileColKind.
+  ///
+  /// In zh, this message translates to:
+  /// **'类型'**
+  String get hrReconcileColKind;
+
+  /// No description provided for @hrReconcileColCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'工号'**
+  String get hrReconcileColCode;
+
+  /// No description provided for @hrReconcileColName.
+  ///
+  /// In zh, this message translates to:
+  /// **'姓名'**
+  String get hrReconcileColName;
+
+  /// No description provided for @hrReconcileColDept.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门'**
+  String get hrReconcileColDept;
+
+  /// No description provided for @hrReconcileColReason.
+  ///
+  /// In zh, this message translates to:
+  /// **'原因'**
+  String get hrReconcileColReason;
+
+  /// No description provided for @hrReconcileColIdNumber.
+  ///
+  /// In zh, this message translates to:
+  /// **'证件号码'**
+  String get hrReconcileColIdNumber;
+
+  /// No description provided for @hrReconcileColBasis.
+  ///
+  /// In zh, this message translates to:
+  /// **'依据'**
+  String get hrReconcileColBasis;
+
+  /// No description provided for @hrReconcileColTier.
+  ///
+  /// In zh, this message translates to:
+  /// **'把握'**
+  String get hrReconcileColTier;
+
+  /// No description provided for @hrReconcileColNotes.
+  ///
+  /// In zh, this message translates to:
+  /// **'说明/结果'**
+  String get hrReconcileColNotes;
+
+  /// No description provided for @hrReconcileKindUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改'**
+  String get hrReconcileKindUpdate;
+
+  /// No description provided for @hrReconcileKindInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅提示'**
+  String get hrReconcileKindInfo;
+
+  /// No description provided for @hrReconcileKindSame.
+  ///
+  /// In zh, this message translates to:
+  /// **'一致'**
+  String get hrReconcileKindSame;
+
+  /// No description provided for @hrReconcileTierHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'高'**
+  String get hrReconcileTierHigh;
+
+  /// No description provided for @hrReconcileTierMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'中'**
+  String get hrReconcileTierMedium;
+
+  /// No description provided for @hrReconcileTierManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'需人工'**
+  String get hrReconcileTierManual;
+
+  /// No description provided for @hrReconcileTierNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'无候选'**
+  String get hrReconcileTierNone;
+
+  /// No description provided for @hrReconcileResultApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已更正'**
+  String get hrReconcileResultApplied;
+
+  /// No description provided for @hrReconcileResultPartial.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分更正'**
+  String get hrReconcileResultPartial;
+
+  /// No description provided for @hrReconcileResultSkipped.
+  ///
+  /// In zh, this message translates to:
+  /// **'已跳过'**
+  String get hrReconcileResultSkipped;
+
+  /// No description provided for @hrReconcileResultFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败'**
+  String get hrReconcileResultFailed;
+
+  /// No description provided for @hrReconcileAdopt.
+  ///
+  /// In zh, this message translates to:
+  /// **'采用'**
+  String get hrReconcileAdopt;
+
+  /// No description provided for @hrReconcileUnadopt.
+  ///
+  /// In zh, this message translates to:
+  /// **'已采用，点击撤销'**
+  String get hrReconcileUnadopt;
+
+  /// No description provided for @hrReconcileSuspectHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'可能出错的位置：第 {positions} 位，请对照证件'**
+  String hrReconcileSuspectHint(String positions);
+
+  /// No description provided for @hrReconcileManualHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动输入新证件号码'**
+  String get hrReconcileManualHint;
+
+  /// No description provided for @hrReconcileRecordsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'核对记录'**
+  String get hrReconcileRecordsTitle;
+
+  /// No description provided for @hrReconcileRecordsEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没有核对记录'**
+  String get hrReconcileRecordsEmpty;
+
+  /// No description provided for @hrReconcileRecordCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'共 {people} 人'**
+  String hrReconcileRecordCount(int people);
+
+  /// No description provided for @hrReconcileStatusOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'进行中'**
+  String get hrReconcileStatusOpen;
+
+  /// No description provided for @hrReconcileStatusClosed.
+  ///
+  /// In zh, this message translates to:
+  /// **'已完成'**
+  String get hrReconcileStatusClosed;
+
+  /// No description provided for @hrReconcileStatusExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'已过期'**
+  String get hrReconcileStatusExpired;
+
+  /// No description provided for @hrReconcileStatusDiscarded.
+  ///
+  /// In zh, this message translates to:
+  /// **'已放弃'**
+  String get hrReconcileStatusDiscarded;
 }
 
 class _AppLocalizationsDelegate

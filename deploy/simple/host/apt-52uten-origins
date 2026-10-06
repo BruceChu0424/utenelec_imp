@@ -1,0 +1,4 @@
+// 让 Tailscale 也走无人值守升级 (默认只升 Ubuntu 安全源)。
+// 安装为 /etc/apt/apt.conf.d/52uten-origins (root 0644); 先用 apt-cache policy tailscale 核对 site 值,
+// 再用 unattended-upgrade --dry-run -d 2>&1 | grep -i tailscale 确认能匹配。
+Unattended-Upgrade::Origins-Pattern { "site=pkgs.tailscale.com"; };

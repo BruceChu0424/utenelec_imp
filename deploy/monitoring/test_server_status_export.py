@@ -10,10 +10,15 @@ from server_status_export import main, publish, read_report, summarize, summariz
 
 
 class ServerStatusExportTest(unittest.TestCase):
-    def paired(self, status="SUCCESS"):
-        return {"format": "uten-paired-backup-attempt-v1", "status": status,
-                "startedAt": "2026-09-08T03:40:00Z", "completedAt": "2026-09-08T03:45:00Z",
-                "lastSuccessAt": "2026-09-08T03:44:59Z"}
+    def paired(self, status="SUCCESS", cleanup="APPLIED", **retention):
+        record = {"format": "uten-paired-backup-attempt-v1", "status": status,
+                  "startedAt": "2026-09-08T03:40:00Z", "completedAt": "2026-09-08T03:45:00Z",
+                  "lastSuccessAt": "2026-09-08T03:44:59Z"}
+        if status == "SUCCESS":
+            record["retention"] = {"status": cleanup, "retentionDays": 3, "completeSets": 6, "removedSets": 1,
+                                   "removedUnpublished": 0, "failedDeletes": 0, "unrecognizedEntries": 0,
+                                   "freedBytes": 1024, **retention}
+        return record
 
     def observed(self):
         return datetime(2026, 9, 8, 16, 1, tzinfo=timezone.utc)
@@ -107,6 +112,48 @@ class ServerStatusExportTest(unittest.TestCase):
             with self.subTest(state=state):
                 result = summarize_pair(summarize(self.report()), state, self.observed())
                 self.assertEqual(result["lastAttemptStatus"], "UNKNOWN")
+
+    def test_success_without_proven_retention_is_a_failed_check_not_green(self):
+        no_evidence = self.paired()
+        del no_evidence["retention"]  # The pre-retention v1 script writes exactly this.
+        cases = {
+            "PAIRED_RETENTION_UNPROVEN": [
+                no_evidence, {**self.paired(), "retention": "APPLIED"},
+                self.paired(cleanup="PENDING"),  # Completed 12h ago: the cleanup never reported back.
+                self.paired(cleanup="DONE"), self.paired(retentionDays=True), self.paired(retentionDays=0),
+                self.paired(retentionDays=366), self.paired(completeSets="6"), self.paired(failedDeletes=-1),
+                self.paired(unrecognizedEntries=None)],
+            "PAIRED_RETENTION_NOT_APPLIED": [
+                self.paired(cleanup="SKIPPED"), self.paired(cleanup="FAILED"), self.paired(failedDeletes=1),
+                self.paired(unrecognizedEntries=2), self.paired(completeSets=0), self.paired(completeSets=13)]}
+        for reason, states in cases.items():
+            for state in states:
+                with self.subTest(reason=reason, retention=state.get("retention")):
+                    result = summarize_pair(summarize(self.report()), state, self.observed())
+                    self.assertEqual(result["lastAttemptStatus"], "CHECK_FAILED")
+                    self.assertEqual(result["reason"], reason)
+                    # The backup itself did succeed; its time is still shown next to the red state.
+                    self.assertEqual(result["lastSuccessAt"], "2026-09-08T03:44:59+00:00")
+        # Retention trouble stays visible even while the PG health feed is stale.
+        stale = summarize_pair(summarize(self.report()), self.paired(cleanup="SKIPPED"),
+                               datetime(2026, 9, 8, 17, tzinfo=timezone.utc))
+        self.assertEqual((stale["lastAttemptStatus"], stale["reason"]), ("CHECK_FAILED", "PAIRED_RETENTION_NOT_APPLIED"))
+
+    def test_applied_retention_within_bounds_stays_green(self):
+        # 3 days x 2 runs a day = 6 normally; up to 12 tolerates manual extra runs.
+        for sets in (1, 6, 12):
+            with self.subTest(sets=sets):
+                result = summarize_pair(summarize(self.report()), self.paired(completeSets=sets), self.observed())
+                self.assertEqual((result["lastAttemptStatus"], result["reason"]), ("SUCCESS", "PG_AND_PAIRED_VERIFIED"))
+
+    def test_cleanup_still_running_right_after_success_is_unknown_not_red(self):
+        paired = self.paired(cleanup="PENDING")
+        paired.update(startedAt="2026-09-08T15:55:00Z", completedAt="2026-09-08T15:59:00Z",
+                      lastSuccessAt="2026-09-08T15:58:59Z")
+        result = summarize_pair(summarize(self.report()), paired, self.observed())
+        self.assertEqual((result["lastAttemptStatus"], result["reason"]), ("UNKNOWN", "PAIRED_RETENTION_RUNNING"))
+        late = summarize_pair(summarize(self.report()), paired, datetime(2026, 9, 8, 16, 35, tzinfo=timezone.utc))
+        self.assertEqual((late["lastAttemptStatus"], late["reason"]), ("CHECK_FAILED", "PAIRED_RETENTION_UNPROVEN"))
 
     def test_pg_health_failure_is_not_labeled_as_a_failed_backup_task(self):
         previous = summarize(self.report())

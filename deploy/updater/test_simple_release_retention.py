@@ -21,22 +21,22 @@ def bash_path():
 
 
 class SimpleReleaseRetentionTest(unittest.TestCase):
-    def run_functions(self, releases, command, active="", keep="2", actual=None):
+    def run_functions(self, releases, command, active="", keep="2", actual=None, logger="log() { :; }"):
         source = SCRIPT.read_text(encoding="utf-8")
         functions = "\n".join(
             re.search(r"(?ms)^" + name + r"\(\) \{.*?^\}", source).group(0)
-            for name in ("release_versions", "prune_old", "do_status")
+            for name in ("release_versions", "report_unrecognized_releases", "prune_old", "do_status")
         )
         env = dict(os.environ, RELEASES_DIR=str(releases), UTEN_BASE=str(releases),
                    UTEN_KEEP_RELEASES=keep, TEST_ACTIVE=active,
                    TEST_LINK_ACTIVE=active if actual is None else actual)
         result = subprocess.run(
-            [bash_path(), "-c", 'set -euo pipefail\nlog() { :; }\n'
+            [bash_path(), "-c", 'set -euo pipefail\n' + logger + '\n'
              'current_version() { printf "%s" "$TEST_ACTIVE"; }\n'
              'current_link_version() { printf "%s" "$TEST_LINK_ACTIVE"; }\n'
              'oss_get() { printf "%s" "$TEST_ACTIVE"; }\nhealth_ok() { return 0; }\n'
              + functions + "\n" + command],
-            env=env, capture_output=True, text=True, check=True)
+            env=env, capture_output=True, text=True, encoding="utf-8", check=True)
         return result.stdout.strip().splitlines()
 
     def test_lists_real_versions_and_ignores_unrecognized_directories(self):
@@ -71,6 +71,21 @@ class SimpleReleaseRetentionTest(unittest.TestCase):
     def test_empty_release_directory_is_safe(self):
         with tempfile.TemporaryDirectory(prefix="uten-release-retention-") as temp:
             self.assertEqual(self.run_functions(Path(temp), "release_versions; prune_old"), [])
+
+    def test_unrecognized_entries_are_named_in_the_log_and_never_deleted(self):
+        with tempfile.TemporaryDirectory(prefix="uten-release-retention-") as temp:
+            root = Path(temp)
+            for name in ("v1.31.0", "v1.32.0", "v1.33.0", "v2026.09.09-1", "releases.old"):
+                (root / name).mkdir()
+            (root / "notes.txt").write_text("manual")
+            (root / ".stage-v1.34.0.AbC123").mkdir()
+            lines = self.run_functions(root, "prune_old", active="v1.33.0",
+                                       logger='log() { printf "%s\\n" "$*"; }')
+            named = [line for line in lines if "notes.txt" in line or "v2026" in line or "releases.old" in line]
+            self.assertEqual(3, len(named), lines)
+            self.assertFalse(any(".stage-" in line for line in lines))
+            self.assertEqual({"v1.32.0", "v1.33.0", "v2026.09.09-1", "releases.old", "notes.txt",
+                              ".stage-v1.34.0.AbC123"}, {p.name for p in root.iterdir()})
 
     def test_invalid_retention_or_inconsistent_current_preserves_all_versions(self):
         for keep, actual in (("0", None), ("-1", None), ("invalid", None), ("2", "v1.33.0")):

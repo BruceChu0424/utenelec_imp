@@ -184,7 +184,7 @@ class EvidenceValidationTest(unittest.TestCase):
         for mutate in ("repo2", "worm", "alert", "pitr"):
             value = backup_acceptance()
             if mutate == "repo2":
-                value["repositories"][1]["successfulFullRestorePoints"] = 6
+                value["repositories"][1]["successfulFullRestorePoints"] = 2
             elif mutate == "worm":
                 value["wormEvidence"]["versioningEnabled"] = False
             elif mutate == "alert":
@@ -193,6 +193,19 @@ class EvidenceValidationTest(unittest.TestCase):
                 value["isolatedPitrEvidence"]["checks"].pop("finance")
             with self.assertRaises(commissioner.CommissionerError):
                 commissioner._validate_backup_acceptance(value)
+
+    def test_backup_acceptance_floor_is_three_restore_points(self):
+        # ADR-157 (2026-10-06): every server backup keeps 3 days = 3 daily full restore points.
+        self.assertEqual(3, commissioner.MINIMUM_RESTORE_POINTS)
+        value = backup_acceptance()
+        for repository in value["repositories"]:
+            repository["restorePoints"] = repository["restorePoints"][-3:]
+            repository["successfulFullRestorePoints"] = 3
+        validated = commissioner._validate_backup_acceptance(value)
+        self.assertEqual({"repo1": 3, "repo2": 3}, validated["restorePointCounts"])
+        value["repositories"][0]["restorePoints"] = value["repositories"][0]["restorePoints"][-2:]
+        with self.assertRaisesRegex(commissioner.CommissionerError, "repo1 lacks 3 successful restore points"):
+            commissioner._validate_backup_acceptance(value)
 
     def test_assess_is_read_only_and_never_creates_state(self):
         assessment = {"kind": "safe"}

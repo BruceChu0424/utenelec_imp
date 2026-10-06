@@ -1,0 +1,16 @@
+# 登录日志单独保留 26 周 (取证用; journal 只留 30 天, 因为 journal 里曾出现过密钥)。
+# 安装为 /etc/logrotate.d/uten-auth (root 0644), 并从 /etc/logrotate.d/rsyslog 的列表里删掉
+# /var/log/auth.log 这一行, 否则 logrotate 会报 duplicate。
+/var/log/auth.log
+{
+    rotate 26
+    weekly
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        /usr/lib/rsyslog/rsyslog-rotate
+    endscript
+}

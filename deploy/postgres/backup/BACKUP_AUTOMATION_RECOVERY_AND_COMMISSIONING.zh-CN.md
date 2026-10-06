@@ -84,7 +84,7 @@ uncommissioned receipt。最终成功才另写：
 
 `/var/lib/uten-imp-backup/acceptance-receipts/commissioning-backup-acceptance.json`
 
-它必须在 24 小时内，且已绑定双仓各至少 7 个成功 full、连续 WAL、一致的最新 WAL、有效 WORM、
+它必须在 24 小时内，且已绑定双仓各至少 3 个成功 full、连续 WAL、一致的最新 WAL、有效 WORM、
 active repo2 preflight、真实 provider alert receipt、隔离 repo2 PITR、七类业务 PASS 与签名 Flyway 身份。
 
 容量证据固定为：
@@ -165,6 +165,6 @@ PostgreSQL 或 `/data` mount。
 - timer Persistent catch-up、PG 慢起、断网、SIGKILL、OOM、12 小时 timeout、掉电各 phase；
 - repo1/repo2 full 提交边界、inventory 判定、expire-only reconcile、容量打满且不重复 full；
 - alert-drain sender/provider receipt 与值班实际到达；
-- 真实 RAID/SMART、`/data` quota、WORM、连续 WAL、7 个成功恢复点和隔离 PITR/UAT。
+- 真实 RAID/SMART、`/data` quota、WORM、连续 WAL、3 个成功恢复点和隔离 PITR/UAT。
 
 上述证据未通过前，四个 timer 必须保持 disabled/inactive。

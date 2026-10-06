@@ -1,0 +1,19 @@
+# pgBackRest repo2: 本机 NVMe 加密仓 (ADR-157)。和数据库所在的 /data 机械盘阵列不在同一块盘。
+# 安装为 /etc/pgbackrest/conf.d/20-uten-imp-repo2.conf, root:postgres 0640。
+# pgBackRest 默认读取 /etc/pgbackrest/conf.d/*.conf; 装好后 `sudo -u postgres pgbackrest info`
+# 必须列出 repo2, 列不出来就把下面几行改写进 /etc/pgbackrest.conf 的 [global] (权限同上)。
+#
+# 编号约定: repo1 = /data/backups/pgbackrest (现有), repo2 = 本文件, repo3 = 异地 OSS (待建, 治理记录 D6)。
+# 旧文档 deploy/postgres/backup/README.zh-CN.md 里 "repo2=OSS" 的编号已作废。
+#
+# 口令: 下面的 REPLACE 行不要手工填。在服务器上用一条命令直接生成并写入正式文件 (口令只经过管道,
+# 不进命令行参数、不落临时文件), 见 RUNBOOK「备份布局与保留」; 生成后立即重做离线托管件,
+# 丢了这个口令 repo2 里的备份就再也解不开。
+[global]
+repo2-path=/srv/uten-backup/pgbackrest
+repo2-retention-full-type=count
+# 2026-10-06 口径: 服务器上所有备份只留 3 天 (每天一份全量 = 3 份); repo1 同样改为 3
+repo2-retention-full=3
+repo2-bundle=y
+repo2-cipher-type=aes-256-cbc
+repo2-cipher-pass=REPLACE_GENERATED_ON_THE_SERVER_NEVER_COMMIT

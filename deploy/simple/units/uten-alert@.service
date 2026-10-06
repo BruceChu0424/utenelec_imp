@@ -1,0 +1,28 @@
+# 告警发送单元: 其他单元 OnFailure=uten-alert@%n.service 时由 systemd 拉起, %i 为出事的单元名。
+# 安装为 /etc/systemd/system/uten-alert@.service, 脚本见 deploy/simple/host/uten-alert.sh。
+# 告警通道 (群机器人 webhook) 由用户决定 (治理记录 D1); 未接入前不安装本单元,
+# 各单元的 OnFailure= 只会在 journal 里记一行 "unit not found", 不影响本身运行。
+[Unit]
+Description=ERP server alert %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/uten-alert %i
+StateDirectory=uten-alert
+StateDirectoryMode=0700
+UMask=0077
+TimeoutStartSec=60
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH

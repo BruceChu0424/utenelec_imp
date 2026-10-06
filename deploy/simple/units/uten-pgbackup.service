@@ -1,0 +1,51 @@
+# 每日 pgBackRest 全量备份: repo1 (/data 机械盘阵列) + repo2 (本机 NVMe 备份卷, aes-256-cbc 加密)
+# 安装为 /etc/systemd/system/uten-pgbackup.service (整文件替换 2026-08-11 的两行简版, ADR-157)
+# 保留: repo1-retention-full=3 / repo2-retention-full=3 (/etc/pgbackrest.conf 与
+#   /etc/pgbackrest/conf.d/20-uten-imp-repo2.conf), backup 结束时 pgBackRest 自动 expire,
+#   所以这里不再单独跑 expire。
+# 两个仓各跑一次: 任一仓失败不影响另一个仓照常备份, 但整个单元记为失败并触发告警。
+# 所以单元只硬依赖 repo1 所在的 /data: 备份卷 /srv/uten-backup (repo2) 坏了或没挂上时 repo1 照常备份,
+# repo2 那条命令自己报错 (rc=1, 单元 failed, 走 OnFailure)。若把 repo2 也写进 RequiresMountsFor,
+# 挂载失败会让整个单元停在 "Dependency failed": repo1 不跑, 单元也不进 failed, OnFailure 不触发。
+# repo2 卷掉了时 WAL 归档也会卡住, 处理见 RUNBOOK「备份布局与保留」。
+# 不加 PrivateTmp: pgBackRest 的锁目录 /tmp/pgbackrest 要和 PostgreSQL 的 archive-push 共用。
+[Unit]
+Description=Uten IMP daily pgBackRest full backup (repo1 /data + repo2 local NVMe, encrypted)
+# 备份卷只 Wants + After (挂得上就先挂好再备份, 挂不上不拦 repo1); 挂载单元名里的 "-" 要写成 \x2d
+# (systemd-escape -p --suffix=mount /srv/uten-backup)
+Wants=srv-uten\x2dbackup.mount
+After=postgresql@16-main.service srv-uten\x2dbackup.mount
+RequiresMountsFor=/data/backups/pgbackrest
+OnFailure=uten-alert@%n.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+UMask=0077
+ExecStart=/bin/sh -c 'rc=0; /usr/bin/pgbackrest --stanza=uten-imp --repo=1 --type=full backup || rc=1; /usr/bin/pgbackrest --stanza=uten-imp --repo=2 --type=full backup || rc=1; exit $$rc'
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+# repo2 路径带 "-": 备份卷没挂上时该路径不存在, 不能因此让整个单元 226/NAMESPACE 起不来
+ReadWritePaths=/data/backups/pgbackrest -/srv/uten-backup/pgbackrest /var/log/pgbackrest /tmp -/var/spool/pgbackrest
+ProtectHome=true
+PrivateDevices=true
+ProtectProc=invisible
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native

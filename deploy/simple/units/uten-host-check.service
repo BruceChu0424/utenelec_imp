@@ -1,0 +1,28 @@
+# 每 10 分钟只读巡检: 磁盘、RAID、关键服务、WAL 归档、备份新鲜度; 有问题调 uten-alert。
+# 安装为 /etc/systemd/system/uten-host-check.service, 脚本见 deploy/simple/host/uten-host-check.sh。
+# 与 uten-alert@.service 一起在告警通道 (D1) 定下来以后安装。
+[Unit]
+Description=ERP server read-only health check
+After=postgresql@16-main.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/uten-host-check
+StateDirectory=uten-alert
+StateDirectoryMode=0700
+UMask=0077
+TimeoutStartSec=5min
+Nice=10
+NoNewPrivileges=true
+ProtectSystem=strict
+# pgbackrest info 会碰日志目录与 /tmp 下的锁目录; 不加 PrivateTmp, 理由同 uten-pgbackup.service
+ReadWritePaths=/var/log/pgbackrest /tmp
+ProtectHome=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

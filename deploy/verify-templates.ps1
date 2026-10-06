@@ -242,6 +242,51 @@ if ([regex]::IsMatch($text.LegacyLanNginx, '(?m)^\s*server_name\s+(?:\d{1,3}\.){
     throw 'Forbidden deployment contract: legacy LAN template contains a raw server address'
 }
 
+# The LAN template is what the company server actually renders (2026-10-06, ADR-157):
+# split login rate limits, forward-secret AEAD-only TLS, HSTS, no session tickets,
+# a fixed-host HTTP redirect and the dedicated AI recognition upload location.
+# The same auth split applies to the production example below.
+# The per-IP login/refresh buckets assume one device per source IP; the public template must say so.
+Assert-Contains $text.Nginx 'NOT SUITABLE AS-IS BEHIND A SHARED NAT / VPN / CGNAT EGRESS' 'production template shared-egress warning'
+Assert-NotContains $text.Nginx 'office NAT can contain 1,000 recovering clients' 'production template stale NAT sizing claim'
+$tlsCiphers = "ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';"
+foreach ($authTemplate in @(@{ Name = 'LAN'; Text = $text.LegacyLanNginx }, @{ Name = 'production'; Text = $text.Nginx })) {
+    $authText = $authTemplate.Text
+    $authName = $authTemplate.Name
+    Assert-Contains $authText 'limit_req_zone $binary_remote_addr zone=uten_login_ip:10m rate=30r/m;' "$authName login per-IP rate"
+    Assert-Contains $authText 'limit_req_zone $binary_remote_addr zone=uten_sms_ip:10m rate=6r/m;' "$authName visitor code per-IP rate"
+    Assert-Contains $authText 'limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=10r/s;' "$authName refresh/logout per-IP rate"
+    Assert-Contains $authText 'location ~ ^/api/(?:visitor/)?auth/login$ {' "$authName login location"
+    Assert-Contains $authText 'limit_req zone=uten_login_ip burst=10 nodelay;' "$authName login burst"
+    Assert-Contains $authText 'location = /api/visitor/auth/send-code {' "$authName visitor code location"
+    Assert-Contains $authText 'limit_req zone=uten_sms_ip burst=3 nodelay;' "$authName visitor code burst"
+    Assert-Contains $authText 'location ~ ^/api/(?:visitor/)?auth/(?:refresh|logout)$ {' "$authName refresh/logout location"
+    Assert-Contains $authText 'limit_req zone=uten_auth_ip burst=50 nodelay;' "$authName refresh/logout burst"
+    Assert-Contains $authText 'limit_req_status 429;' "$authName explicit rate-limit status"
+    Assert-NotContains $authText 'rate=300r/s' "$authName former 300r/s auth flood allowance"
+    Assert-NotContains $authText 'zone=uten_auth_ip burst=2000' "$authName former auth burst of 2000"
+    Assert-NotContains $authText 'auth/(?:login|refresh|logout)' "$authName shared login/refresh rate-limit location"
+    Assert-Contains $authText 'location = /api/ai/jobs {' "$authName AI recognition upload location"
+    Assert-Contains $authText 'limit_req zone=uten_ai_jobs_ip burst=4 nodelay;' "$authName AI recognition request rate"
+    Assert-Contains $authText 'limit_conn uten_ai_jobs_conn 2;' "$authName AI recognition concurrency"
+    Assert-Contains $authText 'client_max_body_size 16m;' "$authName AI recognition body cap"
+    Assert-Regex $authText '(?m)^\s*ssl_protocols TLSv1\.2 TLSv1\.3;\s*$' "$authName TLS 1.2/1.3 only"
+    Assert-Contains $authText $tlsCiphers "$authName forward-secret AEAD TLS 1.2 ciphers"
+    Assert-Contains $authText 'ssl_session_tickets off;' "$authName TLS session tickets disabled"
+    Assert-Regex $authText '(?m)^\s*add_header Strict-Transport-Security "max-age=[1-9][0-9]*[^"]*" always;\s*$' "$authName HSTS"
+    Assert-NotContains $authText 'https://$host' "$authName redirect reflects the caller Host header"
+    if (([regex]::Matches($authText, [regex]::Escape('{'))).Count -ne
+        ([regex]::Matches($authText, [regex]::Escape('}'))).Count) {
+        throw "Nginx $authName template braces are unbalanced"
+    }
+}
+Assert-Contains $text.LegacyLanNginx 'return 308 https://__INTERNAL_DOMAIN__$request_uri;' 'LAN fixed-host HTTPS redirect'
+foreach ($locationBlock in [regex]::Matches($text.LegacyLanNginx, '(?ms)^\s*location\b[^{]*\{.*?^\s*\}')) {
+    if ($locationBlock.Value.Contains('add_header')) {
+        throw 'Forbidden deployment contract: a LAN location-level add_header drops the server-level security headers'
+    }
+}
+
 # On-prem Nginx: exact TLS boundary, loopback backend/probe, bounded imports.
 $nginx = $text.Nginx
 Assert-Contains $nginx 'server 127.0.0.1:8080;' 'loopback backend'
@@ -564,6 +609,22 @@ Assert-Contains $text.Phase1b 'ExecStart=/usr/sbin/sshd -D $SSHD_OPTS' 'audited 
 Assert-Contains $text.Phase1b 'ssh.socket is active; migrate to audited ssh.service mode first' 'ssh.socket activation refusal'
 Assert-Contains $text.Phase1b '(proc / "cmdline").read_bytes()' 'live ssh.service argv binding'
 Assert-Contains $text.Phase1b '(proc / "environ").read_bytes()' 'live ssh.service environment binding'
+# 2026-10-06 (ADR-157): key-only mode also pins cloud-init so it cannot re-enable passwords,
+# and the managed drop-in keeps every password-like method off.
+Assert-Contains $text.Phase1b 'readonly CLOUD_INIT_PWAUTH_PATH=/etc/cloud/cloud.cfg.d/99-uten-ssh-pwauth.cfg' 'cloud-init password pin path'
+Assert-Contains $text.Phase1b "printf 'ssh_pwauth: false\n'" 'cloud-init password login pinned off'
+Assert-Contains $text.Phase1b 'backup_transaction_file cloudinit "$CLOUD_INIT_PWAUTH_PATH"' 'cloud-init pin rollback preimage'
+Assert-Contains $text.Phase1b 'restore_transaction_file "$transaction_dir" cloudinit "$CLOUD_INIT_PWAUTH_PATH"' 'cloud-init pin rollback'
+Assert-Contains $text.Phase1b 'PasswordAuthentication no' 'key-only password authentication off'
+Assert-Contains $text.Phase1b 'KbdInteractiveAuthentication no' 'key-only keyboard-interactive off'
+Assert-Contains $text.Phase1b 'AuthenticationMethods publickey' 'key-only public-key method'
+# PostgreSQL: no superuser password, no logged bind parameters, no unreviewed login roles.
+Assert-Contains $text.Phase2 'log_parameter_max_length = 0' 'slow-query log never records bind parameters'
+Assert-Contains $text.Phase2 'log_parameter_max_length_on_error = 0' 'error log never records bind parameters'
+Assert-Contains $text.Phase2 'ALTER ROLE postgres PASSWORD NULL;' 'postgres superuser peer-only'
+Assert-NotContains $text.Phase2 "'postgres', :'admin_password'" 'postgres superuser password'
+Assert-Contains $text.RoleHardener "verify_cluster_login_surface 'preflight'" 'existing-cluster login surface preflight'
+Assert-Contains $text.RoleHardener "verify_cluster_login_surface 'post-change'" 'existing-cluster login surface postcondition'
 Assert-Contains $text.Phase1b '0::{expected_cgroup}' 'live ssh.service cgroup binding'
 Assert-Contains $text.Phase1b 'foreign sshd listener' 'additional sshd listener refusal'
 Assert-Contains $text.Phase1b 'pids != {expected_pid}' 'TCP/22 listener exact MainPID binding'
@@ -862,7 +923,7 @@ Assert-Contains $text.Repo2Renderer 'WORM evidence SHA-256 differs from the out-
 Assert-Contains $text.Repo2Renderer 'active WORM evidence differs from the approved digest' 'active WORM read-back digest gate'
 Assert-Contains $text.Repo2Renderer 'active repo2 config exact key set differs from the renderer' 'active repo2 semantic config gate'
 Assert-Contains $text.Repo2Renderer 'repo2-storage-verify-tls=y' 'repo2 TLS verification'
-Assert-Contains $text.BackupHealth 'restore points are not from {minimum_points} distinct UTC dates' 'seven daily restore-point gate'
+Assert-Contains $text.BackupHealth 'restore points are not from {minimum_points} distinct UTC dates' 'daily restore-point gate (3 points, ADR-157)'
 Assert-Contains $text.BackupHealth 'repo1 and repo2 latest archived WAL identities differ' 'dual-repository WAL parity gate'
 Assert-Contains $text.BackupHealth 'both repositories are behind PostgreSQL last archived WAL' 'dual-repository archived-WAL target gate'
 Assert-Contains $text.BackupHealth 'walInventoryContinuityProvenByThisCheck' 'WAL inventory continuity non-claim'

@@ -904,10 +904,8 @@ class AttachmentLayoutTest(unittest.TestCase):
         transaction_parent = data.parent
 
         def ownership(path: Path):
-            if path in {attachments / "staging", attachments / "final"}:
+            if path in {attachments, attachments / "staging", attachments / "final"}:
                 return self.APP_UID, self.APP_GID
-            if path == attachments:
-                return 0, self.APP_GID
             return 0, 0
 
         def overrides(path, details):
@@ -1031,7 +1029,7 @@ class AttachmentLayoutTest(unittest.TestCase):
                 self.fixture(directory)
             )
             application.mkdir(mode=0o755)
-            attachments.mkdir(mode=0o750)
+            attachments.mkdir(mode=0o700)
             marker = attachments / "unreviewed-object"
             marker.write_text("retain exactly", encoding="ascii")
             with contextlib.ExitStack() as stack:
@@ -1090,11 +1088,11 @@ class AttachmentLayoutTest(unittest.TestCase):
                 self.fixture(directory)
             )
             application.mkdir(mode=0o755)
-            attachments.mkdir(mode=0o750)
+            attachments.mkdir(mode=0o700)
             staging = attachments / "staging"
             final = attachments / "final"
-            staging.mkdir(mode=0o750)
-            final.mkdir(mode=0o750)
+            staging.mkdir(mode=0o700)
+            final.mkdir(mode=0o700)
             with contextlib.ExitStack() as stack:
                 for item in self.runtime_patches(
                     data, attachments, authority, other_dev=final

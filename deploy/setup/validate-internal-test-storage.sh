@@ -43,9 +43,10 @@ done
 
 require_directory "$DATA_ROOT" root:root:755
 require_directory "$APP_ROOT" root:root:755
-require_directory "$ATTACHMENT_ROOT" root:uten-imp:750
-require_directory "$STAGING_ROOT" uten-imp:uten-imp:750
-require_directory "$FINAL_ROOT" uten-imp:uten-imp:750
+# 2026-10-06 (ADR-157): attachment directories are private to the application account.
+require_directory "$ATTACHMENT_ROOT" uten-imp:uten-imp:700
+require_directory "$STAGING_ROOT" uten-imp:uten-imp:700
+require_directory "$FINAL_ROOT" uten-imp:uten-imp:700
 
 root_device="$(stat -c '%d' "$DATA_ROOT")"
 for path in "$APP_ROOT" "$ATTACHMENT_ROOT" "$STAGING_ROOT" "$FINAL_ROOT"; do

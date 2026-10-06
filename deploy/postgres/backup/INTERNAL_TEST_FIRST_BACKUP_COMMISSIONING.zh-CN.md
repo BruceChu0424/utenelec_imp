@@ -81,5 +81,5 @@ sudo /usr/bin/python3 -I \
 
 成功终态是：archive override 生效、repo1 stanza/check 健康、PID1-owned locked_job 新增且仅新增一份
 fresh full + WAL、first-backup receipt 和 commissioning terminal receipt 均为 root-only 单链接文件，
-timer 仍 disabled。此时只具备本机恢复材料；在完成独立 repo2、恢复演练、7 点 retention/WAL 健康、
+timer 仍 disabled。此时只具备本机恢复材料；在完成独立 repo2、恢复演练、3 点 retention/WAL 健康、
 告警送达、生产验收和 production authority 前，生产激活仍为 NO-GO。

@@ -7,13 +7,23 @@
 # firewall/security group. A public load balancer with a private source address
 # would otherwise make every Internet client appear private to this Nginx host.
 
-# These are coarse, finite IP-level flood guards, not per-user policy. A shared
-# office NAT can contain 1,000 recovering clients: health has a separate bucket
-# sized for that recovery wave, while auth accepts a bounded login/refresh burst.
-# Per-account/per-phone controls remain in the application. Load-test and tune all
-# three buckets with the real NAT/CGNAT topology before production.
+# These are coarse, finite IP-level flood guards, not per-user policy. Health has
+# a separate bucket sized for 1,000 clients recovering together. Login (30/min,
+# burst 10), visitor verification codes (6/min, burst 3) and token refresh/logout
+# (10/s, burst 50) have separate per-IP buckets (2026-10-06, ADR-157) sized for
+# ONE DEVICE PER SOURCE IP: credential guessing hits 429 quickly while a page's
+# parallel refreshes still pass. Per-account and per-phone controls remain in the
+# application.
+# NOT SUITABLE AS-IS BEHIND A SHARED NAT / VPN / CGNAT EGRESS: there every user
+# shares one source IP, so e.g. 40 people logging in at 08:00 get 10 immediate
+# passes and then one every 2 s (the rest see 429), and a wave of resuming clients
+# above burst 50 is refused on refresh. For a shared egress, measure the real peak
+# per egress IP and raise these three zones (or key them on something other than
+# $binary_remote_addr) before production.
 limit_req_zone $binary_remote_addr zone=uten_health_ip:10m rate=1000r/s;
-limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=300r/s;
+limit_req_zone $binary_remote_addr zone=uten_login_ip:10m rate=30r/m;
+limit_req_zone $binary_remote_addr zone=uten_sms_ip:10m rate=6r/m;
+limit_req_zone $binary_remote_addr zone=uten_auth_ip:10m rate=10r/s;
 limit_req_zone $binary_remote_addr zone=uten_api_ip:20m rate=3000r/m;
 limit_req_zone $binary_remote_addr zone=uten_goods_import_ip:10m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=uten_goods_import_conn:10m;
@@ -194,8 +204,33 @@ server {
         return 404;
     }
 
-    location ~ ^/api/(?:auth/(?:login|refresh|logout)|visitor/auth/(?:send-code|login|refresh|logout))$ {
-        limit_req zone=uten_auth_ip burst=2000 nodelay;
+    # Employee and visitor login: 30 per minute per IP, burst 10.
+    location ~ ^/api/(?:visitor/)?auth/login$ {
+        limit_req zone=uten_login_ip burst=10 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    # Visitor verification codes trigger real outbound messages: 6 per minute per IP, burst 3.
+    location = /api/visitor/auth/send-code {
+        limit_req zone=uten_sms_ip burst=3 nodelay;
+        proxy_pass http://uten_imp_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    # Token refresh and logout: parallel page requests refresh together, 10 per second per IP, burst 50.
+    location ~ ^/api/(?:visitor/)?auth/(?:refresh|logout)$ {
+        limit_req zone=uten_auth_ip burst=50 nodelay;
         proxy_pass http://uten_imp_backend;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

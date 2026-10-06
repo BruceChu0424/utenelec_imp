@@ -1,0 +1,5 @@
+# 追加到 /etc/clamav/clamd.conf 末尾 (先备份), 然后 systemctl restart clamav-daemon (上传约 20 秒不可用)。
+# 超出扫描上限的文件、加密压缩包一律报毒拒收, 防止用压缩炸弹或加密包绕过扫描。
+# AlertEncryptedDoc (加密 PDF/Office) 暂不加, 等用户决定 (治理记录 D8)。
+AlertExceedsMax yes
+AlertEncryptedArchive yes

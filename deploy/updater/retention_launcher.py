@@ -33,7 +33,7 @@ RETENTION_MANAGER_PATH = RUNTIME_DIR / "retention_manager.py"
 
 # Reviewed from the final release_updater.py bytes in this cascade.
 APPROVED_RELEASE_UPDATER_SHA256: str | None = (
-    "1c818a3c5b021f2ed9a51721a932839f7262b52fd6bc62902fc45c428c378947"
+    "923214294525b0406cc2a4fe3c22aebfec507ee4ef011da62d99dfc237d5dc55"
 )
 
 # Updated from the final retention_manager.py bytes in this same change.

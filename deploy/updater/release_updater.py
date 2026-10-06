@@ -285,7 +285,7 @@ INTERNAL_TEST_FIRST_BACKUP_PRODUCER_SHA256 = (
     "9b84a2d9c8750133ecc63ab6d00753eb3917bdde08845f24979a357a241545e5"
 )
 INTERNAL_TEST_FIRST_BACKUP_COMMISSIONER_SHA256 = (
-    "18bd34008b9d27e347d1c87f06cd74cb79ef50f105a6f31eaf1302cf170d4682"
+    "faf144b374384f4f678d6b1b818ad825a7280e80737b7ae732b3487d59f1785c"
 )
 INTERNAL_TEST_FIRST_BACKUP_ARCHIVE_SUFFIX = ".first-backup.json"
 INTERNAL_TEST_FIRST_BACKUP_TERMINAL_ARCHIVE_SUFFIX = ".first-backup-terminal.json"
@@ -768,6 +768,9 @@ SYSTEMD_ENABLEMENT_DIRECTORIES = (
     Path("/etc/systemd/system/multi-user.target.wants"),
     Path("/etc/systemd/system/timers.target.wants"),
 )
+# Same floor as deploy/postgres/backup/pgbackrest_repo2.MINIMUM_RESTORE_POINTS (ADR-157:
+# every server backup keeps 3 days = 3 daily successful full restore points).
+MINIMUM_RECOVERY_RESTORE_POINTS = 3
 RECOVERY_APPROVAL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{2,127}")
 RECOVERY_RECEIPT_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{2,127}\.json")
 RECOVERY_DETAIL_REFERENCE_RE = re.compile(
@@ -9589,12 +9592,12 @@ def validate_database_recovery_detail(
         if require_recovery_integer(
             repository.get("successfulFullRestorePoints"),
             f"repo{repository.get('repo')} successful restore points",
-            minimum=7,
-        ) < 7:
-            fail("detailed database receipt has fewer than seven restore points")
+            minimum=MINIMUM_RECOVERY_RESTORE_POINTS,
+        ) < MINIMUM_RECOVERY_RESTORE_POINTS:
+            fail("detailed database receipt has too few restore points")
         points = repository.get("restorePoints")
-        if not isinstance(points, list) or len(points) < 7:
-            fail("detailed database receipt has fewer than seven restore point identities")
+        if not isinstance(points, list) or len(points) < MINIMUM_RECOVERY_RESTORE_POINTS:
+            fail("detailed database receipt has too few restore point identities")
         labels = repository.get("successfulFullRestorePointLabels")
         if not isinstance(labels, list) or len(labels) != len(points):
             fail("detailed database receipt restore-point labels are inconsistent")

@@ -181,8 +181,8 @@ class Repo2ContractTest(unittest.TestCase):
 
     def test_policy_rejects_weak_retention_or_tls(self):
         value = policy()
-        value["repo2"]["retentionFull"] = 6
-        with self.assertRaisesRegex(repo2.ContractError, "between 7"):
+        value["repo2"]["retentionFull"] = 2
+        with self.assertRaisesRegex(repo2.ContractError, "between 3"):
             repo2.parse_policy(value)
         value = policy()
         value["repo2"]["storageVerifyTls"] = False
@@ -309,6 +309,76 @@ class Repo2ContractTest(unittest.TestCase):
         ) + b"repo1-path=/attacker\n"
         with self.assertRaisesRegex(repo2.ContractError, "exact key set"):
             repo2.validate_active_config(injected, repo2.parse_policy(policy()))
+
+
+class ThreeDayRestorePointFloorTest(unittest.TestCase):
+    """ADR-157 (2026-10-06): every server backup keeps 3 days, so 3 daily full restore points pass."""
+
+    def setUp(self):
+        self.now_epoch = 1786492800
+
+    @staticmethod
+    def three_day_policy() -> dict:
+        value = policy()
+        value["repo2"]["retentionFull"] = 3
+        value["repo2"]["retentionArchive"] = 3
+        value["health"]["minimumSuccessfulFullRestorePoints"] = 3
+        return value
+
+    def latest(self, repo_number: int, keep: int) -> list:
+        info = repo_info(repo_number, self.now_epoch)
+        info[0]["backup"] = info[0]["backup"][-keep:]
+        return info
+
+    def test_policy_floor_is_three_restore_points(self):
+        self.assertEqual(3, repo2.MINIMUM_RESTORE_POINTS)
+        parsed = repo2.parse_policy(self.three_day_policy())
+        self.assertEqual(
+            (3, 3, 3), (parsed.retention_full, parsed.retention_archive, parsed.minimum_restore_points)
+        )
+        for section, key in (
+            ("repo2", "retentionFull"),
+            ("repo2", "retentionArchive"),
+            ("health", "minimumSuccessfulFullRestorePoints"),
+        ):
+            value = self.three_day_policy()
+            value[section][key] = 2
+            with self.assertRaisesRegex(repo2.ContractError, "between 3 and 365"):
+                repo2.parse_policy(value)
+
+    def test_example_policy_keeps_three_restore_points(self):
+        example = json.loads((HERE / "repo2-policy.example.json").read_text(encoding="utf-8"))
+        for key in ("s3Bucket", "s3Endpoint", "s3Region"):
+            example["repo2"][key] = policy()["repo2"][key]
+        parsed = repo2.parse_policy(example)
+        self.assertEqual(
+            (3, 3, 3), (parsed.retention_full, parsed.retention_archive, parsed.minimum_restore_points)
+        )
+
+    def test_three_daily_fulls_pass_and_two_fail_closed(self):
+        report = health.evaluate(
+            self.three_day_policy(), self.latest(1, 3), self.latest(2, 3), archiver(self.now_epoch), flyway_history()
+        )
+        self.assertEqual("PASS", report["status"])
+        self.assertEqual([3, 3], [item["successfulFullRestorePoints"] for item in report["repositories"]])
+        self.assertEqual(3, report["minimumSuccessfulFullRestorePoints"])
+        with self.assertRaisesRegex(repo2.ContractError, "repo1 has 2 successful full restore points; at least 3"):
+            health.evaluate(
+                self.three_day_policy(), self.latest(1, 2), self.latest(2, 3), archiver(self.now_epoch), flyway_history()
+            )
+
+    @unittest.skipIf(alert is None, "backup acceptance imports the POSIX-only alert module")
+    def test_acceptance_accepts_three_points_and_rejects_two(self):
+        report = health.evaluate(
+            self.three_day_policy(), self.latest(1, 3), self.latest(2, 3), archiver(self.now_epoch), flyway_history()
+        )
+        now = datetime.fromtimestamp(self.now_epoch, tz=timezone.utc)
+        acceptance.validate_health(report, "7", 7, now)
+        short = json.loads(json.dumps(report))
+        short["repositories"][1]["restorePoints"].pop()
+        short["repositories"][1]["successfulFullRestorePoints"] = 2
+        with self.assertRaisesRegex(acceptance.ContractError, "repo2 has fewer than 3 restore points"):
+            acceptance.validate_health(short, "7", 7, now)
 
 
 class HealthContractTest(unittest.TestCase):

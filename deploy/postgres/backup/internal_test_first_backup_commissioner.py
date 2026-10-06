@@ -1089,7 +1089,7 @@ def _render_pgbackrest(secret: bytes) -> bytes:
         "repo1-cipher-type=aes-256-cbc\n"
         f"repo1-cipher-pass={value}\n"
         "repo1-retention-full-type=count\n"
-        "repo1-retention-full=7\n"
+        "repo1-retention-full=3\n"
         "repo1-retention-archive-type=full\n"
         "repo1-hardlink=y\n"
         "repo1-bundle=y\n"

@@ -298,6 +298,23 @@ verify_runtime_role_contract() {
   [[ "$import_acl" == 1 ]] || die "$phase runtime role can mutate or issue restricted legacy import evidence"
 }
 
+# Cluster login surface (2026-10-06, ADR-157): the postgres superuser is reachable only through
+# local peer authentication (no password to leak through logs or backups), and no login role
+# exists beyond the reviewed set. A legacy LOGIN role such as an old application account is a
+# second credential nobody rotates; disable it first (ALTER ROLE ... NOLOGIN PASSWORD NULL).
+readonly REVIEWED_LOGIN_ROLES="'postgres', 'uten', 'uten_migrator', 'uten_repl'"
+verify_cluster_login_surface() {
+  local phase="$1" surface
+  surface="$(psql_admin "SELECT
+    (SELECT count(*) FROM pg_authid WHERE rolname = 'postgres' AND rolpassword IS NOT NULL) || ':' ||
+    coalesce((SELECT string_agg(quote_ident(rolname), ',' ORDER BY rolname) FROM pg_roles
+      WHERE rolcanlogin AND rolname NOT IN ($REVIEWED_LOGIN_ROLES)), '');")"
+  [[ "$surface" == '0:' ]] && return 0
+  [[ "${surface%%:*}" == 0 ]] \
+    || die "$phase: the postgres superuser still has a password; run ALTER ROLE postgres PASSWORD NULL through local peer authentication first"
+  die "$phase: unreviewed login roles exist (${surface#*:}); run ALTER ROLE <name> NOLOGIN PASSWORD NULL for each after confirming nothing uses it"
+}
+
 server_version_num="$(psql_admin 'SHOW server_version_num;')"
 (( server_version_num >= 160006 && server_version_num < 170000 )) \
   || die "server_version_num must be PostgreSQL 16.6 or newer (found $server_version_num)"
@@ -311,6 +328,7 @@ server_version_num="$(psql_admin 'SHOW server_version_num;')"
   || die 'other uten_imp sessions are active; stop and drain all clients first'
 [[ "$(psql_admin "SELECT count(*) FROM pg_roles WHERE rolname='uten';")" == 1 ]] \
   || die 'existing runtime role uten is missing'
+verify_cluster_login_surface 'preflight'
 [[ ! -e "$LEGACY_SECRETS" && ! -L "$LEGACY_SECRETS" ]] \
   || die "legacy secret path remains at $LEGACY_SECRETS; run the separately confirmed secret-path migration first"
 [[ -d "$SECRETS" && ! -L "$SECRETS" ]] || die "$SECRETS must be a real directory"
@@ -466,6 +484,7 @@ if [[ -e "$HARDENING_COMPLETE" || -L "$HARDENING_COMPLETE" ]]; then
   [[ "$(<"$HARDENING_COMPLETE")" == "$hardening_state_payload" ]] \
     || die 'a different role-hardening completion is already recorded; use a separately reviewed drift procedure'
   verify_runtime_role_contract 'completed-state'
+  verify_cluster_login_surface 'completed-state'
   psql_admin 'ALTER ROLE uten LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;' >/dev/null
   [[ "$(psql_admin "SELECT rolcanlogin::int FROM pg_roles WHERE rolname='uten';")" == 1 ]] \
     || die 'completed hardening could not restore the runtime role login state'
@@ -678,6 +697,7 @@ trap - EXIT
 unset migrator_password
 
 verify_runtime_role_contract 'post-change'
+verify_cluster_login_surface 'post-change'
 
 # Persist successful postconditions before restoring login. A crash before this
 # point leaves the application role NOLOGIN; a crash after it is safely

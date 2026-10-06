@@ -1,0 +1,12 @@
+# SSH 只认密钥 (ADR-157)。用 deploy/setup/phase1b-ssh-key-only.sh 装机的主机由脚本生成同名文件,
+# 不用本样例; 手工维护的现网主机安装为 /etc/ssh/sshd_config.d/00-uten-imp.conf (root 0600)。
+# 文件名以 00 开头: sshd 对同一项取第一次出现的值, 能压住 50-cloud-init.conf 里的 PasswordAuthentication yes。
+# 先挂好 "10 分钟自动回退" 定时器、两条会话在线, 再 sshd -t && systemctl reload ssh (步骤见 RUNBOOK)。
+# __ADMIN_USER__ 替换为运维账号名。
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+AuthenticationMethods publickey
+AllowUsers __ADMIN_USER__

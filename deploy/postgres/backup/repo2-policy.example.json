@@ -11,13 +11,13 @@
     "storageVerifyTls": true,
     "cipherType": "aes-256-cbc",
     "retentionFullType": "count",
-    "retentionFull": 7,
+    "retentionFull": 3,
     "retentionArchiveType": "full",
-    "retentionArchive": 7,
+    "retentionArchive": 3,
     "minimumImmutableDays": 30
   },
   "health": {
-    "minimumSuccessfulFullRestorePoints": 7,
+    "minimumSuccessfulFullRestorePoints": 3,
     "maximumFullAgeSeconds": 129600,
     "maximumArchiveAgeSeconds": 900
   }

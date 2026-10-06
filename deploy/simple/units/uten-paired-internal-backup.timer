@@ -1,0 +1,16 @@
+# 安装为 /etc/systemd/system/uten-paired-internal-backup.timer
+# 每天两次: 03:40 (夜间) 与 13:10 (午休), 白天出问题最多丢半天的附件。
+# 避开 02:17 pgBackRest 与周日 05:00 更新器; 13:10 依赖 service 里的 cgroup 限速, 首次启用当天看业务延迟。
+[Unit]
+Description=Paired internal backup twice a day
+
+[Timer]
+OnCalendar=*-*-* 03:40:00
+OnCalendar=*-*-* 13:10:00
+Persistent=true
+RandomizedDelaySec=5min
+AccuracySec=1min
+Unit=uten-paired-internal-backup.service
+
+[Install]
+WantedBy=timers.target

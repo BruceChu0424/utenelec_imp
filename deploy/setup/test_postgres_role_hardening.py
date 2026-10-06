@@ -46,6 +46,20 @@ def runtime_postcondition_queries():
     return queries
 
 
+def login_surface_query():
+    function = re.search(r"verify_cluster_login_surface\(\) \{(.*?)\n\}", HARDENER, re.S)
+    if function is None:
+        raise AssertionError("missing cluster login-surface verifier")
+    queries = re.findall(r'psql_admin "(SELECT.*?;)"', function.group(1), re.S)
+    if len(queries) != 1:
+        raise AssertionError("login-surface verifier must run exactly one query")
+    reviewed = re.search(r'readonly REVIEWED_LOGIN_ROLES="(.*?)"', HARDENER).group(1)
+    return queries[0].replace("$REVIEWED_LOGIN_ROLES", reviewed)
+
+
+PHASE2 = (HERE / "phase2-postgres.sh").read_text(encoding="utf-8")
+
+
 class RoleHardeningSourceContractTest(unittest.TestCase):
     def test_membership_cleanup_precedes_ownership_and_retains_maintenance_gates(self):
         self.assertLess(HARDENER.index("DO $runtime_membership_cleanup$"), HARDENER.index("REASSIGN OWNED BY uten TO"))
@@ -57,6 +71,25 @@ class RoleHardeningSourceContractTest(unittest.TestCase):
         self.assertIn("verify_runtime_role_contract 'post-change'", HARDENER)
         self.assertIn("GRANT uten_owner TO uten_migrator;", HARDENER)
         self.assertLess(HARDENER.index("GRANT EXECUTE ON ALL FUNCTIONS"), HARDENER.index("DO $restricted_import_acl$"))
+
+    def test_login_surface_is_checked_before_and_after_every_hardening_path(self):
+        self.assertIn("readonly REVIEWED_LOGIN_ROLES=\"'postgres', 'uten', 'uten_migrator', 'uten_repl'\"", HARDENER)
+        for phase in ("preflight", "completed-state", "post-change"):
+            self.assertIn(f"verify_cluster_login_surface '{phase}'", HARDENER)
+        self.assertLess(HARDENER.index("verify_cluster_login_surface 'preflight'"),
+                        HARDENER.index("ALTER ROLE uten NOLOGIN NOSUPERUSER"))
+        query = login_surface_query()
+        self.assertIn("rolpassword IS NOT NULL", query)
+        self.assertIn("rolcanlogin", query)
+
+    def test_fresh_host_installer_never_gives_postgres_a_password_and_never_logs_parameters(self):
+        self.assertIn("ALTER ROLE postgres PASSWORD NULL;", PHASE2)
+        self.assertNotIn("'postgres', :'admin_password'", PHASE2)
+        self.assertNotIn("admin_password=", PHASE2)
+        self.assertNotIn("for role in admin ", PHASE2)
+        self.assertIn("log_parameter_max_length = 0\n", PHASE2)
+        self.assertIn("log_parameter_max_length_on_error = 0\n", PHASE2)
+        self.assertIn("repo1-retention-full=3\n", PHASE2)
 
     def test_postcondition_is_one_statement_and_proves_both_runtime_memberships_absent(self):
         query = commissioner_query()
@@ -282,6 +315,17 @@ SELECT has_function_privilege('uten','public.fn_business_test_reset_verify_purge
        has_function_privilege('uten_owner','public.fn_business_test_reset_verify_purged()','EXECUTE');
 """)
         self.assertEqual(result, "f|f|t|t")
+
+    def test_login_surface_query_flags_a_superuser_password_and_legacy_login_roles(self):
+        query = login_surface_query()
+        # The disposable image's superuser has no password and the seed has only reviewed roles.
+        self.assertEqual("0:", self.sql(query))
+        self.assertEqual("0:", self.sql("CREATE ROLE uten_repl LOGIN REPLICATION;\nCREATE ROLE retired NOLOGIN;\n" + query))
+        self.assertEqual('0:"uten-app"', self.sql('CREATE ROLE "uten-app" LOGIN;\n' + query))
+        self.assertEqual("1:", self.sql("ALTER ROLE postgres PASSWORD 'fixture-only-not-a-secret';\n" + query))
+        self.assertEqual("0:", self.sql("ALTER ROLE postgres PASSWORD 'fixture-only-not-a-secret';\n"
+                                        "ALTER ROLE postgres PASSWORD NULL;\n" + query))
+        self.assertEqual("0:", self.sql('CREATE ROLE "uten-app" LOGIN;\nALTER ROLE "uten-app" NOLOGIN PASSWORD NULL;\n' + query))
 
     def test_runtime_verifier_queries_execute_for_an_older_reviewed_head(self):
         result = self.sql("CREATE TABLE flyway_schema_history(id int);\n" + "\n".join(runtime_postcondition_queries()))

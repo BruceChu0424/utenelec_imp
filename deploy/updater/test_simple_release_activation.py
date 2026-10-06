@@ -12,7 +12,8 @@ from test_simple_release_retention import SCRIPT, bash_path
 @unittest.skipIf(os.name == "nt", "Activation symlinks require native Linux")
 class SimpleReleaseActivationTest(unittest.TestCase):
     def activation(self, *, migration=False, first=False, start=True,
-                   candidate_health=True, restart=True, old_health=True, migrate=True, final_stop=True):
+                   candidate_health=True, restart=True, old_health=True, migrate=True, final_stop=True,
+                   backup_dir_blocked=False, web_group=True):
         source = SCRIPT.read_text(encoding="utf-8")
         activate = re.search(r"(?ms)^do_activate\(\) \{.*?^\}", source).group(0)
         with tempfile.TemporaryDirectory(prefix="uten-activation-") as temp:
@@ -25,13 +26,18 @@ class SimpleReleaseActivationTest(unittest.TestCase):
             if not first:
                 (root / "current").symlink_to("releases/v1.0.0", target_is_directory=True)
             (root / "migrator.env").write_text("# no credentials in this fixture\n")
+            backup_dir = root / "pre-activation"
+            if backup_dir_blocked:
+                # A regular file where the directory should be: like an unmounted, immutable mount point.
+                backup_dir.write_text("not a directory")
             env = dict(os.environ, UTEN_BASE=str(root), RELEASES_DIR=str(releases),
                        ACTIVE_FILE=str(active), LOCK_FILE=str(root / "updater.lock"),
                        UTEN_APP_SERVICE="uten-fixture", UTEN_MIGRATOR_ENV=str(root / "migrator.env"),
                        EVENTS=str(root / "events"), MIGRATION=str(int(migration)),
                        START=str(int(start)), CANDIDATE_HEALTH=str(int(candidate_health)),
                        RESTART=str(int(restart)), OLD_HEALTH=str(int(old_health)), MIGRATE=str(int(migrate)),
-                       FINAL_STOP=str(int(final_stop)))
+                       FINAL_STOP=str(int(final_stop)), UTEN_BACKUP_DIR=backup_dir.as_posix(),
+                       WEB_GROUP_PRESENT=str(int(web_group)))
             fixture = r'''
 set -euo pipefail
 log() { printf '%s\n' "$*"; }
@@ -61,9 +67,12 @@ wait_health() {
   if [[ "$current" == v1.1.0 ]]; then [[ "$CANDIDATE_HEALTH" == 1 ]]; else [[ "$OLD_HEALTH" == 1 ]]; fi
 }
 prune_old() { printf 'prune\n' >> "$EVENTS"; }
+require_web_group() { printf 'web-group\n' >> "$EVENTS"; [[ "$WEB_GROUP_PRESENT" == 1 ]] || die "缺少系统组 uten-web"; }
+publish_release_permissions() { printf 'perms:%s\n' "${1##*/}" >> "$EVENTS"; }
+prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
 '''
             result = subprocess.run([bash_path(), "-c", fixture + activate + '\ndo_activate v1.1.0 manual'],
-                                    env=env, text=True, capture_output=True, check=False)
+                                    env=env, text=True, encoding="utf-8", capture_output=True, check=False)
             link = root / "current"
             return result, (root / "events").read_text().splitlines(), active.read_text().strip(), (
                 os.readlink(link) if link.is_symlink() else None)
@@ -76,6 +85,23 @@ prune_old() { printf 'prune\n' >> "$EVENTS"; }
         self.assertLess(events.index("backup"), events.index("migrate"))
         self.assertLess(events.index("migrate"), events.index("start:v1.1.0"))
         self.assertLess(events.index("health:v1.1.0"), events.index("prune"))
+        # Old pre-migration dumps are pruned only after the new backup exists and the release is healthy.
+        self.assertLess(events.index("prune"), events.index("prune-dumps"))
+        # Release permissions (web/ only for uten-web) are fixed before the application is stopped.
+        self.assertLess(events.index("web-group"), events.index("stop:v1.0.0"))
+        self.assertLess(events.index("perms:v1.1.0"), events.index("stop:v1.0.0"))
+
+    def test_missing_web_group_or_unwritable_backup_dir_fails_before_the_application_stops(self):
+        for case in ({"web_group": False}, {"backup_dir_blocked": True}):
+            with self.subTest(**case):
+                result, events, active, link = self.activation(migration=True, **case)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual((active, link), ("v1.0.0", "releases/v1.0.0"))
+                self.assertFalse(any(event.startswith(("stop:", "start:", "restart:")) for event in events), events)
+                self.assertNotIn("backup", events)
+                self.assertNotIn("migrate", events)
+        result, events, _, _ = self.activation(migration=True, backup_dir_blocked=True)
+        self.assertIn("未停应用", result.stderr)
 
     def test_start_failure_and_unhealthy_code_only_candidate_both_restore_verified_old_release(self):
         for start in (False, True):
@@ -88,6 +114,7 @@ prune_old() { printf 'prune\n' >> "$EVENTS"; }
                 self.assertIn("应用已恢复", result.stderr)
                 self.assertNotIn("backup", events)
                 self.assertNotIn("prune", events)
+                self.assertNotIn("prune-dumps", events)
 
     def test_failed_old_restart_or_health_stops_and_never_claims_recovery(self):
         for restart in (False, True):
@@ -110,6 +137,7 @@ prune_old() { printf 'prune\n' >> "$EVENTS"; }
                 self.assertEqual(events[-1], "stop:v1.0.0")
                 self.assertNotIn("restart:v1.0.0", events)
                 self.assertNotIn("health:v1.0.0", events)
+                self.assertNotIn("prune-dumps", events)
                 self.assertIn("人工恢复", result.stderr)
 
     def test_migrator_failure_never_switches_code_or_starts_application(self):

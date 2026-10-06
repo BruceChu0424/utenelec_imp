@@ -1,0 +1,12 @@
+# 安装为 /etc/systemd/system/uten-host-check.timer (告警通道接入后 enable --now)
+[Unit]
+Description=ERP server read-only health check every 10 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Unit=uten-host-check.service
+
+[Install]
+WantedBy=timers.target

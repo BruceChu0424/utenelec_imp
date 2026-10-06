@@ -1,0 +1,4 @@
+# 告警 webhook 地址 (治理记录 D1, 用户还没给通道)。
+# 安装为 /etc/uten-imp/alert.curl, root:root 0600, 用 sudoedit 写入, 不要用 echo 带在命令行里。
+# uten-alert 用 curl -K 读取本文件, 地址里的 key 不会出现在进程参数里。
+url = "https://REPLACE_WITH_GROUP_ROBOT_WEBHOOK_URL"

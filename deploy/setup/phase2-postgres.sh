@@ -572,6 +572,10 @@ archive_mode = on
 archive_command = 'pgbackrest --stanza=uten-imp archive-push %p'
 archive_timeout = 300
 log_min_duration_statement = 1000
+# Bound parameters carry PII master keys (pgp_sym_encrypt/decrypt) and plain identity numbers:
+# never write them to the server log, neither for slow statements nor for errors (ADR-157).
+log_parameter_max_length = 0
+log_parameter_max_length_on_error = 0
 log_checkpoints = on
 log_connections = on
 log_disconnections = on
@@ -587,8 +591,12 @@ server_version_num="$(runuser -u postgres -- psql -X -At -c 'SHOW server_version
   || die "PostgreSQL 16.6 or newer is required for the reviewed default-role behavior (found $server_version_num)"
 
 echo '==> Create independent PostgreSQL credentials (never printed)'
+# The postgres superuser has no password (ADR-157): administration uses local peer
+# authentication only, so there is no superuser secret to leak, rotate or escrow.
 install -d -m 0750 -o root -g postgres "$SECRETS"
-for role in admin repl app migrator; do
+[[ ! -e "$SECRETS/admin.password" && ! -L "$SECRETS/admin.password" ]] \
+  || die "$SECRETS/admin.password exists; the postgres superuser must not have a password on this host"
+for role in repl app migrator; do
   if [[ ! -e "$SECRETS/$role.password" ]]; then
     openssl rand -hex 32 >"$SECRETS/$role.password"
   fi
@@ -597,12 +605,11 @@ for role in admin repl app migrator; do
   chmod 0640 "$SECRETS/$role.password"
 done
 
-admin_password="$(<"$SECRETS/admin.password")"
 repl_password="$(<"$SECRETS/repl.password")"
 app_password="$(<"$SECRETS/app.password")"
 migrator_password="$(<"$SECRETS/migrator.password")"
 for generated_password in \
-  "$admin_password" "$repl_password" "$app_password" "$migrator_password"; do
+  "$repl_password" "$app_password" "$migrator_password"; do
   [[ "$generated_password" =~ ^[A-Fa-f0-9]{64}$ ]] \
     || die 'new-cluster generated PostgreSQL passwords must be exactly 64 hexadecimal characters'
 done
@@ -627,7 +634,6 @@ cleanup_role_sql() {
 }
 trap cleanup_role_sql EXIT
 {
-  printf "\\set admin_password '%s'\n" "$admin_password"
   printf "\\set repl_password '%s'\n" "$repl_password"
   printf "\\set app_password '%s'\n" "$app_password"
   printf "\\set migrator_password '%s'\n" "$migrator_password"
@@ -635,7 +641,7 @@ trap cleanup_role_sql EXIT
 SET log_statement = 'none';
 SET log_duration = off;
 SET log_min_duration_statement = -1;
-SELECT format('ALTER ROLE %I PASSWORD %L', 'postgres', :'admin_password') \gexec
+ALTER ROLE postgres PASSWORD NULL;
 CREATE ROLE uten_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
 SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L', 'uten_migrator', :'migrator_password') \gexec
 SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD %L', 'uten', :'app_password') \gexec
@@ -663,7 +669,7 @@ runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 --file="$role_sql_file"
 rm -f -- "$role_sql_file" || die "failed to remove transient PostgreSQL role SQL file: $role_sql_file"
 role_sql_file=''
 trap - EXIT
-unset admin_password repl_password app_password migrator_password
+unset repl_password app_password migrator_password
 
 echo '==> Verify the runtime role has no database or schema DDL authority'
 app_password="$(<"$SECRETS/app.password")"
@@ -690,7 +696,7 @@ trap - EXIT
 unset app_password
 [[ "$runtime_privileges" == '0:0' ]] || die "runtime DB role unexpectedly has DDL privileges: $runtime_privileges"
 
-echo '==> Configure an encrypted local pgBackRest repository with 7 successful full restore points'
+echo '==> Configure an encrypted local pgBackRest repository with 3 successful full restore points'
 install -d -m 0750 -o root -g postgres "$PGBACKREST_SECRETS"
 if [[ ! -e "$PGBACKREST_SECRETS/repo1.cipher" ]]; then
   openssl rand -hex 32 >"$PGBACKREST_SECRETS/repo1.cipher"
@@ -704,7 +710,7 @@ repo1-path=$PGBACKREST_REPO
 repo1-cipher-type=aes-256-cbc
 repo1-cipher-pass=$repo1_cipher
 repo1-retention-full-type=count
-repo1-retention-full=7
+repo1-retention-full=3
 repo1-retention-archive-type=full
 repo1-hardlink=y
 repo1-bundle=y
@@ -739,7 +745,7 @@ cat >/etc/uten-imp/templates/pgbackrest-offsite-repo2.conf.example <<'EOF'
 # repo2-cipher-type=aes-256-cbc
 # repo2-cipher-pass=REPLACE_WITH_INDEPENDENT_ESCROWED_KEY
 # repo2-retention-full-type=count
-# repo2-retention-full=7
+# repo2-retention-full=3
 EOF
 chmod 0600 /etc/uten-imp/templates/pgbackrest-offsite-repo2.conf.example
 
@@ -841,7 +847,7 @@ systemctl is-enabled --quiet uten-pgbackup.timer \
 systemctl is-active --quiet uten-pgbackup.timer \
   && die 'backup timer must remain inactive until the separate backup commissioner passes'
 phase2_complete_tmp="$(mktemp "$COMMISSIONING_DIR/.phase2-complete.XXXXXX")"
-printf 'state=COMPLETE\ncompleted_utc=%s\ncluster=%s/%s\nbackup_retention_full=7\n' \
+printf 'state=COMPLETE\ncompleted_utc=%s\ncluster=%s/%s\nbackup_retention_full=3\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PG_VERSION" "$PG_CLUSTER" >"$phase2_complete_tmp"
 chown root:root "$phase2_complete_tmp"
 chmod 0600 "$phase2_complete_tmp"
@@ -853,7 +859,7 @@ sync -f "$COMMISSIONING_DIR"
 phase2_complete=true
 trap - EXIT
 printf '%s\n' \
-  'LOCAL_BACKUP_BASELINE_OK: retention is 7 successful full restore points (count), with required WAL.' \
+  'LOCAL_BACKUP_BASELINE_OK: retention is 3 successful full restore points (count), with required WAL.' \
   'OFFSITE_BACKUP_NOT_CONFIGURED: /data database and repo1 remain one failure domain.' \
   'BACKUP_TIMER_DISABLED: the separate existing-host backup commissioner must prove repo2, retention, alerting, and power-loss recovery before enabling any timer.' \
   'KEY_ESCROW_NOT_COMPLETE: escrow the repo1 cipher key and application PGP/HMAC keys outside this host before production.' \

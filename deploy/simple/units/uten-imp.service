@@ -1,12 +1,17 @@
 # Uten IMP 后端（简化链 ADR-060）
 # 安装为 /etc/systemd/system/uten-imp.service
+# 2026-10-06 加固 (ADR-157): 附件卷 + 日志之外全只读、无任何特权、不产生 core dump、
+# 新建文件 0600、反复崩溃时触发 uten-alert@ (告警通道未接入前该单元不存在, systemd 只记一行日志)。
+# 旧 drop-in uten-v538-mounts.conf 的附件卷依赖已并入本文件, 安装本文件后删除该 drop-in。
 [Unit]
 Description=Uten IMP backend
-After=network-online.target postgresql@16-main.service
-Wants=network-online.target
+After=network-online.target postgresql@16-main.service clamav-daemon.service
+Wants=network-online.target clamav-daemon.service
 Requires=postgresql@16-main.service
+RequiresMountsFor=/var/lib/uten-imp-media/attachments /data/postgresql/16/main
 StartLimitIntervalSec=10min
 StartLimitBurst=8
+OnFailure=uten-alert@%n.service
 
 [Service]
 Type=simple
@@ -28,18 +33,45 @@ RestartSec=5
 TimeoutStartSec=180s
 TimeoutStopSec=90
 KillSignal=SIGTERM
+# 堆 4G + 元空间/线程/直接内存 + 预览用的 soffice 子进程; 先节流再硬顶 (B0 先看 MemoryPeak 再定)
+MemoryHigh=5G
+MemoryMax=6G
+# TasksMax 数的是整个 cgroup (JVM 全部线程 + soffice 子进程及其线程)。到顶时 JVM 建线程抛
+# "unable to create native thread", 配合 ExitOnOutOfMemoryError 直接退出重启。所以它必须高于服务器状态页
+# 的线程红线 (UTEN_SERVER_STATUS_THREADS_CRITICAL, 默认 800; 黄线 400), 让状态页先黄、再红, 最后才撞顶。
+# 要调低 TasksMax 时, 先把那两个阈值调到它下面 (B0 先看 TasksCurrent 再定)。
+TasksMax=1024
+LimitNOFILE=65536
+# 进程内存里有数据库口令与 PII 主钥: 不生成 core dump
+LimitCORE=0
+# 新建文件 (日志、附件、预览缓存) 只给 uten-imp 自己读写
+UMask=0077
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
 PrivateTmp=true
 PrivateDevices=true
 ProtectHome=true
 ProtectSystem=strict
-# ProtectSystem=strict 下显式放开应用必须可写的两个目录（附件本地存储 + 日志）
-ReadWritePaths=/data/uten-imp/attachments /var/log/uten-imp
+# ProtectSystem=strict 下只放开两处: 附件卷 (staging/final/preview/scratch 都在它下面) + 日志。
+# 旧本地目录 /data/uten-imp/attachments 不再放开写: internal 存储只会读旧 local 原件;
+# 旧 local 引用清零后该目录整个删除 (治理记录 C4)。
+ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp
+ProtectProc=invisible
 ProtectKernelTunables=true
 ProtectKernelModules=true
+ProtectKernelLogs=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-UMask=0027
+# 不加 MemoryDenyWriteExecute: JVM 的 JIT 需要可写可执行内存。
+# 不加 ProcSubset=pid: 会隐藏 /proc/stat, actuator 的 CPU 指标读不到。
 
 [Install]
 WantedBy=multi-user.target

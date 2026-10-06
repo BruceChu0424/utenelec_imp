@@ -6,6 +6,12 @@
 >「版本号规则」）。`backup_acceptance.py` 的 `--target-version` 校验已同步只接受语义化版本号，
 > 正文中的 `vYYYY.MM.DD-N` 为历史写法。
 
+> **2026-10-06 订正 (ADR-157)**：用户口径「服务器上所有备份只保留 3 天」。本链路的恢复点下限
+> (`pgbackrest_repo2.MINIMUM_RESTORE_POINTS`、`backup_commissioner`、`backup_acceptance`、
+> `release_updater` 恢复回执) 与 repo1/repo2 的 `retention-full` 一并由 7 改为 3，下文的「7 个」已同步改为 3。
+> 本文 "repo2=OSS" 的编号已作废：现役 repo2 是本机 NVMe 加密仓，异地 OSS 排为 repo3，见
+> [RUNBOOK「备份布局与保留」](../../simple/RUNBOOK.zh-CN.md)。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
 > 2026-08-12 的最后只读快照显示 repo1 full timer 当时为每天 02:17；该状态尚未通过当前 OOB authority
 > 和新只读会话刷新。用户指定的 03:00 是未来正式使用后的维护/自检
@@ -19,7 +25,7 @@
 > 刷新、备份安装、repo2 commissioning 和 timer enable 是四个独立授权阶段。
 
 > 当前状态：仓库内校验器、候选渲染器、双仓健康门禁、告警 spool 和 systemd 模板可在隔离环境验收；
-> **真实 repo2、对象锁/WORM、连续 WAL、7 个成功恢复点、外部告警送达和 PITR 业务恢复仍是 NO-GO**。
+> **真实 repo2、对象锁/WORM、连续 WAL、3 个成功恢复点、外部告警送达和 PITR 业务恢复仍是 NO-GO**。
 <!-- REAL-REPO2-WORM-PITR-ALERTS-NO-GO -->
 > 本目录不会连接云端，也不会安装或启用生产配置。不得把模板/单元测试通过登记为灾备完成。
 
@@ -37,7 +43,7 @@
   `Persistent` 日任务同时补跑时，先完成本地 full，再执行异地 full，最后采集 health，避免互相争锁；
 - 每日 repo2 backup 在真正写入前运行 pgBackRest `check`，检查已配置仓库及归档路径；5 分钟
   `pgbackrest_health.py` 只读 repo1/repo2 JSON inventory 与 `pg_stat_archiver`，不重复执行 archive-path
-  probe。只有双仓各至少 7 个成功 full、
+  probe。只有双仓各至少 3 个成功 full、
   最新 full 不超过 36 小时、最近 WAL 成功不超过 15 分钟、最新失败未晚于最新成功、双仓最新 WAL
   一致且都不落后于本次采样前 PostgreSQL 已成功归档的 `last_archived_wal` 时才返回 PASS；
 - pgBackRest 官方明确说明 inventory 的 min/max 之间可能因保留或其他原因存在 gap；因此该健康检查
@@ -62,7 +68,7 @@ pgBackRest 官方参考：
 
 从三个 `.example.json` 建立私有文件：
 
-1. `repo2-policy.json`：不含秘密，登记 bucket/endpoint/prefix、7 个恢复点、WAL/full 新鲜度；
+1. `repo2-policy.json`：不含秘密，登记 bucket/endpoint/prefix、3 个恢复点、WAL/full 新鲜度；
 2. `repo2-secrets.json`：独立 repo2 访问 key/secret 和 cipher pass；只能 `root:postgres 0640`，
    不得粘贴到命令、日志、工单或聊天；cipher 必须另行离线密封托管；
 3. `worm-evidence.json`：第二名审核人通过 provider 控制面/API 只读核验版本控制、不可变保留期、
@@ -118,7 +124,7 @@ pgBackRest 版本、当前 `/etc/pgbackrest.conf` SHA-256、归档积压、磁�
 必须先只读取得并由两人复核：
 
 - 当前主库身份、`SHOW archive_mode/archive_command/archive_timeout`、`pg_stat_archiver`、
-  `pgbackrest version/info/check`、repo1 最近 7 个成功 full 与 WAL；
+  `pgbackrest version/info/check`、repo1 最近 3 个成功 full 与 WAL；
 - `/etc/pgbackrest.conf`、默认 include path、`/var/spool/pgbackrest`、现有 backup timer/unit 的准确
   owner/mode/SHA-256；RAID 同步、SMART、`/data` 和根分区容量；
 - repo2 bucket/prefix 为专用且为空或已明确归属；TLS/DNS/出口、最小权限凭据、版本控制、WORM
@@ -164,26 +170,26 @@ commissioner 严格按以下阶段，每次调用只推进一步：
 
 1. `uten-pgbackup-alert-drain.timer`；注入 sender 断网/坏 receipt，确认 pending 保留，恢复后 receipt 到达；
 2. `uten-pgbackup.timer`；先验证 repo1 full、成功后 expire、容量门禁以及掉电后不重复 full；
-3. `uten-pgbackup-health.timer`；以只读方式持续观察双仓 WAL，并验证超 15 分钟/缺 repo2/少于 7 点
+3. `uten-pgbackup-health.timer`；以只读方式持续观察双仓 WAL，并验证超 15 分钟/缺 repo2/少于 3 点
    都会报警；确认报告始终明确 `repositoryCheckPerformedByThisRun=false`；
 4. `uten-pgbackup-repo2.timer`；执行重启、断网、掉电后 `Persistent=true` catch-up 和不重复破坏性任务测试。
 
-前 7 个**不同日期**的成功 full 尚未形成时，健康门禁应持续 FAIL，这是正确的 NO-GO，不得降低阈值或
-伪造 7 次同日备份。最近 7 个成功恢复点必须在 repo1 和 repo2 都可见；每日 full 失败由新鲜度告警，
+前 3 个**不同日期**的成功 full 尚未形成时，健康门禁应持续 FAIL，这是正确的 NO-GO，不得降低阈值或
+伪造 3 次同日备份。最近 3 个成功恢复点必须在 repo1 和 repo2 都可见；每日 full 失败由新鲜度告警，
 不能用盲删旧备份或手工 `expire` 掩盖。
 
 `backup_acceptance.py` 是最终 receipt writer。它只在 POSIX root、固定 root-only 目录运行，并要求：
 
 - 重新执行一次 `validate-active`，把当前 policy、secret-bearing config、WORM receipt 与启用审批的
   SHA-256/有效期重新绑定；健康报告本身不能替代这次最终 preflight；
-- 15 分钟内的双仓 PASS health（含 `system_identifier`、timeline、7 个不同 UTC 日期 backup set/WAL、
+- 15 分钟内的双仓 PASS health（含 `system_identifier`、timeline、3 个不同 UTC 日期 backup set/WAL、
   canonical `flyway_schema_history` SHA-256、签名 head/count）；
 - root-installed release guard 对 manifest/signature/allowed_signers 的验签结果；health 中当前数据库的
   每一行 Flyway `version/script/checksum` 投影必须与 guard 输出逐字一致，manifest 的 migration-set
   SHA-256、head/count 也必须与目标一致；
 - 当前有效且带外 SHA-256 匹配的 WORM evidence；
 - 已投递 event 和 provider receipt 两个 SHA-256 均匹配，receipt 在 31 日内；
-- 31 日内的 `drill-restore.sh` restore receipt，以及从 repo2 选择当前 7 个恢复点之一完成的 PITR/业务
+- 31 日内的 `drill-restore.sh` restore receipt，以及从 repo2 选择当前 3 个恢复点之一完成的 PITR/业务
   acceptance；restore receipt 必须逐字绑定同一个 repo2 backup set 和同一个非 `latest` target time；
 - 受保护签名发布的 version、Flyway head/count 和 migration-set SHA-256，以及变更审批引用。
 
@@ -245,7 +251,7 @@ receipt SHA-256 和值班人员确认；event 只含失败摘要/health digest�
 
 ## 6. 最终 GO 证据
 
-- 双仓连续 WAL 与各自最近 7 个不同日期成功 full；对象锁无法由备份写入身份解除；
+- 双仓连续 WAL 与各自最近 3 个不同日期成功 full；对象锁无法由备份写入身份解除；
 - repo2 任意选择的 full + WAL 在隔离主机完成 PITR，达到签名 Flyway head/count/checksum；
 - 财务、库存、生产、销售、采购、审计、附件及应用 PGP/HMAC 恢复材料对账，记录真实 RTO/RPO；
 - 每日 backup、5 分钟 health、外部 alert receipt、RAID/SMART/容量/证书/服务监控均真实运行；

@@ -56,7 +56,7 @@ flowchart LR
     VPN --> TLS
     TLS --> APP
     APP --> DB["公司本地 PostgreSQL：唯一写主库"]
-    DB --> LOCALBK["本地 pgBackRest：连续 WAL + 最近 7 个恢复点"]
+    DB --> LOCALBK["本地 pgBackRest：连续 WAL + 最近 3 个恢复点"]
     DB --> OFFSITE["异地加密、不可变备份"]
 
     PUBLIC["官网访客（未来）"] --> SITE["延期：独立云服务器上的 Next.js 官网"]
@@ -466,7 +466,7 @@ VPN、云网关、MFA、证书、外部压测以及上述附件安全链未完�
 目标策略：
 
 - PostgreSQL 连续归档 WAL；安装模板在每天 `02:17` 运行 full backup，timer 为 `Persistent=true`，
-  pgBackRest 按成功 full 链保留最近 7 个恢复点并在新备份成功后执行 expire。只有目标机 timer、日志和
+  pgBackRest 按成功 full 链保留最近 3 个恢复点并在新备份成功后执行 expire。只有目标机 timer、日志和
   恢复证据都通过时才可把这句话登记为“已运行”。
 - 本地数据库和本地 repo1 同在 `/data`，只能应对部分逻辑故障，不能应对 NVMe/主机、勒索或机房故障。
 - 至少再有一份不同账号和故障域的加密、版本化或不可变副本；恢复密钥独立密封托管。
@@ -475,7 +475,7 @@ VPN、云网关、MFA、证书、外部压测以及上述附件安全链未完�
 - 每个异地恢复包同时保留当时的签名 manifest/signature、发布公钥与指纹、密钥轮换/撤销记录、兼容的 root-owned guard 源码及独立审核散列，以及 pgBackRest cipher、应用 PGP/HMAC 等密封恢复材料。密钥被认定泄露后不得盲信旧签名，应按撤销记录建立最小临时信任集。
 
 仓库已提供 [repo2、PITR 与外部告警合同](postgres/backup/README.zh-CN.md)：它能渲染但不安装
-secret-bearing repo2 候选，校验 WORM 带外摘要，检查 repo1/repo2 各 7 个不同日期成功 full、每日
+secret-bearing repo2 候选，校验 WORM 带外摘要，检查 repo1/repo2 各 3 个不同日期成功 full、每日
 新鲜度、WAL 传输新鲜度/两仓最新值不落后于 PostgreSQL `last_archived_wal` 和 canonical Flyway history，并以 durable spool + provider receipt
 验证外部告警。inventory min/max 不等于无 gap，连续性只能由指定 backup set + target time 的隔离 PITR 证明。
 `backup_acceptance.py` 只有在 repo2 隔离 PITR、七类业务对账、WORM 和告警均有独立证据时，才生成
@@ -542,7 +542,7 @@ apply 只能执行本次 assess 明确标为 `allowed=true` 的动作：`finish-
 
 数据库备份/恢复系统必须先把 narrow receipt 以单硬链 `root:root 0600` 写入固定目录 `/var/lib/uten-imp-release/database-receipts/NAME.json`。receipt schemaVersion 为 1，且只包含 `receiptType`（`backup`/`restore`）、`successful=true`、`approvalReference`、`targetVersion`、签名目标的 `flywayHeadVersion`/`flywayMigrationSetSha256`、`completedAtUtc` 与 `evidenceReference`。`evidenceReference` 必须逐字采用 `path=/var/lib/uten-imp-backup/acceptance-receipts/DETAIL.json;sha256=...`，指向同样为单硬链 `root:root 0600`、父目录 root-only 的 `backup-acceptance-detail` receipt；任一任意路径、软链、额外硬链、非 root owner、宽松 mode、SHA-256 不一致或未知字段都会拒绝。
 
-detailed receipt 不是自由文本。恢复工具会严格绑定 narrow receipt、审批引用、目标版本、已验签 manifest/signature SHA-256、migration-set SHA-256、数据库 `system_identifier`/timeline、Flyway 成功迁移数量及 canonical row digest，并要求 repo1/repo2 各有至少 7 个已识别恢复点、连续 WAL 身份、异地不可变/外部告警/隔离 repo2 PITR 的独立验收，以及财务、库存、生产、销售、采购、审计、附件七类业务检查均为带证据引用的 `PASS`。该详细 receipt 必须由已安装的 backup acceptance 流程产生，不得手工拼 JSON。
+detailed receipt 不是自由文本。恢复工具会严格绑定 narrow receipt、审批引用、目标版本、已验签 manifest/signature SHA-256、migration-set SHA-256、数据库 `system_identifier`/timeline、Flyway 成功迁移数量及 canonical row digest，并要求 repo1/repo2 各有至少 3 个已识别恢复点、连续 WAL 身份、异地不可变/外部告警/隔离 repo2 PITR 的独立验收，以及财务、库存、生产、销售、采购、审计、附件七类业务检查均为带证据引用的 `PASS`。该详细 receipt 必须由已安装的 backup acceptance 流程产生，不得手工拼 JSON。
 
 即使两份 receipt 都合法，apply 仍不会只信历史证据。Phase 4 固定安装单硬链 `root:root 0644` 的 `/usr/local/libexec/uten-imp-release/database_recovery_verifier.py`，updater 和安装器都校验其审查过的 SHA-256。恢复事务在启动任何应用、Nginx 或 watchdog 前，以无参数、无任意 SQL/路径的固定命令切换到本机 `postgres` OS 账号，通过 peer 连接 `/var/run/postgresql:5432` 上的 `uten_imp`，在 read-only PGOPTIONS 下读取当前 primary 的 `system_identifier`、timeline 和按 `installed_rank` 排序的 `public.flyway_schema_history` 全部行。helper 还要求查询得到的 postmaster PID 精确等于 `postgresql@16-main.service` 的 MainPID，并通过固定 `/usr/bin/ss` 证明唯一 `127.0.0.1:5432` listener 也由该 PID 持有；因此 socket 查询对象必须与 JVM 使用的 TCP 端点是同一实例。live DB 的每一条 version/description/script/checksum/type/success、数量和 canonical digest 必须同时逐字匹配 detailed receipt 与当前签名 manifest；NULL/repeatable、失败行、重复/未来版本、bool 冒充整数或任何身份/时间线漂移均保持 **NO-GO**。固定 peer 连接、systemd/listener 身份、helper SHA 或只读查询无法执行时，不允许临时注入密码、在线安装依赖或绕过门禁。
 

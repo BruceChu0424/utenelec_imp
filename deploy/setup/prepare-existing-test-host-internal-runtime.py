@@ -3872,9 +3872,10 @@ def ensure_attachment_layout(
             fail("attachment layout contains unapproved preexisting content")
     paths = (
         (data / "uten-imp", 0, 0, 0o755),
-        (ATTACHMENT_ROOT, 0, app_group.gr_gid, 0o750),
-        (ATTACHMENT_ROOT / "staging", app.pw_uid, app_group.gr_gid, 0o750),
-        (ATTACHMENT_ROOT / "final", app.pw_uid, app_group.gr_gid, 0o750),
+        # Private to the application account (2026-10-06, ADR-157); /data/uten-imp stays root-owned.
+        (ATTACHMENT_ROOT, app.pw_uid, app_group.gr_gid, 0o700),
+        (ATTACHMENT_ROOT / "staging", app.pw_uid, app_group.gr_gid, 0o700),
+        (ATTACHMENT_ROOT / "final", app.pw_uid, app_group.gr_gid, 0o700),
     )
     for path, uid, gid, mode in paths:
         _attachment_directory(

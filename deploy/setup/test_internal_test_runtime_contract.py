@@ -232,8 +232,9 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
             '-o ROTA "$source_device"',
             '[[ "$filesystem" == ext4 ]]',
             "capacity_bytes >= 300 * 1024 * 1024 * 1024",
-            "root:uten-imp:750",
-            "uten-imp:uten-imp:750",
+            '"$ATTACHMENT_ROOT" uten-imp:uten-imp:700',
+            '"$STAGING_ROOT" uten-imp:uten-imp:700',
+            '"$FINAL_ROOT" uten-imp:uten-imp:700',
         ):
             self.assertIn(expected, validator)
         self.assertNotIn("mkdir", validator)

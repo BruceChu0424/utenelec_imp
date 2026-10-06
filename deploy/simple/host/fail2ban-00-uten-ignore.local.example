@@ -1,0 +1,6 @@
+# fail2ban 白名单: 管理机永不被封 (改 SSH 之前先装, 防止把自己关在门外)。
+# 安装为 /etc/fail2ban/jail.d/00-uten-ignore.local (root 0644), 然后 fail2ban-client reload。
+# 两个占位符替换成两台管理机的真实地址 (Tailscale 地址与局域网地址); 真实地址只写在服务器上,
+# 不提交进仓库。
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1 __ADMIN_TAILSCALE_IP__ __ADMIN_LAN_IP__

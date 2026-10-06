@@ -82,9 +82,37 @@ Git、聊天记录、命令参数、普通日志或交接文档。
 1. 是已挂载的 LVM、ext4、非旋转存储，而不是机械盘 RAID 或根文件系统中的普通目录；
 2. 容量至少 300 GiB，挂载参数包含 `rw,nodev,nosuid,noexec`；
 3. `/data/uten-imp` 为 `root:root 0755`；
-4. `attachments` 为 `root:uten-imp 0750`；其 `staging`、`final` 为
-   `uten-imp:uten-imp 0750`；
-5. 目录不能是符号链接、不能跨文件系统；服务账号只能写 `staging/final`，不能替换上层目录。
+4. `attachments` 及其 `staging`、`final` 均为 `uten-imp:uten-imp 0700` (2026-10-06 起与现网附件卷
+   `/var/lib/uten-imp-media/attachments` 统一，ADR-157)：只有应用账号能进，nginx (`www-data`) 等任何
+   其他账号都不能列目录或读原件；
+5. 目录不能是符号链接、不能跨文件系统；上层 `/data/uten-imp` 归 root，服务账号不能替换附件根目录本身。
+
+附件根目录改归应用账号后，应用可以改名或替换 `staging`、`final` 这两个目录本身 (以前根目录归 root 时做不到)。
+这一点接受，理由：应用本来就对 `staging`、`final` 里的全部原件有完全的写删权限，多出来的只是换掉目录这一层；
+每次启动前 `validate-internal-test-storage.sh` 都会重新确认三层都是同一文件系统上的真实目录 (不是符号链接)、
+属主与权限正确，不符则后端不启动；以 root 身份读附件的程序 (配套备份) 本来就按不跟随符号链接的方式打开，
+因为应用随时可以在 `final` 里放符号链接。
+
+**按旧规则 (`attachments` 为 `root:uten-imp 0750`、`staging`/`final` 为 `0750`) 准备好的主机**：换装新的
+`/usr/local/sbin/uten-imp-validate-internal-test-storage` 后，旧目录会被它拒绝、后端起不来；重跑
+`prepare-existing-test-host-internal-runtime.py` 也会以 `attachment directory preimage is unsafe` 中止。
+在换装新校验器的同一个维护窗口里先过渡目录，再装新校验器 (校验器仍按签名候选/receipt 流程安装)：
+
+```bash
+sudo systemctl stop uten-imp-internal-test.service
+# 只改三层目录本身, 不加 -R: 目录里的原件属主与权限保持不变
+sudo chown uten-imp:uten-imp /data/uten-imp/attachments
+sudo chmod 0700 /data/uten-imp/attachments /data/uten-imp/attachments/staging /data/uten-imp/attachments/final
+sudo stat -c '%U:%G %a %n' /data/uten-imp /data/uten-imp/attachments \
+  /data/uten-imp/attachments/staging /data/uten-imp/attachments/final
+# 期望: root:root 755 /data/uten-imp; 其余三行 uten-imp:uten-imp 700
+# 按签名流程装好新校验器后先手动跑一次, 通过再启动
+sudo /usr/local/sbin/uten-imp-validate-internal-test-storage && sudo systemctl start uten-imp-internal-test.service
+```
+
+回退：停服务后执行 `sudo chown root:uten-imp /data/uten-imp/attachments` 与
+`sudo chmod 0750 /data/uten-imp/attachments /data/uten-imp/attachments/staging /data/uten-imp/attachments/final`，
+再装回旧校验器。现网走简化链 (附件在 `/var/lib/uten-imp-media/attachments`)，不受本节影响。
 
 `validate-internal-test-storage.sh` 是只读检查，不会代替建卷、格式化、挂载或目录初始化。任何一项不符，
 systemd 都保持后端关闭，避免 `/data` 未挂载时把数据库或附件误写到系统盘。

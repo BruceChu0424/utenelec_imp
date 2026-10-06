@@ -295,6 +295,37 @@ class PairedInternalBackupTest(unittest.TestCase):
         (published / "manifest.json").write_text(json.dumps(summary))
         self.assertEqual(1, paired.verify_set(published)["clean_objects"])
 
+    def test_successful_real_run_applies_retention_to_its_own_old_sets_only(self):
+        self.add_object()
+        first = paired.backup(self.config)
+        old = "20200101T000000Z-" + "0" * 12
+        shutil.copytree(first, self.target / old)
+        summary = json.loads((self.target / old / "manifest.json").read_text())
+        summary["set_id"] = old
+        (self.target / old / "manifest.json").write_text(json.dumps(summary))
+        stale = ".incomplete-20200101T000000Z-" + "1" * 12
+        (self.target / stale / "media").mkdir(parents=True, mode=0o700)
+        (self.target / "operator-notes").mkdir(mode=0o700)
+        # Two days: today's two sets fill the count floor, so only the 2020 copy is beyond both limits.
+        second = paired.backup(dataclasses.replace(self.config, retention_days=2))
+        self.assertFalse((self.target / old).exists())
+        self.assertFalse((self.target / stale).exists())
+        self.assertTrue((self.target / "operator-notes").is_dir())
+        self.assertEqual(second.name, json.loads(self.latest())["set_id"])
+        paired.verify_set(first)
+        summary = paired.verify_set(second)
+        self.assertIn("last 2 server-local calendar days", summary["retention"])
+        self.assertIn("at least the 2 newest complete sets", summary["retention"])
+        self.assertEqual(2, summary["resource_limits"]["retention_days"])
+        attempt = json.loads((self.target / "last-attempt.json").read_text())
+        self.assertEqual("SUCCESS", attempt["status"])
+        self.assertEqual(("APPLIED", 2, 1, 1), tuple(attempt["retention"][key] for key in (
+            "status", "completeSets", "removedSets", "removedUnpublished")))
+        with self.assertRaisesRegex(ValueError, "retention_days"):
+            paired.backup(dataclasses.replace(self.config, retention_days=0))
+        self.assertEqual("FAILED", json.loads((self.target / "last-attempt.json").read_text())["status"])
+        self.assertTrue(first.exists() and second.exists())
+
     def test_new_private_reference_producer_cannot_silently_escape_inventory(self):
         self.add_private()
         with self.connection() as connection, connection.cursor() as cursor:
@@ -325,7 +356,12 @@ class PairedInternalBackupTest(unittest.TestCase):
         self.assertEqual("SUCCESS", attempt["status"])
         self.assertEqual(summary["completed_at"], attempt["lastSuccessAt"])
         self.assertEqual(0o600, stat_mode(self.target / "last-attempt.json"))
-        self.assertEqual({"format", "status", "startedAt", "completedAt", "lastSuccessAt"}, set(attempt))
+        self.assertEqual({"format", "status", "startedAt", "completedAt", "lastSuccessAt", "retention"}, set(attempt))
+        # Monitoring gets cleanup counts only, never set ids, paths or object keys.
+        self.assertEqual({"status": "APPLIED", "retentionDays": 3, "completeSets": 1, "removedSets": 0,
+                          "removedUnpublished": 0, "failedDeletes": 0, "unrecognizedEntries": 0, "freedBytes": 0},
+                         attempt["retention"])
+        self.assertNotIn(published.name, json.dumps(attempt))
         restored = self.database + "_restore"
         self.create_database(restored)
         account = pwd.getpwnam("postgres")

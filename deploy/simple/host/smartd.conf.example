@@ -1,0 +1,6 @@
+# 硬盘 SMART 监控 (ADR-157)。把 /etc/smartd.conf 里唯一的 DEVICESCAN 行换成下面这一行,
+# 然后 systemctl enable --now smartmontools (必须用这个名字, 别名 smartd 会被拒绝)。
+# -s S/../../7/03: 每周日 03:00 短自检 (治理记录 D7, 不排长自检)
+# -W 4,50,55: 温度变化 4 度记录, 50 度提示, 55 度告警
+# -M exec: 有问题时调用 /usr/local/sbin/uten-alert-smart (告警通道接入前该脚本不存在, smartd 退回发本机邮件)
+DEVICESCAN -a -o on -S on -n standby,q -W 4,50,55 -s S/../../7/03 -m root -M exec /usr/local/sbin/uten-alert-smart

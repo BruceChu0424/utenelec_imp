@@ -24,6 +24,10 @@ from typing import Any
 SCHEMA_VERSION = 1
 RENDER_CONFIRMATION = "RENDER VERIFIED UTEN PGBACKREST REPO2 CANDIDATE"
 PLACEHOLDER_MARKERS = ("REPLACE", "CHANGEME", "EXAMPLE", "__")
+# 2026-10-06 (ADR-157): every server backup keeps 3 days = 3 daily successful full restore
+# points. One floor for retention, archive retention and the health gate, shared by
+# pgbackrest_health, backup_acceptance and backup_commissioner so they cannot drift apart.
+MINIMUM_RESTORE_POINTS = 3
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
 SAFE_BUCKET = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
@@ -224,9 +228,11 @@ def parse_policy(value: dict[str, Any]) -> Repo2Policy:
         raise ContractError("repo2 client-side encryption must be aes-256-cbc")
     if repo["retentionFullType"] != "count" or repo["retentionArchiveType"] != "full":
         raise ContractError("repo2 retention must be full-count based with full archive retention")
-    retention_full = _positive_int(repo["retentionFull"], "repo2.retentionFull", 7, 365)
+    retention_full = _positive_int(
+        repo["retentionFull"], "repo2.retentionFull", MINIMUM_RESTORE_POINTS, 365
+    )
     retention_archive = _positive_int(
-        repo["retentionArchive"], "repo2.retentionArchive", 7, 365
+        repo["retentionArchive"], "repo2.retentionArchive", MINIMUM_RESTORE_POINTS, 365
     )
     if retention_archive < retention_full:
         raise ContractError("repo2.retentionArchive cannot be less than retentionFull")
@@ -249,7 +255,7 @@ def parse_policy(value: dict[str, Any]) -> Repo2Policy:
     minimum_points = _positive_int(
         health["minimumSuccessfulFullRestorePoints"],
         "health.minimumSuccessfulFullRestorePoints",
-        7,
+        MINIMUM_RESTORE_POINTS,
         365,
     )
     if minimum_points > retention_full:

@@ -17,6 +17,8 @@ Environment=PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 Environment=OMP_NUM_THREADS=2
 Environment=OPENBLAS_NUM_THREADS=2
 Environment=MKL_NUM_THREADS=2
+# 运行时不往代码目录写 __pycache__: /opt/uten-ocr 只归 root, 服务账号与运维账号都不该在里面留文件 (ADR-157)
+Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/opt/uten-ocr/venv/bin/uvicorn ocr_server:app --host 127.0.0.1 --port 8501 --timeout-keep-alive 75
 Restart=on-failure
 RestartSec=5
@@ -38,6 +40,8 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 IPAddressDeny=any
 IPAddressAllow=localhost
 NoNewPrivileges=true
+# 看不到别的进程的 /proc 信息 (命令行、环境变量)
+ProtectProc=invisible
 
 [Install]
 WantedBy=multi-user.target

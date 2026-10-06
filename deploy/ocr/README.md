@@ -9,8 +9,8 @@
 | 文件/接口 | 职责 |
 |---|---|
 | `ocr_server.py` | FastAPI服务；固定PP-OCRv5 mobile检测/识别与文本行方向模型，CPU、关闭MKLDNN，使用PIL检查并解码输入 |
-| `uten-paddle-ocr.service` | systemd 单进程，独立 `uten-ocr` 无登录用户，回环8501，模型缓存 `/opt/uten-ocr/models`，4G内存上限 |
-| `install-paddle-ocr.sh` | 在 `/opt/uten-ocr` 准备运行环境与 unit；使用前核对脚本行为和依赖版本 |
+| `uten-paddle-ocr.service` | systemd 单进程，独立 `uten-ocr` 无登录用户，回环8501，模型缓存 `/opt/uten-ocr/models`，4G内存上限；不写字节码缓存 (`PYTHONDONTWRITEBYTECODE=1`)、看不到其他进程的 /proc 信息 (`ProtectProc=invisible`) |
+| `install-paddle-ocr.sh` | 只能由 root 执行：在 `/opt/uten-ocr` 准备运行环境与 unit 并设为开机自启；代码目录 (模型缓存除外) 有任何不归 root 的文件就拒绝继续；使用前核对脚本行为和依赖版本 |
 | `requirements.txt` | 部署依赖入口；固定PaddleOCR 3.7.0、PaddlePaddle 3.3.1、PaddleX 3.7.2、FastAPI 0.141.1和opencv-contrib-python 4.10.0.84，其余按文件版本边界安装 |
 | `requirements-test.txt` | 无模型的安全边界测试依赖，不代表真实 OCR 推理环境 |
 | `prepare_models.py` | 显式准备 `PP-OCRv5_mobile_det`、`PP-OCRv5_mobile_rec`、`PP-LCNet_x1_0_textline_ori`，准备后仍需样本推理 |
@@ -47,8 +47,14 @@ HTTP 上传层可能使用受控临时文件，不宣称整个传输过程完全
 5. 先启动侧车并完成下表验证，再以受控方式配置 provider=paddle 和重启后端。
    实际调用路径为员工请求 → 公司后端授权与限流 → 同机侧车，不对公网暴露8501。
 
-安装脚本的 `--verify` 选项会短暂启动后停止服务，健康接口检查不能代替样本推理验收；
-在已运行实例升级前必须检查其停机影响，不直接把它当作无中断升级命令。
+安装脚本总是 `systemctl enable uten-paddle-ocr` (2026-10-06 起，只设开机自启，不在安装时启动)，
+避免服务器重启后发票识别静默缺席。`--verify` 选项会重启服务做健康检查：原来在运行的保持运行，
+原来没运行的自检后停止。健康接口检查不能代替样本推理验收；在已运行实例升级前必须检查其停机影响
+(重启约 30-60 秒)，不直接把它当作无中断升级命令。
+
+安装和升级只能用 root 执行 (`sudo bash install-paddle-ocr.sh`)。2026-09-20 曾有运维账号在
+`/opt/uten-ocr` 下运行 python，留下归它所有的 `__pycache__`；现在安装脚本会删掉顶层 `__pycache__`，
+其余任何不归 root 的代码文件都会让安装停止。
 
 ### OpenCV依赖兼容
 
@@ -82,7 +88,7 @@ Linux补齐 `libgomp1`、`libgl1` 和发行版对应的 `libglib2.0-0t64` 或 `l
 
 ## 停用和回滚
 
-先将后端 provider 恢复为 disabled，并按批准的部署流程重启，再停用侧车。
+先将后端 provider 恢复为 disabled，并按批准的部署流程重启，再 `systemctl disable --now uten-paddle-ocr` 停用侧车。
 这样员工看到未启用提示并手工登记；仅停侧车但保留 paddle 会产生识别失败提示。
 保留原件、业务记录和模型缓存；回滚只恢复经核验的代码、运行环境和配置，不修改已登记凭证或 Flyway 历史。
 

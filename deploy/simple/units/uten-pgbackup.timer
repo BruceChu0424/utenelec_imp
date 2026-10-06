@@ -1,0 +1,13 @@
+# 安装为 /etc/systemd/system/uten-pgbackup.timer
+# 每天 02:17 (避开 03:40/13:10 配套备份与周日 05:00 更新器)
+[Unit]
+Description=Uten IMP daily pgBackRest full backup timer
+
+[Timer]
+OnCalendar=*-*-* 02:17:00
+Persistent=true
+AccuracySec=1min
+Unit=uten-pgbackup.service
+
+[Install]
+WantedBy=timers.target

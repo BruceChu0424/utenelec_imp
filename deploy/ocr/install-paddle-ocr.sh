@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# 发票识别侧车安装/升级 (以 root 运行，服务使用独立无登录账号)。
-# 用法：bash install-paddle-ocr.sh [--verify]
+# 发票识别侧车安装/升级 (只能由 root 直接执行, 服务使用独立无登录账号)。
+# 用法：sudo bash install-paddle-ocr.sh [--verify]
 # 设计：/opt/uten-ocr（venv + 模型缓存 + 本脚本同目录的服务文件），
-# systemd 常驻 127.0.0.1:8501；安装后默认【停止】状态，启用见 RUNBOOK。
+# systemd 常驻 127.0.0.1:8501；安装后设为开机自启 (2026-10-06, ADR-157), 不在安装时启动。
 # 零外部 API：PaddleOCR 为 Apache-2.0 开源，纯 CPU 推理（ADR-094）。
 set -euo pipefail
+# 安装过程里任何 python 都不往 /opt/uten-ocr 写 __pycache__ (2026-09-20 曾留下运维账号所有的缓存)。
+export PYTHONDONTWRITEBYTECODE=1
 # Python package metadata must be readable by the separate service account.
 # The installer handles public program files only; secret/runtime directories
 # use explicit restrictive modes below and in the systemd unit.
@@ -19,6 +21,14 @@ need_root_hint() {
   if [[ "$(id -u)" != 0 ]]; then
     log "请使用 sudo 以 root 安装；运行服务不使用管理员账号"; exit 1
   fi
+}
+
+# 代码目录 (模型缓存除外) 只能归 root: 清掉别的账号留下的字节码缓存, 其余非 root 文件直接拒绝。
+require_root_owned_tree() {
+  local stray
+  rm -rf -- "$DEST/__pycache__"
+  stray=$(find "$DEST" -path "$DEST/models" -prune -o \( ! -user root -o ! -group root \) -print -quit)
+  [[ -z "$stray" ]] || { log "拒绝继续: $stray 不归 root (只能由 root 安装或升级)"; exit 1; }
 }
 need_root_hint
 [[ "$(realpath -e "$DEST")" = "$DEST" && ! -L "$DEST" ]] \
@@ -65,20 +75,30 @@ sudo -u uten-ocr "$DEST/venv/bin/python" -c \
   'import cv2, importlib.metadata as m; assert m.version("opencv-contrib-python") == "4.10.0.84"; assert cv2.__version__.startswith("4.10."); print("Service identity OpenCV import and metadata verified")'
 log "pip 依赖完成"; du -sh "$DEST" || true
 
+require_root_owned_tree
 install -m 0644 uten-paddle-ocr.service /etc/systemd/system/uten-paddle-ocr.service
 systemctl daemon-reload
+# 开机自启 (只 enable 不 start): 服务器重启后发票识别不再静默缺席。
+systemctl enable uten-paddle-ocr
 
 if [[ "${1:-}" == "--verify" ]]; then
+  was_active=false
+  systemctl is-active --quiet uten-paddle-ocr && was_active=true
   log "启动并自检 …"
-  systemctl start uten-paddle-ocr
+  # 已在运行的实例用 restart 加载新代码; 原来没运行的, 自检后恢复为停止。
+  systemctl restart uten-paddle-ocr
   for i in $(seq 1 60); do
     if curl -sf http://127.0.0.1:8501/health >/dev/null 2>&1; then break; fi
     sleep 2
   done
   curl -sf http://127.0.0.1:8501/health && echo
-  log "自检通过；按本轮口径验证完即停，不常驻"
-  systemctl stop uten-paddle-ocr
+  if [[ "$was_active" == true ]]; then
+    log "自检通过；原来在运行, 保持运行"
+  else
+    log "自检通过；原来没运行, 自检后停止 (开机自启已设置)"
+    systemctl stop uten-paddle-ocr
+  fi
 fi
 
-log "完成。启用（发版配 provider=paddle 时）：systemctl enable --now uten-paddle-ocr"
+log "完成。已设开机自启; 现在就启动: systemctl start uten-paddle-ocr (后端 provider=paddle 时才会调用)"
 df -h /opt | tail -1

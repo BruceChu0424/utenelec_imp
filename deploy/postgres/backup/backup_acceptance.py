@@ -46,6 +46,7 @@ except ModuleNotFoundError as exc:
 
 try:
     from pgbackrest_repo2 import (
+        MINIMUM_RESTORE_POINTS,
         ContractError,
         _load_json,
         parse_policy,
@@ -57,6 +58,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "pgbackrest_repo2":
         raise
     _repo2_module = _fixed_sibling("pgbackrest_repo2", "pgbackrest_repo2.py")
+    MINIMUM_RESTORE_POINTS = _repo2_module.MINIMUM_RESTORE_POINTS
     ContractError = _repo2_module.ContractError
     _load_json = _repo2_module._load_json
     parse_policy = _repo2_module.parse_policy
@@ -166,12 +168,14 @@ def validate_health(
         point_count = repository.get("successfulFullRestorePoints")
         if (
             not isinstance(points, list)
-            or len(points) < 7
+            or len(points) < MINIMUM_RESTORE_POINTS
             or isinstance(point_count, bool)
             or not isinstance(point_count, int)
-            or point_count < 7
+            or point_count < MINIMUM_RESTORE_POINTS
         ):
-            raise ContractError(f"repo{expected_repo} does not have seven restore points")
+            raise ContractError(
+                f"repo{expected_repo} has fewer than {MINIMUM_RESTORE_POINTS} restore points"
+            )
     identity = value.get("databaseIdentity")
     if not isinstance(identity, dict):
         raise ContractError("backup health database identity is missing")

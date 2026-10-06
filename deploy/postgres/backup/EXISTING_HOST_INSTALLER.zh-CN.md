@@ -206,7 +206,7 @@ sudo env UTEN_RUN_EXISTING_BACKUP_INSTALLER_SYSTEMD_TESTS=I_ACKNOWLEDGE_THIS_IS_
 源码/模拟测试不能替代真实机 namespace/capability、`systemd-analyze`、信号/超时/OOM、掉电原子性、
 PostgreSQL 慢启动、Persistent timer catch-up 和维护锁竞争验收。安装后仍不得 commission/enable，直至：
 
-- repo1 实际 full/expire、容量上限、7 个成功恢复点与隔离恢复通过；
+- repo1 实际 full/expire、容量上限、3 个成功恢复点与隔离恢复通过；
 - repo2 最小权限、TLS、WORM、连续 WAL、PITR、断网/积压/恢复通过；
 - 外部 alert sender 的 pending/retry/provider receipt 与值班到达通过；
 - 发布事务与同一 maintenance lock 的真实竞争、失败 marker、重启/掉电恢复通过；
@@ -214,7 +214,7 @@ PostgreSQL 慢启动、Persistent timer catch-up 和维护锁竞争验收。安�
   但仍须在 disposable Linux/systemd VM 与真实维护窗口验证 SIGKILL/OOM/掉电、pgBackRest inventory 和
   Persistent catch-up 确实不会盲目重复 full；禁止手删 active marker；
 - 独立 commissioner 已实现只读 assess、计划记录、四阶段 enable/start、resume 与 rollback，但只有绑定
-  真实 repo1/repo2/WAL/7 点/WORM/PITR/告警送达/容量 quota receipts 并完成双人书面验收后才能执行。
+  真实 repo1/repo2/WAL/3 点/WORM/PITR/告警送达/容量 quota receipts 并完成双人书面验收后才能执行。
   详见 [`BACKUP_AUTOMATION_RECOVERY_AND_COMMISSIONING.zh-CN.md`](BACKUP_AUTOMATION_RECOVERY_AND_COMMISSIONING.zh-CN.md)。
 
 上述真实证据缺失时，backup automation 与生产灾备继续 **NO-GO**。

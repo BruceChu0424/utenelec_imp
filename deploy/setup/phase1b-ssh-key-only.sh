@@ -11,6 +11,10 @@ unset CDPATH ENV BASH_ENV PYTHONHOME PYTHONPATH PYTHONUSERBASE
 readonly SSH_PORT=22
 readonly CONFIG_DIR=/etc/ssh/sshd_config.d
 readonly CONFIG_PATH=/etc/ssh/sshd_config.d/00-uten-imp.conf
+# cloud-init rewrites sshd_config.d/50-cloud-init.conf from its ssh_pwauth setting; key-only
+# mode pins ssh_pwauth: false so a later cloud-init run cannot re-enable password login.
+readonly CLOUD_INIT_DIR=/etc/cloud/cloud.cfg.d
+readonly CLOUD_INIT_PWAUTH_PATH=/etc/cloud/cloud.cfg.d/99-uten-ssh-pwauth.cfg
 readonly AUTHORIZED_KEYS_DIR=/etc/ssh/authorized_keys
 readonly STATE_DIR=/var/lib/uten-imp-commissioning/ssh-key-only
 readonly TRANSACTION_ROOT=/var/lib/uten-imp-commissioning/ssh-key-only/transactions
@@ -1214,6 +1218,10 @@ rollback_transaction() {
   systemctl is-active --quiet ssh.service || return 1
   verify_live_ssh_runtime_contract || return 1
   restore_transaction_file "$transaction_dir" keys "$AUTHORIZED_KEYS_DIR/$admin_user" || return 1
+  # Older transactions and hosts without cloud-init never captured this preimage.
+  if [[ -e "$transaction_dir/had-cloudinit" || -e "$transaction_dir/absent-cloudinit" ]]; then
+    restore_transaction_file "$transaction_dir" cloudinit "$CLOUD_INIT_PWAUTH_PATH" || return 1
+  fi
   restore_transaction_file "$transaction_dir" complete "$COMPLETE" || return 1
   printf 'ROLLED_BACK\n' >"$transaction_dir/rolled-back" || return 1
   chmod 0600 "$transaction_dir/rolled-back" || return 1
@@ -1323,6 +1331,17 @@ backup_transaction_file() {
 backup_transaction_file config "$CONFIG_PATH"
 backup_transaction_file keys "$AUTHORIZED_KEYS_PATH"
 backup_transaction_file complete "$COMPLETE"
+manage_cloud_init=false
+if [[ "$mode" == key-only && -d "$CLOUD_INIT_DIR" ]]; then
+  validate_root_directory /etc/cloud
+  validate_root_directory "$CLOUD_INIT_DIR"
+  validate_managed_destination "$CLOUD_INIT_PWAUTH_PATH" 0:0 '6[04][04]'
+  backup_transaction_file cloudinit "$CLOUD_INIT_PWAUTH_PATH"
+  printf 'ssh_pwauth: false\n' >"$transaction_dir/new-cloudinit"
+  chmod 0600 "$transaction_dir/new-cloudinit"
+  fsync_path "$transaction_dir/new-cloudinit"
+  manage_cloud_init=true
+fi
 capture_effective "$transaction_dir/contexts" "$transaction_dir/effective-before"
 sha256sum -- "$transaction_dir/effective-before" | awk '{ print $1 }' >"$transaction_dir/effective-before.sha256"
 fsync_path "$transaction_dir/effective-before.sha256"
@@ -1407,6 +1426,12 @@ atomic_install "$transaction_dir/new-keys" "$AUTHORIZED_KEYS_PATH" 0 0 0644
 atomic_install "$transaction_dir/new-config" "$CONFIG_PATH" 0 0 0644
 validate_managed_destination "$AUTHORIZED_KEYS_PATH" 0:0 '644'
 validate_managed_destination "$CONFIG_PATH" 0:0 '644'
+if [[ "$manage_cloud_init" == true ]]; then
+  atomic_install "$transaction_dir/new-cloudinit" "$CLOUD_INIT_PWAUTH_PATH" 0 0 0644
+  validate_managed_destination "$CLOUD_INIT_PWAUTH_PATH" 0:0 '644'
+  [[ "$(<"$CLOUD_INIT_PWAUTH_PATH")" == 'ssh_pwauth: false' ]] \
+    || die 'cloud-init ssh_pwauth pin was not written as reviewed'
+fi
 [[ "$(sha256sum -- "$AUTHORIZED_KEYS_PATH" | awk '{ print $1 }')" == "$keyset_sha256" ]] \
   || die 'installed root-owned keyset digest differs from the approved source'
 validate_desired_effective "$mode" "$transaction_dir/contexts"

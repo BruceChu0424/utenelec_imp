@@ -51,6 +51,8 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 REFERENCE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+=-]{2,511}$")
 MAX_JSON_BYTES = 4 * 1024 * 1024
+# Same floor as pgbackrest_repo2.MINIMUM_RESTORE_POINTS (ADR-157: every server backup keeps 3 days).
+MINIMUM_RESTORE_POINTS = 3
 COMMAND_TIMEOUT_SECONDS = 60
 
 STATE_ROOT = Path("/var/lib/uten-imp-backup-commissioner")
@@ -626,11 +628,13 @@ def _validate_backup_acceptance(value: Mapping[str, Any]) -> dict[str, Any]:
         if (
             isinstance(count, bool)
             or not isinstance(count, int)
-            or count < 7
+            or count < MINIMUM_RESTORE_POINTS
             or not isinstance(points, list)
-            or len(points) < 7
+            or len(points) < MINIMUM_RESTORE_POINTS
         ):
-            raise CommissionerError(f"repo{expected_repo} lacks seven successful restore points")
+            raise CommissionerError(
+                f"repo{expected_repo} lacks {MINIMUM_RESTORE_POINTS} successful restore points"
+            )
         labels = [item.get("label") for item in points if isinstance(item, dict)]
         if len(labels) != len(points) or len(set(labels)) != len(labels):
             raise CommissionerError(f"repo{expected_repo} restore-point inventory is ambiguous")

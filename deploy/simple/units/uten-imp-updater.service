@@ -1,12 +1,48 @@
 # 每分钟只读本机数据库排程，仅到期时调用原更新器
 # 安装为 /etc/systemd/system/uten-imp-updater.service
+# 2026-10-06 加沙箱 (ADR-157): 仍以 root 运行 (切 current、systemctl、runuser), 但只有下面
+# ReadWritePaths 列出的位置可写。只约束定时触发的自动检查/纯代码激活; 维护窗口里人工执行的
+# sudo uten-imp-updater activate 不经过本单元。
+# 可写路径与更新器/调度器的一一对应 (改脚本里的路径时必须同步这里, 否则激活会因只读失败):
+#   /opt/uten-imp                     releases/ 暂存、current 原子切换、active-version.txt
+#   /run/lock                         LOCK_FILE=/run/lock/uten-imp-updater.lock
+#   /var/lib/uten-imp                 update_schedule.py 的回执 updater-schedule/status.json
+#   /var/lib/uten-imp-update-schedule update_schedule.py 的尝试记录与锁
+#   /srv/uten-backup/pre-activation   UTEN_BACKUP_DIR (升级前 dump 与 3 天清理)
+#   /var/backups/uten-imp             旧 UTEN_BACKUP_DIR, 迁移完成前保留
+#   /var/log/uten-imp                 migrator 若配置了文件日志
 [Unit]
 Description=Evaluate the local Uten IMP update schedule (OSS only when due)
 After=network-online.target
 Wants=network-online.target
+OnFailure=uten-alert@%n.service
 
 [Service]
 Type=oneshot
+# 首装时目录还不存在: "+" 前缀的命令在沙箱外以 root 创建, 随后 ExecStart 的沙箱才能把它们放开写。
+ExecStartPre=+/usr/bin/install -d -o root -g root -m 0700 /var/lib/uten-imp-update-schedule
+ExecStartPre=+/usr/bin/install -d -o root -g root -m 0755 /var/lib/uten-imp
 ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/update_schedule.py
 # root 必需：systemctl 控制 + current symlink 切换 + pg_dump
 TimeoutStartSec=25min
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/uten-imp /run/lock /var/lib/uten-imp /var/lib/uten-imp-update-schedule
+ReadWritePaths=-/srv/uten-backup/pre-activation -/var/backups/uten-imp -/var/log/uten-imp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallArchitectures=native
+# AF_NETLINK: getaddrinfo 解析 OSS 域名时查询本机地址
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# 不设 CapabilityBoundingSet: 需要 chown/chmod 发行目录与 runuser 降权到 postgres。

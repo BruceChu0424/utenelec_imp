@@ -54,6 +54,49 @@ def summarize(report: dict, previous: dict | None = None) -> dict:
     return result
 
 
+RETENTION_GRACE_SECONDS = 2100  # The paired unit's TimeoutStartSec (35 min) bounds a live cleanup.
+# deploy/simple/units/uten-paired-internal-backup.timer runs twice a day (03:40 and 13:10).
+PAIRED_RUNS_PER_DAY = 2
+
+
+def counter(value) -> int:
+    if type(value) is not int or value < 0:
+        raise ValueError("Retention counter must be a non-negative integer")
+    return value
+
+
+def paired_retention_reason(paired: dict, completed: datetime, observed: datetime) -> str | None:
+    """None when the successful run's own cleanup is proven; otherwise why it is not.
+
+    A success without cleanup evidence (old script, killed run, unwritable state) or a skipped or
+    partly failed cleanup must not stay green: sets would silently accumulate until space runs out.
+    """
+    retention = paired.get("retention")
+    try:
+        if not isinstance(retention, dict):
+            raise ValueError("No retention evidence")
+        days = counter(retention["retentionDays"])
+        if not 1 <= days <= 365:
+            raise ValueError("Retention window out of range")
+        status = retention["status"]
+        if status == "PENDING":
+            elapsed = (observed - completed).total_seconds()
+            return "PAIRED_RETENTION_RUNNING" if elapsed <= RETENTION_GRACE_SECONDS else "PAIRED_RETENTION_UNPROVEN"
+        if status in ("SKIPPED", "FAILED"):
+            return "PAIRED_RETENTION_NOT_APPLIED"
+        if status != "APPLIED":
+            raise ValueError("Unknown retention status")
+        sets = counter(retention["completeSets"])
+        problems = counter(retention["failedDeletes"]) + counter(retention["unrecognizedEntries"])
+    except (ValueError, KeyError, TypeError):
+        return "PAIRED_RETENTION_UNPROVEN"
+    # Normal: two sets a day keep at most 2 x `days`; the same again is headroom for manual extra runs.
+    # A silently broken cleanup still turns red within `days` days.
+    if problems or not 1 <= sets <= 2 * PAIRED_RUNS_PER_DAY * days:
+        return "PAIRED_RETENTION_NOT_APPLIED"
+    return None
+
+
 def summarize_pair(pg: dict | None, paired: dict | None, observed: datetime) -> dict:
     """Observe daily task evidence without pretending its completion is a health poll."""
     observed = observed.astimezone(timezone.utc)
@@ -74,7 +117,7 @@ def summarize_pair(pg: dict | None, paired: dict | None, observed: datetime) -> 
         except (ValueError, KeyError, TypeError, OverflowError):
             pg_status, pg_success, pg_fresh = "UNKNOWN", None, False
 
-    paired_status, paired_success = "UNKNOWN", None
+    paired_status, paired_success, retention_reason = "UNKNOWN", None, None
     paired_reason = "PAIRED_NOT_CONFIGURED_OR_UNAVAILABLE"
     if paired is not None:
         try:
@@ -95,8 +138,10 @@ def summarize_pair(pg: dict | None, paired: dict | None, observed: datetime) -> 
             if paired_status == "FAILED" and completed is None:
                 raise ValueError("Failed paired task lacks completion time")
             paired_reason = "PAIRED_RUNNING" if paired_status == "RUNNING" else "PAIRED_STATUS_VALID"
+            if paired_status == "SUCCESS":
+                retention_reason = paired_retention_reason(paired, completed, observed)
         except (ValueError, KeyError, TypeError, OverflowError):
-            paired_status, paired_success = "UNKNOWN", None
+            paired_status, paired_success, retention_reason = "UNKNOWN", None, None
             paired_reason = "PAIRED_STATUS_INVALID"
 
     if pg_success is not None and paired_success is not None:
@@ -105,10 +150,15 @@ def summarize_pair(pg: dict | None, paired: dict | None, observed: datetime) -> 
         result.update(lastAttemptStatus="FAILED", reason="BACKUP_TASK_FAILED")
     elif pg_status == "CHECK_FAILED" and pg_fresh:
         result.update(lastAttemptStatus="CHECK_FAILED", reason="PG_HEALTH_CHECK_FAILED")
+    elif retention_reason in ("PAIRED_RETENTION_NOT_APPLIED", "PAIRED_RETENTION_UNPROVEN"):
+        # The backup itself succeeded (lastSuccessAt stays), but its retention check did not pass.
+        result.update(lastAttemptStatus="CHECK_FAILED", reason=retention_reason)
     elif not pg_fresh or pg_status != "SUCCESS":
         result["reason"] = "PG_HEALTH_STALE_OR_UNAVAILABLE"
     elif paired_status != "SUCCESS":
         result["reason"] = paired_reason
+    elif retention_reason is not None:
+        result["reason"] = retention_reason
     elif result["lastSuccessAt"] is None:
         result["reason"] = "COMPLETE_BACKUP_SUCCESS_NOT_PROVEN"
     else:

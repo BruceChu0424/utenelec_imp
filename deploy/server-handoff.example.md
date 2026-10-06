@@ -123,7 +123,7 @@ timedatectl status
 未来 03:00 维护开始前必须确认 repo1/expire 已结束并取得数据库维护互斥锁，否则跳过/顺延维护。启用 repo2
 前先重新排程，证明 backup、维护、health、apt 和重启不重叠。正式 commissioned 后再登记两个
 `Persistent=true` timer 的实际状态，
-以及两仓各最近 7 个不同日期成功 full、backup set/WAL 范围、连续 WAL 新鲜度、两仓最新值不落后于 PostgreSQL
+以及两仓各最近 3 个不同日期成功 full、backup set/WAL 范围、连续 WAL 新鲜度、两仓最新值不落后于 PostgreSQL
 `last_archived_wal`、PostgreSQL
 `system_identifier`/timeline、canonical Flyway history digest、当前 version/script/checksum 与签名
 manifest 逐行一致的 projection digest。另登记 provider WORM/版本控制与独立凭据

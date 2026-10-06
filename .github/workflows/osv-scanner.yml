@@ -39,6 +39,7 @@ jobs:
           path: |
             server/target/classes/META-INF/sbom/application.cdx.json
             pubspec.lock
+            osv-scanner.toml
           if-no-files-found: error
           retention-days: 1
 
@@ -49,7 +50,10 @@ jobs:
       download-artifact: osv-inputs
       upload-sarif: false
       fail-on-vuln: true
+      # 例外只经 osv-scanner.toml 登记(每条带原因、守护测试与到期日), 随输入制品一起下发。
       scan-args: |-
+        --config
+        ./osv-scanner.toml
         --sbom
         ./server/target/classes/META-INF/sbom/application.cdx.json
         --lockfile

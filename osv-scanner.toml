@@ -1,0 +1,8 @@
+# OSV-Scanner 例外清单 (.github/workflows/osv-scanner.yml 用 --config 读取)。
+# 只登记「本项目确实不受影响, 且所用版本线上游没有开源修复」的漏洞; 每条必须写原因、守护测试和到期日,
+# 到期后扫描重新拦截, 必须复查(升级或续期并写明理由), 不允许不写到期日的永久例外。
+
+[[IgnoredVulns]]
+id = "GHSA-pc63-qcmh-9cmg"
+ignoreUntil = 2026-12-31T00:00:00Z
+reason = "CVE-2026-47884 只影响 Spring MVC 的 XsltView (XSLT 视图渲染的路径限制)。本项目服务端只提供 JSON 接口, 源码与资源里没有任何 XsltView/XSLT 模板, 由 server 测试 NoXsltViewUsageSourceScanTest 守住。Spring 6.2.x (Spring Boot 3.5) 没有开源修复, 只有 7.0.9 (需升级 Spring Boot 4); 到期前复查。2026-10-06 登记。"

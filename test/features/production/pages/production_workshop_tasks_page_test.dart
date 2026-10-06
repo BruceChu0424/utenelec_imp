@@ -244,56 +244,57 @@ void main() {
   );
   // 2026-10-06 口径：原任务行有「已批准未续报」的固定追加量时，比例列追加待续报
   // 提示，行右键菜单直达「回原批次续报」——追加量只能从续报入口带回原批次申报。
-  testWidgets('pending supplement adds the claim-again menu entry and column hint', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final router = _router();
-    addTearDown(router.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          sharedPreferencesProvider.overrideWithValue(_preferences),
-          isSuperAdminProvider.overrideWithValue(false),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.productionExecutionView,
-          }),
-          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            _repository(
-              aDiscovery: {
-                'pendingSupplementQty': 25,
-                'pendingSupplementRequestId': 'pending-request-1',
-              },
+  testWidgets(
+    'pending supplement adds the claim-again menu entry and column hint',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(
+                aDiscovery: {
+                  'pendingSupplementQty': 25,
+                  'pendingSupplementRequestId': 'pending-request-1',
+                },
+              ),
             ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
           ),
-        ],
-        child: MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '生产中');
-    await tester.pumpAndSettle();
-    // 比例列：纯文本追加「· 待续报 25」(另一行 segment-b 无待续报)。
-    expect(find.textContaining('待续报 25'), findsOneWidget);
-    // 行右键(桌面鼠标次键)打开菜单，直达待续报的追加请求。
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.text('产品 A')),
-      kind: PointerDeviceKind.mouse,
-      buttons: kSecondaryButton,
-    );
-    await gesture.up();
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('回原批次续报（待续报 25）'));
-    await tester.pumpAndSettle();
-    expect(find.text('续报 pending-request-1'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '生产中');
+      await tester.pumpAndSettle();
+      // 比例列：纯文本追加「· 待续报 25」(另一行 segment-b 无待续报)。
+      expect(find.textContaining('待续报 25'), findsOneWidget);
+      // 行右键(桌面鼠标次键)打开菜单，直达待续报的追加请求。
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('产品 A')),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryButton,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('回原批次续报（待续报 25）'));
+      await tester.pumpAndSettle();
+      expect(find.text('续报 pending-request-1'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final requested in [false, true]) {
     testWidgets(

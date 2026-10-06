@@ -444,22 +444,20 @@ class _PurchaseReportTablePageState
     // 含「状态」，如 审核状态/审批状态/单据状态）排到最前——多个状态列保持
     // 原有相对顺序，其余列原顺序跟后；状态列宽度收紧为声明下限 72
     //（value 即显示文案，内容超宽时表格自动适配加宽）。
-    final mappedColumns = data.columns
-        .map((c) {
-          final isStatusColumn = c.label == '状态' || c.label.contains('状态');
-          return (
-            def: MasterColumnDef<Map<String, dynamic>>(
-              key: c.key,
-              label: c.label,
-              width: isStatusColumn ? 72 : (c.width ?? 120).toDouble(),
-              type: c.type,
-              sortable: isSortableReportType(c.type),
-              value: (row) => formatReportCell(c, row),
-            ),
-            isStatus: isStatusColumn,
-          );
-        })
-        .toList();
+    final mappedColumns = data.columns.map((c) {
+      final isStatusColumn = c.label == '状态' || c.label.contains('状态');
+      return (
+        def: MasterColumnDef<Map<String, dynamic>>(
+          key: c.key,
+          label: c.label,
+          width: isStatusColumn ? 72 : (c.width ?? 120).toDouble(),
+          type: c.type,
+          sortable: isSortableReportType(c.type),
+          value: (row) => formatReportCell(c, row),
+        ),
+        isStatus: isStatusColumn,
+      );
+    }).toList();
     final columns = [
       for (final entry in mappedColumns)
         if (entry.isStatus) entry.def,

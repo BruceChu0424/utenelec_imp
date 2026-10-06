@@ -28,7 +28,8 @@ int grainOf(double v, int scale) {
 double roundToScale(double v, int scale) => grainOf(v, scale) / _factors[scale];
 
 /// [v] 向上取整到 10^-scale（保守向上，与服务端建议量 CEILING 口径同向）。
-double ceilToScale(double v, int scale) => _ceilTicks(v, scale) / _factors[scale];
+double ceilToScale(double v, int scale) =>
+    _ceilTicks(v, scale) / _factors[scale];
 
 /// 浮点乘除会让「本该是整数」的值带上 1e-9 级噪声；先吸掉再取整。
 double _nearInteger(double v) {
@@ -68,18 +69,18 @@ List<double> apportionLargestRemainder(
     ];
   }
   final exact = [
-    for (final weight in weights) totalTicks * (weight > 0 ? weight : 0) / weightTotal,
+    for (final weight in weights)
+      totalTicks * (weight > 0 ? weight : 0) / weightTotal,
   ];
   final ticks = [for (final share in exact) _floorTicks(share)];
   var remaining = totalTicks - ticks.fold<int>(0, (sum, tick) => sum + tick);
   if (remaining < 0) remaining = 0;
   // 小数部分从大到小补 1 tick；同小数部分按索引序（稳定排序）。
-  final order = [for (var i = 0; i < count; i++) i]..sort(
-    (a, b) {
+  final order = [for (var i = 0; i < count; i++) i]
+    ..sort((a, b) {
       final byFraction = (exact[b] - ticks[b]).compareTo(exact[a] - ticks[a]);
       return byFraction != 0 ? byFraction : a.compareTo(b);
-    },
-  );
+    });
   for (var i = 0; i < remaining && i < order.length; i++) {
     ticks[order[i]] += 1;
   }
@@ -118,11 +119,7 @@ int coarsestDisplayScale(double total, List<double> parts) {
 /// - 盖不住：按 needs 权重 [apportionLargestRemainder] 整分，行间仍是公平的。
 ///
 /// Σshares == roundToScale(total, scale)；份额可超出各自的 need（总量富余时）。
-List<double> splitTypedTotal(
-  double total,
-  List<double> needs,
-  int scale,
-) {
+List<double> splitTypedTotal(double total, List<double> needs, int scale) {
   assert(scale >= 0 && scale <= _maxScale);
   final count = needs.length;
   if (count == 0) return const [];

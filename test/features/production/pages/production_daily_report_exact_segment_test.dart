@@ -819,9 +819,7 @@ void main() {
             Perm.productionDailyReportCreate,
             Perm.productionDailyReportView,
           }),
-          formDraftStorageProvider.overrideWithValue(
-            MemoryFormDraftStorage(),
-          ),
+          formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
           sessionProvider.overrideWith(_ExactSegmentSession.new),
           authenticatedScopeProvider.overrideWithValue(
             const AuthenticatedScope(userId: 'report-user'),
@@ -862,86 +860,87 @@ void main() {
 
   // 待续报追加量占住公共超产额度(剩余额度已为 0)：cap 只剩 maxReportQty，
   // 超出的量必须走续报入口，不能在原工单继续无上限申报。
-  testWidgets('pending supplement leaves only the planned reportable quantity', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
-    Map<String, dynamic>? saved;
-    final api = _api(
-      sourceOverrides: {
-        'maxReportQty': 100,
-        'allowActualOverproduction': true,
-        'remainingActualSurplusQty': 0,
-        'pendingSupplementQty': 30,
-      },
-      onCreate: (payload) => saved = payload,
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          apiClientProvider.overrideWithValue(api),
-          departmentRepositoryProvider.overrideWithValue(
-            _FakeDepartmentRepository(),
-          ),
-          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-          productionDailyReportRepositoryProvider.overrideWithValue(
-            ProductionDailyReportRepository(api),
-          ),
-          employeeRepositoryProvider.overrideWithValue(
-            _FakeEmployeeRepository(),
-          ),
-          sharedPreferencesProvider.overrideWithValue(preferences),
-          currentPermissionsProvider.overrideWithValue({
-            Perm.productionDailyReportCreate,
-            Perm.productionDailyReportView,
-          }),
-          formDraftStorageProvider.overrideWithValue(
-            MemoryFormDraftStorage(),
-          ),
-          sessionProvider.overrideWith(_ExactSegmentSession.new),
-          authenticatedScopeProvider.overrideWithValue(
-            const AuthenticatedScope(userId: 'report-user'),
-          ),
-          sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
-          apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
-        ],
-        child: const MaterialApp(
-          home: Column(
-            children: [
-              AppNotificationHost(),
-              Expanded(
-                child: ProductionDailyReportEditPage(
-                  initialExecutionSegmentId: 'segment-1',
+  testWidgets(
+    'pending supplement leaves only the planned reportable quantity',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      Map<String, dynamic>? saved;
+      final api = _api(
+        sourceOverrides: {
+          'maxReportQty': 100,
+          'allowActualOverproduction': true,
+          'remainingActualSurplusQty': 0,
+          'pendingSupplementQty': 30,
+        },
+        onCreate: (payload) => saved = payload,
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            departmentRepositoryProvider.overrideWithValue(
+              _FakeDepartmentRepository(),
+            ),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+            productionDailyReportRepositoryProvider.overrideWithValue(
+              ProductionDailyReportRepository(api),
+            ),
+            employeeRepositoryProvider.overrideWithValue(
+              _FakeEmployeeRepository(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionDailyReportCreate,
+              Perm.productionDailyReportView,
+            }),
+            formDraftStorageProvider.overrideWithValue(
+              MemoryFormDraftStorage(),
+            ),
+            sessionProvider.overrideWith(_ExactSegmentSession.new),
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'report-user'),
+            ),
+            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+          ],
+          child: const MaterialApp(
+            home: Column(
+              children: [
+                AppNotificationHost(),
+                Expanded(
+                  child: ProductionDailyReportEditPage(
+                    initialExecutionSegmentId: 'segment-1',
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
-      find.byType(UtenEditableGrid<DailyGridRow>),
-    );
-    final row = grid.controller.rows.firstWhere((row) => !row.isSubRow);
-    expect(row.reportQtyCap, 100, reason: '待续报追加量占住额度，上限只剩计划剩余');
-    row.qty.text = '101';
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
-    await tester.pumpAndSettle();
-    expect(saved, isNull);
-    expect(find.textContaining('超过当前可报数量 100'), findsOneWidget);
-    expect(find.textContaining('固定追加量·续报'), findsOneWidget);
-    row.qty.text = '100';
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
-    await tester.pumpAndSettle();
-    expect(saved, isNotNull, reason: '不超上限的量照常可报，追加量另走续报入口');
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+        find.byType(UtenEditableGrid<DailyGridRow>),
+      );
+      final row = grid.controller.rows.firstWhere((row) => !row.isSubRow);
+      expect(row.reportQtyCap, 100, reason: '待续报追加量占住额度，上限只剩计划剩余');
+      row.qty.text = '101';
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(saved, isNull);
+      expect(find.textContaining('超过当前可报数量 100'), findsOneWidget);
+      expect(find.textContaining('固定追加量·续报'), findsOneWidget);
+      row.qty.text = '100';
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      expect(saved, isNotNull, reason: '不超上限的量照常可报，追加量另走续报入口');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final scenario in [
     'ready',

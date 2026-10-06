@@ -2384,8 +2384,8 @@ class _ProductionDailyReportEditPageState
       final cap = r.reportQtyCap;
       if (cap != null && qty > cap + 0.000001) {
         final pending = r.pendingSupplementQty ?? 0;
-        final beyondPlan = r.maxReportQty == null ||
-            qty > r.maxReportQty! + 0.000001;
+        final beyondPlan =
+            r.maxReportQty == null || qty > r.maxReportQty! + 0.000001;
         context.appError(
           pending > 0 && beyondPlan
               ? '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(cap)}；'

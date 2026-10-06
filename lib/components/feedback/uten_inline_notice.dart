@@ -107,8 +107,7 @@ class UtenInlineNotice extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: messageText == null ||
-                          messageText.isEmpty
+                  mainAxisAlignment: messageText == null || messageText.isEmpty
                       ? MainAxisAlignment.center
                       : MainAxisAlignment.start,
                   children: [

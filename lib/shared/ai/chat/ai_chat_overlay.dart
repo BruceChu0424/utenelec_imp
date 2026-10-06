@@ -240,6 +240,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   int _hiddenTurns = 0;
   String? _error;
   String? _progressKey;
+
   /// Launcher circle center in overlay coordinates; null = never moved (default
   /// anchored bottom-right). Persisted only for this session, like the previous
   /// vertical-only offset.
@@ -1617,8 +1618,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                       _launcherDragging = false;
                       final center = _launcherCenter ?? defaultLauncherCenter;
                       final nearRight =
-                          constraints.maxWidth - center.dx <=
-                          launcherDockRange;
+                          constraints.maxWidth - center.dx <= launcherDockRange;
                       final nearLeft = center.dx <= launcherDockRange;
                       if (nearRight || nearLeft) {
                         _launcherDockEdge = nearRight ? 1 : -1;
@@ -1660,8 +1660,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                                             launcherMargin -
                                             launcherHalf
                                       : launcherMargin + launcherHalf,
-                                  (_launcherCenter ?? defaultLauncherCenter)
-                                      .dy,
+                                  (_launcherCenter ?? defaultLauncherCenter).dy,
                                 ),
                               );
                             });

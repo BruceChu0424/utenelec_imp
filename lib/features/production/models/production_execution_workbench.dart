@@ -519,8 +519,7 @@ class ProductionExecutionWorkbenchSegment {
     actualOutputSupplementRequestId:
         json['actualOutputSupplementRequestId'] as String?,
     pendingSupplementQty: (json['pendingSupplementQty'] as num?)?.toDouble(),
-    pendingSupplementRequestId:
-        json['pendingSupplementRequestId'] as String?,
+    pendingSupplementRequestId: json['pendingSupplementRequestId'] as String?,
     plannedInboundQty: (json['plannedInboundQty'] as num?)?.toDouble(),
     segmentStatus: json['segmentStatus'] as String? ?? '',
     materialStatus: json['materialStatus'] as String? ?? '',

@@ -292,14 +292,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
           width: 72,
           value: (row) => row.isMergedGroup
               ? (row.group!
-                        .map((r) => r.document!.issueStatus)
-                        .toSet()
-                        .length ==
-                    1
-                ? drawIssueStatusLabel(
-                    row.group!.first.document!.issueStatus,
-                  )
-                : '—')
+                            .map((r) => r.document!.issueStatus)
+                            .toSet()
+                            .length ==
+                        1
+                    ? drawIssueStatusLabel(
+                        row.group!.first.document!.issueStatus,
+                      )
+                    : '—')
               : row.discovery == null
               ? drawIssueStatusLabel(row.document!.issueStatus)
               : '待确认出库',

@@ -625,8 +625,7 @@ class _ProductionWorkshopTasksPageState
       // 2026-10-06：原任务行(非追加批次)有已批准未续报的固定追加量时，右键直达续报。
       if (task.hasPendingSupplementClaim)
         UtenMenuItem(
-          label:
-              '回原批次续报（待续报 ${_taskQuantity(task.pendingSupplementQty ?? 0)}）',
+          label: '回原批次续报（待续报 ${_taskQuantity(task.pendingSupplementQty ?? 0)}）',
           icon: Icons.assignment_return_outlined,
           enabled: !busy,
           onTap: () => _openPendingSupplementTask(task),

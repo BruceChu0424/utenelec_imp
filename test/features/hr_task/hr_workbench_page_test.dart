@@ -85,7 +85,9 @@ Future<void> _pump(
       GoRoute(
         path: '/notice/publish',
         builder: (context, state) => Scaffold(
-          body: Text('notice-publish:${state.uri.queryParameters['type'] ?? ''}'),
+          body: Text(
+            'notice-publish:${state.uri.queryParameters['type'] ?? ''}',
+          ),
         ),
       ),
     ],
@@ -165,7 +167,9 @@ void main() {
       expect(find.byKey(key), findsOneWidget);
     }
     // 桌面(1200 宽)下一行放多张：前两张卡的 top 相同、left 不同。
-    final first = tester.getTopLeft(find.byKey(const ValueKey('hr-workbench-entry-confirm')));
+    final first = tester.getTopLeft(
+      find.byKey(const ValueKey('hr-workbench-entry-confirm')),
+    );
     final second = tester.getTopLeft(
       find.byKey(const ValueKey('hr-workbench-entry-birthday')),
     );

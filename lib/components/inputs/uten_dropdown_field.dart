@@ -457,9 +457,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 size: 16,
                 color: widget.enabled
                     ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.5,
-                      ),
+                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
               ),
             ],
           ),

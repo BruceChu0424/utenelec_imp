@@ -644,10 +644,9 @@ void main() {
         isNull,
       );
       // 证件核对子页守卫不受影响。
-      expect(
-        requiredAllPermsFor(RouteName.hrTaskList('identity')),
-        const [Perm.employeePiiEdit],
-      );
+      expect(requiredAllPermsFor(RouteName.hrTaskList('identity')), const [
+        Perm.employeePiiEdit,
+      ]);
       expect(
         locationAllowedFor(const {}, true, location),
         isTrue,

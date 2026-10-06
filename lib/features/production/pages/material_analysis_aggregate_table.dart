@@ -502,11 +502,9 @@ final class _MaterialAggregateTableController {
     if (total == null || !total.isFinite || total < 0) return;
     // 平分粒度跟着用户敲的小数位走(2026-10-06 用户口径「优先整数」)：整数
     // 总量落整数份额，83.3334 这类服务端分摊尾巴不再层层上屏。
-    final shares = splitTypedTotal(
-      total,
-      [for (final group in groups) owner._tableGroupResidual(group)],
-      _typedScale(draft.totalText),
-    );
+    final shares = splitTypedTotal(total, [
+      for (final group in groups) owner._tableGroupResidual(group),
+    ], _typedScale(draft.totalText));
     for (var i = 0; i < groups.length; i++) {
       final group = groups[i];
       final line = group.representative.materialLineId;
@@ -712,11 +710,9 @@ final class _MaterialAggregateTableController {
       ];
     }
     final sources = draftSources(draft);
-    final shares = splitTypedTotal(
-      double.parse(draft.totalText),
-      [for (final source in sources) owner._tableGroupResidual(source.group)],
-      _typedScale(draft.totalText),
-    );
+    final shares = splitTypedTotal(double.parse(draft.totalText), [
+      for (final source in sources) owner._tableGroupResidual(source.group),
+    ], _typedScale(draft.totalText));
     final shareByLine = {
       for (var i = 0; i < sources.length; i++) sources[i].line: shares[i],
     };

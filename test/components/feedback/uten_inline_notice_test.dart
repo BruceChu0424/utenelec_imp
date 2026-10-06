@@ -48,10 +48,12 @@ void main() {
     expect(find.textContaining('证件号码缺失'), findsNothing);
     // 标题与正文之间不再留 4px 间隙槽位：Column 里只有标题一个子节点。
     final column = tester.widget<Column>(
-      find.ancestor(
-        of: find.text('有 22 名员工的证件号码待核对'),
-        matching: find.byType(Column),
-      ).first,
+      find
+          .ancestor(
+            of: find.text('有 22 名员工的证件号码待核对'),
+            matching: find.byType(Column),
+          )
+          .first,
     );
     expect(column.children, hasLength(1));
   });

@@ -9,14 +9,8 @@ void main() {
     });
 
     test('权重全零时均分，余数按索引序 +1', () {
-      expect(
-        apportionLargestRemainder(1000, [0, 0, 0], 0),
-        [334, 333, 333],
-      );
-      expect(
-        apportionLargestRemainder(900, [0, 0, 0], 0),
-        [300, 300, 300],
-      );
+      expect(apportionLargestRemainder(1000, [0, 0, 0], 0), [334, 333, 333]);
+      expect(apportionLargestRemainder(900, [0, 0, 0], 0), [300, 300, 300]);
     });
 
     test('服务端 1e-4 分摊尾巴在整数粒度整分成 84/83/833', () {
@@ -52,22 +46,25 @@ void main() {
     });
 
     test('零权重份不参与分配', () {
-      expect(
-        apportionLargestRemainder(6000, [1000, 0, 1000, 1000], 0),
-        [2000, 0, 2000, 2000],
-      );
+      expect(apportionLargestRemainder(6000, [1000, 0, 1000, 1000], 0), [
+        2000,
+        0,
+        2000,
+        2000,
+      ]);
     });
 
     test('4 位小数输入在 scale=4 原样整分', () {
-      expect(
-        apportionLargestRemainder(0.2468, [0.1234, 0.1234], 4),
-        [0.1234, 0.1234],
-      );
+      expect(apportionLargestRemainder(0.2468, [0.1234, 0.1234], 4), [
+        0.1234,
+        0.1234,
+      ]);
       // 总量与各份之和一致时 scale=4 逐份原样（服务端 1e-4 分摊的落点）。
-      expect(
-        apportionLargestRemainder(1000, [83.3334, 83.3333, 833.3333], 4),
-        [83.3334, 83.3333, 833.3333],
-      );
+      expect(apportionLargestRemainder(1000, [83.3334, 83.3333, 833.3333], 4), [
+        83.3334,
+        83.3333,
+        833.3333,
+      ]);
     });
   });
 
@@ -84,8 +81,7 @@ void main() {
 
     test('正量不能被粗化抹成 0：0.001 退到千分位', () {
       expect(coarsestDisplayScale(0.001, [0.0005, 0.0005]), 3);
-      expect(apportionLargestRemainder(0.001, [0.0005, 0.0005], 3),
-          [0.001, 0]);
+      expect(apportionLargestRemainder(0.001, [0.0005, 0.0005], 3), [0.001, 0]);
     });
 
     test('真分数值保留小数：0.4 用不到整数粒度', () {
@@ -102,22 +98,21 @@ void main() {
 
   group('splitTypedTotal', () {
     test('总量盖住 ceil 合计：先给足 ceil 再均分富余', () {
-      expect(
-        splitTypedTotal(1002, [83.3334, 83.3333, 833.3333], 0),
-        [84, 84, 834],
-      );
+      expect(splitTypedTotal(1002, [83.3334, 83.3333, 833.3333], 0), [
+        84,
+        84,
+        834,
+      ]);
       // 富余 3000 在三条有需求的来源间均分（连通口径的 6000/3=2000 例）。
-      expect(
-        splitTypedTotal(6000, [1000, 1000, 1000], 0),
-        [2000, 2000, 2000],
-      );
+      expect(splitTypedTotal(6000, [1000, 1000, 1000], 0), [2000, 2000, 2000]);
     });
 
     test('总量低于 ceil 合计：按需求权重整分', () {
-      expect(
-        splitTypedTotal(1000, [83.3334, 83.3333, 833.3333], 0),
-        [84, 83, 833],
-      );
+      expect(splitTypedTotal(1000, [83.3334, 83.3333, 833.3333], 0), [
+        84,
+        83,
+        833,
+      ]);
     });
 
     test('零需求路径不被打扰，纯公共备货全体均分', () {
@@ -153,14 +148,8 @@ void main() {
     });
 
     test('4 位小数输入原样落格', () {
-      expect(
-        splitTypedTotal(0.2468, [0.1234, 0.1234], 4),
-        [0.1234, 0.1234],
-      );
-      expect(
-        splitTypedTotal(0.2467, [0.1234, 0.1234], 4),
-        [0.1234, 0.1233],
-      );
+      expect(splitTypedTotal(0.2468, [0.1234, 0.1234], 4), [0.1234, 0.1234]);
+      expect(splitTypedTotal(0.2467, [0.1234, 0.1234], 4), [0.1234, 0.1233]);
     });
   });
 

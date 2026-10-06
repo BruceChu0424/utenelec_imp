@@ -1,5 +1,6 @@
 package com.uten.imp.features.ai.chat;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.AiCompletionPort.AiReasoningEffort;
@@ -90,7 +91,7 @@ class AiChatSettingsTest {
         assertThat(saved.memoryTurns()).isEqualTo(3);
         var value = ArgumentCaptor.forClass(JsonNode.class);
         verify(writer).putOwnedPreference(eq(AiChatSettings.PREFERENCE_KEY), value.capture());
-        assertThat(json.convertValue(value.getValue(), Map.class)).isEqualTo(saved.toJson());
+        assertThat(json.convertValue(value.getValue(), new TypeReference<Map<String, Object>>() {})).isEqualTo(saved.toJson());
         assertThat(AiChatSettings.PREFERENCE_KEY).startsWith(UserPreferenceWritePort.RESERVED_PREFIX);
 
         var rejected = mock(UserPreferenceWritePort.class);

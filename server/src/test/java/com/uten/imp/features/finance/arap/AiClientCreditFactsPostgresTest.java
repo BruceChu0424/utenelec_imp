@@ -61,8 +61,8 @@ class AiClientCreditFactsPostgresTest extends AiPlatformPostgresTestSupport {
 
     @Test void narrowGrantCannotReadAnotherCustomerOrDetectWhetherTheirUuidExists() {
         ledger(foreign, "RECEIVABLE", "SALES_SHIPMENT", "9999", "0", BusinessTime.today().minusDays(1), false);
-        ApiException hidden = catchThrowableOfType(() -> credit.read(foreign), ApiException.class);
-        ApiException missing = catchThrowableOfType(() -> credit.read(UUID.randomUUID()), ApiException.class);
+        ApiException hidden = catchThrowableOfType(ApiException.class, () -> credit.read(foreign));
+        ApiException missing = catchThrowableOfType(ApiException.class, () -> credit.read(UUID.randomUUID()));
         assertThat(hidden.getCode()).isEqualTo(ErrorCode.NOT_FOUND);
         assertThat(missing.getCode()).isEqualTo(hidden.getCode());
         assertThat(missing.getMessage()).isEqualTo(hidden.getMessage());

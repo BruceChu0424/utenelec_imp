@@ -12,6 +12,7 @@ import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.jdbc.datasource.ConnectionHolder;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.TransactionManager;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -53,7 +54,7 @@ class WorkbenchBadgeReadTransactionTest {
         doAnswer(call->{((Work)call.getArgument(0)).execute(((ConnectionHolder)TransactionSynchronizationManager.getResource(dataSource)).getConnection());return null;}).when(session).doWork(any());
         ReflectionTestUtils.setField(target,"entityManager",em);
         ProxyFactory factory=new ProxyFactory(target); factory.setProxyTargetClass(true);
-        factory.addAdvice(new TransactionInterceptor(manager,new AnnotationTransactionAttributeSource()));
+        factory.addAdvice(new TransactionInterceptor((TransactionManager)manager,new AnnotationTransactionAttributeSource()));
         WorkbenchBadgeService service=(WorkbenchBadgeService)factory.getProxy();
         assertThatCode(()->new TransactionTemplate(manager).execute(status->{
             if(entryPoint==0) assertThat(service.summary(Set.of("productionWorkshop")).entries().get("productionWorkshop").inProgress()).isEqualTo(3);

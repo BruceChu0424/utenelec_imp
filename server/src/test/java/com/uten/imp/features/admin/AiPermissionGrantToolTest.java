@@ -11,6 +11,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
@@ -59,7 +60,7 @@ class AiPermissionGrantToolTest {
                 result.add(mapper.mapRow(row, i));
             }
             return result;
-        }).when(jdbc).query(anyString(), any(RowMapper.class), any(Object[].class));
+        }).when(jdbc).query(anyString(), ArgumentMatchers.<RowMapper<Object>>any(), any(Object[].class));
         var permission = new Permission(); permission.setId(permissionId); permission.setCode("goods:view");
         permission.setName("查看货品"); permission.setDescription("可查看货品名称和规格。");
         when(permissions.findByCode("goods:view")).thenReturn(Optional.of(permission));

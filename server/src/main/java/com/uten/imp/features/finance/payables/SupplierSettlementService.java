@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -181,8 +182,8 @@ public class SupplierSettlementService {
                 WHERE batch_id=:id ORDER BY bill_date,source_doc_no,ledger_id
                 """).setParameter("id", id).getResultList();
         List<BatchLine> lines = lineRows.stream().map(row -> new BatchLine(
-                uuid(row[0]),uuid(row[1]),text(row[2]),text(row[3]),text(row[4]),
-                uuid(row[5]),text(row[6]),date(row[7]),date(row[8]),rate(row[9]),
+                NativeValueConverters.uuid(row[0]),NativeValueConverters.uuid(row[1]),NativeValueConverters.text(row[2]),NativeValueConverters.text(row[3]),NativeValueConverters.text(row[4]),
+                NativeValueConverters.uuid(row[5]),NativeValueConverters.text(row[6]),NativeValueConverters.text(row[7]),NativeValueConverters.text(row[8]),rate(row[9]),
                 money(row[10]),money(row[11]),money(row[12]),money(row[13]),money(row[14]),
                 money(row[15]),money(row[16]),money(row[17]),money(row[18]),money(row[19]))).toList();
         @SuppressWarnings("unchecked")
@@ -192,7 +193,7 @@ public class SupplierSettlementService {
                 WHERE batch_id=:id ORDER BY created_at,id
                 """).setParameter("id", id).getResultList();
         List<BatchEvent> events = eventRows.stream().map(row -> new BatchEvent(
-                uuid(row[0]),text(row[1]),uuid(row[2]),text(row[3]),text(row[4]))).toList();
+                NativeValueConverters.uuid(row[0]),NativeValueConverters.text(row[1]),NativeValueConverters.uuid(row[2]),NativeValueConverters.text(row[3]),NativeValueConverters.text(row[4]))).toList();
         return new BatchDetail(summary, lines, events);
     }
 
@@ -298,11 +299,11 @@ public class SupplierSettlementService {
         List<SnapshotLine> result = new ArrayList<>();
         for (Object[] row : rows) {
             SnapshotLine line = new SnapshotLine(
-                    uuid(row[0]),text(row[1]),text(row[2]),text(row[3]),uuid(row[4]),text(row[5]),
+                    NativeValueConverters.uuid(row[0]),NativeValueConverters.text(row[1]),NativeValueConverters.text(row[2]),NativeValueConverters.text(row[3]),NativeValueConverters.uuid(row[4]),NativeValueConverters.text(row[5]),
                     LocalDate.parse(row[6].toString()),row[7]==null?null:LocalDate.parse(row[7].toString()),
                     decimal(row[8]),moneyValue(row[9]),moneyValue(row[10]),moneyValue(row[11]),moneyValue(row[12]),
                     moneyValue(row[13]),moneyValue(row[14]),moneyValue(row[15]),moneyValue(row[16]),
-                    moneyValue(row[17]),moneyValue(row[18]),uuid(row[19]));
+                    moneyValue(row[17]),moneyValue(row[18]),NativeValueConverters.uuid(row[19]));
             if (line.hasMovementOrBalance()) result.add(line);
         }
         return result;
@@ -439,7 +440,7 @@ public class SupplierSettlementService {
                 WHERE id=:id AND COALESCE(is_deleted,FALSE)=FALSE
                 """).setParameter("id",id).getResultList();
         if(rows.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"供应商月结批次不存在");
-        return new BatchPeriodIdentity(uuid(rows.getFirst()[0]),uuid(rows.getFirst()[1]));
+        return new BatchPeriodIdentity(NativeValueConverters.uuid(rows.getFirst()[0]),NativeValueConverters.uuid(rows.getFirst()[1]));
     }
 
     private static void requireBatchPeriodIdentityUnchanged(
@@ -456,8 +457,8 @@ public class SupplierSettlementService {
                 WHERE id=:id AND COALESCE(is_deleted,FALSE)=FALSE FOR UPDATE
                 """).setParameter("id",id).getResultList();
         if(rows.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"供应商月结批次不存在");
-        LockedBatch b=new LockedBatch((UUID)rows.getFirst()[0],text(rows.getFirst()[1]),
-                ((Number)rows.getFirst()[2]).longValue(),uuid(rows.getFirst()[3]),uuid(rows.getFirst()[4]));
+        LockedBatch b=new LockedBatch((UUID)rows.getFirst()[0],NativeValueConverters.text(rows.getFirst()[1]),
+                ((Number)rows.getFirst()[2]).longValue(),NativeValueConverters.uuid(rows.getFirst()[3]),NativeValueConverters.uuid(rows.getFirst()[4]));
         if(expected<0||b.version()!=expected)throw conflict("月结批次版本已变化，请刷新后重试");
         return b;
     }
@@ -504,10 +505,9 @@ public class SupplierSettlementService {
                    batch.row_version,batch.snapshot_hash,batch.created_at
             """;}
     private static String batchFrom(){return " FROM supplier_settlement_batches batch JOIN suppliers supplier ON supplier.id=batch.supplier_id JOIN currencies currency ON currency.id=batch.currency_id";}
-    private BatchSummary batchSummary(Object[]r){return new BatchSummary(uuid(r[0]),text(r[1]),uuid(r[2]),text(r[3]),text(r[4]),uuid(r[5]),text(r[6]),text(r[7]),date(r[8]),date(r[9]),date(r[10]),text(r[11]),money(r[12]),money(r[13]),money(r[14]),money(r[15]),money(r[16]),money(r[17]),money(r[18]),money(r[19]),money(r[20]),money(r[21]),((Number)r[22]).intValue(),((Number)r[23]).longValue(),text(r[24]),text(r[25]));}
+    private BatchSummary batchSummary(Object[]r){return new BatchSummary(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),NativeValueConverters.uuid(r[2]),NativeValueConverters.text(r[3]),NativeValueConverters.text(r[4]),NativeValueConverters.uuid(r[5]),NativeValueConverters.text(r[6]),NativeValueConverters.text(r[7]),NativeValueConverters.text(r[8]),NativeValueConverters.text(r[9]),NativeValueConverters.text(r[10]),NativeValueConverters.text(r[11]),money(r[12]),money(r[13]),money(r[14]),money(r[15]),money(r[16]),money(r[17]),money(r[18]),money(r[19]),money(r[20]),money(r[21]),((Number)r[22]).intValue(),((Number)r[23]).longValue(),NativeValueConverters.text(r[24]),NativeValueConverters.text(r[25]));}
     private static void add(StringBuilder w,Map<String,Object>p,String q,String n,Object v){w.append(" AND ").append(q);p.put(n,v);} private static void bind(Query q,Map<String,Object>p){p.forEach(q::setParameter);}
     private static String bounded(String v,int m,String l){if(v==null||v.isBlank())throw validation(l+"不能为空");return optional(v,m);} private static String optional(String v,int m){if(v==null)return null;String t=v.trim();if(t.length()>m)throw validation("文本不能超过 "+m+" 个字符");return t.isEmpty()?null:t;}
-    private static UUID uuid(Object v){return v instanceof UUID u?u:v==null?null:UUID.fromString(v.toString());} private static String text(Object v){return v==null?null:v.toString();} private static String date(Object v){return v==null?null:v.toString();}
     private static BigDecimal decimal(Object v){return v instanceof BigDecimal b?b:new BigDecimal(v.toString());} private static BigDecimal moneyValue(Object v){return MoneyPolicy.canonical(v==null?BigDecimal.ZERO:decimal(v));} private static String money(Object v){return v==null?null:moneyValue(v).toPlainString();} private static String rate(Object v){return v==null?null:MoneyPolicy.canonicalRate(decimal(v)).toPlainString();} private static BigDecimal zero(){return BigDecimal.ZERO.setScale(MONEY_SCALE);}
     private static ApiException validation(String m){return new ApiException(ErrorCode.VALIDATION_FAILED,m);} private static ApiException conflict(String m){return new ApiException(ErrorCode.CONFLICT,m);}
 

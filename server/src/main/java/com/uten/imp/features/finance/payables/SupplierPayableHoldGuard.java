@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -33,9 +34,9 @@ public class SupplierPayableHoldGuard {
             throw new ApiException(ErrorCode.CONFLICT,
                     subject + "被 IQC 待检/不合格退回/供应商贷项冻结："
                             + row[1] + "，待检基本量 "
-                            + decimal(row[2]).stripTrailingZeros().toPlainString()
+                            + NativeValueConverters.toBigDecimal(row[2]).stripTrailingZeros().toPlainString()
                             + "，失败基本量 "
-                            + decimal(row[3]).stripTrailingZeros().toPlainString());
+                            + NativeValueConverters.toBigDecimal(row[3]).stripTrailingZeros().toPlainString());
         }
     }
 
@@ -68,7 +69,7 @@ public class SupplierPayableHoldGuard {
             result.put((UUID) row[0], new HoldInfo(
                     true,
                     row[1] + "：IQC待检/不合格退回及贷项尚未闭环",
-                    decimal(row[3])));
+                    NativeValueConverters.toBigDecimal(row[3])));
         }
         return Map.copyOf(result);
     }
@@ -137,11 +138,6 @@ public class SupplierPayableHoldGuard {
                 .setParameter("allowedCaseId",allowedIqcCaseId).getResultList();
         return rows;
     }
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO
-                : value instanceof BigDecimal decimal ? decimal : new BigDecimal(value.toString());
-    }
-
     public record HoldInfo(boolean held, String reason, BigDecimal failedBaseQty) {
     }
 }

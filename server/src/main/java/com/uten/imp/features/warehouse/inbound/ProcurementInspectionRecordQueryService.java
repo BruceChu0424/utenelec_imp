@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -15,10 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -463,68 +462,38 @@ public class ProcurementInspectionRecordQueryService {
                 (UUID) row[3],
                 (UUID) row[4],
                 (UUID) row[5],
-                nullableString(row[6]),
-                localDate(row[7]),
-                nullableString(row[8]),
+                NativeValueConverters.text(row[6]),
+                NativeValueConverters.toLocalDate(row[7]),
+                NativeValueConverters.text(row[8]),
                 (UUID) row[9],
-                nullableString(row[10]),
+                NativeValueConverters.text(row[10]),
                 (UUID) row[11],
-                nullableString(row[12]),
+                NativeValueConverters.text(row[12]),
                 (UUID) row[13],
-                nullableString(row[14]),
-                nullableString(row[15]),
+                NativeValueConverters.text(row[14]),
+                NativeValueConverters.text(row[15]),
                 (UUID) row[16],
-                nullableString(row[17]),
+                NativeValueConverters.text(row[17]),
                 (UUID) row[18],
-                nullableString(row[19]),
-                dec(row[20]),
-                dec(row[21]),
-                dec(row[22]),
-                dec(row[23]),
+                NativeValueConverters.text(row[19]),
+                NativeValueConverters.toBigDecimal(row[20]),
+                NativeValueConverters.toBigDecimal(row[21]),
+                NativeValueConverters.toBigDecimal(row[22]),
+                NativeValueConverters.toBigDecimal(row[23]),
                 string(row[24]),
-                dec(row[25]),
-                dec(row[26]),
-                nullableString(row[27]),
-                nullableString(row[28]),
+                NativeValueConverters.toBigDecimal(row[25]),
+                NativeValueConverters.toBigDecimal(row[26]),
+                NativeValueConverters.text(row[27]),
+                NativeValueConverters.text(row[28]),
                 (UUID) row[29],
-                nullableString(row[30]),
-                offsetDateTime(row[31]),
+                NativeValueConverters.text(row[30]),
+                NativeValueConverters.toOffsetDateTime(row[31]),
                 string(row[32]),
                 Boolean.TRUE.equals(row[33]));
     }
 
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof java.sql.Date date) return date.toLocalDate();
-        return LocalDate.parse(value.toString());
-    }
-
-    private static OffsetDateTime offsetDateTime(Object value) {
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime dateTime) return dateTime;
-        if (value instanceof Instant instant) return instant.atOffset(ZoneOffset.UTC);
-        if (value instanceof java.sql.Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        if (value instanceof java.util.Date date) {
-            return date.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        return OffsetDateTime.parse(value.toString());
-    }
-
-    private static BigDecimal dec(Object value) {
-        if (value == null) return BigDecimal.ZERO;
-        if (value instanceof BigDecimal decimal) return decimal;
-        return new BigDecimal(value.toString());
-    }
-
     private static String string(Object value) {
         return value == null ? "" : value.toString();
-    }
-
-    private static String nullableString(Object value) {
-        return value == null ? null : value.toString();
     }
 
     private static ApiException notFound() {

@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.asset.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.asset.api.AssetCategoryContracts;
@@ -16,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Date;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -230,22 +230,22 @@ public class FinanceAssetCategoryService {
     }
 
     private AssetCategoryContracts.Category map(Object[] row) {
-        String objectType = text(row[1]);
-        UUID cost = uuid(row[10]);
-        UUID accumulated = uuid(row[11]);
-        UUID expense = uuid(row[12]);
-        UUID clearing = uuid(row[13]);
-        String method = text(row[7]);
+        String objectType = NativeValueConverters.text(row[1]);
+        UUID cost = NativeValueConverters.uuid(row[10]);
+        UUID accumulated = NativeValueConverters.uuid(row[11]);
+        UUID expense = NativeValueConverters.uuid(row[12]);
+        UUID clearing = NativeValueConverters.uuid(row[13]);
+        String method = NativeValueConverters.text(row[7]);
         Integer months = row[8] == null ? null : ((Number) row[8]).intValue();
         BigDecimal salvage = (BigDecimal) row[9];
-        LocalDate effective = date(row[6]);
+        LocalDate effective = NativeValueConverters.toLocalDate(row[6]);
         var readiness = new AssetCategoryPolicyReadiness.Input(
                 objectType, cost, accumulated, expense, clearing, method, months, salvage, effective);
         List<String> missing = AssetCategoryPolicyReadiness.missing(readiness);
         return new AssetCategoryContracts.Category(
-                uuid(row[0]), objectType, text(row[2]), text(row[3]), ((Number) row[4]).intValue(),
-                text(row[5]), effective, method, months, salvage,
-                cost, accumulated, expense, clearing, strings(text(row[14])),
+                NativeValueConverters.uuid(row[0]), objectType, NativeValueConverters.text(row[2]), NativeValueConverters.text(row[3]), ((Number) row[4]).intValue(),
+                NativeValueConverters.text(row[5]), effective, method, months, salvage,
+                cost, accumulated, expense, clearing, strings(NativeValueConverters.text(row[14])),
                 missing.isEmpty(), missing, ((Number) row[15]).longValue());
     }
 
@@ -259,7 +259,7 @@ public class FinanceAssetCategoryService {
                 """).setParameter("id", id).getResultList();
         if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Asset category not found");
         Object[] row = rows.getFirst();
-        return new CategoryLock(text(row[0]), text(row[1]), text(row[2]), ((Number) row[3]).longValue());
+        return new CategoryLock(NativeValueConverters.text(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), ((Number) row[3]).longValue());
     }
 
     private static void requireDraftAndVersion(CategoryLock current, Long expectedVersion) {
@@ -329,19 +329,6 @@ public class FinanceAssetCategoryService {
 
     private static ApiException concurrentChange() {
         return new ApiException(ErrorCode.CONFLICT, "Asset category changed; refresh and retry");
-    }
-
-    private static UUID uuid(Object value) {
-        return value == null ? null : value instanceof UUID id ? id : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private static LocalDate date(Object value) {
-        if (value == null) return null;
-        return value instanceof LocalDate localDate ? localDate : ((Date) value).toLocalDate();
     }
 
     private record CategoryLock(String objectType, String code, String status, long rowVersion) {}

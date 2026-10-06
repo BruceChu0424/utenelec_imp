@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort.Blocker;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.valuation.WorkshopMaterialCostService;
@@ -706,7 +707,7 @@ public class WorkshopMaterialCloseService {
         String errorMessage = error == null ? null : error.substring(error.indexOf('|') + 1);
         return new CloseStatusView((UUID) row.get("id"), (UUID) row.get("bin_warehouse_id"),
                 (UUID) row.get("workshop_department_id"), ((Number) row.get("period_no")).intValue(),
-                date(row.get("start_date")), date(row.get("end_date")), status, (String) row.get("close_state"),
+                NativeValueConverters.toLocalDate(row.get("start_date")), NativeValueConverters.toLocalDate(row.get("end_date")), status, (String) row.get("close_state"),
                 ((Number) row.get("close_attempts")).intValue(), ((Number) row.get("close_failures")).intValue(),
                 offset(row.get("close_attempted_at")), errorMessage, blockersOf((String) row.get("close_blockers")),
                 offset(row.get("held_until")), last, ((Number) row.get("row_version")).longValue(), actions);
@@ -783,13 +784,6 @@ public class WorkshopMaterialCloseService {
 
     private static String joined(Set<Object> ids) {
         return ids.stream().filter(Objects::nonNull).map(Object::toString).collect(Collectors.joining(","));
-    }
-
-    private static LocalDate date(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate local) return local;
-        if (value instanceof java.sql.Date sql) return sql.toLocalDate();
-        return LocalDate.parse(value.toString());
     }
 
     private static OffsetDateTime offset(Object value) {

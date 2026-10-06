@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.receipt;
 
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -947,8 +948,8 @@ public class FinanceReceiptService {
         r.setExchangeRateSource(upper(req.getExchangeRateSource()));
         r.setExchangeRateEffectiveAt(req.getExchangeRateEffectiveAt());
         r.setBankBookedAt(req.getBankBookedAt());
-        r.setBankReference(trimToNull(req.getBankReference()));
-        r.setAgentStatementNo(trimToNull(req.getAgentStatementNo()));
+        r.setBankReference(NativeValueConverters.trimToNull(req.getBankReference()));
+        r.setAgentStatementNo(NativeValueConverters.trimToNull(req.getAgentStatementNo()));
         r.setAccountCurrencyId(req.getAccountCurrencyId());
         r.setAccountAmount(req.getAccountAmount() == null
                 ? null : money(req.getAccountAmount()));
@@ -961,10 +962,10 @@ public class FinanceReceiptService {
         r.setFeeAccountCurrencyId(null);
         r.setFeeAccountExchangeRate(null);
         applyReceiptMethod(req, r);
-        r.setInvoiceNo(trimToNull(req.getInvoiceNo()));
+        r.setInvoiceNo(NativeValueConverters.trimToNull(req.getInvoiceNo()));
         applyOperator(req.getOperatorId(), r);
-        r.setSourceRemark(trimToNull(req.getSourceRemark()));
-        r.setRemark(trimToNull(req.getRemark()));
+        r.setSourceRemark(NativeValueConverters.trimToNull(req.getSourceRemark()));
+        r.setRemark(NativeValueConverters.trimToNull(req.getRemark()));
     }
 
     /**
@@ -998,7 +999,7 @@ public class FinanceReceiptService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "必须填写汇率生效时间和银行实际入账时间");
         }
-        if (trimToNull(receipt.getBankReference()) == null) {
+        if (NativeValueConverters.trimToNull(receipt.getBankReference()) == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "必须填写真实银行入账流水号");
         }
@@ -1081,7 +1082,7 @@ public class FinanceReceiptService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "外贸公司代收结汇必须选择合作外贸公司");
             }
-            if (trimToNull(receipt.getAgentStatementNo()) == null) {
+            if (NativeValueConverters.trimToNull(receipt.getAgentStatementNo()) == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "外贸公司代收结汇必须填写代理结算单号");
             }
@@ -1092,7 +1093,7 @@ public class FinanceReceiptService {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "公司账户直收不能同时填写外贸代理公司");
             }
-            if (trimToNull(receipt.getAgentStatementNo()) != null) {
+            if (NativeValueConverters.trimToNull(receipt.getAgentStatementNo()) != null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
                         "公司账户直收不能填写外贸代理结算单号");
             }
@@ -1351,7 +1352,7 @@ public class FinanceReceiptService {
             ln.setBillDate(r.getBillDate());
             ln.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             ln.setAppliedLedgerId(l.getAppliedLedgerId());
-            ln.setAppliedBillNo(trimToNull(l.getAppliedBillNo()));
+            ln.setAppliedBillNo(NativeValueConverters.trimToNull(l.getAppliedBillNo()));
             ln.setClientId(l.getClientId() != null ? l.getClientId() : r.getClientId());
             ln.setCurrencyId(currencyId);
             ln.setExchangeRate(rate);
@@ -1361,7 +1362,7 @@ public class FinanceReceiptService {
             ln.setWriteOffLocal(writeOffLocal);
             ln.setAppliedAmountLocal(appliedLocal);
             ln.setExchangeDiff(exchangeDiff);
-            ln.setRemark(trimToNull(l.getRemark()));
+            ln.setRemark(NativeValueConverters.trimToNull(l.getRemark()));
             lineRepo.save(ln);
             out.add(toLineDto(ln));
             auto++;
@@ -1432,7 +1433,7 @@ public class FinanceReceiptService {
     }
 
     private String normalizeIdempotencyKey(String raw) {
-        String value = trimToNull(raw);
+        String value = NativeValueConverters.trimToNull(raw);
         if (value == null || value.length() < 8 || value.length() > 128
                 || !value.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
@@ -1489,8 +1490,8 @@ public class FinanceReceiptService {
         appendHash(value, upper(request.getExchangeRateSource()));
         appendHash(value, request.getExchangeRateEffectiveAt());
         appendHash(value, request.getBankBookedAt());
-        appendHash(value, trimToNull(request.getBankReference()));
-        appendHash(value, trimToNull(request.getAgentStatementNo()));
+        appendHash(value, NativeValueConverters.trimToNull(request.getBankReference()));
+        appendHash(value, NativeValueConverters.trimToNull(request.getAgentStatementNo()));
         BigDecimal effectiveBankFee=request.getBankFeeAccountAmount()!=null
                 ?request.getBankFeeAccountAmount():request.getBankFee();
         BigDecimal effectiveOtherFee=request.getOtherFeeAccountAmount()!=null
@@ -1541,14 +1542,8 @@ public class FinanceReceiptService {
     }
 
     private static String upper(String value) {
-        String trimmed = trimToNull(value);
+        String trimmed = NativeValueConverters.trimToNull(value);
         return trimmed == null ? null : trimmed.toUpperCase(java.util.Locale.ROOT);
-    }
-
-    private static String trimToNull(String value) {
-        if (value == null) return null;
-        String trimmed = value.trim();
-        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private record AccountCurrencySnapshot(

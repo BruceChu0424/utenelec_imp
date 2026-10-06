@@ -32,7 +32,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Date;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -131,7 +130,7 @@ public class ProductionFinishedArrivalRegistrationService {
             }
             return new RegistrationOutcome(
                     (UUID) existing[0], true, (UUID) existing[3],
-                    text(existing[4]), null);
+                    NativeValueConverters.text(existing[4]), null);
         }
         return null;
     }
@@ -259,7 +258,7 @@ public class ProductionFinishedArrivalRegistrationService {
                 .setParameter("reportId", reportId)
                 .setParameter("lotIds", List.copyOf(lotIds)))) {
             result.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>())
-                    .add(new LotMember((UUID) row[1], decimal(row[2]), ((Number) row[3]).intValue()));
+                    .add(new LotMember((UUID) row[1], NativeValueConverters.toBigDecimal(row[2]), ((Number) row[3]).intValue()));
         }
         return result;
     }
@@ -449,7 +448,7 @@ public class ProductionFinishedArrivalRegistrationService {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             result.put(lot.getKey(), new WeighedLot(
                     lots.get(lot.getKey()).weight(), (UUID) row[1], (UUID) row[2], (UUID) row[3],
-                    decimal(row[4]), reported, (UUID) row[5]));
+                    NativeValueConverters.toBigDecimal(row[4]), reported, (UUID) row[5]));
         }
         return result;
     }
@@ -553,7 +552,7 @@ public class ProductionFinishedArrivalRegistrationService {
             UUID colorId = (UUID) row[4];
             sourcesByWarehouse.computeIfAbsent(warehouseId, ignored -> new ArrayList<>())
                     .add(new RememberPlaceSource(
-                            goodsId, colorId, text(row[5]), text(row[6]), text(row[7])));
+                            goodsId, colorId, NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.text(row[7])));
             RememberSourceRegistration candidate = new RememberSourceRegistration(
                     (UUID) row[0], offsetDateTime(row[2]));
             latestByWarehouse.computeIfAbsent(warehouseId, ignored -> new LinkedHashMap<>())
@@ -735,14 +734,14 @@ public class ProductionFinishedArrivalRegistrationService {
         return new ArrivalRegistrationView(
                 registered ? (UUID) registration[0] : null,
                 registered, (UUID) header[0],
-                text(header[1]), localDate(header[2]), (UUID) header[3],
-                text(header[4]),
+                NativeValueConverters.text(header[1]), NativeValueConverters.toLocalDate(header[2]), (UUID) header[3],
+                NativeValueConverters.text(header[4]),
                 registered ? (UUID) registration[1] : null,
-                registered ? text(registration[2]) : null,
-                registered ? text(registration[3]) : null,
+                registered ? NativeValueConverters.text(registration[2]) : null,
+                registered ? NativeValueConverters.text(registration[3]) : null,
                 registered ? (UUID) registration[4] : currentReceiver.id(),
-                registered ? text(registration[5]) : currentReceiver.name(),
-                registered ? text(registration[7]) : null,
+                registered ? NativeValueConverters.text(registration[5]) : currentReceiver.name(),
+                registered ? NativeValueConverters.text(registration[7]) : null,
                 registered ? offsetDateTime(registration[6]) : null,
                 mapLots(rows),
                 current == null ? null : current.sheetId(),
@@ -828,10 +827,10 @@ public class ProductionFinishedArrivalRegistrationService {
                         .setParameter("reportIds", reportIds));
         for (Object[] row : rows) {
             result.computeIfAbsent((UUID) row[12], ignored -> new ArrayList<>()).add(new RegistrationBatchView(
-                    (UUID) row[0], (UUID) row[1], text(row[2]), text(row[3]),
-                    text(row[4]), offsetDateTime(row[5]),
-                    ((Number) row[6]).intValue(), (UUID) row[7], text(row[8]),
-                    offsetDateTime(row[9]), text(row[10]),
+                    (UUID) row[0], (UUID) row[1], NativeValueConverters.text(row[2]), NativeValueConverters.text(row[3]),
+                    NativeValueConverters.text(row[4]), offsetDateTime(row[5]),
+                    ((Number) row[6]).intValue(), (UUID) row[7], NativeValueConverters.text(row[8]),
+                    offsetDateTime(row[9]), NativeValueConverters.text(row[10]),
                     Boolean.TRUE.equals(row[11])));
         }
         result.replaceAll((report, batches) -> List.copyOf(batches));
@@ -956,7 +955,7 @@ public class ProductionFinishedArrivalRegistrationService {
             List<ArrivalLotMemberView> members = new ArrayList<>(lotRows.size());
             for (Object[] row : lotRows) {
                 int rank = ((Number) row[22]).intValue();
-                BigDecimal qty = decimal(row[14]);
+                BigDecimal qty = NativeValueConverters.toBigDecimal(row[14]);
                 total = total.add(qty);
                 switch (rank) {
                     case OutputLotText.RANK_ACTUAL_SURPLUS -> surplus = surplus.add(qty);
@@ -974,13 +973,13 @@ public class ProductionFinishedArrivalRegistrationService {
             Object[] first = lotRows.getFirst();
             result.add(new ArrivalLotView(
                     lot.getKey(), lineNo, members,
-                    (UUID) first[3], (UUID) first[4], (UUID) first[5], text(first[6]),
-                    (UUID) first[7], text(first[8]), text(first[9]),
-                    (UUID) first[10], text(first[11]), (UUID) first[12], text(first[13]),
+                    (UUID) first[3], (UUID) first[4], (UUID) first[5], NativeValueConverters.text(first[6]),
+                    (UUID) first[7], NativeValueConverters.text(first[8]), NativeValueConverters.text(first[9]),
+                    (UUID) first[10], NativeValueConverters.text(first[11]), (UUID) first[12], NativeValueConverters.text(first[13]),
                     total, demand, publicQty, surplus,
                     OutputLotText.split(demand, publicQty, surplus),
-                    text(first[15]), text(first[16]), (UUID) first[17], text(first[18]),
-                    allCounted ? counted : null, weight, decimal(first[21])));
+                    NativeValueConverters.text(first[15]), NativeValueConverters.text(first[16]), (UUID) first[17], NativeValueConverters.text(first[18]),
+                    allCounted ? counted : null, weight, NativeValueConverters.toBigDecimal(first[21])));
         }
         return result;
     }
@@ -1044,8 +1043,8 @@ public class ProductionFinishedArrivalRegistrationService {
             }
             result.add(new ArrivalRegistrationView(
                     null, false, (UUID) header[0],
-                    text(header[1]), localDate(header[2]), (UUID) header[3],
-                    text(header[4]), null, null, null,
+                    NativeValueConverters.text(header[1]), NativeValueConverters.toLocalDate(header[2]), (UUID) header[3],
+                    NativeValueConverters.text(header[4]), null, null, null,
                     receiver.id(), receiver.name(), null, null,
                     mapLots(items),
                     null, null, null, null, false,
@@ -1168,15 +1167,15 @@ public class ProductionFinishedArrivalRegistrationService {
         for (Map.Entry<GroupKey, RegistrationOutcome> entry : outcomes.entrySet()) {
             RegistrationOutcome outcome = entry.getValue();
             Object[] sheet = sheetByRegistration.get(outcome.registrationId());
-            String reportNo = text(sheet == null ? null : sheet[5]);
+            String reportNo = NativeValueConverters.text(sheet == null ? null : sheet[5]);
             UUID sheetId = sheet == null ? null : (UUID) sheet[0];
             registered.add(new RegisteredReportView(
                     outcome.registrationId(), entry.getKey().reportId(), reportNo,
                     outcome.warehouseId(), outcome.warehouseName(),
-                    sheetId, text(sheet == null ? null : sheet[1])));
+                    sheetId, NativeValueConverters.text(sheet == null ? null : sheet[1])));
             if (sheet != null && !sheets.containsKey(sheetId)) {
                 sheets.put(sheetId, new InspectionSheetSummaryView(
-                        sheetId, text(sheet[1]), (UUID) sheet[2], text(sheet[3]),
+                        sheetId, NativeValueConverters.text(sheet[1]), (UUID) sheet[2], NativeValueConverters.text(sheet[3]),
                         ((Number) sheet[4]).intValue()));
             }
         }
@@ -1280,12 +1279,12 @@ public class ProductionFinishedArrivalRegistrationService {
                                 FOR UPDATE
                                 """)
                         .setParameter("warehouseId", warehouseId));
-        if (rows.size() != 1 || text(rows.getFirst()[1]) == null
-                || text(rows.getFirst()[1]).isBlank()) {
+        if (rows.size() != 1 || NativeValueConverters.text(rows.getFirst()[1]) == null
+                || NativeValueConverters.text(rows.getFirst()[1]).isBlank()) {
             throw validation("目标仓库不存在、已停用、不参与库存核算或不是具体子仓库");
         }
         return new WarehouseSnapshot(
-                text(rows.getFirst()[0]), text(rows.getFirst()[1]));
+                NativeValueConverters.text(rows.getFirst()[0]), NativeValueConverters.text(rows.getFirst()[1]));
     }
 
     private EmployeeSnapshot requireReceiver(UUID employeeId) {
@@ -1298,11 +1297,11 @@ public class ProductionFinishedArrivalRegistrationService {
                         """)
                 .setParameter("employeeId", employeeId)
                 .getResultList();
-        if (names.size() != 1 || text(names.getFirst()) == null
-                || text(names.getFirst()).isBlank()) {
+        if (names.size() != 1 || NativeValueConverters.text(names.getFirst()) == null
+                || NativeValueConverters.text(names.getFirst()).isBlank()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "当前收货人员无效");
         }
-        return new EmployeeSnapshot(employeeId, text(names.getFirst()));
+        return new EmployeeSnapshot(employeeId, NativeValueConverters.text(names.getFirst()));
     }
 
     private WarehouseSnapshot validatedWarehouse(UUID warehouseId) {
@@ -1480,28 +1479,13 @@ public class ProductionFinishedArrivalRegistrationService {
         return new RememberPlan(candidates, ambiguous, warnings);
     }
 
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        return ((Date) value).toLocalDate();
-    }
-
     private static OffsetDateTime offsetDateTime(Object value) {
         return value == null ? null
                 : NativeValueConverters.toOffsetDateTime(value);
     }
 
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO
-                : new BigDecimal(value.toString());
-    }
-
     private static Integer integer(Object value) {
         return value == null ? null : ((Number) value).intValue();
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
     }
 
     private static ApiException validation(String message) {

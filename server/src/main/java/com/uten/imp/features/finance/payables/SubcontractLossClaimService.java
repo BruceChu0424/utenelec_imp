@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.time.BusinessTime;
@@ -248,7 +249,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         if (rows.isEmpty()) return; // pre-V330 historical waste
         Object[] row = rows.getFirst();
         UUID caseId = (UUID) row[0];
-        String status = text(row[1]);
+        String status = NativeValueConverters.text(row[1]);
         long resolutions = ((Number) row[3]).longValue();
         if (Set.of("CANCELED", "REVERSED").contains(status)) return;
         if (("OPEN".equals(status) || "RESOLVED".equals(status)) && resolutions == 0) {
@@ -379,11 +380,11 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 WHERE case_id=:id ORDER BY line.id
                 """).setParameter("id", id).getResultList();
         List<CaseLine> lines = lineRows.stream().map(row -> new CaseLine(
-                uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
-                text(row[5]), text(row[6]), uuid(row[7]), text(row[8]), uuid(row[9]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]), NativeValueConverters.uuid(row[4]),
+                NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.uuid(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.uuid(row[9]),
                 quantity(row[10]), quantity(row[11]), quantity(row[12]),
                 priceMasked ? null : money(row[13]),
-                priceMasked ? null : money(row[14]), text(row[15]))).toList();
+                priceMasked ? null : money(row[14]), NativeValueConverters.text(row[15]))).toList();
         @SuppressWarnings("unchecked")
         List<Object[]> resolutionRows = em.createNativeQuery("""
                 SELECT id, case_line_id, resolution_type, quantity, amount_local,
@@ -392,17 +393,17 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 FROM subcontract_loss_resolutions WHERE case_id=:id ORDER BY created_at,id
                 """).setParameter("id", id).getResultList();
         List<Resolution> resolutions = resolutionRows.stream().map(row -> new Resolution(
-                uuid(row[0]), uuid(row[1]), text(row[2]), quantity(row[3]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.text(row[2]), quantity(row[3]),
                 priceMasked ? null : money(row[4]),
-                date(row[5]), text(row[6]), text(row[7]), text(row[8]), text(row[9]),
-                uuid(row[10]), text(row[11]), uuid(row[12]), text(row[13]))).toList();
+                NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.text(row[9]),
+                NativeValueConverters.uuid(row[10]), NativeValueConverters.text(row[11]), NativeValueConverters.uuid(row[12]), NativeValueConverters.text(row[13]))).toList();
         @SuppressWarnings("unchecked")
         List<Object[]> eventRows = em.createNativeQuery("""
                 SELECT id,event_type,actor_user_id,reason,created_at
                 FROM subcontract_loss_events WHERE case_id=:id ORDER BY created_at,id
                 """).setParameter("id", id).getResultList();
         List<Event> events = eventRows.stream().map(row -> new Event(
-                uuid(row[0]), text(row[1]), uuid(row[2]), text(row[3]), text(row[4]))).toList();
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.text(row[3]), NativeValueConverters.text(row[4]))).toList();
         return new CaseDetail(summary, lines, resolutions, events);
     }
 
@@ -639,12 +640,12 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("resolutionId",resolutionId).getResultList();
         if(rows.size()!=1)throw conflict("履约分配缺失或重复，禁止反转");
         Object[] row=rows.getFirst();
-        UUID allocationId=uuid(row[0]);
-        UUID caseLineId=uuid(row[1]);
-        String documentType=text(row[2]);
-        UUID documentId=uuid(row[3]);
+        UUID allocationId=NativeValueConverters.uuid(row[0]);
+        UUID caseLineId=NativeValueConverters.uuid(row[1]);
+        String documentType=NativeValueConverters.text(row[2]);
+        UUID documentId=NativeValueConverters.uuid(row[3]);
         BigDecimal quantity=decimal(row[5]);
-        if(!"APPLIED".equals(text(row[6])))throw conflict("履约已经反转");
+        if(!"APPLIED".equals(NativeValueConverters.text(row[6])))throw conflict("履约已经反转");
         long allocationVersion=((Number)row[7]).longValue();
         if("SUPPLIER_MATERIAL_REPLACEMENT".equals(documentType)){
             @SuppressWarnings("unchecked")
@@ -717,11 +718,11 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("resolutionId",resolution.id()).getResultList();
         if(rows.size()!=1)throw conflict("现金赔偿到账事实缺失或重复");
         Object[] row=rows.getFirst();
-        UUID receiptId=uuid(row[0]);UUID accountId=uuid(row[1]);
+        UUID receiptId=NativeValueConverters.uuid(row[0]);UUID accountId=NativeValueConverters.uuid(row[1]);
         BigDecimal amount=decimal(row[2]);LocalDate receiptDate=LocalDate.parse(row[3].toString());
-        UUID reconciliationId=uuid(row[4]);long receiptVersion=((Number)row[5]).longValue();
+        UUID reconciliationId=NativeValueConverters.uuid(row[4]);long receiptVersion=((Number)row[5]).longValue();
         long claimVersion=((Number)row[7]).longValue();
-        if(!"APPROVED".equals(text(row[6]))||!"SETTLED".equals(text(row[8]))){
+        if(!"APPROVED".equals(NativeValueConverters.text(row[6]))||!"SETTLED".equals(NativeValueConverters.text(row[8]))){
             throw conflict("现金赔偿到账或索赔应收状态不允许反转");
         }
         if(reconciliationId==null)throw conflict("现金赔偿原始资金流水缺失，禁止反转");
@@ -790,10 +791,10 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("id", caseId).getResultList();
         for (Object[] row : rows) {
             UUID resolutionId = (UUID) row[0];
-            String type = text(row[1]);
-            String status = text(row[2]);
-            UUID offsetLedgerId = uuid(row[3]);
-            UUID claimReceivableId=uuid(row[4]);
+            String type = NativeValueConverters.text(row[1]);
+            String status = NativeValueConverters.text(row[2]);
+            UUID offsetLedgerId = NativeValueConverters.uuid(row[3]);
+            UUID claimReceivableId=NativeValueConverters.uuid(row[4]);
             if ("FULFILLED".equals(status) && !IMMEDIATE_TYPES.contains(type)) {
                 throw conflict("补料、补货或废料返还已经履约，请先红冲对应实物单据");
             }
@@ -887,12 +888,12 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("id",resolution.claimReceivableId()).getResultList();
         if(claims.size()!=1)throw conflict("索赔应收不存在或已失效");
         Object[] claim=claims.getFirst();
-        UUID supplierId=uuid(claim[0]);
-        UUID currencyId=uuid(claim[1]);
+        UUID supplierId=NativeValueConverters.uuid(claim[0]);
+        UUID currencyId=NativeValueConverters.uuid(claim[1]);
         BigDecimal balanceOriginal=decimal(claim[5]);
         BigDecimal balanceLocal=decimal(claim[6]);
         long claimVersion=((Number)claim[8]).longValue();
-        if(!Objects.equals(supplierId,loss.supplierId())||!"OPEN".equals(text(claim[7]))
+        if(!Objects.equals(supplierId,loss.supplierId())||!"OPEN".equals(NativeValueConverters.text(claim[7]))
                 ||balanceLocal.compareTo(cashLocal)!=0||balanceOriginal.compareTo(cashLocal)!=0
                 ||decimal(claim[3]).compareTo(BigDecimal.ONE)!=0){
             throw conflict("现金赔偿索赔应收余额、币种或供应商不一致");
@@ -1127,7 +1128,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("id",caseId).getResultList();
         if(rows.size()!=1)throw new ApiException(
                 ErrorCode.NOT_FOUND,"委外超耗责任单不存在");
-        return new CasePeriodIdentity(uuid(rows.getFirst()[0]),uuid(rows.getFirst()[1]));
+        return new CasePeriodIdentity(NativeValueConverters.uuid(rows.getFirst()[0]),NativeValueConverters.uuid(rows.getFirst()[1]));
     }
 
     private String resolutionTypeIdentity(UUID caseId,UUID resolutionId){
@@ -1159,8 +1160,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("id", id).getResultList();
         if (rows.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "委外超耗责任单不存在");
         Object[] row = rows.getFirst();
-        return new CaseRow((UUID) row[0], (UUID) row[1], text(row[2]), (UUID) row[3],
-                text(row[4]), row[5]==null?null:decimal(row[5]), uuid(row[6]), ((Number) row[7]).longValue());
+        return new CaseRow((UUID) row[0], (UUID) row[1], NativeValueConverters.text(row[2]), (UUID) row[3],
+                NativeValueConverters.text(row[4]), row[5]==null?null:decimal(row[5]), NativeValueConverters.uuid(row[6]), ((Number) row[7]).longValue());
     }
 
     private Map<UUID, LineRow> lockLines(UUID caseId) {
@@ -1171,7 +1172,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 """).setParameter("id", caseId).getResultList();
         Map<UUID, LineRow> result = new LinkedHashMap<>();
         for (Object[] row : rows) {
-            LineRow line = new LineRow((UUID) row[0], decimal(row[1]), text(row[2]));
+            LineRow line = new LineRow((UUID) row[0], decimal(row[1]), NativeValueConverters.text(row[2]));
             result.put(line.id(), line);
         }
         return result;
@@ -1187,8 +1188,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
                 .setParameter("caseId", caseId).getResultList();
         if (rows.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "责任处理方案不存在");
         Object[] row = rows.getFirst();
-        return new ResolutionRow((UUID) row[0],uuid(row[1]),text(row[2]),text(row[3]),
-                decimal(row[4]),decimal(row[5]),uuid(row[6]));
+        return new ResolutionRow((UUID) row[0],NativeValueConverters.uuid(row[1]),NativeValueConverters.text(row[2]),NativeValueConverters.text(row[3]),
+                decimal(row[4]),decimal(row[5]),NativeValueConverters.uuid(row[6]));
     }
 
     private void updateCaseDecision(CaseRow loss, String status, String reason,
@@ -1256,11 +1257,11 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
 
     private CaseSummary summary(Object[] row) {
         boolean priceMasked = !canViewFinanceAmounts();
-        return new CaseSummary(uuid(row[0]), uuid(row[1]), text(row[2]), uuid(row[3]),
-                text(row[4]), text(row[5]), text(row[6]), quantity(row[7]), quantity(row[8]),
+        return new CaseSummary(NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.text(row[2]), NativeValueConverters.uuid(row[3]),
+                NativeValueConverters.text(row[4]), NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), quantity(row[7]), quantity(row[8]),
                 quantity(row[9]), priceMasked ? null : money(row[10]),
                 priceMasked ? null : money(row[11]),
-                ((Number) row[12]).longValue(), text(row[13]), priceMasked);
+                ((Number) row[12]).longValue(), NativeValueConverters.text(row[13]), priceMasked);
     }
 
     private boolean canViewFinanceAmounts() {
@@ -1312,18 +1313,6 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
 
     private static String money(Object value) {
         return value == null ? null : money(decimal(value)).toPlainString();
-    }
-
-    private static UUID uuid(Object value) {
-        return value instanceof UUID uuid ? uuid : value == null ? null : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private static String date(Object value) {
-        return value == null ? null : value.toString();
     }
 
     private static String bounded(String value, int max, String label) {

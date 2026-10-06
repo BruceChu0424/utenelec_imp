@@ -5,6 +5,7 @@ import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -180,8 +181,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     .executeUpdate();
         } else {
             Object[] row = existing.getFirst();
-            caseId = uuid(row[0]);
-            if (!Set.of("PENDING_RETURN","FINANCE_EXCEPTION").contains(text(row[1]))) {
+            caseId = NativeValueConverters.uuid(row[0]);
+            if (!Set.of("PENDING_RETURN","FINANCE_EXCEPTION").contains(NativeValueConverters.text(row[1]))) {
                 throw conflict("IQC失败数量在退回或贷项确认后又发生变化，请先反向下游任务");
             }
             long previousVersion = ((Number) row[2]).longValue();
@@ -266,8 +267,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         for (Object[] row : rows) {
-            UUID caseId = uuid(row[0]);
-            String status = text(row[1]);
+            UUID caseId = NativeValueConverters.uuid(row[0]);
+            String status = NativeValueConverters.text(row[1]);
             long version = ((Number) row[2]).longValue();
             if ("REVERSED".equals(status)) continue;
             if (!Set.of("PENDING_RETURN","FINANCE_EXCEPTION").contains(status)) {
@@ -418,10 +419,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 GROUP BY document.id ORDER BY document.approved_at,document.id
                 """).setParameter("id",caseId).getResultList();
         return documents.stream().map(row->new ProcurementIqcRejectionContracts.CreditResolutionItem(
-                uuid(row[0]),quantity(row[1]),amountVisible?money(row[2]):null,amountVisible?money(row[3]):null,
-                text(row[4]),text(row[5]),Boolean.TRUE.equals(row[6])?"ACTIVE":"REVERSED",
+                NativeValueConverters.uuid(row[0]),quantity(row[1]),amountVisible?money(row[2]):null,amountVisible?money(row[3]):null,
+                NativeValueConverters.text(row[4]),NativeValueConverters.text(row[5]),Boolean.TRUE.equals(row[6])?"ACTIVE":"REVERSED",
                 amountVisible&&has("procurement_iqc_rejection:reverse")&&Boolean.TRUE.equals(row[6])&&Boolean.TRUE.equals(row[7]),
-                amountVisible?creditCaseBooks(uuid(row[0]),caseId):List.of()))
+                amountVisible?creditCaseBooks(NativeValueConverters.uuid(row[0]),caseId):List.of()))
                 .toList();
     }
 
@@ -432,7 +433,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                        book_after_original,book_after_local FROM procurement_iqc_credit_case_allocations
                 WHERE credit_document_id=:id AND (:allCases OR case_id=:caseId) ORDER BY case_id
                 """).setParameter("id",documentId).setParameter("allCases",canViewAllCases()).setParameter("caseId",caseId).getResultList();
-        return rows.stream().map(row->new ProcurementIqcRejectionContracts.CreditCaseBookItem(uuid(row[0]),quantity(row[1]),
+        return rows.stream().map(row->new ProcurementIqcRejectionContracts.CreditCaseBookItem(NativeValueConverters.uuid(row[0]),quantity(row[1]),
                 money(row[2]),money(row[3]),money(row[4]),money(row[5]),money(row[6]),money(row[7]))).toList();
     }
 
@@ -465,12 +466,12 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     """).setParameter("ap",source[0]).setParameter("allCases",canViewAllCases())
                     .setParameter("actor",currentUser.requireId()).getResultList();
             List<ProcurementIqcRejectionContracts.CreditCaseChoice> cases=choices.stream().map(row->
-                    new ProcurementIqcRejectionContracts.CreditCaseChoice(uuid(row[0]),number(row[1]),text(row[2]),text(row[3]),
-                            quantity((Object)consideration.creditableBaseQty(uuid(row[0]),uuid(source[0]))),text(row[4])))
+                    new ProcurementIqcRejectionContracts.CreditCaseChoice(NativeValueConverters.uuid(row[0]),number(row[1]),NativeValueConverters.text(row[2]),NativeValueConverters.text(row[3]),
+                            quantity((Object)consideration.creditableBaseQty(NativeValueConverters.uuid(row[0]),NativeValueConverters.uuid(source[0]))),NativeValueConverters.text(row[4])))
                     .filter(choice->new BigDecimal(choice.creditableBaseQty()).signum()>0).toList();
-            result.add(new ProcurementIqcRejectionContracts.CreditSourceItem(uuid(source[0]),text(source[1]),
+            result.add(new ProcurementIqcRejectionContracts.CreditSourceItem(NativeValueConverters.uuid(source[0]),NativeValueConverters.text(source[1]),
                     money(source[2]),money(source[3]),money(source[4]),
-                    money((Object)decimal(source[2]).subtract(decimal(source[4]))),cases));
+                    money((Object)NativeValueConverters.toBigDecimal(source[2]).subtract(NativeValueConverters.toBigDecimal(source[4]))),cases));
         }
         return List.copyOf(result);
     }
@@ -525,7 +526,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         String returnReference = bounded(
                 request.returnReference(), 200, "实物退回凭证编号");
         String returnNote = bounded(request.returnNote(), 2000, "实物退回说明");
-        LocalDate openedDate=localDate(em.createNativeQuery("""
+        LocalDate openedDate=NativeValueConverters.toLocalDate(em.createNativeQuery("""
                 SELECT (created_at AT TIME ZONE 'Asia/Shanghai')::date
                 FROM procurement_iqc_rejection_cases WHERE id=:id
                 """).setParameter("id",id).getSingleResult());
@@ -660,7 +661,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         UUID id=row.id();
         String reason=bounded(request.reason(),2000,"供应商退货减款说明");
         String reference=bounded(request.creditReference(),200,"供应商贷项/红字凭证编号");
-        LocalDate returned=localDate(em.createNativeQuery(
+        LocalDate returned=NativeValueConverters.toLocalDate(em.createNativeQuery(
                 "SELECT return_date FROM procurement_iqc_rejection_cases WHERE id=:id")
                 .setParameter("id",id).getSingleResult());
         validateCreditDate(returned,request.creditDate(),BusinessTime.today());
@@ -677,7 +678,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     ||target.exchangeRate().compareTo(row.exchangeRate())!=0
                     ||!java.util.Objects.equals(target.settlementMethodId(),row.settlementMethodId()))
                 throw conflict("同一供应商贷项只能分配到同一来源应付和商业身份的已实退案件");
-            LocalDate targetReturned=localDate(em.createNativeQuery(
+            LocalDate targetReturned=NativeValueConverters.toLocalDate(em.createNativeQuery(
                     "SELECT return_date FROM procurement_iqc_rejection_cases WHERE id=:id")
                     .setParameter("id",target.id()).getSingleResult());
             validateCreditDate(targetReturned,request.creditDate(),BusinessTime.today());
@@ -701,13 +702,13 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if(sources.size()!=byAp.size())throw conflict("原失败份额的正应付缺失或已反向，禁止退货减款");
         Map<UUID,BigDecimal> balances=new LinkedHashMap<>();
         for(Object[] source:sources){
-            if(!java.util.Objects.equals(uuid(source[2]),row.supplierId())
-                    ||!java.util.Objects.equals(uuid(source[3]),row.currencyId())
-                    ||decimal(source[4]).compareTo(row.exchangeRate())!=0
-                    ||!java.util.Objects.equals(uuid(source[5]),row.settlementMethodId())){
+            if(!java.util.Objects.equals(NativeValueConverters.uuid(source[2]),row.supplierId())
+                    ||!java.util.Objects.equals(NativeValueConverters.uuid(source[3]),row.currencyId())
+                    ||NativeValueConverters.toBigDecimal(source[4]).compareTo(row.exchangeRate())!=0
+                    ||!java.util.Objects.equals(NativeValueConverters.uuid(source[5]),row.settlementMethodId())){
                 throw conflict("退货减款的原应付身份与冻结资金份额不一致");
             }
-            balances.put(uuid(source[0]),decimal(source[1]).max(BigDecimal.ZERO));
+            balances.put(NativeValueConverters.uuid(source[0]),NativeValueConverters.toBigDecimal(source[1]).max(BigDecimal.ZERO));
         }
         String sourceType=creditSourceType(row.receiptType());
         UUID ledgerId=row.creditLedgerId();
@@ -846,11 +847,11 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     credit_confirmed_by=:creditActor,credit_confirmed_at=:at,
                     row_version=row_version+1,updated_by=:actor
                 WHERE id=:id AND row_version=:version AND status IN ('RETURN_RECORDED','CREDIT_CONFIRMED')
-                """).setParameter("source",last==null?null:uuid(last[0]))
-                .setParameter("ledger",last==null?null:uuid(last[1]))
-                .setParameter("reference",last==null?null:text(last[2]))
-                .setParameter("date",last==null?null:last[3]).setParameter("reason",last==null?null:text(last[4]))
-                .setParameter("creditActor",last==null?null:uuid(last[5])).setParameter("at",last==null?null:last[6])
+                """).setParameter("source",last==null?null:NativeValueConverters.uuid(last[0]))
+                .setParameter("ledger",last==null?null:NativeValueConverters.uuid(last[1]))
+                .setParameter("reference",last==null?null:NativeValueConverters.text(last[2]))
+                .setParameter("date",last==null?null:last[3]).setParameter("reason",last==null?null:NativeValueConverters.text(last[4]))
+                .setParameter("creditActor",last==null?null:NativeValueConverters.uuid(last[5])).setParameter("at",last==null?null:last[6])
                 .setParameter("actor",currentUser.requireId()).setParameter("id",target.id())
                 .setParameter("version",target.version()).executeUpdate();
         if(changed!=1)throw concurrentChange();
@@ -1059,7 +1060,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 ErrorCode.NOT_FOUND,"IQC不合格退回/贷项任务不存在");
         Object[] identity=identities.getFirst();
         Source source=lockSource(
-                text(identity[0]),uuid(identity[1]),uuid(identity[2]));
+                NativeValueConverters.text(identity[0]),NativeValueConverters.uuid(identity[1]),NativeValueConverters.uuid(identity[2]));
         LockedCase row = lock(id);
         mutationGuard.verifyUnchanged();
         String requestHash=commandHash("RETRY_FINANCE_PROJECTION",request);
@@ -1073,7 +1074,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         }
         String retryReason = bounded(request.reason(), 2000, "财务投影重试原因");
         Projection projection=projection(
-                source,row.failedOriginal(),row.failedLocal(),text(identity[0]),uuid(identity[1]));
+                source,row.failedOriginal(),row.failedLocal(),NativeValueConverters.text(identity[0]),NativeValueConverters.uuid(identity[1]));
         boolean physicalReturned=((Number)em.createNativeQuery("""
                 SELECT COUNT(*) FROM procurement_iqc_rejection_cases
                 WHERE id=:id AND return_recorded_at IS NOT NULL
@@ -1101,8 +1102,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("version", row.version())
                 .executeUpdate();
         if (restored != 1) throw concurrentChange();
-        if(projection.exceptionCode()==null&&consideration.hasReceipt(text(identity[0]),uuid(identity[1]))){
-            consideration.freezeFailure(id,uuid(identity[2]),currentUser.requireId());
+        if(projection.exceptionCode()==null&&consideration.hasReceipt(NativeValueConverters.text(identity[0]),NativeValueConverters.uuid(identity[1]))){
+            consideration.freezeFailure(id,NativeValueConverters.uuid(identity[2]),currentUser.requireId());
         }
         appendCommandEvent(
                 id, "FINANCE_PROJECTION_RETRIED", request.commandId(),
@@ -1174,15 +1175,15 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         List<SourceAp> sourceAps = ledgerRows.stream().map(value -> new SourceAp(
-                uuid(value[0]),uuid(value[1]),uuid(value[2]),decimal(value[3]),
-                uuid(value[4]),decimal(value[5]),decimal(value[6]))).toList();
+                NativeValueConverters.uuid(value[0]),NativeValueConverters.uuid(value[1]),NativeValueConverters.uuid(value[2]),NativeValueConverters.toBigDecimal(value[3]),
+                NativeValueConverters.uuid(value[4]),NativeValueConverters.toBigDecimal(value[5]),NativeValueConverters.toBigDecimal(value[6]))).toList();
         return new Source(
-                uuid(row[0]), decimal(row[1]), decimal(row[2]), text(row[3]),
-                uuid(row[4]), uuid(row[5]), uuid(row[6]), uuid(row[7]), decimal(row[8]),
-                decimal(row[9]), decimal(row[10]), decimal(row[11]), text(row[12]),
-                decimal(row[13]),decimal(row[14]),uuid(row[15]),uuid(row[16]),
-                decimal(row[17]),decimal(row[18]),uuid(row[19]),text(row[20]),
-                uuid(row[21]),sourceAps);
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.toBigDecimal(row[1]), NativeValueConverters.toBigDecimal(row[2]), NativeValueConverters.text(row[3]),
+                NativeValueConverters.uuid(row[4]), NativeValueConverters.uuid(row[5]), NativeValueConverters.uuid(row[6]), NativeValueConverters.uuid(row[7]), NativeValueConverters.toBigDecimal(row[8]),
+                NativeValueConverters.toBigDecimal(row[9]), NativeValueConverters.toBigDecimal(row[10]), NativeValueConverters.toBigDecimal(row[11]), NativeValueConverters.text(row[12]),
+                NativeValueConverters.toBigDecimal(row[13]),NativeValueConverters.toBigDecimal(row[14]),NativeValueConverters.uuid(row[15]),NativeValueConverters.uuid(row[16]),
+                NativeValueConverters.toBigDecimal(row[17]),NativeValueConverters.toBigDecimal(row[18]),NativeValueConverters.uuid(row[19]),NativeValueConverters.text(row[20]),
+                NativeValueConverters.uuid(row[21]),sourceAps);
     }
 
     private Projection projection(
@@ -1354,9 +1355,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 """).setParameter("id",commandId).getResultList();
         if(rows.isEmpty())return false;
         Object[] row=rows.getFirst();
-        if(rows.size()!=1||!java.util.Objects.equals(uuid(row[0]),caseId)
-                ||!java.util.Objects.equals(text(row[1]),commandType)
-                ||!java.util.Objects.equals(text(row[2]),requestHash)){
+        if(rows.size()!=1||!java.util.Objects.equals(NativeValueConverters.uuid(row[0]),caseId)
+                ||!java.util.Objects.equals(NativeValueConverters.text(row[1]),commandType)
+                ||!java.util.Objects.equals(NativeValueConverters.text(row[2]),requestHash)){
             throw conflict("相同命令UUID已用于不同IQC任务或不同请求");
         }
         return true;
@@ -1394,8 +1395,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("caseId", caseId)
                 .getResultList();
         return rows.stream().map(row -> new CaseEventItem(
-                uuid(row[0]), text(row[1]), uuid(row[2]), uuid(row[3]),
-                text(row[4]), text(row[5]), text(row[6]), text(row[7])))
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]),
+                NativeValueConverters.text(row[4]), NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.text(row[7])))
                 .toList();
     }
 
@@ -1414,11 +1415,11 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("caseId", caseId)
                 .getResultList();
         return rows.stream().map(row -> new ReplacementAllocationItem(
-                uuid(row[0]), text(row[1]), uuid(row[2]), uuid(row[3]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]),
                 quantity(row[4]),quantity(row[5]),
                 canSeeAmount?money(row[6]):null,
-                canSeeAmount?money(row[7]):null,text(row[8]),
-                text(row[9]), text(row[10])))
+                canSeeAmount?money(row[7]):null,NativeValueConverters.text(row[8]),
+                NativeValueConverters.text(row[9]), NativeValueConverters.text(row[10])))
                 .toList();
     }
 
@@ -1485,10 +1486,10 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if (rows.size() != 1) throw new ApiException(
                 ErrorCode.NOT_FOUND, "IQC不合格退回/贷项任务不存在");
         Object[] row = rows.getFirst();
-        return new LockedCase(uuid(row[0]), text(row[1]), uuid(row[2]), text(row[3]),
-                ((Number) row[4]).longValue(), uuid(row[5]), uuid(row[6]), decimal(row[7]),
-                uuid(row[8]), row[9]==null?null:decimal(row[9]), row[10]==null?null:decimal(row[10]), uuid(row[11]),
-                uuid(row[12]),uuid(row[13]),uuid(row[14]),uuid(row[15]));
+        return new LockedCase(NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.text(row[3]),
+                ((Number) row[4]).longValue(), NativeValueConverters.uuid(row[5]), NativeValueConverters.uuid(row[6]), NativeValueConverters.toBigDecimal(row[7]),
+                NativeValueConverters.uuid(row[8]), row[9]==null?null:NativeValueConverters.toBigDecimal(row[9]), row[10]==null?null:NativeValueConverters.toBigDecimal(row[10]), NativeValueConverters.uuid(row[11]),
+                NativeValueConverters.uuid(row[12]),NativeValueConverters.uuid(row[13]),NativeValueConverters.uuid(row[14]),NativeValueConverters.uuid(row[15]));
     }
 
     private UUID postedLedgerId(UUID sourceId, String sourceType) {
@@ -1509,17 +1510,17 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 SELECT order_item_id FROM procurement_iqc_rejection_cases
                 WHERE id=:id AND is_deleted=FALSE
                 """).setParameter("id",caseId).getSingleResult();
-        return uuid(value);
+        return NativeValueConverters.uuid(value);
     }
 
     private CaseItem item(Object[] row) {
-        String receiptType = text(row[1]);
-        String status = text(row[18]);
+        String receiptType = NativeValueConverters.text(row[1]);
+        String status = NativeValueConverters.text(row[18]);
         boolean canSeePrice = has("procurement_iqc_rejection:amount:view");
         List<String> actions = new ArrayList<>();
         boolean ownCase = java.util.Objects.equals(
-                currentUser.requireId(), uuid(row[20]));
-        boolean inspectionResolved = "RESOLVED".equals(text(row[32]));
+                currentUser.requireId(), NativeValueConverters.uuid(row[20]));
+        boolean inspectionResolved = "RESOLVED".equals(NativeValueConverters.text(row[32]));
         if (("PENDING_RETURN".equals(status)
                 ||("FINANCE_EXCEPTION".equals(status)&&row[24]==null))
                 && has("procurement_iqc_rejection:record_return")
@@ -1530,7 +1531,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if ("RETURN_RECORDED".equals(status)
                 && has("procurement_iqc_rejection:confirm_credit")
                 && has("procurement_iqc_rejection:amount:view")
-                && (row[14]==null||decimal(row[14]).signum()>0)
+                && (row[14]==null||NativeValueConverters.toBigDecimal(row[14]).signum()>0)
                 && canViewAllCases()) {
             actions.add("CONFIRM_CREDIT");
         }
@@ -1538,7 +1539,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 && has("procurement_iqc_rejection:close_no_credit")
                 && canViewAllCases()
                 && row[14]!=null&&row[15]!=null
-                && decimal(row[14]).signum() == 0&&decimal(row[15]).signum() == 0) {
+                && NativeValueConverters.toBigDecimal(row[14]).signum() == 0&&NativeValueConverters.toBigDecimal(row[15]).signum() == 0) {
             actions.add("CLOSE_NO_CREDIT");
         }
         if (Set.of("RETURN_RECORDED", "CREDIT_CONFIRMED", "CLOSED_NO_CREDIT")
@@ -1560,18 +1561,18 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         }
         String holdReason = Set.of("PENDING_RETURN", "RETURN_RECORDED").contains(status)
                 ? "IQC不合格实物退回及供应商贷项尚未闭环"
-                : "FINANCE_EXCEPTION".equals(status) ? text(row[31]) : null;
+                : "FINANCE_EXCEPTION".equals(status) ? NativeValueConverters.text(row[31]) : null;
         return new CaseItem(
-                uuid(row[0]), receiptType, uuid(row[2]), uuid(row[3]), uuid(row[4]),
-                text(row[5]), text(row[6]), uuid(row[7]), text(row[8]), text(row[9]),
-                text(row[10]), uuid(row[33]), text(row[34]),
-                quantity(row[11]), quantity(row[12]), text(row[13]),
+                NativeValueConverters.uuid(row[0]), receiptType, NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]), NativeValueConverters.uuid(row[4]),
+                NativeValueConverters.text(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.uuid(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.text(row[9]),
+                NativeValueConverters.text(row[10]), NativeValueConverters.uuid(row[33]), NativeValueConverters.text(row[34]),
+                quantity(row[11]), quantity(row[12]), NativeValueConverters.text(row[13]),
                 canSeePrice ? money(row[14]) : null,
                 canSeePrice ? money(row[15]) : null,
-                text(row[16]), text(row[35]), status, ((Number) row[19]).longValue(), uuid(row[20]),
-                text(row[21]), text(row[22]), text(row[23]), text(row[24]),
-                text(row[25]), text(row[26]), text(row[27]),
-                text(row[28]), text(row[29]), text(row[30]), text(row[31]),
+                NativeValueConverters.text(row[16]), NativeValueConverters.text(row[35]), status, ((Number) row[19]).longValue(), NativeValueConverters.uuid(row[20]),
+                NativeValueConverters.text(row[21]), NativeValueConverters.text(row[22]), NativeValueConverters.text(row[23]), NativeValueConverters.text(row[24]),
+                NativeValueConverters.text(row[25]), NativeValueConverters.text(row[26]), NativeValueConverters.text(row[27]),
+                NativeValueConverters.text(row[28]), NativeValueConverters.text(row[29]), NativeValueConverters.text(row[30]), NativeValueConverters.text(row[31]),
                 holdReason,
                 List.copyOf(actions), !canSeePrice);
     }
@@ -1687,29 +1688,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         return trimmed;
     }
 
-    private static UUID uuid(Object value) {
-        return value instanceof UUID id ? id
-                : value == null ? null : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO
-                : value instanceof BigDecimal decimal ? decimal : new BigDecimal(value.toString());
-    }
-
     private static long number(Object value) {
         return value == null ? 0 : ((Number) value).longValue();
-    }
-
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof java.sql.Date date) return date.toLocalDate();
-        return LocalDate.parse(value.toString());
     }
 
     static void validateReturnDate(
@@ -1736,7 +1716,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     }
 
     private static BigDecimal moneyValue(Object value) {
-        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"IQC金额");
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(NativeValueConverters.toBigDecimal(value),"IQC金额");
     }
 
     private static boolean sameAmount(BigDecimal left,BigDecimal right){
@@ -1749,7 +1729,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     private static String quantity(Object value) {
         return value == null ? null
-                : decimal(value).stripTrailingZeros().toPlainString();
+                : NativeValueConverters.toBigDecimal(value).stripTrailingZeros().toPlainString();
     }
 
     private static BigDecimal money(BigDecimal value) {

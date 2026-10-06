@@ -5604,7 +5604,7 @@
       "tests": 2,
       "skipped": 0
     },
-    "com.uten.imp.businesschain.ProductionMaterialRequestNumberMigrationPostgresTest": {
+    "com.uten.imp.businesschain.ProductionMaterialRequestNumberPostgresTest": {
       "seconds": 39.01,
       "tests": 1,
       "skipped": 0

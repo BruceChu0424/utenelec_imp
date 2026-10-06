@@ -571,7 +571,9 @@ class SubcontractDecompositionLine {
     this.needDate,
     this.warehouseId,
     this.sourcePlanNo,
-  });
+    this.kitQty,
+    double? orderableQty,
+  }) : orderableQty = orderableQty ?? remainingQty;
 
   final String sourceDocumentId;
   final String sourceDocumentNo;
@@ -587,6 +589,14 @@ class SubcontractDecompositionLine {
   final String? needDate;
   final String? warehouseId;
   final String? sourcePlanNo;
+
+  /// 现有直属物料够做的套数(ADR-156；所选申请按需求日期先后共用公共库存，服务端算好)；
+  /// 服务端未下发时为 null。
+  final double? kitQty;
+
+  /// 这次能下单的数量 = MIN(剩余, 够做的套数)，服务端算好；0 = 等物料齐套，不预填这一行。
+  /// 服务端未下发时回落 [remainingQty]。
+  final double orderableQty;
 
   factory SubcontractDecompositionLine.fromJson(Map<String, dynamic> json) {
     double number(String key) {
@@ -610,6 +620,10 @@ class SubcontractDecompositionLine {
       needDate: json['needDate'] as String?,
       warehouseId: json['warehouseId'] as String?,
       sourcePlanNo: json['sourcePlanNo'] as String?,
+      kitQty: json['kitQty'] == null ? null : number('kitQty'),
+      orderableQty: json['orderableQty'] == null
+          ? null
+          : number('orderableQty'),
     );
   }
 }

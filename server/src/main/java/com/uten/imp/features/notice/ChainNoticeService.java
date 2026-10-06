@@ -115,6 +115,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /** 内部事件: 撤掉某订货明细的可领料行动卡(提交领料、结束领料、订单红冲)。 */
     static final String EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED =
             "SUBCONTRACT_DRAW_AVAILABLE_RESOLVED";
+    /** ADR-156 委外申请可下单行动卡(每个申请明细一张, 按最新可下单量覆盖)。 */
+    static final String EVENT_SUBCONTRACT_ORDER_KIT_READY =
+            "SUBCONTRACT_ORDER_KIT_READY";
+    /** 内部事件: 撤掉某委外申请明细的可下单行动卡(可下单归零、已下完、申请关闭)。 */
+    static final String EVENT_SUBCONTRACT_ORDER_KIT_READY_RESOLVED =
+            "SUBCONTRACT_ORDER_KIT_READY_RESOLVED";
     /** 委外人员撤回未发出的领料 → 通知草稿所在仓库。 */
     static final String EVENT_SUBCONTRACT_DRAW_WITHDRAWN =
             "SUBCONTRACT_DRAW_WITHDRAWN";
@@ -245,6 +251,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private static final String SUBCONTRACT_OUTBOUND_EXECUTE_AUTHORITY = "subcontract_outbound:execute";
     static final String AGGREGATE_SUBCONTRACT_ORDER_ITEM = "SUBCONTRACT_ORDER_ITEM";
     static final String AGGREGATE_SUBCONTRACT_MATERIAL_ISSUE = "SUBCONTRACT_MATERIAL_ISSUE";
+    static final String AGGREGATE_SUBCONTRACT_APPLICATION_ITEM = "SUBCONTRACT_APPLICATION_ITEM";
+    /** ADR-156 生成委外订货单(从委外任务中心分解委外申请)的权限点。 */
+    private static final String SUBCONTRACT_ORDER_DECOMPOSE_AUTHORITY = "subcontract_order:decompose";
+    /** 委外任务中心「待处理」分段(按申请单号搜索), 可下单行动卡的落点。 */
+    static final String SUBCONTRACT_PENDING_SEGMENT_ROUTE = "/operations/workbench/subcontract?segment=pending&keyword=";
     /** 委外任务中心「领料」分段(按订货明细筛选), 可领料行动卡的落点。 */
     static final String SUBCONTRACT_DRAW_SEGMENT_ROUTE = "/operations/workbench/subcontract?segment=DRAW&orderItemId=";
     /** 仓库委外出仓工作台的一张领料草稿(拣货页)。 */
@@ -504,6 +515,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                         notifySubcontractDrawAvailable(aggregateId);
                 case EVENT_SUBCONTRACT_DRAW_AVAILABLE_RESOLVED ->
                         resolveSubcontractDrawAvailable(aggregateId);
+                case EVENT_SUBCONTRACT_ORDER_KIT_READY ->
+                        notifySubcontractOrderKitReady(aggregateId);
+                case EVENT_SUBCONTRACT_ORDER_KIT_READY_RESOLVED ->
+                        resolveSubcontractOrderKitReady(aggregateId);
                 case EVENT_SUBCONTRACT_DRAW_WITHDRAWN ->
                         notifySubcontractDrawWithdrawn(aggregateId);
                 case EVENT_SUBCONTRACT_DRAW_RETURNED ->
@@ -2564,7 +2579,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     + " \u79cd\u7269\u6599\uff08" + lineCount
                     + " \u6761\u660e\u7ec6\uff09\u3002\u8bf7\u5230" + noun
                     + "\u7533\u8bf7\u8be6\u60c5\u6838\u5bf9\uff0c\u5e76\u4ece"
-                    + noun + "\u4efb\u52a1\u4e2d\u5fc3\u7ee7\u7eed\u5206\u89e3\u8ba2\u8d27\u3002";
+                    + noun + "\u4efb\u52a1\u4e2d\u5fc3\u7ee7\u7eed\u5206\u89e3\u8ba2\u8d27\u3002"
+                    + (subcontract ? subcontractApplicationKitSentence(documentId) : "");
             String actionRoute = (purchase ? "/purchase/requests/"
                     : "/subcontract/applications/") + documentId;
             String requiredViewAuthority = purchase
@@ -2577,6 +2593,30 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     actionRoute,
                     requiredViewAuthority);
         });
+    }
+
+    /**
+     * ADR-156: 新委外需求提醒里说明直属物料齐不齐——一条都不能下时任务中心先锁住、物料到了再提醒可下单;
+     * 部分明细能下时提示先按「可下单」数量下单。可下单数量只读 fn_subcontract_application_orderable_qty。
+     */
+    private String subcontractApplicationKitSentence(UUID applicationId) {
+        Map<String, Object> kit = one("""
+                SELECT COUNT(*) AS line_count,
+                       COUNT(*) FILTER (WHERE fn_subcontract_application_orderable_qty(item.id) > 0) AS orderable_lines
+                FROM subcontract_application_items item
+                WHERE item.application_id = ? AND item.is_deleted = FALSE
+                """, applicationId);
+        long lines = kit == null || kit.get("line_count") == null ? 0 : ((Number) kit.get("line_count")).longValue();
+        long orderable = kit == null || kit.get("orderable_lines") == null
+                ? 0 : ((Number) kit.get("orderable_lines")).longValue();
+        if (lines == 0) return "";
+        if (orderable == 0) {
+            return "直属物料还没齐套，委外任务中心先锁住这张申请(委外价格每天不一样，物料齐了才解锁下单)，物料到了系统会再提醒可下单。";
+        }
+        if (orderable < lines) {
+            return "其中 " + orderable + " 条明细的直属物料已够下单，可先按委外任务中心显示的「可下单」数量下单，其余等物料到了再提醒。";
+        }
+        return "直属物料已够下单，请按委外任务中心显示的「可下单」数量下单。";
     }
 
     // ---------- ADR-143 委外领料: 可领料卡 / 领料待发料 / 撤回 / 发料回执 / 红冲 ----------
@@ -2709,6 +2749,88 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             lockSubcontractDrawNotices();
             resolveReviewNotices(AGGREGATE_SUBCONTRACT_ORDER_ITEM, orderItemId, "DRAW_HANDLED");
         });
+    }
+
+    /**
+     * ADR-156 可下单行动卡: 每个委外申请明细一张, 重要级, 收件人 = 采购委外部门里能读通知、能看委外申请、
+     * 能生成委外订货单的人(与「新委外需求」同一批人)。文案在投递时按 fn_subcontract_application_orderable_qty
+     * 的实时可下单量生成, 每次先撤旧卡再发新卡; 可下单为 0 时只撤卡。
+     */
+    @Override
+    public void notifySubcontractOrderKitReady(UUID applicationItemId) {
+        if (applicationItemId == null) return;
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SUBCONTRACT_ORDER_KIT_READY, AGGREGATE_SUBCONTRACT_APPLICATION_ITEM,
+                    applicationItemId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            lockSubcontractDrawNotices();
+            publishSubcontractOrderKitReady(applicationItemId);
+        });
+    }
+
+    private void publishSubcontractOrderKitReady(UUID applicationItemId) {
+        Map<String, Object> task = one("""
+                SELECT application.bill_no, goods.code AS goods_code, goods.name AS goods_name,
+                       unit.name AS unit_name,
+                       fn_subcontract_application_open_qty(item.id) AS open_qty,
+                       fn_subcontract_application_orderable_qty(item.id) AS orderable_qty
+                FROM subcontract_application_items item
+                JOIN subcontract_applications application ON application.id = item.application_id
+                JOIN goods ON goods.id = item.goods_id
+                LEFT JOIN units unit ON unit.id = item.unit_id
+                WHERE item.id = ? AND item.is_deleted = FALSE
+                """, applicationItemId);
+        BigDecimal orderable = task == null ? BigDecimal.ZERO : bd(task.get("orderable_qty"));
+        resolveReviewNotices(AGGREGATE_SUBCONTRACT_APPLICATION_ITEM, applicationItemId,
+                orderable.signum() > 0 ? "STATE_CHANGED" : "NOT_ORDERABLE");
+        if (orderable.signum() <= 0) return;
+        String billNo = str(task.get("bill_no"));
+        String target = subcontractTargetName(task);
+        BigDecimal open = bd(task.get("open_qty"));
+        String quantity = qtyWithUnit(orderable, task.get("unit_name"));
+        boolean whole = orderable.compareTo(open) >= 0;
+        String title = "委外可下单：" + billNo + " " + target + " 可下单 " + quantity;
+        String content = "委外申请 " + billNo + " 的委外件 " + target + " 直属物料"
+                + (whole ? "已全部齐套" : "已够做 " + quantity + "(还差 "
+                        + qtyWithUnit(open.subtract(orderable), task.get("unit_name")) + " 等物料)")
+                + "，现在可以生成委外订货单，可下单 " + quantity
+                + "。请到委外任务中心「待处理」生成委外订货单；可下单数量以任务中心实时计算为准，"
+                + "物料被别的委外单先占走时会变少。";
+        String route = SUBCONTRACT_PENDING_SEGMENT_ROUTE + java.net.URLEncoder.encode(
+                billNo, java.nio.charset.StandardCharsets.UTF_8);
+        for (UUID recipient : subcontractOrderKitRecipients()) {
+            sendToUser(recipient, TYPE_TASK, title, content, route,
+                    EVENT_SUBCONTRACT_ORDER_KIT_READY, "important", applicationItemId);
+        }
+    }
+
+    /** 可下单归零、已全部下单或申请关闭: 撤掉该申请明细的可下单行动卡。 */
+    @Override
+    public void resolveSubcontractOrderKitReady(UUID applicationItemId) {
+        if (applicationItemId == null) return;
+        if (!isOutboxDelivery()) {
+            outbox.publish(EVENT_SUBCONTRACT_ORDER_KIT_READY_RESOLVED, AGGREGATE_SUBCONTRACT_APPLICATION_ITEM,
+                    applicationItemId, Map.of());
+            return;
+        }
+        deliverAtomically(() -> {
+            lockSubcontractDrawNotices();
+            resolveReviewNotices(AGGREGATE_SUBCONTRACT_APPLICATION_ITEM, applicationItemId, "NOT_ORDERABLE");
+        });
+    }
+
+    /** 可下单卡的收件人: 采购委外部门(含下级)里能读通知、能看委外申请、能生成委外订货单的在职账号。 */
+    private List<UUID> subcontractOrderKitRecipients() {
+        List<UUID> recipients = new ArrayList<>();
+        for (UUID userId : new LinkedHashSet<>(departmentUserIds("SUB_PURCHASE"))) {
+            if (userHasAllAuthorities(userId, NOTICE_READ_AUTHORITY, SUBCONTRACT_APPLICATION_VIEW_AUTHORITY,
+                    SUBCONTRACT_ORDER_DECOMPOSE_AUTHORITY)) {
+                recipients.add(userId);
+            }
+        }
+        return recipients;
     }
 
     /**

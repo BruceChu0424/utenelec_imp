@@ -744,7 +744,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           // 委外任务中心：?segment=draw 直落「领料」分段(可领料通知 / 进行中「可领料」)，
-          // 可带 orderItemId / orderId 定位到某条委外任务或某张订货单。
+          // 可带 orderItemId / orderId 定位到某条委外任务或某张订货单；
+          // ?segment=pending&keyword=申请号 直落「待处理」并按申请号搜索(ADR-156 可下单通知)。
           DraftAwareGoRoute(
             path: RouteName.operationsSubcontractWorkbench,
             name: 'operations-workbench-subcontract',
@@ -752,6 +753,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               initialSegment: state.uri.queryParameters['segment'],
               initialOrderItemId: state.uri.queryParameters['orderItemId'],
               initialOrderId: state.uri.queryParameters['orderId'],
+              initialKeyword: state.uri.queryParameters['keyword'],
             ),
           ),
           // 委外领料页(ADR-143 §4.2)：任务中心的子页，?orderItemIds=a,b。

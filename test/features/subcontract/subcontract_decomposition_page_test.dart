@@ -24,8 +24,11 @@ import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
+import 'package:uten_imp/features/subcontract/models/subcontract_application_kit.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_draw.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
+import 'package:uten_imp/features/subcontract/repositories/subcontract_kit_repository.dart';
+import 'package:uten_imp/features/subcontract/widgets/subcontract_application_kit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/subcontract_task_source.dart';
 
@@ -546,6 +549,372 @@ void main() {
       expect(find.byTooltip('点击通知研发完善 BOM'), findsNothing);
       expect(bom.forwarded, isEmpty);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('ADR-156 直属物料齐套才解锁下单', () {
+    const lockedHint = '直属物料还没齐，委外价格每天不同，物料齐了才解锁下单';
+
+    testWidgets(
+      'locked rows stay in pending (red count) but cannot be selected; '
+      'partial rows show the orderable quantity',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1000));
+        final gateway = _Gateway(_kitData());
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: gateway,
+                drawRepository: FakeSubcontractDrawGateway(),
+                kitGateway: _KitGateway(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // 锁行照样留在「待处理」计红数：红数 3 = 三行全数，自动选中「待处理」。
+        expect(gateway.queries.last['status'], 'WAITING_ORDER');
+        final stages = find.byKey(
+          const Key('subcontract-decomposition-stages'),
+        );
+        expect(
+          find.descendant(of: stages, matching: find.text('3')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: stages,
+            matching: find.byType(UtenInProgressBadge),
+          ),
+          findsNothing,
+        );
+
+        final table = tester
+            .widget<MasterDataTableView<OperationsWorkbenchTask>>(
+              find.byKey(const Key('subcontract-decomposition-table')),
+            );
+        OperationsWorkbenchTask row(String id) =>
+            table.items.firstWhere((task) => task.taskId == id);
+        final locked = row('task-locked');
+        final partial = row('task-partial');
+        final ready = row('task-ready');
+        expect(locked.isWaitingKit, isTrue);
+        expect(partial.isKitPartial, isTrue);
+        // 锁行：不能勾选，沿用旧锁(ADR-103)整行红底 + 黄色状态格。
+        expect(table.idOf!(locked), isNull);
+        expect(table.rowColor!(locked), isNotNull);
+        expect(table.idOf!(partial), 'task-partial');
+        expect(table.rowColor!(partial), isNull);
+        expect(table.idOf!(ready), 'task-ready');
+        final status = table.columns.firstWhere((c) => c.key == 'status');
+        final context = tester.element(
+          find.byType(SubcontractDecompositionPage),
+        );
+        expect(
+          status.cellColor!(context, locked),
+          udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+        );
+        expect(
+          status.cellColor!(context, partial),
+          udenStatusBadgeCellColor(context, UtenStatusBadgeType.violet),
+        );
+        expect(find.text('等物料齐套'), findsOneWidget);
+        expect(find.text('可部分下单'), findsOneWidget);
+        // 「可下单」列：服务端算好的数量；可部分下单带上剩余。
+        final orderable = table.columns.firstWhere(
+          (c) => c.key == 'orderableQty',
+        );
+        expect(orderable.label, '可下单');
+        expect(orderable.value(partial), '4 / 剩余 6 件');
+        expect(orderable.value(ready), '6 件');
+        expect(orderable.value(locked), '0 件');
+        expect(find.text('4 / 剩余 6 件'), findsOneWidget);
+        // 锁行状态格悬浮说明为什么锁、点它看齐套情况。
+        expect(find.byTooltip('$lockedHint；点击看齐套情况'), findsOneWidget);
+        expect(find.byTooltip('点击看齐套情况'), findsNWidgets(2));
+        // 状态列表头筛选按展示阶段给中文。
+        final facets = table.facets['status']!;
+        expect({
+          for (final bucket in facets) bucket.value: bucket.label,
+        }, containsPair('WAITING_KIT', '等物料齐套'));
+        expect({
+          for (final bucket in facets) bucket.value: bucket.label,
+        }, containsPair('KIT_PARTIAL', '可部分下单'));
+
+        // 可下单的两行能一起生成订货单。
+        final action = find.byKey(
+          const Key('subcontract-decomposition-create-order'),
+        );
+        expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        await tester.tap(find.text('FG-task-partial'));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.text('FG-task-ready'));
+        await tester.pumpAndSettle();
+        expect(find.text('生成委外订货单(2)'), findsOneWidget);
+        expect(tester.widget<UtenButton>(action).onPressed, isNotNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('clicking a status opens the kit dialog with every material', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1700, 1000));
+      final kit = _KitGateway();
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_kitData()),
+              drawRepository: FakeSubcontractDrawGateway(),
+              kitGateway: kit,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final lockedStatus = find.byTooltip('$lockedHint；点击看齐套情况');
+      await tester.ensureVisible(lockedStatus);
+      await tester.pumpAndSettle();
+      await tester.tap(lockedStatus);
+      await tester.pumpAndSettle();
+
+      expect(kit.calls, ['application-item-locked']);
+      expect(find.byKey(const Key('subcontract-kit-dialog')), findsOneWidget);
+      expect(find.text('齐套情况 · EA-application-locked'), findsOneWidget);
+      expect(find.text('委外件 FG-locked 委外件L 本色'), findsOneWidget);
+      expect(find.text('可下单 0(等物料齐套)', findRichText: true), findsOneWidget);
+      final materials = tester
+          .widget<MasterDataTableView<SubcontractKitMaterial>>(
+            find.byKey(
+              const ValueKey(
+                'subcontract-kit-materials-application-item-locked',
+              ),
+            ),
+          );
+      expect(materials.columns.map((column) => column.label).toList(), [
+        '物料名称',
+        '编号',
+        '颜色',
+        '单位',
+        '每套用量',
+        '需要',
+        '专属库存',
+        '已被占用',
+        '现在能用',
+        '还缺',
+        '够做套数',
+      ]);
+      String cell(String key, SubcontractKitMaterial row) =>
+          materials.columns.firstWhere((c) => c.key == key).value(row)!;
+      final shell = materials.items.first;
+      expect(cell('goodsName', shell), '外壳');
+      expect(cell('bomUnitQty', shell), '2');
+      expect(cell('neededQty', shell), '12');
+      expect(cell('exactQty', shell), '3');
+      // 已被占用 = 专属被本申请已有委外单占用 + 公共被别的委外单占用。
+      expect(cell('claimedQty', shell), '2.5');
+      expect(cell('freeQty', shell), '1.5');
+      expect(cell('shortQty', shell), '10.5');
+      expect(cell('kitQty', shell), '0');
+      expect(find.text('外壳'), findsOneWidget);
+      expect(find.text('螺丝'), findsOneWidget);
+
+      await tester.tap(find.text('关闭').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('subcontract-kit-dialog')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('kit dialog loads every application item of a grouped row', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(1400, 1000));
+      final kit = _KitGateway();
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: TextButton(
+                  onPressed: () => showSubcontractApplicationKitDialog(
+                    context,
+                    gateway: kit,
+                    applicationItemIds: const [
+                      'application-item-partial',
+                      'application-item-locked',
+                    ],
+                    title: 'EA-9',
+                  ),
+                  child: const Text('打开'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+      expect(kit.calls, [
+        'application-item-partial',
+        'application-item-locked',
+      ]);
+      expect(find.text('齐套情况 · EA-9'), findsOneWidget);
+      expect(find.text('可下单 4 件(可部分下单)', findRichText: true), findsOneWidget);
+      expect(find.text('可下单 0(等物料齐套)', findRichText: true), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey('subcontract-kit-materials-application-item-partial'),
+        ),
+        findsOneWidget,
+      );
+
+      // 读取失败：显示服务端原话并可重试。
+      await tester.tap(find.text('关闭').last);
+      await tester.pumpAndSettle();
+      kit.error = ApiException('NOT_FOUND', '委外申请明细不存在', httpStatus: 404);
+      await tester.tap(find.text('打开'));
+      await tester.pumpAndSettle();
+      expect(find.text('委外申请明细不存在'), findsOneWidget);
+      kit.error = null;
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(find.text('可下单 4 件(可部分下单)', findRichText: true), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('compact cards explain the lock and offer the kit action', (
+      tester,
+    ) async {
+      _desktop(tester, const Size(375, 1400));
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(_kitData()),
+              drawRepository: FakeSubcontractDrawGateway(),
+              kitGateway: _KitGateway(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('subcontract-decomposition-compact-list')),
+        findsOneWidget,
+      );
+      expect(find.text(lockedHint), findsOneWidget);
+      expect(find.text('可下单 4 / 剩余 6 件'), findsOneWidget);
+      expect(find.text('可下单 6 件'), findsOneWidget);
+      expect(find.text('可下单 0 件'), findsOneWidget);
+      // 锁行卡片没有勾选框；三张卡都有「齐套情况」。
+      expect(find.byType(Checkbox), findsNWidgets(2));
+      expect(find.text('齐套情况'), findsNWidgets(3));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+      'kit-ready notice deep link lands on pending with the keyword',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1000));
+        final gateway = _Gateway(_kitData());
+        final route = ValueNotifier<(String?, String?)>((
+          'pending',
+          ' EA-application-partial ',
+        ));
+        addTearDown(route.dispose);
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: ValueListenableBuilder<(String?, String?)>(
+                valueListenable: route,
+                builder: (_, value, _) => SubcontractDecompositionPage(
+                  repository: gateway,
+                  drawRepository: FakeSubcontractDrawGateway(),
+                  kitGateway: _KitGateway(),
+                  initialSegment: value.$1,
+                  initialKeyword: value.$2,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // 直落「待处理」：第一次请求就按申请号拉列表，不再先拉概览。
+        expect(gateway.queries, hasLength(1));
+        expect(gateway.queries.single['status'], 'WAITING_ORDER');
+        expect(gateway.queries.single['keyword'], 'EA-application-partial');
+        expect(gateway.queries.single['size'], 50);
+        expect(
+          find.widgetWithText(TextField, 'EA-application-partial'),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('subcontract-decomposition-table')),
+          findsOneWidget,
+        );
+
+        // 已在任务中心时再点另一张通知：换申请号重拉。
+        route.value = ('pending', 'EA-application-locked');
+        await tester.pumpAndSettle();
+        expect(gateway.queries.last['status'], 'WAITING_ORDER');
+        expect(gateway.queries.last['keyword'], 'EA-application-locked');
+        expect(
+          find.widgetWithText(TextField, 'EA-application-locked'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    test('pending segment deep link keeps the application number', () {
+      final link = RouteName.operationsSubcontractPendingSegment(
+        keyword: ' EB-2026 001 ',
+      );
+      final uri = Uri.parse(link);
+      expect(uri.path, RouteName.operationsSubcontractWorkbench);
+      expect(uri.queryParameters, {
+        'segment': 'pending',
+        'keyword': 'EB-2026 001',
+      });
+      expect(
+        RouteName.operationsSubcontractPendingSegment(),
+        '${RouteName.operationsSubcontractWorkbench}?segment=pending',
+      );
+      // 服务端按 URLEncoder 编码申请号(空格 = +)，路由照样还原。
+      expect(
+        Uri.parse(
+          '/operations/workbench/subcontract?segment=pending&keyword=EB-2026+001',
+        ).queryParameters['keyword'],
+        'EB-2026 001',
+      );
+    });
+
+    test('workbench rows parse orderable quantity and kit stages', () {
+      OperationsWorkbenchTask parse(Map<String, dynamic> extra) =>
+          OperationsWorkbenchTask.fromJson({
+            'taskId': 't',
+            'supplyRoute': 'SUBCONTRACT',
+            'taskStatus': 'WAITING_ORDER',
+            ...extra,
+          }, OperationsWorkbenchDepartment.subcontract);
+      final locked = parse({
+        'displayStage': 'WAITING_KIT',
+        'orderableQty': 0,
+        'canCreateOrder': false,
+      });
+      expect(locked.isWaitingKit, isTrue);
+      expect(locked.orderableQty, 0);
+      final partial = parse({
+        'displayStage': 'KIT_PARTIAL',
+        'orderableQty': '2.5',
+      });
+      expect(partial.isKitPartial, isTrue);
+      expect(partial.orderableQty, 2.5);
+      // 非申请行服务端下发 null。
+      expect(parse({'orderableQty': null}).orderableQty, isNull);
     });
   });
 
@@ -1134,6 +1503,8 @@ class _Gateway implements OperationsWorkbenchGateway {
     statuses.add(status);
     queries.add({
       'page': page,
+      'size': size,
+      'keyword': keyword,
       'sort': sort,
       'order': order,
       'status': status,
@@ -1275,6 +1646,129 @@ OperationsWorkbenchData _bomMissingData() => OperationsWorkbenchData(
   ),
 );
 
+/// 待处理段(ADR-156)：一条物料全齐(可下单 6)、一条只够做 4 套(可部分下单)、
+/// 一条一套都不够(等物料齐套，锁住)。三条都计入「待处理」红数。
+OperationsWorkbenchData _kitData() => OperationsWorkbenchData(
+  department: OperationsWorkbenchDepartment.subcontract,
+  summary: const OperationsWorkbenchSummary(
+    totalTasks: 3,
+    overdueTasks: 0,
+    openTasks: 3,
+    openQty: 18,
+    statusCounts: {'WAITING_ORDER': 3},
+  ),
+  items: [
+    _task(
+      'task-ready',
+      'application-ready',
+      'application-item-ready',
+      orderableQty: 6,
+    ),
+    _task(
+      'task-partial',
+      'application-partial',
+      'application-item-partial',
+      displayStage: 'KIT_PARTIAL',
+      orderableQty: 4,
+    ),
+    _task(
+      'task-locked',
+      'application-locked',
+      'application-item-locked',
+      canCreateOrder: false,
+      displayStage: 'WAITING_KIT',
+      orderableQty: 0,
+    ),
+  ],
+  page: 1,
+  size: 50,
+  total: 3,
+  totalPages: 1,
+  capabilities: const OperationsWorkbenchCapabilities(
+    canCreateSubcontractOrder: true,
+  ),
+  facets: const {
+    'status': [
+      MasterFacetBucket(
+        value: 'WAITING_ORDER',
+        label: 'WAITING_ORDER',
+        count: 1,
+      ),
+      MasterFacetBucket(value: 'KIT_PARTIAL', label: 'KIT_PARTIAL', count: 1),
+      MasterFacetBucket(value: 'WAITING_KIT', label: 'WAITING_KIT', count: 1),
+    ],
+  },
+);
+
+/// 齐套情况假数据：partial 够做 4 套(剩余 6)，locked 一套都不够(外壳只剩 1.5 能用)。
+class _KitGateway implements SubcontractKitGateway {
+  final List<String> calls = [];
+  ApiException? error;
+
+  @override
+  Future<SubcontractApplicationKit> applicationKit(
+    String applicationItemId,
+  ) async {
+    calls.add(applicationItemId);
+    final failure = error;
+    if (failure != null) throw failure;
+    final locked = applicationItemId == 'application-item-locked';
+    return SubcontractApplicationKit.fromJson({
+      'applicationItemId': applicationItemId,
+      'applicationId': locked ? 'application-locked' : 'application-partial',
+      'applicationNo': locked ? 'EA-application-locked' : 'EA-application-9',
+      'goodsId': 'goods-$applicationItemId',
+      'goodsCode': locked ? 'FG-locked' : 'FG-partial',
+      'goodsName': locked ? '委外件L' : '委外件P',
+      'colorName': '本色',
+      'unitName': '件',
+      'openQty': 6,
+      'kitQty': locked ? 0 : 4,
+      'orderableQty': locked ? 0 : 4,
+      'bomMissing': false,
+      'materials': [
+        {
+          'goodsId': 'm-shell',
+          'goodsCode': 'M-SHELL',
+          'goodsName': '外壳',
+          'colorId': null,
+          'colorName': '黑',
+          'unitName': '个',
+          'bomUnitQty': 2,
+          'neededQty': 12,
+          'exactQty': 3,
+          'exactClaimedQty': 2,
+          'exactFreeQty': 1,
+          'publicQty': 1,
+          'publicClaimedQty': 0.5,
+          'publicFreeQty': 0.5,
+          'freeQty': locked ? 1.5 : 8,
+          'shortQty': locked ? 10.5 : 4,
+          'kitQty': locked ? 0 : 4,
+        },
+        {
+          'goodsId': 'm-screw',
+          'goodsCode': 'M-SCREW',
+          'goodsName': '螺丝',
+          'colorName': '',
+          'unitName': '个',
+          'bomUnitQty': 4,
+          'neededQty': 24,
+          'exactQty': 0,
+          'exactClaimedQty': 0,
+          'exactFreeQty': 0,
+          'publicQty': 100,
+          'publicClaimedQty': 0,
+          'publicFreeQty': 100,
+          'freeQty': 100,
+          'shortQty': 0,
+          'kitQty': 25,
+        },
+      ],
+    });
+  }
+}
+
 class _BomGapGateway implements SubcontractBomGapGateway {
   final List<String> forwarded = [];
 
@@ -1295,9 +1789,11 @@ OperationsWorkbenchTask _task(
   List<SubcontractTaskSource> sources = const [],
   String? displayStage,
   String? rdTaskNo,
+  num? orderableQty,
 }) => OperationsWorkbenchTask(
   displayStage: displayStage,
   rdTaskNo: rdTaskNo,
+  orderableQty: orderableQty,
   taskId: taskId,
   packageId: 'package-1',
   planId: 'plan-1',

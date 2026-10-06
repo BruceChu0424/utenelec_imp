@@ -35,4 +35,13 @@ public interface SubcontractChainNoticePort {
 
     /** 已发出的委外领料被红冲。 */
     void notifySubcontractOutboundReversed(UUID issueId);
+
+    /**
+     * ADR-156 委外申请可下单量比上次提醒时增加(直属物料到了一部分或全部): 每个申请明细一张行动卡,
+     * 按投递时实时可下单量覆盖; 投递时可下单为 0 则只撤卡。
+     */
+    void notifySubcontractOrderKitReady(UUID applicationItemId);
+
+    /** 可下单归零(物料被别的单占走、已全部下单、申请关闭): 撤掉该申请明细的「可下单」行动卡。 */
+    void resolveSubcontractOrderKitReady(UUID applicationItemId);
 }

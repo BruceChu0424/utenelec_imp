@@ -5,7 +5,11 @@
 //   时间线，可再深链只读申请详情)；多选 + 右下角悬浮组(已选胶囊 + 生成委外订货单)
 //   批量带入订货单编辑页。委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(黄，
 //   ADR-143 §二.3)、不能勾选下单；点状态「通知研发完善」可再提醒研发。
-// · 领料 = 已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
+//   ADR-156(委外价格每天不同，物料齐了才下单)：直属物料一套都不够的申请行显示
+//   「等物料齐套」并锁住(整行红底、不能勾选，照样留在「待处理」计红数)；够做一部分显示
+//   「可部分下单」，「可下单」列给出服务端算好的这次可下单数量(订货单预填它，超出由
+//   服务端拒绝)。点申请行状态看「齐套情况」弹窗(逐种直属物料的库存与占用)。
+// · 领料 =已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
 //   自有数据源 GET /subcontract/draw-tasks 与表格；分段只挂红数 = 可领行数
 //   (GET /subcontract/draw-tasks/count，与模块红数同源；等待物料 / 待仓库发的单已计入
 //   「进行中」黄数，这里不再挂黄)。行只有服务端标 canDraw 且账号 canSubmitDraw 时可勾选，
@@ -17,7 +21,8 @@
 //
 // 统一「分类分段」范式：UtenFilterToolbar 阶段行 + 异常小类行，默认都不选，
 // 内容区显示引导占位不发请求；进页面只拉一次 size=1 概览取阶段/异常计数徽章。
-// 深链 ?segment=draw(&orderItemId= / &orderId=) 直落「领料」分段并定位。
+// 深链 ?segment=draw(&orderItemId= / &orderId=) 直落「领料」分段并定位；
+// ?segment=pending(&keyword=申请号) 直落「待处理」并按申请号搜索(可下单通知)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -55,6 +60,8 @@ import '../../../shared/models/subcontract_short_delivery.dart'
     show subcontractProgressStatusLabel;
 import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
+import '../repositories/subcontract_kit_repository.dart';
+import '../widgets/subcontract_application_kit_dialog.dart';
 import '../widgets/subcontract_application_progress_dialog.dart';
 import '../widgets/subcontract_draw_status.dart';
 import '../widgets/subcontract_draw_task_detail_dialog.dart';
@@ -84,9 +91,11 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
     this.repository,
     this.drawRepository,
     this.bomGapGateway,
+    this.kitGateway,
     this.initialSegment,
     this.initialOrderItemId,
     this.initialOrderId,
+    this.initialKeyword,
   });
 
   final OperationsWorkbenchGateway? repository;
@@ -98,7 +107,11 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
   /// [operationsWorkbenchRepositoryProvider]。
   final SubcontractBomGapGateway? bomGapGateway;
 
-  /// 深链分段：'draw' = 直落「领料」分段(其余值忽略，保持默认不选)。
+  /// 申请行「齐套情况」弹窗(ADR-156)；测试注入，默认取 [subcontractKitRepositoryProvider]。
+  final SubcontractKitGateway? kitGateway;
+
+  /// 深链分段：'draw' = 直落「领料」分段，'pending' = 直落「待处理」分段
+  /// (其余值忽略，保持默认不选)。
   final String? initialSegment;
 
   /// 深链定位：只看这一条委外任务(可领料通知)。
@@ -106,6 +119,9 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
 
   /// 深链定位：只看这张订货单的委外任务。
   final String? initialOrderId;
+
+  /// 深链搜索词(与 'pending' 同用)：可下单通知带委外申请号，进页即按它搜索。
+  final String? initialKeyword;
 
   @override
   ConsumerState<SubcontractDecompositionPage> createState() =>
@@ -168,14 +184,17 @@ class _SubcontractDecompositionPageState
   bool get _isDrawSeg => _seg?.code == _drawStage;
 
   /// 状态列颜色(刻意拉开，不用相近色)：蓝=等财务 / 等仓库发料，红=退回 / 短交，
-  /// 紫=可领料(轮到委外去领)，青=委外商在加工，黄=部分回厂 / 缺 BOM 等研发，
-  /// 品红=分批等待，绿=已回厂待入库 / 已完成，灰=等待物料 / 容差内待结案。
+  /// 紫=可领料 / 可部分下单(轮到委外动手，但只够一部分)，青=委外商在加工，
+  /// 黄=部分回厂 / 缺 BOM 等研发 / 等物料齐套，品红=分批等待，
+  /// 绿=已回厂待入库 / 已完成，灰=等待物料 / 容差内待结案。
   static UtenStatusBadgeType _progressType(String code) => switch (code) {
     'ORDER_PENDING_APPROVAL' || 'DRAW_SUBMITTED' => UtenStatusBadgeType.info,
     'FINANCE_REJECTED' || 'SHORT_DELIVERY' => UtenStatusBadgeType.danger,
-    'DRAWABLE' => UtenStatusBadgeType.violet,
+    'DRAWABLE' || 'KIT_PARTIAL' => UtenStatusBadgeType.violet,
     'AT_SUPPLIER' => UtenStatusBadgeType.accent,
-    'PARTIAL_RECEIVED' || 'BOM_MISSING' => UtenStatusBadgeType.warning,
+    'PARTIAL_RECEIVED' ||
+    'BOM_MISSING' ||
+    'WAITING_KIT' => UtenStatusBadgeType.warning,
     'RECEIVED_PENDING_STOCK' => UtenStatusBadgeType.success,
     'WAITING_MORE_BATCH' => UtenStatusBadgeType.fuchsia,
     // 容差内待结案：不急，灰色中性；点状态同样可去判定页。
@@ -200,7 +219,8 @@ class _SubcontractDecompositionPageState
 
   /// 回厂短交待判定 / 分批等待中 / 容差内待结案：点状态直达判定页（只看这张单）；
   /// 可领料：点状态跳到「领料」分段并按这张订货单筛选；
-  /// 缺 BOM：点状态「通知研发完善」(研发任务被取消而 BOM 仍缺时重新提醒)。
+  /// 缺 BOM：点状态「通知研发完善」(研发任务被取消而 BOM 仍缺时重新提醒)；
+  /// 待处理的委外申请行(含等物料齐套的锁行)：点状态看「齐套情况」(ADR-156)。
   _StatusAction? _statusActionOf(OperationsWorkbenchTask task) {
     if (task.isBomMissing) {
       if (!_hasDecomposePermissions || _bomItemIdsOf(task).isEmpty) return null;
@@ -208,6 +228,13 @@ class _SubcontractDecompositionPageState
         hint: _forwardingBomTaskId == task.id ? '正在通知研发' : '点击通知研发完善 BOM',
         buttonLabel: '通知研发完善',
         onTap: () => _forwardBom(task),
+      );
+    }
+    if (_canViewKit(task)) {
+      return (
+        hint: task.isWaitingKit ? '$_waitingKitHint；点击看齐套情况' : '点击看齐套情况',
+        buttonLabel: '齐套情况',
+        onTap: () => _openKit(task),
       );
     }
     final orderId = task.actionDocument?.id;
@@ -244,6 +271,30 @@ class _SubcontractDecompositionPageState
 
   SubcontractBomGapGateway get _bomGapGateway =>
       widget.bomGapGateway ?? ref.read(operationsWorkbenchRepositoryProvider);
+
+  SubcontractKitGateway get _kitGateway =>
+      widget.kitGateway ?? ref.read(subcontractKitRepositoryProvider);
+
+  /// 等物料齐套的锁行说明(状态悬浮提示 / 窄屏卡片行内提示同一句)。
+  static const _waitingKitHint = '直属物料还没齐，委外价格每天不同，物料齐了才解锁下单';
+
+  /// 「齐套情况」只给待处理的委外申请行(含锁行)；缺 BOM 的行没有物料可算，
+  /// 走「通知研发完善」。申请受权限保护(服务端不下发 actionDocument)时不给入口。
+  bool _canViewKit(OperationsWorkbenchTask task) =>
+      task.taskStatus == _waitingOrderStage &&
+      !task.isBomMissing &&
+      task.actionDocument?.isIssuedSubcontractApplication == true &&
+      _applicationItemIdsOf(task).isNotEmpty;
+
+  /// 齐套情况弹窗(ADR-156)：逐条申请明细看剩余未下单 / 够做套数 / 可下单与直属物料。
+  void _openKit(OperationsWorkbenchTask task) {
+    showSubcontractApplicationKitDialog(
+      context,
+      gateway: _kitGateway,
+      applicationItemIds: _applicationItemIdsOf(task),
+      title: task.actionDocument?.number,
+    );
+  }
 
   /// 缺 BOM 申请行要通知研发的申请明细：服务端点名的缺 BOM 明细优先，
   /// 未下发时用整行明细(已有 BOM 的明细服务端不做任何事)。
@@ -295,9 +346,11 @@ class _SubcontractDecompositionPageState
       widget.initialSegment,
       widget.initialOrderItemId,
       widget.initialOrderId,
+      widget.initialKeyword,
     );
     // 默认不选阶段：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章，
-    // 另拉一次「领料」红数。深链直落「领料」时同时拉领料列表。
+    // 另拉一次「领料」红数。深链直落「领料」时同时拉领料列表；直落「待处理」时
+    // 这一次就按申请号拉列表。
     Future<void>.microtask(() {
       _load(page: 1);
       _loadDrawCount();
@@ -310,22 +363,44 @@ class _SubcontractDecompositionPageState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialSegment == widget.initialSegment &&
         oldWidget.initialOrderItemId == widget.initialOrderItemId &&
-        oldWidget.initialOrderId == widget.initialOrderId) {
+        oldWidget.initialOrderId == widget.initialOrderId &&
+        oldWidget.initialKeyword == widget.initialKeyword) {
       return;
     }
-    _applyRoute(
+    final pending = _applyRoute(
       widget.initialSegment,
       widget.initialOrderItemId,
       widget.initialOrderId,
+      widget.initialKeyword,
     );
     if (_isDrawSeg) {
       Future<void>.microtask(() => _loadDraw(page: 1));
+    } else if (pending) {
+      Future<void>.microtask(() => _load(page: 1));
     }
   }
 
-  /// 深链 ?segment=draw 直落「领料」并按通知里的委外任务 / 订货单定位。
-  void _applyRoute(String? segment, String? orderItemId, String? orderId) {
-    if (segment?.trim().toLowerCase() != 'draw') return;
+  /// 深链 ?segment=draw 直落「领料」并按通知里的委外任务 / 订货单定位；
+  /// ?segment=pending 直落「待处理」，带 keyword(委外申请号)时预填搜索(ADR-156
+  /// 可下单通知)。返回 true = 落到了「待处理」(调用方负责重拉列表)。
+  bool _applyRoute(
+    String? segment,
+    String? orderItemId,
+    String? orderId,
+    String? keyword,
+  ) {
+    final target = segment?.trim().toLowerCase();
+    if (target == 'pending') {
+      _seg = const _DecompositionSeg.stage(_waitingOrderStage);
+      _exception = null;
+      _page = 1;
+      _columnFilters.clear();
+      _selectedIds.clear();
+      final normalized = keyword?.trim() ?? '';
+      if (normalized.isNotEmpty) _keyword = normalized;
+      return true;
+    }
+    if (target != 'draw') return false;
     _seg = const _DecompositionSeg.stage(_drawStage);
     _drawOrderItemId = orderItemId?.trim().isNotEmpty == true
         ? orderItemId!.trim()
@@ -334,6 +409,7 @@ class _SubcontractDecompositionPageState
     _drawOrderLabel = null;
     _drawStatus = null;
     _drawPage = 1;
+    return false;
   }
 
   Future<void> _load({int? page, int size = 50}) async {
@@ -670,9 +746,11 @@ class _SubcontractDecompositionPageState
     });
   }
 
-  /// 服务端 canCreateOrder 优先；未下发时按申请事实判断。缺 BOM 的申请行一律不可下单。
+  /// 服务端 canCreateOrder 优先；未下发时按申请事实判断。缺 BOM、等物料齐套
+  /// (ADR-156 锁住)的申请行一律不可下单。
   bool _canOrderTask(OperationsWorkbenchTask task) =>
       !task.isBomMissing &&
+      !task.isWaitingKit &&
       (task.canCreateOrder ??
           (task.taskStatus == _waitingOrderStage &&
               task.actionDocument?.isIssuedSubcontractApplication == true &&
@@ -680,7 +758,7 @@ class _SubcontractDecompositionPageState
               (task.openQty > 0 || task.openLineCount > 0)));
 
   /// 缺 BOM 的申请行同样不能下单，但它在等研发、不是本部门的错：状态格黄色，
-  /// 不铺红底。
+  /// 不铺红底。等物料齐套的锁行沿用旧锁(ADR-103)的样子：整行红底、状态格黄色。
   bool _orderBlocked(OperationsWorkbenchTask task) =>
       _seg?.code == _waitingOrderStage &&
       !_canOrderTask(task) &&
@@ -1213,6 +1291,17 @@ class _SubcontractDecompositionPageState
             action: _statusActionOf(t),
           ),
         ),
+        // ADR-156：紧挨状态列，「可部分下单 | 4 / 剩余 6 件」一眼读完。
+        MasterColumnDef(
+          key: 'orderableQty',
+          label: '可下单',
+          info:
+              '这次能生成订货单的数量：剩余未下单与现有直属物料够做的套数取小，'
+              '由服务端实时算好；订货数量超出会被拒绝。点状态列可看每种物料的齐套情况。',
+          width: 130,
+          type: 'number',
+          value: (t) => _orderableText(t) ?? '—',
+        ),
         MasterColumnDef(
           key: 'source',
           label: '只读申请',
@@ -1472,6 +1561,20 @@ class _SubcontractDecompositionPageState
   static String _label(String? value) =>
       value?.trim().isNotEmpty == true ? value!.trim() : '—';
 
+  /// 「可下单」文案(ADR-156，数量由服务端算好)：可部分下单 = 「N / 剩余 M 单位」，
+  /// 其余 = 「N 单位」(锁行为 0)。非申请行 / 缺 BOM(没有物料可算)为 null。
+  /// 归组行各明细单位可能不同，不带单位、不拼剩余。
+  static String? _orderableText(OperationsWorkbenchTask task) {
+    final orderable = task.orderableQty;
+    if (orderable == null || task.isBomMissing) return null;
+    final unit = task.isDocumentGrouped ? '' : task.unitName.trim();
+    String qty(num value) => '${_number(value)}${unit.isEmpty ? '' : ' $unit'}';
+    if (task.isKitPartial && !task.isDocumentGrouped) {
+      return '${_number(orderable)} / 剩余 ${qty(task.openQty)}';
+    }
+    return qty(orderable);
+  }
+
   static String _number(num value) => value == value.roundToDouble()
       ? value.toInt().toString()
       : value
@@ -1653,6 +1756,9 @@ class _SubcontractDemandCard extends StatelessWidget {
                       '需求 ${_SubcontractDecompositionPageState._number(task.requiredQty)} ${task.unitName}',
                     ),
                   Text('待下单 ${task.quantityText}'),
+                  if (_SubcontractDecompositionPageState._orderableText(task)
+                      case final orderable?)
+                    Text('可下单 $orderable'),
                   if ((task.needDate ?? '').isNotEmpty)
                     Text('需求日 ${task.needDate}'),
                   Text(
@@ -1661,6 +1767,16 @@ class _SubcontractDemandCard extends StatelessWidget {
                   ),
                 ],
               ),
+              // ADR-156 锁行：卡片没有悬浮提示，直接写明为什么不能勾选下单。
+              if (task.isWaitingKit) ...[
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  _SubcontractDecompositionPageState._waitingKitHint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+              ],
               const SizedBox(height: UtenSpacing.s8),
               Row(
                 children: [

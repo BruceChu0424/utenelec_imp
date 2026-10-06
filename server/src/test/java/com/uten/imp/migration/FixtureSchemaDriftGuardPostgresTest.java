@@ -140,6 +140,8 @@ class FixtureSchemaDriftGuardPostgresTest {
             // ADR-113(V646) 子件精确权益批次测试: 权益批次余额视图 v_preplan_stock_entitlement_lot_balance
             // 的底表桩(SubcontractComponentEntitledLotsPostgresTest), 不是业务表。
             "fixture_entitlement_lots",
+            // SubcontractApplicationKitPostgresTest(ADR-156): 公共可用库存的替身, 由夹具视图 v_stock_available 读取。
+            "fixture_public_stock",
             // BusinessIdentifierRegistryMigrationContractTest 里对迁移 SQL 做
             // contains 断言时，字面量拼接出的伪表名（不是真的建表语句）。
             "upper");

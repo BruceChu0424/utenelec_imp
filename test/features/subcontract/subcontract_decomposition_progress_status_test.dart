@@ -203,6 +203,9 @@ void main() {
     expect(subcontractProgressStatusLabel('AT_SUPPLIER'), '委外加工中');
     // ADR-143 §二.3：委外件缺 BOM 的申请行等研发完善。
     expect(subcontractProgressStatusLabel('BOM_MISSING'), '缺 BOM·已通知研发');
+    // ADR-156：直属物料齐套才解锁下单。
+    expect(subcontractProgressStatusLabel('WAITING_KIT'), '等物料齐套');
+    expect(subcontractProgressStatusLabel('KIT_PARTIAL'), '可部分下单');
     // 已删除的旧阶段码不再有文案(原样回落)；没有 BOM 的委外件不再走委外商自备料。
     for (final removed in [
       'AWAITING_OUTBOUND',

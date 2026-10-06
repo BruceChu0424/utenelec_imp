@@ -140,6 +140,9 @@ public class ReviewNoticeAudience {
             // 「现在还能不能领料」。
             case "SUBCONTRACT_DRAW_AVAILABLE" ->
                     permissions.containsAll(Set.of("subcontract_order:view", "subcontract_order:draw"));
+            // ADR-156 委外申请可下单：收件人在发卡时已按采购委外部门算好，这里复核「现在还能不能生成委外订货单」。
+            case "SUBCONTRACT_ORDER_KIT_READY" ->
+                    permissions.containsAll(Set.of("subcontract_application:view", "subcontract_order:decompose"));
             // 委外领料草稿待发料：草稿所在仓库的仓管(发卡时已按仓分发; ADR-149 部门外登记的负责人同等弹卡)。
             case "SUBCONTRACT_OUTBOUND_READY" -> warehouseSide
                     && permissions.containsAll(Set.of("subcontract_outbound:view", "subcontract_outbound:execute"));

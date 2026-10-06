@@ -24,6 +24,8 @@ import java.util.stream.Collectors;
  * 一张, 由通知侧按实时可领量更新); 减少只把水位降下来并 epoch+1, 不打扰人; 降到 0 收回行动卡。
  * 已结清、结束领料、计划关闭或订货红冲的明细一律按可领 0 处理。只锁水位行, 不锁任何业务单据。
  *
+ * <p>按物料重算时也重算用到这种物料的委外申请可下单量(ADR-156, 见 SubcontractApplicationKitRecheckService)。
+ *
  * <p>水位行的外键检查会给订货明细加 KEY SHARE 行锁(与 FOR UPDATE 冲突)。领料提交、财务批准、改量等命令按
  * 统一锁序(订货单头, 再按 order_id, id 锁订货明细)加 FOR UPDATE; 本重算必须按同一顺序拿这些 KEY SHARE,
  * 所以先用一条语句按 (order_id, id) 插齐缺的水位行, 再逐行处理。按明细 id 逐行插入会与刚批准就领料的
@@ -35,6 +37,8 @@ public class SubcontractDrawRecheckService implements SubcontractDrawRecheckPort
 
     private final JdbcTemplate jdbc;
     private final SubcontractChainNoticePort chainNotice;
+    /** ADR-156: 同一次物料重算顺带重算用到它的委外申请可下单量(到货解锁、被占走降水位)。 */
+    private final com.uten.imp.features.subcontract.kit.SubcontractApplicationKitRecheckService applicationKitRecheck;
 
     @Override
     @Transactional
@@ -59,6 +63,7 @@ public class SubcontractDrawRecheckService implements SubcontractDrawRecheckPort
                   AND line.color_id IS NOT DISTINCT FROM CAST(? AS uuid)
                 """, UUID.class, goodsId, colorId, goodsId, colorId);
         recheckForOrderItems(orderItemIds);
+        applicationKitRecheck.recheckForMaterial(goodsId, colorId);
     }
 
     @Override

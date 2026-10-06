@@ -51,8 +51,9 @@ public record FulfillmentTaskRow(
          * 展示阶段(display_stage)：与状态列的表头筛选/排序同源。委外订货单在财务已通过之后细分为
          * 回厂短交待判定 / 分批等待中 / 容差内待结案 / 已回厂待入库 / 可领料 / 已提交领料·待仓库发料
          * / 部分回厂 / 委外加工中 / 等待物料(ADR-098 / ADR-143 §4.1); 待分解的委外申请里有委外件
-         * 缺 BOM 时为 BOM_MISSING「缺 BOM·已通知研发」(ADR-143 §二.3, 不能生成订货单);
-         * 其余等于 taskStatus。
+         * 缺 BOM 时为 BOM_MISSING「缺 BOM·已通知研发」(ADR-143 §二.3, 不能生成订货单); 直属物料
+         * 一套都不够时为 WAITING_KIT「等物料齐套」(锁住不能生成订货单), 够做一部分时为 KIT_PARTIAL
+         * 「可部分下单」(ADR-156); 其余等于 taskStatus。
          */
         String displayStage,
         List<SubcontractTaskSource> sources,
@@ -77,7 +78,12 @@ public record FulfillmentTaskRow(
          */
         String rdTaskNo,
         /** 委外申请里缺 BOM 的明细 id(「通知研发完善」逐条调用); 不缺 BOM 时为空列表。 */
-        List<String> bomMissingItemIds) {
+        List<String> bomMissingItemIds,
+        /**
+         * 待分解委外申请这次能下单的数量(各明细 MIN(剩余未下单, 现有物料够做的套数) 之和, ADR-156);
+         * 0 = 等物料齐套(锁住)。其它行为 null。
+         */
+        BigDecimal orderableQty) {
 
     public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
         return new FulfillmentTaskRow(
@@ -91,7 +97,8 @@ public record FulfillmentTaskRow(
                 List.copyOf(value), materialsDefined, productionProductCode, productionProductName, materialRequestNo,
                 workshopName, workerName, drawBatchNo,
                 lines == null ? List.of() : List.copyOf(lines),
-                rdTaskNo, bomMissingItemIds == null ? List.of() : List.copyOf(bomMissingItemIds));
+                rdTaskNo, bomMissingItemIds == null ? List.of() : List.copyOf(bomMissingItemIds),
+                orderableQty);
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

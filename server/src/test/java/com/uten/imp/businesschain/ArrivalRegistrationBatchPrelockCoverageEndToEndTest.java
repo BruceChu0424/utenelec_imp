@@ -276,6 +276,126 @@ class ArrivalRegistrationBatchPrelockCoverageEndToEndTest {
                 """, Integer.class, shared.orderId(), c.lines().get(2).orderId(), c.lines().get(3).orderId()));
     }
 
+    // ------------------------------------------------------------------ 对抗审查补充: 更刁的批量形状
+
+    /**
+     * 两个世界的 6 张订货单、4 个入库仓挂在 3 个主仓下(先入库后质检): 同一订货明细拆到两个仓、一行此前已部分到货
+     * (这次补齐)、一行超量隔离。整批一次成功, 8 组各一张收货单, 累计到货逐行正确, 同键重放不多建单。
+     */
+    @Test
+    void sixOrdersAcrossThreeMainWarehousesWithSplitPartialAndExcessRegisterInOneBatch() {
+        Case first = purchaseCase("adv1", true);
+        Case second = purchaseCase("adv2", false, true);
+        masters().loginAs(first.world().superAdminUserId());
+        Line a1 = first.lines().get(0), a2 = first.lines().get(1), b = first.lines().get(2), c = first.lines().get(3);
+        Line excess = second.lines().get(3);
+
+        // 订货单 B 此前已到 1(单独一批登记), 这次补齐剩下的 1.5。
+        WarehouseArrivalBatchRegisterResult earlier = register(request(new Case(first.tag(), first.world(), "PURCHASE",
+                List.of(withQty(b, BigDecimal.ONE, b.warehouseId()))), "arrival-adv-earlier-" + first.tag(), true));
+        assertEquals(PRE_STOCKED, earlier.items().getFirst().outcome());
+
+        BigDecimal half = new BigDecimal("0.5");
+        List<Line> lines = List.of(
+                withQty(a1, half, a1.warehouseId()), withQty(a1, half, a2.warehouseId()), a2,
+                withQty(b, new BigDecimal("1.5"), b.warehouseId()), c,
+                second.lines().get(0), second.lines().get(1), second.lines().get(2),
+                withQty(excess, ORDERED.add(BigDecimal.ONE), excess.warehouseId()));
+        Case all = new Case(first.tag(), first.world(), "PURCHASE", lines);
+        String key = "arrival-adv-" + first.tag();
+        WarehouseArrivalBatchRegisterResult result = register(ownUnits(request(all, key, true)));
+
+        assertEquals(8, result.groupCount());
+        for (WarehouseArrivalBatchRegisterItem item : result.items()) {
+            boolean quarantined = item.orderId().equals(excess.orderId()) && item.warehouseId().equals(excess.warehouseId());
+            assertEquals(quarantined ? "EXCESS_QUARANTINED" : PRE_STOCKED, item.outcome(),
+                    "订货单 " + item.orderId() + " 仓 " + item.warehouseId());
+        }
+        Map<UUID, BigDecimal> received = new LinkedHashMap<>();
+        received.put(a1.orderItemId(), BigDecimal.ONE);
+        received.put(a2.orderItemId(), ARRIVED);
+        received.put(b.orderItemId(), ORDERED);
+        received.put(c.orderItemId(), ARRIVED);
+        for (int index = 0; index < 3; index++) received.put(second.lines().get(index).orderItemId(), ARRIVED);
+        received.forEach((item, qty) -> assertEquals(0, qty.compareTo(jdbc.queryForObject(
+                "SELECT received_qty FROM purchase_order_items WHERE id=?", BigDecimal.class, item)), "订货明细 " + item));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM procurement_arrival_exceptions exception
+                JOIN purchase_receipts receipt ON receipt.id = exception.receipt_id
+                WHERE exception.status = 'PENDING_FINANCE' AND receipt.status = 0 AND receipt.warehouse_id = ?
+                """, Integer.class, excess.warehouseId()), "超量那组整单隔离等财务");
+
+        WarehouseArrivalBatchRegisterResult replayed = register(ownUnits(request(all, key, true)));
+        assertTrue(replayed.replay());
+        assertEquals(result.items().stream().map(WarehouseArrivalBatchRegisterItem::receiptId).collect(Collectors.toSet()),
+                replayed.items().stream().map(WarehouseArrivalBatchRegisterItem::receiptId).collect(Collectors.toSet()));
+    }
+
+    /** 采购与委外订货单混在同一批(两个世界、两个主仓, 先入库后质检): 整批一次成功。 */
+    @Test
+    void purchaseAndSubcontractOrdersRegisterInOneMixedBatch() {
+        Case purchase = purchaseCase("mix", false);
+        String tag = "arp-mix-sc-" + UUID.randomUUID().toString().substring(0, 8);
+        var masters = masters();
+        var w = masters.seedWorld(tag);
+        masters.loginAs(w.superAdminUserId());
+        UUID hardware = leaf(w, "五金车间", tag), packing = leaf(w, "包材仓库", tag);
+        var sourceWorld = WarehouseIqcScaleFixture.withWarehouse(w, hardware);
+        UUID material = masters.ensureSubcontractDirectMaterial(w, w.goodsE());
+        masters.receiveSubcontractMaterial(w, material, "20", hardware);
+        List<Line> lines = new ArrayList<>(purchase.lines());
+        List<UUID> warehouses = List.of(hardware, packing);
+        for (int index = 0; index < 2; index++) {
+            var submitted = masters.submitLeafSubcontractForFinance(sourceWorld, BigDecimal.TEN);
+            masters.loginAs(submitted.reviewerUserId());
+            masters.approvePendingFinance("SUBCONTRACT", submitted.orderId());
+            masters.loginAs(w.superAdminUserId());
+            UUID item = jdbc.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=? AND NOT is_deleted",
+                    UUID.class, submitted.orderId());
+            masters.drawAndIssueSubcontract(item, BigDecimal.TEN, "arp-mix-draw-" + item);
+            lines.add(subcontractLine(submitted.orderId(), warehouses.get(index), w.goodsE()));
+        }
+        masters.loginAs(purchase.world().superAdminUserId());
+        String key = "arrival-mix-" + purchase.tag();
+        var request = new WarehouseArrivalBatchRegisterRequest(key, BusinessTime.today(), purchase.world().employeeId(),
+                "采购与委外混批", Boolean.TRUE, null, lines.stream().map(line -> {
+                    boolean isPurchase = line.orderType().equals("PURCHASE");
+                    return new BatchArrivalLine(line.orderType(), line.warehouseId(),
+                            isPurchase ? purchase.world().employeeId() : null, line.goodsId(), line.qty(), line.orderItemId(),
+                            null, isPurchase ? purchase.world().unitId() : w.unitId(), isPurchase ? null : BigDecimal.ONE,
+                            null, line.orderBillNo(), null, line.place(), null);
+                }).toList());
+        WarehouseArrivalBatchRegisterResult result = register(request);
+        assertEquals(6, result.groupCount());
+        for (WarehouseArrivalBatchRegisterItem item : result.items()) {
+            assertEquals(PRE_STOCKED, item.outcome(), item.orderType() + " 订货单 " + item.orderId());
+        }
+        for (Line line : lines) {
+            String prefix = line.orderType().equals("PURCHASE") ? "purchase" : "subcontract";
+            assertEquals(0, line.qty().compareTo(jdbc.queryForObject(
+                    "SELECT received_qty FROM " + prefix + "_order_items WHERE id=?", BigDecimal.class, line.orderItemId())),
+                    "订货明细 " + line.orderItemId());
+        }
+        assertTrue(register(request).replay());
+    }
+
+    /** 两个世界混批: 每行用自己订货明细的单位(各世界的基本单位不同)。 */
+    private WarehouseArrivalBatchRegisterRequest ownUnits(WarehouseArrivalBatchRegisterRequest request) {
+        return new WarehouseArrivalBatchRegisterRequest(request.idempotencyKey(), request.billDate(),
+                request.receiverEmployeeId(), request.remark(), request.stockInBeforeInspection(),
+                request.shortDeliveryAcknowledged(), request.lines().stream().map(line -> new BatchArrivalLine(
+                        line.orderType(), line.warehouseId(), line.purchaserId(), line.goodsId(), line.qty(),
+                        line.orderItemId(), line.colorId(), jdbc.queryForObject(
+                                "SELECT unit_id FROM purchase_order_items WHERE id=?", UUID.class, line.orderItemId()),
+                        line.unitRate(), line.weight(), line.sourceDocNo(), line.replacementIntent(),
+                        line.preStockPlace(), line.qtyFromWeight())).toList());
+    }
+
+    private static Line withQty(Line line, BigDecimal qty, UUID warehouse) {
+        return new Line(line.orderType(), line.orderId(), line.orderItemId(), line.orderBillNo(), line.goodsId(),
+                warehouse, qty, line.place());
+    }
+
     private WarehouseArrivalBatchRegisterResult concurrentRegister(Case lines, String key,
                                                                    java.util.concurrent.CountDownLatch start) {
         try {

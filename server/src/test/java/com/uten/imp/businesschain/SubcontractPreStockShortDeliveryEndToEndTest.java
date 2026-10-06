@@ -217,6 +217,44 @@ class SubcontractPreStockShortDeliveryEndToEndTest {
                 "继续送检的同一事务把另一主仓里扣住的合格品按上架位置转正");
     }
 
+    /**
+     * 对抗审查补充: 批量登记里排在后面的一组(按订货单 UUID 排序)让短交案件自然完成, 同一事务把它先前扣住、
+     * 上架在另一个主仓的合格品转正。整批的合并预锁必须含每一组的「扣住待转正」足迹, 不只第一组。
+     */
+    @Test void batchWhoseLaterGroupReleasesAShelvedPassInAnotherMainWarehouse() {
+        var w=fixture.seedWorld("sc-prestock-hold-batch");fixture.loginAs(w.superAdminUserId());
+        Ordered a=orderApproveAndIssueAll(w,"sc-prestock-batch-a");
+        Ordered b=orderApproveAndIssueAll(w,"sc-prestock-batch-b");
+        Ordered held=a.orderId().toString().compareTo(b.orderId().toString())>0?a:b;
+        Ordered plain=held==a?b:a;
+        UUID otherMain=UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,parent_id,code,name,status,is_accountable) VALUES(?,NULL,?,?,'使用',TRUE)",
+                otherMain,"SCB-"+otherMain.toString().substring(0,8),"另一主仓-"+otherMain.toString().substring(0,8));
+        WarehouseArrivalRegisterResult first=arrivals.register(preStockArrival(w,otherMain,held.itemId(),"50",true,"b1"));
+        passIqc(first.receiptId(),inspectionOf(first.receiptId()),"sc-prestock-batch-pass-1");
+        rate("0",onHand(w.goodsE(),otherMain));
+        UUID caseId=(UUID)caseRow(held.itemId()).get("id");
+
+        var batch=new com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest(
+                "sc-prestock-batch-"+held.itemId(),BusinessTime.today(),w.employeeId(),null,Boolean.TRUE,null,
+                List.of(batchLine(w,plain.itemId(),"100"),batchLine(w,held.itemId(),"50")));
+        var result=arrivals.registerBatch(batch);
+        assertEquals(2,result.groupCount());
+        result.items().forEach(item->assertEquals("STOCKED_PENDING_INSPECTION",item.outcome()));
+        assertEquals(held.orderId(),result.items().get(1).orderId(),"复现前提: 扣住待转正的那组排在后面");
+        assertEquals("COMPLETED",db.queryForObject("SELECT status FROM subcontract_short_delivery_cases WHERE id=?",String.class,caseId));
+        rate("50",onHand(w.goodsE(),otherMain));
+        assertEquals(1,count("SELECT COUNT(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=? AND origin='PRE_STOCKED_AUTO'",first.receiptId()),
+                "批量登记的同一事务把另一主仓里扣住的合格品按上架位置转正");
+    }
+
+    private com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.BatchArrivalLine batchLine(
+            FullChainEndToEndTest.World w,UUID itemId,String qty){
+        return new com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.BatchArrivalLine(
+                "SUBCONTRACT",w.warehouseId(),null,w.goodsE(),new BigDecimal(qty),itemId,null,w.unitId(),BigDecimal.ONE,
+                null,null,null,SHELF,null);
+    }
+
     // ===================== helpers =====================
 
     private record Ordered(UUID orderId,UUID itemId) {}

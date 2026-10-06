@@ -93,9 +93,9 @@ server/src/main/resources/legacy-migration/
 # 覆盖根 _scratch/ 与 server/legacy_migration/_scratch/
 _scratch/
 
-# 临时补丁/会话草稿（不入库）
-/.tmp-*.patch
-/.tmp_*.patch
+# 临时补丁/会话草稿（不入库）；泛化覆盖根目录一次性 .tmp-* / .tmp_* 临时文件（曾于 60da1a29b 误提交）
+/.tmp-*
+/.tmp_*
 /scratchpad_problems_dump.txt
 /YTDQ.txt
 
@@ -109,6 +109,8 @@ server/legacy_migration/users_names.txt
 .local-tmp/
 # Local investigation scripts and transient validation receipts.
 /.tmp/
+# 根目录本地探测/清整一次性文件（.local_*，曾于 60da1a29b 误提交）
+/.local_*
 # Flutter 构建产物（误生成于源码目录的 .last_build_id，可随时重建）
 **/.last_build_id
 

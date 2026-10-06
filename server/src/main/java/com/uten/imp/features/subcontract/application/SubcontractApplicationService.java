@@ -86,6 +86,18 @@ public class SubcontractApplicationService {
     /** ADR-143 §二.3 委外件缺 BOM 转研发(研发任务模块实现)；单测手工构造时为空。 */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.application.port.RdBomGapPort rdBomGaps;
+    /** ADR-156 委外申请物料齐套(可下单数量、齐套明细)；单测手工构造时为空, 预览只回剩余量。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.features.subcontract.kit.SubcontractKitService kit;
+
+    /** 委外任务中心「物料齐套情况」(ADR-156)：申请明细逐种直属物料的现有、被占、可用与够做的套数。 */
+    @Transactional(readOnly = true)
+    public com.uten.imp.features.subcontract.kit.SubcontractKitService.ApplicationKit kit(UUID applicationItemId) {
+        if (kit == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "委外齐套计算未就绪");
+        }
+        return kit.applicationKit(applicationItemId);
+    }
 
     /**
      * 委外任务中心「通知研发完善」(ADR-143 §二.3)：申请明细的委外件缺 BOM(没有可发外的直属物料，
@@ -243,6 +255,17 @@ public class SubcontractApplicationService {
         if (rowsByItemId.size() != itemIds.size()) {
             throw unavailablePreviewSelection("委外申请");
         }
+        // ADR-156：所选申请按需求日期、id 先后共用公共库存, 算出每条这次最多能下多少(预填数量);
+        // 与订货单齐套守卫同一口径, 按预填数量下单一定通过。
+        Map<UUID, com.uten.imp.features.subcontract.kit.SubcontractKitService.SelectionKit> kits =
+                kit == null ? Map.of() : kit.orderableForSelection(rowsByItemId.values().stream()
+                        .sorted(java.util.Comparator
+                                .comparing((Object[] row) -> localDate(row[10]),
+                                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder()))
+                                .thenComparing(row -> uuid(row[2])))
+                        .map(row -> new com.uten.imp.features.subcontract.kit.SubcontractKitService.SelectionLine(
+                                uuid(row[2]), decimal(row[7]).subtract(decimal(row[8])).subtract(decimal(row[9]))))
+                        .toList());
         // ADR-038：订货不携带仓库（入库仓库后移到收货/回厂登记），跨仓库申请行可在同一张订货单
         // 分解，拆单只按委外商约束；行上的 warehouse_id 仅作申请侧库存口径展示。
         return itemIds.stream().map(itemId -> {
@@ -253,10 +276,13 @@ public class SubcontractApplicationService {
             BigDecimal remainingQty = requestedQty
                     .subtract(orderedQty)
                     .subtract(pendingQty);
+            var selection = kits.get(itemId);
             return new DecompositionPreviewItem(
                     uuid(row[0]), text(row[1]), itemId, uuid(row[3]), uuid(row[4]),
                     uuid(row[5]), decimal(row[6]), requestedQty, orderedQty, pendingQty,
-                    remainingQty, localDate(row[10]), uuid(row[11]), text(row[12]));
+                    remainingQty, localDate(row[10]), uuid(row[11]), text(row[12]),
+                    selection == null ? null : selection.kitQty(),
+                    selection == null ? remainingQty : selection.orderableQty());
         }).toList();
     }
 

@@ -394,7 +394,8 @@ String subcontractShortDeliveryEventLabel(String code) =>
 /// ADR-143 §4.1：已批准的委外订货单按各明细聚合取第一个命中——回厂短交待判定 >
 /// 分批等待中 > 容差内待结案 > 已回厂待入库 > 可领料 > 已提交领料·待仓库发料 >
 /// 部分回厂 > 委外加工中 > 等待物料。委外申请行缺 BOM(§二.3)时为「缺 BOM·已通知研发」，
-/// 等研发完善，不能生成订货单。
+/// 等研发完善，不能生成订货单；直属物料一套都不够时为「等物料齐套」(锁住不能下单)，
+/// 只够做一部分时为「可部分下单」(ADR-156)。
 String subcontractProgressStatusLabel(String code) =>
     switch (code.toUpperCase()) {
       'ORDER_PENDING_APPROVAL' => '等待财务审核',
@@ -410,6 +411,8 @@ String subcontractProgressStatusLabel(String code) =>
       'AT_SUPPLIER' => '委外加工中',
       'WAITING_MATERIAL' => '等待物料',
       'BOM_MISSING' => '缺 BOM·已通知研发',
+      'WAITING_KIT' => '等物料齐套',
+      'KIT_PARTIAL' => '可部分下单',
       // 待处理段的行沿用既有「计划申请已下达 / 待分解」文案（与分段名区分），这里不翻译。
       'COMPLETED' => '已完成',
       _ => code,

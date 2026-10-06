@@ -93,6 +93,11 @@ public final class ReviewNoticeCatalog {
             Map.entry(
                     "SUBCONTRACT_DRAW_AVAILABLE",
                     new Entry("SUBCONTRACT_ORDER_ITEM", null)),
+            // ADR-156 委外申请物料齐套可下单 → 委外人员生成订货单(申请明细级；按最新可下单量覆盖；
+            // 可下单归零、已全部下单、申请关闭时撤卡)
+            Map.entry(
+                    "SUBCONTRACT_ORDER_KIT_READY",
+                    new Entry("SUBCONTRACT_APPLICATION_ITEM", null)),
             // 委外领料草稿 → 仓库发料（草稿级；发出、撤回时撤卡）
             Map.entry(
                     "SUBCONTRACT_OUTBOUND_READY",

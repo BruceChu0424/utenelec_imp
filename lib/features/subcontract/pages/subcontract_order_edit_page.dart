@@ -306,9 +306,12 @@ class _SubcontractOrderEditPageState
     );
   }
 
-  /// 任务中心带单新建：按委外申请明细 id 拉分解预览，预填行（数量=剩余量，可改大）。
+  /// 任务中心带单新建：按委外申请明细 id 拉分解预览，预填行(数量=这次可下单数量，
+  /// 即剩余量与现有直属物料够做的套数取小，服务端按需求日期先后共用公共库存算好；
+  /// 超出会被服务端拒绝，ADR-156)。可下单为 0 的明细(等物料齐套)不带入。
   /// V463（ADR-069）：同「货品+颜色+单位」的申请明细自动合并成一行——数量加总、
   /// 来源申请逐条保留（保存时随行提交 applicationItemIds，服务端按剩余量 FIFO 拆分）。
+  /// maxQty 仍记申请剩余量(只作来源上限参考，订货页不按它拦截)。
   Future<void> _prefillFromApplication() async {
     final selectedIds = widget.applicationItemIds
         .map((id) => id.trim())
@@ -323,22 +326,29 @@ class _SubcontractOrderEditPageState
       if (open.isEmpty) {
         throw StateError('所选申请明细已全部分解，请返回委外任务中心刷新');
       }
-      final goodsIds = open.map((item) => item.goodsId).toSet();
+      // ADR-156：只带入物料够做的明细；一条都不能下 = 还在等物料齐套。
+      final orderable = open
+          .where((item) => item.orderableQty > 0)
+          .toList(growable: false);
+      if (orderable.isEmpty) {
+        throw StateError('所选委外申请的直属物料还没齐套，暂时不能下单；请返回委外任务中心查看「齐套情况」');
+      }
+      final goodsIds = orderable.map((item) => item.goodsId).toSet();
       await ref
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
       if (!mounted) return;
       final names = ref.read(masterNameServiceProvider);
       final rows = <SubcontractGridRow>[];
-      // 同货品+颜色+单位 合并：数量=剩余量之和，来源逐条聚合（保留预览顺序）。
+      // 同货品+颜色+单位 合并：数量=可下单数量之和，来源逐条聚合(保留预览顺序)。
       final merged = <String, SubcontractGridRow>{};
-      for (final item in open) {
+      for (final item in orderable) {
         final key =
             '${item.goodsId}|${item.colorId ?? ''}|${item.unitId ?? ''}|${item.unitRate ?? 1}';
         final existing = merged[key];
         if (existing != null) {
           final total =
-              (double.tryParse(existing.qty.text) ?? 0) + item.remainingQty;
+              (double.tryParse(existing.qty.text) ?? 0) + item.orderableQty;
           existing.qty.text = _formatQty(total);
           existing.maxQty = (existing.maxQty ?? 0) + item.remainingQty;
           existing.upstreamItemIds = [
@@ -357,7 +367,7 @@ class _SubcontractOrderEditPageState
         }
         final linked = LinkedItem(
           goodsId: item.goodsId,
-          qty: item.remainingQty,
+          qty: item.orderableQty,
           maxQty: item.remainingQty,
           upstreamItemId: item.sourceItemId,
           colorId: item.colorId,
@@ -390,13 +400,26 @@ class _SubcontractOrderEditPageState
       _grid.setSelected(rows, true);
       await _prefillRememberedTerms();
       final dates =
-          open
+          orderable
               .map((line) => _parseDate(line.needDate))
               .whereType<DateTime>()
               .toList()
             ..sort();
       _deliverDate = dates.isEmpty ? null : dates.first;
       _orderSourceReady = true;
+      if (!mounted) return;
+      // 有明细没带入 / 只按够做的套数预填时说明数量为什么比剩余少。
+      final skipped = open.length - orderable.length;
+      final capped = orderable
+          .where((item) => item.remainingQty - item.orderableQty > 1e-9)
+          .length;
+      final notes = [
+        if (skipped > 0) '$skipped 条申请明细的直属物料还没齐套，这次没带入',
+        if (capped > 0) '$capped 条只按现有物料够做的套数预填数量',
+      ];
+      if (notes.isNotEmpty) {
+        context.appWarning('${notes.join('；')}；物料齐了可再从委外任务中心下单');
+      }
     } on StateError catch (error) {
       _orderSourceReady = false;
       if (mounted) context.appError(error.message);

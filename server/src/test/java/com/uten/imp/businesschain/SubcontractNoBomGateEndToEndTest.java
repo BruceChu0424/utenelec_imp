@@ -293,6 +293,9 @@ class SubcontractNoBomGateEndToEndTest {
         // 委外订货单: 明细不再标缺 BOM, 送财务放行; 批准按新 BOM 冻结 M 的领料计划行(计划量 = CEIL4(10 × 2))。
         fixture.loginAs(w.superAdminUserId());
         assertFalse(subcontractOrders.detail(subcontractOrderId).getItems().getFirst().isBomMissing());
+        // ADR-156: 有了 BOM 之后送审、批准还要直属物料 M 齐套; 在暂存仓补齐、批准后清掉。
+        var kitStage = fixture.stageSubcontractKit(w, Map.of(s, "10"));
+        fixture.stageSubcontractKitUntilApproval(subcontractOrderId, kitStage);
         financeApproval.submit("SUBCONTRACT", subcontractOrderId);
         fixture.loginAs(reviewer);
         fixture.approvePendingFinance("SUBCONTRACT", subcontractOrderId);

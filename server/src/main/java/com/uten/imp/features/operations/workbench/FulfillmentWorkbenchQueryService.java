@@ -383,7 +383,7 @@ public class FulfillmentWorkbenchQueryService {
                        display_stage,
                        materials_defined, production_product_code, production_product_name, material_request_no,
                        workshop_name, worker_name, draw_batch_no, lines,
-                       rd_task_no, bom_missing_item_ids
+                       rd_task_no, bom_missing_item_ids, orderable_qty
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -863,6 +863,8 @@ public class FulfillmentWorkbenchQueryService {
                                WHEN progress.any_issued THEN 'AT_SUPPLIER'
                                ELSE 'WAITING_MATERIAL' END
                      WHEN base.action_doc_type='SUBCONTRACT_APPLICATION' AND bom_gap.bom_missing THEN 'BOM_MISSING'
+                     WHEN kit.open_qty > 0 AND kit.orderable_lines = 0 THEN 'WAITING_KIT'
+                     WHEN kit.open_qty > 0 AND kit.orderable_qty < kit.open_qty THEN 'KIT_PARTIAL'
                      ELSE base.task_status END""" : "base.task_status";
         // 采购的财务已退回也写进 exception_code(与委外同构)：分段栏虽把它并进了「进行中」,
         // 但改单重报是本部门要动手的活, 必须继续以异常小类行挂红徽章;
@@ -901,6 +903,9 @@ public class FulfillmentWorkbenchQueryService {
                     JOIN goods ON goods.id=segment.product_goods_id
                 ) production_product ON TRUE
                 """ : "";
+        // ADR-156：待分解委外申请逐明细「这次能下单」= MIN(剩余未下单, 现有物料够做的套数)(库里唯一一处计算
+        // fn_subcontract_application_kit_qty)。一条都不能下 = WAITING_KIT 锁住(照样留在「待处理」计红数, 只是
+        // 不能勾选、不能生成订货单); 能下一部分 = KIT_PARTIAL。
         // ADR-143 §二.3：待分解的委外申请里缺 BOM(没有可发外直属物料)的明细。这张申请不能生成订货单,
         // 状态列显示「缺 BOM·已通知研发」并带上研发任务编号; 没有未完成研发任务时页面按 bom_missing_item_ids
         // 逐条「通知研发完善」(POST /api/subcontract/applications/items/{id}/forward-bom)。
@@ -919,6 +924,25 @@ public class FulfillmentWorkbenchQueryService {
                       AND base.task_status = 'WAITING_ORDER'
                       AND NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))
                 ) bom_gap ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) FILTER (WHERE kit_line.orderable > 0) AS orderable_lines,
+                           COALESCE(SUM(kit_line.orderable), 0) AS orderable_qty,
+                           COALESCE(SUM(kit_line.open_qty), 0) AS open_qty
+                    FROM unnest(base.action_item_ids) kit_ref(item_id)
+                    CROSS JOIN LATERAL (
+                        SELECT fn_subcontract_application_open_qty(kit_ref.item_id::uuid) AS open_qty
+                    ) kit_open
+                    CROSS JOIN LATERAL (
+                        SELECT kit_open.open_qty,
+                               CASE WHEN kit_open.open_qty > 0
+                                    THEN LEAST(kit_open.open_qty,
+                                               fn_subcontract_application_kit_qty(kit_ref.item_id::uuid, NULL))
+                                    ELSE 0 END AS orderable
+                    ) kit_line
+                    WHERE base.action_doc_type = 'SUBCONTRACT_APPLICATION'
+                      AND base.task_status = 'WAITING_ORDER'
+                      AND NOT COALESCE(bom_gap.bom_missing, FALSE)
+                ) kit ON TRUE
                 """ : "";
         // A grouped order can contain several real source issues. Its earliest source issue
         // remains the displayed date; later application creation never substitutes for it.
@@ -940,11 +964,13 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS production_product_code, %s AS production_product_name, %s AS material_request_no,
                         %s AS execution_segment_codes,
                         base.workshop_name, base.worker_name, base.draw_batch_no, base.lines,
-                        %s AS rd_task_no, %s AS bom_missing_item_ids
+                        %s AS rd_task_no, %s AS bom_missing_item_ids,
+                        %s AS orderable_qty
                  FROM %s base %s %s %s %s)
                 """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
-                        subcontract ? " AND NOT COALESCE(bom_gap.bom_missing, FALSE)" : "",
+                        subcontract ? " AND NOT COALESCE(bom_gap.bom_missing, FALSE)"
+                                + " AND COALESCE(kit.orderable_lines, 0) > 0" : "",
                         visibleDoc, stageExpression,
                         "WAREHOUSE".equals(department) ? "production_product.product_code" : "NULL::text",
                         "WAREHOUSE".equals(department) ? "production_product.product_name" : "NULL::text",
@@ -952,6 +978,7 @@ public class FulfillmentWorkbenchQueryService {
                         "WAREHOUSE".equals(department) ? "production_product.segment_codes" : "NULL::text",
                         subcontract ? "bom_gap.rd_task_no" : "NULL::text",
                         subcontract ? "COALESCE(bom_gap.item_ids, ARRAY[]::text[])" : "ARRAY[]::text[]",
+                        subcontract ? "kit.orderable_qty" : "NULL::numeric",
                         source, issueJoin, progressJoin, bomGapJoin, productionProductJoin);
     }
 
@@ -1031,7 +1058,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.length > 43 ? (String) row[43] : null,
                 row.length > 44 ? parseLines(row[44]) : List.of(),
                 row.length > 45 ? (String) row[45] : null,
-                row.length > 46 ? stringArray(row[46]) : List.of());
+                row.length > 46 ? stringArray(row[46]) : List.of(),
+                row.length > 47 && row[47] != null ? decimal(row[47]) : null);
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
@@ -1189,7 +1217,8 @@ public class FulfillmentWorkbenchQueryService {
                 restricted ? List.of() : row.sources(), row.materialsDefined(),
                 row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
                 row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
-                row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds());
+                row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds(),
+                restricted ? null : row.orderableQty());
     }
 
     private static BigDecimal decimal(Object value) {

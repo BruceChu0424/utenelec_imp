@@ -67,6 +67,12 @@ String workbenchRouteFor(
             actionRoute.startsWith(RouteName.operationsSubcontractWorkbench)
         ? actionRoute
         : RouteName.operationsSubcontractDrawSegment(),
+  // ADR-156 委外可下单(直属物料齐套)：落委外任务中心「待处理」分段(通知自带申请号时沿用)。
+  'SUBCONTRACT_ORDER_KIT_READY' =>
+    actionRoute != null &&
+            actionRoute.startsWith(RouteName.operationsSubcontractWorkbench)
+        ? actionRoute
+        : RouteName.operationsSubcontractPendingSegment(),
   'SUBCONTRACT_OUTBOUND_READY' => RouteName.warehouseSubcontractOutbound,
   // ADR-117 车间催计划：直落被催的那一份物料分析(?analysisId=)。
   'PRODUCTION_PLANNING_URGED' =>
@@ -609,6 +615,7 @@ String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
   'PRODUCTION_PLANNING_URGED' => '车间催下单',
   'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' => '超产比例待审批',
   'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' => '追加用料待审批',
+  'SUBCONTRACT_ORDER_KIT_READY' => '委外可下单',
   'SUBCONTRACT_DRAW_AVAILABLE' => '委外可领料',
   'SUBCONTRACT_OUTBOUND_READY' => '委外领料待发料',
   'PROFILE_CHANGE_SUBMITTED' => '信息变更待审核',

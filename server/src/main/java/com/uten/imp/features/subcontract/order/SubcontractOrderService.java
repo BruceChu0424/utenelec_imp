@@ -114,6 +114,31 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     void setPublicSupplyCapture(PreplanPublicSupplyCapturePort value) {
         this.publicSupplyCapture = value;
     }
+    /**
+     * ADR-156 委外申请物料齐套才解锁下单: 建单、改单、送审、批准、批准后加量的齐套守卫, 以及订货单
+     * 变动后让共用物料的申请重算可下单提醒。setter 注入: 单测手工构造本服务时为空只跳过, Spring 环境恒注入。
+     */
+    private com.uten.imp.features.subcontract.kit.SubcontractKitService kit;
+
+    @Autowired
+    void setKit(com.uten.imp.features.subcontract.kit.SubcontractKitService value) {
+        this.kit = value;
+    }
+
+    private void requireKit(UUID orderId, String action, String hint) {
+        if (kit != null) kit.requireOrderKit(orderId, action, hint);
+    }
+
+    private void enqueueKitRecheck(UUID orderId) {
+        if (kit != null) kit.enqueueRecheckForOrder(orderId);
+    }
+
+    /** 委外人员下单 / 改单时的提示。 */
+    private static final String KIT_HINT_ORDER =
+            "请按委外任务中心显示的「可下单」数量下单，其余等物料到了再下";
+    /** 送审、批准时的提示(单子已建好, 物料后来被别的单占走或用掉了)。 */
+    private static final String KIT_HINT_REVIEW =
+            "物料可能已被别的委外单或生产先用掉；请委外人员把数量改成委外任务中心显示的「可下单」数量，或等物料到了再提交";
     private final ProductionSupplySourceGuard productionSourceGuard;
     private final ProcurementApprovalProjectionQuery approvalProjection;
     private final ProcurementArrivalControlPort arrivalControl;
@@ -359,6 +384,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // (此前放在 save 之后、明细之前, 新建单永远学不到货品委外商与加工单价)。
         orderRepo.flush();
         masterDefaultsSync.syncFromSubcontractOrder(r.getId());
+        // ADR-156：明细落库后按本单需要核对直属物料齐套(同事务内拆出的几张单彼此可见, 不会重复占同一批库存)。
+        requireKit(r.getId(), "生成委外订货单", KIT_HINT_ORDER);
+        enqueueKitRecheck(r.getId());
         return toDetail(r, items);
     }
 
@@ -588,6 +616,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // 主档写回按订单 id 用 JDBC 读事实, 头/行改动必须先 flush (顺序即契约)。
         orderRepo.flush();
         masterDefaultsSync.syncFromSubcontractOrder(r.getId());
+        requireKit(r.getId(), "保存委外订货单", KIT_HINT_ORDER);
+        enqueueKitRecheck(r.getId());
         return toDetail(r, items);
     }
 
@@ -604,6 +634,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
         orderRepo.save(r);
+        // ADR-156：草稿删掉后它占着的物料放出来, 共用物料的委外申请重算可下单。
+        enqueueKitRecheck(id);
     }
 
     @Override
@@ -670,9 +702,10 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 "委外订货");
         requireFinanceCommercialAuthority(order, items);
         lockAndValidateSourcesIncludingPending(order, items);
-        // ADR-143：下单与送审不受物料库存约束(物料到齐后再由委外人员领料)，但委外件必须先有
-        // 可发外的直属物料(BOM)；缺的先转研发，提交人进等待名单。
+        // ADR-143 §二.3：委外件必须先有可发外的直属物料(BOM)；缺的先转研发，提交人进等待名单。
         requireDrawableBom(order, items, null);
+        // ADR-156：送审时再核一次直属物料齐套(建单后物料可能已被别的单或生产用掉)。
+        requireKit(id, "提交财务", KIT_HINT_REVIEW);
         return snapshot(order, items);
     }
 
@@ -843,6 +876,11 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         materialPlanService.applyOrderQtyChange(
                 id, baseDelta, unitRates, goodsByItem);
+        // ADR-156：批准后加量同样要有齐套的直属物料(减量不拦); 改量后共用物料的委外申请重算可下单。
+        if (changes.stream().anyMatch(change -> ((BigDecimal) change[2]).compareTo((BigDecimal) change[1]) > 0)) {
+            requireKit(id, "加量", KIT_HINT_ORDER);
+        }
+        enqueueKitRecheck(id);
         com.uten.imp.common.finance.ProcurementOrderClosurePolicy.recalculate(em,orderType(),
                 ((SubcontractOrderItem)changes.getFirst()[0]).getId());
         em.refresh(order);
@@ -1004,6 +1042,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         // ADR-143 §二.3：批准时再兜底检查一次(送审后 BOM 可能被改到没有可发外直属物料)；
         // 缺的转研发时登记订货单制单人等结果，而不是财务审核人。
         requireDrawableBom(order, items, order.getMakerId());
+        // ADR-156：批准即锁定当天委外价, 物料必须仍然齐套。
+        requireKit(id, "批准", KIT_HINT_REVIEW);
         captureGoodsSnapshots(
                 items,
                 SubcontractGoodsSnapshot.APPLICATION_ITEM_AT_APPROVAL,
@@ -1106,6 +1146,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 ProcurementArrivalControlPort.SUBCONTRACT, id);
         // 撤回未发出的领料草稿并释放预留 + 领料计划置 CANCELED（已审出仓由上方守卫先行拦截）。
         materialPlanService.cancelForOrderReversal(id);
+        enqueueKitRecheck(id);
         // ADR-098：红冲守卫全部通过后, 开放的短交案件作废并撤回通知卡(同事务)。
         shortDeliveryHook(hooks -> hooks.cancelOpenCasesForOrder(id, "ORDER_REVERSED"));
         r.setStatus(STATUS_REVERSED);

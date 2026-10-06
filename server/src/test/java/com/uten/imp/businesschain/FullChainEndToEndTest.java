@@ -4607,6 +4607,8 @@ class FullChainEndToEndTest {
     void approvePendingFinance(String orderType, UUID orderId) {
         financeApproval.approveBatch(List.of(
                 claimFinanceDecision(pendingFinanceDecision(orderType,orderId))), null);
+        KitStage stage = "SUBCONTRACT".equals(orderType) ? subcontractKitStagesByOrder.remove(orderId) : null;
+        if (stage != null) releaseSubcontractKitStage(stage);
     }
 
     private BatchDecisionItem claimFinanceDecision(BatchDecisionItem original) {
@@ -6567,7 +6569,10 @@ class FullChainEndToEndTest {
         scLine.setGoodsId(w.goodsE()); scLine.setUnitId(w.unitId()); scLine.setUnitRate(BigDecimal.ONE);
         scLine.setQty(new BigDecimal("3")); scLine.setPrice(new BigDecimal("0.1"));
         sc.setItems(List.of(scLine));
+        // ADR-156: 下单到批准时委外件 E 的直属物料要齐; 暂存物料批准后清掉。
+        KitStage kitStage = stageSubcontractKit(w, Map.of(w.goodsE(), "3"));
         var scOrder = subcontractOrderService.create(sc);
+        stageSubcontractKitUntilApproval(scOrder.getId(), kitStage);
         assertEquals(0, scOrder.getItems().getFirst().getAmountOriginal().compareTo(new BigDecimal("0.3")));
         assertEquals(0, scOrder.getItems().getFirst().getAmountLocal().compareTo(new BigDecimal("2.1")));
         assertEquals(0, scOrder.getTotalLocal().compareTo(new BigDecimal("2.1")));
@@ -11207,9 +11212,12 @@ class FullChainEndToEndTest {
         line.setGoodsId(w.goodsE()); line.setUnitId(orderUnit); line.setUnitRate(unitRate);
         line.setQty(quantity); line.setPrice(new BigDecimal("50"));
         request.setItems(List.of(line));
+        // ADR-156: 下单、送审、批准时直属物料要齐; 暂存物料留到财务批准后再清掉。
+        KitStage stage=stageSubcontractKit(w,Map.of(w.goodsE(),quantity.multiply(unitRate).toPlainString()));
         UUID orderId=subcontractOrderService.create(request).getId();
         UUID reviewer=createApprover(w);
         financeApproval.submit("SUBCONTRACT",orderId);
+        stageSubcontractKitUntilApproval(orderId,stage);
         return new ProcurementCase(orderId,reviewer);
     }
 
@@ -11247,6 +11255,103 @@ class FullChainEndToEndTest {
         line.setGoodsId(material);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));
         line.setPrice(BigDecimal.TEN);line.setAmountOriginal(line.getQty().multiply(line.getPrice()));line.setAmountLocal(line.getAmountOriginal());
         request.setItems(List.of(line));
+        stockDocService.approve(stockDocService.create(request).getId());
+    }
+
+    /**
+     * ADR-156 委外下单要求直属物料齐套。只测下单之后(领料、发料、回厂、短交)的用例用它造出「下单、送审、批准
+     * 那一刻物料是齐的, 之后被别处用掉了」: 在一个专用暂存仓按 委外件 × 基本单位数量 其它入库齐套直属物料
+     * (每种物料向上取整), 执行下单动作, 再把暂存仓里这些物料剩下的全部其它出库。暂存仓是独立的库存与成本池,
+     * 用例自己仓库的数量与成本不受影响。
+     */
+    <T> T withSubcontractKitStaged(World w, Map<UUID, String> qtyBySubcontractGoods,
+                                   java.util.function.Supplier<T> action) {
+        KitStage stage = stageSubcontractKit(w, qtyBySubcontractGoods);
+        T result = action.get();
+        releaseSubcontractKitStage(stage);
+        return result;
+    }
+
+    /** 同上, 下单动作没有返回值。 */
+    void withSubcontractKitStaged(World w, Map<UUID, String> qtyBySubcontractGoods, Runnable action) {
+        withSubcontractKitStaged(w, qtyBySubcontractGoods, () -> {
+            action.run();
+            return null;
+        });
+    }
+
+    /** 暂存的齐套物料: 所在暂存仓与各物料货色。 */
+    record KitStage(World world, UUID warehouseId, List<List<UUID>> materials) {}
+
+    /** 建单、送审之后才由财务批准的用例: 暂存物料留到 {@link #approvePendingFinance} 批准这张委外单之后再清掉。 */
+    private final Map<UUID, KitStage> subcontractKitStagesByOrder = new java.util.HashMap<>();
+
+    KitStage stageSubcontractKit(World w, Map<UUID, String> qtyBySubcontractGoods) {
+        loginAs(w.superAdminUserId());
+        Map<List<UUID>, BigDecimal> need = new java.util.LinkedHashMap<>();
+        qtyBySubcontractGoods.forEach((goods, qty) -> jdbc.query("""
+                SELECT component_goods_id, color_id, CEIL(CAST(? AS numeric) * edge_qty)
+                FROM fn_subcontract_draw_edges(?) ORDER BY sort_order, edge_id
+                """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> need.merge(
+                        java.util.Arrays.asList(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class)),
+                        rs.getBigDecimal(3), BigDecimal::add), new BigDecimal(qty), goods));
+        // 只补缺口: 本单需要 + 其它在办委外单还要领的(虚拟占用) - 公共可用; 用例自己已备足的不再暂存。
+        need.replaceAll((key, qty) -> jdbc.queryForObject("""
+                SELECT CEIL(GREATEST(CAST(? AS numeric) + claimed_qty - public_qty, 0))
+                FROM fn_subcontract_component_public_free(?, ?, NULL)
+                """, BigDecimal.class, qty, key.get(0), key.get(1)));
+        need.values().removeIf(qty -> qty.signum() <= 0);
+        if (need.isEmpty()) return new KitStage(w, null, List.of());
+        UUID stage = UUID.randomUUID();
+        String suffix = stage.toString().substring(0, 8);
+        jdbc.update("INSERT INTO warehouses(id, code, name, status) VALUES (?, ?, ?, '使用')",
+                stage, "KIT-" + suffix, "委外齐套暂存仓-" + suffix);
+        stageKitStock(stage, "OTHER_IN", need);
+        return new KitStage(w, stage, List.copyOf(need.keySet()));
+    }
+
+    void releaseSubcontractKitStage(KitStage stage) {
+        if (stage.materials().isEmpty()) return;
+        var previous = SecurityContextHolder.getContext().getAuthentication();
+        loginAs(stage.world().superAdminUserId());
+        Map<List<UUID>, BigDecimal> left = new java.util.LinkedHashMap<>();
+        for (List<UUID> key : stage.materials()) {
+            BigDecimal available = jdbc.queryForObject("""
+                    SELECT COALESCE(SUM(available_qty), 0) FROM v_stock_available
+                    WHERE warehouse_id=? AND goods_id=? AND color_id IS NOT DISTINCT FROM ?
+                    """, BigDecimal.class, stage.warehouseId(), key.get(0), key.get(1));
+            if (available != null && available.signum() > 0) left.put(key, available);
+        }
+        if (!left.isEmpty()) stageKitStock(stage.warehouseId(), "OTHER_OUT", left);
+        SecurityContextHolder.getContext().setAuthentication(previous);
+    }
+
+    void stageSubcontractKitUntilApproval(UUID orderId, KitStage stage) {
+        subcontractKitStagesByOrder.put(orderId, stage);
+    }
+
+    private void stageKitStock(UUID warehouseId, String docType, Map<List<UUID>, BigDecimal> quantities) {
+        var request = new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        request.setDocType(docType);
+        request.setBillDate(BusinessTime.today());
+        request.setWarehouseId(warehouseId);
+        request.setRemark("委外齐套暂存(测试)");
+        List<com.uten.imp.features.stock.dto.StockDocItemLine> lines = new ArrayList<>();
+        quantities.forEach((key, qty) -> {
+            var line = new com.uten.imp.features.stock.dto.StockDocItemLine();
+            line.setGoodsId(key.get(0));
+            line.setColorId(key.get(1));
+            line.setUnitId(jdbc.queryForObject("SELECT unit_id FROM goods WHERE id=?", UUID.class, key.get(0)));
+            line.setUnitRate(BigDecimal.ONE);
+            line.setQty(qty);
+            if ("OTHER_IN".equals(docType)) {
+                line.setPrice(BigDecimal.TEN);
+                line.setAmountOriginal(qty.multiply(BigDecimal.TEN));
+                line.setAmountLocal(line.getAmountOriginal());
+            }
+            lines.add(line);
+        });
+        request.setItems(lines);
         stockDocService.approve(stockDocService.create(request).getId());
     }
 

@@ -116,6 +116,17 @@ public class SubcontractApplicationController {
         return service.forwardBom(applicationItemId);
     }
 
+    /**
+     * 委外任务中心「物料齐套情况」(ADR-156)：申请明细逐种直属物料的专属批次、公共库存、被别的委外单占用、
+     * 现在能用与够做的套数, 以及这次可下单数量。只读。
+     */
+    @GetMapping("/items/{applicationItemId}/kit")
+    @PreAuthorize("hasAuthority('subcontract_application:view')")
+    public com.uten.imp.features.subcontract.kit.SubcontractKitService.ApplicationKit kit(
+            @PathVariable UUID applicationItemId) {
+        return service.kit(applicationItemId);
+    }
+
     @GetMapping("/{id}/history/rows")
     @PreAuthorize("hasAuthority('subcontract_application:view')")
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(

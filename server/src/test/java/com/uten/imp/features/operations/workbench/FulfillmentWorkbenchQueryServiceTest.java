@@ -238,7 +238,9 @@ class FulfillmentWorkbenchQueryServiceTest {
                 "THEN 'RECEIVED_PENDING_STOCK'", "WHEN progress.any_drawable THEN 'DRAWABLE'",
                 "WHEN progress.any_draw_submitted THEN 'DRAW_SUBMITTED'", "THEN 'PARTIAL_RECEIVED'",
                 "WHEN progress.any_issued THEN 'AT_SUPPLIER'", "ELSE 'WAITING_MATERIAL' END",
-                "AND bom_gap.bom_missing THEN 'BOM_MISSING'");
+                "AND bom_gap.bom_missing THEN 'BOM_MISSING'",
+                "WHEN kit.open_qty > 0 AND kit.orderable_lines = 0 THEN 'WAITING_KIT'",
+                "WHEN kit.open_qty > 0 AND kit.orderable_qty < kit.open_qty THEN 'KIT_PARTIAL'");
         int previous = -1;
         for (String stage : precedence) {
             int at = rowsSql.indexOf(stage);
@@ -247,8 +249,12 @@ class FulfillmentWorkbenchQueryServiceTest {
         }
         assertTrue(rowsSql.contains("CROSS JOIN LATERAL fn_subcontract_draw_summary(draw_item.id) draw_summary"));
         // ADR-143 §二.3：委外申请里有缺 BOM 的委外件时不能生成订货单, 状态列为「缺 BOM·已通知研发」。
+        // ADR-156：直属物料一套都不够的申请也不能生成订货单(等物料齐套), 可下单数量只读库函数。
         assertTrue(rowsSql.contains(
-                "AND base.open_line_count > 0 AND NOT COALESCE(bom_gap.bom_missing, FALSE)) AS can_create_order"));
+                "AND base.open_line_count > 0 AND NOT COALESCE(bom_gap.bom_missing, FALSE)"
+                        + " AND COALESCE(kit.orderable_lines, 0) > 0) AS can_create_order"));
+        assertTrue(rowsSql.contains("fn_subcontract_application_kit_qty(kit_ref.item_id::uuid, NULL)"));
+        assertTrue(rowsSql.contains("kit.orderable_qty AS orderable_qty"));
         assertTrue(rowsSql.contains("NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))"));
         assertTrue(rowsSql.contains("bom_gap.rd_task_no AS rd_task_no"));
         assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));

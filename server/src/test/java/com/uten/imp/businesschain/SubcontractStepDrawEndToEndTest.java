@@ -748,7 +748,8 @@ class SubcontractStepDrawEndToEndTest {
         String pendingBillNo = pending.issueBillNos().getFirst();
 
         // 扩量 10 → 15: 每条计划行按新订货量整体重算 f(15, b), 不做增量累加。
-        changeQty(orderId, item, "15");
+        // ADR-156: 加量要有齐套物料; 加的 5 套在暂存仓补齐、改量后清掉。
+        fixture.withSubcontractKitStaged(w, Map.of(p, "5"), () -> changeQty(orderId, item, "15"));
         reconfirm(reviewer, w, orderId);
         Map<UUID, Map<String, Object>> lines = planLines(item);
         qty("15", lines.get(a).get("planned_qty"), "A 计划量 = f(15,1)");
@@ -1167,7 +1168,9 @@ class SubcontractStepDrawEndToEndTest {
         line.setQty(new BigDecimal("20"));
         line.setPrice(new BigDecimal("30"));
         request.setItems(List.of(line));
+        var stage = fixture.stageSubcontractKit(w, Map.of(p, "20"));
         UUID orderId = orders.create(request).getId();
+        fixture.stageSubcontractKitUntilApproval(orderId, stage);
         approveSubcontract(w, orderId);
         UUID item = itemOf(orderId);
         assertEquals(2, count("SELECT COUNT(*) FROM subcontract_order_item_sources WHERE order_item_id=?", item),
@@ -1377,7 +1380,12 @@ class SubcontractStepDrawEndToEndTest {
         line.setPrice(new BigDecimal("50"));
         line.setAllowedLossPct(allowedLossPct);
         request.setItems(List.of(line));
-        return orders.create(request).getId();
+        // ADR-156: 下单到财务批准时直属物料要齐。本类测的是批准之后的领料, 缺的部分在暂存仓补齐、批准后清掉,
+        // 即「下单时物料是齐的, 之后被别处用掉了」。
+        var stage = fixture.stageSubcontractKit(w, Map.of(goodsId, qty));
+        UUID orderId = orders.create(request).getId();
+        fixture.stageSubcontractKitUntilApproval(orderId, stage);
+        return orderId;
     }
 
     /** 送财务并由合格审核人批准; 返回审核人(改量复核用)。 */

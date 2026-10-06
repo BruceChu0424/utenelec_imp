@@ -183,6 +183,12 @@ abstract final class ApiEndpoints {
   ) =>
       '/subcontract/applications/items/'
       '${Uri.encodeComponent(applicationItemId)}/forward-bom';
+
+  // 委外申请明细的物料齐套情况(ADR-156)：任务中心「齐套情况」弹窗，只读——剩余未下单、
+  // 现有直属物料够做的套数、这次可下单与逐种物料的专属 / 公共库存与占用。
+  static String subcontractApplicationItemKit(String applicationItemId) =>
+      '/subcontract/applications/items/'
+      '${Uri.encodeComponent(applicationItemId)}/kit';
   static const procurementInspectionPendingReceipts =
       '/procurement/inspection/pending-receipts';
   static const procurementInspectionRecords = '/procurement/inspection/records';

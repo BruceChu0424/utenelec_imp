@@ -299,6 +299,7 @@ class OperationsWorkbenchTask {
     this.sources = const [],
     this.rdTaskNo,
     this.bomMissingItemIds = const [],
+    this.orderableQty,
   });
 
   final String taskId;
@@ -341,7 +342,9 @@ class OperationsWorkbenchTask {
   /// 展示阶段（服务端 display_stage，与状态列表头筛选同源）：委外订货单按各明细聚合
   /// 取第一个命中(ADR-143 §4.1)——回厂短交待判定 / 分批等待中 / 容差内待结案 /
   /// 已回厂待入库 / 可领料 / 已提交领料·待仓库发料 / 部分回厂 / 委外加工中 /
-  /// 等待物料；委外申请行缺 BOM 时为 BOM_MISSING(§二.3)；其余等于 [taskStatus]。
+  /// 等待物料；委外申请行缺 BOM 时为 BOM_MISSING(§二.3)；直属物料一套都不够时为
+  /// WAITING_KIT(等物料齐套，锁住不能下单)、只够做一部分时为 KIT_PARTIAL(可部分下单)
+  /// (ADR-156)；其余等于 [taskStatus]。
   final String? displayStage;
   final List<SubcontractTaskSource> sources;
 
@@ -352,11 +355,21 @@ class OperationsWorkbenchTask {
   /// 「通知研发完善」回落到本行全部申请明细(服务端对已有 BOM 的明细不做任何事)。
   final List<String> bomMissingItemIds;
 
+  /// 待处理的委外申请行这次能下单的数量(ADR-156)：各明细「剩余未下单」与「现有直属
+  /// 物料够做的套数」取小之和，服务端算好；0 = 等物料齐套(锁住)。其它行为 null。
+  final num? orderableQty;
+
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
 
   /// 委外申请行缺 BOM、正在等研发完善(ADR-143 §二.3)。
   bool get isBomMissing => progressStatus == 'BOM_MISSING';
+
+  /// 委外申请行直属物料一套都不够，锁住不能生成订货单(ADR-156)。
+  bool get isWaitingKit => progressStatus == 'WAITING_KIT';
+
+  /// 委外申请行直属物料只够做一部分，可先按 [orderableQty] 下单(ADR-156)。
+  bool get isKitPartial => progressStatus == 'KIT_PARTIAL';
 
   bool get isMaterialDiscovery =>
       taskStatus.toUpperCase() == 'MATERIALS_TO_DEFINE' ||
@@ -442,6 +455,7 @@ class OperationsWorkbenchTask {
               .where((id) => id.isNotEmpty)
               .toList(growable: false) ??
           const [],
+      orderableQty: _optionalNumber(json, 'orderableQty'),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,

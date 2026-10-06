@@ -220,6 +220,17 @@ abstract final class RouteName {
     },
   ).toString();
 
+  /// 委外任务中心「待处理」分段深链(ADR-156 可下单通知)：?segment=pending，
+  /// 可带委外申请号 [keyword] 进页即按它搜索。
+  static String operationsSubcontractPendingSegment({String? keyword}) => Uri(
+    path: operationsSubcontractWorkbench,
+    queryParameters: {
+      'segment': 'pending',
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
+    },
+  ).toString();
+
   // 工程研发部任务中心（设计 / 打样 / 试产 / ECN 及历史任务）。
   static const String rdTaskCenter = '/rd/tasks';
 

@@ -29,13 +29,15 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PROCUREMENT_FINANCE_APPROVED',
     'PROCUREMENT_FINANCE_REJECTED',
   ],
-  // 委外任务中心：申请待处理→订货→财务→领料(可领料卡、发料回执)全链路；
-  // 领料页 /operations/workbench/subcontract/draw-request 作为子路径同样命中。
+  // 委外任务中心：申请待处理(物料齐套可下单卡)→订货→财务→领料(可领料卡、发料回执)
+  // 全链路；领料页 /operations/workbench/subcontract/draw-request 作为子路径同样命中。
   '/operations/workbench/subcontract': [
     'PREPLAN_SUPPLY_ACTION_CREATED',
     'PREPLAN_SUPPLY_DOCUMENT_CREATED',
     'PROCUREMENT_FINANCE_APPROVED',
     'PROCUREMENT_FINANCE_REJECTED',
+    // ADR-156 可下单卡(action_route 带 ?segment=pending&keyword=，精确匹配不到)。
+    'SUBCONTRACT_ORDER_KIT_READY',
     'SUBCONTRACT_DRAW_AVAILABLE',
     'SUBCONTRACT_DRAW_RETURNED',
     'SUBCONTRACT_OUTBOUND_COMPLETED',

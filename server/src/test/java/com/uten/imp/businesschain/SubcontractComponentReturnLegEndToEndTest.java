@@ -518,8 +518,11 @@ class SubcontractComponentReturnLegEndToEndTest {
         qty("1000", onHand(w.goodsD(), defectiveWarehouseId), "物料必须真的进了不良品仓");
         qty("0", onHand(w.goodsD(), w.warehouseId()), "良品仓已转空");
 
-        // ① 下单不受物料库存限制 (ADR-143 §六.7): 建单、送审、批准都放行, 冻结一条计划行。
+        // ① ADR-156: 下单到批准时直属物料要齐(不良品仓里的不算); 在暂存仓补齐、批准后清掉,
+        // 即「下单时物料是齐的, 之后被判不良转走了」。批准冻结一条计划行。
+        var kitStage = fixture.stageSubcontractKit(w, Map.of(w.goodsE(), "1000"));
         UUID orderId = orders.create(orderRequest(w, "1000")).getId();
+        fixture.stageSubcontractKitUntilApproval(orderId, kitStage);
         UUID itemId = db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?", UUID.class, orderId);
         UUID reviewer = ReflectionTestUtils.invokeMethod(fixture, "createApprover", w);
         financeApproval.submit("SUBCONTRACT", orderId);

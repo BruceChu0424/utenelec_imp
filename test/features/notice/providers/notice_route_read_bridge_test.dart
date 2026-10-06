@@ -69,6 +69,11 @@ void main() {
       ),
       contains('SUBCONTRACT_DRAW_AVAILABLE'),
     );
+    // ADR-156 可下单卡的 action_route 带 ?segment=pending&keyword=，进任务中心即清。
+    expect(
+      noticeClearEventsForLocation('/operations/workbench/subcontract'),
+      contains('SUBCONTRACT_ORDER_KIT_READY'),
+    );
     expect(
       noticeClearEventsForLocation('/warehouse/subcontract-outbound/issue-1'),
       ['SUBCONTRACT_OUTBOUND_READY', 'SUBCONTRACT_DRAW_WITHDRAWN'],

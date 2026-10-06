@@ -174,6 +174,19 @@ void main() {
         ),
         RouteName.operationsSubcontractDrawSegment(orderItemId: 'item-1'),
       );
+      // ADR-156 委外可下单：落「待处理」分段，通知自带申请号时沿用。
+      expect(
+        workbenchRouteFor('SUBCONTRACT_ORDER_KIT_READY'),
+        RouteName.operationsSubcontractPendingSegment(),
+      );
+      expect(
+        workbenchRouteFor(
+          'SUBCONTRACT_ORDER_KIT_READY',
+          actionRoute:
+              '/operations/workbench/subcontract?segment=pending&keyword=EB-001',
+        ),
+        '/operations/workbench/subcontract?segment=pending&keyword=EB-001',
+      );
       expect(
         workbenchRouteFor('SUBCONTRACT_OUTBOUND_READY'),
         RouteName.warehouseSubcontractOutbound,
@@ -342,6 +355,39 @@ void main() {
       expect(groupedRepo.readIds, ['review-2'], reason: '点击单条不把另一个业务事件当作已处理');
     });
   }
+
+  testWidgets('委外可下单卡直落任务中心「待处理」并带申请号', (tester) async {
+    const route =
+        '/operations/workbench/subcontract?segment=pending&keyword=EB-001';
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(
+      tester,
+      repo: repo,
+      pending: [
+        noticeOf(
+          'kit-1',
+          title: '委外可下单：EB-001 委外件 可下单 4 件',
+          sourceEvent: 'SUBCONTRACT_ORDER_KIT_READY',
+          actionRoute: route,
+        ),
+        noticeOf('finance', title: '财务申请'),
+      ],
+      routes: [
+        GoRoute(
+          path: RouteName.operationsSubcontractWorkbench,
+          builder: (_, state) => Text(
+            '任务中心 ${state.uri.queryParameters['segment']} '
+            '${state.uri.queryParameters['keyword']}',
+          ),
+        ),
+      ],
+    );
+    expect(find.text('委外可下单 1'), findsOneWidget);
+    await tester.tap(find.text('委外可下单：EB-001 委外件 可下单 4 件'));
+    await tester.pumpAndSettle();
+    expect(find.text('任务中心 pending EB-001'), findsOneWidget);
+    expect(repo.readIds, ['kit-1']);
+  });
 
   for (final grouped in [false, true]) {
     testWidgets(

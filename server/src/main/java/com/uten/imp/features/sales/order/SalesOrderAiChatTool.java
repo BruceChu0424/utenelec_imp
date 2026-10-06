@@ -167,7 +167,8 @@ public class SalesOrderAiChatTool implements AiChatToolPort {
                 SELECT o.id, o.status, CAST(o.bill_date AS text), CAST(o.deliver_date AS text),
                        o.finance_confirmed, o.finance_rejected, o.legacy_id
                 FROM sales_orders o
-                WHERE o.bill_no = :billNo AND o.is_deleted = FALSE AND """ + " " + scope.predicate());
+                WHERE o.bill_no = :billNo AND o.is_deleted = FALSE AND %s
+                """.formatted(scope.predicate()));
         query.setParameter("billNo", orderNo);
         scope.bind(query);
         @SuppressWarnings("unchecked") List<Object[]> rows = query.getResultList();

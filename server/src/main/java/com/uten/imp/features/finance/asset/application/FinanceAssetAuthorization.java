@@ -17,6 +17,7 @@ public class FinanceAssetAuthorization {
 
     public static final String VIEW = "finance_asset:view";
     public static final String EDIT = "finance_asset:edit";
+    public static final String DELETE = "finance_asset:delete";
     public static final String APPROVE = "finance_asset:approve";
     public static final String POST = "finance_asset:post";
     public static final String DISPOSE = "finance_asset:dispose";
@@ -51,7 +52,8 @@ public class FinanceAssetAuthorization {
     public Set<String> allowedActions(String status, UUID makerId, boolean deferredExpense) {
         UUID actorId = currentUser.id().orElse(null);
         return switch (status) {
-            case "DRAFT" -> has(EDIT) ? Set.of("EDIT", "DELETE", "SUBMIT") : Set.of();
+            case "DRAFT" -> union(has(EDIT) ? Set.of("EDIT", "SUBMIT") : Set.of(),
+                    has(DELETE) ? Set.of("DELETE") : Set.of());
             case "PENDING_APPROVAL" -> has(APPROVE) && !same(actorId, makerId)
                     ? Set.of("APPROVE", "REJECT") : Set.of();
             case "APPROVED" -> featureGate.postedWorkflowsEnabled()

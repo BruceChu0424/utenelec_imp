@@ -9,6 +9,47 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get releaseNotesOpen => 'See what\'s new in this version';
+
+  @override
+  String get releaseNotesTitle => 'What\'s new';
+
+  @override
+  String get releaseNotesClose => 'Got it';
+
+  @override
+  String get releaseNotesUnavailable =>
+      'No release notes are included for this version.';
+
+  @override
+  String get release253Hr =>
+      'Select multiple employees and compare current identity details with proposed corrections before applying them together.';
+
+  @override
+  String get release253Permissions =>
+      'Manage page and child-page access in a shared drawer with bulk grants. Editing and deletion remain separate permissions.';
+
+  @override
+  String get release253Materials =>
+      'Confirm aggregated material orders once and process dependencies automatically, with corrected shared supply sources and shortages.';
+
+  @override
+  String get release253Ai =>
+      'The AI assistant adds file understanding, action confirmation and personal operation memory, plus usage reporting and per-person limits.';
+
+  @override
+  String get release253Notices =>
+      'Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.';
+
+  @override
+  String get release253Reset =>
+      'Clearing business data also invalidates old drafts and clears business weight measurements and learned weight records.';
+
+  @override
+  String get release253Maintenance =>
+      'Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.';
+
+  @override
   String get businessColumnAmountUnavailable =>
       'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
 

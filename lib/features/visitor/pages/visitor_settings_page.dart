@@ -29,6 +29,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../settings/widgets/settings_section.dart';
+import '../../settings/widgets/app_version_tile.dart';
 import '../providers/visitor_session_provider.dart';
 
 class VisitorSettingsPage extends ConsumerWidget {
@@ -88,14 +89,7 @@ class VisitorSettingsPage extends ConsumerWidget {
               // 关于
               SettingsSection(
                 title: l10n.settingsSectionAbout,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline, size: 20),
-                    title: Text(l10n.settingsVersion),
-                    trailing: const Text(AppInfo.version),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
+                children: [const AppVersionTile()],
               ),
 
               // 退出访客

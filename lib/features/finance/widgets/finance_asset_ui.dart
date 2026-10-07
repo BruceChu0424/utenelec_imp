@@ -7,6 +7,7 @@ class FinanceAssetCapabilities {
   const FinanceAssetCapabilities({
     required this.canView,
     required this.canEdit,
+    this.canDelete = false,
     required this.canApprove,
     required this.canPost,
     required this.canDispose,
@@ -15,6 +16,7 @@ class FinanceAssetCapabilities {
 
   final bool canView;
   final bool canEdit;
+  final bool canDelete;
   final bool canApprove;
   final bool canPost;
   final bool canDispose;

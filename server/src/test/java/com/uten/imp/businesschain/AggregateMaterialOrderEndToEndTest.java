@@ -412,41 +412,59 @@ class AggregateMaterialOrderEndToEndTest {
      * 委外节点的直属物料真实消耗，别名随需求一起穿过委外中间件。
      */
     @Test void deepSupplyBelowSubcontractIntermediateStaysCoveredAfterParentMerge() {
-        Case c=createWithChild("1");
+        assertDeepSupplyRemainsCovered(createWithChild("1"), "3", "6", "8", 3);
+    }
+
+    @Test void twoProductsOf100KeepTheInitial400SupplyAfterParentMerge() {
+        assertDeepSupplyRemainsCovered(create(true,false,"100",true,2,"1"), "200", "200", "400", 2);
+    }
+
+    @Test void twoProductsOf100KeepTheInitial400ManufacturingSupplyAfterParentMerge() {
+        assertDeepSupplyRemainsCovered(create(true,false,"100",true,2,"1"), "200", "200", "400", 2, "MAKE");
+    }
+
+    private void assertDeepSupplyRemainsCovered(Case c,String parentQty,String needed,String ordered,int sourceCount) {
+        assertDeepSupplyRemainsCovered(c,parentQty,needed,ordered,sourceCount,"BUY");
+    }
+
+    private void assertDeepSupplyRemainsCovered(Case c,String parentQty,String needed,String ordered,int sourceCount,String route) {
         setRoute(c,c.child(),"SUBCONTRACT");
+        if ("MAKE".equals(route)) setRoute(c,c.material(),route);
         List<UUID> leafs=analyses.detail(c.analysis()).flatMaterials().stream()
                 .filter(row->row.goodsId().equals(c.material())).map(MaterialView::materialLineId).toList();
-        assertEquals(3,leafs.size());
-        GroupInput over=new GroupInput("deep-leaf-over",leafs,"BUY",new BigDecimal("8"),true,
-                null,null,null,null,null,null,null,BigDecimal.ZERO,null);
+        assertEquals(sourceCount,leafs.size());
+        GroupInput over=input(c,c.material(),route,ordered,true);
         var supplied=writer.submit(c.analysis(),command(c,List.of(over)));
         assertEquals(1,supplied.batches().size());
         UUID request=supplied.batches().getFirst().documentId();
-        var merged=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","3",false))));
+        UUID suppliedPlan=supplied.batches().getFirst().planId();
+        var merged=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE",parentQty,false))));
         UUID anchor=merged.batches().getFirst().anchorAnalysisItemId();
-        amount("6",db.queryForObject("""
+        amount(needed,db.queryForObject("""
                 SELECT COALESCE(SUM(fn_preplan_aggregate_alias_qty(alias.id)),0) FROM preplan_aggregate_material_aliases alias
                 JOIN production_material_analysis_materials source ON source.id=alias.source_material_id
                 WHERE source.goods_id=? AND cardinality(alias.relative_bom_path)=2
                 """,BigDecimal.class,c.material()));
         MaterialView anchorLeaf=analyses.detail(c.analysis()).flatMaterials().stream()
                 .filter(row->row.goodsId().equals(c.material())&&row.analysisLineId().equals(anchor)).findFirst().orElseThrow();
-        amount("6",anchorLeaf.requiredQty());
+        amount(needed,anchorLeaf.requiredQty());
         amount("0",anchorLeaf.planningUncoveredQty());
         amount("0",anchorLeaf.netShortageQty());
-        var recheck=preview.preview(c.analysis(),request(c,List.of(input(c,c.material(),"BUY","0",false))));
+        var recheck=preview.preview(c.analysis(),request(c,List.of(input(c,c.material(),route,"0",false))));
         assertNull(recheck.groups().getFirst().blockedReason(),"转交后的叶组必须还能正常核对");
-        // 已下 8 对需求 6：预览不能再报缺口(现场症状是补 200 的幽灵缺口)。
+        // 超量部分保持公共供给；旧的专属供给随精确来源转交，不能再制造幽灵缺口。
         amount("0",recheck.groups().getFirst().remainingQty());
-        amount("8",db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,request));
-        // 端态锁：本分析该货品的全部汇总请购明细合计必须仍是 8——幽灵第二张
-        // 请购单(不同单号)也会在这里暴露。
-        amount("8",db.queryForObject("""
-                SELECT COALESCE(SUM(item.qty),0) FROM purchase_request_items item
-                JOIN preplan_supply_actions action ON action.external_document_type='PURCHASE_REQUEST'
-                    AND action.external_document_id=item.request_id AND action.status<>'CANCELLED'
-                WHERE action.analysis_id=? AND item.goods_id=? AND NOT item.is_deleted
-                """,BigDecimal.class,c.analysis(),c.material()));
+        if ("BUY".equals(route)) {
+            amount(ordered,db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,request));
+        } else {
+            amount(ordered,db.queryForObject("SELECT SUM(qty) FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,suppliedPlan));
+        }
+        // The whole analysis retains exactly the initial physical supply, irrespective of document kind.
+        amount(ordered,db.queryForObject("""
+                SELECT COALESCE(SUM(action.requested_qty+action.public_surplus_qty),0)
+                FROM preplan_supply_actions action
+                WHERE action.analysis_id=? AND action.goods_id=? AND action.route=? AND action.status<>'CANCELLED'
+                """,BigDecimal.class,c.analysis(),c.material(),route));
     }
 
     @Test void fixedBatchClaimCreatedAfterMergeCoversOnlyItsCurrentOriginalShare() {
@@ -706,6 +724,9 @@ class AggregateMaterialOrderEndToEndTest {
         return create(manufacture,fixed,quantity,nested,3);
     }
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount) {
+        return create(manufacture,fixed,quantity,nested,sourceCount,"2");
+    }
+    private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
         // ADR-147 (V802): 直送只送已开通内料仓的车间; 本车间的内料仓开通在测试世界的主仓下。
@@ -714,7 +735,7 @@ class AggregateMaterialOrderEndToEndTest {
                 beans.getBean(org.springframework.transaction.PlatformTransactionManager.class),workshop,world.warehouseId());
         UUID common=manufacture?UUID.randomUUID():world.goodsD(),child=nested?UUID.randomUUID():null;
         if(manufacture)fixture.insertGoods(common,"AG-H-"+common,"共享制造父件","自制",world.unitId(),world.unitLegacy());
-        if(nested){fixture.insertGoods(child,"AG-C-"+child,"先下达制造子件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,child,"1");fixture.insertBom(child,world.goodsD(),"2");}
+        if(nested){fixture.insertGoods(child,"AG-C-"+child,"先下达制造子件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,child,"1");fixture.insertBom(child,world.goodsD(),leafBomQty);}
         else if(manufacture){fixture.insertBom(common,world.goodsD(),"1");if(fixed)db.update("UPDATE goods_bom_items SET consumption_basis='FIXED_BATCH',basis_output_qty=5 WHERE goods_id=?",common);}
         List<PreviewItem> sources=new ArrayList<>();
         for(int index=0;index<sourceCount;index++){UUID root=UUID.randomUUID();fixture.insertGoods(root,"AG-R-"+root,"不同顶层"+index,"自制",world.unitId(),world.unitLegacy());fixture.insertBom(root,common,manufacture?"1":"2");

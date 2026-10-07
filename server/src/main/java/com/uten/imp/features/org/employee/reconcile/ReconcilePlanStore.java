@@ -181,6 +181,18 @@ public class ReconcilePlanStore {
                 """, this::apply, UUID.randomUUID(), planId, roundNo, requestId, actorUserId);
     }
 
+    /** 逐人事务持有计划锁并续租；已回收的旧轮次不得再写员工、结果或关闭新轮次。 */
+    public boolean renewApplyLease(UUID planId, UUID applyId) {
+        return jdbc.update("""
+                UPDATE employee_reconcile_plans plan
+                SET applying_until = now() + interval '5 minutes'
+                WHERE plan.id = ? AND plan.status = 'APPLYING' AND plan.expires_at > now()
+                  AND EXISTS (SELECT 1 FROM employee_reconcile_applies receipt
+                              WHERE receipt.id = ? AND receipt.plan_id = plan.id
+                                AND receipt.status = 'RUNNING')
+                """, planId, applyId) == 1;
+    }
+
     /** 一轮更正结束: FINISHED + 统计/结果, 计划回 OPEN、清 applying_until、记 last_applied_at、版本 +1。 */
     public void finishApply(UUID applyId, String countsJson, String resultJson) {
         jdbc.update("""
@@ -232,9 +244,14 @@ public class ReconcilePlanStore {
     /** 关闭计划: CLOSED + 理由, 未执行项(outcome IS NULL)的旧值/新值/候选密文一并清掉, 记 purged_at。 */
     public void closePlan(UUID id, String reason) {
         jdbc.update("""
-                UPDATE employee_reconcile_plans SET status = 'CLOSED', closed_reason = ?, purged_at = now()
+                UPDATE employee_reconcile_plans SET status = 'CLOSED', closed_reason = ?,
+                       applying_until = NULL, purged_at = now()
                 WHERE id = ? AND status <> 'CLOSED'
                 """, reason, id);
+        jdbc.update("""
+                UPDATE employee_reconcile_applies SET status = 'INTERRUPTED', finished_at = now()
+                WHERE plan_id = ? AND status = 'RUNNING'
+                """, id);
         jdbc.update("""
                 UPDATE employee_reconcile_plan_items SET old_value_enc = NULL, new_value_enc = NULL, candidates_enc = NULL
                 WHERE plan_id = ? AND outcome IS NULL
@@ -243,17 +260,21 @@ public class ReconcilePlanStore {
 
     /** 定时清理: 过期未关闭的计划按 closePlan 同一逻辑以 EXPIRED 关闭, 返回关闭的计划数。 */
     public int purgeExpired(OffsetDateTime now) {
-        int expired = jdbc.update("""
-                UPDATE employee_reconcile_plans SET status = 'CLOSED', closed_reason = 'EXPIRED', purged_at = now()
+        List<UUID> expired = jdbc.query("""
+                SELECT id FROM employee_reconcile_plans
                 WHERE status <> 'CLOSED' AND expires_at <= ?
-                """, now);
+                ORDER BY id FOR UPDATE SKIP LOCKED
+                """, (rs, i) -> rs.getObject("id", UUID.class), now);
+        for (UUID planId : expired) {
+            closePlan(planId, "EXPIRED");
+        }
         jdbc.update("""
                 UPDATE employee_reconcile_plan_items item SET old_value_enc = NULL, new_value_enc = NULL, candidates_enc = NULL
                 WHERE item.outcome IS NULL
                   AND EXISTS (SELECT 1 FROM employee_reconcile_plans plan
                               WHERE plan.id = item.plan_id AND plan.status = 'CLOSED' AND plan.closed_reason = 'EXPIRED')
                 """);
-        return expired;
+        return expired.size();
     }
 
     /**
@@ -263,6 +284,7 @@ public class ReconcilePlanStore {
     public int reclaimStaleApplying(OffsetDateTime now) {
         List<UUID> stale = jdbc.query("""
                 SELECT id FROM employee_reconcile_plans WHERE status = 'APPLYING' AND applying_until < ?
+                ORDER BY id FOR UPDATE SKIP LOCKED
                 """, (rs, i) -> rs.getObject("id", UUID.class), now);
         if (stale.isEmpty()) {
             return 0;

@@ -92,17 +92,7 @@ public class AiGateway implements AiCompletionPort {
         if (hasImage && !runtime.supportsVision()) {
             throw new AiCallException(AiErrorCategory.BLOCKED, VISION_UNSUPPORTED_MESSAGE);
         }
-        long budget = properties.getDailyTokenBudget();
-        if (budget > 0 && callLogs.todayTokens() >= budget) {
-            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达上限, 请明天再试或联系管理员");
-        }
-        // 个人每日 token 限额(ADR-164): 与全站预算同点同错误码, 管理员给某人单独收紧时才生效;
-        // 探测调用(probeChat)不查, 与全站预算同口径。取当前用户与 logAttempt 同源。
-        UUID caller = currentUser.id().orElse(null);
-        Long personalTokenLimit = userLimits.tokenLimit(caller).orElse(null);
-        if (personalTokenLimit != null && callLogs.todayTokens(caller) >= personalTokenLimit) {
-            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达到你的个人限额, 请明天再试或联系管理员");
-        }
+        requireCallAllowed();
         AiProtocolClient.ChatRequest chat = prepare(request, runtime);
         if (request.reasoningEffort().explicit()) {
             // ADR-152: names and levels only (never prompt or business data), so the admin can verify what was sent.
@@ -116,9 +106,13 @@ public class AiGateway implements AiCompletionPort {
         long started = System.nanoTime();
         acquirePermit();
         try {
+            // Waiting for a provider slot can outlive a limit/disable change.
+            // Recheck immediately before every outbound attempt, including retries.
+            requireCallAllowed();
             AttemptResult first = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing);
             AttemptResult result = first;
             if (first.failure() != null && retryable(first.failure().category())) {
+                requireCallAllowed();
                 result = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing);
             }
             if (result.failure() != null) {
@@ -132,6 +126,19 @@ public class AiGateway implements AiCompletionPort {
         long latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
         return new AiCompletionResult(json, runtime.name(), runtime.model(), response.inputTokens(),
                 response.outputTokens(), latency);
+    }
+
+    private void requireCallAllowed() {
+        UUID caller = currentUser.id().orElse(null);
+        userLimits.requireEnabled(caller);
+        long budget = properties.getDailyTokenBudget();
+        if (budget > 0 && callLogs.todayTokens() >= budget) {
+            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达上限, 请明天再试或联系管理员");
+        }
+        Long personalTokenLimit = userLimits.tokenLimit(caller).orElse(null);
+        if (personalTokenLimit != null && callLogs.todayTokens(caller) >= personalTokenLimit) {
+            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达到你的个人限额, 请明天再试或联系管理员");
+        }
     }
 
     /**

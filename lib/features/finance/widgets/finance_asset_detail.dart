@@ -152,6 +152,7 @@ class _FinanceAssetDetailSurfaceState
         allowed.contains(normalized.replaceAll('_', '-'));
     if (!serverAllowed) return false;
     return switch (normalized) {
+      'DELETE' => widget.capabilities.canDelete,
       'APPROVE' || 'REJECT' => widget.capabilities.canApprove,
       'ACTIVATE' => widget.capabilities.canPost,
       'DISPOSE' ||
@@ -337,8 +338,12 @@ class _FinanceAssetDetailSurfaceState
               child: const Text('编辑'),
             ),
           if (summary != null &&
-              widget.capabilities.canEdit &&
+              widget.capabilities.canDelete &&
               widget.onDelete != null &&
+              (ref.watch(isSuperAdminProvider) ||
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.financeAssetDelete)) &&
               summary.status.toUpperCase() == 'DRAFT')
             IconButton(
               constraints: const BoxConstraints(minWidth: 48, minHeight: 48),

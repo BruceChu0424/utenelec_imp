@@ -66,7 +66,7 @@ class ChainNoticeProductionWorkshopScopeTest {
         assertThat(service.workshopRecipientUserIds(
                 workshopId, responsibleId)).containsExactly(eligibleId);
 
-        // 负责人非空时不查全成员兜底池。
+        // 收件人只查询负责人，不查询普通成员或兼职人员。
         verify(jdbc, never()).queryForList(
                 contains("employee_secondary_departments"), eq(UUID.class), any(), any());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
@@ -80,32 +80,27 @@ class ChainNoticeProductionWorkshopScopeTest {
     }
 
     @Test
-    void workshopRecipientsFallBackToMemberPoolWhenNoLeaderIsRegistered() {
-        // 车间没登记任何负责人且任务无负责人: 退回旧的全成员池(主职/兼职/各级负责人),
-        // 任务不能无人感知(与 ADR-149 仓库通知同一兜底形状)。
+    void workshopRecipientsStayEmptyWithoutAnEligibleLeader() {
         NoticeService notices = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         ChainNoticeService service = service(notices, users, permissions, jdbc);
         UUID workshopId = UUID.randomUUID();
-        UUID memberId = UUID.randomUUID();
-        doReturn(List.<UUID>of())
-                .when(jdbc)
-                .queryForList(contains("SELECT department.manager_id AS employee_id"),
-                        eq(UUID.class), any(), any());
-        doReturn(List.of(memberId))
-                .when(jdbc)
-                .queryForList(contains("employee_secondary_departments"),
-                        eq(UUID.class), any(), any());
-        UserAccount member = activeAccount();
-        when(users.findById(memberId)).thenReturn(Optional.of(member));
-        when(permissions.permsOf(member)).thenReturn(
-                Set.of("notice:read", "production_execution:view", "production_execution:start"));
+        UUID leaderId = UUID.randomUUID();
+        doReturn(List.<UUID>of()).when(jdbc).queryForList(
+                contains("SELECT department.manager_id AS employee_id"), eq(UUID.class), any(), any());
+        assertThat(service.workshopRecipientUserIds(workshopId, null)).isEmpty();
 
-        assertThat(service.workshopRecipientUserIds(workshopId, null)).containsExactly(memberId);
-        verify(jdbc).queryForList(
-                contains("employee_secondary_departments"), eq(UUID.class), eq(workshopId), eq(null));
+        // A configured leader whose handling permission was revoked must not broadcast to members.
+        doReturn(List.of(leaderId)).when(jdbc).queryForList(
+                contains("SELECT department.manager_id AS employee_id"), eq(UUID.class), any(), any());
+        UserAccount leader = activeAccount();
+        when(users.findById(leaderId)).thenReturn(Optional.of(leader));
+        when(permissions.permsOf(leader)).thenReturn(Set.of("notice:read", "production_execution:view"));
+        assertThat(service.workshopRecipientUserIds(workshopId, null)).isEmpty();
+        verify(jdbc, never()).queryForList(
+                contains("employee_secondary_departments"), eq(UUID.class), any(), any());
     }
 
     @Test

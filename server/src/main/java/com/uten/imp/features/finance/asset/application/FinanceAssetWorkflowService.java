@@ -200,9 +200,9 @@ public class FinanceAssetWorkflowService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    @PreAuthorize("hasAuthority('finance_asset:delete')")
     public void deleteDraft(UUID id, boolean deferred, long expectedVersion) {
-        tx.bind(); authorization.require(FinanceAssetAuthorization.EDIT);
+        tx.bind(); authorization.require(FinanceAssetAuthorization.DELETE);
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         Locked locked = lock(table, id); FinanceAssetStateMachine.requireDraft(locked.status());
         version(locked.version(), expectedVersion);

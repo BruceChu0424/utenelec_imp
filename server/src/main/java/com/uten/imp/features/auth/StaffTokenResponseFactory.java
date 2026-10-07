@@ -125,7 +125,8 @@ public class StaffTokenResponseFactory {
                 position,
                 snapshot.mustChangePassword(),
                 snapshot.superAdmin(),
-                permissions);
+                permissions,
+                snapshot.businessResetGeneration());
     }
 
     /**
@@ -151,7 +152,8 @@ public class StaffTokenResponseFactory {
                         authorities.permissions(),
                         after.isMustChangePassword(),
                         after.getAuthVersion(),
-                        after.getAuthorizationEpoch());
+                        after.getAuthorizationEpoch(),
+                        after.getBusinessResetGeneration());
             }
         }
         throw new ApiException(ErrorCode.CONFLICT, "权限正在更新，请重试登录");
@@ -162,6 +164,7 @@ public class StaffTokenResponseFactory {
             UserAccountRepository.AccountState after) {
         return before.getAuthVersion() == after.getAuthVersion()
                 && before.getAuthorizationEpoch() == after.getAuthorizationEpoch()
+                && before.getBusinessResetGeneration() == after.getBusinessResetGeneration()
                 && Objects.equals(before.getEmployeeId(), after.getEmployeeId())
                 && Objects.equals(before.getLoginAccount(), after.getLoginAccount())
                 && before.isSuperAdmin() == after.isSuperAdmin()
@@ -188,6 +191,7 @@ public class StaffTokenResponseFactory {
             Set<String> permissions,
             boolean mustChangePassword,
             long authVersion,
-            long authorizationEpoch) {
+            long authorizationEpoch,
+            long businessResetGeneration) {
     }
 }

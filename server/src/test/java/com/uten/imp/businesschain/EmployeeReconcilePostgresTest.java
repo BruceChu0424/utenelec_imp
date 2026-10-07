@@ -3,6 +3,7 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uten.imp.features.org.employee.reconcile.ReconcilePlanHousekeeping;
+import com.uten.imp.features.org.employee.reconcile.ReconcilePlanStore;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +21,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -58,6 +63,8 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     PlatformTransactionManager transactionManager;
     @Autowired
     ReconcilePlanHousekeeping housekeeping;
+    @Autowired
+    ReconcilePlanStore reconcileStore;
 
     // ------------------------------------------------------------------
     // 1 + 2. 数据准备：十种存量档案 → 生成计划 → 行/项/统计/明文边界
@@ -519,6 +526,17 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
                 "SELECT count(*) FROM employee_reconcile_applies WHERE plan_id = ?", Integer.class, planId));
         assertEquals(applyEvents, countAudit("employee_reconcile.apply", null),
                 "replay must not write new audit events");
+
+        Employee other = newEmployee(admin, "DEPT_HR");
+        mvc.perform(withStepUp(json(post("/api/org/employee-reconcile/plans/" + planId + "/apply"),
+                applyBody(first.path("planVersion").asInt(), "replay-me", rowOf(view, employee).path("rowNo").asInt())),
+                other.accessToken())).andExpect(status().isNotFound());
+        mvc.perform(withStepUp(json(post("/api/org/employee-reconcile/plans/" + planId + "/apply"),
+                applyBody(first.path("planVersion").asInt(), "new-round-same-item", rowOf(view, employee).path("rowNo").asInt())),
+                hr.accessToken())).andExpect(status().isUnprocessableEntity());
+        assertEquals("APPLIED", jdbc.queryForObject("""
+                SELECT outcome FROM employee_reconcile_plan_items WHERE plan_id = ? AND row_no = ?
+                """, String.class, planId, rowOf(view, employee).path("rowNo").asInt()));
     }
 
     // ------------------------------------------------------------------
@@ -581,6 +599,93 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("errorCode"))
                 .andExpect(jsonPath("$.fieldErrors[0].message").value("RECONCILE_PLAN_EXPIRED"));
+    }
+
+    @Test
+    void expiredApplyingPlanClosesItsReceiptAndDoesNotBlockOtherCleanup() throws Exception {
+        Employee hr = newEmployee(adminToken(), "DEPT_HR");
+        UUID employee = legacyEmployee("V810-J-01", "核对过期执行", "身份证",
+                "442000780422841", phone(10, 1));
+        JsonNode view = createPlan(hr, List.of(employee));
+        UUID planId = UUID.fromString(view.path("id").asText());
+        UUID applyId = UUID.randomUUID();
+        jdbc.update("""
+                UPDATE employee_reconcile_plans
+                SET status = 'APPLYING', applying_until = now() - interval '1 minute',
+                    created_at = now() - interval '2 hours', expires_at = now() - interval '1 minute'
+                WHERE id = ?
+                """, planId);
+        jdbc.update("""
+                INSERT INTO employee_reconcile_applies(id, plan_id, round_no, request_id, actor_user_id)
+                VALUES (?, ?, 1, 'expired-running', ?)
+                """, applyId, planId, UUID.fromString(hr.userId()));
+
+        housekeeping.purge();
+
+        assertEquals("CLOSED", planColumn(planId, "status"));
+        assertEquals("EXPIRED", planColumn(planId, "closed_reason"));
+        assertNull(planColumn(planId, "applying_until"));
+        assertEquals("INTERRUPTED", jdbc.queryForObject(
+                "SELECT status FROM employee_reconcile_applies WHERE id = ?", String.class, applyId));
+        assertFalse(itemValueEncPresent(planId, rowOf(view, employee).path("rowNo").asInt()));
+        assertEquals(Boolean.FALSE, new TransactionTemplate(transactionManager).execute(
+                ignored -> reconcileStore.renewApplyLease(planId, applyId)));
+    }
+
+    @Test
+    void lockedConcurrentEmployeeEditIsRecheckedBeforeApplyingTheOldPlan() throws Exception {
+        Employee hr = newEmployee(adminToken(), "DEPT_HR");
+        UUID employee = legacyEmployee("V810-K-01", "核对并发更正", "身份证",
+                "442000780422842", phone(11, 1));
+        JsonNode view = createPlan(hr, List.of(employee));
+        UUID planId = UUID.fromString(view.path("id").asText());
+        int rowNo = rowOf(view, employee).path("rowNo").asInt();
+        MockHttpServletRequestBuilder request = withStepUp(json(
+                post("/api/org/employee-reconcile/plans/" + planId + "/apply"),
+                applyBody(1, "concurrent-employee-edit", rowNo)), hr.accessToken());
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger blockerPid = new AtomicInteger();
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var editor = workers.submit(() -> new TransactionTemplate(transactionManager)
+                    .executeWithoutResult(ignored -> {
+                        blockerPid.set(jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
+                        jdbc.update("UPDATE employees SET version = version + 1 WHERE id = ?", employee);
+                        locked.countDown();
+                        try {
+                            if (!release.await(20, TimeUnit.SECONDS)) {
+                                throw new IllegalStateException("test lock release timed out");
+                            }
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(interrupted);
+                        }
+                    }));
+            assertTrue(locked.await(10, TimeUnit.SECONDS));
+            var applying = workers.submit(() -> mvc.perform(request).andReturn());
+            boolean waiting = false;
+            try {
+                for (int attempt = 0; attempt < 400 && !waiting; attempt++) {
+                    waiting = Boolean.TRUE.equals(jdbc.queryForObject("""
+                            SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+                                           WHERE ? = ANY(pg_blocking_pids(pid)))
+                            """, Boolean.class, blockerPid.get()));
+                    if (!waiting) Thread.sleep(25);
+                }
+                assertTrue(waiting, "the apply request must reach the employee lock before it is released");
+            } finally {
+                release.countDown();
+            }
+            editor.get(10, TimeUnit.SECONDS);
+            MvcResult response = applying.get(15, TimeUnit.SECONDS);
+            assertEquals(200, response.getResponse().getStatus(), response.getResponse().getContentAsString());
+            JsonNode result = objectMapper.readTree(response.getResponse().getContentAsString());
+            assertEquals(0, result.path("counts").path("applied").asInt());
+            assertEquals(1, result.path("counts").path("skipped").asInt());
+            assertEquals("442000780422842", storedIdentity(employee));
+        } finally {
+            release.countDown();
+        }
     }
 
     // ------------------------------------------------------------------

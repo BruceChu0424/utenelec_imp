@@ -16,6 +16,8 @@
 *.timer text eol=lf
 *.conf text eol=lf
 *.example text eol=lf
+# Linux host templates include extensionless apt configuration files.
+deploy/simple/host/* text eol=lf
 
 *.bat text eol=crlf
 *.cmd text eol=crlf

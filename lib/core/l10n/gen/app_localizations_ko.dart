@@ -9,6 +9,46 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get releaseNotesOpen => '이 버전의 업데이트 보기';
+
+  @override
+  String get releaseNotesTitle => '업데이트 내용';
+
+  @override
+  String get releaseNotesClose => '확인';
+
+  @override
+  String get releaseNotesUnavailable => '이 버전에는 업데이트 설명이 포함되어 있지 않습니다.';
+
+  @override
+  String get release253Hr =>
+      '여러 직원의 증명서 정보를 선택하고 기존 정보와 수정 내용을 비교한 뒤 일괄 처리할 수 있습니다.';
+
+  @override
+  String get release253Permissions =>
+      '페이지와 하위 페이지 권한을 통합 서랍에서 일괄 설정합니다. 편집과 삭제 권한은 별도로 관리합니다.';
+
+  @override
+  String get release253Materials =>
+      '자재 합산 주문은 한 번 확인한 뒤 의존 순서에 따라 자동 처리하며, 공유 자재의 공급 출처와 부족량 계산을 수정했습니다.';
+
+  @override
+  String get release253Ai =>
+      'AI 도우미에 파일 이해, 작업 확인, 개인 작업 기억, 사용량 조회 및 개인별 한도를 추가했습니다.';
+
+  @override
+  String get release253Notices =>
+      '추가 생산이 가능해지면 권한이 있는 작업장 책임자에게 자재 도착을 알립니다. 긴급, 할 일, 진행 상황 및 공지에 서로 다른 스타일을 적용했습니다.';
+
+  @override
+  String get release253Reset =>
+      '업무 데이터를 비우면 기존 임시 저장 자료가 무효화되고 업무 중량 측정 및 학습 기록도 삭제됩니다.';
+
+  @override
+  String get release253Maintenance =>
+      '오래된 코드와 문서를 정리하고 권한 및 동시 처리 검사를 보강했습니다. 버전을 누르면 이 설명을 볼 수 있습니다.';
+
+  @override
   String get businessColumnAmountUnavailable =>
       '현재 계정은 이 열을 금액 계산에 사용할 수 없습니다. 가격 권한을 복구하거나 문자 또는 숫자 기록을 명시적으로 선택하세요.';
 

@@ -18,6 +18,22 @@ import static org.mockito.Mockito.when;
 class FinanceAssetAuthorizationTest {
 
     @Test
+    void draftDeleteIsIndependentAndRevocationImmediatelyRemovesTheAction() {
+        SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
+        FinanceAssetAuthorization guard = new FinanceAssetAuthorization(current, new FinanceAssetFeatureGate(true));
+        when(current.get()).thenReturn(Optional.of(user(Set.of(FinanceAssetAuthorization.EDIT), false)));
+        assertThat(guard.allowedActions("DRAFT", UUID.randomUUID(), false)).containsExactlyInAnyOrder("EDIT", "SUBMIT");
+        assertThatThrownBy(() -> guard.require(FinanceAssetAuthorization.DELETE)).isInstanceOf(ApiException.class);
+        when(current.get()).thenReturn(Optional.of(user(Set.of(FinanceAssetAuthorization.DELETE), false)));
+        assertThat(guard.allowedActions("DRAFT", UUID.randomUUID(), true)).containsExactly("DELETE");
+        assertThat(guard.allowedActions("PENDING_APPROVAL", UUID.randomUUID(), true)).doesNotContain("DELETE");
+        when(current.get()).thenReturn(Optional.of(user(Set.of(FinanceAssetAuthorization.VIEW), false)));
+        assertThat(guard.allowedActions("DRAFT", UUID.randomUUID(), true)).isEmpty();
+        when(current.get()).thenReturn(Optional.of(user(Set.of(), true)));
+        assertThat(guard.allowedActions("DRAFT", UUID.randomUUID(), false)).contains("DELETE");
+    }
+
+    @Test
     void serviceGuardRejectsMissingPermission() {
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
         when(current.get()).thenReturn(Optional.of(user(Set.of(FinanceAssetAuthorization.VIEW), false)));

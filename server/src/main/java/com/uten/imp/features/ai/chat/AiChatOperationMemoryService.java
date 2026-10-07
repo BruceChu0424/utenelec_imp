@@ -97,16 +97,18 @@ public class AiChatOperationMemoryService {
     /** 本人近期用过的查询工具(按最近使用排序, 提示注入用)。 */
     public List<Remembered> recentTools(int limit) {
         return jdbc.query("SELECT " + COLUMNS + " FROM ai_chat_operation_memory"
-                + " WHERE user_id = ? AND resolution->>'kind' = 'TOOL' ORDER BY last_used_at DESC LIMIT ?",
-                this::row, access.requireChat().getId(), clamp(limit));
+                + " WHERE user_id = ? AND resolution->>'kind' = 'TOOL'"
+                + " AND last_used_at > now() - make_interval(days => ?) ORDER BY last_used_at DESC LIMIT ?",
+                this::row, access.requireChat().getId(), retentionDays, clamp(limit));
     }
 
     /** 本人最常让我打开的表单(按重复次数、再按最近使用排序, 欢迎区建议用)。 */
     public List<Remembered> suggestions(int limit) {
         return jdbc.query("SELECT " + COLUMNS + " FROM ai_chat_operation_memory"
                 + " WHERE user_id = ? AND resolution->>'kind' = 'OPEN_FORM'"
+                + " AND last_used_at > now() - make_interval(days => ?)"
                 + " ORDER BY hit_count DESC, last_used_at DESC LIMIT ?",
-                this::row, access.requireChat().getId(), clamp(limit));
+                this::row, access.requireChat().getId(), retentionDays, clamp(limit));
     }
 
     /** 本人清除自己的全部操作记忆(设置面板「清除记录」)。 */

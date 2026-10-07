@@ -302,6 +302,29 @@ class AiGatewayTest {
     }
 
     @Test
+    void exhaustedBudgetAfterAnInvalidResponsePreventsTheRetry() {
+        when(userLimits.tokenLimit(userId)).thenReturn(Optional.of(100L));
+        when(callLogs.todayTokens(userId)).thenReturn(0L, 0L, 100L);
+        fake.enqueue(FakeAiProviderServer.openAiContent("not a JSON object"));
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(AiCallException.class)
+                .extracting(error -> ((AiCallException) error).category())
+                .isEqualTo(AiErrorCategory.QUOTA);
+        assertThat(fake.requests()).hasSize(1);
+    }
+
+    @Test
+    void disabledWhileWaitingForProviderCapacityCannotStartTheCall() {
+        org.mockito.Mockito.doNothing().doThrow(new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.FORBIDDEN, "管理员已暂停你的 AI 使用"))
+                .when(userLimits).requireEnabled(userId);
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class)
+                .hasMessageContaining("暂停");
+        assertThat(fake.requests()).isEmpty();
+    }
+
+    @Test
     void anEmptyPersonalLimitLeavesOnlyTheGlobalBudgetInCharge() {
         when(userLimits.tokenLimit(userId)).thenReturn(Optional.empty());
         properties.setDailyTokenBudget(1000);

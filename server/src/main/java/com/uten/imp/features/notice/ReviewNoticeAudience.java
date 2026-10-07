@@ -37,7 +37,7 @@ public class ReviewNoticeAudience {
                     || permissions.containsAll(Set.of("production_daily_report:view", "production_daily_report:create")));
     }
 
-    /** Reverse of the sender's workshop subtree membership, checked once per request. */
+    /** Reverse of the sender's current leadership scope; old member cards lose visibility too. */
     public WorkshopScope workshopScope(AuthUser user) {
         if (user == null || user.isVisitor() || user.getEmployeeId() == null
                 || !canHandleWorkshop(user.getPermissions())) return WorkshopScope.NONE;
@@ -49,16 +49,13 @@ public class ReviewNoticeAudience {
                       AND account.is_deleted=FALSE AND account.status='active'
                       AND employee.is_deleted=FALSE
                       AND employee.status IN ('active','probation','onLeave')
-                ), memberships(id) AS (
-                    SELECT department_id FROM active_employee
-                    UNION SELECT secondary.department_id FROM employee_secondary_departments secondary
-                        JOIN active_employee employee ON employee.id=secondary.employee_id
-                    UNION SELECT department.id FROM departments department
+                ), leaderships(id) AS (
+                    SELECT department.id FROM departments department
                         JOIN active_employee employee ON employee.id=department.manager_id
                         WHERE department.is_deleted=FALSE
                 ), ancestry(id,parent_id) AS (
                     SELECT department.id,department.parent_id FROM departments department
-                    JOIN memberships member ON member.id=department.id WHERE department.is_deleted=FALSE
+                    JOIN leaderships leader ON leader.id=department.id WHERE department.is_deleted=FALSE
                     UNION SELECT department.id,department.parent_id FROM departments department
                     JOIN ancestry child ON child.parent_id=department.id WHERE department.is_deleted=FALSE
                 )

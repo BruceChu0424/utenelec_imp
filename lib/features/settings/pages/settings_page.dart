@@ -33,6 +33,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../widgets/settings_section.dart';
+import '../widgets/app_version_tile.dart';
 import '../widgets/server_switch_dialog.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -160,14 +161,7 @@ class SettingsPage extends ConsumerWidget {
               // 关于
               SettingsSection(
                 title: l10n.settingsSectionAbout,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline, size: 20),
-                    title: Text(l10n.settingsVersion),
-                    trailing: const Text(AppInfo.version),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
+                children: [const AppVersionTile()],
               ),
 
               const SizedBox(height: UtenSpacing.s24),

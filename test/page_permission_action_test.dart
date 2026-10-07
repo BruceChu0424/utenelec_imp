@@ -398,6 +398,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(editSwitch).value, isTrue);
 
+    // 系统返回键也必须守住未保存修改，不能绕过抽屉上的关闭按钮。
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('丢弃未保存修改'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(editSwitch).value, isTrue);
+
     // 关闭同样拦截。
     await tester.tap(find.byTooltip('关闭'));
     await tester.pumpAndSettle();

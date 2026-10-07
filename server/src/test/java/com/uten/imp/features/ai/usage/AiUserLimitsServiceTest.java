@@ -126,10 +126,10 @@ class AiUserLimitsServiceTest {
         assertThat(saved.dailyTokenLimit()).isEqualTo(500_000L);
         assertThat(saved.dailyJobLimit()).isEqualTo(20);
         assertThat(saved.rowVersion()).isZero();
-        var change = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<String, Object>> change = ArgumentCaptor.captor();
         verify(audit).logCommittedChange(eq(actor), eq(null), eq("update_ai_user_limits"), eq("ai_user_limits"),
                 eq(userId.toString()), eq("停用账号 AI 使用"), change.capture());
-        assertThat((Map<String, Object>) change.getValue())
+        assertThat(change.getValue())
                 .containsEntry("disabled", true)
                 .containsEntry("dailyTokenLimit", 500_000L)
                 .containsEntry("dailyJobLimit", 20)

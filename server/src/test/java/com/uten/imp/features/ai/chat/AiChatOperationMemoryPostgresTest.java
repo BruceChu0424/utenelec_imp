@@ -91,8 +91,11 @@ class AiChatOperationMemoryPostgresTest {
 
     @Test void aQuestionUnusedBeyondTheRetentionWindowIsNotRecalled() {
         memory.remember("A001 还有多少库存", "TOOL", "inventory_lookup");
+        memory.remember("帮我创建订货单", "OPEN_FORM", "SALES_ORDER");
         jdbc.update("UPDATE ai_chat_operation_memory SET last_used_at = now() - make_interval(days => 91)");
         assertThat(memory.recall("A001 还有多少库存")).isEmpty();
+        assertThat(memory.recentTools(3)).isEmpty();
+        assertThat(memory.suggestions(3)).isEmpty();
     }
 
     @Test void writingPastFiftyRowsKeepsOnlyTheMostRecentlyUsed() {

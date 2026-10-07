@@ -1648,6 +1648,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 throw new IllegalArgumentException(
                         "issueIdempotencyKey is required for DRAW issued notice");
             }
+            // The issue transaction already reduced reservations. Lower the arrival baseline now,
+            // before another receipt can commit; delayed outbox delivery must not hide its growth.
+            lowerWorkshopArrivalCapacityAfterIssue(stockDocId);
             outbox.publishOnce(
                     EVENT_PRODUCTION_DRAW_ISSUED,
                     "STOCK_DOCUMENT",
@@ -4060,6 +4063,31 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 """, segmentId, capacity);
     }
 
+    /** Physical issue lowers remaining capacity; it is not a new arrival and never raises the watermark. */
+    void lowerWorkshopArrivalCapacityAfterIssue(UUID stockDocId) {
+        List<UUID> segments = jdbc.queryForList("""
+                SELECT segment.id FROM production_execution_segments segment
+                WHERE NOT segment.is_deleted AND segment.start_route = 'CONTINUOUS'
+                  AND EXISTS (
+                    SELECT 1 FROM production_planning_package_document_items mapping
+                    JOIN production_material_demands demand ON demand.id = mapping.demand_id
+                    WHERE mapping.document_id = ? AND mapping.document_type = 'DRAW'
+                      AND demand.execution_segment_id = segment.id AND NOT demand.is_deleted
+                      AND mapping.package_id = segment.package_id)
+                ORDER BY segment.id FOR UPDATE
+                """, UUID.class, stockDocId);
+        for (UUID segmentId : segments) {
+            jdbc.update("""
+                    UPDATE production_execution_segment_notice_state
+                    SET arrival_notice_capacity = LEAST(arrival_notice_capacity,
+                            GREATEST(fn_execution_material_output_capacity(?, FALSE), 0)),
+                        updated_at = now()
+                    WHERE segment_id = ? AND arrival_notice_capacity
+                        > GREATEST(fn_execution_material_output_capacity(?, FALSE), 0)
+                    """, segmentId, segmentId, segmentId);
+        }
+    }
+
     /**
      * 仓库当前可给这些需求用的实物(专属来源权益 + 允许动用的公共库存，扣安全库存)，与齐套提升
      * 的 batchAvailability 同口径；无端口或任务无确认计划包时返回空表，卡片退回只说预留缺口。
@@ -4276,13 +4304,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      * 负责人」——车间（含下级班组）各部门负责人 departments.manager_id 与本任务负责人
      * responsible_employee_id, 再逐人校验当前有效权限（notice:read + production_execution:view +
      * start/报工, 含个人回收）。计划部等职能岗即使个人加授了权限, 不是车间负责人也不收卡。
-     * 车间没登记任何负责人且任务无负责人时退回旧的全成员池（与 ADR-149 仓库通知
-     * 「负责人∩池, 为空发整个池」同一兜底形状）, 避免任务无人感知。
+     * 没有合格负责人时不扩大发送范围；普通成员仍可按自己的权限在车间任务页办理。
      */
     List<UUID> workshopRecipientUserIds(
             UUID workshopDepartmentId, UUID responsibleEmployeeId) {
         if (workshopDepartmentId == null) return List.of();
-        List<UUID> leaders = withWorkshopTaskPermission(jdbc.queryForList("""
+        return withWorkshopTaskPermission(jdbc.queryForList("""
                 WITH RECURSIVE workshop_tree(id) AS (
                     SELECT id
                     FROM departments
@@ -4313,50 +4340,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND user_account.status = 'active'
                 ORDER BY user_account.id
                 """, UUID.class, workshopDepartmentId, responsibleEmployeeId));
-        if (!leaders.isEmpty()) return leaders;
-        // 兜底: 该车间一个负责人都没登记(部门无 manager、任务无负责人), 任务不能无人感知,
-        // 退回车间树全体成员(主职/兼职/各级负责人)的旧口径。
-        return withWorkshopTaskPermission(jdbc.queryForList("""
-                WITH RECURSIVE workshop_tree(id) AS (
-                    SELECT id
-                    FROM departments
-                    WHERE id = ? AND is_deleted = FALSE
-                    UNION ALL
-                    SELECT child.id
-                    FROM departments child
-                    JOIN workshop_tree parent ON child.parent_id = parent.id
-                    WHERE child.is_deleted = FALSE
-                ), candidate_employee(id) AS (
-                    SELECT employee.id
-                    FROM employees employee
-                    WHERE employee.department_id IN (
-                        SELECT id FROM workshop_tree)
-                    UNION
-                    SELECT secondary.employee_id
-                    FROM employee_secondary_departments secondary
-                    WHERE secondary.department_id IN (
-                        SELECT id FROM workshop_tree)
-                    UNION
-                    SELECT department.manager_id
-                    FROM departments department
-                    WHERE department.id IN (SELECT id FROM workshop_tree)
-                      AND department.manager_id IS NOT NULL
-                    UNION
-                    SELECT CAST(? AS uuid)
-                )
-                SELECT DISTINCT user_account.id
-                FROM candidate_employee candidate
-                JOIN employees employee ON employee.id = candidate.id
-                JOIN users user_account
-                  ON user_account.employee_id = employee.id
-                WHERE candidate.id IS NOT NULL
-                  AND employee.is_deleted = FALSE
-                  AND employee.status IN (
-                      'active','probation','onLeave')
-                  AND user_account.is_deleted = FALSE
-                  AND user_account.status = 'active'
-                ORDER BY user_account.id
-                """, UUID.class, workshopDepartmentId, responsibleEmployeeId));
+
     }
 
     /** 候选账号逐人过当前有效权限: 在职账号 + notice:read + 车间任务办理权(canHandleWorkshop, 含个人回收)。 */

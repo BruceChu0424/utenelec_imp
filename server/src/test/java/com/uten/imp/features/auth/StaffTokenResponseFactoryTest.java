@@ -39,6 +39,7 @@ class StaffTokenResponseFactoryTest {
         UserAccountRepository.AccountState current =
                 state(currentEmployeeId, "E2002", false, true, 7, 11);
         when(users.findAccountStateById(detached.getId())).thenReturn(Optional.of(current));
+        when(current.getBusinessResetGeneration()).thenReturn(9L);
         when(permissions.authorizationSnapshot(detached.getId(), currentEmployeeId, false))
                 .thenReturn(new PermissionResolver.AuthorizationSnapshot(
                         Set.of("employee:view", "stock:view")));
@@ -57,6 +58,7 @@ class StaffTokenResponseFactoryTest {
         TokenResponse response = factory.build(detached, "refresh-token", sessionId);
 
         assertEquals("small-access-token", response.accessToken());
+        assertEquals(9L, response.user().businessResetGeneration());
         assertEquals("refresh-token", response.refreshToken());
         assertEquals("E2002", response.user().loginAccount());
         assertEquals(currentEmployeeId.toString(), response.user().employeeId());

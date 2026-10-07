@@ -185,6 +185,8 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("subcontract_application_kit_notice_marks", 809),
             // V814 车间到货通知产能水位(ADR-165)：「可以生产 X 件」行动卡高水位是系统协调状态, 随业务数据清空。
             Map.entry("production_execution_segment_notice_state", 814),
+            Map.entry("ai_chat_operation_memory", 816),
+            Map.entry("ai_usage_daily", 815),
             // V803 (ADR-148): 品质整批决定命令是业务事实, 随业务数据清空。
             Map.entry("production_fqc_lot_decision_commands", 803),
             // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
@@ -195,6 +197,7 @@ public class BusinessDataResetSqlContractTest {
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("ai_user_limits", 815),
             Map.entry("legacy_subcontract_order_import_sources", 624),
             Map.entry("legacy_finance_import_sources", 626),
             Map.entry("legacy_procurement_receipt_import_sources", 627),
@@ -261,7 +264,8 @@ public class BusinessDataResetSqlContractTest {
         "notices","notice_user_states","notice_acknowledgments","notice_blessings","visitor_sms_codes",
         "ai_input_originals","ai_input_original_bindings","sales_quote_template_candidate_history",
         "business_record_history","business_record_identities","notice_blessing_history","ai_provider_history",
-        "platform_record_field_versions","platform_column_usage");
+        "platform_record_field_versions","platform_column_usage",
+        "goods_weight_observations","goods_weight_estimates");
 
     /**
      * V590 起整表废弃并从清空策略移除的表(「读取已安装定义 + 锚点替换删除」

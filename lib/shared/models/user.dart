@@ -13,6 +13,7 @@ class AppUser {
     this.permissions = const [],
     this.superAdmin = false,
     this.employeeId,
+    this.businessResetGeneration = 0,
   });
 
   final String id;
@@ -32,6 +33,7 @@ class AppUser {
   /// 员工档案 ID（employees.id）。Phase 6 起后端 /auth/me 返回，
   /// 自助编辑等场景直接拿这个去查 /api/org/employees/{id}。
   final String? employeeId;
+  final int businessResetGeneration;
 
   /// 是否拥有指定功能权限点（super admin 一律 true）。
   bool can(String perm) => superAdmin || permissions.contains(perm);

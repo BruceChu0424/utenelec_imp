@@ -492,6 +492,47 @@ class PermissionSurfaceCatalogPostgresTest {
     }
 
     @Test
+    void auditCenterAndFinanceHubIncludeEveryEmbeddedQueueAction() {
+        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        PermissionSurfaceRegistry registry = new PermissionSurfaceRegistry(
+                new PermissionSurfaceCatalogRepository(jdbc));
+        Set<String> center = registry.permissionsFor("finance.audit-center");
+        Set<String> hub = registry.treePermissions("finance.hub");
+        for (String queue : Set.of("finance.order-approval", "finance.sales-order-confirmation",
+                "finance.sales-shipment-audit")) {
+            assertTrue(center.containsAll(registry.permissionsFor(queue)), queue);
+            assertTrue(hub.containsAll(registry.permissionsFor(queue)), queue);
+        }
+        assertTrue(center.containsAll(Set.of("procurement_iqc_rejection:confirm_credit",
+                "procurement_iqc_rejection:close_no_credit", "procurement_iqc_rejection:reverse",
+                "procurement_iqc_rejection:amount:view")));
+        assertFalse(center.contains("procurement_iqc_rejection:record_return"));
+        assertFalse(center.contains("authorization:manage"));
+    }
+
+    @Test
+    void assetDeletePermissionStartsWithoutGrantsAndHasItsOwnActionFamily() throws Exception {
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            assertEquals("DELETE", scalarText(statement,
+                    "SELECT action_type FROM permissions WHERE code = 'finance_asset:delete'"));
+            assertEquals(1, linkCount(statement, "finance.asset", "finance_asset:delete"));
+            assertEquals(0, scalarLong(statement, """
+                    SELECT count(*) FROM (
+                        SELECT permission_id FROM department_permissions
+                        UNION ALL SELECT permission_id FROM user_permission_overrides
+                        UNION ALL SELECT permission_id FROM manager_permission_delegations
+                    ) grants JOIN permissions permission ON permission.id = grants.permission_id
+                    WHERE permission.code = 'finance_asset:delete'
+                    """));
+            assertEquals(1, scalarLong(statement, """
+                    SELECT count(*) FROM permissions WHERE code = 'finance_asset:delete' AND NOT baseline
+                      AND grant_policy @> ARRAY['NON_DELEGABLE', 'BULK_EXCLUDED']::text[]
+                    """));
+        }
+    }
+
+    @Test
     void v329CreatesCurrentStaffGlobalPagingIndex() throws Exception {
         try (Connection connection = connection();
              Statement statement = connection.createStatement()) {

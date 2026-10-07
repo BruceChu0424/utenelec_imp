@@ -14,9 +14,60 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets(
+    'draft deletion needs its own grant and rechecks revocation after confirmation',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final access = StateProvider<Set<String>>(
+        (ref) => {Perm.financeAssetView, Perm.financeAssetEdit},
+      );
+      final row = FinanceAssetSummary.fromJson({
+        'id': 'asset-delete-test',
+        'code': 'FA001',
+        'name': '删除权限草稿',
+        'status': 'DRAFT',
+        'version': 1,
+        'allowedActions': ['EDIT', 'DELETE', 'SUBMIT'],
+      }, FinanceAssetLedger.fixedAsset);
+      final repository = _FakeAssetRepository(items: [row]);
+      await _pumpWorkbench(
+        tester,
+        repository: repository,
+        permissionState: access,
+      );
+      List<UtenMenuItem> menu() => tester
+          .widget<MasterDataTableView<FinanceAssetSummary>>(
+            find.byType(MasterDataTableView<FinanceAssetSummary>),
+          )
+          .rowMenuBuilder!(row)
+          .whereType<UtenMenuItem>()
+          .toList();
+      expect(menu().map((item) => item.label), contains('编辑草稿'));
+      expect(menu().map((item) => item.label), isNot(contains('删除草稿')));
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceAssetWorkbenchPage)),
+      );
+      container.read(access.notifier).state = {
+        Perm.financeAssetView,
+        Perm.financeAssetDelete,
+      };
+      await tester.pumpAndSettle();
+      expect(menu().map((item) => item.label), isNot(contains('编辑草稿')));
+      menu().singleWhere((item) => item.label == '删除草稿').onTap();
+      await tester.pumpAndSettle();
+      container.read(access.notifier).state = {Perm.financeAssetView};
+      await tester.pump();
+      await tester.tap(find.text('删除草稿').last);
+      await tester.pumpAndSettle();
+      expect(repository.deleteCalls, 0);
+    },
+  );
 
   testWidgets(
     'asset inputs join their own ledger draft status and policy drafts stay separate',
@@ -471,6 +522,7 @@ Future<void> _pumpWorkbench(
   Set<String> permissions = const {
     Perm.financeAssetView,
     Perm.financeAssetEdit,
+    Perm.financeAssetDelete,
     Perm.financeAssetApprove,
     Perm.financeAssetPost,
     Perm.financeAssetDispose,
@@ -480,6 +532,7 @@ Future<void> _pumpWorkbench(
   bool policyReady = true,
   List<String> missingPolicyItems = const <String>[],
   List<FormDraft>? formDrafts,
+  StateProvider<Set<String>>? permissionState,
 }) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   final preferences = await SharedPreferences.getInstance();
@@ -488,7 +541,11 @@ Future<void> _pumpWorkbench(
       overrides: [
         if (formDrafts != null)
           formDraftsProvider.overrideWith(() => _FixedAssetDrafts(formDrafts)),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        currentPermissionsProvider.overrideWith(
+          (ref) => permissionState == null
+              ? permissions
+              : ref.watch(permissionState),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
         financeAssetWorkbenchRepositoryProvider.overrideWithValue(repository),
@@ -580,12 +637,15 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
     this.blockPreview = false,
     this.denyMakerApproval = false,
     this.historyRuns = const <AssetPostingRun>[],
+    this.items = const <FinanceAssetSummary>[],
   });
 
   final bool failFirstList;
   final bool blockPreview;
   final bool denyMakerApproval;
   final List<AssetPostingRun> historyRuns;
+  final List<FinanceAssetSummary> items;
+  int deleteCalls = 0;
   int listCalls = 0;
   final listQueries = <FinanceAssetQuery>[];
   int createCalls = 0;
@@ -601,10 +661,10 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
     listCalls++;
     if (failFirstList && listCalls == 1) throw StateError('offline');
     return PagedResult<FinanceAssetSummary>(
-      items: const <FinanceAssetSummary>[],
+      items: items,
       page: query.page,
       size: query.size,
-      total: 0,
+      total: items.length,
       totalPages: 1,
     );
   }
@@ -687,7 +747,9 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
     FinanceAssetLedger ledger,
     String id, {
     required int expectedVersion,
-  }) async {}
+  }) async {
+    deleteCalls++;
+  }
 
   @override
   Future<FinanceAssetDetail> detail(FinanceAssetLedger ledger, String id) {

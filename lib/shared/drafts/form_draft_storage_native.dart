@@ -12,7 +12,10 @@ FormDraftStorage createFormDraftStorage() => NativeFormDraftStorage();
 /// Append-only metadata and payload files with a flushed write-ahead journal.
 /// A page touches at most [limit] sequence slots, never history payloads.
 class NativeFormDraftStorage
-    implements FormDraftStorage, FormDraftHistoryStorage {
+    implements
+        FormDraftStorage,
+        FormDraftHistoryStorage,
+        BusinessResetFormDraftStorage {
   NativeFormDraftStorage({this.directoryProvider, this.afterJournalFlush});
 
   final Future<Directory> Function()? directoryProvider;
@@ -135,6 +138,70 @@ class NativeFormDraftStorage
 
   Future<T> _scope<T>(String prefix, Future<T> Function(Directory) action) {
     validateFormDraftHistoryPrefix(prefix);
+    final reset = formDraftResetScope(prefix);
+    if (reset == null) return _namespace(prefix, action);
+    return _locked('${reset.owner}__business_reset', (marker) async {
+      final latest = int.parse(await _read(marker) ?? '0');
+      if (reset.generation < latest) {
+        throw StateError('业务数据已清空，这份旧草稿已失效，请重新登录');
+      }
+      return _namespace(prefix, action);
+    });
+  }
+
+  @override
+  Future<void> synchronizeBusinessReset(
+    String ownerPrefix,
+    int generation,
+  ) async {
+    validateFormDraftReset(ownerPrefix, generation);
+    await _locked('${ownerPrefix}__business_reset', (marker) async {
+      final latest = int.parse(await _read(marker) ?? '0');
+      if (generation < latest) {
+        throw StateError('业务数据已清空，请重新登录后使用草稿');
+      }
+      // Persist the fence before cleanup. An interrupted deletion retries on
+      // next sign-in; old pages cannot recreate a visible draft meanwhile.
+      if (generation > latest) await _replace(marker, '$generation');
+      if (generation == 0) return;
+      final root = (await _directory()).absolute;
+      final historyRoot = Directory('${root.path}/history_v2');
+      if (await historyRoot.exists()) {
+        await for (final entity in historyRoot.list(followLinks: false)) {
+          if (entity is! Directory) continue;
+          final name = entity.uri.pathSegments
+              .where((part) => part.isNotEmpty)
+              .last;
+          final scope = formDraftResetScope(name);
+          if (scope?.owner == ownerPrefix && scope!.generation < generation) {
+            // Only direct children of the private history directory qualify.
+            if (entity.absolute.parent.path != historyRoot.absolute.path) {
+              throw StateError('草稿历史清空路径无效');
+            }
+            await entity.delete(recursive: true);
+          }
+        }
+      }
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.last;
+        final payloadEnd = name.indexOf('.json');
+        if (payloadEnd < 0 ||
+            !RegExp(
+              r'^\.json(?:\.[0-9a-f-]{36}\.tmp)?$',
+            ).hasMatch(name.substring(payloadEnd))) {
+          continue;
+        }
+        final prefix = formDraftHistoryPrefix(name.substring(0, payloadEnd));
+        final scope = prefix == null ? null : formDraftResetScope(prefix);
+        if (scope?.owner == ownerPrefix && scope!.generation < generation) {
+          await entity.delete();
+        }
+      }
+    });
+  }
+
+  Future<T> _namespace<T>(String prefix, Future<T> Function(Directory) action) {
     // Draft IDs permit letters, digits and hyphens only. An underscore-bearing
     // control suffix cannot alias a record lock (for example ID history-v2).
     return _locked('${prefix}__history_v2_control', (_) async {

@@ -816,6 +816,17 @@ class AiChatJobHandlerTest {
         verify(ctx, never()).completeJson(any());
     }
 
+    @Test void truncatedMemoryCollisionCannotOverrideTheFormNamedInTheCurrentRequest() throws Exception {
+        salesUser();
+        String message = "说明".repeat(80) + "帮我创建个报价单";
+        when(memory.recall(message)).thenReturn(Optional.of(
+                new AiChatOperationMemoryService.Remembered("说明".repeat(80), "OPEN_FORM", "SALES_ORDER", 2)));
+        request(message);
+        assertThat(handler.process(ctx)).containsEntry("intent", "UNSUPPORTED");
+        verifyNoInteractions(proposals);
+        verify(memory, never()).touch(any());
+    }
+
     /**
      * ADR-163 red-team regression: the remembered key carries no punctuation, so "创建订货单？" would collide with
      * the remembered "创建订货单". The guards are re-checked on the actual words: a question never replays the card.

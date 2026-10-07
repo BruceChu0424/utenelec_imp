@@ -6,6 +6,7 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.ai.AiProperties;
+import com.uten.imp.features.ai.usage.AiUserLimitsService;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SubmitterPrincipalRestorer;
 import org.junit.jupiter.api.BeforeEach;
@@ -155,7 +156,8 @@ class AiJobServiceTest {
         // ADR-164 limits gate uses the real AiUserLimitsService (a fake on a mocked JdbcTemplate):
         // the paused/personal-quota behaviour then asserts real messages, not stubbed ones.
         NamedParameterJdbcTemplate limitsJdbc = mock(NamedParameterJdbcTemplate.class);
-        when(limitsJdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
+        when(limitsJdbc.query(anyString(), any(MapSqlParameterSource.class),
+                org.mockito.ArgumentMatchers.<RowMapper<AiUserLimitsService.Limits>>any()))
                 .thenAnswer(invocation -> {
                     UUID limited = (UUID) ((MapSqlParameterSource) invocation.getArgument(1)).getValue("userId");
                     var row = limitsRows.get(limited);

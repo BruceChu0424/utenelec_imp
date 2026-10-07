@@ -137,3 +137,8 @@ SELECT count(*) FROM <表> o
 
 `kDraftStatusQuery = 'draft'` 定义在 `draft_counts_provider.dart`，按钮与列表页共用，
 避免这个字符串在十来个页面里各写一份走样。
+
+
+## 清空测试业务后的本机草稿
+
+`FormDraftsNotifier` 持久键包含服务端 `businessResetGeneration`，不含普通登录纪元。服务器成功清空业务后，设备重登先对 Native / IndexedDB 存储执行 `synchronizeBusinessReset`：递增围栏、清除旧草稿及其历史和日报审核暂存，然后读取本代草稿。旧标签页晚写被存储层拒绝；其他服务器和其他账号记录不受影响。旧服务端缺字段按 0 兼容，已观察到更高代际的本机存储拒绝回退。

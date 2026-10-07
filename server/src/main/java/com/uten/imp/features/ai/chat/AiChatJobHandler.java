@@ -1140,6 +1140,7 @@ public class AiChatJobHandler implements AiJobHandler {
      * card from a document card, and the answer carries no page (opening a form is not page-bound).
      */
     private Map<String, Object> openForm(AiJobContext ctx, AiChatRequest request, AiChatSettings settings) {
+        String requestedWorkflow = AiChatDialogueSupport.requestedForm(request.message());
         String workflow = null;
         boolean learned = false;
         if (settings.operationMemory()) {
@@ -1148,7 +1149,7 @@ public class AiChatJobHandler implements AiJobHandler {
                 // The remembered key carries no punctuation, so "创建订货单？" would otherwise collide with
                 // "创建订货单": the question and refusal guards are re-checked on the actual words.
                 if (remembered != null && "OPEN_FORM".equals(remembered.kind()) && fillableForms().contains(remembered.target())
-                        && !AiChatDialogueSupport.formRequestBlocked(request.message())) {
+                        && remembered.target().equals(requestedWorkflow)) {
                     workflow = remembered.target();
                     learned = true;
                 }
@@ -1156,7 +1157,7 @@ public class AiChatJobHandler implements AiJobHandler {
                 log.debug("AI chat operation memory unavailable", unavailable);
             }
         }
-        if (workflow == null) workflow = AiChatDialogueSupport.requestedForm(request.message());
+        if (workflow == null) workflow = requestedWorkflow;
         if (workflow == null) return null;
         if (!fillableForms().contains(workflow)) return reply(workflows.blockedReason(workflow), "SELF", "UNSUPPORTED");
         ctx.progress("ANSWERING", 70);

@@ -87,6 +87,41 @@ void main() {
   });
 
   test(
+    'business reset atomically purges old drafts and history across connections',
+    () async {
+      final owner = '${'a' * 64}_';
+      final other = '${'b' * 64}_';
+      final old = open();
+      final current = open();
+      await old.write('${owner}one', _payload('one'));
+      await old.write('${other}keep', _payload('keep'));
+      await old.write(
+        'daily_report_approval_${owner}pending',
+        '{"pending":true}',
+      );
+      await current.synchronizeBusinessReset(owner, 1);
+      expect(await old.read('${owner}one'), isNull);
+      expect((await old.readHistoryPage(owner)).entries, isEmpty);
+      expect(await old.readHistoryRecord(owner, '1'), isNull);
+      expect(await old.read('daily_report_approval_${owner}pending'), isNull);
+      await expectLater(
+        old.write('${owner}late', _payload('late')),
+        throwsStateError,
+      );
+      await expectLater(
+        old.synchronizeBusinessReset(owner, 0),
+        throwsStateError,
+      );
+      expect(await current.read('${other}keep'), isNotNull);
+      await current.write('${owner}g1_new', _payload('new'));
+      await current.synchronizeBusinessReset(owner, 1);
+      expect(await current.read('${owner}g1_new'), isNotNull);
+      await current.synchronizeBusinessReset(owner, 2);
+      expect(await current.read('${owner}g1_new'), isNull);
+    },
+  );
+
+  test(
     'v1 migration is atomic and idempotent, damaged sources survive, old writer is fenced',
     () async {
       final legacy = await _open(

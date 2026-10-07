@@ -108,6 +108,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   int _detailRequest = 0;
   final Map<String, bool> _pending = <String, bool>{};
   bool _saving = false;
+  bool _allowClose = false;
   final Set<String> _expandedFamilies = <String>{};
 
   bool get _dirty => _pending.isNotEmpty;
@@ -208,7 +209,10 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       if (mounted) setState(() => _departmentPickerRevision++);
       return;
     }
+    if (!mounted) return;
     setState(() {
+      _detailRequest++;
+      _detailLoading = false;
       _departmentId = departmentId;
       _selected = null;
       _detail = null;
@@ -240,7 +244,10 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }) async {
     if (_selected?.employeeId == employee.employeeId) return;
     if (!await _confirmDiscard()) return;
+    if (!mounted) return;
     setState(() {
+      _detailRequest++;
+      _detailLoading = false;
       _selected = employee;
       _detail = null;
       _detailError = null;
@@ -331,7 +338,11 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         departmentId: departmentId,
         employeeId: employee.employeeId,
       );
-      if (!mounted || request != _detailRequest) return;
+      if (!mounted ||
+          request != _detailRequest ||
+          _selected?.employeeId != employee.employeeId) {
+        return;
+      }
       setState(() {
         _detail = value;
         _pending.clear();
@@ -403,8 +414,11 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Future<void> _close() async {
+    if (_saving) return;
     if (!await _confirmDiscard()) return;
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    setState(() => _allowClose = true);
+    Navigator.of(context).pop();
   }
 
   // ===== 权限值与批量 =====
@@ -432,6 +446,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
 
   Future<void> _toggleCode(PageStaffPermissionState permission) async {
     if (!permission.editable || _saving) return;
+    final detail = _detail;
     final next = !_currentValue(permission);
     if (next &&
         !permission.grantPolicy.bulkEligible &&
@@ -439,6 +454,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       final confirmed = await _confirmSensitiveGrant([permission]);
       if (!confirmed) return;
     }
+    if (!mounted || _saving || !identical(detail, _detail)) return;
     _setCode(permission, next);
   }
 
@@ -448,6 +464,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     bool enable,
   ) async {
     if (_saving) return;
+    final detail = _detail;
     final actionable = permissions
         .where((permission) => permission.editable)
         .toList(growable: false);
@@ -463,6 +480,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         return;
       }
     }
+    if (!mounted || _saving || !identical(detail, _detail)) return;
     setState(() {
       for (final permission in toChange) {
         if (enable == _storedValue(permission)) {
@@ -502,29 +520,35 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     final title = detail?.surfaceTitle.trim().isNotEmpty == true
         ? detail!.surfaceTitle
         : widget.scope.title;
-    return Material(
-      color: theme.colorScheme.surface,
-      elevation: 8,
-      child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _header(theme, title),
-            const Divider(height: 1),
-            Expanded(
-              child: Stack(
-                children: [
-                  _body(),
-                  if (_saving)
-                    const UtenBusyOverlay(
-                      title: '正在保存页面权限',
-                      description: '正在写入权限变更，请勿重复提交或关闭面板。',
-                    ),
-                ],
+    return PopScope<void>(
+      canPop: !_saving && (!_dirty || _allowClose),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && !_saving) _close();
+      },
+      child: Material(
+        color: theme.colorScheme.surface,
+        elevation: 8,
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(theme, title),
+              const Divider(height: 1),
+              Expanded(
+                child: Stack(
+                  children: [
+                    _body(),
+                    if (_saving)
+                      const UtenBusyOverlay(
+                        title: '正在保存页面权限',
+                        description: '正在写入权限变更，请勿重复提交或关闭面板。',
+                      ),
+                  ],
+                ),
               ),
-            ),
-            _bottomBar(theme),
-          ],
+              _bottomBar(theme),
+            ],
+          ),
         ),
       ),
     );
@@ -915,6 +939,8 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     if (!await _confirmDiscard()) return;
     if (!mounted) return;
     setState(() {
+      _detailRequest++;
+      _detailLoading = false;
       _selected = null;
       _detail = null;
       _detailError = null;

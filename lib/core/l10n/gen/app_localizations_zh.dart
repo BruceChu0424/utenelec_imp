@@ -9,6 +9,39 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get releaseNotesOpen => '查看本版本更新内容';
+
+  @override
+  String get releaseNotesTitle => '版本更新';
+
+  @override
+  String get releaseNotesClose => '知道了';
+
+  @override
+  String get releaseNotesUnavailable => '此版本暂未附带更新说明。';
+
+  @override
+  String get release253Hr => '人事证件核对支持勾选多人，在核对表中对照原资料与更正内容后批量处理。';
+
+  @override
+  String get release253Permissions => '页面权限使用统一抽屉，包含相关子页面，支持批量授权；编辑与删除分开管理。';
+
+  @override
+  String get release253Materials => '物料汇总下单统一确认，按依赖顺序自动办理，并修正共享物料的来源与缺口计算。';
+
+  @override
+  String get release253Ai => 'AI 助手增加文件理解、操作确认与个人操作记忆，可查看用量并设置人员限额。';
+
+  @override
+  String get release253Notices => '车间到料提醒按新增可生产数量发送给有权限的负责人；紧急、待办、进度与公告使用不同样式。';
+
+  @override
+  String get release253Reset => '清空业务数据同时作废旧草稿，并清除业务称重与重量学习记录。';
+
+  @override
+  String get release253Maintenance => '清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。';
+
+  @override
   String get businessColumnAmountUnavailable =>
       '当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。';
 

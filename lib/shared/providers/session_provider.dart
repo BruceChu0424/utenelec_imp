@@ -626,6 +626,7 @@ class SessionNotifier extends Notifier<SessionState> {
     permissions: profile.permissions,
     superAdmin: profile.superAdmin,
     employeeId: profile.employeeId,
+    businessResetGeneration: profile.businessResetGeneration,
   );
 }
 

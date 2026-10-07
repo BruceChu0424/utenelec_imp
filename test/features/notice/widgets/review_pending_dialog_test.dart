@@ -357,8 +357,9 @@ void main() {
         ],
         routes: [GoRoute(path: entry.$2, builder: (_, _) => Text(entry.$3))],
       );
-      // ADR-163：头部摘要为分级计数（两条均 normal → 进度 2），不再是事件域 chips。
-      expect(find.text('进度 2'), findsOneWidget);
+      // ADR-163：头部摘要为分级计数（两条均 approval+normal → 待办 2，
+      // 2026-10-06 修订：审批类不因 normal 降进度级），不再是事件域 chips。
+      expect(find.text('待办 2'), findsOneWidget);
       await tester.tap(find.text('生产申请'));
       await tester.pumpAndSettle();
       expect(find.text(entry.$3), findsOneWidget);
@@ -392,8 +393,9 @@ void main() {
         ),
       ],
     );
-    // ADR-163：两条 normal 待办的头部摘要是「进度 2」分级计数。
-    expect(find.text('进度 2'), findsOneWidget);
+    // ADR-163：两条 approval+normal 待办的头部摘要是「待办 2」分级计数
+    // （2026-10-06 修订：审批类一律行动级）。
+    expect(find.text('待办 2'), findsOneWidget);
     await tester.tap(find.text('委外可下单：EB-001 委外件 可下单 4 件'));
     await tester.pumpAndSettle();
     expect(find.text('任务中心 pending EB-001'), findsOneWidget);
@@ -542,8 +544,8 @@ void main() {
       expect(find.text('打卡确认'), findsOneWidget);
       // 紧急人工通知带「紧急」红徽章（ADR-163 分级徽章）。
       expect(find.text('紧急'), findsOneWidget);
-      // 头部分级计数：待办(normal→进度 1) + 人工紧急(紧急 1)。
-      expect(find.text('进度 1'), findsOneWidget);
+      // 头部分级计数：待办(approval+normal→行动 1，2026-10-06 修订) + 人工紧急(紧急 1)。
+      expect(find.text('待办 1'), findsOneWidget);
       expect(find.text('紧急 1'), findsOneWidget);
 
       await tester.tap(find.text('全部稍后再看'));
@@ -781,8 +783,11 @@ void main() {
     // 高度随内容自适应、封顶 min(60% 屏高, 560)（默认测试屏 800x600 → 360），
     // 不再被列表内容拉到接近全屏；超出部分在列表内部滚动可达。
     final repo = _FakeNoticeRepository();
+    // type=task 钉回进度级紧凑行：本用例按 dense 行高校准（2026-10-06 修订后
+    // approval 默认归行动级行，行高变化会影响滚动断言的几何校准）。
     final pending = [
-      for (var i = 0; i < 30; i++) noticeOf('n$i', title: '待办事项 #$i'),
+      for (var i = 0; i < 30; i++)
+        noticeOf('n$i', title: '待办事项 #$i', type: NoticeType.task),
     ];
     await pumpDialog(tester, repo: repo, pending: pending);
 
@@ -837,7 +842,9 @@ void main() {
       tester,
       repo: repo,
       pending: [
-        noticeOf('normal-1', title: '普通进度待办'),
+        // task+normal → 进度级（2026-10-06 修订后 approval 默认归行动级，
+        // 用 task 类型保留本用例的进度级卡位）。
+        noticeOf('normal-1', title: '普通进度待办', type: NoticeType.task),
         noticeOf(
           'urgent-1',
           title: '委外短交预警：WO-009',
@@ -989,7 +996,7 @@ void main() {
       pending: [
         noticeOf('u1', title: '紧急卡', priority: NoticePriority.urgent),
         noticeOf('a1', title: '行动卡', priority: NoticePriority.important),
-        noticeOf('p1', title: '进度卡'),
+        noticeOf('p1', title: '进度卡', type: NoticeType.task),
       ],
       manual: [manualOf('m1', title: '公告卡')],
     );
@@ -1003,5 +1010,88 @@ void main() {
       tester.getTopLeft(find.text('待办审核 · 3')).dy,
       lessThan(tester.getTopLeft(find.text('人事/公司通知 · 1')).dy),
     );
+  });
+
+  // ---------------- 2026-10-06 修订：审批/工作流类一律行动级 ----------------
+
+  testWidgets(
+    'approval-type normal-priority notice renders action badge, not progress',
+    (tester) async {
+      // SALES_ORDER_PENDING_FINANCE_CONFIRM 等审批事件后端多标 priority=normal，
+      // 但语义是「待我决定」的强待办——修订后不落最低权重的进度级。
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [
+          // noticeOf 默认 type=approval、priority=normal。
+          noticeOf('approval-1'),
+          // 对照组：task+normal 仍为进度级。
+          noticeOf(
+            'progress-1',
+            title: '物料到货进展：A 件到货 100',
+            sourceEvent: 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED',
+            type: NoticeType.task,
+          ),
+        ],
+      );
+
+      // 行动级「待办」徽章 + 进度级「进度」徽章各一；审批卡排序在进度卡前。
+      expect(find.text('待办'), findsOneWidget);
+      expect(find.text('进度'), findsOneWidget);
+      expect(find.byIcon(Icons.task_alt_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.trending_up_rounded), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('待财务确认：SO-001')).dy,
+        lessThan(tester.getTopLeft(find.text('物料到货进展：A 件到货 100')).dy),
+      );
+    },
+  );
+
+  testWidgets('workflow-type normal-priority notice renders action badge', (
+    tester,
+  ) async {
+    // 流程类（type=workflow）与审批类同口径：priority=normal 也不降进度级。
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(
+      tester,
+      repo: repo,
+      pending: [
+        noticeOf(
+          'workflow-1',
+          title: '流程节点完成：PO-012',
+          type: NoticeType.workflow,
+        ),
+      ],
+    );
+
+    expect(find.text('待办'), findsOneWidget);
+    expect(find.text('进度'), findsNothing);
+    expect(find.byIcon(Icons.task_alt_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.trending_up_rounded), findsNothing);
+  });
+
+  test('sortByReviewLevel keeps arrival order within the same level', () {
+    // [List.sort] 不稳定；sortByReviewLevel 以 (级别, 原始下标) 排序——
+    // 同级条目无论乱序到达还是混合级插入，都保持到达顺序（稳定不变量）。
+    final items = [
+      noticeOf('a-2'), // approval+normal → 行动级
+      noticeOf('p-1', type: NoticeType.task), // task+normal → 进度级
+      noticeOf('a-1'), // 行动级
+      noticeOf('u-1', priority: NoticePriority.urgent), // 紧急级
+      noticeOf('a-3'), // 行动级
+    ];
+    final sorted = sortByReviewLevel(items);
+    expect(sorted.map((n) => n.id).toList(), [
+      'u-1', // 紧急置顶
+      'a-2',
+      'a-1',
+      'a-3', // 行动级三条保持到达序
+      'p-1', // 进度垫底
+    ]);
   });
 }

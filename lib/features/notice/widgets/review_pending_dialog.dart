@@ -5,7 +5,7 @@
 // - 登录检查（ReviewPendingLoginGate）与在线到达（dispatchReviewCard）共用；
 // - 在线多事件同到：先弹一条，后续待办**并入同一弹窗**（「一共有 N 项」），不再丢弃；
 // - 弹窗内实时显示「是否有人在处理」（30s 心跳 pending-review-status：
-//   他人认领 → 「XX 正在审核」黄色 chip；办结 → 条目自动移除，清空则弹窗自关）；
+//   他人认领 → 「XX 正在审核」tertiaryContainer 认领 chip；办结 → 条目自动移除，清空则弹窗自关）；
 // - 【去工作台处理】（2026-09-03 第四轮：不再直达单据详情）：全部待办同域 →
 //   该域任务工作台；跨域混合 → 工作台首页 /dashboard。点单条条目 →
 //   该条所属域的工作台。去工作台 = 提醒已响应：弹窗内条目全部 markRead
@@ -19,9 +19,10 @@
 // 「人事/公司通知」——打卡类型（公告/制度/系统/紧急/福利）每条带【打卡确认】，不打卡
 // 每次登录都弹；只提醒类型【知道了】= markRead；【查看详情】关弹窗进详情页；
 // 【全部稍后再看】对两组一起 snooze。人工条目不参与 pending-review-status 心跳。
-// 分级体系（2026-10-06，ADR-163）：条目按 (priority, interactive/manual) 归入
-// 紧急/行动/进度/广播四档视觉级别（见 [ReviewNoticeLevel]），颜色+图标+徽章
-// 三重编码；排序 紧急 > 行动 > 进度 > 广播。
+// 分级体系（2026-10-06，ADR-163）：条目按 (type, priority, interactive/manual)
+// 归入紧急/行动/进度/广播四档视觉级别（见 [ReviewNoticeLevel]），颜色+图标+
+// 徽章三重编码；排序 紧急 > 行动 > 进度 > 广播。修订（2026-10-06）：审批/
+// 工作流类(type=approval/workflow)一律行动级，不受 priority=normal 降级。
 // 文档：docs/02-组件库/ReviewPendingDialog.md
 
 import 'dart:async';
@@ -116,12 +117,14 @@ enum ReviewNoticeLevel {
   /// 「紧急」红底白字徽章，排序置顶。
   urgent,
 
-  /// 行动待办（teal 品牌色）：interactive && important。保持既有 teal
-  /// primaryContainer 风格（现样式微调强化），「待办」teal 底徽章。
+  /// 行动待办（teal 品牌色）：审批/工作流类（type=approval/workflow）一律归
+  /// 此级（priority=normal 也不降级，2026-10-06 修订）；其余 interactive &&
+  /// important 同级。保持既有 teal primaryContainer 风格（现样式微调强化），
+  /// 「待办」teal 底徽章。
   action,
 
-  /// 进度跟踪（info 蓝系）：interactive && normal（物料到货进展等）。视觉权重
-  /// 低于行动卡（更紧凑行高），「进度」蓝底徽章。
+  /// 进度跟踪（info 蓝系）：task/其余 interactive 类型 && normal（物料到货
+  /// 进展等）。视觉权重低于行动卡（更紧凑行高），「进度」蓝底徽章。
   progress,
 
   /// 人事广播（amber 暖色）：人工通知组（非 urgent）。暖色容器与 urgent 的红
@@ -130,12 +133,20 @@ enum ReviewNoticeLevel {
 }
 
 /// 条目 → 视觉级别。urgent 一票置顶（interactive 与人工通知同归 urgent）；
-/// interactive 按 important / normal 分行动 / 进度——同一 sourceEvent（如
-/// 车间物料事件）因 priority 不同落不同级别：「可开工行动卡」=行动、「到货
-/// 进展」=进度；其余（人工通知）为广播。
+/// 审批/工作流类（type=approval/workflow）一律行动级——审批事件（如
+/// SALES_ORDER_PENDING_FINANCE_CONFIRM、PROCUREMENT_FINANCE_SUBMITTED）后端
+/// 多标 priority=normal，但语义是「待我决定」的强待办，不得落最低权重的
+/// 进度级（2026-10-06 修订）；task 类按 important/normal 分行动/进度——
+/// 同一 sourceEvent（如车间物料事件）因 priority 不同落不同级别：
+/// 「可开工行动卡」=行动、「到货进展」=进度；其余 interactive 类型同此
+/// 分级；人工通知为广播。
 ReviewNoticeLevel reviewNoticeLevelOf(Notice notice) {
   if (notice.priority == NoticePriority.urgent) return ReviewNoticeLevel.urgent;
   if (!notice.interactive) return ReviewNoticeLevel.broadcast;
+  if (notice.type == NoticeType.approval ||
+      notice.type == NoticeType.workflow) {
+    return ReviewNoticeLevel.action;
+  }
   return notice.priority == NoticePriority.important
       ? ReviewNoticeLevel.action
       : ReviewNoticeLevel.progress;
@@ -1077,7 +1088,8 @@ class _CompactItemCard extends StatelessWidget {
   }
 }
 
-/// 认领状态 chip：他人处理中（黄）/ 待处理（绿点）——「对应的人是否操作」。
+/// 认领状态 chip：他人处理中（tertiaryContainer 认领 chip）/ 待处理
+/// （primaryContainer）——「对应的人是否操作」。
 class _ClaimChip extends StatelessWidget {
   const _ClaimChip({required this.theme, required this.claimedByName});
 

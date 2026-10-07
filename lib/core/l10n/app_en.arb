@@ -729,7 +729,7 @@
   "noticeLevelUrgent": "Urgent",
   "noticeLevelAction": "Action",
   "noticeLevelProgress": "Progress",
-  "noticeLevelBroadcast": "Notice",
+  "noticeLevelBroadcast": "Announcement",
   "noticeLevelSummary": "{level} {count}",
   "@noticeLevelSummary": {
     "placeholders": {

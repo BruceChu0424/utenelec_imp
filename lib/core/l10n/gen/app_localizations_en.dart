@@ -1782,7 +1782,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeLevelProgress => 'Progress';
 
   @override
-  String get noticeLevelBroadcast => 'Notice';
+  String get noticeLevelBroadcast => 'Announcement';
 
   @override
   String noticeLevelSummary(Object level, int count) {

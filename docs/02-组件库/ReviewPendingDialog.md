@@ -8,9 +8,10 @@
 > 2026-09-10：登录弹窗口径改为「未办结 且（未确认弹窗 或 稍后到期）」——已读/去工作台即确认，
 > 未办结也不再每次登录重弹；「稍后再看」到期恒重弹；车间任务 normal 卡也弹；人事域 8 事件落点。
 > 2026-10-06（[ADR-163](../99-决策记录-ADR/ADR-163-中央提醒弹窗分级体系.md)）：
-> 条目按 (priority, interactive/manual) 归入**四档视觉级别**（紧急/行动/进度/广播），
+> 条目按 (type, priority, interactive/manual) 归入**四档视觉级别**（紧急/行动/进度/广播），
 > 颜色+图标+徽章三重编码；弹窗排序 紧急 > 行动 > 进度 > 广播；
 > interactive 的 urgent 恢复进中央弹窗（红卡），非 interactive urgent 维持只弹顶部红条。
+> 修订(2026-10-06)：审批/工作流类(type=approval/workflow)一律行动级，priority=normal 不降进度级。
 
 ## 一、定位与形态
 
@@ -60,7 +61,8 @@ sortByReviewLevel(items);
 - 心跳单飞，每批最多 50 个 ID；成功响应缺少的旧条目视为失去资格或已删除/稍后，从弹窗移除；
   网络失败保留已展示状态，但新弹窗必须通过服务端真态校验后才可展示。
 - **【稍后再看】**：只调服务端 snooze 15 分钟 → 关弹窗。到点未办结**下次登录/到达恒重弹**。
-- 弹窗不可点遮罩关闭（待办必须被显式处理：去工作台/稍后/X 三选一）。
+- 弹窗不可点遮罩关闭（待办必须被显式处理：去工作台/稍后/X 三选一）。桌面 Web 无
+  系统返回键；移动端系统返回亦可关闭（showDialog 默认行为，与 ADR-063 非阻塞定位相容）。
 
 ## 四、视觉分级规范（ADR-163，2026-10-06）
 
@@ -71,12 +73,23 @@ sortByReviewLevel(items);
 | 级别 | 判定 | 色彩槽 | 图标底 | 徽章（`_LevelBadge`） | 卡片强化 | 排序 |
 |---|---|---|---|---|---|---|
 | **紧急 urgent** | priority=urgent（含人工紧急） | error 红 | `errorContainer` | `dangerStrong` 红底白字 + `priority_high`「紧急」 | 1.5px error 描边 + 左侧竖红条（宽 4/3）+ 标题 error w700 + `errorContainer@45%` 底 | **1 置顶** |
-| **行动待办 action** | interactive && important | teal 品牌 | `primaryContainer` | `primaryContainer` teal 底 + `task_alt`「待办」 | 现有 teal 风格（secondaryContainer@35% + outlineVariant 描边） | **2** |
-| **进度跟踪 progress** | interactive && normal（物料到货进展等） | info 蓝 | `infoContainer`（暗色 `infoContainerDark`） | 蓝底 + `trending_up`「进度」 | `surfaceContainerLow` 底 + **更紧凑行高**（dense：内距 12→8、图标 40/30→36/30），视觉权重低于行动卡 | **3** |
+| **行动待办 action** | type=approval/workflow（无论 priority），或 interactive && important | teal 品牌 | `primaryContainer` | `primaryContainer` teal 底 + `task_alt`「待办」 | 现有 teal 风格（secondaryContainer@35% + outlineVariant 描边） | **2** |
+| **进度跟踪 progress** | task/其余 interactive && normal（物料到货进展、短交检知会等） | info 蓝 | `infoContainer`（暗色 `infoContainerDark`） | 蓝底 + `trending_up`「进度」 | `surfaceContainerLow` 底 + **更紧凑行高**（dense：内距 12→8、图标 40/30→36/30），视觉权重低于行动卡 | **3** |
 | **人事广播 broadcast** | 人工通知组（非 urgent） | amber 暖色 | `broadcastContainer`（暗色 `broadcastContainerDark`，见 UtenColors） | 琥珀底 + `campaign`「公告」 | 卡片底色 = 琥珀容器色；amber 偏黄与 error 偏红拉开色相，徽章文字亦不同 | **4 垫底** |
 
+- **审批/工作流类一律行动级（2026-10-06 修订）**：`type=approval/workflow` 的条目无论
+  priority normal/important 都归行动级——`SALES_ORDER_PENDING_FINANCE_CONFIRM`、
+  `PROCUREMENT_FINANCE_SUBMITTED` 等审批事件后端多标 priority=normal，但语义是
+  「待我决定」的强待办，不应落最低权重的进度级（场景示例：财务登录弹窗里
+  「待财务确认：SO-001」(approval+normal) 与「物料到货进展」(task+normal) 同屏时，
+  前者带「待办」teal 徽章排序在前，后者「进度」蓝徽章垫后）。`type=task` 维持
+  important→行动 / normal→进度的区分（后端以此区分可开工行动 vs 到货进展）。
 - **同一 sourceEvent 可落不同级别**：如「可开工行动卡」priority=important → 行动，
   「物料到货进展」priority=normal → 进度——轻重由数据说话，不靠事件目录硬编码。
+- **短交检出的接收人分化（有意设计，非缺陷）**：`SUBCONTRACT_SHORT_DELIVERY_DETECTED`
+  仅 owner（订货单制单人）收 urgent 红卡；purchaser/follower 由后端发送时显式传
+  `normal` 降级（防噪：避免整组持判定权限的人都被升级为持久强提醒），前端呈现为
+  进度级蓝行——同一案件多接收人视觉分化是既定口径（ADR-163 §三），处理入口不受影响。
 - **大卡 `_LargeItemCard` 与紧凑卡 `_CompactItemCard` 都吃这套分级**：大卡是行动/紧急的
   主力形态；进度类多条时进紧凑形态并压缩行高。人工卡 `_ManualNoticeCard` 保留类型色图标，
   卡片底/描边按级别改造（广播=琥珀底；人工紧急=红系强化并置组首）。
@@ -107,11 +120,12 @@ min(60% 屏高, 560)；chip 固定高 26（级别徽章 22）；按钮高 46。
 ## 六、登录检查（`ReviewPendingLoginGate`）
 
 - 挂 app.dart 外壳（不渲染）：登录会话（authenticated + `notice:read`）从无到有时
-  触发一次；延迟 3s 等首屏稳定。
+  触发一次；延迟 300ms 等首屏稳定（`review_pending_login_gate.dart` 的 300ms 定时器）。
 - 拉 `pending-reviews` + `pending-popups` → 非空则弹（弹窗单例：在线到达链已弹时不重复）。
   服务端口径（2026-09-10）：未办结 且（`popup_acknowledged_at` 为空 或 `snoozed_until`
   已到期）；去过工作台/已读的条目未办结也不再重弹，「稍后」到期的条目即使已读也重弹。
-- 登出解除标记，下次登录重新检查；检查失败静默（在线链与工作台徽章兜底）。
+- 登出解除标记，下次登录重新检查；检查失败**有界退避重试**（指数退避 500ms→8s，
+  身份切换/销毁守卫取消过期重试；在线链与工作台徽章兜底）。
 
 ## 七、人工通知分组 + 打卡（2026-09-10，ADR-063 §8）
 
@@ -135,8 +149,8 @@ min(60% 屏高, 560)；chip 固定高 26（级别徽章 22）；按钮高 46。
 `ReviewNoticeCatalog` 注册事件（后端）后，该事件的 interactive 通知自动进入三形态；
 同时须在 `workbenchRouteFor` 和 `_eventIcon` 登记对应工作台与图标，并在
 `test/features/notice/widgets/review_pending_dialog_test.dart` 补 `workbenchRouteFor` 断言。
-级别由服务端 `priority` 驱动（urgent→紧急红卡、important→行动、normal→进度），前端不再
-逐事件硬编码样式。无排他认领的任务可把 `claimTargetType` 设为 null，但必须实现可验证的
+级别由服务端 `type`/`priority` 驱动（urgent→紧急红卡；type=approval/workflow 或
+important→行动；task/其余 normal→进度），前端不再逐事件硬编码样式。无排他认领的任务可把 `claimTargetType` 设为 null，但必须实现可验证的
 办结条件，防止弹窗永久悬挂。人事域事件由 `HrNoticeService` 发布（接收池按职能权限、
 不限部门，ADR-063 2026-09-10 修订 §4 明示例外），事件清单见 ADR-063 附录。
 
@@ -144,7 +158,8 @@ min(60% 屏高, 560)；chip 固定高 26（级别徽章 22）；按钮高 46。
 
 `test/features/notice/widgets/review_pending_dialog_test.dart`（路由落点 / 打卡 / 知道了 /
 失败重试 / 混合分组 / 375px / 高度封顶滚动 / **分级：urgent 红卡+紧急徽章+置顶排序、
-同 sourceEvent 按 priority 分行动/进度、人工广播琥珀+人工紧急红描边、分级计数行**）、
+同 sourceEvent 按 priority 分行动/进度、审批(approval)/流程(workflow) 类 normal 也行动级、
+同级保持到达序（排序稳定性）、人工广播琥珀+人工紧急红描边、分级计数行**）、
 `celebration_mascot_test.dart`（庆典美术缺失回落 logo 不崩溃）、
 `providers/review_pending_login_gate_test.dart`（仅人工通知也弹）、
 `providers/notice_arrival_test.dart`（**interactive urgent 弹中央红卡 + 顶部条并行；

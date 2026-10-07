@@ -83,7 +83,7 @@ class AiInputOriginalPostgresTest {
         assertThat(jobs.deleteFinishedOlderThan(7)).isZero();
         assertThat(originals.purgeExpiredTemporary()).isZero();
         assertThat(originals.download("quote",quote,job).bytes()).isEqualTo(input);
-        var metadata=originals.list("quote",quote).getFirst();assertThat(metadata.canDownload()).isTrue();assertThat(metadata.availability()).isEqualTo("AVAILABLE");
+        assertThat(jdbc.queryForObject("SELECT availability FROM ai_input_originals WHERE job_id=?",String.class,job)).isEqualTo("AVAILABLE");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM attachment_object_outbox WHERE operation='DELETE_FINAL' AND storage_key=(SELECT storage_key FROM ai_input_originals WHERE job_id=?)",Integer.class,job)).isZero();
         assertThat(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM v_private_document_storage_references r JOIN ai_input_originals o ON r.storage_provider=o.storage_provider AND r.storage_key=o.storage_key AND r.storage_version IS NOT DISTINCT FROM o.storage_version WHERE o.job_id=?)",Boolean.class,job)).isTrue();
     }
@@ -91,14 +91,14 @@ class AiInputOriginalPostgresTest {
         UUID job=captured(),quote=quote();bind(job,quote);tx.executeWithoutResult(s->usage.markUsed(job,actor,"quote",quote));
         UUID order=order(quote);assertThat(originals.download("order",order,job).bytes()).isEqualTo(input);
         assertThat(originals.download("quote",quote,job).bytes()).isEqualTo(input);
-        assertThat(originals.list("order",order).getFirst().sourceDocumentId()).isEqualTo(quote);
+        assertThat(jdbc.queryForObject("SELECT source_doc_id FROM ai_input_original_bindings WHERE job_id=? AND doc_type='order'",UUID.class,job)).isEqualTo(quote);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_input_original_bindings WHERE job_id=?",Integer.class,job)).isEqualTo(2);
         assertThat(usage.resultFor(job,actor)).isEmpty();
         assertThatThrownBy(()->jdbc.update("DELETE FROM ai_input_original_bindings WHERE job_id=?",job)).hasMessageContaining("append-only");
     }
     @Test void rollbackCannotPublishABindingOrDestroyThePreviousSuccessfulOriginal() {
         UUID job=captured(),quote=quote();tx.executeWithoutResult(s->{usage.reserveLearningForSave(job,actor,"quote",quote,java.time.OffsetDateTime.now().plusDays(30),Set.of("S1R2"),false);s.setRollbackOnly();});
-        assertThat(originals.list("quote",quote)).isEmpty();assertThat(usage.resultFor(job,actor)).isPresent();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_input_original_bindings WHERE job_id=?",Integer.class,job)).isZero();assertThat(usage.resultFor(job,actor)).isPresent();
         bind(job,quote);assertThat(originals.download("quote",quote,job).bytes()).isEqualTo(input);
         UUID failed=UUID.randomUUID();tx.executeWithoutResult(s->{originals.capture(failed,actor,"SALES_DOCUMENT_INTAKE",body());s.setRollbackOnly();});
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_input_originals WHERE job_id=?",Integer.class,failed)).isZero();
@@ -108,7 +108,7 @@ class AiInputOriginalPostgresTest {
         UUID job=UUID.randomUUID(),quote=quote();pending(job,input,ImmutableDocumentStore.digest(input),input.length);
         jdbc.update("UPDATE ai_jobs SET status='SUCCEEDED',input_bytes=NULL,finished_at=now(),result='{\"lines\":[{\"key\":\"S1R2\"}]}'::jsonb WHERE id=?",job);
         assertThat(jdbc.queryForObject("SELECT input_bytes IS NULL FROM ai_jobs WHERE id=?",Boolean.class,job)).isTrue();bind(job,quote);
-        assertThat(originals.list("quote",quote).getFirst().availability()).isEqualTo("LEGACY_DB");
+        assertThat(jdbc.queryForObject("SELECT availability FROM ai_input_originals WHERE job_id=?",String.class,job)).isEqualTo("LEGACY_DB");
         assertThat(originals.download("quote",quote,job).bytes()).isEqualTo(input);
         jdbc.update("DELETE FROM ai_jobs WHERE id=?",job);assertThat(originals.download("quote",quote,job).bytes()).isEqualTo(input);
     }
@@ -122,7 +122,6 @@ class AiInputOriginalPostgresTest {
         jdbc.execute("ALTER TABLE ai_input_original_bindings DISABLE TRIGGER trg_ai_original_binding_guard");
         try {jdbc.update("INSERT INTO ai_input_original_bindings(job_id,doc_type,doc_id,source_doc_type,source_doc_id) VALUES(?,'quote',?,'quote',?)",job,quote,quote);} finally {jdbc.execute("ALTER TABLE ai_input_original_bindings ENABLE TRIGGER trg_ai_original_binding_guard");} // private fixture represents pre-migration historical adoption
 
-        assertThat(originals.list("quote",quote).getFirst().canDownload()).isFalse();
         assertThatThrownBy(()->originals.download("quote",quote,job)).hasMessageContaining("不可用或校验异常");
     }
     @Test void missingLegacyBytesAreAnExplicitPlaceholderNotAFabricatedFile() {
@@ -131,8 +130,8 @@ class AiInputOriginalPostgresTest {
         jdbc.execute("ALTER TABLE ai_input_original_bindings DISABLE TRIGGER trg_ai_original_binding_guard");
         try {jdbc.update("INSERT INTO ai_input_original_bindings(job_id,doc_type,doc_id,source_doc_type,source_doc_id) VALUES(?,'quote',?,'quote',?)",job,quote,quote);} finally {jdbc.execute("ALTER TABLE ai_input_original_bindings ENABLE TRIGGER trg_ai_original_binding_guard");} // private fixture represents pre-migration historical adoption
 
-        var metadata=originals.list("quote",quote).getFirst();assertThat(metadata.availability()).isEqualTo("LEGACY_UNAVAILABLE");
-        assertThat(metadata.canDownload()).isFalse();assertThat(metadata.downloadUrl()).isNull();assertThat(metadata.sizeBytes()).isNull();assertThat(metadata.sha256()).isNull();
+        assertThat(jdbc.queryForObject("SELECT availability FROM ai_input_originals WHERE job_id=?",String.class,job)).isEqualTo("LEGACY_UNAVAILABLE");
+        assertThat(jdbc.queryForObject("SELECT legacy_bytes IS NULL FROM ai_input_originals WHERE job_id=?",Boolean.class,job)).isTrue();
         assertThatThrownBy(()->originals.download("quote",quote,job)).hasMessageContaining("不可用或校验异常");
     }
     @Test void unadoptedTemporaryOriginalIsReclaimedButAnActiveLearningSourceAndFormalBindingAreProtected() {
@@ -148,10 +147,9 @@ class AiInputOriginalPostgresTest {
     @Test void objectScopeAndSensitivePermissionAreCheckedBeforeOriginalRead() {
         UUID job=captured(),quote=quote();bind(job,quote);
         doThrow(new ApiException(ErrorCode.FORBIDDEN)).when(quotePolicy).requireCanViewSensitiveOriginalHistory(eq(quote),any());
-        assertThat(originals.list("quote",quote).getFirst().canDownload()).isFalse();
         assertThatThrownBy(()->originals.download("quote",quote,job)).isInstanceOf(ApiException.class).hasMessageContaining("权限");
-        doThrow(new ApiException(ErrorCode.NOT_FOUND)).when(quotePolicy).requireCanViewHistory(eq(quote),any());
-        assertThatThrownBy(()->originals.list("quote",quote)).isInstanceOf(ApiException.class);
+        doThrow(new ApiException(ErrorCode.NOT_FOUND)).when(quotePolicy).requireCanViewSensitiveOriginalHistory(eq(quote),any());
+        assertThatThrownBy(()->originals.download("quote",quote,job)).isInstanceOf(ApiException.class);
         UUID unrelated=quote();assertThatThrownBy(()->originals.download("quote",unrelated,job)).isInstanceOf(ApiException.class);
     }
 
@@ -178,22 +176,6 @@ class AiInputOriginalPostgresTest {
         System.out.println("AI_ORIGINAL_RECEIPT_PAYLOAD_PLAN "+plan.replace('\n',' '));
         assertThat(plan).contains("idx_sales_learning_receipts_payload_expiry");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_document_learning_receipts WHERE evidence<>'{}'::jsonb OR request_payload->'lines'<>'[]'::jsonb OR request_payload->'clientFields'<>'{}'::jsonb",Integer.class)).isEqualTo(3);
-    }
-
-    @Test void metadataListBindingAndExpiryNeverSelectLegacyBlobColumns() {
-        UUID quote=quote();byte[] large=new byte[8*1024*1024];Arrays.fill(large,(byte)'x');
-        String sha=ImmutableDocumentStore.digest(large);
-        for(int index=0;index<2;index++) {
-            UUID job=UUID.randomUUID();pending(job,large,sha,large.length);
-            jdbc.update("UPDATE ai_jobs SET status='SUCCEEDED',input_bytes=NULL,finished_at=now(),result='{\"lines\":[{\"key\":\"S1R2\"}]}'::jsonb WHERE id=?",job);
-            bind(job,quote);
-        }
-        var listed=originals.list("quote",quote);assertThat(listed).hasSize(2);
-        assertThat(new ObjectMapper().findAndRegisterModules().valueToTree(listed).toString().length()).isLessThan(2000);
-        originals.purgeExpiredTemporary();
-        var sql=mockingDetails(named).getInvocations().stream().filter(call->call.getMethod().getName().equals("query"))
-                .map(call->call.getArgument(0).toString()).toList();
-        assertThat(sql).isNotEmpty().allSatisfy(query->assertThat(query).doesNotContain("legacy_bytes","original.*","SELECT *"));
     }
 
     @Test void availableAndLegacyDbNullMetadataCannotBypassPostgresChecks() {

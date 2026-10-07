@@ -1,7 +1,7 @@
-# UtenDraftsButton / UtenDraftBadge（草稿入口与草稿计数）
+# UtenDraftsButton（草稿入口与草稿计数）
 
 > 源码：[`lib/components/buttons/uten_drafts_button.dart`](../../lib/components/buttons/uten_drafts_button.dart)、
-> [`lib/components/feedback/uten_draft_badge.dart`](../../lib/components/feedback/uten_draft_badge.dart)、
+> 草稿红色待办徽章直接用 [`lib/components/feedback/uten_notification_badge.dart`](../../lib/components/feedback/uten_notification_badge.dart)（2026-10-06 起无专用草稿徽章组件，hub 卡侧由 [`uten_scoped_badges.dart`](../../lib/components/feedback/uten_scoped_badges.dart) 按 `badgeScope` 渲染）、
 > 数据源 [`lib/shared/providers/draft_counts_provider.dart`](../../lib/shared/providers/draft_counts_provider.dart)。
 > 草稿是本人待完成的工作，入口与卡片均使用红色待办徽章，
 > 见 [徽章与计数口径](../00-项目准则/14-徽章与计数口径.md)。
@@ -18,7 +18,8 @@
 2. 保存成草稿的单据**没有任何入口**——用户不知道自己还有几张没提交的单。
 
 `UtenDraftsButton` 补上这条路：新建页右上角显示「草稿(N)」，点进去就是该单据列表的草稿段。
-`UtenDraftBadge` 在 hub 单据卡标题后显示同一个 N，让用户在进页面之前就看见。
+hub 单据卡 2026-09-24 起为 creator-only 新建入口、不挂数；模块顶栏药丸与工作台模块卡的草稿累计
+由 `UtenScopedBadges` 按 `badgeScope` 渲染同一枚 `UtenNotificationBadge`，让用户在进页面之前就看见。
 
 ---
 
@@ -67,16 +68,14 @@ UtenDraftsButton(
 
 ---
 
-## 三、UtenDraftBadge
+## 三、草稿徽章（专用组件已删除）
 
-```dart
-UtenHubCard(
-  ...,
-  badge: const UtenDraftBadge(kind: DraftDocKind.purchaseOrder),
-)
-```
+专用组件 `UtenDraftBadge`（以及更早的 `UtenDraftCountSuffix`）已随死代码清理删除（2026-10-06）：
+2026-09-24 模块三段式统一后 hub 单据卡不再挂数，该组件在全仓再无调用方。现行的草稿可见面：
 
-渲染为 `UtenNotificationBadge` 红色待办数字，挂在 `UtenHubCard.badge`；`count <= 0` 或无该类型 `*:view` 权限时不渲染、不占位。
+- 新建页顶栏「草稿(N)」按钮右侧的红数字 = `UtenNotificationBadge`（`count <= 0` 不渲染、不占位）；
+- hub 卡/工作台模块卡的草稿累计：`UtenHubCard.badgeScope` 声明范围，由
+  `UtenScopedBadges` 直接渲染 `UtenNotificationBadge`（`lib/components/feedback/uten_scoped_badges.dart`）。
 
 销售、采购、委外、财务、生产和仓库的草稿分别在服务端徽章目录 `WorkbenchBadgeCatalog` 登记一个草稿入口，由汇总接口按模块算好后带回工作台与导航总数(ADR-108)；各类草稿细数读汇总事实数 `drafts.*`，不再单独请求 /documents/draft-counts。历史和报表仍使用中性计数。销售财审驳回单已有独立待办来源，不重复计入草稿。
 

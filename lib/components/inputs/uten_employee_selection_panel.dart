@@ -12,6 +12,7 @@ import '../layout/uten_bottom_action_bar.dart';
 import '../layout/uten_split_view.dart';
 import '../layout/uten_table_column_kit.dart' show utenTableSelectedRowColor;
 import 'uten_employee_picker_models.dart';
+import 'uten_employee_picker_access.dart';
 import 'uten_search_bar.dart';
 
 /// Only the caller's authorized candidates form this directory. This panel
@@ -32,26 +33,44 @@ Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
   String confirmLabel = '确定',
   String clearLabel = '清空',
   String Function(int count)? selectedCountLabel,
-}) => showUtenAdaptivePanel<List<UtenEmployeePickerItem>>(
-  context: context,
-  drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
-  builder: (_) => UtenEmployeeSelectionPanel(
-    loader: loader,
-    title: title,
-    multiple: multiple,
-    initialSelection: initialSelection,
-    selectedId: selectedId,
-    departmentName: departmentName,
-    candidateScopeKey: candidateScopeKey,
-    showDepartmentFilter: showDepartmentFilter,
-    searchHint: searchHint,
-    emptyMessage: emptyMessage,
-    emptyDescription: emptyDescription,
-    confirmLabel: confirmLabel,
-    clearLabel: clearLabel,
-    selectedCountLabel: selectedCountLabel,
-  ),
-);
+}) async {
+  final access = EmployeePickerAccess(
+    EmployeePickerAccess.containerOf(context),
+  );
+  final ticket = access.capture();
+  try {
+    final result = await showUtenAdaptivePanel<List<UtenEmployeePickerItem>>(
+      context: context,
+      drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
+      builder: (_) => UtenEmployeeSelectionPanel(
+        loader: loader,
+        title: title,
+        multiple: multiple,
+        initialSelection: initialSelection,
+        selectedId: selectedId,
+        departmentName: departmentName,
+        candidateScopeKey: candidateScopeKey,
+        showDepartmentFilter: showDepartmentFilter,
+        searchHint: searchHint,
+        emptyMessage: emptyMessage,
+        emptyDescription: emptyDescription,
+        confirmLabel: confirmLabel,
+        clearLabel: clearLabel,
+        selectedCountLabel: selectedCountLabel,
+      ),
+    );
+    return context.mounted &&
+            identical(
+              access.container,
+              EmployeePickerAccess.containerOf(context),
+            ) &&
+            ticket.isCurrent
+        ? result
+        : null;
+  } finally {
+    access.dispose();
+  }
+}
 
 /// Shared employee selection body for fields and embedded business pickers.
 /// Selection is a local draft until Confirm; Cancel always discards it.
@@ -98,8 +117,8 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
       _UtenEmployeeSelectionPanelState();
 }
 
-class _UtenEmployeeSelectionPanelState
-    extends State<UtenEmployeeSelectionPanel> {
+class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
+    with EmployeePickerAccessState<UtenEmployeeSelectionPanel> {
   static const _allDepartments = 'employee-picker:all';
   static const _unknownDepartment = 'employee-picker:unknown';
   final _searchController = TextEditingController();
@@ -111,6 +130,10 @@ class _UtenEmployeeSelectionPanelState
   bool _loading = true;
   Object? _error;
   int _request = 0;
+  bool _started = false;
+  bool _invalidated = false;
+  ModalRoute<Object?>? _route;
+  late final EmployeePickerAccessTicket _accessTicket;
 
   @override
   void initState() {
@@ -122,7 +145,37 @@ class _UtenEmployeeSelectionPanelState
               : widget.initialSelection.take(1))
         item.id: item,
     };
-    _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+    if (!_started) {
+      _started = true;
+      _accessTicket = pickerAccess.capture();
+      _load();
+    }
+  }
+
+  @override
+  void onPickerAccessInvalidated() {
+    _invalidated = true;
+    _request++;
+    _selected.clear();
+    _baseline = const [];
+    _items = const [];
+    // Never pop whichever unrelated dialog happened to open above this picker.
+    final route = _route;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (route is PopupRoute && route.isActive) {
+        route.navigator?.removeRoute(route);
+      } else {
+        setState(() {});
+      }
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
@@ -168,14 +221,9 @@ class _UtenEmployeeSelectionPanelState
     return id == null || id.isEmpty ? _unknownDepartment : 'department:$id';
   }
 
-  bool _matches(UtenEmployeePickerItem item, String query) {
-    final needle = query.toLowerCase();
-    return [
-      item.name,
-      item.employeeCode,
-      if (widget.showDepartmentFilter) item.departmentName,
-    ].any((value) => value?.toLowerCase().contains(needle) == true);
-  }
+  bool _matchesDepartment(UtenEmployeePickerItem item, String query) =>
+      widget.showDepartmentFilter &&
+      item.departmentName?.toLowerCase().contains(query.toLowerCase()) == true;
 
   void _onInput(String value) {
     _request++;
@@ -188,6 +236,8 @@ class _UtenEmployeeSelectionPanelState
   }
 
   Future<void> _load() async {
+    if (_invalidated) return;
+    final ticket = pickerAccess.capture();
     final request = ++_request;
     final query = _query;
     setState(() {
@@ -196,13 +246,19 @@ class _UtenEmployeeSelectionPanelState
     });
     try {
       final result = await widget.loader(query.isEmpty ? null : query);
-      if (!mounted || request != _request || query != _query) return;
+      if (!mounted ||
+          !ticket.isCurrent ||
+          _invalidated ||
+          request != _request ||
+          query != _query) {
+        return;
+      }
       final byId = <String, UtenEmployeePickerItem>{
         // A department-name search must also find its already-authorized
         // people when the business endpoint searches only names/codes.
         if (query.isNotEmpty)
           for (final item in _baseline)
-            if (_matches(item, query)) item.id: item,
+            if (_matchesDepartment(item, query)) item.id: item,
         for (final item in result) item.id: item,
       };
       setState(() {
@@ -214,7 +270,12 @@ class _UtenEmployeeSelectionPanelState
         _loading = false;
       });
     } catch (error) {
-      if (!mounted || request != _request) return;
+      if (!mounted ||
+          !ticket.isCurrent ||
+          _invalidated ||
+          request != _request) {
+        return;
+      }
       setState(() {
         _error = error;
         _loading = false;
@@ -250,6 +311,12 @@ class _UtenEmployeeSelectionPanelState
   }
 
   void _toggle(UtenEmployeePickerItem item) {
+    if (!_accessTicket.isCurrent ||
+        _invalidated ||
+        _loading ||
+        _error != null) {
+      return;
+    }
     final selected = _selected.containsKey(item.id);
     if (!item.enabled && !selected) return;
     setState(() {
@@ -271,6 +338,12 @@ class _UtenEmployeeSelectionPanelState
   }
 
   void _confirm() {
+    if (!_accessTicket.isCurrent ||
+        _invalidated ||
+        _loading ||
+        _error != null) {
+      return;
+    }
     final selection = _selected.values.toList(growable: false);
     if (selection.any((item) => !item.enabled) ||
         (!widget.multiple && selection.length != 1)) {
@@ -317,6 +390,7 @@ class _UtenEmployeeSelectionPanelState
 
   @override
   Widget build(BuildContext context) {
+    if (_invalidated) return const SizedBox.shrink();
     final theme = Theme.of(context);
     Widget body;
     if (!widget.showDepartmentFilter) {
@@ -501,6 +575,9 @@ class _UtenEmployeeSelectionPanelState
         ? '请选择后点「确定」'
         : '已选择：${_selected.values.first.displayName}';
     final canConfirm =
+        !_invalidated &&
+        !_loading &&
+        _error == null &&
         (widget.multiple || _selected.length == 1) &&
         _selected.values.every((item) => item.enabled);
     final status = Text(

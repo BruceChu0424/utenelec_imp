@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import 'required_field_decoration.dart';
 import 'uten_employee_picker_models.dart';
+import 'uten_employee_picker_access.dart';
 import 'uten_employee_selection_panel.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
@@ -107,11 +108,13 @@ class UtenEmployeePicker extends StatefulWidget {
   State<UtenEmployeePicker> createState() => _UtenEmployeePickerState();
 }
 
-class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
+class _UtenEmployeePickerState extends State<UtenEmployeePicker>
+    with EmployeePickerAccessState<UtenEmployeePicker> {
   final _fieldKey = GlobalKey<FormFieldState<UtenEmployeePickerItem?>>();
   UtenEmployeePickerItem? _selected;
   int _hydrateSerial = 0;
   int _fieldVersion = 0;
+  bool _hydrationStarted = false;
 
   // ADR-150: the chosen person (name and employee code) is readable by the AI
   // assistant; choosing someone stays with the user (no setter).
@@ -124,6 +127,16 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
       context,
       widget.label == null ? null : AiFieldSource(capture: _aiField),
     );
+    if (!_hydrationStarted) {
+      _hydrationStarted = true;
+      _hydrateSelectedIfNeeded();
+    }
+  }
+
+  @override
+  void onPickerAccessInvalidated() {
+    _fieldVersion++;
+    _hydrateSerial++;
   }
 
   @override
@@ -149,7 +162,6 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   void initState() {
     super.initState();
     _selected = widget.initial;
-    _hydrateSelectedIfNeeded();
   }
 
   @override
@@ -192,6 +204,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   /// 历史详情有时只带员工 id/姓名。复用当前 loader 按姓名补查一次工号，
   /// 让既有选中值也能升级为“姓名(工号)”；补查失败不阻塞表单。
   Future<void> _hydrateSelectedIfNeeded() async {
+    final ticket = pickerAccess.capture();
     final request = ++_hydrateSerial;
     final target = _selected;
     if (target == null || target.employeeCode?.trim().isNotEmpty == true) {
@@ -200,7 +213,10 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
     try {
       final keyword = target.name.trim();
       final items = await widget.loader(keyword.isEmpty ? null : keyword);
-      if (!mounted || request != _hydrateSerial || _selected?.id != target.id) {
+      if (!mounted ||
+          !ticket.isCurrent ||
+          request != _hydrateSerial ||
+          _selected?.id != target.id) {
         return;
       }
       UtenEmployeePickerItem? hydrated;
@@ -220,6 +236,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   }
 
   Future<void> _open() async {
+    final ticket = pickerAccess.capture();
     final version = ++_fieldVersion;
     _hydrateSerial++;
     final selection = await showUtenEmployeeSelectionPanel(
@@ -236,6 +253,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
     final selected = selection?.firstOrNull;
     if (selected == null ||
         !mounted ||
+        !ticket.isCurrent ||
         !widget.enabled ||
         version != _fieldVersion) {
       return;

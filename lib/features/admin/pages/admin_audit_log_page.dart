@@ -21,6 +21,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -842,23 +843,39 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   }
 
   Future<void> _pickActor() async {
-    final picked = await showUtenAdaptivePanel<AuditActorOption>(
-      context: context,
-      drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
-      compactHeightFactor: 0.95,
-      builder: (_) => const AuditActorPicker(),
+    final access = EmployeePickerAccess(
+      EmployeePickerAccess.containerOf(context),
     );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _selectedActor = picked;
-      _anonymousMode = false;
-      _systemAnomalyMode = false;
-      _requestId = '';
-      _requestIdController.clear();
-      _actorScopeFilter = 'user';
-      _preferSessionView = true;
-      _invalidateScopeResults();
-    });
+    final ticket = access.capture();
+    try {
+      final picked = await showUtenAdaptivePanel<AuditActorOption>(
+        context: context,
+        drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
+        compactHeightFactor: 0.95,
+        builder: (_) => const AuditActorPicker(),
+      );
+      if (picked == null ||
+          !mounted ||
+          !identical(
+            access.container,
+            EmployeePickerAccess.containerOf(context),
+          ) ||
+          !ticket.isCurrent) {
+        return;
+      }
+      setState(() {
+        _selectedActor = picked;
+        _anonymousMode = false;
+        _systemAnomalyMode = false;
+        _requestId = '';
+        _requestIdController.clear();
+        _actorScopeFilter = 'user';
+        _preferSessionView = true;
+        _invalidateScopeResults();
+      });
+    } finally {
+      access.dispose();
+    }
   }
 
   void _applyScopeQuery() {

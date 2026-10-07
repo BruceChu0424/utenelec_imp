@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
 import 'uten_employee_picker_models.dart';
+import 'uten_employee_picker_access.dart';
 import 'uten_employee_selection_panel.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
@@ -67,10 +68,14 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
       _UtenEmployeeMultiPickerState();
 }
 
-class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
+class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
+    with EmployeePickerAccessState<UtenEmployeeMultiPicker> {
   final _fieldKey = GlobalKey<FormFieldState<List<UtenEmployeePickerItem>>>();
   List<UtenEmployeePickerItem> _selection = const [];
   int _fieldVersion = 0;
+
+  @override
+  void onPickerAccessInvalidated() => _fieldVersion++;
 
   // ADR-150: the chosen people are readable by the AI assistant (names only,
   // computed on capture); choosing people stays with the user (no setter).
@@ -135,6 +140,7 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
   }
 
   Future<void> _open() async {
+    final ticket = pickerAccess.capture();
     final version = ++_fieldVersion;
     final result = await showUtenEmployeeSelectionPanel(
       context,
@@ -152,6 +158,7 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker> {
     );
     if (result == null ||
         !mounted ||
+        !ticket.isCurrent ||
         !widget.enabled ||
         version != _fieldVersion) {
       return;

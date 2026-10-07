@@ -53,7 +53,7 @@
 - 启用且未选时字段立即显示错误色边框。
 - 提交校验失败时通过 `validator` / `errorText` 在字段附近给出恢复提示。
 - 不能只靠红色表达必填；标签、边框和错误文案必须同时保持语义。
-- 异步加载期间显示骨架，失败显示重试，空结果显示业务空态。
+- 异步加载期间显示加载状态，失败显示重试，空结果显示业务空态；加载或失败期间不能确认旧选项。
 
 ## 五、调用要求
 
@@ -68,7 +68,7 @@ UtenEmployeePickerItem(
 )
 ```
 
-- 选中回写使用稳定员工 UUID `id`；`姓名(工号)`只用于展示。
+- `id` 保持候选接口的身份语义：员工业务字段使用 employeeId，审计目录使用 actorId（用户或访客 ID）；不能在 userId 与 employeeId 之间猜测或互换。`姓名(工号)`只用于展示。
 - loader 搜索应覆盖姓名和工号，并只允许最新请求回写。
 - 候选范围会随车间、部门或业务对象切换的字段传 `candidateScopeKey`；范围或上游选中值改变后，旧抽屉不得回填。
 - `departmentName` 仅放部门名称，状态、岗位、无账号提示和归属条数放 `subtitle`。
@@ -76,6 +76,9 @@ UtenEmployeePickerItem(
 - 专用候选接口保留各自权限和资格；超过支持的目录上限须明确提示缩小搜索范围，不能悄悄截断。
 - 已选员工不得因分页不在首屏而消失；历史员工无法再进入候选时保留安全回显。
 - 外部访客目录继续遵守最小隐私字段，不为满足内部展示规则额外暴露员工工号。
+- 字段补查、已打开弹层和确认回填均绑定登录身份（含代操作、登录纪元）、服务器地址及有效权限代际。任一边界变化即作废旧请求，即使随后切回原值也不接受；失效只移除自己的弹层，不关闭后来打开的对话框。
+- 本地部门过滤与服务端姓名/工号搜索分开处理：部门名称可匹配本次已授权完整目录；姓名/工号搜索返回空时，不得从旧目录重新注入同名人员。正常跨部门、跨关键词多选仍保留已选值，不因一次过滤结果缺席而清空。
+- 分页加载须在开始时捕获同一个仓储，并在每个 await 后复核访问代际；不能逐页重新读取仓储，把切换服务器前后的候选混合。直接使用自有弹层的调用方也要在 pop 后、回填前复核同一访问 ticket，并在 finally 中释放订阅。
 
 ## 六、回归测试
 
@@ -86,5 +89,10 @@ UtenEmployeePickerItem(
   ASCII 括号、主行/副行、确认栏、历史补查和多选 Chip。
 - [`uten_employee_picker_race_test.dart`](../../test/components/inputs/uten_employee_picker_race_test.dart)：
   弱网旧请求不得覆盖新搜索。
+- [`uten_employee_picker_access_test.dart`](../../test/components/inputs/uten_employee_picker_access_test.dart)：
+  单选/多选身份、服务器与权限 ABA，迟到补查、仅关闭本弹层、加载失败禁确认及受限空搜索。
+- [`audit_actor_picker_pagination_test.dart`](../../test/features/admin/audit_actor_picker_pagination_test.dart)、
+  [`audit_actor_picker_return_scope_test.dart`](../../test/features/admin/audit_actor_picker_return_scope_test.dart)：
+  同仓储完整分页、每页身份复核及真实审计页 pop 到回填之间的身份切换。
 - [`department_employee_picker_test.dart`](../../test/features/employee/department_employee_picker_test.dart)：
   部门定位、分页、竞态和姓名(工号)候选。

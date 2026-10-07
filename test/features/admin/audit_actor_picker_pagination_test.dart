@@ -12,8 +12,75 @@ import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
 import 'package:uten_imp/features/admin/widgets/audit_query_scope.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+final _server = StateProvider<String>((_) => 'https://audit-a.test');
+final _identity = StateProvider<AuthenticatedScope?>(
+  (_) => const AuthenticatedScope(userId: 'auditor-a', epoch: 1),
+);
+final _permissions = StateProvider<Set<String>>((_) => {'audit:view'});
+final _repository = StateProvider<AuditLogRepository?>((_) => null);
 
 void main() {
+  testWidgets('one directory load uses one repository for every page', (
+    tester,
+  ) async {
+    final pending = Completer<AuditActorPage>();
+    final original = _ActorRepository(pending: pending);
+    final replacement = _ActorRepository();
+    final container = await _pump(tester, original, settle: false);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(original.calls.map((call) => call.$1), [1, 2]);
+    container.read(_repository.notifier).state = replacement;
+    pending.complete(_ActorRepository.page(2));
+    await tester.pumpAndSettle();
+    expect(original.calls.map((call) => call.$1), [1, 2, 3]);
+    expect(replacement.calls, isEmpty);
+    expect(find.text('人员3'), findsOneWidget);
+  });
+
+  for (final boundary in ['server', 'identity', 'permissions']) {
+    testWidgets(
+      'audit $boundary change invalidates pending pages without mixing repositories',
+      (tester) async {
+        final pending = Completer<AuditActorPage>();
+        final original = _ActorRepository(pending: pending);
+        final replacement = _ActorRepository();
+        AuditActorOption? selected;
+        final container = await _pump(
+          tester,
+          original,
+          settle: false,
+          onSelected: (value) => selected = value,
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(original.calls.map((call) => call.$1), [1, 2]);
+        container.read(_repository.notifier).state = replacement;
+        switch (boundary) {
+          case 'server':
+            container.read(_server.notifier).state = 'https://audit-b.test';
+          case 'identity':
+            container.read(_identity.notifier).state = const AuthenticatedScope(
+              userId: 'auditor-b',
+              epoch: 2,
+            );
+          case 'permissions':
+            container.read(_permissions.notifier).state = {};
+        }
+        await tester.pump();
+        pending.complete(_ActorRepository.page(2));
+        await tester.pumpAndSettle();
+        expect(original.calls.map((call) => call.$1), [1, 2]);
+        expect(replacement.calls, isEmpty);
+        expect(find.byType(AuditActorPicker), findsNothing);
+        expect(selected, isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'actor picker loads every page, groups departments and confirms identity',
     (tester) async {
@@ -61,7 +128,7 @@ void main() {
   });
 }
 
-Future<void> _pump(
+Future<ProviderContainer> _pump(
   WidgetTester tester,
   _ActorRepository repository, {
   ValueChanged<AuditActorOption?>? onSelected,
@@ -76,8 +143,16 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        auditLogRepositoryProvider.overrideWithValue(repository),
+        auditLogRepositoryProvider.overrideWith(
+          (ref) => ref.watch(_repository) ?? repository,
+        ),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
+        authenticatedScopeProvider.overrideWith((ref) => ref.watch(_identity)),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_permissions),
+        ),
+        isSuperAdminProvider.overrideWithValue(false),
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -111,6 +186,10 @@ Future<void> _pump(
   } else {
     await tester.pump();
   }
+  return ProviderScope.containerOf(
+    tester.element(find.byType(AuditActorPicker)),
+    listen: false,
+  );
 }
 
 class _ActorRepository extends Fake implements AuditLogRepository {

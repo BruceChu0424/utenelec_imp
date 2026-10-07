@@ -5,6 +5,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
+import '../../../components/inputs/uten_employee_picker_access.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -754,20 +755,33 @@ class AuditActorPicker extends ConsumerStatefulWidget {
   ConsumerState<AuditActorPicker> createState() => _AuditActorPickerState();
 }
 
-class _AuditActorPickerState extends ConsumerState<AuditActorPicker> {
+class _AuditActorPickerState extends ConsumerState<AuditActorPicker>
+    with EmployeePickerAccessState<AuditActorPicker> {
   final _actors = <String, AuditActorOption>{};
   int _loadRevision = 0;
 
+  @override
+  void onPickerAccessInvalidated() {
+    _loadRevision++;
+    _actors.clear();
+  }
+
   Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
+    final ticket = pickerAccess.capture();
+    final repository = ref.read(auditLogRepositoryProvider);
     final revision = ++_loadRevision;
     final rows = <String, AuditActorOption>{};
     var pageNumber = 1;
     var totalPages = 1;
     do {
-      final page = await ref
-          .read(auditLogRepositoryProvider)
-          .actors(page: pageNumber, size: 100, keyword: keyword);
-      if (!mounted || revision != _loadRevision) return const [];
+      final page = await repository.actors(
+        page: pageNumber,
+        size: 100,
+        keyword: keyword,
+      );
+      if (!mounted || !ticket.isCurrent || revision != _loadRevision) {
+        return const [];
+      }
       if (page.page != pageNumber) throw StateError('人员目录分页响应不一致');
       for (final actor in page.items) {
         rows[actor.actorId] = actor;

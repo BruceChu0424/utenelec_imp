@@ -40,4 +40,20 @@ class ProductionWorkshopMaterialNoticeContractTest {
                 .contains("WAITING/短料只是进度更新")
                 .contains("\"normal\"");
     }
+
+    @Test
+    void arrivalProgressCardGatesOnProducibleCapacityWatermark() throws Exception {
+        // 2026-10-06 修订二(ADR-165): 到货进展卡按可支撑产能水位差弹窗, 布尔闸门(partialStartCapable)退役。
+        String source = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/notice/ChainNoticeService.java"),
+                StandardCharsets.UTF_8);
+        assertThat(source)
+                .contains("BigDecimal capacity = workshopArrivalCapacity(segmentId, task, status, route, missingRows, arrivedByDemand)")
+                .contains("arrivalProgressWarrantsNotice(task, status, route, capacity)")
+                .contains("（现有物料可支撑生产 ")
+                .contains("syncArrivalCapacityWatermark(segmentId, capacity)")
+                .contains("arrival_notice_capacity IS DISTINCT FROM")
+                .contains("capacity.compareTo(bd(task.get(\"arrival_notice_capacity\"))) > 0")
+                .doesNotContain("partialStartCapable");
+    }
 }

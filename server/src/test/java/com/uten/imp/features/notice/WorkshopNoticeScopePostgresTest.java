@@ -190,7 +190,10 @@ class WorkshopNoticeScopePostgresTest {
     }
 
     @Test
-    void currentReceiversIncludeActualWorkshopSecondaryManagerAndResponsibleButNotViewOnlyOrPlanner() {
+    void currentReceiversAreWorkshopLeadersAndResponsibleWithMemberPoolFallback() {
+        // 2026-10-06 修订二(ADR-165): 车间任务卡只发「车间负责人 ∪ 任务负责人 ∩ 权限」——
+        // A 的 manager(actor2) 与任务负责人(actor3); 普通成员(actor0)/兼职(actor1)不再直接收卡,
+        // 但已收到的卡仍按车间范围可见(workshopScope 不变)。
         UserAccountRepository users=mock(UserAccountRepository.class);
         PermissionResolver permissions=mock(PermissionResolver.class);
         for(Actor actor:ACTORS) {
@@ -201,7 +204,7 @@ class WorkshopNoticeScopePostgresTest {
         }
         var chain=chain(mock(NoticeService.class),users,permissions);
         assertThat(chain.workshopRecipientUserIds(A,ACTORS.get(3).employee()))
-                .containsExactly(ACTORS.get(0).user(),ACTORS.get(1).user(),ACTORS.get(2).user(),ACTORS.get(3).user());
+                .containsExactly(ACTORS.get(2).user(),ACTORS.get(3).user());
         for(int index:List.of(0,1,2,3)) {
             Actor actor=ACTORS.get(index);
             Notice notice=persist(actor.user(),TASK_A,"important");
@@ -214,6 +217,14 @@ class WorkshopNoticeScopePostgresTest {
             Notice notice=persist(actor.user(),TASK_A,"important");
             assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.workshopScope(actor.auth())))
                     .as("other workshop/planner/view/revoked/resigned/disabled actor %s",actor.number()).isEmpty();
+        }
+        // 车间一个负责人都没登记且任务无负责人 → 兜底回旧全成员池(主职 actor0 + 兼职 actor1)。
+        jdbc.update("UPDATE departments SET manager_id=NULL WHERE id=?",A);
+        try {
+            assertThat(chain.workshopRecipientUserIds(A,null))
+                    .containsExactly(ACTORS.get(0).user(),ACTORS.get(1).user());
+        } finally {
+            jdbc.update("UPDATE departments SET manager_id=? WHERE id=?",ACTORS.get(2).employee(),A);
         }
     }
 

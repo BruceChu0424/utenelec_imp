@@ -34,6 +34,13 @@ import release_tools  # noqa: E402
 import wheelhouse_supply_chain  # noqa: E402
 
 
+def flutter_metadata_fixture(version: str, build: str = "1", name: str = "uten_imp") -> bytes:
+    return (
+        f'{{"app_name":"{name}","version":"{version.removeprefix("v")}",'
+        f'"build_number":"{build}","package_name":"{name}"}}'
+    ).encode("utf-8")
+
+
 class ReleaseFixture(unittest.TestCase):
     version = "v1.1.0"
     commit = "0123456789abcdef0123456789abcdef01234567"
@@ -43,6 +50,9 @@ class ReleaseFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        self.pubspec = self.root / "pubspec.yaml"
+        self.pubspec.write_text(f"name: uten_imp\nversion: {self.version[1:]}+1\n", encoding="utf-8")
+        self.flutter_version_bytes = flutter_metadata_fixture(self.version)
         self.payload = self.root / "payload" / self.version
         for directory in ("server", "web", "sbom"):
             (self.payload / directory).mkdir(parents=True, exist_ok=True)
@@ -56,7 +66,7 @@ class ReleaseFixture(unittest.TestCase):
         (self.payload / "sbom/backend.cdx.json").write_text(sbom, encoding="utf-8")
         (self.payload / "sbom/flutter.cdx.json").write_text(sbom, encoding="utf-8")
         (self.payload / "web/version.json").write_bytes(
-            release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES
+            self.flutter_version_bytes
         )
         self.updater_supply = self.payload / "sbom/updater"
         self.updater_wheelhouse = self.updater_supply / "wheelhouse"
@@ -155,6 +165,7 @@ class ReleaseFixture(unittest.TestCase):
                 commit=self.commit,
                 version=self.version,
                 web_root=self.payload / "web",
+                pubspec=self.pubspec,
             )
         )
         self.migrations = self.root / "migrations"
@@ -526,7 +537,7 @@ class ReleaseFixture(unittest.TestCase):
         )
         with self.assertRaises(release_tools.ReleaseMetadataError):
             release_tools.stamp_web_release(
-                SimpleNamespace(web_root=web, version=self.version, commit=self.commit)
+                SimpleNamespace(web_root=web, pubspec=self.pubspec, version=self.version, commit=self.commit)
             )
 
     def test_signed_channel_is_bound_to_manifest_identity(self) -> None:
@@ -714,14 +725,52 @@ class ReleaseFixture(unittest.TestCase):
             )
 
 
+class FlutterPubspecMetadataTest(unittest.TestCase):
+    def test_real_release_pubspec_generates_exact_flutter_3442_bytes(self) -> None:
+        version, raw = release_tools._flutter_metadata_from_pubspec(
+            b'name: uten_imp\nversion: 2.5.3+253\ndependencies:\n  nested:\n    version: 9.9.9\n'
+        )
+        self.assertEqual(version, "v2.5.3")
+        self.assertEqual(raw, b'{"app_name":"uten_imp","version":"2.5.3","build_number":"253","package_name":"uten_imp"}')
+
+    def test_quoted_literals_and_optional_build_follow_flutter_field_order(self) -> None:
+        version, raw = release_tools._flutter_metadata_from_pubspec(
+            b'name: "uten_imp_next" # package\nversion: \'3.6.7\' # no build\n'
+        )
+        self.assertEqual(version, "v3.6.7")
+        self.assertEqual(raw, b'{"app_name":"uten_imp_next","version":"3.6.7","package_name":"uten_imp_next"}')
+
+    def test_ambiguous_or_noncanonical_source_is_never_used_as_expectation(self) -> None:
+        for raw in (
+            b'name: uten_imp\nversion: 2.5.3+253\nversion: 9.9.9+1\n',
+            b'name: uten_imp\nversion: 2.5.3+253\n"version": 9.9.9+1\n',
+            b'name: uten_imp\nversion: *other\n',
+            b'name: uten_imp\nversion: 2.5.3+253\n<<: *other\n',
+            b'name: uten_imp\nversion: !!str 2.5.3+253\n',
+            b'name: uten_imp\nversion: |\n  2.5.3+253\n',
+            b'name: uten_imp\nversion: 02.5.3+253\n',
+            b'name: uten_imp\nversion: 2.5.3+0253\n',
+            b'name: uten_imp\nversion: 2.5.3-beta+253\n',
+            b'name: uten_imp\nversion: 2.5.3+253\n---\nname: other\n',
+            b'name: "uten\\u005fimp"\nversion: 2.5.3+253\n',
+            b'name: uten_imp\n', b'version: 2.5.3+253\n',
+            b'\xef\xbb\xbfname: uten_imp\nversion: 2.5.3+253\n',
+        ):
+            with self.subTest(raw=raw), self.assertRaises(release_tools.ReleaseMetadataError):
+                release_tools._flutter_metadata_from_pubspec(raw)
+
+
 @unittest.skipUnless(os.name == "posix", "release web stamping is Linux CI-only")
 class FlutterWebVersionStampTest(unittest.TestCase):
-    version = "v1.4.0"
+    version = "v2.5.3"
     commit = "89abcdef0123456789abcdef0123456789abcdef"
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
+        self.pubspec = self.root / "pubspec.yaml"
+        self.pubspec.write_text("name: uten_imp\nversion: 2.5.3+253\n", encoding="utf-8")
+        self.flutter_version_bytes = flutter_metadata_fixture(self.version, "253")
         self.web = self.root / "web"
         self.web.mkdir()
         self.index = self.web / "index.html"
@@ -731,10 +780,11 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.version_file = self.web / "version.json"
-        self.version_file.write_bytes(release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES)
+        self.version_file.write_bytes(self.flutter_version_bytes)
         self.transaction_file = self.web / release_tools.WEB_STAMP_TRANSACTION_FILE
         self.args = SimpleNamespace(
             web_root=self.web,
+            pubspec=self.pubspec,
             version=self.version,
             commit=self.commit,
         )
@@ -751,11 +801,9 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             workflow,
         )
         self.assertEqual(
-            json.dumps(
-                release_tools.FLUTTER_WEB_PACKAGE_METADATA,
-                separators=(",", ":"),
-            ).encode("utf-8"),
-            release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES,
+            release_tools.read_flutter_web_source(self.pubspec).metadata_bytes,
+            b'{"app_name":"uten_imp","version":"2.5.3","build_number":"253",'
+            b'"package_name":"uten_imp"}',
         )
 
         release_tools.stamp_web_release(self.args)
@@ -765,7 +813,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             {
                 "commitSha": self.commit,
                 "product": release_tools.PRODUCT,
-                "releaseSequence": 100001004000,
+                "releaseSequence": 100002005003,
                 "schemaVersion": 1,
                 "version": self.version,
             },
@@ -784,6 +832,118 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             1,
         )
 
+    def test_later_release_and_package_name_come_from_checkout(self) -> None:
+        self.pubspec.write_text(
+            "name: uten_imp_next\nversion: '3.6.7+999' # next release\n", encoding="utf-8"
+        )
+        self.args.version = "v3.6.7"
+        self.version_file.write_bytes(flutter_metadata_fixture("v3.6.7", "999", "uten_imp_next"))
+        release_tools.stamp_web_release(self.args)
+        self.assertEqual(json.loads(self.version_file.read_bytes())["version"], "v3.6.7")
+        self.assertFalse(self.transaction_file.exists())
+
+    def test_requested_release_must_match_checkout_version_before_any_mutation(self) -> None:
+        original_index = self.index.read_bytes()
+        self.args.version = "v2.5.4"
+        with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "pubspec version differs"):
+            release_tools.stamp_web_release(self.args)
+        self.assertEqual(self.index.read_bytes(), original_index)
+        self.assertEqual(self.version_file.read_bytes(), self.flutter_version_bytes)
+        self.assertFalse(self.transaction_file.exists())
+
+    def test_source_cannot_be_claimed_by_the_web_artifact_itself(self) -> None:
+        self.args.pubspec = self.web / "pubspec.yaml"
+        self.args.pubspec.write_bytes(self.pubspec.read_bytes())
+        with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "outside the web build"):
+            release_tools.stamp_web_release(self.args)
+        self.assertEqual(self.version_file.read_bytes(), self.flutter_version_bytes)
+        self.assertFalse(self.transaction_file.exists())
+
+    def test_checkout_source_rejects_links(self) -> None:
+        source_bytes = self.pubspec.read_bytes()
+        outside = self.root / "original-pubspec.yaml"
+        self.pubspec.rename(outside)
+        self.pubspec.symlink_to(outside)
+        with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "stable single-link"):
+            release_tools.stamp_web_release(self.args)
+        self.pubspec.unlink()
+        os.link(outside, self.pubspec)
+        with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "stable single-link"):
+            release_tools.stamp_web_release(self.args)
+        self.assertEqual(outside.read_bytes(), source_bytes)
+        self.assertFalse(self.transaction_file.exists())
+
+    def test_valid_json_with_any_wrong_package_field_or_encoding_is_rejected(self) -> None:
+        metadata = json.loads(self.flutter_version_bytes)
+        original_index = self.index.read_bytes()
+        for field, forged in (
+            ("app_name", "forged"), ("package_name", "forged"),
+            ("version", "0.1.0"), ("build_number", "1"),
+        ):
+            with self.subTest(field=field):
+                polluted = dict(metadata, **{field: forged})
+                raw = json.dumps(polluted, separators=(",", ":")).encode()
+                self.version_file.write_bytes(raw)
+                with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "differs from the reviewed Flutter"):
+                    release_tools.stamp_web_release(self.args)
+                self.assertEqual(self.index.read_bytes(), original_index)
+                self.assertEqual(self.version_file.read_bytes(), raw)
+                self.assertFalse(self.transaction_file.exists())
+        for raw in (
+            json.dumps(metadata, separators=(",", ":"), sort_keys=True).encode(),
+            self.flutter_version_bytes + b"\n",
+            self.flutter_version_bytes[:-1] + b',"version":"2.5.3"}',
+            b'{"app_name":"uten_imp","version":"0.1.0","build_number":"1","package_name":"uten_imp"}',
+        ):
+            self.version_file.write_bytes(raw)
+            with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "differs from the reviewed Flutter"):
+                release_tools.stamp_web_release(self.args)
+            self.assertEqual(self.index.read_bytes(), original_index)
+            self.assertEqual(self.version_file.read_bytes(), raw)
+            self.assertFalse(self.transaction_file.exists())
+
+    def test_changed_pubspec_cannot_resume_an_interrupted_stamp_even_with_same_metadata(self) -> None:
+        real_replace = release_tools._atomic_replace_captured_web_file
+
+        def interrupt_version(directory_fd: int, name: str, **kwargs: object) -> None:
+            if name == "version.json":
+                raise OSError("injected interruption")
+            real_replace(directory_fd, name, **kwargs)
+
+        with mock.patch.object(release_tools, "_atomic_replace_captured_web_file", side_effect=interrupt_version), self.assertRaises(OSError):
+            release_tools.stamp_web_release(self.args)
+        transaction = json.loads(self.transaction_file.read_bytes())
+        self.assertEqual(transaction["pubspecSha256"], hashlib.sha256(self.pubspec.read_bytes()).hexdigest())
+        self.pubspec.write_bytes(self.pubspec.read_bytes() + b"# changed source checkout\n")
+        original_index = self.index.read_bytes()
+        with self.assertRaisesRegex(release_tools.ReleaseMetadataError, "transaction differs"):
+            release_tools.stamp_web_release(self.args)
+        self.assertEqual(self.index.read_bytes(), original_index)
+        self.assertEqual(self.version_file.read_bytes(), self.flutter_version_bytes)
+        self.assertTrue(self.transaction_file.exists())
+
+    def test_source_inode_swap_during_stamp_prevents_transaction_commit(self) -> None:
+        real_replace = release_tools._atomic_replace_captured_web_file
+
+        def swap_source(directory_fd: int, name: str, **kwargs: object) -> None:
+            real_replace(directory_fd, name, **kwargs)
+            if name == "index.html":
+                swapped = self.root / "replacement-pubspec.yaml"
+                swapped.write_bytes(self.pubspec.read_bytes())
+                os.replace(swapped, self.pubspec)
+
+        with mock.patch.object(release_tools, "_atomic_replace_captured_web_file", side_effect=swap_source), self.assertRaisesRegex(release_tools.ReleaseMetadataError, "pubspec changed"):
+            release_tools.stamp_web_release(self.args)
+        self.assertTrue(self.transaction_file.exists())
+
+    def test_all_publishers_and_quality_gate_bind_checkout_metadata(self) -> None:
+        for name in ("release.yml", "simple-release.yml", "_unsigned-candidate-build.yml"):
+            workflow = (PROJECT_ROOT / ".github/workflows" / name).read_text(encoding="utf-8")
+            self.assertEqual(workflow.count("--pubspec pubspec.yaml"), 1, name)
+        quality = (PROJECT_ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+        self.assertLess(quality.index("flutter build web"), quality.index("release_tools.stamp_web_release"))
+        self.assertIn('shutil.copytree("build/web", web)', quality)
+
     def test_forged_replayed_or_old_flutter_metadata_is_rejected_without_mutation(self) -> None:
         original_index = self.index.read_bytes()
         cases = {
@@ -799,13 +959,13 @@ class FlutterWebVersionStampTest(unittest.TestCase):
                 {
                     "commitSha": self.commit,
                     "product": release_tools.PRODUCT,
-                    "releaseSequence": 100001004000,
+                    "releaseSequence": 100002005003,
                     "schemaVersion": 1,
                     "version": self.version,
                 }
             ),
             "non-generator-encoding": (
-                release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES + b"\n"
+                self.flutter_version_bytes + b"\n"
             ),
         }
         for label, raw in cases.items():
@@ -822,7 +982,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
     def test_flutter_version_symlink_is_rejected_without_touching_index(self) -> None:
         original_index = self.index.read_bytes()
         outside = self.root / "outside-version.json"
-        outside.write_bytes(release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES)
+        outside.write_bytes(self.flutter_version_bytes)
         self.version_file.unlink()
         self.version_file.symlink_to(outside)
 
@@ -831,7 +991,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
 
         self.assertTrue(self.version_file.is_symlink())
         self.assertEqual(self.index.read_bytes(), original_index)
-        self.assertEqual(outside.read_bytes(), release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES)
+        self.assertEqual(outside.read_bytes(), self.flutter_version_bytes)
 
     def test_flutter_version_hardlink_is_rejected_without_touching_index(self) -> None:
         original_index = self.index.read_bytes()
@@ -845,21 +1005,22 @@ class FlutterWebVersionStampTest(unittest.TestCase):
 
         self.assertEqual(self.index.read_bytes(), original_index)
         self.assertEqual(self.version_file.stat().st_nlink, 2)
-        self.assertEqual(alias.read_bytes(), release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES)
+        self.assertEqual(alias.read_bytes(), self.flutter_version_bytes)
 
     def test_same_bytes_path_replacement_is_rejected_before_stamping(self) -> None:
         original_index = self.index.read_bytes()
         replacement = self.web / ".replacement-version.json"
-        replacement.write_bytes(release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES)
+        replacement.write_bytes(self.flutter_version_bytes)
         real_read = os.read
-        reads = 0
+        original_inode = self.version_file.stat().st_ino
+        swapped = False
 
         def swap_during_capture(descriptor: int, size: int) -> bytes:
-            nonlocal reads
+            nonlocal swapped
             chunk = real_read(descriptor, size)
-            reads += 1
-            if reads == 3:
+            if chunk and not swapped and os.fstat(descriptor).st_ino == original_inode:
                 os.replace(replacement, self.version_file)
+                swapped = True
             return chunk
 
         with mock.patch.object(
@@ -873,7 +1034,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         self.assertEqual(self.index.read_bytes(), original_index)
         self.assertEqual(
             self.version_file.read_bytes(),
-            release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES,
+            self.flutter_version_bytes,
         )
 
     def test_interrupted_two_file_stamp_resumes_only_from_bound_transaction(self) -> None:
@@ -905,7 +1066,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         )
         self.assertEqual(
             self.version_file.read_bytes(),
-            release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES,
+            self.flutter_version_bytes,
         )
 
         release_tools.stamp_web_release(self.args)
@@ -921,7 +1082,8 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         forged = release_tools._web_stamp_transaction_value(
             version=self.version,
             commit_sha=self.commit,
-            sequence=100001004000,
+            source=release_tools.read_flutter_web_source(self.pubspec),
+            sequence=100002005003,
             index_preimage=original_index,
             index_final=release_tools._stamped_index_from_preimage(
                 original_index, self.version
@@ -930,7 +1092,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
                 {
                     "commitSha": self.commit,
                     "product": release_tools.PRODUCT,
-                    "releaseSequence": 100001004000,
+                    "releaseSequence": 100002005003,
                     "schemaVersion": 1,
                     "version": self.version,
                 }
@@ -948,7 +1110,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         self.assertEqual(self.index.read_bytes(), original_index)
         self.assertEqual(
             self.version_file.read_bytes(),
-            release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES,
+            self.flutter_version_bytes,
         )
         self.assertTrue(self.transaction_file.exists())
 
@@ -958,7 +1120,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
             {
                 "commitSha": self.commit,
                 "product": release_tools.PRODUCT,
-                "releaseSequence": 100001004000,
+                "releaseSequence": 100002005003,
                 "schemaVersion": 1,
                 "version": self.version,
             }
@@ -966,7 +1128,8 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         original_transaction = release_tools._web_stamp_transaction_value(
             version=self.version,
             commit_sha=self.commit,
-            sequence=100001004000,
+            source=release_tools.read_flutter_web_source(self.pubspec),
+            sequence=100002005003,
             index_preimage=original_index,
             index_final=release_tools._stamped_index_from_preimage(
                 original_index, self.version
@@ -976,7 +1139,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
         cases = {
             "boolean-schema": ("schemaVersion", True),
             "float-schema": ("schemaVersion", 1.0),
-            "float-sequence": ("releaseSequence", 100001004000.0),
+            "float-sequence": ("releaseSequence", 100002005003.0),
         }
         for label, (key, value) in cases.items():
             with self.subTest(label=label):
@@ -994,7 +1157,7 @@ class FlutterWebVersionStampTest(unittest.TestCase):
                 self.assertEqual(self.index.read_bytes(), original_index)
                 self.assertEqual(
                     self.version_file.read_bytes(),
-                    release_tools.FLUTTER_WEB_PACKAGE_METADATA_BYTES,
+                    self.flutter_version_bytes,
                 )
 
     def test_post_replace_index_swap_is_caught_by_joint_terminal_verification(self) -> None:

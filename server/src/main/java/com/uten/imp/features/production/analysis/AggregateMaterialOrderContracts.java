@@ -99,6 +99,8 @@ public final class AggregateMaterialOrderContracts {
                 BigDecimal sourceRequiredQty,BigDecimal remainingQty,BigDecimal allocatedQty,BigDecimal orderedQty) {
             this(materialLineId,analysisLineId,sourceLabel,allocationPriority,needDate,sourceRequiredQty,remainingQty,allocatedQty,orderedQty,null);
         }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="allocatedQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String allocatedQtyExact() { return allocatedQty.toPlainString(); }
     }
 
     /** One physical shared batch's direct frozen BOM inputs, never a sum of separately rounded source batches. */
@@ -119,6 +121,8 @@ public final class AggregateMaterialOrderContracts {
                                List<SourcePreview> sources, List<ChildPreview> sharedBomChildren,
                                String blockedReason,UUID existingBatchId,BigDecimal priorOutputQty) {
         public GroupPreview { sources=List.copyOf(sources);sharedBomChildren=List.copyOf(sharedBomChildren);priorOutputQty=priorOutputQty==null?BigDecimal.ZERO:priorOutputQty; }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="publicExtraQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String publicExtraQtyExact() { return publicExtraQty.toPlainString(); }
         public GroupPreview(String clientGroupKey,String compatibilityKey,String route,UUID goodsId,String goodsCode,String goodsName,
                 UUID colorId,String colorName,UUID unitId,String unitName,BigDecimal sourceRequiredQty,BigDecimal orderedQty,BigDecimal remainingQty,
                 BigDecimal requestedQty,BigDecimal publicExtraQty,BigDecimal safetyQty,UUID departmentId,UUID workerId,UUID teamDepartmentId,

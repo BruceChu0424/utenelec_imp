@@ -656,6 +656,13 @@ public final class MaterialAnalysisContracts {
             boolean canIssueSurplus,
             UUID planExecutionWorkshopId,
             UUID planExecutionResponsibleId) implements MaterialAnalysisPlanSource {
+        @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            var values=new java.util.LinkedHashMap<String,String>();
+            if(remainingQty!=null)values.put("remainingQty",remainingQty.toPlainString());
+            if(unitRate!=null)values.put("unitRate",unitRate.toPlainString());
+            return java.util.Collections.unmodifiableMap(values);
+        }
         public ProductView(
             UUID analysisLineId,
             String sourceType,
@@ -793,6 +800,8 @@ public final class MaterialAnalysisContracts {
             BigDecimal planningUncoveredQty, BigDecimal netShortageQty,
             List<UUID> targetMaterialLineIds, boolean actionable) {
         public AggregatePreparationView { targetMaterialLineIds=List.copyOf(targetMaterialLineIds); }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="planningUncoveredQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String planningUncoveredQtyExact() { return planningUncoveredQty==null?null:planningUncoveredQty.toPlainString(); }
     }
 
     public record MaterialView(
@@ -963,6 +972,16 @@ public final class MaterialAnalysisContracts {
             boolean bomMissing,
             /** 缺 BOM 时该货品未完成的「完善 BOM」研发任务编号；还没登记或不缺 BOM 时为空。 */
             String rdTaskNo) {
+        @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            var values=new java.util.LinkedHashMap<String,String>();
+            if(additionalSupplyRecommendedQty!=null)values.put("additionalSupplyRecommendedQty",additionalSupplyRecommendedQty.toPlainString());
+            if(priorityMakeSupplementQty!=null)values.put("priorityMakeSupplementQty",priorityMakeSupplementQty.toPlainString());
+            if(minOrderQty!=null)values.put("minOrderQty",minOrderQty.toPlainString());
+            if(orderMultipleQty!=null)values.put("orderMultipleQty",orderMultipleQty.toPlainString());
+            if(mainWarehouseSafetyReplenishmentGapQty!=null)values.put("mainWarehouseSafetyReplenishmentGapQty",mainWarehouseSafetyReplenishmentGapQty.toPlainString());
+            return java.util.Collections.unmodifiableMap(values);
+        }
         /** 缺 BOM 标记与研发任务编号(只在详情最后一步按库内判定写入)。 */
         public MaterialView withBomGap(boolean missing, String taskNo) {
             return new MaterialView(materialLineId, analysisLineId, nodeKey, actionGroupKey, materialKey, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, level, path, parentNodeKey, parentGoodsId, parentLabel, controlStage, consumptionBasis, basisOutputQty, allowPartialPackage, hardGate, bomQty, parentPerProductQty, perProductQty, designBomQty, actualBomQty, usageBasis, usageReason, usageSampleCount, usageDefectRate, requiredQty, availableQty, exactPeggedQty, allocatedAvailableQty, reservedQty, safetyStockQty, inboundQty, shortageQty, demandSupplyGapQty, expectedReadyDate, sourceSuggestion, sourceConfirmed, routeConfirmed, routeReason, actionable, lowerLevelPending, requirementState, delegatedToAnalysisLineId, delegatedToSourceRef, delegatedToRequestedQty, borrowedInQty, borrowedOutQty, borrowRefs, notifiedTargets, crossReallocatedInQty, crossReallocatedOutQty, priorityPendingQty, priorityFulfilledQty, crossReallocationRefs, warehouseBreakdown, downstreamReferences, publicSurplusApprovedInboundQty, publicSurplusRemainingQty, sharedFutureClaimedQty, additionalSupplyRecommendedQty, minOrderQty, orderMultipleQty, selectedWarehousesAvailableQty, selectedOtherWarehouseTransferableQty, publicSurplusExpectedDate, sharedFutureSupplyRefs, flowStage, planAnchorAnalysisLineId, mainWarehousePublicAvailableQty, mainWarehouseOpenSafetySupplyQty, mainWarehouseSafetyReplenishmentGapQty, priorityMakeSupplementQty, sharedFuturePendingQty, lateSharedFutureAvailableQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, externalFutureCoverageQty, internalCommittedOutputQty, sharedFutureClaimableQty, plannedOutputQty, netShortageQty, sourceRequiredQty, planningUncoveredQty, aggregateDelegatedQty, aggregateTargetMaterialLineId, aggregatePreparation, preparationAvailableQty, makePublicSupplyRefs, preparationAdoptedQty, preparationPoolKey, preparationSharedAvailableQty, preparationOwnedAvailableQty, preparationUncoveredBeforeSharedQty, preparationAdoptableSharedQty, preparationSharedSupplySlices, missing, missing ? taskNo : null);

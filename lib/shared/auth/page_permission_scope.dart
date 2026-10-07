@@ -14,6 +14,12 @@ final class PagePermissionScope {
   final String title;
 }
 
+/// 全局权限页的 AI 使用设置；仅管理使用权，模型与密钥仍由系统管理单独授权。
+const aiUsePermissionScope = PagePermissionScope(
+  surfaceKey: 'system.ai-assistant',
+  title: 'AI 使用',
+);
+
 /// 返回员工业务页的“本页权限”范围。
 ///
 /// 未登记路径返回 null（fail closed）。登录/访客端、四个主 Tab、个人自助、设置、
@@ -173,6 +179,7 @@ PagePermissionScope? pagePermissionScopeBySurfaceKey(String surfaceKey) {
 }
 
 const _registeredPagePermissionScopes = <PagePermissionScope>[
+  aiUsePermissionScope,
   _employeeScope,
   _departmentScope,
   _payrollScope,

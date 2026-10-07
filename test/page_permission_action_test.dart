@@ -13,6 +13,7 @@ import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
+import 'package:uten_imp/shared/auth/page_permission_action.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
@@ -20,6 +21,47 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 
 void main() {
+  testWidgets('AI permission shortcut opens the dedicated common drawer', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      _actionApp(
+        canManage: true,
+        superAdmin: true,
+        scope: aiUsePermissionScope,
+        label: 'AI 使用权限',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('AI 使用权限'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('page-permission-action')));
+    await tester.pumpAndSettle();
+    final drawer = tester.widget<PagePermissionDrawer>(
+      find.byType(PagePermissionDrawer),
+    );
+    expect(drawer.scope.surfaceKey, 'system.ai-assistant');
+    expect(find.text('AI 使用 · 页面权限'), findsOneWidget);
+  });
+
+  testWidgets('AI shortcut cannot bypass the server delegation capability', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _actionApp(
+        canManage: false,
+        superAdmin: true,
+        scope: aiUsePermissionScope,
+        label: 'AI 使用权限',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('page-permission-action')), findsNothing);
+  });
+
   testWidgets(
     'delegation entry closes during retained-data refresh and failure',
     (tester) async {
@@ -571,15 +613,27 @@ void main() {
   );
 }
 
-Widget _actionApp({required bool canManage, bool superAdmin = false}) {
+Widget _actionApp({
+  required bool canManage,
+  bool superAdmin = false,
+  PagePermissionScope? scope,
+  String label = '权限设置',
+}) {
   final router = GoRouter(
     initialLocation: '/sales/orders',
     routes: [
       GoRoute(
         path: '/sales/orders',
-        builder: (_, _) => const Scaffold(
-          appBar: UtenAppBar(title: '销售订货'),
-          body: SizedBox.expand(),
+        builder: (_, _) => Scaffold(
+          appBar: UtenAppBar(
+            title: '销售订货',
+            showPagePermissionAction: scope == null,
+            actions: [
+              if (scope != null)
+                PagePermissionAction(scope: scope, label: label),
+            ],
+          ),
+          body: const SizedBox.expand(),
         ),
       ),
     ],
@@ -593,7 +647,7 @@ Widget _actionApp({required bool canManage, bool superAdmin = false}) {
           SessionSnapshot(
             delegableSurfaceKeys: {
               if (canManage)
-                pagePermissionScopeFor('/sales/orders')!.surfaceKey,
+                (scope ?? pagePermissionScopeFor('/sales/orders')!).surfaceKey,
             },
           ),
         ),

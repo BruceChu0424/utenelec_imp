@@ -251,6 +251,7 @@ jobs:
           install -m 0644 "$BACKEND_SBOM" "$PAYLOAD/sbom/backend.cdx.json"
           cp -a "$RUNNER_TEMP/updater-supply-chain/." "$PAYLOAD/sbom/updater/"
           python3 deploy/release/release_tools.py stamp-web \
+            --pubspec pubspec.yaml \
             --web-root "$PAYLOAD/web" --version "$V" --commit "$COMMIT"
           dart pub deps --json > "$RUNNER_TEMP/dart-pub-deps.json"
           python3 deploy/release/release_tools.py flutter-sbom \

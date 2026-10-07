@@ -2,6 +2,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 
 void main() {
+  test('large plan and purchase wire quantities use exact decimal proofs', () {
+    const exact = '9999999999999.9999';
+    expect(
+      const MaterialAnalysisIssueLine(
+        analysisLineId: 'root',
+        qty: 10000000000000,
+        qtyExact: exact,
+      ).toJson()['qty'],
+      exact,
+    );
+    final purchase = const MaterialSupplyQuantityInput(
+      actionGroupKey: 'source',
+      qty: 10000000000000,
+      qtyExact: exact,
+      safetyReplenishmentQty: 10000000000000,
+      safetyQtyExact: exact,
+    ).toJson();
+    expect(purchase['qty'], exact);
+    expect(purchase['safetyReplenishmentQty'], exact);
+  });
   test(
     'preparation budget keeps explicit zero distinct from legacy missing scope',
     () {

@@ -77,6 +77,38 @@ void main() {
     expect(adapter.sent, hasLength(1));
   });
 
+  test('页面高危授权再认证保留员工、权限面、部门与整批 CAS 版本', () async {
+    unregister = StepUpCoordinator.instance.register(
+      () async => 'page-step-up',
+    );
+    final adapter = _Adapter(
+      (options) => options.headers[StepUpInterceptor.header] == 'page-step-up'
+          ? _json(200, {'settingMode': 'CENTRAL_OVERRIDE'})
+          : _json(403, {'code': 'REAUTH_REQUIRED'}),
+    );
+    final response = await _dio(adapter).put<dynamic>(
+      '/department-staff-permissions/employees/e-1/permissions',
+      queryParameters: {'surfaceKey': 'finance.asset', 'departmentId': 'd-1'},
+      data: {
+        'changes': [
+          {
+            'code': 'finance_asset:delete',
+            'enabled': false,
+            'expectedVersion': 4,
+          },
+        ],
+      },
+    );
+    expect(response.statusCode, 200);
+    expect(adapter.sent, hasLength(2));
+    expect(adapter.sent.last.path, adapter.sent.first.path);
+    expect(adapter.sent.last.queryParameters, {
+      'surfaceKey': 'finance.asset',
+      'departmentId': 'd-1',
+    });
+    expect(adapter.sent.last.data, adapter.sent.first.data);
+  });
+
   test('带凭证重发后仍被拒：只弹一次框、只重发一次，不会死循环', () async {
     var prompts = 0;
     unregister = StepUpCoordinator.instance.register(() async {

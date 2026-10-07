@@ -50,6 +50,22 @@ class AppLocalizationsEn extends AppLocalizations {
       'Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.';
 
   @override
+  String get release254QuantityPrecision =>
+      'Material orders preserve full precision, fixing quantity errors in small quantities, unit conversions, split orders and confirmations of repeated submissions.';
+
+  @override
+  String get release254AiAuthorization =>
+      'AI access must be granted separately. Accounts without permission cannot see the assistant or use its features.';
+
+  @override
+  String get release254SensitiveAuthorization =>
+      'Changing sensitive permissions requires identity verification again, so important grants receive your confirmation.';
+
+  @override
+  String get release254Publishing =>
+      'Aligned app and installation-package versions and strengthened checks before release to reduce upgrade issues.';
+
+  @override
   String get businessColumnAmountUnavailable =>
       'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
 

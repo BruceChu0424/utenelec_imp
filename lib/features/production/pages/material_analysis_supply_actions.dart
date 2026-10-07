@@ -393,6 +393,25 @@ abstract class _MaterialAnalysisSupplyActionsState
         (largest, quantity) => quantity > largest ? quantity : largest,
       );
 
+  String _safetyReplenishmentExact(
+    Iterable<ProductionMaterialAnalysisMaterial> paths,
+  ) {
+    var largest = BigInt.zero;
+    for (final material in paths) {
+      final value = materialQuantityUnits(
+        materialQuantityFact(
+          material.quantityFactsExact['mainWarehouseSafetyReplenishmentGapQty'],
+          material.mainWarehouseSafetyReplenishmentGapQty,
+        ),
+      );
+      if (value > largest) largest = value;
+    }
+    return materialQuantityText(largest);
+  }
+
+  String _groupSafetyReplenishmentGapText(_MaterialGroup group) =>
+      _safetyReplenishmentExact(group.paths);
+
   double _groupOpenSafetySupplyQty(_MaterialGroup group) => group.paths
       .map((material) => material.mainWarehouseOpenSafetySupplyQty)
       .fold(
@@ -822,9 +841,7 @@ abstract class _MaterialAnalysisSupplyActionsState
             route.wireName,
             ...actionGroupKeys,
             ...materialLineIds,
-            for (final input in batchQuantities)
-              '${input.actionGroupKey ?? input.materialLineId}:'
-                  '${input.qty}:${input.safetyReplenishmentQty}',
+            for (final input in batchQuantities) input.toJson().toString(),
             // 不同「是否扣可用数量」的选择是不同下单意图，幂等键必须分开。
             if (skipAutoClaim) 'skipAutoClaim',
           ].join('|'),
@@ -954,7 +971,54 @@ abstract class _MaterialAnalysisSupplyActionsState
       context.appWarning('当前自制任务已无可安排余量，请刷新后重试');
       return null;
     }
-    return [for (final entry in entries) entry.toInput(entry.maxQty)];
+    try {
+      return [
+        for (final entry in entries)
+          entry.toInput(
+            entry.maxQty,
+            qtyExact: entry.maxQty >= 10000000000
+                ? _supplyDefaultExact(entry, route)
+                : null,
+          ),
+      ];
+    } on FormatException {
+      context.appError('缺少精确下单数量，请刷新或更新服务端后再下单');
+      return null;
+    }
+  }
+
+  String _supplyDefaultExact(
+    MaterialSupplyQuantityEntry entry,
+    MaterialSupplyRoute route,
+  ) {
+    final lines = _supplyEntryLines(entry.actionGroupKey, entry.materialLineId);
+    if (lines.isEmpty) throw const FormatException('缺少下单来源');
+    final group = _MaterialGroup(
+      key: entry.actionGroupKey ?? entry.materialLineId!,
+      paths: lines,
+    );
+    final priority = _isPriorityMakeSupplementGroup(group, route);
+    var total = BigInt.zero;
+    for (final row in lines) {
+      if (priority && !row.hasPriorityMakeSupplement) continue;
+      total += materialQuantityUnits(
+        priority
+            ? materialQuantityFact(
+                row.quantityFactsExact['priorityMakeSupplementQty'],
+                row.priorityMakeSupplementQty,
+              )
+            : row.aggregatePreparation != null
+            ? materialQuantityFact(
+                row.aggregatePreparation!.planningUncoveredQtyExact,
+                row.aggregatePreparation!.planningUncoveredQty,
+              )
+            : materialQuantityFact(
+                row.quantityFactsExact['additionalSupplyRecommendedQty'],
+                row.additionalSupplyRecommendedQty,
+              ),
+      );
+    }
+    return materialQuantityText(total);
   }
 
   /// 「提交采购/委外」前的数量裁决与总结确认(2026-09-05 改版；2026-09-06 拆出
@@ -990,11 +1054,33 @@ abstract class _MaterialAnalysisSupplyActionsState
               ),
             ) ==
             true;
-    if (!confirmed) return null;
-    return [
-      for (var i = 0; i < adjudicated.entries.length; i++)
-        adjudicated.entries[i].toInput(adjudicated.quantities[i]),
-    ];
+    if (!confirmed || !mounted) return null;
+    try {
+      return [
+        for (var i = 0; i < adjudicated.entries.length; i++)
+          adjudicated.entries[i].toInput(
+            adjudicated.quantities[i],
+            qtyExact: adjudicated.quantities[i].abs() >= 10000000000
+                ? (qtyByActionGroupKey?[adjudicated
+                          .entries[i]
+                          .actionGroupKey]) ??
+                      _supplyDefaultExact(adjudicated.entries[i], route)
+                : null,
+            safetyQtyExact:
+                adjudicated.entries[i].safetyReplenishmentQty >= 10000000000
+                ? _safetyReplenishmentExact(
+                    _supplyEntryLines(
+                      adjudicated.entries[i].actionGroupKey,
+                      adjudicated.entries[i].materialLineId,
+                    ),
+                  )
+                : null,
+          ),
+      ];
+    } on FormatException {
+      context.appError('缺少精确下单数量，请刷新或更新服务端后再下单');
+      return null;
+    }
   }
 
   /// 纯数量裁决（不弹窗）：校验行内编辑值（无效/负数/超上限/全零）与公共补库
@@ -1110,29 +1196,34 @@ abstract class _MaterialAnalysisSupplyActionsState
     );
   }
 
+  List<ProductionMaterialAnalysisMaterial> _supplyEntryLines(
+    String? actionGroupKey,
+    String? materialLineId,
+  ) {
+    final materials =
+        _analysis?.materials ?? const <ProductionMaterialAnalysisMaterial>[];
+    return materials
+        .where(
+          (material) => actionGroupKey != null
+              ? (material.actionable ||
+                        material.isRootSupply ||
+                        material.hasPriorityMakeSupplement) &&
+                    material.actionGroupKey == actionGroupKey
+              : material.materialLineId == materialLineId,
+        )
+        .toList(growable: false);
+  }
+
   /// 组装一个提交单元的展示与口径数据。actionGroupKey 单元的缺口/在途
   /// 按整个操作组汇总（与服务端分组口径一致），不按本页单个勾选行。
   MaterialSupplyQuantityEntry _supplyQuantityEntry(
     _SupplyNotificationTarget target,
     MaterialSupplyRoute route,
   ) {
-    final materials =
-        _analysis?.materials ?? const <ProductionMaterialAnalysisMaterial>[];
-    final lines = target.actionGroupKey != null
-        ? materials
-              .where(
-                (material) =>
-                    (material.actionable ||
-                        material.isRootSupply ||
-                        material.hasPriorityMakeSupplement) &&
-                    material.actionGroupKey == target.actionGroupKey,
-              )
-              .toList(growable: false)
-        : materials
-              .where(
-                (material) => material.materialLineId == target.materialLineId,
-              )
-              .toList(growable: false);
+    final lines = _supplyEntryLines(
+      target.actionGroupKey,
+      target.materialLineId,
+    );
     final representative = lines.isEmpty ? null : lines.first;
     var open = 0.0;
     var safetyStock = 0.0;

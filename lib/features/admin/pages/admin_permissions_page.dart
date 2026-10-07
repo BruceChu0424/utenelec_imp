@@ -26,6 +26,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/page_permission_action.dart';
+import '../../../shared/auth/page_permission_scope.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../models/admin_models.dart';
 import '../repositories/admin_repository.dart';
@@ -148,6 +150,13 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
       appBar: UtenAppBar(
         title: canManageAuthorization ? '账号与权限管理' : '账号支持',
         showBackButton: true,
+        actions: [
+          if (canManageAuthorization)
+            const PagePermissionAction(
+              scope: aiUsePermissionScope,
+              label: 'AI 使用权限',
+            ),
+        ],
       ),
       body: body,
     );

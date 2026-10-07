@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -253,7 +254,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
         self.assertIn('--dart-define="APP_BUILD_ID=$GITHUB_SHA"', build)
         self.assertIn("node --test web/update_check.test.cjs", build)
         assembly = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
-        self.assertIn('stamp-web \\\n            --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"', assembly)
+        self.assertIn('stamp-web \\\n            --pubspec pubspec.yaml \\\n            --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"', assembly)
         self.assertLess(assembly.index("stamp-web"), assembly.index("sha256sum > SHA256SUMS"))
         self.assertNotIn("publishedAt", assembly)
 
@@ -285,7 +286,7 @@ class ReleaseWorkflowContractTest(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "posix", "release assembly uses the Linux CI environment")
 class SimpleReleaseWebAssemblyTest(unittest.TestCase):
-    version = "v1.33.3"
+    version = "v2.5.3"
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -295,6 +296,7 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
             (self.root / directory).mkdir(parents=True)
         spec = importlib.util.spec_from_file_location("assembly_release_tools", ROOT / "deploy/release/release_tools.py")
         tools = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = tools
         spec.loader.exec_module(tools)
         self.migration_name = "V1__initial_schema.sql"
         self.migration = self.root / "server/src/main/resources/db/migration" / self.migration_name
@@ -311,9 +313,10 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
                         jar.writestr(application_class, b"fixture-bytecode")
         shutil.copyfile(ROOT / "web/index.html", self.root / "build/web/index.html")
         shutil.copyfile(ROOT / "deploy/release/release_tools.py", self.root / "deploy/release/release_tools.py")
-        # This is the actual pinned Flutter 3.44.2 package output, before stamping.
+        (self.root / "pubspec.yaml").write_text("name: uten_imp\nversion: 2.5.3+253\n", encoding="utf-8")
+        # Flutter 3.44.2 output for the checkout that failed v2.5.3 assembly.
         (self.root / "build/web/version.json").write_bytes(
-            b'{"app_name":"uten_imp","version":"0.1.0","build_number":"1","package_name":"uten_imp"}'
+            b'{"app_name":"uten_imp","version":"2.5.3","build_number":"253","package_name":"uten_imp"}'
         )
         workflow = (ROOT / ".github/workflows/simple-release.yml").read_text(encoding="utf-8")
         block = workflow.split("      - name: Assemble release directory\n", 1)[1].split("      - name:", 1)[0]
@@ -331,7 +334,7 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
         dist = self.root / "dist"
         metadata = json.loads((dist / "web/version.json").read_text(encoding="utf-8"))
-        self.assertEqual({"commitSha": SHA, "product": "uten-imp", "releaseSequence": 100001033003,
+        self.assertEqual({"commitSha": SHA, "product": "uten-imp", "releaseSequence": 100002005003,
                           "schemaVersion": 1, "version": self.version}, metadata)
         index = (dist / "web/index.html").read_text(encoding="utf-8")
         self.assertNotIn("__UTEN_RELEASE_VERSION__", index)
@@ -351,6 +354,13 @@ class SimpleReleaseWebAssemblyTest(unittest.TestCase):
         result = self.assemble()
         self.assertNotEqual(0, result.returncode)
         self.assertIn("differs from the reviewed Flutter", result.stderr)
+        self.assertFalse((self.root / "dist/SHA256SUMS").exists())
+
+    def test_checkout_version_mismatch_blocks_actual_assembly_before_checksums(self):
+        (self.root / "pubspec.yaml").write_text("name: uten_imp\nversion: 2.5.4+254\n", encoding="utf-8")
+        result = self.assemble()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("pubspec version differs", result.stderr)
         self.assertFalse((self.root / "dist/SHA256SUMS").exists())
 
     def test_duplicate_migration_blocks_actual_assembly_before_checksums(self):

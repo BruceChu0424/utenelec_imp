@@ -3,6 +3,7 @@ package com.uten.imp.features.org.department.staffpermission;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
+import com.uten.imp.features.auth.StepUpService;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -80,6 +81,7 @@ public class PagePermissionWorkspaceService {
     private final PagePermissionDelegationFeatureGate featureGate;
     private final OrganizationPermissionManagementScopeService managementScopeService;
     private final PermissionChangeAudit changeAudit;
+    private final StepUpService stepUp;
 
     /**
      * 会话快照里的「可委派页面」(ADR-108): 当前主体能打开「本页权限设置」的全部页面 key。
@@ -543,6 +545,7 @@ public class PagePermissionWorkspaceService {
             resultVersions.put(change.code(), row.getRowVersion());
         }
         if (!changed.isEmpty()) {
+            requireStepUpForSensitiveChanges(changedCodes, permissionByCode);
             overrideRepo.saveAllAndFlush(changed);
         }
         return !changed.isEmpty();
@@ -650,9 +653,22 @@ public class PagePermissionWorkspaceService {
             resultVersions.put(code, row.getRowVersion());
         }
         if (!changed.isEmpty()) {
+            requireStepUpForSensitiveChanges(changedCodes, permissionByCode);
             delegationRepo.saveAllAndFlush(changed);
         }
         return !changed.isEmpty();
+    }
+
+    /** 在组织资格、可转授边界和 CAS 校验通过后，对本次实际高危授予/收回核销一次凭证。 */
+    private void requireStepUpForSensitiveChanges(
+            Set<String> changedCodes, Map<String, Permission> permissions) {
+        boolean sensitive = changedCodes.stream().map(permissions::get).anyMatch(permission ->
+                permission.isHighRisk()
+                        || !permission.grantPolicies().equals(Set.of(GrantPolicy.NORMAL)));
+        if (sensitive) {
+            stepUp.consumeFromCurrentRequest(currentUser.get()
+                    .orElseThrow(() -> new ApiException(ErrorCode.UNAUTHORIZED)));
+        }
     }
 
     /**

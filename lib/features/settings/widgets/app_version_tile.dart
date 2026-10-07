@@ -37,17 +37,31 @@ class _ReleaseNotesDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final normalized = version.startsWith('v') ? version.substring(1) : version;
-    final notes = normalized == '2.5.3'
-        ? [
-            l10n.release253Hr,
-            l10n.release253Permissions,
-            l10n.release253Materials,
-            l10n.release253Ai,
-            l10n.release253Notices,
-            l10n.release253Reset,
-            l10n.release253Maintenance,
-          ]
-        : <String>[];
+    final notes = switch (normalized) {
+      '2.5.3' => [
+        l10n.release253Hr,
+        l10n.release253Permissions,
+        l10n.release253Materials,
+        l10n.release253Ai,
+        l10n.release253Notices,
+        l10n.release253Reset,
+        l10n.release253Maintenance,
+      ],
+      '2.5.4' => [
+        l10n.release253Hr,
+        l10n.release253Permissions,
+        l10n.release253Materials,
+        l10n.release253Ai,
+        l10n.release253Notices,
+        l10n.release253Reset,
+        l10n.release253Maintenance,
+        l10n.release254QuantityPrecision,
+        l10n.release254AiAuthorization,
+        l10n.release254SensitiveAuthorization,
+        l10n.release254Publishing,
+      ],
+      _ => <String>[],
+    };
     final theme = Theme.of(context);
     return SelectionArea(
       child: AlertDialog(

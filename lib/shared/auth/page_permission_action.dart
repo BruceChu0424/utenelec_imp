@@ -17,9 +17,10 @@ import 'page_permission_scope.dart';
 //
 // V812 起点击原地滑出右侧权限抽屉(hub 面板「父+子」一站式), 不再跳独立设置页。
 class PagePermissionAction extends ConsumerWidget {
-  const PagePermissionAction({super.key, this.scope});
+  const PagePermissionAction({super.key, this.scope, this.label = '权限设置'});
 
   final PagePermissionScope? scope;
+  final String label;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,15 +37,16 @@ class PagePermissionAction extends ConsumerWidget {
       ),
     );
     return canManage
-        ? _PagePermissionButton(scope: resolved)
+        ? _PagePermissionButton(scope: resolved, label: label)
         : const SizedBox.shrink();
   }
 }
 
 class _PagePermissionButton extends StatelessWidget {
-  const _PagePermissionButton({required this.scope});
+  const _PagePermissionButton({required this.scope, required this.label});
 
   final PagePermissionScope scope;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +58,7 @@ class _PagePermissionButton extends StatelessWidget {
     return UtenAppBarActionButton(
       key: const ValueKey('page-permission-action'),
       icon: Icons.admin_panel_settings_outlined,
-      label: '权限设置',
+      label: label,
       tooltip: tooltip,
       compact: !context.breakpoint.isExpanded,
       onPressed: open,

@@ -5,6 +5,24 @@ import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 
 void main() {
   group('PagePermissionScope', () {
+    test(
+      'AI use has a dedicated scope without exposing system configuration',
+      () {
+        expect(
+          pagePermissionScopeBySurfaceKey('system.ai-assistant'),
+          aiUsePermissionScope,
+        );
+        expect(aiUsePermissionScope.title, 'AI 使用');
+        expect(pagePermissionScopeFor('/admin/permissions'), isNull);
+        expect(pagePermissionScopeFor('/admin/ai-settings'), isNull);
+        final migration = File(
+          'server/src/main/resources/db/migration/'
+          'V821__ai_use_explicit_authorization.sql',
+        ).readAsStringSync();
+        expect(migration, contains("'system.ai-assistant'"));
+        expect(migration, contains("permission.code = 'ai:use'"));
+      },
+    );
     test('stable surface key resolves the same page definition', () {
       final routeScope = pagePermissionScopeFor('/basicinfo/goods/123');
       final keyScope = pagePermissionScopeBySurfaceKey('basic.goods');

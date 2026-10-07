@@ -64,6 +64,7 @@ void main() {
         expect(row.owningWorkshopName, '新归属车间');
         expect(row.materialLineId, original.materialLineId);
         expect(row.analysisLineId, original.analysisLineId);
+        expect(row.quantityFactsExact, same(original.quantityFactsExact));
         expect(row.colorId, original.colorId);
         expect(row.nodeKey, original.nodeKey);
         expect(row.requiredQty, 11);
@@ -105,6 +106,10 @@ void main() {
       }
       expect(merged.materials.last, same(current.materials.last));
       final product = merged.products.single;
+      expect(
+        product.quantityFactsExact,
+        same(current.products.single.quantityFactsExact),
+      );
       final original = current.products.single;
       expect(product.owningWarehouseId, 'new-warehouse');
       expect(product.owningWorkshopId, 'new-workshop');
@@ -275,6 +280,7 @@ ProductionMaterialAnalysisView _current() => ProductionMaterialAnalysisView(
   products: const [
     ProductionMaterialAnalysisProduct(
       analysisLineId: 'source-product',
+      quantityFactsExact: {'remainingQty': '0', 'unitRate': '20'},
       rootMaterialLineId: 'root-material',
       sourceType: 'SALES_ORDER_ITEM',
       sourceRef: 'source-reference',
@@ -301,6 +307,7 @@ ProductionMaterialAnalysisView _current() => ProductionMaterialAnalysisView(
 ProductionMaterialAnalysisMaterial _material(String id, String color) =>
     ProductionMaterialAnalysisMaterial(
       materialLineId: id,
+      quantityFactsExact: const {'additionalSupplyRecommendedQty': '15.0001'},
       analysisLineId: 'source-$id',
       nodeKey: 'edge/$id',
       goodsId: 'g',

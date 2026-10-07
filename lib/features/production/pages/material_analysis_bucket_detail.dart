@@ -32,6 +32,7 @@ class _BucketCandidatePlanInput {
   const _BucketCandidatePlanInput({
     required this.materialLineId,
     required this.qty,
+    this.qtyExact,
     required this.departmentId,
     required this.workshopName,
     required this.workerId,
@@ -41,6 +42,7 @@ class _BucketCandidatePlanInput {
 
   final String materialLineId;
   final double qty;
+  final String? qtyExact;
   final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
@@ -55,6 +57,7 @@ class _BucketPlanDraft {
   const _BucketPlanDraft({
     required this.analysisLineId,
     required this.qty,
+    this.qtyExact,
     required this.departmentId,
     required this.workshopName,
     required this.workerId,
@@ -64,6 +67,7 @@ class _BucketPlanDraft {
 
   final String analysisLineId;
   final double qty;
+  final String? qtyExact;
   final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;

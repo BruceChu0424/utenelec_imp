@@ -314,9 +314,8 @@ class PermissionSurfaceCatalogPostgresTest {
             assertEquals(1, linkCount(statement, "production.workshop-tasks", "workshop_material:choose"));
             assertEquals(1, linkCount(statement, "purchase.request", "purchase_order:decompose"));
             assertEquals(1, linkCount(statement, "purchase.request", "purchase_order:create"));
-            // V813：AI 对话与文件识别对全体员工默认开放——ai:use 翻进全员基础包，
-            // 名称/归类改为全局语义；个别滥用者仍可按人收回(revoke 恒优先)。
-            assertEquals("true", scalarText(statement, """
+            // V821 取代 V813 全员自动开放：保留全局名称/分类，使用权须显式授权。
+            assertEquals("false", scalarText(statement, """
                     select baseline::text from permissions where code = 'ai:use'
                     """));
             assertEquals("使用 AI 助手（对话与文件识别）", scalarText(statement, """
@@ -324,6 +323,13 @@ class PermissionSurfaceCatalogPostgresTest {
                     """));
             assertEquals("系统管理", scalarText(statement, """
                     select module from permissions where code = 'ai:use'
+                    """));
+            assertEquals("ai:use", scalarText(statement, """
+                    SELECT string_agg(permission.code, ',' ORDER BY permission.code)
+                    FROM permission_surface_permissions link
+                    JOIN permission_surfaces surface ON surface.id = link.surface_id
+                    JOIN permissions permission ON permission.id = link.permission_id
+                    WHERE surface.surface_key = 'system.ai-assistant'
                     """));
         }
     }

@@ -641,6 +641,7 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
 class ProductionMaterialAnalysisProduct {
   const ProductionMaterialAnalysisProduct({
     required this.analysisLineId,
+    this.quantityFactsExact = const {},
     this.sourceType,
     this.rootMaterialLineId,
     this.sourceRef,
@@ -796,10 +797,13 @@ class ProductionMaterialAnalysisProduct {
   bool get canSchedule => serverCanSchedule ?? readyNowQty > 0;
   double get maxSchedulableQty => serverMaxSchedulableQty ?? readyNowQty;
 
+  final Map<String, String> quantityFactsExact;
+
   factory ProductionMaterialAnalysisProduct.fromJson(
     Map<String, dynamic> json,
   ) => ProductionMaterialAnalysisProduct(
     analysisLineId: _string(json['analysisLineId'] ?? json['id']) ?? '',
+    quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
     sourceType: _string(json['sourceType']),
     rootMaterialLineId: _string(json['rootMaterialLineId']),
     sourceRef: _string(json['sourceRef']),
@@ -963,6 +967,7 @@ class MaterialAggregatePreparation {
     required this.totalOrderedQty,
     required this.orderedQtyExact,
     required this.planningUncoveredQty,
+    this.planningUncoveredQtyExact,
     required this.netShortageQty,
     required this.targetMaterialLineIds,
     required this.actionable,
@@ -974,6 +979,7 @@ class MaterialAggregatePreparation {
   final double totalOrderedQty;
   final bool orderedQtyExact;
   final double planningUncoveredQty;
+  final String? planningUncoveredQtyExact;
   final double netShortageQty;
   final List<String> targetMaterialLineIds;
   final bool actionable;
@@ -989,6 +995,7 @@ class MaterialAggregatePreparation {
             0,
         orderedQtyExact: json['orderedQtyExact'] != false,
         planningUncoveredQty: _double(json['planningUncoveredQty']) ?? 0,
+        planningUncoveredQtyExact: _string(json['planningUncoveredQtyExact']),
         netShortageQty: _double(json['netShortageQty']) ?? 0,
         targetMaterialLineIds: [
           for (final id in json['targetMaterialLineIds'] as List? ?? const [])
@@ -1001,6 +1008,7 @@ class MaterialAggregatePreparation {
 class ProductionMaterialAnalysisMaterial {
   const ProductionMaterialAnalysisMaterial({
     required this.materialLineId,
+    this.quantityFactsExact = const {},
     this.analysisLineId,
     this.nodeKey,
     this.goodsId,
@@ -1349,11 +1357,14 @@ class ProductionMaterialAnalysisMaterial {
       ? MaterialRequirementState.active
       : requirementState ?? MaterialRequirementState.inactive;
 
+  final Map<String, String> quantityFactsExact;
+
   factory ProductionMaterialAnalysisMaterial.fromJson(
     Map<String, dynamic> json, {
     List<MaterialWarehouseStock>? warehouseStocks,
   }) => ProductionMaterialAnalysisMaterial(
     materialLineId: _string(json['materialLineId'] ?? json['id']) ?? '',
+    quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
     nodeRole: _string(json['nodeRole']) ?? 'BOM_COMPONENT',
     analysisLineId: _string(json['analysisLineId']),
     nodeKey: _string(json['nodeKey']),
@@ -1933,6 +1944,14 @@ class MaterialCrossReallocationRef {
   );
 }
 
+Map<String, String> _quantityFactsExact(Object? raw) => raw is Map
+    ? Map.unmodifiable({
+        for (final entry in raw.entries)
+          if (entry.key is String && entry.value is String)
+            entry.key as String: entry.value as String,
+      })
+    : const {};
+
 String _shortIdentity(String value) {
   final normalized = value.trim();
   if (normalized.length <= 8) return normalized;
@@ -2216,19 +2235,23 @@ class MaterialSupplyQuantityInput {
     this.actionGroupKey,
     this.materialLineId,
     required this.qty,
+    this.qtyExact,
     required this.safetyReplenishmentQty,
+    this.safetyQtyExact,
   }) : assert(actionGroupKey != null || materialLineId != null);
 
   final String? actionGroupKey;
   final String? materialLineId;
   final double qty;
+  final String? qtyExact;
   final double safetyReplenishmentQty;
+  final String? safetyQtyExact;
 
   Map<String, dynamic> toJson() => {
     if (actionGroupKey != null) 'actionGroupKey': actionGroupKey,
     if (materialLineId != null) 'materialLineId': materialLineId,
-    'qty': qty,
-    'safetyReplenishmentQty': safetyReplenishmentQty,
+    'qty': qtyExact ?? qty,
+    'safetyReplenishmentQty': safetyQtyExact ?? safetyReplenishmentQty,
   };
 }
 
@@ -2255,6 +2278,7 @@ class MaterialAnalysisIssueLine {
     this.materialLineId,
     this.analysisLineId,
     required this.qty,
+    this.qtyExact,
     this.departmentId,
     this.workshopName,
     this.workerId,
@@ -2265,6 +2289,7 @@ class MaterialAnalysisIssueLine {
   final String? materialLineId;
   final String? analysisLineId;
   final double qty;
+  final String? qtyExact;
   final double? allowedOverproductionRate;
   final String? departmentId;
   final String? workshopName;
@@ -2277,7 +2302,7 @@ class MaterialAnalysisIssueLine {
   Map<String, dynamic> toJson() => {
     if (materialLineId != null) 'materialLineId': materialLineId,
     if (analysisLineId != null) 'analysisLineId': analysisLineId,
-    'qty': qty,
+    'qty': qtyExact ?? qty,
     if (allowedOverproductionRate != null)
       'allowedOverproductionRate': allowedOverproductionRate,
     if (departmentId != null) 'departmentId': departmentId,

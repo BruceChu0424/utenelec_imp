@@ -2660,7 +2660,7 @@ abstract class _MaterialAnalysisMaterialTableState
   }) {
     if (!_tableUsesMakeAnchor(group)) return null;
     final anchor = _tableMakeAnchorOf(group, authoritative: authoritative);
-    return anchor != null && anchor.issuedPlanQty > 0.0001 ? anchor : null;
+    return anchor != null && anchor.issuedPlanQty > 0 ? anchor : null;
   }
 
   /// 这一行的「已下达 / 还需安排 / 能不能再追加」是不是按计划锚点判：只有自制行
@@ -2697,10 +2697,9 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 这一行下过单没有(下过 = 下单数量列锁死、改填追加下单列)。
   bool _tableGroupIssued(_MaterialGroup group) =>
-      _tableGroupDisplayedIssuedQty(group) > 0.0001 ||
-      group.paths.any((path) => path.preparationAdoptedQty > 0.0001) ||
-      (group.representative.aggregatePreparation?.totalOrderedQty ?? 0) >
-          0.0001;
+      _tableGroupDisplayedIssuedQty(group) > 0 ||
+      group.paths.any((path) => path.preparationAdoptedQty > 0) ||
+      (group.representative.aggregatePreparation?.totalOrderedQty ?? 0) > 0;
 
   double _tableGroupDisplayedIssuedQty(_MaterialGroup group) =>
       group.representative.aggregatePreparation?.orderedQty ??
@@ -2773,7 +2772,8 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   TextEditingController _tableOrderQtyController(_MaterialGroup group) {
-    final seeded = _qty(_tableDefaultSubmitQty(group));
+    final raw = _tableDefaultSubmitQtyText(group);
+    final seeded = raw == 'NaN' ? '' : raw;
     return _tableOrderQtyControllers.putIfAbsent(group.key, () {
       _tableSeededQtyTexts['ORDER|${group.key}'] = seeded;
       return TextEditingController(text: seeded);
@@ -2787,7 +2787,8 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 子组件追加那里也自动追加 200；子组件之前多下了的就不用追加」。
   TextEditingController _tableAppendQtyController(_MaterialGroup group) =>
       _tableAppendQtyControllers.putIfAbsent(group.key, () {
-        final seeded = _qty(_tableDefaultSubmitQty(group));
+        final raw = _tableDefaultSubmitQtyText(group);
+        final seeded = raw == 'NaN' ? '' : raw;
         _tableSeededQtyTexts['APPEND|${group.key}'] = seeded;
         return TextEditingController(text: seeded);
       });
@@ -2801,6 +2802,102 @@ abstract class _MaterialAnalysisMaterialTableState
     return route == null
         ? quantity
         : _submitQtyWithOrderPolicy(group, route, quantity);
+  }
+
+  String _quantityFact(String? exact, double legacy) {
+    return materialQuantityFact(exact, legacy);
+  }
+
+  String _tableGroupResidualText(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    if (!authoritative &&
+        group.paths.any(
+          (path) => _tableEstimatedQty.containsKey(path.materialLineId),
+        )) {
+      return _qty(_tableGroupResidual(group)); // display-only local cascade
+    }
+    final parts = <String>[];
+    for (final material in group.paths) {
+      final shown = _tablePreviewed(material, authoritative: authoritative);
+      if (shown.hasPriorityMakeSupplement) {
+        parts.add(
+          _quantityFact(
+            shown.quantityFactsExact['priorityMakeSupplementQty'],
+            shown.priorityMakeSupplementQty,
+          ),
+        );
+      } else if (shown.aggregatePreparation case final preparation?) {
+        parts.add(
+          _quantityFact(
+            preparation.planningUncoveredQtyExact,
+            preparation.planningUncoveredQty,
+          ),
+        );
+      } else {
+        final anchor = _tableIssuedMakeAnchorOf(
+          group,
+          authoritative: authoritative,
+        );
+        if (anchor != null) {
+          if (!anchor.canSchedule) {
+            parts.add('0');
+            continue;
+          }
+          final remaining = _quantityFact(
+            anchor.quantityFactsExact['remainingQty'],
+            anchor.remainingQty,
+          );
+          final rate = _tableIsRootSupply(group.representative)
+              ? materialUnitRateFact(
+                  anchor.quantityFactsExact['unitRate'],
+                  anchor.unitRate,
+                )
+              : '1';
+          if (remaining == 'NaN') return 'NaN';
+          parts.add(materialQuantityProduct(remaining, rate));
+        } else {
+          parts.add(
+            _quantityFact(
+              shown.quantityFactsExact['additionalSupplyRecommendedQty'],
+              shown.additionalSupplyRecommendedQty,
+            ),
+          );
+        }
+      }
+    }
+    return _aggregateTable.sumQuantityTexts(parts);
+  }
+
+  String _tableDefaultSubmitQtyText(
+    _MaterialGroup group, {
+    bool authoritative = false,
+  }) {
+    try {
+      final quantity = _tableGroupResidualText(
+        group,
+        authoritative: authoritative,
+      );
+      if (quantity == 'NaN') return quantity;
+      if (_draftRoute(group) != MaterialSupplyRoute.buy || !_canOverSupply) {
+        return quantity;
+      }
+      final material = group.representative;
+      return materialQuantityWithOrderPolicy(
+        quantity,
+        _quantityFact(
+          material.quantityFactsExact['minOrderQty'],
+          material.minOrderQty ?? 0,
+        ),
+        _quantityFact(
+          material.quantityFactsExact['orderMultipleQty'],
+          material.orderMultipleQty ?? 0,
+        ),
+      );
+    } on FormatException {
+      return 'NaN';
+    }
   }
 
   /// 新快照回来后把系统预填值刷新一遍，但只覆盖「仍等于旧预填值」的格子。
@@ -2843,7 +2940,7 @@ abstract class _MaterialAnalysisMaterialTableState
       var parent = parents[lineId];
       var result = false;
       while (parent != null && trail.add(parent)) {
-        if ((activeTyped[parent] ?? 0) > 0.0001) {
+        if ((activeTyped[parent] ?? 0) > 0) {
           result = true;
           break;
         }
@@ -2876,7 +2973,7 @@ abstract class _MaterialAnalysisMaterialTableState
           hasTypedAncestor(group.representative.materialLineId);
       if (_autoSelectTableGroup(
         group,
-        select: typed != null ? typed > 0.0001 : driven && value > 0.0001,
+        select: typed != null ? typed > 0 : driven && value >= 0.00005,
       )) {
         selectionChanged = true;
       }
@@ -2909,7 +3006,8 @@ abstract class _MaterialAnalysisMaterialTableState
       return null;
     }
     final value = _tableDefaultSubmitQty(group);
-    final next = _qty(value);
+    final raw = _tableDefaultSubmitQtyText(group);
+    final next = raw == 'NaN' ? '' : raw;
     // 没变就不写：每次赋值都会通知那个 TextField 重建，一屏几十个格子白跑。
     if (controller.text != next) controller.text = next;
     _tableSeededQtyTexts[seededKey] = next;
@@ -4379,10 +4477,14 @@ abstract class _MaterialAnalysisMaterialTableState
               color: theme.colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: UtenSpacing.s4),
-            Text(
-              _qty(_tableGroupDisplayedIssuedQty(group)),
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
+            Flexible(
+              child: Text(
+                _qty(_tableGroupDisplayedIssuedQty(group)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             if (adopted > 0.0001) ...[
@@ -4421,8 +4523,8 @@ abstract class _MaterialAnalysisMaterialTableState
     final typedOrder = double.tryParse(
       _tableOrderQtyControllers[group.key]?.text.trim() ?? '',
     );
-    if ((typedOrder == null || typedOrder <= 0.0001) &&
-        _tableGroupResidual(group) <= 0.0001) {
+    if ((typedOrder == null || typedOrder <= 0) &&
+        _tableGroupResidual(group) < 0.00005) {
       final route = _draftRoute(group);
       if (route != null && _hasRootStockToAllocate(group, route)) {
         return const Tooltip(
@@ -4709,13 +4811,22 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 本次这一行要提交的数量：下达过的行取「追加下单」，没下过的取「下单数量」。
-  double _tableSubmitQtyOf(_MaterialGroup group) {
-    final controller = _tableGroupIssued(group)
+  String _tableSubmitQtyTextOf(_MaterialGroup group) {
+    final append = _tableGroupIssued(group);
+    final controller = append
         ? _tableAppendQtyControllers[group.key]
         : _tableOrderQtyControllers[group.key];
+    if (controller == null ||
+        controller.text ==
+            _tableSeededQtyTexts['${append ? 'APPEND' : 'ORDER'}|${group.key}']) {
+      return _tableDefaultSubmitQtyText(group, authoritative: true);
+    }
+    return controller.text.trim();
+  }
+
+  double _tableSubmitQtyOf(_MaterialGroup group) {
     // 尚未渲染的行也用同一系统默认量；已有输入框被清空不是“从未填写”。
-    if (controller == null) return _tableDefaultSubmitQty(group);
-    return double.tryParse(controller.text.trim()) ?? double.nan;
+    return double.tryParse(_tableSubmitQtyTextOf(group)) ?? double.nan;
   }
 
   /// 用未被本轮输入预扣的公共余额判断，不能拿编辑后变成 0 的余额反过来
@@ -4940,7 +5051,11 @@ abstract class _MaterialAnalysisMaterialTableState
         return false;
       }
       if (!qty.isFinite || qty < 0) {
-        context.appWarning('「${_tableGroupLabel(group)}」请填写有效的非负数量；本次不下可填 0。');
+        context.appWarning(
+          _tableDefaultSubmitQtyText(group, authoritative: true) == 'NaN'
+              ? '「${_tableGroupLabel(group)}」缺少精确数量，请刷新或更新服务端后再下单。'
+              : '「${_tableGroupLabel(group)}」请填写有效的非负数量；本次不下可填 0。',
+        );
         return false;
       }
       // 追加填 0 = 本次不动这一行，不进提交集合(服务端把「给了身份却不给数量」
@@ -4948,7 +5063,7 @@ abstract class _MaterialAnalysisMaterialTableState
       final route = _draftRoute(group);
       final stockHandoff =
           route != null && _hasRootStockToAllocate(group, route);
-      if (qty <= 0.0001 &&
+      if (qty <= 0 &&
           !stockHandoff &&
           !(_draftRoute(group) == MaterialSupplyRoute.buy &&
               _groupSafetyReplenishmentGapQty(group) > 0.0001)) {
@@ -5229,10 +5344,12 @@ abstract class _MaterialAnalysisMaterialTableState
           : _tableGroupIssued(group) && _tableGroupResidual(group) <= 0.0001;
       final rootMakeLineId = _tableRootMakePlanLineId(group);
       if (rootMakeLineId != null) {
+        final exact = _tableRootPlanQtyText(group);
         drafts.add(
           _BucketPlanDraft(
             analysisLineId: rootMakeLineId,
             qty: _tableRootPlanQty(group, pending[group]!)!,
+            qtyExact: double.parse(exact).abs() >= 10000000000 ? exact : null,
             allowedOverproductionRate: _submittedOverproductionRate(
               materialLineId: group.representative.materialLineId,
             ),
@@ -5248,6 +5365,9 @@ abstract class _MaterialAnalysisMaterialTableState
         _BucketCandidatePlanInput(
           materialLineId: group.representative.materialLineId,
           qty: pending[group]!,
+          qtyExact: pending[group]!.abs() >= 10000000000
+              ? _tableSubmitQtyTextOf(group)
+              : null,
           allowedOverproductionRate: _submittedOverproductionRate(
             materialLineId: group.representative.materialLineId,
           ),
@@ -5268,15 +5388,25 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 主表使用基本单位，根产品计划接口使用原来源单位。不能把200件直接发成200箱。
   double? _tableRootPlanQty(_MaterialGroup group, double baseQty) {
-    final product = _analysis == null
-        ? null
-        : _analysisIndexes(_analysis!).productsById[_tableRootMakePlanLineId(
-            group,
-          )];
-    final rate = product?.unitRate ?? 1;
-    if (!rate.isFinite || rate <= 0 || !baseQty.isFinite) return null;
-    final quantity = double.parse((baseQty / rate).toStringAsFixed(4));
-    return (quantity * rate - baseQty).abs() <= 0.0000001 ? quantity : null;
+    if (!baseQty.isFinite) return null;
+    try {
+      return double.parse(_tableRootPlanQtyText(group));
+    } on FormatException {
+      return null;
+    }
+  }
+
+  String _tableRootPlanQtyText(_MaterialGroup group) {
+    final product = _analysisIndexes(
+      _analysis!,
+    ).productsById[_tableRootMakePlanLineId(group)];
+    return materialQuantityQuotient(
+      _tableSubmitQtyTextOf(group),
+      materialUnitRateFact(
+        product?.quantityFactsExact['unitRate'],
+        product?.unitRate,
+      ),
+    );
   }
 
   /// 根产品先下达，所有组件统一由来源依赖图调度。不能先提交单来源子件，
@@ -5332,7 +5462,7 @@ abstract class _MaterialAnalysisMaterialTableState
       onlyGroupKeys: batch.map((group) => group.key).toSet(),
       qtyByActionGroupKey: {
         for (final group in batch)
-          ?group.representative.actionGroupKey: _qty(pending[group]!),
+          ?group.representative.actionGroupKey: _tableSubmitQtyTextOf(group),
       },
       silent: true,
       allowExtra: _canOverSupply,
@@ -5363,7 +5493,10 @@ abstract class _MaterialAnalysisMaterialTableState
       0,
       (sum, value) => sum + value,
     );
-    final total = pending.values.fold<double>(0, (sum, value) => sum + value);
+    final totalText = _aggregateTable.sumQuantityTexts([
+      for (final group in pending.keys) _tableSubmitQtyTextOf(group),
+      _qty(safety),
+    ]);
     // 品种数按 goods/color/unit 身份去重（与「按物料汇总」同一把键）：同料多
     // 来源算一种。路线分账一行带过，扫一眼下单去向；顺序即提交顺序。
     final routeKinds = <String, Set<String>>{};
@@ -5376,7 +5509,7 @@ abstract class _MaterialAnalysisMaterialTableState
           .add(_aggregateKeyOf(entry.key.representative));
       routeQty[label] = (routeQty[label] ?? 0) + entry.value;
       final route = _draftRoute(entry.key);
-      if (entry.value <= 0.0001 &&
+      if (entry.value <= 0 &&
           route != null &&
           _hasRootStockToAllocate(entry.key, route)) {
         handoffOnlyRows++;
@@ -5417,7 +5550,7 @@ abstract class _MaterialAnalysisMaterialTableState
           children: [
             TextSpan(
               text:
-                  '共 $kinds 种，合计 ${_qty(total + safety)}'
+                  '共 $kinds 种，合计 $totalText'
                   '${safety > 0.0001 ? '（含公共安全补库 ${_qty(safety)}）' : ''}。',
               style: TextStyle(
                 fontWeight: FontWeight.w800,

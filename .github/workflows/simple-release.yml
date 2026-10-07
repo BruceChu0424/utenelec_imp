@@ -128,6 +128,7 @@ jobs:
             --flyway-checksums server/target/uten-imp-flyway-checksums.tsv
           cp -r build/web/. dist/web/
           python3 deploy/release/release_tools.py stamp-web \
+            --pubspec pubspec.yaml \
             --web-root dist/web --version "$VERSION" --commit "$GITHUB_SHA"
           cd dist
           find . -type f ! -name SHA256SUMS -print0 | sort -z \

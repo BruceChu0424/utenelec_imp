@@ -141,6 +141,7 @@ class MaterialAggregateSourceAllocation {
       sourceRequiredQty = _amount(json['sourceRequiredQty']),
       remainingQty = _amount(json['remainingQty']),
       allocatedQty = _amount(json['allocatedQty']),
+      allocatedQtyExact = json['allocatedQtyExact'] as String?,
       orderedQty = _amount(json['orderedQty']);
   final String materialLineId, sourceLabel;
 
@@ -150,6 +151,7 @@ class MaterialAggregateSourceAllocation {
   final String? analysisLineId, needDate;
   final int allocationPriority;
   final double sourceRequiredQty, remainingQty, allocatedQty, orderedQty;
+  final String? allocatedQtyExact;
 }
 
 class MaterialAggregateChildRequirement {
@@ -199,6 +201,7 @@ class MaterialAggregateOrderGroupPreview {
       remainingQty = _amount(json['remainingQty']),
       requestedQty = _amount(json['requestedQty']),
       publicExtraQty = _amount(json['publicExtraQty']),
+      publicExtraQtyExact = json['publicExtraQtyExact'] as String?,
       safetyQty = _amount(json['safetyQty']),
       departmentId = json['departmentId'] as String?,
       workerId = json['workerId'] as String?,
@@ -243,6 +246,7 @@ class MaterialAggregateOrderGroupPreview {
       publicExtraQty,
       safetyQty;
   final double? allowedOverproductionRate;
+  final String? publicExtraQtyExact;
   final List<MaterialAggregateSourceAllocation> sources;
   final List<MaterialAggregateChildRequirement> sharedBomChildren;
   final String? existingBatchId;

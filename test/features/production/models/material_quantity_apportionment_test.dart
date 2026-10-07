@@ -2,6 +2,83 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/material_quantity_apportionment.dart';
 
 void main() {
+  group('splitTypedTotalText request precision', () {
+    test('默认起订量倍数和来源单位换算始终按原始十进制事实计算', () {
+      const quantity = '9999999999999.9999';
+      expect(
+        materialQuantityWithOrderPolicy('1000', quantity, '0.0001'),
+        quantity,
+      );
+      expect(materialQuantityWithOrderPolicy('1.0001', '0', '0.3'), '1.2');
+      expect(materialQuantityProduct(quantity, '3'), '29999999999999.9997');
+      expect(materialQuantityQuotient('29999999999999.9997', '3'), quantity);
+      expect(materialQuantityQuotient('0.1234', '0.000001'), '123400');
+      expect(materialUnitRateFact(null, 0.00032), '0.00032');
+      expect(
+        materialQuantityProduct('100000', materialUnitRateFact(null, 0.00032)),
+        '32',
+      );
+      expect(
+        () => materialUnitRateFact(null, 1000000000.000001),
+        throwsFormatException,
+      );
+      expect(() => materialQuantityQuotient('1', '3'), throwsFormatException);
+    });
+    test('合法14位整数边界与万分位均原样守恒', () {
+      for (final total in [
+        '4500.0001',
+        '999999999999.9999',
+        '9999999999999.9999',
+        '99999999999999.9999',
+      ]) {
+        final shares = splitTypedTotalText(total, ['1000', '1000', '1000']);
+        expect(
+          shares.map(materialQuantityUnits).fold(BigInt.zero, (a, b) => a + b),
+          materialQuantityUnits(total),
+          reason: '$total -> $shares',
+        );
+      }
+      expect(
+        splitTypedTotalText('999999999999.9999', ['1000', '1000', '1000']),
+        ['333333333333.3333', '333333333333.3333', '333333333333.3333'],
+      );
+    });
+
+    test('整数编辑和有需求优先的平分语义保持一致', () {
+      expect(splitTypedTotalText('4500', ['1000', '1000', '1000']), [
+        '1500',
+        '1500',
+        '1500',
+      ]);
+      expect(splitTypedTotalText('1000', ['83.3334', '83.3334', '833.3334']), [
+        '84',
+        '83',
+        '833',
+      ]);
+      expect(splitTypedTotalText('10', ['0', '1', '1']), ['0', '5', '5']);
+      expect(splitTypedTotalText('1', ['0', '0', '0']), ['1', '0', '0']);
+      expect(splitTypedTotalText('0', ['1000', '1000']), ['0', '0']);
+      expect(splitTypedTotalText('3.', ['1', '1']), ['2', '1']);
+    });
+
+    test('不足量按精确余数分摊且拒绝丢失超出4位的小数', () {
+      expect(splitTypedTotalText('0.0001', ['99999999999999.9998', '0.0001']), [
+        '0.0001',
+        '0',
+      ]);
+      expect(splitTypedTotalText('0.0002', ['1', '1', '1']), [
+        '0.0001',
+        '0.0001',
+        '0',
+      ]);
+      expect(
+        () => splitTypedTotalText('1.00001', ['1']),
+        throwsFormatException,
+      );
+      expect(() => splitTypedTotalText('-1', ['1']), throwsFormatException);
+    });
+  });
+
   group('apportionLargestRemainder', () {
     test('空列表返回空且不参与守恒', () {
       expect(apportionLargestRemainder(100, [], 0), isEmpty);

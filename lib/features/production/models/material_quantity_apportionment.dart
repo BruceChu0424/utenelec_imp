@@ -8,6 +8,8 @@
 /// 输入框的共同口径），内部一律换算成整数 tick 运算，避免浮点累积尾差。
 library;
 
+import '../../../shared/formatters/exact_decimal.dart';
+
 const int _maxScale = 4;
 
 const _factors = [1, 10, 100, 1000, 10000];
@@ -149,4 +151,146 @@ List<double> splitTypedTotal(double total, List<double> needs, int scale) {
     }
   }
   return [for (final tick in ticks) tick / _factors[scale]];
+}
+
+/// Request quantities retain the user's decimal text even beyond double's
+/// exact integer range. The floating-point helpers above serve presentation.
+BigInt materialQuantityUnits(String raw, {int scale = _maxScale}) {
+  final text = raw.trim().replaceFirst(RegExp(r'\.$'), '');
+  final units = financeExactDecimalUnits(text, scale: scale);
+  if (units == null || units.isNegative) {
+    throw const FormatException('数量必须为非负数，最多 4 位小数');
+  }
+  return units;
+}
+
+String materialQuantityText(BigInt units, {int scale = _maxScale}) {
+  final text = financeExactDecimalFromUnits(units, scale: scale);
+  return scale == 0
+      ? text
+      : text.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+}
+
+String materialQuantityFact(String? exact, double legacy) {
+  if (exact != null) return materialQuantityText(materialQuantityUnits(exact));
+  if (!legacy.isFinite || legacy.abs() >= 10000000000) return 'NaN';
+  return materialQuantityText(materialQuantityUnits(legacy.toStringAsFixed(4)));
+}
+
+/// Unit rates have six decimal places, independently of four-place quantities.
+String materialUnitRateFact(String? exact, double? legacy) {
+  final String text;
+  if (exact != null) {
+    text = exact;
+  } else if (legacy == null) {
+    text = '1';
+  } else {
+    if (!legacy.isFinite || legacy <= 0 || legacy >= 1000000) {
+      throw const FormatException('缺少精确单位比例，请刷新或更新服务端');
+    }
+    text = legacy.toStringAsFixed(6);
+  }
+  final units = financeExactDecimalUnits(text, scale: 6);
+  if (units == null || units <= BigInt.zero) {
+    throw const FormatException('单位比例必须为正数且最多6位小数');
+  }
+  return materialQuantityText(units, scale: 6);
+}
+
+String materialQuantityProduct(String left, String right) {
+  final product = financeExactMultiplyTexts([left, right]);
+  if (product == null) throw const FormatException('数量单位换算缺少精确值');
+  final normalized = product.contains('.')
+      ? product
+            .replaceFirst(RegExp(r'0+$'), '')
+            .replaceFirst(RegExp(r'\.$'), '')
+      : product;
+  return materialQuantityText(materialQuantityUnits(normalized));
+}
+
+String materialQuantityQuotient(String quantity, String rate) {
+  final value = materialQuantityUnits(quantity);
+  final text = rate.trim();
+  final dot = text.indexOf('.');
+  final scale = dot < 0 ? 0 : text.length - dot - 1;
+  final divisor = financeExactDecimalUnits(text, scale: scale);
+  if (divisor == null || divisor <= BigInt.zero) {
+    throw const FormatException('数量单位换算比例无效');
+  }
+  final numerator = value * BigInt.from(10).pow(scale);
+  if (numerator % divisor != BigInt.zero) {
+    throw const FormatException('数量无法按来源单位精确换算');
+  }
+  return materialQuantityText(numerator ~/ divisor);
+}
+
+String materialQuantityWithOrderPolicy(
+  String quantity,
+  String minimum,
+  String multiple,
+) {
+  var value = materialQuantityUnits(quantity);
+  if (value == BigInt.zero) return '0';
+  final floor = materialQuantityUnits(minimum),
+      step = materialQuantityUnits(multiple);
+  if (value < floor) value = floor;
+  if (step > BigInt.zero) value = ((value + step - BigInt.one) ~/ step) * step;
+  return materialQuantityText(value);
+}
+
+/// The same editing split as [splitTypedTotal], with no binary conversion on
+/// the request path. Granularity follows the typed total; each returned part
+/// and their sum are exact on both Dart VM and JavaScript.
+List<String> splitTypedTotalText(String total, List<String> needs) {
+  final text = total.trim();
+  final dot = text.indexOf('.');
+  final scale = dot < 0 ? 0 : text.length - dot - 1;
+  if (scale > _maxScale) {
+    throw const FormatException('数量最多 4 位小数');
+  }
+  final totalTicks = materialQuantityUnits(text, scale: scale);
+  if (needs.isEmpty) return const [];
+  final needTicks = [for (final need in needs) materialQuantityUnits(need)];
+  final divisor = BigInt.from(10).pow(_maxScale - scale);
+  final ceilings = [
+    for (final need in needTicks) (need + divisor - BigInt.one) ~/ divisor,
+  ];
+  final required = ceilings.fold(BigInt.zero, (sum, value) => sum + value);
+  final ticks = [...ceilings];
+  if (totalTicks >= required) {
+    final positive = [
+      for (var i = 0; i < needTicks.length; i++)
+        if (needTicks[i] > BigInt.zero) i,
+    ];
+    final recipients = positive.isEmpty
+        ? [for (var i = 0; i < needs.length; i++) i]
+        : positive;
+    final extra = totalTicks - required;
+    final count = BigInt.from(recipients.length);
+    final each = extra ~/ count;
+    final remainder = (extra % count).toInt();
+    for (var i = 0; i < recipients.length; i++) {
+      ticks[recipients[i]] += each + (i < remainder ? BigInt.one : BigInt.zero);
+    }
+  } else {
+    final weight = needTicks.fold(BigInt.zero, (sum, value) => sum + value);
+    final remainders = <BigInt>[];
+    for (var i = 0; i < needTicks.length; i++) {
+      final product = totalTicks * needTicks[i];
+      ticks[i] = product ~/ weight;
+      remainders.add(product % weight);
+    }
+    final remaining =
+        (totalTicks - ticks.fold(BigInt.zero, (sum, value) => sum + value))
+            .toInt();
+    final order = [for (var i = 0; i < ticks.length; i++) i]
+      ..sort((a, b) {
+        final byFraction = remainders[b].compareTo(remainders[a]);
+        return byFraction != 0 ? byFraction : a.compareTo(b);
+      });
+    for (var i = 0; i < remaining; i++) {
+      ticks[order[i]] += BigInt.one;
+    }
+  }
+  return [for (final tick in ticks) materialQuantityText(tick, scale: scale)];
 }

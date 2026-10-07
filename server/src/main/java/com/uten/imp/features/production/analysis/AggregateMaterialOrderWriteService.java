@@ -102,7 +102,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 """).setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey()));
         if(!replay.isEmpty()) {
             if(!hash.equals(replay.getFirst()[0]))throw conflict("相同幂等键不能用于不同汇总下单意图");
-            try{var payload=mapper.readTree((String)replay.getFirst()[1]);return new SubmitResult(analysis.detailInternal(analysisId,false),true,
+            try{var payload=mapper.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree((String)replay.getFirst()[1]);return new SubmitResult(analysis.detailInternal(analysisId,false),true,
                     mapper.readValue(payload.path("batches").toString(),new TypeReference<List<BatchResult>>(){}),
                     payload.has("materialIdentityBridges")?mapper.readValue(payload.path("materialIdentityBridges").toString(),new TypeReference<List<MaterialIdentityBridge>>(){}):List.of());}
             catch(java.io.IOException failure){throw new IllegalStateException("汇总下单回执损坏",failure);}

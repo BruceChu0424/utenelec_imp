@@ -20,6 +20,7 @@ import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
+import 'package:uten_imp/features/production/models/material_quantity_apportionment.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
 import 'package:uten_imp/features/production/providers/material_analysis_warehouse_prefs_provider.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
@@ -5368,6 +5369,395 @@ void main() {
     expect(find.textContaining('撤销汇总草稿'), findsNothing);
   });
 
+  testWidgets('大数量按车间拆单必须原样保留手输总量的万分位', (tester) async {
+    await _pumpSplit(
+      tester,
+      mutate: _threeSharedMakeSources,
+      secondWorkshopLines: const {'shared-0'},
+      aggregatePreview: _exactAggregateDagPreview,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-split-make|本色|unit-1')),
+      '999999999999.9999',
+    );
+    await _settlePreview(tester);
+    final bodies = [
+      for (final request in requests)
+        if (request.path.endsWith('/aggregate-orders/preview')) request.body!,
+    ];
+    expect(bodies, isNotEmpty);
+    final byWorkshop = {
+      for (final group in _records(bodies.last['groups']))
+        group['departmentId']: group['qty'],
+    };
+    expect(byWorkshop, {
+      'ws-2': '333333333333.3333',
+      'ws-1': '666666666666.6666',
+    });
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    await _confirmAggregateSubmit(tester);
+    expect({
+      for (final group in _records(_aggregateSubmits().single.body!['groups']))
+        group['departmentId']: group['qty'],
+    }, byWorkshop);
+  });
+
+  testWidgets('逐来源大数量文本进入分单和预览回写后仍保持原值', (tester) async {
+    await _pumpSplit(
+      tester,
+      mutate: _threeSharedMakeSources,
+      secondWorkshopLines: const {'shared-0'},
+      aggregatePreview: _exactAggregateDagPreview,
+    );
+    await tester.enterText(_orderQty('shared-0'), '999999999999.9999');
+    for (final line in const ['shared-1', 'shared-2']) {
+      await _check(tester, _rowCheckbox(line));
+    }
+    await _settleRebuild(tester);
+    await _submitSelected(tester);
+    final groups = _records(_aggregateSubmits().single.body!['groups']);
+    final first = groups.singleWhere(
+      (group) => group['departmentId'] == 'ws-2',
+    );
+    expect(first['qty'], '999999999999.9999');
+    expect(first['sourceRequestedQtyByMaterialLineId'], {
+      'shared-0': '999999999999.9999',
+    });
+    final second = groups.singleWhere(
+      (group) => group['departmentId'] == 'ws-1',
+    );
+    expect(second['qty'], '2000');
+  });
+
+  testWidgets('按产品逐行下单不把合法最小量0.0001当零跳过', (tester) async {
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: _threeSharedBuySources,
+      aggregatePreview: _defaultAggregatePreview,
+      aggregateSubmit: _defaultAggregateSubmit,
+    );
+    await tester.enterText(_orderQty('shared-0'), '0.0001');
+    await _check(tester, _rowCheckbox('shared-0'));
+    await _settleRebuild(tester);
+    await _submitSelected(tester);
+    expect(
+      _records(_aggregateSubmits().single.body!['groups']).single['qty'],
+      '0.0001',
+    );
+    expect(_orderQty('shared-0'), findsNothing);
+    expect(_appendQty('shared-0'), findsOneWidget);
+  });
+
+  testWidgets('大数量精确预览少一个万分位时阻断提交', (tester) async {
+    await _pumpSplit(
+      tester,
+      mutate: _threeSharedMakeSources,
+      secondWorkshopLines: const {'shared-0'},
+      aggregatePreview: (body, data) {
+        final result = _exactAggregateDagPreview(body, data);
+        final group = _records(result['groups']).first;
+        group['publicExtraQtyExact'] = materialQuantityText(
+          materialQuantityUnits(group['publicExtraQtyExact'] as String) -
+              BigInt.one,
+        );
+        return result;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-split-make|本色|unit-1')),
+      '999999999999.9999',
+    );
+    await _settlePreview(tester);
+    await _submitSelected(tester);
+    expect(_notices(tester), contains('来源份额与公共份合计不等于'));
+    expect(_aggregateSubmits(), isEmpty);
+  });
+
+  testWidgets('全选不改系统默认量也必须保留服务端原始万分位', (tester) async {
+    const exact = '9999999999999.9999';
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        final row = _fixtureMaterial(data, 'shared-0');
+        // This is exactly the normal JSON-number decode of the server's decimal.
+        for (final key in [
+          'requiredQty',
+          'sourceRequiredQty',
+          'additionalSupplyRecommendedQty',
+          'planningUncoveredQty',
+          'netShortageQty',
+          'shortageQty',
+          'demandSupplyGapQty',
+        ]) {
+          row[key] = jsonDecode(exact);
+        }
+        row['quantityFactsExact'] = {
+          'additionalSupplyRecommendedQty': exact,
+          'priorityMakeSupplementQty': '0',
+          'minOrderQty': '0',
+          'orderMultipleQty': '0',
+        };
+        return data;
+      },
+      aggregatePreview: (body, data) {
+        final result = _defaultAggregatePreview(body, data);
+        final inputByKey = {
+          for (final group in _records(body['groups']))
+            group['clientGroupKey']: group,
+        };
+        for (final group in _records(result['groups'])) {
+          group['publicExtraQtyExact'] = '0';
+          for (final source in _records(group['sources'])) {
+            source['allocatedQtyExact'] =
+                (inputByKey[group['clientGroupKey']]!['sourceRequestedQtyByMaterialLineId']
+                    as Map)[source['materialLineId']];
+          }
+        }
+        return result;
+      },
+      aggregateSubmit: _defaultAggregateSubmit,
+    );
+    await _check(tester, _rowCheckbox('shared-0'));
+    await _settleRebuild(tester);
+    await _submitSelected(tester);
+    final group = _records(_aggregateSubmits().single.body!['groups']).single;
+    expect(group['qty'], exact);
+    expect(group['sourceRequestedQtyByMaterialLineId'], {'shared-0': exact});
+  });
+
+  testWidgets('根产品默认精确基本量按来源单位换算后原样下达', (tester) async {
+    const source = '9999999999999.9999', base = '29999999999999.9997';
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product.addAll(<String, dynamic>{
+          'requestedQty': jsonDecode(source),
+          'remainingQty': jsonDecode(source),
+          'maxSchedulableQty': jsonDecode(source),
+          'unitRate': 3,
+          'quantityFactsExact': {'remainingQty': source, 'unitRate': '3'},
+        });
+        final row = _fixtureMaterial(data, 'm-root');
+        for (final key in [
+          'requiredQty',
+          'sourceRequiredQty',
+          'additionalSupplyRecommendedQty',
+          'netShortageQty',
+          'shortageQty',
+          'demandSupplyGapQty',
+        ]) {
+          row[key] = jsonDecode(base);
+        }
+        row['quantityFactsExact'] = {
+          'additionalSupplyRecommendedQty': base,
+          'priorityMakeSupplementQty': '0',
+        };
+        return data;
+      },
+    );
+    await _onlyRoot(tester);
+    await _submitSelected(tester);
+    final line = _records(_submits().single.body!['lines']).single;
+    expect(line['analysisLineId'], 'product-1');
+    expect(line['qty'], source);
+  });
+
+  testWidgets('默认安全补库数量也保留权威万分位且同料只提交一次', (tester) async {
+    const exact = '9999999999999.9999';
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        for (var i = 0; i < 3; i++) {
+          final row = _fixtureMaterial(data, 'shared-$i');
+          row['mainWarehouseSafetyReplenishmentGapQty'] = jsonDecode(exact);
+          row['quantityFactsExact'] = {
+            'additionalSupplyRecommendedQty': '1000',
+            'mainWarehouseSafetyReplenishmentGapQty': exact,
+          };
+        }
+        return data;
+      },
+      aggregatePreview: _sharedAggregatePreview,
+      aggregateSubmit: _sharedAggregateSubmit,
+    );
+    for (var i = 0; i < 3; i++) {
+      await _check(tester, _rowCheckbox('shared-$i'));
+    }
+    await _settleRebuild(tester);
+    await _submitSelected(tester);
+    final group = _records(_aggregateSubmits().single.body!['groups']).single;
+    expect(group['qty'], '3000');
+    expect(group['safetyQty'], exact);
+  });
+
+  testWidgets('六位单位比例不被四位数量格式截断默认剩余量', (tester) async {
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      defaultWorkshops: _workshopDefaultsFor(const ['g-m-root']),
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).first as Map;
+        product['issuedPlanQty'] = 1;
+        product['remainingQty'] = 100000;
+        product['maxSchedulableQty'] = 100000;
+        product['unitRate'] = 0.00032;
+        product['latestPlanId'] = 'plan-1';
+        _fixturePlanAssignment(product);
+        return data;
+      },
+    );
+    expect(_qtyText(tester, _appendQty('m-root')), '32');
+    await _onlyRoot(tester);
+    await _submitSelected(tester);
+    expect(_records(_submits().single.body!['lines']).single['qty'], 100000);
+  });
+
+  testWidgets('大数量预览缺精确字段即使请求是整数也拒绝一tick歧义', (tester) async {
+    await _pumpSplit(
+      tester,
+      mutate: _threeSharedMakeSources,
+      aggregatePreview: (body, data) {
+        final result = _defaultAggregatePreview(body, data);
+        for (final group in _records(result['groups'])) {
+          final sources = _records(group['sources']);
+          for (var i = 0; i < sources.length; i++) {
+            sources[i]['allocatedQty'] = i == 0
+                ? jsonDecode('9999999999999.9999')
+                : 0;
+          }
+          group['publicExtraQty'] = 0;
+        }
+        return result;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-split-make|本色|unit-1')),
+      '10000000000000',
+    );
+    await _settlePreview(tester);
+    await _submitSelected(tester);
+    expect(_aggregateSubmits(), isEmpty);
+    expect(_notices(tester), contains('未返回精确数量'));
+  });
+
+  testWidgets('单行采购菜单默认精确数量与补库量排除同操作组失活路径', (tester) async {
+    const qty = '9999999999999.9999', safety = '999999999999.9999';
+    await _pump(
+      tester,
+      permissions: _overSupplyPermissions,
+      overSupply: true,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        final row = _fixtureMaterial(data, 'shared-0');
+        row['goodsName'] = '精确采购菜单样本';
+        for (final field in [
+          'requiredQty',
+          'sourceRequiredQty',
+          'additionalSupplyRecommendedQty',
+          'netShortageQty',
+          'shortageQty',
+          'demandSupplyGapQty',
+        ]) {
+          row[field] = jsonDecode(qty);
+        }
+        row['mainWarehouseSafetyReplenishmentGapQty'] = jsonDecode(safety);
+        row['quantityFactsExact'] = {
+          'additionalSupplyRecommendedQty': qty,
+          'mainWarehouseSafetyReplenishmentGapQty': safety,
+        };
+        (data['flatMaterials'] as List).add(<String, dynamic>{
+          ...row,
+          'materialLineId': 'retired-same-action',
+          'nodeKey': 'retired-same-action',
+          'goodsName': '历史失活来源',
+          'requiredQty': 0,
+          'sourceRequiredQty': 0,
+          'actionable': false,
+          'requirementState': 'INACTIVE_PARENT_COVERED',
+          'additionalSupplyRecommendedQty': 7,
+          'mainWarehouseSafetyReplenishmentGapQty': jsonDecode(qty),
+          'quantityFactsExact': {
+            'additionalSupplyRecommendedQty': '7',
+            'mainWarehouseSafetyReplenishmentGapQty': qty,
+          },
+        });
+        return data;
+      },
+    );
+    final cell = find
+        .descendant(
+          of: find.byKey(const ValueKey('material-table-row-shared-0')),
+          matching: find.text('精确采购菜单样本'),
+        )
+        .first;
+    await tester.ensureVisible(cell);
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(
+      tester.getCenter(cell),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryMouseButton,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('提交采购需求'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('supply-submit-confirm')));
+    await tester.pumpAndSettle();
+    final request = _submits().singleWhere(
+      (request) => request.path.endsWith('/notify'),
+    );
+    final input = _records(request.body!['quantities']).single;
+    expect(input['qty'], qty);
+    expect(input['safetyReplenishmentQty'], safety);
+  });
+
+  testWidgets('无效精确默认事实不使页面崩溃且明确阻止下单', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        _fixtureMaterial(data, 'shared-0')['quantityFactsExact'] = {
+          'additionalSupplyRecommendedQty': 'broken',
+        };
+        return data;
+      },
+    );
+    expect(_qtyText(tester, _orderQty('shared-0')), isEmpty);
+    await _check(tester, _rowCheckbox('shared-0'));
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(_submits(), isEmpty);
+    expect(_aggregateSubmits(), isEmpty);
+    expect(_notices(tester), contains('缺少精确数量'));
+  });
+
   testWidgets('编辑中轮询换了需要量：手输总量的汇总草稿按新快照重新平分拆出的工单数', (tester) async {
     var arrived = false;
     await _pumpSplit(
@@ -6430,6 +6820,33 @@ Map<String, dynamic> _deepProductSubmit(
 List<Map<String, dynamic>> _records(Object? value) =>
     (value as List? ?? const <Object>[]).cast<Map<String, dynamic>>();
 
+Map<String, dynamic> _exactAggregateDagPreview(
+  Map<String, dynamic> body,
+  Map<String, dynamic> data,
+) {
+  final result = _aggregateDagPreview(body, data);
+  final inputByKey = {
+    for (final group in _records(body['groups']))
+      group['clientGroupKey']: group,
+  };
+  for (final group in _records(result['groups'])) {
+    var allocated = BigInt.zero;
+    for (final source in _records(group['sources'])) {
+      source['allocatedQtyExact'] = _num(
+        source['allocatedQty'],
+      ).toStringAsFixed(4);
+      allocated += materialQuantityUnits(source['allocatedQtyExact'] as String);
+    }
+    group['publicExtraQtyExact'] = materialQuantityText(
+      materialQuantityUnits(
+            inputByKey[group['clientGroupKey']]!['qty'] as String,
+          ) -
+          allocated,
+    );
+  }
+  return result;
+}
+
 Map<String, dynamic> _aggregateDagPreview(
   Map<String, dynamic> body,
   Map<String, dynamic> data,
@@ -7285,7 +7702,9 @@ Map<String, dynamic> _fixtureMaterial(Map<String, dynamic> data, String line) =>
       (material) => material['materialLineId'] == line,
     );
 
-double _num(Object? value) => (value as num?)?.toDouble() ?? 0;
+double _num(Object? value) => value is num
+    ? value.toDouble()
+    : double.tryParse(value?.toString() ?? '') ?? 0;
 
 /// 像服务端那样把一次 notify 写回快照: 需求份 = min(填数, 还需安排), 多出的记公共备货份;
 /// 本行挂上下游申请引用, 还需安排 / 还缺随之减少。

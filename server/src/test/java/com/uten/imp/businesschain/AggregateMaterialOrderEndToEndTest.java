@@ -7,6 +7,8 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.*;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -423,6 +425,167 @@ class AggregateMaterialOrderEndToEndTest {
         assertDeepSupplyRemainsCovered(create(true,false,"100",true,2,"1"), "200", "200", "400", 2, "MAKE");
     }
 
+    @ParameterizedTest @ValueSource(strings={"MAKE","BUY"})
+    void twoPreorderedMaterialsKeep400EachWhenEveryRemainingLevelIsIssued(String siblingRoute) {
+        UUID sibling=UUID.randomUUID();
+        Case c=create(true,false,"100",true,2,"1",sibling);
+        setRoute(c,c.child(),"SUBCONTRACT");
+        setRoute(c,c.material(),"MAKE");
+        if(!"MAKE".equals(siblingRoute))setRoute(c,sibling,siblingRoute);
+        AnalysisView initial=analyses.detail(c.analysis());
+        GroupInput common=input(c,c.common(),"MAKE","200",false);
+        GroupInput subcontract=input(c,c.child(),"SUBCONTRACT","200",false);
+        SubmitRequest first=command(c,List.of(input(c,c.material(),"MAKE","400",true),
+                input(c,sibling,siblingRoute,"400",true)));
+        SubmitResult supplied=writer.submit(c.analysis(),first);
+        assertEquals(2,supplied.batches().size());
+        assertTrue(writer.submit(c.analysis(),first).replayed());
+        for(UUID goods:List.of(c.material(),sibling))assertPhysicalSupply(c,goods,"400");
+
+        // Select-all starts with the two actual finished-product tasks, then forwards the
+        // unchanged original paths through the shared parent to its subcontract input.
+        var current=analyses.detail(c.analysis());
+        var roots=initial.products().stream().filter(row->row.salesOrderItemId()!=null).toList();
+        assertEquals(2,roots.size());
+        ordinary.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(current.version(),current.fingerprint(),
+                "two-material-roots-"+UUID.randomUUID(),c.world().warehouseId(),BusinessTime.today(),
+                BusinessTime.today().plusDays(10),true,roots.stream().map(root->new IssueWorkshopPlansRequest.IssuePlanLine(
+                        null,root.analysisLineId(),new BigDecimal("100"),null,null,c.workshop(),null,c.worker(),null,null,
+                        false,BigDecimal.ZERO)).toList()));
+        for(GroupInput group:List.of(common,subcontract)) {
+            SubmitRequest next=command(c,List.of(group));
+            assertEquals(1,writer.submit(c.analysis(),next).batches().size());
+            assertTrue(writer.submit(c.analysis(),next).replayed());
+        }
+        current=analyses.detail(c.analysis());
+        for(UUID goods:List.of(c.material(),sibling)) {
+            assertPhysicalSupply(c,goods,"400");
+            // Original demand remains 100 + 100 even though canonical descendants coexist.
+            amount("200",current.flatMaterials().stream().filter(row->row.goodsId().equals(goods))
+                    .map(MaterialView::sourceRequiredQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+            String route=goods.equals(c.material())?"MAKE":siblingRoute;
+            GroupInput zero=currentSelectableInput(c,goods,route,"0",false);
+            var checked=preview.preview(c.analysis(),request(c,List.of(zero))).groups().getFirst();
+            assertNull(checked.blockedReason());
+            amount("0",checked.remainingQty());
+            assertThrows(ApiException.class,()->writer.submit(c.analysis(),command(c,List.of(zero))),
+                    "An all-zero request must not issue another physical order");
+            assertPhysicalSupply(c,goods,"400");
+        }
+        // The workshop must contain real approved root work, not merely a projected badge.
+        amount("200",db.queryForObject("""
+                SELECT SUM(item.qty) FROM production_plan_items item
+                JOIN production_plans plan ON plan.id=item.plan_id
+                JOIN production_material_analysis_plan_links link ON link.plan_id=plan.id
+                JOIN production_material_analysis_items source ON source.id=link.analysis_item_id
+                WHERE plan.material_analysis_id=? AND source.source_type='SALES_ORDER_ITEM'
+                  AND plan.status=1 AND NOT plan.is_deleted AND NOT item.is_deleted
+                """,BigDecimal.class,c.analysis()));
+
+        // An intentional extra 50 must remain public and must survive replay exactly once.
+        GroupInput extra=currentSelectableInput(c,c.material(),"MAKE","50",true);
+        SubmitRequest reviewed=command(c,List.of(extra));
+        SubmitRequest full=new SubmitRequest(reviewed.version(),reviewed.fingerprint(),reviewed.idempotencyKey(),
+                reviewed.warehouseId(),reviewed.billDate(),reviewed.deliveryDate(),reviewed.approveNow(),
+                reviewed.groups(),reviewed.previewFingerprint(),true);
+        var appended=writer.submit(c.analysis(),full);
+        amount("50",appended.batches().stream().map(BatchResult::publicExtraQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+        assertTrue(writer.submit(c.analysis(),full).replayed());
+        assertPhysicalSupply(c,c.material(),"450");
+        assertPhysicalSupply(c,sibling,"400");
+    }
+
+    private GroupInput currentSelectableInput(Case c,UUID goods,String route,String qty,boolean extra) {
+        AnalysisView current=analyses.detail(c.analysis());
+        Set<UUID> represented=current.flatMaterials().stream().filter(row->row.aggregatePreparation()!=null)
+                .flatMap(row->row.aggregatePreparation().targetMaterialLineIds().stream())
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> anchors=current.products().stream().filter(row->"AGGREGATE_MAKE".equals(row.sourceType()))
+                .map(ProductView::analysisLineId).collect(java.util.stream.Collectors.toSet());
+        List<UUID> scope=current.flatMaterials().stream()
+                .filter(row->row.goodsId().equals(goods)&&"BOM_COMPONENT".equals(row.nodeRole()))
+                .filter(row->!represented.contains(row.materialLineId())||!anchors.contains(row.analysisLineId()))
+                .filter(row->row.aggregatePreparation()==null?row.requiredQty().signum()>0||"ACTIVE".equals(row.requirementState())
+                        :row.aggregatePreparation().actionable())
+                .map(MaterialView::materialLineId).toList();
+        assertFalse(scope.isEmpty(),"The UI must retain a current material entry after parent delegation");
+        return new GroupInput("current-"+goods,scope,route,new BigDecimal(qty),extra,
+                "MAKE".equals(route)?c.workshop():null,"MAKE".equals(route)?c.worker():null,
+                null,null,null,null,"MAKE".equals(route)?BigDecimal.ZERO:null,BigDecimal.ZERO);
+    }
+
+    @ParameterizedTest @ValueSource(booleans={true,false})
+    void concurrentOrdersFromOneSnapshotCreateOnlyOnePhysicalSupply(boolean sameKey) throws Exception {
+        Case c=create(true,false,"100",false,2,"1");
+        SubmitRequest first=command(c,List.of(input(c,c.material(),"BUY","400",true)));
+        SubmitRequest second=sameKey?first:new SubmitRequest(first.version(),first.fingerprint(),
+                "racing-material-"+UUID.randomUUID(),first.warehouseId(),first.billDate(),first.deliveryDate(),
+                first.approveNow(),first.groups(),first.previewFingerprint());
+        var actor=SecurityContextHolder.getContext().getAuthentication();
+        var start=new java.util.concurrent.CyclicBarrier(2);
+        java.util.function.Function<SubmitRequest,Object> submit=intent->{
+            var context=SecurityContextHolder.createEmptyContext();context.setAuthentication(actor);
+            SecurityContextHolder.setContext(context);
+            try {
+                start.await(30,java.util.concurrent.TimeUnit.SECONDS);
+                return writer.submit(c.analysis(),intent);
+            } catch(ApiException rejected) {
+                return rejected;
+            } catch(Exception failure) {
+                throw new RuntimeException(failure);
+            } finally {
+                SecurityContextHolder.clearContext();
+            }
+        };
+        try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var left=workers.submit(()->submit.apply(first));
+            var right=workers.submit(()->submit.apply(second));
+            List<Object> results=List.of(left.get(90,java.util.concurrent.TimeUnit.SECONDS),
+                    right.get(90,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(1,results.stream().filter(value->value instanceof SubmitResult result&&!result.replayed()).count());
+            if(sameKey)assertEquals(1,results.stream().filter(value->value instanceof SubmitResult result&&result.replayed()).count());
+            else {
+                ApiException rejected=results.stream().filter(ApiException.class::isInstance)
+                        .map(ApiException.class::cast).findFirst().orElseThrow();
+                assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,rejected.getCode());
+            }
+        }
+        assertPhysicalSupply(c,c.material(),"400");
+        assertEquals(1,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND status<>'CANCELLED'",c.analysis()));
+    }
+
+    @Test void replayKeepsLargeFourDecimalPhysicalQuantityInItsRetainedReceipt() {
+        Case c=create(false,false,"1");
+        String quantity="9999999999999.9999";
+        SubmitRequest request=command(c,List.of(input(c,c.material(),"BUY",quantity,true)));
+        SubmitResult initial=writer.submit(c.analysis(),request);
+        amount(quantity,initial.batches().getFirst().qty());
+        SubmitResult replay=writer.submit(c.analysis(),request);
+        assertTrue(replay.replayed());
+        amount(quantity,replay.batches().getFirst().qty());
+        amount("9999999999993.9999",replay.batches().getFirst().publicExtraQty());
+        assertPhysicalSupply(c,c.material(),quantity);
+        assertEquals(1,count("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=?",c.analysis()));
+    }
+
+    private void assertPhysicalSupply(Case c,UUID goods,String expected) {
+        amount(expected,db.queryForObject("""
+                SELECT COALESCE(SUM(action.requested_qty+action.public_surplus_qty),0)
+                FROM preplan_supply_actions action WHERE analysis_id=? AND goods_id=? AND status<>'CANCELLED'
+                """,BigDecimal.class,c.analysis(),goods));
+        amount(expected,db.queryForObject("""
+                SELECT COALESCE(SUM(qty),0) FROM (
+                  SELECT item.qty FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id
+                   WHERE plan.material_analysis_id=? AND item.goods_id=? AND NOT plan.is_deleted AND NOT item.is_deleted
+                  UNION ALL
+                  SELECT item.qty FROM purchase_request_items item
+                   WHERE item.goods_id=? AND NOT item.is_deleted AND item.request_id IN (
+                     SELECT external_document_id FROM preplan_supply_actions
+                      WHERE analysis_id=? AND goods_id=? AND route='BUY' AND status<>'CANCELLED')
+                ) physical
+                """,BigDecimal.class,c.analysis(),goods,goods,c.analysis(),goods));
+    }
+
     private void assertDeepSupplyRemainsCovered(Case c,String parentQty,String needed,String ordered,int sourceCount) {
         assertDeepSupplyRemainsCovered(c,parentQty,needed,ordered,sourceCount,"BUY");
     }
@@ -754,6 +917,9 @@ class AggregateMaterialOrderEndToEndTest {
         return create(manufacture,fixed,quantity,nested,sourceCount,"2");
     }
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty) {
+        return create(manufacture,fixed,quantity,nested,sourceCount,leafBomQty,null);
+    }
+    private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty,UUID sibling) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
         // ADR-147 (V802): 直送只送已开通内料仓的车间; 本车间的内料仓开通在测试世界的主仓下。
@@ -764,6 +930,7 @@ class AggregateMaterialOrderEndToEndTest {
         if(manufacture)fixture.insertGoods(common,"AG-H-"+common,"共享制造父件","自制",world.unitId(),world.unitLegacy());
         if(nested){fixture.insertGoods(child,"AG-C-"+child,"先下达制造子件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,child,"1");fixture.insertBom(child,world.goodsD(),leafBomQty);}
         else if(manufacture){fixture.insertBom(common,world.goodsD(),"1");if(fixed)db.update("UPDATE goods_bom_items SET consumption_basis='FIXED_BATCH',basis_output_qty=5 WHERE goods_id=?",common);}
+        if(sibling!=null){fixture.insertGoods(sibling,"AG-S-"+sibling,"先超量下达的第二种物料","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,sibling,"1");}
         List<PreviewItem> sources=new ArrayList<>();
         for(int index=0;index<sourceCount;index++){UUID root=UUID.randomUUID();fixture.insertGoods(root,"AG-R-"+root,"不同顶层"+index,"自制",world.unitId(),world.unitLegacy());fixture.insertBom(root,common,manufacture?"1":"2");
             UUID order=fixture.createApprovedOrder(world,root,quantity,"100");UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);

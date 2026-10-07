@@ -33,6 +33,29 @@ class MaterialAnalysisResponseProjectionTest {
     private final UUID warehouse = UUID.randomUUID();
     private final String materialKey = UUID.randomUUID() + "|NONE|" + UUID.randomUUID();
 
+    @Test void exactDefaultQuantityFactsSurviveLegacyAndBothCompressedRepresentations() throws Exception {
+        ObjectNode raw=(ObjectNode)wireTree(material("decimal",stock("0")));
+        raw.remove("nodeRole");
+        raw.put("additionalSupplyRecommendedQty",new BigDecimal("9999999999999.9999"));
+        raw.put("minOrderQty",new BigDecimal("9999999999999.9999"));
+        raw.put("orderMultipleQty",new BigDecimal("0.0001"));
+        raw.put("mainWarehouseSafetyReplenishmentGapQty",new BigDecimal("9999999999999.9999"));
+        MaterialView material=json.treeToValue(raw,MaterialView.class);
+        var view=view(List.of(material));
+        for(JsonNode snapshot:List.of(wireTree(view),expand(wireTree(MaterialAnalysisResponseProjection.project(view))),
+                expand(wireTree(MaterialAnalysisSparseProjection.project(view))))) {
+            JsonNode row=snapshot.path("flatMaterials").get(0);
+            assertEquals("9999999999999.9999",row.path("quantityFactsExact").path("additionalSupplyRecommendedQty").asText());
+            assertEquals("9999999999999.9999",row.path("quantityFactsExact").path("minOrderQty").asText());
+            assertEquals("0.0001",row.path("quantityFactsExact").path("orderMultipleQty").asText());
+            assertEquals("9999999999999.9999",row.path("quantityFactsExact").path("mainWarehouseSafetyReplenishmentGapQty").asText());
+            assertTrue(row.path("additionalSupplyRecommendedQty").isNumber(),"Old clients keep their number field");
+        }
+        var preparation=new AggregatePreparationView(BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,true,
+                new BigDecimal("9999999999999.9999"),BigDecimal.ZERO,List.of(),true);
+        assertEquals("9999999999999.9999",wireTree(preparation).path("planningUncoveredQtyExact").asText());
+    }
+
     @Test
     void httpNegotiationPreservesEveryLegacyFieldAndSharesOnlyIdenticalDimensionFacts() throws Exception {
         AnalysisView view = view(List.of(material("1", stock("0.0000")), material("2", stock("0.0000"))));

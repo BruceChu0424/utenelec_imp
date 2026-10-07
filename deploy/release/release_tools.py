@@ -14,6 +14,7 @@ import sys
 import urllib.parse
 import uuid
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, NoReturn
 
@@ -33,20 +34,15 @@ INDEX_VERSION_META = (
     '<meta name="uten-release-version" content="__UTEN_RELEASE_VERSION__">'
 )
 FLUTTER_WEB_GENERATOR_VERSION = "3.44.2"
-FLUTTER_WEB_PACKAGE_METADATA = {
-    "app_name": "uten_imp",
-    "version": "0.1.0",
-    "build_number": "1",
-    "package_name": "uten_imp",
-}
 # Flutter 3.44.2's WebReleaseBundle writes jsonEncode(getVersionInfo()) without
 # whitespace or a trailing newline, preserving the literal map insertion order.
-# Pinning the complete bytes prevents a pre-existing arbitrary version.json from
-# being laundered into signed release metadata.
-FLUTTER_WEB_PACKAGE_METADATA_BYTES = (
-    b'{"app_name":"uten_imp","version":"0.1.0","build_number":"1",'
-    b'"package_name":"uten_imp"}'
+# Derive those exact bytes from the trusted checkout, never from the artifact.
+PUBSPEC_NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+PUBSPEC_VERSION_RE = re.compile(
+    r"^(?P<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
+    r"(?:0|[1-9][0-9]*))(?:\+(?P<build>0|[1-9][0-9]*))?$"
 )
+MAX_PUBSPEC_BYTES = 256 * 1024
 MAX_WEB_INDEX_BYTES = 16 * 1024 * 1024
 MAX_FLUTTER_VERSION_BYTES = 4 * 1024
 WEB_STAMP_TRANSACTION_FILE = ".uten-web-release-stamp-in-progress.json"
@@ -309,6 +305,95 @@ def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+@dataclass(frozen=True)
+class FlutterWebSource:
+    pubspec: Path
+    pubspec_sha256: str
+    release_version: str
+    metadata_bytes: bytes
+    file_identity: tuple[int, ...]
+    parent_identity: tuple[int, ...]
+
+    def verify_unchanged(self) -> None:
+        try:
+            parent = os.lstat(self.pubspec.parent)
+            current = os.lstat(self.pubspec)
+        except OSError as exc:
+            raise ReleaseMetadataError("checkout pubspec disappeared during stamping") from exc
+        if (
+            _directory_identity(parent) != self.parent_identity
+            or _file_identity(current) != self.file_identity
+        ):
+            fail("checkout pubspec changed during stamping")
+
+
+def _flutter_metadata_from_pubspec(raw: bytes) -> tuple[str, bytes]:
+    """Read the release's plain top-level scalars, not a permissive YAML subset.
+
+    Quoted literal values are accepted, but aliases, merges, document directives,
+    duplicate/quoted keys and noncanonical versions fail closed. Other top-level
+    keys must use ordinary mapping syntax; their nested dependency data is not read.
+    """
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReleaseMetadataError("checkout pubspec is not UTF-8 text") from exc
+    values: dict[str, str] = {}
+    seen: set[str] = set()
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if line.startswith((" ", "\t")):
+            continue
+        field = re.fullmatch(r"([a-zA-Z_][a-zA-Z0-9_-]*):(?:[ \t]+(.*))?", line)
+        if field is None or field[1] in seen:
+            fail("checkout pubspec has ambiguous or duplicate top-level keys")
+        key = field[1]
+        seen.add(key)
+        if key not in {"name", "version"}:
+            continue
+        scalar = re.fullmatch(
+            r"(?:'([a-zA-Z0-9_.+-]+)'|\"([a-zA-Z0-9_.+-]+)\"|([a-zA-Z0-9_.+-]+))"
+            r"(?:[ \t]+#.*)?[ \t]*",
+            field[2] or "",
+        )
+        if scalar is None:
+            fail(f"checkout pubspec {key} must be one literal scalar")
+        values[key] = next(value for value in scalar.groups() if value is not None)
+    name = values.get("name", "")
+    version = PUBSPEC_VERSION_RE.fullmatch(values.get("version", ""))
+    if not PUBSPEC_NAME_RE.fullmatch(name) or version is None:
+        fail("checkout pubspec needs a canonical package name and release version")
+    release_version = "v" + version["version"]
+    validate_version(release_version)
+    metadata = {"app_name": name, "version": version["version"]}
+    if version["build"] is not None:
+        metadata["build_number"] = version["build"]
+    metadata["package_name"] = name
+    return release_version, json.dumps(metadata, separators=(",", ":")).encode("utf-8")
+
+
+def read_flutter_web_source(pubspec: Path) -> FlutterWebSource:
+    """Capture the checkout's source independently of untrusted build output."""
+    pubspec = pubspec.absolute()
+    if pubspec.name != "pubspec.yaml":
+        fail("Flutter release source must be the checkout's pubspec.yaml")
+    directory_fd, parent_identity = _open_stable_web_root(pubspec.parent)
+    try:
+        raw, identity = _read_stable_web_file(
+            directory_fd, pubspec.name,
+            label="checkout pubspec.yaml", maximum_bytes=MAX_PUBSPEC_BYTES,
+        )
+    finally:
+        os.close(directory_fd)
+    version, metadata = _flutter_metadata_from_pubspec(raw)
+    source = FlutterWebSource(
+        pubspec, _sha256_bytes(raw), version, metadata, identity, parent_identity,
+    )
+    source.verify_unchanged()
+    return source
+
+
 def _strict_canonical_json_object(raw: bytes, label: str) -> dict[str, Any]:
     def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -374,13 +459,15 @@ def _web_stamp_transaction_value(
     index_preimage: bytes,
     index_final: bytes,
     version_final: bytes,
+    source: FlutterWebSource,
 ) -> dict[str, Any]:
     return {
         "commitSha": commit_sha,
         "flutterGeneratorVersion": FLUTTER_WEB_GENERATOR_VERSION,
         "flutterVersionPreimageSha256": _sha256_bytes(
-            FLUTTER_WEB_PACKAGE_METADATA_BYTES
+            source.metadata_bytes
         ),
+        "pubspecSha256": source.pubspec_sha256,
         "indexFinalSha256": _sha256_bytes(index_final),
         "indexPreimageSha256": _sha256_bytes(index_preimage),
         "releaseSequence": sequence,
@@ -398,6 +485,7 @@ def _validate_web_stamp_transaction(
     commit_sha: str,
     sequence: int,
     version_final: bytes,
+    source: FlutterWebSource,
 ) -> None:
     expected_keys = {
         "commitSha",
@@ -405,6 +493,7 @@ def _validate_web_stamp_transaction(
         "flutterVersionPreimageSha256",
         "indexFinalSha256",
         "indexPreimageSha256",
+        "pubspecSha256",
         "releaseSequence",
         "schemaVersion",
         "status",
@@ -423,7 +512,8 @@ def _validate_web_stamp_transaction(
         or value.get("commitSha") != commit_sha
         or value.get("releaseSequence") != sequence
         or value.get("flutterVersionPreimageSha256")
-        != _sha256_bytes(FLUTTER_WEB_PACKAGE_METADATA_BYTES)
+        != _sha256_bytes(source.metadata_bytes)
+        or value.get("pubspecSha256") != source.pubspec_sha256
         or value.get("versionFinalSha256") != _sha256_bytes(version_final)
     ):
         fail("web stamp transaction differs from the requested release")
@@ -431,6 +521,7 @@ def _validate_web_stamp_transaction(
         "flutterVersionPreimageSha256",
         "indexFinalSha256",
         "indexPreimageSha256",
+        "pubspecSha256",
         "versionFinalSha256",
     ):
         if not isinstance(value.get(key), str) or not SHA256_RE.fullmatch(value[key]):
@@ -749,6 +840,11 @@ def stamp_web_release(args: argparse.Namespace) -> None:
     version = args.version
     sequence = validate_version(version)
     commit_sha = validate_commit(args.commit)
+    source = read_flutter_web_source(args.pubspec)
+    if source.release_version != version:
+        fail("checkout pubspec version differs from the requested release")
+    if source.pubspec.resolve().is_relative_to(args.web_root.resolve()):
+        fail("checkout pubspec must be outside the web build output")
     release_version_bytes = canonical_json_bytes(
         {
             "commitSha": commit_sha,
@@ -795,6 +891,7 @@ def stamp_web_release(args: argparse.Namespace) -> None:
                 commit_sha=commit_sha,
                 sequence=sequence,
                 version_final=release_version_bytes,
+                source=source,
             )
 
             index_digest = _sha256_bytes(index_bytes)
@@ -810,14 +907,14 @@ def stamp_web_release(args: argparse.Namespace) -> None:
             else:
                 fail("web index differs from both states bound by the stamp transaction")
 
-            if flutter_version_bytes == FLUTTER_WEB_PACKAGE_METADATA_BYTES:
+            if flutter_version_bytes == source.metadata_bytes:
                 replace_version = True
             elif flutter_version_bytes == release_version_bytes:
                 replace_version = False
             else:
                 fail("web version differs from both states bound by the stamp transaction")
         else:
-            if flutter_version_bytes != FLUTTER_WEB_PACKAGE_METADATA_BYTES:
+            if flutter_version_bytes != source.metadata_bytes:
                 fail(
                     "Flutter-generated web version.json differs from the reviewed "
                     f"Flutter {FLUTTER_WEB_GENERATOR_VERSION} package metadata bytes"
@@ -830,7 +927,9 @@ def stamp_web_release(args: argparse.Namespace) -> None:
                 index_preimage=index_bytes,
                 index_final=stamped_index_bytes,
                 version_final=release_version_bytes,
+                source=source,
             )
+            source.verify_unchanged()
             transaction_identity = _write_new_web_file(
                 directory_fd,
                 WEB_STAMP_TRANSACTION_FILE,
@@ -863,6 +962,7 @@ def stamp_web_release(args: argparse.Namespace) -> None:
             version=version,
             version_final=release_version_bytes,
         )
+        source.verify_unchanged()
         _durable_remove_web_stamp_transaction(directory_fd, transaction_identity)
         _verify_terminal_web_stamp(
             directory_fd,
@@ -870,6 +970,7 @@ def stamp_web_release(args: argparse.Namespace) -> None:
             version=version,
             version_final=release_version_bytes,
         )
+        source.verify_unchanged()
         try:
             current_root = os.lstat(web_root)
         except OSError as exc:
@@ -1192,6 +1293,7 @@ def parser() -> argparse.ArgumentParser:
 
     stamp_web = subcommands.add_parser("stamp-web")
     stamp_web.add_argument("--web-root", required=True, type=Path)
+    stamp_web.add_argument("--pubspec", required=True, type=Path)
     stamp_web.add_argument("--version", required=True)
     stamp_web.add_argument("--commit", required=True)
 

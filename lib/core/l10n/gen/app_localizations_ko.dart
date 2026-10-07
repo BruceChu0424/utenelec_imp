@@ -49,6 +49,22 @@ class AppLocalizationsKo extends AppLocalizations {
       '오래된 코드와 문서를 정리하고 권한 및 동시 처리 검사를 보강했습니다. 버전을 누르면 이 설명을 볼 수 있습니다.';
 
   @override
+  String get release254QuantityPrecision =>
+      '자재 주문의 수량 정밀도를 유지하며, 최소 수량·단위 환산·분할 주문·중복 제출 확인 결과의 수량 오차를 수정했습니다.';
+
+  @override
+  String get release254AiAuthorization =>
+      'AI 사용 권한은 별도로 부여합니다. 권한이 없는 계정에는 도우미가 표시되지 않으며 관련 기능도 사용할 수 없습니다.';
+
+  @override
+  String get release254SensitiveAuthorization =>
+      '민감한 권한을 변경할 때 본인 인증을 다시 진행하여 중요한 권한 부여를 직접 확인하도록 했습니다.';
+
+  @override
+  String get release254Publishing =>
+      '앱과 설치 패키지의 버전 정보를 일치시키고 출시 전 검사를 강화하여 업데이트 오류를 줄였습니다.';
+
+  @override
   String get businessColumnAmountUnavailable =>
       '현재 계정은 이 열을 금액 계산에 사용할 수 없습니다. 가격 권한을 복구하거나 문자 또는 숫자 기록을 명시적으로 선택하세요.';
 

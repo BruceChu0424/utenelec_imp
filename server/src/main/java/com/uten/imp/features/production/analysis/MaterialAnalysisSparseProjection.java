@@ -111,6 +111,7 @@ public final class MaterialAnalysisSparseProjection {
                 }
             }
             result.add(new Field("nodeRole", lookup.unreflect(MaterialView.class.getMethod("nodeRole")).asType(type)));
+            result.add(new Field("quantityFactsExact", lookup.unreflect(MaterialView.class.getMethod("quantityFactsExact")).asType(type)));
             return List.copyOf(result);
         } catch (ReflectiveOperationException failure) {
             throw new ExceptionInInitializerError(failure);

@@ -42,6 +42,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get release253Maintenance => '清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。';
 
   @override
+  String get release254QuantityPrecision =>
+      '物料下单保留完整精度，修复最小数量、单位换算、分单及重复提交回执中的数量偏差。';
+
+  @override
+  String get release254AiAuthorization =>
+      'AI 使用权限改为单独授权；未获授权的账号不显示助手，也不能调用相关功能。';
+
+  @override
+  String get release254SensitiveAuthorization => '修改敏感权限时需要再次验证身份，让重要授权得到本人确认。';
+
+  @override
+  String get release254Publishing => '统一应用和安装包的版本信息，加强发布前检查，减少升级异常。';
+
+  @override
   String get businessColumnAmountUnavailable =>
       '当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。';
 

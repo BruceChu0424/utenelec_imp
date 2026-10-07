@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.department.staffpermission;
 
 import com.uten.imp.features.auth.PermissionResolver;
+import com.uten.imp.features.auth.StepUpService;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -65,6 +66,7 @@ class PagePermissionWorkspaceServiceTest {
     @Captor private ArgumentCaptor<List<UserPermissionOverride>> savedOverrides;
     @Captor private ArgumentCaptor<List<ManagerPermissionDelegation>> savedDelegations;
     @Mock private PermissionChangeAudit changeAudit;
+    @Mock private StepUpService stepUp;
 
     private PagePermissionWorkspaceService service;
 
@@ -97,7 +99,8 @@ class PagePermissionWorkspaceServiceTest {
                 registry,
                 new PagePermissionDelegationFeatureGate(true),
                 managementScope,
-                changeAudit);
+                changeAudit,
+                stepUp);
     }
 
     @Test

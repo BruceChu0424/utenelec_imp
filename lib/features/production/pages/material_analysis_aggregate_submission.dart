@@ -100,20 +100,21 @@ final class _MaterialAggregateSubmission {
         // 先走同一套请求构建校验(总量下限、来源已变、路线未统一等)，无效整单
         // 直接警告、不进确认框——确认框只对真正会下达的整单出现。
         table.requestFor([for (final key in keys) table.drafts[key]!]);
-        double total = 0;
-        double overTotal = 0;
+        var overTotal = BigInt.zero;
         var appendKinds = 0;
         for (final key in keys) {
           final draft = table.drafts[key]!;
-          final typed = double.tryParse(draft.totalText) ?? 0;
-          total += typed;
+          final typed = materialQuantityUnits(draft.totalText);
           final groups = table.draftGroups(draft);
-          final floor = groups.fold<double>(
-            0,
-            (sum, group) =>
-                sum + owner._tableGroupResidual(group, authoritative: true),
+          final floor = materialQuantityUnits(
+            table.sumQuantityTexts(
+              groups.map(
+                (group) =>
+                    owner._tableGroupResidualText(group, authoritative: true),
+              ),
+            ),
           );
-          if (typed - floor > 0.0001) overTotal += typed - floor;
+          if (typed > floor) overTotal += typed - floor;
           if (groups.isNotEmpty && groups.every(owner._tableGroupIssued)) {
             appendKinds++;
           }
@@ -123,10 +124,10 @@ final class _MaterialAggregateSubmission {
           title: '确认下单 ${keys.length} 种物料？',
           content: Text(
             [
-              '共 ${keys.length} 种物料，合计 ${owner._qty(total)}。',
+              '共 ${keys.length} 种物料，合计 ${table.sumQuantityTexts(keys.map((key) => table.drafts[key]!.totalText))}。',
               if (appendKinds > 0) '$appendKinds 种为追加原单，只办理本次净增量。',
-              if (overTotal > 0.0001)
-                '含超出当前还缺的 ${owner._qty(overTotal)}（作为公共备货下达）。',
+              if (overTotal > BigInt.zero)
+                '含超出当前还缺的 ${materialQuantityText(overTotal)}（作为公共备货下达）。',
             ].join('\n'),
             key: const Key('aggregate-submit-confirm-body'),
           ),
@@ -475,32 +476,23 @@ final class _MaterialAggregateSubmission {
               oldSnapshots[id]?.hasExplicitQty == true &&
                   sourceQuantities.containsKey(id)
               ? sourceQuantities[id]!
-              : owner._qty(
-                  owner._tableDefaultSubmitQty(
-                    indexes.groupsByLine[id]!,
-                    authoritative: true,
-                  ),
+              : owner._tableDefaultSubmitQtyText(
+                  indexes.groupsByLine[id]!,
+                  authoritative: true,
                 ),
       };
-      draft.totalText = owner._qty(
-        draft.sourceRequestedQtyByMaterialLineId!.values.fold<double>(
-          0,
-          (total, value) => total + double.parse(value),
-        ),
+      draft.totalText = table.sumQuantityTexts(
+        draft.sourceRequestedQtyByMaterialLineId!.values,
       );
       table.editors[draft.key]?.text = draft.totalText;
     } else if (!draft.userEntered) {
-      draft.totalText = owner._qty(
-        nextIds.fold<double>(
-          0,
-          (sum, id) =>
-              sum +
-              owner._tableDefaultSubmitQty(
-                indexes.groupsByLine[id]!,
-                authoritative: true,
-              ),
-        ),
-      );
+      draft.totalText = table.sumQuantityTexts([
+        for (final id in nextIds)
+          owner._tableDefaultSubmitQtyText(
+            indexes.groupsByLine[id]!,
+            authoritative: true,
+          ),
+      ]);
       table.editors[draft.key]?.text = draft.totalText;
     } else if (lostExplicitSource) {
       // 旧快照只有替换桥时只能证明整组总量，不能伪造已丢失的逐行发出量。

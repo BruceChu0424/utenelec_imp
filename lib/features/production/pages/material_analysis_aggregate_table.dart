@@ -225,12 +225,16 @@ final class _MaterialAggregateTableController {
               color: Theme.of(owner.context).colorScheme.onSurfaceVariant,
             ),
             const SizedBox(width: UtenSpacing.s4),
-            Text(
-              owner._qty(orderedQty(aggregate)),
-              key: cellKey,
-              style: Theme.of(
-                owner.context,
-              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+            Flexible(
+              child: Text(
+                owner._qty(orderedQty(aggregate)),
+                key: cellKey,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  owner.context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ),
@@ -347,13 +351,15 @@ final class _MaterialAggregateTableController {
         final line = group.representative.materialLineId;
         if (existing.paths.containsKey(line)) continue;
         existing.paths[line] = _snapshot(group);
-        existing.sourceRequestedQtyByMaterialLineId?[line] = owner._qty(
-          owner._tableSubmitQtyOf(group),
-        );
+        existing.sourceRequestedQtyByMaterialLineId?[line] = owner
+            ._tableSubmitQtyTextOf(group);
         _draftByLine[line] = aggregate.key;
         changed = true;
       }
       if (changed) {
+        if (existing.sourceRequestedQtyByMaterialLineId case final requested?) {
+          existing.totalText = sumQuantityTexts(requested.values);
+        }
         _revision++;
         existing.previewGroups = const [];
         _preview = null;
@@ -372,18 +378,13 @@ final class _MaterialAggregateTableController {
           aggregate.key,
           aggregate.goodsName ?? aggregate.goodsCode ?? '物料',
           snapshots,
-          owner._qty(
-            groups.fold<double>(
-              0.0,
-              (sum, group) => sum + owner._tableSubmitQtyOf(group),
-            ),
-          ),
+          sumQuantityTexts(groups.map(owner._tableSubmitQtyTextOf)),
         )
         ..appendFlow = orderedQty(aggregate) > 0.000000001
         ..sourceRequestedQtyByMaterialLineId = {
           for (final group in groups)
-            group.representative.materialLineId: owner._qty(
-              owner._tableSubmitQtyOf(group),
+            group.representative.materialLineId: owner._tableSubmitQtyTextOf(
+              group,
             ),
         }
         ..userEntered = snapshots.values.any((state) => state.hasExplicitQty);
@@ -440,13 +441,14 @@ final class _MaterialAggregateTableController {
       (double.tryParse(value)?.isFinite ?? false) &&
       (double.tryParse(value) ?? -1) >= 0;
 
-  /// 用户敲的总量文本的小数位数（无小数=0，封顶 4）：平分粒度跟着输入走——
-  /// 整数总量平分成整数份额，敲了四位小数才落四位小数。
-  static int _typedScale(String text) {
-    final trimmed = text.trim();
-    final dot = trimmed.indexOf('.');
-    if (dot < 0) return 0;
-    return (trimmed.length - dot - 1).clamp(0, 4);
+  String sumQuantityTexts(Iterable<String> values) {
+    var total = BigInt.zero;
+    for (final value in values) {
+      // An unfinished source input stays invalid until edited; never invent 0.
+      if (!validText(value)) return 'NaN';
+      total += materialQuantityUnits(value);
+    }
+    return materialQuantityText(total);
   }
 
   /// 各来源「还需安排」合计的最粗守恒整值（2026-10-06 用户口径「优先整数
@@ -498,18 +500,23 @@ final class _MaterialAggregateTableController {
     }
     final groups = draftGroups(draft);
     if (groups.isEmpty) return;
-    final total = double.tryParse(draft.totalText.trim());
-    if (total == null || !total.isFinite || total < 0) return;
+    if (!validText(draft.totalText)) return;
     // 平分粒度跟着用户敲的小数位走(2026-10-06 用户口径「优先整数」)：整数
     // 总量落整数份额，83.3334 这类服务端分摊尾巴不再层层上屏。
-    final shares = splitTypedTotal(total, [
-      for (final group in groups) owner._tableGroupResidual(group),
-    ], _typedScale(draft.totalText));
+    final List<String> shares;
+    try {
+      shares = splitTypedTotalText(draft.totalText, [
+        for (final group in groups) owner._tableGroupResidualText(group),
+      ]);
+    } on FormatException {
+      error = '来源缺少可核对的精确数量，请刷新后重试';
+      return;
+    }
     for (var i = 0; i < groups.length; i++) {
       final group = groups[i];
       final line = group.representative.materialLineId;
       final snapshot = draft.paths[line];
-      if (shares[i] <= 0.0000001) {
+      if (materialQuantityUnits(shares[i]) == BigInt.zero) {
         // 平分不再给这一行分量(0 需求来源 / 需求已变化 / 总量清空)：
         // 恢复草稿拍下的原值，不把上一次平分的结果留在这行。
         _restoreSnapshotQty(group, snapshot);
@@ -519,9 +526,11 @@ final class _MaterialAggregateTableController {
       final controller = append
           ? owner._tableAppendQtyController(group)
           : owner._tableOrderQtyController(group);
-      final text = owner._qty(shares[i]);
+      final text = shares[i];
       if (controller.text != text) controller.text = text;
-      owner._tableUserTypedQty[line] = shares[i];
+      // This numeric cache is for local availability estimates only. The
+      // controller and wire retain the exact decimal text above.
+      owner._tableUserTypedQty[line] = double.parse(text);
       owner._tableSeededQtyTexts.remove(
         '${append ? 'APPEND' : 'ORDER'}|${group.key}',
       );
@@ -683,7 +692,7 @@ final class _MaterialAggregateTableController {
   ///   自己的数，逐行数量原样随这张工单提交；
   /// - 手输总量的草稿：先按平分规则([splitTypedTotal])把总量落到
   ///   各来源行，再按工单相加。
-  /// 按万分之一整数累加，尾差归最后一张，合计与总量一毫不差。
+  /// 按万分之一 BigInt 精确累加，各张合计必须等于原始总量。
   List<({String qty, Map<String, String>? sourceRequested})> partQuantities(
     _MaterialAggregateDraft draft,
     List<_MaterialAggregatePart> parts,
@@ -696,53 +705,49 @@ final class _MaterialAggregateTableController {
         ),
       ];
     }
-    int units(String value) => (double.parse(value) * 10000).round();
-    String text(int value) => owner._qty(value / 10000);
     final requested = draft.sourceRequestedQtyByMaterialLineId;
     if (requested != null) {
       return [
         for (final part in parts)
-          _requestedPart(
-            {for (final line in part.lineIds) line: ?requested[line]},
-            units,
-            text,
-          ),
+          _requestedPart({
+            for (final line in part.lineIds) line: ?requested[line],
+          }),
       ];
     }
     final sources = draftSources(draft);
-    final shares = splitTypedTotal(double.parse(draft.totalText), [
-      for (final source in sources) owner._tableGroupResidual(source.group),
-    ], _typedScale(draft.totalText));
+    final shares = splitTypedTotalText(draft.totalText, [
+      for (final source in sources)
+        owner._tableGroupResidualText(source.group, authoritative: true),
+    ]);
     final shareByLine = {
       for (var i = 0; i < sources.length; i++) sources[i].line: shares[i],
     };
     final partUnits = [
       for (final part in parts)
-        (part.lineIds.fold<double>(
-                  0,
-                  (sum, line) => sum + (shareByLine[line] ?? 0),
-                ) *
-                10000)
-            .round(),
+        part.lineIds.fold<BigInt>(
+          BigInt.zero,
+          (sum, line) => sum + materialQuantityUnits(shareByLine[line]!),
+        ),
     ];
-    final rest = partUnits
-        .take(partUnits.length - 1)
-        .fold<int>(0, (sum, value) => sum + value);
-    partUnits[partUnits.length - 1] = units(draft.totalText) - rest;
-    if (partUnits.last < 0) {
+    if (partUnits.fold(BigInt.zero, (sum, value) => sum + value) !=
+        materialQuantityUnits(draft.totalText)) {
       throw FormatException('「${draft.label}」本次总量无法分到各张工单，请重新填写总量');
     }
     return [
-      for (final value in partUnits) (qty: text(value), sourceRequested: null),
+      for (final value in partUnits)
+        (qty: materialQuantityText(value), sourceRequested: null),
     ];
   }
 
   static ({String qty, Map<String, String>? sourceRequested}) _requestedPart(
     Map<String, String> subset,
-    int Function(String) units,
-    String Function(int) text,
   ) => (
-    qty: text(subset.values.fold<int>(0, (sum, qty) => sum + units(qty))),
+    qty: materialQuantityText(
+      subset.values.fold<BigInt>(
+        BigInt.zero,
+        (sum, qty) => sum + materialQuantityUnits(qty),
+      ),
+    ),
     sourceRequested: subset,
   );
 
@@ -910,9 +915,7 @@ final class _MaterialAggregateTableController {
             safetyQty:
                 route == MaterialSupplyRoute.buy &&
                     safetyDimensions.add(draft.key)
-                ? owner._qty(
-                    owner._groupSafetyReplenishmentGapQty(groups.first),
-                  )
+                ? owner._groupSafetyReplenishmentGapText(groups.first)
                 : '0',
           ),
         );
@@ -1154,8 +1157,26 @@ final class _MaterialAggregateTableController {
                 (sum, source) => sum + source.allocatedQty,
               ),
         );
-        if ((allocated - double.parse(draft.totalText)).abs() > 0.00005 &&
-            groups.every((group) => group.blockedReason == null)) {
+        final exact = _exactPreviewContribution(groups);
+        if (exact == null &&
+            (double.parse(draft.totalText).abs() >= 10000000000 ||
+                groups.any(
+                  (group) =>
+                      group.publicExtraQty.abs() >= 10000000000 ||
+                      group.sources.any(
+                        (source) => source.allocatedQty.abs() >= 10000000000,
+                      ),
+                ) ||
+                materialQuantityUnits(
+                      owner._qty(double.parse(draft.totalText)),
+                    ) !=
+                    materialQuantityUnits(draft.totalText))) {
+          throw const FormatException('服务器未返回精确数量，请更新服务器后再核对大数量');
+        }
+        final differs = exact == null
+            ? (allocated - double.parse(draft.totalText)).abs() > 0.00005
+            : exact != materialQuantityUnits(draft.totalText);
+        if (differs && groups.every((group) => group.blockedReason == null)) {
           throw const FormatException('汇总预览的来源份额与公共份合计不等于本次总量，未应用此结果');
         }
       }
@@ -1176,10 +1197,13 @@ final class _MaterialAggregateTableController {
                   (sum, source) => sum + source.allocatedQty,
                 ),
           );
-          if ((contribution - double.parse(draft.totalText)).abs() > 0.00005) {
+          final exact = _exactPreviewContribution(draft.previewGroups);
+          if (exact == null
+              ? (contribution - double.parse(draft.totalText)).abs() > 0.00005
+              : exact != materialQuantityUnits(draft.totalText)) {
             continue;
           }
-          final allocation = <String, double>{};
+          final allocation = <String, BigInt>{};
           for (final group in draft.previewGroups) {
             for (final source in group.sources) {
               // Canonical allocation may cover several original rows. Its
@@ -1187,10 +1211,16 @@ final class _MaterialAggregateTableController {
               final originals = sourceOrigins[source]!;
               if (originals.length != 1) continue;
               final originalId = originals.single;
+              final units = materialQuantityUnits(
+                materialQuantityFact(
+                  source.allocatedQtyExact,
+                  source.allocatedQty,
+                ),
+              );
               allocation.update(
                 originalId,
-                (value) => value + source.allocatedQty,
-                ifAbsent: () => source.allocatedQty,
+                (value) => value + units,
+                ifAbsent: () => units,
               );
             }
           }
@@ -1207,13 +1237,15 @@ final class _MaterialAggregateTableController {
               if (draft.userEntered) continue;
               if (!allocation.containsKey(line)) continue;
             }
-            final quantity =
-                double.tryParse(sourceRequested ?? '') ?? allocation[line] ?? 0;
+            final text =
+                sourceRequested ??
+                materialQuantityText(allocation[line] ?? BigInt.zero);
+            final quantity = double.parse(text);
             final append = owner._tableGroupIssued(group);
             final controller = append
                 ? owner._tableAppendQtyController(group)
                 : owner._tableOrderQtyController(group);
-            controller.text = owner._qty(quantity);
+            controller.text = text;
             owner._tableUserTypedQty[line] = quantity;
             owner._tableSeededQtyTexts.remove(
               '${append ? 'APPEND' : 'ORDER'}|${group.key}',
@@ -1242,6 +1274,23 @@ final class _MaterialAggregateTableController {
             : productionErrorMessage(failure, fallback: '汇总预览失败，输入已保留');
       });
     }
+  }
+
+  BigInt? _exactPreviewContribution(
+    List<MaterialAggregateOrderGroupPreview> groups,
+  ) {
+    var total = BigInt.zero;
+    for (final group in groups) {
+      final extra = group.publicExtraQtyExact;
+      if (extra == null) return null;
+      total += materialQuantityUnits(extra);
+      for (final source in group.sources) {
+        final allocated = source.allocatedQtyExact;
+        if (allocated == null) return null;
+        total += materialQuantityUnits(allocated);
+      }
+    }
+    return total;
   }
 
   /// 调用方(产品视图主确认框或汇总视图开跑前的一次性确认，见

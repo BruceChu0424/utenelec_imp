@@ -54,6 +54,10 @@ public class Permission extends BaseEntity {
     @Column(nullable = false)
     private boolean baseline;
 
+    /** 既有目录高危标记：页面权限变更用它决定是否再认证，不改变 grant_policy 的授权资格。 */
+    @Column(name = "high_risk", nullable = false)
+    private boolean highRisk;
+
     /** 管理端风险标签(仅展示用，不参与授权判定)；商业敏感权限提示可见字段。 */
     @Column(nullable = false)
     private String sensitivity = "NORMAL";

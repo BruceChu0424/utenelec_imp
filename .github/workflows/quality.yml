@@ -244,17 +244,37 @@ jobs:
         run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze --no-pub
       - run: flutter test --no-pub
-      - name: Verify browser draft reset and receipt storage
+      - name: Verify browser draft reset, receipts, and exact material quantities
         run: >-
           flutter test --no-pub --platform chrome
           test/shared/drafts/form_draft_storage_browser_test.dart
           test/shared/drafts/form_draft_history_browser_test.dart
           test/device_audit_receipt_storage_web_test.dart
+          test/features/production/models/material_quantity_apportionment_test.dart
       - name: Verify version-pinned local font assets
         shell: pwsh
         run: ./.github/scripts/verify-font-assets.ps1
       - name: Build production web bundle
         run: flutter build web --release --no-pub --no-web-resources-cdn --no-wasm-dry-run --dart-define=API_BASE_URL=/api
+      - name: Verify release stamping of the actual Flutter bundle
+        run: |
+          python3 - <<'PY'
+          import os
+          import shutil
+          from argparse import Namespace
+          from pathlib import Path
+          from deploy.release import release_tools
+
+          pubspec = Path("pubspec.yaml")
+          source = release_tools.read_flutter_web_source(pubspec)
+          web = Path(os.environ["RUNNER_TEMP"]) / "quality-stamped-web"
+          shutil.copytree("build/web", web)
+          release_tools.stamp_web_release(Namespace(
+              pubspec=pubspec, web_root=web, version=source.release_version,
+              commit=os.environ["GITHUB_SHA"],
+          ))
+          print(f"Verified actual Flutter metadata and {source.release_version} release stamping")
+          PY
 
   website:
     name: Website / Node 22

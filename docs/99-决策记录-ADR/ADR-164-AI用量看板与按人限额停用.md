@@ -93,7 +93,7 @@
 
 | 方案 | 不采用的原因 |
 |---|---|
-| 用权限 revoke(收回 `ai:use`)实现停用 | 与并行会话 V813 的 baseline 化(`ai_use_baseline_for_everyone`)纠缠——个人 override 会被 baseline 合成逻辑冲掉/要跟着版本演进走；生效链路长(权限集随会话刷新)；文案不可控(用户只看到「无权限」，不知道是被停用、找谁恢复)；把「账号级开关」塞进「页面权限」模型，两套口径永远对不齐 |
+| 用权限 revoke(收回 `ai:use`)代替用量停用 | 权限与用量停用是两个独立控制：V821 起 AI 使用按需授权，个人 revoke 始终优先于基础/部门授权；用量管理仍可暂停已授权账号，并显示明确的暂停原因。恢复用量开关不会自动补授 `ai:use`，重新授权也不绕过用量停用 |
 | 停用检查挂 `AiChatAccessPolicy.requireChat` | `security` 包不得依赖 `features.*`(`ArchitectureBoundaryTest` 的边界，security 是底层包)；且 `requireChat` 只覆盖对话提交，文件识别与销售 intake 任务不经它，破边界还漏任务(§4.2) |
 | 年视图封顶 180 天(不做 rollup，直接查 `ai_call_logs`) | `ai_call_logs` 留存 180 天(ADR-105)，年视图会只有半年数据还显示成全年，用户明确要年视图；日汇总表每用户每天一行，成本低、口径与明细一致(§五下条) |
 | 今日用量也读 rollup 表(省一次实时聚合) | 今日行随 rollup 定时刷新，读它做限额判断有超支窗口；实时查有 `idx_ai_call_logs_user_created` 现成索引，与全局预算 `todayTokens()` 同口径；rollup 只服务历史窗口(§4.5)——这是「实时查 vs rollup」的取舍：**今日实时、历史汇总** |

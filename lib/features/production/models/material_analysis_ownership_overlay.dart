@@ -129,6 +129,7 @@ ProductionMaterialAnalysisMaterial _materialWithOwnership(
   _Ownership owner,
 ) => ProductionMaterialAnalysisMaterial(
   materialLineId: current.materialLineId,
+  quantityFactsExact: current.quantityFactsExact,
   analysisLineId: current.analysisLineId,
   nodeKey: current.nodeKey,
   goodsId: current.goodsId,
@@ -244,6 +245,7 @@ ProductionMaterialAnalysisProduct _productWithOwnership(
 ) => ProductionMaterialAnalysisProduct(
   analysisLineId: current.analysisLineId,
   sourceType: current.sourceType,
+  quantityFactsExact: current.quantityFactsExact,
   rootMaterialLineId: current.rootMaterialLineId,
   sourceRef: current.sourceRef,
   sourceReason: current.sourceReason,

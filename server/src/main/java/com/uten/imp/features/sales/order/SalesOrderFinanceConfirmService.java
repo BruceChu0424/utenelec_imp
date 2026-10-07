@@ -700,7 +700,7 @@ public class SalesOrderFinanceConfirmService {
         orderRepo.save(order);
         chainNotice.notifyOrderFinanceConfirmed(orderId);
         // V459 办结撤回：确认完成，全部接收人的待审弹卡与收件台计数清零。
-        chainNotice.resolveReviewNotices("SALES_ORDER", orderId, "FINANCE_CONFIRMED");
+        chainNotice.resolveSalesFinanceReviewNotices(orderId, "FINANCE_CONFIRMED");
         taskClaim.release("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
     }
 
@@ -742,8 +742,7 @@ public class SalesOrderFinanceConfirmService {
             applyConfirmation(order, actor, confirmedAt, normalized.remark());
             orderRepo.save(order);
             chainNotice.notifyOrderFinanceConfirmed(order.getId());
-            chainNotice.resolveReviewNotices(
-                    "SALES_ORDER", order.getId(), "FINANCE_CONFIRMED");
+            chainNotice.resolveSalesFinanceReviewNotices(order.getId(), "FINANCE_CONFIRMED");
             taskClaim.release("SALES_ORDER_FINANCE_CONFIRM", order.getId().toString());
             newlyConfirmed++;
         }
@@ -799,7 +798,7 @@ public class SalesOrderFinanceConfirmService {
         orderRepo.save(order);
         chainNotice.notifyOrderFinanceRejected(orderId, reason);
         // V459 办结撤回：驳回同样是办结（销售收到的下一条通知是驳回修正指引）。
-        chainNotice.resolveReviewNotices("SALES_ORDER", orderId, "FINANCE_REJECTED");
+        chainNotice.resolveSalesFinanceReviewNotices(orderId, "FINANCE_REJECTED");
         taskClaim.release("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
     }
 

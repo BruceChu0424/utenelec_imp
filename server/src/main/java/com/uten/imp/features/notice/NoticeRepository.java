@@ -15,6 +15,14 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     // Applied inside every scoped list/count query, before pagination. The over-limit
     // event uses current plan-owner access; existing workshop/draw rules stay unchanged.
     String SCOPED_VISIBILITY = """
+              AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'SALES_ORDER_APPROVED'
+                OR n.resolvedAt IS NOT NULL
+                OR EXISTS (SELECT planningOrder.id FROM SalesOrder planningOrder
+                  WHERE planningOrder.id=n.aggregateId AND planningOrder.deleted=false
+                    AND planningOrder.status=1 AND planningOrder.financeConfirmed=true
+                    AND planningOrder.financeRejected=false AND planningOrder.closed=false
+                    AND planningOrder.stopped=false AND planningOrder.requotedToId IS NULL
+                    AND (n.sourceRevision IS NULL OR n.sourceRevision=planningOrder.financeReviewRevision)))
               AND cast(function('fn_notice_production_over_limit_visible',
                   n.sourceEvent,n.aggregateKind,n.aggregateId,
                   :#{#readScope.overLimitAllowed}, :#{#readScope.overLimitSeeAll},
@@ -149,6 +157,16 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     int resolveReviewPendingByAggregate(
             @Param("aggregateKind") String aggregateKind,
             @Param("aggregateId") UUID aggregateId,
+            @Param("reason") String reason);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("""
+            UPDATE Notice n SET n.resolvedAt=CURRENT_TIMESTAMP,n.resolvedReason=:reason
+            WHERE n.aggregateKind=:aggregateKind AND n.aggregateId=:aggregateId
+              AND n.sourceEvent=:sourceEvent AND n.resolvedAt IS NULL
+            """)
+    int resolveReviewPendingByEvent(@Param("aggregateKind") String aggregateKind,
+            @Param("aggregateId") UUID aggregateId, @Param("sourceEvent") String sourceEvent,
             @Param("reason") String reason);
 
     @Query("""

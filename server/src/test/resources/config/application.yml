@@ -1,5 +1,9 @@
 # 只在测试类路径上生效(打包的应用不含本文件), 优先级高于 src/main/resources/application.yml。
 uten:
+  notices:
+    planning-catch-up:
+      # True-PG tests call runBatch explicitly; cached contexts must not race each other's fixtures.
+      enabled: false
   storage:
     # Spring Boot sets PID before creating application beans. Shards also have
     # separate java.io.tmpdir roots; raw Maven test forks remain isolated by PID.

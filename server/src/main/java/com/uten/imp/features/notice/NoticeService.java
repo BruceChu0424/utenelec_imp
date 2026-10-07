@@ -1138,7 +1138,8 @@ public class NoticeService {
     }
 
     private static boolean requiresScopedNoticeVisibility(Notice notice) {
-        return ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
+        return "SALES_ORDER_APPROVED".equals(notice.getSourceEvent())
+                || ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
                 || ReviewNoticeAudience.OVER_LIMIT_EVENT.equals(notice.getSourceEvent())
                 || ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING.equals(notice.getSourceEvent());
     }
@@ -1247,6 +1248,27 @@ public class NoticeService {
     }
 
     // =========================== V459 审核待办弹卡 ===========================
+
+    /** A reviewed sales revision is a durable per-recipient handoff identity, including closed/read history. */
+    @Transactional
+    public Notice publishSalesPlanningHandoff(UUID userId, UUID orderId, long revision, String title, String content) {
+        Notice notice = publishForUser(userId, title, content, "task", "系统",
+                "/production/material-analysis", "SALES_ORDER_APPROVED", "normal", orderId);
+        notice.setSourceRevision(revision);
+        return noticeRepo.saveAndFlush(notice);
+    }
+
+    /** A finance decision completes only its finance cards, never a planning handoff on the same order. */
+    @Transactional
+    public int resolveReviewNoticesByEvent(String aggregateKind, UUID aggregateId, String sourceEvent, String reason) {
+        if (aggregateKind == null || aggregateKind.isBlank() || aggregateId == null
+                || sourceEvent == null || sourceEvent.isBlank()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "办结撤回必须提供聚合类型、主键与事件");
+        }
+        int resolved = noticeRepo.resolveReviewPendingByEvent(aggregateKind, aggregateId, sourceEvent, reason);
+        stateRepo.markReadForEventRecipients(aggregateKind, aggregateId, sourceEvent);
+        return resolved;
+    }
 
     /**
      * 「稍后再看」：置 snoozed_until（弹卡流到期前不再弹出，通知中心仍可见），

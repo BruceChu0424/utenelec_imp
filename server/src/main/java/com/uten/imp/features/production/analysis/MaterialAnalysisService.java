@@ -1157,52 +1157,7 @@ public class MaterialAnalysisService {
 
     /** salesCandidates 列表/facets 共用的 FROM + LATERAL(在制草稿) + WHERE 基座。 */
     private static String salesCandidatesFromWhere(String kw, boolean billNoFilter) {
-        String predicate = """
-                o.status = 1 AND o.is_deleted = FALSE
-                AND o.finance_confirmed = TRUE
-                AND COALESCE(o.is_stopped, FALSE) = FALSE
-                AND o.is_closed = FALSE
-                AND i.is_deleted = FALSE
-                AND g.is_deleted = FALSE
-                AND GREATEST(
-                    COALESCE(i.qty,0) - COALESCE(i.shipped_qty,0)
-                    + COALESCE(i.returned_qty,0) - COALESCE(i.flag_qty,0)
-                    - COALESCE(i.reserved_qty,0)
-                    - GREATEST(COALESCE(i.planned_qty,0)
-                               - COALESCE(i.produced_qty,0),0)
-                    - COALESCE(draft.qty,0), 0) > 0
-                """;
-        if (!kw.isEmpty()) {
-            predicate += " AND (lower(o.bill_no) LIKE :kw OR lower(COALESCE(c.name,'')) LIKE :kw"
-                    + " OR lower(COALESCE(g.code,'')) LIKE :kw OR lower(COALESCE(g.name,'')) LIKE :kw)\n";
-        }
-        // 2026-09-25 单号列统一：销售单号表头值筛选（精确匹配）。
-        if (billNoFilter) {
-            predicate += " AND COALESCE(o.bill_no, '') = :orderBillNo\n";
-        }
-        return """
-                FROM sales_orders o
-                JOIN sales_order_items i ON i.order_id = o.id
-                JOIN goods g ON g.id = i.goods_id
-                LEFT JOIN clients c ON c.id = o.client_id
-                LEFT JOIN LATERAL (
-                    -- 同 loadSourceLines 的 draft 口径（2026-09-15/V588）：分析
-                    -- 草稿只把归本需求的量计入在制占用，公共备货产出不算。
-                    SELECT SUM(CASE
-                        WHEN link.id IS NOT NULL THEN link.submitted_qty
-                        ELSE pi.qty END) AS qty
-                    FROM production_plan_items pi
-                    JOIN production_plans p ON p.id = pi.plan_id
-                    LEFT JOIN production_material_analysis_plan_links link
-                      ON link.plan_id = p.id
-                     AND link.analysis_id = p.material_analysis_id
-                     AND link.analysis_item_id = p.material_analysis_item_id
-                    WHERE pi.sales_order_item_id = i.id
-                      AND pi.is_deleted = FALSE AND p.is_deleted = FALSE
-                      AND p.status = 0 AND p.is_canceled = FALSE
-                ) draft ON TRUE
-                WHERE
-                """ + predicate;
+        return MaterialAnalysisSalesSourceQuery.fromWhere(kw, billNoFilter);
     }
 
     /** 排序白名单（2026-09-25 单号列统一）：orderNo→o.bill_no；未知/空回落默认

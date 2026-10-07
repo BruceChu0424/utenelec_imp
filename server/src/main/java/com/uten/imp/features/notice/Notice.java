@@ -84,6 +84,10 @@ public class Notice extends BaseEntity {
     @Column(name = "source_event", length = 80)
     private String sourceEvent;
 
+    /** Initial sales planning handoff's reviewed content revision; null for legacy/other events. */
+    @Column(name = "source_revision")
+    private Long sourceRevision;
+
     /** TODO 可选截止时间。 */
     @Column(name = "due_at")
     private Instant dueAt;

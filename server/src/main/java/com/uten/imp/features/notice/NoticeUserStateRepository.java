@@ -16,6 +16,19 @@ public interface NoticeUserStateRepository extends JpaRepository<NoticeUserState
 
     @Modifying
     @Query(value = """
+            INSERT INTO notice_user_states (notice_id,user_id,read_at)
+            SELECT n.id,n.audience_user_id,CURRENT_TIMESTAMP FROM notices n
+            WHERE n.aggregate_kind=:aggregateKind AND n.aggregate_id=:aggregateId
+              AND n.source_event=:sourceEvent AND n.audience_user_id IS NOT NULL
+            ON CONFLICT (notice_id,user_id) DO UPDATE
+              SET read_at=COALESCE(notice_user_states.read_at,EXCLUDED.read_at)
+              WHERE notice_user_states.deleted_at IS NULL
+            """, nativeQuery=true)
+    int markReadForEventRecipients(@Param("aggregateKind") String aggregateKind,
+            @Param("aggregateId") UUID aggregateId, @Param("sourceEvent") String sourceEvent);
+
+    @Modifying
+    @Query(value = """
             INSERT INTO notice_user_states (notice_id, user_id, read_at)
             SELECT n.id, :userId, CURRENT_TIMESTAMP
             FROM notices n

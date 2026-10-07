@@ -333,6 +333,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /** ADR-117：计划员待办卡按物料分析归属可见范围过滤收件人时，找交接后的现负责人。 */
     private com.uten.imp.security.EmployeeHandoverVisibility handoverVisibility;
 
+    private com.uten.imp.application.port.SalesPlanningNoticeReadPort planningSources;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setPlanningSources(com.uten.imp.application.port.SalesPlanningNoticeReadPort planningSources) {
+        this.planningSources = planningSources;
+    }
+
+    static final String EVENT_SALES_PLANNING_CATCH_UP = "SALES_PLANNING_NOTICE_CATCH_UP";
+
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setHandoverVisibility(com.uten.imp.security.EmployeeHandoverVisibility handoverVisibility) {
         this.handoverVisibility = handoverVisibility;
@@ -546,13 +555,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     // without recreating a planner task or sending a notice.
                 }
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
-                case EVENT_ORDER_APPROVED -> notifyOrderApproved(aggregateId);
+                case EVENT_ORDER_APPROVED, EVENT_ORDER_FINANCE_CONFIRMED, EVENT_SALES_PLANNING_CATCH_UP ->
+                        deliverSalesPlanningHandoff(aggregateId,
+                                payload.hasNonNull("reviewRevision") ? payload.path("reviewRevision").asLong() : null);
                 case EVENT_ORDER_PENDING_FINANCE ->
                         notifyOrderPendingFinanceConfirmation(
                                 aggregateId,
                                 payload.path("afterModification").asBoolean(false));
-                case EVENT_ORDER_FINANCE_CONFIRMED ->
-                        notifyOrderFinanceConfirmed(aggregateId);
                 case EVENT_ORDER_FINANCE_REJECTED ->
                         notifyOrderFinanceRejected(aggregateId, payload.path("reason").asText(""));
                 case EVENT_DELIVERY_DUE -> {
@@ -4576,11 +4585,24 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /** ⑦.5 订单财务确认后通知计划员接手物料分析（V294 起由财务确认事件驱动，不在审核落点发）。 */
     public void notifyOrderApproved(UUID orderId) {
         if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_ORDER_APPROVED, "SALES_ORDER", orderId, Map.of());
+            outbox.publish(EVENT_ORDER_APPROVED, "SALES_ORDER", orderId, planningRevisionPayload(orderId));
             return;
         }
+        deliverSalesPlanningHandoff(orderId, null);
+    }
+
+    private Map<String, ?> planningRevisionPayload(UUID orderId) {
+        Long revision = jdbc.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?", Long.class, orderId);
+        return Map.of("reviewRevision", revision);
+    }
+
+    /** Called only inside the outbox transaction, serialized with source acquisition and finance decisions. */
+    private void deliverSalesPlanningHandoff(UUID orderId, Long expectedRevision) {
         deliverAtomically(() -> {
             if (!lockActiveOrderForNotice(orderId, true)) return;
+            long revision = jdbc.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?", Long.class, orderId);
+            if (expectedRevision != null && expectedRevision != revision) return;
+            if (!planningSources.needsInitialHandoff(orderId)) return;
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             Map<String, Object> agg = one("""
@@ -4607,16 +4629,41 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             "SUB_PLAN", NOTICE_READ_AUTHORITY,
                             "production_material_analysis:view", "production_material_analysis:create"));
             for (UUID uid : targets) {
+                if (hasPlanningHandoff(orderId, uid, revision)) continue;
                 // 角色/部门池是公共任务广播，即使事件本身重要，也不得阻塞每个成员。
-                sendToUser(uid, TYPE_TASK,
+                noticeService.publishSalesPlanningHandoff(uid, orderId, revision,
                         "新订单待物料分析：" + o.billNo(),
                         "订单 " + o.billNo() + " 已审核并通过财务确认，共 " + lines + " 行货品(" + goods
                                 + ")待分析，最早交货日 " + deliver
-                                + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。",
-                        "/production/material-analysis",
-                        EVENT_ORDER_APPROVED, "normal", orderId);
+                                + "。请先核对库存并按采购、委外、自制拆分需求，再下达生产计划。");
             }
         });
+    }
+
+    private boolean hasPlanningHandoff(UUID orderId, UUID userId, long revision) {
+        // A legacy NULL revision cannot be assigned using event/DB/app timestamps.
+        // Suppress that recipient conservatively; newly eligible recipients have no such historical receipt.
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM notices WHERE aggregate_kind='SALES_ORDER' AND aggregate_id=?
+                  AND source_event='SALES_ORDER_APPROVED' AND audience_user_id=?
+                  AND (source_revision=? OR source_revision IS NULL))
+                """, Boolean.class, orderId, userId, revision));
+    }
+
+    /** One bounded reconciliation item. Never writes from inbox reads. */
+    @org.springframework.transaction.annotation.Transactional
+    public boolean enqueueSalesPlanningCatchUp(UUID orderId) {
+        if (!lockActiveOrderForNotice(orderId, true, true) || !planningSources.needsInitialHandoff(orderId)) return false;
+        long revision = jdbc.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?", Long.class, orderId);
+        boolean missing = departmentUserIdsWithSecondaryAuthorities("SUB_PLAN", NOTICE_READ_AUTHORITY,
+                "production_material_analysis:view", "production_material_analysis:create").stream()
+                .anyMatch(userId -> !hasPlanningHandoff(orderId, userId, revision));
+        if (!missing || Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM business_outbox WHERE event_type=? AND aggregate_id=? AND status=0)
+                """, Boolean.class, EVENT_SALES_PLANNING_CATCH_UP, orderId))) return false;
+        // A skipped (e.g. temporarily revoked) signal must not permanently consume a phase/user dedupe key.
+        outbox.publish(EVENT_SALES_PLANNING_CATCH_UP, "SALES_ORDER", orderId, Map.of("reviewRevision", revision));
+        return true;
     }
 
     /** ⑦.6 订单审核后通知财务确认（V294 闸门：财务确认前计划部不可见该订单）。 */
@@ -4673,7 +4720,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     /** ⑦.7 财务确认完成：经 outbox 转⑦.5 通知计划员（保留独立事件便于审计与重放）。 */
     public void notifyOrderFinanceConfirmed(UUID orderId) {
         if (!isOutboxDelivery()) {
-            outbox.publish(EVENT_ORDER_FINANCE_CONFIRMED, "SALES_ORDER", orderId, Map.of());
+            outbox.publish(EVENT_ORDER_FINANCE_CONFIRMED, "SALES_ORDER", orderId, planningRevisionPayload(orderId));
             return;
         }
         notifyOrderApproved(orderId);
@@ -5668,13 +5715,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /** Both finance and planning cards must still refer to the current active stage. */
     private boolean lockActiveOrderForNotice(UUID orderId, boolean financeConfirmed) {
+        return lockActiveOrderForNotice(orderId, financeConfirmed, false);
+    }
+
+    private boolean lockActiveOrderForNotice(UUID orderId, boolean financeConfirmed, boolean skipLocked) {
         return !jdbc.queryForList("""
                 SELECT id FROM sales_orders
                 WHERE id = ? AND NOT is_deleted AND status = 1 AND NOT is_closed
                   AND NOT is_stopped AND requoted_to_id IS NULL
                   AND finance_confirmed = ? AND NOT finance_rejected
                 FOR UPDATE
-                """, orderId, financeConfirmed).isEmpty();
+                """ + (skipLocked ? " SKIP LOCKED" : ""), orderId, financeConfirmed).isEmpty();
     }
 
     private record OrderRef(UUID orderId, String billNo, UUID ownerUserId) {
@@ -6002,6 +6053,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     public int resolveReviewNotices(
             String aggregateKind, UUID aggregateId, String reason) {
         return noticeService.resolveReviewNotices(aggregateKind, aggregateId, reason);
+    }
+
+    public int resolveSalesFinanceReviewNotices(UUID orderId, String reason) {
+        return noticeService.resolveReviewNoticesByEvent("SALES_ORDER", orderId, EVENT_ORDER_PENDING_FINANCE, reason);
     }
 
     // ---------- 研发任务 / BOM 维护 通知 ----------

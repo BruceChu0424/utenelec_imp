@@ -375,7 +375,9 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         jdbc.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?::uuid,id,'revoke' FROM permissions WHERE code=? ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='revoke'", staff.userId(), permission);
     }
     private MvcResult chatAttachment(String token, String source) throws Exception {
-        return mvc.perform(json(post("/api/ai/chat/messages"), Map.of("message", "请根据文件生成订货草稿", "attachmentJobId", source), token)).andReturn();
+        // Worded without a create verb so the ADR-163 form-opening path does not claim it: what is under test is
+        // the retired attachmentJobId field itself, which must never open anything.
+        return mvc.perform(json(post("/api/ai/chat/messages"), Map.of("message", "请按刚才的文件出一份订货草稿", "attachmentJobId", source), token)).andReturn();
     }
     private MvcResult request(String token, String kind, String filename, byte[] bytes, Map<String, String> params) throws Exception {
         var request = authed(post("/api/ai/jobs").param("kind", kind), token).contentType(MediaType.APPLICATION_OCTET_STREAM)

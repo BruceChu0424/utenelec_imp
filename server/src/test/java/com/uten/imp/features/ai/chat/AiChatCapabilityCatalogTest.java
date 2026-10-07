@@ -30,7 +30,8 @@ class AiChatCapabilityCatalogTest {
         var jobs=mock(AiJobService.class);
         var settings=mock(AiChatSettingsService.class); when(settings.current()).thenReturn(AiChatSettings.DEFAULTS);
         var controller=new AiChatController(jobs,access,mock(AiChatEvidence.class),ai,
-                mock(AiChatPageGuideCatalog.class),new ObjectMapper(),registry,workflows,settings,mock(AiChatJobHandler.class));
+                mock(AiChatPageGuideCatalog.class),new ObjectMapper(),registry,workflows,settings,mock(AiChatJobHandler.class),
+                mock(AiChatOperationMemoryService.class));
         var first=controller.capabilities();
         assertThat(first.get("settings")).isEqualTo(AiChatSettings.DEFAULTS.toJson());
         assertThat(first.get("canUploadDocument")).as("recognizing a file needs only chat access").isEqualTo(true);

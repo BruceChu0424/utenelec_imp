@@ -33,7 +33,7 @@ class AiChatSettingsTest {
         // ADR-153 revision: fast answers by default; a question asking for a careful analysis thinks deeper for itself.
         assertThat(defaults.toJson()).isEqualTo(Map.of("detail", "STANDARD", "reasoning", "FAST", "pageAware", true,
                 "showSources", true, "memoryTurns", 6, "replyLanguage", "AUTO", "sendKey", "ENTER",
-                "explanationStyle", "PLAIN", "showSuggestions", true));
+                "explanationStyle", "PLAIN", "showSuggestions", true, "operationMemory", true));
         assertThat(AiChatSettings.fromStored(null)).isEqualTo(defaults);
         assertThat(defaults.effort()).isEqualTo(AiReasoningEffort.OFF);
         assertThat(AiChatJobHandler.effort(defaults, "盘点有差异怎么处理")).isEqualTo(AiReasoningEffort.OFF);

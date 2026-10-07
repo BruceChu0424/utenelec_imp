@@ -46,7 +46,7 @@ class AiChatAnswerContractHttpTest {
         SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
         when(current.id()).thenReturn(Optional.empty());
         when(logs.captureResetGeneration()).thenReturn(1L);
-        gateway = new AiGateway(providers, List.of(new OpenAiChatClient(transport), new AnthropicMessagesClient(transport)), logs, properties, current);
+        gateway = new AiGateway(providers, List.of(new OpenAiChatClient(transport), new AnthropicMessagesClient(transport)), logs, properties, current, mock(com.uten.imp.features.ai.usage.AiUserLimitsService.class));
         // Source texts never enter the schema: only issued ids, intents and the page's closed action shapes.
         contract = AiChatAnswerContract.create(List.of(), List.of("guide.sales_quote", "knowledge.SALES_ORDER", "page.tables"),
                 true, true, true, List.of(new AiChatPageSnapshot.PageAction("setLineField", "改行字段", "FORM", "LOW",

@@ -9350,15 +9350,47 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  ) {
-    return '共 $people 人 · 需更正 $update · 仅提示 $info · 一致 $same · 已处理 $applied';
+  String hrReconcileStatPeople(int count) {
+    return '待核对 $count 人';
   }
+
+  @override
+  String hrReconcileStatUpdate(int count) {
+    return '需更正 $count';
+  }
+
+  @override
+  String hrReconcileStatInfo(int count) {
+    return '仅提示 $count';
+  }
+
+  @override
+  String hrReconcileStatSame(int count) {
+    return '一致 $count';
+  }
+
+  @override
+  String hrReconcileStatApplied(int count) {
+    return '已处理 $count 人';
+  }
+
+  @override
+  String hrReconcileStatTierHigh(int count) {
+    return '高把握 $count';
+  }
+
+  @override
+  String hrReconcileStatTierMedium(int count) {
+    return '中把握 $count';
+  }
+
+  @override
+  String hrReconcileStatTierManual(int count) {
+    return '需人工 $count';
+  }
+
+  @override
+  String get hrReconcileSelectHigh => '只选把握高的';
 
   @override
   String get hrReconcileValidity => '24 小时内有效，超时未执行的改动自动清除';
@@ -9441,22 +9473,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hrReconcileColKind => '类型';
 
   @override
-  String get hrReconcileColCode => '工号';
-
-  @override
-  String get hrReconcileColName => '姓名';
-
-  @override
-  String get hrReconcileColDept => '部门';
+  String get hrReconcileColEmployee => '员工';
 
   @override
   String get hrReconcileColReason => '原因';
 
   @override
-  String get hrReconcileColIdNumber => '证件号码';
+  String get hrReconcileIdNumberInfo =>
+      '红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码';
 
   @override
-  String get hrReconcileColBasis => '依据';
+  String hrReconcileBasisOf(String label) {
+    return '建议依据：$label';
+  }
 
   @override
   String get hrReconcileColTier => '把握';

@@ -9559,15 +9559,47 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  ) {
-    return '총 $people명 · 수정 $update · 안내만 $info · 일치 $same · 처리됨 $applied';
+  String hrReconcileStatPeople(int count) {
+    return '확인 대상 $count명';
   }
+
+  @override
+  String hrReconcileStatUpdate(int count) {
+    return '수정 $count';
+  }
+
+  @override
+  String hrReconcileStatInfo(int count) {
+    return '안내만 $count';
+  }
+
+  @override
+  String hrReconcileStatSame(int count) {
+    return '일치 $count';
+  }
+
+  @override
+  String hrReconcileStatApplied(int count) {
+    return '처리됨 $count명';
+  }
+
+  @override
+  String hrReconcileStatTierHigh(int count) {
+    return '높음 $count';
+  }
+
+  @override
+  String hrReconcileStatTierMedium(int count) {
+    return '중간 $count';
+  }
+
+  @override
+  String hrReconcileStatTierManual(int count) {
+    return '수동 입력 필요 $count';
+  }
+
+  @override
+  String get hrReconcileSelectHigh => '높은 확신만 선택';
 
   @override
   String get hrReconcileValidity => '24시간 동안 유효하며, 실행하지 않은 변경은 자동으로 삭제됩니다';
@@ -9650,22 +9682,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get hrReconcileColKind => '유형';
 
   @override
-  String get hrReconcileColCode => '사번';
-
-  @override
-  String get hrReconcileColName => '이름';
-
-  @override
-  String get hrReconcileColDept => '부서';
+  String get hrReconcileColEmployee => '직원';
 
   @override
   String get hrReconcileColReason => '사유';
 
   @override
-  String get hrReconcileColIdNumber => '신분증 번호';
+  String get hrReconcileIdNumberInfo =>
+      '취소선 빨강은 저장된 값, 초록 배경은 제안 새 값(변경 자리는 굵은 빨강). 채택, 후보 선택 또는 직접 입력 가능';
 
   @override
-  String get hrReconcileColBasis => '근거';
+  String hrReconcileBasisOf(String label) {
+    return '제안 근거: $label';
+  }
 
   @override
   String get hrReconcileColTier => '확신도';

@@ -9914,15 +9914,47 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  ) {
-    return '$people people · to update $update · notice only $info · match $same · processed $applied';
+  String hrReconcileStatPeople(int count) {
+    return '$count to review';
   }
+
+  @override
+  String hrReconcileStatUpdate(int count) {
+    return '$count to update';
+  }
+
+  @override
+  String hrReconcileStatInfo(int count) {
+    return '$count notice only';
+  }
+
+  @override
+  String hrReconcileStatSame(int count) {
+    return '$count match';
+  }
+
+  @override
+  String hrReconcileStatApplied(int count) {
+    return '$count processed';
+  }
+
+  @override
+  String hrReconcileStatTierHigh(int count) {
+    return '$count high confidence';
+  }
+
+  @override
+  String hrReconcileStatTierMedium(int count) {
+    return '$count medium';
+  }
+
+  @override
+  String hrReconcileStatTierManual(int count) {
+    return '$count need manual input';
+  }
+
+  @override
+  String get hrReconcileSelectHigh => 'Select high confidence';
 
   @override
   String get hrReconcileValidity =>
@@ -10016,22 +10048,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileColKind => 'Type';
 
   @override
-  String get hrReconcileColCode => 'Employee No.';
-
-  @override
-  String get hrReconcileColName => 'Name';
-
-  @override
-  String get hrReconcileColDept => 'Department';
+  String get hrReconcileColEmployee => 'Employee';
 
   @override
   String get hrReconcileColReason => 'Reason';
 
   @override
-  String get hrReconcileColIdNumber => 'ID number';
+  String get hrReconcileIdNumberInfo =>
+      'Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number';
 
   @override
-  String get hrReconcileColBasis => 'Basis';
+  String hrReconcileBasisOf(String label) {
+    return 'Suggestion basis: $label';
+  }
 
   @override
   String get hrReconcileColTier => 'Confidence';

@@ -1,14 +1,15 @@
-// HR 工作台「证件核对」：有待核对员工时概览上方红色横幅(人数 + 去处理)；
-// 事务入口只给能修改证件的人(超管或 employee:pii:edit)。
-// 2026-10-06 版式改版回归：事务办理=自适应小卡网格(桌面 5 列)、快捷发布祝福=
-// 紧凑胶囊横排、右下悬浮「入职登记」按权限出没。
+// HR 工作台「证件核对」：事务入口只给能修改证件的人(超管或 employee:pii:edit)；
+// 卡片待办数 = UtenNotificationBadge 红色通知徽章(>0)/中性灰 0 常显(2026-10-06
+// 重做：概览 4 统计卡与证件红横幅已退役，数字并入卡片徽章)。
+// 版式改版回归：事务办理=自适应小卡网格(桌面 5 列)、快捷发布祝福=紧凑胶囊横排、
+// 右下悬浮「入职登记」按权限出没。
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/hr_task/models/hr_task_summary.dart';
 import 'package:uten_imp/features/hr_task/pages/hr_workbench_page.dart';
@@ -17,9 +18,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
-const _banner = ValueKey('hr-identity-review-banner');
-const _go = ValueKey('hr-identity-review-go');
 const _identityEntry = ValueKey('hr-workbench-entry-identity');
+const _identityCount = ValueKey('hr-workbench-entry-count-identity');
 const _onboardFab = ValueKey('hr-workbench-fab-onboard');
 
 class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
@@ -119,38 +119,52 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('有待核对员工时显示红色横幅，去处理进证件核对页', (tester) async {
+  testWidgets('有待核对员工时入口卡显示红色通知徽章，点卡片进证件核对页', (tester) async {
     await _pump(
       tester,
       _summary([_item('a', '身份证号应为18位，当前为17位'), _item('b', '档案里没有证件号码')]),
       permissions: const {Perm.employeeView, Perm.employeePiiEdit},
     );
 
-    final banner = tester.widget<UtenInlineNotice>(find.byKey(_banner));
-    expect(banner.level, UtenInlineNoticeLevel.error);
-    expect(banner.title, '有 2 名员工的证件号码待核对');
     expect(find.byKey(_identityEntry), findsOneWidget);
-    // 小卡右端的待办总数。
+    // 待办数走全站红色通知徽章(红底白字)，数字就是待核对人数。
+    final badge = tester.widget<UtenNotificationBadge>(
+      find.byKey(_identityCount),
+    );
+    expect(badge.count, 2);
     expect(
-      find.descendant(of: find.byKey(_identityEntry), matching: find.text('2')),
+      find.descendant(of: find.byKey(_identityCount), matching: find.text('2')),
       findsOneWidget,
     );
 
-    await tester.tap(find.byKey(_go));
+    await tester.tap(find.byKey(_identityEntry));
     await tester.pumpAndSettle();
     expect(find.text('task-list:identity'), findsOneWidget);
   });
 
-  testWidgets('没有 pii:edit 不显示证件核对入口；列表为空不显示横幅', (tester) async {
+  testWidgets('没有 pii:edit 不显示证件核对入口；无人待核对时徽章位显示灰 0', (tester) async {
     await _pump(tester, _summary(const []));
 
-    expect(find.byKey(_banner), findsNothing);
     expect(find.byKey(_identityEntry), findsNothing);
     expect(
       find.byKey(const ValueKey('hr-workbench-entry-confirm')),
       findsOneWidget,
       reason: '其他入口照旧',
     );
+    // 无待办：数字常显中性灰 0，不渲染红徽章(四个基础入口的计数位都是 Text
+    // 而非 UtenNotificationBadge——AppBar 草稿按钮的徽章 count=0 时自身不渲染，
+    // 不在此断言范围)。
+    for (final type in const [
+      'confirm',
+      'birthday',
+      'anniversary',
+      'newhire',
+    ]) {
+      final zero = tester.widget<Text>(
+        find.byKey(ValueKey('hr-workbench-entry-count-$type')),
+      );
+      expect(zero.data, '0', reason: '$type 无待办显示灰 0');
+    }
   });
 
   testWidgets('事务办理为自适应小卡网格：桌面一行多卡，点卡片进子页', (tester) async {
@@ -327,7 +341,7 @@ void main() {
     expect(reasonRect.left, closeTo(name.left, 1), reason: '原因与姓名左对齐、占整行');
   });
 
-  testWidgets('超管看得到证件核对入口', (tester) async {
+  testWidgets('超管看得到证件核对入口，无待办显示灰 0', (tester) async {
     await _pump(tester, _summary(const []), superAdmin: true);
 
     expect(find.byKey(_identityEntry), findsOneWidget);
@@ -335,6 +349,5 @@ void main() {
       find.descendant(of: find.byKey(_identityEntry), matching: find.text('0')),
       findsOneWidget,
     );
-    expect(find.byKey(_banner), findsNothing);
   });
 }

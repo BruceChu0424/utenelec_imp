@@ -442,9 +442,6 @@ class HrReconcileRow {
   final List<HrReconcileItem> items;
   final HrReconcileRowResult? result;
 
-  /// 证件号项（本期每行至多一项 idNumber）。
-  HrReconcileItem? get idNumberItem => items.isEmpty ? null : items.first;
-
   /// 被他人认领（勾选位换成锁）。
   bool get claimedByOther => claim != null && !claim!.byMe;
 

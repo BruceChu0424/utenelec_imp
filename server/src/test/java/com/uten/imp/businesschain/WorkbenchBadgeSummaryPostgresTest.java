@@ -20,10 +20,16 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -68,11 +74,40 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @AutoConfigureMockMvc(print = org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint.NONE)
 @Import({ProductionJdbcMeasurement.Configuration.class, WorkbenchBadgeSummaryPostgresTest.BrokenSourceConfiguration.class})
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners = WorkbenchBadgeSummaryPostgresTest.Cleanup.class,
+        mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class WorkbenchBadgeSummaryPostgresTest {
+
+    // The comparisons deliberately make separate HTTP reads. Other cached Spring
+    // contexts must not publish into this database between those reads: mocking
+    // this context's scheduler alone cannot stop a scheduler in another context.
+    private static final PostgreSQLContainer<?> DATABASE =
+            new PostgreSQLContainer<>("postgres:16-alpine");
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
-        FullChainEndToEndTest.registerDataSource(registry);
+        DATABASE.start();
+        registry.add("spring.datasource.url", DATABASE::getJdbcUrl);
+        registry.add("spring.datasource.username", DATABASE::getUsername);
+        registry.add("spring.datasource.password", DATABASE::getPassword);
+        try {
+            var attachments = java.nio.file.Files.createTempDirectory("uten-badge-attachments-");
+            registry.add("uten.storage.local-dir", attachments::toString);
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("Cannot create badge fixture attachment directory", error);
+        }
+    }
+
+    public static class Cleanup extends AbstractTestExecutionListener {
+        // afterTestClass listeners run in reverse order: close the dirty Spring
+        // context (and its schedulers/connections) before stopping PostgreSQL.
+        @Override public int getOrder() {
+            return new DirtiesContextTestExecutionListener().getOrder() - 1;
+        }
+        @Override public void afterTestClass(TestContext ignored) {
+            DATABASE.stop();
+        }
     }
 
     /** 来源键 → 迁移前前端轮询的原端点。 */
@@ -214,7 +249,8 @@ class WorkbenchBadgeSummaryPostgresTest {
     /**
      * 服务器状态告警调度(@Profile("!cloud"), fixedDelay 5 分钟)会在测试中途给 seed 超管发
      * 定向通知——notices 徽章汇总先读(0)、原端点后读(N)的 TOCTOU 假红(生产两处同一查询无此问题)。
-     * 该类没有属性开关, 用 Mockito 替换整个调度器; 上下文缓存因此为本类单开一份属预期成本。
+     * 本类独立完整迁移数据库, 再用 Mockito 替换此上下文的调度器; 其它测试上下文的
+     * 后台任务仍正常运行, 但无法改变本类的对账事实。
      */
     @MockitoBean
     ServerStatusAlertScheduler serverStatusAlertScheduler;

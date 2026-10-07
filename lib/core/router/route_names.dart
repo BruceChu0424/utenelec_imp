@@ -178,6 +178,11 @@ abstract final class RouteName {
   static const String adminServerStatus = '/admin/server-status';
   // AI 服务设置(ADR-133: 服务商/密钥/连接测试; 超管, 写操作再认证)
   static const String adminAiSettings = '/admin/ai-settings';
+  // AI 用量看板与按人限额(ADR-164): 看板 + 人员详情; 超管 authorization:manage。
+  static const String adminAiUsage = '/admin/ai-usage';
+  static const String adminAiUsagePersonRoute = '/admin/ai-usage/:userId';
+  static String adminAiUsagePerson(String userId) =>
+      '/admin/ai-usage/${Uri.encodeComponent(userId)}';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';

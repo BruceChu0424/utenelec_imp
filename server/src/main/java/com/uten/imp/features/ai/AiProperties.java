@@ -73,4 +73,7 @@ public class AiProperties {
 
     /** 调用技术记录保留天数。 */
     private int callLogRetentionDays = 180;
+
+    /** 个人操作记忆(ADR-163)保留天数: 超过这么多天没再使用的记忆行由 AI 定时清理删除。 */
+    private int operationMemoryRetentionDays = 90;
 }

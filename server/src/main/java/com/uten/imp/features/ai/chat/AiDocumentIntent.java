@@ -17,8 +17,8 @@ final class AiDocumentIntent {
             + "|(?:do not|don't|don’t|never|no need to).{0,20}(?:create|fill|generate|save|submit)"
             + "|(?:only|just)\\s+(?:analy[sz]e|identify|inspect|read|view)"
             + "|(?:analy[sz]e|identify|inspect|read|view)\\s+only");
-    private static final Pattern ORDER = Pattern.compile("(?:生成|新建|创建|填写|做|开).{0,8}(?:订货|销售订单)|(?:create|fill).{0,12}sales order");
-    private static final Pattern QUOTE = Pattern.compile("(?:生成|新建|创建|填写|做|开).{0,8}报价|(?:create|fill).{0,12}quotation");
+    private static final Pattern ORDER = Pattern.compile("(?:生成|新建|创建|填写|做|开|弄|整|来(?=一|张|个|份)).{0,8}(?:订货|销售订单)|(?:create|fill|make|open).{0,12}sales order");
+    private static final Pattern QUOTE = Pattern.compile("(?:生成|新建|创建|填写|做|开|弄|整|来(?=一|张|个|份)).{0,8}报价|(?:create|fill|make|open).{0,12}quotation");
     private static final Pattern RECONCILE = Pattern.compile("对照|核对|比对|对比|校对|更新|修正|纠正|改正|不对|不一致|补充|缺少|缺的|漏的"
             + "|(?<!批量)添加|补录|同步|reconcile|compare|cross[- ]?check|correct");
     private static final Pattern IMPORT = Pattern.compile("导入|录入|批量新增|批量添加|建档|import|bulk add");

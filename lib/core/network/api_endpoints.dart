@@ -756,6 +756,14 @@ abstract final class ApiEndpoints {
   static const adminAiPresets = '/admin/ai/presets';
   static const adminAiUsage = '/admin/ai/usage';
 
+  /// AI 用量看板与按人限额(ADR-164，超管 authorization:manage；改限额要再认证)。
+  static const adminAiUsageDashboard = '/admin/ai/usage-dashboard';
+  static const adminAiUsagePeople = '/admin/ai/usage-people';
+  static String adminAiUsagePerson(String userId) =>
+      '$adminAiUsagePeople/$userId';
+  static String adminAiUsagePersonLimits(String userId) =>
+      '$adminAiUsagePeople/$userId/limits';
+
   /// 公共 AI 作业(ADR-133): 提交原始文件(octet-stream) / 轮询 / 取消；员工账号本人可用。
   static const aiJobs = '/ai/jobs';
   static String aiJob(String id) => '$aiJobs/$id';

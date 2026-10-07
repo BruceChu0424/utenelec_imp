@@ -43,13 +43,15 @@ public class AiChatController {
     private final AiDocumentWorkflows workflows;
     private final AiChatSettingsService settings;
     private final AiChatJobHandler handler;
+    private final AiChatOperationMemoryService memory;
     /** Turns shown when a conversation is restored (the model sees at most the memory setting). */
     static final int RESTORED_TURNS = 20;
     public AiChatController(AiJobService jobs, AiChatAccessPolicy access, AiChatEvidence evidence,
                             AiCompletionPort ai, AiChatPageGuideCatalog pages, ObjectMapper json, AiChatToolRegistry tools,
-                            AiDocumentWorkflows workflows, AiChatSettingsService settings, AiChatJobHandler handler) {
+                            AiDocumentWorkflows workflows, AiChatSettingsService settings, AiChatJobHandler handler,
+                            AiChatOperationMemoryService memory) {
         this.jobs = jobs; this.access = access; this.evidence = evidence; this.ai = ai; this.pages = pages; this.json = json; this.tools = tools; this.workflows = workflows;
-        this.settings = settings; this.handler = handler;
+        this.settings = settings; this.handler = handler; this.memory = memory;
     }
     @GetMapping("/capabilities")
     public Map<String, Object> capabilities() {
@@ -130,6 +132,38 @@ public class AiChatController {
     public Map<String, Object> clearConversations() {
         var actor = access.requireChat();
         return Map.of("cleared", jobs.archiveConversations(AiChatJobHandler.KIND, actor, "AI_CHAT_CLEARED_BY_USER"));
+    }
+
+    /**
+     * ADR-163: the caller's own remembered operations (nothing while the memory switch is off). Only OPEN_FORM
+     * entries are listed, each with whether the account may still open that form, so a lost permission reads as
+     * unavailable instead of being suggested; three at most. A memory failure answers empty, like the handler's
+     * own calls: the chat keeps working without the learned shortcuts.
+     */
+    @GetMapping("/memory/suggestions")
+    public Map<String, Object> memorySuggestions() {
+        access.requireChat();
+        if (!settings.current().operationMemory()) return Map.of("suggestions", List.of());
+        try {
+            var open = workflows.available().stream().map(item -> item.get("workflow")).collect(java.util.stream.Collectors.toSet());
+            var suggestions = memory.suggestions(3).stream()
+                    .map(item -> Map.of("question", item.question(), "workflow", item.target(),
+                            "title", AiDocumentWorkflows.title(item.target()), "available", open.contains(item.target())))
+                    .toList();
+            return Map.of("suggestions", suggestions);
+        } catch (RuntimeException unavailable) {
+            return Map.of("suggestions", List.of());
+        }
+    }
+
+    /**
+     * ADR-163: clear the caller's own operation memory. Like clearing conversations this is the person's own
+     * preference data, not a business audit event.
+     */
+    @DeleteMapping("/memory")
+    public Map<String, Object> clearMemory() {
+        access.requireChat();
+        return Map.of("cleared", memory.clear());
     }
     @GetMapping("/page-suggestions")
     public Map<String, Object> pageSuggestions(@RequestParam(defaultValue = "") String pageRoute) {

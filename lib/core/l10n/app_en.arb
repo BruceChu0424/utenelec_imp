@@ -4125,6 +4125,13 @@
   "aiChatSettingsClearBody": "All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.",
   "aiChatSettingsClearDone": "Chat history cleared",
   "aiChatSettingsClearFailed": "Chat history could not be cleared. Please try again later.",
+  "aiChatMemoryRecentTitle": "Recent operations",
+  "aiChatMemorySettingLabel": "Remember my frequent operations",
+  "aiChatMemorySettingHint": "Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.",
+  "aiChatMemoryClear": "Clear records",
+  "aiChatMemoryClearConfirm": "Clear the frequent operations I remember about you?",
+  "aiChatMemoryCleared": "Cleared",
+  "aiChatMemoryUnavailable": "Your account currently has no permission",
   "aiChatHiddenTurns": "{count} earlier messages are no longer shown because your account permissions changed.",
   "aiChatRestored": "Your recent chat. New questions continue it.",
   "aiChatRestoredDataChanged": "The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.",
@@ -4317,5 +4324,127 @@
   "hrReconcileStatusOpen": "In progress",
   "hrReconcileStatusClosed": "Completed",
   "hrReconcileStatusExpired": "Expired",
-  "hrReconcileStatusDiscarded": "Discarded"
+  "hrReconcileStatusDiscarded": "Discarded",
+  "aiUsageTitle": "AI usage & quotas",
+  "aiUsageEntry": "Usage & quotas",
+  "aiUsageTodayTokens": "Tokens today",
+  "aiUsageTodayLabel": "Today",
+  "aiUsageTodayCalls": "Calls today",
+  "aiUsageActiveUsers": "Active users today",
+  "aiUsageDisabledCount": "Disabled",
+  "aiUsageBudgetOf": "{num} / {total}",
+  "@aiUsageBudgetOf": {
+    "placeholders": {
+      "num": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageWindowHour": "Last 24 hours",
+  "aiUsageWindowDaily": "Last 30 days",
+  "aiUsageWindowMonthly": "Last 12 months",
+  "aiUsageWindowYearly": "Last 5 years",
+  "aiUsageTrend": "Usage trend",
+  "aiUsageEmpty": "No usage yet",
+  "aiUsageLoadFailed": "Failed to load AI usage, please try again later",
+  "aiUsagePersonMissing": "Usage information for this person was not found",
+  "aiUsageColPerson": "Person",
+  "aiUsageColWindow": "Window usage",
+  "aiUsageColToday": "Today",
+  "aiUsageColLimit": "Personal quota",
+  "aiUsageColStatus": "Status",
+  "aiUsageColLastUsed": "Last used",
+  "aiUsageColCalls": "{count} calls",
+  "@aiUsageColCalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLimitFollowGlobal": "Follow global",
+  "aiUsageStatusNormal": "Normal",
+  "aiUsageStatusOverLimit": "Over limit",
+  "aiUsageStatusDisabled": "Disabled",
+  "aiUsageSetLimits": "Set quotas",
+  "aiUsageLimitTokensLabel": "Daily token quota",
+  "aiUsageLimitJobsLabel": "Daily job quota",
+  "aiUsageLimitHint": "Leave empty to follow the global default",
+  "aiUsageLimitRangeError": "Enter a whole number between 1 and {max}",
+  "@aiUsageLimitRangeError": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageDisableLabel": "Disable AI for this account",
+  "aiUsageDisableHint": "While disabled, AI chat and file recognition cannot be used; you can restore it anytime",
+  "aiUsageDisableConfirm": "Disable AI usage for this account?",
+  "aiUsageDisableAction": "Disable",
+  "aiUsageDisabledBanner": "AI usage for this account has been disabled",
+  "aiUsageNoPersonalLimit": "No personal quota; the site-wide budget applies",
+  "aiUsageByPurpose": "By purpose",
+  "aiUsageByProvider": "By provider",
+  "aiUsageRecentUses": "Recent uses",
+  "aiUsagePeople": "People usage",
+  "aiUsageConflict": "The settings changed. Refresh and save again",
+  "aiUsageTokensUnit": "{n} tokens",
+  "@aiUsageTokensUnit": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageTodayUsed": "Used {tokens} today",
+  "@aiUsageTodayUsed": {
+    "placeholders": {
+      "tokens": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageLastUsedJustNow": "Just now",
+  "aiUsageLastUsedMinutesAgo": "{n} min ago",
+  "@aiUsageLastUsedMinutesAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedHoursAgo": "{n} h ago",
+  "@aiUsageLastUsedHoursAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedDaysAgo": "{n} d ago",
+  "@aiUsageLastUsedDaysAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageTrendSemantics": "{title}, {tokens} tokens and {calls} calls in total",
+  "@aiUsageTrendSemantics": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String"
+      },
+      "calls": {
+        "type": "String"
+      }
+    }
+  }
 }

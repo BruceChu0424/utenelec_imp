@@ -9302,6 +9302,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSettingsClearFailed => '没能清空对话记录, 请稍后再试。';
 
   @override
+  String get aiChatMemoryRecentTitle => '最近操作';
+
+  @override
+  String get aiChatMemorySettingLabel => '记住我的常用操作';
+
+  @override
+  String get aiChatMemorySettingHint =>
+      '记住你让我打开过的表单和常用的查询, 下次同类问题我直接准备操作, 不再重新思考。';
+
+  @override
+  String get aiChatMemoryClear => '清除记录';
+
+  @override
+  String get aiChatMemoryClearConfirm => '确定清除我记住的你的常用操作吗?';
+
+  @override
+  String get aiChatMemoryCleared => '已清除';
+
+  @override
+  String get aiChatMemoryUnavailable => '当前账号暂无权限';
+
+  @override
   String aiChatHiddenTurns(int count) {
     return '有 $count 条较早的对话因账号权限变化, 不再显示。';
   }
@@ -9533,4 +9555,172 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get hrReconcileStatusDiscarded => '已放弃';
+
+  @override
+  String get aiUsageTitle => 'AI 用量与额度';
+
+  @override
+  String get aiUsageEntry => '用量与额度';
+
+  @override
+  String get aiUsageTodayTokens => '今日消耗';
+
+  @override
+  String get aiUsageTodayLabel => '今日';
+
+  @override
+  String get aiUsageTodayCalls => '今日调用';
+
+  @override
+  String get aiUsageActiveUsers => '今日活跃人数';
+
+  @override
+  String get aiUsageDisabledCount => '已停用';
+
+  @override
+  String aiUsageBudgetOf(String num, String total) {
+    return '$num / $total';
+  }
+
+  @override
+  String get aiUsageWindowHour => '近24小时';
+
+  @override
+  String get aiUsageWindowDaily => '近30天';
+
+  @override
+  String get aiUsageWindowMonthly => '近12月';
+
+  @override
+  String get aiUsageWindowYearly => '近5年';
+
+  @override
+  String get aiUsageTrend => '用量趋势';
+
+  @override
+  String get aiUsageEmpty => '暂无用量';
+
+  @override
+  String get aiUsageLoadFailed => '加载 AI 用量失败，请稍后重试';
+
+  @override
+  String get aiUsagePersonMissing => '未找到该人员的用量信息';
+
+  @override
+  String get aiUsageColPerson => '人员';
+
+  @override
+  String get aiUsageColWindow => '窗口消耗';
+
+  @override
+  String get aiUsageColToday => '今日消耗';
+
+  @override
+  String get aiUsageColLimit => '个人限额';
+
+  @override
+  String get aiUsageColStatus => '状态';
+
+  @override
+  String get aiUsageColLastUsed => '最近使用';
+
+  @override
+  String aiUsageColCalls(int count) {
+    return '$count 次';
+  }
+
+  @override
+  String get aiUsageLimitFollowGlobal => '跟随全局';
+
+  @override
+  String get aiUsageStatusNormal => '正常';
+
+  @override
+  String get aiUsageStatusOverLimit => '已超限';
+
+  @override
+  String get aiUsageStatusDisabled => '已停用';
+
+  @override
+  String get aiUsageSetLimits => '设置限额';
+
+  @override
+  String get aiUsageLimitTokensLabel => '每日 token 限额';
+
+  @override
+  String get aiUsageLimitJobsLabel => '每日任务数限额';
+
+  @override
+  String get aiUsageLimitHint => '留空表示跟随全局默认';
+
+  @override
+  String aiUsageLimitRangeError(int max) {
+    return '需为 1 到 $max 之间的整数';
+  }
+
+  @override
+  String get aiUsageDisableLabel => '停用该账号的 AI';
+
+  @override
+  String get aiUsageDisableHint => '停用后不能使用 AI 对话与文件识别，可随时恢复';
+
+  @override
+  String get aiUsageDisableConfirm => '确定停用该账号的 AI 使用吗？';
+
+  @override
+  String get aiUsageDisableAction => '停用';
+
+  @override
+  String get aiUsageDisabledBanner => '该账号的 AI 使用已被停用';
+
+  @override
+  String get aiUsageNoPersonalLimit => '未设个人限额，按全站预算';
+
+  @override
+  String get aiUsageByPurpose => '按用途';
+
+  @override
+  String get aiUsageByProvider => '按服务商';
+
+  @override
+  String get aiUsageRecentUses => '最近使用';
+
+  @override
+  String get aiUsagePeople => '人员用量';
+
+  @override
+  String get aiUsageConflict => '配置有变化，请刷新后再保存';
+
+  @override
+  String aiUsageTokensUnit(String n) {
+    return '$n tokens';
+  }
+
+  @override
+  String aiUsageTodayUsed(String tokens) {
+    return '今日已用 $tokens';
+  }
+
+  @override
+  String get aiUsageLastUsedJustNow => '刚刚';
+
+  @override
+  String aiUsageLastUsedMinutesAgo(int n) {
+    return '$n 分钟前';
+  }
+
+  @override
+  String aiUsageLastUsedHoursAgo(int n) {
+    return '$n 小时前';
+  }
+
+  @override
+  String aiUsageLastUsedDaysAgo(int n) {
+    return '$n 天前';
+  }
+
+  @override
+  String aiUsageTrendSemantics(String title, String tokens, String calls) {
+    return '$title，共 $tokens tokens、$calls 次调用';
+  }
 }

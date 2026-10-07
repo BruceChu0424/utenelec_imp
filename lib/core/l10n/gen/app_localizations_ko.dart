@@ -9511,6 +9511,28 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatSettingsClearFailed => '대화 기록을 지우지 못했습니다. 잠시 후 다시 시도해 주세요.';
 
   @override
+  String get aiChatMemoryRecentTitle => '최근 작업';
+
+  @override
+  String get aiChatMemorySettingLabel => '자주 쓰는 작업 기억';
+
+  @override
+  String get aiChatMemorySettingHint =>
+      '내가 열어 달라고 한 서식과 자주 쓰는 조회를 기억해, 다음에 비슷한 요청은 바로 준비합니다.';
+
+  @override
+  String get aiChatMemoryClear => '기록 지우기';
+
+  @override
+  String get aiChatMemoryClearConfirm => '내가 기억한 자주 쓰는 작업을 지울까요?';
+
+  @override
+  String get aiChatMemoryCleared => '지웠습니다';
+
+  @override
+  String get aiChatMemoryUnavailable => '현재 계정에는 권한이 없습니다';
+
+  @override
   String aiChatHiddenTurns(int count) {
     return '계정 권한이 바뀌어 이전 대화 $count건은 더 이상 표시되지 않습니다.';
   }
@@ -9742,4 +9764,173 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get hrReconcileStatusDiscarded => '폐기';
+
+  @override
+  String get aiUsageTitle => 'AI 사용량 및 한도';
+
+  @override
+  String get aiUsageEntry => '사용량 및 한도';
+
+  @override
+  String get aiUsageTodayTokens => '오늘 사용량';
+
+  @override
+  String get aiUsageTodayLabel => '오늘';
+
+  @override
+  String get aiUsageTodayCalls => '오늘 호출';
+
+  @override
+  String get aiUsageActiveUsers => '오늘 활성 사용자';
+
+  @override
+  String get aiUsageDisabledCount => '중지됨';
+
+  @override
+  String aiUsageBudgetOf(String num, String total) {
+    return '$num / $total';
+  }
+
+  @override
+  String get aiUsageWindowHour => '최근 24시간';
+
+  @override
+  String get aiUsageWindowDaily => '최근 30일';
+
+  @override
+  String get aiUsageWindowMonthly => '최근 12개월';
+
+  @override
+  String get aiUsageWindowYearly => '최근 5년';
+
+  @override
+  String get aiUsageTrend => '사용량 추이';
+
+  @override
+  String get aiUsageEmpty => '사용량 없음';
+
+  @override
+  String get aiUsageLoadFailed => 'AI 사용량을 불러오지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get aiUsagePersonMissing => '이 사용자의 사용량 정보를 찾을 수 없습니다';
+
+  @override
+  String get aiUsageColPerson => '사용자';
+
+  @override
+  String get aiUsageColWindow => '기간 사용량';
+
+  @override
+  String get aiUsageColToday => '오늘 사용량';
+
+  @override
+  String get aiUsageColLimit => '개인 한도';
+
+  @override
+  String get aiUsageColStatus => '상태';
+
+  @override
+  String get aiUsageColLastUsed => '최근 사용';
+
+  @override
+  String aiUsageColCalls(int count) {
+    return '$count회';
+  }
+
+  @override
+  String get aiUsageLimitFollowGlobal => '전역 설정 따름';
+
+  @override
+  String get aiUsageStatusNormal => '정상';
+
+  @override
+  String get aiUsageStatusOverLimit => '한도 초과';
+
+  @override
+  String get aiUsageStatusDisabled => '중지됨';
+
+  @override
+  String get aiUsageSetLimits => '한도 설정';
+
+  @override
+  String get aiUsageLimitTokensLabel => '일일 토큰 한도';
+
+  @override
+  String get aiUsageLimitJobsLabel => '일일 작업 수 한도';
+
+  @override
+  String get aiUsageLimitHint => '비워 두면 전역 기본값을 따릅니다';
+
+  @override
+  String aiUsageLimitRangeError(int max) {
+    return '1에서 $max 사이의 정수를 입력하세요';
+  }
+
+  @override
+  String get aiUsageDisableLabel => '이 계정의 AI 중지';
+
+  @override
+  String get aiUsageDisableHint =>
+      '중지하는 동안 AI 대화와 파일 인식을 사용할 수 없으며 언제든 복구할 수 있습니다';
+
+  @override
+  String get aiUsageDisableConfirm => '이 계정의 AI 사용을 중지하시겠습니까?';
+
+  @override
+  String get aiUsageDisableAction => '중지';
+
+  @override
+  String get aiUsageDisabledBanner => '이 계정의 AI 사용이 중지되었습니다';
+
+  @override
+  String get aiUsageNoPersonalLimit => '개인 한도가 없으며 전역 예산이 적용됩니다';
+
+  @override
+  String get aiUsageByPurpose => '용도별';
+
+  @override
+  String get aiUsageByProvider => '공급자별';
+
+  @override
+  String get aiUsageRecentUses => '최근 사용';
+
+  @override
+  String get aiUsagePeople => '사용자별 사용량';
+
+  @override
+  String get aiUsageConflict => '설정이 변경되었습니다. 새로고침 후 다시 저장하세요';
+
+  @override
+  String aiUsageTokensUnit(String n) {
+    return '$n 토큰';
+  }
+
+  @override
+  String aiUsageTodayUsed(String tokens) {
+    return '오늘 $tokens 사용';
+  }
+
+  @override
+  String get aiUsageLastUsedJustNow => '방금';
+
+  @override
+  String aiUsageLastUsedMinutesAgo(int n) {
+    return '$n분 전';
+  }
+
+  @override
+  String aiUsageLastUsedHoursAgo(int n) {
+    return '$n시간 전';
+  }
+
+  @override
+  String aiUsageLastUsedDaysAgo(int n) {
+    return '$n일 전';
+  }
+
+  @override
+  String aiUsageTrendSemantics(String title, String tokens, String calls) {
+    return '$title, 총 $tokens 토큰 · $calls회 호출';
+  }
 }

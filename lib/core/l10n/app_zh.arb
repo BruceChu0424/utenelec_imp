@@ -5002,6 +5002,13 @@
   "aiChatSettingsClearBody": "会清空你账号下全部 AI 对话记录, 清空后不能恢复。已经执行的业务操作不受影响。",
   "aiChatSettingsClearDone": "对话记录已清空",
   "aiChatSettingsClearFailed": "没能清空对话记录, 请稍后再试。",
+  "aiChatMemoryRecentTitle": "最近操作",
+  "aiChatMemorySettingLabel": "记住我的常用操作",
+  "aiChatMemorySettingHint": "记住你让我打开过的表单和常用的查询, 下次同类问题我直接准备操作, 不再重新思考。",
+  "aiChatMemoryClear": "清除记录",
+  "aiChatMemoryClearConfirm": "确定清除我记住的你的常用操作吗?",
+  "aiChatMemoryCleared": "已清除",
+  "aiChatMemoryUnavailable": "当前账号暂无权限",
   "aiChatHiddenTurns": "有 {count} 条较早的对话因账号权限变化, 不再显示。",
   "@aiChatHiddenTurns": {
     "placeholders": {
@@ -5151,5 +5158,127 @@
   "hrReconcileStatusOpen": "进行中",
   "hrReconcileStatusClosed": "已完成",
   "hrReconcileStatusExpired": "已过期",
-  "hrReconcileStatusDiscarded": "已放弃"
+  "hrReconcileStatusDiscarded": "已放弃",
+  "aiUsageTitle": "AI 用量与额度",
+  "aiUsageEntry": "用量与额度",
+  "aiUsageTodayTokens": "今日消耗",
+  "aiUsageTodayLabel": "今日",
+  "aiUsageTodayCalls": "今日调用",
+  "aiUsageActiveUsers": "今日活跃人数",
+  "aiUsageDisabledCount": "已停用",
+  "aiUsageBudgetOf": "{num} / {total}",
+  "@aiUsageBudgetOf": {
+    "placeholders": {
+      "num": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageWindowHour": "近24小时",
+  "aiUsageWindowDaily": "近30天",
+  "aiUsageWindowMonthly": "近12月",
+  "aiUsageWindowYearly": "近5年",
+  "aiUsageTrend": "用量趋势",
+  "aiUsageEmpty": "暂无用量",
+  "aiUsageLoadFailed": "加载 AI 用量失败，请稍后重试",
+  "aiUsagePersonMissing": "未找到该人员的用量信息",
+  "aiUsageColPerson": "人员",
+  "aiUsageColWindow": "窗口消耗",
+  "aiUsageColToday": "今日消耗",
+  "aiUsageColLimit": "个人限额",
+  "aiUsageColStatus": "状态",
+  "aiUsageColLastUsed": "最近使用",
+  "aiUsageColCalls": "{count} 次",
+  "@aiUsageColCalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLimitFollowGlobal": "跟随全局",
+  "aiUsageStatusNormal": "正常",
+  "aiUsageStatusOverLimit": "已超限",
+  "aiUsageStatusDisabled": "已停用",
+  "aiUsageSetLimits": "设置限额",
+  "aiUsageLimitTokensLabel": "每日 token 限额",
+  "aiUsageLimitJobsLabel": "每日任务数限额",
+  "aiUsageLimitHint": "留空表示跟随全局默认",
+  "aiUsageLimitRangeError": "需为 1 到 {max} 之间的整数",
+  "@aiUsageLimitRangeError": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageDisableLabel": "停用该账号的 AI",
+  "aiUsageDisableHint": "停用后不能使用 AI 对话与文件识别，可随时恢复",
+  "aiUsageDisableConfirm": "确定停用该账号的 AI 使用吗？",
+  "aiUsageDisableAction": "停用",
+  "aiUsageDisabledBanner": "该账号的 AI 使用已被停用",
+  "aiUsageNoPersonalLimit": "未设个人限额，按全站预算",
+  "aiUsageByPurpose": "按用途",
+  "aiUsageByProvider": "按服务商",
+  "aiUsageRecentUses": "最近使用",
+  "aiUsagePeople": "人员用量",
+  "aiUsageConflict": "配置有变化，请刷新后再保存",
+  "aiUsageTokensUnit": "{n} tokens",
+  "@aiUsageTokensUnit": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageTodayUsed": "今日已用 {tokens}",
+  "@aiUsageTodayUsed": {
+    "placeholders": {
+      "tokens": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageLastUsedJustNow": "刚刚",
+  "aiUsageLastUsedMinutesAgo": "{n} 分钟前",
+  "@aiUsageLastUsedMinutesAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedHoursAgo": "{n} 小时前",
+  "@aiUsageLastUsedHoursAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedDaysAgo": "{n} 天前",
+  "@aiUsageLastUsedDaysAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageTrendSemantics": "{title}，共 {tokens} tokens、{calls} 次调用",
+  "@aiUsageTrendSemantics": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String"
+      },
+      "calls": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -4007,6 +4007,13 @@
   "aiChatSettingsClearBody": "내 계정의 모든 AI 대화 기록이 지워지며 복구할 수 없습니다. 이미 실행된 업무 작업에는 영향이 없습니다.",
   "aiChatSettingsClearDone": "대화 기록을 지웠습니다",
   "aiChatSettingsClearFailed": "대화 기록을 지우지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  "aiChatMemoryRecentTitle": "최근 작업",
+  "aiChatMemorySettingLabel": "자주 쓰는 작업 기억",
+  "aiChatMemorySettingHint": "내가 열어 달라고 한 서식과 자주 쓰는 조회를 기억해, 다음에 비슷한 요청은 바로 준비합니다.",
+  "aiChatMemoryClear": "기록 지우기",
+  "aiChatMemoryClearConfirm": "내가 기억한 자주 쓰는 작업을 지울까요?",
+  "aiChatMemoryCleared": "지웠습니다",
+  "aiChatMemoryUnavailable": "현재 계정에는 권한이 없습니다",
   "aiChatHiddenTurns": "계정 권한이 바뀌어 이전 대화 {count}건은 더 이상 표시되지 않습니다.",
   "aiChatRestored": "최근 대화입니다. 이어서 질문하면 계속됩니다.",
   "aiChatRestoredDataChanged": "이 답변이 인용한 업무 데이터가 바뀌어 이전 내용은 표시하지 않습니다. 필요하면 다시 질문하세요.",
@@ -4149,5 +4156,127 @@
   "hrReconcileStatusOpen": "진행 중",
   "hrReconcileStatusClosed": "완료",
   "hrReconcileStatusExpired": "만료",
-  "hrReconcileStatusDiscarded": "폐기"
+  "hrReconcileStatusDiscarded": "폐기",
+  "aiUsageTitle": "AI 사용량 및 한도",
+  "aiUsageEntry": "사용량 및 한도",
+  "aiUsageTodayTokens": "오늘 사용량",
+  "aiUsageTodayLabel": "오늘",
+  "aiUsageTodayCalls": "오늘 호출",
+  "aiUsageActiveUsers": "오늘 활성 사용자",
+  "aiUsageDisabledCount": "중지됨",
+  "aiUsageBudgetOf": "{num} / {total}",
+  "@aiUsageBudgetOf": {
+    "placeholders": {
+      "num": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageWindowHour": "최근 24시간",
+  "aiUsageWindowDaily": "최근 30일",
+  "aiUsageWindowMonthly": "최근 12개월",
+  "aiUsageWindowYearly": "최근 5년",
+  "aiUsageTrend": "사용량 추이",
+  "aiUsageEmpty": "사용량 없음",
+  "aiUsageLoadFailed": "AI 사용량을 불러오지 못했습니다. 잠시 후 다시 시도하세요.",
+  "aiUsagePersonMissing": "이 사용자의 사용량 정보를 찾을 수 없습니다",
+  "aiUsageColPerson": "사용자",
+  "aiUsageColWindow": "기간 사용량",
+  "aiUsageColToday": "오늘 사용량",
+  "aiUsageColLimit": "개인 한도",
+  "aiUsageColStatus": "상태",
+  "aiUsageColLastUsed": "최근 사용",
+  "aiUsageColCalls": "{count}회",
+  "@aiUsageColCalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLimitFollowGlobal": "전역 설정 따름",
+  "aiUsageStatusNormal": "정상",
+  "aiUsageStatusOverLimit": "한도 초과",
+  "aiUsageStatusDisabled": "중지됨",
+  "aiUsageSetLimits": "한도 설정",
+  "aiUsageLimitTokensLabel": "일일 토큰 한도",
+  "aiUsageLimitJobsLabel": "일일 작업 수 한도",
+  "aiUsageLimitHint": "비워 두면 전역 기본값을 따릅니다",
+  "aiUsageLimitRangeError": "1에서 {max} 사이의 정수를 입력하세요",
+  "@aiUsageLimitRangeError": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageDisableLabel": "이 계정의 AI 중지",
+  "aiUsageDisableHint": "중지하는 동안 AI 대화와 파일 인식을 사용할 수 없으며 언제든 복구할 수 있습니다",
+  "aiUsageDisableConfirm": "이 계정의 AI 사용을 중지하시겠습니까?",
+  "aiUsageDisableAction": "중지",
+  "aiUsageDisabledBanner": "이 계정의 AI 사용이 중지되었습니다",
+  "aiUsageNoPersonalLimit": "개인 한도가 없으며 전역 예산이 적용됩니다",
+  "aiUsageByPurpose": "용도별",
+  "aiUsageByProvider": "공급자별",
+  "aiUsageRecentUses": "최근 사용",
+  "aiUsagePeople": "사용자별 사용량",
+  "aiUsageConflict": "설정이 변경되었습니다. 새로고침 후 다시 저장하세요",
+  "aiUsageTokensUnit": "{n} 토큰",
+  "@aiUsageTokensUnit": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageTodayUsed": "오늘 {tokens} 사용",
+  "@aiUsageTodayUsed": {
+    "placeholders": {
+      "tokens": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageLastUsedJustNow": "방금",
+  "aiUsageLastUsedMinutesAgo": "{n}분 전",
+  "@aiUsageLastUsedMinutesAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedHoursAgo": "{n}시간 전",
+  "@aiUsageLastUsedHoursAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedDaysAgo": "{n}일 전",
+  "@aiUsageLastUsedDaysAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageTrendSemantics": "{title}, 총 {tokens} 토큰 · {calls}회 호출",
+  "@aiUsageTrendSemantics": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String"
+      },
+      "calls": {
+        "type": "String"
+      }
+    }
+  }
 }

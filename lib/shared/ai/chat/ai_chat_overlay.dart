@@ -220,6 +220,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   bool _attachPreviewScheduled = false;
   AiChatCapabilities? _capabilities;
   AiChatPageSuggestions? _pageSuggestions;
+
+  /// ADR-163: the caller's own remembered operations, for the welcome area.
+  List<AiChatMemorySuggestion> _memorySuggestions = const [];
   AiJobCancelToken? _cancel;
   PlatformFile? _attachment;
 
@@ -235,6 +238,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   String? _settingsSaving;
   String? _settingsError;
   bool _clearingHistory = false;
+  bool _clearingMemory = false;
   bool _restoreStarted = false;
   bool _restored = false;
   int _hiddenTurns = 0;
@@ -380,6 +384,21 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
   }
 
+  /// ADR-163: the caller's own recent operations, fetched only while the
+  /// memory setting is on; failures stay silent (the welcome works without).
+  Future<void> _loadMemorySuggestions() async {
+    if (!_current || !_settings.operationMemory) return;
+    try {
+      final result = await ref
+          .read(aiChatRepositoryProvider)
+          .memorySuggestions();
+      if (!_current || !_settings.operationMemory) return;
+      setState(() => _memorySuggestions = result);
+    } catch (_) {
+      // Optional guidance failures do not interrupt the conversation.
+    }
+  }
+
   Future<void> _loadCapabilities() async {
     final repository = ref.read(aiChatRepositoryProvider);
     try {
@@ -393,6 +412,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         _error = null;
       });
       _loadPageSuggestions();
+      _loadMemorySuggestions();
       // The conversation is restored when the panel is first opened, not on
       // every page load: the overlay is always mounted and most page loads
       // never open the chat.
@@ -502,6 +522,15 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       _loadPageSuggestions();
       _scheduleAttachPreview();
     }
+    // ADR-163: the welcome area follows the memory switch at once; a failed
+    // save rolls the setting back and this runs against the rolled-back view.
+    if (field == 'operationMemory' && _current) {
+      if (_settings.operationMemory) {
+        _loadMemorySuggestions();
+      } else if (_memorySuggestions.isNotEmpty) {
+        setState(() => _memorySuggestions = const []);
+      }
+    }
   }
 
   /// Reading the page off means off for retries too: drop what earlier
@@ -537,6 +566,34 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (mounted) context.appError(l10n.aiChatSettingsClearFailed);
     } finally {
       if (_current) setState(() => _clearingHistory = false);
+    }
+  }
+
+  /// ADR-163: clears the caller's own operation memory; the welcome area's
+  /// recent operations disappear with it.
+  Future<void> _clearMemory() async {
+    if (!_current || _busy || _picking || _clearingMemory) return;
+    final l10n = aiPageL10n(context);
+    final accepted = await _confirmForIdentity(
+      title: l10n.aiChatMemoryClear,
+      content: Text(l10n.aiChatMemoryClearConfirm),
+    );
+    if (!_current || accepted != true || _busy || _picking) return;
+    setState(() {
+      _clearingMemory = true;
+      _settingsError = null;
+    });
+    try {
+      await ref.read(aiChatRepositoryProvider).clearOperationMemory();
+      if (!_current) return;
+      setState(() => _memorySuggestions = const []);
+      if (mounted) context.appSuccess(l10n.aiChatMemoryCleared);
+    } catch (_) {
+      if (!_current) return;
+      setState(() => _settingsError = _t('failed'));
+      if (mounted) context.appError(_t('failed'));
+    } finally {
+      if (_current) setState(() => _clearingMemory = false);
     }
   }
 
@@ -1105,10 +1162,60 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       !widget.identity.scope.readOnly &&
       ref.read(currentPermissionsProvider).containsAll(workflow.permissions);
 
-  /// OPEN_GUIDED_FORM: opens the new form with this chat's verified file only
-  /// after the user confirmed. Saving stays with the page's own button.
+  /// OPEN_GUIDED_FORM: after the user confirmed, opens the new form — with
+  /// this chat's verified file when the card came from a file answer, or the
+  /// blank form when it was proposed from the conversation itself (ADR-163).
+  /// Saving stays with the page's own button.
   Future<void> _executeGuidedCard(_ChatMessage message, AiChatCardUi ui) async {
     final l10n = aiPageL10n(context);
+    // ADR-163: a form card proposed from the conversation itself (no file):
+    // it only navigates to the blank new-form page for its workflow.
+    if (ui.card.args['sourceJobId'] == null) {
+      final workflow = AiGuidedWorkflow.parse(ui.card.args['workflow']);
+      if (!_workflowAllowed(workflow)) {
+        _cardNote(ui, _t('permissionChanged'));
+        return;
+      }
+      final args = await _consumeCard(ui);
+      if (args == null || !_current) return;
+      // The destination is selected from this enum; server/model route
+      // strings are never evaluated, and no save/submit endpoint is called.
+      final confirmed = AiGuidedWorkflow.parse(args['workflow']);
+      final blankRoute = switch (confirmed) {
+        AiGuidedWorkflow.salesOrder => RoutePath.salesDocNew(
+          SalesDocType.order.pathSegment,
+        ),
+        AiGuidedWorkflow.salesQuote => RoutePath.salesDocNew(
+          SalesDocType.quote.pathSegment,
+        ),
+        AiGuidedWorkflow.expenseClaim => RouteName.expenseNew,
+        AiGuidedWorkflow.none => null,
+      };
+      if (blankRoute == null || confirmed != workflow) {
+        await _receipt(
+          ui,
+          succeeded: false,
+          message: l10n.aiChatCardInvalidArgs,
+        );
+        return;
+      }
+      final landed = await _pushAndLand(blankRoute, null);
+      if (!_current) return;
+      if (landed != blankRoute) {
+        await _receipt(
+          ui,
+          succeeded: false,
+          message: landed == RouteName.accessDenied
+              ? l10n.aiChatCardFormNoAccess
+              : l10n.aiChatCardFormNotOpened,
+        );
+        return;
+      }
+      _focus.unfocus();
+      setState(() => _open = false);
+      await _receipt(ui, succeeded: true);
+      return;
+    }
     final jobId = message.documentJobId;
     final result = message.documentResult;
     final file = message.sourceFile;
@@ -1198,7 +1305,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   /// a router or when the push throws). A redirect, e.g. for missing access,
   /// lands elsewhere. The push future completes only when the page closes,
   /// so it is not awaited.
-  Future<String?> _pushAndLand(String route, Object extra) async {
+  Future<String?> _pushAndLand(String route, Object? extra) async {
     final router = GoRouter.maybeOf(context);
     if (router == null) return null;
     try {
@@ -1676,6 +1783,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                               unawaited(_restoreConversation());
                             }
                             _loadPageSuggestions();
+                            // ADR-163: the recent-operations list follows the
+                            // panel, like the page suggestions.
+                            _loadMemorySuggestions();
                             _scheduleAttachPreview();
                             _scrollToEnd();
                           },
@@ -1809,8 +1919,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
               error: _settingsError,
               clearing: _clearingHistory,
               canClear: !_busy && !_picking,
+              clearingMemory: _clearingMemory,
+              canClearMemory: !_busy && !_picking,
               onChange: _updateSetting,
               onClearHistory: _clearHistory,
+              onClearMemory: _clearMemory,
             ),
           ),
         if (!tight && !_settingsOpen)
@@ -2071,7 +2184,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     key: const ValueKey('ai-chat-attach'),
                     tooltip: _t('attach'),
                     onPressed: _busy || _picking ? null : _pickFile,
-                    constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                    constraints: const BoxConstraints.tightFor(
+                      width: 36,
+                      height: 36,
+                    ),
                     style: IconButton.styleFrom(
                       backgroundColor: colors.surfaceContainerHigh,
                       foregroundColor: colors.onSurfaceVariant,
@@ -2139,7 +2255,10 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 IconButton.filled(
                   key: const ValueKey('ai-chat-send'),
                   tooltip: _t(_cancel != null ? 'stop' : 'send'),
-                  constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 36,
+                  ),
                   style: IconButton.styleFrom(
                     shape: const CircleBorder(),
                     backgroundColor: colors.primary,
@@ -2224,14 +2343,19 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   );
 
   Widget _welcome() {
+    final pageTexts = _pageSuggestions?.suggestions ?? const <String>[];
     final suggestions = <String, bool>{
       if (_pageAware && _settings.showSuggestions)
-        for (final text in _pageSuggestions?.suggestions ?? const <String>[])
-          text: text == _t('pageQuestion'),
+        // Page questions carry PAGE_HELP when tapped (§3.4: membership in
+        // the fetched page list, not the text of any one question).
+        for (final text in pageTexts) text: true,
     };
     if (_settings.showSuggestions) {
       for (final text in _capabilities?.suggestions ?? const <String>[]) {
-        if (text == _t('pageQuestion')) continue;
+        // A page-list entry is already above; the generic page question is
+        // also skipped while no page guidance is loaded (reading off, or an
+        // unknown page) because without the page it answers nothing.
+        if (pageTexts.contains(text) || text == _t('pageQuestion')) continue;
         suggestions.putIfAbsent(text, () => false);
       }
     }
@@ -2244,6 +2368,24 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           Text(_t('unavailable')),
         ],
         const SizedBox(height: UtenSpacing.s16),
+        if (_settings.operationMemory &&
+            _settings.showSuggestions &&
+            _memorySuggestions.isNotEmpty) ...[
+          Text(
+            aiPageL10n(context).aiChatMemoryRecentTitle,
+            key: const ValueKey('ai-chat-memory-title'),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          for (final memory in _memorySuggestions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: _memoryButton(memory),
+            ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         for (final suggestion in suggestions.entries.take(2))
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -2264,6 +2406,27 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
   }
 
+  /// ADR-163: one remembered operation as a welcome chip. A form the account
+  /// can no longer fill in stays visible but inert, with the reason.
+  Widget _memoryButton(AiChatMemorySuggestion memory) {
+    final usable =
+        memory.available &&
+        _workflowAllowed(AiGuidedWorkflow.parse(memory.workflowCode));
+    final button = UtenButton(
+      type: UtenButtonType.secondary,
+      onPressed: _capabilities?.usable == true && usable
+          ? () => _send(suggestion: memory.question)
+          : null,
+      child: Flexible(child: Text(memory.question)),
+    );
+    return usable
+        ? button
+        : Tooltip(
+            message: aiPageL10n(context).aiChatMemoryUnavailable,
+            child: button,
+          );
+  }
+
   void _sendPageSuggestion(String suggestion) {
     if (!_pageAware ||
         _pageSuggestions?.pageRoute !=
@@ -2273,7 +2436,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     _send(
       suggestion: suggestion,
-      intentHint: suggestion == _t('pageQuestion') ? 'PAGE_HELP' : null,
+      intentHint: _pageSuggestions?.suggestions.contains(suggestion) == true
+          ? 'PAGE_HELP'
+          : null,
     );
   }
 

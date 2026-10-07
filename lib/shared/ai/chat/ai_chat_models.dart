@@ -77,6 +77,7 @@ class AiChatSettings {
     this.sendKey = AiChatSendKey.enter,
     this.explanationStyle = AiChatExplanationStyle.plain,
     this.showSuggestions = true,
+    this.operationMemory = true,
   });
 
   static const defaults = AiChatSettings();
@@ -102,6 +103,7 @@ class AiChatSettings {
           AiChatExplanationStyle.parse(raw['explanationStyle']) ??
           defaults.explanationStyle,
       showSuggestions: flag(raw['showSuggestions'], defaults.showSuggestions),
+      operationMemory: flag(raw['operationMemory'], defaults.operationMemory),
     );
   }
 
@@ -115,6 +117,9 @@ class AiChatSettings {
   final AiChatExplanationStyle explanationStyle;
   final bool showSuggestions;
 
+  /// ADR-163: remember the caller's own frequent operations server-side.
+  final bool operationMemory;
+
   Map<String, Object> toJson() => {
     'detail': detail.wire,
     'reasoning': reasoning.wire,
@@ -125,6 +130,7 @@ class AiChatSettings {
     'sendKey': sendKey.wire,
     'explanationStyle': explanationStyle.wire,
     'showSuggestions': showSuggestions,
+    'operationMemory': operationMemory,
   };
 
   /// These settings with one field changed (the wire name and wire value the
@@ -216,6 +222,57 @@ class AiChatPageSuggestions {
   final String pageRoute;
   final String pageTitle;
   final List<String> suggestions;
+}
+
+/// One remembered operation of the caller's own (ADR-163): a question they
+/// asked and the form it opened. Display only: tapping it resends the plain
+/// question, never a stored route or instruction.
+class AiChatMemorySuggestion {
+  const AiChatMemorySuggestion({
+    required this.question,
+    required this.workflowCode,
+    required this.title,
+    this.available = false,
+  });
+
+  static const _workflowCodes = {'SALES_ORDER', 'SALES_QUOTE', 'EXPENSE_CLAIM'};
+
+  /// Parses `{"suggestions":[...]}`; malformed entries are dropped, never shown.
+  static List<AiChatMemorySuggestion> listFrom(Object? raw) => [
+    if (raw is Map && raw['suggestions'] is List)
+      for (final item in raw['suggestions'] as List)
+        if (item is Map<String, dynamic>) ?_tryParse(item),
+  ];
+
+  static AiChatMemorySuggestion? _tryParse(Map<String, dynamic> raw) {
+    final question = raw['question'];
+    final workflow = raw['workflow'];
+    if (question is! String ||
+        question.trim().isEmpty ||
+        question.trim().length > 200 ||
+        workflow is! String ||
+        !_workflowCodes.contains(workflow)) {
+      return null;
+    }
+    return AiChatMemorySuggestion(
+      question: question.trim(),
+      workflowCode: workflow,
+      title: _text(raw['title']),
+      available: raw['available'] == true,
+    );
+  }
+
+  /// The user's own words, as stored by the server.
+  final String question;
+
+  /// Wire workflow code of the form the question opened.
+  final String workflowCode;
+
+  /// Form title rendered by the server, for display only.
+  final String title;
+
+  /// Whether this account may still fill in that form.
+  final bool available;
 }
 
 /// One assistant answer (ADR-150): plain text, its sources, whether it is the

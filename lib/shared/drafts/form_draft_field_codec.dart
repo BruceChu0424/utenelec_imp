@@ -37,7 +37,9 @@ Map<String, dynamic> draftEmployee(UtenEmployeePickerItem employee) => {
   'id': employee.id,
   'name': employee.name,
   'employeeCode': employee.employeeCode,
+  'departmentId': employee.departmentId,
   'departmentName': employee.departmentName,
+  'subtitle': employee.subtitle,
 };
 
 UtenEmployeePickerItem restoreDraftEmployee(Map<String, dynamic> data) =>
@@ -45,7 +47,9 @@ UtenEmployeePickerItem restoreDraftEmployee(Map<String, dynamic> data) =>
       id: draftText(data, 'id'),
       name: draftText(data, 'name'),
       employeeCode: data['employeeCode'] as String?,
+      departmentId: data['departmentId'] as String?,
       departmentName: data['departmentName'] as String?,
+      subtitle: data['subtitle'] as String?,
     );
 
 List<int> draftGridSelection<T extends EditableGridRow>(

@@ -14,6 +14,7 @@ public record WarehouseKeeper(
         UUID employeeId,
         String name,
         String code,
+        UUID departmentId,
         String departmentName,
         boolean hasAccount,
         boolean warehouseMember,

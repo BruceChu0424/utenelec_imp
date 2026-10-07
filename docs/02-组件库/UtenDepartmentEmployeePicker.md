@@ -2,7 +2,7 @@
 
 > 源码：[`department_employee_picker.dart`](../../lib/features/employee/widgets/department_employee_picker.dart) ·
 > 通用员工展示契约：[UtenEmployeePicker](UtenEmployeePicker.md) ·
-> 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-08-27。
+> 统一层级搜索契约：[UtenHierarchySearch](UtenHierarchySearch.md) · 最后核对：2026-10-07。
 
 ## 一、用途与入口
 
@@ -14,8 +14,8 @@
 
 ## 二、响应式与交互
 
-- compact 使用自适应底部抽屉，medium/expanded 使用 720dp 右侧滑入面板。
-- 内部为“左部门树 + 右员工列表”，左栏 compact 150dp、其余 240dp。
+- compact 使用自适应底部抽屉，medium/expanded 使用 `max(720, 屏宽 × 50%)` 右侧滑入面板，与销售客户选择器一致。
+- 内部为“左部门树 + 右员工列表”，深绿无缩进层级色，宽屏使用可拖动的 `UtenSplitView`，初始左宽按部门文本量测。
 - 统一搜索按 100 条逐页收集命中员工的 `departmentId`，展开祖先路径并默认定位首个有效部门；右侧通过“加载更多员工”继续追加后续页，不会把可选范围截断在前 100 人。
 - 点击包含命中员工的相关部门时保留关键词，右侧查询该部门子树内的同词员工；只命中部门名称/编号时展示该部门子树全部员工。
 - request version 防止旧响应覆盖；部门树、人员搜索、完整定位、空结果都有明确状态。清空输入恢复普通浏览。

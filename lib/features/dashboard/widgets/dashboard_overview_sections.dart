@@ -216,12 +216,13 @@ class _TodoTilesSkeleton extends StatelessWidget {
         final width = constraints.maxWidth >= 640
             ? (constraints.maxWidth - UtenSpacing.s12) / 2
             : constraints.maxWidth;
-        return Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s12,
+        return Row(
           children: [
             SizedBox(width: width, child: const _TodoTileSkeleton()),
-            SizedBox(width: width, child: const _TodoTileSkeleton()),
+            if (constraints.maxWidth >= 640) ...[
+              const SizedBox(width: UtenSpacing.s12),
+              SizedBox(width: width, child: const _TodoTileSkeleton()),
+            ],
           ],
         );
       },

@@ -1,15 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_paged_picker_list.dart';
-import '../../../core/network/api_exception.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/network/latest_request_guard.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -759,209 +755,59 @@ class AuditActorPicker extends ConsumerStatefulWidget {
 }
 
 class _AuditActorPickerState extends ConsumerState<AuditActorPicker> {
-  final _controller = TextEditingController();
-  final _requests = LatestRequestGuard();
-  final _rows = MasterDataTableRowsController<AuditActorOption>();
-  Timer? _searchDebounce;
-  AuditActorPage? _page;
-  int _retryPage = 1;
-  String _keyword = '';
-  bool _loading = false;
-  String? _error;
+  final _actors = <String, AuditActorOption>{};
+  int _loadRevision = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
-  }
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load(int page) async {
-    final generation = _requests.begin();
-    _retryPage = page;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final result = await ref
+  Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
+    final revision = ++_loadRevision;
+    final rows = <String, AuditActorOption>{};
+    var pageNumber = 1;
+    var totalPages = 1;
+    do {
+      final page = await ref
           .read(auditLogRepositoryProvider)
-          .actors(page: page, keyword: _keyword);
-      if (!mounted || !_requests.isCurrent(generation)) return;
-      setState(() {
-        _page = result;
-        _loading = false;
-      });
-    } on ApiException catch (error) {
-      if (!mounted || !_requests.isCurrent(generation)) return;
-      setState(() {
-        _error = error.message;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted || !_requests.isCurrent(generation)) return;
-      setState(() {
-        _error = '人员列表加载失败，请重试。';
-        _loading = false;
-      });
-    }
-  }
-
-  void _searchNow(String value) {
-    final keyword = value.trim();
-    if (keyword == _keyword) return;
-    _keyword = keyword;
-    _load(1);
-  }
-
-  void _scheduleSearch(String value) {
-    _searchDebounce?.cancel();
-    if (value.trim().isEmpty) {
-      _searchNow('');
-      return;
-    }
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) _searchNow(value);
-    });
+          .actors(page: pageNumber, size: 100, keyword: keyword);
+      if (!mounted || revision != _loadRevision) return const [];
+      if (page.page != pageNumber) throw StateError('人员目录分页响应不一致');
+      for (final actor in page.items) {
+        rows[actor.actorId] = actor;
+      }
+      totalPages = page.totalPages;
+      pageNumber++;
+    } while (pageNumber <= totalPages);
+    _actors.addAll(rows);
+    return [
+      for (final actor in rows.values)
+        UtenEmployeePickerItem(
+          id: actor.actorId,
+          name: actor.primaryLabel,
+          departmentId: actor.actorType == 'visitor'
+              ? 'audit-external-visitors'
+              : actor.departmentId,
+          departmentName: actor.department,
+          subtitle: [
+            if (actor.actorType == 'visitor') '访客',
+            if (actor.position?.trim().isNotEmpty == true)
+              actor.position!.trim(),
+            if (actor.lastActivityAt != null)
+              '最近操作：${_auditBeijingTime(actor.lastActivityAt)}',
+          ].join(' · '),
+        ),
+    ];
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final items = _page?.items ?? const <AuditActorOption>[];
-    return SafeArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s20,
-              UtenSpacing.s16,
-              UtenSpacing.s8,
-              UtenSpacing.s8,
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '人员目录',
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        '可选择员工或真实访客；没有操作记录时会显示空结果。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: '关闭',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s20),
-            child: Semantics(
-              textField: true,
-              label: '搜索人员姓名、账号或部门',
-              child: UtenSearchBar(
-                hint: '搜索姓名、账号或部门',
-                controller: _controller,
-                onInputChanged: (_) => _requests.begin(),
-                onChanged: _scheduleSearch,
-                autofocus: true,
-                // 防抖由本组件的 Timer 统一管理，便于失效旧请求。
-                debounce: Duration.zero,
-              ),
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Expanded(
-            child: UtenPagedPickerList<AuditActorOption>(
-              key: const Key('audit-actor-paged-list'),
-              items: items,
-              idOf: (actor) => actor.actorId,
-              rowsController: _rows,
-              currentPage: _page?.page ?? 1,
-              totalPages: _page?.totalPages ?? 1,
-              onPageChange: _load,
-              paginationScope: _keyword,
-              paginationRevision: _page,
-              loading: _loading,
-              error: _error,
-              onRetry: () => _load(_retryPage),
-              emptyMessage: _keyword.isEmpty
-                  ? '暂时没有可选择的人员'
-                  : '没有找到匹配的人员，可检查姓名或账号后重新搜索。',
-              padding: const EdgeInsets.symmetric(
-                horizontal: UtenSpacing.s12,
-                vertical: UtenSpacing.s8,
-              ),
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, actor) {
-                final actorKind =
-                    actor.actorType == 'visitor' || actor.department == '外部访客'
-                    ? '访客'
-                    : '员工';
-                final secondary = [
-                  actorKind,
-                  if (actor.account?.trim().isNotEmpty == true)
-                    '账号 ${actor.account!.trim()}',
-                  if (actor.department?.trim().isNotEmpty == true)
-                    actor.department!.trim(),
-                  if (actor.position?.trim().isNotEmpty == true)
-                    actor.position!.trim(),
-                ].join(' · ');
-                return Semantics(
-                  button: true,
-                  label: '选择 ${actor.primaryLabel}',
-                  child: ListTile(
-                    key: ValueKey('audit-actor-${actor.actorId}'),
-                    minVerticalPadding: UtenSpacing.s12,
-                    leading: CircleAvatar(
-                      child: Text(actor.primaryLabel.characters.first),
-                    ),
-                    title: Text(
-                      actor.primaryLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (secondary.isNotEmpty) Text(secondary),
-                        if (actor.lastActivityAt != null)
-                          Text(
-                            '最近操作：${_auditBeijingTime(actor.lastActivityAt)}',
-                          ),
-                      ],
-                    ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => Navigator.pop(context, actor),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UtenEmployeeSelectionPanel(
+    loader: _load,
+    title: '人员目录',
+    searchHint: '搜索部门 / 姓名 / 账号',
+    emptyMessage: '暂时没有可选择的人员',
+    onConfirm: (selection) {
+      if (selection.isEmpty) return;
+      final actor = _actors[selection.single.id];
+      if (actor != null) Navigator.pop(context, actor);
+    },
+  );
 }
 
 String _auditBeijingTime(String? iso) => DisplayDateTime.beijing(

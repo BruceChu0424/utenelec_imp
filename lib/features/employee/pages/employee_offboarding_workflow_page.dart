@@ -211,7 +211,7 @@ class _EmployeeOffboardingWorkflowPageState
     final repository = ref.read(dataHandoverRepositoryProvider);
     final rows = <DataHandoverCandidate>[];
     var page = 1;
-    var total = 1;
+    var totalPages = 1;
     do {
       final result = await repository.candidates(
         role: DataHandoverCandidateRole.target,
@@ -219,17 +219,22 @@ class _EmployeeOffboardingWorkflowPageState
         query: keyword,
       );
       rows.addAll(result.items);
-      total = result.total;
+      if (result.page != page) {
+        throw const FormatException('人员候选分页响应与请求不一致');
+      }
+      totalPages = result.totalPages;
       page++;
-    } while (rows.length < total && page <= 25);
-    return rows
+    } while (page <= totalPages);
+    return {for (final employee in rows) employee.employeeId: employee}.values
         .where((employee) => employee.employeeId != widget.employeeId)
         .map(
           (employee) => UtenEmployeePickerItem(
             id: employee.employeeId,
             name: employee.name,
             employeeCode: employee.code,
-            departmentName: [
+            departmentId: employee.departmentId,
+            departmentName: employee.departmentName,
+            subtitle: [
               if (employee.departmentName?.isNotEmpty == true)
                 employee.departmentName!,
               _employeeStatusLabel(employee.status),

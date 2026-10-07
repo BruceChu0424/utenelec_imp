@@ -3,6 +3,8 @@
 //
 // 问题 #6：模具「保管人」原来是纯搜索平铺列表，改成"先浏览部门再挑人"，更贴近老员工的
 // 使用习惯（不知道该搜什么名字时，按部门找人更直观）。
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_load_more_boundary.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +14,9 @@ import '../../../components/inputs/uten_employee_picker.dart'
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -57,7 +62,7 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
   );
   return showUtenAdaptivePanel<UtenEmployeePickerItem>(
     context: context,
-    drawerWidth: 720,
+    drawerWidth: math.max(720.0, MediaQuery.sizeOf(context).width * 0.5),
     builder: (_) => sheet,
   );
 }
@@ -377,7 +382,9 @@ class _DeptEmployeePickerSheetState
         id: employee.id,
         name: employee.fullName,
         employeeCode: employee.code,
-        departmentName: [
+        departmentId: employee.departmentId,
+        departmentName: employee.departmentName,
+        subtitle: [
           if (employee.departmentName != null) employee.departmentName!,
           if (employee.status != null) _employeeStatusLabel(employee.status!),
         ].join(' · '),
@@ -438,7 +445,48 @@ class _DeptEmployeePickerSheetState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final treeWidth = context.breakpoint.isCompact ? 150.0 : 240.0;
+    final treePane = UtenDepartmentTreeView(
+      nodes: widget.tree,
+      mode: UtenDepartmentTreeMode.single,
+      flatLevelColors: true,
+      expandOnRowTap: true,
+      showSearch: false,
+      header: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        child: UtenSearchBar(
+          controller: _keywordCtl,
+          hint: '搜索部门/员工姓名或工号',
+          onInputChanged: _onSearchInput,
+          onChanged: _applyGlobalSearch,
+        ),
+      ),
+      visibleFilterIds: _visibleFilterIds,
+      externalSearchQuery: _globalQuery,
+      externalSearchLoading: _loading && _globalQuery.isNotEmpty,
+      externalSearchError: _globalQuery.isEmpty
+          ? null
+          : (_searchLocationError ?? _error),
+      initiallyExpandDepth: 0,
+      selectedIds: _selectedDeptId == null ? const {} : {_selectedDeptId!},
+      nodeEnabledPredicate: (_) => true,
+      onToggleSelect: _onDeptTap,
+    );
+    final body = context.breakpoint.isCompact
+        ? Row(
+            children: [
+              SizedBox(width: 176, child: treePane),
+              const VerticalDivider(width: 1),
+              Expanded(child: _buildRightPane(theme)),
+            ],
+          )
+        : UtenSplitView(
+            persistenceKey: 'employeePicker.departmentTree',
+            initialLeadingWidth: _treeNaturalWidth(theme),
+            minLeadingWidth: 200,
+            maxLeadingWidth: 560,
+            leading: treePane,
+            trailing: _buildRightPane(theme),
+          );
     return Column(
       children: [
         Padding(
@@ -461,42 +509,7 @@ class _DeptEmployeePickerSheetState
           ),
         ),
         const Divider(height: 1),
-        Expanded(
-          child: Row(
-            children: [
-              SizedBox(
-                width: treeWidth,
-                child: UtenDepartmentTreeView(
-                  nodes: widget.tree,
-                  showSearch: false,
-                  header: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                    child: UtenSearchBar(
-                      controller: _keywordCtl,
-                      hint: '搜索部门/员工姓名或工号',
-                      onInputChanged: _onSearchInput,
-                      onChanged: _applyGlobalSearch,
-                    ),
-                  ),
-                  visibleFilterIds: _visibleFilterIds,
-                  externalSearchQuery: _globalQuery,
-                  externalSearchLoading: _loading && _globalQuery.isNotEmpty,
-                  externalSearchError: _globalQuery.isEmpty
-                      ? null
-                      : (_searchLocationError ?? _error),
-                  initiallyExpandDepth: 0,
-                  selectedIds: _selectedDeptId == null
-                      ? const {}
-                      : {_selectedDeptId!},
-                  nodeEnabledPredicate: (_) => true,
-                  onNodeTap: _onDeptTap,
-                ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(child: _buildRightPane(theme)),
-            ],
-          ),
-        ),
+        Expanded(child: body),
         UtenPickerConfirmBar(
           selectedCount: _picked == null ? 0 : 1,
           selectedLabel: _picked?.displayName,
@@ -504,6 +517,26 @@ class _DeptEmployeePickerSheetState
         ),
       ],
     );
+  }
+
+  double _treeNaturalWidth(ThemeData theme) {
+    final painter = TextPainter(textDirection: Directionality.of(context));
+    var widest = 0.0;
+    void measure(List<DepartmentNode> nodes) {
+      for (final node in nodes) {
+        painter.text = TextSpan(
+          text: node.name,
+          style: theme.textTheme.bodyMedium,
+        );
+        painter.layout();
+        widest = math.max(widest, painter.width);
+        measure(node.children);
+      }
+    }
+
+    measure(widget.tree);
+    painter.dispose();
+    return (widest + 65).clamp(200, 560);
   }
 
   Widget _buildRightPane(ThemeData theme) {
@@ -599,8 +632,9 @@ class _DeptEmployeePickerSheetState
           final picked = e.id == _picked?.id;
           return ListTile(
             selected: picked,
+            selectedTileColor: utenTableSelectedRowColor(theme),
             title: Text(e.displayName),
-            subtitle: e.departmentName == null ? null : Text(e.departmentName!),
+            subtitle: e.subtitle == null ? null : Text(e.subtitle!),
             trailing: picked
                 ? Icon(
                     Icons.check_circle_rounded,
@@ -665,6 +699,7 @@ class _DepartmentEmployeePickerFieldState
   late final TextEditingController _ctl;
   String? _id;
   int _loadSerial = 0;
+  int _selectionRevision = 0;
 
   @override
   void initState() {
@@ -681,6 +716,7 @@ class _DepartmentEmployeePickerFieldState
     super.didUpdateWidget(oldWidget);
     if (widget.initialId != oldWidget.initialId ||
         widget.initialName != oldWidget.initialName) {
+      _selectionRevision++;
       _id = (widget.initialId == null || widget.initialId!.isEmpty)
           ? null
           : widget.initialId;
@@ -690,10 +726,10 @@ class _DepartmentEmployeePickerFieldState
   }
 
   Future<void> _hydrateInitial() async {
+    final request = ++_loadSerial;
     final id = _id;
     final loader = widget.initialLoader;
     if (id == null || loader == null) return;
-    final request = ++_loadSerial;
     try {
       final item = await loader(id);
       if (!mounted || request != _loadSerial || _id != id || item == null) {
@@ -713,6 +749,7 @@ class _DepartmentEmployeePickerFieldState
 
   void _set(UtenEmployeePickerItem? item) {
     _loadSerial++;
+    _selectionRevision++;
     setState(() {
       _id = item?.id;
       _ctl.text = item?.displayName ?? '';
@@ -742,8 +779,10 @@ class _DepartmentEmployeePickerFieldState
               ),
       ),
       onTap: () async {
+        final revision = _selectionRevision;
         final item = await widget.onPick();
-        if (item != null) _set(item);
+        if (!mounted || revision != _selectionRevision || item == null) return;
+        _set(item);
       },
     );
   }

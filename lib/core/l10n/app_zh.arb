@@ -1,4 +1,10 @@
 {
+  "dashboardMoreTasks": "还有 {count} 项任务",
+  "@dashboardMoreTasks": {
+    "description": "今日概览单行待办中未展示的待处理件数",
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "dashboardMoreTasksTitle": "更多待办任务",
   "releaseNotesOpen": "查看本版本更新内容",
   "releaseNotesTitle": "版本更新",
   "releaseNotesClose": "知道了",

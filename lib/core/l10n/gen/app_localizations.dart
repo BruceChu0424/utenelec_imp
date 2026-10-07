@@ -100,6 +100,18 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// 今日概览单行待办中未展示的待处理件数
+  ///
+  /// In zh, this message translates to:
+  /// **'还有 {count} 项任务'**
+  String dashboardMoreTasks(int count);
+
+  /// No description provided for @dashboardMoreTasksTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'更多待办任务'**
+  String get dashboardMoreTasksTitle;
+
   /// No description provided for @releaseNotesOpen.
   ///
   /// In zh, this message translates to:

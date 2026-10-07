@@ -22,7 +22,12 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
-import '../../department/widgets/uten_department_picker.dart';
+import '../../department/widgets/uten_department_tree_view.dart';
+import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
+import '../../../core/responsive/breakpoint.dart';
 import '../models/managed_permission_department_forest.dart';
 import '../widgets/permission_action_badge.dart';
 import '../../../shared/auth/page_permission_delegation_models.dart';
@@ -57,7 +62,10 @@ Future<void> showPagePermissionDrawer(
     },
     pageBuilder: (context, _, _) {
       final media = MediaQuery.of(context);
-      final width = math.min(680.0, media.size.width * 0.96);
+      final width = math.min(
+        media.size.width,
+        math.max(720.0, media.size.width * 0.5),
+      );
       return Align(
         alignment: Alignment.centerRight,
         child: SizedBox(
@@ -86,7 +94,6 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   List<ManagedPermissionDepartment> _departments = const [];
   ManagedPermissionDepartmentForest _departmentForest =
       ManagedPermissionDepartmentForest.fromRows(const []);
-  int _departmentPickerRevision = 0;
   String? _departmentId;
   bool _departmentsLoading = true;
   String? _departmentsError;
@@ -102,6 +109,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   int _staffRequest = 0;
 
   PagePermissionStaffSummary? _selected;
+  PagePermissionStaffSummary? _pickedStaff;
   PagePermissionEmployeeDetail? _detail;
   bool _detailLoading = false;
   String? _detailError;
@@ -206,7 +214,6 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   Future<void> _changeDepartment(String? departmentId) async {
     if (departmentId == _departmentId) return;
     if (!await _confirmDiscard()) {
-      if (mounted) setState(() => _departmentPickerRevision++);
       return;
     }
     if (!mounted) return;
@@ -214,6 +221,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
       _detailRequest++;
       _detailLoading = false;
       _departmentId = departmentId;
+      _pickedStaff = null;
       _selected = null;
       _detail = null;
       _detailError = null;
@@ -233,7 +241,6 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
 
   void _onSearch(String value) {
     final normalized = value.trim();
-    if (normalized == _search) return;
     _search = normalized;
     _loadStaff();
   }
@@ -629,76 +636,69 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         description: '负责人关系请在人事的部门管理中设置，本权限面板不再维护负责人范围。',
       );
     }
-    return Column(
+    final theme = Theme.of(context);
+    final tree = UtenDepartmentTreeView(
+      nodes: _departmentForest.roots,
+      flatLevelColors: true,
+      mode: UtenDepartmentTreeMode.single,
+      showSearch: false,
+      initiallyExpandDepth: 0,
+      expandOnRowTap: true,
+      selectedIds: _departmentId == null ? const {} : {_departmentId!},
+      nodeEnabledPredicate: (node) =>
+          _departmentForest.selectableIds.contains(node.id),
+      onToggleSelect: (node) => _changeDepartment(node.id),
+      header: Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s8),
+        child: Column(
+          children: [
+            UtenSearchBar(
+              hint: '搜索姓名 / 工号',
+              onInputChanged: _onSearchInput,
+              onChanged: _onSearch,
+            ),
+            TextButton(
+              onPressed: () => _changeDepartment(null),
+              child: const Text('全部可管理部门'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final people = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _departmentFilter(),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenSearchBar(
-                hint: _departmentId == null
-                    ? '在全部可管理范围搜索姓名 / 工号'
-                    : '在该部门及子部门搜索姓名 / 工号',
-                onInputChanged: _onSearchInput,
-                onChanged: _onSearch,
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                _departmentId == null
-                    ? '共 $_total 人 · 当前全部可管理组织范围'
-                    : '共 $_total 人 · 所选部门及其子部门',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
+          padding: const EdgeInsets.all(UtenSpacing.s8),
+          child: Text(
+            '共 $_total 人',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
-        const Divider(height: 1),
         Expanded(child: _staffList()),
       ],
     );
-  }
-
-  Widget _departmentFilter() {
-    ManagedPermissionDepartment? selected;
-    for (final row in _departments) {
-      if (row.departmentId == _departmentId) {
-        selected = row;
-        break;
-      }
+    if (context.breakpoint.isCompact) {
+      return Row(
+        children: [
+          SizedBox(
+            width: math.min(176, MediaQuery.sizeOf(context).width * 0.42),
+            child: tree,
+          ),
+          const VerticalDivider(width: 1),
+          Expanded(child: people),
+        ],
+      );
     }
-    return UtenDepartmentPicker(
-      key: ValueKey(
-        'page-permission-department-${_departmentId ?? 'all'}-'
-        '$_departmentPickerRevision',
-      ),
-      mode: UtenDepartmentPickerMode.single,
-      treeOverride: _departmentForest.roots,
-      initialSelection: selected == null
-          ? const []
-          : [
-              DeptSelection(
-                id: selected.departmentId,
-                name: selected.departmentName,
-                fullPath: '',
-                level: selected.level,
-              ),
-            ],
-      label: '部门筛选(可选)',
-      hint: '全部可管理范围',
-      allowClear: true,
-      clearLabel: '显示全部可管理范围',
-      expandOnRowTap: true,
-      selectablePredicate: (node) =>
-          _departmentForest.selectableIds.contains(node.id),
-      onChanged: (selection) {
-        _changeDepartment(selection.isEmpty ? null : selection.single.id);
-      },
+    return UtenSplitView(
+      persistenceKey: 'pagePermission.staffDepartments',
+      initialLeadingWidth: 240,
+      minLeadingWidth: 200,
+      maxLeadingWidth: 560,
+      leading: tree,
+      trailing: people,
     );
   }
 
@@ -765,8 +765,15 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                   employee.positionName!,
               ].join(' · '),
             ),
-            trailing: _staffAccountStatus(employee),
-            onTap: () => _selectStaff(employee),
+            trailing: _pickedStaff?.employeeId == employee.employeeId
+                ? Icon(
+                    Icons.check_circle_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                  )
+                : _staffAccountStatus(employee),
+            selected: _pickedStaff?.employeeId == employee.employeeId,
+            selectedTileColor: utenTableSelectedRowColor(Theme.of(context)),
+            onTap: () => setState(() => _pickedStaff = employee),
           ),
         );
       },
@@ -1145,6 +1152,20 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
   }
 
   Widget _bottomBar(ThemeData theme) {
+    if (_selected == null) {
+      final picked = _pickedStaff;
+      return UtenPickerConfirmBar(
+        selectedCount: picked == null ? 0 : 1,
+        selectedLabel: picked == null
+            ? null
+            : formatEmployeeDisplayName(
+                picked.fullName ?? '未命名员工',
+                picked.code,
+              ),
+        onCancel: _close,
+        onConfirm: picked == null ? null : () => _selectStaff(picked),
+      );
+    }
     final changed = _pending.length;
     return SafeArea(
       top: false,

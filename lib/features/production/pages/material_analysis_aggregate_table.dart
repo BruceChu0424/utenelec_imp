@@ -1683,6 +1683,7 @@ final class _MaterialAggregateTableController {
   Future<void> pickWorker(_MaterialAggregate aggregate) async {
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return;
+    final revision = _revision;
     final workshops = groups.map(owner._tableWorkshopFor).toList();
     if (workshops.map((item) => item.id).toSet().length != 1 ||
         workshops.first.id == null) {
@@ -1697,7 +1698,7 @@ final class _MaterialAggregateTableController {
       loader: (keyword) async {
         final result = await owner.ref
             .read(employeeRepositoryProvider)
-            .list(
+            .listPickerCandidates(
               size: 30,
               search: keyword,
               departmentId: keyword?.trim().isEmpty != false
@@ -1706,17 +1707,27 @@ final class _MaterialAggregateTableController {
               includeSubtree: true,
             );
         return [
-          for (final employee in result.items)
+          for (final employee in result)
             UtenEmployeePickerItem(
               id: employee.id,
               name: employee.fullName,
               employeeCode: employee.code,
+              departmentId: employee.departmentId,
               departmentName: employee.departmentName,
             ),
         ];
       },
     );
-    if (!owner.mounted || picked == null) return;
+    if (!owner.mounted || picked == null || revision != _revision) return;
+    final currentGroups = workshopGroups(aggregate);
+    if (currentGroups.length != groups.length ||
+        currentGroups.any(
+          (group) =>
+              !groups.any((original) => original.key == group.key) ||
+              owner._tableWorkshopFor(group).id != workshop.id,
+        )) {
+      return;
+    }
     owner._mutateAggregateTable(() {
       final draft = begin(aggregate);
       draft.mixedWorker = false;

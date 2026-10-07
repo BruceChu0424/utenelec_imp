@@ -28,7 +28,9 @@ List<Map<String, dynamic>> draftEmployees(
       'id': item.id,
       'name': item.name,
       'employeeCode': item.employeeCode,
+      'departmentId': item.departmentId,
       'departmentName': item.departmentName,
+      'subtitle': item.subtitle,
     },
 ];
 
@@ -42,7 +44,9 @@ void restoreDraftEmployees(
       id: item['id'] as String,
       name: item['name'] as String? ?? '',
       employeeCode: item['employeeCode'] as String?,
+      departmentId: item['departmentId'] as String?,
       departmentName: item['departmentName'] as String?,
+      subtitle: item['subtitle'] as String?,
     );
     cache[employee.id] = employee;
   }

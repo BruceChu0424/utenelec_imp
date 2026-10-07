@@ -9,6 +9,14 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String dashboardMoreTasks(int count) {
+    return '$count more tasks';
+  }
+
+  @override
+  String get dashboardMoreTasksTitle => 'More pending tasks';
+
+  @override
   String get releaseNotesOpen => 'See what\'s new in this version';
 
   @override

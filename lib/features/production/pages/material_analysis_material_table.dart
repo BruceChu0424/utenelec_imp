@@ -4026,7 +4026,7 @@ abstract class _MaterialAnalysisMaterialTableState
       loader: (keyword) async {
         final result = await ref
             .read(employeeRepositoryProvider)
-            .list(
+            .listPickerCandidates(
               size: 30,
               search: keyword,
               departmentId: (keyword?.trim().isEmpty ?? true)
@@ -4035,17 +4035,22 @@ abstract class _MaterialAnalysisMaterialTableState
               includeSubtree: true,
             );
         return [
-          for (final employee in result.items)
+          for (final employee in result)
             UtenEmployeePickerItem(
               id: employee.id,
               name: employee.fullName,
               employeeCode: employee.code,
+              departmentId: employee.departmentId,
               departmentName: employee.departmentName,
             ),
         ];
       },
     );
-    if (picked == null || !mounted || _tableIssuedAssignmentOf(group) != null) {
+    if (picked == null ||
+        !mounted ||
+        _tableIssuedAssignmentOf(group) != null ||
+        _tableWorkshopFor(group).id != workshop.id ||
+        _tableWorkerFor(group).id != current.id) {
       return;
     }
     setState(() {

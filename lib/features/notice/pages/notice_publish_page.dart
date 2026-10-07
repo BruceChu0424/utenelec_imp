@@ -100,6 +100,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _celebrationPreviewRevision++;
     _titleController.text = data['title'] as String? ?? '';
     _contentController.text = data['content'] as String? ?? '';
     _actionRouteController.text = data['actionRoute'] as String? ?? '';
@@ -142,6 +143,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
   UtenEmployeePickerItem? _celebrationSubject;
   NoticeCelebrationPreview? _celebrationPreview;
   List<String> _selectedTemplates = const [];
+  // A → B → A 仍是新的选择；仅比较员工 ID 不能阻止旧 A 预览回写。
+  int _celebrationPreviewRevision = 0;
 
   // 标题自动套用追踪：标记标题由系统自动套入（非人工编辑），改对象时允许覆盖、
   // 清空时一并清空，修复「选 A→取消→选 B 标题仍为 A」的残留 bug。
@@ -163,6 +166,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     final preset = widget.presetType;
     if (preset != null && _publishableTypes.contains(preset)) {
       _type = preset;
@@ -171,6 +175,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
     }
     // 预设祝福对象（HR 子页「送祝福」按行透传）：首帧后异步预填对象 + 模板 + 标题。
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       if (widget.presetSubjectId != null && _type.isCelebratory) {
         await _seedPresetSubject();
       }
@@ -181,27 +186,49 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
   Future<void> _seedPresetSubject() async {
     final id = widget.presetSubjectId;
     if (id == null) return;
+    final type = _type;
+    final subjectIdBeforeRequest = _celebrationSubject?.id;
+    final revision = ++_celebrationPreviewRevision;
     try {
       final preview = await ref
           .read(noticeRepositoryProvider)
-          .previewCelebration(employeeId: id, type: _type);
-      if (!mounted) return;
+          .previewCelebration(employeeId: id, type: type);
+      if (!_celebrationPreviewIsCurrent(
+            revision,
+            type,
+            subjectIdBeforeRequest,
+          ) ||
+          widget.presetSubjectId != id) {
+        return;
+      }
       final selected = _celebrationSubject;
+      final canOverwriteTitle = _canOverwriteCelebrationTitle;
       setState(() {
         _celebrationSubject = UtenEmployeePickerItem(
           id: id,
           name: preview.subjectName,
           employeeCode: selected?.id == id ? selected?.employeeCode : null,
+          departmentId: selected?.id == id ? selected?.departmentId : null,
           departmentName: selected?.id == id ? selected?.departmentName : null,
         );
         _celebrationPreview = preview;
         _selectedTemplates = List<String>.from(preview.suggestedTemplates);
-        _titleController.text = preview.suggestedTitle;
-        _autoFilledTitle = preview.suggestedTitle;
-        _titleAutoFilled = true;
+        if (canOverwriteTitle) {
+          _titleController.text = preview.suggestedTitle;
+          _autoFilledTitle = preview.suggestedTitle;
+          _titleAutoFilled = true;
+        }
       });
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (!mounted) return;
+      if (_celebrationPreviewIsCurrent(
+            revision,
+            type,
+            subjectIdBeforeRequest,
+          ) &&
+          widget.presetSubjectId == id) {
+        context.appApiError(error);
+      }
     }
   }
 
@@ -223,12 +250,14 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
           id: item.id,
           name: item.name,
           employeeCode: item.code,
+          departmentId: item.departmentId,
           departmentName: item.departmentName,
         ),
     ];
   }
 
   void _onTypeChanged(NoticeType type) {
+    _celebrationPreviewRevision++;
     setState(() {
       _type = type;
       if (type.isCelebratory) {
@@ -244,6 +273,8 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
   Future<void> _onCelebrationSubjectChanged(
     UtenEmployeePickerItem? item,
   ) async {
+    final revision = ++_celebrationPreviewRevision;
+    final type = _type;
     if (item == null) {
       // 清空：若标题是我们自动套入的（用户未手改），一并清空，避免残留旧对象姓名。
       setState(() {
@@ -266,14 +297,11 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
     try {
       final preview = await ref
           .read(noticeRepositoryProvider)
-          .previewCelebration(employeeId: item.id, type: _type);
-      if (!mounted) return;
+          .previewCelebration(employeeId: item.id, type: type);
+      if (!_celebrationPreviewIsCurrent(revision, type, item.id)) return;
       // 标题可覆盖条件：空，或仍是我们上次自动套入的（用户未手改）。
       // 这样「选 A→取消→选 B」会把标题正确刷新为 B；手改过的标题则保留。
-      final current = _titleController.text.trim();
-      final autoTrim = _autoFilledTitle?.trim() ?? '';
-      final canOverwriteTitle =
-          current.isEmpty || (_titleAutoFilled && current == autoTrim);
+      final canOverwriteTitle = _canOverwriteCelebrationTitle;
       setState(() {
         _celebrationPreview = preview;
         _selectedTemplates = List<String>.from(preview.suggestedTemplates);
@@ -284,8 +312,28 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
         }
       });
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (!mounted) return;
+      if (_celebrationPreviewIsCurrent(revision, type, item.id)) {
+        context.appApiError(error);
+      }
     }
+  }
+
+  bool _celebrationPreviewIsCurrent(
+    int revision,
+    NoticeType type,
+    String? subjectId,
+  ) =>
+      formDraftIdentityIsCurrent &&
+      revision == _celebrationPreviewRevision &&
+      _kind == NoticeKind.normal &&
+      _type == type &&
+      _celebrationSubject?.id == subjectId;
+
+  bool get _canOverwriteCelebrationTitle {
+    final current = _titleController.text.trim();
+    return current.isEmpty ||
+        (_titleAutoFilled && current == (_autoFilledTitle?.trim() ?? ''));
   }
 
   bool get _hasSelectedAudience =>
@@ -523,6 +571,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
                 ],
                 selected: {_kind},
                 onSelectionChanged: (selection) {
+                  _celebrationPreviewRevision++;
                   setState(() {
                     _kind = selection.first;
                     if (_kind == NoticeKind.todo) {

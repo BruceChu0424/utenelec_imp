@@ -9,6 +9,14 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String dashboardMoreTasks(int count) {
+    return '还有 $count 项任务';
+  }
+
+  @override
+  String get dashboardMoreTasksTitle => '更多待办任务';
+
+  @override
   String get releaseNotesOpen => '查看本版本更新内容';
 
   @override

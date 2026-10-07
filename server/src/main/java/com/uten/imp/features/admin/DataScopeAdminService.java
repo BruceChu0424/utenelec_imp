@@ -229,17 +229,24 @@ public class DataScopeAdminService {
             default -> throw new IllegalStateException();
         };
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
-                        "SELECT e.id, e.full_name, e.code, e.status, count(*) AS cnt FROM " + fromClause
+                        "SELECT e.id, e.full_name, e.code, e.status, count(*) AS cnt, e.department_id, department.name AS department_name FROM " + fromClause
                                 + " JOIN employees e ON e.id = t.owner_employee_id"
                                 + " AND e.is_deleted=false"
-                                + " GROUP BY e.id, e.full_name, e.code, e.status ORDER BY cnt DESC, e.full_name, e.id LIMIT 1000"));
+                                + " LEFT JOIN departments department ON department.id=e.department_id"
+                                + " GROUP BY e.id, e.full_name, e.code, e.status, e.department_id, department.name ORDER BY cnt DESC, e.full_name, e.id LIMIT 5001"));
+        if (rows.size() > 5000) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "当前数据范围的归属人超过5000人，请缩小数据范围后重试");
+        }
         List<Map<String, Object>> out = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             String code = r[2] == null ? "" : r[2].toString();
             String status = r[3] == null ? "" : r[3].toString();
             out.add(Map.of("employeeId", r[0], "name", r[1], "code", code, "status", status,
                     "historicalOnly", !com.uten.imp.common.identity.CurrentEmployeeStatusPolicy.isCurrentEmployee(status),
-                    "count", ((Number) r[4]).longValue()));
+                    "count", ((Number) r[4]).longValue(),
+                    "departmentId", r[5] == null ? "" : r[5].toString(),
+                    "departmentName", r[6] == null ? "" : r[6].toString()));
         }
         return out;
     }

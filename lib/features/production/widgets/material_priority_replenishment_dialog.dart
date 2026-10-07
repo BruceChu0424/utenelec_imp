@@ -21,6 +21,7 @@ import '../models/production_material_analysis.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
 import 'material_supply_submit_confirm.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 Future<ProductionMaterialAnalysisView?>
 showMaterialPriorityReplenishmentDialog({
@@ -544,6 +545,10 @@ class _MaterialPriorityReplenishmentDialogState
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
                                   UtenEmployeePicker(
+                                    candidateScopeKey: (
+                                      'replenishment-owner',
+                                      _departmentId,
+                                    ),
                                     key: ValueKey(_worker?.id),
                                     label: '负责人',
                                     initial: _worker,
@@ -551,7 +556,7 @@ class _MaterialPriorityReplenishmentDialogState
                                     loader: (keyword) async {
                                       final result = await ref
                                           .read(employeeRepositoryProvider)
-                                          .list(
+                                          .listPickerCandidates(
                                             size: 30,
                                             search: keyword,
                                             statuses: const {
@@ -562,11 +567,14 @@ class _MaterialPriorityReplenishmentDialogState
                                             includeSubtree: true,
                                           );
                                       return [
-                                        for (final person in result.items)
+                                        for (final person in result)
                                           UtenEmployeePickerItem(
                                             id: person.id,
                                             name: person.fullName,
                                             employeeCode: person.code,
+                                            departmentId: person.departmentId,
+                                            departmentName:
+                                                person.departmentName,
                                           ),
                                       ];
                                     },

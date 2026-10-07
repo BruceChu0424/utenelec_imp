@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
-import 'package:uten_imp/components/layout/uten_paged_picker_list.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/repositories/audit_log_repository.dart';
@@ -14,46 +15,34 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   testWidgets(
-    'actor picker keeps both directions and selects an earlier actor',
+    'actor picker loads every page, groups departments and confirms identity',
     (tester) async {
       final repository = _ActorRepository();
       AuditActorOption? selected;
       await _pump(tester, repository, onSelected: (actor) => selected = actor);
-      final next = _list(tester).rowsController!.loadNextPage();
+      expect(find.byType(UtenSplitView), findsOneWidget);
+      expect(repository.calls.map((call) => call.$1), [1, 2, 3]);
+      await tester.tap(find.text('财务部').first);
       await tester.pumpAndSettle();
-      await next;
-      expect(_list(tester).rowsController!.items.map((row) => row.actorId), [
-        'actor-1',
-        'actor-2',
-      ]);
-      await _list(tester).onPageChange(3);
+      expect(find.text('人员1'), findsNothing);
+      expect(find.text('人员2'), findsOneWidget);
+      await tester.tap(find.text('人员2'));
       await tester.pumpAndSettle();
-      final previous = _list(tester).rowsController!.loadPreviousPage();
-      await tester.pumpAndSettle();
-      await previous;
-      expect(_list(tester).rowsController!.items.map((row) => row.actorId), [
-        'actor-2',
-        'actor-3',
-      ]);
-      final earlier = find.byKey(const ValueKey('audit-actor-actor-2'));
-      await tester.ensureVisible(earlier);
-      await tester.pumpAndSettle();
-      await tester.tap(earlier);
+      expect(selected, isNull);
+      await tester.tap(find.widgetWithText(FilledButton, '确定'));
       await tester.pumpAndSettle();
       expect(selected?.actorId, 'actor-2');
-      expect(repository.calls.map((call) => call.$1), [1, 2, 3, 2]);
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('actor search discards an older pending page response', (
+  testWidgets('actor search discards an older pending directory page', (
     tester,
   ) async {
     final pending = Completer<AuditActorPage>();
     final repository = _ActorRepository(pending: pending);
-    await _pump(tester, repository);
-    final next = _list(tester).rowsController!.loadNextPage();
-    await tester.pump();
+    await _pump(tester, repository, settle: false);
+    await tester.pump(const Duration(milliseconds: 300));
     final search = find.descendant(
       of: find.byType(UtenSearchBar),
       matching: find.byType(TextField),
@@ -61,26 +50,22 @@ void main() {
     await tester.enterText(search, 'new');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
+    expect(find.text('new人员1'), findsOneWidget);
     pending.complete(_ActorRepository.page(2));
     await tester.pumpAndSettle();
-    await next;
-    expect(_list(tester).rowsController!.items.map((row) => row.actorId), [
-      'new-1',
-    ]);
-    expect(_list(tester).currentPage, 1);
+    expect(find.text('new人员1'), findsOneWidget);
+    expect(find.text('人员1'), findsNothing);
+    expect(find.text('人员2'), findsNothing);
+    expect(find.byType(UtenEmployeeSelectionPanel), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
-
-UtenPagedPickerList<AuditActorOption> _list(WidgetTester tester) =>
-    tester.widget<UtenPagedPickerList<AuditActorOption>>(
-      find.byKey(const Key('audit-actor-paged-list')),
-    );
 
 Future<void> _pump(
   WidgetTester tester,
   _ActorRepository repository, {
   ValueChanged<AuditActorOption?>? onSelected,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = const Size(1000, 900);
   tester.view.devicePixelRatio = 1;
@@ -121,7 +106,11 @@ Future<void> _pump(
     ),
   );
   await tester.tap(find.text('打开人员'));
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
 }
 
 class _ActorRepository extends Fake implements AuditLogRepository {
@@ -133,13 +122,15 @@ class _ActorRepository extends Fake implements AuditLogRepository {
     items: [
       AuditActorOption(
         actorId: '${keyword?.isNotEmpty == true ? keyword : 'actor'}-$page',
-        name: '人员$page',
+        name: '${keyword?.isNotEmpty == true ? keyword : ''}人员$page',
+        departmentId: page == 1 ? 'sales' : 'finance',
+        department: page == 1 ? '销售部' : '财务部',
       ),
     ],
     page: page,
     size: 1,
-    total: 3,
-    totalPages: 3,
+    total: keyword?.isNotEmpty == true ? 1 : 3,
+    totalPages: keyword?.isNotEmpty == true ? 1 : 3,
   );
 
   @override

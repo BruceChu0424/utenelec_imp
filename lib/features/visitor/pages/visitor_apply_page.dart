@@ -329,6 +329,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
                           // 接待人只能按姓名先搜再选(至少 2 个字、最多 5 人、只列可对外接待的员工)，
                           // 不提供部门树、结果不带部门，外部账号翻不出公司名册。
                           UtenEmployeePicker(
+                            showDepartmentFilter: false,
                             loader: (kw) async {
                               final list = await ref
                                   .read(visitorRepositoryProvider)

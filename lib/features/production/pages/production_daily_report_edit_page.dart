@@ -77,6 +77,7 @@ import '../repositories/production_actual_output_supplement_repository.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../widgets/reportable_plan_line_picker.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
   const ProductionDailyReportEditPage({
@@ -1065,6 +1066,7 @@ class _ProductionDailyReportEditPageState
             id: p.id,
             name: p.fullName ?? '',
             employeeCode: p.code,
+            departmentId: p.departmentId,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -3065,6 +3067,10 @@ class _ProductionDailyReportEditPageState
 
   Widget _workerPicker() {
     return UtenEmployeeMultiPicker(
+      candidateScopeKey: (
+        'production-workers',
+        _departmentId ?? _productionDeptId,
+      ),
       key: ValueKey(_workers.map((worker) => worker.id).join('|')),
       enabled: _departmentId != null || _productionDeptId != null,
       label: '生产参与人员',
@@ -3082,19 +3088,19 @@ class _ProductionDailyReportEditPageState
         if (deptId == null) return const <UtenEmployeePickerItem>[];
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(
-              size: 100,
+            .listPickerCandidates(
               search: kw,
               statuses: const {'active', 'probation'},
               departmentId: deptId,
               includeSubtree: true,
             );
         return [
-          for (final e in res.items)
+          for (final e in res)
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
               employeeCode: e.code,
+              departmentId: e.departmentId,
               departmentName: e.departmentName,
             ),
         ];

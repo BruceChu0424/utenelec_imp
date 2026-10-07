@@ -68,14 +68,22 @@ public class ImpersonationService {
     /** 模拟目标候选（picker）：仅活跃员工；superAdmin 调用时数据范围不受限。搜索可进一步收窄。 */
     @Transactional(readOnly = true)
     public List<ImpersonationTargetDto> listTargets(String search) {
-        PageResponse<EmployeeListItem> page = employeeQueryService.list(
-                1, 200, search, Set.of("active"), null, false, null, null);
-        return page.getItems().stream()
-                .map(e -> new ImpersonationTargetDto(
-                        e.getId(), e.getFullName(),
-                        e.getCode(),
-                        e.getDepartmentName(), e.getPositionName()))
-                .toList();
+        var targets = new java.util.ArrayList<ImpersonationTargetDto>();
+        int pageNumber = 1;
+        PageResponse<EmployeeListItem> page;
+        do {
+            page = employeeQueryService.list(
+                    pageNumber++, 100, search, Set.of("active"), null, false, null, null);
+            for (var employee : page.getItems()) {
+                targets.add(new ImpersonationTargetDto(
+                        employee.getId(), employee.getFullName(), employee.getCode(),
+                        employee.getDepartmentName(), employee.getPositionName(), employee.getDepartmentId()));
+            }
+            if (targets.size() > 5000) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人员过多，请输入姓名或工号缩小范围");
+            }
+        } while (pageNumber <= page.getTotalPages());
+        return List.copyOf(targets);
     }
 
     /** 进入切换人: 再认证已由控制器核销, 这里签发绑定本人与本会话的限时模式凭证。 */

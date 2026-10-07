@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
@@ -11,6 +13,85 @@ import 'package:uten_imp/features/employee/widgets/department_employee_picker.da
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('部门人员字段打开后外部切换草稿，不接受旧滑窗的选择', (tester) async {
+    final initialId = ValueNotifier('before');
+    addTearDown(initialId.dispose);
+    final picked = Completer<UtenEmployeePickerItem?>();
+    String? changed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<String>(
+            valueListenable: initialId,
+            builder: (_, id, _) => DepartmentEmployeePickerField(
+              label: '保管人',
+              hint: '选择保管人',
+              initialId: id,
+              initialName: '人员$id',
+              onChanged: (id) => changed = id as String?,
+              onPick: () => picked.future,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byType(TextField));
+    initialId.value = 'after';
+    await tester.pump();
+    picked.complete(const UtenEmployeePickerItem(id: 'old', name: '旧选择'));
+    await tester.pump();
+
+    expect(changed, isNull);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      '人员after',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('部门人员字段关闭后旧滑窗返回不会写已销毁状态', (tester) async {
+    final picked = Completer<UtenEmployeePickerItem?>();
+    var changes = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: DepartmentEmployeePickerField(
+            label: '保管人',
+            hint: '选择保管人',
+            initialId: null,
+            initialName: null,
+            onChanged: (_) => changes++,
+            onPick: () => picked.future,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byType(TextField));
+    await tester.pumpWidget(const SizedBox.shrink());
+    picked.complete(const UtenEmployeePickerItem(id: 'old', name: '旧选择'));
+    await tester.pump();
+
+    expect(changes, 0);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('部门人员滑窗与客户选择器使用相同宽度、分栏与层级色', (tester) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pumpPicker(tester, _FakeEmployeeRepository());
+
+    expect(find.byType(UtenSplitView), findsOneWidget);
+    expect(tester.getSize(find.byType(UtenSplitView)).width, 960);
+    final tree = tester.widget<UtenDepartmentTreeView>(
+      find.byType(UtenDepartmentTreeView),
+    );
+    expect(tree.flatLevelColors, isTrue);
+    expect(tree.expandOnRowTap, isTrue);
+    expect(tree.mode, UtenDepartmentTreeMode.single);
+  });
+
   testWidgets('统一左侧搜索员工后展开所属部门并在右侧显示结果', (tester) async {
     final repository = _FakeEmployeeRepository();
     await tester.pumpWidget(

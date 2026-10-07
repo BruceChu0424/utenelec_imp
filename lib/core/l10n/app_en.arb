@@ -1,4 +1,6 @@
 {
+  "dashboardMoreTasks": "{count} more tasks",
+  "dashboardMoreTasksTitle": "More pending tasks",
   "releaseNotesOpen": "See what's new in this version",
   "releaseNotesTitle": "What's new",
   "releaseNotesClose": "Got it",

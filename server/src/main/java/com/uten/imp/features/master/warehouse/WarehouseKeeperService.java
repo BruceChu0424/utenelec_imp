@@ -71,7 +71,7 @@ public class WarehouseKeeperService {
     public List<WarehouseKeeper> keepers(UUID warehouseId) {
         requireWarehouse(warehouseId, false);
         return jdbc.sql("""
-                        SELECT e.id, e.full_name, e.code, d.name AS department_name,
+                        SELECT e.id, e.full_name, e.code, e.department_id, d.name AS department_name,
                                %s AS has_account, %s AS warehouse_member, %s AS duplicate_name
                         FROM warehouse_keepers keeper
                         JOIN employees e ON e.id = keeper.employee_id
@@ -84,6 +84,7 @@ public class WarehouseKeeperService {
                         rs.getObject("id", UUID.class),
                         rs.getString("full_name"),
                         rs.getString("code"),
+                        rs.getObject("department_id", UUID.class),
                         rs.getString("department_name"),
                         rs.getBoolean("has_account"),
                         rs.getBoolean("warehouse_member"),
@@ -167,9 +168,9 @@ public class WarehouseKeeperService {
     @Transactional(readOnly = true)
     public List<WarehouseKeeper> candidates(String keyword) {
         String search = keyword == null ? "" : keyword.strip();
-        return jdbc.sql("""
+        List<WarehouseKeeper> candidates = jdbc.sql("""
                         SELECT * FROM (
-                            SELECT e.id, e.full_name, e.code, d.name AS department_name,
+                            SELECT e.id, e.full_name, e.code, e.department_id, d.name AS department_name,
                                    %s AS has_account, %s AS warehouse_member, %s AS duplicate_name
                             FROM employees e
                             LEFT JOIN departments d ON d.id = e.department_id
@@ -179,18 +180,24 @@ public class WarehouseKeeperService {
                                    OR e.full_name ILIKE '%%' || :keyword || '%%'
                                    OR e.code ILIKE '%%' || :keyword || '%%')) candidate
                         ORDER BY warehouse_member DESC, has_account DESC, full_name, code
-                        LIMIT 50
+                        LIMIT 5001
                         """.formatted(ACTIVE_ACCOUNT_SQL, WAREHOUSE_MEMBER_SQL, DUPLICATE_NAME_SQL))
                 .param("keyword", search)
                 .query((rs, row) -> new WarehouseKeeper(
                         rs.getObject("id", UUID.class),
                         rs.getString("full_name"),
                         rs.getString("code"),
+                        rs.getObject("department_id", UUID.class),
                         rs.getString("department_name"),
                         rs.getBoolean("has_account"),
                         rs.getBoolean("warehouse_member"),
                         rs.getBoolean("duplicate_name")))
                 .list();
+        if (candidates.size() > 5000) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "候选人员超过5000人，请输入姓名或工号缩小范围");
+        }
+        return candidates;
     }
 
     // ---- helpers -------------------------------------------------------------------

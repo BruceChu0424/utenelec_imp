@@ -152,7 +152,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is SizedBox &&
-            widget.width == 420 &&
+            widget.width == 720 &&
             widget.height == double.infinity,
       ),
       findsOneWidget,

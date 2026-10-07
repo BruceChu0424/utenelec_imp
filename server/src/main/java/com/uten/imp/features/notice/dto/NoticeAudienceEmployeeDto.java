@@ -5,5 +5,6 @@ public record NoticeAudienceEmployeeDto(
         String id,
         String name,
         String code,
+        String departmentId,
         String departmentName) {
 }

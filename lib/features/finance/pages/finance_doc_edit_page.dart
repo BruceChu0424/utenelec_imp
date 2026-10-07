@@ -85,6 +85,7 @@ import '../widgets/finance_grid_columns.dart';
 import '../widgets/finance_entry_l10n.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 const _receiptKindArSettlement = 'AR_SETTLEMENT';
 const _receiptKindCustomerPrepayment = 'CUSTOMER_PREPAYMENT';
@@ -588,6 +589,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             id: p.id,
             name: p.fullName ?? '',
             employeeCode: p.code,
+            departmentId: p.departmentId,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -2840,18 +2842,19 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(
+            .listPickerCandidates(
               size: 30,
               search: kw,
               departmentId: deptId,
               includeSubtree: true,
             );
         return [
-          for (final e in res.items)
+          for (final e in res)
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
               employeeCode: e.code,
+              departmentId: e.departmentId,
               departmentName: e.departmentName,
             ),
         ];

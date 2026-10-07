@@ -50,11 +50,15 @@ class UtenDepartmentTreeView extends StatelessWidget {
     this.externalSearchLoading = false,
     this.externalSearchError,
     this.initiallyExpandedIds = const {},
+    this.flatLevelColors = false,
   });
 
   /// 额外强制默认展开的节点 id 集合（与 [initiallyExpandDepth] 叠加，不互斥）。
   /// 用于"只展开某个特定子节点，同级其它节点保持折叠"的场景（如模具车间选择器只展开生产部）。
   final Set<String> initiallyExpandedIds;
+
+  /// 选择滑窗与客户分类树一致的无缩进层级色；管理页面保持默认样式。
+  final bool flatLevelColors;
 
   /// 点击节点文字行时是否同时展开/收起子部门(查看类页面如部门管理设 true)。
   final bool expandOnRowTap;
@@ -106,7 +110,9 @@ class UtenDepartmentTreeView extends StatelessWidget {
     initiallyExpandDepth: initiallyExpandDepth,
     initiallyExpandedIds: initiallyExpandedIds,
     trailingBuilder: trailingBuilder,
-    leadingBuilder: (node, enabled) => _LevelTag(node.level, enabled: enabled),
+    leadingBuilder: flatLevelColors
+        ? null
+        : (node, enabled) => _LevelTag(node.level, enabled: enabled),
     passThrough: showCompanyRoot
         ? null
         : (node) => node.level == kCompanyDepartmentLevel,
@@ -120,6 +126,7 @@ class UtenDepartmentTreeView extends StatelessWidget {
     externalSearchQuery: externalSearchQuery,
     externalSearchLoading: externalSearchLoading,
     externalSearchError: externalSearchError,
+    flatLevelColors: flatLevelColors,
   );
 }
 

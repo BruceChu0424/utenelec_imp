@@ -25,7 +25,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class NoticeAudienceService {
 
-    private static final int MAX_SEARCH_RESULTS = 100;
+    private static final int MAX_SEARCH_RESULTS = 5000;
 
     private final JdbcClient jdbc;
 
@@ -33,10 +33,11 @@ public class NoticeAudienceService {
     @Transactional(readOnly = true)
     public List<NoticeAudienceEmployeeDto> searchEmployees(String search) {
         String keyword = search == null ? "" : search.trim();
-        return jdbc.sql("""
+        List<NoticeAudienceEmployeeDto> candidates = jdbc.sql("""
                         SELECT e.id,
                                e.full_name,
                                e.code,
+                               e.department_id,
                                d.name AS department_name
                         FROM employees e
                         JOIN users u ON u.employee_id = e.id
@@ -54,13 +55,19 @@ public class NoticeAudienceService {
                         LIMIT :limit
                         """)
                 .param("keyword", keyword)
-                .param("limit", MAX_SEARCH_RESULTS)
+                .param("limit", MAX_SEARCH_RESULTS + 1)
                 .query((rs, rowNum) -> new NoticeAudienceEmployeeDto(
                         rs.getObject("id", UUID.class).toString(),
                         rs.getString("full_name"),
                         rs.getString("code"),
+                        rs.getString("department_id"),
                         rs.getString("department_name")))
                 .list();
+        if (candidates.size() > MAX_SEARCH_RESULTS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "候选人员超过5000人，请输入姓名或工号缩小范围");
+        }
+        return candidates;
     }
 
     @Transactional(readOnly = true)

@@ -59,6 +59,7 @@ class ClientAccessCandidate {
     required this.code,
     required this.status,
     required this.activeAccount,
+    this.departmentId,
     this.departmentName,
   });
 
@@ -67,6 +68,7 @@ class ClientAccessCandidate {
   final String code;
   final String status;
   final bool activeAccount;
+  final String? departmentId;
   final String? departmentName;
 
   factory ClientAccessCandidate.fromJson(Map<String, dynamic> json) =>
@@ -76,6 +78,7 @@ class ClientAccessCandidate {
         code: json['code'] as String? ?? '',
         status: json['status'] as String? ?? '',
         activeAccount: json['activeAccount'] as bool? ?? false,
+        departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
       );
 }

@@ -8,5 +8,6 @@ public record ImpersonationTargetDto(
         String name,
         String employeeCode,
         String departmentName,
-        String positionName) {
+        String positionName,
+        UUID departmentId) {
 }

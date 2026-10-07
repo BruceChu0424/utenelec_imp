@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
@@ -257,6 +256,8 @@ void main() {
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.pumpAndSettle();
 
       // 普通页面（单根组）：不重复分组头，族行直接铺开。
       expect(find.text('销售管理 · 本页'), findsNothing);
@@ -313,6 +314,8 @@ void main() {
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.pumpAndSettle();
 
     // hub 树：根面组保留没被认领的码，子面组各成一个分组条。
     expect(find.text('销售管理 · 本页'), findsOneWidget);
@@ -335,6 +338,8 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '确定'));
     await tester.pumpAndSettle();
 
     // 编辑族三态开关：一键全开 = 新增+修改两颗都进待提交集合。
@@ -371,38 +376,22 @@ void main() {
       await tester.pumpWidget(_drawerApp(repository));
       await tester.pumpAndSettle();
 
-      final picker = tester.widget<UtenDepartmentPicker>(
-        find.byType(UtenDepartmentPicker),
+      final picker = tester.widget<UtenDepartmentTreeView>(
+        find.byType(UtenDepartmentTreeView),
       );
-      expect(picker.initialSelection, isEmpty);
-      expect(picker.treeOverride, isNotEmpty);
+      expect(picker.selectedIds, isEmpty);
+      expect(picker.nodes, isNotEmpty);
+      expect(picker.flatLevelColors, isTrue);
       expect(repository.requestedDepartments.first, isNull);
-      expect(find.text('全部可管理范围'), findsOneWidget);
-      expect(find.textContaining('销售一组'), findsOneWidget);
-
-      await tester.tap(
-        find.descendant(
-          of: find.byType(UtenDepartmentPicker),
-          matching: find.byType(InputDecorator),
-        ),
-      );
-      await tester.pumpAndSettle();
+      expect(find.text('全部可管理部门'), findsOneWidget);
       final tree = find.byType(UtenDepartmentTreeView);
       await tester.tap(find.descendant(of: tree, matching: find.text('销售一组')));
-      await tester.pump();
-      await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
-
       expect(repository.requestedDepartments.last, 'department-1');
-      expect(find.text('共 1 人 · 所选部门及其子部门'), findsOneWidget);
-
-      await tester.tap(
-        find.byKey(const ValueKey('uten-department-picker-clear')),
-      );
+      expect(find.text('共 1 人'), findsOneWidget);
+      await tester.tap(find.text('全部可管理部门'));
       await tester.pumpAndSettle();
-
       expect(repository.requestedDepartments.last, isNull);
-      expect(find.text('全部可管理范围'), findsOneWidget);
     },
   );
 
@@ -420,6 +409,8 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '确定'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('编辑（含新增与修改）'));
@@ -511,6 +502,8 @@ void main() {
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.pumpAndSettle();
 
       expect(
         find.byKey(const ValueKey('provision-selected-employee-dialog')),
@@ -544,6 +537,8 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '确定'));
     await tester.pumpAndSettle();
 
     expect(find.text('开通账号确认'), findsOneWidget);
@@ -580,6 +575,8 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '确定'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('provision-selected-employee-confirm')),

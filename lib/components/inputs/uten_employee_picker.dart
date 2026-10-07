@@ -1,9 +1,9 @@
 // UtenEmployeePicker - 抽屉式人员选择器（通用组件）
 //
 // 触发形态与 UtenDepartmentPicker 对齐：只读输入框样式 field
-//（显示选中人姓名(工号)），点击拉开抽屉：
+//（显示选中人姓名(工号)），点击拉开部门树 + 人员列表抽屉：
 // - compact：约 85% 屏高的底部抽屉；
-// - medium/expanded：右侧滑入的 420dp end drawer。
+// - medium/expanded：与客户选择器同宽的右侧滑入面板。
 // 响应式展示壳统一复用 showUtenAdaptivePanel。
 //
 // 抽屉内：标题行 + 关闭、UtenSearchBar（内置 300ms 防抖）调 loader、
@@ -11,42 +11,15 @@
 // 数据由调用方通过 loader 提供，本组件不关心 token / 接口来源。
 import 'package:flutter/material.dart';
 
-import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_skeleton.dart';
-import '../../shared/formatters/employee_display.dart';
-import '../layout/uten_adaptive_panel.dart';
-import '../layout/uten_picker_confirm_bar.dart';
 import 'required_field_decoration.dart';
+import 'uten_employee_picker_models.dart';
+import 'uten_employee_selection_panel.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
-import 'uten_search_bar.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
-/// 人员候选项：id / 姓名 / 工号 / 部门名。
-class UtenEmployeePickerItem {
-  const UtenEmployeePickerItem({
-    required this.id,
-    required this.name,
-    this.employeeCode,
-    this.departmentName,
-  });
-
-  final String id;
-  final String name;
-  final String? employeeCode;
-  final String? departmentName;
-
-  /// 选择器统一主展示：姓名(工号)，括号固定使用 ASCII 半角字符。
-  ///
-  /// 少数隐私受限或历史接口没有返回工号时回退为姓名，避免展示空括号。
-  String get displayName {
-    return formatEmployeeDisplayName(name, employeeCode);
-  }
-}
-
-/// 候选加载器：keyword 为 null/空表示不过滤。
-typedef UtenEmployeePickerLoader =
-    Future<List<UtenEmployeePickerItem>> Function(String? keyword);
+export 'uten_employee_picker_models.dart';
+export 'uten_employee_selection_panel.dart';
 
 /// 直接拉出人员选择面板（宽屏右侧滑入 / 窄屏底部抽屉），不经过表单字段壳。
 /// 供表格单元格等非表单场景点开即选；返回 null = 用户取消。
@@ -56,20 +29,23 @@ Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
   String title = '选择员工',
   String? selectedId,
   String? departmentName,
+  Object? candidateScopeKey,
+  bool showDepartmentFilter = true,
   String emptyMessage = '未找到匹配的人员',
   String? emptyDescription,
-}) {
-  return showUtenAdaptivePanel<UtenEmployeePickerItem>(
-    context: context,
-    builder: (_) => _EmployeePickerSheet(
-      loader: loader,
-      title: title,
-      selectedId: selectedId,
-      departmentName: departmentName,
-      emptyMessage: emptyMessage,
-      emptyDescription: emptyDescription,
-    ),
+}) async {
+  final selection = await showUtenEmployeeSelectionPanel(
+    context,
+    loader: loader,
+    title: title,
+    selectedId: selectedId,
+    departmentName: departmentName,
+    candidateScopeKey: candidateScopeKey,
+    showDepartmentFilter: showDepartmentFilter,
+    emptyMessage: emptyMessage,
+    emptyDescription: emptyDescription,
   );
+  return selection?.firstOrNull;
 }
 
 class UtenEmployeePicker extends StatefulWidget {
@@ -83,6 +59,8 @@ class UtenEmployeePicker extends StatefulWidget {
     this.hint = '请选择员工',
     this.validator,
     this.departmentName,
+    this.candidateScopeKey,
+    this.showDepartmentFilter = true,
     this.sheetTitle = '选择员工',
     this.allowClear = false,
     this.emptyMessage = '未找到匹配的人员',
@@ -109,6 +87,11 @@ class UtenEmployeePicker extends StatefulWidget {
   /// 当前选择范围的部门名（抽屉标题下方提示，不参与人员主展示）。
   final String? departmentName;
 
+  /// Stable business scope, e.g. the chosen workshop ID. Loader closures can
+  /// change on every build and are deliberately not used as identity.
+  final Object? candidateScopeKey;
+  final bool showDepartmentFilter;
+
   final String sheetTitle;
 
   final bool allowClear;
@@ -128,6 +111,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   final _fieldKey = GlobalKey<FormFieldState<UtenEmployeePickerItem?>>();
   UtenEmployeePickerItem? _selected;
   int _hydrateSerial = 0;
+  int _fieldVersion = 0;
 
   // ADR-150: the chosen person (name and employee code) is readable by the AI
   // assistant; choosing someone stays with the user (no setter).
@@ -171,7 +155,18 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   @override
   void didUpdateWidget(UtenEmployeePicker oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initial != oldWidget.initial) {
+    final initialChanged = widget.initial == null
+        ? oldWidget.initial != null
+        : !widget.initial!.sameSnapshot(oldWidget.initial);
+    final scopeChanged =
+        widget.candidateScopeKey != oldWidget.candidateScopeKey ||
+        widget.departmentName != oldWidget.departmentName ||
+        widget.showDepartmentFilter != oldWidget.showDepartmentFilter;
+    if (initialChanged || scopeChanged || widget.enabled != oldWidget.enabled) {
+      _fieldVersion++;
+      _hydrateSerial++;
+    }
+    if (initialChanged) {
       final next = widget.initial;
       final current = _selected;
       _selected =
@@ -183,21 +178,25 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
               id: next.id,
               name: next.name,
               employeeCode: current!.employeeCode,
+              departmentId: next.departmentId,
               departmentName: next.departmentName,
+              subtitle: next.subtitle,
+              enabled: next.enabled,
+              disabledReason: next.disabledReason,
             )
           : next;
-      _hydrateSelectedIfNeeded();
     }
+    if (initialChanged || scopeChanged) _hydrateSelectedIfNeeded();
   }
 
   /// 历史详情有时只带员工 id/姓名。复用当前 loader 按姓名补查一次工号，
   /// 让既有选中值也能升级为“姓名(工号)”；补查失败不阻塞表单。
   Future<void> _hydrateSelectedIfNeeded() async {
+    final request = ++_hydrateSerial;
     final target = _selected;
     if (target == null || target.employeeCode?.trim().isNotEmpty == true) {
       return;
     }
-    final request = ++_hydrateSerial;
     try {
       final keyword = target.name.trim();
       final items = await widget.loader(keyword.isEmpty ? null : keyword);
@@ -221,27 +220,34 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
   }
 
   Future<void> _open() async {
-    final sheet = _EmployeePickerSheet(
+    final version = ++_fieldVersion;
+    _hydrateSerial++;
+    final selection = await showUtenEmployeeSelectionPanel(
+      context,
       loader: widget.loader,
       title: widget.sheetTitle,
-      selectedId: _selected?.id,
+      initialSelection: [?_selected],
       departmentName: widget.departmentName,
+      candidateScopeKey: widget.candidateScopeKey,
+      showDepartmentFilter: widget.showDepartmentFilter,
       emptyMessage: widget.emptyMessage,
       emptyDescription: widget.emptyDescription,
     );
-    final result = await showUtenAdaptivePanel<UtenEmployeePickerItem>(
-      context: context,
-      builder: (_) => sheet,
-    );
-    final r = result;
-    if (r != null && mounted) {
-      setState(() => _selected = r);
-      _fieldKey.currentState?.didChange(_selected);
-      widget.onChanged(r);
+    final selected = selection?.firstOrNull;
+    if (selected == null ||
+        !mounted ||
+        !widget.enabled ||
+        version != _fieldVersion) {
+      return;
     }
+    setState(() => _selected = selected);
+    _fieldKey.currentState?.didChange(_selected);
+    widget.onChanged(selected);
   }
 
   void _clear() {
+    _fieldVersion++;
+    _hydrateSerial++;
     setState(() => _selected = null);
     _fieldKey.currentState?.didChange(null);
     widget.onChanged(null);
@@ -326,186 +332,6 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// 抽屉内容：标题 + 搜索 + 结果列表（点选即关）。
-class _EmployeePickerSheet extends StatefulWidget {
-  const _EmployeePickerSheet({
-    required this.loader,
-    required this.title,
-    required this.emptyMessage,
-    this.selectedId,
-    this.departmentName,
-    this.emptyDescription,
-  });
-
-  final UtenEmployeePickerLoader loader;
-  final String title;
-  final String? selectedId;
-  final String? departmentName;
-  final String emptyMessage;
-  final String? emptyDescription;
-
-  @override
-  State<_EmployeePickerSheet> createState() => _EmployeePickerSheetState();
-}
-
-class _EmployeePickerSheetState extends State<_EmployeePickerSheet> {
-  String _keyword = '';
-  bool _loading = true;
-  Object? _error;
-  List<UtenEmployeePickerItem> _items = const [];
-
-  /// 已点选（高亮）的人员；底部「确定」才 pop 返回（二次操作契约）。
-  UtenEmployeePickerItem? _picked;
-  int _requestSerial = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final request = ++_requestSerial;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final kw = _keyword.trim();
-      final items = await widget.loader(kw.isEmpty ? null : kw);
-      if (!mounted || request != _requestSerial) return;
-      setState(() {
-        _items = items;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted || request != _requestSerial) return;
-      setState(() {
-        _error = e;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (widget.departmentName != null)
-                      Text(
-                        widget.departmentName!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: MaterialLocalizations.of(context).closeButtonTooltip,
-                icon: const Icon(Icons.close_rounded),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: UtenSearchBar(
-            hint: '搜索姓名 / 工号',
-            onInputChanged: (value) {
-              _keyword = value;
-              _requestSerial++;
-              setState(() {
-                _loading = true;
-                _error = null;
-              });
-            },
-            onChanged: (v) {
-              _keyword = v;
-              _load();
-            },
-          ),
-        ),
-        Expanded(
-          child: _loading
-              ? const UtenSkeletonList()
-              : _error != null
-              ? UtenEmpty.error(
-                  message: '$_error',
-                  actionLabel: '重试',
-                  onAction: _load,
-                )
-              : _items.isEmpty
-              ? UtenEmpty(
-                  icon: Icons.person_off_outlined,
-                  message: _keyword.trim().isEmpty
-                      ? widget.emptyMessage
-                      : '未找到匹配的人员',
-                  description: _keyword.trim().isEmpty
-                      ? widget.emptyDescription
-                      : null,
-                )
-              : ListView.separated(
-                  itemCount: _items.length,
-                  separatorBuilder: (_, _) =>
-                      const Divider(height: 1, indent: 16, endIndent: 16),
-                  itemBuilder: (context, i) {
-                    final e = _items[i];
-                    final picked = e.id == _picked?.id;
-                    final isSelected = picked || e.id == widget.selectedId;
-                    return ListTile(
-                      selected: isSelected,
-                      leading: isSelected
-                          ? Icon(
-                              Icons.check_rounded,
-                              color: theme.colorScheme.primary,
-                            )
-                          : Icon(
-                              Icons.person_outline_rounded,
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                      title: Text(e.displayName),
-                      subtitle: e.departmentName == null
-                          ? null
-                          : Text(e.departmentName!),
-                      trailing: picked
-                          ? Icon(
-                              Icons.check_circle_rounded,
-                              size: 20,
-                              color: theme.colorScheme.primary,
-                            )
-                          : null,
-                      onTap: () => setState(() => _picked = e),
-                    );
-                  },
-                ),
-        ),
-        UtenPickerConfirmBar(
-          selectedCount: _picked == null ? 0 : 1,
-          selectedLabel: _picked?.displayName,
-          onConfirm: () => Navigator.of(context).pop(_picked),
-        ),
-      ],
     );
   }
 }

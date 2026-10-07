@@ -15,6 +15,7 @@ class WarehouseKeeper {
     required this.employeeId,
     required this.name,
     this.code,
+    this.departmentId,
     this.departmentName,
     this.hasAccount = true,
     this.warehouseMember = true,
@@ -24,6 +25,7 @@ class WarehouseKeeper {
   final String employeeId;
   final String name;
   final String? code;
+  final String? departmentId;
   final String? departmentName;
 
   /// 有启用中的登录账号(没有账号 = 不是有效负责人：看不到任务、收不到通知)。
@@ -48,6 +50,7 @@ class WarehouseKeeper {
         employeeId: json['employeeId'].toString(),
         name: (json['name'] as String?) ?? '',
         code: json['code'] as String?,
+        departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
         hasAccount: json['hasAccount'] != false,
         warehouseMember: json['warehouseMember'] != false,

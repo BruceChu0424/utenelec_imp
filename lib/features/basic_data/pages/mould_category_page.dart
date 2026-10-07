@@ -454,6 +454,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                 id: employee.id,
                 name: employee.fullName ?? '',
                 employeeCode: employee.code,
+                departmentId: employee.departmentId,
                 departmentName: employee.departmentName,
               );
             },

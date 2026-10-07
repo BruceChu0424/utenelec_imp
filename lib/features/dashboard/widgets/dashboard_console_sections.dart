@@ -1,12 +1,14 @@
 // 工作台「今日概览」合并面板：标题栏、横向指标带与待办任务共用一块面板。
 // 指标从未读通知右侧依次排列，空间不足时换行；宽屏右侧放待办任务，
-// 窄屏待办移到指标下方。待办大屏两列封顶，超出部分可「查看更多」。
+// 窄屏待办移到指标下方。待办只显示一行，剩余任务通过行末入口查看。
 // 使用真实计数、截止时间与目标路由。
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/feedback/uten_live_pulse_dot.dart';
 import '../../../components/feedback/uten_notification_badge.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -326,27 +328,15 @@ class _StripMetric extends StatelessWidget {
   }
 }
 
-/// 待办区：小节头（标题 + 排布说明 + 总数徽章）+ 瓦片网格。
-/// 大屏两列封顶（用户口径 2026-09-28「两个卡片一行就行」）；折叠态最多
-/// 显示 [_collapsedLimit] 张，超出在末尾给「查看更多」，点开全量可收起。
-class _TodoSide extends StatefulWidget {
+/// 待办区：小节头与单行瓦片，剩余待办在独立面板查看。
+class _TodoSide extends StatelessWidget {
   const _TodoSide({required this.todos, required this.departmentName});
 
   final List<DashboardTodo> todos;
   final String departmentName;
 
   @override
-  State<_TodoSide> createState() => _TodoSideState();
-}
-
-class _TodoSideState extends State<_TodoSide> {
-  static const int _collapsedLimit = 4;
-
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
-    final todos = widget.todos;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -357,48 +347,18 @@ class _TodoSideState extends State<_TodoSide> {
         if (todos.isEmpty)
           _ZoneEmpty(
             icon: Icons.task_alt_rounded,
-            message: widget.departmentName.isEmpty
+            message: departmentName.isEmpty
                 ? '本部门当前没有待办'
-                : '${widget.departmentName}当前没有待办',
+                : '$departmentName当前没有待办',
           )
-        else ...[
-          _TodoTileGrid(
-            todos: _expanded
-                ? _ordered()
-                : _ordered().take(_collapsedLimit).toList(),
-          ),
-          if (todos.length > _collapsedLimit)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s16,
-                UtenSpacing.s4,
-                UtenSpacing.s16,
-                UtenSpacing.s12,
-              ),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _expanded = !_expanded),
-                  icon: Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                  ),
-                  label: Text(
-                    _expanded
-                        ? '收起'
-                        : '查看更多（还有 ${todos.length - _collapsedLimit} 项）',
-                  ),
-                ),
-              ),
-            ),
-        ],
+        else
+          _TodoTileRow(todos: _ordered()),
       ],
     );
   }
 
   /// 紧急优先，其次临近截止，其余保持服务端顺序。
   List<DashboardTodo> _ordered() {
-    final todos = widget.todos;
     return [...todos]..sort((a, b) {
       final urgency = b.urgentCount.compareTo(a.urgentCount);
       if (urgency != 0) return urgency;
@@ -462,9 +422,9 @@ class _TodoZoneHeader extends StatelessWidget {
   }
 }
 
-/// 待办瓦片网格：大屏最多两列并排，窄屏按实际可用宽度退化为单列。
-class _TodoTileGrid extends StatelessWidget {
-  const _TodoTileGrid({required this.todos});
+/// 待办最多显示一行、两张卡；为剩余任务入口预留同行空间。
+class _TodoTileRow extends StatelessWidget {
+  const _TodoTileRow({required this.todos});
 
   final List<DashboardTodo> todos;
 
@@ -479,36 +439,139 @@ class _TodoTileGrid extends StatelessWidget {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final minWidth =
-              300 * MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
-          // 大屏两列封顶（2026-09-28 用户口径「两个卡片一行就行」）：瓦片承载
-          // 标题/摘要/倒计时/操作，三四列一行太窄挤；列数不随待办数放大。
-          final columns = ((constraints.maxWidth + 12) / (minWidth + 12))
+          final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.6);
+          final minWidth = 300 * scale;
+          const gap = UtenSpacing.s12;
+          final capacity = ((constraints.maxWidth + gap) / (minWidth + gap))
               .floor()
               .clamp(1, 2);
-          final width = (constraints.maxWidth - (columns - 1) * 12) / columns;
-          return Wrap(
-            spacing: 12,
-            runSpacing: 12,
+          final hasMore = todos.length > capacity;
+          final moreWidth = hasMore
+              ? (120 * scale).clamp(0.0, constraints.maxWidth * .34).toDouble()
+              : 0.0;
+          final visibleCount = hasMore
+              ? ((constraints.maxWidth - moreWidth) / (minWidth + gap))
+                    .floor()
+                    .clamp(1, capacity)
+              : todos.length;
+          final remaining = todos.skip(visibleCount).toList();
+          final remainingCount = remaining.fold<int>(
+            0,
+            (sum, todo) => sum + todo.count,
+          );
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final todo in todos)
-                SizedBox(
-                  key: ValueKey('dashboard-todo-${todo.id}'),
-                  width: width,
-                  child: _TodoTile(todo: todo),
+              for (var i = 0; i < visibleCount; i++) ...[
+                if (i > 0) const SizedBox(width: gap),
+                Expanded(
+                  child: _TodoTile(
+                    key: ValueKey('dashboard-todo-${todos[i].id}'),
+                    todo: todos[i],
+                  ),
                 ),
+              ],
+              if (remaining.isNotEmpty) ...[
+                const SizedBox(width: gap),
+                SizedBox(
+                  width: moreWidth,
+                  child: TextButton(
+                    key: const ValueKey('dashboard-todo-more'),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s4,
+                      ),
+                    ),
+                    onPressed: () => _showRemaining(context, remaining),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: UtenSpacing.s12,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.more_horiz_rounded),
+                          const SizedBox(height: UtenSpacing.s8),
+                          Text(
+                            AppLocalizations.of(
+                              context,
+                            ).dashboardMoreTasks(remainingCount),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           );
         },
       ),
     );
   }
+
+  Future<void> _showRemaining(
+    BuildContext context,
+    List<DashboardTodo> remaining,
+  ) async {
+    final route = await showUtenAdaptivePanel<String>(
+      context: context,
+      drawerWidth: 520,
+      builder: (panelContext) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s16,
+              UtenSpacing.s8,
+              UtenSpacing.s8,
+              UtenSpacing.s8,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    AppLocalizations.of(panelContext).dashboardMoreTasksTitle,
+                    style: Theme.of(panelContext).textTheme.titleMedium,
+                  ),
+                ),
+                CloseButton(onPressed: () => Navigator.pop(panelContext)),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              itemCount: remaining.length,
+              separatorBuilder: (_, _) =>
+                  const SizedBox(height: UtenSpacing.s12),
+              itemBuilder: (context, index) {
+                final todo = remaining[index];
+                return _TodoTile(
+                  key: ValueKey('dashboard-more-todo-${todo.id}'),
+                  todo: todo,
+                  onTap: todo.route == null
+                      ? null
+                      : () => Navigator.pop(panelContext, todo.route),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+    // 使用工作台的路由上下文记录来源，先关闭面板再进入办理页。
+    if (!context.mounted || route == null) return;
+    goFrom(context, route);
+  }
 }
 
 /// 待办瓦片：面板内的浅底浮块（不自带边框，靠底色与面板表面区分）。
 class _TodoTile extends StatelessWidget {
-  const _TodoTile({required this.todo});
+  const _TodoTile({super.key, required this.todo, this.onTap});
   final DashboardTodo todo;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -534,7 +597,7 @@ class _TodoTile extends StatelessWidget {
           child: InkWell(
             onTap: todo.route == null
                 ? null
-                : () => goFrom(context, todo.route!),
+                : onTap ?? () => goFrom(context, todo.route!),
             child: Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),
               child: Column(

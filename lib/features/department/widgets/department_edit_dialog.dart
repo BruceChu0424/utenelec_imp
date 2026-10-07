@@ -167,6 +167,7 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
       _manager = UtenEmployeePickerItem(
         id: e!.managerId!,
         name: e.managerName!,
+        departmentId: e.id,
         departmentName: e.name,
       );
     }
@@ -382,6 +383,7 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
             if (_canAssignManager && widget.managerLoader != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               UtenEmployeePicker(
+                candidateScopeKey: ('department-manager', widget.editing?.id),
                 loader: widget.managerLoader!,
                 initial: _manager,
                 label: '部门负责人',

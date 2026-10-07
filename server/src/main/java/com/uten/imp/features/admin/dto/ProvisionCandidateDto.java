@@ -15,4 +15,5 @@ public record ProvisionCandidateDto(
         String name,
         String code,
         String departmentName,
-        boolean hasPhone) {}
+        boolean hasPhone,
+        UUID departmentId) {}

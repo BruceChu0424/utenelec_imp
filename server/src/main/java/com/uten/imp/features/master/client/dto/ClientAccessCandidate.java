@@ -7,6 +7,7 @@ public record ClientAccessCandidate(
         UUID employeeId,
         String name,
         String code,
+        UUID departmentId,
         String departmentName,
         String status,
         boolean activeAccount) {

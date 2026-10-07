@@ -9,6 +9,14 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String dashboardMoreTasks(int count) {
+    return '남은 작업 $count건';
+  }
+
+  @override
+  String get dashboardMoreTasksTitle => '추가 대기 작업';
+
+  @override
   String get releaseNotesOpen => '이 버전의 업데이트 보기';
 
   @override

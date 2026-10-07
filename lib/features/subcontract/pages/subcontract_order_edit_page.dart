@@ -80,6 +80,7 @@ import '../widgets/subcontract_grid_columns.dart';
 import '../widgets/subcontract_goods_picker.dart';
 import '../widgets/subcontract_link_picker.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 /// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
 ///
@@ -297,6 +298,7 @@ class _SubcontractOrderEditPageState
             id: p.id,
             name: p.fullName ?? '',
             employeeCode: p.code,
+            departmentId: p.departmentId,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -1980,18 +1982,19 @@ class _SubcontractOrderEditPageState
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(
+            .listPickerCandidates(
               size: 30,
               search: kw,
               departmentId: deptId,
               includeSubtree: true,
             );
         return [
-          for (final e in res.items)
+          for (final e in res)
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
               employeeCode: e.code,
+              departmentId: e.departmentId,
               departmentName: e.departmentName,
             ),
         ];

@@ -26,6 +26,7 @@ import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
 import 'finance_asset_revision_section.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 const _assetReviewerActions = <String>{
   'APPROVE',
@@ -962,18 +963,19 @@ class _FinanceAssetActionInputState
   Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
     final result = await ref
         .read(employeeRepositoryProvider)
-        .list(
+        .listPickerCandidates(
           size: 30,
           search: keyword,
           departmentId: _department?.id,
           includeSubtree: true,
         );
     return [
-      for (final employee in result.items)
+      for (final employee in result)
         UtenEmployeePickerItem(
           id: employee.id,
           name: employee.fullName,
           employeeCode: employee.code,
+          departmentId: employee.departmentId,
           departmentName: employee.departmentName,
         ),
     ];
@@ -1083,6 +1085,7 @@ class _FinanceAssetActionInputState
                       UtenInput(label: '新地点', controller: _location),
                     if (transfer)
                       UtenEmployeePicker(
+                        candidateScopeKey: ('asset-transfer', _department?.id),
                         key: ValueKey(
                           'asset-transfer-employee-${_department?.id}',
                         ),

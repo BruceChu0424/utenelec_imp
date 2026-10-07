@@ -9,13 +9,15 @@
 // 3. 空态说的是「本部门」而不是旧的「当前权限下」——这是此前改口径的用户可见面；
 // 4. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
 // 5. 375px 窄屏不溢出(指标横排换行，待办在下方)；
-//    待办超 4 张折叠 + 末尾「查看更多」点开全量可收起；
+//    待办最多一行，末尾剩余任务数按 count 求和，点击独立面板查看；
 // 6. 截止倒计时芯片只在有 dueAt 的待办上出现，逾期/未逾期两种措辞都对。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_live_pulse_dot.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/widgets/dashboard_console_sections.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -55,6 +57,7 @@ void main() {
     int urgentCount = 0,
     String tone = 'warning',
     DateTime? dueAt,
+    String? route = '/expense/approval',
   }) => DashboardTodo(
     id: id,
     title: title,
@@ -62,7 +65,7 @@ void main() {
     count: count,
     urgentCount: urgentCount,
     tone: tone,
-    route: '/expense/approval',
+    route: route,
     sourceType: 'FINANCE',
     sourceId: null,
     dueAt: dueAt,
@@ -78,14 +81,18 @@ void main() {
   }) => ProviderScope(
     overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
     child: MaterialApp(
-      home: MediaQuery(
-        data: MediaQueryData(
+      locale: const Locale('zh'),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
           size: size,
           disableAnimations: reduceMotion,
           textScaler: textScaler,
         ),
-        child: Scaffold(body: SingleChildScrollView(child: child)),
+        child: child!,
       ),
+      home: Scaffold(body: SingleChildScrollView(child: child)),
     ),
   );
 
@@ -252,7 +259,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('375px 窄屏：指标横排换行，瓦片与面板不溢出', (tester) async {
+  testWidgets('375px 窄屏大字号：指标横排换行，待办及倒计时不溢出', (tester) async {
     tester.view.physicalSize = const Size(375, 812);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -267,50 +274,83 @@ void main() {
             metric(id: 'notice-unread', title: '未读通知', value: '25'),
           ],
           todos: [
-            todo(),
+            todo(dueAt: DateTime.now().subtract(const Duration(hours: 47))),
             todo(id: 'visitor-approval', title: '你有 1 项访客申请待审批', count: 1),
           ],
         ),
         size: const Size(375, 812),
+        textScaler: const TextScaler.linear(1.5),
       ),
     );
     await tester.pumpAndSettle();
 
-    // 指标不折叠，三项都在；待办单列纵排。
+    // 指标不折叠，三项都在；待办只显示一张，剩余入口仍在同一行。
     expect(find.text('待排产'), findsOneWidget);
     expect(find.text('执行中订单'), findsOneWidget);
     expect(find.text('未读通知'), findsOneWidget);
+    expect(find.text('你有 3 项报销申请待审批'), findsOneWidget);
+    expect(find.text('你有 1 项访客申请待审批'), findsNothing);
+    expect(find.text('还有 1 项任务'), findsOneWidget);
+    expect(find.text('已逾期 47 小时'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('dashboard-todo-more'))).dy,
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('dashboard-todo-expense-approval')),
+          )
+          .dy,
+    );
     expect(tester.takeException(), isNull);
   });
 
-  // 2026-09-28 用户口径「放不下就最后显示 点击查看更多」：折叠态最多 4 张瓦片，
-  // 末尾给「查看更多」，点开全量、可收起。
-  testWidgets('待办超过 4 张折叠到 4 张 + 查看更多，点开全量可收起', (tester) async {
+  testWidgets('剩余任务按 count 求和，独立面板关闭后主面板仍是一行', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       host(
         panel(
           todos: [
-            // id 单字符：瓦片 key = dashboard-todo-{id}，双段拼接易写错。
             for (var i = 0; i < 6; i++)
-              todo(id: 't$i', title: '待办 $i', count: 1),
+              todo(id: 't$i', title: '待办 $i', count: i + 1),
           ],
         ),
+        size: const Size(1440, 900),
       ),
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('dashboard-todo-t4')), findsNothing);
-    expect(find.textContaining('查看更多（还有 2 项）'), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard-todo-t0')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard-todo-t1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('dashboard-todo-t2')), findsNothing);
+    // 四张隐藏卡片各含 3、4、5、6 项，入口应显示 18 项任务。
+    expect(find.text('还有 18 项任务'), findsOneWidget);
+    expect(find.text('21'), findsOneWidget);
+    final originalHeight = tester
+        .getSize(find.byType(DashboardOverviewPanel))
+        .height;
 
-    await tester.tap(find.textContaining('查看更多'));
+    await tester.tap(find.byKey(const ValueKey('dashboard-todo-more')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('dashboard-todo-t4')), findsOneWidget);
-    expect(find.byKey(const ValueKey('dashboard-todo-t5')), findsOneWidget);
-    expect(find.text('收起'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('dashboard-more-todo-t2')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('dashboard-more-todo-t5')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('dashboard-more-todo-t0')), findsNothing);
+    expect(find.text('收起'), findsNothing);
 
-    await tester.tap(find.text('收起'));
+    await tester.tap(find.byType(CloseButton));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('dashboard-todo-t4')), findsNothing);
+    expect(find.byKey(const ValueKey('dashboard-more-todo-t2')), findsNothing);
+    expect(find.byKey(const ValueKey('dashboard-todo-t2')), findsNothing);
+    expect(find.text('还有 18 项任务'), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(DashboardOverviewPanel)).height,
+      originalHeight,
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -329,12 +369,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('你有 5 项工资批次待复核'), findsNothing);
+    expect(find.text('还有 5 项任务'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('dashboard-todo-more')));
+    await tester.pumpAndSettle();
     expect(find.text('你有 5 项工资批次待复核'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('desktop todos cap at two per row: a/b share a row, c wraps', (
-    tester,
-  ) async {
+  testWidgets('桌面待办只一行：前两张与剩余入口并排，第三张不换行', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -356,13 +399,85 @@ void main() {
     final second = tester.getTopLeft(
       find.byKey(const ValueKey('dashboard-todo-b')),
     );
-    final third = tester.getTopLeft(
-      find.byKey(const ValueKey('dashboard-todo-c')),
+    final more = tester.getTopLeft(
+      find.byKey(const ValueKey('dashboard-todo-more')),
     );
-    // 大屏两列封顶（2026-09-28 用户口径）：前两张同行并排，第三张换行。
+    // 2026-10-07 用户口径：主面板最多一行，剩余任务通过末尾入口查看。
     expect(first.dy, second.dy);
     expect(first.dx, lessThan(second.dx));
-    expect(third.dy, greaterThan(second.dy));
+    expect(second.dy, more.dy);
+    expect(second.dx, lessThan(more.dx));
+    expect(find.byKey(const ValueKey('dashboard-todo-c')), findsNothing);
+    expect(find.text('还有 3 项任务'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('隐藏任务点击后关闭面板，并保留工作台 returnTo 与原路由参数', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = GoRouter(
+      initialLocation: '/dashboard',
+      routes: [
+        GoRoute(
+          path: '/dashboard',
+          builder: (_, _) => Scaffold(
+            body: SingleChildScrollView(
+              child: panel(
+                todos: [
+                  todo(id: 'a'),
+                  todo(id: 'b'),
+                  todo(
+                    id: 'hidden',
+                    title: '隐藏报销审批',
+                    route: '/expense/approval?status=pending',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        GoRoute(
+          path: '/expense/approval',
+          builder: (_, _) => const Scaffold(body: Text('报销审批落点')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // MaterialPage 可能保留透明、不可关闭的 barrier；这里只追踪面板遮罩。
+    final panelBarrier = find.byWidgetPredicate(
+      (widget) => widget is ModalBarrier && widget.dismissible,
+    );
+    expect(panelBarrier, findsNothing);
+    expect(find.text('隐藏报销审批'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('dashboard-todo-more')));
+    await tester.pumpAndSettle();
+    expect(find.byType(CloseButton), findsOneWidget);
+    expect(panelBarrier, findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('dashboard-more-todo-hidden')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('报销审批落点'), findsOneWidget);
+    expect(router.state.uri.path, '/expense/approval');
+    expect(router.state.uri.queryParameters, {
+      'status': 'pending',
+      'returnTo': '/dashboard',
+    });
+    expect(find.byType(CloseButton), findsNothing);
+    expect(panelBarrier, findsNothing);
+    expect(router.canPop(), isFalse);
     expect(tester.takeException(), isNull);
   });
 }

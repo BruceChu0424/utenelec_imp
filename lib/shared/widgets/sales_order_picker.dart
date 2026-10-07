@@ -24,6 +24,7 @@ import '../../features/employee/repositories/employee_repository.dart';
 import '../../features/sales/models/sales_doc.dart';
 import '../../features/sales/repositories/sales_repository.dart';
 import '../models/paged_result.dart';
+import '../../features/employee/repositories/employee_picker_candidates.dart';
 
 // 调用方（财务预收等）只依赖列表项类型与已审状态常量，不再直接 import 销售 feature 模型。
 export '../../features/sales/models/sales_doc.dart'
@@ -266,7 +267,7 @@ class _SalesOrderPickerSheetState
                     loader: (kw) async {
                       final res = await ref
                           .read(employeeRepositoryProvider)
-                          .list(
+                          .listPickerCandidates(
                             size: 30,
                             search: kw,
                             departmentId: (kw == null || kw.isEmpty)
@@ -275,11 +276,12 @@ class _SalesOrderPickerSheetState
                             includeSubtree: true,
                           );
                       return [
-                        for (final e in res.items)
+                        for (final e in res)
                           UtenEmployeePickerItem(
                             id: e.id,
                             name: e.fullName,
                             employeeCode: e.code,
+                            departmentId: e.departmentId,
                             departmentName: e.departmentName,
                           ),
                       ];

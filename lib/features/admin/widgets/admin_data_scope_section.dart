@@ -231,7 +231,9 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
         id: candidate.employeeId,
         name: candidate.name,
         employeeCode: candidate.code,
-        departmentName: candidate.historicalOnly
+        departmentId: candidate.departmentId,
+        departmentName: candidate.departmentName,
+        subtitle: candidate.historicalOnly
             ? '历史只读 · 原负责人名下 ${candidate.count} 条数据'
             : '负责 ${candidate.count} 条数据',
       ),
@@ -245,7 +247,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
             UtenEmployeePickerItem(
               id: id,
               name: '未知员工',
-              departmentName: '已授权，但当前没有归属数据',
+              subtitle: '已授权，但当前没有归属数据',
             ),
     ];
   }

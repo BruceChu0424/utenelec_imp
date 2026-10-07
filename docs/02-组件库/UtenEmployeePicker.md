@@ -3,7 +3,8 @@
 > 源码：[`uten_employee_picker.dart`](../../lib/components/inputs/uten_employee_picker.dart)、
 > [`uten_employee_multi_picker.dart`](../../lib/components/inputs/uten_employee_multi_picker.dart)；
 > 部门树变体见 [UtenDepartmentEmployeePicker](UtenDepartmentEmployeePicker.md)；
-> 最后核对：2026-08-27。
+> 共用面板：[`uten_employee_selection_panel.dart`](../../lib/components/inputs/uten_employee_selection_panel.dart)；
+> 最后核对：2026-10-07。
 
 ## 一、适用范围
 
@@ -12,6 +13,15 @@
 - `showUtenDepartmentEmployeePicker`：先浏览部门树再选员工，或按姓名/工号跨部门搜索。
 
 业务页面不应重新拼一套员工弹窗。候选加载由调用方注入，公共组件只负责交互、状态和统一展示。
+
+单选和多选共用 `UtenEmployeeSelectionPanel`：宽屏右滑窗宽度为 `max(720, 屏宽 × 50%)`，
+左侧部门栏、右侧人员列表、深绿层级色、拖动分割线、选中行颜色与销售客户选择器一致；窄屏为底部双栏抽屉。
+搜索放左栏顶部，支持部门、姓名和工号。点选只更改抽屉中的选择，确定才回填，取消不更改原值。
+多选跨部门和搜索保留已选人员，清空后也可以确定返回空集合；负责人等单人字段继续单选。
+
+左栏只由当前业务接口已授权返回的候选生成，不额外调用人事目录。按 `departmentId` 分组，
+同名部门不合并；缺少部门 ID 的候选归入“未提供部门”，不从姓名或提示文字推测部门。
+访客申请的接待人搜索保持隐私规则，通过 `showDepartmentFilter: false` 关闭部门目录。
 
 ## 二、身份展示契约
 
@@ -52,16 +62,25 @@ UtenEmployeePickerItem(
   id: employee.id,
   name: employee.fullName,
   employeeCode: employee.code,
+  departmentId: employee.departmentId,
   departmentName: employee.departmentName,
+  subtitle: '在职',
 )
 ```
 
 - 选中回写使用稳定员工 UUID `id`；`姓名(工号)`只用于展示。
 - loader 搜索应覆盖姓名和工号，并只允许最新请求回写。
+- 候选范围会随车间、部门或业务对象切换的字段传 `candidateScopeKey`；范围或上游选中值改变后，旧抽屉不得回填。
+- `departmentName` 仅放部门名称，状态、岗位、无账号提示和归属条数放 `subtitle`。
+- 候选必须完整分页，不能把首 50/100 人当作完整部门目录；常规员工仓储复用 `listPickerCandidates`。
+- 专用候选接口保留各自权限和资格；超过支持的目录上限须明确提示缩小搜索范围，不能悄悄截断。
 - 已选员工不得因分页不在首屏而消失；历史员工无法再进入候选时保留安全回显。
 - 外部访客目录继续遵守最小隐私字段，不为满足内部展示规则额外暴露员工工号。
 
 ## 六、回归测试
+
+- [`uten_employee_selection_panel_test.dart`](../../test/components/inputs/uten_employee_selection_panel_test.dart)：
+  部门 UUID 分组、单选确认、多选跨部门、取消与清空、禁选、失败重试、异步竞态和窄屏大字。
 
 - [`uten_employee_picker_display_test.dart`](../../test/components/inputs/uten_employee_picker_display_test.dart)：
   ASCII 括号、主行/副行、确认栏、历史补查和多选 Chip。

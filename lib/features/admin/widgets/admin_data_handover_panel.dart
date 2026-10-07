@@ -95,12 +95,19 @@ class _AdminDataHandoverPanelState
       final result = await repository.candidates(
         role: DataHandoverCandidateRole.source,
         page: page,
+        size: 100,
         query: keyword,
       );
+      if (result.total > 5000) {
+        throw ApiException('VALIDATION_FAILED', '候选人员超过5000人，请输入姓名或工号缩小范围');
+      }
+      if (result.items.isEmpty && rows.length < result.total) {
+        throw ApiException('CONFLICT', '候选人员已变化，请重新搜索');
+      }
       rows.addAll(result.items);
       total = result.total;
       page++;
-    } while (rows.length < total && page <= 25);
+    } while (rows.length < total);
     return rows
         .where((employee) => employee.employeeId != widget.targetEmployeeId)
         .map(
@@ -108,11 +115,9 @@ class _AdminDataHandoverPanelState
             id: employee.employeeId,
             name: employee.name,
             employeeCode: employee.code,
-            departmentName: [
-              if (employee.departmentName?.isNotEmpty == true)
-                employee.departmentName!,
-              _statusLabel(employee.status),
-            ].join(' · '),
+            departmentId: employee.departmentId,
+            departmentName: employee.departmentName,
+            subtitle: _statusLabel(employee.status),
           ),
         )
         .toList(growable: false);

@@ -12,5 +12,6 @@ public record AuditActorOption(
         String name,
         String department,
         String position,
-        OffsetDateTime lastActivityAt) {
+        OffsetDateTime lastActivityAt,
+        UUID departmentId) {
 }

@@ -33,6 +33,7 @@ class NoticeAudienceEmployee {
     required this.id,
     required this.name,
     required this.code,
+    this.departmentId,
     this.departmentName,
   });
 
@@ -40,6 +41,7 @@ class NoticeAudienceEmployee {
   final String id;
   final String name;
   final String code;
+  final String? departmentId;
   final String? departmentName;
 
   factory NoticeAudienceEmployee.fromJson(Map<String, dynamic> json) {
@@ -47,6 +49,7 @@ class NoticeAudienceEmployee {
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
       code: json['code'] as String? ?? '',
+      departmentId: json['departmentId'] as String?,
       departmentName: json['departmentName'] as String?,
     );
   }

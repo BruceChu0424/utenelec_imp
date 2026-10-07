@@ -88,6 +88,7 @@ List<MasterFieldDef> buildSupplierFields(
           id: employee.id,
           name: employee.fullName ?? '',
           employeeCode: employee.code,
+          departmentId: employee.departmentId,
           departmentName: employee.departmentName,
         );
       },

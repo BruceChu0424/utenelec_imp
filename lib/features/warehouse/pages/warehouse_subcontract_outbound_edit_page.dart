@@ -68,6 +68,7 @@ import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../repositories/subcontract_outbound_detail_loader.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 /// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
 ///
@@ -373,6 +374,7 @@ class _WarehouseSubcontractOutboundEditPageState
               id: p.id,
               name: p.fullName ?? '',
               employeeCode: p.code,
+              departmentId: p.departmentId,
               departmentName: p.departmentName,
             ),
           );
@@ -1001,18 +1003,19 @@ class _WarehouseSubcontractOutboundEditPageState
                     : null;
                 final res = await ref
                     .read(employeeRepositoryProvider)
-                    .list(
+                    .listPickerCandidates(
                       size: 30,
                       search: kw,
                       departmentId: deptId,
                       includeSubtree: true,
                     );
                 return [
-                  for (final e in res.items)
+                  for (final e in res)
                     UtenEmployeePickerItem(
                       id: e.id,
                       name: e.fullName,
                       employeeCode: e.code,
+                      departmentId: e.departmentId,
                       departmentName: e.departmentName,
                     ),
                 ];

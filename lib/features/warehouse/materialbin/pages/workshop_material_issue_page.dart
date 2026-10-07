@@ -44,6 +44,7 @@ import '../repositories/workshop_material_repository.dart';
 import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_line_grid.dart';
 import '../widgets/workshop_material_first_use_card.dart';
+import '../../../employee/repositories/employee_picker_candidates.dart';
 
 /// 仓库任务中心「车间内料仓」大类 (发料完成后返回这里)。
 final String wmWarehouseTaskCenterPath = Uri(
@@ -353,7 +354,7 @@ class _WorkshopMaterialIssuePageState
     final kw = keyword?.trim() ?? '';
     final result = await ref
         .read(employeeRepositoryProvider)
-        .list(
+        .listPickerCandidates(
           size: 30,
           search: kw.isEmpty ? null : kw,
           // 没输入搜索词时只列本车间 (含下级) 的人; 输入后全公司搜。
@@ -361,11 +362,12 @@ class _WorkshopMaterialIssuePageState
           includeSubtree: kw.isEmpty,
         );
     return [
-      for (final e in result.items)
+      for (final e in result)
         UtenEmployeePickerItem(
           id: e.id,
           name: e.fullName,
           employeeCode: e.code,
+          departmentId: e.departmentId,
           departmentName: e.departmentName,
         ),
     ];
@@ -712,6 +714,7 @@ class _WorkshopMaterialIssuePageState
             SizedBox(
               width: 280,
               child: UtenEmployeePicker(
+                candidateScopeKey: ('workshop-receiver', _workshopId),
                 key: ValueKey(
                   'wm-issue-receiver-$_workshopId-${_receiver?.id}',
                 ),

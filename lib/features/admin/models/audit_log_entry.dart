@@ -195,6 +195,7 @@ class AuditActorOption {
     this.displayName,
     this.name,
     this.department,
+    this.departmentId,
     this.position,
     this.lastActivityAt,
   });
@@ -205,6 +206,7 @@ class AuditActorOption {
   final String? displayName;
   final String? name;
   final String? department;
+  final String? departmentId;
   final String? position;
   final String? lastActivityAt;
 
@@ -226,6 +228,7 @@ class AuditActorOption {
         displayName: json['displayName'] as String?,
         name: json['name'] as String?,
         department: json['department'] as String?,
+        departmentId: json['departmentId'] as String?,
         position: json['position'] as String?,
         lastActivityAt: json['lastActivityAt'] as String?,
       );

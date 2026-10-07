@@ -844,7 +844,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   Future<void> _pickActor() async {
     final picked = await showUtenAdaptivePanel<AuditActorOption>(
       context: context,
-      drawerWidth: 640,
+      drawerWidth: math.max(720, MediaQuery.sizeOf(context).width * 0.5),
       compactHeightFactor: 0.95,
       builder: (_) => const AuditActorPicker(),
     );

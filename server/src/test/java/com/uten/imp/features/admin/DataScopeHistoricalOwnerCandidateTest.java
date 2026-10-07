@@ -20,11 +20,12 @@ class DataScopeHistoricalOwnerCandidateTest {
     @Test
     void resignedOwnerWithRawRowsIsReturnedAsHistoricalOnly() {
         UUID owner = UUID.randomUUID();
+        UUID department = UUID.randomUUID();
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(
-                List.<Object[]>of(new Object[]{owner, "离职业务员", "E009", "resigned", 7L}));
+                List.<Object[]>of(new Object[]{owner, "离职业务员", "E009", "resigned", 7L, department, "销售组"}));
         DataScopeAdminService service = new DataScopeAdminService(
                 em, mock(TxSessionVars.class), mock(AdminUserSupport.class),
                 mock(SecurityContextCurrentUser.class), mock(DataScopeCasGuard.class),
@@ -38,6 +39,8 @@ class DataScopeHistoricalOwnerCandidateTest {
                 "code", "E009",
                 "status", "resigned",
                 "historicalOnly", true,
-                "count", 7L));
+                "count", 7L,
+                "departmentId", department.toString(),
+                "departmentName", "销售组"));
     }
 }

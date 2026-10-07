@@ -31,6 +31,7 @@ import '../repositories/finance_asset_category_repository.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_entry_l10n.dart';
 import 'finance_asset_ui.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 Future<bool> showFinanceAssetForm(
   BuildContext context, {
@@ -356,6 +357,7 @@ class _FinanceAssetFormSurfaceState
           id: profile.id,
           name: profile.fullName ?? '',
           employeeCode: profile.code,
+          departmentId: profile.departmentId,
           departmentName: profile.departmentName,
         );
       });
@@ -367,18 +369,19 @@ class _FinanceAssetFormSurfaceState
   Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
     final result = await ref
         .read(employeeRepositoryProvider)
-        .list(
+        .listPickerCandidates(
           size: 30,
           search: keyword,
           departmentId: _departmentId,
           includeSubtree: true,
         );
     return [
-      for (final employee in result.items)
+      for (final employee in result)
         UtenEmployeePickerItem(
           id: employee.id,
           name: employee.fullName,
           employeeCode: employee.code,
+          departmentId: employee.departmentId,
           departmentName: employee.departmentName,
         ),
     ];
@@ -681,6 +684,10 @@ class _FinanceAssetFormSurfaceState
                                         controller: _costCenterCode,
                                       ),
                                       UtenEmployeePicker(
+                                        candidateScopeKey: (
+                                          'asset-custodian',
+                                          _departmentId,
+                                        ),
                                         key: ValueKey(
                                           'asset-responsible-${widget.ledger.apiValue}-$_custodianId',
                                         ),

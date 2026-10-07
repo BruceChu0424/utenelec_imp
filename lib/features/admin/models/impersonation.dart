@@ -7,6 +7,7 @@ class ImpersonationTarget {
     required this.employeeId,
     required this.name,
     this.employeeCode,
+    this.departmentId,
     this.departmentName,
     this.positionName,
   });
@@ -14,6 +15,7 @@ class ImpersonationTarget {
   final String employeeId;
   final String name;
   final String? employeeCode;
+  final String? departmentId;
   final String? departmentName;
   final String? positionName;
 
@@ -22,6 +24,7 @@ class ImpersonationTarget {
         employeeId: json['employeeId'] as String,
         name: (json['name'] as String?) ?? '',
         employeeCode: json['employeeCode'] as String?,
+        departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
         positionName: json['positionName'] as String?,
       );

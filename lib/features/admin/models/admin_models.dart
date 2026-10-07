@@ -370,6 +370,8 @@ class DataScopeOwner {
     required this.count,
     this.code,
     this.status,
+    this.departmentId,
+    this.departmentName,
     this.historicalOnly = false,
   });
 
@@ -378,6 +380,8 @@ class DataScopeOwner {
   final String? code;
   final int count;
   final String? status;
+  final String? departmentId;
+  final String? departmentName;
   final bool historicalOnly;
 
   factory DataScopeOwner.fromJson(Map<String, dynamic> json) => DataScopeOwner(
@@ -386,6 +390,8 @@ class DataScopeOwner {
     code: json['code'] as String?,
     count: (json['count'] as num?)?.toInt() ?? 0,
     status: json['status'] as String?,
+    departmentId: json['departmentId'] as String?,
+    departmentName: json['departmentName'] as String?,
     historicalOnly: json['historicalOnly'] as bool? ?? false,
   );
 }
@@ -439,12 +445,14 @@ class AccountProvisionCandidate {
     required this.name,
     required this.code,
     required this.hasPhone,
+    this.departmentId,
     this.departmentName,
   });
 
   final String employeeId;
   final String name;
   final String code;
+  final String? departmentId;
   final String? departmentName;
 
   /// 已登记手机号（登录账号=手机号，缺失时无法开通）。
@@ -462,6 +470,7 @@ class AccountProvisionCandidate {
         employeeId: json['employeeId'] as String,
         name: json['name'] as String? ?? '',
         code: json['code'] as String? ?? '',
+        departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
         hasPhone: json['hasPhone'] as bool? ?? false,
       );

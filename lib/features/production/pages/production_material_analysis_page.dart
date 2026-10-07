@@ -56,6 +56,7 @@ import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_quantity_apportionment.dart';

@@ -29,6 +29,7 @@ import '../widgets/department_edit_dialog.dart';
 import '../widgets/department_overview_pane.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../widgets/uten_department_tree_view.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 class DepartmentPage extends ConsumerStatefulWidget {
   const DepartmentPage({super.key});
@@ -350,18 +351,18 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   ) async {
     final result = await ref
         .read(employeeRepositoryProvider)
-        .list(
-          size: 100,
+        .listPickerCandidates(
           search: keyword,
           statuses: const {'active', 'probation', 'onLeave'},
           departmentId: departmentId,
         );
-    return result.items
+    return result
         .map(
           (employee) => UtenEmployeePickerItem(
             id: employee.id,
             name: employee.fullName,
             employeeCode: employee.code,
+            departmentId: employee.departmentId,
             departmentName: employee.departmentName,
           ),
         )

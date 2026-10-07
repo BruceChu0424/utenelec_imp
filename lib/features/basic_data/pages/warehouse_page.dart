@@ -886,7 +886,6 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
   UtenEmployeePickerItem _itemOf(WarehouseKeeper keeper) {
     final l10n = AppLocalizations.of(context);
     final notes = [
-      if (keeper.departmentName?.isNotEmpty == true) keeper.departmentName!,
       if (!keeper.hasAccount) l10n.warehouseKeeperNoAccount,
       if (keeper.duplicateName) l10n.warehouseKeeperDuplicateName,
     ];
@@ -894,7 +893,9 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
       id: keeper.employeeId,
       name: keeper.name,
       employeeCode: keeper.code,
-      departmentName: notes.isEmpty ? null : notes.join(' · '),
+      departmentId: keeper.departmentId,
+      departmentName: keeper.departmentName,
+      subtitle: notes.isEmpty ? null : notes.join(' · '),
     );
   }
 

@@ -82,6 +82,7 @@ import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../warehouse/repositories/warehouse_place_suggestion_repository.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
   const SubcontractDocEditPage({super.key, required this.docType, this.id});
@@ -418,6 +419,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             id: p.id,
             name: p.fullName ?? '',
             employeeCode: p.code,
+            departmentId: p.departmentId,
             departmentName: p.departmentName,
           );
         } catch (_) {
@@ -1356,18 +1358,19 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(
+            .listPickerCandidates(
               size: 30,
               search: kw,
               departmentId: deptId,
               includeSubtree: true,
             );
         return [
-          for (final e in res.items)
+          for (final e in res)
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
               employeeCode: e.code,
+              departmentId: e.departmentId,
               departmentName: e.departmentName,
             ),
         ];

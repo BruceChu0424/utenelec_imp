@@ -81,6 +81,7 @@ import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 import '../repositories/procurement_inbound_repository.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 class InboundArrivalRegistrationPage extends ConsumerStatefulWidget {
   const InboundArrivalRegistrationPage({
@@ -481,6 +482,7 @@ class _InboundArrivalRegistrationPageState
             id: p.id,
             name: p.fullName ?? '',
             employeeCode: p.code,
+            departmentId: p.departmentId,
             departmentName: p.departmentName,
           );
         } catch (_) {}
@@ -1461,18 +1463,19 @@ class _InboundArrivalRegistrationPageState
             : null;
         final res = await ref
             .read(employeeRepositoryProvider)
-            .list(
+            .listPickerCandidates(
               size: 30,
               search: kw,
               departmentId: deptId,
               includeSubtree: true,
             );
         return [
-          for (final e in res.items)
+          for (final e in res)
             UtenEmployeePickerItem(
               id: e.id,
               name: e.fullName,
               employeeCode: e.code,
+              departmentId: e.departmentId,
               departmentName: e.departmentName,
             ),
         ];

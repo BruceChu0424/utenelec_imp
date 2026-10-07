@@ -22,6 +22,7 @@ import '../providers/production_department_provider.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../repositories/production_repository.dart';
 import 'production_flow_stage_cell.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 String _segmentRateText(ProductionExecutionSegmentView segment) =>
     !segment.overproductionPolicyApplies
@@ -451,13 +452,14 @@ class _ProductionExecutionSegmentsCardState
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     UtenEmployeePicker(
+                      candidateScopeKey: ('segment-owner', teamId, workshopId),
                       key: ValueKey(responsible?.id ?? ''),
                       initial: responsible,
                       hint: '选择负责人',
                       loader: (keyword) async {
                         final result = await ref
                             .read(employeeRepositoryProvider)
-                            .list(
+                            .listPickerCandidates(
                               size: 30,
                               search: keyword,
                               statuses: const {'active', 'probation'},
@@ -466,11 +468,12 @@ class _ProductionExecutionSegmentsCardState
                                   teamId != null || workshopId != null,
                             );
                         return [
-                          for (final employee in result.items)
+                          for (final employee in result)
                             UtenEmployeePickerItem(
                               id: employee.id,
                               name: employee.fullName,
                               employeeCode: employee.code,
+                              departmentId: employee.departmentId,
                               departmentName: employee.departmentName,
                             ),
                         ];

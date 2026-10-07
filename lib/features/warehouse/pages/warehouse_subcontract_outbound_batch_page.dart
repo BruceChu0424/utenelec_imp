@@ -48,6 +48,7 @@ import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../repositories/subcontract_outbound_detail_loader.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../widgets/subcontract_outbound_detail_table.dart';
+import '../../employee/repositories/employee_picker_candidates.dart';
 
 class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
   const WarehouseSubcontractOutboundBatchPage({
@@ -252,6 +253,7 @@ class _WarehouseSubcontractOutboundBatchPageState
             id: employee.id,
             name: employee.fullName ?? '',
             employeeCode: employee.code,
+            departmentId: employee.departmentId,
             departmentName: employee.departmentName,
           ),
         );
@@ -774,18 +776,19 @@ class _WarehouseSubcontractOutboundBatchPageState
         : null;
     final result = await ref
         .read(employeeRepositoryProvider)
-        .list(
+        .listPickerCandidates(
           size: 30,
           search: keyword,
           departmentId: departmentId,
           includeSubtree: true,
         );
     return [
-      for (final employee in result.items)
+      for (final employee in result)
         UtenEmployeePickerItem(
           id: employee.id,
           name: employee.fullName,
           employeeCode: employee.code,
+          departmentId: employee.departmentId,
           departmentName: employee.departmentName,
         ),
     ];

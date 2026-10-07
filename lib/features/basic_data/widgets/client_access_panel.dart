@@ -133,9 +133,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             id: viewer.employeeId,
             name: viewer.name,
             employeeCode: viewer.code,
-            departmentName: _personSubtitle(
-              departmentName: viewer.departmentName,
-            ),
+            departmentName: viewer.departmentName,
           ),
         )
         .toList(growable: false);
@@ -165,13 +163,19 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
     do {
       final result = await repository.accessCandidates(
         page: page,
+        size: 100,
         search: keyword,
       );
+      if (result.total > 5000) {
+        throw ApiException('VALIDATION_FAILED', '候选人员超过5000人，请输入姓名或工号缩小范围');
+      }
+      if (result.items.isEmpty && rows.length < result.total) {
+        throw ApiException('CONFLICT', '候选人员已变化，请重新搜索');
+      }
       rows.addAll(result.items);
       total = result.total;
       page++;
-      // 最小候选API服务端搜索；空关键词最多预取500人，超出时继续输入姓名/工号检索。
-    } while (rows.length < total && page <= 25);
+    } while (rows.length < total);
 
     return rows
         .where(
@@ -184,10 +188,9 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             id: employee.employeeId,
             name: employee.name,
             employeeCode: employee.code,
-            departmentName: _personSubtitle(
-              departmentName: employee.departmentName,
-              status: employee.status,
-            ),
+            departmentId: employee.departmentId,
+            departmentName: employee.departmentName,
+            subtitle: _statusLabel(employee.status),
           ),
         )
         .toList(growable: false);
@@ -459,14 +462,6 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
 
 bool _sameIds(Set<String> left, Set<String> right) =>
     left.length == right.length && left.every(right.contains);
-
-String? _personSubtitle({String? departmentName, String? status}) {
-  final parts = <String>[
-    if (departmentName?.trim().isNotEmpty == true) departmentName!.trim(),
-    if (status?.trim().isNotEmpty == true) _statusLabel(status!.trim()),
-  ];
-  return parts.isEmpty ? null : parts.join(' · ');
-}
 
 String _statusLabel(String status) => switch (status) {
   'active' => '在职',

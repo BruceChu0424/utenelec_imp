@@ -86,7 +86,7 @@ public class ClientAccessService {
                 .getSingleResult();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT employee.id, employee.full_name, employee.code,
-                               department.name, employee.status, TRUE
+                               department.name, employee.status, TRUE, employee.department_id
                         """ + fromWhere + """
                         ORDER BY employee.full_name, employee.code, employee.id
                         LIMIT :limit OFFSET :offset
@@ -99,6 +99,7 @@ public class ClientAccessService {
                 .map(row -> new ClientAccessCandidate(
                         (UUID) row[0], Objects.toString(row[1], ""),
                         Objects.toString(row[2], ""),
+                        (UUID) row[6],
                         row[3] == null ? null : row[3].toString(),
                         Objects.toString(row[4], ""), Boolean.TRUE.equals(row[5])))
                 .toList();

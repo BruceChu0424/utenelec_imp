@@ -230,7 +230,8 @@ public class AuditActorDirectory {
                        directory.account,
                        directory.name,
                        directory.department_name,
-                       directory.position_name
+                       directory.position_name,
+                       directory.department_id
                 FROM (
                     SELECT u.id AS actor_id,
                            'staff' AS actor_type,
@@ -238,7 +239,8 @@ public class AuditActorDirectory {
                            e.full_name AS name,
                            e.code AS employee_code,
                            d.name AS department_name,
-                           p.name AS position_name
+                           p.name AS position_name,
+                           e.department_id AS department_id
                     FROM users u
                     LEFT JOIN employees e ON e.id = u.employee_id
                     LEFT JOIN departments d ON d.id = e.department_id
@@ -250,7 +252,8 @@ public class AuditActorDirectory {
                            visitor.name,
                            NULL,
                            '外部访客',
-                           '访客'
+                           '访客',
+                           NULL::uuid
                     FROM visitor_accounts visitor
                 ) directory
                 """ + filter + """
@@ -307,7 +310,8 @@ public class AuditActorDirectory {
                     name,
                     toText(row[4]),
                     toText(row[5]),
-                    null));
+                    null,
+                    toUuid(row[6])));
         }
         if (!items.isEmpty()) {
             var activityQuery = entityManager.createNativeQuery("""
@@ -329,7 +333,7 @@ public class AuditActorDirectory {
             items.replaceAll(item -> new AuditActorOption(
                     item.actorId(), item.actorType(), item.account(),
                     item.displayName(), item.name(),
-                    item.department(), item.position(), lastActivity.get(item.actorId())));
+                    item.department(), item.position(), lastActivity.get(item.actorId()), item.departmentId()));
         }
         long total = ((Number) countQuery.getSingleResult()).longValue();
         int totalPages = total == 0

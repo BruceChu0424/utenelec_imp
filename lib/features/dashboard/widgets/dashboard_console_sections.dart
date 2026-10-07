@@ -1,8 +1,6 @@
-// 工作台「今日概览」合并面板（2026-09-28 两轮改版：
-// ① 指标带与待办任务从两段独立区块并入同一块控制台面板；
-// ② 面板体改为「左指标 rail │ 竖线 │ 右待办区」的单行结构——未读通知只有
-//   数字所以放最左（rail 顶部），左栏宽度随内容自适应（非居中分隔），右边
-//   放待办任务，大屏两列封顶，折叠超出部分在末尾给「查看更多」）。
+// 工作台「今日概览」合并面板：标题栏、横向指标带与待办任务共用一块面板。
+// 指标从未读通知右侧依次排列，空间不足时换行；宽屏右侧放待办任务，
+// 窄屏待办移到指标下方。待办大屏两列封顶，超出部分可「查看更多」。
 // 使用真实计数、截止时间与目标路由。
 import 'package:flutter/material.dart';
 
@@ -16,10 +14,10 @@ import '../models/dashboard_overview.dart';
 import 'dashboard_overview_sections.dart' show dashboardToneColor;
 import 'uten_console_panel.dart';
 
-/// 今日概览合并面板：左指标 rail + 待办任务装进同一块面板。
+/// 今日概览合并面板：横向指标带 + 待办任务装进同一块面板。
 ///
 /// 结构：标题栏（今日概览 + 部门范围 + 采样时刻）→ [celebration] 插槽 →
-/// 面板体（宽屏：指标 rail │ 竖线 │ 待办区并排；窄屏：上下堆叠）。
+/// 面板体(宽屏：指标带 │ 竖线 │ 待办区并排；窄屏：上下堆叠)。
 /// 两区空态各自说明「本部门」，不用隐藏组件替代数据授权。
 class DashboardOverviewPanel extends StatelessWidget {
   const DashboardOverviewPanel({
@@ -148,8 +146,8 @@ class _PanelHeaderBand extends StatelessWidget {
   }
 }
 
-/// 面板体：宽屏（≥900）「指标 rail │ 竖线 │ 待办区」并排——rail 宽度随内容
-/// 自适应（IntrinsicWidth），分隔线不居中；窄屏上下堆叠（rail 在上）。
+/// 面板体：宽屏(≥900)指标带与待办并排，指标最多占半幅，避免挤压待办；
+/// 实际宽度随内容收缩。窄屏指标带使用全宽，待办移到下方。
 class _PanelBody extends StatelessWidget {
   const _PanelBody({
     required this.metrics,
@@ -164,16 +162,19 @@ class _PanelBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final rail = _MetricRail(metrics: metrics, departmentName: departmentName);
+    final strip = _MetricStrip(
+      metrics: metrics,
+      departmentName: departmentName,
+    );
     final todoSide = _TodoSide(todos: todos, departmentName: departmentName);
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 待办两列最少 ~612，加 rail 内容宽与内边距，900 起并排才有意义。
+        // 900 起两区并排；各区内部仍按实际可用宽度换行。
         if (constraints.maxWidth < 900) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              rail,
+              strip,
               Divider(height: 1, color: colors.outlineVariant),
               todoSide,
             ],
@@ -181,11 +182,14 @@ class _PanelBody extends StatelessWidget {
         }
         // 分隔线画在待办区左缘（随其全高）：不能给 Row 套 IntrinsicHeight 拉齐
         // 高度——待办网格的 LayoutBuilder 无法提供 intrinsic 尺寸，会直接断言。
-        // 线的位置 = rail 内容自然宽之后，不与待办区对半分（用户口径）。
+        // 线的位置跟随指标实际内容宽度，不固定居中。
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            rail,
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth / 2),
+              child: strip,
+            ),
             Expanded(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -208,47 +212,46 @@ class _PanelBody extends StatelessWidget {
   }
 }
 
-/// 指标 rail：竖排紧凑指标（标签 / 数值 / 副标题），未读通知这类「只有数字」
-/// 的指标在最顶上；宽度取内容最大自然宽（IntrinsicWidth），不与待办区对半分。
-class _MetricRail extends StatelessWidget {
-  const _MetricRail({required this.metrics, required this.departmentName});
+/// 指标按服务端顺序横排，新增指标出现在右侧；空间不足时自然换行。
+class _MetricStrip extends StatelessWidget {
+  const _MetricStrip({required this.metrics, required this.departmentName});
 
   final List<DashboardMetric> metrics;
   final String departmentName;
 
   @override
   Widget build(BuildContext context) {
-    // IntrinsicWidth 包整体（含空态）：并排模式下 Row 给 rail 的是无界宽度，
-    // 空态行里的 Expanded 会因无界约束崩；先取内容自然宽再进 Row。
-    return IntrinsicWidth(
-      child: metrics.isEmpty
-          ? _ZoneEmpty(
+    return metrics.isEmpty
+        ? IntrinsicWidth(
+            child: _ZoneEmpty(
               icon: Icons.insights_outlined,
               message: departmentName.isEmpty
                   ? '本部门暂无概览指标'
                   : '$departmentName暂无概览指标',
-            )
-          : Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UtenSpacing.s16,
-                vertical: UtenSpacing.s12,
-              ),
-              child: Column(
-                // 各行在 rail 宽度内左右居中（宽度取最宽行；Column 默认 center）。
-                children: [
-                  for (var i = 0; i < metrics.length; i++) ...[
-                    if (i > 0) const SizedBox(height: UtenSpacing.s12),
-                    _RailMetric(metric: metrics[i]),
-                  ],
-                ],
-              ),
             ),
-    );
+          )
+        : Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s16,
+              vertical: UtenSpacing.s12,
+            ),
+            child: Wrap(
+              spacing: UtenSpacing.s24,
+              runSpacing: UtenSpacing.s12,
+              children: [
+                for (final metric in metrics)
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 220),
+                    child: _StripMetric(metric: metric),
+                  ),
+              ],
+            ),
+          );
   }
 }
 
-class _RailMetric extends StatelessWidget {
-  const _RailMetric({required this.metric});
+class _StripMetric extends StatelessWidget {
+  const _StripMetric({required this.metric});
   final DashboardMetric metric;
 
   @override
@@ -301,7 +304,7 @@ class _RailMetric extends StatelessWidget {
                   : UtenAnimatedNumber(value: numeric, style: valueStyle),
               if (metric.subtitle.isNotEmpty) ...[
                 const SizedBox(height: UtenSpacing.s2),
-                // 副标题只给一行：长文案不许把 rail 撑宽（cap 220）。
+                // 副标题只给一行，长文案不撑宽指标带。
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 220),
                   child: Text(

@@ -66,8 +66,8 @@ class _DashboardOverviewBody extends ConsumerWidget {
 // 骨架屏与错误态仍留在本文件，与真实形态共用；空态由面板各区各自承担
 //（指标区/待办区的空态要说清「本部门」，与旧的通用空卡文案不同）。
 
-/// 概览骨架占位：与 DashboardOverviewPanel 同构——标题栏 + 「指标 rail │
-/// 竖线 │ 待办区」（宽屏并排 / 窄屏堆叠）。
+/// 概览骨架占位：与 DashboardOverviewPanel 同构——标题栏 + 「横向指标带 │
+/// 竖线 │ 待办区」(宽屏并排 / 窄屏堆叠)。
 /// LazyMount 首帧占位 与 _DashboardOverviewBody 的 loading 分支共用，视觉连续无闪烁。
 class _DashboardOverviewSkeleton extends StatelessWidget {
   const _DashboardOverviewSkeleton();
@@ -75,19 +75,15 @@ class _DashboardOverviewSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    const rail = Padding(
+    const strip = Padding(
       padding: EdgeInsets.symmetric(
         horizontal: UtenSpacing.s16,
         vertical: UtenSpacing.s12,
       ),
-      child: IntrinsicWidth(
-        child: Column(
-          children: [
-            _RailMetricSkeleton(),
-            SizedBox(height: UtenSpacing.s12),
-            _RailMetricSkeleton(),
-          ],
-        ),
+      child: Wrap(
+        spacing: UtenSpacing.s24,
+        runSpacing: UtenSpacing.s12,
+        children: [_StripMetricSkeleton(), _StripMetricSkeleton()],
       ),
     );
     const todoSide = Column(
@@ -151,7 +147,7 @@ class _DashboardOverviewSkeleton extends StatelessWidget {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    rail,
+                    strip,
                     Divider(height: 1, color: colors.outlineVariant),
                     todoSide,
                   ],
@@ -162,7 +158,12 @@ class _DashboardOverviewSkeleton extends StatelessWidget {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  rail,
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth / 2,
+                    ),
+                    child: strip,
+                  ),
                   Expanded(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -188,13 +189,12 @@ class _DashboardOverviewSkeleton extends StatelessWidget {
   }
 }
 
-class _RailMetricSkeleton extends StatelessWidget {
-  const _RailMetricSkeleton();
+class _StripMetricSkeleton extends StatelessWidget {
+  const _StripMetricSkeleton();
 
   @override
   Widget build(BuildContext context) {
     return const Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         UtenSkeleton(width: 80, height: 12),
         SizedBox(height: UtenSpacing.s8),

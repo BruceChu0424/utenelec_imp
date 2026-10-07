@@ -8,7 +8,7 @@
 // 2. 数值与标题真的渲染出来了（不是只剩装饰）；非数字指标值不被当成 0；
 // 3. 空态说的是「本部门」而不是旧的「当前权限下」——这是此前改口径的用户可见面；
 // 4. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
-// 5. 375px 窄屏不溢出（rail 在上瓦片在下纵排，车间用的机器屏幕都不大）；
+// 5. 375px 窄屏不溢出(指标横排换行，待办在下方)；
 //    待办超 4 张折叠 + 末尾「查看更多」点开全量可收起；
 // 6. 截止倒计时芯片只在有 dueAt 的待办上出现，逾期/未逾期两种措辞都对。
 import 'package:flutter/material.dart';
@@ -252,7 +252,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('375px 窄屏：指标区退化成单列，瓦片与面板不溢出', (tester) async {
+  testWidgets('375px 窄屏：指标横排换行，瓦片与面板不溢出', (tester) async {
     tester.view.physicalSize = const Size(375, 812);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -276,7 +276,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 指标 rail 不折叠（竖排全量），三行都在；待办单列纵排。
+    // 指标不折叠，三项都在；待办单列纵排。
     expect(find.text('待排产'), findsOneWidget);
     expect(find.text('执行中订单'), findsOneWidget);
     expect(find.text('未读通知'), findsOneWidget);

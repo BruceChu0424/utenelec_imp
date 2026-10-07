@@ -2,17 +2,20 @@ package com.uten.imp.businesschain;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uten.imp.common.util.IdCardUtil;
 import com.uten.imp.features.org.employee.reconcile.ReconcilePlanHousekeeping;
 import com.uten.imp.features.org.employee.reconcile.ReconcilePlanStore;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -20,7 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -29,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -75,39 +78,41 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
         Employee hr2 = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
+        String region = fixtureRegion(1);
+        int seedSequence = 271;
 
         // 校验码错一位：造真号后改一位（会被另一人事认领）。
-        String claimedCorrect = withChecksum("44200019850615" + String.format("%03d", salt));
+        String claimedCorrect = withChecksum(region + "19850615" + String.format("%03d", seedSequence));
         String claimedWrong = wrongCheckVariant(claimedCorrect);
         UUID claimed = legacyEmployee("V810-A-01", "核对甲一", "身份证", claimedWrong, phone(1, 1));
         // 密文故意写坏：当前版本前缀 + 非 PGP 正文。
         UUID unreadable = legacyEmployeeWithCipher("V810-A-02", "核对甲二", corruptCipher(), phone(1, 2));
         // 15 位老证号：升位候选必为 withChecksum(前 6 位 + 19 + 后 9 位)。
-        String fifteen = "442000" + "850615" + String.format("%03d", (salt + 123) % 900 + 30);
+        String fifteen = region + "850615" + String.format("%03d", (seedSequence + 123) % 900 + 30);
         UUID fifteenId = legacyEmployee("V810-A-03", "核对甲三", "身份证", fifteen, phone(1, 3));
-        String fifteenUpgraded = withChecksum("44200019" + "850615"
+        String fifteenUpgraded = withChecksum(region + "19850615"
                 + fifteen.substring(fifteen.length() - 3));
         // 多敲一位 (19 位)：把第 10 位复制一份，删除重复位的候选排第一。
-        String nineteenBase = validWithoutAdjacentRepeat(REPEAT_FREE_PREFIX, salt + 321);
+        String nineteenBase = validWithoutAdjacentRepeat(region + "19870314", seedSequence + 321);
         String nineteen = nineteenBase.substring(0, 10) + nineteenBase.charAt(9) + nineteenBase.substring(10);
         UUID nineteenId = legacyEmployee("V810-A-04", "核对甲四", "身份证", nineteen, phone(1, 4));
         // 护照：证件类型不是身份证。
-        UUID passport = legacyEmployee("V810-A-05", "核对甲五", "护照", "E" + (200000000 + salt), phone(1, 5));
+        UUID passport = legacyEmployee("V810-A-05", "核对甲五", "护照", "E" + (200000000 + seedSequence), phone(1, 5));
         // 顺序码 000：90 种填法都过校验，无候选。
-        UUID sequenceZero = legacyEmployee("V810-A-06", "核对甲六", "身份证", "44200019900307000X", phone(1, 6));
+        String sequenceZeroIdentity = region + "19900307000X";
+        UUID sequenceZero = legacyEmployee("V810-A-06", "核对甲六", "身份证", sequenceZeroIdentity, phone(1, 6));
         // 含空格分隔符：去分隔符候选排第一。
-        String spaceyValid = withChecksum("44200019901130" + String.format("%03d", (salt + 612) % 900 + 30));
+        String spaceyValid = withChecksum(region + "19901130" + String.format("%03d", (seedSequence + 612) % 900 + 30));
         String spacey = spaceyValid.substring(0, 6) + " " + spaceyValid.substring(6, 14)
                 + " " + spaceyValid.substring(14);
         UUID spaceyId = legacyEmployee("V810-A-07", "核对甲七", "身份证", spacey, phone(1, 7));
         // 绑超管账号的员工：不走批量更正。
         UUID superAdminBound = legacyEmployee("V810-A-08", "核对甲八", "身份证",
-                wrongCheckVariant(withChecksum("44200019901231" + String.format("%03d", salt))), phone(1, 8));
-        bindSuperAdminAccount(superAdminBound, salt);
+                wrongCheckVariant(withChecksum(region + "19901231" + String.format("%03d", seedSequence))), phone(1, 8));
+        bindSuperAdminAccount(superAdminBound, seedSequence);
         // 证号完全正确。
         UUID alreadyValid = legacyEmployee("V810-A-09", "核对甲九", "身份证",
-                withChecksum("44200019901010" + String.format("%03d", salt)), phone(1, 9));
+                withChecksum(region + "19901010" + String.format("%03d", seedSequence)), phone(1, 9));
         // 没有证件号的存量档案。
         UUID missing = legacyEmployee("V810-A-10", "核对甲十", "身份证", null, phone(1, 10));
 
@@ -202,7 +207,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         assertEquals("UPDATE", sequenceRow.path("kind").asText());
         assertEquals("身份证号第15-17位顺序码不能全为0", sequenceRow.path("reason").asText());
         JsonNode sequenceItem = sequenceRow.path("items").get(0);
-        assertEquals("44200019900307000X", sequenceItem.path("oldValue").asText());
+        assertEquals(sequenceZeroIdentity, sequenceItem.path("oldValue").asText());
         assertTrue(sequenceItem.path("newValue").isNull() || sequenceItem.path("newValue").isMissingNode());
         assertEquals("NONE", sequenceItem.path("tier").asText());
         assertEquals(0, sequenceItem.path("candidates").size());
@@ -232,7 +237,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         assertTrue(createdBody.contains(fifteen) && createdBody.contains(spacey)
                 && createdBody.contains(nineteen));
         assertNoIdentityDigits(createdBody, claimedWrong, claimedCorrect, fifteen, fifteenUpgraded,
-                nineteen, nineteenBase, spacey, spaceyValid, "44200019900307000X");
+                nineteen, nineteenBase, spacey, spaceyValid, sequenceZeroIdentity);
 
         // ---- 认领：另一人事处理中 ----
         JsonNode fetched = ok(get("/api/org/employee-reconcile/plans/" + planId), hr.accessToken());
@@ -260,10 +265,11 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         Employee gm = newEmployee(admin, "GM");
         String noPiiViewToken = login(revoked.loginAccount(), EMPLOYEE_PASSWORD)
                 .path("accessToken").asText();
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
-        String fifteen = "442000" + "850615" + String.format("%03d", (salt + 233) % 900 + 30);
+        String region = fixtureRegion(2);
+        int seedSequence = 271;
+        String fifteen = region + "850615" + String.format("%03d", (seedSequence + 233) % 900 + 30);
         UUID employee = legacyEmployee("V810-B-01", "核对乙一", "身份证", fifteen, phone(2, 1));
-        String upgraded = withChecksum("44200019" + "850615"
+        String upgraded = withChecksum(region + "19850615"
                 + fifteen.substring(fifteen.length() - 3));
 
         JsonNode view = createPlan(hr, List.of(employee));
@@ -316,19 +322,20 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     void applyRunsEachRowThroughChangeIdentityWithSuggestionManualAndCandidateValues() throws Exception {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
+        String region = fixtureRegion(3);
+        int seedSequence = 271;
 
         // 第 1 人：15 位升位 (HIGH 预选，直接采用建议值)。
-        String fifteen = "442000" + "850615" + String.format("%03d", (salt + 456) % 900 + 30);
+        String fifteen = region + "850615" + String.format("%03d", (seedSequence + 456) % 900 + 30);
         UUID first = legacyEmployee("V810-C-01", "核对丙一", "身份证", fifteen, phone(3, 1));
-        String firstExpected = withChecksum("44200019" + "850615"
+        String firstExpected = withChecksum(region + "19850615"
                 + fifteen.substring(fifteen.length() - 3));
         // 第 2 人：校验码错一位，人事对照证件手输真号。
-        String secondCorrect = withChecksum("44200019900404" + String.format("%03d", salt));
+        String secondCorrect = withChecksum(region + "19900404" + String.format("%03d", seedSequence));
         UUID second = legacyEmployee("V810-C-02", "核对丙二", "身份证",
                 wrongCheckVariant(secondCorrect), phone(3, 2));
         // 第 3 人：多敲一位，从候选里选第一个 (删除重复数字)。
-        String thirdBase = validWithoutAdjacentRepeat(REPEAT_FREE_PREFIX, salt + 789);
+        String thirdBase = validWithoutAdjacentRepeat(region + "19870314", seedSequence + 789);
         String third = thirdBase.substring(0, 10) + thirdBase.charAt(9) + thirdBase.substring(10);
         UUID thirdEmployee = legacyEmployee("V810-C-03", "核对丙三", "身份证", third, phone(3, 3));
 
@@ -421,19 +428,20 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
         Employee hr2 = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
+        String region = fixtureRegion(4);
+        int seedSequence = 271;
 
-        String staleCorrect = withChecksum("44200019910303" + String.format("%03d", salt));
+        String staleCorrect = withChecksum(region + "19910303" + String.format("%03d", seedSequence));
         String staleWrong = wrongCheckVariant(staleCorrect);
         UUID stale = legacyEmployee("V810-D-01", "核对丁一", "身份证", staleWrong, phone(4, 1));
-        String fifteen = "442000" + "850615" + String.format("%03d", (salt + 678) % 900 + 30);
+        String fifteen = region + "850615" + String.format("%03d", (seedSequence + 678) % 900 + 30);
         UUID fine = legacyEmployee("V810-D-02", "核对丁二", "身份证", fifteen, phone(4, 2));
-        String fineExpected = withChecksum("44200019" + "850615"
+        String fineExpected = withChecksum(region + "19850615"
                 + fifteen.substring(fifteen.length() - 3));
-        String duplicateCorrect = withChecksum("44200019920202" + String.format("%03d", salt));
+        String duplicateCorrect = withChecksum(region + "19920202" + String.format("%03d", seedSequence));
         String duplicateWrong = wrongCheckVariant(duplicateCorrect);
         UUID duplicate = legacyEmployee("V810-D-03", "核对丁三", "身份证", duplicateWrong, phone(4, 3));
-        String claimedCorrect = withChecksum("44200019930101" + String.format("%03d", salt));
+        String claimedCorrect = withChecksum(region + "19930101" + String.format("%03d", seedSequence));
         UUID claimedByOther = legacyEmployee("V810-D-04", "核对丁四", "身份证",
                 wrongCheckVariant(claimedCorrect), phone(4, 4));
         // 另一名员工已占用 duplicateCorrect。
@@ -447,7 +455,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         int claimedRow = rowOf(view, claimedByOther).path("rowNo").asInt();
 
         // 生成计划后：另一账号 (超管) 改掉其中一人的证件号；另一人事认领另一人。
-        String staleRewritten = withChecksum("44200019910404" + String.format("%03d", salt));
+        String staleRewritten = withChecksum(region + "19910404" + String.format("%03d", seedSequence));
         MvcResult changed = mvc.perform(json(post("/api/org/employees/" + stale + "/change-identity"),
                 Map.of("idType", "身份证", "idNumber", staleRewritten), admin)).andReturn();
         assertEquals(200, changed.getResponse().getStatus(), body(changed));
@@ -499,13 +507,14 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     void replayingTheSameRequestIdReturnsTheStoredResultWithoutWritingAgain() throws Exception {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
-        String fifteen = "442000" + "850615" + String.format("%03d", (salt + 890) % 900 + 30);
+        String region = fixtureRegion(5);
+        int seedSequence = 271;
+        String fifteen = region + "850615" + String.format("%03d", (seedSequence + 890) % 900 + 30);
         UUID employee = legacyEmployee("V810-E-01", "核对戊一", "身份证", fifteen, phone(5, 1));
-        String expected = withChecksum("44200019" + "850615"
+        String expected = withChecksum(region + "19850615"
                 + fifteen.substring(fifteen.length() - 3));
         UUID employee2 = legacyEmployee("V810-E-02", "核对戊二", "身份证",
-                wrongCheckVariant(withChecksum("44200019960606" + String.format("%03d", salt))), phone(5, 2));
+                wrongCheckVariant(withChecksum(region + "19960606" + String.format("%03d", seedSequence))), phone(5, 2));
 
         JsonNode view = createPlan(hr, Arrays.asList(employee, employee2));
         UUID planId = UUID.fromString(view.path("id").asText());
@@ -547,13 +556,14 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     void expiredPlansAreClosedWithUnexecutedValuesPurgedAndExecutedKept() throws Exception {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
+        String region = fixtureRegion(6);
+        int seedSequence = 271;
         UUID executed = legacyEmployee("V810-F-01", "核对己一", "身份证",
-                "442000" + "850615" + String.format("%03d", (salt + 111) % 900 + 30), phone(6, 1));
+                region + "850615" + String.format("%03d", (seedSequence + 111) % 900 + 30), phone(6, 1));
         UUID pending1 = legacyEmployee("V810-F-02", "核对己二", "身份证",
-                wrongCheckVariant(withChecksum("44200019970707" + String.format("%03d", salt))), phone(6, 2));
+                wrongCheckVariant(withChecksum(region + "19970707" + String.format("%03d", seedSequence))), phone(6, 2));
         UUID pending2 = legacyEmployee("V810-F-03", "核对己三", "身份证",
-                wrongCheckVariant(withChecksum("44200019980808" + String.format("%03d", salt))), phone(6, 3));
+                wrongCheckVariant(withChecksum(region + "19980808" + String.format("%03d", seedSequence))), phone(6, 3));
 
         JsonNode view = createPlan(hr, Arrays.asList(executed, pending1, pending2));
         UUID planId = UUID.fromString(view.path("id").asText());
@@ -605,7 +615,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     void expiredApplyingPlanClosesItsReceiptAndDoesNotBlockOtherCleanup() throws Exception {
         Employee hr = newEmployee(adminToken(), "DEPT_HR");
         UUID employee = legacyEmployee("V810-J-01", "核对过期执行", "身份证",
-                "442000780422841", phone(10, 1));
+                fixtureRegion(10) + "780422841", phone(10, 1));
         JsonNode view = createPlan(hr, List.of(employee));
         UUID planId = UUID.fromString(view.path("id").asText());
         UUID applyId = UUID.randomUUID();
@@ -636,7 +646,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     void lockedConcurrentEmployeeEditIsRecheckedBeforeApplyingTheOldPlan() throws Exception {
         Employee hr = newEmployee(adminToken(), "DEPT_HR");
         UUID employee = legacyEmployee("V810-K-01", "核对并发更正", "身份证",
-                "442000780422842", phone(11, 1));
+                fixtureRegion(11) + "780422842", phone(11, 1));
         JsonNode view = createPlan(hr, List.of(employee));
         UUID planId = UUID.fromString(view.path("id").asText());
         int rowNo = rowOf(view, employee).path("rowNo").asInt();
@@ -682,7 +692,7 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
             JsonNode result = objectMapper.readTree(response.getResponse().getContentAsString());
             assertEquals(0, result.path("counts").path("applied").asInt());
             assertEquals(1, result.path("counts").path("skipped").asInt());
-            assertEquals("442000780422842", storedIdentity(employee));
+            assertEquals(fixtureRegion(11) + "780422842", storedIdentity(employee));
         } finally {
             release.countDown();
         }
@@ -697,9 +707,10 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
         Employee hr2 = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
+        String region = fixtureRegion(7);
+        int seedSequence = 271;
         UUID employee = legacyEmployee("V810-G-01", "核对庚一", "身份证",
-                wrongCheckVariant(withChecksum("44200019990909" + String.format("%03d", salt))), phone(7, 1));
+                wrongCheckVariant(withChecksum(region + "19990909" + String.format("%03d", seedSequence))), phone(7, 1));
 
         JsonNode view = createPlan(hr, List.of(employee));
         UUID planId = UUID.fromString(view.path("id").asText());
@@ -762,8 +773,9 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         String admin = adminToken();
         Employee hr = newEmployee(admin, "DEPT_HR");
         Employee hr2 = newEmployee(admin, "DEPT_HR");
-        int salt = ThreadLocalRandom.current().nextInt(100, 999);
-        String wrongNumber = wrongCheckVariant(withChecksum("44200020000101" + String.format("%03d", salt)));
+        String region = fixtureRegion(8);
+        int seedSequence = 271;
+        String wrongNumber = wrongCheckVariant(withChecksum(region + "20000101" + String.format("%03d", seedSequence)));
         UUID employee = legacyEmployee("V810-H-01", "核对辛一", "身份证", wrongNumber, phone(8, 1));
 
         JsonNode view = createPlan(hr, List.of(employee));
@@ -800,13 +812,65 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
     // 夹具与小工具
     // ==================================================================
 
+    @Test
+    void collidingLegacySaltsAreRejectedAndScenarioPartitionsKeepBothIdentities() {
+        // 2026-10-07 CI 的 HMAC 对应顺序码 467；旧 B/F 的这两个合法随机种子必然撞号。
+        // 用固定输入重现，而不是靠反复运行等待 ThreadLocalRandom 碰巧选中。
+        String permissionTail = "850615" + String.format("%03d", (204 + 233) % 900 + 30);
+        String expiryTail = "850615" + String.format("%03d", (326 + 111) % 900 + 30);
+        assertTrue(permissionTail.equals(expiryTail), "the former scenario generators overlap");
+        String legacyIdentity = "442000" + permissionTail;
+        assertEquals("1e3a21bdee984e9f653afa76896a99aeaa928e72d005eb14d5d848de3ee5590a",
+                tx.hmac(legacyIdentity), "fixed inputs reproduce the CI duplicate hash");
+
+        var transaction = new TransactionTemplate(transactionManager);
+        DuplicateKeyException duplicate = assertThrows(DuplicateKeyException.class,
+                () -> transaction.executeWithoutResult(ignored -> {
+                    legacyEmployee("V810-I-01", "核对旧夹具一", "身份证", legacyIdentity, phone(9, 1));
+                    legacyEmployee("V810-I-02", "核对旧夹具二", "身份证", legacyIdentity, phone(9, 2));
+                }));
+        assertTrue(duplicate.getMostSpecificCause() instanceof SQLException);
+        assertEquals("23505", ((SQLException) duplicate.getMostSpecificCause()).getSQLState());
+        assertTrue(duplicate.getMostSpecificCause().getMessage()
+                .contains("uk_employee_sensitive_id_card_hash"), "the identity uniqueness gate must remain enabled");
+
+        // 相同生日/顺序码在不同场景可共存；旧值与升位候选都必须隔离，不能只把旧值改成唯一。
+        transaction.executeWithoutResult(status -> {
+            status.setRollbackOnly();
+            String permissionIdentity = fixtureRegion(2) + permissionTail;
+            String expiryIdentity = fixtureRegion(6) + expiryTail;
+            String permissionUpgraded = withChecksum(fixtureRegion(2) + "19" + permissionTail);
+            String expiryUpgraded = withChecksum(fixtureRegion(6) + "19" + expiryTail);
+            assertTrue(IdCardUtil.isValid(permissionUpgraded));
+            assertTrue(IdCardUtil.isValid(expiryUpgraded));
+            UUID first = legacyEmployee("V810-I-03", "核对分区一", "身份证", permissionIdentity, phone(9, 3));
+            UUID second = legacyEmployee("V810-I-04", "核对分区二", "身份证", expiryIdentity, phone(9, 4));
+            UUID firstCandidate = legacyEmployee("V810-I-05", "核对分区三", "身份证", permissionUpgraded, phone(9, 5));
+            UUID secondCandidate = legacyEmployee("V810-I-06", "核对分区四", "身份证", expiryUpgraded, phone(9, 6));
+            assertEquals(4, jdbc.queryForObject("""
+                    SELECT count(DISTINCT id_card_hash) FROM employee_sensitive
+                    WHERE employee_id IN (?, ?, ?, ?)
+                    """, Integer.class, first, second, firstCandidate, secondCandidate));
+        });
+    }
+
+    /**
+     * A..K 场景与工号/手机的分组一致，用固定前六位给每个场景划出独立身份空间。
+     * 底座共享数据库且业务用例会提交：随机三位尾码并不隔离场景，旧号及其修复候选都可能撞号。
+     * 本类使用 3201xx，账号底座使用 110105，相邻单人核对测试使用 442000；不得重新共用其前缀。
+     * 取偶数尾位，避免 A/C 的区域末位与年份首位拼成重复的 11，破坏单一重复数字候选夹具。
+     */
+    private static String fixtureRegion(int scenario) {
+        if (scenario < 1 || scenario > 11) {
+            throw new IllegalArgumentException("unknown reconcile fixture scenario");
+        }
+        return "3201" + String.format("%02d", scenario * 2);
+    }
+
     /**
      * 在顺序码区间里找一个合法且自身没有相邻重复数字的号：复制第 10 位后，19 位夹具里只有
-     * 注入的那一处重复，「删除重复数字」候选严格排第一。前缀必须本身无相邻重复 (442000 有
-     * 「44」/「00」，永远凑不出来)，所以用江苏 320102 + 无重复生日。
+     * 注入的那一处重复，「删除重复数字」候选严格排第一。A/C 的独立区域前缀与生日均无相邻重复。
      */
-    private static final String REPEAT_FREE_PREFIX = "32010219870314";
-
     private static String validWithoutAdjacentRepeat(String prefix14, int seqHint) {
         for (int tail = 0; tail < 900; tail++) {
             String seq = String.format("%03d", (seqHint + tail) % 900 + 50);
@@ -846,11 +910,11 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
                 .encodeToString("not a pgp message".getBytes(StandardCharsets.UTF_8));
     }
 
-    private void bindSuperAdminAccount(UUID employeeId, int salt) {
+    private void bindSuperAdminAccount(UUID employeeId, int seedSequence) {
         jdbc.update("""
                 INSERT INTO users (id, employee_id, login_account, password_hash, is_super_admin)
                 VALUES (?, ?, ?, 'no-login-for-this-fixture', true)
-                """, UUID.randomUUID(), employeeId, "recon-super-" + salt);
+                """, UUID.randomUUID(), employeeId, "recon-super-" + seedSequence);
     }
 
     private UUID legacyEmployee(String code, String name, String idType, String identity, String phone) {

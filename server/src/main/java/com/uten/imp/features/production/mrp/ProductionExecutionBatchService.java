@@ -183,16 +183,22 @@ public class ProductionExecutionBatchService {
      * 通知侧「当前可齐套生产量」(ADR-165 / ADR-091 §九, 2026-10-06 修订二): 与分批领料核对页
      * 同一把尺子, 给「物料到货进展」行动卡算「现在可以生产 X 件」并作弹窗水位。只读、不做
      * 用户与拆批资格校验(预约/供给钉存在不影响量尺); 剩余段自动扣掉前批(冻结曲线 offset)。
-     * 不可计量(路线已改、任务关闭、前批固定料未领齐等)抛冲突异常, 由调用方按不发卡处理。
+     * 不可计量(路线已改、任务关闭、前批固定料未领齐等)是拆批流程的正常中间态, 返回 null——
+     * 必须在事务边界内吞掉: 异常一旦越过 @Transactional 代理出口, 调用方共享的 outbox 投递
+     * 事务会被标记 rollback-only, 到货事件重试到死信、通知静默丢失。
      */
     @Transactional(readOnly = true)
     public BigDecimal currentSplitCapacity(UUID segmentId) {
-        Source source=source(segmentId);
-        String route=(String)em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id")
-                .setParameter("id",segmentId).getSingleResult();
-        if(!"BATCH".equals(route))throw conflict("请先确认为分批生产路线，再核对本批数量");
-        if(source.closed() || !source.active()) throw conflict("仅有效物料分析来源的等待物料任务可以分批领料");
-        return maximumReadyQty(loadSplitFacts(source));
+        try {
+            Source source=source(segmentId);
+            String route=(String)em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id")
+                    .setParameter("id",segmentId).getSingleResult();
+            if(!"BATCH".equals(route))return null;
+            if(source.closed() || !source.active())return null;
+            return maximumReadyQty(loadSplitFacts(source));
+        } catch (ApiException notMeasurable) {
+            return null;
+        }
     }
 
     /** 段的冻结需求事实(零物料=空物料表) + 与齐套提升同口径的仓库可用量。 */

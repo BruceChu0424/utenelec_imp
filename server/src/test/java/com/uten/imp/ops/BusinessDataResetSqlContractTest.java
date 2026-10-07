@@ -183,6 +183,8 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("subcontract_draw_notice_marks", 798),
             // V809 委外申请物料齐套才解锁下单(ADR-156)：「可下单」通知高水位是系统协调状态, 随业务数据清空。
             Map.entry("subcontract_application_kit_notice_marks", 809),
+            // V815 车间到货通知产能水位(ADR-165)：「可以生产 X 件」行动卡高水位是系统协调状态, 随业务数据清空。
+            Map.entry("production_execution_segment_notice_state", 815),
             // V803 (ADR-148): 品质整批决定命令是业务事实, 随业务数据清空。
             Map.entry("production_fqc_lot_decision_commands", 803),
             // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。

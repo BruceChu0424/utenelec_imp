@@ -3853,12 +3853,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                        task.responsible_employee_id,
                        route.start_route, route.continuous_supply,
                        route.auto_promote_when_ready,
-                       route.arrival_notice_capacity,
+                       notice_state.arrival_notice_capacity,
                        fn_execution_route_allows_auto_promote(task.segment_id) AS route_allows_auto_promote,
                        fn_execution_start_material_ready(task.segment_id) AS start_material_ready,
                        fn_execution_material_output_capacity(task.segment_id, FALSE) AS prepared_capacity
                 FROM v_production_execution_workbench_segments task
                 JOIN production_execution_segments route ON route.id = task.segment_id
+                LEFT JOIN production_execution_segment_notice_state notice_state
+                  ON notice_state.segment_id = task.segment_id
                 JOIN production_plans active_plan ON active_plan.id=route.plan_id
                   AND active_plan.status=1 AND NOT active_plan.is_deleted
                   AND NOT active_plan.is_closed AND NOT active_plan.is_stopped AND NOT active_plan.is_canceled
@@ -3898,8 +3900,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         String route = str(task.get("start_route"));
         // 2026-10-06 修订二(ADR-165 / ADR-091 §九): 到货进展行动卡按「可支撑产能水位」弹——
         // 每种物料都有一些才首次给「可以生产 X 件」; 后续到货产能不涨不弹, 涨了(扣已领)才再弹;
-        // 发卡或回落都把水位同步成当前值。路线未确认或会自动提升的段不发(齐套/可开工行动卡由
-        // publishWorkshopTask 体系负责); 到货撤销(validArrival=false)不受此闸门约束, 仍即时通知。
+        // 发卡或回落都把水位同步成当前值。路线未确认不发; 到货撤销(validArrival=false)不受
+        // 闸门约束, 仍即时通知。
+        if (validArrival && "WAITING".equals(status)
+                && Boolean.TRUE.equals(task.get("auto_promote_when_ready"))
+                && Boolean.TRUE.equals(task.get("route_allows_auto_promote"))) {
+            // 会自动提升的段由齐套/可开工行动卡负责(tryPromote→notifyExecutionSegmentReady)——
+            // 到货进展再发就是同一件事弹两次, 且发送前的 ARRIVAL_PROGRESS 办结还会把刚投递的
+            // important 卡撤掉。这里不抬水位: 万一提升没成、任务随后被暂缓, 全齐卡仍要能弹出来。
+            return;
+        }
         BigDecimal capacity = workshopArrivalCapacity(segmentId, task, status, route, missingRows, arrivedByDemand);
         if (validArrival && !arrivalProgressWarrantsNotice(task, status, route, capacity)) {
             syncArrivalCapacityWatermark(segmentId, capacity);
@@ -3912,7 +3922,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (route.isBlank()) {
             nextStep = "请先在「我的车间任务」确认生产路线（齐套 / 分批 / 持续生产）";
         } else if ("BATCH".equals(route)) {
-            nextStep = "本单为分批生产路线：可按「分批领料」核对并领出本批" + capacityText;
+            nextStep = Boolean.TRUE.equals(task.get("auto_promote_when_ready"))
+                    ? "本单为分批生产路线：可按「分批领料」核对并领出本批" + capacityText
+                    // 暂缓段拆批会被页面拒绝(「请先解除暂缓」), 指引先解除暂缓, 不邀请会被拦下的动作。
+                    : "本单为分批生产路线：物料已能支撑本批" + capacityText + "；任务在暂缓中，请先解除暂缓再分批领料";
         } else if ("CONTINUOUS".equals(route)) {
             nextStep = "IN_PROGRESS".equals(status)
                     ? "持续生产中：请在原工单核对补料和报工进度" + capacityText
@@ -3981,11 +3994,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      * 到货进展行动卡闸门（2026-10-06 修订二, ADR-165 / ADR-091 §九）。
      * <ul>
      *   <li>路线未确认或产能不可计量：不发——页面内自办。</li>
-     *   <li>会自动提升的段（{@code auto_promote_when_ready} 且路线放行）不发——齐套/可开工
-     *       行动卡由 publishWorkshopTask 体系负责（tryPromote→notifyExecutionSegmentReady），
-     *       到货进展再发就是同一件事弹两次，而且发送前的 ARRIVAL_PROGRESS 办结还会把刚投递的
-     *       important 卡撤掉。分批路线 {@code fn_execution_route_allows_auto_promote} 恒 FALSE、
-     *       暂缓段 auto_promote_when_ready=FALSE，全齐感知只能靠这里补位。</li>
+     *   <li>会自动提升的段在调用方先返回（不评估、不抬水位，万一提升没成、任务随后被暂缓，
+     *       全齐卡仍要能弹出来）。分批路线 {@code fn_execution_route_allows_auto_promote} 恒
+     *       FALSE、暂缓段 auto_promote_when_ready=FALSE，全齐感知只能靠这里补位。</li>
      *   <li>其余只有「当前可支撑产能比上次通知水位高」才发：每种物料都有一些 → 首次
      *       「可以生产 X 件」；后续到货产能不涨不弹；涨了（扣已领）才再弹。</li>
      * </ul>
@@ -3993,11 +4004,6 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     boolean arrivalProgressWarrantsNotice(Map<String, Object> task, String status, String route,
             BigDecimal capacity) {
         if (route.isBlank() || capacity == null) return false;
-        if ("WAITING".equals(status)
-                && Boolean.TRUE.equals(task.get("auto_promote_when_ready"))
-                && Boolean.TRUE.equals(task.get("route_allows_auto_promote"))) {
-            return false;
-        }
         return capacity.compareTo(bd(task.get("arrival_notice_capacity"))) > 0;
     }
 
@@ -4025,21 +4031,33 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return covered && "WAITING".equals(status) ? bd(task.get("planned_qty")).max(BigDecimal.ZERO) : BigDecimal.ZERO;
     }
 
-    /** 分批路线当前可齐套生产量; 尺子缺位或不可计量返回 null(不发卡, 水位不动)。 */
+    /**
+     * 分批路线当前可齐套生产量; 尺子缺位返回 null(不发卡, 水位不动)。不可计量的正常中间态
+     * (前批固定料未领齐、路线已改等)由 {@code currentSplitCapacity} 在事务边界内吞掉; 这里
+     * 不再捕获——异常一旦越过 @Transactional 代理出口, 共享的 outbox 投递事务会被标记
+     * rollback-only, 事件重试到死信, 到货通知就丢了。
+     */
     BigDecimal workshopBatchCapacity(UUID segmentId) {
         if (batchSplits == null) return null;
-        try {
-            return batchSplits.getObject().currentSplitCapacity(segmentId);
-        } catch (RuntimeException notMeasurable) {
-            return null;
-        }
+        return batchSplits.getObject().currentSplitCapacity(segmentId);
     }
 
-    /** 每次到货事件评估后同步水位: 上涨发卡时抬上去, 回落时落下来——“涨了”永远相对最近一次。值不变不写。 */
+    /**
+     * 每次到货事件评估后同步水位: 上涨发卡时抬上去, 回落时落下来——“涨了”永远相对最近一次。
+     * 水位放 1:1 侧表(V815)而不是段表加列: 段表的 BEFORE UPDATE 触发器会 bump lock_version/
+     * updated_at 并重验车间负责人, 每次水位变化会把在途的领料核对 CAS(「车间任务已变化,
+     * 请刷新」)顶失效。值不变不写。
+     */
     private void syncArrivalCapacityWatermark(UUID segmentId, BigDecimal capacity) {
         if (capacity == null) return;
-        jdbc.update("UPDATE production_execution_segments SET arrival_notice_capacity = ? "
-                + "WHERE id = ? AND arrival_notice_capacity IS DISTINCT FROM ?", capacity, segmentId, capacity);
+        jdbc.update("""
+                INSERT INTO production_execution_segment_notice_state (segment_id, arrival_notice_capacity)
+                VALUES (?, ?)
+                ON CONFLICT (segment_id) DO UPDATE SET arrival_notice_capacity = EXCLUDED.arrival_notice_capacity,
+                    updated_at = now()
+                WHERE production_execution_segment_notice_state.arrival_notice_capacity
+                    IS DISTINCT FROM EXCLUDED.arrival_notice_capacity
+                """, segmentId, capacity);
     }
 
     /**

@@ -52,8 +52,28 @@ class ProductionWorkshopMaterialNoticeContractTest {
                 .contains("arrivalProgressWarrantsNotice(task, status, route, capacity)")
                 .contains("（现有物料可支撑生产 ")
                 .contains("syncArrivalCapacityWatermark(segmentId, capacity)")
-                .contains("arrival_notice_capacity IS DISTINCT FROM")
+                .contains("ON CONFLICT (segment_id) DO UPDATE")
+                .contains("IS DISTINCT FROM EXCLUDED.arrival_notice_capacity")
                 .contains("capacity.compareTo(bd(task.get(\"arrival_notice_capacity\"))) > 0")
                 .doesNotContain("partialStartCapable");
+    }
+
+    @Test
+    void batchCapacitySwallowsUnmeasurableConflictsInsideTheTransactionalBoundary() throws Exception {
+        // P1 红队修复锁: 不可计量的业务冲突必须在 currentSplitCapacity 事务边界内吞掉并返回
+        // null——异常越过 @Transactional 代理出口会把共享 outbox 投递事务标记 rollback-only,
+        // 到货事件重试到死信、通知静默丢失; ChainNoticeService 侧不再捕获。
+        String batch = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/production/mrp/ProductionExecutionBatchService.java"),
+                StandardCharsets.UTF_8);
+        String chain = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/notice/ChainNoticeService.java"),
+                StandardCharsets.UTF_8);
+        assertThat(batch)
+                .contains("catch (ApiException notMeasurable)")
+                .contains("public BigDecimal currentSplitCapacity(UUID segmentId) {");
+        assertThat(chain)
+                .contains("return batchSplits.getObject().currentSplitCapacity(segmentId);")
+                .doesNotContain("} catch (RuntimeException notMeasurable) {");
     }
 }

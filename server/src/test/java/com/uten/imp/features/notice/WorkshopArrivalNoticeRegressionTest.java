@@ -50,7 +50,7 @@ class WorkshopArrivalNoticeRegressionTest {
         assertThat(f.content()).contains("原到货数量不再作为当前可用量依据").doesNotContain("已到货 900");
         verify(f.notices).resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", f.segment, "ARRIVAL_PROGRESS");
         // 撤销不受闸门约束, 但水位仍同步成当前产能(此处为 0), 让之后的回涨能再通知。
-        verify(f.jdbc).update(contains("arrival_notice_capacity"), eq(BigDecimal.ZERO), eq(f.segment), eq(BigDecimal.ZERO));
+        verify(f.jdbc).update(contains("arrival_notice_capacity"), eq(f.segment), eq(BigDecimal.ZERO));
     }
 
     @Test void continuousWaitingWithoutProducibleCapacityStaysSilentUntilCapacityGrows() {
@@ -114,6 +114,8 @@ class WorkshopArrivalNoticeRegressionTest {
                 f.arrivalPayload("本次合格入库 1000 件"));
         verify(f.notices,never()).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
         verify(f.notices,never()).resolveReviewNotices(any(),any(),eq("ARRIVAL_PROGRESS"));
+        // 抑制路径不评估也不抬水位: 提升万一没成、任务随后被暂缓, 全齐卡仍要能弹出来。
+        verify(f.jdbc,never()).update(contains("arrival_notice_capacity"),any(),any());
     }
 
     @Test void batchFullKitStillGetsTheArrivalCardBecauseBatchNeverAutoPromotes() {
@@ -126,6 +128,17 @@ class WorkshopArrivalNoticeRegressionTest {
         f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
                 f.arrivalPayload("本次合格入库 1000 件"));
         assertThat(f.content()).contains("合格入库 1000 件","当前物料没有缺口","可支撑生产 1000 件");
+    }
+
+    @Test void deferredBatchTaskAdvisesReleasingDeferInsteadOfInvitingBlockedSplit() {
+        // 暂缓段(auto_promote_when_ready=FALSE)拆批会被页面拒绝, 卡片指引先解除暂缓。
+        Fixture f=new Fixture("WAITING","BATCH",false);
+        f.task.put("auto_promote_when_ready",false);
+        doReturn(new BigDecimal("30")).when(f.service).workshopBatchCapacity(f.segment);
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 60 件"));
+        assertThat(f.content()).contains("任务在暂缓中，请先解除暂缓再分批领料","可支撑生产 30 件");
     }
 
     @Test void arrivalCardFiresOnlyWhenProducibleCapacityGrows() {
@@ -170,8 +183,7 @@ class WorkshopArrivalNoticeRegressionTest {
         f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
                 f.arrivalPayload("本次又到货 10 件"));
         verify(f.notices,times(1)).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
-        verify(f.jdbc).update(contains("arrival_notice_capacity"),eq(new BigDecimal("20")),eq(f.segment),
-                eq(new BigDecimal("20")));
+        verify(f.jdbc).update(contains("arrival_notice_capacity"),eq(f.segment),eq(new BigDecimal("20")));
         // 再到货回涨到 50——重新弹窗。
         f.task.put("arrival_notice_capacity",new BigDecimal("20"));
         f.task.put("prepared_capacity",new BigDecimal("50"));
@@ -206,7 +218,7 @@ class WorkshopArrivalNoticeRegressionTest {
         f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
                 f.arrivalPayload("本次合格入库 100 件"));
         verify(f.notices,never()).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
-        verify(f.jdbc,never()).update(contains("arrival_notice_capacity"),any(),any(),any());
+        verify(f.jdbc,never()).update(contains("arrival_notice_capacity"),any(),any());
     }
 
     private static final class Fixture {

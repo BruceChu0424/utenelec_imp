@@ -1725,6 +1725,23 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => '축하 대상을 선택하세요';
 
   @override
+  String get noticeLevelUrgent => '긴급';
+
+  @override
+  String get noticeLevelAction => '할 일';
+
+  @override
+  String get noticeLevelProgress => '진행';
+
+  @override
+  String get noticeLevelBroadcast => '공지';
+
+  @override
+  String noticeLevelSummary(Object level, int count) {
+    return '$level $count';
+  }
+
+  @override
   String get noticeQuickCelebrationTitle => '빠른 축하 발행';
 
   @override

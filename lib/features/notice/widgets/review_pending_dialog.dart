@@ -19,6 +19,9 @@
 // 「人事/公司通知」——打卡类型（公告/制度/系统/紧急/福利）每条带【打卡确认】，不打卡
 // 每次登录都弹；只提醒类型【知道了】= markRead；【查看详情】关弹窗进详情页；
 // 【全部稍后再看】对两组一起 snooze。人工条目不参与 pending-review-status 心跳。
+// 分级体系（2026-10-06，ADR-163）：条目按 (priority, interactive/manual) 归入
+// 紧急/行动/进度/广播四档视觉级别（见 [ReviewNoticeLevel]），颜色+图标+徽章
+// 三重编码；排序 紧急 > 行动 > 进度 > 广播。
 // 文档：docs/02-组件库/ReviewPendingDialog.md
 
 import 'dart:async';
@@ -28,8 +31,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/data_display/uten_status_badge.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -98,6 +102,193 @@ String workbenchRouteFor(
   'SUGGESTION_SUBMITTED' => RouteName.suggestion,
   _ => RouteName.dashboard,
 };
+
+// ========================= 分级体系（2026-10-06，ADR-163） =========================
+//
+// 用户痛点：几十种事件此前全部同一个 teal 样式，无法一眼识别类型与轻重。
+// 分级按 (priority, interactive/manual) 归档，每级「颜色 + 图标 + 徽章文字」
+// 三重编码——色弱/色盲下徽章文字与图标形状仍可区分级别。
+
+/// 中央提醒弹窗条目的视觉级别。**枚举顺序即排序权重**
+/// （urgent 置顶 → action → progress → broadcast 垫底）。
+enum ReviewNoticeLevel {
+  /// 紧急（红系）：priority=urgent，含人工紧急公告。error 描边 + 左侧竖红条 +
+  /// 「紧急」红底白字徽章，排序置顶。
+  urgent,
+
+  /// 行动待办（teal 品牌色）：interactive && important。保持既有 teal
+  /// primaryContainer 风格（现样式微调强化），「待办」teal 底徽章。
+  action,
+
+  /// 进度跟踪（info 蓝系）：interactive && normal（物料到货进展等）。视觉权重
+  /// 低于行动卡（更紧凑行高），「进度」蓝底徽章。
+  progress,
+
+  /// 人事广播（amber 暖色）：人工通知组（非 urgent）。暖色容器与 urgent 的红
+  /// 拉开色相（amber 偏黄、error 偏红），「公告」琥珀底徽章。
+  broadcast,
+}
+
+/// 条目 → 视觉级别。urgent 一票置顶（interactive 与人工通知同归 urgent）；
+/// interactive 按 important / normal 分行动 / 进度——同一 sourceEvent（如
+/// 车间物料事件）因 priority 不同落不同级别：「可开工行动卡」=行动、「到货
+/// 进展」=进度；其余（人工通知）为广播。
+ReviewNoticeLevel reviewNoticeLevelOf(Notice notice) {
+  if (notice.priority == NoticePriority.urgent) return ReviewNoticeLevel.urgent;
+  if (!notice.interactive) return ReviewNoticeLevel.broadcast;
+  return notice.priority == NoticePriority.important
+      ? ReviewNoticeLevel.action
+      : ReviewNoticeLevel.progress;
+}
+
+/// 弹窗内排序：urgent > action > progress > broadcast；同级保持到达顺序
+/// （[List.sort] 不稳定，先记录原始下标再按 (级别, 下标) 排）。
+List<Notice> sortByReviewLevel(List<Notice> items) {
+  final indexed = [for (var i = 0; i < items.length; i++) (i, items[i])];
+  indexed.sort((a, b) {
+    final byLevel = reviewNoticeLevelOf(
+      a.$2,
+    ).index.compareTo(reviewNoticeLevelOf(b.$2).index);
+    return byLevel != 0 ? byLevel : a.$1.compareTo(b.$1);
+  });
+  return [for (final entry in indexed) entry.$2];
+}
+
+/// 单级视觉语言（明暗主题各自成对的容器色 + 强调色 + 徽章图标/底色）。
+class _LevelStyle {
+  const _LevelStyle({
+    required this.iconContainer,
+    required this.onIconContainer,
+    required this.accent,
+    required this.badgeContainer,
+    required this.badgeForeground,
+    required this.badgeIcon,
+    required this.dense,
+  });
+
+  /// 图标底容器色。
+  final Color iconContainer;
+
+  /// 图标底上的图标色。
+  final Color onIconContainer;
+
+  /// 强调色（计数色点 / urgent 描边与标题色）。
+  final Color accent;
+
+  /// 级别徽章底色（urgent 用 dangerStrong 实底白字，其余用容器对浅底深字）。
+  final Color badgeContainer;
+
+  final Color badgeForeground;
+
+  final IconData badgeIcon;
+
+  /// 进度级更紧凑的行高（视觉权重低于行动卡）。
+  final bool dense;
+}
+
+_LevelStyle _levelStyleOf(ThemeData theme, ReviewNoticeLevel level) {
+  final scheme = theme.colorScheme;
+  final dark = theme.brightness == Brightness.dark;
+  return switch (level) {
+    ReviewNoticeLevel.urgent => _LevelStyle(
+      iconContainer: scheme.errorContainer,
+      onIconContainer: scheme.onErrorContainer,
+      accent: scheme.error,
+      // 红底白字实底徽章（与「红徽章」计数口径同对：dangerStrong + 白）。
+      badgeContainer: UtenColors.dangerStrong,
+      badgeForeground: Colors.white,
+      badgeIcon: Icons.priority_high_rounded,
+      dense: false,
+    ),
+    ReviewNoticeLevel.action => _LevelStyle(
+      iconContainer: scheme.primaryContainer,
+      onIconContainer: scheme.onPrimaryContainer,
+      accent: scheme.primary,
+      badgeContainer: scheme.primaryContainer,
+      badgeForeground: scheme.onPrimaryContainer,
+      badgeIcon: Icons.task_alt_rounded,
+      dense: false,
+    ),
+    ReviewNoticeLevel.progress => _LevelStyle(
+      iconContainer: dark
+          ? UtenColors.infoContainerDark
+          : UtenColors.infoContainer,
+      onIconContainer: dark
+          ? UtenColors.onInfoContainerDark
+          : UtenColors.onInfoContainer,
+      accent: dark ? UtenColors.infoOnDark : UtenColors.info,
+      badgeContainer: dark
+          ? UtenColors.infoContainerDark
+          : UtenColors.infoContainer,
+      badgeForeground: dark
+          ? UtenColors.onInfoContainerDark
+          : UtenColors.onInfoContainer,
+      badgeIcon: Icons.trending_up_rounded,
+      dense: true,
+    ),
+    ReviewNoticeLevel.broadcast => _LevelStyle(
+      iconContainer: dark
+          ? UtenColors.broadcastContainerDark
+          : UtenColors.broadcastContainer,
+      onIconContainer: dark
+          ? UtenColors.onBroadcastContainerDark
+          : UtenColors.onBroadcastContainer,
+      accent: dark ? UtenColors.warningOnDark : UtenColors.warning,
+      badgeContainer: dark
+          ? UtenColors.broadcastContainerDark
+          : UtenColors.broadcastContainer,
+      badgeForeground: dark
+          ? UtenColors.onBroadcastContainerDark
+          : UtenColors.onBroadcastContainer,
+      badgeIcon: Icons.campaign_rounded,
+      dense: false,
+    ),
+  };
+}
+
+String _levelLabel(AppLocalizations l10n, ReviewNoticeLevel level) =>
+    switch (level) {
+      ReviewNoticeLevel.urgent => l10n.noticeLevelUrgent,
+      ReviewNoticeLevel.action => l10n.noticeLevelAction,
+      ReviewNoticeLevel.progress => l10n.noticeLevelProgress,
+      ReviewNoticeLevel.broadcast => l10n.noticeLevelBroadcast,
+    };
+
+/// 级别徽章：图标 + 文字（不只靠颜色——色弱下徽章文字仍可辨级）。
+class _LevelBadge extends StatelessWidget {
+  const _LevelBadge({required this.style, required this.label});
+
+  final _LevelStyle style;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      height: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: style.badgeContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(style.badgeIcon, size: 12, color: style.badgeForeground),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: style.badgeForeground,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 /// 居中弹窗单例守卫：已打开时新待办并入当前弹窗（在线多事件同到
 /// 「一共有 N 项」；登录检查与到达链竞争时只保一层）。
@@ -380,6 +571,9 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    // 分级排序（ADR-163）：urgent → action → progress → broadcast，同级保持到达序。
+    final sortedReviews = sortByReviewLevel(_items);
+    final sortedManual = sortByReviewLevel(_manualItems);
     // 仅一条审核待办且无人工通知 → 大卡；其余（多条 / 含人工通知）→ 分组列表。
     final singleReviewOnly = _manualItems.isEmpty && _items.length == 1;
     // 高度完全随内容自适应；封顶 min(60% 屏高, 560)——积压多条时列表内部
@@ -397,28 +591,51 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Header(theme: theme, items: _items, manual: _manualItems),
+              _Header(theme: theme, items: sortedReviews, manual: sortedManual),
               const SizedBox(height: UtenSpacing.s16),
               Flexible(
                 child: singleReviewOnly
                     ? SingleChildScrollView(
                         child: _LargeItemCard(
                           theme: theme,
-                          notice: _items.first,
-                          status: _statusById[_items.first.id],
+                          notice: sortedReviews.first,
+                          status: _statusById[sortedReviews.first.id],
                           onTap: () => _openWorkbench(),
                         ),
                       )
                     : ListView(
                         shrinkWrap: true,
                         children: [
-                          if (_manualItems.isNotEmpty) ...[
+                          // 分组顺序（ADR-163）：待办审核组在前（urgent → action →
+                          // progress），人事广播组垫底（组内 urgent 人工条目仍置组首）。
+                          if (sortedReviews.isNotEmpty) ...[
+                            if (_manualItems.isNotEmpty)
+                              _GroupLabel(
+                                theme: theme,
+                                label: '待办审核',
+                                count: sortedReviews.length,
+                              ),
+                            for (final item in sortedReviews)
+                              Padding(
+                                key: ValueKey('review-${item.id}'),
+                                padding: const EdgeInsets.only(
+                                  bottom: UtenSpacing.s8,
+                                ),
+                                child: _CompactItemCard(
+                                  theme: theme,
+                                  notice: item,
+                                  status: _statusById[item.id],
+                                  onTap: () => _openWorkbench(only: item),
+                                ),
+                              ),
+                          ],
+                          if (sortedManual.isNotEmpty) ...[
                             _GroupLabel(
                               theme: theme,
                               label: '人事/公司通知',
-                              count: _manualItems.length,
+                              count: sortedManual.length,
                             ),
-                            for (final item in _manualItems)
+                            for (final item in sortedManual)
                               Padding(
                                 key: ValueKey('manual-${item.id}'),
                                 padding: const EdgeInsets.only(
@@ -432,26 +649,6 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
                                   onAcknowledge: () => _acknowledgeManual(item),
                                   onDismiss: () => _dismissManual(item),
                                   onOpenDetail: () => _openManualDetail(item),
-                                ),
-                              ),
-                          ],
-                          if (_items.isNotEmpty) ...[
-                            if (_manualItems.isNotEmpty)
-                              _GroupLabel(
-                                theme: theme,
-                                label: '待办审核',
-                                count: _items.length,
-                              ),
-                            for (final item in _items)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  bottom: UtenSpacing.s8,
-                                ),
-                                child: _CompactItemCard(
-                                  theme: theme,
-                                  notice: item,
-                                  status: _statusById[item.id],
-                                  onTap: () => _openWorkbench(only: item),
                                 ),
                               ),
                           ],
@@ -491,22 +688,15 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
     final hasReviews = items.isNotEmpty;
     final count = items.length + manual.length;
-    // 分组摘要（2026-09-09 用户口径「收到几个车间任务」）：按事件域聚合，
-    // 多条时一眼看出「车间任务 3 · 来料待检验 1」；单一事件不重复摘要。
-    // 人工通知作为独立一组「人事/公司通知 N」。
-    final groups = <String, int>{
-      for (final n in items) _eventGroupLabel(n.sourceEvent): 0,
-    };
-    for (final n in items) {
-      groups[_eventGroupLabel(n.sourceEvent)] =
-          groups[_eventGroupLabel(n.sourceEvent)]! + 1;
-    }
-    final groupChips = groups.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    if (manual.isNotEmpty) {
-      groupChips.add(MapEntry('人事/公司通知', manual.length));
+    // 分级计数摘要（ADR-163）：按视觉级别带色点聚合（「紧急 1 · 待办 2 · 进度 1 ·
+    // 公告 1」），取代旧事件域分组 chips——级别一眼可辨，域信息仍在条目卡上。
+    final levelCounts = <ReviewNoticeLevel, int>{};
+    for (final notice in [...items, ...manual]) {
+      final level = reviewNoticeLevelOf(notice);
+      levelCounts[level] = (levelCounts[level] ?? 0) + 1;
     }
     final subtitle = hasReviews
         ? (count == 1 ? '有 1 项事务等待你处理' : '有 $count 项事务等待你处理')
@@ -547,32 +737,50 @@ class _Header extends StatelessWidget {
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
-                if (count > 1 && groupChips.isNotEmpty) ...[
+                if (count > 1) ...[
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
                     children: [
-                      for (final g in groupChips)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: scheme.secondaryContainer.withValues(
-                              alpha: 0.6,
+                      for (final level in ReviewNoticeLevel.values)
+                        if ((levelCounts[level] ?? 0) > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
                             ),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            '${g.key} ${g.value}',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: scheme.onSecondaryContainer,
-                              fontWeight: FontWeight.w600,
+                            decoration: BoxDecoration(
+                              color: scheme.secondaryContainer.withValues(
+                                alpha: 0.6,
+                              ),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: _levelStyleOf(theme, level).accent,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  l10n.noticeLevelSummary(
+                                    _levelLabel(l10n, level),
+                                    levelCounts[level]!,
+                                  ),
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: scheme.onSecondaryContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
                     ],
                   ),
                 ],
@@ -593,42 +801,6 @@ class _Header extends StatelessWidget {
     );
   }
 }
-
-/// 事件分组摘要的中文名（弹窗副标题下的「车间任务 N · 品质检验 N」chips）。
-String _eventGroupLabel(String? sourceEvent) => switch (sourceEvent) {
-  'SALES_ORDER_PENDING_FINANCE_CONFIRM' => '销售订单待确认',
-  'SALES_SHIPMENT_PENDING_FINANCE_AUDIT' => '发货待财务审核',
-  'SALES_SHIPMENT_PENDING_PICK' => '发货待出库',
-  'SALES_SHIPMENT_FINANCE_REJECTED' ||
-  'DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED' => '发货被驳回',
-  'PROCUREMENT_FINANCE_SUBMITTED' => '订货待财务审批',
-  'PROCUREMENT_FINANCE_CHANGE_SUBMITTED' => '订货改量待审批',
-  'PROCUREMENT_FINANCE_APPROVED' => '订货已批待入库',
-  'PROCUREMENT_IQC_PENDING' => '来料待检验',
-  'PROCUREMENT_IQC_STOCK_IN_PENDING' => '检验合格待入库',
-  'PROCUREMENT_IQC_REJECTION_OPENED' ||
-  'PROCUREMENT_IQC_REJECTION_RETURNED' => 'IQC 拒收处置',
-  'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP' => '订单完工待发货',
-  'SALES_ORDER_APPROVED' => '订单已确认待分析',
-  'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' => '车间任务',
-  'PRODUCTION_DRAW_PENDING' => '领料待出库',
-  'PRODUCTION_PLANNING_URGED' => '车间催下单',
-  'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' => '超产比例待审批',
-  'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' => '追加用料待审批',
-  'SUBCONTRACT_ORDER_KIT_READY' => '委外可下单',
-  'SUBCONTRACT_DRAW_AVAILABLE' => '委外可领料',
-  'SUBCONTRACT_OUTBOUND_READY' => '委外领料待发料',
-  'PROFILE_CHANGE_SUBMITTED' => '信息变更待审核',
-  'VISITOR_APPLY_SUBMITTED' => '访客申请待审批',
-  'VISITOR_HOST_CONFIRM_REQUIRED' => '访客待确认接待',
-  'EXPENSE_CLAIM_SUBMITTED' => '报销待审批',
-  'EXPENSE_CLAIM_PENDING_PAYMENT' => '报销待付款',
-  'EXPENSE_CLAIM_REJECTED' => '报销待修订',
-  'PAYROLL_BATCH_SUBMITTED' => '工资批次待审核',
-  'PAYROLL_BATCH_PENDING_PUBLISH' => '工资批次待发布',
-  'SUGGESTION_SUBMITTED' => '建议待回复',
-  _ => '待办',
-};
 
 IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
   'SALES_ORDER_PENDING_FINANCE_CONFIRM' => Icons.request_quote_outlined,
@@ -653,7 +825,9 @@ IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
   _ => Icons.fact_check_outlined,
 };
 
-/// 单条：大卡布局（图标+标题+摘要+状态+操作提示）。
+/// 单条：大卡布局（图标+标题+摘要+状态+操作提示）。行动/紧急级的主力形态
+/// （ADR-163：urgent=红系强化——error 描边 + 左竖红条 + 标题 error w700；
+/// action=teal 现风格；progress=info 蓝、更紧凑）。
 class _LargeItemCard extends StatelessWidget {
   const _LargeItemCard({
     required this.theme,
@@ -670,84 +844,124 @@ class _LargeItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final level = reviewNoticeLevelOf(notice);
+    final style = _levelStyleOf(theme, level);
+    final urgent = level == ReviewNoticeLevel.urgent;
     final claimedBy = status?.claimedByName;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
+        // clip 让左侧竖红条贴着圆角裁齐。
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: scheme.secondaryContainer.withValues(alpha: 0.35),
+          color: urgent
+              ? scheme.errorContainer.withValues(alpha: 0.45)
+              : level == ReviewNoticeLevel.progress
+              ? scheme.surfaceContainerLow
+              : scheme.secondaryContainer.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.6),
+            color: urgent
+                ? scheme.error
+                : scheme.outlineVariant.withValues(alpha: 0.6),
+            width: urgent ? 1.5 : 1,
           ),
         ),
-        child: Column(
-          // 不写 min 会在外层 Flexible 的 loose 约束下占满剩余高度，
-          // 单条时卡片下方出现大片空白（2026-09-03 修复）。
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+        // IntrinsicHeight：列表项高度不定（unbounded），让左竖条 stretch 到整卡高。
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 左侧竖红条（urgent 专属形状编码——色盲下仍可辨）。
+              if (urgent) Container(width: 4, color: scheme.error),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.all(
+                    style.dense ? UtenSpacing.s12 : UtenSpacing.s16,
                   ),
-                  child: Icon(
-                    _eventIcon(notice.sourceEvent),
-                    size: 22,
-                    color: scheme.onPrimaryContainer,
+                  child: Column(
+                    // 不写 min 会在外层 Flexible 的 loose 约束下占满剩余高度，
+                    // 单条时卡片下方出现大片空白（2026-09-03 修复）。
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: style.dense ? 36 : 40,
+                            height: style.dense ? 36 : 40,
+                            decoration: BoxDecoration(
+                              color: style.iconContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              _eventIcon(notice.sourceEvent),
+                              size: style.dense ? 20 : 22,
+                              color: style.onIconContainer,
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s12),
+                          Expanded(
+                            child: Text(
+                              notice.title,
+                              style: urgent
+                                  ? theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: scheme.error,
+                                    )
+                                  : theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: UtenSpacing.s8),
+                          _LevelBadge(
+                            style: style,
+                            label: _levelLabel(l10n, level),
+                          ),
+                        ],
+                      ),
+                      if (notice.content.isNotEmpty) ...[
+                        const SizedBox(height: UtenSpacing.s12),
+                        Text(
+                          notice.content,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            height: 1.45,
+                          ),
+                          // 到料、尚缺和领料提示是一条完整业务信息，不能截断其后半段。
+                          maxLines:
+                              notice.sourceEvent ==
+                                  'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                              ? null
+                              : 3,
+                          overflow:
+                              notice.sourceEvent ==
+                                  'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                              ? TextOverflow.visible
+                              : TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: UtenSpacing.s12),
+                      _ClaimChip(theme: theme, claimedByName: claimedBy),
+                    ],
                   ),
                 ),
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Text(
-                    notice.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            if (notice.content.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                notice.content,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  height: 1.45,
-                ),
-                // 到料、尚缺和领料提示是一条完整业务信息，不能截断其后半段。
-                maxLines:
-                    notice.sourceEvent ==
-                        'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
-                    ? null
-                    : 3,
-                overflow:
-                    notice.sourceEvent ==
-                        'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
-                    ? TextOverflow.visible
-                    : TextOverflow.ellipsis,
               ),
             ],
-            const SizedBox(height: UtenSpacing.s12),
-            _ClaimChip(theme: theme, claimedByName: claimedBy),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-/// 多条：紧凑行（图标+标题+时间+状态 chip）。
+/// 多条：紧凑行（图标+标题+时间+状态 chip）。进度类进紧凑形态且行高更矮
+/// （dense，视觉权重低于行动卡）；urgent 用红系强化（描边+竖条+error 标题）。
 class _CompactItemCard extends StatelessWidget {
   const _CompactItemCard({
     required this.theme,
@@ -764,57 +978,99 @@ class _CompactItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final level = reviewNoticeLevelOf(notice);
+    final style = _levelStyleOf(theme, level);
+    final urgent = level == ReviewNoticeLevel.urgent;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s12,
-        ),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerLow,
+          color: urgent
+              ? scheme.errorContainer.withValues(alpha: 0.45)
+              : scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
+          border: urgent ? Border.all(color: scheme.error, width: 1.5) : null,
         ),
-        child: Row(
-          children: [
-            Icon(
-              _eventIcon(notice.sourceEvent),
-              size: 20,
-              color: scheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    notice.title,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+        // IntrinsicHeight：列表项高度不定（unbounded），让左竖条 stretch 到整行高。
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (urgent) Container(width: 3, color: scheme.error),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s12,
+                    vertical: style.dense ? UtenSpacing.s8 : UtenSpacing.s12,
                   ),
-                  if (notice.sourceEvent ==
-                          'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' &&
-                      notice.content.isNotEmpty) ...[
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      notice.content,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.45,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          color: style.iconContainer,
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Icon(
+                          _eventIcon(notice.sourceEvent),
+                          size: 18,
+                          color: style.onIconContainer,
+                        ),
                       ),
-                    ),
-                  ],
-                ],
+                      const SizedBox(width: UtenSpacing.s8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              notice.title,
+                              style: urgent
+                                  ? theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: scheme.error,
+                                    )
+                                  : theme.textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (notice.sourceEvent ==
+                                    'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED' &&
+                                notice.content.isNotEmpty) ...[
+                              const SizedBox(height: UtenSpacing.s8),
+                              Text(
+                                notice.content,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  height: 1.45,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      _LevelBadge(
+                        style: style,
+                        label: _levelLabel(l10n, level),
+                      ),
+                      const SizedBox(width: UtenSpacing.s8),
+                      _ClaimChip(
+                        theme: theme,
+                        claimedByName: status?.claimedByName,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            _ClaimChip(theme: theme, claimedByName: status?.claimedByName),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -958,9 +1214,11 @@ class _GroupLabel extends StatelessWidget {
   }
 }
 
-/// 人工通知条目：类型图标 + 标题 + 发布人·时间 + 重要度徽章 + 正文两行预览 +
+/// 人工通知条目：类型图标 + 标题 + 发布人·时间 + 级别徽章 + 正文两行预览 +
 /// 操作（打卡类型【打卡确认】/ 只提醒【知道了】+【查看详情】）。
 /// 375px 宽下操作区用 Wrap 自动换行。
+/// ADR-163：广播级 = 暖色容器底（amber，与 urgent 红拉开色相）；人工紧急 =
+/// 红系强化（errorContainer 底 + 1.5px error 描边 + 紧急红徽章，组内置顶）。
 class _ManualNoticeCard extends StatelessWidget {
   const _ManualNoticeCard({
     required this.theme,
@@ -983,17 +1241,21 @@ class _ManualNoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
     final requiresAck =
         notice.interactionMode == NoticeInteractionMode.acknowledge;
     final typeColor = notice.type.color;
+    final level = reviewNoticeLevelOf(notice);
+    final style = _levelStyleOf(theme, level);
+    final urgent = level == ReviewNoticeLevel.urgent;
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
+        color: urgent
+            ? scheme.errorContainer.withValues(alpha: 0.45)
+            : style.iconContainer,
         borderRadius: BorderRadius.circular(12),
-        border: notice.priority == NoticePriority.urgent
-            ? Border.all(color: scheme.error.withValues(alpha: 0.5))
-            : null,
+        border: urgent ? Border.all(color: scheme.error, width: 1.5) : null,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1037,16 +1299,10 @@ class _ManualNoticeCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (notice.priority.showBadge) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                UtenStatusBadge(
-                  label: notice.priority.label,
-                  type: notice.priority == NoticePriority.urgent
-                      ? UtenStatusBadgeType.danger
-                      : UtenStatusBadgeType.warning,
-                  size: UtenStatusBadgeSize.small,
-                ),
-              ],
+              // 级别徽章（ADR-163）：人工紧急=红底白字「紧急」，其余人工=琥珀底
+              // 「公告」——徽章文字不同，色弱下与 urgent 红仍可区分。
+              const SizedBox(width: UtenSpacing.s8),
+              _LevelBadge(style: style, label: _levelLabel(l10n, level)),
             ],
           ),
           if (notice.content.isNotEmpty) ...[

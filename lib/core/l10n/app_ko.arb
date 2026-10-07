@@ -627,6 +627,19 @@
   "noticeCelebrationSubjectLabel": "축하 대상",
   "noticeCelebrationSubjectHint": "축하할 동료 선택",
   "noticeCelebrationSubjectRequired": "축하 대상을 선택하세요",
+  "noticeLevelUrgent": "긴급",
+  "noticeLevelAction": "할 일",
+  "noticeLevelProgress": "진행",
+  "noticeLevelBroadcast": "공지",
+  "noticeLevelSummary": "{level} {count}",
+  "@noticeLevelSummary": {
+    "placeholders": {
+      "level": {},
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeQuickCelebrationTitle": "빠른 축하 발행",
   "noticeQuickPublish": "알림 작성",
   "noticeQuickWedding": "결혼",

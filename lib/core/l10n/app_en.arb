@@ -726,6 +726,19 @@
   "noticeCelebrationSubjectLabel": "Honoree",
   "noticeCelebrationSubjectHint": "Choose the colleague to celebrate",
   "noticeCelebrationSubjectRequired": "Please choose an honoree",
+  "noticeLevelUrgent": "Urgent",
+  "noticeLevelAction": "Action",
+  "noticeLevelProgress": "Progress",
+  "noticeLevelBroadcast": "Notice",
+  "noticeLevelSummary": "{level} {count}",
+  "@noticeLevelSummary": {
+    "placeholders": {
+      "level": {},
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeQuickCelebrationTitle": "Quick celebration",
   "noticeQuickPublish": "New notice",
   "noticeQuickWedding": "Wedding",

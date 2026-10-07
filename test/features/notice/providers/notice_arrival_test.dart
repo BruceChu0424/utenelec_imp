@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/ui/uten_top_banner_card.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -16,11 +17,16 @@ import 'package:uten_imp/features/notice/providers/notice_arrival.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
 import 'package:uten_imp/features/notice/providers/notice_unread_index_provider.dart';
+import 'package:uten_imp/features/notice/widgets/review_pending_dialog.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 
 void main() {
+  // ReviewPendingDialog 单例守卫跨用例隔离（弹中央窗的用例共用同一进程）。
+  setUp(resetReviewPendingDialogForTest);
+  tearDown(resetReviewPendingDialogForTest);
+
   testWidgets(
     'persisted cursor dispatches each later id exactly once across identities',
     (tester) async {
@@ -853,6 +859,160 @@ void main() {
     },
   );
 
+  testWidgets(
+    'interactive urgent opens the central red card dialog plus top banner (ADR-163)',
+    (tester) async {
+      // ADR-163（2026-10-06）修订 ADR-059 §六：interactive 的 urgent 待办恢复
+      // 中央弹窗（红卡呈现），顶部红条并行保留；弹前真态校验对 urgent 同样生效
+      // （对照：非 interactive 的 urgent 仍只弹顶部条——见上一用例）。
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final urgent = Notice(
+        id: '00000000-0000-0000-0000-000000000521',
+        title: '委外短交预警：WO-009',
+        content: '供应商交回量低于允许损耗下限，请判定处置。',
+        type: NoticeType.approval,
+        publisher: '系统',
+        publishedAt: DateTime.utc(2026, 8, 22, 1, 5),
+        isRead: false,
+        priority: NoticePriority.urgent,
+        interactive: true,
+        sourceEvent: 'SUBCONTRACT_SHORT_DELIVERY_DETECTED',
+        actionRoute: '/operations/workbench/subcontract',
+      );
+      final repository = _FakeArrivalRepository()
+        ..statuses[urgent.id] = PendingReviewStatus(
+          noticeId: urgent.id,
+          resolved: false,
+        );
+      late BuildContext dispatchContext;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noticeRepositoryProvider.overrideWithValue(repository),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: MaterialApp(
+            locale: const Locale('zh'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) {
+                    dispatchContext = context;
+                    return const Scaffold(body: Text('首页'));
+                  },
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      dispatchNoticeArrival(dispatchContext, urgent, onOpenDetail: () {});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // 顶部红条并行保留（纯显示 8s）。
+      expect(find.byType(UtenTopBannerCard), findsOneWidget);
+      // 中央弹窗打开：红卡 + 紧急徽章（三重编码）。
+      expect(find.byType(ReviewPendingDialog), findsOneWidget);
+      // 标题两处出现：顶部红条 + 中央红卡；红卡断言只取弹窗内那份。
+      final dialogTitle = find.descendant(
+        of: find.byType(ReviewPendingDialog),
+        matching: find.text(urgent.title),
+      );
+      expect(dialogTitle, findsOneWidget);
+      expect(find.text('紧急'), findsOneWidget);
+      expect(find.byIcon(Icons.priority_high_rounded), findsOneWidget);
+      final scheme = Theme.of(tester.element(find.text('待办提醒'))).colorScheme;
+      final card = tester.widget<Container>(
+        find.ancestor(of: dialogTitle, matching: find.byType(Container)).first,
+      );
+      final decoration = card.decoration! as BoxDecoration;
+      expect(decoration.border!.top.color, scheme.error);
+      expect(decoration.border!.top.width, 1.5);
+
+      // 关闭弹窗（右上 X）：仅本次关闭，30s 心跳 Timer 随 dispose 取消。
+      await tester.tap(find.byTooltip('关闭，稍后可从工作台或通知进入'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewPendingDialog), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'resolved interactive urgent banner never reaches the central dialog',
+    (tester) async {
+      // 弹前真态校验对 urgent 同样生效：已办结的 interactive urgent 不进中央窗
+      // （顶部条照常到达提醒），也不算「顶部条被吞」。
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final preferences = await SharedPreferences.getInstance();
+      final resolved = Notice(
+        id: '00000000-0000-0000-0000-000000000522',
+        title: '已办结的紧急待办',
+        content: '别处已处理完毕。',
+        type: NoticeType.approval,
+        publisher: '系统',
+        publishedAt: DateTime.utc(2026, 8, 22, 1, 6),
+        isRead: false,
+        priority: NoticePriority.urgent,
+        interactive: true,
+        sourceEvent: 'SUBCONTRACT_SHORT_DELIVERY_DETECTED',
+      );
+      final repository = _FakeArrivalRepository()
+        ..statuses[resolved.id] = PendingReviewStatus(
+          noticeId: resolved.id,
+          resolved: true,
+        );
+      late BuildContext dispatchContext;
+      var delivered = 0;
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            noticeRepositoryProvider.overrideWithValue(repository),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: MaterialApp(
+            home: Stack(
+              children: [
+                Builder(
+                  builder: (context) {
+                    dispatchContext = context;
+                    return const Scaffold(body: Text('首页'));
+                  },
+                ),
+                const Align(
+                  alignment: Alignment.topCenter,
+                  child: AppNotificationHost(),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      dispatchNoticeArrival(
+        dispatchContext,
+        resolved,
+        onOpenDetail: () {},
+        onDelivered: () => delivered++,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byType(ReviewPendingDialog), findsNothing);
+      expect(find.byType(Dialog), findsNothing);
+      expect(delivered, 1, reason: '办结不弹也视为已送达');
+    },
+  );
+
   testWidgets('host disposal leaves an unclosed urgent banner undelivered', (
     tester,
   ) async {
@@ -1616,6 +1776,22 @@ void main() {
       );
     },
   );
+}
+
+/// 到达链弹前真态校验替身：按 id 返回预置状态，其余方法按需抛出。
+class _FakeArrivalRepository implements NoticeRepository {
+  final Map<String, PendingReviewStatus> statuses = {};
+
+  @override
+  Future<List<PendingReviewStatus>> pendingReviewStatus(
+    List<String> ids,
+  ) async => [
+    for (final id in ids)
+      if (statuses[id] != null) statuses[id]!,
+  ];
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _MemoryCursorStore implements NoticeArrivalCursorStore {

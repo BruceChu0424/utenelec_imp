@@ -1692,6 +1692,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => '请选择祝福对象';
 
   @override
+  String get noticeLevelUrgent => '紧急';
+
+  @override
+  String get noticeLevelAction => '待办';
+
+  @override
+  String get noticeLevelProgress => '进度';
+
+  @override
+  String get noticeLevelBroadcast => '公告';
+
+  @override
+  String noticeLevelSummary(Object level, int count) {
+    return '$level $count';
+  }
+
+  @override
   String get noticeQuickCelebrationTitle => '快捷发布祝福';
 
   @override

@@ -3283,6 +3283,36 @@ abstract class AppLocalizations {
   /// **'请选择祝福对象'**
   String get noticeCelebrationSubjectRequired;
 
+  /// No description provided for @noticeLevelUrgent.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急'**
+  String get noticeLevelUrgent;
+
+  /// No description provided for @noticeLevelAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'待办'**
+  String get noticeLevelAction;
+
+  /// No description provided for @noticeLevelProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'进度'**
+  String get noticeLevelProgress;
+
+  /// No description provided for @noticeLevelBroadcast.
+  ///
+  /// In zh, this message translates to:
+  /// **'公告'**
+  String get noticeLevelBroadcast;
+
+  /// No description provided for @noticeLevelSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'{level} {count}'**
+  String noticeLevelSummary(Object level, int count);
+
   /// No description provided for @noticeQuickCelebrationTitle.
   ///
   /// In zh, this message translates to:

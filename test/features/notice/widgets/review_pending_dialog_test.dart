@@ -11,7 +11,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/providers/notice_page_clear_events.dart';
@@ -242,15 +244,18 @@ void main() {
     String? actionRoute,
     String sourceEvent = 'SALES_ORDER_PENDING_FINANCE_CONFIRM',
     String content = '销售订货单已审核，待财务确认。',
+    NoticePriority priority = NoticePriority.normal,
+    NoticeType type = NoticeType.approval,
   }) {
     return Notice(
       id: id,
       title: title,
       content: content,
-      type: NoticeType.approval,
+      type: type,
       publisher: '系统',
       publishedAt: DateTime.now().subtract(const Duration(minutes: 2)),
       isRead: false,
+      priority: priority,
       interactive: true,
       actionRoute: actionRoute,
       sourceEvent: sourceEvent,
@@ -296,6 +301,10 @@ void main() {
         child: MaterialApp.router(
           routerConfig: router,
           // 根 Navigator context 由 showDialog 默认使用。
+          // 分级徽章/计数用 AppLocalizations：测试固定 zh 便于中文断言。
+          locale: const Locale('zh'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
         ),
       ),
     );
@@ -348,7 +357,8 @@ void main() {
         ],
         routes: [GoRoute(path: entry.$2, builder: (_, _) => Text(entry.$3))],
       );
-      expect(find.text('${entry.$3} 1'), findsOneWidget);
+      // ADR-163：头部摘要为分级计数（两条均 normal → 进度 2），不再是事件域 chips。
+      expect(find.text('进度 2'), findsOneWidget);
       await tester.tap(find.text('生产申请'));
       await tester.pumpAndSettle();
       expect(find.text(entry.$3), findsOneWidget);
@@ -382,7 +392,8 @@ void main() {
         ),
       ],
     );
-    expect(find.text('委外可下单 1'), findsOneWidget);
+    // ADR-163：两条 normal 待办的头部摘要是「进度 2」分级计数。
+    expect(find.text('进度 2'), findsOneWidget);
     await tester.tap(find.text('委外可下单：EB-001 委外件 可下单 4 件'));
     await tester.pumpAndSettle();
     expect(find.text('任务中心 pending EB-001'), findsOneWidget);
@@ -529,8 +540,11 @@ void main() {
       expect(find.text('待财务确认：SO-001'), findsOneWidget);
       expect(find.text('去工作台处理'), findsOneWidget);
       expect(find.text('打卡确认'), findsOneWidget);
-      // 紧急人工通知带重要度徽章。
+      // 紧急人工通知带「紧急」红徽章（ADR-163 分级徽章）。
       expect(find.text('紧急'), findsOneWidget);
+      // 头部分级计数：待办(normal→进度 1) + 人工紧急(紧急 1)。
+      expect(find.text('进度 1'), findsOneWidget);
+      expect(find.text('紧急 1'), findsOneWidget);
 
       await tester.tap(find.text('全部稍后再看'));
       await tester.pumpAndSettle();
@@ -559,7 +573,9 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('打卡确认'), findsOneWidget);
     expect(find.text('查看详情'), findsOneWidget);
-    expect(find.text('重要'), findsOneWidget);
+    // ADR-163：人工 important 不再显示旧「重要」徽章，归广播级「公告」。
+    expect(find.text('重要'), findsNothing);
+    expect(find.text('公告'), findsOneWidget);
   });
 
   testWidgets('renders single pending item with claim chip', (tester) async {
@@ -795,5 +811,197 @@ void main() {
           .first,
     );
     expect(lastItem.hitTestable(), findsOneWidget);
+  });
+
+  // ---------------- 分级体系（2026-10-06，ADR-163）----------------
+
+  /// 取标题文本所属卡片（唯一 Container 祖先）的 BoxDecoration。
+  BoxDecoration decorationOfCard(WidgetTester tester, String title) {
+    final container = tester.widget<Container>(
+      find
+          .ancestor(of: find.text(title), matching: find.byType(Container))
+          .first,
+    );
+    return container.decoration! as BoxDecoration;
+  }
+
+  testWidgets('urgent review renders red card with 紧急 badge and sorts first', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(
+      tester,
+      repo: repo,
+      pending: [
+        noticeOf('normal-1', title: '普通进度待办'),
+        noticeOf(
+          'urgent-1',
+          title: '委外短交预警：WO-009',
+          priority: NoticePriority.urgent,
+        ),
+        noticeOf(
+          'action-1',
+          title: '重要行动待办',
+          priority: NoticePriority.important,
+        ),
+      ],
+    );
+
+    final scheme = Theme.of(tester.element(find.text('待办提醒'))).colorScheme;
+
+    // 红卡三重编码：紧急徽章（红底白字图标+文字）+ error 描边 1.5 + error 标题。
+    expect(find.text('紧急'), findsOneWidget);
+    expect(find.byIcon(Icons.priority_high_rounded), findsOneWidget);
+    final urgentCard = decorationOfCard(tester, '委外短交预警：WO-009');
+    expect(urgentCard.border!.top.color, scheme.error);
+    expect(urgentCard.border!.top.width, 1.5);
+    expect(urgentCard.color, scheme.errorContainer.withValues(alpha: 0.45));
+    final urgentTitle = tester.widget<Text>(find.text('委外短交预警：WO-009'));
+    expect(urgentTitle.style?.color, scheme.error);
+    expect(urgentTitle.style?.fontWeight, FontWeight.w700);
+    // 非 urgent 条目无描边。
+    expect(decorationOfCard(tester, '普通进度待办').border, isNull);
+
+    // 排序置顶：urgent < action < progress（同一列表内的纵向位置）。
+    final urgentTop = tester.getTopLeft(find.text('委外短交预警：WO-009')).dy;
+    final actionTop = tester.getTopLeft(find.text('重要行动待办')).dy;
+    final progressTop = tester.getTopLeft(find.text('普通进度待办')).dy;
+    expect(urgentTop, lessThan(actionTop));
+    expect(actionTop, lessThan(progressTop));
+  });
+
+  testWidgets(
+    'same sourceEvent splits into 行动/进度 levels by priority (ADR-163)',
+    (tester) async {
+      // 车间物料事件同源不同级：「可开工行动卡」important=行动(teal)、
+      // 「到货进展」normal=进度(info 蓝)。
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [
+          noticeOf(
+            'progress-1',
+            title: '物料到货进展：A 件到货 100',
+            sourceEvent: 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED',
+            content: 'A 物料本次到货 100 件，尚缺 900 件。',
+            type: NoticeType.task,
+          ),
+          noticeOf(
+            'action-1',
+            title: '可开工行动卡：B 件',
+            sourceEvent: 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED',
+            content: '两种物料共同支持产量后才能开工。',
+            priority: NoticePriority.important,
+            type: NoticeType.task,
+          ),
+        ],
+      );
+
+      // 徽章文字分档（不只靠颜色）。
+      expect(find.text('待办'), findsOneWidget);
+      expect(find.text('进度'), findsOneWidget);
+      // 行动级(teal)与进度级(info 蓝)徽章图标色分档。
+      final scheme = Theme.of(tester.element(find.text('待办提醒'))).colorScheme;
+      final actionBadgeIcon = tester.widget<Icon>(
+        find.byIcon(Icons.task_alt_rounded),
+      );
+      final progressBadgeIcon = tester.widget<Icon>(
+        find.byIcon(Icons.trending_up_rounded),
+      );
+      expect(actionBadgeIcon.color, scheme.onPrimaryContainer);
+      expect(progressBadgeIcon.color, UtenColors.onInfoContainer);
+      expect(actionBadgeIcon.color, isNot(equals(progressBadgeIcon.color)));
+      // 行动卡排序在进度卡之前。
+      expect(
+        tester.getTopLeft(find.text('可开工行动卡：B 件')).dy,
+        lessThan(tester.getTopLeft(find.text('物料到货进展：A 件到货 100')).dy),
+      );
+    },
+  );
+
+  testWidgets(
+    'manual notices: broadcast amber card and manual urgent red border',
+    (tester) async {
+      // 人工组：普通公告=广播级暖色底；人工紧急=红系强化并置组首。
+      tester.view.physicalSize = const Size(1920, 1080);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [],
+        manual: [
+          manualOf('m-normal'), // 默认标题「国庆放假安排」
+          manualOf(
+            'm-urgent',
+            priority: NoticePriority.urgent,
+            title: '今日停电通知',
+          ),
+        ],
+      );
+
+      final scheme = Theme.of(tester.element(find.text('登录提醒'))).colorScheme;
+
+      expect(find.text('公告'), findsOneWidget);
+      expect(find.text('紧急'), findsOneWidget);
+      // 广播级卡片 = 暖色容器（amber，与 error 红拉开色相）。
+      final broadcastCard = decorationOfCard(tester, '国庆放假安排');
+      expect(broadcastCard.color, UtenColors.broadcastContainer);
+      expect(broadcastCard.border, isNull);
+      // 人工紧急 = errorContainer 底 + 1.5px error 描边（红系强化）。
+      final urgentCard = decorationOfCard(tester, '今日停电通知');
+      expect(urgentCard.color, scheme.errorContainer.withValues(alpha: 0.45));
+      expect(urgentCard.border!.top.color, scheme.error);
+      expect(urgentCard.border!.top.width, 1.5);
+      // 组内排序：urgent 人工条目置组首。
+      expect(
+        tester.getTopLeft(find.text('今日停电通知')).dy,
+        lessThan(tester.getTopLeft(find.text('国庆放假安排')).dy),
+      );
+      // 头部分级计数带各级色点。
+      expect(find.text('紧急 1'), findsOneWidget);
+      expect(find.text('公告 1'), findsOneWidget);
+    },
+  );
+
+  testWidgets('header summary counts every level with colored dots', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1920, 1080);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeNoticeRepository();
+    await pumpDialog(
+      tester,
+      repo: repo,
+      pending: [
+        noticeOf('u1', title: '紧急卡', priority: NoticePriority.urgent),
+        noticeOf('a1', title: '行动卡', priority: NoticePriority.important),
+        noticeOf('p1', title: '进度卡'),
+      ],
+      manual: [manualOf('m1', title: '公告卡')],
+    );
+
+    expect(find.text('紧急 1'), findsOneWidget);
+    expect(find.text('待办 1'), findsOneWidget);
+    expect(find.text('进度 1'), findsOneWidget);
+    expect(find.text('公告 1'), findsOneWidget);
+    // 待办审核组在前、人事广播组在后（ADR-163 排序：broadcast 垫底）。
+    expect(
+      tester.getTopLeft(find.text('待办审核 · 3')).dy,
+      lessThan(tester.getTopLeft(find.text('人事/公司通知 · 1')).dy),
+    );
   });
 }

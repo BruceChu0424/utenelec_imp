@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/providers/review_pending_login_gate.dart';
@@ -47,6 +48,9 @@ void main() {
         ProviderScope(
           overrides: [noticeRepositoryProvider.overrideWithValue(repository)],
           child: MaterialApp(
+            locale: const Locale('zh'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
             home: Builder(
               builder: (context) => ReviewPendingLoginGate(
                 enabled: true,
@@ -85,6 +89,9 @@ void main() {
       ProviderScope(
         overrides: [noticeRepositoryProvider.overrideWithValue(repository)],
         child: MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           home: Builder(
             builder: (context) => ReviewPendingLoginGate(
               enabled: enabled,
@@ -110,6 +117,9 @@ void main() {
         ProviderScope(
           overrides: [noticeRepositoryProvider.overrideWithValue(repository)],
           child: MaterialApp(
+            locale: const Locale('zh'),
+            supportedLocales: AppLocalizations.supportedLocales,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
             home: Builder(
               builder: (context) => ReviewPendingLoginGate(
                 enabled: true,
@@ -168,6 +178,9 @@ void main() {
       ProviderScope(
         overrides: [noticeRepositoryProvider.overrideWithValue(repository)],
         child: MaterialApp(
+          locale: const Locale('zh'),
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
           home: Builder(
             builder: (context) => ReviewPendingLoginGate(
               enabled: true,

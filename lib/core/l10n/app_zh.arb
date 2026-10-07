@@ -720,6 +720,19 @@
   "noticeCelebrationSubjectLabel": "祝福对象",
   "noticeCelebrationSubjectHint": "选择要祝福的同事",
   "noticeCelebrationSubjectRequired": "请选择祝福对象",
+  "noticeLevelUrgent": "紧急",
+  "noticeLevelAction": "待办",
+  "noticeLevelProgress": "进度",
+  "noticeLevelBroadcast": "公告",
+  "noticeLevelSummary": "{level} {count}",
+  "@noticeLevelSummary": {
+    "placeholders": {
+      "level": {},
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeQuickCelebrationTitle": "快捷发布祝福",
   "noticeQuickPublish": "发通知",
   "noticeQuickWedding": "新婚",

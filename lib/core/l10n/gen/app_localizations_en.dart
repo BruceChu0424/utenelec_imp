@@ -1773,6 +1773,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
 
   @override
+  String get noticeLevelUrgent => 'Urgent';
+
+  @override
+  String get noticeLevelAction => 'Action';
+
+  @override
+  String get noticeLevelProgress => 'Progress';
+
+  @override
+  String get noticeLevelBroadcast => 'Notice';
+
+  @override
+  String noticeLevelSummary(Object level, int count) {
+    return '$level $count';
+  }
+
+  @override
   String get noticeQuickCelebrationTitle => 'Quick celebration';
 
   @override

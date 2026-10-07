@@ -8,6 +8,8 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_epoch_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import 'employee_dialog_error_text.dart';
@@ -34,15 +36,74 @@ class _EmployeeResetPasswordDialog extends ConsumerStatefulWidget {
 class _EmployeeResetPasswordDialogState
     extends ConsumerState<_EmployeeResetPasswordDialog> {
   bool _submitting = false;
+  bool _invalidated = false;
+  late final String? _userId;
+  late final int _sessionEpoch;
+  ModalRoute<bool>? _route;
   String? _temporaryPassword;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    _userId = ref.read(sessionProvider).user?.id;
+    _sessionEpoch = ref.read(sessionEpochProvider);
+    // 普通 token/profile 刷新保留身份和纪元；退出、切换身份、重新登录或撤权
+    // 都永久终止本次凭据展示，即使同一帧又恢复权限也不能接纳旧响应。
+    ref.listenManual(sessionProvider, (_, _) => _ensureCurrent());
+    ref.listenManual(sessionEpochProvider, (_, _) => _ensureCurrent());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route ??= ModalRoute.of<bool>(context);
+    _ensureCurrent();
+  }
+
+  bool _ensureCurrent() {
+    if (!mounted || _invalidated) return false;
+    final session = ref.read(sessionProvider);
+    if (_userId != null &&
+        session.status == AuthStatus.authenticated &&
+        !session.isImpersonating &&
+        session.user?.id == _userId &&
+        ref.read(sessionEpochProvider) == _sessionEpoch &&
+        session.user!.permissions.contains(Perm.accountSupport)) {
+      return true;
+    }
+    setState(() {
+      _invalidated = true;
+      _temporaryPassword = null;
+      _error = null;
+    });
+    // 再认证可能仍覆盖在本弹窗上方，不能 pop 掉当前最上层的其他窗口。
+    // 清空内容后移除自己的 route，返回 false，不把未知业务结果当作未执行而重试。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = _route;
+      if (mounted && route != null && route.isActive) {
+        route.navigator?.removeRoute(route, false);
+      }
+    });
+    return false;
+  }
+
+  Future<void> _copyPassword() async {
+    if (!_ensureCurrent()) return;
+    final password = _temporaryPassword;
+    if (password == null) return;
+    await Clipboard.setData(ClipboardData(text: password));
+    if (!mounted) return;
+    if (_ensureCurrent()) {
+      context.appSuccess(
+        AppLocalizations.of(context).employeeOnboardTemporaryPasswordCopied,
+      );
+    }
+  }
+
   Future<void> _submit() async {
     if (_submitting || _temporaryPassword != null) return;
-    if (!ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
-      setState(() => _error = '没有账号支持权限，无法修改员工密码');
-      return;
-    }
+    if (!_ensureCurrent()) return;
     if (widget.employee.status == 'resigned' ||
         !const ['active', 'locked'].contains(widget.employee.accountStatus)) {
       setState(() => _error = '该员工账号当前不能修改密码，请刷新员工资料');
@@ -56,18 +117,19 @@ class _EmployeeResetPasswordDialogState
       final password = await ref
           .read(employeeRepositoryProvider)
           .resetPassword(widget.employee.id);
-      if (!mounted) return;
+      if (!_ensureCurrent()) return;
       setState(() => _temporaryPassword = password);
     } catch (error) {
-      if (!mounted) return;
+      if (!_ensureCurrent()) return;
       setState(() => _error = employeeDialogErrorText(error, '修改密码失败，请稍后重试'));
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted && !_invalidated) setState(() => _submitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_invalidated) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final employee = widget.employee;
@@ -158,20 +220,15 @@ class _EmployeeResetPasswordDialogState
               ]
             : [
                 TextButton.icon(
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: password));
-                    if (context.mounted) {
-                      context.appSuccess(
-                        l10n.employeeOnboardTemporaryPasswordCopied,
-                      );
-                    }
-                  },
+                  onPressed: _copyPassword,
                   icon: const Icon(Icons.copy_rounded),
                   label: Text(l10n.employeeOnboardCopyTemporaryPassword),
                 ),
                 FilledButton(
                   key: const ValueKey('employee-reset-password-saved'),
-                  onPressed: () => Navigator.of(context).pop(true),
+                  onPressed: () {
+                    if (_ensureCurrent()) Navigator.of(context).pop(true);
+                  },
                   child: const Text('我已安全保存'),
                 ),
               ],

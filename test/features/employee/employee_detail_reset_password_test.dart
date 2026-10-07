@@ -51,6 +51,7 @@ class _Session extends SessionNotifier {
 
   @override
   SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
     user: AppUser(
       id: 'hr-user',
       code: 'HR001',

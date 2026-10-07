@@ -11,6 +11,7 @@ import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/employee/widgets/employee_reset_password_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_epoch_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
@@ -52,19 +53,28 @@ class _Session extends SessionNotifier {
 
   void revokeAccountSupport() => state = _state(const []);
 
-  SessionState _state(List<String> permissions) => SessionState(
-    user: AppUser(
-      id: 'hr-user',
-      code: 'HR001',
-      name: '人事',
-      permissions: permissions,
-    ),
-  );
+  void refreshProfile() => state = _state(permissions);
+
+  void switchAccount() => state = _state(permissions, userId: 'other-hr-user');
+
+  void simulateLogout() => state = const SessionState();
+
+  SessionState _state(List<String> permissions, {String userId = 'hr-user'}) =>
+      SessionState(
+        status: AuthStatus.authenticated,
+        user: AppUser(
+          id: userId,
+          code: 'HR001',
+          name: '人事',
+          permissions: permissions,
+        ),
+      );
 }
 
 class _Results {
   final values = <bool?>[];
   late _Session session;
+  late ProviderContainer container;
 }
 
 Future<_Results> _open(
@@ -111,9 +121,10 @@ Future<_Results> _open(
   await tester.pumpAndSettle();
   expect(find.byKey(_dialog), findsOneWidget);
   // 建立打开弹窗时的人事会话与权限快照，以便测试打开后撤权。
-  ProviderScope.containerOf(
+  results.container = ProviderScope.containerOf(
     tester.element(find.byKey(_dialog)),
-  ).read(currentPermissionsProvider);
+  );
+  results.container.read(currentPermissionsProvider);
   return results;
 }
 
@@ -219,19 +230,161 @@ void main() {
     expect(find.text('该员工账号已停用，不能修改密码'), findsNothing);
   });
 
-  testWidgets('弹窗打开后撤销账号维护权限，提交重新校验且不发请求', (tester) async {
+  testWidgets('弹窗打开后撤销账号维护权限，关闭且不发请求', (tester) async {
     final repository = _ResetRepository();
     final results = await _open(tester, repository);
     results.session.revokeAccountSupport();
-    await tester.pump();
-
-    await tester.tap(find.byKey(_confirm));
     await tester.pumpAndSettle();
     expect(repository.employeeIds, isEmpty);
-    expect(find.byKey(_dialog), findsOneWidget);
-    expect(find.textContaining('权限'), findsWidgets);
+    expect(find.byKey(_dialog), findsNothing);
     expect(find.text(_temporaryPassword), findsNothing);
+    expect(results.values, [false]);
+  });
+
+  testWidgets('请求中撤权后丢弃迟到临时密码，不自动重试', (tester) async {
+    final pending = Completer<String>();
+    final repository = _ResetRepository()..pending = pending;
+    final results = await _open(tester, repository);
+    await tester.tap(find.byKey(_confirm));
+    await tester.pump();
+
+    results.session.revokeAccountSupport();
+    pending.complete(_temporaryPassword);
+    await tester.pumpAndSettle();
+
+    expect(find.text(_temporaryPassword), findsNothing);
+    expect(find.byKey(_dialog), findsNothing);
+    expect(results.values, [false]);
+    expect(repository.employeeIds, ['emp-7']);
+  });
+
+  testWidgets('展示后撤权立即禁用旧复制回调并清除密码', (tester) async {
+    final clipboardWrites = <Object?>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          clipboardWrites.add(call.arguments);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    final results = await _open(tester, _ResetRepository());
+    await tester.tap(find.byKey(_confirm));
+    await tester.pumpAndSettle();
+    final copy = tester
+        .widget<TextButton>(find.widgetWithText(TextButton, '复制密码'))
+        .onPressed!;
+
+    results.session.revokeAccountSupport();
+    // 模拟撤权后下一帧之前已经排队的复制点击，不能靠按钮重建来兜底。
+    copy();
+    await tester.pumpAndSettle();
+
+    expect(clipboardWrites, isEmpty);
+    expect(find.text(_temporaryPassword), findsNothing);
+    expect(find.byKey(_dialog), findsNothing);
+    expect(results.values, [false]);
+  });
+
+  testWidgets('切换到同样有权限的其他人后不接收旧请求的密码', (tester) async {
+    final pending = Completer<String>();
+    final repository = _ResetRepository()..pending = pending;
+    final results = await _open(tester, repository);
+    await tester.tap(find.byKey(_confirm));
+    await tester.pump();
+
+    results.session.switchAccount();
+    // 仓库替身故意返回旧响应，验证弹窗自身也不依赖网络层代为清除。
+    pending.complete(_temporaryPassword);
+    await tester.pumpAndSettle();
+
+    expect(find.text(_temporaryPassword), findsNothing);
+    expect(find.byKey(_dialog), findsNothing);
+    expect(results.values, [false]);
+    expect(repository.employeeIds, ['emp-7']);
+  });
+
+  testWidgets('同一员工退出后重新登录也不能恢复旧弹窗', (tester) async {
+    final pending = Completer<String>();
+    final repository = _ResetRepository()..pending = pending;
+    final results = await _open(tester, repository);
+    await tester.tap(find.byKey(_confirm));
+    await tester.pump();
+
+    results.session.simulateLogout();
+    results.session.refreshProfile();
+    pending.complete(_temporaryPassword);
+    await tester.pumpAndSettle();
+
+    expect(find.text(_temporaryPassword), findsNothing);
+    expect(find.byKey(_dialog), findsNothing);
+    expect(results.values, [false]);
+  });
+
+  testWidgets('新登录会话纪元变化时清除同一人的已显示密码', (tester) async {
+    final results = await _open(tester, _ResetRepository());
+    await tester.tap(find.byKey(_confirm));
+    await tester.pumpAndSettle();
+
+    results.container.read(sessionEpochProvider.notifier).state++;
+    await tester.pumpAndSettle();
+
+    expect(find.text(_temporaryPassword), findsNothing);
+    expect(find.byKey(_dialog), findsNothing);
+    expect(results.values, [false]);
+  });
+
+  testWidgets('同身份同会话正常刷新且仍有权限时保留请求和密码', (tester) async {
+    final pending = Completer<String>();
+    final repository = _ResetRepository()..pending = pending;
+    final results = await _open(tester, repository);
+    await tester.tap(find.byKey(_confirm));
+    await tester.pump();
+
+    results.session.refreshProfile();
+    pending.complete(_temporaryPassword);
+    await tester.pumpAndSettle();
+    expect(find.text(_temporaryPassword), findsOneWidget);
+    results.session.refreshProfile();
+    await tester.pumpAndSettle();
+
+    expect(find.text(_temporaryPassword), findsOneWidget);
+    expect(find.byKey(_dialog), findsOneWidget);
     expect(results.values, isEmpty);
+    expect(repository.employeeIds, ['emp-7']);
+  });
+
+  testWidgets('撤权只关闭自己的弹窗，不误关上层再认证弹窗', (tester) async {
+    final pending = Completer<String>();
+    final repository = _ResetRepository()..pending = pending;
+    final results = await _open(tester, repository);
+    await tester.tap(find.byKey(_confirm));
+    await tester.pump();
+    final upper = showDialog<void>(
+      context: tester.element(find.byKey(_dialog)),
+      builder: (_) => const AlertDialog(title: Text('上层再认证')),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    results.session.revokeAccountSupport();
+    pending.complete(_temporaryPassword);
+    await tester.pumpAndSettle();
+
+    expect(find.text('上层再认证'), findsOneWidget);
+    expect(find.byKey(_dialog), findsNothing);
+    expect(find.text(_temporaryPassword), findsNothing);
+    expect(results.values, [false]);
+    Navigator.of(tester.element(find.text('上层再认证'))).pop();
+    await upper;
+    await tester.pumpAndSettle();
   });
 
   testWidgets('复制按钮仅复制返回的临时密码', (tester) async {

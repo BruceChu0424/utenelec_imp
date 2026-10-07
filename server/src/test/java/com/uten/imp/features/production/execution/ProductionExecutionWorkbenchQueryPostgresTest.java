@@ -156,13 +156,58 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                     event_id uuid, settlement_type text, qty_base numeric);
                 -- 2026-10-06 待续报固定追加量：segmentSelect 引用真实判定(函数 + requests/proofs/
                 -- reversals/claims/daily_reports 表)，这里给出同形状的最小真表版。
-                CREATE TABLE production_daily_reports(id uuid PRIMARY KEY, status integer DEFAULT 0, is_deleted boolean DEFAULT FALSE);
+                                CREATE TABLE production_daily_reports(id uuid PRIMARY KEY,
+                    legacy_id integer,
+                    bill_no text,
+                    bill_date date,
+                    warehouse_id uuid,
+                    department_id uuid,
+                    workshop_name text,
+                    worker_id uuid,
+                    supplier_id uuid,
+                    maker_id uuid,
+                    approver_id uuid,
+                    maker_legacy_id integer,
+                    approver_legacy_id integer,
+                    remark text,
+                    status integer DEFAULT 0,
+                    is_closed boolean,
+                    is_canceled boolean,
+                    source_doc_no text,
+                    created_at timestamptz,
+                    updated_at timestamptz,
+                    created_by uuid,
+                    updated_by uuid,
+                    is_deleted boolean DEFAULT FALSE,
+                    deleted_at timestamptz,
+                    row_version bigint,
+                    surplus_return_requested boolean);
                 CREATE TABLE production_actual_output_supplement_requests(id uuid PRIMARY KEY,
-                    source_execution_segment_id uuid, status text, supplement_qty numeric DEFAULT 0, created_at timestamptz DEFAULT now());
-                CREATE TABLE production_actual_output_supplement_proofs(id uuid PRIMARY KEY, command_id uuid);
-                CREATE TABLE production_actual_output_supplement_reversals(proof_id uuid);
-                CREATE TABLE production_actual_output_supplement_claims(id uuid PRIMARY KEY, proof_id uuid,
-                    report_id uuid, event_type text, source_claim_id uuid);
+                    source_execution_segment_id uuid,
+                    source_sales_allocation_id uuid,
+                    excluded_report_id uuid,
+                    report_context jsonb,
+                    input_line_index integer,
+                    supplement_plan_id uuid,
+                    supplement_plan_item_id uuid,
+                    batch_id uuid,
+                    actual_batch_qty numeric,
+                    original_report_qty numeric,
+                    original_sales_qty numeric,
+                    original_internal_qty numeric,
+                    supplement_qty numeric DEFAULT 0,
+                    prior_reported_qty numeric,
+                    source_planned_qty numeric,
+                    allowed_overproduction_rate numeric,
+                    preview_fingerprint text,
+                    request_hash text,
+                    idempotency_key text,
+                    status text,
+                    created_by uuid,
+                    created_at timestamptz DEFAULT now());
+                CREATE TABLE production_actual_output_supplement_proofs(id uuid PRIMARY KEY, command_id uuid, source_execution_segment_id uuid, supplement_plan_id uuid, supplement_plan_item_id uuid, supplement_execution_segment_id uuid, batch_id uuid, actual_batch_qty numeric, original_report_qty numeric, supplement_qty numeric, prior_reported_qty numeric, source_planned_qty numeric, allowed_overproduction_rate numeric, created_by uuid, created_at timestamptz);
+                CREATE TABLE production_actual_output_supplement_reversals(id uuid, proof_id uuid, reason text, created_by uuid, created_at timestamptz);
+                CREATE TABLE production_actual_output_supplement_claims(id uuid PRIMARY KEY, proof_id uuid, report_id uuid, event_type text, source_claim_id uuid, created_by uuid, created_at timestamptz);
                 CREATE FUNCTION fn_actual_supplement_pending_qty(p_segment uuid, p_exclude_report uuid)
                     RETURNS numeric LANGUAGE sql STABLE AS $$
                     SELECT COALESCE(SUM(request.supplement_qty),0)

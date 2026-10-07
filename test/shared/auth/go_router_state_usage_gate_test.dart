@@ -42,12 +42,12 @@ void main() {
           3, // A+B: Tab 回调×2 + 根级 build×1
       'lib/features/subcontract/pages/subcontract_business_list_pages.dart':
           1, // B
+      // 2026-10-06 证件批量核对页(ADR-160)：GoRoute 页 didChangeDependencies
+      // 读路由身份/查询参数，同 B 类（声明式页路由，不发生爬升）。
+      'lib/features/hr_task/pages/hr_reconcile_page.dart': 1, // B
       'lib/features/warehouse/pages/stock_doc_list_page.dart': 1, // B
       'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart':
           2, // A: 行点击回调
-      // 2026-10-06 ADR-160 证件核对页：GoRoute 页路由 didChangeDependencies 里
-      // 记录路由身份(与 build 同位，不发生命令式子弹层爬升)。
-      'lib/features/hr_task/pages/hr_reconcile_page.dart': 1, // B
       // 本闸门的事故修复本体：settings is! Page 先行 fail-closed，再调
       // GoRouterState.of（此时必然命中本路由，不发生爬升）。
       'lib/shared/auth/page_permission_action.dart': 1, // C: fail-closed 守卫后调用

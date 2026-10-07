@@ -18,6 +18,8 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 注册项。 */
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("PRODUCTION_OVER_LIMIT_PENDING",
+                    new Entry("PRODUCTION_OVER_LIMIT_DISPOSITION",null)),
             Map.entry("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED",
                     new Entry("PRODUCTION_OVERPRODUCTION_RATE_REQUEST",null)),
             Map.entry("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED",

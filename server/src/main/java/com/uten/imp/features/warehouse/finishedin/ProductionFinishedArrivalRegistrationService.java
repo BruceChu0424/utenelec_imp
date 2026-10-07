@@ -948,6 +948,7 @@ public class ProductionFinishedArrivalRegistrationService {
             BigDecimal demand = BigDecimal.ZERO;
             BigDecimal publicQty = BigDecimal.ZERO;
             BigDecimal surplus = BigDecimal.ZERO;
+            BigDecimal overLimit = BigDecimal.ZERO;
             BigDecimal counted = BigDecimal.ZERO;
             boolean allCounted = true;
             BigDecimal weight = null;
@@ -958,6 +959,10 @@ public class ProductionFinishedArrivalRegistrationService {
                 BigDecimal qty = NativeValueConverters.toBigDecimal(row[14]);
                 total = total.add(qty);
                 switch (rank) {
+                    case OutputLotText.RANK_OVER_LIMIT -> {
+                        surplus = surplus.add(qty);
+                        overLimit = overLimit.add(qty);
+                    }
                     case OutputLotText.RANK_ACTUAL_SURPLUS -> surplus = surplus.add(qty);
                     case OutputLotText.RANK_PUBLIC -> publicQty = publicQty.add(qty);
                     default -> demand = demand.add(qty);
@@ -977,7 +982,7 @@ public class ProductionFinishedArrivalRegistrationService {
                     (UUID) first[7], NativeValueConverters.text(first[8]), NativeValueConverters.text(first[9]),
                     (UUID) first[10], NativeValueConverters.text(first[11]), (UUID) first[12], NativeValueConverters.text(first[13]),
                     total, demand, publicQty, surplus,
-                    OutputLotText.split(demand, publicQty, surplus),
+                    OutputLotText.split(demand, publicQty, surplus, overLimit),
                     NativeValueConverters.text(first[15]), NativeValueConverters.text(first[16]), (UUID) first[17], NativeValueConverters.text(first[18]),
                     allCounted ? counted : null, weight, NativeValueConverters.toBigDecimal(first[21])));
         }

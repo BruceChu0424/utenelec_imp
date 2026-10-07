@@ -119,6 +119,8 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("auth_step_up_states", 680),
             Map.entry("production_overproduction_rate_requests", 698),
             Map.entry("production_overproduction_rate_decisions", 698),
+            Map.entry("production_over_limit_dispositions", 823),
+            Map.entry("production_over_limit_decisions", 823),
             Map.entry("production_actual_output_supplement_requests", 700),
             Map.entry("production_actual_output_supplement_proofs", 700),
             Map.entry("production_actual_output_supplement_reversals", 700),

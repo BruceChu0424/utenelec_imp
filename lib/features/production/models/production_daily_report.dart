@@ -152,6 +152,9 @@ class ProductionDailyReportItem {
     this.outputBatchQty,
     this.publicOutput = false,
     this.actualSurplus = false,
+    this.overLimit = false,
+    this.overLimitReason,
+    this.dispositionId,
     this.outputKind,
     this.supplementProofId,
     this.outputSourceExecutionSegmentId,
@@ -226,6 +229,9 @@ class ProductionDailyReportItem {
   final double? outputBatchQty;
   final bool publicOutput;
   final bool actualSurplus;
+  final bool overLimit;
+  final String? overLimitReason;
+  final String? dispositionId;
   final String? outputKind;
   final String? supplementProofId;
   final String? outputSourceExecutionSegmentId;
@@ -239,6 +245,7 @@ class ProductionDailyReportItem {
     'PLANNED' => '需求产出',
     'PLANNED_PUBLIC' => '计划公共备货',
     'ACTUAL_SURPLUS' => '实际超产 · 公共备货',
+    'OVER_LIMIT' => '超限产出',
     _ => publicOutput ? '公共备货' : '原来源',
   };
 
@@ -294,6 +301,9 @@ class ProductionDailyReportItem {
         outputBatchQty: _asDouble(json['outputBatchQty']),
         publicOutput: json['publicOutput'] == true,
         actualSurplus: json['actualSurplus'] == true,
+        overLimit: json['overLimit'] == true,
+        overLimitReason: json['overLimitReason'] as String?,
+        dispositionId: json['dispositionId'] as String?,
         outputKind: json['outputKind'] as String?,
         supplementProofId: json['supplementProofId'] as String?,
         outputSourceExecutionSegmentId:
@@ -318,6 +328,10 @@ class ProductionDailyReportInputGroup {
   ProductionDailyReportItem get source =>
       items.firstWhere((item) => !item.publicOutput, orElse: () => items.first);
   double? get qty => source.outputBatchQty ?? source.qty;
+  String? get overLimitReason => items
+      .where((item) => item.overLimitReason?.trim().isNotEmpty == true)
+      .map((item) => item.overLimitReason)
+      .firstOrNull;
 
   /// 整次报工的不良数：服务端只让同一批次的第一条明细带不良数，合计即原输入。
   double get defectQty =>

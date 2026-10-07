@@ -79,6 +79,7 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     // （原重定向到物料分析，与「新建单据进去都是默认新建页」口径冲突）。
     RouteName.productionSchedule,
     RouteName.productionOverproductionRateRequests,
+    RouteName.productionOverLimitDispositions,
     RouteName.productionMaterialIncrementRequests,
     RoutePath.productionPlanNew(),
     '/production/daily-reports/new',

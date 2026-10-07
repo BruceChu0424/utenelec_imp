@@ -75,7 +75,7 @@ class ProductionFqcFinishedInboundServiceTest {
                         BigDecimal.ONE, planId, "SJ202608280001",
                         reportedQty, "IN_PROGRESS", inspectionId,
                         decisionId, "A31-3-1", registrationWeight, priorPassQty,
-                        quantity, UUID.randomUUID(), false, 1, 0
+                        quantity, UUID.randomUUID(), false, 1, 0, BigDecimal.ZERO
                 }));
         Query goods = query();
         when(goods.getResultList()).thenReturn(

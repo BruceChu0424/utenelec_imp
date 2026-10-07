@@ -3198,7 +3198,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                         WHERE item.doc_id = :documentId
                           AND item.is_deleted = FALSE
                         ORDER BY source.output_lot_id,
-                                 fn_daily_report_output_slice_rank(source.is_public_output, source.is_actual_surplus),
+                                 fn_daily_report_output_slice_rank(source.is_public_output, source.is_actual_surplus, source.is_over_limit),
                                  source.line_no NULLS LAST, item.line_no, item.id
                         """).setParameter("documentId", documentId))) {
             items.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>()).add(row);
@@ -3233,7 +3233,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         Map<UUID, List<Object[]>> lots = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT source.output_lot_id, item.id,
-                               fn_daily_report_output_slice_rank(source.is_public_output, source.is_actual_surplus)
+                               fn_daily_report_output_slice_rank(source.is_public_output, source.is_actual_surplus, source.is_over_limit)
                         FROM stock_document_items item
                         JOIN production_daily_report_items source
                           ON source.id = item.source_daily_report_item_id
@@ -3250,6 +3250,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             BigDecimal demand = BigDecimal.ZERO;
             BigDecimal publicQty = BigDecimal.ZERO;
             BigDecimal surplus = BigDecimal.ZERO;
+            BigDecimal overLimit = BigDecimal.ZERO;
             BigDecimal weight = null;
             boolean weightKnown = true;
             List<UUID> itemIds = new ArrayList<>();
@@ -3261,6 +3262,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 BigDecimal qty = item.getQty() == null ? BigDecimal.ZERO : item.getQty();
                 total = total.add(qty);
                 switch (((Number) row[2]).intValue()) {
+                    case com.uten.imp.common.production.OutputLotText.RANK_OVER_LIMIT -> {
+                        surplus = surplus.add(qty);
+                        overLimit = overLimit.add(qty);
+                    }
                     case com.uten.imp.common.production.OutputLotText.RANK_ACTUAL_SURPLUS -> surplus = surplus.add(qty);
                     case com.uten.imp.common.production.OutputLotText.RANK_PUBLIC -> publicQty = publicQty.add(qty);
                     default -> demand = demand.add(qty);
@@ -3270,7 +3275,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             }
             result.add(new FinishedInLotView(lot.getKey(), itemIds, head.getGoodsId(), head.getColorId(),
                     head.getUnitId(), total, demand, publicQty, surplus,
-                    com.uten.imp.common.production.OutputLotText.split(demand, publicQty, surplus),
+                    com.uten.imp.common.production.OutputLotText.split(demand, publicQty, surplus, overLimit),
                     com.uten.imp.common.production.OutputLotText.actualSurplusNote(surplus),
                     lot.getValue().size() > 1 ? "实收少于 " + com.uten.imp.common.production.OutputLotText.plain(total)
                             + " 时，先扣实际超产，再扣计划公共备货，最后扣需求份；没收到的进余量单" : null,

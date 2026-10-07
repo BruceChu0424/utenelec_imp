@@ -190,7 +190,7 @@ class DailyReportOutputAllocationServiceTest {
         // 额度真耗尽时仍按原口径拦下并引导提交追加计划，不提续报。
         var rejected=assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(allowance("0","0"))
                 .requireAllowance(UUID.randomUUID(),List.of(line)));
-        assertTrue(rejected.getMessage().contains("请为本次全部超出原计划的数量提交追加计划"),rejected.getMessage());
+        assertTrue(rejected.getMessage().contains("超出部分须如实登记超限原因并交计划处置"),rejected.getMessage());
         assertFalse(rejected.getMessage().contains("固定追加量·续报"),rejected.getMessage());
     }
     @Test void approvedRemainingIsConsumedBeforeNewPhysicalSurplus() {
@@ -198,6 +198,35 @@ class DailyReportOutputAllocationServiceTest {
         assertEquals(new BigDecimal("60"),capacity.take(new BigDecimal("60")));
         assertEquals(new BigDecimal("40"),capacity.take(new BigDecimal("80")));
         assertEquals(BigDecimal.ZERO,capacity.take(new BigDecimal("20")));
+    }
+    @Test void completedTwelveHundredKeepsOneBatchAndSplitsOnlyTheLastHundredForDisposition() {
+        var em=database(List.of(),"1000","1000","100");
+        var input=line("1200");input.setOverLimitReason("设备停机惯性产出");input.setWeight(new BigDecimal("12"));
+        var pieces=new DailyReportOutputAllocationService(em).split(UUID.randomUUID(),List.of(input));
+        assertEquals(List.of(new BigDecimal("1000"),new BigDecimal("100"),new BigDecimal("100")),
+                pieces.stream().map(DailyReportItemLine::getQty).toList());
+        assertEquals(1,pieces.stream().map(DailyReportItemLine::getOutputBatchId).distinct().count());
+        assertFalse(pieces.get(1).isOverLimit());assertTrue(pieces.get(2).isOverLimit());
+        assertEquals("设备停机惯性产出",pieces.get(2).getOverLimitReason());
+        assertNull(pieces.get(0).getOverLimitReason());assertNull(pieces.get(1).getOverLimitReason());
+        assertEquals(new BigDecimal("12.0000"),pieces.stream().map(DailyReportItemLine::getWeight).reduce(BigDecimal.ZERO,BigDecimal::add));
+        assertTrue(pieces.get(2).isActualSurplus());assertTrue(pieces.get(2).isPublicOutput());
+        assertFalse(Boolean.TRUE.equals(pieces.get(2).getIsFinal()));
+    }
+    @Test void twoActualInputLinesCannotEachReuseTheSameTolerance() {
+        var first=line("1050");var second=line("150");second.setOverLimitReason("本批实物清点超过原限额");
+        var pieces=new DailyReportOutputAllocationService(database(List.of(),"1000","1000","100"))
+                .split(UUID.randomUUID(),List.of(first,second));
+        assertEquals(0,new BigDecimal("1200").compareTo(pieces.stream().map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        assertEquals(0,new BigDecimal("100").compareTo(pieces.stream().filter(DailyReportItemLine::isOverLimit).map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add)));
+        assertEquals(0,new BigDecimal("100").compareTo(pieces.stream().filter(p->p.isActualSurplus()&&!p.isOverLimit()).map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add)));
+    }
+    @Test void overLimitWithoutReasonFailsWithoutTruncatingItsActualInput() {
+        var input=line("1200");
+        var error=assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(database(List.of(),"1000","1000","100"))
+                .split(UUID.randomUUID(),List.of(input)));
+        assertEquals("overLimitReason",error.getFieldErrors().getFirst().field());
+        assertEquals(new BigDecimal("1200"),input.getQty());
     }
     @Test void splitWeightPreservesOriginalTotalIncludingRoundingResidual() {
         var original=new DailyReportItemLine();original.setQty(new BigDecimal("3"));original.setWeight(BigDecimal.ONE);
@@ -266,6 +295,9 @@ class DailyReportOutputAllocationServiceTest {
      * capacity reads, the single list of receivers and the plain quantity text.
      */
     private static EntityManager database(List<Object[]> targets,String planned,String needShare) {
+        return database(targets,planned,needShare,"0");
+    }
+    private static EntityManager database(List<Object[]> targets,String planned,String needShare,String allowance) {
         var em=Mockito.mock(EntityManager.class);
         Mockito.when(em.createNativeQuery(ArgumentMatchers.anyString())).thenAnswer(invocation->{
             String sql=invocation.getArgument(0);
@@ -274,6 +306,7 @@ class DailyReportOutputAllocationServiceTest {
             Mockito.when(query.setParameter(ArgumentMatchers.anyString(),ArgumentMatchers.any())).thenAnswer(set->{
                 bound.add(new Object[]{set.getArgument(0),set.getArgument(1)});return query;});
             Mockito.when(query.getSingleResult()).thenAnswer(ignored->{
+                if(sql.contains("fn_execution_actual_surplus_available"))return new BigDecimal(allowance);
                 if(sql.contains("QTY_EXCEEDS_REMAINING"))return "转给"+value(bound,"receiver")+" 的本次基本数量 "
                         +((BigDecimal)value(bound,"qty")).stripTrailingZeros().toPlainString()+" 超过最多可送 "
                         +((BigDecimal)value(bound,"room")).stripTrailingZeros().toPlainString();

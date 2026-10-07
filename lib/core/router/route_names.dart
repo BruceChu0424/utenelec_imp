@@ -498,6 +498,8 @@ abstract final class RouteName {
   static const String productionWorkshopTasks = '/production/workshop-tasks';
   static const String productionOverproductionRateRequests =
       '/production/overproduction-rate-requests';
+  static const String productionOverLimitDispositions =
+      '/production/over-limit-dispositions';
   static const String productionMaterialIncrementRequests =
       '/production/material-increment-requests';
   static const String productionDrawRequest =
@@ -825,6 +827,8 @@ abstract final class RoutePath {
   static String productionPlanDetail(String id) => '/production/plans/$id';
   static String productionOverproductionRateRequest(String id) =>
       '/production/overproduction-rate-requests/$id';
+  static String productionOverLimitDisposition(String id) =>
+      '/production/over-limit-dispositions/$id';
   static String productionMaterialIncrementRequest(String id) =>
       '/production/material-increment-requests/$id';
   static String productionMaterialIncrementForSegment(String id) =>

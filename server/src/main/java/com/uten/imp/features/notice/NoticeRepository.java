@@ -12,14 +12,18 @@ import java.util.UUID;
 
 public interface NoticeRepository extends JpaRepository<Notice, UUID> {
 
-    // Applied inside every list/count query, before pagination. Old broadcast or
-    // unanchored workshop messages cannot inherit newly widened department access.
-    String WORKSHOP_VISIBILITY = """
+    // Applied inside every scoped list/count query, before pagination. The over-limit
+    // event uses current plan-owner access; existing workshop/draw rules stay unchanged.
+    String SCOPED_VISIBILITY = """
+              AND cast(function('fn_notice_production_over_limit_visible',
+                  n.sourceEvent,n.aggregateKind,n.aggregateId,
+                  :#{#readScope.overLimitAllowed}, :#{#readScope.overLimitSeeAll},
+                  :#{#readScope.overLimitOwners}) as Boolean) = true
               AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'PRODUCTION_DRAW_PENDING'
                 OR (n.aggregateKind = 'STOCK_DOCUMENT'
                   AND cast(function('fn_production_draw_requested', n.aggregateId) as Boolean) = true))
               AND (n.sourceEvent IS NULL OR n.sourceEvent <> 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
-                OR (:#{#workshopScope.allowed} = true
+                OR (:#{#readScope.workshop.allowed} = true
                   AND n.audienceUserId = :userId
                   AND n.aggregateKind = 'PRODUCTION_EXECUTION_SEGMENT'
                   AND EXISTS (
@@ -27,14 +31,14 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     JOIN Department workshop ON workshop.id=workshopTask.workshopDepartmentId
                     WHERE workshopTask.id=n.aggregateId AND workshopTask.deleted=false
                       AND workshop.deleted=false
-                      AND (workshopTask.workshopDepartmentId IN :#{#workshopScope.departmentIds}
-                           OR workshopTask.responsibleEmployeeId=:#{#workshopScope.employeeId}))))
+                      AND (workshopTask.workshopDepartmentId IN :#{#readScope.workshop.departmentIds}
+                           OR workshopTask.responsibleEmployeeId=:#{#readScope.workshop.employeeId}))))
             """;
 
-    @Query("SELECT n.id FROM Notice n WHERE n.id IN :ids " + WORKSHOP_VISIBILITY)
+    @Query("SELECT n.id FROM Notice n WHERE n.id IN :ids " + SCOPED_VISIBILITY)
     List<UUID> findScopedVisibleNoticeIds(@Param("userId") UUID userId,
             @Param("ids") Set<UUID> ids,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope);
 
     /**
      * 人事序列部门（部门 code 含 HR：DEPT_HR 及其二级班组，与工作台
@@ -75,13 +79,13 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                   )
               AND (s IS NULL OR s.deletedAt IS NULL)
               AND (:onlyUnread = false OR s IS NULL OR s.readAt IS NULL)
-            """ + WORKSHOP_VISIBILITY + """
+            """ + SCOPED_VISIBILITY + """
             ORDER BY n.topPriority DESC, n.publishedAt DESC
             """)
     List<Notice> findVisible(
             @Param("userId") UUID userId,
             @Param("onlyUnread") boolean onlyUnread,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope,
             Pageable pageable);
 
     @Query("""
@@ -92,10 +96,10 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
               AND (:includeDeleted=true OR s IS NULL OR s.deletedAt IS NULL)
               AND (:onlyDeleted=false OR s.deletedAt IS NOT NULL)
               AND (:onlyUnread=false OR s IS NULL OR s.readAt IS NULL)
-            """+WORKSHOP_VISIBILITY+" ORDER BY n.topPriority DESC,n.publishedAt DESC")
+            """+SCOPED_VISIBILITY+" ORDER BY n.topPriority DESC,n.publishedAt DESC")
     List<Notice> findVisibleHistory(@Param("userId") UUID userId,@Param("onlyUnread") boolean onlyUnread,
             @Param("includeDeleted") boolean includeDeleted,@Param("onlyDeleted") boolean onlyDeleted,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,Pageable pageable);
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope,Pageable pageable);
 
 
     @Query("""
@@ -119,14 +123,14 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     n.publishedAt > :afterPublishedAt
                     OR (n.publishedAt = :afterPublishedAt AND n.id > :afterId)
                   )
-            """ + WORKSHOP_VISIBILITY + """
+            """ + SCOPED_VISIBILITY + """
             ORDER BY n.publishedAt ASC, n.id ASC
             """)
     List<Notice> findVisibleArrivalsAfter(
             @Param("userId") UUID userId,
             @Param("afterPublishedAt") Instant afterPublishedAt,
             @Param("afterId") UUID afterId,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope,
             Pageable pageable);
 
     /**
@@ -158,9 +162,9 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     OR (n.audienceScope = 'selected' AND s IS NOT NULL)
                   )
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
-            """ + WORKSHOP_VISIBILITY)
+            """ + SCOPED_VISIBILITY)
     long countVisibleUnread(@Param("userId") UUID userId,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope);
 
     /**
      * 未读索引(ADR-108): 与 {@link #countVisibleUnread} 同一可见/未读条件, 只取判定用的
@@ -188,11 +192,11 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     OR (n.audienceScope = 'selected' AND s IS NOT NULL)
                   )
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.readAt IS NULL))
-            """ + WORKSHOP_VISIBILITY + """
+            """ + SCOPED_VISIBILITY + """
             ORDER BY n.publishedAt ASC, n.id ASC
             """)
     List<UnreadIndexRow> findUnreadIndexRows(@Param("userId") UUID userId,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope);
 
     interface UnreadIndexRow {
         UUID getId();
@@ -229,7 +233,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                           AND (s.snoozedUntil IS NULL OR s.snoozedUntil <= CURRENT_TIMESTAMP))
                     )
                   ))
-            """ + WORKSHOP_VISIBILITY + """
+            """ + SCOPED_VISIBILITY + """
             ORDER BY
                 CASE n.priority
                     WHEN 'urgent' THEN 0
@@ -240,7 +244,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     List<Notice> findVisiblePendingReviews(
             @Param("userId") UUID userId,
             @Param("events") List<String> events,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope,
             Pageable pageable);
 
     /**
@@ -316,7 +320,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     OR (n.audienceScope = 'selected' AND s IS NOT NULL)
                   )
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.taskCompletedAt IS NULL))
-            """ + WORKSHOP_VISIBILITY + """
+            """ + SCOPED_VISIBILITY + """
             ORDER BY
               CASE WHEN n.dueAt IS NULL THEN 1 ELSE 0 END,
               n.dueAt,
@@ -327,7 +331,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
               END,
               n.publishedAt DESC
             """)
-    List<Notice> findPendingTodos(@Param("userId") UUID userId, @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope,
+    List<Notice> findPendingTodos(@Param("userId") UUID userId, @Param("readScope") ReviewNoticeAudience.ReadScope readScope,
             Pageable pageable);
 
     @Query("""
@@ -342,9 +346,9 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                     OR (n.audienceScope = 'selected' AND s IS NOT NULL)
                   )
               AND (s IS NULL OR (s.deletedAt IS NULL AND s.taskCompletedAt IS NULL))
-            """ + WORKSHOP_VISIBILITY)
+            """ + SCOPED_VISIBILITY)
     long countPendingTodos(@Param("userId") UUID userId,
-            @Param("workshopScope") ReviewNoticeAudience.WorkshopScope workshopScope);
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope);
 
     // V454 起，按祝福对象的庆典查询（幂等去重 / 我的今日庆典 / 今日新婚新生儿）
     // 统一迁至 NoticeCelebrationSubjectRepository（聚合卡与单人卡同口径）。

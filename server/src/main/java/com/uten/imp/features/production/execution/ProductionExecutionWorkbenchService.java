@@ -1173,7 +1173,18 @@ public class ProductionExecutionWorkbenchService {
                              AND confirm_plan.status=1 AND NOT confirm_plan.is_deleted AND NOT confirm_plan.is_closed
                              AND NOT confirm_plan.is_canceled AND NOT confirm_plan.is_stopped
                              AND confirm_package.status='CONFIRMED' AND NOT confirm_package.is_deleted
-                             AND (bin_material.state = 'NEED_CHOICE' OR confirm_segment.start_route IS NULL)))
+                             AND (bin_material.state = 'NEED_CHOICE' OR confirm_segment.start_route IS NULL))),
+                       COALESCE((SELECT SUM(disposition.qty) FROM production_over_limit_dispositions disposition
+                         JOIN production_daily_reports reported ON reported.id=disposition.report_id
+                         WHERE disposition.execution_segment_id=task.segment_id
+                           AND disposition.status IN('PENDING','HELD','RETURNED')
+                           AND reported.status=1 AND NOT reported.is_deleted),0),
+                       (SELECT disposition.id FROM production_over_limit_dispositions disposition
+                         JOIN production_daily_reports reported ON reported.id=disposition.report_id
+                         WHERE disposition.execution_segment_id=task.segment_id
+                           AND disposition.status IN('PENDING','HELD','RETURNED')
+                           AND reported.status=1 AND NOT reported.is_deleted
+                         ORDER BY disposition.created_at DESC,disposition.id DESC LIMIT 1)
                 """.formatted(effectiveIssuedPredicate(), drawRequestedPredicate(), drawRequestedPredicate(), pendingDrawItemSql());
     }
 
@@ -1433,7 +1444,8 @@ public class ProductionExecutionWorkbenchService {
                 planning.urgedByName(), planning.nextUrgeAt(), planning.canUrge(),
                 bool(row[71]), uuid(row[72]), text(row[73]), executable && bool(row[74]),
                 text(row[75]),
-                binMaterialState, needsStartConfirmation, allowedActions);
+                binMaterialState, needsStartConfirmation, allowedActions,
+                decimal(row[78]),uuid(row[79]));
     }
 
     /**

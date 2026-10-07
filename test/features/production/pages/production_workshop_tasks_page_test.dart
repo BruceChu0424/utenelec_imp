@@ -40,6 +40,51 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final quantity in ['9999999999999.9999', '0.0001']) {
+    testWidgets('车间待处理超限数量原文显示 $quantity', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionExecutionView,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(
+                aStatus: 'IN_PROGRESS',
+                aDiscovery: {
+                  'overLimitPendingQty': double.parse(quantity),
+                  'overLimitPendingQtyExact': quantity,
+                  'overLimitDispositionId': 'over-limit-case',
+                },
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '生产中');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('待处理 $quantity'), findsWidgets);
+      await tester.tap(find.text('产品 A'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('产品 A'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('超限待处理 $quantity（未计入可用库存）'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
   discoveryMaterialTests();
   materialUsageEntryTests();
   routeConfirmationTests();

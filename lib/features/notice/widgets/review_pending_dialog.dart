@@ -63,6 +63,7 @@ String workbenchRouteFor(
     RouteName.productionWorkshopTasks,
   'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED' =>
     RouteName.productionOverproductionRateRequests,
+  'PRODUCTION_OVER_LIMIT_PENDING' => RouteName.productionOverLimitDispositions,
   'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' =>
     RouteName.productionMaterialIncrementRequests,
   'SALES_ORDER_APPROVED' => RouteName.productionMaterialAnalysis,

@@ -22,7 +22,10 @@ public class ActualOutputSupplementController {
     public ReportPreview previewReport(@Valid @RequestBody ReportPreviewRequest request){return service.previewReport(request);}
     @PostMapping
     @PreAuthorize("hasAuthority('production_execution:view') and (hasAuthority('production_plan:create') or (hasAuthority('production_execution:request_supplement_plan') and hasAuthority('production_daily_report:create')))")
-    public View create(@Valid @RequestBody CreateRequest request){return service.create(request);}
+    public View create(@Valid @RequestBody CreateRequest request){
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,
+            "实际超限产出已改为在报工中登记并交计划处理，请刷新报工页面；历史追加计划仍可查看和续报");
+    }
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('production_execution:view') or hasAuthority('production_plan:approve')")
     public View detail(@PathVariable UUID id){

@@ -143,7 +143,8 @@ class ActualSurplusEarlyFinalEndToEndTest {
         request.setDepartmentId(workshop); request.setWorkerIds(List.of(worker)); request.setItems(List.of(line)); request.setMaterialLines(List.of(usage));
         if(requiresSupplement) {
             var preview=supplements.previewReport(new com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.ReportPreviewRequest(request,null));
-            assertTrue(preview.requiresSupplements());
+            assertFalse(preview.requiresSupplements());
+            assertEquals(0,BigDecimal.ONE.compareTo(preview.lines().getFirst().overLimitQty()));
             assertEquals(0,new BigDecimal("100").compareTo(preview.lines().getFirst().originalReportQty()));
             assertEquals(0,new BigDecimal("21").compareTo(preview.lines().getFirst().supplementQty()));
             assertThrows(com.uten.imp.common.web.ApiException.class,()->reports.create(request));

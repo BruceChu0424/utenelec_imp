@@ -589,6 +589,17 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
 
   // ===== 生产管理（生产部）=====
+  if (location == RouteName.productionOverLimitDispositions) {
+    return const [Perm.productionPlanApprove];
+  }
+  if (location.startsWith('${RouteName.productionOverLimitDispositions}/')) {
+    return const [
+      Perm.productionPlanApprove,
+      Perm.productionPlanView,
+      Perm.productionExecutionView,
+      Perm.productionDailyReportView,
+    ];
+  }
   if (location == RouteName.productionMaterialIncrementRequests) {
     return const [Perm.productionPlanApprove];
   }

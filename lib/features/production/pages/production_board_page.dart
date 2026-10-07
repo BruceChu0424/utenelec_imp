@@ -481,6 +481,15 @@ class _BoardDraftsPanelState extends ConsumerState<_BoardDraftsPanel> {
             ref.watch(isSuperAdminProvider))
           UtenButton(
             type: UtenButtonType.secondary,
+            icon: Icons.inventory_2_outlined,
+            onPressed: () =>
+                context.push(RouteName.productionOverLimitDispositions),
+            child: const Text('超限产出处置'),
+          ),
+        if (permissions.contains(Perm.productionPlanApprove) ||
+            ref.watch(isSuperAdminProvider))
+          UtenButton(
+            type: UtenButtonType.secondary,
             icon: Icons.fact_check_outlined,
             onPressed: () =>
                 context.push(RouteName.productionOverproductionRateRequests),

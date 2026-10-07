@@ -710,9 +710,10 @@ class WorkshopPublicSurplusEndToEndTest {
         qty("0.10",source.allowedOverproductionRate());
         var request=reportRequest(c,source,"130","100");
         ApiException over=assertThrows(ApiException.class,()->reports.create(request));
-        assertTrue(over.getMessage().contains("追加计划"));qty("130",request.getItems().getFirst().getQty());
+        assertTrue(over.getMessage().contains("超限原因"));qty("130",request.getItems().getFirst().getQty());
         var preview=supplements.previewReport(new com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.ReportPreviewRequest(request,null));
-        assertTrue(preview.requiresSupplements());var line=preview.lines().getFirst();
+        assertFalse(preview.requiresSupplements());var line=preview.lines().getFirst();
+        qty("20",line.overLimitQty());qty("110",line.withinAuthorizationQty());
         qty("100",line.originalReportQty());qty("30",line.supplementQty());
         var created=supplements.create(new com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.CreateRequest(
                 c.segment(),new BigDecimal("130"),source.executionSegmentSalesAllocationId(),line.fingerprint(),BusinessTime.today(),BusinessTime.today().plusDays(1),
@@ -765,7 +766,8 @@ class WorkshopPublicSurplusEndToEndTest {
         var second=reportRequest(c,source,"20","0").getItems().getFirst();second.setLineNo(2);
         request.setItems(List.of(request.getItems().getFirst(),second));
         var preview=supplements.previewReport(new com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.ReportPreviewRequest(request,null));
-        assertTrue(preview.lines().stream().allMatch(row->row.requiresSupplement()),"one shared margin cannot be spent independently by each input row");
+        assertFalse(preview.requiresSupplements());
+        qty("0",preview.lines().getFirst().overLimitQty());qty("20",preview.lines().getLast().overLimitQty());
         qty("100",preview.lines().getFirst().originalReportQty());qty("10",preview.lines().getFirst().supplementQty());
         qty("0",preview.lines().getLast().originalReportQty());qty("20",preview.lines().getLast().supplementQty());
         var requested=new ArrayList<com.uten.imp.features.production.dailyreport.ActualOutputSupplementContracts.View>();

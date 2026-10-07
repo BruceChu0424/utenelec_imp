@@ -10,10 +10,11 @@ import java.util.List;
  */
 public final class OutputLotText {
 
-    /** fn_daily_report_output_slice_rank 的三个取值。 */
+    /** fn_daily_report_output_slice_rank 的四个取值，超限产出最后放行、最先扣不良。 */
     public static final int RANK_DEMAND = 0;
     public static final int RANK_PUBLIC = 1;
     public static final int RANK_ACTUAL_SURPLUS = 2;
+    public static final int RANK_OVER_LIMIT = 3;
 
     private OutputLotText() {
     }
@@ -21,6 +22,7 @@ public final class OutputLotText {
     /** 份的归属码(给前端标签用): DEMAND 需求份 / PUBLIC 计划公共备货 / ACTUAL_SURPLUS 实际超产。 */
     public static String kind(int rank) {
         return switch (rank) {
+            case RANK_OVER_LIMIT -> "OVER_LIMIT";
             case RANK_ACTUAL_SURPLUS -> "ACTUAL_SURPLUS";
             case RANK_PUBLIC -> "PUBLIC";
             default -> "DEMAND";
@@ -30,6 +32,7 @@ public final class OutputLotText {
     /** 份的大白话名称。 */
     public static String kindLabel(int rank) {
         return switch (rank) {
+            case RANK_OVER_LIMIT -> "超限产出";
             case RANK_ACTUAL_SURPLUS -> "实际超产";
             case RANK_PUBLIC -> "计划公共备货";
             default -> "需求";
@@ -46,6 +49,13 @@ public final class OutputLotText {
         if (positive(actualSurplus)) parts.add("实际超产 " + plain(actualSurplus));
         if (parts.isEmpty() || (parts.size() == 1 && positive(demand))) return null;
         return String.join(" · ", parts);
+    }
+
+    /** Actual surplus includes over-limit output; authorization never rewrites that origin. */
+    public static String split(BigDecimal demand, BigDecimal publicQty, BigDecimal actualSurplus,
+            BigDecimal overLimit) {
+        String text = split(demand, publicQty, actualSurplus);
+        return positive(overLimit) ? (text == null ? "" : text + " · ") + "其中超限 " + plain(overLimit) : text;
     }
 
     /** 「其中实际超产 100」; 没有实际超产时返回 null。 */

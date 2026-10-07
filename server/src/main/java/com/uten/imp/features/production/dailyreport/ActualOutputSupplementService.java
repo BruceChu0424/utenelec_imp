@@ -73,23 +73,25 @@ public class ActualOutputSupplementService {
         bindReviewedInputProofs(request.report(),numbered,capturedBy);
         var proofIds=numbered.stream().map(DailyReportItemLine::getSupplementProofId).filter(Objects::nonNull).distinct().toList();
         var slices=output.splitForPreview(excluded,expandInternal(excluded,numbered,false),proofIds);
-        Map<UUID,BigDecimal> totals=new HashMap<>();Map<Integer,BigDecimal> extras=new HashMap<>();Map<Integer,BigDecimal> salesSlices=new HashMap<>();
+        Map<Integer,BigDecimal> extras=new HashMap<>();Map<Integer,BigDecimal> salesSlices=new HashMap<>();
         for(var slice:slices){
             if(!slice.isActualSurplus()&&slice.getExecutionSegmentSalesAllocationId()!=null)salesSlices.merge(slice.getInputLineIndex(),slice.getQty(),BigDecimal::add);
             if(slice.isActualSurplus()&&slice.getFqcRecoveryAuthorizationId()==null){
-            totals.merge(slice.getExecutionSegmentId(),slice.getQty(),BigDecimal::add);
             extras.merge(slice.getInputLineIndex(),slice.getQty(),BigDecimal::add);
         }}
         String contextHash=ProductionDailyReportService.createRequestHash(request.report());
         List<ReportLinePreview> previews=new ArrayList<>();
+        Map<UUID,BigDecimal> usedSurplus=new HashMap<>();
         for(int index=0;index<originals.size();index++) {
             var line=originals.get(index);var c=contexts.get(line.getExecutionSegmentId());
             BigDecimal extra=extras.getOrDefault(index,BigDecimal.ZERO);
             BigDecimal salesPart=salesSlices.getOrDefault(index,BigDecimal.ZERO);
             BigDecimal available=db.queryForObject("SELECT fn_execution_actual_surplus_available(:segment,:report)",args("segment",line.getExecutionSegmentId(),"report",excluded),BigDecimal.class);
-            boolean required=line.getSupplementProofId()==null&&extra.signum()>0&&totals.getOrDefault(line.getExecutionSegmentId(),BigDecimal.ZERO).compareTo(available)>0;
+            BigDecimal remaining=available.subtract(usedSurplus.getOrDefault(line.getExecutionSegmentId(),BigDecimal.ZERO)).max(BigDecimal.ZERO);
+            BigDecimal overLimit=line.getSupplementProofId()==null?extra.subtract(remaining).max(BigDecimal.ZERO):BigDecimal.ZERO;
+            usedSurplus.merge(line.getExecutionSegmentId(),extra,BigDecimal::add);
             String fingerprint=hash(contextHash+"|"+index+"|"+extra.stripTrailingZeros()+"|"+salesPart.stripTrailingZeros()+"|"+available.stripTrailingZeros()+"|"+number(c,"planned_qty").stripTrailingZeros()+"|"+number(c,"allowed_overproduction_rate").stripTrailingZeros());
-            previews.add(new ReportLinePreview(index,line.getExecutionSegmentId(),line.getExecutionSegmentSalesAllocationId(),line.getQty(),line.getQty().subtract(extra),extra,available,required,fingerprint,salesPart,line.getQty().subtract(extra).subtract(salesPart)));
+            previews.add(new ReportLinePreview(index,line.getExecutionSegmentId(),line.getExecutionSegmentSalesAllocationId(),line.getQty(),line.getQty().subtract(extra),extra,available,false,fingerprint,salesPart,line.getQty().subtract(extra).subtract(salesPart),line.getQty().subtract(overLimit),overLimit));
         }
         return new ReportPreview(List.copyOf(previews),previews.stream().anyMatch(ReportLinePreview::requiresSupplement));
     }
@@ -201,7 +203,12 @@ public class ActualOutputSupplementService {
                 throw invalid("追加计划输入行与完整批次不一致");
             BigDecimal prior=db.queryForObject("SELECT COALESCE(SUM(item.qty),0) FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id WHERE item.execution_segment_id=:id AND report.status=1 AND NOT report.is_deleted AND NOT item.is_deleted AND item.fqc_recovery_authorization_id IS NULL",args("id",request.sourceExecutionSegmentId()),BigDecimal.class);
             BigDecimal planned=number(source,"planned_qty"),rate=number(source,"allowed_overproduction_rate");
-            preview=new Preview(request.sourceExecutionSegmentId(),uuid(source,"plan_id"),Objects.toString(source.get("plan_no")),Objects.toString(source.get("segment_code")),uuid(source,"product_goods_id"),uuid(source,"product_color_id"),uuid(source,"product_unit_id"),number(source,"product_unit_rate"),uuid(source,"workshop_department_id"),uuid(source,"responsible_employee_id"),planned,prior,rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),line.remainingActualSurplusQty(),line.actualQty(),line.originalReportQty(),line.supplementQty(),line.requiresSupplement(),line.fingerprint(),line.sourceSalesAllocationId(),line.originalSalesQty(),line.originalInternalQty());
+            // The public controller no longer opens new supplement plans. Keep the
+            // historical service command/proof replay usable for captured old batches.
+            BigDecimal legacyTotal=batch.lines().stream().filter(candidate->Objects.equals(candidate.sourceExecutionSegmentId(),line.sourceExecutionSegmentId()))
+                    .map(ReportLinePreview::supplementQty).reduce(BigDecimal.ZERO,BigDecimal::add);
+            boolean legacyRequired=line.supplementQty().signum()>0&&legacyTotal.compareTo(line.remainingActualSurplusQty())>0;
+            preview=new Preview(request.sourceExecutionSegmentId(),uuid(source,"plan_id"),Objects.toString(source.get("plan_no")),Objects.toString(source.get("segment_code")),uuid(source,"product_goods_id"),uuid(source,"product_color_id"),uuid(source,"product_unit_id"),number(source,"product_unit_rate"),uuid(source,"workshop_department_id"),uuid(source,"responsible_employee_id"),planned,prior,rate,planned.multiply(BigDecimal.ONE.add(rate)).setScale(4,RoundingMode.DOWN),line.remainingActualSurplusQty(),line.actualQty(),line.originalReportQty(),line.supplementQty(),legacyRequired,line.fingerprint(),line.sourceSalesAllocationId(),line.originalSalesQty(),line.originalInternalQty());
         } else preview=previewLocked(new PreviewRequest(request.sourceExecutionSegmentId(),request.actualQty(),request.sourceSalesAllocationId(),request.excludedReportId()),source);
         if(!preview.fingerprint().equals(request.fingerprint()))throw conflict("原工单报工、比例或占额已变化，请重新核对追加计划预览");
         if(!preview.requiresSupplement())throw invalid("本次实际产量未超过当前批准的超产额度，无须新建追加计划");

@@ -65,12 +65,14 @@ final class DailyReportOutputGroups {
         BigDecimal demand = BigDecimal.ZERO;
         BigDecimal publicQty = BigDecimal.ZERO;
         BigDecimal surplus = BigDecimal.ZERO;
+        BigDecimal overLimit = BigDecimal.ZERO;
         String reason = null;
         for (DailyReportItemDto item : members) {
             BigDecimal value = item.getQty() == null ? BigDecimal.ZERO : item.getQty();
             qty = qty.add(value);
             if (item.isActualSurplus()) {
                 surplus = surplus.add(value);
+                if (item.isOverLimit()) overLimit = overLimit.add(value);
             } else if (item.isPublicOutput()) {
                 publicQty = publicQty.add(value);
             } else {
@@ -92,6 +94,7 @@ final class DailyReportOutputGroups {
             List<String> shares = new ArrayList<>(2);
             if (publicQty.signum() > 0) shares.add("计划公共备货 " + OutputLotText.plain(publicQty));
             if (surplus.signum() > 0) shares.add("实际超产 " + OutputLotText.plain(surplus));
+            if (overLimit.signum() > 0) shares.add("超限产出 " + OutputLotText.plain(overLimit));
             if (!shares.isEmpty()) notes.add("其中" + String.join(" · ", shares));
             if (reason != null) notes.add(reason);
             summary = "送入仓库 " + OutputLotText.plain(qty)
@@ -102,7 +105,7 @@ final class DailyReportOutputGroups {
                 head.getDestination(), head.getDirectTransferDemandId(),
                 workshop ? head.getDirectTransferTargetLabel() : null,
                 qty, demand, publicQty, surplus,
-                OutputLotText.split(demand, publicQty, surplus), reason, summary);
+                OutputLotText.split(demand, publicQty, surplus, overLimit), reason, summary);
     }
 
     private static String firstNonBlank(String first, String second, String fallback) {

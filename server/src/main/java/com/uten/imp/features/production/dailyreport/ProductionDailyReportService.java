@@ -110,6 +110,7 @@ public class ProductionDailyReportService {
     private final DailyReportExecutionSegmentGuard executionSegments;
     private final DailyReportOutputAllocationService outputAllocation;
     private final ActualOutputSupplementService outputSupplements;
+    private final ProductionOverLimitDispositionService overLimitDispositions;
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final com.uten.imp.common.util.DepartmentNameResolver departmentNameResolver;
@@ -246,7 +247,9 @@ public class ProductionDailyReportService {
         // 送仓原因的大白话与货品身份同一条语句取回(审核返回详情时不多一次往返)，文案只来自库里一份。
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT item.id, goods.name, goods.code, color.name, unit.name,
-                       CASE WHEN item.output_route_reason IS NULL THEN NULL
+                       CASE WHEN item.is_over_limit THEN CASE WHEN fn_daily_report_output_authorized(item.id)
+                                  THEN '超限数量已获计划接收' ELSE '超过允许数量，待计划处置' END
+                            WHEN item.output_route_reason IS NULL THEN NULL
                             ELSE fn_workshop_direct_reason_text(item.output_route_reason, NULL,
                                  COALESCE(NULLIF(goods.code, ''), goods.name), NULL, NULL, NULL, NULL) END
                 FROM production_daily_report_items item
@@ -266,11 +269,13 @@ public class ProductionDailyReportService {
                 .filter(Objects::nonNull).distinct().toList();
         if (segmentIds.isEmpty()) return;
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT id,fn_daily_report_is_public_output(id) FROM production_daily_report_items
-                WHERE report_id=:report AND NOT is_deleted
+                SELECT item.id,fn_daily_report_is_public_output(item.id),disposition.id
+                FROM production_daily_report_items item
+                LEFT JOIN production_over_limit_dispositions disposition ON disposition.report_item_id=fn_daily_report_output_authorization_root(item.id)
+                WHERE item.report_id=:report AND NOT item.is_deleted
                 """).setParameter("report",report.getId()))) {
             items.stream().filter(item->Objects.equals(item.getId(),row[0])).findFirst()
-                    .ifPresent(item->item.setPublicOutput(Boolean.TRUE.equals(row[1])));
+                    .ifPresent(item->{item.setPublicOutput(Boolean.TRUE.equals(row[1]));item.setDispositionId((UUID)row[2]);});
         }
         Map<UUID, Object[]> contexts = new HashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -371,6 +376,7 @@ public class ProductionDailyReportService {
         syncReportWorkers(r.getId(), workerIds);
         recordCommand(COMMAND_CREATE,
                 actorId, idempotencyKey, requestHash, r.getId(), null, null, 1, fullPayloadHash);
+        overLimitDispositions.syncReport(r.getId());
         return detail(r.getId());
     }
 
@@ -411,6 +417,7 @@ public class ProductionDailyReportService {
         // An item-only edit must still dirty the header so JPA @Version advances.
         r.setUpdatedAt(java.time.Instant.now());
         reportRepo.saveAndFlush(r);
+        overLimitDispositions.syncReport(id);
         return detail(id);
     }
 
@@ -425,6 +432,7 @@ public class ProductionDailyReportService {
         r.setDeletedAt(OffsetDateTime.now());
         reportRepo.saveAndFlush(r);
         outputSupplements.releaseClaims(r.getId());
+        overLimitDispositions.syncReport(id);
     }
 
     /** 审核（status 0→1）：报工链联动（见类注释）。 */
@@ -570,6 +578,7 @@ public class ProductionDailyReportService {
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId());
         reportRepo.saveAndFlush(r);
+        overLimitDispositions.syncReport(id);
         costTargets.targetChangedByReport(r.getId(),currentUser.requireId());
         for (ProductionDailyReportItem item : items) {
             if (item.getFqcRecoveryAuthorizationId() != null) {
@@ -832,6 +841,7 @@ public class ProductionDailyReportService {
         costTargets.targetChangedByReport(r.getId(),currentUser.requireId());
         fqcRecovery.reverseReportEffects(r.getId());
         qualityInspection.cancelForReversedReport(r.getId());
+        overLimitDispositions.syncReport(id);
         return detail(id);
     }
 
@@ -1875,6 +1885,7 @@ public class ProductionDailyReportService {
                         line.getFqcRecoveryAuthorizationId());
             }
             if(line.getSupplementProofId()!=null)addCanonical(parts,path+".supplementProofId",line.getSupplementProofId());
+            if(line.getOverLimitReason()!=null&&!line.getOverLimitReason().isBlank())addCanonical(parts,path+".overLimitReason",line.getOverLimitReason());
             addCanonical(parts, path + ".isFinal",
                     Boolean.TRUE.equals(line.getIsFinal()));
             addCanonical(parts, path + ".outboundNo", line.getOutboundNo());
@@ -2382,6 +2393,8 @@ public class ProductionDailyReportService {
             it.setOutputBatchQty(l.getOutputBatchQty());
             it.setPublicOutput(l.isPublicOutput());
             it.setActualSurplus(l.isActualSurplus());
+            it.setOverLimit(l.isOverLimit());
+            it.setOverLimitReason(l.getOverLimitReason());
             it.setSupplementProofId(l.getSupplementProofId());
             it.setBillNo(r.getBillNo());
             it.setBillDate(r.getBillDate());
@@ -2539,7 +2552,8 @@ public class ProductionDailyReportService {
                 identity == null ? null : identity[3],
                 it.getOutputBatchId(), it.getOutputBatchQty(), it.isPublicOutput(), it.isActualSurplus(),
                 it.getExecutionSegmentId()!=null && it.getFqcRecoveryAuthorizationId()==null,
-                it.getSupplementProofId(),null,null,null,null,null,null,null,null);
+                it.getSupplementProofId(),null,null,null,null,null,null,null,null,
+                it.isOverLimit(),it.getOverLimitReason(),null);
     }
 
     /** 直送行的接收方(父件产品名 编号 · 工单号)，详情页「转给工单」列用；非直送行不出现。 */

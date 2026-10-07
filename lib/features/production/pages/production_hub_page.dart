@@ -122,6 +122,15 @@ class ProductionHubPage extends ConsumerWidget {
                     ),
                   ),
                   const _Entry(
+                    icon: Icons.inventory_2_outlined,
+                    label: '超限产出处置',
+                    description: '核对已生产的超限实物，记录处理意见',
+                    location: RouteName.productionOverLimitDispositions,
+                    badgeScope: BadgeScope.entry(
+                      BadgeEntry.productionOverLimitPending,
+                    ),
+                  ),
+                  const _Entry(
                     icon: Icons.add_box_outlined,
                     label: '追加用料审批',
                     description: '核对原定额与追加量，批准后安排领料',

@@ -65,6 +65,7 @@ enum BadgeEntry {
   /// 生产调度: 待排产行。
   productionSchedule(BadgeModule.production),
   productionRateApprovals(BadgeModule.production),
+  productionOverLimitPending(BadgeModule.production),
   productionMaterialIncrementApprovals(BadgeModule.production),
 
   /// 生产计划(物料分析): 车间在催计划下单子层物料、计划还没下够单的车间任务(ADR-117)。
@@ -192,6 +193,7 @@ abstract final class BadgeFact {
   static const productionScheduleCount = 'productionSchedule.count';
   static const productionOverproductionRate =
       'productionOverproductionRate.count';
+  static const productionOverLimitPending = 'productionOverLimitPending.count';
   static const productionMaterialIncrement =
       'productionMaterialIncrement.count';
   static const productionPlanningUrge = 'productionPlanningUrge.count';

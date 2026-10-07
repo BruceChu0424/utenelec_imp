@@ -84,6 +84,7 @@ public class DailyReportOutputAllocationService {
                 .setParameter("ids",receivers).getResultList();
         Map<String, Capacity> capacities = new HashMap<>();
         Map<UUID, Capacity> responsibility = new HashMap<>();
+        Map<UUID, BigDecimal> surplusRemaining = new HashMap<>();
         DirectLedger ledger=new DirectLedger();
         List<DailyReportItemLine> result = new ArrayList<>();
         for (int index=0;index<requested.size();index++) {
@@ -106,7 +107,8 @@ public class DailyReportOutputAllocationService {
                     throw validation("品质返工/补产报工整行只能一个去向：全部转给一个上层工单，或全部送入仓库");
                 DailyReportItemLine recovery = copy(input, input.getQty(), batch, false, false);
                 List<Object[]> source = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT fn_daily_report_is_public_output(source.id), source.is_actual_surplus,source.supplement_proof_id
+                        SELECT fn_daily_report_is_public_output(source.id), source.is_actual_surplus,source.supplement_proof_id,
+                               source.is_over_limit,source.over_limit_reason
                         FROM production_fqc_recovery_authorizations authority
                         JOIN production_daily_report_items source ON source.id=authority.source_report_item_id
                         WHERE authority.id=:id
@@ -115,6 +117,8 @@ public class DailyReportOutputAllocationService {
                 recovery.setPublicOutput(Boolean.TRUE.equals(source.getFirst()[0]));
                 recovery.setActualSurplus(Boolean.TRUE.equals(source.getFirst()[1]));
                 recovery.setSupplementProofId((UUID)source.getFirst()[2]);
+                recovery.setOverLimit(Boolean.TRUE.equals(source.getFirst()[3]));
+                recovery.setOverLimitReason((String)source.getFirst()[4]);
                 if (recovery.isPublicOutput()) {
                     if(routing.hasDirect())throw new ApiException(ErrorCode.CONFLICT,"这批补产属于公共备货，只能送入仓库，不能转下一道工序");
                     warehousePublic(recovery);
@@ -192,7 +196,34 @@ public class DailyReportOutputAllocationService {
                 if(extraPlanned.signum()>0)pieces.add(copy(input,extraPlanned,batch,true,false));
                 left=left.subtract(extraPlanned);
             }
-            if(left.signum()>0)pieces.add(copy(input,left,batch,true,true));
+            if(left.signum()>0) {
+                if (!forSave) {
+                    pieces.add(copy(input,left,batch,true,true));
+                } else {
+                    BigDecimal available = surplusRemaining.computeIfAbsent(segment, ignored ->
+                            number(em.createNativeQuery("SELECT fn_execution_actual_surplus_available(:segment,:report)")
+                                    .setParameter("segment",segment).setParameter("report",reportId).getSingleResult()));
+                    BigDecimal pending = number(em.createNativeQuery("SELECT fn_actual_supplement_pending_qty(:segment,:report)")
+                            .setParameter("segment",segment).setParameter("report",reportId).getSingleResult());
+                    if (pending.signum()>0 && left.compareTo(available)>0) {
+                        throw new ApiException(ErrorCode.CONFLICT,"已批准的固定追加量还有 "+plain(pending)
+                                +" 未续报，请到「我的车间任务 → 固定追加量·续报」入口申报，不能重复登记为超限实产");
+                    }
+                    BigDecimal permitted=left.min(available.max(BigDecimal.ZERO));
+                    if(permitted.signum()>0)pieces.add(copy(input,permitted,batch,true,true));
+                    BigDecimal overLimit=left.subtract(permitted);
+                    if(overLimit.signum()>0) {
+                        String reason=input.getOverLimitReason()==null?"":input.getOverLimitReason().strip();
+                        if(reason.length()<2||reason.length()>500)throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                                "本次实产有 "+plain(overLimit)+" 超出允许数量，请填写 2—500 字超限原因；实际数量和用料不变",
+                                List.of(new com.uten.imp.common.web.ApiError.FieldError("overLimitReason",plain(overLimit))));
+                        var held=copy(input,overLimit,batch,true,true);
+                        held.setOverLimit(true);held.setOverLimitReason(reason);
+                        held.setOutputRouteReason("OVER_LIMIT");pieces.add(held);
+                    }
+                    surplusRemaining.put(segment,available.subtract(left).max(BigDecimal.ZERO));
+                }
+            }
             distributeWeight(input,pieces);keepDefectOnFirstSlice(input,pieces);
             result.addAll(pieces);
         }
@@ -353,7 +384,7 @@ public class DailyReportOutputAllocationService {
 
     public void requireAllowance(UUID reportId,List<DailyReportItemLine> lines) {
         Map<UUID,BigDecimal> requested=new LinkedHashMap<>();
-        for(var line:lines)if(line.isActualSurplus()&&line.getFqcRecoveryAuthorizationId()==null)
+        for(var line:lines)if(line.isActualSurplus()&&!line.isOverLimit()&&line.getFqcRecoveryAuthorizationId()==null)
             requested.merge(line.getExecutionSegmentId(),line.getQty(),BigDecimal::add);
         for(var entry:requested.entrySet()) {
             BigDecimal available=number(em.createNativeQuery("SELECT fn_execution_actual_surplus_available(:segment,:report)")
@@ -369,7 +400,7 @@ public class DailyReportOutputAllocationService {
                                 +(pending.signum()>0
                                 ?"；已批准的固定追加量还有 "+pending.stripTrailingZeros().toPlainString()
                                 +" 未续报，请到「我的车间任务 → 固定追加量·续报」入口申报，不要在原工单直接超额报工"
-                                :"；请为本次全部超出原计划的数量提交追加计划，不会减少您填写的实际产量"),
+                                :"；本次允许数量已变化，请刷新核对，超出部分须如实登记超限原因并交计划处置"),
                         List.of(new com.uten.imp.common.web.ApiError.FieldError("overproductionSupplement",entry.getKey().toString())));
             }
         }
@@ -445,6 +476,7 @@ public class DailyReportOutputAllocationService {
         target.setAllocations(null);
         target.setQty(qty);target.setOutputBatchId(batch);target.setOutputBatchQty(source.getQty());
         target.setPublicOutput(publicOutput);target.setActualSurplus(actual);
+        target.setOverLimit(false);target.setOverLimitReason(null);
         if(publicOutput)warehousePublic(target);
         return target;
     }
@@ -458,7 +490,7 @@ public class DailyReportOutputAllocationService {
         target.setSalesOrderItemId(null);target.setSalesOrderNo(null);target.setExecutionSegmentSalesAllocationId(null);
         target.setClientName(null);target.setOrderQty(null);target.setOrderDate(null);
         target.setOutboundNo(null);target.setOutboundQty(null);
-        toWarehouse(target,target.isActualSurplus()?"ACTUAL_SURPLUS":"PUBLIC_SHARE");target.setIsFinal(false);
+        toWarehouse(target,target.isOverLimit()?"OVER_LIMIT":target.isActualSurplus()?"ACTUAL_SURPLUS":"PUBLIC_SHARE");target.setIsFinal(false);
     }
     static void distributeWeight(DailyReportItemLine input,List<DailyReportItemLine> pieces) {
         if(input.getWeight()==null)return;

@@ -271,6 +271,9 @@ String dailyReportCreateRequestHash(Map<String, dynamic> body) {
     for (final field in ['fqcRecoveryAuthorizationId', 'supplementProofId']) {
       if (line[field] != null) _add(parts, '$path.$field', line[field], 'UUID');
     }
+    if ((line['overLimitReason'] as String?)?.trim().isNotEmpty == true) {
+      _add(parts, '$path.overLimitReason', line['overLimitReason']);
+    }
     _add(parts, '$path.isFinal', line['isFinal'] == true, 'BOOLEAN');
     _add(parts, '$path.outboundNo', line['outboundNo']);
     for (final field in ['outboundQty', 'orderQty']) {

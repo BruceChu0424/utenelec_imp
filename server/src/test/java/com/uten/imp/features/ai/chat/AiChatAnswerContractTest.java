@@ -44,7 +44,8 @@ class AiChatAnswerContractTest {
     @Test void withoutPageOrToolsTheModelCannotChooseThem() {
         JsonNode schema = json.valueToTree(AiChatAnswerContract.create(List.of(), List.of(), false, false, false, List.of()).schema());
         assertThat(schema.path("properties").path("intent").path("enum").toString())
-                .doesNotContain("PAGE_STATE", "PAGE_HELP", "TOOL", "ACTION", "KNOWLEDGE").contains("CLARIFY", "UNSUPPORTED");
+                .doesNotContain("PAGE_STATE", "PAGE_HELP", "TOOL", "ACTION", "KNOWLEDGE")
+                .contains("CLARIFY", "UNSUPPORTED", "GENERAL_HELP", "SMALL_TALK");
         assertThat(schema.path("properties").path("usedSources").path("items").path("enum").toString()).isEqualTo("[\"none\"]");
     }
 

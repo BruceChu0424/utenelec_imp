@@ -6,6 +6,24 @@ final _fallback = AppLocalizationsZh();
 
 /// Chat copy comes from the application ARB catalogue.
 String aiChatText(BuildContext context, String key) {
+  // Keep the new file-continuation copy scoped to chat until the next
+  // application catalogue generation.
+  final language = Localizations.maybeLocaleOf(context)?.languageCode;
+  if (key == 'reuseDocument') {
+    return switch (language) {
+      'en' => 'Continue with this file',
+      'ko' => '이 파일로 계속하기',
+      _ => '继续用此文件',
+    };
+  }
+  if (key == 'reuseDocumentHint') {
+    return switch (language) {
+      'en' =>
+        'Attach this file again to clarify its purpose or prepare a form. Your typed message is kept.',
+      'ko' => '이 파일을 다시 첨부해 용도를 설명하거나 서류 작성을 요청하세요. 입력한 메시지는 유지됩니다.',
+      _ => '重新附上此文件，可说明文件用途或要求生成单据；保留已输入的文字。',
+    };
+  }
   final l10n =
       Localizations.of<AppLocalizations>(context, AppLocalizations) ??
       _fallback;

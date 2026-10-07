@@ -131,7 +131,9 @@ final class AiDocumentClassifier {
             if (heading(line, TAX_TITLE)) families.add(Family.TAX_INVOICE);
             if (heading(line, PROFORMA_TITLE) || heading(line, ORDER_TITLE)) { families.add(Family.TRADE); order = true; }
             if (heading(line, QUOTE_TITLE)) { families.add(Family.TRADE); quotation = true; }
-            if (line.equals("invoice") || heading(line, COMMERCIAL_TITLE)) { families.add(Family.TRADE); commercial = true; }
+            // A generic template/sheet heading "Invoice" does not establish a commercial invoice.
+            // Quotations and proformas reuse that template; require a specific title or qualify field evidence.
+            if (heading(line, COMMERCIAL_TITLE)) { families.add(Family.TRADE); commercial = true; }
             boolean numberField = INVOICE_NUMBER.matcher(line).find(), totalField = INVOICE_TOTAL.matcher(line).find();
             number |= numberField; total |= totalField;
             String compact = line.replace(" ", "");
@@ -155,7 +157,8 @@ final class AiDocumentClassifier {
         if (families.isEmpty() && number && total) {
             fields = "FIELDS";
             if (domesticInvoiceField) families.add(Family.TAX_INVOICE);
-            else { families.add(Family.TRADE); commercial = true; }
+            // English invoice-number/total fields also occur in quotation and proforma templates.
+            // Retain them only as multiplicity evidence; they do not establish a commercial invoice.
         }
         if (families.size() > 1) return result("MIXED_DOCUMENT", "");
         if (families.contains(Family.TAX_INVOICE))
@@ -167,8 +170,9 @@ final class AiDocumentClassifier {
         if (order) return result("SALES_ORDER", "TITLE");
         if (quotation) return result("SALES_QUOTATION", "TITLE");
         if (commercial) return new Classification("COMMERCIAL_INVOICE", InvoiceMultiplicity.multiple(invoiceLines(lines)), fields.isEmpty() ? "TITLE" : fields);
-        if (goodsTable) return result(quoteDate ? "SALES_QUOTATION" : "SALES_TABLE", "COLUMNS");
-        return result("UNKNOWN", "");
+        if (goodsTable) return new Classification(quoteDate ? "SALES_QUOTATION" : "SALES_TABLE",
+                !fields.isEmpty() && InvoiceMultiplicity.multiple(invoiceLines(lines)), "COLUMNS");
+        return new Classification("UNKNOWN", !fields.isEmpty() && InvoiceMultiplicity.multiple(invoiceLines(lines)), fields);
     }
 
     static Classification classifySections(List<List<String>> sections) {
@@ -186,15 +190,16 @@ final class AiDocumentClassifier {
             List<String> section = sections.get(i);
             Classification part = classify(section, columns != null && i < columns.size() ? columns.get(i) : Set.of());
             if (part.type().equals("MIXED_DOCUMENT")) return part;
+            multiple |= part.multipleInvoices();
+            if (part.type().equals("INVOICE") || part.type().equals("COMMERCIAL_INVOICE") || part.type().equals("SALES_TABLE") || part.evidence().equals("FIELDS"))
+                invoiceEvidence.addAll(invoiceLines(lines(section)));
             Family family = family(part.type());
             if (family == null) continue;
-            types.putIfAbsent(part.type(), part.evidence()); families.add(family); multiple |= part.multipleInvoices();
-            if (part.type().equals("INVOICE") || part.type().equals("COMMERCIAL_INVOICE"))
-                invoiceEvidence.addAll(invoiceLines(lines(section)));
+            types.putIfAbsent(part.type(), part.evidence()); families.add(family);
         }
         if (families.size() > 1) return result("MIXED_DOCUMENT", "");
-        if (types.isEmpty()) return result("UNKNOWN", "");
         multiple |= InvoiceMultiplicity.multiple(invoiceEvidence);
+        if (types.isEmpty()) return new Classification("UNKNOWN", multiple, invoiceEvidence.isEmpty() ? "" : "FIELDS");
         String type;
         if (types.containsKey("SALES_ORDER")) type = "SALES_ORDER";
         else if (types.containsKey("SALES_QUOTATION")) type = "SALES_QUOTATION";

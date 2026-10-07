@@ -252,12 +252,12 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(count("expense_claims")).isEqualTo(claims); assertThat(FAKE.requests()).isEmpty();
     }
 
-    @Test void oldClassificationWithoutRoutingVersionCannotBeReadOrReusedForTenMinutes() throws Exception {
+    @Test void oldClassificationRoutingVersionCannotBeReadOrReusedForTenMinutes() throws Exception {
         Staff sales = newEmployee(adminToken(), "DEPT_SALES"); String token = fresh(sales);
         byte[] input = csv("Commercial Invoice", "ITEM NO. Description QTY Unit Price", "MAT-001 产品A 10 20");
         String old = upload(token, AiDocumentRouteHandler.KIND, "old-classification.csv", input, Map.of());
         succeeded(token, old);
-        jdbc.update("UPDATE ai_jobs SET result=result-'_routing' WHERE id=?::uuid", old);
+        jdbc.update("UPDATE ai_jobs SET result=jsonb_set(result,'{_routing,version}','\"v3\"'::jsonb) WHERE id=?::uuid", old);
         var stale = mvc.perform(authed(get("/api/ai/jobs/" + old), token)).andReturn();
         assertEquals(403, stale.getResponse().getStatus(), body(stale));
         String replacement = upload(token, AiDocumentRouteHandler.KIND, "old-classification.csv", input, Map.of());
@@ -265,7 +265,39 @@ class AiDocumentRoutePostgresTest extends AiPlatformPostgresTestSupport {
         JsonNode result = succeeded(token, replacement);
         assertThat(result.path("workflow").asText()).isEqualTo("SALES_ORDER");
         assertThat(result.has("_routing")).isFalse();
-        assertThat(jdbc.queryForObject("SELECT result->'_routing'->>'version' FROM ai_jobs WHERE id=?::uuid", String.class, replacement)).isEqualTo("v3");
+        assertThat(jdbc.queryForObject("SELECT result->'_routing'->>'version' FROM ai_jobs WHERE id=?::uuid", String.class, replacement)).isEqualTo("v4");
+        assertThat(FAKE.requests()).isEmpty();
+    }
+
+    @Test void sameFileIdentificationThenNaturalConversionKeepsSourceBindingAndOneTimeConfirmation() throws Exception {
+        Staff sales = newEmployee(adminToken(), "DEPT_SALES"); String token = fresh(sales);
+        byte[] input = csv("Commercial Invoice", "品名,数量,单价", "产品A,10,20");
+        long orders = count("sales_orders"), quotes = count("sales_quotes"), claims = count("expense_claims");
+        String question = upload(token, AiDocumentRouteHandler.KIND, "quotation-template.csv", input, Map.of("message", "这是什么文件"));
+        JsonNode described = succeeded(token, question);
+        assertThat(described.path("workflow").asText()).isEqualTo("NONE");
+        assertThat(described.path("actions").size()).isZero();
+        assertThat(described.path("choices").toString()).contains("SALES_ORDER", "SALES_QUOTE").doesNotContain("EXPENSE_CLAIM");
+        assertThat(described.path("summary").asText()).contains("标题标注", "实际用于报价");
+
+        String conversion = upload(token, AiDocumentRouteHandler.KIND, "quotation-template.csv", input,
+                Map.of("message", "这不是发票，是报价单，转成订货单"));
+        JsonNode result = succeeded(token, conversion);
+        assertThat(conversion).isNotEqualTo(question);
+        assertThat(result.path("source").path("sha256").asText()).isEqualTo(described.path("source").path("sha256").asText());
+        assertThat(result.path("workflow").asText()).isEqualTo("SALES_ORDER");
+        assertThat(result.path("actions").size()).isEqualTo(1);
+        JsonNode card = result.path("actions").get(0);
+        assertThat(card.path("args").path("sourceJobId").asText()).isEqualTo(conversion);
+        String proposal = card.path("proposalId").asText();
+        MvcResult confirmed = mvc.perform(authed(post("/api/ai/chat/actions/" + proposal + "/confirm"), token)).andReturn();
+        assertEquals(200, confirmed.getResponse().getStatus(), body(confirmed));
+        assertThat(json(confirmed).path("args").path("sourceJobId").asText()).isEqualTo(conversion);
+        MvcResult replay = mvc.perform(authed(post("/api/ai/chat/actions/" + proposal + "/confirm"), token)).andReturn();
+        assertEquals(409, replay.getResponse().getStatus(), body(replay));
+        assertThat(count("sales_orders")).isEqualTo(orders);
+        assertThat(count("sales_quotes")).isEqualTo(quotes);
+        assertThat(count("expense_claims")).isEqualTo(claims);
         assertThat(FAKE.requests()).isEmpty();
     }
 

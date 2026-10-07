@@ -5030,26 +5030,71 @@
       }
     }
   },
-  "hrReconcileSummary": "共 {people} 人 · 需更正 {update} · 仅提示 {info} · 一致 {same} · 已处理 {applied}",
-  "@hrReconcileSummary": {
+  "hrReconcileStatPeople": "待核对 {count} 人",
+  "@hrReconcileStatPeople": {
     "placeholders": {
-      "people": {
-        "type": "int"
-      },
-      "update": {
-        "type": "int"
-      },
-      "info": {
-        "type": "int"
-      },
-      "same": {
-        "type": "int"
-      },
-      "applied": {
+      "count": {
         "type": "int"
       }
     }
   },
+  "hrReconcileStatUpdate": "需更正 {count}",
+  "@hrReconcileStatUpdate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatInfo": "仅提示 {count}",
+  "@hrReconcileStatInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatSame": "一致 {count}",
+  "@hrReconcileStatSame": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatApplied": "已处理 {count} 人",
+  "@hrReconcileStatApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierHigh": "高把握 {count}",
+  "@hrReconcileStatTierHigh": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierMedium": "中把握 {count}",
+  "@hrReconcileStatTierMedium": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierManual": "需人工 {count}",
+  "@hrReconcileStatTierManual": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileSelectHigh": "只选把握高的",
   "hrReconcileValidity": "24 小时内有效，超时未执行的改动自动清除",
   "hrReconcileExpiredTitle": "这份核对已超过 24 小时，未执行的内容已清除",
   "hrReconcileExpiredRetry": "重新核对",
@@ -5108,12 +5153,17 @@
   "hrReconcileApplyFailed": "更正没有完成，请稍后重试",
   "hrReconcileIdEmpty": "（空）",
   "hrReconcileColKind": "类型",
-  "hrReconcileColCode": "工号",
-  "hrReconcileColName": "姓名",
-  "hrReconcileColDept": "部门",
+  "hrReconcileColEmployee": "员工",
   "hrReconcileColReason": "原因",
-  "hrReconcileColIdNumber": "证件号码",
-  "hrReconcileColBasis": "依据",
+  "hrReconcileIdNumberInfo": "红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码",
+  "hrReconcileBasisOf": "建议依据：{label}",
+  "@hrReconcileBasisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "hrReconcileColTier": "把握",
   "hrReconcileColNotes": "说明/结果",
   "hrReconcileKindUpdate": "修改",

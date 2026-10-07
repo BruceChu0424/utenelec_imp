@@ -502,11 +502,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // 17 位：非法 → 即时错误（UtenInputDecoration 收进输入框内披露图标）+ 不计数。
+    // 注意限定在手输框内找图标：表头的列说明 ⓘ 也是 UtenFieldHintIcon。
     await tester.enterText(field, '11010519491231002');
     await tester.pump();
     expect(
       tester
-          .widget<UtenFieldHintIcon>(find.byType(UtenFieldHintIcon))
+          .widget<UtenFieldHintIcon>(
+            find.descendant(
+              of: field,
+              matching: find.byType(UtenFieldHintIcon),
+            ),
+          )
           .errorMessage,
       '身份证号应为18位，当前为17位',
       reason: 'problemOf 的那句话即时出现',
@@ -516,7 +522,11 @@ void main() {
     // 补上校验位：合法 → 计入。
     await tester.enterText(field, _kValidId);
     await tester.pumpAndSettle();
-    expect(find.byType(UtenFieldHintIcon), findsNothing, reason: '合法输入不再带错误提示');
+    expect(
+      find.descendant(of: field, matching: find.byType(UtenFieldHintIcon)),
+      findsNothing,
+      reason: '合法输入不再带错误提示',
+    );
     expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
 
     // 放行提交（提交体细节见下一用例）。
@@ -881,6 +891,223 @@ void main() {
       find.byKey(const ValueKey('hr-reconcile-manual-1')),
       findsOneWidget,
       reason: '卡片里手输区可用',
+    );
+    // 卡片标题位 = 员工合并列的 cellBuilder(姓名主行 + 工号·部门副行)，
+    // 不是缺省第一列「类型」的「需人工」。
+    expect(find.text('王五'), findsOneWidget, reason: '卡片标题是员工姓名');
+    expect(
+      find.text('UT0050 · 装配第一车间'),
+      findsOneWidget,
+      reason: '卡片标题带工号·部门副行',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('摘要统计胶囊：待核对人数主行 + 把握分布(未执行项现算)', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeRepo(
+      HrReconcilePlan.fromJson(
+        _planJson(
+          rows: [
+            // 两行 HIGH + 一行 MANUAL：胶囊 高把握 2 / 需人工 1，中把握不出现。
+            _rowJson(item: _itemJson(newValue: _kValidId, preselected: true)),
+            _rowJson(
+              rowNo: 2,
+              employeeId: 'emp-2',
+              name: '赵六',
+              item: _itemJson(newValue: _kValidId, preselected: true),
+            ),
+            _rowJson(
+              rowNo: 3,
+              employeeId: 'emp-3',
+              name: '钱七',
+              item: _itemJson(tier: 'MANUAL', basisCode: ''),
+            ),
+          ],
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      repo: repo,
+      pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+    );
+
+    expect(find.text('待核对 3 人'), findsOneWidget);
+    expect(find.text('需更正 3'), findsOneWidget, reason: 'kind 副行');
+    expect(find.text('高把握 2'), findsOneWidget);
+    expect(find.text('需人工 1'), findsOneWidget);
+    expect(find.textContaining('中把握'), findsNothing, reason: '0 值档不占位');
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('员工合并列：姓名主行 + 工号·部门副行；问题列名取自服务端 label', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeRepo(
+      HrReconcilePlan.fromJson(
+        _planJson(
+          rows: [
+            _rowJson(item: _itemJson(newValue: _kValidId, preselected: true)),
+          ],
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      repo: repo,
+      pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+    );
+
+    expect(find.text('王五'), findsOneWidget, reason: '姓名主行');
+    expect(find.text('UT0050 · 装配第一车间'), findsOneWidget, reason: '工号·部门副行');
+    expect(find.text('工号'), findsNothing, reason: '独立工号列已退役');
+    expect(find.text('部门'), findsNothing, reason: '独立部门列已退役');
+    expect(find.text('依据'), findsNothing, reason: '独立依据列已退役');
+    // 动态问题列的列头用 items 的服务端 label。
+    final columns = _table(tester).columns;
+    expect(
+      columns.where((c) => c.key == 'field-idNumber').single.label,
+      '证件号码',
+      reason: 'field_code 驱动动态列，列名来自服务端字段 label',
+    );
+    // 依据并入把握徽章 Tooltip。
+    expect(
+      tester.widgetList<Tooltip>(find.byType(Tooltip)).map((t) => t.message),
+      contains('建议依据：生日对齐'),
+      reason: '把握徽章悬停出建议依据',
+    );
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('「只选把握高的」：一键勾选全部 HIGH 未执行行，不动 MANUAL', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeRepo(
+      HrReconcilePlan.fromJson(
+        _planJson(
+          rows: [
+            _rowJson(item: _itemJson(newValue: _kValidId, preselected: true)),
+            _rowJson(
+              rowNo: 2,
+              employeeId: 'emp-2',
+              name: '赵六',
+              claim: {
+                'byName': '王某',
+                'byMe': false,
+                'leaseUntil': '2026-10-05T10:00:00+08:00',
+              },
+              item: _itemJson(newValue: _kValidId, preselected: true),
+            ),
+            _rowJson(
+              rowNo: 3,
+              employeeId: 'emp-3',
+              name: '钱七',
+              item: _itemJson(tier: 'MANUAL', basisCode: ''),
+            ),
+          ],
+        ),
+      ),
+    );
+    await _pump(
+      tester,
+      repo: repo,
+      pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+    );
+
+    await tester.tap(find.byKey(const Key('hr-reconcile-select-high')));
+    await tester.pumpAndSettle();
+    // 行2 被他人认领(tier HIGH 也不可选)：只勾进 emp-1；行3 MANUAL 不进。
+    expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
+    // 全部高把握已选中后快捷按钮退场(没有可再选的)。
+    expect(find.byKey(const Key('hr-reconcile-select-high')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('409 重取后残留选中含已执行行：请求体只带未执行行(与弹窗计数同口径)', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final appliedJson = _itemJson(
+      newValue: _kValidId,
+      preselected: true,
+      outcome: {'status': 'APPLIED', 'code': null, 'message': null},
+    );
+    final repo =
+        _FakeRepo(
+            HrReconcilePlan.fromJson(
+              _planJson(
+                rows: [
+                  // 行1：重取后已被执行(result=APPLIED)。
+                  _rowJson(
+                    item: appliedJson,
+                    result: {'status': 'APPLIED', 'message': null},
+                  ),
+                  // 行2：仍待执行。
+                  _rowJson(
+                    rowNo: 2,
+                    employeeId: 'emp-2',
+                    name: '赵六',
+                    item: _itemJson(newValue: _kValidId, preselected: true),
+                  ),
+                ],
+              ),
+            ),
+          )
+          // 首轮 apply 抛 CHANGED 触发自动重取(返回上面的已执行版本)；
+          // 之后清掉错误，允许第二轮成功。
+          ..applyError = ApiException(
+            'CONFLICT',
+            '核对计划已变更',
+            httpStatus: 409,
+            fieldErrors: const [
+              ApiFieldError(
+                field: 'errorCode',
+                message: 'RECONCILE_PLAN_CHANGED',
+              ),
+            ],
+          );
+    await _pump(
+      tester,
+      repo: repo,
+      pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+    );
+
+    // 选中两行(含已执行行)后首轮 apply → 409 → 自动重取，勾选残留。
+    _table(tester).onSelectedIdsChanged!({'emp-1', 'emp-2'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认更正'));
+    await tester.pumpAndSettle();
+    expect(repo.getPlanCalls, 2, reason: '409 CHANGED 自动重取计划');
+
+    // 重取后行1 已执行：按钮计数只剩行2(勾选残留但不复活已执行行)。
+    expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
+    repo.applyError = null;
+
+    // 二轮提交：请求体必须只带 rowNo=2，不带已执行的 rowNo=1。
+    await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认更正'));
+    await tester.pumpAndSettle();
+    expect(repo.applies, hasLength(2));
+    expect(
+      repo.applies.last.rows.map((r) => r.rowNo),
+      [2],
+      reason: '已执行行不进请求体(与 _applyCounts 弹窗口径一致)',
     );
 
     await tester.pumpWidget(const SizedBox());

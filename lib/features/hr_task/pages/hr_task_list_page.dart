@@ -2,9 +2,10 @@
 //
 // 2026-10-05 证件核对(identity)：列 工号/姓名/原因(红字，服务端原话，紧跟姓名，
 // 表格单行省略+悬停看全文，窄屏卡片折行完整显示)/部门/岗位/入职日/认领，
-// 没有天数、区间两列；开多选「批量核对(N)」进 /hr/tasks/reconcile 员工资料核对更正页(ADR-160)，
-// 被他人认领的行不可勾选(勾选位换成锁)；行菜单「修改证件信息」(他人处理中不显示)。本页路由守卫
-// 要求 employee:pii:edit，服务端也只把证件核对条目下发给能修改证件的人。
+// 没有天数、区间两列；开多选「批量处理(N)」进 /hr/tasks/reconcile 员工资料核对更正页
+// (ADR-160)，被他人认领的行不可勾选(勾选位换成锁)；行菜单「修改证件信息」(他人处理中
+// 不显示)。本页路由守卫要求 employee:pii:edit，服务端也只把证件核对条目下发给能修改
+// 证件的人。
 //
 // 2026-09-17 庆典类页面新增「自动发送祝福」开关（V600 口径）：默认关——祝福由
 // 人事在本页手动批量发布；开关打开后每天 08:00（北京时间）服务端自动代发。
@@ -22,7 +23,7 @@
 //     跳过并计入失败（后端 confirm 无认领守卫）；门控 employee:confirm + employee:edit；
 //   * 生日/周年 →「批量送祝福(N)」：publishCelebrationBatch(今日∩未祝福的选中人)，
 //     门控 notice:publish；
-//   * 证件核对 →「批量核对(N)」：进 /hr/tasks/reconcile 员工资料核对更正页(ADR-160)，
+//   * 证件核对 →「批量处理(N)」：进 /hr/tasks/reconcile 员工资料核对更正页(ADR-160)，
 //     他人认领行不可勾选(锁)；门控与该页路由守卫同源(locationAllowedFor)。
 //   * 新近入职 → 无批量动作（无可批量的状态动作），故不开多选。
 //   批量后 hrTaskSummaryProvider.reloadSilently() 同步工作台/部门徽标。
@@ -153,7 +154,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
     // 批量登记转正只走 confirm（后端覆盖试用期转正与在职未登记补登，无 PUT 回退）。
     final canBatchConfirm = perms.contains(Perm.employeeConfirm);
-    // 证件核对「批量核对」入口与 /hr/tasks/reconcile 路由守卫同源(ADR-160)：能改
+    // 证件核对「批量处理」入口与 /hr/tasks/reconcile 路由守卫同源(ADR-160)：能改
     // 档案或能改证件的人可进；页内不散落新的 Perm 字面量(权限基线只降不升)。
     final canReconcile = locationAllowedFor(
       perms,
@@ -269,7 +270,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             filters: _filters,
             onFilterChanged: _onFilterChanged,
             selectable: showBatch,
-            // 证件核对：被他人认领的行不可勾选(勾选位换成锁)，防止进批量核对后
+            // 证件核对：被他人认领的行不可勾选(勾选位换成锁)，防止进批量处理后
             // 撞别人的处理；其余类型保持全员可勾选(批量动作各自兜底跳过)。
             idOf: (item) => _type == HrTaskType.identity && item.claimedByOther
                 ? null
@@ -697,17 +698,17 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
               ? () => _openIdentityReconcile(Set<String>.of(selectedIds))
               : null,
           onDisabledTap: _hintSelectFirst,
-          child: Text('批量核对(${selectedIds.length})'),
+          child: Text('批量处理(${selectedIds.length})'),
         ),
       ],
       HrTaskType.newhire => const <Widget>[],
     };
   }
 
-  /// 未勾选时点「批量核对」的引导提示。
-  void _hintSelectFirst() => context.appWarning('请先勾选要核对的员工');
+  /// 未勾选时点「批量处理」的引导提示。
+  void _hintSelectFirst() => context.appWarning('请先勾选要处理的员工');
 
-  /// 批量核对：带着勾选的员工进核对更正页(ADR-160)。页内保存成功后 pop(true)，
+  /// 批量处理：带着勾选的员工进核对更正页(ADR-160)。页内保存成功后 pop(true)，
   /// 返回本页清空勾选并静默重取(已核对的条目随之消失，徽标同步)。
   Future<void> _openIdentityReconcile(Set<String> ids) async {
     final changed = await context.push<bool>(

@@ -4146,26 +4146,71 @@
       }
     }
   },
-  "hrReconcileSummary": "{people} people · to update {update} · notice only {info} · match {same} · processed {applied}",
-  "@hrReconcileSummary": {
+  "hrReconcileStatPeople": "{count} to review",
+  "@hrReconcileStatPeople": {
     "placeholders": {
-      "people": {
-        "type": "int"
-      },
-      "update": {
-        "type": "int"
-      },
-      "info": {
-        "type": "int"
-      },
-      "same": {
-        "type": "int"
-      },
-      "applied": {
+      "count": {
         "type": "int"
       }
     }
   },
+  "hrReconcileStatUpdate": "{count} to update",
+  "@hrReconcileStatUpdate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatInfo": "{count} notice only",
+  "@hrReconcileStatInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatSame": "{count} match",
+  "@hrReconcileStatSame": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatApplied": "{count} processed",
+  "@hrReconcileStatApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierHigh": "{count} high confidence",
+  "@hrReconcileStatTierHigh": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierMedium": "{count} medium",
+  "@hrReconcileStatTierMedium": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierManual": "{count} need manual input",
+  "@hrReconcileStatTierManual": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileSelectHigh": "Select high confidence",
   "hrReconcileValidity": "Valid for 24 hours; unapplied changes are cleared after that",
   "hrReconcileExpiredTitle": "This reconciliation is past 24 hours; unapplied changes were cleared",
   "hrReconcileExpiredRetry": "Reconcile again",
@@ -4224,12 +4269,17 @@
   "hrReconcileApplyFailed": "The correction did not complete. Please try again later.",
   "hrReconcileIdEmpty": "(empty)",
   "hrReconcileColKind": "Type",
-  "hrReconcileColCode": "Employee No.",
-  "hrReconcileColName": "Name",
-  "hrReconcileColDept": "Department",
+  "hrReconcileColEmployee": "Employee",
   "hrReconcileColReason": "Reason",
-  "hrReconcileColIdNumber": "ID number",
-  "hrReconcileColBasis": "Basis",
+  "hrReconcileIdNumberInfo": "Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number",
+  "hrReconcileBasisOf": "Suggestion basis: {label}",
+  "@hrReconcileBasisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "hrReconcileColTier": "Confidence",
   "hrReconcileColNotes": "Notes / result",
   "hrReconcileKindUpdate": "Update",

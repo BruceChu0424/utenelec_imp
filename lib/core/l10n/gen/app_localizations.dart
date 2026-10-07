@@ -17182,17 +17182,59 @@ abstract class AppLocalizations {
   /// **'这是 {name} 的核对，只能查看'**
   String hrReconcileReadOnlyNotice(String name);
 
-  /// No description provided for @hrReconcileSummary.
+  /// No description provided for @hrReconcileStatPeople.
   ///
   /// In zh, this message translates to:
-  /// **'共 {people} 人 · 需更正 {update} · 仅提示 {info} · 一致 {same} · 已处理 {applied}'**
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  );
+  /// **'待核对 {count} 人'**
+  String hrReconcileStatPeople(int count);
+
+  /// No description provided for @hrReconcileStatUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'需更正 {count}'**
+  String hrReconcileStatUpdate(int count);
+
+  /// No description provided for @hrReconcileStatInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅提示 {count}'**
+  String hrReconcileStatInfo(int count);
+
+  /// No description provided for @hrReconcileStatSame.
+  ///
+  /// In zh, this message translates to:
+  /// **'一致 {count}'**
+  String hrReconcileStatSame(int count);
+
+  /// No description provided for @hrReconcileStatApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已处理 {count} 人'**
+  String hrReconcileStatApplied(int count);
+
+  /// No description provided for @hrReconcileStatTierHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'高把握 {count}'**
+  String hrReconcileStatTierHigh(int count);
+
+  /// No description provided for @hrReconcileStatTierMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'中把握 {count}'**
+  String hrReconcileStatTierMedium(int count);
+
+  /// No description provided for @hrReconcileStatTierManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'需人工 {count}'**
+  String hrReconcileStatTierManual(int count);
+
+  /// No description provided for @hrReconcileSelectHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'只选把握高的'**
+  String get hrReconcileSelectHigh;
 
   /// No description provided for @hrReconcileValidity.
   ///
@@ -17338,23 +17380,11 @@ abstract class AppLocalizations {
   /// **'类型'**
   String get hrReconcileColKind;
 
-  /// No description provided for @hrReconcileColCode.
+  /// No description provided for @hrReconcileColEmployee.
   ///
   /// In zh, this message translates to:
-  /// **'工号'**
-  String get hrReconcileColCode;
-
-  /// No description provided for @hrReconcileColName.
-  ///
-  /// In zh, this message translates to:
-  /// **'姓名'**
-  String get hrReconcileColName;
-
-  /// No description provided for @hrReconcileColDept.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门'**
-  String get hrReconcileColDept;
+  /// **'员工'**
+  String get hrReconcileColEmployee;
 
   /// No description provided for @hrReconcileColReason.
   ///
@@ -17362,17 +17392,17 @@ abstract class AppLocalizations {
   /// **'原因'**
   String get hrReconcileColReason;
 
-  /// No description provided for @hrReconcileColIdNumber.
+  /// No description provided for @hrReconcileIdNumberInfo.
   ///
   /// In zh, this message translates to:
-  /// **'证件号码'**
-  String get hrReconcileColIdNumber;
+  /// **'红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码'**
+  String get hrReconcileIdNumberInfo;
 
-  /// No description provided for @hrReconcileColBasis.
+  /// No description provided for @hrReconcileBasisOf.
   ///
   /// In zh, this message translates to:
-  /// **'依据'**
-  String get hrReconcileColBasis;
+  /// **'建议依据：{label}'**
+  String hrReconcileBasisOf(String label);
 
   /// No description provided for @hrReconcileColTier.
   ///

@@ -309,4 +309,99 @@ void main() {
       }
     },
   );
+
+  test(
+    'every registered leaf route is matchable (no unreachable nested paths)',
+    () {
+      // 契约：枚举的每条叶子路径（动态段代入样本值）都必须能被真实路由树
+      // findMatch 命中，且命中的末级路由必须是枚举到的那个 RouteBase 本尊——
+      // 只比对路径会被兄弟动态段(如 /hr/tasks/:type)代答骗过。注册路径与
+      // go_router 实际 fullPath 的任何漂移都会在这里红——典型事故(2026-10-06)：
+      // /hr/tasks 的子路由误用绝对路径常量 '/hr/tasks/reconcile'，go_router
+      // concatenatePaths 无条件拼接成不可达的 '/hr/tasks/hr/tasks/reconcile'，
+      // 真实地址被兄弟 ':type' 吞掉(type='reconcile' 未知 → 兜底渲染转正办理
+      // 页)，而上面的权限枚举测试用自算路径，对此完全失明。子路由必须写相对段。
+      final container = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => _StubSessionNotifier()),
+          visitorSessionProvider.overrideWith(
+            () => _StubVisitorSessionNotifier(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = container.read(appRouterProvider);
+
+      final leaves = <(String, RouteBase)>[];
+      for (final base in router.configuration.routes) {
+        _collectLeafRefs(base, '', leaves);
+      }
+      expect(leaves, isNotEmpty);
+      final problems = <String>[];
+      for (final (pattern, routeBase) in leaves) {
+        final sample = _samplePath(pattern);
+        final match = router.configuration.findMatch(Uri.parse(sample));
+        if (match.isError || match.uri.path != sample) {
+          problems.add('$sample：路径不可达');
+          continue;
+        }
+        if (!identical(match.last.route, routeBase)) {
+          problems.add('$sample：注册的路由没有被自己匹配(被兄弟动态段代答或前缀被吞)');
+        }
+      }
+      expect(
+        problems,
+        isEmpty,
+        reason:
+            '以下注册路由在真实路由树中不可达或被别的路由代答——最常见'
+            '原因是嵌套子路由误用绝对路径常量(被拼接成双段路径)；子路由 path '
+            '必须写相对段。',
+      );
+
+      // 精确锚点：/hr/tasks/reconcile 必须命中核对页本身，而不是 :type 兜底。
+      final reconcile = router.configuration.findMatch(
+        Uri.parse('/hr/tasks/reconcile'),
+      );
+      expect(reconcile.isError, isFalse);
+      expect(reconcile.last.route.name, 'hr-reconcile');
+      // 静态段优先于 :type：普通任务子页仍走动态段。
+      final confirm = router.configuration.findMatch(
+        Uri.parse('/hr/tasks/confirm'),
+      );
+      expect(confirm.isError, isFalse);
+      expect(confirm.last.route.name, 'hr-task-list');
+    },
+  );
+}
+
+/// 递归收集叶子路由的 (预期完整路径, 路由对象引用)：路径算法与 _collect 一致，
+/// 同时带上 RouteBase 供可达性测试做「命中的就是注册的那个」一致性校验。
+void _collectLeafRefs(
+  RouteBase base,
+  String parent,
+  List<(String, RouteBase)> out,
+) {
+  switch (base) {
+    case GoRoute(:final path, :final routes):
+      final full = path.startsWith('/')
+          ? path
+          : (path.isEmpty ? parent : '$parent/$path');
+      if (routes.isEmpty) {
+        out.add((full, base));
+      } else {
+        for (final child in routes) {
+          _collectLeafRefs(child, full, out);
+        }
+      }
+    case ShellRoute(:final routes):
+      for (final child in routes) {
+        _collectLeafRefs(child, parent, out);
+      }
+    case StatefulShellRoute(:final branches):
+      for (final branch in branches) {
+        for (final child in branch.routes) {
+          _collectLeafRefs(child, parent, out);
+        }
+      }
+  }
 }

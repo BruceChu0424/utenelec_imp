@@ -4028,26 +4028,71 @@
       }
     }
   },
-  "hrReconcileSummary": "총 {people}명 · 수정 {update} · 안내만 {info} · 일치 {same} · 처리됨 {applied}",
-  "@hrReconcileSummary": {
+  "hrReconcileStatPeople": "확인 대상 {count}명",
+  "@hrReconcileStatPeople": {
     "placeholders": {
-      "people": {
-        "type": "int"
-      },
-      "update": {
-        "type": "int"
-      },
-      "info": {
-        "type": "int"
-      },
-      "same": {
-        "type": "int"
-      },
-      "applied": {
+      "count": {
         "type": "int"
       }
     }
   },
+  "hrReconcileStatUpdate": "수정 {count}",
+  "@hrReconcileStatUpdate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatInfo": "안내만 {count}",
+  "@hrReconcileStatInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatSame": "일치 {count}",
+  "@hrReconcileStatSame": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatApplied": "처리됨 {count}명",
+  "@hrReconcileStatApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierHigh": "높음 {count}",
+  "@hrReconcileStatTierHigh": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierMedium": "중간 {count}",
+  "@hrReconcileStatTierMedium": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierManual": "수동 입력 필요 {count}",
+  "@hrReconcileStatTierManual": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileSelectHigh": "높은 확신만 선택",
   "hrReconcileValidity": "24시간 동안 유효하며, 실행하지 않은 변경은 자동으로 삭제됩니다",
   "hrReconcileExpiredTitle": "이 대조는 24시간이 지나 실행하지 않은 내용이 삭제되었습니다",
   "hrReconcileExpiredRetry": "다시 대조",
@@ -4106,12 +4151,17 @@
   "hrReconcileApplyFailed": "수정이 완료되지 않았습니다. 잠시 후 다시 시도해 주세요",
   "hrReconcileIdEmpty": "(없음)",
   "hrReconcileColKind": "유형",
-  "hrReconcileColCode": "사번",
-  "hrReconcileColName": "이름",
-  "hrReconcileColDept": "부서",
+  "hrReconcileColEmployee": "직원",
   "hrReconcileColReason": "사유",
-  "hrReconcileColIdNumber": "신분증 번호",
-  "hrReconcileColBasis": "근거",
+  "hrReconcileIdNumberInfo": "취소선 빨강은 저장된 값, 초록 배경은 제안 새 값(변경 자리는 굵은 빨강). 채택, 후보 선택 또는 직접 입력 가능",
+  "hrReconcileBasisOf": "제안 근거: {label}",
+  "@hrReconcileBasisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "hrReconcileColTier": "확신도",
   "hrReconcileColNotes": "설명/결과",
   "hrReconcileKindUpdate": "수정",

@@ -1881,8 +1881,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const HrWorkbenchPage(),
             routes: [
               // 员工资料核对更正页(ADR-160)：静态段，须先于 :type 声明。
+              // 子路由 path 必须写相对段——go_router 的 concatenatePaths 对子路径
+              // 无条件拼接，写成绝对常量 '/hr/tasks/reconcile' 会变成不可达的
+              // '/hr/tasks/hr/tasks/reconcile'，真实地址被下面的 :type 吞掉
+              // (type='reconcile' 未知 → 兜底渲染转正办理页)。
+              // RouteName.hrReconcile 常量仍是构造 URL/权限判定的单一事实源。
               DraftAwareGoRoute(
-                path: RouteName.hrReconcile,
+                path: 'reconcile',
                 name: 'hr-reconcile',
                 builder: (_, _) => const HrReconcilePage(),
               ),

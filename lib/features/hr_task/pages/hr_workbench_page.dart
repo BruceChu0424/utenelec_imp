@@ -1,11 +1,12 @@
-// HR 工作台主页（行政与人力资源部）：今日概览统计 + 我处理中的事项 + 事务入口。
+// HR 工作台主页（行政与人力资源部）：我处理中的事项 + 事务入口。
 // 数据来自服务端按「今天」动态计算（hrTaskSummaryProvider），任务软认领见 ADR-021。
 // 子页面：/hr/tasks/:type(转正办理/生日关怀/入职周年/新近入职/证件核对)。
-// 2026-10-05 证件核对：有待核对员工时概览上方红色横幅「去处理」；入口只给能修改证件的人
-// (超管或 employee:pii:edit)。4 张统计卡布局不动。
 // 2026-10-06 版式改版：
 //  - 事务入口从整行 ListTile 改为自适应小卡网格(UtenResponsiveGrid：
-//    手机 2 列 / 中宽 3 列 / 桌面 5 列)，图标行右端放待办总数(0 弱化为中性灰)；
+//    手机 2 列 / 中宽 3 列 / 桌面 5 列)；今日概览 4 张统计卡与证件待核对
+//    红横幅退役(与事务办理卡重复，数字并入卡片徽章)；
+//  - 卡片待办数用 UtenNotificationBadge 红色通知徽章(有需处理时)，
+//    无待办显示中性灰 0(2026-10-06 用户口径：数字常显)；
 //  - 「快捷发布祝福」三张大瓦片改为内容宽度的紧凑横排胶囊(图标+文字，Wrap 自适应换行)；
 //  - 右下角悬浮操作组：有入职权限者给「入职登记」主按钮(与员工列表页 FAB 同动作)；
 //  - 正文统一包 UtenContentContainer(与各 hub 页同款 gutter)，区块内边距收口为 s4。
@@ -19,14 +20,13 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -44,7 +44,6 @@ class HrWorkbenchPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(hrTaskSummaryProvider);
-    final isCompact = context.breakpoint.isCompact;
     final l10n = AppLocalizations.of(context);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     final perms = ref.watch(currentPermissionsProvider);
@@ -85,8 +84,6 @@ class HrWorkbenchPage extends ConsumerWidget {
                 : math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
           ),
           children: [
-            if (s.identityReview.isNotEmpty) _identityBanner(context, s),
-            _overview(context, s, isCompact),
             _myClaims(context, s),
             _entries(context, s, canFixIdentity: canFixIdentity),
             if (canPublish) _quickNotice(context, l10n),
@@ -127,90 +124,6 @@ class HrWorkbenchPage extends ConsumerWidget {
           : null,
       body: body,
     );
-  }
-
-  // ---- 今日概览：4 张紧凑统计卡（≈72dp，图标+数字一行 / 标签一行），点击进对应子页 ----
-  // count=0 整卡弱化为中性灰、>0 时鲜活——一眼分清有无待办。
-  Widget _overview(BuildContext context, HrTaskSummary s, bool isCompact) {
-    final cards = [
-      (
-        HrTaskType.confirm,
-        s.confirmToday.length + s.confirmOverdue.length,
-        '今日/逾期',
-        UtenColors.teal600,
-      ),
-      (HrTaskType.birthday, s.birthdayToday.length, '今日生日', UtenColors.catPink),
-      (
-        HrTaskType.anniversary,
-        s.anniversaryToday.length,
-        '今日周年',
-        UtenColors.catAmber,
-      ),
-      (HrTaskType.newhire, s.newHires.length, '近 30 天', UtenColors.catEmerald),
-    ];
-    final built = [
-      for (final (type, count, caption, accent) in cards)
-        _StatCard(
-          type: type,
-          count: count,
-          caption: caption,
-          accent: accent,
-          onTap: () => context.push(RouteName.hrTaskList(type.taskType)),
-        ),
-    ];
-    // 固定高度卡：用 Expanded 行布局保证高度不随屏宽漂移；窄屏 2 列、中宽 4 列。
-    final Widget grid = isCompact
-        ? Column(
-            children: [
-              _statRow(built.sublist(0, 2)),
-              const SizedBox(height: UtenSpacing.s8),
-              _statRow(built.sublist(2, 4)),
-            ],
-          )
-        : _statRow(built);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s4,
-        UtenSpacing.s12,
-        UtenSpacing.s4,
-        0,
-      ),
-      child: grid,
-    );
-  }
-
-  // ---- 证件待核对横幅(红)：有人就显示，「去处理」进证件核对子页 ----
-  Widget _identityBanner(BuildContext context, HrTaskSummary s) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s4,
-        UtenSpacing.s12,
-        UtenSpacing.s4,
-        0,
-      ),
-      child: UtenInlineNotice(
-        key: const ValueKey('hr-identity-review-banner'),
-        level: UtenInlineNoticeLevel.error,
-        // 只留标题一行(2026-10-06 用户口径：标题下说明小字不要)；
-        // 具体哪里缺/错在证件核对子页每行的红字原因里。
-        title: '有 ${s.identityReview.length} 名员工的证件号码待核对',
-        trailing: FilledButton.tonal(
-          key: const ValueKey('hr-identity-review-go'),
-          onPressed: () =>
-              context.push(RouteName.hrTaskList(HrTaskType.identity.taskType)),
-          child: const Text('去处理'),
-        ),
-      ),
-    );
-  }
-
-  Widget _statRow(List<Widget> cards) {
-    final children = <Widget>[];
-    for (var i = 0; i < cards.length; i++) {
-      if (i > 0) children.add(const SizedBox(width: UtenSpacing.s8));
-      children.add(Expanded(child: cards[i]));
-    }
-    return Row(children: children);
   }
 
   // ---- 快捷发布祝福：内容宽度的紧凑胶囊横排(图标+文字)，Wrap 自适应换行 ----
@@ -357,9 +270,9 @@ class HrWorkbenchPage extends ConsumerWidget {
   }
 
   // ---- 事务办理：自适应小卡网格(手机 2 列 / 中宽 3 列 / 桌面 5 列) ----
-  // 卡片 = 图标 + 待办总数(图标行右端，0 弱化为中性灰) + 标题 + 口径说明两行；
-  // 与今日概览的配色同源(confirm=teal/birthday=粉/anniversary=琥珀/newhire=祖母绿，
-  // 证件核对=error 红，与横幅、子页红标一致)。
+  // 卡片 = 图标 + 待办数(图标行右端，>0 红色通知徽章 / =0 中性灰常显) + 标题 +
+  // 口径说明两行；配色 confirm=teal/birthday=粉/anniversary=琥珀/newhire=祖母绿，
+  // 证件核对=error 红(与子页红标一致)。
   Widget _entries(
     BuildContext context,
     HrTaskSummary s, {
@@ -487,84 +400,9 @@ class HrWorkbenchPage extends ConsumerWidget {
   }
 }
 
-/// 今日概览紧凑统计卡（≈72dp）：图标 + 数字同行，标签下行；count=0 弱化为中性灰。
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.type,
-    required this.count,
-    required this.caption,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final HrTaskType type;
-  final int count;
-  final String caption;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final active = count > 0;
-    final color = active ? accent : theme.colorScheme.onSurfaceVariant;
-    return Semantics(
-      button: true,
-      label: '${type.title}，$count，$caption',
-      child: SizedBox(
-        height: 72,
-        child: UtenCard(
-          padding: EdgeInsets.zero,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s12,
-              vertical: UtenSpacing.s12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: color.withValues(alpha: active ? 0.14 : 0.08),
-                        borderRadius: UtenRadius.mdAll,
-                      ),
-                      child: Icon(type.icon, size: 16, color: color),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Text(
-                      '$count',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: color,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 事务办理小卡：图标行(左图标、右待办总数) + 标题 + 口径说明；count=0 弱化为中性灰。
+/// 事务办理小卡：图标行(左图标、右待办数) + 标题 + 口径说明；
+/// 有待办 = UtenNotificationBadge 红色通知徽章(与全站导航/工作台角标同款)，
+/// 无待办 = 中性灰 0 常显(数字恒在，一眼区分有无事项)。
 class _EntryCard extends StatelessWidget {
   const _EntryCard({
     super.key,
@@ -586,8 +424,6 @@ class _EntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final active = count > 0;
-    final color = active ? accent : theme.colorScheme.onSurfaceVariant;
     return Semantics(
       button: true,
       label: '${type.title}，$count，$detail',
@@ -603,19 +439,32 @@ class _EntryCard extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: active ? 0.14 : 0.08),
+                    color: accent.withValues(alpha: 0.14),
                     borderRadius: UtenRadius.mdAll,
                   ),
-                  child: Icon(type.icon, size: 20, color: color),
+                  child: Icon(type.icon, size: 20, color: accent),
                 ),
                 const Spacer(),
-                Text(
-                  '$count',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: color,
+                if (count > 0)
+                  // 与工作台模块小卡同款 1.25 倍放大红徽章(hub 卡是 1.4)。
+                  UtenBadgeScale(
+                    scale: 1.25,
+                    child: UtenNotificationBadge(
+                      key: ValueKey(
+                        'hr-workbench-entry-count-${type.taskType}',
+                      ),
+                      count: count,
+                    ),
+                  )
+                else
+                  Text(
+                    '0',
+                    key: ValueKey('hr-workbench-entry-count-${type.taskType}'),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: UtenSpacing.s12),

@@ -4071,6 +4071,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND EXISTS (
                     SELECT 1 FROM production_planning_package_document_items mapping
                     JOIN production_material_demands demand ON demand.id = mapping.demand_id
+                    JOIN production_material_stock_postings posting ON posting.demand_id = demand.id
+                      AND posting.stock_document_item_id = mapping.document_item_id
+                      AND posting.posting_type = 'ISSUE' AND posting.recorded_tx_id = pg_current_xact_id()
                     WHERE mapping.document_id = ? AND mapping.document_type = 'DRAW'
                       AND demand.execution_segment_id = segment.id AND NOT demand.is_deleted
                       AND mapping.package_id = segment.package_id)

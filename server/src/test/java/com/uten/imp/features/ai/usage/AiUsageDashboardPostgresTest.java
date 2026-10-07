@@ -323,6 +323,48 @@ class AiUsageDashboardPostgresTest {
                 });
     }
 
+    @Test
+    void systemCallsStayInGlobalUsageWithoutBecomingEmployeesOrLeakingIntoPersonalSeries() {
+        UUID a = user("scope-a"), b = user("scope-b");
+        OffsetDateTime now = ZonedDateTime.now(SHANGHAI).toOffsetDateTime();
+        callLog(a, true, 10, 5, now);
+        callLog(b, true, 100, 50, now);
+        callLog(null, true, 1000, 500, now);
+        daily.rollup();
+        daily.rollup();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_usage_daily WHERE user_id IS NULL", Long.class))
+                .isEqualTo(1L);
+        for (String window : List.of("hour", "day", "month", "year")) {
+            var global = dashboard.dashboard(window);
+            assertThat(global.todayTokens()).isEqualTo(1665L);
+            assertThat(global.todayCalls()).isEqualTo(3L);
+            assertThat(global.activeUsersToday()).isEqualTo(2L);
+            assertThat(global.series().stream().mapToLong(AiUsageDtos.SeriesPoint::tokens).sum()).isEqualTo(1665L);
+            assertThat(global.people()).extracting(AiUsageDtos.DashboardPerson::userId)
+                    .containsExactlyInAnyOrder(a, b);
+            var personal = dashboard.person(a, window);
+            assertThat(personal.series().stream().mapToLong(AiUsageDtos.SeriesPoint::tokens).sum()).isEqualTo(15L);
+            assertThat(personal.series().stream().mapToLong(AiUsageDtos.SeriesPoint::calls).sum()).isEqualTo(1L);
+        }
+    }
+
+    @Test
+    void unattributedBackfillAndLateYesterdayRefreshRemainIdempotent() {
+        LocalDate today = LocalDate.now(SHANGHAI);
+        callLog(null, true, 100, 20, today.minusDays(3).atStartOfDay(SHANGHAI).toOffsetDateTime());
+        callLog(null, false, 10, 2, today.minusDays(1).atStartOfDay(SHANGHAI).toOffsetDateTime());
+        daily.rollup();
+        callLog(null, true, 5, 1, today.minusDays(1).atTime(23, 50).atZone(SHANGHAI).toOffsetDateTime());
+        daily.rollup();
+        daily.rollup();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_usage_daily WHERE user_id IS NULL", Long.class))
+                .isEqualTo(2L);
+        assertThat(jdbc.queryForObject("SELECT sum(calls) FROM ai_usage_daily WHERE user_id IS NULL", Long.class))
+                .isEqualTo(3L);
+        assertThat(jdbc.queryForObject("SELECT sum(input_tokens + output_tokens) FROM ai_usage_daily WHERE user_id IS NULL", Long.class))
+                .isEqualTo(138L);
+    }
+
     // ------------------------------------------------------------------ 小工具
 
     private static AiUsageDtos.SeriesPoint pointOfDay(AiUsageDtos.Dashboard dashboard, LocalDate date) {

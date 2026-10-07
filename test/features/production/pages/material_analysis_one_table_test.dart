@@ -5,6 +5,7 @@
 // 哪一行的办理按钮该灰、没确认路线时表现成什么样。
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
@@ -1394,6 +1395,93 @@ void main() {
     expect(
       find.descendant(of: sourceRow, matching: find.byType(TextField)),
       findsNothing,
+    );
+  });
+
+  testWidgets('真库两产品各100先自制400后合父件：需求200已下400且只选有效来源', (tester) async {
+    // Captured from AggregateMaterialOrderEndToEndTest's actual PostgreSQL
+    // twoProductsOf100KeepTheInitial400ManufacturingSupplyAfterParentMerge.
+    // Keep all source/action/plan identities and quantities; this is the real
+    // START + DELEGATED_TO_MAKE_CHILD case, not a synthetic REFERENCE shortcut.
+    final snapshot =
+        jsonDecode(
+              File(
+                'test/fixtures/material_make_400_after_parent_merge.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final action = _records(snapshot['supplyActions']).singleWhere(
+      (item) =>
+          item['route'] == 'MAKE' && _num(item['publicSurplusQty']) == 200,
+    );
+    final goods = action['goodsId'] as String;
+    final paths = _records(
+      snapshot['flatMaterials'],
+    ).where((item) => item['goodsId'] == goods).toList();
+    expect(paths, hasLength(3));
+    final old = paths.where((item) => item['actionable'] == false).toList();
+    expect(old, hasLength(2));
+    for (final path in old) {
+      expect(path['controlStage'], 'START');
+      expect(path['requirementState'], 'DELEGATED_TO_MAKE_CHILD');
+      expect((path['aggregatePreparation'] as Map)['actionable'], isFalse);
+    }
+    final active = paths.singleWhere((item) => item['actionable'] == true);
+    expect(_num(active['requiredQty']), 200);
+    expect(_num(active['planningUncoveredQty']), 0);
+    final aggregate =
+        '$goods|${active['colorId'] ?? active['colorName'] ?? ''}|${active['unitId'] ?? active['unitName'] ?? ''}';
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (_) => snapshot,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(_sourceRequiredText(tester, 'AGGREGATE|$aggregate'), '200');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(ValueKey('material-aggregate-order-$aggregate')),
+          )
+          .data,
+      '400',
+      reason: '两个旧来源各100及公共200只计一次，新共享锚点不能把累计抬成600',
+    );
+    final row = find.byKey(ValueKey('material-aggregate-$aggregate'));
+    final checkbox = find
+        .descendant(of: row, matching: find.byType(Checkbox))
+        .last;
+    await _check(tester, checkbox);
+    // Selecting alone does not create an aggregate editing draft. Explicitly
+    // retaining zero enters the ordinary preview path without adding supply.
+    await tester.enterText(
+      find.byKey(ValueKey('material-aggregate-qty-$aggregate')),
+      '0.0',
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+    final sentGroups = requests
+        .where((request) => request.path.endsWith('/aggregate-orders/preview'))
+        .expand((request) => _records(request.body?['groups']))
+        .where(
+          (group) => (group['materialLineIds'] as List).contains(
+            active['materialLineId'],
+          ),
+        )
+        .toList();
+    expect(sentGroups, isNotEmpty);
+    for (final group in sentGroups) {
+      expect(group['materialLineIds'], [active['materialLineId']]);
+      expect(double.parse(group['qty'].toString()), 0);
+    }
+    expect(
+      requests.where(
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
+      ),
+      isEmpty,
     );
   });
 

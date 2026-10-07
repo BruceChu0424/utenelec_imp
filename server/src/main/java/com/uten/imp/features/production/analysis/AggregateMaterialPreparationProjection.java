@@ -77,7 +77,12 @@ final class AggregateMaterialPreparationProjection {
                     .add(adoptionIntent.byOriginal().getOrDefault(row.materialLineId(),BigDecimal.ZERO));
             if(delegation==null&&!shared)return row.withPreparationAdoptedQty(directAdoption);
             List<UUID> targets=delegation==null?List.of():delegation.targetMaterialLineIds();
-            List<MaterialView> effective=targets.isEmpty()?List.of(row):targets.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
+            List<MaterialView> effective=new java.util.ArrayList<>();
+            if(targets.isEmpty()||number(row.requiredQty()).signum()>0)effective.add(row);
+            for(UUID targetId:targets) {
+                MaterialView target=byId.get(targetId);
+                if(target!=null&&effective.stream().noneMatch(value->value.materialLineId().equals(targetId)))effective.add(target);
+            }
             BigDecimal total=totalOrdered(effective,byProduct,byAction);
             BigDecimal own=AggregateMaterialOrderPreviewService.orderedQuantity(row,byProduct,byAction);
             BigDecimal allocatedQty=privateOrdered(row,byProduct,byAction).add(allocated.getOrDefault(row.materialLineId(),BigDecimal.ZERO));
@@ -95,6 +100,7 @@ final class AggregateMaterialPreparationProjection {
             BigDecimal uncovered=number(row.planningUncoveredQty()).add(pending.getOrDefault(row.materialLineId(),BigDecimal.ZERO));
             BigDecimal netNeed=number(row.netShortageQty()).add(net.getOrDefault(row.materialLineId(),BigDecimal.ZERO));
             boolean actionable=effective.stream().anyMatch(target->target.routeConfirmed()
+                    && AggregateMaterialSourceEligibility.hasResponsibility(target,byProduct)
                     && !Set.of("SHIP","REFERENCE").contains(java.util.Objects.toString(target.controlStage(),"")));
             String stage=row.flowStage();
             if(!targets.isEmpty()&&number(row.requiredQty()).signum()==0) {

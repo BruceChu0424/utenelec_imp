@@ -926,10 +926,27 @@ class WorkshopMaterialV740SchemaPostgresTest {
                 WHERE permission.code LIKE 'workshop\\_material:%' AND 'NORMAL' = ANY(permission.grant_policy)
                   AND NOT EXISTS (SELECT 1 FROM permission_surface_permissions mapping
                                   WHERE mapping.permission_id=permission.id)""")).isZero();
-        assertThat(count("""
-                SELECT count(*) FROM permission_surfaces
+        // The template migrates to HEAD: V812 retires the orphan workshop-material surface
+        // and moves every permission to the actual workshop-tasks page, without adding grants.
+        assertThat(str("""
+                SELECT string_agg(surface_key, ',' ORDER BY surface_key) FROM permission_surfaces
                 WHERE surface_key IN ('warehouse.workshop-material', 'warehouse.workshop-material-setup',
-                                      'production.workshop-material', 'report.workshop-material') AND enabled""")).isEqualTo(4);
+                                      'production.workshop-tasks', 'report.workshop-material') AND enabled"""))
+                .isEqualTo("production.workshop-tasks,report.workshop-material,warehouse.workshop-material,warehouse.workshop-material-setup");
+        assertThat(count("SELECT count(*) FROM permission_surfaces WHERE surface_key='production.workshop-material'"))
+                .isZero();
+        assertThat(str("""
+                SELECT string_agg(permission.code, ',' ORDER BY permission.code)
+                FROM permission_surface_permissions mapping
+                JOIN permission_surfaces surface ON surface.id=mapping.surface_id
+                JOIN permissions permission ON permission.id=mapping.permission_id
+                WHERE surface.surface_key='production.workshop-tasks'
+                  AND permission.code IN ('workshop_material:view', 'workshop_material:request',
+                                          'workshop_material:count', 'workshop_material:choose', 'stock:count:submit')
+                """))
+                .isEqualTo("stock:count:submit,workshop_material:choose,workshop_material:count,workshop_material:request,workshop_material:view");
+        assertThat(count("SELECT count(*) FROM manager_permission_delegations WHERE surface_key='production.workshop-material'"))
+                .isZero();
         assertThat(str("SELECT high_risk::text FROM permissions WHERE code='workshop_material:reopen'")).isEqualTo("true");
         // The template migrates to HEAD: V767 keeps named user grants, but revokes department/manager grants.
         assertThat(str("SELECT baseline::text FROM permissions WHERE code='workshop_material:count'")).isEqualTo("false");
@@ -937,6 +954,15 @@ class WorkshopMaterialV740SchemaPostgresTest {
                 SELECT count(*) FROM manager_permission_delegations granted
                 JOIN permissions permission ON permission.id=granted.permission_id
                 WHERE permission.code='workshop_material:count'""")).isZero();
+        assertThat(str("SELECT action_type || ':' || grant_policy::text || ':' || baseline::text FROM permissions WHERE code='stock:count:submit'"))
+                .isEqualTo("CREATE:{INDIVIDUAL_ONLY}:false");
+        assertThat(count("""
+                SELECT count(*) FROM (
+                    SELECT permission_id FROM department_permissions
+                    UNION ALL SELECT permission_id FROM manager_permission_delegations
+                ) granted JOIN permissions permission ON permission.id=granted.permission_id
+                WHERE permission.code='stock:count:submit'
+                """)).isZero();
 
     }
 

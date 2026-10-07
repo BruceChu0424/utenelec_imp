@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
  * 刷新运行之后、午夜之前落账的调用是「跨天尾巴」, 回填是 DO NOTHING 修正不了已有行, 只有
  * 次日的重算覆盖才能把尾巴并进昨天的最终值。日边界是中国无夏令时的固定偏移, 日期比较与
  * timestamptz 范围等价。
+ * V820 起 NULL user_id 单独代表系统/未归属调用, 与员工分别汇总; NULLS NOT DISTINCT
+ * 唯一约束保证这类调用的每日重算同样幂等, 不伪造用户也不丢全站 token 消耗。
  */
 @Service
 public class AiUsageDailyService {

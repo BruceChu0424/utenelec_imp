@@ -68,7 +68,7 @@ public class AiUsageDashboardService {
                 rs.getLong("tokens"), rs.getLong("calls"), rs.getLong("active_users")));
         var result = new AiUsageDtos.Dashboard(w.name().toLowerCase(Locale.ROOT), kpi.todayTokens(),
                 properties.getDailyTokenBudget(), kpi.todayCalls(), kpi.activeUsersToday(), limits.countDisabled(),
-                series(w), people(w));
+                series(w, null), people(w));
         audit.logExplicit(actor.getId(), actor.getLoginAccount(), "view_ai_usage_dashboard", "ai_usage_daily",
                 actor.getId().toString(), "查看 AI 用量看板：窗口=" + w.name().toLowerCase(Locale.ROOT));
         return result;
@@ -130,7 +130,7 @@ public class AiUsageDashboardService {
                 (rs, row) -> new AiUsageDtos.PersonToday(rs.getLong("tokens"), rs.getLong("calls")));
         var result = new AiUsageDtos.PersonDetail(head.userId(), head.name(), head.code(), head.department(),
                 today.todayTokens(), today.todayCalls(), properties.getDailyTokenBudget(),
-                limits.find(userId).orElse(null), series(w), byPurpose, byProvider, recentUses);
+                limits.find(userId).orElse(null), series(w, userId), byPurpose, byProvider, recentUses);
         audit.logExplicit(actor.getId(), actor.getLoginAccount(), "view_ai_usage_person", "ai_user_limits",
                 userId.toString(), "查看 AI 用量人员明细：窗口=" + w.name().toLowerCase(Locale.ROOT));
         return result;
@@ -159,8 +159,8 @@ public class AiUsageDashboardService {
     }
 
     /** 时窗走实时日志, 日/月/年走日汇总; 空窗格由 generate_series 补零行, 前端不用自己补。 */
-    private List<AiUsageDtos.SeriesPoint> series(Window w) {
-        var params = new MapSqlParameterSource();
+    private List<AiUsageDtos.SeriesPoint> series(Window w, UUID userId) {
+        var params = new MapSqlParameterSource().addValue("userId", userId, java.sql.Types.OTHER);
         String sql;
         switch (w) {
             case HOUR -> {
@@ -178,6 +178,7 @@ public class AiUsageDashboardService {
                                count(l.id) AS calls, count(l.id) FILTER (WHERE l.ok) AS ok_calls
                         FROM buckets b LEFT JOIN ai_call_logs l
                           ON l.created_at >= b.hour_utc AND l.created_at < b.utc_end
+                         AND (CAST(:userId AS uuid) IS NULL OR l.user_id = :userId)
                         GROUP BY b.hour_utc, b.local_start ORDER BY b.hour_utc
                         """;
             }
@@ -192,6 +193,7 @@ public class AiUsageDashboardService {
                                coalesce(sum(u.input_tokens + u.output_tokens),0) AS tokens,
                                coalesce(sum(u.calls),0) AS calls, coalesce(sum(u.ok_calls),0) AS ok_calls
                         FROM buckets b LEFT JOIN ai_usage_daily u ON u.usage_date = b.day::date
+                          AND (CAST(:userId AS uuid) IS NULL OR u.user_id = :userId)
                         GROUP BY b.day ORDER BY b.day
                         """;
             }
@@ -207,6 +209,7 @@ public class AiUsageDashboardService {
                                coalesce(sum(u.calls),0) AS calls, coalesce(sum(u.ok_calls),0) AS ok_calls
                         FROM buckets b LEFT JOIN ai_usage_daily u
                           ON u.usage_date >= b.month::date AND u.usage_date < (b.month + interval '1 month')::date
+                         AND (CAST(:userId AS uuid) IS NULL OR u.user_id = :userId)
                         GROUP BY b.month ORDER BY b.month
                         """;
             }
@@ -222,6 +225,7 @@ public class AiUsageDashboardService {
                                coalesce(sum(u.calls),0) AS calls, coalesce(sum(u.ok_calls),0) AS ok_calls
                         FROM buckets b LEFT JOIN ai_usage_daily u
                           ON u.usage_date >= b.year::date AND u.usage_date < (b.year + interval '1 year')::date
+                         AND (CAST(:userId AS uuid) IS NULL OR u.user_id = :userId)
                         GROUP BY b.year ORDER BY b.year
                         """;
             }
@@ -242,7 +246,7 @@ public class AiUsageDashboardService {
                     WITH window_usage AS (
                       SELECT user_id, sum(coalesce(input_tokens,0) + coalesce(output_tokens,0)) AS tokens,
                              count(*) AS calls
-                      FROM ai_call_logs WHERE created_at >= :windowStart GROUP BY user_id
+                      FROM ai_call_logs WHERE created_at >= :windowStart AND user_id IS NOT NULL GROUP BY user_id
                     ), candidates AS (
                       SELECT user_id FROM window_usage UNION SELECT user_id FROM ai_user_limits
                     ), today_usage AS (
@@ -281,7 +285,7 @@ public class AiUsageDashboardService {
         return jdbc.query("""
                 WITH window_usage AS (
                   SELECT user_id, sum(input_tokens + output_tokens) AS tokens, sum(calls) AS calls
-                  FROM ai_usage_daily WHERE usage_date >= :windowStart GROUP BY user_id
+                  FROM ai_usage_daily WHERE usage_date >= :windowStart AND user_id IS NOT NULL GROUP BY user_id
                 ), candidates AS (
                   SELECT user_id FROM window_usage UNION SELECT user_id FROM ai_user_limits
                 ), today_usage AS (

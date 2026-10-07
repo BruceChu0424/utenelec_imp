@@ -95,13 +95,27 @@ public class AggregateMaterialOrderPreviewService {
                     if(inheritedBlock!=null)throw conflict(inheritedBlock);
                 }
                 List<UUID> targets=material.aggregatePreparation()==null?List.of():material.aggregatePreparation().targetMaterialLineIds();
-                if(targets.isEmpty()||number(material.requiredQty()).signum()>0) {
+                boolean retainOriginal=targets.isEmpty()||number(material.requiredQty()).signum()>0;
+                if(retainOriginal) {
                     if(members.stream().noneMatch(value->value.materialLineId().equals(id)))members.add(material);
                     originalScope.computeIfAbsent(id,ignored->new java.util.LinkedHashSet<>()).add(id);
                 }
+                List<MaterialView> targetMembers=new ArrayList<>();
                 for(UUID targetId:targets) {
                     MaterialView target=materials.get(targetId);
                     if(target==null)throw conflict("合并来源目标已变化，请刷新后重新核对");
+                    targetMembers.add(target);
+                }
+                boolean hasCurrentResponsibility=retainOriginal&&AggregateMaterialSourceEligibility.hasResponsibility(material,products)
+                        || targetMembers.stream()
+                        .anyMatch(target->AggregateMaterialSourceEligibility.hasResponsibility(target,products));
+                for(MaterialView target:targetMembers) {
+                    // Keep immutable aliases in the read model. A zero-responsibility retired target
+                    // cannot block its origin's remaining demand or another live target, or receive new allocation.
+                    // With no live responsibility, the original admission guard still rejects;
+                    // unknown/missing targets never disappear from validation.
+                    if(hasCurrentResponsibility&&AggregateMaterialSourceEligibility.isRetiredContext(target,products))continue;
+                    UUID targetId=target.materialLineId();
                     if(members.stream().noneMatch(value->value.materialLineId().equals(targetId)))members.add(target);
                     originalScope.computeIfAbsent(targetId,ignored->new java.util.LinkedHashSet<>()).add(id);
                 }
@@ -155,11 +169,8 @@ public class AggregateMaterialOrderPreviewService {
             if(!Objects.equals(first.goodsId(),member.goodsId())||!Objects.equals(first.colorId(),member.colorId())||!Objects.equals(first.unitId(),member.unitId()))throw invalid("不同货品、颜色或单位不能合并为一行下单");
             if(!member.routeConfirmed()||!input.route().equals(member.sourceConfirmed()))reason="来源供应方式不一致或尚未确认，请先核对供应方式";
             if(!recipe.equals(recipe(member,children)))reason="相同物料的冻结组件规则不同，请按生产规则分别办理";
-            ProductView existingAnchor=products.get(member.planAnchorAnalysisLineId());
-            boolean existingResponsibility=existingAnchor!=null&&!"AGGREGATE_MAKE".equals(existingAnchor.sourceType())&&number(existingAnchor.remainingQty()).signum()>0;
-            if(!member.actionable()&&number(member.requiredQty()).signum()==0&&number(member.planningUncoveredQty()).signum()==0
-                    && number(member.priorityMakeSupplementQty()).signum()==0&&!existingResponsibility
-                    && !Set.of("ACTIVE","TRANSFERRED_TO_PLAN").contains(Objects.toString(member.requirementState(),"")))reason="部分来源已转交其他任务或本批无需办理，请按当前有效来源重新选择";
+            if(!AggregateMaterialSourceEligibility.hasResponsibility(member,products))
+                reason="部分来源已转交其他任务或本批无需办理，请按当前有效来源重新选择";
         }
         // ADR-143：委外汇总永远建外部批次(委外申请)，只有自制才是制造批次。
         boolean manufacture="MAKE".equals(input.route());

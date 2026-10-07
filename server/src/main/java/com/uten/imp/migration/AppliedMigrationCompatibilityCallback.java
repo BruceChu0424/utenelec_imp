@@ -32,6 +32,7 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
 
     private static final Set<String> GUARDED_MIGRATIONS = Set.of("260", "263", "273");
     private static final Set<String> LABEL_MIGRATIONS = Set.of("719", "720");
+    private static final String USAGE_OWNER_MIGRATION = "815";
 
     @Override
     public boolean supports(Event event, Context context) {
@@ -41,7 +42,8 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
         MigrationInfo migration = context.getMigrationInfo();
         return migration != null
                 && migration.getVersion() != null
-                && (LABEL_MIGRATIONS.contains(migration.getVersion().getVersion())
+                && (USAGE_OWNER_MIGRATION.equals(migration.getVersion().getVersion())
+                    || LABEL_MIGRATIONS.contains(migration.getVersion().getVersion())
                     || event == Event.BEFORE_EACH_MIGRATE
                         && GUARDED_MIGRATIONS.contains(migration.getVersion().getVersion()));
     }
@@ -56,7 +58,27 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
         try (Statement statement = context.getConnection().createStatement()) {
             statement.execute("SET CONSTRAINTS ALL IMMEDIATE");
             String version = context.getMigrationInfo().getVersion().getVersion();
-            if (LABEL_MIGRATIONS.contains(version)) {
+            if (USAGE_OWNER_MIGRATION.equals(version)) {
+                if (event == Event.BEFORE_EACH_MIGRATE) {
+                    // V815's immutable interim table requires a user, while the
+                    // authoritative log has always allowed system/unattributed calls.
+                    // Only its unqualified backfill reads this connection-local view.
+                    // Original rows stay in public unchanged; V820 backfills their
+                    // NULL-owner bucket after making the aggregate identity nullable.
+                    statement.execute("SELECT set_config('uten.compat_usage_search_path', current_setting('search_path'), true)");
+                    // pg_temp must be implicit (searched first for relations),
+                    // while unqualified CREATE TABLE still targets public.
+                    // A role may otherwise explicitly list pg_temp after public.
+                    statement.execute("SET LOCAL search_path = public");
+                    statement.execute("""
+                            CREATE TEMP VIEW ai_call_logs AS
+                            SELECT * FROM public.ai_call_logs WHERE user_id IS NOT NULL
+                            """);
+                } else {
+                    statement.execute("DROP VIEW pg_temp.ai_call_logs");
+                    statement.execute("SELECT set_config('search_path', current_setting('uten.compat_usage_search_path'), true)");
+                }
+            } else if (LABEL_MIGRATIONS.contains(version)) {
                 if (event == Event.BEFORE_EACH_MIGRATE) {
                     installFrozenLabelProtection(statement, version);
                 } else {

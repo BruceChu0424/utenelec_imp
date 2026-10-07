@@ -3,6 +3,7 @@ package com.uten.imp.features.ai.chat;
 import com.uten.imp.features.ai.AiProperties;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.support.MigratedProjectionSchema;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,8 +22,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * ADR-163 个人操作记忆在一次性 PostgreSQL 上的表行为: V816 的建表 SQL 手工执行(照既有 DB 测试的内联 DDL
- * 先例, 只补一个 users 占位表; 审计登记与 business_data_reset 锚点依赖完整迁移基线, 不在此重复), 服务
+ * ADR-163 个人操作记忆在一次性 PostgreSQL 上的表行为: V816 的建表 SQL 手工执行,
+ * users 列形态由当前真实迁移目录复制；审计登记与 business_data_reset 锚点由完整迁移测试覆盖。服务
  * 直接用真 JdbcTemplate 驱动。需 Docker 与 {@code UTEN_RUN_DB_TESTS=true}。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -37,7 +38,7 @@ class AiChatOperationMemoryPostgresTest {
         DB.start();
         var dataSource = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        jdbc.update("CREATE TABLE users(id uuid PRIMARY KEY)");
+        MigratedProjectionSchema.createCurrentTables(jdbc, "users");
         jdbc.update("INSERT INTO users(id) VALUES (?)", USER);
         jdbc.execute("""
                 CREATE TABLE ai_chat_operation_memory (

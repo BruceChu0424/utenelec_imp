@@ -63,6 +63,72 @@ class AggregateMaterialOrderPreviewServiceTest {
         return new PreviewRequest(13L,FINGERPRINT,"aggregate-preview-key",WAREHOUSE,DATE,DATE,true,groups);
     }
 
+    @Test void mixedAliasTargetsKeepLiveResponsibilityWithoutReactivatingRetiredZeroTargets() {
+        MaterialView origin=material(UUID.randomUUID(),"origin","0");
+        MaterialView retired=material(UUID.randomUUID(),"retired","0");
+        MaterialView live=material(UUID.randomUUID(),"live","5");
+        when(origin.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(retired.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(retired.actionable()).thenReturn(false);
+        when(retired.requirementState()).thenReturn("DELEGATED_TO_MAKE_CHILD");
+        when(live.requiredQty()).thenReturn(qty("5"));
+        var targets=List.of(retired.materialLineId(),live.materialLineId());
+        when(origin.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                qty("5"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,qty("5"),qty("5"),targets,true));
+        AnalysisView snapshot=view(List.of(),List.of(origin,retired,live));
+        GroupPreview result=service().resolve(ANALYSIS,request(List.of(group(List.of(origin),"5",false))),snapshot).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();
+        assertThat(result.sources()).singleElement().satisfies(source->{
+            assertThat(source.materialLineId()).isEqualTo(live.materialLineId());
+            assertThat(source.originalMaterialLineIds()).containsExactly(origin.materialLineId());
+            assertThat(source.allocatedQty()).isEqualByComparingTo("5");
+        });
+        assertThat(origin.aggregatePreparation().targetMaterialLineIds()).containsExactlyElementsOf(targets);
+
+        when(live.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(live.planningUncoveredQty()).thenReturn(BigDecimal.ZERO);
+        when(live.actionable()).thenReturn(false);
+        when(live.requirementState()).thenReturn("DELEGATED_TO_MAKE_CHILD");
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(List.of(origin),"0",false))),snapshot)
+                .groups().getFirst().blockedReason()).contains("已转交");
+    }
+
+    @Test void unknownAliasTargetStateIsNotSilentlyDiscardedBesideALiveTarget() {
+        MaterialView origin=material(UUID.randomUUID(),"origin","0");
+        MaterialView unknown=material(UUID.randomUUID(),"unknown","0");
+        MaterialView live=material(UUID.randomUUID(),"live","5");
+        when(origin.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(unknown.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(unknown.actionable()).thenReturn(false);
+        when(unknown.requirementState()).thenReturn(null);
+        var targets=List.of(unknown.materialLineId(),live.materialLineId());
+        when(origin.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                qty("5"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,qty("5"),qty("5"),
+                targets,true));
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(List.of(origin),"5",false))),
+                view(List.of(),List.of(origin,unknown,live))).groups().getFirst().blockedReason()).contains("已转交");
+    }
+
+    @Test void restoredOriginalResponsibilityIsNotBlockedByItsRetiredZeroTarget() {
+        MaterialView origin=material(UUID.randomUUID(),"origin","5");
+        MaterialView retired=material(UUID.randomUUID(),"retired","0");
+        when(origin.requiredQty()).thenReturn(qty("5"));
+        when(retired.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(retired.actionable()).thenReturn(false);
+        when(retired.requirementState()).thenReturn("INACTIVE_PARENT_COVERED");
+        var targets=List.of(retired.materialLineId());
+        when(origin.aggregatePreparation()).thenReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                qty("5"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,qty("5"),qty("5"),targets,true));
+        GroupPreview result=service().resolve(ANALYSIS,request(List.of(group(List.of(origin),"5",false))),
+                view(List.of(),List.of(origin,retired))).groups().getFirst();
+        assertThat(result.blockedReason()).isNull();
+        assertThat(result.sources()).singleElement().satisfies(source->{
+            assertThat(source.materialLineId()).isEqualTo(origin.materialLineId());
+            assertThat(source.allocatedQty()).isEqualByComparingTo("5");
+        });
+        assertThat(origin.aggregatePreparation().targetMaterialLineIds()).containsExactlyElementsOf(targets);
+    }
+
     @Test void threeExistingManufacturingPlansDisplay3000OrderedAndNoRemainingOrderDespitePhysicalShortage() {
         List<ProductView> products=new ArrayList<>();List<MaterialView> members=new ArrayList<>();
         for(int i=0;i<3;i++) {

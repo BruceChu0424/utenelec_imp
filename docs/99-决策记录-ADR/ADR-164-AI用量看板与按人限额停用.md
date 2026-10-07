@@ -36,7 +36,7 @@
 迁移 V815 建两张表(结构与登记见 [V815 说明](../数据迁移/V815-AI用量看板与按人限额.md))：
 
 - **`ai_user_limits`**(按人限额与停用)：`user_id` 主键(FK `users` ON DELETE CASCADE)、`disabled boolean`、`daily_token_limit bigint`(NULL 或 >0)、`daily_job_limit int`(NULL 或 >0)、`row_version`(乐观锁)、`updated_by/updated_at`。**无行=默认**(不停用、无限额)；限额列 NULL=**跟随全局**(全局每日 token 预算 / 每人每日 60 任务)，CHECK 拒绝 0 与负数——「跟随全局」是空值不是 0，0 没有合法语义。审计登记 `fn_audit_track_table('ai_user_limits','FULL','authorization',false)`(照 V670 给 `user_permission_overrides` 的先例：授权类配置表整行进审计)。
-- **`ai_usage_daily`**(用量日汇总)：主键 `(user_id, usage_date)`，`calls/ok_calls/input_tokens/output_tokens`，索引 `usage_date`；**无 FK**——用户删除后统计行保留(年视图要完整)，展示名回退「已删除员工」。审计 `NONE/data_change`(纯计数，行变更由汇总任务写，显式事件见 §4.6)；表注释写明由定时任务从 `ai_call_logs` 归档汇总。
+- **`ai_usage_daily`**(用量日汇总)：V820 起以 `UNIQUE NULLS NOT DISTINCT (user_id, usage_date)` 标识一个账号或未归属来源的一天，`calls/ok_calls/input_tokens/output_tokens`，索引 `usage_date`；**无 FK**——账号删除后统计行保留，展示名回退「已删除员工」。`user_id IS NULL` 是系统/未归属调用，计入全站消耗和所有窗口趋势，不计入员工排行、活跃员工数或任何人的限额。个人趋势必须按所选 UUID 过滤。审计 `NONE/data_change`(纯计数，行变更由汇总任务写，显式事件见 §4.6)；表注释写明由定时任务从 `ai_call_logs` 归档汇总。
 - 存量回填：同迁移内把 `ai_call_logs` 按 `(user_id, (created_at AT TIME ZONE 'Asia/Shanghai')::date)` 聚合一次性插入(ON CONFLICT DO NOTHING)，看板上线第一天就有历史。
 - 清空口径：`ai_user_limits` 登记 **PRESERVE**(管理员给账号做的配置，照 `user_preferences` 口径——测试清空不该把「谁被停用/谁被限额」清掉，否则清空后停用的测试账号又恢复使用)；`ai_usage_daily` 登记 **CLEAR**(用量统计流水，照 `ai_call_logs` 口径——测试产生的假用量随测试数据清掉，不留假账)。
 

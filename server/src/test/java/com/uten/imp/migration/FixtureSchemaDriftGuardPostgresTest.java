@@ -162,6 +162,8 @@ class FixtureSchemaDriftGuardPostgresTest {
 
     // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
     private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            // Issue-watermark SQL/locking oracle: controlled physical capacity returned by a private function stub.
+            "com/uten/imp/features/notice/WorkshopArrivalWatermarkPostgresTest.java#capacity_fixture",
             "com/uten/imp/application/concurrency/FulfillmentCommandDeadlinePostgresTest.java#deadline_evidence",
             "com/uten/imp/businesschain/ProductionFqcPreStockBatchEndToEndTest.java#fqc_deadline_probe",
             // V783 single-function oracle's parent table proves RESTRICT; it is not a business document.

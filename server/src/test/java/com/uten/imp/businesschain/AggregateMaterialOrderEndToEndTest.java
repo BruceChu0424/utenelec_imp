@@ -445,13 +445,40 @@ class AggregateMaterialOrderEndToEndTest {
                 JOIN production_material_analysis_materials source ON source.id=alias.source_material_id
                 WHERE source.goods_id=? AND cardinality(alias.relative_bom_path)=2
                 """,BigDecimal.class,c.material()));
-        MaterialView anchorLeaf=analyses.detail(c.analysis()).flatMaterials().stream()
+        AnalysisView afterMerge=analyses.detail(c.analysis());
+        MaterialView anchorLeaf=afterMerge.flatMaterials().stream()
                 .filter(row->row.goodsId().equals(c.material())&&row.analysisLineId().equals(anchor)).findFirst().orElseThrow();
         amount(needed,anchorLeaf.requiredQty());
         amount("0",anchorLeaf.planningUncoveredQty());
         amount("0",anchorLeaf.netShortageQty());
-        var recheck=preview.preview(c.analysis(),request(c,List.of(input(c,c.material(),route,"0",false))));
-        assertNull(recheck.groups().getFirst().blockedReason(),"转交后的叶组必须还能正常核对");
+        GroupInput remainingGroup=input(c,c.material(),route,"0",false);
+        if ("MAKE".equals(route)) {
+            // Original MAKE members retain their plan identity and START stage after responsibility moves.
+            // The UI excludes these contexts through aggregatePreparation.actionable; it must never
+            // revive them merely because a second parent batch exposes the same goods.
+            for (MaterialView original:afterMerge.flatMaterials().stream()
+                    .filter(row->leafs.contains(row.materialLineId())).toList()) {
+                assertEquals("START",original.controlStage());
+                assertEquals("DELEGATED_TO_MAKE_CHILD",original.requirementState());
+                assertFalse(original.actionable());
+                amount("0",original.requiredQty());
+                amount("0",original.planningUncoveredQty());
+                assertNotNull(original.aggregatePreparation());
+                assertFalse(original.aggregatePreparation().actionable());
+                assertTrue(original.aggregatePreparation().targetMaterialLineIds().isEmpty());
+            }
+            var invalidScope=preview.preview(c.analysis(),request(c,List.of(remainingGroup)));
+            assertNotNull(invalidScope.groups().getFirst().blockedReason(),"失活原制造来源仍应被拒绝");
+            List<UUID> currentScope=afterMerge.flatMaterials().stream()
+                    .filter(row->row.goodsId().equals(c.material())&&"BOM_COMPONENT".equals(row.nodeRole()))
+                    .filter(row->row.aggregatePreparation()==null||row.aggregatePreparation().actionable())
+                    .map(MaterialView::materialLineId).toList();
+            assertEquals(List.of(anchorLeaf.materialLineId()),currentScope);
+            remainingGroup=new GroupInput("current-leaf",currentScope,route,BigDecimal.ZERO,false,
+                    c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
+        }
+        var recheck=preview.preview(c.analysis(),request(c,List.of(remainingGroup)));
+        assertNull(recheck.groups().getFirst().blockedReason(),"当前有效的叶组必须还能正常核对");
         // 超量部分保持公共供给；旧的专属供给随精确来源转交，不能再制造幽灵缺口。
         amount("0",recheck.groups().getFirst().remainingQty());
         if ("BUY".equals(route)) {

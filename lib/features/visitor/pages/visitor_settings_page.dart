@@ -89,7 +89,7 @@ class VisitorSettingsPage extends ConsumerWidget {
               // 关于
               SettingsSection(
                 title: l10n.settingsSectionAbout,
-                children: [const AppVersionTile()],
+                children: const [AppVersionTile()],
               ),
 
               // 退出访客

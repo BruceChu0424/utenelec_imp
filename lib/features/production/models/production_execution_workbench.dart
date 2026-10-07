@@ -1,3 +1,5 @@
+import 'production_exact_quantity.dart';
+
 class ProductionExecutionWorkbenchGroup {
   const ProductionExecutionWorkbenchGroup({
     required this.rootType,
@@ -186,6 +188,7 @@ class ProductionExecutionWorkbenchSegment {
     this.actualSurplusReportedQty = 0,
     this.actualSurplusInboundQty = 0,
     this.overLimitPendingQty = 0,
+    this.overLimitPendingQtyExact,
     this.overLimitDispositionId,
     this.allowedOverproductionRate,
     this.pendingOverproductionRate,
@@ -291,6 +294,12 @@ class ProductionExecutionWorkbenchSegment {
   final double actualSurplusReportedQty;
   final double actualSurplusInboundQty;
   final double overLimitPendingQty;
+  final String? overLimitPendingQtyExact;
+  String get overLimitPendingQtyText =>
+      productionExactQuantityText(
+        overLimitPendingQtyExact ?? overLimitPendingQty,
+      ) ??
+      '—';
   final String? overLimitDispositionId;
   final double? allowedOverproductionRate;
   final double? pendingOverproductionRate;
@@ -525,6 +534,9 @@ class ProductionExecutionWorkbenchSegment {
     pendingSupplementQty: (json['pendingSupplementQty'] as num?)?.toDouble(),
     pendingSupplementRequestId: json['pendingSupplementRequestId'] as String?,
     overLimitPendingQty: (json['overLimitPendingQty'] as num?)?.toDouble() ?? 0,
+    overLimitPendingQtyExact: productionExactQuantityText(
+      json['overLimitPendingQtyExact'],
+    ),
     overLimitDispositionId: json['overLimitDispositionId'] as String?,
     plannedInboundQty: (json['plannedInboundQty'] as num?)?.toDouble(),
     segmentStatus: json['segmentStatus'] as String? ?? '',

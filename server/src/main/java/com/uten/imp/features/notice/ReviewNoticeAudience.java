@@ -1,6 +1,7 @@
 package com.uten.imp.features.notice;
 
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.OwnerVisibility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -15,8 +16,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReviewNoticeAudience {
     private final JdbcTemplate jdbc;
+    private final OwnerVisibility ownerVisibility;
 
     static final String WORKSHOP_EVENT = "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
+    static final String OVER_LIMIT_EVENT = "PRODUCTION_OVER_LIMIT_PENDING";
     /** 仓库类待办(销售待拣货、IQC 待入库、生产待领料/领料发现、采购财务通过)的动手权限。 */
     private static final String[] WAREHOUSE_ACTION_PERMISSIONS = {
             "warehouse_sales_outbound:execute", "warehouse_iqc_stock_in:confirm", "stock_doc:issue",
@@ -29,6 +32,25 @@ public class ReviewNoticeAudience {
         public WorkshopScope {
             departmentIds = departmentIds.isEmpty() ? Set.of(NO_EMPLOYEE) : Set.copyOf(departmentIds);
         }
+    }
+
+    /** Bounded department/owner scopes; never materialize all visible notice or disposition IDs. */
+    public record ReadScope(WorkshopScope workshop, boolean overLimitAllowed,
+                            boolean overLimitSeeAll, String overLimitOwners) {
+        static final ReadScope NONE = new ReadScope(WorkshopScope.NONE, false, false, "");
+    }
+
+    public ReadScope readScope(AuthUser user) {
+        WorkshopScope workshop = workshopScope(user);
+        if (user == null || user.isVisitor() || user.getEmployeeId() == null
+                || !user.getPermissions().contains("notice:read")
+                || !(user.isSuperAdmin() || user.getPermissions().contains("production_plan:approve"))) {
+            return new ReadScope(workshop, false, false, "");
+        }
+        // Same canonical owner scope as ProductionDocumentAccessPolicy, including handover and employment generations.
+        var owners = ownerVisibility.evaluate("production_plan", "production_plan:view:all");
+        return new ReadScope(workshop, true, owners.seeAll(), owners.visibleOwners().stream()
+                .map(UUID::toString).sorted().collect(Collectors.joining(",")));
     }
 
     static boolean canHandleWorkshop(Set<String> permissions) {

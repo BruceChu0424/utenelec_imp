@@ -109,6 +109,14 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.execute("CREATE FUNCTION fn_split_batch_empty_issued(uuid) RETURNS boolean LANGUAGE sql AS 'SELECT FALSE'");
         // V804 仓库任务参与者(部门外登记的仓库负责人): 本夹具里没有仓库负责人登记。
         jdbc.execute("CREATE FUNCTION fn_warehouse_responsible_user_ids() RETURNS uuid[] LANGUAGE sql AS 'SELECT ARRAY[]::uuid[]'");
+        String noticeScopeMigration=java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/resources/db/migration/V823__production_over_limit_disposition.sql"));
+        int noticeScopeStart=noticeScopeMigration.indexOf("CREATE FUNCTION fn_notice_production_over_limit_visible(");
+        int noticeScopeEnd=noticeScopeMigration.indexOf("\n$$;",noticeScopeStart)+4;
+        assertThat(noticeScopeStart).isGreaterThanOrEqualTo(0);
+        assertThat(noticeScopeEnd).isGreaterThan(noticeScopeStart);
+        // Load the actual event-specific guard. Other events return before touching production tables.
+        jdbc.execute(noticeScopeMigration.substring(noticeScopeStart,noticeScopeEnd));
         // Load the authoritative read predicate; full migration/event guards are
         // exercised separately in production request integration tests.
         String migration=java.nio.file.Files.readString(java.nio.file.Path.of(
@@ -155,7 +163,7 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.update("UPDATE users SET status='disabled' WHERE id=?",ACTORS.get(9).user());
         em=factory.createEntityManager();
         notices=new JpaRepositoryFactory(em).getRepository(NoticeRepository.class);
-        audience=new ReviewNoticeAudience(jdbc);
+        audience=new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class));
     }
     @AfterEach void close() { if(em!=null)em.close(); }
     @AfterAll static void stop() { if(factory!=null)factory.close(); DB.stop(); }
@@ -173,7 +181,7 @@ class WorkshopNoticeScopePostgresTest {
         requested.setAggregateId(id(301));
         unrequested.setAggregateId(id(303));
         em.getTransaction().commit();
-        var scope=audience.workshopScope(actor.auth());
+        var scope=audience.readScope(actor.auth());
         assertThat(notices.findVisible(actor.user(),false,scope,PageRequest.of(0,1))).isEmpty();
         assertThat(notices.countVisibleUnread(actor.user(),scope)).isZero();
         assertThatThrownBy(() -> service(actor.auth()).getById(requested.getId()))
@@ -211,13 +219,13 @@ class WorkshopNoticeScopePostgresTest {
             Actor actor=ACTORS.get(index);
             Notice notice=persist(actor.user(),TASK_A,"important");
             assertThat(audience.eligibleEvents(actor.auth())).contains(EVENT);
-            assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.workshopScope(actor.auth())))
+            assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.readScope(actor.auth())))
                     .containsExactly(notice.getId());
         }
         for(int index:List.of(0,1,4,5,6,7,8,9)) {
             Actor actor=ACTORS.get(index);
             Notice notice=persist(actor.user(),TASK_A,"important");
-            assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.workshopScope(actor.auth())))
+            assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.readScope(actor.auth())))
                     .as("other workshop/planner/view/revoked/resigned/disabled actor %s",actor.number()).isEmpty();
         }
         // 无合格负责人时不向主职或兼职成员扩大发送范围。
@@ -237,7 +245,7 @@ class WorkshopNoticeScopePostgresTest {
         for(int i=0;i<24;i++)persist(actor.user(),TASK_B,"urgent");
         persist(null,TASK_A,"urgent"); // old all-staff broadcast must not become visible
         persist(actor.user(),null,"urgent"); // old unanchored reminder
-        var scope=audience.workshopScope(actor.auth());
+        var scope=audience.readScope(actor.auth());
         assertThat(notices.findVisible(actor.user(),false,scope,PageRequest.of(0,1))).extracting(Notice::getId).containsExactly(target.getId());
         assertThat(notices.findVisibleArrivalsAfter(actor.user(),Instant.EPOCH,id(0),scope,PageRequest.of(0,1)))
                 .extracting(Notice::getId).containsExactly(target.getId());

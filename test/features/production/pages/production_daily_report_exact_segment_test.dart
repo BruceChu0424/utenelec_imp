@@ -504,177 +504,199 @@ void main() {
     });
   }
 
-  testWidgets(
-    'cancelling over-limit confirmation preserves actual quantity reason other rows and material',
-    (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      SharedPreferences.setMockInitialValues({});
-      final preferences = await SharedPreferences.getInstance();
-      Map<String, dynamic>? submitted;
-      Map<String, dynamic>? previewed;
-      final api = _api(
-        sourceOverrides: {
-          'planId': 'plan-1',
-          'plannedQty': 100,
-          'maxReportQty': 100,
-          'remainingActualSurplusQty': 10,
-          'allowActualOverproduction': true,
-        },
-        onCreate: (body) => submitted = body,
-        previewResult: (body) {
-          previewed = body;
-          return {
-            'requiresSupplements': false,
-            'lines': [
-              {
-                'inputLineIndex': 0,
-                'sourceExecutionSegmentId': 'segment-1',
-                'sourceSalesAllocationId': null,
-                'actualQty': 130,
-                'withinAuthorizationQty': 110,
-                'overLimitQty': 20,
-                'originalReportQty': 100,
-                'supplementQty': 30,
-                'requiresSupplement': false,
-                'fingerprint': 'batch-fingerprint',
-              },
-            ],
-          };
-        },
-        responseOverride: (request) {
-          if (request.path.endsWith('/material-usage-sources')) {
-            return request.queryParameters['executionSegmentId'] == 'segment-1'
-                ? [
-                    {
-                      'executionSegmentId': 'segment-1',
-                      'executionSegmentCode': 'SEG-001',
-                      'canOpen': true,
-                      'canSettle': true,
-                      'shared': false,
-                    },
-                  ]
-                : <dynamic>[];
-          }
-          if (request.path.endsWith('/clearance')) {
-            return [
-              {
-                'planId': 'plan-1',
-                'demandId': 'demand-1',
-                'goodsId': 'raw',
-                'goodsName': '测试原料',
-                'executionSegmentId': 'segment-1',
-                'issuedQty': 200,
-                'unclearedQty': 200,
-                'availableToSettleQty': 200,
-                'requiredQty': 100,
-                'requiredForProductQty': 100,
-                'requirementMode': 'LINEAR',
-              },
-            ];
-          }
-          return null;
-        },
-      );
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            apiClientProvider.overrideWithValue(api),
-            departmentRepositoryProvider.overrideWithValue(
-              _FakeDepartmentRepository(),
-            ),
-            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-            productionDailyReportRepositoryProvider.overrideWithValue(
-              ProductionDailyReportRepository(api),
-            ),
-            employeeRepositoryProvider.overrideWithValue(
-              _FakeEmployeeRepository(),
-            ),
-            sharedPreferencesProvider.overrideWithValue(preferences),
-            currentPermissionsProvider.overrideWithValue({
-              Perm.productionDailyReportCreate,
-              Perm.productionDailyReportView,
-            }),
-            formDraftStorageProvider.overrideWithValue(
-              MemoryFormDraftStorage(),
-            ),
-            sessionProvider.overrideWith(_ExactSegmentSession.new),
-            authenticatedScopeProvider.overrideWithValue(
-              const AuthenticatedScope(userId: 'report-user'),
-            ),
-            sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
-            apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
-            currentPermissionsProvider.overrideWithValue({
-              Perm.productionDailyReportCreate,
-              Perm.productionDailyReportView,
-            }),
-          ],
-          child: const MaterialApp(
-            home: Column(
-              children: [
-                AppNotificationHost(),
-                Expanded(
-                  child: ProductionDailyReportEditPage(
-                    initialExecutionSegmentId: 'segment-1',
-                  ),
-                ),
+  for (final sample in const [
+    (actual: '130', within: '110', over: '20', allowance: 10.0),
+    (
+      actual: '10000000000110',
+      within: '110.0001',
+      over: '9999999999999.9999',
+      allowance: 10.0001,
+    ),
+    (actual: '110.0001', within: '110', over: '0.0001', allowance: 10.0),
+  ]) {
+    testWidgets(
+      'cancelling over-limit confirmation preserves actual quantity reason other rows and material ${sample.over}',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1440, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        Map<String, dynamic>? submitted;
+        Map<String, dynamic>? previewed;
+        final api = _api(
+          sourceOverrides: {
+            'planId': 'plan-1',
+            'plannedQty': 100,
+            'maxReportQty': 100,
+            'remainingActualSurplusQty': sample.allowance,
+            'allowActualOverproduction': true,
+          },
+          onCreate: (body) => submitted = body,
+          previewResult: (body) {
+            previewed = body;
+            return {
+              'requiresSupplements': false,
+              'lines': [
+                {
+                  'inputLineIndex': 0,
+                  'sourceExecutionSegmentId': 'segment-1',
+                  'sourceSalesAllocationId': null,
+                  'actualQty': double.parse(sample.actual),
+                  'actualQtyExact': sample.actual,
+                  'withinAuthorizationQty': sample.within,
+                  'overLimitQty': sample.over,
+                  'originalReportQty': 100,
+                  'supplementQty': 30,
+                  'requiresSupplement': false,
+                  'fingerprint': 'batch-fingerprint',
+                },
               ],
+            };
+          },
+          responseOverride: (request) {
+            if (request.path.endsWith('/material-usage-sources')) {
+              return request.queryParameters['executionSegmentId'] ==
+                      'segment-1'
+                  ? [
+                      {
+                        'executionSegmentId': 'segment-1',
+                        'executionSegmentCode': 'SEG-001',
+                        'canOpen': true,
+                        'canSettle': true,
+                        'shared': false,
+                      },
+                    ]
+                  : <dynamic>[];
+            }
+            if (request.path.endsWith('/clearance')) {
+              return [
+                {
+                  'planId': 'plan-1',
+                  'demandId': 'demand-1',
+                  'goodsId': 'raw',
+                  'goodsName': '测试原料',
+                  'executionSegmentId': 'segment-1',
+                  'issuedQty': 200,
+                  'unclearedQty': 200,
+                  'availableToSettleQty': 200,
+                  'requiredQty': 100,
+                  'requiredForProductQty': 100,
+                  'requirementMode': 'LINEAR',
+                },
+              ];
+            }
+            return null;
+          },
+        );
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              departmentRepositoryProvider.overrideWithValue(
+                _FakeDepartmentRepository(),
+              ),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              productionDailyReportRepositoryProvider.overrideWithValue(
+                ProductionDailyReportRepository(api),
+              ),
+              employeeRepositoryProvider.overrideWithValue(
+                _FakeEmployeeRepository(),
+              ),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionDailyReportCreate,
+                Perm.productionDailyReportView,
+              }),
+              formDraftStorageProvider.overrideWithValue(
+                MemoryFormDraftStorage(),
+              ),
+              sessionProvider.overrideWith(_ExactSegmentSession.new),
+              authenticatedScopeProvider.overrideWithValue(
+                const AuthenticatedScope(userId: 'report-user'),
+              ),
+              sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+              apiBaseUrlProvider.overrideWith(
+                (ref) => 'https://test-server/api',
+              ),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.productionDailyReportCreate,
+                Perm.productionDailyReportView,
+              }),
+            ],
+            child: const MaterialApp(
+              home: Column(
+                children: [
+                  AppNotificationHost(),
+                  Expanded(
+                    child: ProductionDailyReportEditPage(
+                      initialExecutionSegmentId: 'segment-1',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
-        find.byType(UtenEditableGrid<DailyGridRow>),
-      );
-      final product = grid.controller.rows.firstWhere((row) => !row.isSubRow);
-      product.qty.text = '130';
-      product.overLimitReason.text = '同一批模具产出多于计划';
-      final material = grid.controller.rows.firstWhere(
-        (row) => row.materialEditable,
-      );
-      material.materialUsed.text = '117';
-      final other = product.clone()
-        ..planId = 'normal-plan'
-        ..planItemId = 'normal-item'
-        ..executionSegmentId = 'normal-segment'
-        ..qty.text = '5';
-      grid.controller.addRow(other);
-      grid.controller.setSelected([other], true);
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
-      await tester.pumpAndSettle();
-      expect(find.text('记录实际产量与超限部分'), findsOneWidget);
-      expect(
-        find.textContaining('实际 130 · 额度内 110 · 超限待处理 20'),
-        findsOneWidget,
-      );
-      await tester.tap(find.text('取消').last);
-      await tester.pumpAndSettle();
-      expect(submitted, isNull);
-      expect(product.qty.text, '130');
-      expect(product.overLimitReason.text, '同一批模具产出多于计划');
-      expect(other.qty.text, '5');
-      expect(material.materialUsed.text, '117');
-      final report = previewed!['report'] as Map;
-      expect(report['items'], hasLength(2));
-      expect(report['materialLines'], [
-        {'demandId': 'demand-1', 'qtyBase': 117.0},
-      ]);
-      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('按实际数量保存'));
-      await tester.pumpAndSettle();
-      final submittedItems = submitted!['items'] as List;
-      expect(submittedItems, hasLength(2));
-      expect((submittedItems.first as Map)['qty'], 130);
-      expect((submittedItems.first as Map)['overLimitReason'], '同一批模具产出多于计划');
-      expect(submitted!['materialLines'], [
-        {'demandId': 'demand-1', 'qtyBase': 117.0},
-      ]);
-      expect(tester.takeException(), isNull);
-    },
-  );
+        );
+        await tester.pumpAndSettle();
+        final grid = tester.widget<UtenEditableGrid<DailyGridRow>>(
+          find.byType(UtenEditableGrid<DailyGridRow>),
+        );
+        final product = grid.controller.rows.firstWhere((row) => !row.isSubRow);
+        product.qty.text = sample.actual;
+        product.overLimitReason.text = '同一批模具产出多于计划';
+        final material = grid.controller.rows.firstWhere(
+          (row) => row.materialEditable,
+        );
+        material.materialUsed.text = '117';
+        final other = product.clone()
+          ..planId = 'normal-plan'
+          ..planItemId = 'normal-item'
+          ..executionSegmentId = 'normal-segment'
+          ..qty.text = '5';
+        grid.controller.addRow(other);
+        grid.controller.setSelected([other], true);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+        expect(find.text('记录实际产量与超限部分'), findsOneWidget);
+        expect(
+          find.textContaining(
+            '实际 ${sample.actual} · 额度内 ${sample.within} · 超限待处理 ${sample.over}',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('取消').last);
+        await tester.pumpAndSettle();
+        expect(submitted, isNull);
+        expect(product.qty.text, sample.actual);
+        expect(product.overLimitReason.text, '同一批模具产出多于计划');
+        expect(other.qty.text, '5');
+        expect(material.materialUsed.text, '117');
+        final report = previewed!['report'] as Map;
+        expect(report['items'], hasLength(2));
+        expect(report['materialLines'], [
+          {'demandId': 'demand-1', 'qtyBase': 117.0},
+        ]);
+        await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('按实际数量保存'));
+        await tester.pumpAndSettle();
+        final submittedItems = submitted!['items'] as List;
+        expect(submittedItems, hasLength(2));
+        expect(
+          (submittedItems.first as Map)['qty'],
+          double.parse(sample.actual),
+        );
+        expect((submittedItems.first as Map)['overLimitReason'], '同一批模具产出多于计划');
+        expect(submitted!['materialLines'], [
+          {'demandId': 'demand-1', 'qtyBase': 117.0},
+        ]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final mode in [
     'legacy',

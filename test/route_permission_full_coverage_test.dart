@@ -139,6 +139,7 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   '/production/over-limit-dispositions': [Perm.productionPlanApprove],
   '/production/over-limit-dispositions/:id': [
+    Perm.productionPlanApprove,
     Perm.productionPlanView,
     Perm.productionExecutionView,
     Perm.productionDailyReportView,

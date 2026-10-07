@@ -594,6 +594,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   if (location.startsWith('${RouteName.productionOverLimitDispositions}/')) {
     return const [
+      Perm.productionPlanApprove,
       Perm.productionPlanView,
       Perm.productionExecutionView,
       Perm.productionDailyReportView,

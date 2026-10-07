@@ -150,3 +150,21 @@ BEGIN
     EXECUTE replace(definition,anchor,anchor||E',\n            (''production_over_limit_dispositions'', ''CLEAR''),\n            (''production_over_limit_decisions'', ''CLEAR'')');
 END;
 $reset_policy$;
+
+-- A delivered planning card must not retain access after its plan owner scope is revoked.
+-- Java supplies OwnerVisibility's current bounded owner set (self, data scopes, current handovers).
+-- Other events preserve their existing policies; absent/wrong anchors fail closed for this event only.
+CREATE FUNCTION fn_notice_production_over_limit_visible(
+    p_event TEXT, p_kind TEXT, p_id UUID, p_allowed BOOLEAN, p_all BOOLEAN, p_owners TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    IF p_event IS DISTINCT FROM 'PRODUCTION_OVER_LIMIT_PENDING' THEN RETURN TRUE; END IF;
+    IF p_kind IS DISTINCT FROM 'PRODUCTION_OVER_LIMIT_DISPOSITION' OR p_id IS NULL
+        OR p_allowed IS NOT TRUE THEN RETURN FALSE; END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM production_over_limit_dispositions request
+        JOIN production_plans plan ON plan.id=request.plan_id
+        WHERE request.id=p_id AND (p_all IS TRUE
+            OR plan.maker_id=ANY(COALESCE(string_to_array(p_owners, ',')::UUID[], ARRAY[]::UUID[]))));
+END;
+$$;

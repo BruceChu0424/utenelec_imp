@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.dailyreport;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.uten.imp.common.finance.ExactDecimalText;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,7 +20,12 @@ public final class ActualOutputSupplementContracts {
     public record ReportLinePreview(int inputLineIndex,UUID sourceExecutionSegmentId,UUID sourceSalesAllocationId,BigDecimal actualQty,
                                     BigDecimal originalReportQty,BigDecimal supplementQty,BigDecimal remainingActualSurplusQty,
                                     boolean requiresSupplement,String fingerprint,BigDecimal originalSalesQty,BigDecimal originalInternalQty,
-                                    BigDecimal withinAuthorizationQty,BigDecimal overLimitQty) {}
+                                    @JsonSerialize(using=ExactDecimalText.class) BigDecimal withinAuthorizationQty,
+                                    @JsonSerialize(using=ExactDecimalText.class) BigDecimal overLimitQty) {
+        @JsonProperty(value="actualQtyExact",access=JsonProperty.Access.READ_ONLY)
+        @JsonSerialize(using=ExactDecimalText.class)
+        public BigDecimal actualQtyExact(){return actualQty;}
+    }
     public record ReportPreview(java.util.List<ReportLinePreview> lines,boolean requiresSupplements) {}
     public record ApproveRequest(@NotBlank @Size(min=8,max=128) String idempotencyKey) {}
     public record CancelRequest(@NotBlank @Size(max=1000) String reason,@NotBlank @Size(min=8,max=128) String idempotencyKey) {}

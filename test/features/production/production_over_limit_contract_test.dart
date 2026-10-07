@@ -171,7 +171,7 @@ void main() {
         isNot(api.writes.first['idempotencyKey']),
       );
       final page = await repo.list(page: 2);
-      expect(page.items.single.overLimitQty, 100);
+      expect(page.items.single.overLimitQty, '100');
       expect(page.total, 23);
       expect(page.page, 2);
       expect(api.lastQuery, {'status': 'PENDING', 'page': 2, 'size': 20});

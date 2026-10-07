@@ -208,7 +208,7 @@ public class NoticeService {
         return noticeRepo.findVisible(
                 userId,
                 onlyUnread,
-                reviewAudience.workshopScope(requireStaff()),
+                reviewAudience.readScope(requireStaff()),
                 PageRequest.of(0, MAX_LIST_ITEMS));
     }
 
@@ -259,7 +259,7 @@ public class NoticeService {
                 userId,
                 afterPublishedAt,
                 afterId,
-                reviewAudience.workshopScope(requireStaff()),
+                reviewAudience.readScope(requireStaff()),
                 PageRequest.of(0, safeLimit + 1));
         boolean hasMore = fetched.size() > safeLimit;
         List<Notice> page = List.copyOf(
@@ -289,7 +289,7 @@ public class NoticeService {
     @Transactional(readOnly = true)
     public long unreadCount() {
         UUID userId = requireStaffId();
-        return noticeRepo.countVisibleUnread(userId, reviewAudience.workshopScope(requireStaff()));
+        return noticeRepo.countVisibleUnread(userId, reviewAudience.readScope(requireStaff()));
     }
 
     /**
@@ -305,7 +305,7 @@ public class NoticeService {
         AuthUser staff = requireStaff();
         UUID userId = staff.getId();
         List<NoticeRepository.UnreadIndexRow> rows =
-                noticeRepo.findUnreadIndexRows(userId, reviewAudience.workshopScope(staff));
+                noticeRepo.findUnreadIndexRows(userId, reviewAudience.readScope(staff));
         boolean anyReview = rows.stream().anyMatch(row -> row.getAnchored()
                 && ReviewNoticeCatalog.isReviewEvent(row.getSourceEvent()));
         Set<String> reviewEvents = anyReview ? reviewAudience.eligibleEvents(staff) : Set.of();
@@ -355,7 +355,7 @@ public class NoticeService {
         int safeLimit = Math.min(Math.max(limit, 1), MAX_TODO_ITEMS);
         List<Notice> notices = noticeRepo.findPendingTodos(
                 userId,
-                reviewAudience.workshopScope(requireStaff()),
+                reviewAudience.readScope(requireStaff()),
                 PageRequest.of(0, safeLimit));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
@@ -370,7 +370,7 @@ public class NoticeService {
 
     @Transactional(readOnly = true)
     public long pendingTodoCount() {
-        return noticeRepo.countPendingTodos(requireStaffId(), reviewAudience.workshopScope(requireStaff()));
+        return noticeRepo.countPendingTodos(requireStaffId(), reviewAudience.readScope(requireStaff()));
     }
 
     /** 详情（不存在 / 定向他人 / 已被当前用户删除 → 404 语义）。 */
@@ -401,7 +401,7 @@ public class NoticeService {
     public List<com.uten.imp.features.notice.dto.NoticeHistoryDto> listHistory(boolean onlyUnread,boolean importantOnly,
             boolean includeDeleted,boolean onlyDeleted) {
         UUID userId=requireStaffId();var rows=noticeRepo.findVisibleHistory(userId,onlyUnread||importantOnly,includeDeleted||onlyDeleted,
-                onlyDeleted,reviewAudience.workshopScope(requireStaff()),PageRequest.of(0,MAX_LIST_ITEMS));
+                onlyDeleted,reviewAudience.readScope(requireStaff()),PageRequest.of(0,MAX_LIST_ITEMS));
         if(importantOnly){var hr=Set.copyOf(noticeRepo.findHrDepartmentUserIds());rows=rows.stream().filter(n->n.getCreatedBy()!=null&&hr.contains(n.getCreatedBy())).toList();}
         var states=stateMap(userId,rows.stream().map(Notice::getId).toList());
         var subjects=subjectsMap(rows);var reviewEvents=reviewEventsFor(rows);
@@ -1058,9 +1058,9 @@ public class NoticeService {
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 loaded.stream().map(Notice::getId).toList());
-        Set<UUID> scopedWorkshopNotices = visibleWorkshopNoticeIds(loaded, userId);
+        Set<UUID> scopedNotices = scopedVisibleNoticeIds(loaded, userId);
         Map<UUID, Notice> notices = loaded.stream()
-                .filter(notice -> visibleTo(notice, userId, states.get(notice.getId()), scopedWorkshopNotices))
+                .filter(notice -> visibleTo(notice, userId, states.get(notice.getId()), scopedNotices))
                 .collect(Collectors.toMap(Notice::getId, notice -> notice));
         Instant now = Instant.now();
         int deleted = 0;
@@ -1106,7 +1106,7 @@ public class NoticeService {
      * 可见性：全员广播人人可见；单用户定向仅本人；selected 以预创建状态行作为接收快照。
      */
     private boolean visibleTo(Notice n, UUID userId, NoticeUserState state) {
-        return visibleTo(n, userId, state, visibleWorkshopNoticeIds(List.of(n), userId));
+        return visibleTo(n, userId, state, scopedVisibleNoticeIds(List.of(n), userId));
     }
 
     /** 子资源 (祝福/回执人) 与详情同口径: 通知不存在、不在受众内或已被本人删除一律 404。 */
@@ -1119,18 +1119,18 @@ public class NoticeService {
         }
     }
 
-    private Set<UUID> visibleWorkshopNoticeIds(List<Notice> notices, UUID userId) {
+    private Set<UUID> scopedVisibleNoticeIds(List<Notice> notices, UUID userId) {
         Set<UUID> ids = notices.stream()
                 .filter(NoticeService::requiresScopedNoticeVisibility)
                 .map(Notice::getId).collect(Collectors.toSet());
         if (ids.isEmpty()) return Set.of();
         return Set.copyOf(noticeRepo.findScopedVisibleNoticeIds(userId, ids,
-                reviewAudience.workshopScope(requireStaff())));
+                reviewAudience.readScope(requireStaff())));
     }
 
-    private boolean visibleTo(Notice n, UUID userId, NoticeUserState state, Set<UUID> scopedWorkshopNotices) {
+    private boolean visibleTo(Notice n, UUID userId, NoticeUserState state, Set<UUID> scopedNotices) {
         if (requiresScopedNoticeVisibility(n)
-                && !scopedWorkshopNotices.contains(n.getId())) return false;
+                && !scopedNotices.contains(n.getId())) return false;
         if (n.getAudienceUserId() != null) {
             return n.getAudienceUserId().equals(userId);
         }
@@ -1139,6 +1139,7 @@ public class NoticeService {
 
     private static boolean requiresScopedNoticeVisibility(Notice notice) {
         return ReviewNoticeAudience.WORKSHOP_EVENT.equals(notice.getSourceEvent())
+                || ReviewNoticeAudience.OVER_LIMIT_EVENT.equals(notice.getSourceEvent())
                 || ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING.equals(notice.getSourceEvent());
     }
 
@@ -1315,14 +1316,14 @@ public class NoticeService {
                 .toList();
         List<Notice> notices = noticeRepo.findAllById(safeIds);
         Set<String> reviewEvents = reviewEventsFor(notices);
-        Set<UUID> scopedWorkshopNotices = visibleWorkshopNoticeIds(notices, userId);
+        Set<UUID> scopedNotices = scopedVisibleNoticeIds(notices, userId);
         Map<UUID, NoticeUserState> states = stateMap(userId, safeIds);
         Set<String> claimTypes=new HashSet<>();Set<String> claimKeys=new HashSet<>();
         for (Notice notice:notices) {
             var entry=ReviewNoticeCatalog.of(notice.getSourceEvent());
             if (notice.getResolvedAt()==null && notice.getAggregateId()!=null && entry.isPresent()
                     && entry.get().claimTargetType()!=null && reviewEvents.contains(notice.getSourceEvent())
-                    && visibleTo(notice,userId,states.get(notice.getId()),scopedWorkshopNotices)) {
+                    && visibleTo(notice,userId,states.get(notice.getId()),scopedNotices)) {
                 claimTypes.add(entry.get().claimTargetType());claimKeys.add(notice.getAggregateId().toString());
             }
         }
@@ -1338,7 +1339,7 @@ public class NoticeService {
         List<PendingReviewStatusDto> result = new ArrayList<>();
         for (Notice n : notices) {
             NoticeUserState st = states.get(n.getId());
-            if (!visibleTo(n, userId, st, scopedWorkshopNotices) || (st != null && st.getDeletedAt() != null)) {
+            if (!visibleTo(n, userId, st, scopedNotices) || (st != null && st.getDeletedAt() != null)) {
                 continue;
             }
             if (!isActionableReview(n) || !reviewEvents.contains(n.getSourceEvent())
@@ -1383,7 +1384,7 @@ public class NoticeService {
         List<Notice> notices = noticeRepo.findVisiblePendingReviews(
                 userId,
                 List.copyOf(reviewEvents),
-                reviewAudience.workshopScope(requireStaff()),
+                reviewAudience.readScope(requireStaff()),
                 PageRequest.of(0, 20));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,

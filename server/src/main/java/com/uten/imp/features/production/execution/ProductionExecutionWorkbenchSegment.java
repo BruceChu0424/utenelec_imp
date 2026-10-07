@@ -157,4 +157,7 @@ public record ProductionExecutionWorkbenchSegment(
         BigDecimal overLimitPendingQty,
         /** 最近一份待处理超限案件；车间可在自身任务范围内直接查看。 */
         UUID overLimitDispositionId) {
+    @com.fasterxml.jackson.annotation.JsonProperty(value="overLimitPendingQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
+    public BigDecimal overLimitPendingQtyExact(){return overLimitPendingQty;}
 }

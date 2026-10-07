@@ -2008,7 +2008,7 @@ class _ProductionWorkshopTasksPageState
                             );
                           },
                     child: Text(
-                      '超限待处理 ${_taskQuantity(task.overLimitPendingQty)}（未计入可用库存） · 查看最近一笔',
+                      '超限待处理 ${task.overLimitPendingQtyText}（未计入可用库存） · 查看最近一笔',
                     ),
                   ),
                 Text(
@@ -3395,7 +3395,7 @@ class _ProductionWorkshopTasksPageState
               ? '报工 $reported · 超产 ${_taskQuantity(surplus)}'
               : '报工 $reported';
           return task.overLimitPendingQty > 0
-              ? '$summary · 待处理 ${_taskQuantity(task.overLimitPendingQty)}'
+              ? '$summary · 待处理 ${task.overLimitPendingQtyText}'
               : summary;
         },
       ),

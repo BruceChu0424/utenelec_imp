@@ -10,6 +10,7 @@ import 'package:uten_imp/features/production/pages/production_over_limit_pages.d
 import 'package:uten_imp/features/production/repositories/production_over_limit_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 
 ProductionOverLimitDisposition _detail({
   String name = '同批自制件',
@@ -49,7 +50,114 @@ class _Repository extends ProductionOverLimitRepository {
   }
 }
 
+class _ListRepository extends _Repository {
+  _ListRepository(this.row);
+  final ProductionOverLimitDisposition row;
+  @override
+  Future<PagedResult<ProductionOverLimitDisposition>> list({
+    String status = 'PENDING',
+    int page = 1,
+    int size = 20,
+  }) async => PagedResult(
+    items: [row],
+    page: page,
+    size: size,
+    total: 1,
+    totalPages: 1,
+  );
+}
+
+Widget _precisionPage(ProductionOverLimitRepository repo, Widget page) =>
+    ProviderScope(
+      overrides: [
+        productionOverLimitRepositoryProvider.overrideWithValue(repo),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionPlanApprove,
+        }),
+        isSuperAdminProvider.overrideWithValue(false),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'planner'),
+        ),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://server-a/api'),
+      ],
+      child: MaterialApp(home: page),
+    );
+
 void main() {
+  for (final quantity in ['9999999999999.9999', '0.0001']) {
+    testWidgets('处置详情与确认原样显示精确数量 $quantity', (tester) async {
+      final repo = _Repository();
+      await tester.pumpWidget(
+        _precisionPage(repo, const ProductionOverLimitDetailPage(id: 'case')),
+      );
+      await tester.pump();
+      repo.reads.single.complete(
+        ProductionOverLimitDisposition({
+          ..._detail().data,
+          'actualBatchQty': quantity,
+          'withinAuthorizationQty': '0',
+          'overLimitQty': quantity,
+          'plannedQty': quantity,
+          'allowedRate': '0.000001',
+        }),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('本批实际 $quantity · 额度内 0 · 本次超限 $quantity'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('报工时允许超产比例 0.0001%'), findsOneWidget);
+      await tester.tap(find.text('接收为公共产出'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), '已核对本批原始数量');
+      await tester.tap(find.text('确认'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('接收本批超限 $quantity 件'), findsOneWidget);
+      expect(repo.decisions, 0);
+      expect(tester.takeException(), isNull);
+    });
+    testWidgets('处置列表原样显示精确数量 $quantity', (tester) async {
+      tester.view.physicalSize = const Size(2000, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final row = ProductionOverLimitDisposition({
+        ..._detail().data,
+        'actualBatchQty': quantity,
+        'withinAuthorizationQty': '0',
+        'overLimitQty': quantity,
+      });
+      await tester.pumpWidget(
+        _precisionPage(
+          _ListRepository(row),
+          const ProductionOverLimitListPage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(quantity), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('已丢精度的旧大数回包显示未知并禁止确认', (tester) async {
+    final repo = _Repository();
+    await tester.pumpWidget(
+      _precisionPage(repo, const ProductionOverLimitDetailPage(id: 'case')),
+    );
+    await tester.pump();
+    repo.reads.single.complete(
+      ProductionOverLimitDisposition({
+        ..._detail().data,
+        'overLimitQty': double.parse('9999999999999.9999'),
+      }),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('本次超限 —'), findsOneWidget);
+    expect(find.textContaining('本批数量未完整读取'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '接收为公共产出'), findsNothing);
+    expect(repo.decisions, 0);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('all disposition decisions retain reasons people and times', (
     tester,
   ) async {

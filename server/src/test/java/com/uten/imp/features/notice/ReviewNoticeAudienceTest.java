@@ -13,6 +13,28 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ReviewNoticeAudienceTest {
+    @Test
+    void overLimitReadScopeUsesTheCanonicalCurrentOwnerScopeOnlyForApprovers() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        var owners = mock(com.uten.imp.security.OwnerVisibility.class);
+        UUID owner = UUID.randomUUID();
+        when(owners.evaluate("production_plan", "production_plan:view:all"))
+                .thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(false, Set.of(owner)));
+        var audience = new ReviewNoticeAudience(jdbc, owners);
+        AuthUser planner = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "planner",
+                Set.of("notice:read", "production_plan:approve"), false, true, false);
+        var scope = audience.readScope(planner);
+        assertThat(scope.overLimitAllowed()).isTrue();
+        assertThat(scope.overLimitSeeAll()).isFalse();
+        assertThat(scope.overLimitOwners()).isEqualTo(owner.toString());
+        assertThat(scope.workshop().allowed()).isFalse();
+        verify(owners).evaluate("production_plan", "production_plan:view:all");
+        AuthUser reader = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "reader",
+                Set.of("notice:read", "production_plan:view"), false, true, false);
+        assertThat(audience.readScope(reader).overLimitAllowed()).isFalse();
+        verifyNoMoreInteractions(owners);
+    }
+
     /**
      * ADR-149: 仓库类通知池按仓纳入了部门外登记的仓库负责人(如财务部的人负责五金仓库), 弹卡资格同口径,
      * 否则发给他的待办只躺在通知列表里不弹卡。没登记负责人的部门外的人仍然不弹。
@@ -36,10 +58,10 @@ class ReviewNoticeAudienceTest {
         when(jdbc.queryForList(anyString(), eq(String.class), eq(employee), eq(employee))).thenReturn(List.of("DEPT_FIN"));
         when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
                 .thenReturn(true);
-        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(keeper)).containsAll(events);
+        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class)).eligibleEvents(keeper)).containsAll(events);
         when(jdbc.queryForObject(contains("fn_warehouse_responsible_user_ids"), eq(Boolean.class), eq(account)))
                 .thenReturn(false);
-        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(keeper)).doesNotContainAnyElementsOf(events);
+        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class)).eligibleEvents(keeper)).doesNotContainAnyElementsOf(events);
     }
 
     @Test
@@ -57,7 +79,7 @@ class ReviewNoticeAudienceTest {
         UUID employee=UUID.randomUUID();
         var user=new AuthUser(UUID.randomUUID(),employee,"planner",permissions,false,true,false);
         when(jdbc.queryForList(anyString(),eq(String.class),eq(employee),eq(employee))).thenReturn(List.of("SUB_PLAN"));
-        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(user)).containsAll(events);
+        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class)).eligibleEvents(user)).containsAll(events);
     }
     @Test
     void workshopMaterialEventsReachOnlyThePeopleWhoCanStillHandleThem() {
@@ -138,7 +160,7 @@ class ReviewNoticeAudienceTest {
                 permissions, false, true, true);
         when(jdbc.queryForList(anyString(), eq(String.class), eq(employeeId), eq(employeeId)))
                 .thenReturn(List.of("GM"));
-        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(user)).isEmpty();
+        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class)).eligibleEvents(user)).isEmpty();
     }
 
     @Test
@@ -171,7 +193,7 @@ class ReviewNoticeAudienceTest {
                 permissions, false, true, false);
         when(jdbc.queryForList(anyString(), eq(String.class), eq(employeeId), eq(employeeId)))
                 .thenReturn(List.of("DEPT_FIN"));
-        assertThat(new ReviewNoticeAudience(jdbc).eligibleEvents(user)).containsExactlyInAnyOrder(
+        assertThat(new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class)).eligibleEvents(user)).containsExactlyInAnyOrder(
                 "PROCUREMENT_FINANCE_SUBMITTED", "PROCUREMENT_FINANCE_CHANGE_SUBMITTED");
         verify(jdbc, times(1)).queryForList(argThat(sql -> sql.contains("employee_secondary_departments")
                 && sql.contains("employee.is_deleted = FALSE") && sql.contains("ancestry")),

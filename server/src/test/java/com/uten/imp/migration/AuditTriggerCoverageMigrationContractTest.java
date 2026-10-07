@@ -184,6 +184,8 @@ class AuditTriggerCoverageMigrationContractTest {
                     "生产计划、日报、执行段、退料、点收、质检与直送单据: 人工录入并审核的业务单据",
                     Set.of(
                         "production_overproduction_rate_requests", "production_actual_output_supplement_requests",
+                        // V823：本批超限处置的状态、版本与关联决定保留整行前后值。
+                        "production_over_limit_dispositions",
                         "production_material_increment_requests", "production_material_discovery_requests",
                         "production_draw_issue_batches",
                         "preplan_aggregate_batches",
@@ -417,6 +419,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "procurement_receipt_consideration_parts",
                         "production_daily_report_material_release_events",
                         "production_overproduction_rate_decisions", "production_actual_output_supplement_proofs",
+                        // V823：决定行含操作者、时间、理由和请求指纹，自身是只追加账本。
+                        "production_over_limit_decisions",
                         "production_material_increment_decisions",
                         "production_material_increment_reversals",
                         "production_actual_output_supplement_reversals", "production_actual_output_supplement_claims",

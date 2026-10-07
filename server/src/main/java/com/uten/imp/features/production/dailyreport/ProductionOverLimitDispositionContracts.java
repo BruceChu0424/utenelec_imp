@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.dailyreport;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.uten.imp.common.finance.ExactDecimalText;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -22,8 +24,11 @@ public final class ProductionOverLimitDispositionContracts {
     public record View(UUID id,String status,long rowVersion,UUID reportId,String reportNo,
             UUID reportItemId,UUID outputBatchId,UUID sourceSegmentId,String segmentCode,
             UUID planId,String planNo,String goodsCode,String goodsName,String colorName,String unitName,
-            BigDecimal plannedQty,BigDecimal allowedRate,BigDecimal actualBatchQty,
-            BigDecimal withinAuthorizationQty,BigDecimal overLimitQty,String overLimitReason,
+            @JsonSerialize(using=ExactDecimalText.class) BigDecimal plannedQty,
+            @JsonSerialize(using=ExactDecimalText.class) BigDecimal allowedRate,
+            @JsonSerialize(using=ExactDecimalText.class) BigDecimal actualBatchQty,
+            @JsonSerialize(using=ExactDecimalText.class) BigDecimal withinAuthorizationQty,
+            @JsonSerialize(using=ExactDecimalText.class) BigDecimal overLimitQty,String overLimitReason,
             OffsetDateTime createdAt,String decisionReason,String decidedByName,OffsetDateTime decidedAt,
             boolean canDecide,String blockingReason,List<DecisionView> decisionHistory) {}
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
+import '../models/production_exact_quantity.dart';
 
 const productionOverLimitRefreshKey = 'production:over-limit';
 
@@ -29,11 +30,21 @@ class ProductionOverLimitDisposition {
   String get id => data['id'] as String;
   String get status => data['status'] as String? ?? '';
   int get rowVersion => (data['rowVersion'] as num).toInt();
-  bool get canDecide => data['canDecide'] == true;
+  bool get hasQuantityFacts =>
+      actualBatchQty != null &&
+      withinAuthorizationQty != null &&
+      overLimitQty != null;
+  bool get canDecide => data['canDecide'] == true && hasQuantityFacts;
   String? text(String key) => data[key] as String?;
-  double? quantity(String key) {
-    final value = data[key];
-    return value is num ? value.toDouble() : double.tryParse('$value');
+  String? quantity(String key) {
+    return productionExactQuantityText(
+      data[key],
+      scale: key == 'allowedRate' ? 6 : 4,
+    );
+  }
+
+  String? get allowedRatePercent {
+    return productionExactPercentageText(data['allowedRate']);
   }
 
   String? get reportId => text('reportId');
@@ -45,10 +56,11 @@ class ProductionOverLimitDisposition {
   String? get colorName => text('colorName');
   String? get unitName => text('unitName');
   String? get overLimitReason => text('overLimitReason');
-  String? get blockingReason => text('blockingReason');
-  double? get actualBatchQty => quantity('actualBatchQty');
-  double? get withinAuthorizationQty => quantity('withinAuthorizationQty');
-  double? get overLimitQty => quantity('overLimitQty');
+  String? get blockingReason =>
+      !hasQuantityFacts ? '本批数量未完整读取，请刷新或更新服务端后再处理。' : text('blockingReason');
+  String? get actualBatchQty => quantity('actualBatchQty');
+  String? get withinAuthorizationQty => quantity('withinAuthorizationQty');
+  String? get overLimitQty => quantity('overLimitQty');
   List<Map<String, dynamic>> get decisionHistory =>
       (data['decisionHistory'] as List? ?? const [])
           .map((item) => Map<String, dynamic>.from(item as Map))

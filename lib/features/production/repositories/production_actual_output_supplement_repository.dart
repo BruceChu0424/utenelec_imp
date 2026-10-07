@@ -6,6 +6,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/utils/idempotency_key.dart';
 import 'production_overproduction_rate_repository.dart';
 import '../models/reportable_plan_line.dart';
+import '../models/production_exact_quantity.dart';
 
 const productionSupplementRequestPermission =
     'production_execution:request_supplement_plan';
@@ -40,6 +41,17 @@ class ProductionOutputSupplementReportLine {
   double get supplementQty => productionRateNumber(data['supplementQty'])!;
   bool get requiresSupplement => data['requiresSupplement'] == true;
   double get overLimitQty => productionRateNumber(data['overLimitQty']) ?? 0;
+  String? get actualQtyText =>
+      productionExactQuantityText(data['actualQtyExact'] ?? data['actualQty']);
+  String? get overLimitQtyText =>
+      productionExactQuantityText(data['overLimitQty'] ?? 0);
+  String? get withinAuthorizationQtyText =>
+      productionExactQuantityText(data['withinAuthorizationQty']);
+  bool get hasReadableOverLimitPreview =>
+      !data.containsKey('overLimitQty') ||
+      (actualQtyText != null &&
+          overLimitQtyText != null &&
+          withinAuthorizationQtyText != null);
   double get withinAuthorizationQty =>
       productionRateNumber(data['withinAuthorizationQty']) ?? actualQty;
 }

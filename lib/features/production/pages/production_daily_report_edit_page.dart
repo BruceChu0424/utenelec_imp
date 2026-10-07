@@ -65,6 +65,7 @@ import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/daily_output_allocation.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_exact_quantity.dart';
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_material_usage_source.dart';
 import '../models/reportable_plan_line.dart';
@@ -2880,6 +2881,10 @@ class _ProductionDailyReportEditPageState
           .read(productionOutputSupplementRepositoryProvider)
           .previewReport(body, excludedReportId: widget.id);
       if (!mounted || !current()) return false;
+      if (preview.lines.any((line) => !line.hasReadableOverLimitPreview)) {
+        context.appError('超限预览缺少精确数量，请刷新或更新服务端后重试；原输入已保留');
+        return false;
+      }
       final over = preview.lines
           .where((line) => line.overLimitQty > 0.000001)
           .toList();
@@ -2891,14 +2896,17 @@ class _ProductionDailyReportEditPageState
         }
         final row = rows[line.inputLineIndex];
         if (row.executionSegmentId != line.sourceSegmentId ||
-            double.tryParse(row.qty.text) != line.actualQty) {
+            productionExactQuantityText(
+                  row.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+                ) !=
+                line.actualQtyText) {
           context.appError('超限预览与当前明细不一致，请重新核对；原输入已保留');
           return false;
         }
         final reason = row.overLimitReason.text.trim();
         if (reason.length < 2 || reason.length > 500) {
           context.appError(
-            '第 ${line.inputLineIndex + 1} 行超限 ${_quantityText(line.overLimitQty)}，请填写 2–500 字超限原因；原输入已保留',
+            '第 ${line.inputLineIndex + 1} 行超限 ${line.overLimitQtyText}，请填写 2–500 字超限原因；原输入已保留',
           );
           return false;
         }
@@ -2914,7 +2922,7 @@ class _ProductionDailyReportEditPageState
           children: [
             for (final line in over)
               Text(
-                '第 ${line.inputLineIndex + 1} 行：实际 ${_quantityText(line.actualQty)} · 额度内 ${_quantityText(line.withinAuthorizationQty)} · 超限待处理 ${_quantityText(line.overLimitQty)}',
+                '第 ${line.inputLineIndex + 1} 行：实际 ${line.actualQtyText} · 额度内 ${line.withinAuthorizationQtyText} · 超限待处理 ${line.overLimitQtyText}',
               ),
             const SizedBox(height: 12),
             const Text(

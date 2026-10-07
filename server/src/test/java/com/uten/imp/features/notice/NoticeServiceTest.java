@@ -88,7 +88,7 @@ class NoticeServiceTest {
         audienceService = mock(NoticeAudienceService.class);
         systemSettings = mock(SystemSettingsService.class);
         reviewAudience = mock(ReviewNoticeAudience.class);
-        when(reviewAudience.workshopScope(any())).thenReturn(ReviewNoticeAudience.WorkshopScope.NONE);
+        when(reviewAudience.readScope(any())).thenReturn(ReviewNoticeAudience.ReadScope.NONE);
         when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
         nameLookup = mock(com.uten.imp.application.port.EmployeeNameLookupPort.class);
         claims=mock(com.uten.imp.features.common.taskclaim.TaskClaimRepository.class);
@@ -287,7 +287,7 @@ class NoticeServiceTest {
                         UUID.class,
                         Instant.class,
                         UUID.class,
-                        ReviewNoticeAudience.WorkshopScope.class,
+                        ReviewNoticeAudience.ReadScope.class,
                         Pageable.class)
                 .getAnnotation(Query.class);
         assertNotNull(query);

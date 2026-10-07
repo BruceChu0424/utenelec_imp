@@ -20,16 +20,11 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../models/production_execution_planning.dart'
-    show formatProductionPlanningQuantity;
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_over_limit_repository.dart';
-import '../repositories/production_overproduction_rate_repository.dart'
-    show productionRateText;
 import '../widgets/production_review_reason_dialog.dart';
 
-String _quantity(double? value) =>
-    value == null ? '—' : formatProductionPlanningQuantity(value);
+String _quantity(String? value) => value ?? '—';
 
 String _decisionTime(String? value) {
   final parsed = ChinaDateTime.tryParse(value);
@@ -461,7 +456,7 @@ class _OverLimitDetailState
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        '原计划 ${_quantity(detail.quantity('plannedQty'))} · 报工时允许超产比例 ${productionRateText(detail.quantity('allowedRate'))}',
+                        '原计划 ${_quantity(detail.quantity('plannedQty'))} · 报工时允许超产比例 ${detail.allowedRatePercent == null ? '—' : '${detail.allowedRatePercent}%'}',
                       ),
                       const SizedBox(height: 8),
                       Text(

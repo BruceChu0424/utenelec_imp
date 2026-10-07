@@ -14,6 +14,8 @@ import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
 import '../../features/admin/pages/admin_ai_settings_page.dart';
+import '../../features/admin/pages/admin_ai_usage_page.dart';
+import '../../features/admin/pages/admin_ai_usage_person_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
@@ -1965,6 +1967,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminAiSettings,
             name: 'admin-ai-settings',
             builder: (_, _) => const AdminAiSettingsPage(),
+          ),
+          // AI 用量看板与按人限额(ADR-164): 看板 + 人员详情, 页内再叠超管门禁。
+          DraftAwareGoRoute(
+            path: RouteName.adminAiUsage,
+            name: 'admin-ai-usage',
+            builder: (_, _) => const AdminAiUsagePage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminAiUsagePersonRoute,
+            name: 'admin-ai-usage-person',
+            builder: (_, state) => AdminAiUsagePersonPage(
+              userId: state.pathParameters['userId'] ?? '',
+            ),
           ),
         ],
       ),

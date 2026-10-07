@@ -3,14 +3,28 @@ package com.uten.imp.features.org.department.staffpermission.dto;
 import java.util.List;
 import java.util.UUID;
 
-/** Permission state for one selected employee and one stable page surface. */
+/**
+ * Permission state for one selected employee and one stable page surface.
+ *
+ * <p>V812 hub drawers receive the whole surface tree: the root group keeps
+ * only codes no child surface claims, and child groups follow catalog sort
+ * order. Flat surfaces still get a single root group.</p>
+ */
 public record PagePermissionEmployeePermissionsDto(
         String surfaceKey,
+        String surfaceTitle,
         UUID departmentId,
         String departmentName,
         PagePermissionStaffPageDto.StaffSummary employee,
         String settingMode,
-        List<PermissionState> permissions) {
+        List<SurfaceGroupDto> groups) {
+
+    public record SurfaceGroupDto(
+            String surfaceKey,
+            String title,
+            boolean root,
+            List<PermissionState> permissions) {
+    }
 
     public record PermissionState(
             String code,

@@ -189,12 +189,6 @@ class LocalServerReachabilityNotifier extends StateNotifier<bool> {
     }
   }
 
-  /// 排障 / 测试用手动覆盖。
-  Future<void> overrideForTest(bool reachable) async {
-    await _prefs.setBool(_kLocalReachableKey, reachable);
-    if (mounted) state = reachable;
-  }
-
   @override
   void dispose() {
     _initialTimer?.cancel();

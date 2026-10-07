@@ -17,7 +17,7 @@ class SupplierPayableHistoricalStatementContractTest {
 
         assertThat(service)
                 .contains("SupplierSettlementSnapshotSql.LINES")
-                .contains("moneyValue(row[17]),moneyValue(row[18]),uuid(row[19])")
+                .contains("moneyValue(row[17]),moneyValue(row[18]),NativeValueConverters.uuid(row[19])")
                 .contains("assertSettlementMethodConsistency(lines, request.settlementMethodId())")
                 .contains("line.settlementMethodId(), settlementMethodId");
         assertThat(service.indexOf("assertSettlementMethodConsistency(lines, request.settlementMethodId())"))

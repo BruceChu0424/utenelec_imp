@@ -176,6 +176,33 @@ public class ProductionExecutionBatchService {
                        JOIN stock_reservations reservation ON reservation.demand_id=demand.id WHERE demand.execution_segment_id=:id)
                 """).setParameter("id",id).getSingleResult();
         if (activity.longValue()!=0) throw conflict("该任务已有正式采购或委外供给绑定、物料预留或领用记录，须先核对来源，不能直接拆批");
+        return loadSplitFacts(source);
+    }
+
+    /**
+     * 通知侧「当前可齐套生产量」(ADR-165 / ADR-091 §九, 2026-10-06 修订二): 与分批领料核对页
+     * 同一把尺子, 给「物料到货进展」行动卡算「现在可以生产 X 件」并作弹窗水位。只读、不做
+     * 用户与拆批资格校验(预约/供给钉存在不影响量尺); 剩余段自动扣掉前批(冻结曲线 offset)。
+     * 不可计量(路线已改、任务关闭、前批固定料未领齐等)是拆批流程的正常中间态, 返回 null——
+     * 必须在事务边界内吞掉: 异常一旦越过 @Transactional 代理出口, 调用方共享的 outbox 投递
+     * 事务会被标记 rollback-only, 到货事件重试到死信、通知静默丢失。
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal currentSplitCapacity(UUID segmentId) {
+        try {
+            Source source=source(segmentId);
+            String route=(String)em.createNativeQuery("SELECT start_route FROM production_execution_segments WHERE id=:id")
+                    .setParameter("id",segmentId).getSingleResult();
+            if(!"BATCH".equals(route))return null;
+            if(source.closed() || !source.active())return null;
+            return maximumReadyQty(loadSplitFacts(source));
+        } catch (ApiException notMeasurable) {
+            return null;
+        }
+    }
+
+    /** 段的冻结需求事实(零物料=空物料表) + 与齐套提升同口径的仓库可用量。 */
+    private Context loadSplitFacts(Source source) {
         // 零物料任务没有冻结物料、没有 BOM 用量可核对：按数量拆分即可，本批可齐套量=剩余全部。
         if (source.zeroMaterial()) return new Context(source,List.of(),List.of());
         // ADR-129 §2.6：拆批不再拿现行 BOM 重算原冻结任务。每条根需求按下达时冻结的耗用曲线
@@ -196,7 +223,7 @@ public class ProductionExecutionBatchService {
                 LEFT JOIN production_material_demands current_demand ON current_demand.execution_segment_id=:id
                     AND NOT current_demand.is_deleted AND (current_demand.id=root.id OR current_demand.split_root_demand_id=root.id)
                 WHERE root.execution_segment_id=:root AND NOT root.is_deleted ORDER BY root.id
-                """,Map.of("root",source.rootId(),"offset",source.offset(),"id",id)).stream().map(row->{
+                """,Map.of("root",source.rootId(),"offset",source.offset(),"id",source.id())).stream().map(row->{
             BigDecimal perProduct=decimal(row[8]);
             FrozenCurve curve=frozenCurve(str(row[9]),(String)row[10],perProduct);
             BigDecimal current=curve.required(source.offset().add(source.qty())).subtract(curve.required(source.offset()));
@@ -235,7 +262,8 @@ public class ProductionExecutionBatchService {
         return new FrozenCurve(List.copyOf(rules),rate);
     }
 
-    private Preview buildPreview(Context context,BigDecimal requested) {
+    /** 当前可齐套生产量: 每料可用量(专属权益 + 公共预算扣安全库存)下的冻结曲线二分搜索, 剩余段扣前批。 */
+    private BigDecimal maximumReadyQty(Context context) {
         Source source=context.source();
         for (Material material:context.materials()) {
             BigDecimal prior=material.curve().required(source.offset());
@@ -257,7 +285,12 @@ public class ProductionExecutionBatchService {
                     .allMatch(slice->slice.requiredQty().compareTo(available.getOrDefault(slice.rootDemandId(),BigDecimal.ZERO))<=0);
             if(fits)low=mid;else high=mid.subtract(BigInteger.ONE);
         }
-        BigDecimal maximum=new BigDecimal(low,4);
+        return new BigDecimal(low,4);
+    }
+
+    private Preview buildPreview(Context context,BigDecimal requested) {
+        Source source=context.source();
+        BigDecimal maximum=maximumReadyQty(context);
         BigDecimal quantity=requested==null?maximum:positive(requested);
         if(quantity.compareTo(source.qty())>0)throw invalid("本次数量不能超过原任务剩余数量");
         if(quantity.compareTo(maximum)>0)throw conflict("本次数量超过当前可齐套生产量 "+maximum.stripTrailingZeros().toPlainString());

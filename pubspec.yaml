@@ -1,7 +1,7 @@
 name: uten_imp
 description: "优腾综合管理平台 - Uten Integrated Management Platform"
 publish_to: "none"
-version: 0.1.0+1
+version: 2.5.3+253
 
 environment:
   sdk: ^3.12.2
@@ -20,7 +20,6 @@ dependencies:
 
   # 状态管理
   flutter_riverpod: ^2.6.1
-  riverpod_annotation: ^2.6.1
 
   # 国际化
   intl: ^0.20.2
@@ -52,9 +51,6 @@ dependencies:
   # 拖放上传（Web/Windows/macOS/Linux：文件直接拖进上传区，免弹文件选择框）
   desktop_drop: ^0.8.4
 
-  # 图片格式支持；附件上传保留原始字节，不再用此库进行有损转码。
-  image: ^4.9.1
-
   # A4 预览与打印（货品配件清单等打印件：pdf 生成 + printing 系统打印对话框）
   pdf: ^3.11.3
 
@@ -81,10 +77,9 @@ dev_dependencies:
   analyzer: ^7.6.0
   flutter_lints: ^6.0.0
 
-  build_runner: ^2.4.13
-  riverpod_generator: ^2.6.3
-  custom_lint: ^0.7.0
-  riverpod_lint: ^2.6.3
+  # 图片格式支持；附件上传保留原始字节，不再用此库进行有损转码。
+  image: ^4.9.1
+
   flutter_launcher_icons: ^0.14.3
 
 flutter:

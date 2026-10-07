@@ -30,6 +30,8 @@ public record TokenResponse(
             String position,
             boolean mustChangePassword,
             boolean superAdmin,
-            List<String> permissions
+            List<String> permissions,
+            /** Durable draft namespace; changes only when business data is cleared. */
+            long businessResetGeneration
     ) {}
 }

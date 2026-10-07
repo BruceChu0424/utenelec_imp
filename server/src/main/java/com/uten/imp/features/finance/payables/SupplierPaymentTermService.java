@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.payables;
 
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -85,9 +86,9 @@ public class SupplierPaymentTermService {
         Object[] row = rows.getFirst();
         return calculateDueDate(
                 receiptDate,
-                text(row[0]),
-                text(row[1]),
-                text(row[2]),
+                NativeValueConverters.text(row[0]),
+                NativeValueConverters.text(row[1]),
+                NativeValueConverters.text(row[2]),
                 integer(row[3]),
                 integer(row[4]),
                 integer(row[5]),
@@ -186,10 +187,6 @@ public class SupplierPaymentTermService {
             throw new ApiException(ErrorCode.CONFLICT, "结算方式缺少" + label + "配置");
         }
         return value.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
     }
 
     private static Integer integer(Object value) {

@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset.application;
 
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.asset.api.AssetWorkbenchResponses;
@@ -13,8 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -46,16 +45,16 @@ public class FinanceAssetPeriodService {
         boolean manage = authorization.has(FinanceAssetAuthorization.PERIOD_MANAGE);
         List<AssetWorkbenchResponses.Period> result = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
-            String status = text(row[1]);
+            String status = NativeValueConverters.text(row[1]);
             result.add(new AssetWorkbenchResponses.Period(
-                    text(row[0]),
+                    NativeValueConverters.text(row[0]),
                     status,
                     "CLOSED".equals(status),
                     row[2] != null,
                     row[3] != null,
-                    decimal(row[4]),
-                    text(row[5]),
-                    instant(row[6]),
+                    NativeValueConverters.toBigDecimal(row[4]),
+                    NativeValueConverters.text(row[5]),
+                    NativeValueConverters.toInstant(row[6]),
                     number(row[7]).longValue(),
                     manage ? Set.of("CLOSED".equals(status) ? "REOPEN" : "CLOSE") : Set.of()));
         }
@@ -79,7 +78,7 @@ public class FinanceAssetPeriodService {
                 .setParameter("period", period)
                 .setParameter("actor", actorId)
                 .executeUpdate();
-        String status = text(em.createNativeQuery("""
+        String status = NativeValueConverters.text(em.createNativeQuery("""
                 SELECT status FROM finance_asset_accounting_periods
                 WHERE period=:period AND is_deleted=false
                 """).setParameter("period", period).getSingleResult());
@@ -126,8 +125,8 @@ public class FinanceAssetPeriodService {
                     FROM gl_entries
                     WHERE voucher_id=:voucher AND is_deleted=false
                     """).setParameter("voucher", run.voucherId()).getSingleResult());
-            glDebit = glDebit.add(decimal(totals[0]));
-            glCredit = glCredit.add(decimal(totals[1]));
+            glDebit = glDebit.add(NativeValueConverters.toBigDecimal(totals[0]));
+            glCredit = glCredit.add(NativeValueConverters.toBigDecimal(totals[1]));
         }
         AssetPeriodClosePolicy.requireClosable(new AssetPeriodClosePolicy.Evidence(
                 depreciation != null,
@@ -202,10 +201,10 @@ public class FinanceAssetPeriodService {
                 FROM finance_asset_accounting_periods
                 WHERE period=:period AND is_deleted=false
                 """).setParameter("period", period).getSingleResult());
-        String status = text(row[1]);
+        String status = NativeValueConverters.text(row[1]);
         return new AssetWorkbenchResponses.Period(
-                text(row[0]), status, "CLOSED".equals(status), row[2] != null, row[3] != null,
-                decimal(row[4]), text(row[5]), instant(row[6]), number(row[7]).longValue(),
+                NativeValueConverters.text(row[0]), status, "CLOSED".equals(status), row[2] != null, row[3] != null,
+                NativeValueConverters.toBigDecimal(row[4]), NativeValueConverters.text(row[5]), NativeValueConverters.toInstant(row[6]), number(row[7]).longValue(),
                 authorization.has(FinanceAssetAuthorization.PERIOD_MANAGE)
                         ? Set.of("CLOSED".equals(status) ? "REOPEN" : "CLOSE") : Set.of());
     }
@@ -232,7 +231,7 @@ public class FinanceAssetPeriodService {
                 WHERE period=:period AND is_deleted=false
                 FOR UPDATE
                 """).setParameter("period", period).getSingleResult());
-        return new PeriodRow(text(row[0]), number(row[1]).longValue());
+        return new PeriodRow(NativeValueConverters.text(row[0]), number(row[1]).longValue());
     }
 
     private List<RunEvidence> effectiveCorporateRuns(String period) {
@@ -249,7 +248,7 @@ public class FinanceAssetPeriodService {
         List<RunEvidence> result = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             result.add(new RunEvidence(
-                    uuid(row[0]), text(row[1]), decimal(row[2]), uuid(row[3]), number(row[4]).intValue()));
+                    NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.toBigDecimal(row[2]), NativeValueConverters.uuid(row[3]), number(row[4]).intValue()));
         }
         return result;
     }
@@ -274,27 +273,8 @@ public class FinanceAssetPeriodService {
         return value instanceof Object[] row ? row : new Object[]{value};
     }
 
-    private static UUID uuid(Object value) {
-        return value == null ? null : value instanceof UUID id ? id : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
     private static Number number(Object value) {
         return (Number) value;
-    }
-
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
-    }
-
-    private static Instant instant(Object value) {
-        if (value == null) return null;
-        if (value instanceof Instant instant) return instant;
-        if (value instanceof Timestamp timestamp) return timestamp.toInstant();
-        return ((java.time.OffsetDateTime) value).toInstant();
     }
 
     private record PeriodRow(String status, long rowVersion) {}

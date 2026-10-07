@@ -131,6 +131,68 @@ void main() {
   });
 
   test(
+    'business reset deletes old payloads and history and fences late writers',
+    () async {
+      final owner = '${'a' * 64}_';
+      final other = '${'b' * 64}_';
+      await storage.write('${owner}old', _json('old'));
+      await storage.write('${other}keep', _json('keep'));
+      final interrupted = File(
+        '${directory.path}/${owner}abandoned.json.00000000-0000-0000-0000-000000000000.tmp',
+      );
+      await interrupted.writeAsString(_json('abandoned'));
+      await storage.write(
+        'daily_report_approval_${owner}pending',
+        '{"pending":true}',
+      );
+      await storage.synchronizeBusinessReset(owner, 0);
+      expect(await storage.read('${owner}old'), isNotNull);
+      await storage.synchronizeBusinessReset(owner, 1);
+      await expectLater(storage.read('${owner}old'), throwsStateError);
+      await expectLater(
+        storage.write('${owner}late', _json('late')),
+        throwsStateError,
+      );
+      await expectLater(
+        storage.synchronizeBusinessReset(owner, 0),
+        throwsStateError,
+      );
+      expect(
+        await File('${directory.path}/${owner}old.json').exists(),
+        isFalse,
+      );
+      expect(await interrupted.exists(), isFalse);
+      expect(
+        await Directory('${directory.path}/history_v2/$owner').exists(),
+        isFalse,
+      );
+      expect(
+        await File(
+          '${directory.path}/daily_report_approval_${owner}pending.json',
+        ).exists(),
+        isFalse,
+      );
+      expect(await storage.read('${other}keep'), isNotNull);
+      final current = '${owner}g1_';
+      await storage.write('${current}new', _json('new'));
+      final reopened = NativeFormDraftStorage(
+        directoryProvider: () async => directory,
+      );
+      await reopened.synchronizeBusinessReset(owner, 1);
+      expect(await reopened.read('${current}new'), isNotNull);
+      await reopened.synchronizeBusinessReset(owner, 2);
+      await expectLater(
+        storage.write('${current}late', _json('late')),
+        throwsStateError,
+      );
+      expect(
+        await Directory('${directory.path}/history_v2/$current').exists(),
+        isFalse,
+      );
+    },
+  );
+
+  test(
     'native CAS remains pending until durable apply and lock cleanup complete',
     () async {
       final journalFlushed = Completer<void>();

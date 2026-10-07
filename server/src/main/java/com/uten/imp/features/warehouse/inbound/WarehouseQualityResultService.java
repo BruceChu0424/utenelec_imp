@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.inbound;
 
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -334,12 +335,12 @@ public class WarehouseQualityResultService {
         if (!trimmedBillNo.isEmpty()) countQuery.setParameter("bill_no", trimmedBillNo);
         long total = number(countQuery.getSingleResult()).longValue();
         List<TaskSummary> items = rows.stream().map(row -> new TaskSummary(
-                str(row[0]), str(row[1]), uuid(row[2]), str(row[3]), localDate(row[4]),
-                uuid(row[5]), str(row[6]), uuid(row[7]), str(row[8]),
+                str(row[0]), str(row[1]), NativeValueConverters.uuid(row[2]), str(row[3]), NativeValueConverters.toLocalDate(row[4]),
+                NativeValueConverters.uuid(row[5]), str(row[6]), NativeValueConverters.uuid(row[7]), str(row[8]),
                 number(row[9]).longValue(), number(row[10]).longValue(),
                 number(row[11]).longValue(), number(row[12]).longValue(),
                 number(row[13]).longValue(), number(row[14]).longValue(),
-                offsetDateTime(row[15]), number(row[16]).longValue())).toList();
+                NativeValueConverters.toOffsetDateTime(row[15]), number(row[16]).longValue())).toList();
         int totalPages = total == 0 ? 0
                 : (int) ((total + normalizedSize - 1) / normalizedSize);
         return new PageResponse<>(
@@ -495,8 +496,8 @@ public class WarehouseQualityResultService {
                 counts.passedLineCount(), counts.pendingReturnCount());
         return new TaskDetail(
                 workStatus, type, receiptId,
-                str(header[0]), localDate(header[1]),
-                uuid(header[2]), str(header[3]), uuid(header[4]), str(header[5]),
+                str(header[0]), NativeValueConverters.toLocalDate(header[1]),
+                NativeValueConverters.uuid(header[2]), str(header[3]), NativeValueConverters.uuid(header[4]), str(header[5]),
                 qualityStatus(type, receiptId),
                 counts.itemCount(), counts.passedLineCount(),
                 counts.failedLineCount(), counts.openItemCount(),
@@ -720,10 +721,10 @@ public class WarehouseQualityResultService {
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         return rows.stream().map(row -> new InspectionLineItem(
-                uuid(row[0]), uuid(row[1]), str(row[2]), str(row[3]),
-                str(row[4]), uuid(row[5]), str(row[6]), str(row[7]),
-                decimal(row[8]), decimal(row[9]), decimal(row[10]),
-                decimal(row[11]), decimal(row[12]),uuid(row[13]),str(row[14]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), str(row[2]), str(row[3]),
+                str(row[4]), NativeValueConverters.uuid(row[5]), str(row[6]), str(row[7]),
+                NativeValueConverters.toBigDecimal(row[8]), NativeValueConverters.toBigDecimal(row[9]), NativeValueConverters.toBigDecimal(row[10]),
+                NativeValueConverters.toBigDecimal(row[11]), NativeValueConverters.toBigDecimal(row[12]),NativeValueConverters.uuid(row[13]),str(row[14]),
                 preStocked(row[15], row[16], row[17], row[18], row[19]),
                 row[20] == null ? null : str(row[20]))).toList();
     }
@@ -801,14 +802,14 @@ public class WarehouseQualityResultService {
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         List<ReleasedSlice> base = rows.stream().map(row -> new ReleasedSlice(
-                uuid(row[0]), uuid(row[1]), uuid(row[2]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]),
                 str(row[3]), str(row[4]), str(row[5]),
-                uuid(row[6]), str(row[7]), str(row[8]),
-                decimal(row[9]), decimal(row[10]), decimal(row[11]),
-                decimal(row[12]), decimal(row[13]), decimal(row[14]),
+                NativeValueConverters.uuid(row[6]), str(row[7]), str(row[8]),
+                NativeValueConverters.toBigDecimal(row[9]), NativeValueConverters.toBigDecimal(row[10]), NativeValueConverters.toBigDecimal(row[11]),
+                NativeValueConverters.toBigDecimal(row[12]), NativeValueConverters.toBigDecimal(row[13]), NativeValueConverters.toBigDecimal(row[14]),
                 nullableDecimal(row[15]),
                 str(row[16]), str(row[17]), str(row[18]),
-                offsetDateTime(row[19]),List.of(),uuid(row[20]),str(row[21]))).toList();
+                NativeValueConverters.toOffsetDateTime(row[19]),List.of(),NativeValueConverters.uuid(row[20]),str(row[21]))).toList();
         Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
                 inboundAllocationRead.expectedForPassEvents(
                         receiptType, receiptId,
@@ -875,10 +876,10 @@ public class WarehouseQualityResultService {
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         return rows.stream().map(row -> new StockInHistoryItem(
-                uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]),
                 str(row[4]), str(row[5]), str(row[6]), str(row[7]),
-                decimal(row[8]), nullableDecimal(row[9]),
-                str(row[10]), str(row[11]), offsetDateTime(row[12]),List.of(),uuid(row[13]),str(row[14]),
+                NativeValueConverters.toBigDecimal(row[8]), nullableDecimal(row[9]),
+                str(row[10]), str(row[11]), NativeValueConverters.toOffsetDateTime(row[12]),List.of(),NativeValueConverters.uuid(row[13]),str(row[14]),
                 str(row[15]))).toList();
     }
 
@@ -943,12 +944,12 @@ public class WarehouseQualityResultService {
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         return rows.stream().map(row -> new RejectionCaseItem(
-                uuid(row[0]), uuid(row[1]), uuid(row[2]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]),
                 str(row[3]), str(row[4]), str(row[5]), str(row[6]),
                 nullableDecimal(row[7]), str(row[8]), str(row[9]),
-                localDate(row[10]), str(row[11]), str(row[12]),
-                offsetDateTime(row[13]), number(row[14]).longValue(),
-                canRecord && bool(row[15]),
+                NativeValueConverters.toLocalDate(row[10]), str(row[11]), str(row[12]),
+                NativeValueConverters.toOffsetDateTime(row[13]), number(row[14]).longValue(),
+                canRecord && NativeValueConverters.booleanValue(row[15]),
                 preStocked(row[16], row[17], row[18], row[19], row[20]))).toList();
     }
 
@@ -1001,7 +1002,7 @@ public class WarehouseQualityResultService {
                 .setParameter("receiptId", receiptId)
                 .setParameter("employeeId", employeeId)
                 .getSingleResult();
-        return bool(result);
+        return NativeValueConverters.booleanValue(result);
     }
 
     private static String normalizeStatus(String value) {
@@ -1053,11 +1054,7 @@ public class WarehouseQualityResultService {
                                          Object place, Object at, Object byName) {
         if (warehouseId == null) return null;
         return new PreStockedLocation(
-                uuid(warehouseId), str(warehouseName), str(place), offsetDateTime(at), str(byName));
-    }
-
-    private static UUID uuid(Object value) {
-        return value == null ? null : (UUID) value;
+                NativeValueConverters.uuid(warehouseId), str(warehouseName), str(place), NativeValueConverters.toOffsetDateTime(at), str(byName));
     }
 
     private static String str(Object value) {
@@ -1068,35 +1065,7 @@ public class WarehouseQualityResultService {
         return value == null ? 0L : (Number) value;
     }
 
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
-    }
-
     private static BigDecimal nullableDecimal(Object value) {
         return value == null ? null : (BigDecimal) value;
-    }
-
-    private static boolean bool(Object value) {
-        return value instanceof Boolean flag
-                ? flag : Boolean.parseBoolean(String.valueOf(value));
-    }
-
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof java.sql.Date date) return date.toLocalDate();
-        return LocalDate.parse(value.toString());
-    }
-
-    private static OffsetDateTime offsetDateTime(Object value) {
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime dateTime) return dateTime;
-        if (value instanceof java.time.Instant instant) {
-            return instant.atOffset(ZoneOffset.UTC);
-        }
-        if (value instanceof java.sql.Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        return OffsetDateTime.parse(value.toString());
     }
 }

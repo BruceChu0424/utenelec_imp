@@ -493,7 +493,9 @@ public class EmployeeCommandService {
     @Transactional
     public void changeIdentity(UUID id, String idType, String idNumber) {
         tx.bind();
-        Employee e = queryService.requireEmployee(id);
+        Employee e = empRepo.findByIdForUpdate(id)
+                .filter(employee -> !employee.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
         // 超管账号的证件同样禁止经员工管理修改(与 update / changePhone 一致)
         userRepo.findByEmployeeId(id).ifPresent(account -> {
             if (account.isSuperAdmin()) {

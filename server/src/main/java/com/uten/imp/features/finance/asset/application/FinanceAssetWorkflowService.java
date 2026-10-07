@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests;
@@ -199,9 +200,9 @@ public class FinanceAssetWorkflowService {
     }
 
     @Transactional
-    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    @PreAuthorize("hasAuthority('finance_asset:delete')")
     public void deleteDraft(UUID id, boolean deferred, long expectedVersion) {
-        tx.bind(); authorization.require(FinanceAssetAuthorization.EDIT);
+        tx.bind(); authorization.require(FinanceAssetAuthorization.DELETE);
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         Locked locked = lock(table, id); FinanceAssetStateMachine.requireDraft(locked.status());
         version(locked.version(), expectedVersion);
@@ -287,12 +288,12 @@ public class FinanceAssetWorkflowService {
         Object[] row = (Object[]) em.createNativeQuery("SELECT code, " + (deferred ? "total_amount" : "original_value") + ", cost_style_snapshot_id, accumulated_style_snapshot_id, expense_style_snapshot_id, clearing_style_snapshot_id FROM " + table + " WHERE id=:id FOR UPDATE")
                 .setParameter("id", id).getSingleResult();
         BigDecimal amount = (BigDecimal) row[1];
-        requireSnapshotAccounts(deferred,uuid(row[2]),uuid(row[3]),uuid(row[4]),uuid(row[5]));
-        UUID voucher = ledger.post(text(row[0]) + (deferred ? "-REC" : "-CAP"), period, date,
+        requireSnapshotAccounts(deferred,NativeValueConverters.uuid(row[2]),NativeValueConverters.uuid(row[3]),NativeValueConverters.uuid(row[4]),NativeValueConverters.uuid(row[5]));
+        UUID voucher = ledger.post(NativeValueConverters.text(row[0]) + (deferred ? "-REC" : "-CAP"), period, date,
                 deferred ? "DA_RECOGNITION" : "FA_CAP", id,
                 deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", "Initial recognition",
-                List.of(new FinanceAssetLedgerPostingService.Entry(uuid(row[2]), 1, amount, "Initial recognition"),
-                        new FinanceAssetLedgerPostingService.Entry(uuid(row[5]), -1, amount, "Clearing source")));
+                List.of(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(row[2]), 1, amount, "Initial recognition"),
+                        new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(row[5]), -1, amount, "Clearing source")));
         if (deferred) {
             changed(em.createNativeQuery("UPDATE deferred_expenses SET lifecycle_status='ACTIVE', status='摊销中', recognized_on=:date, expense_style_id=expense_style_snapshot_id, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='APPROVED' AND row_version=:version")
                     .setParameter("date", date).setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version()).executeUpdate());
@@ -391,25 +392,25 @@ public class FinanceAssetWorkflowService {
         requireNoLaterRun("DEPRECIATION",period);
         Object[] book=(Object[])em.createNativeQuery("SELECT id,original_value,accumulated_amount,net_book_value,cost_style_id,accumulated_style_id,clearing_style_id,status,start_period,depreciable_amount,expense_style_id FROM finance_asset_books WHERE asset_id=:id AND book_type='CORPORATE' AND status IN ('ACTIVE','FULLY_DEPRECIATED') AND is_deleted=false FOR UPDATE").setParameter("id",id).getSingleResult();
         BigDecimal original=decimal(book[1]),accumulated=decimal(book[2]),net=decimal(book[3]);
-        requireSnapshotAccounts(false,uuid(book[4]),uuid(book[5]),uuid(book[10]),uuid(book[6]));
+        requireSnapshotAccounts(false,NativeValueConverters.uuid(book[4]),NativeValueConverters.uuid(book[5]),NativeValueConverters.uuid(book[10]),NativeValueConverters.uuid(book[6]));
         if(accumulated.add(net).compareTo(original)!=0)throw conflict("Asset book does not reconcile to original cost");
-        boolean depreciationDue = text(book[8]).compareTo(period) <= 0
+        boolean depreciationDue = NativeValueConverters.text(book[8]).compareTo(period) <= 0
                 && decimal(book[9]).subtract(accumulated).signum() > 0;
-        if("ACTIVE".equals(text(book[7])) && depreciationDue){
+        if("ACTIVE".equals(NativeValueConverters.text(book[7])) && depreciationDue){
             Number fact=(Number)em.createNativeQuery("SELECT COUNT(*) FROM fa_depreciation_log WHERE asset_id=:asset AND asset_book_id=:book AND period=:period AND entry_kind='NORMAL' AND status='ACTIVE' AND is_deleted=false")
-                    .setParameter("asset",id).setParameter("book",uuid(book[0])).setParameter("period",period).getSingleResult();
+                    .setParameter("asset",id).setParameter("book",NativeValueConverters.uuid(book[0])).setParameter("period",period).getSingleResult();
             if(fact.longValue()!=1)throw conflict("This asset must be depreciated in the disposal month first");
         }
         List<FinanceAssetLedgerPostingService.Entry> entries=new ArrayList<>();
-        if(accumulated.signum()>0)entries.add(new FinanceAssetLedgerPostingService.Entry(uuid(book[5]),1,accumulated,"Remove accumulated depreciation"));
-        if(net.signum()>0)entries.add(new FinanceAssetLedgerPostingService.Entry(uuid(book[6]),1,net,"Transfer net book value to disposal clearing"));
-        entries.add(new FinanceAssetLedgerPostingService.Entry(uuid(book[4]),-1,original,"Derecognize fixed-asset cost"));
+        if(accumulated.signum()>0)entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(book[5]),1,accumulated,"Remove accumulated depreciation"));
+        if(net.signum()>0)entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(book[6]),1,net,"Transfer net book value to disposal clearing"));
+        entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(book[4]),-1,original,"Derecognize fixed-asset cost"));
         UUID voucher=ledger.post("FA-DISP-"+period+"-"+id.toString().substring(0,8),period,request.effectiveDate(),
                 "FA_DISPOSAL",id,"FIXED_ASSET",command.reason(),entries);
         changed(em.createNativeQuery("UPDATE fixed_assets SET lifecycle_status='DISPOSED',operating_status='DISPOSED',disposed_on=:date,status='清理',row_version=row_version+1,updated_at=now(),updated_by=:actor WHERE id=:id AND lifecycle_status='DISPOSAL_PENDING' AND row_version=:version")
                 .setParameter("date",request.effectiveDate()).setParameter("actor",actor).setParameter("id",id).setParameter("version",locked.version()).executeUpdate());
         em.createNativeQuery("UPDATE finance_asset_books SET status='CLOSED',posting_enabled=false,closed_at=now(),row_version=row_version+1,updated_at=now(),updated_by=:actor WHERE id=:book AND is_deleted=false")
-                .setParameter("actor",actor).setParameter("book",uuid(book[0])).executeUpdate();
+                .setParameter("actor",actor).setParameter("book",NativeValueConverters.uuid(book[0])).executeUpdate();
         approval("FIXED_ASSET",id,"DISPOSAL","APPROVE",command.reason(),actor);
         event("FIXED_ASSET",id,"DISPOSED","Fixed asset disposed",request.effectiveDate(),command.reason(),
                 Map.of("voucherId",voucher.toString(),"proceedsAmount",request.proceeds()),actor);
@@ -437,16 +438,16 @@ public class FinanceAssetWorkflowService {
         requireNoLaterRun("AMORTIZATION",period);
         Object[] row=(Object[])em.createNativeQuery("SELECT d.total_amount,d.cost_style_snapshot_id,d.expense_style_snapshot_id,COALESCE((SELECT SUM(l.amount) FROM da_amortization_log l WHERE l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false),0),s.start_period,d.clearing_style_snapshot_id FROM deferred_expenses d JOIN finance_deferral_schedule_versions s ON s.deferred_id=d.id AND s.status='APPROVED' AND s.is_deleted=false WHERE d.id=:id FOR UPDATE").setParameter("id",id).getSingleResult();
         BigDecimal remaining=decimal(row[0]).subtract(decimal(row[3]));
-        requireSnapshotAccounts(true,uuid(row[1]),null,uuid(row[2]),uuid(row[5]));
+        requireSnapshotAccounts(true,NativeValueConverters.uuid(row[1]),null,NativeValueConverters.uuid(row[2]),NativeValueConverters.uuid(row[5]));
         if(remaining.signum()<0)throw conflict("Deferred-expense balance is negative");
         Number fact=(Number)em.createNativeQuery("SELECT COUNT(*) FROM da_amortization_log WHERE deferred_id=:id AND period=:period AND entry_kind='NORMAL' AND status='ACTIVE' AND is_deleted=false")
                 .setParameter("id",id).setParameter("period",period).getSingleResult();
-        boolean amortizationDue = text(row[4]).compareTo(period) <= 0 && remaining.signum() > 0;
+        boolean amortizationDue = NativeValueConverters.text(row[4]).compareTo(period) <= 0 && remaining.signum() > 0;
         if(amortizationDue && fact.longValue()!=1)throw conflict("This deferred expense must be amortized in the termination month first");
         List<FinanceAssetLedgerPostingService.Entry> entries=new ArrayList<>();
         if(remaining.signum()>0){
-            entries.add(new FinanceAssetLedgerPostingService.Entry(uuid(row[2]),1,remaining,"Terminate remaining deferred expense"));
-            entries.add(new FinanceAssetLedgerPostingService.Entry(uuid(row[1]),-1,remaining,"Derecognize deferred cost"));
+            entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(row[2]),1,remaining,"Terminate remaining deferred expense"));
+            entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(row[1]),-1,remaining,"Derecognize deferred cost"));
         }
         UUID voucher=ledger.post("DA-TERM-"+period+"-"+id.toString().substring(0,8),period,request.effectiveDate(),
                 "DA_TERMINATION",id,"DEFERRED_EXPENSE",command.reason(),entries);
@@ -506,21 +507,21 @@ public class FinanceAssetWorkflowService {
                 """).setParameter("id", id).getSingleResult();
         if (deferred) {
             AssetSubmissionPolicy.validateDeferredExpense(new AssetSubmissionPolicy.DeferredInput(
-                    policy(category), decimal(row[0]), number(row[1]).intValue(), text(row[2]), date(row[3]), date(row[4])));
-            requireSource(id,true,text(row[5]),uuid(row[6]),text(row[7]),text(row[8]),category.documents());
-            requireNotFuture(date(row[3]),"benefitStartDate");
-            requireNotFuture(date(row[9]),"sourceDocumentDate");
-            requireResponsibility(uuid(row[10]),uuid(row[11]),text(row[12]),"responsible employee");
+                    policy(category), decimal(row[0]), number(row[1]).intValue(), NativeValueConverters.text(row[2]), NativeValueConverters.toLocalDate(row[3]), NativeValueConverters.toLocalDate(row[4])));
+            requireSource(id,true,NativeValueConverters.text(row[5]),NativeValueConverters.uuid(row[6]),NativeValueConverters.text(row[7]),NativeValueConverters.text(row[8]),category.documents());
+            requireNotFuture(NativeValueConverters.toLocalDate(row[3]),"benefitStartDate");
+            requireNotFuture(NativeValueConverters.toLocalDate(row[9]),"sourceDocumentDate");
+            requireResponsibility(NativeValueConverters.uuid(row[10]),NativeValueConverters.uuid(row[11]),NativeValueConverters.text(row[12]),"responsible employee");
         } else {
             AssetSubmissionPolicy.validateFixedAsset(new AssetSubmissionPolicy.FixedAssetInput(
-                    policy(category), decimal(row[0]), decimal(row[1]), number(row[2]).intValue(), text(row[3]),
-                    date(row[4]), date(row[5]), date(row[6])));
-            requireSource(id,false,text(row[7]),uuid(row[8]),text(row[9]),text(row[10]),category.documents());
-            requireNotFuture(date(row[4]),"acquisitionDate");
-            requireNotFuture(date(row[5]),"acceptanceDate");
-            requireNotFuture(date(row[6]),"readyForUseDate");
-            requireNotFuture(date(row[11]),"sourceDocumentDate");
-            requireResponsibility(uuid(row[12]),uuid(row[13]),text(row[14]),"custodian");
+                    policy(category), decimal(row[0]), decimal(row[1]), number(row[2]).intValue(), NativeValueConverters.text(row[3]),
+                    NativeValueConverters.toLocalDate(row[4]), NativeValueConverters.toLocalDate(row[5]), NativeValueConverters.toLocalDate(row[6])));
+            requireSource(id,false,NativeValueConverters.text(row[7]),NativeValueConverters.uuid(row[8]),NativeValueConverters.text(row[9]),NativeValueConverters.text(row[10]),category.documents());
+            requireNotFuture(NativeValueConverters.toLocalDate(row[4]),"acquisitionDate");
+            requireNotFuture(NativeValueConverters.toLocalDate(row[5]),"acceptanceDate");
+            requireNotFuture(NativeValueConverters.toLocalDate(row[6]),"readyForUseDate");
+            requireNotFuture(NativeValueConverters.toLocalDate(row[11]),"sourceDocumentDate");
+            requireResponsibility(NativeValueConverters.uuid(row[12]),NativeValueConverters.uuid(row[13]),NativeValueConverters.text(row[14]),"custodian");
         }
         requireStartAfterLatestRun(id,deferred);
     }
@@ -538,9 +539,9 @@ public class FinanceAssetWorkflowService {
                 .setParameter("id", id).getResultList();
         if (rows.isEmpty()) throw validation("An ACTIVE category policy is required");
         Object[] r=rows.getFirst(); String expected=deferred?"DEFERRED_EXPENSE":"FIXED_ASSET";
-        if(!expected.equals(text(r[1]))) throw validation("Category object type does not match");
-        return new Category(uuid(r[0]),text(r[1]),number(r[2]).intValue(),uuid(r[3]),uuid(r[4]),uuid(r[5]),uuid(r[6]),text(r[7]),
-                r[8]==null?null:number(r[8]).intValue(),(BigDecimal)r[9],text(r[10]));
+        if(!expected.equals(NativeValueConverters.text(r[1]))) throw validation("Category object type does not match");
+        return new Category(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),number(r[2]).intValue(),NativeValueConverters.uuid(r[3]),NativeValueConverters.uuid(r[4]),NativeValueConverters.uuid(r[5]),NativeValueConverters.uuid(r[6]),NativeValueConverters.text(r[7]),
+                r[8]==null?null:number(r[8]).intValue(),(BigDecimal)r[9],NativeValueConverters.text(r[10]));
     }
 
     private void createCorporateBook(UUID id, Category category, UUID actor) {
@@ -548,7 +549,7 @@ public class FinanceAssetWorkflowService {
                 .setParameter("id",id).getSingleResult();
         BigDecimal original=decimal(r[0]).setScale(4,RoundingMode.HALF_UP);
         BigDecimal residual=original.multiply(decimal(r[1])).setScale(4,RoundingMode.HALF_UP);
-        String start=CorporateAssetBookPolicy.deriveDepreciationStart(date(r[3])).toString();
+        String start=CorporateAssetBookPolicy.deriveDepreciationStart(NativeValueConverters.toLocalDate(r[3])).toString();
         em.createNativeQuery("""
                 INSERT INTO finance_asset_books
                     (asset_id,book_type,method,original_value,residual_rate,residual_amount,depreciable_amount,
@@ -566,7 +567,7 @@ public class FinanceAssetWorkflowService {
     private void createDeferredSchedule(UUID id, Category category, UUID actor) {
         Object[] r=(Object[])em.createNativeQuery("SELECT total_amount,useful_months,start_period,service_start_on,benefit_end_on FROM deferred_expenses WHERE id=:id")
                 .setParameter("id",id).getSingleResult();
-        BigDecimal amount=decimal(r[0]); int months=number(r[1]).intValue(); String start=text(r[2]); UUID versionId=UUID.randomUUID();
+        BigDecimal amount=decimal(r[0]); int months=number(r[1]).intValue(); String start=NativeValueConverters.text(r[2]); UUID versionId=UUID.randomUUID();
         em.createNativeQuery("""
                 INSERT INTO finance_deferral_schedule_versions
                     (id,deferred_id,version,method,total_amount,useful_months,start_period,end_period,
@@ -577,7 +578,7 @@ public class FinanceAssetWorkflowService {
                 """).setParameter("id",versionId).setParameter("deferred",id).setParameter("method",category.method())
                 .setParameter("amount",amount).setParameter("months",months).setParameter("start",start)
                 .setParameter("end",AssetPeriod.parse(start).value().plusMonths(months-1L).toString())
-                .setParameter("benefitStart",date(r[3])).setParameter("benefitEnd",date(r[4]))
+                .setParameter("benefitStart",NativeValueConverters.toLocalDate(r[3])).setParameter("benefitEnd",NativeValueConverters.toLocalDate(r[4]))
                 .setParameter("expense",category.expense()).setParameter("cost",category.cost()).setParameter("clearing",category.clearing())
                 .setParameter("policy",accountSnapshot(category)).setParameter("actor",actor).executeUpdate();
         var schedule=StraightLineScheduleCalculator.calculateDeferred(amount,months,AssetPeriod.parse(start));
@@ -642,13 +643,13 @@ public class FinanceAssetWorkflowService {
     }
     private void requireStartAfterLatestRun(UUID id,boolean deferred){
         String table=deferred?"deferred_expenses":"fixed_assets";
-        String start=text(em.createNativeQuery("SELECT start_period FROM "+table+" WHERE id=:id AND is_deleted=false").setParameter("id",id).getSingleResult());
+        String start=NativeValueConverters.text(em.createNativeQuery("SELECT start_period FROM "+table+" WHERE id=:id AND is_deleted=false").setParameter("id",id).getSingleResult());
         requireStartNotBeforeCurrentPeriod(start);
         String type=deferred?"AMORTIZATION":"DEPRECIATION";
         @SuppressWarnings("unchecked") List<Object> rows=em.createNativeQuery("SELECT period FROM finance_asset_posting_runs WHERE run_type=:type AND book_type='CORPORATE' AND run_kind='NORMAL' AND status='POSTED' AND is_deleted=false ORDER BY period DESC LIMIT 1")
                 .setParameter("type",type).getResultList();
-        if(!rows.isEmpty()&&start.compareTo(AssetPeriod.parse(text(rows.getFirst())).next().toString())<0){
-            throw validation("startPeriod must be at least "+AssetPeriod.parse(text(rows.getFirst())).next()+" because earlier periods are already posted");
+        if(!rows.isEmpty()&&start.compareTo(AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next().toString())<0){
+            throw validation("startPeriod must be at least "+AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next()+" because earlier periods are already posted");
         }
     }
     private static void requireStartNotBeforeCurrentPeriod(String startPeriod){
@@ -661,13 +662,13 @@ public class FinanceAssetWorkflowService {
         if(deferred){
             Object[] dates=(Object[])em.createNativeQuery("SELECT recognized_on,service_start_on FROM deferred_expenses WHERE id=:id AND is_deleted=false")
                     .setParameter("id",id).getSingleResult();
-            LocalDate recognized=date(dates[0]),benefitStart=date(dates[1]);
+            LocalDate recognized=NativeValueConverters.toLocalDate(dates[0]),benefitStart=NativeValueConverters.toLocalDate(dates[1]);
             if(recognized==null||benefitStart==null)throw conflict("Deferred expense has no recognition/benefit-start evidence");
             if(effectiveDate.isBefore(recognized)||effectiveDate.isBefore(benefitStart)){
                 throw validation("effectiveDate cannot precede recognition or benefit start");
             }
         }else{
-            LocalDate capitalized=date(em.createNativeQuery("SELECT capitalized_on FROM fixed_assets WHERE id=:id AND is_deleted=false")
+            LocalDate capitalized=NativeValueConverters.toLocalDate(em.createNativeQuery("SELECT capitalized_on FROM fixed_assets WHERE id=:id AND is_deleted=false")
                     .setParameter("id",id).getSingleResult());
             if(capitalized==null)throw conflict("Fixed asset has no capitalization evidence");
             if(effectiveDate.isBefore(capitalized)){
@@ -678,7 +679,7 @@ public class FinanceAssetWorkflowService {
     private void requireFixedAssetChangeDate(UUID id,LocalDate effectiveDate){
         if(effectiveDate==null)throw validation("effectiveDate is required");
         requireNotFuture(effectiveDate,"effectiveDate");
-        LocalDate capitalized=date(em.createNativeQuery("SELECT capitalized_on FROM fixed_assets WHERE id=:id AND is_deleted=false")
+        LocalDate capitalized=NativeValueConverters.toLocalDate(em.createNativeQuery("SELECT capitalized_on FROM fixed_assets WHERE id=:id AND is_deleted=false")
                 .setParameter("id",id).getSingleResult());
         if(capitalized==null)throw conflict("Fixed asset has no capitalization evidence");
         if(effectiveDate.isBefore(capitalized)){
@@ -718,8 +719,8 @@ public class FinanceAssetWorkflowService {
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("SELECT effective_date,actor_user_id,COALESCE(payload->>'proceedsAmount','0') FROM finance_asset_events WHERE object_type=:type AND object_id=:id AND event_type=:event ORDER BY occurred_at DESC,id DESC LIMIT 1")
                 .setParameter("type",objectType).setParameter("id",id).setParameter("event",eventType).getResultList();
         if(rows.isEmpty())throw conflict("Workflow request evidence is missing");
-        Object[]r=rows.getFirst(); if(date(r[0])==null)throw conflict("Workflow effective date is missing");
-        return new RequestEvidence(date(r[0]),uuid(r[1]),text(r[2]));
+        Object[]r=rows.getFirst(); if(NativeValueConverters.toLocalDate(r[0])==null)throw conflict("Workflow effective date is missing");
+        return new RequestEvidence(NativeValueConverters.toLocalDate(r[0]),NativeValueConverters.uuid(r[1]),NativeValueConverters.text(r[2]));
     }
     private void requireEffectiveRun(String runType,String period){
         Number count=(Number)em.createNativeQuery("SELECT COUNT(*) FROM finance_asset_posting_runs WHERE run_type=:type AND book_type='CORPORATE' AND period=:period AND run_kind='NORMAL' AND status='POSTED' AND is_deleted=false")
@@ -733,15 +734,15 @@ public class FinanceAssetWorkflowService {
     }
     private AssetSubmissionPolicy.PolicyInput policy(Category c){return new AssetSubmissionPolicy.PolicyInput(c.id(),c.cost(),c.accumulated(),c.expense(),c.clearing());}
     private BigDecimal residual(UUID category,BigDecimal value){if(value!=null)return value;if(category!=null){Object v=em.createNativeQuery("SELECT default_salvage_rate FROM finance_asset_categories WHERE id=:id AND is_deleted=false").setParameter("id",category).getSingleResult();if(v!=null)return (BigDecimal)v;}throw validation("salvageRate or an active category residual policy is required");}
-    private Locked lock(String table,UUID id){@SuppressWarnings("unchecked")List<Object[]> rows=em.createNativeQuery("SELECT lifecycle_status,row_version,submitted_by FROM "+table+" WHERE id=:id AND is_deleted=false FOR UPDATE").setParameter("id",id).getResultList();if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"Asset record not found");Object[]r=rows.getFirst();return new Locked(text(r[0]),number(r[1]).longValue(),uuid(r[2]));}
+    private Locked lock(String table,UUID id){@SuppressWarnings("unchecked")List<Object[]> rows=em.createNativeQuery("SELECT lifecycle_status,row_version,submitted_by FROM "+table+" WHERE id=:id AND is_deleted=false FOR UPDATE").setParameter("id",id).getResultList();if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"Asset record not found");Object[]r=rows.getFirst();return new Locked(NativeValueConverters.text(r[0]),number(r[1]).longValue(),NativeValueConverters.uuid(r[2]));}
     private AssetWorkbenchResponses.WorkflowResult result(String table,UUID id,boolean deferred){
         Object[]r=(Object[])em.createNativeQuery("SELECT lifecycle_status,row_version,COALESCE(submitted_by,created_by) FROM "+table+" WHERE id=:id AND is_deleted=false").setParameter("id",id).getSingleResult();
-        String s=text(r[0]); UUID maker=uuid(r[2]);
+        String s=NativeValueConverters.text(r[0]); UUID maker=NativeValueConverters.uuid(r[2]);
         if("DISPOSAL_PENDING".equals(s)||"TERMINATION_PENDING".equals(s)){
             String workflow=deferred?"TERMINATION":"DISPOSAL";
             @SuppressWarnings("unchecked") List<Object> actors=em.createNativeQuery("SELECT actor_user_id FROM finance_asset_approval_steps WHERE object_type=:type AND object_id=:id AND workflow_type=:workflow AND action='SUBMIT' ORDER BY step_no DESC LIMIT 1")
                     .setParameter("type",deferred?"DEFERRED_EXPENSE":"FIXED_ASSET").setParameter("id",id).setParameter("workflow",workflow).getResultList();
-            if(!actors.isEmpty())maker=uuid(actors.getFirst());
+            if(!actors.isEmpty())maker=NativeValueConverters.uuid(actors.getFirst());
         }
         return new AssetWorkbenchResponses.WorkflowResult(id,s,null,number(r[1]).longValue(),authorization.allowedActions(s,maker,deferred));
     }
@@ -753,11 +754,8 @@ public class FinanceAssetWorkflowService {
     private static void changed(int count){if(count!=1)throw conflict("Concurrent workflow change; refresh and retry");}
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
-    private static UUID uuid(Object v){return v==null?null:v instanceof UUID id?id:UUID.fromString(v.toString());}
-    private static String text(Object v){return v==null?null:v.toString();}
     private static Number number(Object v){return (Number)v;}
     private static BigDecimal decimal(Object v){return (BigDecimal)v;}
-    private static LocalDate date(Object v){return v==null?null:v instanceof LocalDate d?d:((java.sql.Date)v).toLocalDate();}
     private static String nullToEmpty(String v){return v==null?"":v;}
     static String normalizeType(String value){return value==null||value.isBlank()?null:value.trim().toUpperCase(java.util.Locale.ROOT);}
     static String normalizeRef(String value){return value==null||value.isBlank()?null:value.trim();}

@@ -13,6 +13,7 @@ class UserProfile {
     this.code,
     this.department,
     this.position,
+    this.businessResetGeneration = 0,
   });
 
   final String id;
@@ -24,6 +25,7 @@ class UserProfile {
   final String? code;
   final String? department;
   final String? position;
+  final int businessResetGeneration;
   final List<String> permissions;
   final bool mustChangePassword;
 
@@ -39,12 +41,24 @@ class UserProfile {
     code: json['code'] as String?,
     department: json['department'] as String?,
     position: json['position'] as String?,
+    businessResetGeneration: _businessResetGeneration(json),
     mustChangePassword: json['mustChangePassword'] as bool? ?? false,
     superAdmin: json['superAdmin'] as bool? ?? false,
     permissions: ((json['permissions'] as List<dynamic>?) ?? const [])
         .map((e) => e as String)
         .toList(),
   );
+
+  static int _businessResetGeneration(Map<String, dynamic> json) {
+    // Old servers predate the reset fence. Malformed new responses must not
+    // silently reopen the pre-reset namespace.
+    final value = json['businessResetGeneration'];
+    if (!json.containsKey('businessResetGeneration')) return 0;
+    if (value is! int || value < 0) {
+      throw const FormatException('业务数据代际无效，请重新登录');
+    }
+    return value;
+  }
 }
 
 /// 登录/刷新返回。

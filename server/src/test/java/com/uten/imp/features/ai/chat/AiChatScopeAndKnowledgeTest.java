@@ -67,7 +67,8 @@ class AiChatScopeAndKnowledgeTest {
     }
 
     @BeforeEach void before() {
-        handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, docs, json);
+        handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, docs, json,
+                new AiDocumentWorkflows(access), mock(AiChatOperationMemoryService.class));
         when(access.requireChat()).thenReturn(new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "keeper",
                 Set.of("ai:use", "stock:view", "stock_doc:view"), false, true, false));
         when(access.domains()).thenReturn(Set.of("SELF", "WAREHOUSE"));

@@ -90,7 +90,7 @@ public class FixedAssetController {
     }
 
     @DeleteMapping("/fixed-assets/{id}")
-    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    @PreAuthorize("hasAuthority('finance_asset:delete')")
     public void deleteFixed(
             @PathVariable UUID id, @RequestParam long expectedVersion) {
         workflow.deleteDraft(id, false, expectedVersion);
@@ -202,7 +202,7 @@ public class FixedAssetController {
     }
 
     @DeleteMapping("/deferred-expenses/{id}")
-    @PreAuthorize("hasAuthority('finance_asset:edit')")
+    @PreAuthorize("hasAuthority('finance_asset:delete')")
     public void deleteDeferred(
             @PathVariable UUID id, @RequestParam long expectedVersion) {
         workflow.deleteDraft(id, true, expectedVersion);

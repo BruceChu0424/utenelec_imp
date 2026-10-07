@@ -9,6 +9,47 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get releaseNotesOpen => 'See what\'s new in this version';
+
+  @override
+  String get releaseNotesTitle => 'What\'s new';
+
+  @override
+  String get releaseNotesClose => 'Got it';
+
+  @override
+  String get releaseNotesUnavailable =>
+      'No release notes are included for this version.';
+
+  @override
+  String get release253Hr =>
+      'Select multiple employees and compare current identity details with proposed corrections before applying them together.';
+
+  @override
+  String get release253Permissions =>
+      'Manage page and child-page access in a shared drawer with bulk grants. Editing and deletion remain separate permissions.';
+
+  @override
+  String get release253Materials =>
+      'Confirm aggregated material orders once and process dependencies automatically, with corrected shared supply sources and shortages.';
+
+  @override
+  String get release253Ai =>
+      'The AI assistant adds file understanding, action confirmation and personal operation memory, plus usage reporting and per-person limits.';
+
+  @override
+  String get release253Notices =>
+      'Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.';
+
+  @override
+  String get release253Reset =>
+      'Clearing business data also invalidates old drafts and clears business weight measurements and learned weight records.';
+
+  @override
+  String get release253Maintenance =>
+      'Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.';
+
+  @override
   String get businessColumnAmountUnavailable =>
       'This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.';
 
@@ -1178,9 +1219,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardEmailOptional => 'Optional';
 
   @override
-  String get employeeOnboardHireDateHint => 'yyyy-MM-dd';
-
-  @override
   String get employeeOnboardPickHireDate => 'Please pick a hire date';
 
   @override
@@ -1776,11 +1814,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => 'Please choose an honoree';
 
   @override
-  String get noticeQuickCelebrationTitle => 'Quick celebration';
+  String get noticeLevelUrgent => 'Urgent';
 
   @override
-  String get noticeQuickCelebrationSubtitle =>
-      'Pick a type; the template fills automatically';
+  String get noticeLevelAction => 'Action';
+
+  @override
+  String get noticeLevelProgress => 'Progress';
+
+  @override
+  String get noticeLevelBroadcast => 'Announcement';
+
+  @override
+  String noticeLevelSummary(Object level, int count) {
+    return '$level $count';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => 'Quick celebration';
 
   @override
   String get noticeQuickPublish => 'New notice';
@@ -1851,16 +1902,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileChangeFieldHrOnly => 'Contact HR';
-
-  @override
-  String get profileChangePasswordHint =>
-      'For your safety, please enter your current password';
-
-  @override
-  String get profileChangePasswordLabel => 'Current password';
-
-  @override
-  String get profileChangePasswordWrong => 'Incorrect password';
 
   @override
   String get profileChangeSubmitSuccess => 'Submitted, pending HR review';
@@ -2088,9 +2129,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesHubTitle => 'Sales';
 
   @override
-  String get salesHubSectionReports => 'Sales reports';
-
-  @override
   String get salesHubSectionScarcity => 'Stock arbitration';
 
   @override
@@ -2145,9 +2183,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get purchaseHubTitle => 'Purchasing';
 
   @override
-  String get purchaseHubSectionReports => 'Purchase reports';
-
-  @override
   String get purchaseHubTaskCenter => 'Purchasing tasks';
 
   @override
@@ -2193,9 +2228,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get subcontractHubTitle => 'Subcontracting';
 
   @override
-  String get subcontractHubSectionReports => 'Subcontract reports';
-
-  @override
   String get subcontractHubTaskCenter => 'Subcontracting tasks';
 
   @override
@@ -2220,9 +2252,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get productionHubTitle => 'Production';
 
   @override
-  String get productionHubSectionReports => 'Production reports';
-
-  @override
   String get productionHubSchedule => 'Scheduling & progress';
 
   @override
@@ -2236,20 +2265,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Create a plan manually, optionally referencing a sales order';
 
   @override
-  String get productionHubPlanHistory => 'Production plan history';
-
-  @override
-  String get productionHubPlanHistorySub =>
-      'View plans, approvals, and batch records';
-
-  @override
   String get productionHubMaterialAnalysis => 'Material readiness analysis';
-
-  @override
-  String get productionHubDaily => 'Production daily';
-
-  @override
-  String get productionHubDailySub => 'Daily output & reversal';
 
   @override
   String get productionHubReportPlanDetail => 'Plan detail';
@@ -2273,9 +2289,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get financeHubTitle => 'Finance';
 
   @override
-  String get financeHubSectionReports => 'Finance reports';
-
-  @override
   String get financeHubTaskApproval => 'Order approval tasks';
 
   @override
@@ -2287,26 +2300,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get financeSalesChangesQueueLabel => 'sales order changes';
-
-  @override
-  String financeSalesQueueCountLoading(String queue) {
-    return 'Loading pending $queue';
-  }
-
-  @override
-  String financeSalesQueueCountFailed(String queue) {
-    return 'Could not load pending $queue. Open the task page to retry.';
-  }
-
-  @override
-  String financeSalesQueueCountEmpty(String queue) {
-    return 'No pending $queue';
-  }
-
-  @override
-  String financeSalesQueueCountPending(String queue, int count) {
-    return 'Pending $queue: $count';
-  }
 
   @override
   String get financeHubTaskApprovalSub =>
@@ -2422,18 +2415,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Detail (per item) & summary (per doc)';
 
   @override
-  String get warehouseHubDocTransfer => 'Stock transfer';
-
-  @override
-  String get warehouseHubDocTransferSub => 'Between warehouses';
-
-  @override
-  String get warehouseHubDocCheck => 'Stocktake';
-
-  @override
-  String get warehouseHubDocCheckSub => 'Count & adjustment';
-
-  @override
   String get warehouseHubInventoryLive => 'Live stock';
 
   @override
@@ -2514,16 +2495,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get impersonationSwitchPerson => 'Switch person';
-
-  @override
-  String get impersonationEnterPasswordTitle => 'Confirm switch person';
-
-  @override
-  String get impersonationEnterPasswordHint =>
-      'For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.';
-
-  @override
-  String get impersonationPasswordLabel => 'Login password';
 
   @override
   String get impersonationTargetPickerTitle => 'Select an employee to view';
@@ -2745,10 +2716,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialShortage => 'Still short';
 
   @override
-  String get materialPhysicalShortageHint =>
-      'Batch demand still lacking qualified material. Issuing purchase, subcontract or workshop work does not reduce this shortage; qualified stock-in allocated to this batch does. Additional supply separately deducts incoming supply to prevent duplicate requests.';
-
-  @override
   String get materialSupplyProgressHint =>
       'Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.';
 
@@ -2768,9 +2735,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get materialResponsible => 'Owner';
 
   @override
-  String get materialFutureSupply => 'In transit';
-
-  @override
   String get materialProgress => 'Progress / next step';
 
   @override
@@ -2780,10 +2744,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String materialAggregateSources(int products, int paths) {
     return '$products products · $paths paths';
   }
-
-  @override
-  String get materialRouteChangedRetry =>
-      'Analysis updated. Review the selected routes and try again.';
 
   @override
   String get materialWarehouseFacts => 'Warehouse and supply details';
@@ -9865,6 +9825,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'Chat history could not be cleared. Please try again later.';
 
   @override
+  String get aiChatMemoryRecentTitle => 'Recent operations';
+
+  @override
+  String get aiChatMemorySettingLabel => 'Remember my frequent operations';
+
+  @override
+  String get aiChatMemorySettingHint =>
+      'Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.';
+
+  @override
+  String get aiChatMemoryClear => 'Clear records';
+
+  @override
+  String get aiChatMemoryClearConfirm =>
+      'Clear the frequent operations I remember about you?';
+
+  @override
+  String get aiChatMemoryCleared => 'Cleared';
+
+  @override
+  String get aiChatMemoryUnavailable =>
+      'Your account currently has no permission';
+
+  @override
   String aiChatHiddenTurns(int count) {
     return '$count earlier messages are no longer shown because your account permissions changed.';
   }
@@ -9914,15 +9898,47 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  ) {
-    return '$people people · to update $update · notice only $info · match $same · processed $applied';
+  String hrReconcileStatPeople(int count) {
+    return '$count to review';
   }
+
+  @override
+  String hrReconcileStatUpdate(int count) {
+    return '$count to update';
+  }
+
+  @override
+  String hrReconcileStatInfo(int count) {
+    return '$count notice only';
+  }
+
+  @override
+  String hrReconcileStatSame(int count) {
+    return '$count match';
+  }
+
+  @override
+  String hrReconcileStatApplied(int count) {
+    return '$count processed';
+  }
+
+  @override
+  String hrReconcileStatTierHigh(int count) {
+    return '$count high confidence';
+  }
+
+  @override
+  String hrReconcileStatTierMedium(int count) {
+    return '$count medium';
+  }
+
+  @override
+  String hrReconcileStatTierManual(int count) {
+    return '$count need manual input';
+  }
+
+  @override
+  String get hrReconcileSelectHigh => 'Select high confidence';
 
   @override
   String get hrReconcileValidity =>
@@ -10016,22 +10032,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileColKind => 'Type';
 
   @override
-  String get hrReconcileColCode => 'Employee No.';
-
-  @override
-  String get hrReconcileColName => 'Name';
-
-  @override
-  String get hrReconcileColDept => 'Department';
+  String get hrReconcileColEmployee => 'Employee';
 
   @override
   String get hrReconcileColReason => 'Reason';
 
   @override
-  String get hrReconcileColIdNumber => 'ID number';
+  String get hrReconcileIdNumberInfo =>
+      'Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number';
 
   @override
-  String get hrReconcileColBasis => 'Basis';
+  String hrReconcileBasisOf(String label) {
+    return 'Suggestion basis: $label';
+  }
 
   @override
   String get hrReconcileColTier => 'Confidence';
@@ -10108,4 +10121,177 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hrReconcileStatusDiscarded => 'Discarded';
+
+  @override
+  String get aiUsageTitle => 'AI usage & quotas';
+
+  @override
+  String get aiUsageEntry => 'Usage & quotas';
+
+  @override
+  String get aiUsageTodayTokens => 'Tokens today';
+
+  @override
+  String get aiUsageTodayLabel => 'Today';
+
+  @override
+  String get aiUsageTodayCalls => 'Calls today';
+
+  @override
+  String get aiUsageActiveUsers => 'Active users today';
+
+  @override
+  String get aiUsageDisabledCount => 'Disabled';
+
+  @override
+  String aiUsageBudgetOf(String num, String total) {
+    return '$num / $total';
+  }
+
+  @override
+  String get aiUsageWindowHour => 'Last 24 hours';
+
+  @override
+  String get aiUsageWindowDaily => 'Last 30 days';
+
+  @override
+  String get aiUsageWindowMonthly => 'Last 12 months';
+
+  @override
+  String get aiUsageWindowYearly => 'Last 5 years';
+
+  @override
+  String get aiUsageTrend => 'Usage trend';
+
+  @override
+  String get aiUsageEmpty => 'No usage yet';
+
+  @override
+  String get aiUsageLoadFailed =>
+      'Failed to load AI usage, please try again later';
+
+  @override
+  String get aiUsagePersonMissing =>
+      'Usage information for this person was not found';
+
+  @override
+  String get aiUsageColPerson => 'Person';
+
+  @override
+  String get aiUsageColWindow => 'Window usage';
+
+  @override
+  String get aiUsageColToday => 'Today';
+
+  @override
+  String get aiUsageColLimit => 'Personal quota';
+
+  @override
+  String get aiUsageColStatus => 'Status';
+
+  @override
+  String get aiUsageColLastUsed => 'Last used';
+
+  @override
+  String aiUsageColCalls(int count) {
+    return '$count calls';
+  }
+
+  @override
+  String get aiUsageLimitFollowGlobal => 'Follow global';
+
+  @override
+  String get aiUsageStatusNormal => 'Normal';
+
+  @override
+  String get aiUsageStatusOverLimit => 'Over limit';
+
+  @override
+  String get aiUsageStatusDisabled => 'Disabled';
+
+  @override
+  String get aiUsageSetLimits => 'Set quotas';
+
+  @override
+  String get aiUsageLimitTokensLabel => 'Daily token quota';
+
+  @override
+  String get aiUsageLimitJobsLabel => 'Daily job quota';
+
+  @override
+  String get aiUsageLimitHint => 'Leave empty to follow the global default';
+
+  @override
+  String aiUsageLimitRangeError(int max) {
+    return 'Enter a whole number between 1 and $max';
+  }
+
+  @override
+  String get aiUsageDisableLabel => 'Disable AI for this account';
+
+  @override
+  String get aiUsageDisableHint =>
+      'While disabled, AI chat and file recognition cannot be used; you can restore it anytime';
+
+  @override
+  String get aiUsageDisableConfirm => 'Disable AI usage for this account?';
+
+  @override
+  String get aiUsageDisableAction => 'Disable';
+
+  @override
+  String get aiUsageDisabledBanner =>
+      'AI usage for this account has been disabled';
+
+  @override
+  String get aiUsageNoPersonalLimit =>
+      'No personal quota; the site-wide budget applies';
+
+  @override
+  String get aiUsageByPurpose => 'By purpose';
+
+  @override
+  String get aiUsageByProvider => 'By provider';
+
+  @override
+  String get aiUsageRecentUses => 'Recent uses';
+
+  @override
+  String get aiUsagePeople => 'People usage';
+
+  @override
+  String get aiUsageConflict => 'The settings changed. Refresh and save again';
+
+  @override
+  String aiUsageTokensUnit(String n) {
+    return '$n tokens';
+  }
+
+  @override
+  String aiUsageTodayUsed(String tokens) {
+    return 'Used $tokens today';
+  }
+
+  @override
+  String get aiUsageLastUsedJustNow => 'Just now';
+
+  @override
+  String aiUsageLastUsedMinutesAgo(int n) {
+    return '$n min ago';
+  }
+
+  @override
+  String aiUsageLastUsedHoursAgo(int n) {
+    return '$n h ago';
+  }
+
+  @override
+  String aiUsageLastUsedDaysAgo(int n) {
+    return '$n d ago';
+  }
+
+  @override
+  String aiUsageTrendSemantics(String title, String tokens, String calls) {
+    return '$title, $tokens tokens and $calls calls in total';
+  }
 }

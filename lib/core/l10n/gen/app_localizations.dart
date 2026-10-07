@@ -100,6 +100,72 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @releaseNotesOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看本版本更新内容'**
+  String get releaseNotesOpen;
+
+  /// No description provided for @releaseNotesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本更新'**
+  String get releaseNotesTitle;
+
+  /// No description provided for @releaseNotesClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'知道了'**
+  String get releaseNotesClose;
+
+  /// No description provided for @releaseNotesUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本暂未附带更新说明。'**
+  String get releaseNotesUnavailable;
+
+  /// No description provided for @release253Hr.
+  ///
+  /// In zh, this message translates to:
+  /// **'人事证件核对支持勾选多人，在核对表中对照原资料与更正内容后批量处理。'**
+  String get release253Hr;
+
+  /// No description provided for @release253Permissions.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面权限使用统一抽屉，包含相关子页面，支持批量授权；编辑与删除分开管理。'**
+  String get release253Permissions;
+
+  /// No description provided for @release253Materials.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料汇总下单统一确认，按依赖顺序自动办理，并修正共享物料的来源与缺口计算。'**
+  String get release253Materials;
+
+  /// No description provided for @release253Ai.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 助手增加文件理解、操作确认与个人操作记忆，可查看用量并设置人员限额。'**
+  String get release253Ai;
+
+  /// No description provided for @release253Notices.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间到料提醒按新增可生产数量发送给有权限的负责人；紧急、待办、进度与公告使用不同样式。'**
+  String get release253Notices;
+
+  /// No description provided for @release253Reset.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空业务数据同时作废旧草稿，并清除业务称重与重量学习记录。'**
+  String get release253Reset;
+
+  /// No description provided for @release253Maintenance.
+  ///
+  /// In zh, this message translates to:
+  /// **'清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。'**
+  String get release253Maintenance;
+
   /// No description provided for @businessColumnAmountUnavailable.
   ///
   /// In zh, this message translates to:
@@ -2212,12 +2278,6 @@ abstract class AppLocalizations {
   /// **'可选'**
   String get employeeOnboardEmailOptional;
 
-  /// No description provided for @employeeOnboardHireDateHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'yyyy-MM-dd'**
-  String get employeeOnboardHireDateHint;
-
   /// No description provided for @employeeOnboardPickHireDate.
   ///
   /// In zh, this message translates to:
@@ -3289,17 +3349,41 @@ abstract class AppLocalizations {
   /// **'请选择祝福对象'**
   String get noticeCelebrationSubjectRequired;
 
+  /// No description provided for @noticeLevelUrgent.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急'**
+  String get noticeLevelUrgent;
+
+  /// No description provided for @noticeLevelAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'待办'**
+  String get noticeLevelAction;
+
+  /// No description provided for @noticeLevelProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'进度'**
+  String get noticeLevelProgress;
+
+  /// No description provided for @noticeLevelBroadcast.
+  ///
+  /// In zh, this message translates to:
+  /// **'公告'**
+  String get noticeLevelBroadcast;
+
+  /// No description provided for @noticeLevelSummary.
+  ///
+  /// In zh, this message translates to:
+  /// **'{level} {count}'**
+  String noticeLevelSummary(Object level, int count);
+
   /// No description provided for @noticeQuickCelebrationTitle.
   ///
   /// In zh, this message translates to:
   /// **'快捷发布祝福'**
   String get noticeQuickCelebrationTitle;
-
-  /// No description provided for @noticeQuickCelebrationSubtitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'选择类型，系统自动套用模板'**
-  String get noticeQuickCelebrationSubtitle;
 
   /// No description provided for @noticeQuickPublish.
   ///
@@ -3408,24 +3492,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'请联系人事修改'**
   String get profileChangeFieldHrOnly;
-
-  /// No description provided for @profileChangePasswordHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'为安全起见，请输入当前登录密码'**
-  String get profileChangePasswordHint;
-
-  /// No description provided for @profileChangePasswordLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'当前密码'**
-  String get profileChangePasswordLabel;
-
-  /// No description provided for @profileChangePasswordWrong.
-  ///
-  /// In zh, this message translates to:
-  /// **'密码错误，请重试'**
-  String get profileChangePasswordWrong;
 
   /// No description provided for @profileChangeSubmitSuccess.
   ///
@@ -3853,12 +3919,6 @@ abstract class AppLocalizations {
   /// **'销售管理'**
   String get salesHubTitle;
 
-  /// No description provided for @salesHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'销售报表'**
-  String get salesHubSectionReports;
-
   /// No description provided for @salesHubSectionScarcity.
   ///
   /// In zh, this message translates to:
@@ -3967,12 +4027,6 @@ abstract class AppLocalizations {
   /// **'采购管理'**
   String get purchaseHubTitle;
 
-  /// No description provided for @purchaseHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'采购报表'**
-  String get purchaseHubSectionReports;
-
   /// No description provided for @purchaseHubTaskCenter.
   ///
   /// In zh, this message translates to:
@@ -4063,12 +4117,6 @@ abstract class AppLocalizations {
   /// **'委外管理'**
   String get subcontractHubTitle;
 
-  /// No description provided for @subcontractHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'委外报表'**
-  String get subcontractHubSectionReports;
-
   /// No description provided for @subcontractHubTaskCenter.
   ///
   /// In zh, this message translates to:
@@ -4117,12 +4165,6 @@ abstract class AppLocalizations {
   /// **'生产管理'**
   String get productionHubTitle;
 
-  /// No description provided for @productionHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产报表'**
-  String get productionHubSectionReports;
-
   /// No description provided for @productionHubSchedule.
   ///
   /// In zh, this message translates to:
@@ -4147,35 +4189,11 @@ abstract class AppLocalizations {
   /// **'手工新建排产计划，可引用销售订单'**
   String get productionHubPlanSub;
 
-  /// No description provided for @productionHubPlanHistory.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产计划历史'**
-  String get productionHubPlanHistory;
-
-  /// No description provided for @productionHubPlanHistorySub.
-  ///
-  /// In zh, this message translates to:
-  /// **'查看计划、审批与分批记录'**
-  String get productionHubPlanHistorySub;
-
   /// No description provided for @productionHubMaterialAnalysis.
   ///
   /// In zh, this message translates to:
   /// **'物料分析准备'**
   String get productionHubMaterialAnalysis;
-
-  /// No description provided for @productionHubDaily.
-  ///
-  /// In zh, this message translates to:
-  /// **'生产日报表'**
-  String get productionHubDaily;
-
-  /// No description provided for @productionHubDailySub.
-  ///
-  /// In zh, this message translates to:
-  /// **'完工日报·红冲'**
-  String get productionHubDailySub;
 
   /// No description provided for @productionHubReportPlanDetail.
   ///
@@ -4219,12 +4237,6 @@ abstract class AppLocalizations {
   /// **'钱流管理'**
   String get financeHubTitle;
 
-  /// No description provided for @financeHubSectionReports.
-  ///
-  /// In zh, this message translates to:
-  /// **'钱流报表'**
-  String get financeHubSectionReports;
-
   /// No description provided for @financeHubTaskApproval.
   ///
   /// In zh, this message translates to:
@@ -4248,30 +4260,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'销售订单修改'**
   String get financeSalesChangesQueueLabel;
-
-  /// No description provided for @financeSalesQueueCountLoading.
-  ///
-  /// In zh, this message translates to:
-  /// **'正在加载{queue}待办数量'**
-  String financeSalesQueueCountLoading(String queue);
-
-  /// No description provided for @financeSalesQueueCountFailed.
-  ///
-  /// In zh, this message translates to:
-  /// **'{queue}待办数量加载失败，请进入任务页重试'**
-  String financeSalesQueueCountFailed(String queue);
-
-  /// No description provided for @financeSalesQueueCountEmpty.
-  ///
-  /// In zh, this message translates to:
-  /// **'没有待处理的{queue}'**
-  String financeSalesQueueCountEmpty(String queue);
-
-  /// No description provided for @financeSalesQueueCountPending.
-  ///
-  /// In zh, this message translates to:
-  /// **'待处理{queue}：{count}项'**
-  String financeSalesQueueCountPending(String queue, int count);
 
   /// No description provided for @financeHubTaskApprovalSub.
   ///
@@ -4495,30 +4483,6 @@ abstract class AppLocalizations {
   /// **'明细(一行一货品)·汇总(一行一单)'**
   String get warehouseHubSectionReportsDesc;
 
-  /// No description provided for @warehouseHubDocTransfer.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库调拨'**
-  String get warehouseHubDocTransfer;
-
-  /// No description provided for @warehouseHubDocTransferSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'仓库间调拨'**
-  String get warehouseHubDocTransferSub;
-
-  /// No description provided for @warehouseHubDocCheck.
-  ///
-  /// In zh, this message translates to:
-  /// **'盘点'**
-  String get warehouseHubDocCheck;
-
-  /// No description provided for @warehouseHubDocCheckSub.
-  ///
-  /// In zh, this message translates to:
-  /// **'盘点盈亏'**
-  String get warehouseHubDocCheckSub;
-
   /// No description provided for @warehouseHubInventoryLive.
   ///
   /// In zh, this message translates to:
@@ -4680,24 +4644,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'切换人'**
   String get impersonationSwitchPerson;
-
-  /// No description provided for @impersonationEnterPasswordTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'确认切换人'**
-  String get impersonationEnterPasswordTitle;
-
-  /// No description provided for @impersonationEnterPasswordHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。'**
-  String get impersonationEnterPasswordHint;
-
-  /// No description provided for @impersonationPasswordLabel.
-  ///
-  /// In zh, this message translates to:
-  /// **'登录密码'**
-  String get impersonationPasswordLabel;
 
   /// No description provided for @impersonationTargetPickerTitle.
   ///
@@ -5083,12 +5029,6 @@ abstract class AppLocalizations {
   /// **'还缺数量'**
   String get materialShortage;
 
-  /// No description provided for @materialPhysicalShortageHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。'**
-  String get materialPhysicalShortageHint;
-
   /// No description provided for @materialSupplyProgressHint.
   ///
   /// In zh, this message translates to:
@@ -5125,12 +5065,6 @@ abstract class AppLocalizations {
   /// **'负责人'**
   String get materialResponsible;
 
-  /// No description provided for @materialFutureSupply.
-  ///
-  /// In zh, this message translates to:
-  /// **'在途未到'**
-  String get materialFutureSupply;
-
   /// No description provided for @materialProgress.
   ///
   /// In zh, this message translates to:
@@ -5148,12 +5082,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{products} 个产品 · {paths} 条路径'**
   String materialAggregateSources(int products, int paths);
-
-  /// No description provided for @materialRouteChangedRetry.
-  ///
-  /// In zh, this message translates to:
-  /// **'分析已更新，请核对当前所选路线后重试'**
-  String get materialRouteChangedRetry;
 
   /// No description provided for @materialWarehouseFacts.
   ///
@@ -17098,6 +17026,48 @@ abstract class AppLocalizations {
   /// **'没能清空对话记录, 请稍后再试。'**
   String get aiChatSettingsClearFailed;
 
+  /// No description provided for @aiChatMemoryRecentTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近操作'**
+  String get aiChatMemoryRecentTitle;
+
+  /// No description provided for @aiChatMemorySettingLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'记住我的常用操作'**
+  String get aiChatMemorySettingLabel;
+
+  /// No description provided for @aiChatMemorySettingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'记住你让我打开过的表单和常用的查询, 下次同类问题我直接准备操作, 不再重新思考。'**
+  String get aiChatMemorySettingHint;
+
+  /// No description provided for @aiChatMemoryClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'清除记录'**
+  String get aiChatMemoryClear;
+
+  /// No description provided for @aiChatMemoryClearConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定清除我记住的你的常用操作吗?'**
+  String get aiChatMemoryClearConfirm;
+
+  /// No description provided for @aiChatMemoryCleared.
+  ///
+  /// In zh, this message translates to:
+  /// **'已清除'**
+  String get aiChatMemoryCleared;
+
+  /// No description provided for @aiChatMemoryUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前账号暂无权限'**
+  String get aiChatMemoryUnavailable;
+
   /// No description provided for @aiChatHiddenTurns.
   ///
   /// In zh, this message translates to:
@@ -17182,17 +17152,59 @@ abstract class AppLocalizations {
   /// **'这是 {name} 的核对，只能查看'**
   String hrReconcileReadOnlyNotice(String name);
 
-  /// No description provided for @hrReconcileSummary.
+  /// No description provided for @hrReconcileStatPeople.
   ///
   /// In zh, this message translates to:
-  /// **'共 {people} 人 · 需更正 {update} · 仅提示 {info} · 一致 {same} · 已处理 {applied}'**
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  );
+  /// **'待核对 {count} 人'**
+  String hrReconcileStatPeople(int count);
+
+  /// No description provided for @hrReconcileStatUpdate.
+  ///
+  /// In zh, this message translates to:
+  /// **'需更正 {count}'**
+  String hrReconcileStatUpdate(int count);
+
+  /// No description provided for @hrReconcileStatInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅提示 {count}'**
+  String hrReconcileStatInfo(int count);
+
+  /// No description provided for @hrReconcileStatSame.
+  ///
+  /// In zh, this message translates to:
+  /// **'一致 {count}'**
+  String hrReconcileStatSame(int count);
+
+  /// No description provided for @hrReconcileStatApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已处理 {count} 人'**
+  String hrReconcileStatApplied(int count);
+
+  /// No description provided for @hrReconcileStatTierHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'高把握 {count}'**
+  String hrReconcileStatTierHigh(int count);
+
+  /// No description provided for @hrReconcileStatTierMedium.
+  ///
+  /// In zh, this message translates to:
+  /// **'中把握 {count}'**
+  String hrReconcileStatTierMedium(int count);
+
+  /// No description provided for @hrReconcileStatTierManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'需人工 {count}'**
+  String hrReconcileStatTierManual(int count);
+
+  /// No description provided for @hrReconcileSelectHigh.
+  ///
+  /// In zh, this message translates to:
+  /// **'只选把握高的'**
+  String get hrReconcileSelectHigh;
 
   /// No description provided for @hrReconcileValidity.
   ///
@@ -17338,23 +17350,11 @@ abstract class AppLocalizations {
   /// **'类型'**
   String get hrReconcileColKind;
 
-  /// No description provided for @hrReconcileColCode.
+  /// No description provided for @hrReconcileColEmployee.
   ///
   /// In zh, this message translates to:
-  /// **'工号'**
-  String get hrReconcileColCode;
-
-  /// No description provided for @hrReconcileColName.
-  ///
-  /// In zh, this message translates to:
-  /// **'姓名'**
-  String get hrReconcileColName;
-
-  /// No description provided for @hrReconcileColDept.
-  ///
-  /// In zh, this message translates to:
-  /// **'部门'**
-  String get hrReconcileColDept;
+  /// **'员工'**
+  String get hrReconcileColEmployee;
 
   /// No description provided for @hrReconcileColReason.
   ///
@@ -17362,17 +17362,17 @@ abstract class AppLocalizations {
   /// **'原因'**
   String get hrReconcileColReason;
 
-  /// No description provided for @hrReconcileColIdNumber.
+  /// No description provided for @hrReconcileIdNumberInfo.
   ///
   /// In zh, this message translates to:
-  /// **'证件号码'**
-  String get hrReconcileColIdNumber;
+  /// **'红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码'**
+  String get hrReconcileIdNumberInfo;
 
-  /// No description provided for @hrReconcileColBasis.
+  /// No description provided for @hrReconcileBasisOf.
   ///
   /// In zh, this message translates to:
-  /// **'依据'**
-  String get hrReconcileColBasis;
+  /// **'建议依据：{label}'**
+  String hrReconcileBasisOf(String label);
 
   /// No description provided for @hrReconcileColTier.
   ///
@@ -17517,6 +17517,306 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已放弃'**
   String get hrReconcileStatusDiscarded;
+
+  /// No description provided for @aiUsageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 用量与额度'**
+  String get aiUsageTitle;
+
+  /// No description provided for @aiUsageEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量与额度'**
+  String get aiUsageEntry;
+
+  /// No description provided for @aiUsageTodayTokens.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日消耗'**
+  String get aiUsageTodayTokens;
+
+  /// No description provided for @aiUsageTodayLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日'**
+  String get aiUsageTodayLabel;
+
+  /// No description provided for @aiUsageTodayCalls.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日调用'**
+  String get aiUsageTodayCalls;
+
+  /// No description provided for @aiUsageActiveUsers.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日活跃人数'**
+  String get aiUsageActiveUsers;
+
+  /// No description provided for @aiUsageDisabledCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get aiUsageDisabledCount;
+
+  /// No description provided for @aiUsageBudgetOf.
+  ///
+  /// In zh, this message translates to:
+  /// **'{num} / {total}'**
+  String aiUsageBudgetOf(String num, String total);
+
+  /// No description provided for @aiUsageWindowHour.
+  ///
+  /// In zh, this message translates to:
+  /// **'近24小时'**
+  String get aiUsageWindowHour;
+
+  /// No description provided for @aiUsageWindowDaily.
+  ///
+  /// In zh, this message translates to:
+  /// **'近30天'**
+  String get aiUsageWindowDaily;
+
+  /// No description provided for @aiUsageWindowMonthly.
+  ///
+  /// In zh, this message translates to:
+  /// **'近12月'**
+  String get aiUsageWindowMonthly;
+
+  /// No description provided for @aiUsageWindowYearly.
+  ///
+  /// In zh, this message translates to:
+  /// **'近5年'**
+  String get aiUsageWindowYearly;
+
+  /// No description provided for @aiUsageTrend.
+  ///
+  /// In zh, this message translates to:
+  /// **'用量趋势'**
+  String get aiUsageTrend;
+
+  /// No description provided for @aiUsageEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无用量'**
+  String get aiUsageEmpty;
+
+  /// No description provided for @aiUsageLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载 AI 用量失败，请稍后重试'**
+  String get aiUsageLoadFailed;
+
+  /// No description provided for @aiUsagePersonMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未找到该人员的用量信息'**
+  String get aiUsagePersonMissing;
+
+  /// No description provided for @aiUsageColPerson.
+  ///
+  /// In zh, this message translates to:
+  /// **'人员'**
+  String get aiUsageColPerson;
+
+  /// No description provided for @aiUsageColWindow.
+  ///
+  /// In zh, this message translates to:
+  /// **'窗口消耗'**
+  String get aiUsageColWindow;
+
+  /// No description provided for @aiUsageColToday.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日消耗'**
+  String get aiUsageColToday;
+
+  /// No description provided for @aiUsageColLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'个人限额'**
+  String get aiUsageColLimit;
+
+  /// No description provided for @aiUsageColStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'状态'**
+  String get aiUsageColStatus;
+
+  /// No description provided for @aiUsageColLastUsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近使用'**
+  String get aiUsageColLastUsed;
+
+  /// No description provided for @aiUsageColCalls.
+  ///
+  /// In zh, this message translates to:
+  /// **'{count} 次'**
+  String aiUsageColCalls(int count);
+
+  /// No description provided for @aiUsageLimitFollowGlobal.
+  ///
+  /// In zh, this message translates to:
+  /// **'跟随全局'**
+  String get aiUsageLimitFollowGlobal;
+
+  /// No description provided for @aiUsageStatusNormal.
+  ///
+  /// In zh, this message translates to:
+  /// **'正常'**
+  String get aiUsageStatusNormal;
+
+  /// No description provided for @aiUsageStatusOverLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'已超限'**
+  String get aiUsageStatusOverLimit;
+
+  /// No description provided for @aiUsageStatusDisabled.
+  ///
+  /// In zh, this message translates to:
+  /// **'已停用'**
+  String get aiUsageStatusDisabled;
+
+  /// No description provided for @aiUsageSetLimits.
+  ///
+  /// In zh, this message translates to:
+  /// **'设置限额'**
+  String get aiUsageSetLimits;
+
+  /// No description provided for @aiUsageLimitTokensLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'每日 token 限额'**
+  String get aiUsageLimitTokensLabel;
+
+  /// No description provided for @aiUsageLimitJobsLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'每日任务数限额'**
+  String get aiUsageLimitJobsLabel;
+
+  /// No description provided for @aiUsageLimitHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留空表示跟随全局默认'**
+  String get aiUsageLimitHint;
+
+  /// No description provided for @aiUsageLimitRangeError.
+  ///
+  /// In zh, this message translates to:
+  /// **'需为 1 到 {max} 之间的整数'**
+  String aiUsageLimitRangeError(int max);
+
+  /// No description provided for @aiUsageDisableLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用该账号的 AI'**
+  String get aiUsageDisableLabel;
+
+  /// No description provided for @aiUsageDisableHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用后不能使用 AI 对话与文件识别，可随时恢复'**
+  String get aiUsageDisableHint;
+
+  /// No description provided for @aiUsageDisableConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'确定停用该账号的 AI 使用吗？'**
+  String get aiUsageDisableConfirm;
+
+  /// No description provided for @aiUsageDisableAction.
+  ///
+  /// In zh, this message translates to:
+  /// **'停用'**
+  String get aiUsageDisableAction;
+
+  /// No description provided for @aiUsageDisabledBanner.
+  ///
+  /// In zh, this message translates to:
+  /// **'该账号的 AI 使用已被停用'**
+  String get aiUsageDisabledBanner;
+
+  /// No description provided for @aiUsageNoPersonalLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'未设个人限额，按全站预算'**
+  String get aiUsageNoPersonalLimit;
+
+  /// No description provided for @aiUsageByPurpose.
+  ///
+  /// In zh, this message translates to:
+  /// **'按用途'**
+  String get aiUsageByPurpose;
+
+  /// No description provided for @aiUsageByProvider.
+  ///
+  /// In zh, this message translates to:
+  /// **'按服务商'**
+  String get aiUsageByProvider;
+
+  /// No description provided for @aiUsageRecentUses.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近使用'**
+  String get aiUsageRecentUses;
+
+  /// No description provided for @aiUsagePeople.
+  ///
+  /// In zh, this message translates to:
+  /// **'人员用量'**
+  String get aiUsagePeople;
+
+  /// No description provided for @aiUsageConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'配置有变化，请刷新后再保存'**
+  String get aiUsageConflict;
+
+  /// No description provided for @aiUsageTokensUnit.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} tokens'**
+  String aiUsageTokensUnit(String n);
+
+  /// No description provided for @aiUsageTodayUsed.
+  ///
+  /// In zh, this message translates to:
+  /// **'今日已用 {tokens}'**
+  String aiUsageTodayUsed(String tokens);
+
+  /// No description provided for @aiUsageLastUsedJustNow.
+  ///
+  /// In zh, this message translates to:
+  /// **'刚刚'**
+  String get aiUsageLastUsedJustNow;
+
+  /// No description provided for @aiUsageLastUsedMinutesAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 分钟前'**
+  String aiUsageLastUsedMinutesAgo(int n);
+
+  /// No description provided for @aiUsageLastUsedHoursAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 小时前'**
+  String aiUsageLastUsedHoursAgo(int n);
+
+  /// No description provided for @aiUsageLastUsedDaysAgo.
+  ///
+  /// In zh, this message translates to:
+  /// **'{n} 天前'**
+  String aiUsageLastUsedDaysAgo(int n);
+
+  /// No description provided for @aiUsageTrendSemantics.
+  ///
+  /// In zh, this message translates to:
+  /// **'{title}，共 {tokens} tokens、{calls} 次调用'**
+  String aiUsageTrendSemantics(String title, String tokens, String calls);
 }
 
 class _AppLocalizationsDelegate

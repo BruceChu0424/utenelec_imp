@@ -1,67 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/features/admin/models/audit_log_entry.dart';
 import 'package:uten_imp/features/admin/models/audit_session.dart';
 import 'package:uten_imp/features/admin/widgets/audit_session_card.dart';
-import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
-  testWidgets(
-    '375px session card is a semantic route entry, not inline detail',
-    (tester) async {
-      final semantics = tester.ensureSemantics();
-      tester.view.physicalSize = const Size(375, 812);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      var opened = 0;
-      try {
-        await tester.pumpWidget(
-          await _withPreferences(
-            MaterialApp(
-              home: Scaffold(
-                body: ListView(
-                  padding: const EdgeInsets.all(12),
-                  children: [
-                    AuditSessionCard(
-                      session: sessionFixture,
-                      onOpen: () => opened++,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-
-        expect(find.text('查看会话时间线'), findsOneWidget);
-        expect(find.textContaining('2026-08-29 23:30(北京时间)'), findsOneWidget);
-        expect(find.textContaining('2026-08-30 01:30(北京时间)'), findsOneWidget);
-        expect(find.byType(ExpansionTile), findsNothing);
-        expect(
-          find.byKey(const ValueKey('audit-session-event-42')),
-          findsNothing,
-        );
-        expect(
-          find.bySemanticsLabel(RegExp(r'登录会话.*点击进入会话时间线')),
-          findsOneWidget,
-        );
-
-        await tester.tap(
-          find.byKey(ValueKey('audit-session-${sessionFixture.sessionId}')),
-        );
-        expect(opened, 1);
-        expect(tester.takeException(), isNull);
-      } finally {
-        semantics.dispose();
-      }
-    },
-  );
-
   testWidgets(
     'timeline loads first page, appends composite cursor and opens event',
     (tester) async {
@@ -206,32 +151,6 @@ void main() {
       expect(calls[1], ('2026-08-29T16:00:00Z', 42, 9001));
     },
   );
-
-  testWidgets('server status values always have readable Chinese labels', (
-    tester,
-  ) async {
-    for (final testCase in const [
-      ('normal_logout', '正常退出', Icons.logout_rounded),
-      ('no_logout_record', '结束状态待核查', Icons.help_outline_rounded),
-      ('security_terminated', '安全中断', Icons.warning_amber_rounded),
-      ('activity_after_logout', '退出后仍有操作', Icons.warning_amber_rounded),
-    ]) {
-      await tester.pumpWidget(
-        await _withPreferences(
-          MaterialApp(
-            home: Scaffold(
-              body: AuditSessionCard(
-                session: sessionFixture.copyForStatus(testCase.$1),
-                onOpen: () {},
-              ),
-            ),
-          ),
-        ),
-      );
-      expect(find.text(testCase.$2), findsOneWidget);
-      expect(find.byIcon(testCase.$3), findsOneWidget);
-    }
-  });
 }
 
 Future<void> _pumpTimeline(
@@ -254,31 +173,6 @@ Future<void> _pumpTimeline(
     ),
   ),
 );
-
-Future<Widget> _withPreferences(Widget child) async {
-  SharedPreferences.setMockInitialValues({});
-  final preferences = await SharedPreferences.getInstance();
-  return ProviderScope(
-    overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
-    child: child,
-  );
-}
-
-extension on AuditSessionSummary {
-  AuditSessionSummary copyForStatus(String nextStatus) => AuditSessionSummary(
-    sessionId: sessionId,
-    actorAccount: actorAccount,
-    actorDisplay: actorDisplay,
-    startLabel: startLabel,
-    loginAt: loginAt,
-    lastActivityAt: lastActivityAt,
-    status: nextStatus,
-    operationCount: operationCount,
-    eventCount: eventCount,
-    successCount: successCount,
-    snapshotAuditId: snapshotAuditId,
-  );
-}
 
 const sessionFixture = AuditSessionSummary(
   sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',

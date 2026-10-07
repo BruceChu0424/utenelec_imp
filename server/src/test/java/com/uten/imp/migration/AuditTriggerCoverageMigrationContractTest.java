@@ -84,6 +84,8 @@ class AuditTriggerCoverageMigrationContractTest {
             new FullGroup("authorization", "authorization", false,
                     "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V677 删除)",
                     Set.of(
+                        // V815：管理员按人限额/停用属于授权决定，FULL/authorization 保留前后值。
+                        "ai_user_limits",
                         "client_visibility_grants", "department_permissions",
                         "manager_permission_delegations",
                         "organization_permission_leader_assignments",
@@ -277,7 +279,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         "report_materialized_view_refresh_state", "visitor_refresh_tokens",
                         "visitor_sms_codes",
                         // V742 AI 调用技术记录: 只有用途/服务商/token/耗时, 不含提示词、回复与密钥。
-                        "ai_call_logs")),
+                        "ai_call_logs",
+                        // V815：按人按日用量计数由调用记录汇总，不复制统计变化为业务审计。
+                        "ai_usage_daily")),
             new NoneGroup("retained_private_evidence",
                     "永久原件、私有 before-image 和清理授权是独立证据，保留原载荷/关联并由授权原生入口读取；通用行审计不再次复制密钥、原上传、值单元或历史证据",
                     Set.of("ai_input_originals", "ai_provider_history", "business_record_history", "business_record_identities",
@@ -292,7 +296,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         // V798(ADR-143) 委外可领料通知高水位: 投递后的重算写入, 决定是否再次提醒。
                         "subcontract_draw_notice_marks",
                         // V809(ADR-156) 委外申请可下单通知高水位: 同上。
-                        "subcontract_application_kit_notice_marks")),
+                        "subcontract_application_kit_notice_marks",
+                        // V814(ADR-165) 车间任务到货进展产能高水位: 同上。
+                        "production_execution_segment_notice_state")),
             new NoneGroup("queue",
                     "队列、任务、认领、幂等命令与系统核对结果: 系统协调状态, 人的操作由请求级语义事件记录",
                     Set.of(
@@ -322,6 +328,8 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("preference",
                     "使用偏好与自动学习: 系统按使用习惯自动写入, 不是业务决定",
                     Set.of(
+                        // V816：个人问法与服务端操作的复用记忆；实际执行已有业务审计，不复制私有问法。
+                        "ai_chat_operation_memory",
                         "user_preferences", "warehouse_goods_place_preferences",
                         // V742 客户货品对照与客户文件版式: 保存单据后自动学习; 用户删除对照另写显式审计事件。
                         "client_goods_aliases", "sales_intake_layouts", "platform_column_usage",

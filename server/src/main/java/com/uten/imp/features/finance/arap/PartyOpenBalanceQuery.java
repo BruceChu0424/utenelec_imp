@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.arap;
 
 import com.uten.imp.application.port.PartyOpenBalancePort;
 import com.uten.imp.common.finance.PartyOpenBalances;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.features.finance.LegacyOpeningBalanceSql;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -87,10 +88,10 @@ public class PartyOpenBalanceQuery implements PartyOpenBalancePort {
             UUID currencyId = (UUID) row[1];
             if (currencyId != null) {
                 party.currencies.add(new PartyOpenBalances.CurrencyAmounts(
-                        currencyId, decimal(row[2]), decimal(row[3]), decimal(row[4])));
+                        currencyId, NativeValueConverters.toBigDecimal(row[2]), NativeValueConverters.toBigDecimal(row[3]), NativeValueConverters.toBigDecimal(row[4])));
             }
-            party.openBookLocal = party.openBookLocal.add(decimal(row[5]));
-            party.unverifiedLocal = party.unverifiedLocal.add(decimal(row[6]));
+            party.openBookLocal = party.openBookLocal.add(NativeValueConverters.toBigDecimal(row[5]));
+            party.unverifiedLocal = party.unverifiedLocal.add(NativeValueConverters.toBigDecimal(row[6]));
             party.unverifiedCount += ((Number) row[7]).longValue();
         }
         Map<UUID, PartyOpenBalances.Party> parties = new HashMap<>();
@@ -131,12 +132,6 @@ public class PartyOpenBalanceQuery implements PartyOpenBalancePort {
                 GROUP BY item.party_id, item.currency_id
                 """.formatted(direction, partyColumn, openKinds, creditKinds,
                 LegacyOpeningBalanceSql.unverifiedOriginalCondition(), LegacyOpeningBalanceSql.PROOF_JOIN);
-    }
-
-    private static BigDecimal decimal(Object value) {
-        if (value == null) return BigDecimal.ZERO;
-        if (value instanceof BigDecimal decimal) return decimal;
-        return new BigDecimal(value.toString());
     }
 
     private static final class Accumulator {

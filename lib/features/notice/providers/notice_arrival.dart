@@ -5,6 +5,7 @@
 // - 前台每 20s 按游标增量拉取(页面隐藏暂停; 徽章汇总提示有新通知时立即拉)；游标后方的
 //   遗漏由未读索引摘要驱动补拉，不再每 2s 轮询、每分钟从纪元全量对账(ADR-108)；
 // - 所有优先级均进入非阻塞顶部叠放层；重要度只改变视觉与停留时长；
+//   interactive 待办（含 urgent，ADR-166）另进中央审核弹窗（主交互）；
 // - 同一批通知逐条跟踪真实关闭回调，点击才标注已读并跳 actionRoute。
 
 import 'dart:async';
@@ -681,8 +682,13 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
 
 /// 分派一条新到达通知。
 ///
-/// 所有优先级都进入非阻塞顶部叠放层。important / urgent 仅使用更强语义色和更长
-/// 停留时间，不再默认弹出会中断仓库、生产等当前操作的居中窗口。
+/// 所有优先级都进入非阻塞顶部叠放层；important / urgent 仅使用更强语义色和更长
+/// 停留时间。居中窗口只给 interactive 审核待办（`dispatchReviewCard`，主交互在
+/// 弹窗内）——**含 urgent**：2026-10-06 ADR-166 修订 ADR-059 §六口径，interactive
+/// 紧急事件（source_event 在审核卡目录内，如 SUBCONTRACT_SHORT_DELIVERY_DETECTED）
+/// 恢复进中央弹窗并以红卡呈现，顶部红条 8s 并行保留；弹前真态校验对 urgent 同样
+/// 生效（办结不弹）。非 interactive 的 urgent（驳回类纯告知，如
+/// SALES_ORDER_FINANCE_REJECTED）维持只弹顶部红条——纯告知不打断当前操作。
 void dispatchNoticeArrival(
   BuildContext context,
   Notice notice, {
@@ -749,6 +755,9 @@ void dispatchNoticeArrival(
 
   // V459 审核待办：顶部纯显示条 + 居中审核弹窗（主交互在弹窗内），
   // 弹前先做一次真态校验（已办结不弹）。与普通顶部条同为非阻塞（ADR-063）。
+  // ADR-166（2026-10-06）：interactive 的 urgent 与其他 interactive 同路进中央
+  // 弹窗（红卡呈现，顶部红条 kind=error 8s 并行）；非 interactive urgent 走下方
+  // 纯顶部条分支。
   if (notice.interactive) {
     unawaited(
       dispatchReviewCard(

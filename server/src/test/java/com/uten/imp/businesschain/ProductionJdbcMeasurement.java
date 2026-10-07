@@ -291,6 +291,10 @@ final class ProductionJdbcMeasurement {
         if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
         // ADR-149: Java 侧的仓库数据范围解析(一次汇总里的解析次数 ≤ 不同范围数, 准则 14)。
         if (normalized.contains("fn_user_warehouse_access(")) return "warehouse.scope_access";
+        if (normalized.startsWith("select segment.id from production_execution_segments segment")
+                && normalized.contains("segment.start_route = 'continuous'")
+                && normalized.contains("posting.recorded_tx_id = pg_current_xact_id()")) return "workshop.arrival_notice_scope";
+        if (normalized.startsWith("update production_execution_segment_notice_state")) return "workshop.arrival_notice_watermark";
         String verb = normalized.startsWith("insert")
                 || normalized.startsWith("with incoming ") && normalized.contains("insert into production_material_analysis_materials")
                 ? "insert" : normalized.startsWith("update") ? "update" : "read";

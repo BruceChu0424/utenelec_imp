@@ -244,6 +244,12 @@ jobs:
         run: dart format --output=none --set-exit-if-changed lib test
       - run: flutter analyze --no-pub
       - run: flutter test --no-pub
+      - name: Verify browser draft reset and receipt storage
+        run: >-
+          flutter test --no-pub --platform chrome
+          test/shared/drafts/form_draft_storage_browser_test.dart
+          test/shared/drafts/form_draft_history_browser_test.dart
+          test/device_audit_receipt_storage_web_test.dart
       - name: Verify version-pinned local font assets
         shell: pwsh
         run: ./.github/scripts/verify-font-assets.ps1

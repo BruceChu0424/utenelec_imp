@@ -15,6 +15,7 @@ class AuthenticatedScope {
     this.actorId,
     this.readOnly = false,
     this.epoch = 0,
+    this.businessResetGeneration = 0,
   });
 
   final String userId;
@@ -25,6 +26,7 @@ class AuthenticatedScope {
 
   /// 登录纪元: 清空业务数据后重新登录也要从零重建。
   final int epoch;
+  final int businessResetGeneration;
 
   @override
   bool operator ==(Object other) =>
@@ -32,10 +34,12 @@ class AuthenticatedScope {
       other.userId == userId &&
       other.actorId == actorId &&
       other.readOnly == readOnly &&
-      other.epoch == epoch;
+      other.epoch == epoch &&
+      other.businessResetGeneration == businessResetGeneration;
 
   @override
-  int get hashCode => Object.hash(userId, actorId, readOnly, epoch);
+  int get hashCode =>
+      Object.hash(userId, actorId, readOnly, epoch, businessResetGeneration);
 }
 
 /// 当前已登录会话; 未登录 / 必须改密 / 会话失效时为 null。
@@ -47,6 +51,7 @@ final authenticatedScopeProvider = Provider<AuthenticatedScope?>((ref) {
         session.user?.id,
         session.actor?.id,
         session.impersonationReadOnly,
+        session.user?.businessResetGeneration,
       ),
     ),
   );
@@ -58,5 +63,6 @@ final authenticatedScopeProvider = Provider<AuthenticatedScope?>((ref) {
     actorId: identity.$3,
     readOnly: identity.$4,
     epoch: ref.watch(sessionEpochProvider),
+    businessResetGeneration: identity.$5 ?? 0,
   );
 });

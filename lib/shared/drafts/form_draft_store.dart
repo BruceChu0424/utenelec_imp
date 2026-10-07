@@ -21,8 +21,12 @@ final formDraftStorageProvider = Provider<FormDraftStorage>(
   (ref) => createFormDraftStorage(),
 );
 
-/// No login epoch in the durable key: logging back in must recover old work.
+/// Login and permission changes retain drafts; a business reset starts a new
+/// durable namespace on every device the next time its owner signs in.
 String formDraftStoragePrefix(String server, AuthenticatedScope scope) =>
+    '${formDraftStorageOwnerPrefix(server, scope)}${scope.businessResetGeneration == 0 ? '' : 'g${scope.businessResetGeneration}_'}';
+
+String formDraftStorageOwnerPrefix(String server, AuthenticatedScope scope) =>
     '${sha256.convert(utf8.encode(jsonEncode([server, scope.userId, scope.actorId])))}_';
 
 final formDraftsProvider =
@@ -110,6 +114,14 @@ class FormDraftsNotifier extends Notifier<List<FormDraft>> {
     _prefix = prefix;
     _storage = storage;
     _ready = Future<void>.microtask(() async {
+      if (storage is BusinessResetFormDraftStorage) {
+        await (storage as BusinessResetFormDraftStorage)
+            .synchronizeBusinessReset(
+              formDraftStorageOwnerPrefix(server, scope),
+              scope.businessResetGeneration,
+            );
+      }
+      if (generation != _generation) return;
       final records = await _safeDraftErrors(() => storage.readAll(prefix));
       if (generation != _generation) return;
       final drafts = <FormDraft>[];

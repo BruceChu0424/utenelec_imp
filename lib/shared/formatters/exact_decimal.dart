@@ -79,30 +79,6 @@ String financeAmountFromUnits(BigInt units) {
 String financeAmountMoneyDisplay(BigInt units) =>
     financeExactMoneyDisplay(financeAmountFromUnits(units));
 
-/// A fixed financial representation is permitted only when it loses no value.
-/// The older productUnits rounding contract remains untouched for quantities.
-BigInt? financeExactProductUnitsLossless(
-  String? left,
-  String? right, {
-  int leftScale = financeAmountScale,
-  int rightScale = financeRateScale,
-  int outputScale = financeAmountScale,
-}) {
-  if (financeExactDecimalUnits(_canonicalDecimalText(left), scale: leftScale) ==
-          null ||
-      financeExactDecimalUnits(
-            _canonicalDecimalText(right),
-            scale: rightScale,
-          ) ==
-          null) {
-    return null;
-  }
-  return financeExactDecimalUnits(
-    _canonicalDecimalText(financeExactMultiplyTexts([left, right])),
-    scale: outputScale,
-  );
-}
-
 String? financeExactDecimal(Object? value) {
   if (value == null) return null;
   final text = value.toString().trim();

@@ -7,12 +7,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/performance/performance_tier.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
-import 'package:uten_imp/shared/ai/ai_confidence_pill.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
 import 'package:uten_imp/shared/ai/ai_job_repository.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
@@ -448,53 +446,6 @@ void main() {
       await tester.pumpWidget(_app(const AiSparkleBadge()));
       expect(tester.takeException(), isNull);
       expect(tester.hasRunningAnimations, isTrue);
-    });
-  });
-
-  group('AiConfidencePill', () {
-    test('parses server levels and ignores unknown values', () {
-      expect(AiConfidence.parse('HIGH'), AiConfidence.high);
-      expect(AiConfidence.parse('medium'), AiConfidence.medium);
-      expect(AiConfidence.parse(' LOW '), AiConfidence.low);
-      expect(AiConfidence.parse('96'), isNull);
-      expect(AiConfidence.parse(null), isNull);
-    });
-
-    testWidgets('three levels use success / warning / danger tokens', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _app(
-          const Column(
-            children: [
-              AiConfidencePill(confidence: AiConfidence.high),
-              AiConfidencePill(confidence: AiConfidence.medium),
-              AiConfidencePill(confidence: AiConfidence.low),
-            ],
-          ),
-        ),
-      );
-      final badges = tester
-          .widgetList<UtenStatusBadge>(find.byType(UtenStatusBadge))
-          .toList();
-      expect(badges.map((b) => b.label), [
-        _zh.aiJobConfidenceHigh,
-        _zh.aiJobConfidenceMedium,
-        _zh.aiJobConfidenceLow,
-      ]);
-      expect(badges.map((b) => b.type), [
-        UtenStatusBadgeType.success,
-        UtenStatusBadgeType.warning,
-        UtenStatusBadgeType.danger,
-      ]);
-      expect(
-        find.bySemanticsLabel(
-          _zh.aiJobConfidenceSemantics(_zh.aiJobConfidenceHigh),
-        ),
-        findsOneWidget,
-      );
-      // 不向业务人员显示分数。
-      expect(find.textContaining(RegExp(r'\d')), findsNothing);
     });
   });
 }

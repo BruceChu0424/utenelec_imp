@@ -238,18 +238,6 @@ T inheritBusinessColumns<T extends BusinessColumnsRow>(
   return row;
 }
 
-void synchronizeBusinessColumns(Iterable<BusinessColumnsRow> rows) {
-  final list = rows.toList(growable: false);
-  final columns = businessColumnsOf(list);
-  for (final row in list) {
-    for (final column in columns) {
-      row.addExtraColumn(
-        BusinessColumn.fromJson({...column.toSnapshot(), 'value': null}),
-      );
-    }
-  }
-}
-
 /// Adds an explicit choice to the current document. Catalog history only ranks
 /// suggestions; it never inserts a saved fee into another document automatically.
 Future<String?> addBusinessGridColumn<T extends EditableGridRow>(

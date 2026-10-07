@@ -47,12 +47,14 @@ public class AiGateway implements AiCompletionPort {
     private final AiCallLogService callLogs;
     private final AiProperties properties;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.features.ai.usage.AiUserLimitsService userLimits;
     private final Semaphore permits;
     private final SecureRandom random = new SecureRandom();
 
     @Autowired
     public AiGateway(AiProviderService providers, List<AiProtocolClient> clients, AiCallLogService callLogs,
-                     AiProperties properties, SecurityContextCurrentUser currentUser) {
+                     AiProperties properties, SecurityContextCurrentUser currentUser,
+                     com.uten.imp.features.ai.usage.AiUserLimitsService userLimits) {
         this.providers = providers;
         this.clients = new EnumMap<>(AiProtocol.class);
         for (AiProtocolClient client : clients) {
@@ -61,6 +63,7 @@ public class AiGateway implements AiCompletionPort {
         this.callLogs = callLogs;
         this.properties = properties;
         this.currentUser = currentUser;
+        this.userLimits = userLimits;
         this.permits = new Semaphore(Math.max(1, properties.getMaxConcurrentCalls()), true);
     }
 
@@ -89,10 +92,7 @@ public class AiGateway implements AiCompletionPort {
         if (hasImage && !runtime.supportsVision()) {
             throw new AiCallException(AiErrorCategory.BLOCKED, VISION_UNSUPPORTED_MESSAGE);
         }
-        long budget = properties.getDailyTokenBudget();
-        if (budget > 0 && callLogs.todayTokens() >= budget) {
-            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达上限, 请明天再试或联系管理员");
-        }
+        requireCallAllowed();
         AiProtocolClient.ChatRequest chat = prepare(request, runtime);
         if (request.reasoningEffort().explicit()) {
             // ADR-152: names and levels only (never prompt or business data), so the admin can verify what was sent.
@@ -106,9 +106,13 @@ public class AiGateway implements AiCompletionPort {
         long started = System.nanoTime();
         acquirePermit();
         try {
+            // Waiting for a provider slot can outlive a limit/disable change.
+            // Recheck immediately before every outbound attempt, including retries.
+            requireCallAllowed();
             AttemptResult first = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing);
             AttemptResult result = first;
             if (first.failure() != null && retryable(first.failure().category())) {
+                requireCallAllowed();
                 result = attempt(runtime, chat, request.purpose(), request.jobId(), resetGeneration, pricing);
             }
             if (result.failure() != null) {
@@ -122,6 +126,19 @@ public class AiGateway implements AiCompletionPort {
         long latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
         return new AiCompletionResult(json, runtime.name(), runtime.model(), response.inputTokens(),
                 response.outputTokens(), latency);
+    }
+
+    private void requireCallAllowed() {
+        UUID caller = currentUser.id().orElse(null);
+        userLimits.requireEnabled(caller);
+        long budget = properties.getDailyTokenBudget();
+        if (budget > 0 && callLogs.todayTokens() >= budget) {
+            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达上限, 请明天再试或联系管理员");
+        }
+        Long personalTokenLimit = userLimits.tokenLimit(caller).orElse(null);
+        if (personalTokenLimit != null && callLogs.todayTokens(caller) >= personalTokenLimit) {
+            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达到你的个人限额, 请明天再试或联系管理员");
+        }
     }
 
     /**

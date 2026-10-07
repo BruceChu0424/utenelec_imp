@@ -21,9 +21,6 @@ abstract final class DisplayDateTime {
   static String beijingWall(DateTime wallTime) =>
       '${ChinaDateTime.formatDateTime(wallTime)}(北京)';
 
-  /// 当前时间按北京时间展示。
-  static String beijingNow() => beijingWall(ChinaDateTime.now());
-
   /// 按展示模式格式化：北京时间或设备当地时间。
   static String format(
     String? iso, {

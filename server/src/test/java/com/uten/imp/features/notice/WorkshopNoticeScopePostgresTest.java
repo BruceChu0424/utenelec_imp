@@ -148,6 +148,8 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.execute("DELETE FROM production_execution_segment_events");
         jdbc.execute("UPDATE production_execution_segments SET notice_fixture_issued=TRUE");
         jdbc.update("UPDATE employees SET status='active' WHERE id=?",ACTORS.get(0).employee());
+        jdbc.update("UPDATE employees SET status='active' WHERE id=?",ACTORS.get(2).employee());
+        jdbc.update("UPDATE departments SET manager_id=? WHERE id=?",ACTORS.get(2).employee(),A);
         jdbc.update("UPDATE employees SET department_id=? WHERE id=?",CHILD,ACTORS.get(0).employee());
         jdbc.update("UPDATE employees SET status='resigned' WHERE id=?",ACTORS.get(8).employee());
         jdbc.update("UPDATE users SET status='disabled' WHERE id=?",ACTORS.get(9).user());
@@ -190,7 +192,10 @@ class WorkshopNoticeScopePostgresTest {
     }
 
     @Test
-    void currentReceiversIncludeActualWorkshopSecondaryManagerAndResponsibleButNotViewOnlyOrPlanner() {
+    void currentReceiversAndHistoricalCardsRequireCurrentLeadership() {
+        // 2026-10-06 修订二(ADR-165): 车间任务卡只发「车间负责人 ∪ 任务负责人 ∩ 权限」——
+        // A 的 manager(actor2) 与任务负责人(actor3); 普通成员(actor0)/兼职(actor1)不再直接收卡,
+        // 已收到的卡也必须按当前负责人身份重新核对。
         UserAccountRepository users=mock(UserAccountRepository.class);
         PermissionResolver permissions=mock(PermissionResolver.class);
         for(Actor actor:ACTORS) {
@@ -201,25 +206,33 @@ class WorkshopNoticeScopePostgresTest {
         }
         var chain=chain(mock(NoticeService.class),users,permissions);
         assertThat(chain.workshopRecipientUserIds(A,ACTORS.get(3).employee()))
-                .containsExactly(ACTORS.get(0).user(),ACTORS.get(1).user(),ACTORS.get(2).user(),ACTORS.get(3).user());
-        for(int index:List.of(0,1,2,3)) {
+                .containsExactly(ACTORS.get(2).user(),ACTORS.get(3).user());
+        for(int index:List.of(2,3)) {
             Actor actor=ACTORS.get(index);
             Notice notice=persist(actor.user(),TASK_A,"important");
             assertThat(audience.eligibleEvents(actor.auth())).contains(EVENT);
             assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.workshopScope(actor.auth())))
                     .containsExactly(notice.getId());
         }
-        for(int index:List.of(4,5,6,7,8,9)) {
+        for(int index:List.of(0,1,4,5,6,7,8,9)) {
             Actor actor=ACTORS.get(index);
             Notice notice=persist(actor.user(),TASK_A,"important");
             assertThat(notices.findScopedVisibleNoticeIds(actor.user(),Set.of(notice.getId()),audience.workshopScope(actor.auth())))
                     .as("other workshop/planner/view/revoked/resigned/disabled actor %s",actor.number()).isEmpty();
         }
+        // 无合格负责人时不向主职或兼职成员扩大发送范围。
+        jdbc.update("UPDATE departments SET manager_id=NULL WHERE id=?",A);
+        try {
+            assertThat(chain.workshopRecipientUserIds(A,null))
+                    .isEmpty();
+        } finally {
+            jdbc.update("UPDATE departments SET manager_id=? WHERE id=?",ACTORS.get(2).employee(),A);
+        }
     }
 
     @Test
     void listsCountsAndPopupUseObjectScopeBeforePaginationAndRejectHistoricalBroadcast() {
-        Actor actor=ACTORS.get(0);
+        Actor actor=ACTORS.get(2);
         Notice target=persist(actor.user(),TASK_A,"important");
         for(int i=0;i<24;i++)persist(actor.user(),TASK_B,"urgent");
         persist(null,TASK_A,"urgent"); // old all-staff broadcast must not become visible
@@ -243,17 +256,17 @@ class WorkshopNoticeScopePostgresTest {
 
     @Test
     void withdrawalHidesExistingMessageAndPopupWithoutDeletingHistory() {
-        Actor actor=ACTORS.get(0);
+        Actor actor=ACTORS.get(2);
         Notice target=persist(actor.user(),TASK_A,"important");
         NoticeService service=service(actor.auth());
         assertThat(service.getById(target.getId()).interactive()).isTrue();
         assertThat(service.pendingReviewStatus(List.of(target.getId()))).hasSize(1);
-        jdbc.update("UPDATE employees SET department_id=? WHERE id=?",B,actor.employee());
+        jdbc.update("UPDATE departments SET manager_id=NULL WHERE id=?",A);
         assertThat(service.unreadCount()).isZero();
         assertThat(service.list(false)).isEmpty();
         assertThat(service.pendingReviewStatus(List.of(target.getId()))).isEmpty();
         assertThatThrownBy(()->service.getById(target.getId())).isInstanceOf(ApiException.class);
-        jdbc.update("UPDATE employees SET department_id=? WHERE id=?",CHILD,actor.employee());
+        jdbc.update("UPDATE departments SET manager_id=? WHERE id=?",actor.employee(),A);
         assertThat(service(new Actor(actor.number(),CHILD,VIEW).auth()).pendingReviews()).isEmpty();
         assertThat(service(new Actor(actor.number(),CHILD,VIEW).auth()).unreadCount()).isZero();
         jdbc.update("UPDATE employees SET status='resigned' WHERE id=?",actor.employee());
@@ -263,7 +276,7 @@ class WorkshopNoticeScopePostgresTest {
 
     @Test
     void statusHeartbeatChecksManyObjectsInOneBatch() {
-        Actor actor=ACTORS.get(0);
+        Actor actor=ACTORS.get(2);
         Notice target=persist(actor.user(),TASK_A,"important");
         for(int i=0;i<24;i++)persist(actor.user(),TASK_B,"important");
         List<UUID> ids=notices.findAll().stream().map(Notice::getId).toList();
@@ -282,7 +295,7 @@ class WorkshopNoticeScopePostgresTest {
     void waitingProgressIsAnActionPopupUntilResolved() {
         // 2026-09-09 用户口径（ADR-063 修订）：车间任务 normal（等料/等待中）也进登录弹窗，
         //「收到几个车间任务」按全部未办结计；办结点=开工/完工（resolveProductionWorkshopTasks）。
-        Actor actor=ACTORS.get(0);
+        Actor actor=ACTORS.get(2);
         Notice progress=persist(actor.user(),TASK_A,"normal");
         NoticeService service=service(actor.auth());
         assertThat(service.list(false)).singleElement().satisfies(dto -> assertThat(dto.interactive()).isTrue());

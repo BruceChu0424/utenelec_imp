@@ -410,6 +410,7 @@ abstract final class Perm {
   static const financeReportExport = 'finance_report:export';
   static const financeAssetView = 'finance_asset:view';
   static const financeAssetEdit = 'finance_asset:edit';
+  static const financeAssetDelete = 'finance_asset:delete';
   static const financeAssetApprove = 'finance_asset:approve';
   static const financeAssetPost = 'finance_asset:post';
   static const financeAssetDispose = 'finance_asset:dispose';

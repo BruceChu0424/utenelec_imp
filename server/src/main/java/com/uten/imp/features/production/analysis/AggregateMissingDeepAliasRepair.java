@@ -188,7 +188,8 @@ public class AggregateMissingDeepAliasRepair {
                         JOIN production_plans plan ON plan.id=link.plan_id AND plan.status IN(0,1)
                           AND NOT plan.is_deleted AND NOT plan.is_canceled
                         WHERE child.parent_analysis_material_id=material.id AND NOT child.is_deleted
-                          AND child.source_type<>'AGGREGATE_MAKE'),material.depth,item.line_priority,item.delivery_date
+                          AND child.source_type<>'AGGREGATE_MAKE'),material.depth,item.line_priority,item.delivery_date,
+                    material.source_suggestion
                 FROM production_material_analysis_materials material
                 JOIN production_material_analysis_items item ON item.id=material.analysis_item_id
                 WHERE material.analysis_id=:analysis AND material.active
@@ -196,7 +197,7 @@ public class AggregateMissingDeepAliasRepair {
             Material value=new Material((UUID)row[0],(UUID)row[1],(String)row[2],(String)row[3],(String)row[4],(UUID)row[5],
                     (String)row[6],number(row[7]),number(row[8]),(String)row[9],number(row[10]),Boolean.TRUE.equals(row[11]),
                     (UUID)row[12],(UUID)row[13],(UUID)row[14],number(row[15]),number(row[16]),number(row[17]),number(row[18]),
-                    Boolean.TRUE.equals(row[19]),((Number)row[20]).intValue(),((Number)row[21]).intValue(),date(row[22]));
+                    Boolean.TRUE.equals(row[19]),((Number)row[20]).intValue(),((Number)row[21]).intValue(),date(row[22]),(String)row[23]);
             result.put(value.id,value);
         }
         return result;
@@ -215,7 +216,8 @@ public class AggregateMissingDeepAliasRepair {
         while(!queue.isEmpty()) {
             Walk walk=queue.removeFirst();
             if(result.putIfAbsent(walk.path,walk.material)!=null)throw conflict("历史BOM路径存在歧义");
-            if(freeze&&(!"MAKE".equals(walk.material.route)||walk.material.frozen))continue;
+            // 子树转发判定统一走 AggregateRouteForwarding(与需求侧/供给侧同口径)。
+            if(freeze&&(!AggregateRouteForwarding.forwardsSubtree(walk.material.route,walk.material.suggestion)||walk.material.frozen))continue;
             for(Material child:children.getOrDefault(walk.material.node,List.of())) {
                 if(walk.visited.contains(child.id)||walk.path.size()>=256)throw conflict("历史BOM路径循环或层级超过256");
                 List<UUID> next=new ArrayList<>(walk.path);next.add(child.edge);Set<UUID> visited=new HashSet<>(walk.visited);visited.add(child.id);
@@ -243,7 +245,7 @@ public class AggregateMissingDeepAliasRepair {
     private record Material(UUID id,UUID item,String node,String parent,String role,UUID edge,String route,BigDecimal required,
                             BigDecimal bomQty,String basis,BigDecimal basisOutput,boolean partial,UUID goods,UUID color,UUID unit,
                             BigDecimal sourceCapacity,BigDecimal capacity,BigDecimal historicCapacity,BigDecimal owned,boolean frozen,int depth,
-                            int priority,LocalDate deliveryDate){}
+                            int priority,LocalDate deliveryDate,String suggestion){}
     private record Edge(UUID batch,UUID source){}
     private record Alias(UUID target,BigDecimal qty){}
     private record Member(UUID parent,Material material){}

@@ -449,7 +449,8 @@ class AiProviderServiceTest {
         when(anthropic.protocol()).thenReturn(AiProtocol.ANTHROPIC_MESSAGES);
         when(anthropic.chat(any(), any())).thenReturn(new com.uten.imp.features.ai.client.AiProtocolClient.ChatResponse("{\"ok\":true}", 1, 1, 200, false, 1));
         var gateway = new com.uten.imp.features.ai.gateway.AiGateway(service, List.of(openAi, anthropic),
-                mock(com.uten.imp.features.ai.gateway.AiCallLogService.class), properties, mock(com.uten.imp.security.SecurityContextCurrentUser.class));
+                mock(com.uten.imp.features.ai.gateway.AiCallLogService.class), properties, mock(com.uten.imp.security.SecurityContextCurrentUser.class),
+                mock(com.uten.imp.features.ai.usage.AiUserLimitsService.class));
         assertThat(gateway.completeJson(new com.uten.imp.application.port.AiCompletionPort.AiCompletionRequest("CONFIGURATION_TEST", "Return JSON.",
                 List.of(new com.uten.imp.application.port.AiCompletionPort.AiText("hello", true)), null, null, 256, null)).json()).isEqualTo("{\"ok\":true}");
         verify(openAi, never()).chat(any(), any());

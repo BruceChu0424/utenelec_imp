@@ -286,7 +286,13 @@ class StockDrawIssueBatchReceiptEndToEndTest {
         assertEquals(0, replay.rollbacks);
         System.out.println("STOCK-BATCH-PARENT replay=" + replay.result());
         if (!baseline) {
-            assertTrue(sample.logicalStatements <= 479, "474 previous work + 5 necessary parent-command statements");
+            long noticeScope = statementsWithLabel(sample,"workshop.arrival_notice_scope");
+            assertEquals(setup.documents().size(),noticeScope,"one bounded arrival-capacity scope read per actually issued DRAW");
+            assertEquals(0,statementsWithLabel(sample,"workshop.arrival_notice_watermark"),"FULL_KIT tasks do not change continuous-capacity watermarks");
+            assertTrue(sample.logicalStatements-noticeScope <= 479,
+                    "original work remains within 474 + 5 parent-command statements; arrival-capacity reads are counted separately");
+            assertEquals(0,statementsWithLabel(replay,"workshop.arrival_notice_scope"),"receipt replay must not re-evaluate arrival capacity");
+            assertEquals(0,statementsWithLabel(replay,"workshop.arrival_notice_watermark"),"receipt replay must not change arrival watermarks");
             assertTrue(replay.logicalStatements <= 12, "receipt replay must not rediscover or mutate the production graph");
         }
         String output = System.getProperty("uten.issue-batch.measurement-output");
@@ -306,6 +312,12 @@ class StockDrawIssueBatchReceiptEndToEndTest {
             new com.fasterxml.jackson.databind.ObjectMapper().writerWithDefaultPrettyPrinter()
                     .writeValue(java.nio.file.Path.of(output).toFile(), result);
         }
+    }
+
+    private static long statementsWithLabel(ProductionJdbcMeasurement.Sample sample,String label) {
+        return sample.fingerprints.entrySet().stream()
+                .filter(entry->label.equals(sample.labelsByFingerprint.get(entry.getKey())))
+                .mapToLong(java.util.Map.Entry::getValue).sum();
     }
 
     private record Setup(FullChainEndToEndTest fixture, FullChainEndToEndTest.World world, List<UUID> documents) { }

@@ -112,6 +112,8 @@ class ReconcileApplyServiceTest {
                 "{\"rows\":2,\"update\":2}", "OPEN", null, 3, null,
                 now.minusHours(1), now.plusHours(23), null, null);
         when(store.lockPlan(planId)).thenReturn(Optional.of(plan));
+        when(store.findPlan(planId)).thenReturn(Optional.of(plan));
+        when(store.renewApplyLease(planId, applyId)).thenReturn(true);
         when(store.findApplyByRequestId(planId, "req-1")).thenReturn(Optional.empty());
         when(store.insertApply(eq(planId), eq(1), eq("req-1"), eq(actorId))).thenReturn(
                 new ApplyRec(applyId, 1, "req-1", "RUNNING", null, null, now, null));
@@ -158,6 +160,39 @@ class ReconcileApplyServiceTest {
                     assertThat(error.getFieldErrors().getFirst().message()).isEqualTo("RECONCILE_PLAN_BUSY");
                 });
         verify(store, never()).lockPlan(any());
+    }
+
+    @Test
+    void anotherActorCannotReplayACompletedReceipt() {
+        AuthUser other = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "other-hr",
+                Set.of("employee:view", "employee:pii:edit"), false, true, false);
+        assertThatThrownBy(() -> service.apply(other, planId, request(rows(rowSelection(1)))))
+                .isInstanceOfSatisfying(ApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+        verify(store, never()).findApplyByRequestId(any(), any());
+        verifyNoInteractions(employeeCommands);
+    }
+
+    @Test
+    void reclaimedRoundCannotWriteEmployeesOrOverwriteItemOutcomes() {
+        when(store.renewApplyLease(planId, applyId)).thenReturn(false);
+        assertThatThrownBy(() -> service.apply(actor, planId, request(rows(rowSelection(1)))))
+                .isInstanceOfSatisfying(ApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));
+        verifyNoInteractions(employeeCommands);
+        verify(store, never()).markRowResult(any(), anyInt(), any(), any());
+        verify(store, never()).finishApply(any(), any(), any());
+    }
+
+    @Test
+    void duplicateItemIsRejectedBeforeOpeningAnApplyRound() {
+        RowSelection duplicated = new RowSelection(1, List.of(
+                new ItemSelection(1, null, null), new ItemSelection(1, null, null)));
+        assertThatThrownBy(() -> service.apply(actor, planId, request(rows(duplicated))))
+                .isInstanceOfSatisfying(ApiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+        verify(store, never()).insertApply(any(), anyInt(), any(), any());
+        verifyNoInteractions(employeeCommands);
     }
 
     @Test
@@ -382,6 +417,7 @@ class ReconcileApplyServiceTest {
         employee.setStatus("active");
         employee.setVersion(version);
         when(empRepo.findById(id)).thenReturn(Optional.of(employee));
+        when(empRepo.findByIdForUpdate(id)).thenReturn(Optional.of(employee));
     }
 
     private void sensitive(UUID employeeId, String idCardEnc) {

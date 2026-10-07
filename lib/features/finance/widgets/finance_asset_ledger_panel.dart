@@ -16,6 +16,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../department/widgets/uten_department_picker.dart';
@@ -189,6 +190,10 @@ class _FinanceAssetLedgerPanelState
   }
 
   Future<void> _delete(FinanceAssetSummary item) async {
+    bool canDeleteNow() =>
+        ref.read(isSuperAdminProvider) ||
+        ref.read(currentPermissionsProvider).contains(Perm.financeAssetDelete);
+    if (!canDeleteNow()) return;
     final expectedVersion = item.version;
     if (expectedVersion == null) {
       if (mounted) context.appWarning('缺少记录版本，请刷新后重试');
@@ -201,7 +206,7 @@ class _FinanceAssetLedgerPanelState
       confirmLabel: '删除草稿',
       danger: true,
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted || !canDeleteNow()) return;
     try {
       await ref
           .read(financeAssetWorkbenchRepositoryProvider)
@@ -231,7 +236,7 @@ class _FinanceAssetLedgerPanelState
           ? () => _edit(item)
           : null,
       onDelete:
-          widget.capabilities.canEdit &&
+          widget.capabilities.canDelete &&
               item.version != null &&
               item.status.toUpperCase() == 'DRAFT' &&
               actionAllowed(item.allowedActions, 'DELETE')
@@ -625,7 +630,7 @@ class _FinanceAssetLedgerPanelState
               icon: Icons.edit_outlined,
               onTap: () => _edit(item),
             ),
-          if (widget.capabilities.canEdit &&
+          if (widget.capabilities.canDelete &&
               item.version != null &&
               item.status.toUpperCase() == 'DRAFT' &&
               actionAllowed(item.allowedActions, 'DELETE'))

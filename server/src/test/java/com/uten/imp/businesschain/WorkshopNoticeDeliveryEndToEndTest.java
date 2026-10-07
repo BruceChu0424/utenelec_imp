@@ -15,6 +15,8 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewRequest;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewItem;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.IssueWorkshopPlansRequest;
+import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
+import com.uten.imp.features.production.execution.SegmentAssignmentRequest;
 import com.uten.imp.features.rd_task.RdTaskService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
@@ -92,7 +94,7 @@ class WorkshopNoticeDeliveryEndToEndTest {
         Scenario scenario = prepare(true);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
-        for (UUID user : scenario.receivers()) {
+        for (UUID user : scenario.permittedUsers()) {
             UserAccount account = mock(UserAccount.class);
             when(account.getStatus()).thenReturn("active");
             when(users.findById(user)).thenReturn(Optional.of(account));
@@ -110,10 +112,11 @@ class WorkshopNoticeDeliveryEndToEndTest {
                 scenario.segment(), json.createObjectNode());
         var content = ArgumentCaptor.forClass(String.class);
         var receivers = ArgumentCaptor.forClass(UUID.class);
-        verify(notices, times(4)).publishForUser(receivers.capture(), startsWith("物料已领齐·可以开工"),
+        verify(notices, times(2)).publishForUser(receivers.capture(), startsWith("物料已领齐·可以开工"),
                 content.capture(), eq("task"), anyString(), eq("/production/workshop-tasks"),
                 eq(TASK_EVENT), eq("important"), eq(scenario.segment()));
         assertThat(receivers.getAllValues()).containsExactlyInAnyOrderElementsOf(scenario.receivers());
+        assertThat(receivers.getAllValues()).doesNotContainAnyElementsOf(scenario.permittedUsers().subList(2,4));
         for (String message : content.getAllValues()) {
             assertThat(message).contains("物料已领齐，可以开工").doesNotContain("可直接报工");
             for (String summary : scenario.summaries()) {
@@ -146,15 +149,24 @@ class WorkshopNoticeDeliveryEndToEndTest {
                 UUID.class, plan);
         UUID workshop = jdbc.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE id=?",
                 UUID.class, segment);
-        List<UUID> receivers = new ArrayList<>();
+        List<UUID> permittedUsers = new ArrayList<>();
         for (int index = 0; index < 4; index++) {
             UUID user = ReflectionTestUtils.invokeMethod(fixture, "createUserWithPerms", world,
                     tag + "-recipient-" + index, (Object) ACTION.toArray(String[]::new));
             assertNotNull(user);
             jdbc.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)", workshop, user);
-            receivers.add(user);
+            permittedUsers.add(user);
         }
         fixture.loginAs(world.superAdminUserId());
+        // Equal handling permissions are insufficient: only the registered workshop manager and
+        // the actual task owner receive the card. The other two remain ordinary workshop members.
+        jdbc.update("UPDATE departments SET manager_id=(SELECT employee_id FROM users WHERE id=?) WHERE id=?",
+                permittedUsers.getFirst(), workshop);
+        UUID responsible = jdbc.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, permittedUsers.get(1));
+        Long version = jdbc.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, segment);
+        beans.getBean(ProductionExecutionSegmentService.class).assign(plan,segment,
+                new SegmentAssignmentRequest(version,tag+"-assign-owner",workshop,null,responsible,BusinessTime.today(),null));
+        List<UUID> receivers = List.copyOf(permittedUsers.subList(0,2));
         UUID otherPlan = readyPlan(fixture, world, "1", tag + "-other");
         List<UUID> draws = draws(plan);
         assertThat(draws).hasSize(2);
@@ -174,7 +186,7 @@ class WorkshopNoticeDeliveryEndToEndTest {
                 """, String.class, String.join(",", draws.stream().map(UUID::toString).toList()));
         List<String> others = draws(otherPlan).stream().map(draw -> jdbc.queryForObject(
                 "SELECT bill_no FROM stock_documents WHERE id=?", String.class, draw)).toList();
-        return new Scenario(segment, List.copyOf(receivers), draws, summaries, others);
+        return new Scenario(segment, receivers, List.copyOf(permittedUsers), draws, summaries, others);
     }
 
     private UUID readyPlan(FullChainEndToEndTest fixture, FullChainEndToEndTest.World world, String qty, String key) {
@@ -206,5 +218,6 @@ class WorkshopNoticeDeliveryEndToEndTest {
                 mock(BusinessEventPublisher.class), mock(RdTaskService.class), mock(FinanceReviewerEligibilityPort.class),
                 mock(SalesOrderFinanceConfirmerEligibility.class));
     }
-    private record Scenario(UUID segment, List<UUID> receivers, List<UUID> draws, List<String> summaries, List<String> otherDraws) {}
+    private record Scenario(UUID segment, List<UUID> receivers, List<UUID> permittedUsers,
+                            List<UUID> draws, List<String> summaries, List<String> otherDraws) {}
 }

@@ -169,10 +169,6 @@ abstract final class RouteName {
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
-  // 业务页面内权限设置；surfaceKey 由前后端稳定注册表共同终审。
-  static const String pagePermissions = '/page-permissions/:surfaceKey';
-  static String pagePermissionsFor(String surfaceKey) =>
-      '/page-permissions/${Uri.encodeComponent(surfaceKey)}';
   // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
   static const String adminAuditSession =
@@ -182,6 +178,11 @@ abstract final class RouteName {
   static const String adminServerStatus = '/admin/server-status';
   // AI 服务设置(ADR-133: 服务商/密钥/连接测试; 超管, 写操作再认证)
   static const String adminAiSettings = '/admin/ai-settings';
+  // AI 用量看板与按人限额(ADR-164): 看板 + 人员详情; 超管 authorization:manage。
+  static const String adminAiUsage = '/admin/ai-usage';
+  static const String adminAiUsagePersonRoute = '/admin/ai-usage/:userId';
+  static String adminAiUsagePerson(String userId) =>
+      '/admin/ai-usage/${Uri.encodeComponent(userId)}';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';
@@ -284,7 +285,6 @@ abstract final class RouteName {
   static const String warehouseInboundExpectations =
       '/warehouse/inbound/expectations';
 
-  static const String warehouseDocumentHistory = '/warehouse/history';
   static const String warehousePurchaseReceiptHistory =
       '/warehouse/history/purchase-receipts';
   static const String warehouseSubcontractReceiptHistory =
@@ -612,12 +612,6 @@ abstract final class RoutePath {
 
   static String payrollSlipDetail(String id) => '/payroll/slip/$id';
 
-  static String warehouseDocumentHistoryDetail(String segment, String id) =>
-      '/warehouse/history/$segment/$id';
-
-  static String warehouseSalesOutboundDetail(String id) =>
-      '${RouteName.warehouseSalesOutbound}/$id';
-
   static String adminAuditSession(String sessionId, {int? snapshotAuditId}) {
     final path =
         '${RouteName.adminAuditLogs}/sessions/'
@@ -666,7 +660,6 @@ abstract final class RoutePath {
       '/purchase/$doc/$id';
   static String purchaseDocEdit(String doc, String id) =>
       '/purchase/$doc/$id/edit';
-  static String purchaseReportTable(String kind) => '/purchase/report/$kind';
 
   /// 仓库单据：列表 / 新建 / 详情 / 编辑。[code] = TRANSFER|OTHER_IN|...|CHECK。
   static String stockDocList(String code) => '/warehouse/$code';
@@ -803,9 +796,8 @@ abstract final class RoutePath {
   /// 员工修改审批单批详情（HR 端）。
   static String hrProfileChangeDetail(String id) => '/hr/profile-changes/$id';
 
-  /// 销售单据：列表 / 新建 / 详情 / 编辑。
+  /// 销售单据：新建 / 详情 / 编辑。
   /// [seg] = quotes|orders|shipments|other-shipments|returns。
-  static String salesDocList(String seg) => '/sales/$seg';
   static String salesDocNew(String seg) => '/sales/$seg/new';
   static String salesDocDetail(String seg, String id) => '/sales/$seg/$id';
   static String salesDocEdit(String seg, String id) => '/sales/$seg/$id/edit';
@@ -814,14 +806,10 @@ abstract final class RoutePath {
   static String salesOrderProgressDetail(String orderId) =>
       '/sales/progress/$orderId';
 
-  /// 委外单据：列表 / 新建 / 详情 / 编辑。
+  /// 委外单据：详情。
   /// [seg] = inquiries|applications|orders|receipts|material-issues|returns|material-returns|wastes。
-  static String subcontractDocList(String seg) => '/subcontract/$seg';
-  static String subcontractDocNew(String seg) => '/subcontract/$seg/new';
   static String subcontractDocDetail(String seg, String id) =>
       '/subcontract/$seg/$id';
-  static String subcontractDocEdit(String seg, String id) =>
-      '/subcontract/$seg/$id/edit';
 
   /// 生产计划单 / 日报表：新建 / 详情 / 编辑。
   static String productionMaterialAnalysisSummary(String analysisId) =>
@@ -864,11 +852,8 @@ abstract final class RoutePath {
   /// [seg] = plan-detail|plan-summary。
   static String productionReport(String seg) => '/production/reports/$seg';
 
-  /// 钱流单据：列表 / 新建 / 详情 / 编辑。
+  /// 钱流单据：新建 / 详情。
   /// [seg] = receipts|payments|expenses|incomes|bank-transfers。
-  static String financeDocList(String seg) => '/finance/$seg';
   static String financeDocNew(String seg) => '/finance/$seg/new';
   static String financeDocDetail(String seg, String id) => '/finance/$seg/$id';
-  static String financeDocEdit(String seg, String id) =>
-      '/finance/$seg/$id/edit';
 }

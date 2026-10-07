@@ -90,8 +90,6 @@ public class AiInputOriginalStore {
                 """,Map.of("job",job,"doc",doc));
         audit.logCommitted(actor,null,"bind_ai_input_original","ai_input_originals",job+";"+type+":"+doc,"success");
     }
-    public record OriginalView(UUID jobId,String originalName,String inputKind,Long sizeBytes,String sha256,String availability,
-            Instant capturedAt,String sourceDocumentKind,UUID sourceDocumentId,String sourceDocumentNo,String downloadUrl,boolean canDownload) { }
     public record Download(byte[] bytes,String filename,String contentType,String sha256) { }
     private record Original(UUID id,UUID actor,String name,String kind,String mime,String availability,String provider,String key,
             String version,Long size,String sha,Instant captured,String lifecycle) { }
@@ -109,28 +107,6 @@ public class AiInputOriginalStore {
         if(policy==null)throw new ApiException(ErrorCode.FORBIDDEN);
         if(sensitive)policy.requireCanViewSensitiveOriginalHistory(doc,actor);else policy.requireCanViewHistory(doc,actor);
         return policy;
-    }
-    @Transactional(readOnly=true)
-    public List<OriginalView> list(String type,UUID doc) {
-        var policy=authorize(type,doc,false);boolean permitted;
-        try {policy.requireCanViewSensitiveOriginalHistory(doc,current.get().orElseThrow());permitted=true;}
-        catch(ApiException forbidden){if(forbidden.getCode()!=ErrorCode.FORBIDDEN)throw forbidden;permitted=false;}
-        final boolean canRead=permitted&&current.get().orElseThrow().getImpersonatedBy()==null;
-        var parameters=Map.of("type",type,"doc",doc);
-        return jdbc.query("SELECT "+metadata("original")+"""
-                ,binding.source_doc_type,binding.source_doc_id,
-                    CASE binding.source_doc_type WHEN 'quote' THEN quote.bill_no ELSE orders.bill_no END AS source_no
-                FROM ai_input_original_bindings binding JOIN ai_input_originals original ON original.job_id=binding.job_id
-                LEFT JOIN sales_quotes quote ON binding.source_doc_type='quote' AND quote.id=binding.source_doc_id
-                LEFT JOIN sales_orders orders ON binding.source_doc_type='order' AND orders.id=binding.source_doc_id
-                WHERE binding.doc_type=:type AND binding.doc_id=:doc ORDER BY original.created_at,original.job_id
-                """,parameters,(rs,index)->{
-                    Original original=row(rs,index);boolean available=readable(original)&&"AVAILABLE".equals(original.lifecycle());
-                    String route="/api/sales/"+("quote".equals(type)?"quotes":"orders")+"/"+doc+"/input-originals/"+original.id()+"/download";
-                    return new OriginalView(original.id(),original.name(),original.kind(),available?original.size():null,available?original.sha():null,
-                            original.availability(),original.captured(),rs.getString("source_doc_type"),rs.getObject("source_doc_id",UUID.class),
-                            rs.getString("source_no"),available&&canRead?route:null,available&&canRead);
-                });
     }
     @Transactional(readOnly=true)
     public Download download(String type,UUID doc,UUID job) {

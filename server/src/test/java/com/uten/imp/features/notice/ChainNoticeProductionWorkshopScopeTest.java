@@ -22,16 +22,20 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChainNoticeProductionWorkshopScopeTest {
 
     @Test
-    void workshopRecipientsRequireViewAndCurrentActionPermissions() {
+    void workshopRecipientsPreferLeadersOverPlainMembers() {
+        // 2026-10-06 修订二(ADR-165): 车间任务卡只发「车间子树各部门负责人 ∪ 任务负责人 ∩ 权限」;
+        // 普通成员/兼职不再进收件人; 计划部等职能岗个人加授权限也收不到。
         NoticeService notices = mock(NoticeService.class);
         UserAccountRepository users = mock(UserAccountRepository.class);
         PermissionResolver permissions = mock(PermissionResolver.class);
@@ -44,8 +48,8 @@ class ChainNoticeProductionWorkshopScopeTest {
         UUID noTaskId = UUID.randomUUID();
         doReturn(List.of(eligibleId, noNoticeId, noTaskId))
                 .when(jdbc)
-                .queryForList(
-                        anyString(), eq(UUID.class), any(), any());
+                .queryForList(contains("SELECT department.manager_id AS employee_id"),
+                        eq(UUID.class), any(), any());
 
         UserAccount eligible = activeAccount();
         UserAccount noNotice = activeAccount();
@@ -62,13 +66,41 @@ class ChainNoticeProductionWorkshopScopeTest {
         assertThat(service.workshopRecipientUserIds(
                 workshopId, responsibleId)).containsExactly(eligibleId);
 
+        // 收件人只查询负责人，不查询普通成员或兼职人员。
+        verify(jdbc, never()).queryForList(
+                contains("employee_secondary_departments"), eq(UUID.class), any(), any());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(jdbc).queryForList(
                 sql.capture(), eq(UUID.class), eq(workshopId), eq(responsibleId));
         assertThat(sql.getValue())
-                .contains("employee_secondary_departments")
                 .contains("department.manager_id")
-                .contains("employee.status IN");
+                .contains("employee.status IN")
+                .doesNotContain("employee_secondary_departments")
+                .doesNotContain("employee.department_id IN");
+    }
+
+    @Test
+    void workshopRecipientsStayEmptyWithoutAnEligibleLeader() {
+        NoticeService notices = mock(NoticeService.class);
+        UserAccountRepository users = mock(UserAccountRepository.class);
+        PermissionResolver permissions = mock(PermissionResolver.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ChainNoticeService service = service(notices, users, permissions, jdbc);
+        UUID workshopId = UUID.randomUUID();
+        UUID leaderId = UUID.randomUUID();
+        doReturn(List.<UUID>of()).when(jdbc).queryForList(
+                contains("SELECT department.manager_id AS employee_id"), eq(UUID.class), any(), any());
+        assertThat(service.workshopRecipientUserIds(workshopId, null)).isEmpty();
+
+        // A configured leader whose handling permission was revoked must not broadcast to members.
+        doReturn(List.of(leaderId)).when(jdbc).queryForList(
+                contains("SELECT department.manager_id AS employee_id"), eq(UUID.class), any(), any());
+        UserAccount leader = activeAccount();
+        when(users.findById(leaderId)).thenReturn(Optional.of(leader));
+        when(permissions.permsOf(leader)).thenReturn(Set.of("notice:read", "production_execution:view"));
+        assertThat(service.workshopRecipientUserIds(workshopId, null)).isEmpty();
+        verify(jdbc, never()).queryForList(
+                contains("employee_secondary_departments"), eq(UUID.class), any(), any());
     }
 
     @Test

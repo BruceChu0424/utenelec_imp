@@ -7,6 +7,7 @@ import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.concurrency.ProcurementMutationLocks;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInItem;
@@ -118,7 +119,7 @@ public class ProcurementIqcPreStockInService {
         for (PreStockLine line : lines) {
             Object[] row = rows.get(line.inspectionItemId());
             if (row == null) throw new ApiException(ErrorCode.NOT_FOUND, "待检明细不存在或不属于当前收货单");
-            if (!"PENDING".equals(row[1]) || decimal(row[2]).signum() != 0 || decimal(row[3]).signum() != 0) {
+            if (!"PENDING".equals(row[1]) || NativeValueConverters.toBigDecimal(row[2]).signum() != 0 || NativeValueConverters.toBigDecimal(row[3]).signum() != 0) {
                 throw conflict("待检明细已有品质结论或已撤销，不能再先入库；请按原流程等品质放行后由仓库确认入库");
             }
         }
@@ -155,7 +156,7 @@ public class ProcurementIqcPreStockInService {
             UUID eventId = UUID.randomUUID();
             if (firstEvent == null) firstEvent = eventId;
             ProcurementInspectionEvents.append(em, eventId, line.inspectionItemId(),
-                    ProcurementInspectionEvents.PRE_STOCKED, decimal(row[4]),
+                    ProcurementInspectionEvents.PRE_STOCKED, NativeValueConverters.toBigDecimal(row[4]),
                     (row[5] == null ? "先入库上架：" : "调整上架位置：")
                             + warehouseNames.getOrDefault(line.warehouseId(), line.warehouseId().toString())
                             + " / " + line.place(),
@@ -240,10 +241,6 @@ public class ProcurementIqcPreStockInService {
             throw validation("收货单类型仅支持 PURCHASE 或 SUBCONTRACT");
         }
         return type;
-    }
-
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
     }
 
     private static ApiException validation(String message) {

@@ -26,7 +26,7 @@
 | API 抛 `ApiException` | `UtenNotify.apiError(context, e)` |
 | 来新消息、审批状态变更、日常提醒（可点进详情） | `UtenNotify.banner(..., onTap: 跳详情)` |
 | 重要公告、需要用户阅读确认 | `UtenNotify.alert(..., level: normal / important)` |
-| 紧急故障、强提醒、不容许错过 | `UtenNotify.alert(..., level: urgent)` 或 `UtenNotify.urgentAlert(...)` |
+| 紧急故障、强提醒、不容许错过 | `UtenNotify.alert(..., level: urgent)` |
 | 删除等破坏性二次确认 | 仍用 `UtenDialog`（确认对话框，不属于通知） |
 
 > **业务到达提醒统一走通知中心 + 顶部非阻塞叠放。** 服务端标为
@@ -115,8 +115,6 @@ final ok = await UtenNotify.alert(
   confirmLabel: '立即处理',
   onConfirm: () => context.push('/maintenance/42'),
 );
-// 紧急快捷方式
-await UtenNotify.urgentAlert(context, title: '设备故障', message: '...');
 
 // context 扩展（等价）
 await context.notifyAlert(title: '...', message: '...', level: UtenAlertLevel.urgent);

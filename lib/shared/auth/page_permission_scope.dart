@@ -70,10 +70,27 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
     return _websiteInquiryScope;
   }
 
+  // 销售任务中心（V812 补挂：合并浏览页此前拿不到 scope，右上角入口静默消失）。
+  if (path == '/sales/tasks' || _isDescendant(path, '/sales/tasks')) {
+    return _salesTasksScope;
+  }
+
+  // 车间内料仓操作三页（V812 补挂：面早已播种，路由映射漏网）。
+  if (path == '/workshop-material/bin' ||
+      path == '/workshop-material/issue' ||
+      path == '/workshop-material/count') {
+    return _workshopMaterialScope;
+  }
+  if (path == '/reports/workshop-material') return _workshopMaterialReportScope;
+
   // 基础资料及财务别名入口。
   if (path == '/finance/customers') return _clientScope;
   if (path == '/finance/suppliers') return _supplierScope;
   if (path == '/finance/accounts') return _accountScope;
+  if (path == '/finance/audits' || _isDescendant(path, '/finance/audits')) {
+    // 业务审核中心（V812 补挂）：六个审核队列的合并工作台。
+    return _financeAuditCenterScope;
+  }
   if (path == '/basicinfo') return _basicDataHubScope;
   if (path == '/basicinfo/goods' || _isDescendant(path, '/basicinfo/goods')) {
     return _goodsScope;
@@ -211,13 +228,15 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _subcontractOutboundScope,
   _warehouseSalesOutboundScope,
   _stockDocumentScope,
-  _warehouseOutboundTasksScope,
-  _warehouseInboundTasksScope,
-  _warehouseDrawTasksScope,
+  _warehouseTasksScope,
   _stockItemScope,
+  _workshopMaterialScope,
+  _workshopMaterialSetupScope,
+  _workshopMaterialReportScope,
   _procurementIqcRejectionScope,
   _procurementExceptionScope,
   _salesHubScope,
+  _salesTasksScope,
   _salesReportScope,
   _salesScarcityScope,
   _salesProgressScope,
@@ -246,6 +265,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _productionReportScope,
   _whereUsedScope,
   _financeHubScope,
+  _financeAuditCenterScope,
   _financeOrderApprovalScope,
   _salesFinanceScope,
   _financeShipmentAuditScope,
@@ -339,18 +359,15 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
       _isDescendant(path, '/warehouse/sales-outbound')) {
     return _warehouseSalesOutboundScope;
   }
-  // 仓库任务中心三页（2026-09-01 重组；静态段 tasks 须先于库存单据 :code 段）。
-  if (path == '/warehouse/tasks/outbound' ||
-      _isDescendant(path, '/warehouse/tasks/outbound')) {
-    return _warehouseOutboundTasksScope;
+  // 仓库任务中心（2026-09-24 四卡合并页；静态段 tasks 须先于库存单据 :code 段）。
+  // V812 起合并页与旧三深链共用一张 warehouse.tasks 权限面（原三面是同一张页
+  // 页面的三个入口，目录已合一）。
+  if (path == '/warehouse/tasks' || _isDescendant(path, '/warehouse/tasks')) {
+    return _warehouseTasksScope;
   }
-  if (path == '/warehouse/tasks/inbound' ||
-      _isDescendant(path, '/warehouse/tasks/inbound')) {
-    return _warehouseInboundTasksScope;
-  }
-  if (path == '/warehouse/tasks/draw' ||
-      _isDescendant(path, '/warehouse/tasks/draw')) {
-    return _warehouseDrawTasksScope;
+  // 车间内料仓设置页（V812 补挂：静态段须先于库存单据 :code/:id 段）。
+  if (path == '/warehouse/workshop-material/setup') {
+    return _workshopMaterialSetupScope;
   }
   if (!_stockDocumentCodes.contains(segments[1])) return null;
   return _isDocumentPath(segments) ? _stockDocumentScope : null;
@@ -358,6 +375,7 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
 
 PagePermissionScope? _salesScopeFor(List<String> segments) {
   if (segments.length == 1) return _salesHubScope;
+  // 销售任务中心在文件头已按整路径优先命中（/sales/tasks 是静态段）。
   if (segments[1] == 'report') {
     return segments.length <= 3 ? _salesReportScope : null;
   }
@@ -374,6 +392,10 @@ PagePermissionScope? _salesScopeFor(List<String> segments) {
 
 PagePermissionScope? _subcontractScopeFor(List<String> segments) {
   if (segments.length == 1) return _subcontractHubScope;
+  // 回厂短交判定（V812 补挂）：案件是订货单事实，与委外订货同面（ADR-098）。
+  if (segments[1] == 'short-deliveries') {
+    return segments.length == 2 ? _subcontractOrderScope : null;
+  }
   if (segments[1] == 'report') {
     return segments.length <= 3 ? _subcontractReportScope : null;
   }
@@ -391,6 +413,11 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
       return segments.length == 2 ? _productionProgressScope : null;
     case 'material-analysis':
       return segments.length == 2 ? _materialAnalysisScope : null;
+    // 超产比例/追加用料审批队列（V812 补挂）：审批动作复用 production_plan:approve，
+    // 与 /production/plans 同一张 production.plan 权限面。
+    case 'overproduction-rate-requests':
+    case 'material-increment-requests':
+      return _productionPlanScope;
     case 'workshop-tasks':
       return segments.length == 2 ||
               (segments.length == 3 &&
@@ -731,17 +758,10 @@ const _stockDocumentScope = PagePermissionScope(
   surfaceKey: 'warehouse.stock-document',
   title: '库存单据',
 );
-const _warehouseOutboundTasksScope = PagePermissionScope(
-  surfaceKey: 'warehouse.outbound-tasks',
-  title: '出库任务中心',
-);
-const _warehouseInboundTasksScope = PagePermissionScope(
-  surfaceKey: 'warehouse.inbound-tasks',
-  title: '入库任务中心',
-);
-const _warehouseDrawTasksScope = PagePermissionScope(
-  surfaceKey: 'warehouse.draw-tasks',
-  title: '生产领料任务中心',
+// V812：仓库任务中心合并页与旧三大类深链共用一张面（原三面目录合一）。
+const _warehouseTasksScope = PagePermissionScope(
+  surfaceKey: 'warehouse.tasks',
+  title: '仓库任务中心',
 );
 const _stockItemScope = PagePermissionScope(
   surfaceKey: 'warehouse.stock-item',
@@ -769,6 +789,11 @@ const _stockDocumentCodes = <String>{
 const _salesHubScope = PagePermissionScope(
   surfaceKey: 'sales.hub',
   title: '销售管理',
+);
+// V812 补挂：销售任务中心合并浏览页（五类单据查看并集面）。
+const _salesTasksScope = PagePermissionScope(
+  surfaceKey: 'sales.tasks',
+  title: '销售任务中心',
 );
 const _salesReportScope = PagePermissionScope(
   surfaceKey: 'sales.report',
@@ -911,6 +936,11 @@ const _financeHubScope = PagePermissionScope(
   surfaceKey: 'finance.hub',
   title: '钱流管理',
 );
+// V812 补挂：财务业务审核中心（六个审核队列的合并工作台）。
+const _financeAuditCenterScope = PagePermissionScope(
+  surfaceKey: 'finance.audit-center',
+  title: '业务审核中心',
+);
 const _financeOrderApprovalScope = PagePermissionScope(
   surfaceKey: 'finance.order-approval',
   title: '采购与委外财务审批',
@@ -988,4 +1018,18 @@ const _visitorApprovalScope = PagePermissionScope(
 const _securityScope = PagePermissionScope(
   surfaceKey: 'hr.visitor-security',
   title: '访客核验',
+);
+
+// V812 补挂：车间内料仓三张操作页与设置页（仓库侧动作面）。
+const _workshopMaterialScope = PagePermissionScope(
+  surfaceKey: 'warehouse.workshop-material',
+  title: '车间内料仓',
+);
+const _workshopMaterialSetupScope = PagePermissionScope(
+  surfaceKey: 'warehouse.workshop-material-setup',
+  title: '车间整批领料设置',
+);
+const _workshopMaterialReportScope = PagePermissionScope(
+  surfaceKey: 'report.workshop-material',
+  title: '车间内料仓用量与结算',
 );

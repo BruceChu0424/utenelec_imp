@@ -255,7 +255,6 @@
                     <include>99-决策记录-ADR/ADR-*.md</include>
                     <include>03-页面/*.md</include>
                     <include>07-业务链路/*.md</include>
-                    <include>98-模块总结/*.md</include>
                     <include>00-项目准则/13-适老化UX基线.md</include>
                     <include>00-项目准则/14-徽章与计数口径.md</include>
                 </includes>
@@ -298,6 +297,8 @@
                     <exclude>99-决策记录-ADR/ADR-157-*.md</exclude>
                     <exclude>99-决策记录-ADR/ADR-158-*.md</exclude>
                     <exclude>99-决策记录-ADR/ADR-159-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-163-*.md</exclude>
+                    <exclude>99-决策记录-ADR/ADR-164-*.md</exclude>
                     <exclude>03-页面/系统设置页.md</exclude>
                     <exclude>03-页面/AI服务设置页.md</exclude>
                     <exclude>03-页面/权限管理页.md</exclude>
@@ -308,7 +309,6 @@
                     <exclude>07-业务链路/02-数据库设计-*.md</exclude>
                     <exclude>07-业务链路/03-续作指引.md</exclude>
                     <exclude>07-业务链路/2026-09-07-履约事务锁顺序与来源漂移处理.md</exclude>
-                    <exclude>98-模块总结/*代码总结.md</exclude>
                 </excludes>
             </resource>
         </resources>

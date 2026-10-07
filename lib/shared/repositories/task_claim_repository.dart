@@ -12,21 +12,6 @@ class TaskClaimRepository {
 
   final ApiClient _api;
 
-  /// 某类型全部有效认领（key=targetKey）。列表装配「XX 处理中」用，一次请求。
-  Future<Map<String, TaskClaimView>> activeClaims(String targetType) async {
-    final json = await _api.get(ApiEndpoints.taskClaims(targetType));
-    // 后端直接返回 {targetKey: view} 映射（兼容偶发 {claims: {...}} 包裹）。
-    final raw = (json['claims'] is Map)
-        ? json['claims'] as Map<String, dynamic>
-        : json;
-    final map = <String, TaskClaimView>{};
-    raw.forEach((key, value) {
-      final view = TaskClaimView.fromJson(value);
-      if (view != null) map[key] = view;
-    });
-    return map;
-  }
-
   /// 单个目标当前认领；无认领返回 null。
   Future<TaskClaimView?> activeClaim(
     String targetType,

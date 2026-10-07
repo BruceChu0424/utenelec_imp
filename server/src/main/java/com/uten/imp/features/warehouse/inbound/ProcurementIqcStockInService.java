@@ -12,6 +12,7 @@ import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.common.finance.ProcurementOrderClosurePolicy;
 import com.uten.imp.common.util.CanonicalFingerprint;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.ChainNoticeService;
@@ -119,8 +120,8 @@ public class ProcurementIqcStockInService {
         boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
                 && ProcurementReceiptOriginPolicy.isNative(em,type,receiptId);
         return new TaskDetail(
-                type, receiptId, str(header[0]), localDate(header[1]),
-                uuid(header[2]), str(header[3]), uuid(header[4]), str(header[5]),
+                type, receiptId, str(header[0]), NativeValueConverters.toLocalDate(header[1]),
+                NativeValueConverters.uuid(header[2]), str(header[3]), NativeValueConverters.uuid(header[4]), str(header[5]),
                 qualityStatus(type, receiptId), items.size(), items.isEmpty(),
                 canConfirm && !items.isEmpty() ? List.of("CONFIRM") : List.of(),
                 items, history);
@@ -280,7 +281,7 @@ public class ProcurementIqcStockInService {
                 WHERE batch_id IN (:batchIds)
                 """).setParameter("batchIds", batchIds).getResultList();
         Map<UUID, UUID> batchByItem = new LinkedHashMap<>();
-        itemRows.forEach(row -> batchByItem.put(uuid(row[0]), uuid(row[1])));
+        itemRows.forEach(row -> batchByItem.put(NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1])));
         Map<UUID, List<InboundAllocation>> result = new LinkedHashMap<>();
         for (InboundAllocation allocation : inboundAllocations(inboundAllocationRead.actualForBatches(batchIds))) {
             UUID batchId = batchByItem.get(allocation.stockInBatchItemId());
@@ -399,14 +400,14 @@ public class ProcurementIqcStockInService {
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         Map<UUID, Object[]> byEvent = new LinkedHashMap<>();
-        for (Object[] row : rows) byEvent.put(uuid(row[0]), row);
+        for (Object[] row : rows) byEvent.put(NativeValueConverters.uuid(row[0]), row);
         Map<UUID, BigDecimal> released = new LinkedHashMap<>();
         for (PreStockedRelease release : releases) {
             Object[] row = byEvent.get(release.passEventId());
-            if (row == null || !release.inspectionItemId().equals(uuid(row[1]))) {
+            if (row == null || !release.inspectionItemId().equals(NativeValueConverters.uuid(row[1]))) {
                 throw conflict("品质放行事件不存在，不能自动转正入库");
             }
-            released.put(release.passEventId(), decimal(row[2]));
+            released.put(release.passEventId(), NativeValueConverters.toBigDecimal(row[2]));
         }
         return released;
     }
@@ -931,14 +932,14 @@ public class ProcurementIqcStockInService {
                 .setParameter("receiptId", receiptId)
                 .getResultList();
         return rows.stream().map(row -> new PassSlice(
-                uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]), uuid(row[4]),
-                uuid(row[5]), decimal(row[6]), decimal(row[7]), decimal(row[8]),
-                nullableDecimal(row[9]), decimal(row[10]), decimal(row[11]),
-                decimal(row[12]), decimal(row[13]), nullableDecimal(row[14]),
-                decimal(row[15]), decimal(row[16]), str(row[17]),
-                offsetDateTime(row[18]), str(row[19]), str(row[20]), str(row[21]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]), NativeValueConverters.uuid(row[4]),
+                NativeValueConverters.uuid(row[5]), NativeValueConverters.toBigDecimal(row[6]), NativeValueConverters.toBigDecimal(row[7]), NativeValueConverters.toBigDecimal(row[8]),
+                nullableDecimal(row[9]), NativeValueConverters.toBigDecimal(row[10]), NativeValueConverters.toBigDecimal(row[11]),
+                NativeValueConverters.toBigDecimal(row[12]), NativeValueConverters.toBigDecimal(row[13]), nullableDecimal(row[14]),
+                NativeValueConverters.toBigDecimal(row[15]), NativeValueConverters.toBigDecimal(row[16]), str(row[17]),
+                NativeValueConverters.toOffsetDateTime(row[18]), str(row[19]), str(row[20]), str(row[21]),
                 str(row[22]), str(row[23]), str(row[24]), str(row[25]),
-                uuid(row[26]), uuid(row[27]),str(row[28])))
+                NativeValueConverters.uuid(row[26]), NativeValueConverters.uuid(row[27]),str(row[28])))
                 .toList();
     }
 
@@ -997,7 +998,7 @@ public class ProcurementIqcStockInService {
                 .setParameter("receiptType", receiptType)
                 .setParameter("receiptId", receiptId)
                 .getResultList();
-        List<UUID> batchIds = rows.stream().map(row -> uuid(row[1]))
+        List<UUID> batchIds = rows.stream().map(row -> NativeValueConverters.uuid(row[1]))
                 .filter(java.util.Objects::nonNull).distinct().toList();
         Map<UUID, List<InboundAllocation>> actualByItem = new LinkedHashMap<>();
         for (InboundAllocation allocation : inboundAllocations(
@@ -1009,13 +1010,13 @@ public class ProcurementIqcStockInService {
             }
         }
         return rows.stream().map(row -> {
-            UUID stockInItemId = uuid(row[0]);
+            UUID stockInItemId = NativeValueConverters.uuid(row[0]);
             return new StockInHistoryItem(
-                    stockInItemId, uuid(row[1]), uuid(row[2]), uuid(row[3]),
+                    stockInItemId, NativeValueConverters.uuid(row[1]), NativeValueConverters.uuid(row[2]), NativeValueConverters.uuid(row[3]),
                     str(row[4]), str(row[5]), str(row[6]), str(row[7]),
-                    decimal(row[8]), nullableDecimal(row[9]),
-                    str(row[10]), str(row[11]), offsetDateTime(row[12]),
-                    actualByItem.getOrDefault(stockInItemId, List.of()),uuid(row[13]),str(row[14]),
+                    NativeValueConverters.toBigDecimal(row[8]), nullableDecimal(row[9]),
+                    str(row[10]), str(row[11]), NativeValueConverters.toOffsetDateTime(row[12]),
+                    actualByItem.getOrDefault(stockInItemId, List.of()),NativeValueConverters.uuid(row[13]),str(row[14]),
                     str(row[15]));
         }).toList();
     }
@@ -1163,8 +1164,8 @@ public class ProcurementIqcStockInService {
         if (rows.isEmpty()) return null;
         Object[] row = rows.getFirst();
         return new ExistingBatch(
-                uuid(row[0]), str(row[1]), number(row[2]).intValue(),
-                offsetDateTime(row[3]));
+                NativeValueConverters.uuid(row[0]), str(row[1]), number(row[2]).intValue(),
+                NativeValueConverters.toOffsetDateTime(row[3]));
     }
 
     private void lockReceiptMutationDimensions(String type, UUID receiptId) {
@@ -1228,10 +1229,6 @@ public class ProcurementIqcStockInService {
         return new ApiException(ErrorCode.CONFLICT, message);
     }
 
-    private static UUID uuid(Object value) {
-        return value == null ? null : (UUID) value;
-    }
-
     private static String str(Object value) {
         return value == null ? "" : value.toString();
     }
@@ -1240,29 +1237,8 @@ public class ProcurementIqcStockInService {
         return value == null ? 0L : (Number) value;
     }
 
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
-    }
-
     private static BigDecimal nullableDecimal(Object value) {
         return value == null ? null : (BigDecimal) value;
-    }
-
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof java.sql.Date date) return date.toLocalDate();
-        return LocalDate.parse(value.toString());
-    }
-
-    private static OffsetDateTime offsetDateTime(Object value) {
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime dateTime) return dateTime;
-        if (value instanceof java.time.Instant instant) return instant.atOffset(ZoneOffset.UTC);
-        if (value instanceof java.sql.Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        return OffsetDateTime.parse(value.toString());
     }
 
     private static com.uten.imp.common.concurrency.ProcurementMutationLocks.StockInRef lockRef(

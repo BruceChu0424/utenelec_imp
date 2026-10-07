@@ -32,7 +32,9 @@ class AiChatJobHandlerTest {
     private final AiChatToolRegistry tools = mock(AiChatToolRegistry.class);
     private final AiChatPageGuideCatalog pages = mock(AiChatPageGuideCatalog.class);
     private final AiChatActionProposalService proposals = mock(AiChatActionProposalService.class);
-    private final AiChatJobHandler handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, AiDocKnowledge.EMPTY, json);
+    private final AiChatOperationMemoryService memory = mock(AiChatOperationMemoryService.class);
+    private final AiChatJobHandler handler = new AiChatJobHandler(access, evidence, tools, pages, proposals,
+            AiDocKnowledge.EMPTY, json, new AiDocumentWorkflows(access), memory);
     private final AiJobHandler.AiJobContext ctx = mock(AiJobHandler.AiJobContext.class);
     private static final String ROUTE = "/production/workshop-tasks";
 
@@ -555,9 +557,11 @@ class AiChatJobHandlerTest {
     }
     @Test void legacyAttachmentFieldIsIgnoredAndNeverOpensADraft() throws Exception {
         request(Map.of("message", "用刚才文件生成订货单", "attachmentJobId", UUID.randomUUID().toString()));
-        model(answer("CLARIFY", "请先上传文件，再说要做哪种单据。", List.of()));
+        // ADR-163: naming a form the account may not fill gets the blocked reason deterministically (no model
+        // call); the legacy attachment field is ignored either way and no card is ever opened.
         var result = handler.process(ctx);
-        assertThat(result).containsEntry("intent", "CLARIFY").containsEntry("actions", List.of());
+        assertThat(result).containsEntry("intent", "UNSUPPORTED").containsEntry("actions", List.of());
+        assertThat(result.get("reply").toString()).contains("权限");
         verifyNoInteractions(proposals);
     }
     @Test void registeredPageActionBecomesAOneTimeServerRenderedCard() throws Exception {
@@ -739,5 +743,174 @@ class AiChatJobHandlerTest {
         model("{\"intent\":\"KNOWLEDGE\",\"usedSources\":[\"knowledge.PRODUCTION_FLOW\"],\"reply\":\"先领料，再生产。\"}");
         handler.process(ctx);
         assertThat(sent().toString()).doesNotContain("PRIVATE_COST", "765432", "PRIVATE_SIGNATURE");
+    }
+
+    // ---------------------------------------------------------------- ADR-163 form opening and operation memory
+
+    /** A sales account that may fill the sales order form (domain plus both create permissions). */
+    private void salesUser() {
+        when(access.requireChat()).thenReturn(new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "sales-user",
+                Set.of("ai:use", "sales_order:view", "sales_order:create"), false, true, false));
+        when(access.domains()).thenReturn(Set.of("SELF", "SALES"));
+    }
+
+    @Test void createRequestWithoutAPageOpensABlankFormCardWithNoModelCall() throws Exception {
+        salesUser();
+        var card = Map.<String, Object>of("type", "CONFIRM_ACTION", "proposalId", UUID.randomUUID().toString());
+        when(proposals.propose(any())).thenReturn(card);
+        request("帮我创建个销售订货单");
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "ACTION").containsEntry("_domain", "SALES")
+                .containsEntry("actions", List.of(card)).containsEntry("replyShareable", true);
+        assertThat(result.get("reply").toString()).contains("确认卡");
+        assertThat(result.get("sources")).isEqualTo(List.of(Map.of("id", "workflow.SALES_ORDER", "label", "可打开的表单")));
+        var draft = ArgumentCaptor.forClass(AiChatActionProposalPort.Draft.class);
+        verify(proposals).propose(draft.capture());
+        assertThat(draft.getValue().actionType()).isEqualTo("OPEN_GUIDED_FORM");
+        assertThat(draft.getValue().handler()).isEqualTo("OPEN_GUIDED_FORM");
+        assertThat(draft.getValue().execution()).isEqualTo("CLIENT");
+        assertThat(draft.getValue().title()).isEqualTo("打开新建销售订货单");
+        assertThat(draft.getValue().summaryLines()).containsExactly("将打开: 新建销售订货单",
+                "打开后是空白表单，可在表单里上传文件，由我识别后辅助填写。",
+                "保存和提交仍由你在页面上操作。");
+        // No file stands behind this card: args carry only the workflow, never a source job id.
+        assertThat(draft.getValue().args()).isEqualTo(Map.of("workflow", "SALES_ORDER"));
+        assertThat(result.toString()).doesNotContain("sourceJobId");
+        verify(ctx, never()).completeJson(any());
+        verify(memory).remember("帮我创建个销售订货单", "OPEN_FORM", "SALES_ORDER");
+    }
+
+    @Test void createRequestWithoutFormPermissionGetsTheBlockedReasonAndNoCardOrMemory() throws Exception {
+        request("帮我创建个销售订货单");
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "UNSUPPORTED").containsEntry("actions", List.of());
+        assertThat(result.get("reply").toString()).contains("销售订货单查看和新建", "权限");
+        verify(ctx, never()).completeJson(any());
+        verifyNoInteractions(proposals);
+        verify(memory, never()).remember(any(), any(), any());
+        verify(memory, never()).touch(any());
+    }
+
+    @Test void askingHowToCreateAFormStillTakesTheModelPathWithoutAnyCard() throws Exception {
+        request("怎么创建销售订货单");
+        model(answer("UNSUPPORTED", "我没在平台说明里找到这方面的说明。", List.of()));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "UNSUPPORTED");
+        assertThat(result.get("reply").toString()).contains("没在平台说明里找到");
+        verify(ctx, atLeastOnce()).completeJson(any());
+        verifyNoInteractions(proposals);
+        verify(memory, never()).remember(any(), any(), any());
+    }
+
+    @Test void learnedRepeatProposesAFreshCardAndTouchesTheMemoryInsteadOfRemembering() throws Exception {
+        salesUser();
+        when(memory.recall("帮我创建个销售订货单")).thenReturn(Optional.of(
+                new AiChatOperationMemoryService.Remembered("帮我创建个销售订货单", "OPEN_FORM", "SALES_ORDER", 3)));
+        var card = Map.<String, Object>of("type", "CONFIRM_ACTION", "proposalId", UUID.randomUUID().toString());
+        when(proposals.propose(any())).thenReturn(card);
+        request("帮我创建个销售订货单");
+        assertThat(handler.process(ctx)).containsEntry("intent", "ACTION").containsEntry("actions", List.of(card));
+        verify(proposals).propose(any());
+        verify(memory).touch("帮我创建个销售订货单");
+        verify(memory, never()).remember(any(), any(), any());
+        verify(ctx, never()).completeJson(any());
+    }
+
+    @Test void truncatedMemoryCollisionCannotOverrideTheFormNamedInTheCurrentRequest() throws Exception {
+        salesUser();
+        String message = "说明".repeat(80) + "帮我创建个报价单";
+        when(memory.recall(message)).thenReturn(Optional.of(
+                new AiChatOperationMemoryService.Remembered("说明".repeat(80), "OPEN_FORM", "SALES_ORDER", 2)));
+        request(message);
+        assertThat(handler.process(ctx)).containsEntry("intent", "UNSUPPORTED");
+        verifyNoInteractions(proposals);
+        verify(memory, never()).touch(any());
+    }
+
+    /**
+     * ADR-163 red-team regression: the remembered key carries no punctuation, so "创建订货单？" would collide with
+     * the remembered "创建订货单". The guards are re-checked on the actual words: a question never replays the card.
+     */
+    @Test void rememberedKeyCollisionWithAQuestionMarkStillTakesTheNormalChain() throws Exception {
+        salesUser();
+        when(memory.recall("创建订货单？")).thenReturn(Optional.of(
+                new AiChatOperationMemoryService.Remembered("创建订货单", "OPEN_FORM", "SALES_ORDER", 2)));
+        request("创建订货单？");
+        model(answer("UNSUPPORTED", "我没在平台说明里找到这方面的说明。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "UNSUPPORTED");
+        verifyNoInteractions(proposals);
+        verify(memory, never()).touch(any());
+        verify(memory, never()).remember(any(), any(), any());
+        verify(ctx, atLeastOnce()).completeJson(any());
+    }
+
+    /** ADR-163 fail-closed: a malformed stored OPEN_GUIDED_FORM card (no workflow arg, or args not a map) is dropped. */
+    @Test void malformedStoredOpenFormCardsAreDroppedEvenWithFullPermissions() {
+        salesUser();
+        var noWorkflow = Map.<String, Object>of("type", "CONFIRM_ACTION", "actionType", "OPEN_GUIDED_FORM",
+                "proposalId", UUID.randomUUID().toString(), "args", Map.of());
+        var argsNotAMap = Map.<String, Object>of("type", "CONFIRM_ACTION", "actionType", "OPEN_GUIDED_FORM",
+                "proposalId", UUID.randomUUID().toString(), "args", "SALES_ORDER");
+        var pageCard = Map.<String, Object>of("type", "CONFIRM_ACTION", "actionType", "PAGE_ACTION",
+                "proposalId", UUID.randomUUID().toString());
+        when(proposals.refreshCards(any())).thenReturn(List.of(noWorkflow, argsNotAMap, pageCard));
+        var read = handler.filterResultForReader(stored(Map.of("question", "帮我创建个销售订货单", "intent", "ACTION",
+                "reply", "我准备了一个操作，请在下面的确认卡里核对。", "actions", List.of(noWorkflow))));
+        assertThat(read.get("actions")).isEqualTo(List.of(pageCard));
+    }
+
+    @Test void operationMemoryOffStillOpensTheRequestedFormButNeverReadsOrWritesMemory() throws Exception {
+        salesUser();
+        var card = Map.<String, Object>of("type", "CONFIRM_ACTION", "proposalId", UUID.randomUUID().toString());
+        when(proposals.propose(any())).thenReturn(card);
+        request(Map.of("message", "帮我创建个销售订货单"), settings(Map.of("operationMemory", false)));
+        assertThat(handler.process(ctx)).containsEntry("intent", "ACTION").containsEntry("actions", List.of(card));
+        verify(memory, never()).recall(any());
+        verify(memory, never()).remember(any(), any(), any());
+        verify(memory, never()).touch(any());
+    }
+
+    @Test void storedOpenFormCardsAreDroppedOnReadOnceTheWorkflowIsNoLongerFillable() {
+        var formCard = Map.<String, Object>of("type", "CONFIRM_ACTION", "actionType", "OPEN_GUIDED_FORM",
+                "proposalId", UUID.randomUUID().toString(), "args", Map.of("workflow", "SALES_ORDER"));
+        var pageCard = Map.<String, Object>of("type", "CONFIRM_ACTION", "actionType", "PAGE_ACTION",
+                "proposalId", UUID.randomUUID().toString());
+        var turn = Map.<String, Object>of("question", "帮我创建个销售订货单", "intent", "ACTION",
+                "reply", "我准备了一个操作，请在下面的确认卡里核对。", "actions", List.of(formCard),
+                "sources", List.of(Map.of("id", "workflow.SALES_ORDER", "label", "可打开的表单")));
+        // The sales domain is still readable, but the form permissions were taken away.
+        when(access.requireChat()).thenReturn(new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "sales-reviewer",
+                Set.of("ai:use", "sales_order:view"), false, true, false));
+        when(access.domains()).thenReturn(Set.of("SELF", "SALES"));
+        when(proposals.refreshCards(any())).thenReturn(List.of(formCard, pageCard));
+        when(proposals.refreshCards(any(), any())).thenReturn(List.of(formCard));
+        var read = handler.filterResultForReader(stored(turn));
+        assertThat(read.get("actions")).isEqualTo(List.of(pageCard));
+        var restored = handler.restore(List.of(new AiJobService.OwnedResult(UUID.randomUUID(),
+                java.time.OffsetDateTime.now(), stored(turn))));
+        assertThat(restored.turns()).hasSize(1);
+        @SuppressWarnings("unchecked") var first = (Map<String, Object>) restored.turns().get(0).get("result");
+        assertThat(first.get("actions")).isEqualTo(List.of());
+
+        // With the permissions back the same stored card survives the refresh.
+        salesUser();
+        when(proposals.refreshCards(any())).thenReturn(List.of(formCard, pageCard));
+        assertThat(handler.filterResultForReader(stored(turn)).get("actions")).isEqualTo(List.of(formCard, pageCard));
+    }
+
+    @Test void successfulToolRunsAreRememberedAsOperationMemoryOnlyWhileEnabled() throws Exception {
+        AiChatToolPort tool = inventoryTool();
+        when(tool.execute(Map.of("keyword", "A001"))).thenReturn(Map.of("reply", "A001 现有 120 个"));
+        when(tool.modelFacts(any())).thenReturn(Map.of());
+        when(ctx.remainingAiCalls()).thenReturn(0);
+        request("A001 还有多少库存");
+        model("{\"intent\":\"TOOL\",\"tool\":\"inventory_lookup\",\"arguments\":{\"keyword\":\"A001\"}}");
+        assertThat(handler.process(ctx)).containsEntry("intent", "TOOL");
+        verify(memory).remember("A001 还有多少库存", "TOOL", "inventory_lookup");
+
+        clearInvocations(memory);
+        request(Map.of("message", "A001 还有多少库存"), settings(Map.of("operationMemory", false)));
+        assertThat(handler.process(ctx)).containsEntry("intent", "TOOL");
+        verify(memory, never()).remember(any(), any(), any());
     }
 }

@@ -98,6 +98,11 @@ public class ReconcileApplyService {
     }
 
     public ApplyResult apply(AuthUser actor, UUID planId, ReconcileApplyRequest request) {
+        // 幂等回执与首次执行使用同一个属主边界，知道 requestId 不能越权读取结果。
+        PlanRow visiblePlan = store.findPlan(planId).orElseThrow(ReconcilePlanQueryService::notFound);
+        if (!actor.getId().equals(visiblePlan.actorUserId())) {
+            throw ReconcilePlanQueryService.notFound();
+        }
         // 1. 重放：同请求幂等（无锁读）。
         Optional<ApplyRec> replay = store.findApplyByRequestId(planId, request.requestId());
         if (replay.isPresent()) {
@@ -144,7 +149,10 @@ public class ReconcileApplyService {
                 summary(applied, appliedItems, skipped, failed));
         String countsJson = writeJson(Map.of("applied", applied, "skipped", skipped, "failed", failed));
         String resultJson = writeJson(result);
-        newTx.executeWithoutResult(status -> store.finishApply(begun.apply().id(), countsJson, resultJson));
+        newTx.executeWithoutResult(status -> {
+            requireActiveApply(planId, begun.apply());
+            store.finishApply(begun.apply().id(), countsJson, resultJson);
+        });
         return result;
     }
 
@@ -212,12 +220,19 @@ public class ReconcileApplyService {
                 throw invalid("核对计划里没有第 " + rowNo + " 行");
             }
             List<PreparedItem> preparedItems = new ArrayList<>(selection.items().size());
+            Set<Integer> seenItems = new LinkedHashSet<>();
             for (ItemSelection itemSelection : selection.items()) {
+                if (!seenItems.add(itemSelection.itemNo())) {
+                    throw invalid("第 " + rowNo + " 行的更正项重复提交");
+                }
                 ItemRec item = itemsByRow.getOrDefault(rowNo, List.of()).stream()
                         .filter(candidate -> candidate.itemNo() == itemSelection.itemNo())
                         .findFirst().orElse(null);
                 if (item == null) {
                     throw invalid("第 " + rowNo + " 行没有第 " + itemSelection.itemNo() + " 项");
+                }
+                if ("APPLIED".equals(item.outcome())) {
+                    throw invalid("第 " + rowNo + " 行已更正，请刷新核对结果");
                 }
                 List<CandidateView> candidates = parseCandidates(candidatesJsonOf(plain, item.candidatesEnc()));
                 if (itemSelection.candidateIndex() != null
@@ -268,11 +283,16 @@ public class ReconcileApplyService {
 
     private RowOutcome executeRow(AuthUser actor, UUID planId, ApplyRec apply, PreparedRow row) {
         try {
-            newTx.executeWithoutResult(status -> doApplyRow(actor, planId, apply, row));
+            newTx.executeWithoutResult(status -> {
+                requireActiveApply(planId, apply);
+                doApplyRow(actor, planId, apply, row);
+            });
             List<ApplyItemResult> items = row.items().stream()
                     .map(item -> new ApplyItemResult(item.item().itemNo(), "APPLIED", null))
                     .toList();
             return new RowOutcome("APPLIED", items);
+        } catch (ApplyLeaseLost lost) {
+            throw lost;
         } catch (RowSkipped skipped) {
             recordOutcome(planId, apply, row, "SKIPPED", skipped.code(), skipped.getMessage());
             return outcomeView(row, "SKIPPED", skipped.getMessage());
@@ -292,7 +312,8 @@ public class ReconcileApplyService {
 
     private void doApplyRow(AuthUser actor, UUID planId, ApplyRec apply, PreparedRow row) {
         UUID employeeId = row.row().employeeId();
-        Employee employee = empRepo.findById(employeeId)
+        // 先锁员工再读取版本和旧值；与单人证件修改共享这把锁，不能检查后被并发覆盖。
+        Employee employee = empRepo.findByIdForUpdate(employeeId)
                 .filter(candidate -> !candidate.isDeleted())
                 .orElse(null);
         if (employee == null || !IN_SCOPE_STATUSES.contains(employee.getStatus())) {
@@ -371,12 +392,26 @@ public class ReconcileApplyService {
     private void recordOutcome(UUID planId, ApplyRec apply, PreparedRow row,
                                String outcome, String code, String message) {
         newTx.executeWithoutResult(status -> {
+            requireActiveApply(planId, apply);
             for (PreparedItem item : row.items()) {
                 store.markItemOutcome(planId, row.row().rowNo(), item.item().itemNo(), apply.id(),
                         outcome, code, truncate(message), null, null);
             }
             store.markRowResult(planId, row.row().rowNo(), outcome, null);
         });
+    }
+
+    private void requireActiveApply(UUID planId, ApplyRec apply) {
+        if (!store.renewApplyLease(planId, apply.id())) {
+            throw new ApplyLeaseLost();
+        }
+    }
+
+    private static final class ApplyLeaseLost extends ApiException {
+        ApplyLeaseLost() {
+            super(ErrorCode.CONFLICT, "核对执行已过期或被回收，请刷新后查看已完成结果",
+                    List.of(new ApiError.FieldError("errorCode", "RECONCILE_PLAN_CHANGED")));
+        }
     }
 
     private static RowOutcome outcomeView(PreparedRow row, String outcome, String message) {

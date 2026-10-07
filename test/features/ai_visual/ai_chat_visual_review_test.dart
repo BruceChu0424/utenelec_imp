@@ -179,6 +179,12 @@ class _VisualChatRepository implements AiChatRepository {
   Future<void> clearConversations() async {}
 
   @override
+  Future<List<AiChatMemorySuggestion>> memorySuggestions() async => const [];
+
+  @override
+  Future<void> clearOperationMemory() async {}
+
+  @override
   Future<AiJobSnapshot> send({
     required String message,
     required String conversationId,

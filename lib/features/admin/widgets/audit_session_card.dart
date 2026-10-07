@@ -14,91 +14,6 @@ typedef AuditSessionEventLoader =
       int? snapshotAuditId,
     });
 
-/// 审计中心只展示会话摘要；点击后进入独立路由查看时间线。
-class AuditSessionCard extends StatelessWidget {
-  const AuditSessionCard({
-    required this.session,
-    required this.onOpen,
-    super.key,
-  });
-
-  final AuditSessionSummary session;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final actor = auditSessionActor(session);
-    final status = auditSessionStatusLabel(session);
-    final loginAt = auditBeijingTime(session.loginAt, fallback: '开始时间未知');
-    final lastAt = auditBeijingTime(
-      session.lastActivityAt ?? session.firstActivityAt,
-      fallback: '暂无活动时间',
-    );
-    final logoutAt = session.logoutAt == null
-        ? null
-        : auditBeijingTime(session.logoutAt, fallback: '退出时间未知');
-    return Semantics(
-      button: true,
-      excludeSemantics: true,
-      label: [
-        '登录会话',
-        '操作人 $actor',
-        '状态 $status',
-        '开始时间 $loginAt',
-        if (logoutAt != null) '退出时间 $logoutAt' else '最后活动 $lastAt',
-        '人工操作 ${session.operationCount} 项',
-        if (session.failureCount > 0) '失败 ${session.failureCount} 项',
-        if (session.postLogoutCount > 0) '退出后操作 ${session.postLogoutCount} 项',
-        '点击进入会话时间线',
-      ].join('，'),
-      child: UtenCard(
-        padding: EdgeInsets.zero,
-        child: Material(
-          color: Colors.transparent,
-          borderRadius: UtenRadius.lgAll,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            key: ValueKey('audit-session-${session.sessionId}'),
-            onTap: onOpen,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 112),
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 620;
-                    final content = AuditSessionSummaryContent(
-                      session: session,
-                      compact: compact,
-                    );
-                    if (compact) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          content,
-                          const SizedBox(height: UtenSpacing.s12),
-                          const _OpenTimelineHint(compact: true),
-                        ],
-                      );
-                    }
-                    return Row(
-                      children: [
-                        Expanded(child: content),
-                        const SizedBox(width: UtenSpacing.s16),
-                        const _OpenTimelineHint(compact: false),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class AuditSessionSummaryPanel extends StatelessWidget {
   const AuditSessionSummaryPanel({required this.session, super.key});
 
@@ -671,38 +586,6 @@ class AuditSessionLoadError extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _OpenTimelineHint extends StatelessWidget {
-  const _OpenTimelineHint({required this.compact});
-
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisSize: compact ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: compact
-          ? MainAxisAlignment.end
-          : MainAxisAlignment.start,
-      children: [
-        Text(
-          '查看会话时间线',
-          style: theme.textTheme.labelLarge?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s4),
-        Icon(
-          Icons.arrow_forward_rounded,
-          size: 20,
-          color: theme.colorScheme.primary,
-        ),
-      ],
     );
   }
 }

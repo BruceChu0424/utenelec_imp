@@ -258,6 +258,73 @@ class PermissionSurfaceCatalogPostgresTest {
                     join permissions permission on permission.id = link.permission_id
                     where 'SUPERADMIN_ONLY' = any(permission.grant_policy)
                     """));
+            // V812：hub → 卡片子面层级——单层、父启用、子面有码，七张 hub 各自包拢子页面。
+            assertEquals(7, scalarLong(statement, """
+                    select count(distinct parent_surface_key)
+                    from permission_surfaces
+                    where parent_surface_key is not null
+                    """));
+            assertEquals(58, scalarLong(statement, """
+                    select count(*) from permission_surfaces
+                    where parent_surface_key is not null
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permission_surfaces child
+                    join permission_surfaces parent
+                      on parent.surface_key = child.parent_surface_key
+                    where parent.parent_surface_key is not null
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permission_surfaces child
+                    where child.parent_surface_key is not null
+                      and not exists (
+                          select 1 from permission_surfaces parent
+                          where parent.surface_key = child.parent_surface_key
+                            and parent.enabled)
+                    """));
+            // 三张新面（任务中心/审核中心合并页）与合并后的 warehouse.tasks 码挂载。
+            assertEquals(5, scalarLong(statement, """
+                    select count(*) from permission_surface_permissions link
+                    join permission_surfaces surface on surface.id = link.surface_id
+                    where surface.surface_key = 'sales.tasks'
+                    """));
+            assertEquals(19, scalarLong(statement, """
+                    select count(*) from permission_surface_permissions link
+                    join permission_surfaces surface on surface.id = link.surface_id
+                    where surface.surface_key = 'warehouse.tasks'
+                    """));
+            assertEquals(1, linkCount(statement, "finance.audit-center", "sales_order_finance:view"));
+            // 旧三任务面与孤儿面已删；委派行已重写到合并面。
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from permission_surfaces
+                    where surface_key in ('warehouse.outbound-tasks',
+                                          'warehouse.inbound-tasks',
+                                          'warehouse.draw-tasks',
+                                          'production.workshop-material')
+                    """));
+            assertEquals(0, scalarLong(statement, """
+                    select count(*) from manager_permission_delegations
+                    where surface_key in ('warehouse.outbound-tasks',
+                                          'warehouse.inbound-tasks',
+                                          'warehouse.draw-tasks',
+                                          'production.workshop-material')
+                    """));
+            // 车间侧内料仓动作码并入我的车间任务面；采购申请详情页可委派分解/下单。
+            assertEquals(1, linkCount(statement, "production.workshop-tasks", "workshop_material:request"));
+            assertEquals(1, linkCount(statement, "production.workshop-tasks", "workshop_material:choose"));
+            assertEquals(1, linkCount(statement, "purchase.request", "purchase_order:decompose"));
+            assertEquals(1, linkCount(statement, "purchase.request", "purchase_order:create"));
+            // V813：AI 对话与文件识别对全体员工默认开放——ai:use 翻进全员基础包，
+            // 名称/归类改为全局语义；个别滥用者仍可按人收回(revoke 恒优先)。
+            assertEquals("true", scalarText(statement, """
+                    select baseline::text from permissions where code = 'ai:use'
+                    """));
+            assertEquals("使用 AI 助手（对话与文件识别）", scalarText(statement, """
+                    select name from permissions where code = 'ai:use'
+                    """));
+            assertEquals("系统管理", scalarText(statement, """
+                    select module from permissions where code = 'ai:use'
+                    """));
         }
     }
 
@@ -421,6 +488,47 @@ class PermissionSurfaceCatalogPostgresTest {
                       and trigger.tgfoid = 'public.fn_audit()'::regprocedure
                     """));
             connection.rollback();
+        }
+    }
+
+    @Test
+    void auditCenterAndFinanceHubIncludeEveryEmbeddedQueueAction() {
+        JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        PermissionSurfaceRegistry registry = new PermissionSurfaceRegistry(
+                new PermissionSurfaceCatalogRepository(jdbc));
+        Set<String> center = registry.permissionsFor("finance.audit-center");
+        Set<String> hub = registry.treePermissions("finance.hub");
+        for (String queue : Set.of("finance.order-approval", "finance.sales-order-confirmation",
+                "finance.sales-shipment-audit")) {
+            assertTrue(center.containsAll(registry.permissionsFor(queue)), queue);
+            assertTrue(hub.containsAll(registry.permissionsFor(queue)), queue);
+        }
+        assertTrue(center.containsAll(Set.of("procurement_iqc_rejection:confirm_credit",
+                "procurement_iqc_rejection:close_no_credit", "procurement_iqc_rejection:reverse",
+                "procurement_iqc_rejection:amount:view")));
+        assertFalse(center.contains("procurement_iqc_rejection:record_return"));
+        assertFalse(center.contains("authorization:manage"));
+    }
+
+    @Test
+    void assetDeletePermissionStartsWithoutGrantsAndHasItsOwnActionFamily() throws Exception {
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            assertEquals("DELETE", scalarText(statement,
+                    "SELECT action_type FROM permissions WHERE code = 'finance_asset:delete'"));
+            assertEquals(1, linkCount(statement, "finance.asset", "finance_asset:delete"));
+            assertEquals(0, scalarLong(statement, """
+                    SELECT count(*) FROM (
+                        SELECT permission_id FROM department_permissions
+                        UNION ALL SELECT permission_id FROM user_permission_overrides
+                        UNION ALL SELECT permission_id FROM manager_permission_delegations
+                    ) grants JOIN permissions permission ON permission.id = grants.permission_id
+                    WHERE permission.code = 'finance_asset:delete'
+                    """));
+            assertEquals(1, scalarLong(statement, """
+                    SELECT count(*) FROM permissions WHERE code = 'finance_asset:delete' AND NOT baseline
+                      AND grant_policy @> ARRAY['NON_DELEGABLE', 'BULK_EXCLUDED']::text[]
+                    """));
         }
     }
 

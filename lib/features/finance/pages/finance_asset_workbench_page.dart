@@ -71,6 +71,7 @@ class _FinanceAssetWorkbenchPageState
     return FinanceAssetCapabilities(
       canView: has(Perm.financeAssetView),
       canEdit: has(Perm.financeAssetEdit),
+      canDelete: has(Perm.financeAssetDelete),
       canApprove: has(Perm.financeAssetApprove),
       canPost: has(Perm.financeAssetPost),
       canDispose: has(Perm.financeAssetDispose),

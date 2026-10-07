@@ -5,6 +5,7 @@
 // 哪一行的办理按钮该灰、没确认路线时表现成什么样。
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
@@ -683,27 +684,26 @@ void main() {
       for (var i = 0; i < 8; i++) {
         await tester.pump(const Duration(milliseconds: 50));
       }
-      if (obsolete) {
-        expect(previewOptions.first.cancelToken!.isCancelled, isTrue);
-        expect(previewOptions, hasLength(2));
-        expect(
-          find.byType(AlertDialog),
-          findsOneWidget,
-          reason: '无需等旧请求回来才能确认',
-        );
-      } else {
-        expect(previewOptions.first.cancelToken!.isCancelled, isFalse);
-        expect(previewOptions, hasLength(1));
-        expect(find.byType(AlertDialog), findsNothing);
-        first.complete();
-        await tester.pumpAndSettle();
-      }
+      // 2026-10-07 起确认框在开跑前弹出(ADR-120「只确认一次」)，确认不等任何
+      // 预览请求；过期的旧预览取消顺延到确认后的核对段(refreshPreview)处理。
+      expect(previewOptions.first.cancelToken!.isCancelled, isFalse);
+      expect(previewOptions, hasLength(1));
+      expect(
+        find.byType(AlertDialog),
+        findsOneWidget,
+        reason: '开跑前的整单确认无需等旧请求回来',
+      );
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
           matching: find.text('确认下单'),
         ),
       );
+      if (!obsolete) {
+        // 同签名在途预览被核对段直接并入，不再重发。
+        await tester.pump(const Duration(milliseconds: 100));
+        first.complete();
+      }
       await tester.pumpAndSettle();
       if (obsolete) first.complete();
       await tester.pumpAndSettle();
@@ -1398,6 +1398,93 @@ void main() {
     );
   });
 
+  testWidgets('真库两产品各100先自制400后合父件：需求200已下400且只选有效来源', (tester) async {
+    // Captured from AggregateMaterialOrderEndToEndTest's actual PostgreSQL
+    // twoProductsOf100KeepTheInitial400ManufacturingSupplyAfterParentMerge.
+    // Keep all source/action/plan identities and quantities; this is the real
+    // START + DELEGATED_TO_MAKE_CHILD case, not a synthetic REFERENCE shortcut.
+    final snapshot =
+        jsonDecode(
+              File(
+                'test/fixtures/material_make_400_after_parent_merge.json',
+              ).readAsStringSync(),
+            )
+            as Map<String, dynamic>;
+    final action = _records(snapshot['supplyActions']).singleWhere(
+      (item) =>
+          item['route'] == 'MAKE' && _num(item['publicSurplusQty']) == 200,
+    );
+    final goods = action['goodsId'] as String;
+    final paths = _records(
+      snapshot['flatMaterials'],
+    ).where((item) => item['goodsId'] == goods).toList();
+    expect(paths, hasLength(3));
+    final old = paths.where((item) => item['actionable'] == false).toList();
+    expect(old, hasLength(2));
+    for (final path in old) {
+      expect(path['controlStage'], 'START');
+      expect(path['requirementState'], 'DELEGATED_TO_MAKE_CHILD');
+      expect((path['aggregatePreparation'] as Map)['actionable'], isFalse);
+    }
+    final active = paths.singleWhere((item) => item['actionable'] == true);
+    expect(_num(active['requiredQty']), 200);
+    expect(_num(active['planningUncoveredQty']), 0);
+    final aggregate =
+        '$goods|${active['colorId'] ?? active['colorName'] ?? ''}|${active['unitId'] ?? active['unitName'] ?? ''}';
+    await _pump(
+      tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
+      mutate: (_) => snapshot,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(_sourceRequiredText(tester, 'AGGREGATE|$aggregate'), '200');
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(ValueKey('material-aggregate-order-$aggregate')),
+          )
+          .data,
+      '400',
+      reason: '两个旧来源各100及公共200只计一次，新共享锚点不能把累计抬成600',
+    );
+    final row = find.byKey(ValueKey('material-aggregate-$aggregate'));
+    final checkbox = find
+        .descendant(of: row, matching: find.byType(Checkbox))
+        .last;
+    await _check(tester, checkbox);
+    // Selecting alone does not create an aggregate editing draft. Explicitly
+    // retaining zero enters the ordinary preview path without adding supply.
+    await tester.enterText(
+      find.byKey(ValueKey('material-aggregate-qty-$aggregate')),
+      '0.0',
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+    final sentGroups = requests
+        .where((request) => request.path.endsWith('/aggregate-orders/preview'))
+        .expand((request) => _records(request.body?['groups']))
+        .where(
+          (group) => (group['materialLineIds'] as List).contains(
+            active['materialLineId'],
+          ),
+        )
+        .toList();
+    expect(sentGroups, isNotEmpty);
+    for (final group in sentGroups) {
+      expect(group['materialLineIds'], [active['materialLineId']]);
+      expect(double.parse(group['qty'].toString()), 0);
+    }
+    expect(
+      requests.where(
+        (request) => request.path.endsWith('/aggregate-orders/submit'),
+      ),
+      isEmpty,
+    );
+  });
+
   testWidgets('已下单的汇总物料行：下单数量锁成🔒累计已下单，不再是无锁裸文本(2026-09-25)', (tester) async {
     await _pump(tester);
     // m-3 已有下游申请（allocated 800）：切到「按物料汇总」视图，这一物料的
@@ -1582,6 +1669,53 @@ void main() {
           .map((notice) => notice.message)
           .join('\n'),
       contains('不能低于'),
+    );
+  });
+
+  testWidgets('汇总整单确认点取消：不写单不预览，草稿保留可再次下单(2026-10-07)', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: _overSupplyPermissions,
+      mutate: _threeSharedBuySources,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 3; i++) {
+      await _check(
+        tester,
+        find.descendant(
+          of: find.byKey(const ValueKey('material-aggregate-g-m-2|本色|unit-1')),
+          matching: find.byType(Checkbox),
+        ),
+      );
+    }
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    final dialog = find.byType(AlertDialog);
+    expect(dialog, findsOneWidget);
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.textContaining('共 1 种物料，合计 3000'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    // 取消即停：没有任何预览/下单请求，勾选与草稿原样保留供再次核对。
+    expect(requests.where((r) => r.path.contains('aggregate-orders')), isEmpty);
+    expect(find.textContaining('撤销汇总草稿'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget, reason: '再次下单重新确认');
+    await _confirmAggregateSubmit(tester);
+    expect(
+      requests.where((r) => r.path.endsWith('/aggregate-orders/submit')),
+      isNotEmpty,
     );
   });
 
@@ -2358,23 +2492,25 @@ void main() {
           find.byKey(const Key('material-analysis-submit-orders')),
         );
         await tester.pumpAndSettle();
-        await _confirmAggregateRound(tester);
-        final first = requests
+        // ADR-120 §2.4「只确认一次」：开跑前一次确认，后续依赖轮次(先父后子)
+        // 静默提交——第二轮是 P，M 不能因较浅来源提前办理，但不再逐轮弹确认框。
+        await _confirmAggregateSubmit(tester);
+        expect(find.textContaining('种物料？'), findsNothing);
+        final initialWrites = requests
             .where((r) => r.path.endsWith('/aggregate-orders/submit'))
-            .single;
-        expect(_records(first.body!['groups']).single['materialLineIds'], [
-          'h',
-        ]);
+            .toList();
         expect(
-          find.textContaining('种物料？'),
-          findsOneWidget,
-          reason: '第二轮是P，M不能因较浅来源提前办理',
+          initialWrites,
+          hasLength(2),
+          reason: '确认后第一轮H成功、第二轮P自动续跑并按模拟503失败即停',
         );
-        await _confirmAggregateRound(tester);
-        final failed = requests
-            .where((r) => r.path.endsWith('/aggregate-orders/submit'))
-            .last
-            .body!;
+        expect(
+          _records(
+            initialWrites.first.body!['groups'],
+          ).single['materialLineIds'],
+          ['h'],
+        );
+        final failed = initialWrites.last.body!;
         expect(_records(failed['groups']).single['materialLineIds'], [
           'shared-p',
         ]);
@@ -2386,9 +2522,12 @@ void main() {
         final afterRetry = requests
             .where((r) => r.path.endsWith('/aggregate-orders/submit'))
             .toList();
-        expect(afterRetry, hasLength(3));
-        expect(afterRetry.last.body, failed, reason: '续做原样重试第二轮，不重下H');
-        await _confirmAggregateRound(tester);
+        expect(
+          afterRetry,
+          hasLength(4),
+          reason: '续做原样重试第二轮成功后，余下轮次继续静默办理到全部完成',
+        );
+        expect(afterRetry[2].body, failed, reason: '续做原样重试第二轮，不重下H');
         final all = requests
             .where((r) => r.path.endsWith('/aggregate-orders/submit'))
             .toList();
@@ -2721,6 +2860,19 @@ void main() {
           ]) {
             parent[key] = 2;
           }
+          // 已下过单的行在表上本来就有已下单事实(这里原批 3)，开跑前的
+          // 一次性确认框据此提示「追加原单，只办理本次净增量」。
+          parent['aggregatePreparation'] = {
+            'requiredQty': 2,
+            'orderedQty': 3,
+            'allocatedOrderedQty': 3,
+            'totalOrderedQty': 3,
+            'orderedQtyExact': true,
+            'planningUncoveredQty': 2,
+            'netShortageQty': 2,
+            'targetMaterialLineIds': ['h'],
+            'actionable': true,
+          };
           return data;
         },
         aggregatePreview: (body, data) {
@@ -2813,8 +2965,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.textContaining('追加原单'), findsOneWidget);
-      await _confirmAggregateRound(tester);
-      if (increment > 0) await _confirmAggregateRound(tester);
+      await _confirmAggregateSubmit(tester);
       final writes = requests
           .where((r) => r.path.endsWith('/aggregate-orders/submit'))
           .toList();
@@ -5207,7 +5358,7 @@ void main() {
       ),
       findsOneWidget,
     );
-    await _confirmAggregateRound(tester);
+    await _confirmAggregateSubmit(tester);
     final submitted = _records(_aggregateSubmits().single.body!['groups']);
     expect(
       {for (final group in submitted) group['departmentId']: group['qty']},
@@ -6020,7 +6171,7 @@ Map<String, dynamic> _tailedSharedResiduals(Map<String, dynamic> data) {
   return data;
 }
 
-Future<void> _confirmAggregateRound(WidgetTester tester) async {
+Future<void> _confirmAggregateSubmit(WidgetTester tester) async {
   await tester.tap(
     find.descendant(of: find.byType(AlertDialog), matching: find.text('确认下单')),
   );

@@ -1,6 +1,6 @@
 // 各 hub 新建单据卡的计数回归（准则 14-徽章与计数口径 §草稿）。
 //
-// **2026-09-11 口径反转**：草稿改走红底白字徽章并逐级累加（[UtenDraftBadge]）。
+// **2026-09-11 口径反转**：草稿改走红底白字徽章并逐级累加。
 // **2026-09-24 模块三段式修订**（docs/01-规划/2026-09-24-模块三段式统一*.md）：
 // hub 单据卡全部改为 creator-only 的新建入口（直达 /new），用户口径「新建入口
 // 不需要通知数量徽章」——**hub 新建卡一律不挂数**；草稿的三处可见面 =
@@ -8,7 +8,7 @@
 // 与工作台模块卡的待办累计（服务端红链照旧登记，不改）。
 //
 // 本文件钉死：
-//  · 采购/委外/仓库 hub 的新建单据卡上没有任何草稿徽章（UtenDraftBadge findsNothing）；
+//  · 采购/委外/仓库 hub 的新建单据卡上没有任何草稿徽章；
 //  · 顶栏「待办 N」药丸仍按服务端容器合计累计（含草稿），0 时不渲染；
 //  · 无 *:view 权限时新建卡（create 门控）照常渲染，且不带任何数字。
 
@@ -16,7 +16,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/feedback/uten_draft_badge.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_hub_page.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_hub_page.dart';
@@ -114,7 +113,6 @@ void main() {
       );
 
       // 新建卡一律不挂数（2026-09-24 口径）：卡上没有任何草稿徽章与裸数字。
-      expect(find.byType(UtenDraftBadge), findsNothing);
       expect(find.text('1'), findsNothing);
       expect(find.text('2'), findsNothing);
       expect(find.text('3'), findsNothing);
@@ -165,7 +163,6 @@ void main() {
       expect(find.text('新建采购订货单'), findsOneWidget);
       expect(find.text('新建采购收货单'), findsNothing);
       expect(find.text('新建采购退货单'), findsNothing);
-      expect(find.byType(UtenDraftBadge), findsNothing);
       expect(find.text('1'), findsNothing);
       expect(find.text('2'), findsNothing);
       expect(find.text('3'), findsNothing);
@@ -195,7 +192,6 @@ void main() {
         ),
       );
 
-      expect(find.byType(UtenDraftBadge), findsNothing);
       expect(find.text('4'), findsNothing);
       expect(find.text('5'), findsNothing);
       expect(find.text('6'), findsNothing);
@@ -219,14 +215,6 @@ void main() {
       );
 
       // 新建区卡上没有任何草稿徽章（调拨/盘点切片不再上卡）。
-      expect(
-        find.descendant(
-          of: find.byType(UtenDraftBadge),
-          matching: find.byType(UtenDraftBadge),
-        ),
-        findsNothing,
-      );
-      expect(find.byType(UtenDraftBadge), findsNothing);
       expect(find.text('2'), findsNothing);
       expect(find.text('9'), findsNothing);
       expect(find.text('新建调拨单'), findsOneWidget);

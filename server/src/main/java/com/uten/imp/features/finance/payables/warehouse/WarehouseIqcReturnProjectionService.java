@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.payables.warehouse;
 
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.RecordReturnRequest;
@@ -11,11 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Date;
-import java.sql.Timestamp;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
@@ -124,36 +120,36 @@ public class WarehouseIqcReturnProjectionService {
     }
 
     private WarehouseIqcReturnView view(Object[] row, boolean canRecord) {
-        boolean serverAllowsRecord = bool(row[28]);
+        boolean serverAllowsRecord = NativeValueConverters.booleanValue(row[28]);
         return new WarehouseIqcReturnView(
-                uuid(row[0]),
-                text(row[1]),
-                uuid(row[2]),
-                uuid(row[3]),
-                uuid(row[4]),
-                text(row[5]),
-                text(row[6]),
-                uuid(row[7]),
-                text(row[8]),
-                uuid(row[9]),
-                text(row[10]),
-                uuid(row[11]),
-                text(row[12]),
-                text(row[13]),
-                uuid(row[14]),
-                text(row[15]),
-                uuid(row[16]),
-                text(row[17]),
-                text(row[18]),
+                NativeValueConverters.uuid(row[0]),
+                NativeValueConverters.text(row[1]),
+                NativeValueConverters.uuid(row[2]),
+                NativeValueConverters.uuid(row[3]),
+                NativeValueConverters.uuid(row[4]),
+                NativeValueConverters.text(row[5]),
+                NativeValueConverters.text(row[6]),
+                NativeValueConverters.uuid(row[7]),
+                NativeValueConverters.text(row[8]),
+                NativeValueConverters.uuid(row[9]),
+                NativeValueConverters.text(row[10]),
+                NativeValueConverters.uuid(row[11]),
+                NativeValueConverters.text(row[12]),
+                NativeValueConverters.text(row[13]),
+                NativeValueConverters.uuid(row[14]),
+                NativeValueConverters.text(row[15]),
+                NativeValueConverters.uuid(row[16]),
+                NativeValueConverters.text(row[17]),
+                NativeValueConverters.text(row[18]),
                 decimal(row[19]),
                 decimal(row[20]),
-                text(row[21]),
+                NativeValueConverters.text(row[21]),
                 ((Number) row[22]).longValue(),
-                text(row[23]),
-                localDate(row[24]),
-                text(row[25]),
-                text(row[26]),
-                offsetDateTime(row[27]),
+                NativeValueConverters.text(row[23]),
+                NativeValueConverters.toLocalDate(row[24]),
+                NativeValueConverters.text(row[25]),
+                NativeValueConverters.text(row[26]),
+                NativeValueConverters.toOffsetDateTime(row[27]),
                 canRecord && serverAllowsRecord ? List.of("RECORD_RETURN") : List.of());
     }
 
@@ -163,38 +159,8 @@ public class WarehouseIqcReturnProjectionService {
                 .orElse(false);
     }
 
-    private static UUID uuid(Object value) {
-        if (value == null) return null;
-        return value instanceof UUID id ? id : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
     private static BigDecimal decimal(Object value) {
         if (value == null) return null;
         return value instanceof BigDecimal number ? number : new BigDecimal(value.toString());
-    }
-
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof Date date) return date.toLocalDate();
-        return LocalDate.parse(value.toString());
-    }
-
-    private static OffsetDateTime offsetDateTime(Object value) {
-        if (value == null) return null;
-        if (value instanceof OffsetDateTime dateTime) return dateTime;
-        if (value instanceof Timestamp timestamp) {
-            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
-        }
-        return OffsetDateTime.parse(value.toString());
-    }
-
-    private static boolean bool(Object value) {
-        return value instanceof Boolean flag
-                ? flag : Boolean.parseBoolean(String.valueOf(value));
     }
 }

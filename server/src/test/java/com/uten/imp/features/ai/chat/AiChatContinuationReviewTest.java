@@ -30,7 +30,8 @@ class AiChatContinuationReviewTest {
     final AiChatPageGuideCatalog pages = mock(AiChatPageGuideCatalog.class);
     final AiChatToolPort cost = mock(AiChatToolPort.class);
     final AiChatActionProposalService proposals = mock(AiChatActionProposalService.class);
-    final AiChatJobHandler handler = new AiChatJobHandler(access,evidence,tools,pages,proposals,AiDocKnowledge.EMPTY,json);
+    final AiChatJobHandler handler = new AiChatJobHandler(access,evidence,tools,pages,proposals,AiDocKnowledge.EMPTY,json,
+            new AiDocumentWorkflows(access), mock(AiChatOperationMemoryService.class));
     @BeforeEach void setup() {
         when(access.requireChat()).thenReturn(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"reader",
                 Set.of("ai:use","goods:view","goods:cost:view","client:view","client:create"),false,true,false));

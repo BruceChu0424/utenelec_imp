@@ -36,6 +36,10 @@ class FulfillmentSourceConflictRetryConfigTest {
         public void command() { }
     }
 
+    static class AttributeSourceConsumer {
+        TransactionAttributeSource source;
+    }
+
     private static boolean matches(PointcutAdvisor advisor, Class<?> type, String name) throws NoSuchMethodException {
         Method method = type.getMethod(name);
         return advisor.getPointcut().getClassFilter().matches(type)
@@ -83,7 +87,7 @@ class FulfillmentSourceConflictRetryConfigTest {
     }
 
     @Test
-    void earlyInfrastructureInterceptorAlreadyReceivesTheDynamicAttributeWrapper() {
+    void earlyInfrastructureInterceptorAlreadyReceivesTheDynamicAttributeWrapper() throws Exception {
         var factory = new org.springframework.beans.factory.support.DefaultListableBeanFactory();
         factory.registerSingleton("transactionAttributeSource", new AnnotationTransactionAttributeSource());
         var definition = new org.springframework.beans.factory.support.RootBeanDefinition(TransactionInterceptor.class);
@@ -94,7 +98,13 @@ class FulfillmentSourceConflictRetryConfigTest {
         postProcessor.postProcessBeanFactory(factory);
         var transaction = factory.getBean("transactionInterceptor", TransactionInterceptor.class);
         assertInstanceOf(FulfillmentDeadlineTransactionAttributeSource.class, transaction.getTransactionAttributeSource());
-        assertEquals(1, factory.getBeansOfType(TransactionAttributeSource.class).size(),
-                "The contained wrapper must not make injection of the original source ambiguous");
+        var wrapper = factory.getBeanDefinition(FulfillmentSourceConflictRetryConfig.DEADLINE_ATTRIBUTE_SOURCE);
+        assertEquals(BeanDefinition.ROLE_INFRASTRUCTURE, wrapper.getRole(),
+                "Spring's early-bean checker must find the named infrastructure definition");
+        assertFalse(wrapper.isAutowireCandidate());
+        var dependency = new org.springframework.beans.factory.config.DependencyDescriptor(
+                AttributeSourceConsumer.class.getDeclaredField("source"), true);
+        assertInstanceOf(AnnotationTransactionAttributeSource.class, factory.resolveDependency(dependency, null),
+                "Ordinary injection must continue to receive only the original annotation source");
     }
 }

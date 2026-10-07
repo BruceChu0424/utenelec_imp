@@ -72,7 +72,8 @@ class AiChatQuestionHandlingTest {
     }
 
     @BeforeEach void before() {
-        handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, docs, json, AiChatUserScopeTest.directory());
+        handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, docs, json, AiChatUserScopeTest.directory(),
+                new AiDocumentWorkflows(access), mock(AiChatOperationMemoryService.class));
         when(access.requireChat()).thenAnswer(call -> actor);
         when(access.domains()).thenReturn(Set.of("SELF", "PRODUCTION"));
         when(ctx.params()).thenReturn(Map.of());

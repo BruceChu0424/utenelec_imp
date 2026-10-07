@@ -77,6 +77,7 @@ class AiGatewayTest {
     private final UUID userId = UUID.randomUUID();
     private AiProviderService providers;
     private AiCallLogService callLogs;
+    private com.uten.imp.features.ai.usage.AiUserLimitsService userLimits;
     private AiProperties properties;
     private AiGateway gateway;
     private AiProviderRuntime runtime;
@@ -104,8 +105,9 @@ class AiGatewayTest {
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         when(currentUser.id()).thenReturn(Optional.of(userId));
         AiHttpTransport transport = new AiHttpTransport(properties);
+        userLimits = mock(com.uten.imp.features.ai.usage.AiUserLimitsService.class);
         gateway = new AiGateway(providers, List.of(new OpenAiChatClient(transport), new AnthropicMessagesClient(transport)),
-                callLogs, properties, currentUser);
+                callLogs, properties, currentUser, userLimits);
     }
 
     static AiProviderService.Resolution resolution(AiProviderRuntime runtime, String reason) {
@@ -277,6 +279,87 @@ class AiGatewayTest {
         assertThat(gateway.completeJson(request(null, new AiText("x", false))).json()).isEqualTo("{\"ok\":true}");
     }
 
+    // ---------------------------------------------------- ADR-164 个人每日 token 限额
+
+    @Test
+    void personalDailyTokenLimitBlocksBeforeCallingWhenAlreadyReached() {
+        when(userLimits.tokenLimit(userId)).thenReturn(Optional.of(100L));
+        when(callLogs.todayTokens(userId)).thenReturn(100L);
+
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(AiCallException.class)
+                .satisfies(error -> {
+                    assertThat(((AiCallException) error).category()).isEqualTo(AiErrorCategory.QUOTA);
+                    assertThat(error.getMessage()).contains("个人限额");
+                });
+        assertThat(fake.requests()).isEmpty();
+        verify(callLogs, never()).record(any());
+
+        // 差一个 token 仍未达限额: 照常调用。
+        when(callLogs.todayTokens(userId)).thenReturn(99L);
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"ok\":true}"));
+        assertThat(gateway.completeJson(request(null, new AiText("x", false))).json()).isEqualTo("{\"ok\":true}");
+    }
+
+    @Test
+    void exhaustedBudgetAfterAnInvalidResponsePreventsTheRetry() {
+        when(userLimits.tokenLimit(userId)).thenReturn(Optional.of(100L));
+        when(callLogs.todayTokens(userId)).thenReturn(0L, 0L, 100L);
+        fake.enqueue(FakeAiProviderServer.openAiContent("not a JSON object"));
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(AiCallException.class)
+                .extracting(error -> ((AiCallException) error).category())
+                .isEqualTo(AiErrorCategory.QUOTA);
+        assertThat(fake.requests()).hasSize(1);
+    }
+
+    @Test
+    void disabledWhileWaitingForProviderCapacityCannotStartTheCall() {
+        org.mockito.Mockito.doNothing().doThrow(new com.uten.imp.common.web.ApiException(
+                com.uten.imp.common.web.ErrorCode.FORBIDDEN, "管理员已暂停你的 AI 使用"))
+                .when(userLimits).requireEnabled(userId);
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class)
+                .hasMessageContaining("暂停");
+        assertThat(fake.requests()).isEmpty();
+    }
+
+    @Test
+    void anEmptyPersonalLimitLeavesOnlyTheGlobalBudgetInCharge() {
+        when(userLimits.tokenLimit(userId)).thenReturn(Optional.empty());
+        properties.setDailyTokenBudget(1000);
+        when(callLogs.todayTokens()).thenReturn(1000L);
+
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(AiCallException.class)
+                .satisfies(error -> {
+                    assertThat(((AiCallException) error).category()).isEqualTo(AiErrorCategory.QUOTA);
+                    assertThat(error.getMessage()).contains("今日 AI 用量已达上限");
+                });
+        assertThat(fake.requests()).isEmpty();
+
+        when(callLogs.todayTokens()).thenReturn(999L);
+        fake.enqueue(FakeAiProviderServer.openAiContent("{\"ok\":true}"));
+        assertThat(gateway.completeJson(request(null, new AiText("x", false))).json()).isEqualTo("{\"ok\":true}");
+        verify(callLogs, never()).todayTokens(userId);
+    }
+
+    @Test
+    void theGlobalBudgetMessageWinsWhenBudgetAndPersonalLimitAreBothExhausted() {
+        properties.setDailyTokenBudget(1000);
+        when(callLogs.todayTokens()).thenReturn(1000L);
+        when(userLimits.tokenLimit(userId)).thenReturn(Optional.of(50L));
+        when(callLogs.todayTokens(userId)).thenReturn(50L);
+
+        assertThatThrownBy(() -> gateway.completeJson(request(null, new AiText("x", false))))
+                .isInstanceOf(AiCallException.class)
+                .satisfies(error -> {
+                    assertThat(((AiCallException) error).category()).isEqualTo(AiErrorCategory.QUOTA);
+                    assertThat(error.getMessage()).contains("今日 AI 用量已达上限").doesNotContain("个人限额");
+                });
+        assertThat(fake.requests()).isEmpty();
+    }
+
     @Test
     void imagesNeedAVisionCapableProvider() {
         AiProviderRuntime textOnly = AiTestRuntimes.openAi(fake, KEY, AiJsonMode.JSON_OBJECT, AiThinkingControl.NONE,
@@ -314,7 +397,7 @@ class AiGatewayTest {
         when(currentUser.id()).thenReturn(Optional.empty());
         AiHttpTransport transport = new AiHttpTransport(properties);
         AiGateway single = new AiGateway(providers, List.of(new OpenAiChatClient(transport)), callLogs, properties,
-                currentUser);
+                currentUser, mock(com.uten.imp.features.ai.usage.AiUserLimitsService.class));
         fake.enqueue(FakeAiProviderServer.openAiContent("{\"slow\":true}").withDelay(1_500));
 
         CompletableFuture<AiCompletionPort.AiCompletionResult> slow =

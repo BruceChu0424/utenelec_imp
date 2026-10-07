@@ -1,8 +1,8 @@
 // 全量路由 × 权限覆盖契约（2026-09-05 新增）：
 // 逐条枚举 appRouter 真实注册的 GoRoute（含 productionRoutes 等挂载子树），把动态段
 // 代入样本值后过 permission_by_path，要求——
-//   1. 除「文档豁免清单」（基础设施/访客门户/dashboard/profile/settings/
-//      page-permissions，见 权限体系总设计.md §二）外，任何路由都必须有 any/all 守卫；
+//   1. 除「文档豁免清单」（基础设施/访客门户/dashboard/profile/settings，
+//      见 权限体系总设计.md §二）外，任何路由都必须有 any/all 守卫；
 //   2. 豁免清单本身也不许漂移：清单里的路由若真的挂上了权限码，测试同样报错。
 // 新增页面忘记注册权限时，这里第一个红——不必等人工全量审计。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -41,8 +41,6 @@ const _documentedExempt = <String>{
   '/profile/me/changes',
   '/profile/me/department',
   '/settings',
-  // 业务页「本页权限」工作台：服务端按 surface 能力与负责人子树把关。
-  '/page-permissions/*',
   // 独立草稿页：本人表单草稿（本地+服务端按归属人），无业务权限概念。
   '/form-drafts/*',
   // 访客门户：独立访客会话。
@@ -82,18 +80,21 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 当前工作区逐条核对：203 条守卫 / 18 条豁免(2026-10-05 ADR-151 §5 入库登记单批合一：
-/// 采购/委外到货单张页 receipts/new 与批量页 receipts/batch 合成 arrivals/register、
-/// 产成品批量登记页 registrations/batch 并入单个登记页，守卫 205→203；
-/// 2026-10-04 ADR-143 删除
-/// /subcontract/preparations 兼容重定向，守卫 206→205；2026-09-27 独立草稿页
-/// /form-drafts/:categoryId 上线，豁免 17→18；此前 2026-09-25 入口选择页
-/// 下线 /entry 路由移除后豁免 18→17)。
+/// 当前工作区逐条核对：205 条守卫 / 17 条豁免(2026-10-06 V816 AI 用量看板：
+/// /admin/ai-usage 与人员详情两路由上线，守卫 203→205；
+/// 2026-10-06 V812 权限抽屉：
+/// /page-permissions/:surfaceKey 独立设置页退役为页面内抽屉，豁免 18→17；
+/// 2026-10-05 ADR-151 §5 入库登记单批合一：采购/委外到货单张页 receipts/new
+/// 与批量页 receipts/batch 合成 arrivals/register、产成品批量登记页
+/// registrations/batch 并入单个登记页，守卫 205→203；
+/// 2026-10-04 ADR-143 删除 /subcontract/preparations 兼容重定向，守卫 206→205；
+/// 2026-09-27 独立草稿页 /form-drafts/:categoryId 上线，豁免 17→18；此前
+/// 2026-09-25 入口选择页下线 /entry 路由移除后豁免 18→17)。
 /// 包含报销编辑路径，仍继承 expense:apply；生产路线重构不新增页面。
 /// 断言精确计数：新增路由必须同步改代码守卫 + 本处计数 + 文档数字，
 /// 防止「文档说 180、实际已 190」的静默漂移。
-const _legacyGuardedCount = 203;
-const _expectedExemptCount = 18;
+const _legacyGuardedCount = 205;
+const _expectedExemptCount = 17;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{
@@ -309,4 +310,99 @@ void main() {
       }
     },
   );
+
+  test(
+    'every registered leaf route is matchable (no unreachable nested paths)',
+    () {
+      // 契约：枚举的每条叶子路径（动态段代入样本值）都必须能被真实路由树
+      // findMatch 命中，且命中的末级路由必须是枚举到的那个 RouteBase 本尊——
+      // 只比对路径会被兄弟动态段(如 /hr/tasks/:type)代答骗过。注册路径与
+      // go_router 实际 fullPath 的任何漂移都会在这里红——典型事故(2026-10-06)：
+      // /hr/tasks 的子路由误用绝对路径常量 '/hr/tasks/reconcile'，go_router
+      // concatenatePaths 无条件拼接成不可达的 '/hr/tasks/hr/tasks/reconcile'，
+      // 真实地址被兄弟 ':type' 吞掉(type='reconcile' 未知 → 兜底渲染转正办理
+      // 页)，而上面的权限枚举测试用自算路径，对此完全失明。子路由必须写相对段。
+      final container = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => _StubSessionNotifier()),
+          visitorSessionProvider.overrideWith(
+            () => _StubVisitorSessionNotifier(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = container.read(appRouterProvider);
+
+      final leaves = <(String, RouteBase)>[];
+      for (final base in router.configuration.routes) {
+        _collectLeafRefs(base, '', leaves);
+      }
+      expect(leaves, isNotEmpty);
+      final problems = <String>[];
+      for (final (pattern, routeBase) in leaves) {
+        final sample = _samplePath(pattern);
+        final match = router.configuration.findMatch(Uri.parse(sample));
+        if (match.isError || match.uri.path != sample) {
+          problems.add('$sample：路径不可达');
+          continue;
+        }
+        if (!identical(match.last.route, routeBase)) {
+          problems.add('$sample：注册的路由没有被自己匹配(被兄弟动态段代答或前缀被吞)');
+        }
+      }
+      expect(
+        problems,
+        isEmpty,
+        reason:
+            '以下注册路由在真实路由树中不可达或被别的路由代答——最常见'
+            '原因是嵌套子路由误用绝对路径常量(被拼接成双段路径)；子路由 path '
+            '必须写相对段。',
+      );
+
+      // 精确锚点：/hr/tasks/reconcile 必须命中核对页本身，而不是 :type 兜底。
+      final reconcile = router.configuration.findMatch(
+        Uri.parse('/hr/tasks/reconcile'),
+      );
+      expect(reconcile.isError, isFalse);
+      expect(reconcile.last.route.name, 'hr-reconcile');
+      // 静态段优先于 :type：普通任务子页仍走动态段。
+      final confirm = router.configuration.findMatch(
+        Uri.parse('/hr/tasks/confirm'),
+      );
+      expect(confirm.isError, isFalse);
+      expect(confirm.last.route.name, 'hr-task-list');
+    },
+  );
+}
+
+/// 递归收集叶子路由的 (预期完整路径, 路由对象引用)：路径算法与 _collect 一致，
+/// 同时带上 RouteBase 供可达性测试做「命中的就是注册的那个」一致性校验。
+void _collectLeafRefs(
+  RouteBase base,
+  String parent,
+  List<(String, RouteBase)> out,
+) {
+  switch (base) {
+    case GoRoute(:final path, :final routes):
+      final full = path.startsWith('/')
+          ? path
+          : (path.isEmpty ? parent : '$parent/$path');
+      if (routes.isEmpty) {
+        out.add((full, base));
+      } else {
+        for (final child in routes) {
+          _collectLeafRefs(child, full, out);
+        }
+      }
+    case ShellRoute(:final routes):
+      for (final child in routes) {
+        _collectLeafRefs(child, parent, out);
+      }
+    case StatefulShellRoute(:final branches):
+      for (final branch in branches) {
+        for (final child in branch.routes) {
+          _collectLeafRefs(child, parent, out);
+        }
+      }
+  }
 }

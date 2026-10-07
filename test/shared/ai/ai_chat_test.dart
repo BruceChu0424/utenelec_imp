@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -17,6 +18,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_en.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
 import 'package:uten_imp/features/dashboard/providers/dashboard_overview_provider.dart';
@@ -1595,6 +1597,45 @@ void main() {
       expect(executed, isEmpty);
     });
 
+    testWidgets('a restored file-less form card can be cancelled, never run', (
+      tester,
+    ) async {
+      _serverCards[_p1] = _guidedCard();
+      final repository = _FakeChatRepository()
+        ..restored = AiChatConversationView(
+          conversationId: _c1,
+          turns: [
+            AiChatTurn(
+              jobId: 'job-c',
+              reply: AiChatReply.fromJson({
+                'question': 'Open a new order for Acme',
+                'reply': 'Please check the card.',
+                'conversationId': _c1,
+                'actions': [_guidedCard()],
+              }),
+            ),
+          ],
+        );
+      Uri? opened;
+      await _pump(
+        tester,
+        repository: repository,
+        onDraftOpened: (uri, _) => opened = uri,
+      );
+      await _open(tester);
+      expect(
+        find.byKey(const ValueKey('ai-action-detached-$_p1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('ai-action-confirm-$_p1')),
+        findsNothing,
+      );
+      await _tapCard(tester, 'ai-action-cancel-$_p1');
+      expect(repository.actionCalls, ['cancel:$_p1']);
+      expect(opened, isNull);
+    });
+
     testWidgets(
       'clearing history asks first, clears on the server and starts over',
       (tester) async {
@@ -1676,6 +1717,201 @@ void main() {
       await _send(tester, 'What do the colours mean?');
       await tester.pumpAndSettle();
       expect(find.textContaining('Current page colours'), findsNothing);
+    });
+  });
+
+  group('ADR-163 operation memory', () {
+    const usable = AiChatMemorySuggestion(
+      question: 'Open a new sales order for Acme',
+      workflowCode: 'SALES_ORDER',
+      title: 'New sales order',
+      available: true,
+    );
+    const unusable = AiChatMemorySuggestion(
+      question: 'Prepare the weekly expense claims',
+      workflowCode: 'EXPENSE_CLAIM',
+      title: 'New expense claim',
+      // available stays at its default: the server marked this form gone.
+    );
+
+    test(
+      'memory endpoints use their own paths, bodies and parsing rules',
+      () async {
+        final api = _RecordingApi();
+        final repository = DioAiChatRepository(api);
+        await repository.updateSettings({'operationMemory': false});
+        expect(api.path, '/ai/chat/settings');
+        expect(api.body, {'operationMemory': false});
+        api.memoryResult = const {
+          'suggestions': [
+            {
+              'question': ' Open a sales order for Acme ',
+              'workflow': 'SALES_ORDER',
+              'title': 'New sales order',
+              'available': true,
+            },
+            {'question': 'Old expense claim', 'workflow': 'EXPENSE_CLAIM'},
+            {'question': '', 'workflow': 'SALES_ORDER'},
+            {'question': 'Bad workflow', 'workflow': 'RUN_SQL'},
+            'not a suggestion',
+          ],
+        };
+        final memory = await repository.memorySuggestions();
+        expect(api.path, '/ai/chat/memory/suggestions');
+        expect(
+          memory.map(
+            (item) =>
+                (item.question, item.workflowCode, item.title, item.available),
+          ),
+          [
+            (
+              'Open a sales order for Acme',
+              'SALES_ORDER',
+              'New sales order',
+              true,
+            ),
+            ('Old expense claim', 'EXPENSE_CLAIM', '', false),
+          ],
+        );
+        await repository.clearOperationMemory();
+        expect(api.path, '/ai/chat/memory');
+      },
+    );
+
+    testWidgets(
+      'the welcome area lists recent operations; a usable one resends its text',
+      (tester) async {
+        final repository = _FakeChatRepository()..memory = [usable, unusable];
+        await _pump(tester, repository: repository);
+        await _open(tester);
+        expect(repository.memoryCalls, greaterThan(0));
+        expect(find.text(_en.aiChatMemoryRecentTitle), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('ai-chat-memory-title')),
+          findsOneWidget,
+        );
+        expect(find.text(usable.question), findsOneWidget);
+        expect(find.text(unusable.question), findsOneWidget);
+        // A form this account can no longer fill in stays visible but inert.
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.widgetWithText(UtenButton, usable.question),
+              )
+              .onPressed,
+          isNotNull,
+        );
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.widgetWithText(UtenButton, unusable.question),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(find.byTooltip(_en.aiChatMemoryUnavailable), findsOneWidget);
+        await tester.tap(find.text(usable.question));
+        await tester.pumpAndSettle();
+        expect(repository.messages.single['message'], usable.question);
+        // Tapping resends the plain question only: no stored route or hint.
+        expect(repository.messages.single['intentHint'], isNull);
+        expect(repository.messages.single['currentRoute'], '/sales/orders/new');
+        expect(find.text(_en.aiChatMemoryRecentTitle), findsNothing);
+      },
+    );
+
+    testWidgets('operation memory off is never requested nor rendered', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..settings = const AiChatSettings(operationMemory: false)
+        ..memory = [usable];
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await tester.pumpAndSettle();
+      expect(repository.memoryCalls, 0);
+      expect(find.text(_en.aiChatMemoryRecentTitle), findsNothing);
+      expect(find.text(usable.question), findsNothing);
+      expect(find.byKey(const ValueKey('ai-chat-memory-title')), findsNothing);
+    });
+
+    testWidgets(
+      'clearing the records asks first, deletes on the server and empties the list',
+      (tester) async {
+        final repository = _FakeChatRepository()..memory = [usable];
+        final harness = await _pump(tester, repository: repository);
+        await _open(tester);
+        expect(find.text(_en.aiChatMemoryRecentTitle), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+        await tester.pumpAndSettle();
+        final clear = find.byKey(const ValueKey('ai-settings-clear-memory'));
+        await tester.ensureVisible(clear);
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        expect(find.text(_en.aiChatMemoryClearConfirm), findsOneWidget);
+        await tester.tap(find.text(_en.aiChatCancel));
+        await tester.pumpAndSettle();
+        expect(repository.clearMemoryCalls, 0);
+        await tester.tap(clear);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(_en.aiChatConfirm));
+        await tester.pumpAndSettle();
+        expect(repository.clearMemoryCalls, 1);
+        expect(
+          harness.container
+              .read(appNotificationProvider)
+              .any((item) => item.message == _en.aiChatMemoryCleared),
+          isTrue,
+        );
+        await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
+        await tester.pumpAndSettle();
+        expect(find.text(_en.aiChatMemoryRecentTitle), findsNothing);
+        expect(find.text(usable.question), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'the operation memory switch saves at once and hides the welcome list',
+      (tester) async {
+        final repository = _FakeChatRepository()..memory = [usable];
+        await _pump(tester, repository: repository);
+        await _open(tester);
+        expect(find.text(_en.aiChatMemoryRecentTitle), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+        await tester.pumpAndSettle();
+        final toggle = find.byKey(
+          const ValueKey('ai-settings-operationMemory'),
+        );
+        await tester.ensureVisible(toggle);
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(repository.settingChanges.single, {'operationMemory': false});
+        expect(tester.widget<SwitchListTile>(toggle).value, isFalse);
+        expect(find.text(_en.aiChatMemorySettingLabel), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
+        await tester.pumpAndSettle();
+        expect(find.text(_en.aiChatMemoryRecentTitle), findsNothing);
+      },
+    );
+
+    testWidgets('a failed operation memory save rolls the switch back', (
+      tester,
+    ) async {
+      final repository = _FakeChatRepository()
+        ..settingsFailure = NetworkException();
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-settings')));
+      await tester.pumpAndSettle();
+      final toggle = find.byKey(const ValueKey('ai-settings-operationMemory'));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(repository.settingChanges.single, {'operationMemory': false});
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+      expect(find.byKey(const ValueKey('ai-settings-error')), findsOneWidget);
+      expect(find.text(_en.aiChatSettingsSaveFailed), findsOneWidget);
     });
   });
 
@@ -1979,6 +2215,68 @@ void main() {
       );
       expect(find.byKey(const ValueKey('ai-chat-panel')), findsOneWidget);
       expect(find.text(_en.aiChatCardFormNotOpened), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a file-less form card opens the blank form once after confirm and closes the panel',
+    (tester) async {
+      final repository = _FakeChatRepository()..actions = [_guidedCard()];
+      Uri? destination;
+      Object? handedExtra;
+      await _pump(
+        tester,
+        repository: repository,
+        onDraftOpened: (uri, extra) {
+          destination = uri;
+          handedExtra = extra;
+        },
+      );
+      await _open(tester);
+      await _send(tester, 'Open a new sales order for Acme');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ai-action-card-$_p1')), findsOneWidget);
+      expect(destination, isNull, reason: 'the form opens only after confirm');
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(destination?.path, '/sales/orders/new');
+      expect(destination?.queryParameters, isEmpty);
+      // No file travels with a conversation card; nothing is saved either.
+      expect(handedExtra, isNull);
+      expect(repository.actionCalls, [
+        'confirm:$_p1',
+        'receipt:$_p1:SUCCEEDED',
+      ]);
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a file-less form card without the workflow permission is refused, not consumed',
+    (tester) async {
+      final repository = _FakeChatRepository()
+        ..actions = [_guidedCard()]
+        // The server no longer offers this account the sales-order workflow.
+        ..workflows = const ['EXPENSE_CLAIM'];
+      Uri? opened;
+      await _pump(
+        tester,
+        repository: repository,
+        onDraftOpened: (uri, _) => opened = uri,
+      );
+      await _open(tester);
+      await _send(tester, 'Open a new sales order for Acme');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-action-confirm-$_p1');
+      expect(repository.actionCalls, isEmpty);
+      expect(opened, isNull);
+      expect(find.text(_en.aiChatPermissionChanged), findsOneWidget);
+      expect(find.byKey(const ValueKey('ai-chat-panel')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('ai-action-confirm-$_p1')),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -2333,6 +2631,37 @@ void main() {
   );
 
   testWidgets(
+    'a page suggestion with other wording than the built-in question still carries PAGE_HELP',
+    (tester) async {
+      // 2026-10-06 defect: the hint was decided by comparing the chip text
+      // with the localized built-in question, so any server-worded question
+      // lost the hint. Membership in the fetched page list is what counts.
+      const different = 'Which customer should I pick first?';
+      expect(different, isNot(_en.aiChatPageQuestion));
+      final repository = _FakeChatRepository()
+        ..pageResults['/sales/orders/new'] = const AiChatPageSuggestions(
+          pageRoute: '/sales/orders/new',
+          pageTitle: 'Order page',
+          suggestions: [different],
+        );
+      await _pump(tester, repository: repository);
+      await _open(tester);
+      await _send(tester, 'hello');
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('ai-chat-page-suggestions')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text(different));
+      await tester.pumpAndSettle();
+      expect(repository.messages.last['message'], different);
+      expect(repository.messages.last['currentRoute'], '/sales/orders/new');
+      expect(repository.messages.last['intentHint'], 'PAGE_HELP');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'launcher moves vertically and chat fits a narrow keyboard viewport',
     (tester) async {
       await _pump(tester, size: const Size(360, 740));
@@ -2533,6 +2862,17 @@ Map<String, dynamic> _grant() => _card(
   risk: 'HIGH',
   riskNote: 'Granting takes effect at once.',
   stepUp: true,
+);
+
+/// ADR-163: an OPEN_GUIDED_FORM card proposed from the conversation itself
+/// (no file behind it, so no sourceJobId).
+Map<String, dynamic> _guidedCard() => _card(
+  actionType: 'OPEN_GUIDED_FORM',
+  handler: 'OPEN_GUIDED_FORM',
+  route: null,
+  title: 'Open a new sales order',
+  lines: const ['Open: New sales order', 'Saving stays with you on the page.'],
+  args: const {'workflow': 'SALES_ORDER'},
 );
 
 /// A page that registers like the sales editor: two inputs (a password field
@@ -2974,6 +3314,25 @@ class _FakeChatRepository implements AiChatRepository {
     restored = const AiChatConversationView();
   }
 
+  /// ADR-163 operation memory of the fake server.
+  List<AiChatMemorySuggestion> memory = const [];
+  int memoryCalls = 0;
+  int clearMemoryCalls = 0;
+  Object? clearMemoryFailure;
+
+  @override
+  Future<List<AiChatMemorySuggestion>> memorySuggestions() async {
+    memoryCalls++;
+    return settings.operationMemory ? memory : const [];
+  }
+
+  @override
+  Future<void> clearOperationMemory() async {
+    clearMemoryCalls++;
+    if (clearMemoryFailure case final failure?) throw failure;
+    memory = const [];
+  }
+
   @override
   Future<AiChatPageSuggestions> pageSuggestions(String pageRoute) async {
     pageRequests.add(pageRoute);
@@ -3122,6 +3481,7 @@ class _RecordingApi extends ApiClient {
   Map<String, dynamic>? query;
   Map<String, dynamic> pageResult = const {};
   Map<String, dynamic> cardResult = const {};
+  Map<String, dynamic> memoryResult = const {};
 
   @override
   Future<Map<String, dynamic>> get(
@@ -3130,7 +3490,24 @@ class _RecordingApi extends ApiClient {
   }) async {
     this.path = path;
     this.query = query;
-    return path.startsWith('/ai/chat/actions/') ? cardResult : pageResult;
+    if (path.startsWith('/ai/chat/actions/')) return cardResult;
+    if (path == '/ai/chat/memory/suggestions') return memoryResult;
+    return pageResult;
+  }
+
+  @override
+  Future<Map<String, dynamic>> patch(String path, {Object? body}) async {
+    this.path = path;
+    this.body = body;
+    return <String, dynamic>{
+      'settings': const <String, dynamic>{},
+      'reasoningEffortSupported': true,
+    };
+  }
+
+  @override
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
+    this.path = path;
   }
 
   @override

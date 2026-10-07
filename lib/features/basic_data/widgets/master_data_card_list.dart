@@ -32,6 +32,7 @@ class MasterDataCardList<T> extends StatelessWidget {
     this.controller,
     this.isSelected,
     this.canSelect,
+    this.unselectableLeadingBuilder,
     this.onCheckboxChanged,
     this.onOpen,
     this.rowMenuBuilder,
@@ -59,6 +60,12 @@ class MasterDataCardList<T> extends StatelessWidget {
   final ScrollController? controller;
   final bool Function(T item)? isSelected;
   final bool Function(T item)? canSelect;
+
+  /// 勾选框禁用的行(表格 idOf=null，如被他人认领)：卡片勾选槽换成这个
+  /// builder 的输出(锁/「某某处理中」提示)，与表格行 unselectableLeadingBuilder
+  /// 同语义。
+  final Widget Function(BuildContext context, T item)?
+  unselectableLeadingBuilder;
   final void Function(T item, bool checked)? onCheckboxChanged;
   final void Function(T item)? onOpen;
 
@@ -91,6 +98,7 @@ class MasterDataCardList<T> extends StatelessWidget {
       item: item,
       isSelected: isSelected?.call(item) ?? false,
       checkboxEnabled: canSelect?.call(item) ?? true,
+      unselectableLeadingBuilder: unselectableLeadingBuilder,
       onCheckboxChanged: onCheckboxChanged,
       onOpen: onOpen,
       rowMenuBuilder: rowMenuBuilder,
@@ -165,6 +173,7 @@ class _Card<T> extends StatelessWidget {
     required this.item,
     required this.isSelected,
     required this.checkboxEnabled,
+    this.unselectableLeadingBuilder,
     this.onCheckboxChanged,
     this.onOpen,
     this.rowMenuBuilder,
@@ -176,6 +185,8 @@ class _Card<T> extends StatelessWidget {
   final T item;
   final bool isSelected;
   final bool checkboxEnabled;
+  final Widget Function(BuildContext context, T item)?
+  unselectableLeadingBuilder;
   final void Function(T item, bool checked)? onCheckboxChanged;
   final void Function(T item)? onOpen;
   final List<UtenContextMenuEntry> Function(T item)? rowMenuBuilder;
@@ -219,24 +230,34 @@ class _Card<T> extends StatelessWidget {
               SizedBox(
                 width: 40,
                 height: 40,
-                child: Checkbox(
-                  value: isSelected,
-                  onChanged: checkboxEnabled
-                      ? (value) => onCheckboxChanged!(item, value ?? false)
-                      : null,
-                ),
+                // 不可勾选的行(如被他人认领)换锁提示，不再画死灰勾选框。
+                child: !checkboxEnabled && unselectableLeadingBuilder != null
+                    ? Center(child: unselectableLeadingBuilder!(context, item))
+                    : Checkbox(
+                        value: isSelected,
+                        onChanged: checkboxEnabled
+                            ? (value) =>
+                                  onCheckboxChanged!(item, value ?? false)
+                            : null,
+                      ),
               ),
               const SizedBox(width: UtenSpacing.s8),
             ],
             Expanded(
-              child: Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              // 标题列自带 cellBuilder(如合并的「员工」列：姓名主行+工号·部门
+              // 副行)时用其渲染，信息不因进卡片而丢；否则照旧纯文本。
+              child:
+                  columns[effectiveTitle].cardRendersBuilder &&
+                      columns[effectiveTitle].cellBuilder != null
+                  ? columns[effectiveTitle].cellBuilder!(context, item)
+                  : Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
             ),
             if (rowMenuBuilder != null)
               Builder(

@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.finishedin;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
@@ -419,7 +420,7 @@ public class ProductionFinishedInboundTaskService {
                 (java.util.UUID) row[2],
                 (java.util.UUID) row[3],
                 (String) row[4],
-                localDate(row[5]),
+                NativeValueConverters.toLocalDate(row[5]),
                 (java.util.UUID) row[6],
                 (String) row[7],
                 (java.util.UUID) row[8],
@@ -427,24 +428,12 @@ public class ProductionFinishedInboundTaskService {
                 (String) row[10],
                 (String) row[11],
                 ((Number) row[12]).intValue(),
-                decimal(row[13]),
+                NativeValueConverters.toBigDecimal(row[13]),
                 offsetDateTime(row[14]),
                 Boolean.TRUE.equals(row[15]),
-                decimal(row[16]),
-                decimal(row[17]),
-                com.uten.imp.common.production.OutputLotText.actualSurplusNote(decimal(row[17])));
-    }
-
-    private static BigDecimal decimal(Object value) {
-        return value == null
-                ? BigDecimal.ZERO
-                : new BigDecimal(value.toString());
-    }
-
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        return ((java.sql.Date) value).toLocalDate();
+                NativeValueConverters.toBigDecimal(row[16]),
+                NativeValueConverters.toBigDecimal(row[17]),
+                com.uten.imp.common.production.OutputLotText.actualSurplusNote(NativeValueConverters.toBigDecimal(row[17])));
     }
 
     private static OffsetDateTime offsetDateTime(Object value) {

@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.asset.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -26,7 +27,6 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -292,7 +292,7 @@ public class FinanceAssetPostingService {
         if (status != null && !status.isBlank()) query.setParameter("status", status);
         @SuppressWarnings("unchecked") List<Object> rows = query.getResultList();
         List<AssetWorkbenchResponses.PostingRun> all = rows.stream()
-                .map(FinanceAssetPostingService::uuid).map(id -> get(id, null)).toList();
+                .map(NativeValueConverters::uuid).map(id -> get(id, null)).toList();
         var pageable = Pageables.of(page, size);
         int from = Math.min(pageable.getPageNumber() * pageable.getPageSize(), all.size());
         int to = Math.min(from + pageable.getPageSize(), all.size());
@@ -364,7 +364,7 @@ public class FinanceAssetPostingService {
         @SuppressWarnings("unchecked") List<Object[]> objectStates = em.createNativeQuery(objectLockSql)
                 .setParameter("run",original.id()).getResultList();
         boolean derecognized = objectStates.stream().anyMatch(row ->
-                "DISPOSED".equals(text(row[1])) || "TERMINATED".equals(text(row[1])));
+                "DISPOSED".equals(NativeValueConverters.text(row[1])) || "TERMINATED".equals(NativeValueConverters.text(row[1])));
         if (derecognized) throw conflict("Reverse the later disposal or termination workflow first");
         List<PostingFact> facts = facts(run.id());
         if (original.voucherId() == null && !facts.isEmpty()) {
@@ -463,18 +463,18 @@ public class FinanceAssetPostingService {
                 """).setParameter("book", bookType).setParameter("period", period).getResultList();
         List<Candidate> result = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
-            BigDecimal original = decimal(r[4]), accumulated = decimal(r[5]), opening = decimal(r[6]);
-            BigDecimal depreciable = decimal(r[7]);
+            BigDecimal original = NativeValueConverters.toBigDecimal(r[4]), accumulated = NativeValueConverters.toBigDecimal(r[5]), opening = NativeValueConverters.toBigDecimal(r[6]);
+            BigDecimal depreciable = NativeValueConverters.toBigDecimal(r[7]);
             long usefulMonths = number(r[8]).longValue();
             BigDecimal remaining = depreciable.subtract(accumulated);
             BigDecimal regular = depreciable.divide(BigDecimal.valueOf(usefulMonths), 4, RoundingMode.HALF_UP);
-            String finalPeriod = YearMonth.parse(text(r[9])).plusMonths(usefulMonths - 1L).toString();
+            String finalPeriod = YearMonth.parse(NativeValueConverters.text(r[9])).plusMonths(usefulMonths - 1L).toString();
             BigDecimal amount = (period.equals(finalPeriod) ? remaining : regular.min(remaining))
                     .setScale(4, RoundingMode.HALF_UP);
-            result.add(new Candidate("FIXED_ASSET", uuid(r[0]), uuid(r[1]), null, null, text(r[2]), text(r[3]),
+            result.add(new Candidate("FIXED_ASSET", NativeValueConverters.uuid(r[0]), NativeValueConverters.uuid(r[1]), null, null, NativeValueConverters.text(r[2]), NativeValueConverters.text(r[3]),
                     original, opening, amount, accumulated.add(amount), opening.subtract(amount),
-                    uuid(r[12]), uuid(r[11]), uuid(r[10]), uuid(r[13]), uuid(r[14]),
-                    number(r[15]).longValue(), text(r[16]), true, null));
+                    NativeValueConverters.uuid(r[12]), NativeValueConverters.uuid(r[11]), NativeValueConverters.uuid(r[10]), NativeValueConverters.uuid(r[13]), NativeValueConverters.uuid(r[14]),
+                    number(r[15]).longValue(), NativeValueConverters.text(r[16]), true, null));
         }
         return result;
     }
@@ -502,9 +502,9 @@ public class FinanceAssetPostingService {
                 ORDER BY d.code,d.id
                 """).setParameter("period", period).getResultList();
         List<Candidate> result = new ArrayList<>(rows.size());
-        for (Object[] r : rows) result.add(new Candidate("DEFERRED_EXPENSE", uuid(r[0]), null, uuid(r[1]), uuid(r[2]),
-                text(r[3]), text(r[4]), decimal(r[5]), decimal(r[6]), decimal(r[7]), decimal(r[8]), decimal(r[9]),
-                uuid(r[10]), null, uuid(r[11]), uuid(r[12]), uuid(r[13]), number(r[14]).longValue(), text(r[15]), true, null));
+        for (Object[] r : rows) result.add(new Candidate("DEFERRED_EXPENSE", NativeValueConverters.uuid(r[0]), null, NativeValueConverters.uuid(r[1]), NativeValueConverters.uuid(r[2]),
+                NativeValueConverters.text(r[3]), NativeValueConverters.text(r[4]), NativeValueConverters.toBigDecimal(r[5]), NativeValueConverters.toBigDecimal(r[6]), NativeValueConverters.toBigDecimal(r[7]), NativeValueConverters.toBigDecimal(r[8]), NativeValueConverters.toBigDecimal(r[9]),
+                NativeValueConverters.uuid(r[10]), null, NativeValueConverters.uuid(r[11]), NativeValueConverters.uuid(r[12]), NativeValueConverters.uuid(r[13]), number(r[14]).longValue(), NativeValueConverters.text(r[15]), true, null));
         return result;
     }
 
@@ -522,7 +522,7 @@ public class FinanceAssetPostingService {
                 GROUP BY d.id
                 """).setParameter("period",period).getResultList();
         return rows.stream().map(row -> issue("PERIOD_GAP","BLOCKING",
-                "Deferred expense must post period "+text(row[1])+" first",uuid(row[0]))).toList();
+                "Deferred expense must post period "+NativeValueConverters.text(row[1])+" first",NativeValueConverters.uuid(row[0]))).toList();
     }
 
     private List<Map<String, Object>> unactivatedIssues(String runType, String period) {
@@ -536,7 +536,7 @@ public class FinanceAssetPostingService {
                   AND sv.status='APPROVED' AND sv.start_period<=:period AND sv.is_deleted=false
                 """;
         @SuppressWarnings("unchecked") List<Object> rows=em.createNativeQuery(sql).setParameter("period",period).getResultList();
-        return rows.stream().map(FinanceAssetPostingService::uuid)
+        return rows.stream().map(NativeValueConverters::uuid)
                 .map(id -> issue("APPROVED_NOT_ACTIVATED","BLOCKING",
                         "Approved object must be activated before this period can post",id)).toList();
     }
@@ -577,9 +577,9 @@ public class FinanceAssetPostingService {
                 WHERE run_id=:run AND status='INCLUDED' AND is_deleted=false ORDER BY sequence
                 """).setParameter("run", runId).getResultList();
         List<PostingFact> result = new ArrayList<>(rows.size());
-        for (Object[] r : rows) result.add(new PostingFact(uuid(r[0]),text(r[1]),uuid(r[2]),uuid(r[3]),uuid(r[4]),
-                uuid(r[5]),uuid(r[6]),number(r[7]).intValue(),decimal(r[8]),decimal(r[9]),decimal(r[10]),
-                decimal(r[11]),uuid(r[12]),uuid(r[13]),uuid(r[14]),text(r[15])));
+        for (Object[] r : rows) result.add(new PostingFact(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),NativeValueConverters.uuid(r[2]),NativeValueConverters.uuid(r[3]),NativeValueConverters.uuid(r[4]),
+                NativeValueConverters.uuid(r[5]),NativeValueConverters.uuid(r[6]),number(r[7]).intValue(),NativeValueConverters.toBigDecimal(r[8]),NativeValueConverters.toBigDecimal(r[9]),NativeValueConverters.toBigDecimal(r[10]),
+                NativeValueConverters.toBigDecimal(r[11]),NativeValueConverters.uuid(r[12]),NativeValueConverters.uuid(r[13]),NativeValueConverters.uuid(r[14]),NativeValueConverters.text(r[15])));
         return result;
     }
 
@@ -663,10 +663,10 @@ public class FinanceAssetPostingService {
                 .setParameter("amount", fact.amount()).setParameter("voucher", voucher).setParameter("book", fact.bookId())
                 .setParameter("run", run.id()).setParameter("line", fact.lineId()).setParameter("sequence", fact.sequence())
                 .setParameter("opening", fact.opening()).setParameter("accumulated", fact.accumulated())
-                .setParameter("closing", fact.closing()).setParameter("original", uuid(old[0]))
+                .setParameter("closing", fact.closing()).setParameter("original", NativeValueConverters.uuid(old[0]))
                 .setParameter("snapshot", fact.snapshot()).setParameter("actor", actor).executeUpdate();
         changed(em.createNativeQuery("UPDATE fa_depreciation_log SET status='REVERSED',reversed_by_log_id=:new,updated_at=now(),updated_by=:actor WHERE id=:old AND status='ACTIVE'")
-                .setParameter("new", logId).setParameter("actor", actor).setParameter("old", uuid(old[0])).executeUpdate());
+                .setParameter("new", logId).setParameter("actor", actor).setParameter("old", NativeValueConverters.uuid(old[0])).executeUpdate());
         changed(em.createNativeQuery("""
                 UPDATE finance_asset_books SET accumulated_amount=accumulated_amount-:amount,
                     net_book_value=net_book_value+:amount,status='ACTIVE',row_version=row_version+1,
@@ -694,10 +694,10 @@ public class FinanceAssetPostingService {
                 .setParameter("version", fact.scheduleVersionId()).setParameter("scheduleLine", fact.scheduleLineId())
                 .setParameter("run", run.id()).setParameter("line", fact.lineId()).setParameter("sequence", fact.sequence())
                 .setParameter("opening", fact.opening()).setParameter("accumulated", fact.accumulated())
-                .setParameter("closing", fact.closing()).setParameter("original", uuid(old[0]))
+                .setParameter("closing", fact.closing()).setParameter("original", NativeValueConverters.uuid(old[0]))
                 .setParameter("snapshot", fact.snapshot()).setParameter("actor", actor).executeUpdate();
         changed(em.createNativeQuery("UPDATE da_amortization_log SET status='REVERSED',reversed_by_log_id=:new,updated_at=now(),updated_by=:actor WHERE id=:old AND status='ACTIVE'")
-                .setParameter("new", logId).setParameter("actor", actor).setParameter("old", uuid(old[0])).executeUpdate());
+                .setParameter("new", logId).setParameter("actor", actor).setParameter("old", NativeValueConverters.uuid(old[0])).executeUpdate());
         em.createNativeQuery("""
                 UPDATE deferred_expenses SET lifecycle_status='ACTIVE',completed_on=NULL,
                     row_version=row_version+1,updated_at=now(),updated_by=:actor
@@ -717,19 +717,19 @@ public class FinanceAssetPostingService {
         if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Posting run not found");
         Object[] r = rows.getFirst();
         List<AssetWorkbenchResponses.PostingLine> lines = lineResponses(id);
-        String status = text(r[5]);
-        boolean separatedFromMaker = !authorization.isCurrentActor(uuid(r[16]));
+        String status = NativeValueConverters.text(r[5]);
+        boolean separatedFromMaker = !authorization.isCurrentActor(NativeValueConverters.uuid(r[16]));
         Set<String> actions = switch (status) {
             case "PREVIEWED" -> authorization.has(FinanceAssetAuthorization.POST) ? Set.of("SUBMIT") : Set.of();
             case "SUBMITTED" -> authorization.has(FinanceAssetAuthorization.APPROVE) && separatedFromMaker ? Set.of("APPROVE") : Set.of();
             case "APPROVED" -> authorization.has(FinanceAssetAuthorization.POST) && separatedFromMaker ? Set.of("POST") : Set.of();
-            case "POSTED" -> authorization.has(FinanceAssetAuthorization.POST) && "NORMAL".equals(text(r[4]))
+            case "POSTED" -> authorization.has(FinanceAssetAuthorization.POST) && "NORMAL".equals(NativeValueConverters.text(r[4]))
                     ? Set.of("REVERSE") : Set.of();
             default -> Set.of();
         };
-        return new AssetWorkbenchResponses.PostingRun(uuid(r[0]),text(r[1]),text(r[2]),text(r[3]),status,token,
-                number(r[6]).intValue(),decimal(r[7]),exceptionsForResponse(text(r[8])),lines,text(r[9]),uuid(r[10]),
-                number(r[11]).longValue(),instant(r[12]),actions);
+        return new AssetWorkbenchResponses.PostingRun(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),NativeValueConverters.text(r[2]),NativeValueConverters.text(r[3]),status,token,
+                number(r[6]).intValue(),NativeValueConverters.toBigDecimal(r[7]),exceptionsForResponse(NativeValueConverters.text(r[8])),lines,NativeValueConverters.text(r[9]),NativeValueConverters.uuid(r[10]),
+                number(r[11]).longValue(),NativeValueConverters.toInstant(r[12]),actions);
     }
 
     private List<AssetWorkbenchResponses.PostingLine> lineResponses(UUID runId) {
@@ -743,8 +743,8 @@ public class FinanceAssetPostingService {
                 WHERE l.run_id=:run AND l.is_deleted=false ORDER BY l.sequence
                 """).setParameter("run", runId).getResultList();
         List<AssetWorkbenchResponses.PostingLine> result = new ArrayList<>(rows.size());
-        for (Object[] r : rows) result.add(new AssetWorkbenchResponses.PostingLine(uuid(r[0]),uuid(r[1]),text(r[2]),
-                text(r[3]),text(r[4]),decimal(r[5]),decimal(r[6]),decimal(r[7]),text(r[8]),text(r[9])));
+        for (Object[] r : rows) result.add(new AssetWorkbenchResponses.PostingLine(NativeValueConverters.uuid(r[0]),NativeValueConverters.uuid(r[1]),NativeValueConverters.text(r[2]),
+                NativeValueConverters.text(r[3]),NativeValueConverters.text(r[4]),NativeValueConverters.toBigDecimal(r[5]),NativeValueConverters.toBigDecimal(r[6]),NativeValueConverters.toBigDecimal(r[7]),NativeValueConverters.text(r[8]),NativeValueConverters.text(r[9])));
         return List.copyOf(result);
     }
 
@@ -757,8 +757,8 @@ public class FinanceAssetPostingService {
                 """).setParameter("id", id).getResultList();
         if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Posting run not found");
         Object[] r = rows.getFirst();
-        return new Run(uuid(r[0]),text(r[1]),text(r[2]),text(r[3]),text(r[4]),text(r[5]),text(r[6]),text(r[7]),
-                instant(r[8]),text(r[9]),uuid(r[10]),uuid(r[11]),uuid(r[12]),text(r[13]),number(r[14]).longValue());
+        return new Run(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),NativeValueConverters.text(r[2]),NativeValueConverters.text(r[3]),NativeValueConverters.text(r[4]),NativeValueConverters.text(r[5]),NativeValueConverters.text(r[6]),NativeValueConverters.text(r[7]),
+                NativeValueConverters.toInstant(r[8]),NativeValueConverters.text(r[9]),NativeValueConverters.uuid(r[10]),NativeValueConverters.uuid(r[11]),NativeValueConverters.uuid(r[12]),NativeValueConverters.text(r[13]),number(r[14]).longValue());
     }
 
     private String continuityIssue(String runType, String bookType, AssetPeriod requested) {
@@ -771,7 +771,7 @@ public class FinanceAssetPostingService {
             AssetPeriod cutover = new AssetPeriod(YearMonth.now(SHANGHAI));
             return cutover.equals(requested) ? null : "First posting period must be current cutover period " + cutover;
         }
-        AssetPeriod expected = AssetPeriod.parse(text(rows.getFirst())).next();
+        AssetPeriod expected = AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next();
         return expected.equals(requested) ? null : "Next posting period must be " + expected;
     }
 
@@ -872,7 +872,7 @@ public class FinanceAssetPostingService {
 
     private List<AssetWorkbenchResponses.PostingException> exceptionsForResponse(String value) {
         return exceptions(value).stream().map(issue -> new AssetWorkbenchResponses.PostingException(
-                text(issue.get("code")),text(issue.get("severity")),text(issue.get("message")),uuid(issue.get("objectId")))).toList();
+                NativeValueConverters.text(issue.get("code")),NativeValueConverters.text(issue.get("severity")),NativeValueConverters.text(issue.get("message")),NativeValueConverters.uuid(issue.get("objectId")))).toList();
     }
 
     private static Map<String, Object> issue(String code, String severity, String message, UUID objectId) {
@@ -904,16 +904,7 @@ public class FinanceAssetPostingService {
     private static void changed(int count) { if (count != 1) throw conflict("Concurrent posting change; refresh and retry"); }
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT, message); }
     private static Object[] single(Object value) { return value instanceof Object[] row ? row : new Object[]{value}; }
-    private static UUID uuid(Object value) { return value == null ? null : value instanceof UUID id ? id : UUID.fromString(value.toString()); }
-    private static String text(Object value) { return value == null ? null : value.toString(); }
     private static Number number(Object value) { return (Number) value; }
-    private static BigDecimal decimal(Object value) { return value == null ? BigDecimal.ZERO : (BigDecimal) value; }
-    private static Instant instant(Object value) {
-        if (value == null) return null;
-        if (value instanceof Instant instant) return instant;
-        if (value instanceof Timestamp timestamp) return timestamp.toInstant();
-        return ((java.time.OffsetDateTime) value).toInstant();
-    }
 
     private record Candidate(String objectType, UUID objectId, UUID bookId, UUID scheduleVersionId,
                              UUID scheduleLineId, String code, String name, BigDecimal original,

@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.receivables;
 
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.receipt.FinanceReceipt;
@@ -59,7 +60,7 @@ public class FinanceReceiptSourceAllocationService {
         }
         BigDecimal remaining=original,book=BigDecimal.ZERO;
         for(Object[] ref:refs) {
-            BigDecimal beforeA=decimal(ref[0]),beforeB=decimal(ref[1]);
+            BigDecimal beforeA=NativeValueConverters.toBigDecimal(ref[0]),beforeB=NativeValueConverters.toBigDecimal(ref[1]);
             if(beforeA.signum()<0||beforeB.signum()<0)throw conflict("应收来源已超额使用");
             BigDecimal amount=remaining.min(beforeA);
             if(amount.signum()==0)continue;
@@ -165,11 +166,11 @@ public class FinanceReceiptSourceAllocationService {
         BigDecimal cash = money(line.getAmountOriginal());
         BigDecimal writeOff = money(line.getWriteOffAmount());
         BigDecimal applied = money(cash.add(writeOff));
-        BigDecimal ledgerReceived = decimal(ledger[0]);
-        BigDecimal ledgerWriteOff = decimal(ledger[1]);
-        BigDecimal recognitionRate = positive(decimal(ledger[2]), "应收开账汇率");
+        BigDecimal ledgerReceived = NativeValueConverters.toBigDecimal(ledger[0]);
+        BigDecimal ledgerWriteOff = NativeValueConverters.toBigDecimal(ledger[1]);
+        BigDecimal recognitionRate = positive(NativeValueConverters.toBigDecimal(ledger[2]), "应收开账汇率");
         BigDecimal priorMovement = money(ledgerReceived.add(ledgerWriteOff).subtract(applied));
-        BigDecimal allocatedPrior = decimal(em.createNativeQuery("""
+        BigDecimal allocatedPrior = NativeValueConverters.toBigDecimal(em.createNativeQuery("""
                 SELECT COALESCE(SUM(cash_original+write_off_original),0)
                 FROM finance_receipt_source_allocations
                 WHERE ledger_id=:ledgerId AND status='APPLIED'
@@ -200,9 +201,9 @@ public class FinanceReceiptSourceAllocationService {
         if (refs.isEmpty()) {
             throw conflict("该应收没有不可变 SALES_ORDER 来源 UUID，禁止猜测收款归属");
         }
-        BigDecimal sourceTotal = refs.stream().map(row -> decimal(row[3]))
+        BigDecimal sourceTotal = refs.stream().map(row -> NativeValueConverters.toBigDecimal(row[3]))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (sourceTotal.compareTo(decimal(ledger[3])) != 0) {
+        if (sourceTotal.compareTo(NativeValueConverters.toBigDecimal(ledger[3])) != 0) {
             throw conflict("应收原币与销售单来源原币不守恒，禁止自动分配");
         }
 
@@ -214,8 +215,8 @@ public class FinanceReceiptSourceAllocationService {
         BigDecimal bookLocalRemaining = money(line.getAppliedAmountLocal());
         int lineSequence = 1;
         for (Object[] row : refs) {
-            BigDecimal refOriginalRemaining = money(decimal(row[3]).subtract(decimal(row[5])));
-            BigDecimal refLocalRemaining = money(decimal(row[4]).subtract(decimal(row[6])));
+            BigDecimal refOriginalRemaining = money(NativeValueConverters.toBigDecimal(row[3]).subtract(NativeValueConverters.toBigDecimal(row[5])));
+            BigDecimal refLocalRemaining = money(NativeValueConverters.toBigDecimal(row[4]).subtract(NativeValueConverters.toBigDecimal(row[6])));
             if (refOriginalRemaining.signum() < 0 || refLocalRemaining.signum() < 0) {
                 throw conflict("销售单来源已被超额核销，禁止继续收款");
             }
@@ -337,13 +338,7 @@ public class FinanceReceiptSourceAllocationService {
     }
 
     private static BigDecimal money(BigDecimal value) {
-        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(decimal(value),"收款来源账面金额");
-    }
-
-    private static BigDecimal decimal(Object value) {
-        if (value == null) return BigDecimal.ZERO;
-        if (value instanceof BigDecimal decimal) return decimal;
-        return new BigDecimal(value.toString());
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(NativeValueConverters.toBigDecimal(value),"收款来源账面金额");
     }
 
     private static Number number(Object value) {

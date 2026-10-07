@@ -70,7 +70,10 @@ class SubcontractGoodsHistorySnapshotContractTest {
                 "features/subcontract/application/ProductionSubcontractRequestFacade.java");
 
         assertThat(inquiry).contains("master_at_save", "master_at_approval", "setgoodssnapshotlockedat");
-        assertThat(application).contains("master_at_save", "master_at_approval", "setgoodssnapshotlockedat");
+        // 委外申请的手动 approve/reverse 已随 V812 死代码清理删除(申请=计划下达只读
+        // 事实, 无任何端点)；审批时点快照由自动下达路径 ProductionSubcontractRequestFacade
+        // 承担(下方单独断言)，本文件只保留保存时点与锁定戳。
+        assertThat(application).contains("master_at_save", "setgoodssnapshotlockedat");
         assertThat(order).contains("application_item_at_save", "application_item_at_approval");
         assertThat(receipt).contains("order_item_at_save", "order_item_at_approval");
         assertThat(finishedReturn).contains("receipt_item_at_save", "receipt_item_at_approval");

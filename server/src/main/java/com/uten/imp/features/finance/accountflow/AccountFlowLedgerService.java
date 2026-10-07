@@ -2,6 +2,7 @@ package com.uten.imp.features.finance.accountflow;
 
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import jakarta.persistence.EntityManager;
@@ -288,11 +289,11 @@ public class AccountFlowLedgerService {
                 .setParameter("sourceId", sourceId));
 
         List<Posting> postings = rows.stream()
-                .filter(row -> POSTING.equals(text(row[12])))
+                .filter(row -> POSTING.equals(NativeValueConverters.text(row[12])))
                 .map(this::posting)
                 .toList();
         long reversalCount = rows.stream()
-                .filter(row -> REVERSAL.equals(text(row[12])))
+                .filter(row -> REVERSAL.equals(NativeValueConverters.text(row[12])))
                 .count();
         if (postings.isEmpty()) {
             throw new ApiException(
@@ -390,13 +391,13 @@ public class AccountFlowLedgerService {
     private Posting posting(Object[] row) {
         return new Posting(
                 (UUID) row[0],
-                text(row[1]),
+                NativeValueConverters.text(row[1]),
                 (UUID) row[2],
-                text(row[3]),
-                text(row[4]),
-                decimal(row[5]),
-                decimal(row[6]),
-                text(row[7]),
+                NativeValueConverters.text(row[3]),
+                NativeValueConverters.text(row[4]),
+                NativeValueConverters.toBigDecimal(row[5]),
+                NativeValueConverters.toBigDecimal(row[6]),
+                NativeValueConverters.text(row[7]),
                 row[9] == null ? null : ((Number) row[9]).intValue(),
                 (UUID) row[10],
                 nullableDecimal(row[11]));
@@ -436,18 +437,8 @@ public class AccountFlowLedgerService {
         return normalized;
     }
 
-    private static BigDecimal decimal(Object value) {
-        if (value == null) return BigDecimal.ZERO;
-        return value instanceof BigDecimal decimal
-                ? decimal : new BigDecimal(value.toString());
-    }
-
     private static BigDecimal nullableDecimal(Object value) {
-        return value == null ? null : decimal(value);
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
+        return value == null ? null : NativeValueConverters.toBigDecimal(value);
     }
 
     private record Posting(

@@ -50,6 +50,34 @@ class FinanceAssetReviewRevisionPostgresTest {
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
 
     @ParameterizedTest @ValueSource(booleans={false,true})
+    void deletingDraftsRequiresSeparatePermissionAndStillChecksVersionAndState(boolean deferred) {
+        Actor maker = actor("delete-permission");
+        login(maker);
+        var created = create(deferred, category(deferred), maker, "DELETE-" + UUID.randomUUID(), "删除权限草稿", "100.00", null);
+        assertThat(detail(created.id(), deferred).allowedActions()).doesNotContain("DELETE");
+        assertThatThrownBy(() -> workflow.deleteDraft(created.id(), deferred, created.version()))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+
+        login(maker, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.DELETE));
+        assertThat(detail(created.id(), deferred).allowedActions()).containsExactly("DELETE");
+        assertThatThrownBy(() -> workflow.deleteDraft(created.id(), deferred, created.version() + 1))
+                .isInstanceOf(ApiException.class);
+        login(maker, Set.of(FinanceAssetAuthorization.VIEW));
+        assertThatThrownBy(() -> workflow.deleteDraft(created.id(), deferred, created.version()))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        login(maker, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.DELETE));
+        workflow.deleteDraft(created.id(), deferred, created.version());
+        assertThat(jdbc.queryForObject("SELECT is_deleted FROM " + (deferred ? "deferred_expenses" : "fixed_assets")
+                + " WHERE id = ?", Boolean.class, created.id())).isTrue();
+
+        login(maker);
+        var second = create(deferred, category(deferred), maker, "SUBMITTED-" + UUID.randomUUID(), "待审不能删除", "100.00", null);
+        var submitted = workflow.submit(second.id(), second.version(), deferred);
+        login(maker, Set.of(FinanceAssetAuthorization.VIEW, FinanceAssetAuthorization.DELETE));
+        assertThatThrownBy(() -> workflow.deleteDraft(second.id(), deferred, submitted.version())).isInstanceOf(ApiException.class);
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
     void rejectionEditsAndResubmissionKeepTheOriginalCommercialFacts(boolean deferred) throws Exception {
         Actor maker = actor("maker"), reviewer = actor("reviewer");
         UUID category = category(deferred);
@@ -179,7 +207,10 @@ class FinanceAssetReviewRevisionPostgresTest {
         return new Actor(user,employee,department);
     }
     private void login(Actor actor) {
-        var user=new AuthUser(actor.user(),actor.employee(),"asset-review",Set.of("finance_asset:view","finance_asset:edit","finance_asset:approve","finance_asset:dispose"),false,true,false);
+        login(actor, Set.of("finance_asset:view","finance_asset:edit","finance_asset:approve","finance_asset:dispose"));
+    }
+    private void login(Actor actor, Set<String> permissions) {
+        var user=new AuthUser(actor.user(),actor.employee(),"asset-review",permissions,false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(user,"",user.getAuthorities()));
     }
     private record Actor(UUID user,UUID employee,UUID department) {}

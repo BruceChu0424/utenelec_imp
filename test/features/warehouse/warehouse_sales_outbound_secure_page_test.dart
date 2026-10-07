@@ -18,7 +18,6 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_sales_outbound_page.
 import 'package:uten_imp/features/warehouse/repositories/warehouse_sales_outbound_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_outbound_table_columns.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_sales_picking_fields.dart';
-import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -200,16 +199,6 @@ void main() {
     expect(requiredAnyPermFor(RouteName.warehouseSalesOutbound), <String>[
       Perm.warehouseSalesOutboundView,
     ]);
-    expect(
-      requiredAnyPermFor(RoutePath.warehouseSalesOutboundDetail('shipment-1')),
-      <String>[Perm.warehouseSalesOutboundView],
-    );
-    expect(
-      pagePermissionScopeFor(
-        RoutePath.warehouseSalesOutboundDetail('shipment-1'),
-      )?.surfaceKey,
-      'warehouse.sales-outbound',
-    );
 
     final source = File(
       'lib/features/warehouse/models/warehouse_sales_outbound.dart',

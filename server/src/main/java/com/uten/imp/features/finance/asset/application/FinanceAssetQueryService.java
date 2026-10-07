@@ -1,5 +1,6 @@
 package com.uten.imp.features.finance.asset.application;
 
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -17,8 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.Date;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -54,7 +53,7 @@ public class FinanceAssetQueryService {
                 ) x ON TRUE
                 WHERE a.is_deleted=false AND a.lifecycle_status IN ('ACTIVE','DISPOSAL_PENDING')
                 """).getSingleResult());
-        BigDecimal deferred = decimal(em.createNativeQuery("""
+        BigDecimal deferred = NativeValueConverters.toBigDecimal(em.createNativeQuery("""
                 SELECT COALESCE(SUM(a.total_amount - COALESCE(x.accumulated,0)),0)
                 FROM deferred_expenses a
                 LEFT JOIN LATERAL (
@@ -89,7 +88,7 @@ public class FinanceAssetQueryService {
         List<String> blockers = postedWorkflowsEnabled ? List.of() : List.of(
                 "初始确认、处置与提前终止的过账暂未开放，待专用的制单—复核—反冲链路交付后启用");
         return new AssetWorkbenchResponses.Overview(
-                decimal(fixed[0]), decimal(fixed[1]), deferred,
+                NativeValueConverters.toBigDecimal(fixed[0]), NativeValueConverters.toBigDecimal(fixed[1]), deferred,
                 pending, exceptions, pending + exceptions, Instant.now().toString(),
                 missing.isEmpty(), List.copyOf(missing), postedWorkflowsEnabled, blockers);
     }
@@ -259,18 +258,18 @@ public class FinanceAssetQueryService {
     }
 
     private AssetWorkbenchResponses.Summary summary(Object[] row, boolean deferred) {
-        String status = text(row[4]);
-        UUID maker = uuid(row[26]);
+        String status = NativeValueConverters.text(row[4]);
+        UUID maker = NativeValueConverters.uuid(row[26]);
         Set<String> actions = authorization.allowedActions(status, maker, deferred);
         return new AssetWorkbenchResponses.Summary(
-                uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), status, null,
-                uuid(row[5]), text(row[6]), uuid(row[7]), text(row[8]), uuid(row[9]), text(row[10]), text(row[11]),
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), NativeValueConverters.text(row[3]), status, null,
+                NativeValueConverters.uuid(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.uuid(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.uuid(row[9]), NativeValueConverters.text(row[10]), NativeValueConverters.text(row[11]),
                 decimalOrNull(row[12]), decimalOrNull(row[13]), decimalOrNull(row[14]), decimalOrNull(row[15]),
-                decimalOrNull(row[16]), row[17] == null ? null : number(row[17]).intValue(), text(row[18]),
-                date(row[19]), date(row[20]), text(row[21]), text(row[22]), text(row[23]), text(row[24]),
+                decimalOrNull(row[16]), row[17] == null ? null : number(row[17]).intValue(), NativeValueConverters.text(row[18]),
+                NativeValueConverters.toLocalDate(row[19]), NativeValueConverters.toLocalDate(row[20]), NativeValueConverters.text(row[21]), NativeValueConverters.text(row[22]), NativeValueConverters.text(row[23]), NativeValueConverters.text(row[24]),
                 number(row[25]).longValue(), actions,
-                date(row[27]), date(row[28]), text(row[29]), text(row[30]), text(row[31]),
-                date(row[32]), uuid(row[33]), text(row[34]), date(row[35]), uuid(row[36]));
+                NativeValueConverters.toLocalDate(row[27]), NativeValueConverters.toLocalDate(row[28]), NativeValueConverters.text(row[29]), NativeValueConverters.text(row[30]), NativeValueConverters.text(row[31]),
+                NativeValueConverters.toLocalDate(row[32]), NativeValueConverters.uuid(row[33]), NativeValueConverters.text(row[34]), NativeValueConverters.toLocalDate(row[35]), NativeValueConverters.uuid(row[36]));
     }
 
     private List<AssetWorkbenchResponses.Balance> fixedBooks(UUID assetId) {
@@ -283,8 +282,8 @@ public class FinanceAssetQueryService {
                 ORDER BY book_type
                 """).setParameter("asset", assetId).getResultList();
         return rows.stream().map(row -> new AssetWorkbenchResponses.Balance(
-                text(row[0]), decimal(row[1]), decimal(row[2]), decimal(row[3]), decimal(row[4]),
-                monthly(decimal(row[5]), number(row[6]).intValue()), text(row[7]), text(row[8]))).toList();
+                NativeValueConverters.text(row[0]), NativeValueConverters.toBigDecimal(row[1]), NativeValueConverters.toBigDecimal(row[2]), NativeValueConverters.toBigDecimal(row[3]), NativeValueConverters.toBigDecimal(row[4]),
+                monthly(NativeValueConverters.toBigDecimal(row[5]), number(row[6]).intValue()), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]))).toList();
     }
 
     private List<AssetWorkbenchResponses.ScheduleLine> fixedSchedule(UUID assetId) {
@@ -304,18 +303,18 @@ public class FinanceAssetQueryService {
                 LEFT JOIN gl_vouchers v ON v.id=l.voucher_id
                 WHERE l.asset_id=:asset AND l.asset_book_id=:book AND l.entry_kind='NORMAL'
                   AND l.status='ACTIVE' AND l.is_deleted=false
-                """).setParameter("asset", assetId).setParameter("book", uuid(book[0])).getResultList();
-        for (Object[] log : logs) posted.put(text(log[1]), log);
+                """).setParameter("asset", assetId).setParameter("book", NativeValueConverters.uuid(book[0])).getResultList();
+        for (Object[] log : logs) posted.put(NativeValueConverters.text(log[1]), log);
         var schedule = StraightLineScheduleCalculator.calculate(
-                decimal(book[1]), decimal(book[2]), number(book[3]).intValue(), AssetPeriod.parse(text(book[4])));
+                NativeValueConverters.toBigDecimal(book[1]), NativeValueConverters.toBigDecimal(book[2]), number(book[3]).intValue(), AssetPeriod.parse(NativeValueConverters.text(book[4])));
         List<AssetWorkbenchResponses.ScheduleLine> result = new ArrayList<>(schedule.lines().size());
         for (var line : schedule.lines()) {
             Object[] log = posted.get(line.period());
             result.add(new AssetWorkbenchResponses.ScheduleLine(
-                    log == null ? null : uuid(log[0]), line.sequence(), line.period(),
+                    log == null ? null : NativeValueConverters.uuid(log[0]), line.sequence(), line.period(),
                     schedule.originalAmount().subtract(line.openingAccumulated()),
                     line.amount(), line.closingAccumulated(), line.closingNetAmount(),
-                    log == null ? "PLANNED" : "POSTED", log == null ? null : text(log[3])));
+                    log == null ? "PLANNED" : "POSTED", log == null ? null : NativeValueConverters.text(log[3])));
         }
         return List.copyOf(result);
     }
@@ -342,8 +341,8 @@ public class FinanceAssetQueryService {
                 ORDER BY l.sequence
                 """).setParameter("deferred", deferredId).getResultList();
         return rows.stream().map(row -> new AssetWorkbenchResponses.ScheduleLine(
-                uuid(row[0]), number(row[1]).intValue(), text(row[2]), decimal(row[3]), decimal(row[4]),
-                decimal(row[5]), decimal(row[6]), text(row[7]), text(row[8]))).toList();
+                NativeValueConverters.uuid(row[0]), number(row[1]).intValue(), NativeValueConverters.text(row[2]), NativeValueConverters.toBigDecimal(row[3]), NativeValueConverters.toBigDecimal(row[4]),
+                NativeValueConverters.toBigDecimal(row[5]), NativeValueConverters.toBigDecimal(row[6]), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]))).toList();
     }
 
     private List<AssetWorkbenchResponses.ApprovalStep> approvalSteps(String objectType, UUID objectId) {
@@ -358,7 +357,7 @@ public class FinanceAssetQueryService {
                 ORDER BY s.step_no
                 """).setParameter("type", objectType).setParameter("id", objectId).getResultList();
         return rows.stream().map(row -> new AssetWorkbenchResponses.ApprovalStep(
-                uuid(row[0]), text(row[1]), text(row[2]), uuid(row[3]), text(row[4]), text(row[5]), instant(row[6]))).toList();
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), NativeValueConverters.uuid(row[3]), NativeValueConverters.text(row[4]), NativeValueConverters.text(row[5]), NativeValueConverters.toInstant(row[6]))).toList();
     }
 
     private List<AssetWorkbenchResponses.Event> events(String objectType, UUID objectId) {
@@ -373,8 +372,8 @@ public class FinanceAssetQueryService {
                 ORDER BY x.occurred_at DESC, x.id
                 """).setParameter("type", objectType).setParameter("id", objectId).getResultList();
         return rows.stream().map(row -> new AssetWorkbenchResponses.Event(
-                uuid(row[0]), text(row[1]), text(row[2]), text(row[3]), uuid(row[4]), text(row[5]),
-                date(row[6]), instant(row[7]))).toList();
+                NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), NativeValueConverters.text(row[3]), NativeValueConverters.uuid(row[4]), NativeValueConverters.text(row[5]),
+                NativeValueConverters.toLocalDate(row[6]), NativeValueConverters.toInstant(row[7]))).toList();
     }
 
     private List<String> voucherNumbers(String objectType, UUID objectId) {
@@ -461,36 +460,12 @@ public class FinanceAssetQueryService {
         return (Object[]) value;
     }
 
-    private static UUID uuid(Object value) {
-        return value == null ? null : value instanceof UUID id ? id : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
     private static Number number(Object value) {
         return (Number) value;
     }
 
-    private static BigDecimal decimal(Object value) {
-        return value == null ? BigDecimal.ZERO : (BigDecimal) value;
-    }
-
     private static BigDecimal decimalOrNull(Object value) {
         return value == null ? null : (BigDecimal) value;
-    }
-
-    private static LocalDate date(Object value) {
-        if (value == null) return null;
-        return value instanceof LocalDate date ? date : ((Date) value).toLocalDate();
-    }
-
-    private static Instant instant(Object value) {
-        if (value == null) return null;
-        if (value instanceof Instant instant) return instant;
-        if (value instanceof Timestamp timestamp) return timestamp.toInstant();
-        return ((java.time.OffsetDateTime) value).toInstant();
     }
 
     private record FilterSql(String where, Map<String, Object> parameters) {}

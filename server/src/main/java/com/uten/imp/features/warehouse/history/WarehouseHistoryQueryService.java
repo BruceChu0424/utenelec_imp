@@ -2,6 +2,7 @@ package com.uten.imp.features.warehouse.history;
 
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -14,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Date;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
@@ -208,36 +208,36 @@ public class WarehouseHistoryQueryService {
     }
 
     private HeaderRow header(Object[] row, Map<UUID, String> employeeCache) {
-        UUID makerId = uuid(row[10]);
-        UUID approverId = uuid(row[11]);
+        UUID makerId = NativeValueConverters.uuid(row[10]);
+        UUID approverId = NativeValueConverters.uuid(row[11]);
         return new HeaderRow(
-                uuid(row[0]),
-                text(row[1]),
-                localDate(row[2]),
-                uuid(row[3]),
-                text(row[4]),
-                uuid(row[5]),
-                text(row[6]),
+                NativeValueConverters.uuid(row[0]),
+                NativeValueConverters.text(row[1]),
+                NativeValueConverters.toLocalDate(row[2]),
+                NativeValueConverters.uuid(row[3]),
+                NativeValueConverters.text(row[4]),
+                NativeValueConverters.uuid(row[5]),
+                NativeValueConverters.text(row[6]),
                 shortNumber(row[7]),
-                bool(row[8]),
-                text(row[9]),
+                NativeValueConverters.booleanValue(row[8]),
+                NativeValueConverters.text(row[9]),
                 makerId,
-                employeeName(makerId, text(row[12]), employeeCache),
+                employeeName(makerId, NativeValueConverters.text(row[12]), employeeCache),
                 approverId,
-                employeeName(approverId, text(row[13]), employeeCache),
-                text(row[14]));
+                employeeName(approverId, NativeValueConverters.text(row[13]), employeeCache),
+                NativeValueConverters.text(row[14]));
     }
 
     private WarehouseHistoryLine toLine(Object[] row) {
         return new WarehouseHistoryLine(
-                uuid(row[0]),
+                NativeValueConverters.uuid(row[0]),
                 integer(row[1]),
-                uuid(row[2]),
-                text(row[3]),
-                text(row[4]),
-                text(row[5]),
-                text(row[6]),
-                text(row[7]),
+                NativeValueConverters.uuid(row[2]),
+                NativeValueConverters.text(row[3]),
+                NativeValueConverters.text(row[4]),
+                NativeValueConverters.text(row[5]),
+                NativeValueConverters.text(row[6]),
+                NativeValueConverters.text(row[7]),
                 decimal(row[8]),
                 decimal(row[9]),
                 decimal(row[10]),
@@ -249,16 +249,16 @@ public class WarehouseHistoryQueryService {
                 decimal(row[16]),
                 decimal(row[17]),
                 decimal(row[18]),
-                text(row[19]),
-                text(row[20]),
+                NativeValueConverters.text(row[19]),
+                NativeValueConverters.text(row[20]),
                 decimal(row[21]),
                 decimal(row[22]),
                 decimal(row[23]),
-                text(row[24]),
+                NativeValueConverters.text(row[24]),
                 decimal(row[25]),
-                text(row[26]),
-                text(row[27]),
-                text(row[28]));
+                NativeValueConverters.text(row[26]),
+                NativeValueConverters.text(row[27]),
+                NativeValueConverters.text(row[28]));
     }
 
     private String employeeName(
@@ -285,22 +285,6 @@ public class WarehouseHistoryQueryService {
         return normalized.isEmpty() ? null : normalized;
     }
 
-    private static UUID uuid(Object value) {
-        if (value == null) return null;
-        return value instanceof UUID uuid ? uuid : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private static LocalDate localDate(Object value) {
-        if (value == null) return null;
-        if (value instanceof LocalDate date) return date;
-        if (value instanceof Date date) return date.toLocalDate();
-        return LocalDate.parse(value.toString());
-    }
-
     private static Number number(Object value) {
         return value instanceof Number number ? number : new BigDecimal(value.toString());
     }
@@ -316,10 +300,6 @@ public class WarehouseHistoryQueryService {
 
     private static Integer integer(Object value) {
         return value == null ? null : number(value).intValue();
-    }
-
-    private static boolean bool(Object value) {
-        return value instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(value));
     }
 
     private record HeaderRow(

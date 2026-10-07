@@ -1,4 +1,15 @@
 {
+  "releaseNotesOpen": "See what's new in this version",
+  "releaseNotesTitle": "What's new",
+  "releaseNotesClose": "Got it",
+  "releaseNotesUnavailable": "No release notes are included for this version.",
+  "release253Hr": "Select multiple employees and compare current identity details with proposed corrections before applying them together.",
+  "release253Permissions": "Manage page and child-page access in a shared drawer with bulk grants. Editing and deletion remain separate permissions.",
+  "release253Materials": "Confirm aggregated material orders once and process dependencies automatically, with corrected shared supply sources and shortages.",
+  "release253Ai": "The AI assistant adds file understanding, action confirmation and personal operation memory, plus usage reporting and per-person limits.",
+  "release253Notices": "Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.",
+  "release253Reset": "Clearing business data also invalidates old drafts and clears business weight measurements and learned weight records.",
+  "release253Maintenance": "Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.",
   "businessColumnAmountUnavailable": "This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.",
   "businessColumnEditorSubtitle": "Add document information or apply entered values to each line's official amount.",
   "businessColumnBrowse": "Existing columns",
@@ -468,7 +479,6 @@
   "employeeOnboardPhoneRequired": "Phone is required",
   "employeeOnboardPhoneInvalid": "Invalid phone format",
   "employeeOnboardEmailOptional": "Optional",
-  "employeeOnboardHireDateHint": "yyyy-MM-dd",
   "employeeOnboardPickHireDate": "Please pick a hire date",
   "employeeOnboardPickDepartment": "Please select a department",
   "employeeOnboardFieldRequired": "{field} is required",
@@ -727,8 +737,20 @@
   "noticeCelebrationSubjectLabel": "Honoree",
   "noticeCelebrationSubjectHint": "Choose the colleague to celebrate",
   "noticeCelebrationSubjectRequired": "Please choose an honoree",
+  "noticeLevelUrgent": "Urgent",
+  "noticeLevelAction": "Action",
+  "noticeLevelProgress": "Progress",
+  "noticeLevelBroadcast": "Announcement",
+  "noticeLevelSummary": "{level} {count}",
+  "@noticeLevelSummary": {
+    "placeholders": {
+      "level": {},
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "noticeQuickCelebrationTitle": "Quick celebration",
-  "noticeQuickCelebrationSubtitle": "Pick a type; the template fills automatically",
   "noticeQuickPublish": "New notice",
   "noticeQuickWedding": "Wedding",
   "noticeQuickNewborn": "Newborn",
@@ -789,9 +811,6 @@
   "profileChangeFieldDirect": "Direct edit",
   "profileChangeFieldReview": "Requires HR review",
   "profileChangeFieldHrOnly": "Contact HR",
-  "profileChangePasswordHint": "For your safety, please enter your current password",
-  "profileChangePasswordLabel": "Current password",
-  "profileChangePasswordWrong": "Incorrect password",
   "profileChangeSubmitSuccess": "Submitted, pending HR review",
   "profileChangeSubmitApplied": "Changes saved",
   "profileChangeSubmitFailed": "Submit failed, please retry",
@@ -889,7 +908,6 @@
   "hubSubPendingReturnQty": "Pending stock-in returns",
   "hubSubReadOnlyPlan": "Read-only plan",
   "salesHubTitle": "Sales",
-  "salesHubSectionReports": "Sales reports",
   "salesHubSectionScarcity": "Stock arbitration",
   "salesHubTaskOrderProgress": "Order progress",
   "salesHubTaskOrderProgressSub": "Ship & completion status",
@@ -908,7 +926,6 @@
   "salesHubScarcity": "Scarcity reallocation",
   "salesHubScarcitySub": "Free low-priority stock",
   "purchaseHubTitle": "Purchasing",
-  "purchaseHubSectionReports": "Purchase reports",
   "purchaseHubTaskCenter": "Purchasing tasks",
   "purchaseHubTaskCenterSub": "Split orders by supplier",
   "purchaseHubReturnVendor": "Returns to supplier",
@@ -924,7 +941,6 @@
   "purchaseHubReportExpediting": "Purchase expediting",
   "purchaseHubReportExpeditingSub": "Shortfalls & stock",
   "subcontractHubTitle": "Subcontracting",
-  "subcontractHubSectionReports": "Subcontract reports",
   "subcontractHubTaskCenter": "Subcontracting tasks",
   "subcontractHubTaskCenterSub": "Split orders by vendor",
   "subcontractHubReturnVendor": "Returns to vendor",
@@ -933,16 +949,11 @@
   "subcontractHubReportInOut": "In-out status",
   "subcontractHubReportInOutSub": "Overall in/out status",
   "productionHubTitle": "Production",
-  "productionHubSectionReports": "Production reports",
   "productionHubSchedule": "Scheduling & progress",
   "productionHubScheduleSub": "Plan, WIP, completion",
   "productionHubPlan": "New production plan",
   "productionHubPlanSub": "Create a plan manually, optionally referencing a sales order",
-  "productionHubPlanHistory": "Production plan history",
-  "productionHubPlanHistorySub": "View plans, approvals, and batch records",
   "productionHubMaterialAnalysis": "Material readiness analysis",
-  "productionHubDaily": "Production daily",
-  "productionHubDailySub": "Daily output & reversal",
   "productionHubReportPlanDetail": "Plan detail",
   "productionHubReportPlanDetailSub": "Date, item, status",
   "productionHubReportPlanSummary": "Plan summary",
@@ -950,15 +961,10 @@
   "productionHubWhereUsed": "Where-used",
   "productionHubWhereUsedSub": "Where a material is used",
   "financeHubTitle": "Finance",
-  "financeHubSectionReports": "Finance reports",
   "financeHubTaskApproval": "Order approval tasks",
   "financeSalesAllQueueLabel": "sales order finance confirmations",
   "financeSalesInitialQueueLabel": "initial sales order finance approvals",
   "financeSalesChangesQueueLabel": "sales order changes",
-  "financeSalesQueueCountLoading": "Loading pending {queue}",
-  "financeSalesQueueCountFailed": "Could not load pending {queue}. Open the task page to retry.",
-  "financeSalesQueueCountEmpty": "No pending {queue}",
-  "financeSalesQueueCountPending": "Pending {queue}: {count}",
   "financeHubTaskApprovalSub": "Purchase and subcontract order approvals",
   "financeHubTaskOverDelivery": "Over-delivery approval",
   "financeHubTaskOverDeliverySub": "Approve excess arrivals",
@@ -996,10 +1002,6 @@
   "warehouseHubSectionInventory": "Inventory queries",
   "warehouseHubSectionReports": "Warehouse reports",
   "warehouseHubSectionReportsDesc": "Detail (per item) & summary (per doc)",
-  "warehouseHubDocTransfer": "Stock transfer",
-  "warehouseHubDocTransferSub": "Between warehouses",
-  "warehouseHubDocCheck": "Stocktake",
-  "warehouseHubDocCheckSub": "Count & adjustment",
   "warehouseHubInventoryLive": "Live stock",
   "warehouseHubReportDetail": "Warehouse detail report",
   "warehouseHubReportSummary": "Warehouse summary report",
@@ -1027,9 +1029,6 @@
   "basicDataHubSettlementMethod": "Settlement methods",
   "basicDataHubSettlementMethodSub": "Terms dictionary and payment-term rules",
   "impersonationSwitchPerson": "Switch person",
-  "impersonationEnterPasswordTitle": "Confirm switch person",
-  "impersonationEnterPasswordHint": "For security, enter your login password. After that you can switch freely for 15 minutes without re-entering.",
-  "impersonationPasswordLabel": "Login password",
   "impersonationTargetPickerTitle": "Select an employee to view",
   "impersonationSearchHint": "Search name / employee code",
   "impersonationBannerTitle": "Viewing as {name} (read-only)",
@@ -1122,18 +1121,15 @@
   "materialRequired": "Qty needed",
   "materialPublicAvailable": "Public available",
   "materialShortage": "Still short",
-  "materialPhysicalShortageHint": "Batch demand still lacking qualified material. Issuing purchase, subcontract or workshop work does not reduce this shortage; qualified stock-in allocated to this batch does. Additional supply separately deducts incoming supply to prevent duplicate requests.",
   "materialSupplyProgressHint": "Track ordering, finance approval, arrival, inspection and stock-in. Double-click for details. Physical shortage remains after issue and updates after qualified stock-in.",
   "materialToSupply": "Order quantity",
   "materialHandle": "Handle",
   "materialAdditionalOrder": "Additional order",
   "materialProductionWorkshop": "Production workshop",
   "materialResponsible": "Owner",
-  "materialFutureSupply": "In transit",
   "materialProgress": "Progress / next step",
   "materialMixedRoutes": "Mixed routes",
   "materialAggregateSources": "{products} products · {paths} paths",
-  "materialRouteChangedRetry": "Analysis updated. Review the selected routes and try again.",
   "materialWarehouseFacts": "Warehouse and supply details",
   "materialExactStock": "Qualified stock pegged here",
   "materialPublicStock": "Public stock",
@@ -4125,6 +4121,13 @@
   "aiChatSettingsClearBody": "All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.",
   "aiChatSettingsClearDone": "Chat history cleared",
   "aiChatSettingsClearFailed": "Chat history could not be cleared. Please try again later.",
+  "aiChatMemoryRecentTitle": "Recent operations",
+  "aiChatMemorySettingLabel": "Remember my frequent operations",
+  "aiChatMemorySettingHint": "Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.",
+  "aiChatMemoryClear": "Clear records",
+  "aiChatMemoryClearConfirm": "Clear the frequent operations I remember about you?",
+  "aiChatMemoryCleared": "Cleared",
+  "aiChatMemoryUnavailable": "Your account currently has no permission",
   "aiChatHiddenTurns": "{count} earlier messages are no longer shown because your account permissions changed.",
   "aiChatRestored": "Your recent chat. New questions continue it.",
   "aiChatRestoredDataChanged": "The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.",
@@ -4146,26 +4149,71 @@
       }
     }
   },
-  "hrReconcileSummary": "{people} people · to update {update} · notice only {info} · match {same} · processed {applied}",
-  "@hrReconcileSummary": {
+  "hrReconcileStatPeople": "{count} to review",
+  "@hrReconcileStatPeople": {
     "placeholders": {
-      "people": {
-        "type": "int"
-      },
-      "update": {
-        "type": "int"
-      },
-      "info": {
-        "type": "int"
-      },
-      "same": {
-        "type": "int"
-      },
-      "applied": {
+      "count": {
         "type": "int"
       }
     }
   },
+  "hrReconcileStatUpdate": "{count} to update",
+  "@hrReconcileStatUpdate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatInfo": "{count} notice only",
+  "@hrReconcileStatInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatSame": "{count} match",
+  "@hrReconcileStatSame": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatApplied": "{count} processed",
+  "@hrReconcileStatApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierHigh": "{count} high confidence",
+  "@hrReconcileStatTierHigh": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierMedium": "{count} medium",
+  "@hrReconcileStatTierMedium": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierManual": "{count} need manual input",
+  "@hrReconcileStatTierManual": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileSelectHigh": "Select high confidence",
   "hrReconcileValidity": "Valid for 24 hours; unapplied changes are cleared after that",
   "hrReconcileExpiredTitle": "This reconciliation is past 24 hours; unapplied changes were cleared",
   "hrReconcileExpiredRetry": "Reconcile again",
@@ -4224,12 +4272,17 @@
   "hrReconcileApplyFailed": "The correction did not complete. Please try again later.",
   "hrReconcileIdEmpty": "(empty)",
   "hrReconcileColKind": "Type",
-  "hrReconcileColCode": "Employee No.",
-  "hrReconcileColName": "Name",
-  "hrReconcileColDept": "Department",
+  "hrReconcileColEmployee": "Employee",
   "hrReconcileColReason": "Reason",
-  "hrReconcileColIdNumber": "ID number",
-  "hrReconcileColBasis": "Basis",
+  "hrReconcileIdNumberInfo": "Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number",
+  "hrReconcileBasisOf": "Suggestion basis: {label}",
+  "@hrReconcileBasisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "hrReconcileColTier": "Confidence",
   "hrReconcileColNotes": "Notes / result",
   "hrReconcileKindUpdate": "Update",
@@ -4267,5 +4320,127 @@
   "hrReconcileStatusOpen": "In progress",
   "hrReconcileStatusClosed": "Completed",
   "hrReconcileStatusExpired": "Expired",
-  "hrReconcileStatusDiscarded": "Discarded"
+  "hrReconcileStatusDiscarded": "Discarded",
+  "aiUsageTitle": "AI usage & quotas",
+  "aiUsageEntry": "Usage & quotas",
+  "aiUsageTodayTokens": "Tokens today",
+  "aiUsageTodayLabel": "Today",
+  "aiUsageTodayCalls": "Calls today",
+  "aiUsageActiveUsers": "Active users today",
+  "aiUsageDisabledCount": "Disabled",
+  "aiUsageBudgetOf": "{num} / {total}",
+  "@aiUsageBudgetOf": {
+    "placeholders": {
+      "num": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageWindowHour": "Last 24 hours",
+  "aiUsageWindowDaily": "Last 30 days",
+  "aiUsageWindowMonthly": "Last 12 months",
+  "aiUsageWindowYearly": "Last 5 years",
+  "aiUsageTrend": "Usage trend",
+  "aiUsageEmpty": "No usage yet",
+  "aiUsageLoadFailed": "Failed to load AI usage, please try again later",
+  "aiUsagePersonMissing": "Usage information for this person was not found",
+  "aiUsageColPerson": "Person",
+  "aiUsageColWindow": "Window usage",
+  "aiUsageColToday": "Today",
+  "aiUsageColLimit": "Personal quota",
+  "aiUsageColStatus": "Status",
+  "aiUsageColLastUsed": "Last used",
+  "aiUsageColCalls": "{count} calls",
+  "@aiUsageColCalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLimitFollowGlobal": "Follow global",
+  "aiUsageStatusNormal": "Normal",
+  "aiUsageStatusOverLimit": "Over limit",
+  "aiUsageStatusDisabled": "Disabled",
+  "aiUsageSetLimits": "Set quotas",
+  "aiUsageLimitTokensLabel": "Daily token quota",
+  "aiUsageLimitJobsLabel": "Daily job quota",
+  "aiUsageLimitHint": "Leave empty to follow the global default",
+  "aiUsageLimitRangeError": "Enter a whole number between 1 and {max}",
+  "@aiUsageLimitRangeError": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageDisableLabel": "Disable AI for this account",
+  "aiUsageDisableHint": "While disabled, AI chat and file recognition cannot be used; you can restore it anytime",
+  "aiUsageDisableConfirm": "Disable AI usage for this account?",
+  "aiUsageDisableAction": "Disable",
+  "aiUsageDisabledBanner": "AI usage for this account has been disabled",
+  "aiUsageNoPersonalLimit": "No personal quota; the site-wide budget applies",
+  "aiUsageByPurpose": "By purpose",
+  "aiUsageByProvider": "By provider",
+  "aiUsageRecentUses": "Recent uses",
+  "aiUsagePeople": "People usage",
+  "aiUsageConflict": "The settings changed. Refresh and save again",
+  "aiUsageTokensUnit": "{n} tokens",
+  "@aiUsageTokensUnit": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageTodayUsed": "Used {tokens} today",
+  "@aiUsageTodayUsed": {
+    "placeholders": {
+      "tokens": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageLastUsedJustNow": "Just now",
+  "aiUsageLastUsedMinutesAgo": "{n} min ago",
+  "@aiUsageLastUsedMinutesAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedHoursAgo": "{n} h ago",
+  "@aiUsageLastUsedHoursAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedDaysAgo": "{n} d ago",
+  "@aiUsageLastUsedDaysAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageTrendSemantics": "{title}, {tokens} tokens and {calls} calls in total",
+  "@aiUsageTrendSemantics": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String"
+      },
+      "calls": {
+        "type": "String"
+      }
+    }
+  }
 }

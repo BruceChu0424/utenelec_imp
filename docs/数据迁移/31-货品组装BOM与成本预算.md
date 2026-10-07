@@ -263,7 +263,7 @@ bash server/legacy_migration/migrate.sh --goods-bom --confirm-destructive
 
 ### 2. 售价/折扣编辑授权 + 成本可见性（两新权限点）
 
-详见 [54-部门默认权限矩阵 §V226](54-部门默认权限矩阵.md)。要点：
+要点：
 
 - **`goods:price:edit`（写侧字段级）**：未持权者改 `price`/`discount` → 后端 403；前端对无权者锁定售价/折扣只读（`MasterEditForm.readOnlyKeys`，仅禁 UI、仍以原值回传，后端判「未改」放行）。
 - `goods:price:edit` 只控制**货品主档**售价/默认折扣，不控制销售订单行折扣；订单行折扣随

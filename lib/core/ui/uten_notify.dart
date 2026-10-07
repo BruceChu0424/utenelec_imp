@@ -154,21 +154,6 @@ abstract final class UtenNotify {
     onCancel: onCancel,
   );
 
-  /// 居中弹窗：紧急级别快捷方式（红色警示 + 必须显式确认）。
-  static Future<bool?> urgentAlert(
-    BuildContext context, {
-    required String title,
-    required String message,
-    String? confirmLabel,
-    VoidCallback? onConfirm,
-  }) => UtenCenterAlert.urgent(
-    context,
-    title: title,
-    message: message,
-    confirmLabel: confirmLabel,
-    onConfirm: onConfirm,
-  );
-
   // ============================================================
 
   static AppNotificationService _notifierOf(BuildContext context) =>

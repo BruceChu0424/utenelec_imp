@@ -225,13 +225,13 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         else if (truncated) facts.add("文件内容太多，未能完整读取，请拆分后再上传。");
         else {
             if (incompatibleRequest) facts.add(candidates.isEmpty() && !type.equals("UNKNOWN")
-                    ? "文件与要做的单据不一致：" + label + "不能用来填写" + formName(requested) + "。"
+                    ? "文件与要做的单据不一致：" + label + "不能用来填写" + AiDocumentWorkflows.formName(requested) + "。"
                     : "文件与要做的单据不一致，请重新选择用途。");
             else if (!permitted && !workflow.equals("NONE")) facts.add("暂时不能填写这种单据，请联系管理员。");
             else if (partialExpense && selected.equals("EXPENSE_CLAIM")) facts.add("已读到部分信息，请核对后填写报销单。");
             else if (!limitation.isBlank()) facts.add(limitation);
             else if (!selected.equals("NONE")) facts.add((type.equals("UNKNOWN") ? "按你选的用途" : "已识别为" + label)
-                    + "。请在下面的确认卡里确认后，我再打开" + formName(selected) + "并填入识别结果。");
+                    + "。请在下面的确认卡里确认后，我再打开" + AiDocumentWorkflows.formName(selected) + "并填入识别结果。");
             if (selected.equals("NONE") && !partialExpense) describe(facts, type, typeSource, evidenceText(evidenceKind, type, profile), profile, intent);
         }
         Offer offer = new Offer(candidates, facts);
@@ -410,7 +410,7 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         List<String> lines = new ArrayList<>();
         lines.add("文件: " + truncate(ctx.input().fileName(), 120));
         lines.add("识别为: " + label(type));
-        lines.add("将打开: " + formName(workflow));
+        lines.add("将打开: " + AiDocumentWorkflows.formName(workflow));
         lines.add(workflow.startsWith("SALES_")
                 ? "打开后由页面逐行识别并填入货品，黄框是需要你核对的值。"
                 : fieldCount > 0 ? "会填入识别出的 " + fieldCount + " 项发票信息，黄框是需要你核对的值。"
@@ -419,17 +419,9 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         return proposals.propose(new com.uten.imp.application.port.AiChatActionProposalPort.Draft(
                 com.uten.imp.application.port.AiChatActionProposalPort.OPEN_GUIDED_FORM,
                 com.uten.imp.application.port.AiChatActionProposalPort.OPEN_GUIDED_FORM, "CLIENT",
-                "打开" + formName(workflow) + "并填入识别结果", List.copyOf(lines), "LOW", null, false,
+                "打开" + AiDocumentWorkflows.formName(workflow) + "并填入识别结果", List.copyOf(lines), "LOW", null, false,
                 pageRoute.isBlank() ? null : pageRoute, "AI_JOB", ctx.jobId().toString(), null,
                 Map.of("workflow", workflow, "sourceJobId", ctx.jobId().toString()), ctx.jobId()));
-    }
-    private static String formName(String workflow) {
-        return switch (workflow) {
-            case "SALES_ORDER" -> "新建销售订货单";
-            case "SALES_QUOTE" -> "新建销售报价单";
-            case "EXPENSE_CLAIM" -> "新建报销申请";
-            default -> "对应的填写页面";
-        };
     }
     private static String truncate(String value, int max) { return value.length() <= max ? value : value.substring(0, max); }
     private boolean canExpense() { return workflows.available().stream().anyMatch(value -> value.get("workflow").equals("EXPENSE_CLAIM")); }

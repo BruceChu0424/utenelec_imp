@@ -14,6 +14,7 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.RuntimeBeanReference;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.annotation.Bean;
@@ -47,6 +48,7 @@ public class FulfillmentSourceConflictRetryConfig {
 
     static final int ORDER = 1000;
     static final String APPLICATION_PACKAGE_PREFIX = "com.uten.imp.";
+    static final String DEADLINE_ATTRIBUTE_SOURCE = "fulfillmentDeadlineTransactionAttributeSource";
 
     @Bean
     @Role(BeanDefinition.ROLE_INFRASTRUCTURE)
@@ -78,12 +80,20 @@ public class FulfillmentSourceConflictRetryConfig {
             var definition = beanFactory.getBeanDefinition("transactionInterceptor");
             var wrapped = new RootBeanDefinition(FulfillmentDeadlineTransactionAttributeSource.class);
             wrapped.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+            wrapped.setAutowireCandidate(false);
             wrapped.getConstructorArgumentValues().addIndexedArgumentValue(0,
                     new RuntimeBeanReference("transactionAttributeSource"));
             // Infrastructure advisors can instantiate the interceptor before
             // ordinary BeanPostProcessors exist. Configure its definition first.
-            // The inner bean creates no second autowire candidate of this type.
-            definition.getPropertyValues().add("transactionAttributeSource", wrapped);
+            // A contained bean has no registered definition for Spring's early
+            // bean checker to inspect. Name this infrastructure bean, while
+            // excluding it from autowiring so the original source stays unique.
+            if (!(beanFactory instanceof BeanDefinitionRegistry registry)) {
+                throw new IllegalStateException("Deadline attributes require a bean definition registry");
+            }
+            registry.registerBeanDefinition(DEADLINE_ATTRIBUTE_SOURCE, wrapped);
+            definition.getPropertyValues().add("transactionAttributeSource",
+                    new RuntimeBeanReference(DEADLINE_ATTRIBUTE_SOURCE));
         };
     }
 

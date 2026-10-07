@@ -9,6 +9,39 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get releaseNotesOpen => '查看本版本更新内容';
+
+  @override
+  String get releaseNotesTitle => '版本更新';
+
+  @override
+  String get releaseNotesClose => '知道了';
+
+  @override
+  String get releaseNotesUnavailable => '此版本暂未附带更新说明。';
+
+  @override
+  String get release253Hr => '人事证件核对支持勾选多人，在核对表中对照原资料与更正内容后批量处理。';
+
+  @override
+  String get release253Permissions => '页面权限使用统一抽屉，包含相关子页面，支持批量授权；编辑与删除分开管理。';
+
+  @override
+  String get release253Materials => '物料汇总下单统一确认，按依赖顺序自动办理，并修正共享物料的来源与缺口计算。';
+
+  @override
+  String get release253Ai => 'AI 助手增加文件理解、操作确认与个人操作记忆，可查看用量并设置人员限额。';
+
+  @override
+  String get release253Notices => '车间到料提醒按新增可生产数量发送给有权限的负责人；紧急、待办、进度与公告使用不同样式。';
+
+  @override
+  String get release253Reset => '清空业务数据同时作废旧草稿，并清除业务称重与重量学习记录。';
+
+  @override
+  String get release253Maintenance => '清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。';
+
+  @override
   String get businessColumnAmountUnavailable =>
       '当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。';
 
@@ -1122,9 +1155,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardEmailOptional => '可选';
 
   @override
-  String get employeeOnboardHireDateHint => 'yyyy-MM-dd';
-
-  @override
   String get employeeOnboardPickHireDate => '请选择入职日期';
 
   @override
@@ -1695,10 +1725,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeCelebrationSubjectRequired => '请选择祝福对象';
 
   @override
-  String get noticeQuickCelebrationTitle => '快捷发布祝福';
+  String get noticeLevelUrgent => '紧急';
 
   @override
-  String get noticeQuickCelebrationSubtitle => '选择类型，系统自动套用模板';
+  String get noticeLevelAction => '待办';
+
+  @override
+  String get noticeLevelProgress => '进度';
+
+  @override
+  String get noticeLevelBroadcast => '公告';
+
+  @override
+  String noticeLevelSummary(Object level, int count) {
+    return '$level $count';
+  }
+
+  @override
+  String get noticeQuickCelebrationTitle => '快捷发布祝福';
 
   @override
   String get noticeQuickPublish => '发通知';
@@ -1769,15 +1813,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get profileChangeFieldHrOnly => '请联系人事修改';
-
-  @override
-  String get profileChangePasswordHint => '为安全起见，请输入当前登录密码';
-
-  @override
-  String get profileChangePasswordLabel => '当前密码';
-
-  @override
-  String get profileChangePasswordWrong => '密码错误，请重试';
 
   @override
   String get profileChangeSubmitSuccess => '修改已提交，HR 审核后生效';
@@ -2000,9 +2035,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesHubTitle => '销售管理';
 
   @override
-  String get salesHubSectionReports => '销售报表';
-
-  @override
   String get salesHubSectionScarcity => '稀缺仲裁';
 
   @override
@@ -2057,9 +2089,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get purchaseHubTitle => '采购管理';
 
   @override
-  String get purchaseHubSectionReports => '采购报表';
-
-  @override
   String get purchaseHubTaskCenter => '采购任务中心';
 
   @override
@@ -2105,9 +2134,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subcontractHubTitle => '委外管理';
 
   @override
-  String get subcontractHubSectionReports => '委外报表';
-
-  @override
   String get subcontractHubTaskCenter => '委外任务中心';
 
   @override
@@ -2132,9 +2158,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubTitle => '生产管理';
 
   @override
-  String get productionHubSectionReports => '生产报表';
-
-  @override
   String get productionHubSchedule => '生产调度与进度';
 
   @override
@@ -2147,19 +2170,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionHubPlanSub => '手工新建排产计划，可引用销售订单';
 
   @override
-  String get productionHubPlanHistory => '生产计划历史';
-
-  @override
-  String get productionHubPlanHistorySub => '查看计划、审批与分批记录';
-
-  @override
   String get productionHubMaterialAnalysis => '物料分析准备';
-
-  @override
-  String get productionHubDaily => '生产日报表';
-
-  @override
-  String get productionHubDailySub => '完工日报·红冲';
 
   @override
   String get productionHubReportPlanDetail => '计划明细';
@@ -2183,9 +2194,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get financeHubTitle => '钱流管理';
 
   @override
-  String get financeHubSectionReports => '钱流报表';
-
-  @override
   String get financeHubTaskApproval => '订货审批任务中心';
 
   @override
@@ -2196,26 +2204,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get financeSalesChangesQueueLabel => '销售订单修改';
-
-  @override
-  String financeSalesQueueCountLoading(String queue) {
-    return '正在加载$queue待办数量';
-  }
-
-  @override
-  String financeSalesQueueCountFailed(String queue) {
-    return '$queue待办数量加载失败，请进入任务页重试';
-  }
-
-  @override
-  String financeSalesQueueCountEmpty(String queue) {
-    return '没有待处理的$queue';
-  }
-
-  @override
-  String financeSalesQueueCountPending(String queue, int count) {
-    return '待处理$queue：$count项';
-  }
 
   @override
   String get financeHubTaskApprovalSub => '采购与委外订货审批';
@@ -2329,18 +2317,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseHubSectionReportsDesc => '明细(一行一货品)·汇总(一行一单)';
 
   @override
-  String get warehouseHubDocTransfer => '仓库调拨';
-
-  @override
-  String get warehouseHubDocTransferSub => '仓库间调拨';
-
-  @override
-  String get warehouseHubDocCheck => '盘点';
-
-  @override
-  String get warehouseHubDocCheckSub => '盘点盈亏';
-
-  @override
   String get warehouseHubInventoryLive => '即时库存';
 
   @override
@@ -2420,16 +2396,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get impersonationSwitchPerson => '切换人';
-
-  @override
-  String get impersonationEnterPasswordTitle => '确认切换人';
-
-  @override
-  String get impersonationEnterPasswordHint =>
-      '为安全验证，请输入你的登录密码。通过后 15 分钟内可自由切换，无需重复输入。';
-
-  @override
-  String get impersonationPasswordLabel => '登录密码';
 
   @override
   String get impersonationTargetPickerTitle => '选择要查看的员工';
@@ -2638,10 +2604,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialShortage => '还缺数量';
 
   @override
-  String get materialPhysicalShortageHint =>
-      '本批需求扣除已覆盖本批的合格物料后仍缺的数量。下达采购、委外或车间计划不会减少实物缺口；合格入库并归属本批后才减少。待补数量另外扣除在途，避免重复下达。';
-
-  @override
   String get materialSupplyProgressHint =>
       '跟踪下单、财务审批、收货、检验与入库进度；双击行查看明细。下达后仍保留实物缺口，合格入库后更新。';
 
@@ -2661,9 +2623,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get materialResponsible => '负责人';
 
   @override
-  String get materialFutureSupply => '在途未到';
-
-  @override
   String get materialProgress => '进度 / 待办';
 
   @override
@@ -2673,9 +2632,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String materialAggregateSources(int products, int paths) {
     return '$products 个产品 · $paths 条路径';
   }
-
-  @override
-  String get materialRouteChangedRetry => '分析已更新，请核对当前所选路线后重试';
 
   @override
   String get materialWarehouseFacts => '仓库与供给明细';
@@ -9302,6 +9258,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatSettingsClearFailed => '没能清空对话记录, 请稍后再试。';
 
   @override
+  String get aiChatMemoryRecentTitle => '最近操作';
+
+  @override
+  String get aiChatMemorySettingLabel => '记住我的常用操作';
+
+  @override
+  String get aiChatMemorySettingHint =>
+      '记住你让我打开过的表单和常用的查询, 下次同类问题我直接准备操作, 不再重新思考。';
+
+  @override
+  String get aiChatMemoryClear => '清除记录';
+
+  @override
+  String get aiChatMemoryClearConfirm => '确定清除我记住的你的常用操作吗?';
+
+  @override
+  String get aiChatMemoryCleared => '已清除';
+
+  @override
+  String get aiChatMemoryUnavailable => '当前账号暂无权限';
+
+  @override
   String aiChatHiddenTurns(int count) {
     return '有 $count 条较早的对话因账号权限变化, 不再显示。';
   }
@@ -9350,15 +9328,47 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  ) {
-    return '共 $people 人 · 需更正 $update · 仅提示 $info · 一致 $same · 已处理 $applied';
+  String hrReconcileStatPeople(int count) {
+    return '待核对 $count 人';
   }
+
+  @override
+  String hrReconcileStatUpdate(int count) {
+    return '需更正 $count';
+  }
+
+  @override
+  String hrReconcileStatInfo(int count) {
+    return '仅提示 $count';
+  }
+
+  @override
+  String hrReconcileStatSame(int count) {
+    return '一致 $count';
+  }
+
+  @override
+  String hrReconcileStatApplied(int count) {
+    return '已处理 $count 人';
+  }
+
+  @override
+  String hrReconcileStatTierHigh(int count) {
+    return '高把握 $count';
+  }
+
+  @override
+  String hrReconcileStatTierMedium(int count) {
+    return '中把握 $count';
+  }
+
+  @override
+  String hrReconcileStatTierManual(int count) {
+    return '需人工 $count';
+  }
+
+  @override
+  String get hrReconcileSelectHigh => '只选把握高的';
 
   @override
   String get hrReconcileValidity => '24 小时内有效，超时未执行的改动自动清除';
@@ -9441,22 +9451,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hrReconcileColKind => '类型';
 
   @override
-  String get hrReconcileColCode => '工号';
-
-  @override
-  String get hrReconcileColName => '姓名';
-
-  @override
-  String get hrReconcileColDept => '部门';
+  String get hrReconcileColEmployee => '员工';
 
   @override
   String get hrReconcileColReason => '原因';
 
   @override
-  String get hrReconcileColIdNumber => '证件号码';
+  String get hrReconcileIdNumberInfo =>
+      '红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码';
 
   @override
-  String get hrReconcileColBasis => '依据';
+  String hrReconcileBasisOf(String label) {
+    return '建议依据：$label';
+  }
 
   @override
   String get hrReconcileColTier => '把握';
@@ -9533,4 +9540,172 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get hrReconcileStatusDiscarded => '已放弃';
+
+  @override
+  String get aiUsageTitle => 'AI 用量与额度';
+
+  @override
+  String get aiUsageEntry => '用量与额度';
+
+  @override
+  String get aiUsageTodayTokens => '今日消耗';
+
+  @override
+  String get aiUsageTodayLabel => '今日';
+
+  @override
+  String get aiUsageTodayCalls => '今日调用';
+
+  @override
+  String get aiUsageActiveUsers => '今日活跃人数';
+
+  @override
+  String get aiUsageDisabledCount => '已停用';
+
+  @override
+  String aiUsageBudgetOf(String num, String total) {
+    return '$num / $total';
+  }
+
+  @override
+  String get aiUsageWindowHour => '近24小时';
+
+  @override
+  String get aiUsageWindowDaily => '近30天';
+
+  @override
+  String get aiUsageWindowMonthly => '近12月';
+
+  @override
+  String get aiUsageWindowYearly => '近5年';
+
+  @override
+  String get aiUsageTrend => '用量趋势';
+
+  @override
+  String get aiUsageEmpty => '暂无用量';
+
+  @override
+  String get aiUsageLoadFailed => '加载 AI 用量失败，请稍后重试';
+
+  @override
+  String get aiUsagePersonMissing => '未找到该人员的用量信息';
+
+  @override
+  String get aiUsageColPerson => '人员';
+
+  @override
+  String get aiUsageColWindow => '窗口消耗';
+
+  @override
+  String get aiUsageColToday => '今日消耗';
+
+  @override
+  String get aiUsageColLimit => '个人限额';
+
+  @override
+  String get aiUsageColStatus => '状态';
+
+  @override
+  String get aiUsageColLastUsed => '最近使用';
+
+  @override
+  String aiUsageColCalls(int count) {
+    return '$count 次';
+  }
+
+  @override
+  String get aiUsageLimitFollowGlobal => '跟随全局';
+
+  @override
+  String get aiUsageStatusNormal => '正常';
+
+  @override
+  String get aiUsageStatusOverLimit => '已超限';
+
+  @override
+  String get aiUsageStatusDisabled => '已停用';
+
+  @override
+  String get aiUsageSetLimits => '设置限额';
+
+  @override
+  String get aiUsageLimitTokensLabel => '每日 token 限额';
+
+  @override
+  String get aiUsageLimitJobsLabel => '每日任务数限额';
+
+  @override
+  String get aiUsageLimitHint => '留空表示跟随全局默认';
+
+  @override
+  String aiUsageLimitRangeError(int max) {
+    return '需为 1 到 $max 之间的整数';
+  }
+
+  @override
+  String get aiUsageDisableLabel => '停用该账号的 AI';
+
+  @override
+  String get aiUsageDisableHint => '停用后不能使用 AI 对话与文件识别，可随时恢复';
+
+  @override
+  String get aiUsageDisableConfirm => '确定停用该账号的 AI 使用吗？';
+
+  @override
+  String get aiUsageDisableAction => '停用';
+
+  @override
+  String get aiUsageDisabledBanner => '该账号的 AI 使用已被停用';
+
+  @override
+  String get aiUsageNoPersonalLimit => '未设个人限额，按全站预算';
+
+  @override
+  String get aiUsageByPurpose => '按用途';
+
+  @override
+  String get aiUsageByProvider => '按服务商';
+
+  @override
+  String get aiUsageRecentUses => '最近使用';
+
+  @override
+  String get aiUsagePeople => '人员用量';
+
+  @override
+  String get aiUsageConflict => '配置有变化，请刷新后再保存';
+
+  @override
+  String aiUsageTokensUnit(String n) {
+    return '$n tokens';
+  }
+
+  @override
+  String aiUsageTodayUsed(String tokens) {
+    return '今日已用 $tokens';
+  }
+
+  @override
+  String get aiUsageLastUsedJustNow => '刚刚';
+
+  @override
+  String aiUsageLastUsedMinutesAgo(int n) {
+    return '$n 分钟前';
+  }
+
+  @override
+  String aiUsageLastUsedHoursAgo(int n) {
+    return '$n 小时前';
+  }
+
+  @override
+  String aiUsageLastUsedDaysAgo(int n) {
+    return '$n 天前';
+  }
+
+  @override
+  String aiUsageTrendSemantics(String title, String tokens, String calls) {
+    return '$title，共 $tokens tokens、$calls 次调用';
+  }
 }

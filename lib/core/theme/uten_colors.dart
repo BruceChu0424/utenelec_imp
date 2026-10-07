@@ -11,8 +11,6 @@
 
 import 'package:flutter/material.dart';
 
-import 'uten_tokens.dart';
-
 /// Uten 品牌色板常量
 abstract final class UtenColors {
   // ===== 品牌主色 =====
@@ -120,6 +118,17 @@ abstract final class UtenColors {
   /// 深色模式：深蓝底 + blue-200 浅蓝字。
   static const Color infoContainerDark = Color(0xFF1E3A8A);
   static const Color onInfoContainerDark = Color(0xFFBFDBFE);
+
+  /// 广播容器配对（与 [infoContainer] 同构：浅底深字 / 深底浅字）。
+  /// 中央提醒弹窗 BROADCAST（人事广播）级的暖色容器（ADR-166）：amber 偏黄，
+  /// 与 error 偏红拉开色相，色弱下再靠徽章文字区分。
+  /// 浅色模式：浅琥珀底 + amber-700 深棕字。
+  static const Color broadcastContainer = warningBg; // = 0xFFFFFBEB
+  static const Color onBroadcastContainer = warningText; // = 0xFFB45309
+
+  /// 深色模式：amber-950 底 + amber-300 浅字。
+  static const Color broadcastContainerDark = Color(0xFF451A03);
+  static const Color onBroadcastContainerDark = Color(0xFFFCD34D);
 
   /// 品牌青绿柔和底色（= teal50），用于选中态、高亮块
   static const Color tealSurface = teal50;
@@ -277,17 +286,4 @@ abstract final class UtenColors {
   static const Color darkTextPrimary = Color(0xFFF1F5F9);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
   static const Color darkTextTertiary = Color(0xFF64748B);
-
-  // ===== 阴影 token（已收敛到 UtenElevation 双层柔和阴影，此处保留兼容签名）=====
-  /// 常规卡片阴影（= UtenElevation.low）
-  static List<BoxShadow> cardShadow({bool isDark = false}) =>
-      UtenElevation.low(isDark: isDark);
-
-  /// 悬浮卡片阴影（= UtenElevation.mid）
-  static List<BoxShadow> cardShadowLg({bool isDark = false}) =>
-      UtenElevation.mid(isDark: isDark);
-
-  /// 弹层/对话框阴影（= UtenElevation.high）
-  static List<BoxShadow> popoverShadow({bool isDark = false}) =>
-      UtenElevation.high(isDark: isDark);
 }

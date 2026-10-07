@@ -60,7 +60,8 @@ class AiChatRestrictedTopicTest {
     }
 
     @BeforeEach void before() {
-        handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, docs, json, AiChatUserScopeTest.directory());
+        handler = new AiChatJobHandler(access, evidence, tools, pages, proposals, docs, json, AiChatUserScopeTest.directory(),
+                new AiDocumentWorkflows(access), mock(AiChatOperationMemoryService.class));
         reader(SALES, "ai:use", "sales_order:view", "subcontract_order:view");
         when(access.requireChat()).thenAnswer(call -> actor);
         when(ctx.params()).thenReturn(Map.of());

@@ -57,7 +57,7 @@ class EmployeeCommandServiceChangeIdentityTest {
         employee.setGender("male");
         employee.setBirthMonthDay("01-01");
         employee.setHireDate(LocalDate.of(2026, 1, 5));
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
     }
 
     @Test

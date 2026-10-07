@@ -14,7 +14,8 @@ class BrowserFormDraftStorage
     implements
         FormDraftStorage,
         ClosableFormDraftStorage,
-        FormDraftHistoryStorage {
+        FormDraftHistoryStorage,
+        BusinessResetFormDraftStorage {
   BrowserFormDraftStorage({
     this.databaseName = 'uten_form_drafts_v1',
     this.afterHistoryQueued,
@@ -112,6 +113,72 @@ class BrowserFormDraftStorage
   }
 
   @override
+  Future<void> synchronizeBusinessReset(
+    String ownerPrefix,
+    int generation,
+  ) async {
+    validateFormDraftReset(ownerPrefix, generation);
+    final database = await _open();
+    final transaction = database.transaction(
+      _stores.map((name) => name.toJS).toList().toJS,
+      'readwrite',
+      web.IDBTransactionOptions(durability: 'strict'),
+    );
+    final done = Completer<void>();
+    Object failure = StateError('本机草稿清空失败，请重新登录后重试');
+    transaction.oncomplete = ((web.Event _) => done.complete()).toJS;
+    transaction.onabort = ((web.Event _) {
+      if (!done.isCompleted) done.completeError(failure);
+    }).toJS;
+    transaction.onerror = ((web.Event _) {
+      if (!done.isCompleted) done.completeError(failure);
+    }).toJS;
+    final heads = transaction.objectStore('history_head');
+    final marker = '${ownerPrefix}__business_reset_generation'.toJS;
+    final request = heads.get(marker);
+    request.onsuccess = ((web.Event _) {
+      try {
+        final latest = request.result.isUndefinedOrNull
+            ? 0
+            : int.parse((request.result as JSString).toDart);
+        if (generation < latest) {
+          throw StateError('业务数据已清空，请重新登录后使用草稿');
+        }
+        heads.put('$generation'.toJS, marker);
+        if (generation == 0) return;
+        for (final name in _stores) {
+          for (final feature in ['', 'daily_report_approval_']) {
+            final start = '$feature$ownerPrefix';
+            final scan = transaction
+                .objectStore(name)
+                .openCursor(
+                  web.IDBKeyRange.bound(start.toJS, '$start\uffff'.toJS),
+                );
+            scan.onsuccess = ((web.Event _) {
+              if (scan.result.isUndefinedOrNull) return;
+              final cursor = scan.result as web.IDBCursorWithValue;
+              final key = (cursor.key as JSString).toDart;
+              final prefix = name == 'drafts'
+                  ? formDraftHistoryPrefix(key)
+                  : key.split(':').first;
+              final scope = prefix == null ? null : formDraftResetScope(prefix);
+              if (scope?.owner == ownerPrefix &&
+                  scope!.generation < generation) {
+                cursor.delete();
+              }
+              cursor.continue_();
+            }).toJS;
+          }
+        }
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    }).toJS;
+    await done.future;
+  }
+
+  @override
   Future<Map<String, String>> readAll(String prefix) async {
     final database = await _open();
     final objectStore = database
@@ -189,53 +256,84 @@ class BrowserFormDraftStorage
     transaction.onabort = ((web.Event event) => fail()).toJS;
     transaction.onerror = ((web.Event event) => fail()).toJS;
     final store = transaction.objectStore('drafts');
-    final request = store.get(key.toJS);
-    // Compare and write inside this active transaction, never two awaited
-    // transactions: the latter would allow another browser tab to overwrite.
-    request.onsuccess = ((web.Event event) {
-      try {
-        final raw = request.result;
-        final existing = raw.isUndefinedOrNull
-            ? null
-            : (raw as JSString).toDart;
-        if (compare && existing != expectedValue) return;
-        matched = true;
-        if (value == null && isFormDraftTerminalMarker(existing)) return;
-        _appendHistory(
-          transaction,
-          key,
-          existing,
-          value,
-          committed: () {
-            if (value == null) {
-              // A real draft is retained as a terminal marker, including callers
-              // that still use the lower-level remove API.
-              final draft = decodeFormDraftHistoryPayload(existing);
-              if (draft == null) {
-                store.delete(key.toJS);
+    void mutate() {
+      final request = store.get(key.toJS);
+      // Compare and write inside this active transaction, never two awaited
+      // transactions: the latter would allow another browser tab to overwrite.
+      request.onsuccess = ((web.Event event) {
+        try {
+          final raw = request.result;
+          final existing = raw.isUndefinedOrNull
+              ? null
+              : (raw as JSString).toDart;
+          if (compare && existing != expectedValue) return;
+          matched = true;
+          if (value == null && isFormDraftTerminalMarker(existing)) return;
+          _appendHistory(
+            transaction,
+            key,
+            existing,
+            value,
+            committed: () {
+              if (value == null) {
+                // A real draft is retained as a terminal marker, including callers
+                // that still use the lower-level remove API.
+                final draft = decodeFormDraftHistoryPayload(existing);
+                if (draft == null) {
+                  store.delete(key.toJS);
+                } else {
+                  store.put(
+                    jsonEncode({
+                      'version': 1,
+                      'id': draft.id,
+                      'completed': true,
+                      'historyAction': 'deleted',
+                      'revision': 'deleted:${draft.revision}',
+                    }).toJS,
+                    key.toJS,
+                  );
+                }
               } else {
                 store.put(
-                  jsonEncode({
-                    'version': 1,
-                    'id': draft.id,
-                    'completed': true,
-                    'historyAction': 'deleted',
-                    'revision': 'deleted:${draft.revision}',
-                  }).toJS,
+                  compactFormDraftTerminalMarker(value)!.toJS,
                   key.toJS,
                 );
               }
-            } else {
-              store.put(compactFormDraftTerminalMarker(value)!.toJS, key.toJS);
-            }
-          },
-        );
-      } catch (_) {
-        transaction.abort();
-        fail();
-      }
-    }).toJS;
-    request.onerror = ((web.Event event) => fail()).toJS;
+            },
+          );
+        } catch (_) {
+          transaction.abort();
+          fail();
+        }
+      }).toJS;
+      request.onerror = ((web.Event event) => fail()).toJS;
+    }
+
+    final prefix = formDraftHistoryPrefix(key);
+    final reset = prefix == null ? null : formDraftResetScope(prefix);
+    if (reset == null) {
+      mutate();
+    } else {
+      final fence = transaction
+          .objectStore('history_head')
+          .get('${reset.owner}__business_reset_generation'.toJS);
+      fence.onsuccess = ((web.Event _) {
+        try {
+          final latest = fence.result.isUndefinedOrNull
+              ? 0
+              : int.parse((fence.result as JSString).toDart);
+          if (reset.generation < latest) {
+            result.completeError(StateError('业务数据已清空，这份旧草稿已失效，请重新登录'));
+            transaction.abort();
+            return;
+          }
+          mutate();
+        } catch (_) {
+          transaction.abort();
+          fail();
+        }
+      }).toJS;
+    }
     return result.future;
   }
 

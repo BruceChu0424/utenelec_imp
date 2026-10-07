@@ -284,26 +284,6 @@ class MasterDictionaryService {
     }
   }
 
-  /// 货品关键词搜索（编辑页 typeahead）。
-  Future<List<GoodsOption>> searchGoods(String keyword, {int size = 20}) async {
-    if (keyword.trim().isEmpty) return const [];
-    final json = await api.get(
-      ApiEndpoints.goods,
-      query: {'keyword': keyword.trim(), 'page': 1, 'size': size},
-    );
-    if (_disposed) return const [];
-    final items = json['items'];
-    if (items is! List) return const [];
-    final result = items
-        .map((entry) => GoodsOption.fromJson(entry as Map<String, dynamic>))
-        .toList();
-    for (final goods in result) {
-      if (goods.name?.isNotEmpty == true) _goods[goods.id] = goods.name!;
-    }
-    _boundLookupCaches();
-    return result;
-  }
-
   /// 单独重载币种字典（单据页内联新增币种后调用，让本实例的下拉选项立即含新值）。
   Future<void> reloadCurrencies() => ensureDictionaryLoaded(
     ApiEndpoints.currenciesDict,

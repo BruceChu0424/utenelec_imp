@@ -1244,9 +1244,9 @@ final class _MaterialAggregateTableController {
     }
   }
 
-  /// [confirmed] = 调用方已经确认过一次(产品视图全选下单的主确认框说了
-  /// 「合并成共享批次一次下达」)，各轮不再逐轮弹确认——用户口径 2026-09-25
-  /// 「直接弹一次是否确认，确认后全部下达」。汇总视图直接下单仍逐轮核对。
+  /// 调用方(产品视图主确认框或汇总视图开跑前的一次性确认，见
+  /// [_MaterialAggregateSubmission._submit])都已确认过整单，这里起各依赖轮次
+  /// 只做核对与提交，不再弹确认框——ADR-120 §2.4「只确认一次」。
   Future<bool> submit(
     List<_MaterialGroup> selectedGroups, {
     bool confirmed = false,
@@ -1259,7 +1259,6 @@ final class _MaterialAggregateTableController {
 
   Future<bool> submitStage(
     List<_MaterialGroup> selectedGroups, {
-    bool confirmed = false,
     bool skipAutoClaim = false,
   }) async {
     if (saving || selectedGroups.isEmpty) return false;
@@ -1325,45 +1324,10 @@ final class _MaterialAggregateTableController {
         _previewSignature = null;
         return false;
       }
-      final request = _previewRequest!, preview = _preview!;
-      // 与主表确认框同一口径（2026-10-06）：不逐行罗列来源与下层明细——那是
-      // 汇总表自己核对的职责；弹窗只给汇总和会改变行为的事实。
-      final requestedTotal = preview.groups.fold<double>(
-        0,
-        (sum, group) => sum + group.requestedQty,
-      );
-      final appendCount = preview.groups
-          .where((g) => g.existingBatchId != null)
-          .length;
-      final publicExtraTotal = preview.groups.fold<double>(
-        0,
-        (sum, group) => sum + group.publicExtraQty,
-      );
-      final userConfirmed =
-          confirmed ||
-          (await UtenDialog.show(
-                owner.context,
-                title: '确认下单 ${keys.length} 种物料？',
-                content: Text(
-                  [
-                    '共 ${keys.length} 种物料，合计 ${owner._qty(requestedTotal)}。',
-                    if (appendCount > 0) '$appendCount 种为追加原单，只办理本次净增量。',
-                    if (publicExtraTotal > 0.0001)
-                      '含公共备货 ${owner._qty(publicExtraTotal)}（超出本批需求的部分）。',
-                  ].join('\n'),
-                  key: const Key('aggregate-submit-confirm-body'),
-                ),
-                confirmLabel: '确认下单',
-              )) ==
-              true;
-      if (!userConfirmed || !owner.mounted) return false;
-      if (!identical(request, _previewRequest) ||
-          !identical(preview, _preview)) {
-        owner.context.appWarning('汇总内容已变化，请核对新的预览后再下达');
-        return false;
-      }
-      _submittedRequest = request;
-      _submittedFingerprint = preview.previewFingerprint;
+      // 预览捕获与 _submittedRequest 钉死之间不得插入任何 await：插入后预览可能
+      // 在等待期被替换，提交会带着过时指纹出去(旧逐轮确认框时代的竞态面)。
+      _submittedRequest = _previewRequest!;
+      _submittedFingerprint = _preview!.previewFingerprint;
     }
     final request = _submittedRequest!;
     final makesPlans = request.groups.any(

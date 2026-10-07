@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.util.NativeValueConverters;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -126,7 +127,7 @@ public class ProcurementPayablesService {
                 """).setParameter("id", id).getResultList();
         List<PaymentAllocation> payments = paymentRows.stream()
                 .map(row -> new PaymentAllocation(
-                        uuid(row[0]), text(row[1]), date(row[2]), money(row[3]), money(row[4]),
+                        NativeValueConverters.uuid(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), money(row[3]), money(row[4]),
                         money(row[5]), money(row[6]), ((Number) row[7]).shortValue()))
                 .toList();
 
@@ -143,8 +144,8 @@ public class ProcurementPayablesService {
                 """).setParameter("id", id).getResultList();
         List<OffsetAllocation> offsets = offsetRows.stream()
                 .map(row -> new OffsetAllocation(
-                        uuid(row[0]), uuid(row[1]), text(row[2]), money(row[3]), money(row[4]),
-                        money(row[5]), date(row[6]), text(row[7]), text(row[8])))
+                        NativeValueConverters.uuid(row[0]), NativeValueConverters.uuid(row[1]), NativeValueConverters.text(row[2]), money(row[3]), money(row[4]),
+                        money(row[5]), NativeValueConverters.text(row[6]), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8])))
                 .toList();
         return new Detail(item, payments, offsets);
     }
@@ -179,7 +180,7 @@ public class ProcurementPayablesService {
             return previewFailure("跨币种核销需要独立双币模型；本次只能选择同一币种", items);
         }
         if (items.stream().anyMatch(value -> !("PAYABLE".equals(value.openItemKind()) || "LEGACY_UNVERIFIED".equals(value.openItemKind()))
-                || decimal(value.outstandingOriginal()).signum() <= 0)) {
+                || NativeValueConverters.toBigDecimal(value.outstandingOriginal()).signum() <= 0)) {
             return previewFailure("付款只能引用仍有正数未付余额的应付项目", items);
         }
         if (items.stream().anyMatch(Item::paymentHeld)) {
@@ -189,9 +190,9 @@ public class ProcurementPayablesService {
             return previewFailure(reason, items);
         }
         BigDecimal original = items.stream().map(Item::outstandingOriginal)
-                .map(ProcurementPayablesService::decimal).reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(NativeValueConverters::toBigDecimal).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal local = items.stream().map(Item::outstandingLocal)
-                .map(ProcurementPayablesService::decimal).reduce(BigDecimal.ZERO, BigDecimal::add);
+                .map(NativeValueConverters::toBigDecimal).reduce(BigDecimal.ZERO, BigDecimal::add);
         Item first = items.getFirst();
         return new PaymentPreview(true, null, supplierId, first.supplierName(), currencyId,
                 first.currencyCode(), money(original), money(local), items);
@@ -390,7 +391,7 @@ public class ProcurementPayablesService {
     }
 
     private List<Item> items(List<Object[]> rows) {
-        List<UUID> ids = rows.stream().map(row -> uuid(row[0])).toList();
+        List<UUID> ids = rows.stream().map(row -> NativeValueConverters.uuid(row[0])).toList();
         Map<UUID, SupplierPayableHoldGuard.HoldInfo> holds =
                 payableHoldGuard.holdInfos(ids);
         return rows.stream().map(row -> item(row, holds)).toList();
@@ -399,17 +400,17 @@ public class ProcurementPayablesService {
     private Item item(
             Object[] row,
             Map<UUID, SupplierPayableHoldGuard.HoldInfo> holds) {
-        UUID ledgerId = uuid(row[0]);
+        UUID ledgerId = NativeValueConverters.uuid(row[0]);
         SupplierPayableHoldGuard.HoldInfo hold = holds.getOrDefault(
                 ledgerId,
                 new SupplierPayableHoldGuard.HoldInfo(false, null, BigDecimal.ZERO));
         return new Item(
-                ledgerId, text(row[1]), text(row[2]), text(row[3]), uuid(row[4]), text(row[5]),
-                uuid(row[6]), text(row[7]), text(row[8]), date(row[9]), date(row[10]), text(row[11]),
-                uuid(row[12]), text(row[13]), text(row[14]), integer(row[15]), uuid(row[16]), text(row[17]),
-                text(row[18]), rate(row[19]), money(row[20]), money(row[21]), money(row[22]),
+                ledgerId, NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), NativeValueConverters.text(row[3]), NativeValueConverters.uuid(row[4]), NativeValueConverters.text(row[5]),
+                NativeValueConverters.uuid(row[6]), NativeValueConverters.text(row[7]), NativeValueConverters.text(row[8]), NativeValueConverters.text(row[9]), NativeValueConverters.text(row[10]), NativeValueConverters.text(row[11]),
+                NativeValueConverters.uuid(row[12]), NativeValueConverters.text(row[13]), NativeValueConverters.text(row[14]), integer(row[15]), NativeValueConverters.uuid(row[16]), NativeValueConverters.text(row[17]),
+                NativeValueConverters.text(row[18]), rate(row[19]), money(row[20]), money(row[21]), money(row[22]),
                 money(row[23]), money(row[24]), money(row[25]), money(row[26]), money(row[27]),
-                text(row[28]), integer(row[29]) == null ? 0 : integer(row[29]), text(row[30]),
+                NativeValueConverters.text(row[28]), integer(row[29]) == null ? 0 : integer(row[29]), NativeValueConverters.text(row[30]),
                 hold.held(), hold.reason(), money(hold.failedBaseQty()), Boolean.TRUE.equals(row[31]));
     }
 
@@ -417,36 +418,17 @@ public class ProcurementPayablesService {
         return value == null || value.isBlank() ? null : value.trim().toUpperCase(Locale.ROOT);
     }
 
-    private static UUID uuid(Object value) {
-        return value instanceof UUID uuid ? uuid : value == null ? null : UUID.fromString(value.toString());
-    }
-
-    private static String text(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private static String date(Object value) {
-        return value == null ? null : value.toString();
-    }
-
     private static Integer integer(Object value) {
         return value instanceof Number number ? number.intValue() : value == null ? null : Integer.valueOf(value.toString());
     }
 
-    private static BigDecimal decimal(Object value) {
-        if (value == null) return BigDecimal.ZERO;
-        if (value instanceof BigDecimal decimal) return decimal;
-        if (value instanceof Number number) return new BigDecimal(number.toString());
-        return new BigDecimal(value.toString());
-    }
-
     /** 金额原文(ADR-112): 至少 4 位小数, 更多位数原样给出, 不在接口层截短。 */
     private static String money(Object value) {
-        return value == null ? null : MoneyPolicy.canonical(decimal(value)).toPlainString();
+        return value == null ? null : MoneyPolicy.canonical(NativeValueConverters.toBigDecimal(value)).toPlainString();
     }
 
     private static String rate(Object value) {
-        return value == null ? null : MoneyPolicy.canonicalRate(decimal(value)).toPlainString();
+        return value == null ? null : MoneyPolicy.canonicalRate(NativeValueConverters.toBigDecimal(value)).toPlainString();
     }
 
     private record Filter(String sql, Map<String, Object> params) {}

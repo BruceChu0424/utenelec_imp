@@ -44,6 +44,24 @@ class AggregateMissingDeepAliasRepairTest {
         assertThat(f.inserted).isEmpty();
     }
 
+    /** 未确认但建议为委外/自制的中间件与需求侧同口径下钻(AggregateRouteForwarding)。 */
+    @Test void suggestedSubcontractIntermediateWithoutConfirmationStillForwards() {
+        Fixture f=new Fixture(false,"1",false);
+        for(Object[] row:f.materials) {
+            if(row[0].equals(f.middleB)) { row[6]=null; row[23]="SUBCONTRACT"; }
+            if(row[0].equals(f.parentB)) { row[6]=null; row[23]="MAKE"; }
+        }
+        f.service.repair(f.analysis,Set.of(f.leafB));
+        assertThat(f.inserted).hasSize(1);
+        assertThat(f.inserted.getFirst().path("source_id").asText()).isEqualTo(f.leafB.toString());
+        assertThat(f.inserted.getFirst().path("qty").decimalValue()).isEqualByComparingTo("2");
+        // 无有效路线(确认与建议都空)的中间件仍冻结，不建深层别名。
+        Fixture none=new Fixture(false,"1",false);
+        for(Object[] row:none.materials)if(row[0].equals(none.middleB)) { row[6]=null; row[23]=null; }
+        none.service.repair(none.analysis,Set.of(none.leafB));
+        assertThat(none.inserted).isEmpty();
+    }
+
     @Test void roundedTargetIsSharedOnceWithoutRetainingUnarrangedOldRounding() {
         Fixture f=new Fixture(false,"0",true);
         f.service.repair(f.analysis,Set.of(f.leafA,f.leafB,f.leafC));
@@ -68,7 +86,7 @@ class AggregateMissingDeepAliasRepairTest {
     }
 
     private static class Fixture {
-        final UUID analysis=id(1),batch=id(2),action=id(3),anchor=id(4),parentB=id(20),leafA=id(12),leafB=id(22),leafC=id(32),
+        final UUID analysis=id(1),batch=id(2),action=id(3),anchor=id(4),parentB=id(20),middleB=id(21),leafA=id(12),leafB=id(22),leafC=id(32),
                 targetLeaf=id(42),middleEdge=id(100),leafEdge=id(101),goods=id(200),unit=id(201);
         final ObjectMapper mapper=new ObjectMapper();
         final List<Object[]> batches=new ArrayList<>(),materials=new ArrayList<>(),aliases=new ArrayList<>();
@@ -112,7 +130,7 @@ class AggregateMissingDeepAliasRepairTest {
         private Object[] row(UUID id,UUID item,String node,String parent,String role,UUID edge,String route,String required,String qty,
                              String basis,String output,boolean frozen,int depth,String sourceCap,String targetCap,String historicCap,String owned) {
             return new Object[]{id,item,node,parent,role,edge,route,new BigDecimal(required),new BigDecimal(qty),basis,new BigDecimal(output),true,
-                    goods,null,unit,new BigDecimal(sourceCap),new BigDecimal(targetCap),new BigDecimal(historicCap),new BigDecimal(owned),frozen,depth,0,null};
+                    goods,null,unit,new BigDecimal(sourceCap),new BigDecimal(targetCap),new BigDecimal(historicCap),new BigDecimal(owned),frozen,depth,0,null,null};
         }
     }
     private static UUID id(long value){return new UUID(0,value);}

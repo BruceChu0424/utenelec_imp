@@ -105,6 +105,31 @@ class BusinessDataResetCatalogPostgresTest {
     }
 
     @Test
+    void resetClearsWeightEvidenceAndEstimatesButPreservesWeightConfiguration() {
+        tx.executeWithoutResult(status -> {
+            UUID goods = UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO goods(id, code, name, code_sequence)
+                    VALUES (?, ?, 'reset weight fixture', (SELECT coalesce(max(code_sequence), 0) + 1 FROM goods))
+                    """, goods, "RW-" + goods);
+            jdbc.update("INSERT INTO goods_weight_profiles(goods_id, default_tare_kg) VALUES (?, 0.25)", goods);
+            jdbc.update("""
+                    INSERT INTO goods_weight_observations(goods_id, source_kind, role, qty_base, weight_kg, observed_at, capture_key)
+                    VALUES (?, 'SAMPLE', 'REFERENCE', 10, 2, now(), ?)
+                    """, goods, "SAMPLE:" + goods);
+            jdbc.update("INSERT INTO goods_weight_estimates(goods_id, unit_weight_kg) VALUES (?, 0.2)", goods);
+            long before = generation();
+            jdbc.queryForList("SELECT * FROM business_data_reset()");
+            assertThat(generation()).isEqualTo(before + 1);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM goods_weight_observations", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM goods_weight_estimates", Long.class)).isZero();
+            assertThat(jdbc.queryForObject("SELECT default_tare_kg FROM goods_weight_profiles WHERE goods_id = ?",
+                    java.math.BigDecimal.class, goods)).isEqualByComparingTo("0.25");
+            status.setRollbackOnly();
+        });
+    }
+
+    @Test
     void directCallWithTestFilesStillListedIsRefusedAndChangesNothing() {
         String key = listedSelfContainedTicket();
         long generation = generation();

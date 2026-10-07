@@ -244,7 +244,6 @@ abstract final class ApiEndpoints {
       '/org/hr-tasks/claims/$taskType/$employeeId/takeover';
 
   // 统一任务软认领（ADR-023，show-as-locked；池化审批/分解防重复操作）
-  static String taskClaims(String targetType) => '/task-claims/$targetType';
   static String taskClaim(String targetType, String targetKey) =>
       '/task-claims/$targetType/$targetKey';
   static String taskClaimClaim(String targetType, String targetKey) =>
@@ -496,7 +495,6 @@ abstract final class ApiEndpoints {
       '/stock/weight/observations/${Uri.encodeComponent(observationId)}/exclude';
   static String stockWeightObservationInclude(String observationId) =>
       '/stock/weight/observations/${Uri.encodeComponent(observationId)}/include';
-  static const stockWeightBalanceSet = '/stock/weight/balances/set';
 
   // 库存分析 (ADR-135 §7.4，stock_report:view；单货品 KPI 条为 stock:view)：
   // 呆滞与库龄 / 盘点建议 / 称重异常 / 单重学习。
@@ -537,8 +535,6 @@ abstract final class ApiEndpoints {
   static const workshopMaterialBadgeCounts =
       '$workshopMaterialBase/badge-counts';
   static const workshopMaterialSettings = '$workshopMaterialBase/settings';
-  static String workshopMaterialSetting(String workshopId) =>
-      '$workshopMaterialSettings/$workshopId';
 
   /// 开启整批领料前, 所选车间在产、需认料的产品 (按产品去重, 含预填; ADR-147)。
   static const workshopMaterialSettingsInProgressPending =
@@ -634,7 +630,6 @@ abstract final class ApiEndpoints {
   // 员工
   static const employees = '/org/employees';
   static String employee(String id) => '/org/employees/$id';
-  static String employeeHistory(String id) => '/org/employees/$id/history';
   static String employeeSecondaryDepartments(String id) =>
       '/org/employees/$id/secondary-departments';
   static String employeeTransfer(String id) => '/org/employees/$id/transfer';
@@ -756,6 +751,14 @@ abstract final class ApiEndpoints {
   static const adminAiPresets = '/admin/ai/presets';
   static const adminAiUsage = '/admin/ai/usage';
 
+  /// AI 用量看板与按人限额(ADR-164，超管 authorization:manage；改限额要再认证)。
+  static const adminAiUsageDashboard = '/admin/ai/usage-dashboard';
+  static const adminAiUsagePeople = '/admin/ai/usage-people';
+  static String adminAiUsagePerson(String userId) =>
+      '$adminAiUsagePeople/$userId';
+  static String adminAiUsagePersonLimits(String userId) =>
+      '$adminAiUsagePeople/$userId/limits';
+
   /// 公共 AI 作业(ADR-133): 提交原始文件(octet-stream) / 轮询 / 取消；员工账号本人可用。
   static const aiJobs = '/ai/jobs';
   static String aiJob(String id) => '$aiJobs/$id';
@@ -851,7 +854,6 @@ abstract final class ApiEndpoints {
   static String noticeAcknowledge(String id) => '/notices/$id/acknowledge';
   static String noticeBlessing(String id) => '/notices/$id/blessing';
   static String noticeBlessings(String id) => '/notices/$id/blessings';
-  static String noticeAcknowledgers(String id) => '/notices/$id/acknowledgers';
   static const noticeCelebrationPreview = '/notices/celebration/preview';
   static const noticeCelebrationSettings = '/notices/celebration/settings';
 

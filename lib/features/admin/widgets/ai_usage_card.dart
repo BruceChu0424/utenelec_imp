@@ -13,6 +13,7 @@ class AiUsageCard extends StatelessWidget {
     required this.usage,
     required this.providers,
     required this.unavailable,
+    this.onOpenUsage,
   });
 
   /// 读取中或失败时为 null。
@@ -21,6 +22,9 @@ class AiUsageCard extends StatelessWidget {
 
   /// 用量接口读取失败(不影响配置本身)。
   final bool unavailable;
+
+  /// 卡头右上「用量与额度」入口(跳 AI 用量看板, ADR-164); null 时不显示。
+  final VoidCallback? onOpenUsage;
 
   @override
   Widget build(BuildContext context) {
@@ -43,12 +47,28 @@ class AiUsageCard extends StatelessWidget {
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(width: UtenSpacing.s8),
-              Text(
-                l10n.aiSettingsUsageTitle(usage?.days ?? 30),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(
+                  l10n.aiSettingsUsageTitle(usage?.days ?? 30),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
+              if (onOpenUsage != null)
+                TextButton(
+                  key: const ValueKey('ai-usage-card-open'),
+                  onPressed: onOpenUsage,
+                  style: TextButton.styleFrom(
+                    // 触达目标不小于 44。
+                    minimumSize: const Size(44, 44),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s8,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(l10n.aiUsageEntry),
+                ),
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),

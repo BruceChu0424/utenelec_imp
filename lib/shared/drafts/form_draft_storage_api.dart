@@ -35,3 +35,23 @@ abstract interface class FormDraftHistoryStorage {
 abstract interface class ClosableFormDraftStorage {
   Future<void> close();
 }
+
+/// The server's committed reset generation is monotonic. Reset cleanup also
+/// removes retained draft history; normal draft deletion still keeps history.
+abstract interface class BusinessResetFormDraftStorage {
+  Future<void> synchronizeBusinessReset(String ownerPrefix, int generation);
+}
+
+({String owner, int generation})? formDraftResetScope(String prefix) {
+  final match = RegExp(
+    r'^(?:daily_report_approval_)?([a-f0-9]{64}_)(?:g([1-9][0-9]*)_)?$',
+  ).firstMatch(prefix);
+  if (match == null) return null;
+  return (owner: match[1]!, generation: int.parse(match[2] ?? '0'));
+}
+
+void validateFormDraftReset(String ownerPrefix, int generation) {
+  if (!RegExp(r'^[a-f0-9]{64}_$').hasMatch(ownerPrefix) || generation < 0) {
+    throw const FormatException('草稿清空标识无效');
+  }
+}

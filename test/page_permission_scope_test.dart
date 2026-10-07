@@ -115,6 +115,15 @@ void main() {
         'server/src/main/resources/db/migration/'
         'V475__permission_surface_completion_and_viewcontext_retirement.sql',
       );
+      // V740 播种车间内料仓四面（V812 前端补挂映射后进入本契约）。
+      final v740 = File(
+        'server/src/main/resources/db/migration/'
+        'V740__workshop_material_periodic_costing.sql',
+      );
+      final v812 = File(
+        'server/src/main/resources/db/migration/'
+        'V812__permission_surface_hierarchy_and_gaps.sql',
+      );
       expect(v328.existsSync(), isTrue);
       expect(v437.existsSync(), isTrue);
       expect(v440.existsSync(), isTrue);
@@ -123,6 +132,8 @@ void main() {
       expect(v450.existsSync(), isTrue);
       expect(v455.existsSync(), isTrue);
       expect(v475.existsSync(), isTrue);
+      expect(v740.existsSync(), isTrue);
+      expect(v812.existsSync(), isTrue);
       final source = v328.readAsStringSync();
       final seedStart = source.indexOf('INSERT INTO permission_surfaces');
       final seedEnd = source.indexOf(
@@ -139,7 +150,9 @@ void main() {
           '${v446.readAsStringSync()}\n'
           '${v450.readAsStringSync()}\n'
           '${v455.readAsStringSync()}\n'
-          '${v475.readAsStringSync()}';
+          '${v475.readAsStringSync()}\n'
+          '${v740.readAsStringSync()}\n'
+          '${v812.readAsStringSync()}';
       final surfaceKeys = {
         for (final path in _businessPaths())
           pagePermissionScopeFor(path)!.surfaceKey,
@@ -349,6 +362,28 @@ Iterable<String> _businessPaths() sync* {
     '/hr/tasks/probation',
     '/hr/profile-changes',
     '/hr/profile-changes/change-1',
+    // V812 补挂的缺口路由：任务中心合并页、审核中心、审批队列、短交、内料仓。
+    '/sales/tasks',
+    '/warehouse/tasks',
+    '/warehouse/tasks/outbound',
+    '/warehouse/tasks/inbound?group=draw',
+    '/warehouse/tasks/draw',
+    '/finance/audits',
+    '/finance/audits?segment=shipment',
+    '/production/overproduction-rate-requests',
+    '/production/overproduction-rate-requests/request-1',
+    '/production/material-increment-requests',
+    '/production/material-increment-requests/new',
+    '/production/material-increment-requests/request-1',
+    '/subcontract/short-deliveries',
+    '/warehouse/workshop-material/setup',
+    '/warehouse/workshop-material/setup?tab=machines',
+    '/workshop-material/bin',
+    '/workshop-material/bin?workshopId=workshop-1',
+    '/workshop-material/issue?mode=direct',
+    '/workshop-material/issue?requisitionId=requisition-1',
+    '/workshop-material/count?periodId=period-1',
+    '/reports/workshop-material',
   ];
 
   for (final doc in const ['requests', 'orders', 'receipts', 'returns']) {

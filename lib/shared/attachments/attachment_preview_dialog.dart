@@ -51,18 +51,6 @@ class AttachmentPreviewDialog extends StatefulWidget {
   static bool isImage(String name, String? contentType) =>
       isRenderableImageAttachment(name, contentType);
 
-  static bool isPdf(String name, String? contentType) =>
-      attachmentPreviewKind(name, contentType) == AttachmentPreviewKind.pdf;
-
-  static bool isText(String name, String? contentType) {
-    final kind = attachmentPreviewKind(name, contentType);
-    return kind == AttachmentPreviewKind.text ||
-        kind == AttachmentPreviewKind.csv;
-  }
-
-  /// 文本解码：编码自动识别（UTF-8 / UTF-16 / GB18030），失败时容错而不是整段乱码。
-  static String decodeText(Uint8List bytes) => decodeAttachmentText(bytes).text;
-
   @override
   State<AttachmentPreviewDialog> createState() =>
       _AttachmentPreviewDialogState();

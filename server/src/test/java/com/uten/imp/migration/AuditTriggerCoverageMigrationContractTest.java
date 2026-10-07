@@ -293,7 +293,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "subcontract_draw_notice_marks",
                         // V809(ADR-156) 委外申请可下单通知高水位: 同上。
                         "subcontract_application_kit_notice_marks",
-                        // V815(ADR-165) 车间任务到货进展产能高水位: 同上。
+                        // V814(ADR-165) 车间任务到货进展产能高水位: 同上。
                         "production_execution_segment_notice_state")),
             new NoneGroup("queue",
                     "队列、任务、认领、幂等命令与系统核对结果: 系统协调状态, 人的操作由请求级语义事件记录",

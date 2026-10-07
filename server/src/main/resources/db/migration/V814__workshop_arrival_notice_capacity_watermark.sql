@@ -1,5 +1,5 @@
 -- =====================================================================
--- V815 (ADR-165 / ADR-091 §九, 2026-10-06 修订二)
+-- V814 (ADR-165 / ADR-091 §九, 2026-10-06 修订二)
 -- 车间任务「物料到货进展」行动卡的可支撑产能高水位。
 --
 -- publishWorkshopMaterialArrival 每次到货事件评估本段「当前可支撑产量」:
@@ -21,7 +21,7 @@ CREATE TABLE production_execution_segment_notice_state (
         CHECK (arrival_notice_capacity IS NULL OR arrival_notice_capacity >= 0)
 );
 COMMENT ON TABLE production_execution_segment_notice_state IS
-    'V815(ADR-165): 车间任务「物料到货进展」行动卡的可支撑产能高水位(每个执行段一行). 产能 > 水位才发卡并抬高水位; 回落时同步下来, 不发卡. 系统协调状态, 不挂行级审计, 清空业务数据时清空';
+    'V814(ADR-165): 车间任务「物料到货进展」行动卡的可支撑产能高水位(每个执行段一行). 产能 > 水位才发卡并抬高水位; 回落时同步下来, 不发卡. 系统协调状态, 不挂行级审计, 清空业务数据时清空';
 
 -- ---------------------------------------------------------------------
 -- 清空业务数据: 通知水位随业务清空(V798/V809 同款锚点插入, needle 单行无换行)
@@ -34,7 +34,7 @@ BEGIN
     SELECT replace(pg_get_functiondef('business_data_reset()'::regprocedure), chr(13), '') INTO definition;
     IF (length(definition) - length(replace(definition, anchor, ''))) / length(anchor) <> 1
        OR position('production_execution_segment_notice_state' IN definition) > 0 THEN
-        RAISE EXCEPTION 'V815 cannot extend business-data reset policy safely';
+        RAISE EXCEPTION 'V814 cannot extend business-data reset policy safely';
     END IF;
     EXECUTE replace(definition, anchor,
         anchor || E'\n            (''production_execution_segment_notice_state'', ''CLEAR''),');
@@ -44,11 +44,11 @@ $reset_policy$;
 -- ---------------------------------------------------------------------
 -- 自检
 -- ---------------------------------------------------------------------
-DO $v815_self_check$
+DO $v814_self_check$
 BEGIN
     IF position('(''production_execution_segment_notice_state'', ''CLEAR'')'
                 IN pg_get_functiondef('business_data_reset()'::regprocedure)) = 0 THEN
-        RAISE EXCEPTION 'V815 business_data_reset must clear production_execution_segment_notice_state';
+        RAISE EXCEPTION 'V814 business_data_reset must clear production_execution_segment_notice_state';
     END IF;
 END;
-$v815_self_check$;
+$v814_self_check$;

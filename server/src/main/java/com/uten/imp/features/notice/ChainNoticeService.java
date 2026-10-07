@@ -4044,7 +4044,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /**
      * 每次到货事件评估后同步水位: 上涨发卡时抬上去, 回落时落下来——“涨了”永远相对最近一次。
-     * 水位放 1:1 侧表(V815)而不是段表加列: 段表的 BEFORE UPDATE 触发器会 bump lock_version/
+     * 水位放 1:1 侧表(V814)而不是段表加列: 段表的 BEFORE UPDATE 触发器会 bump lock_version/
      * updated_at 并重验车间负责人, 每次水位变化会把在途的领料核对 CAS(「车间任务已变化,
      * 请刷新」)顶失效。值不变不写。
      */

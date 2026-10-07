@@ -39,13 +39,20 @@ import static org.mockito.Mockito.when;
 class ProcurementDocumentStateLockTest {
 
     private static final List<LockedService> LOCKED_SERVICES = List.of(
-            service("purchase/request/PurchaseRequestService.java", "PurchaseRequest", "requireRequestForUpdate"),
+            // V812 死代码清理删掉手动 reverse(4→3)：申请已是计划下达的只读事实。
+            financeOrderService(
+                    "purchase/request/PurchaseRequestService.java",
+                    "PurchaseRequest", "requireRequestForUpdate", 3),
             financeOrderService(
                     "purchase/order/PurchaseOrderService.java",
                     "PurchaseOrder", "requireOrderForUpdate", 10),
             service("purchase/receipt/PurchaseReceiptService.java", "PurchaseReceipt", "requireReceiptForUpdate"),
             service("purchase/ret/PurchaseReturnService.java", "PurchaseReturn", "requireReturnForUpdate"),
-            service("subcontract/application/SubcontractApplicationService.java", "SubcontractApplication", "requireApplicationForUpdate"),
+            // V812 死代码清理删掉手动 approve/reverse(4→2)：申请=计划下达只读事实，
+            // 审批快照由 ProductionSubcontractRequestFacade 承担。
+            financeOrderService(
+                    "subcontract/application/SubcontractApplicationService.java",
+                    "SubcontractApplication", "requireApplicationForUpdate", 2),
             financeOrderService(
                     "subcontract/order/SubcontractOrderService.java",
                     "SubcontractOrder", "requireOrderForUpdate", 9),

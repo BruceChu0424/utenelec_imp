@@ -32,6 +32,12 @@ abstract interface class AiChatRepository {
   /// Clears the caller's own chat history on the server.
   Future<void> clearConversations();
 
+  /// The caller's own remembered operations (ADR-163), for the welcome area.
+  Future<List<AiChatMemorySuggestion>> memorySuggestions();
+
+  /// Clears the caller's own operation memory on the server (ADR-163).
+  Future<void> clearOperationMemory();
+
   /// Current state of a confirmation card; use it when a result is unknown
   /// instead of confirming again.
   Future<AiChatAction> actionStatus(String proposalId);
@@ -182,6 +188,15 @@ class DioAiChatRepository implements AiChatRepository {
 
   @override
   Future<void> clearConversations() => api.delete('/ai/chat/conversations');
+
+  @override
+  Future<List<AiChatMemorySuggestion>> memorySuggestions() async =>
+      AiChatMemorySuggestion.listFrom(
+        await api.get('/ai/chat/memory/suggestions'),
+      );
+
+  @override
+  Future<void> clearOperationMemory() => api.delete('/ai/chat/memory');
 
   @override
   Future<AiJobSnapshot> send({

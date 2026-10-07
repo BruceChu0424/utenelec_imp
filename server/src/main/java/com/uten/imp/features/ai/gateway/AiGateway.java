@@ -47,12 +47,14 @@ public class AiGateway implements AiCompletionPort {
     private final AiCallLogService callLogs;
     private final AiProperties properties;
     private final SecurityContextCurrentUser currentUser;
+    private final com.uten.imp.features.ai.usage.AiUserLimitsService userLimits;
     private final Semaphore permits;
     private final SecureRandom random = new SecureRandom();
 
     @Autowired
     public AiGateway(AiProviderService providers, List<AiProtocolClient> clients, AiCallLogService callLogs,
-                     AiProperties properties, SecurityContextCurrentUser currentUser) {
+                     AiProperties properties, SecurityContextCurrentUser currentUser,
+                     com.uten.imp.features.ai.usage.AiUserLimitsService userLimits) {
         this.providers = providers;
         this.clients = new EnumMap<>(AiProtocol.class);
         for (AiProtocolClient client : clients) {
@@ -61,6 +63,7 @@ public class AiGateway implements AiCompletionPort {
         this.callLogs = callLogs;
         this.properties = properties;
         this.currentUser = currentUser;
+        this.userLimits = userLimits;
         this.permits = new Semaphore(Math.max(1, properties.getMaxConcurrentCalls()), true);
     }
 
@@ -92,6 +95,13 @@ public class AiGateway implements AiCompletionPort {
         long budget = properties.getDailyTokenBudget();
         if (budget > 0 && callLogs.todayTokens() >= budget) {
             throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达上限, 请明天再试或联系管理员");
+        }
+        // 个人每日 token 限额(ADR-164): 与全站预算同点同错误码, 管理员给某人单独收紧时才生效;
+        // 探测调用(probeChat)不查, 与全站预算同口径。取当前用户与 logAttempt 同源。
+        UUID caller = currentUser.id().orElse(null);
+        Long personalTokenLimit = userLimits.tokenLimit(caller).orElse(null);
+        if (personalTokenLimit != null && callLogs.todayTokens(caller) >= personalTokenLimit) {
+            throw new AiCallException(AiErrorCategory.QUOTA, "今日 AI 用量已达到你的个人限额, 请明天再试或联系管理员");
         }
         AiProtocolClient.ChatRequest chat = prepare(request, runtime);
         if (request.reasoningEffort().explicit()) {

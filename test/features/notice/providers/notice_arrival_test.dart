@@ -860,9 +860,9 @@ void main() {
   );
 
   testWidgets(
-    'interactive urgent opens the central red card dialog plus top banner (ADR-163)',
+    'interactive urgent opens the central red card dialog plus top banner (ADR-166)',
     (tester) async {
-      // ADR-163（2026-10-06）修订 ADR-059 §六：interactive 的 urgent 待办恢复
+      // ADR-166（2026-10-06）修订 ADR-059 §六：interactive 的 urgent 待办恢复
       // 中央弹窗（红卡呈现），顶部红条并行保留；弹前真态校验对 urgent 同样生效
       // （对照：非 interactive 的 urgent 仍只弹顶部条——见上一用例）。
       SharedPreferences.setMockInitialValues(<String, Object>{});

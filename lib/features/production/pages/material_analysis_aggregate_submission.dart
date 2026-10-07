@@ -91,6 +91,49 @@ final class _MaterialAggregateSubmission {
     final completed = <String>{};
     final createdChildren = <String>{};
     try {
+      // ADR-120 §2.4「统一依赖编排先父后子，同一层合批；只确认一次」：汇总视图
+      // 直接下单在开跑前一次性确认全部所选物料，之后各依赖轮次按身份桥重绑静默
+      // 提交（先父后子），失败即停并保留输入与回执。产品视图入口已确认过
+      // (confirmed=true)不再重复问；uncertain 续做是已确认意图的原样重试，也不问。
+      // 2026-10-07 用户口径：不再逐轮弹确认框。
+      if (!confirmed && !table.uncertain) {
+        // 先走同一套请求构建校验(总量下限、来源已变、路线未统一等)，无效整单
+        // 直接警告、不进确认框——确认框只对真正会下达的整单出现。
+        table.requestFor([for (final key in keys) table.drafts[key]!]);
+        double total = 0;
+        double overTotal = 0;
+        var appendKinds = 0;
+        for (final key in keys) {
+          final draft = table.drafts[key]!;
+          final typed = double.tryParse(draft.totalText) ?? 0;
+          total += typed;
+          final groups = table.draftGroups(draft);
+          final floor = groups.fold<double>(
+            0,
+            (sum, group) =>
+                sum + owner._tableGroupResidual(group, authoritative: true),
+          );
+          if (typed - floor > 0.0001) overTotal += typed - floor;
+          if (groups.isNotEmpty && groups.every(owner._tableGroupIssued)) {
+            appendKinds++;
+          }
+        }
+        final confirmedOnce = await UtenDialog.show(
+          owner.context,
+          title: '确认下单 ${keys.length} 种物料？',
+          content: Text(
+            [
+              '共 ${keys.length} 种物料，合计 ${owner._qty(total)}。',
+              if (appendKinds > 0) '$appendKinds 种为追加原单，只办理本次净增量。',
+              if (overTotal > 0.0001)
+                '含超出当前还缺的 ${owner._qty(overTotal)}（作为公共备货下达）。',
+            ].join('\n'),
+            key: const Key('aggregate-submit-confirm-body'),
+          ),
+          confirmLabel: '确认下单',
+        );
+        if (confirmedOnce != true || !owner.mounted) return false;
+      }
       final dependencies = _dependencies(keys);
       while (remaining.isNotEmpty) {
         final ready = remaining
@@ -139,7 +182,6 @@ final class _MaterialAggregateSubmission {
         ];
         final success = await table.submitStage(
           sources,
-          confirmed: confirmed,
           skipAutoClaim: skipClaims,
         );
         if (!owner.mounted) return false;
@@ -176,7 +218,8 @@ final class _MaterialAggregateSubmission {
       if (createdChildren.isNotEmpty) {
         unawaited(_offerRemainingChildren(createdChildren));
       }
-      if (!confirmed) owner._setPreparationSupplyUsage(null);
+      // 成功一轮整单即重置扣量选择（与产品视图入口同口径），下次提交重新询问。
+      owner._setPreparationSupplyUsage(null);
       return true;
     } on FormatException catch (failure) {
       if (owner.mounted) owner.context.appWarning(failure.message);

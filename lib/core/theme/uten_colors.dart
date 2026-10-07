@@ -120,7 +120,7 @@ abstract final class UtenColors {
   static const Color onInfoContainerDark = Color(0xFFBFDBFE);
 
   /// 广播容器配对（与 [infoContainer] 同构：浅底深字 / 深底浅字）。
-  /// 中央提醒弹窗 BROADCAST（人事广播）级的暖色容器（ADR-163）：amber 偏黄，
+  /// 中央提醒弹窗 BROADCAST（人事广播）级的暖色容器（ADR-166）：amber 偏黄，
   /// 与 error 偏红拉开色相，色弱下再靠徽章文字区分。
   /// 浅色模式：浅琥珀底 + amber-700 深棕字。
   static const Color broadcastContainer = warningBg; // = 0xFFFFFBEB

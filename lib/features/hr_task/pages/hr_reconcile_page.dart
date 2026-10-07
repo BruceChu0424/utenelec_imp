@@ -1,4 +1,4 @@
-// 员工资料核对更正页(ADR-160)：证件核对页(列表页)勾选 N 人「批量核对(N)」进入，
+// 员工资料核对更正页(ADR-160)：证件核对页(列表页)勾选 N 人「批量处理(N)」进入，
 // ?employeeIds=…&returnTo=/hr/tasks/identity。
 //
 // 流程：
@@ -15,6 +15,15 @@
 //     让忙碌遮罩让位——本页只在 Stack 的 Positioned.fill 挂 UtenBusyOverlay，
 //     不叠裸遮罩) → postLongRunning(3min) 逐人执行 → 顶部通知 summary →
 //     重读计划渲染结果列 → 人事手动返回 pop(true)，列表页清勾选并静默刷新。
+//
+// 2026-10-06 批量处理页重做：
+//  - 摘要区改统计胶囊(待核对人数 + 把握分布 高/中/需人工)，替代原一行汇总文字；
+//  - 员工三列(工号/姓名/部门)合并为「员工」一列(姓名主行 + 工号·部门副行)，
+//    「依据」列退役并入把握徽章 Tooltip；
+//  - 问题字段列改为 field_code 驱动的动态列(服务端下发的 items 决定建哪些列，
+//    本期只有 idNumber；未来花名册/AI 来源扩展新字段时页面零改动)；
+//  - 批量条新增「只选把握高的」快捷勾选(全部 HIGH 档未执行行)；
+//  - 勾选计数/提交组装泛化为逐 item(本期每行≤1 项，行为不变，多字段自动成立)。
 //
 // 错误口径：404=计划不存在或无权看(错误态)；409 且 fieldErrors.errorCode ∈
 // {RECONCILE_PLAN_CHANGED(自动重取,尽量保留草稿), RECONCILE_PLAN_BUSY(稍候),
@@ -35,11 +44,13 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/data_display/uten_revision_cell.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -228,7 +239,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
 
   // ── 提交 ─────────────────────────────────────────────────────────────────
 
-  /// N=勾选且已给出最终值的行数；M=这些行的采用项数(本期每行≤1)。
+  /// N=勾选且已给出最终值的行数；M=这些行的采用项数(本期每行≤1，多字段自动求和)。
   /// 已执行的行(有 result/outcome)不再计入——apply 成功后残留的旧选中不复活按钮。
   (int, int) _applyCounts(Set<String> selected) {
     var people = 0;
@@ -236,11 +247,15 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
     for (final row in _plan?.rows ?? const <HrReconcileRow>[]) {
       if (!selected.contains(row.employee.id)) continue;
       if (!_rowPending(row)) continue;
-      final item = row.idNumberItem;
-      if (item == null) continue;
-      if (hrReconcileFinalValue(item, _drafts[row.rowNo]) != null) {
+      var rowItems = 0;
+      for (final item in row.items) {
+        if (hrReconcileFinalValue(item, _drafts[row.rowNo]) != null) {
+          rowItems++;
+        }
+      }
+      if (rowItems > 0) {
         people++;
-        items++;
+        items += rowItems;
       }
     }
     return (people, items);
@@ -256,9 +271,10 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
     for (final row in _plan?.rows ?? const <HrReconcileRow>[]) {
       if (!selected.contains(row.employee.id)) continue;
       if (!_rowPending(row)) continue;
-      final item = row.idNumberItem;
-      if (item == null) continue;
-      if (hrReconcileFinalValue(item, _drafts[row.rowNo]) == null) count++;
+      final hasValue = row.items.any(
+        (item) => hrReconcileFinalValue(item, _drafts[row.rowNo]) != null,
+      );
+      if (row.items.isNotEmpty && !hasValue) count++;
     }
     return count;
   }
@@ -304,28 +320,32 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
     final rows = <HrReconcileApplyRow>[];
     for (final row in plan.rows) {
       if (!selected.contains(row.employee.id)) continue;
-      final item = row.idNumberItem;
-      if (item == null) continue;
-      final finalValue = hrReconcileFinalValue(item, _drafts[row.rowNo]);
-      if (finalValue == null) continue;
-      rows.add(
-        HrReconcileApplyRow(
-          rowNo: row.rowNo,
-          items: [
-            HrReconcileApplyItem(
-              itemNo: item.itemNo,
-              // 语义：手输 > 候选 > 建议(都不带 = 采用建议 newValue)。
-              candidateIndex:
-                  finalValue.source == HrReconcileValueSource.candidate
-                  ? finalValue.candidateIndex
-                  : null,
-              value: finalValue.source == HrReconcileValueSource.manual
-                  ? finalValue.value
-                  : null,
-            ),
-          ],
-        ),
-      );
+      // 与 _applyCounts/_selectedWithoutValue 同口径：已出结果的行不再进请求体
+      // (409 CHANGED 自动重取后勾选可能残留已执行行，弹窗计数已排除它们)。
+      if (!_rowPending(row)) continue;
+      // 逐 item 组装(本期每行≤1 项；未来多字段时整行已给出值的项目全部带上)。
+      // 手输值的合法性按字段类型校验——hrReconcileFinalValue 目前内置证件号
+      // 校验(IdCardUtils)，扩展新字段时在该纯函数里按 field 分发校验器。
+      final applyItems = <HrReconcileApplyItem>[];
+      for (final item in row.items) {
+        final finalValue = hrReconcileFinalValue(item, _drafts[row.rowNo]);
+        if (finalValue == null) continue;
+        applyItems.add(
+          HrReconcileApplyItem(
+            itemNo: item.itemNo,
+            // 语义：手输 > 候选 > 建议(都不带 = 采用建议 newValue)。
+            candidateIndex:
+                finalValue.source == HrReconcileValueSource.candidate
+                ? finalValue.candidateIndex
+                : null,
+            value: finalValue.source == HrReconcileValueSource.manual
+                ? finalValue.value
+                : null,
+          ),
+        );
+      }
+      if (applyItems.isEmpty) continue;
+      rows.add(HrReconcileApplyRow(rowNo: row.rowNo, items: applyItems));
     }
     if (rows.isEmpty) return;
     // 幂等键：planId(36) + '-' + 毫秒时间戳(13) = 50 字符 ≤ 64。
@@ -607,7 +627,8 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
     );
   }
 
-  /// 摘要行 + 只读提示（他人核对只能查看，隐藏勾选与批量条）。
+  /// 摘要区(2026-10-06 重做)：待核对人数主行 + kind 副行 + 把握分布胶囊 + 有效期；
+  /// 只读提示（他人核对只能查看，隐藏勾选与批量条）保留在最上。
   Widget _summaryHeader(
     BuildContext context,
     AppLocalizations l10n,
@@ -615,6 +636,18 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
   ) {
     final theme = Theme.of(context);
     final counts = plan.counts;
+    // 把握分布从「未执行的 item」现算（plan.counts 没有 tier 维度）。
+    final tierCounts = <HrReconcileTier, int>{};
+    for (final row in plan.rows) {
+      if (!_rowPending(row)) continue;
+      for (final item in row.items) {
+        tierCounts[item.tier] = (tierCounts[item.tier] ?? 0) + 1;
+      }
+    }
+    final pendingHigh = tierCounts[HrReconcileTier.high] ?? 0;
+    final pendingMedium = tierCounts[HrReconcileTier.medium] ?? 0;
+    final pendingManual = tierCounts[HrReconcileTier.manual] ?? 0;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         UtenSpacing.s12,
@@ -659,18 +692,64 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
                 ),
               ),
             ),
-          Text(
-            l10n.hrReconcileSummary(
-              counts.rows,
-              counts.update,
-              counts.info,
-              counts.same,
-              counts.applied,
-            ),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                // rows 含已处理行：主行只报「还没核对的」，已处理进副行。
+                l10n.hrReconcileStatPeople(counts.rows - counts.applied),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Flexible(
+                child: Text(
+                  [
+                    if (counts.update > 0)
+                      l10n.hrReconcileStatUpdate(counts.update),
+                    if (counts.info > 0) l10n.hrReconcileStatInfo(counts.info),
+                    if (counts.same > 0) l10n.hrReconcileStatSame(counts.same),
+                    if (counts.applied > 0)
+                      l10n.hrReconcileStatApplied(counts.applied),
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
           ),
+          if (pendingHigh + pendingMedium + pendingManual > 0) ...[
+            const SizedBox(height: UtenSpacing.s4),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s4,
+              children: [
+                if (pendingHigh > 0)
+                  _tierCountChip(
+                    context,
+                    l10n.hrReconcileStatTierHigh(pendingHigh),
+                    UtenColors.success,
+                  ),
+                if (pendingMedium > 0)
+                  _tierCountChip(
+                    context,
+                    l10n.hrReconcileStatTierMedium(pendingMedium),
+                    UtenColors.warning,
+                  ),
+                if (pendingManual > 0)
+                  _tierCountChip(
+                    context,
+                    l10n.hrReconcileStatTierManual(pendingManual),
+                    theme.colorScheme.error,
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 2),
           Text(
             l10n.hrReconcileValidity,
@@ -680,6 +759,27 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
           ),
           const SizedBox(height: UtenSpacing.s4),
         ],
+      ),
+    );
+  }
+
+  /// 摘要里的把握分布小胶囊：与行内 HrReconcileTierBadge 同一色系(弱底)，
+  /// 数字即该档未处理项数。
+  Widget _tierCountChip(BuildContext context, String label, Color color) {
+    final theme = Theme.of(context);
+    return Container(
+      key: ValueKey('hr-reconcile-stat-$label'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(UtenRadius.sm),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -744,36 +844,55 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
       MasterColumnDef(
         key: 'kind',
         label: l10n.hrReconcileColKind,
-        width: 92,
+        width: 76,
         value: (row) => _kindLabel(l10n, row.kind),
         cellBuilder: (context, row) =>
             HrReconcileKindTag(rowNo: row.rowNo, kind: row.kind),
         cardRendersBuilder: true,
       ),
+      // 员工合并列：姓名主行 + 工号·部门副行(2026-10-06 重做，三列并一)。
+      // cardRole=title：compact 卡片形态的标题位渲染本列 cellBuilder(姓名+
+      // 工号·部门)，否则缺省会拿第一列「类型」当标题。
       MasterColumnDef(
-        key: 'code',
-        label: l10n.hrReconcileColCode,
-        width: 110,
-        value: (row) => row.employee.code,
-        cardRole: MasterColumnCardRole.subtitle,
-      ),
-      MasterColumnDef(
-        key: 'name',
-        label: l10n.hrReconcileColName,
-        width: 120,
+        key: 'employee',
+        label: l10n.hrReconcileColEmployee,
+        width: 200,
         value: (row) => row.employee.name,
         cardRole: MasterColumnCardRole.title,
-      ),
-      MasterColumnDef(
-        key: 'deptName',
-        label: l10n.hrReconcileColDept,
-        width: 150,
-        value: (row) => row.employee.deptName,
+        cellBuilder: (context, row) {
+          final theme = Theme.of(context);
+          final sub = [
+            row.employee.code,
+            ?row.employee.deptName,
+          ].where((s) => s.isNotEmpty).join(' · ');
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                row.employee.name,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (sub.isNotEmpty)
+                Text(
+                  sub,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          );
+        },
+        cardRendersBuilder: true,
       ),
       MasterColumnDef(
         key: 'reason',
         label: l10n.hrReconcileColReason,
-        width: 320,
+        width: 300,
         value: (row) => _reasonOf(row),
         // 照列表页原因列：红字折行不截断（选中行换统一前景色）。
         cardRendersBuilder: true,
@@ -792,67 +911,25 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
           );
         },
       ),
-      MasterColumnDef(
-        key: 'idNumber',
-        label: l10n.hrReconcileColIdNumber,
-        width: 380,
-        value: (row) => row.idNumberItem?.oldValue,
-        cellBuilder: (context, row) {
-          final item = row.idNumberItem;
-          if (item == null) return const Text('—');
-          // 草稿提前建好：手输框必须在 build 时就拿到 controller（后建会丢字）；
-          // 只读计划不建（看一眼不该留 200 个 controller）。
-          final draft = plan.canApply ? _draftOf(row.rowNo) : null;
-          final editable =
-              plan.canApply &&
-              item.permitted &&
-              row.kind == HrReconcileRowKind.update &&
-              row.result == null;
-          return HrReconcileIdNumberCell(
-            rowNo: row.rowNo,
-            item: item,
-            masked: masked,
-            editable: editable,
-            draft: draft,
-            onAdoptToggled: editable
-                ? () => setState(() {
-                    final d = _draftOf(row.rowNo);
-                    // 建议与候选互斥：采用建议清候选。
-                    d.adoptedOverride =
-                        !(d.adoptedOverride ?? item.preselected);
-                    d.candidateIndex = null;
-                  })
-                : null,
-            onCandidateToggled: editable
-                ? (index) => setState(() {
-                    final d = _draftOf(row.rowNo);
-                    d.candidateIndex = d.candidateIndex == index ? null : index;
-                  })
-                : null,
-            onManualChanged: editable ? () => setState(() {}) : null,
-          );
-        },
-        cardRendersBuilder: true,
-      ),
-      MasterColumnDef(
-        key: 'basis',
-        label: l10n.hrReconcileColBasis,
-        width: 130,
-        value: (row) => row.idNumberItem?.basis?.label,
-      ),
+      // field_code 驱动的动态问题列：计划里出现哪些字段就建哪些列——
+      // 未来花名册/AI 来源扩展新字段(部门/手机号/生日…)时本页零改动。
+      ..._problemColumns(l10n, plan, masked),
       MasterColumnDef(
         key: 'tier',
         label: l10n.hrReconcileColTier,
         width: 92,
-        value: (row) => row.idNumberItem == null
+        value: (row) => _primaryItem(row)?.tier == null
             ? null
-            : _tierLabel(l10n, row.idNumberItem!.tier),
-        cellBuilder: (context, row) => row.idNumberItem == null
-            ? const SizedBox.shrink()
-            : HrReconcileTierBadge(
-                itemNo: row.idNumberItem!.itemNo,
-                tier: row.idNumberItem!.tier,
-              ),
+            : _tierLabel(l10n, _primaryItem(row)!.tier),
+        cellBuilder: (context, row) {
+          final item = _primaryItem(row);
+          if (item == null) return const SizedBox.shrink();
+          return HrReconcileTierBadge(
+            itemNo: item.itemNo,
+            tier: item.tier,
+            basisLabel: item.basis?.label,
+          );
+        },
         cardRendersBuilder: true,
       ),
       MasterColumnDef(
@@ -864,6 +941,98 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
         cellBuilder: (context, row) => HrReconcileNotesCell(row: row),
         cardRendersBuilder: true,
       ),
+    ];
+  }
+
+  /// 行的首要问题项：本期每行至多一项(items[0])；多字段时代为主展示项
+  /// (把握徽章列只挂一个，行内所有字段列各自完整展示)。
+  HrReconcileItem? _primaryItem(HrReconcileRow row) =>
+      row.items.isEmpty ? null : row.items.first;
+
+  /// 动态问题字段列(2026-10-06)：按 items 的 field 去重(保序)建列，列名用
+  /// 服务端下发的字段 label。idNumber(写入口 CHANGE_IDENTITY)挂完整交互格
+  /// (建议/候选/手输)；其余字段先用通用旧新对照只读展示，等后端放开对应
+  /// source 后再补各自编辑器。
+  List<MasterColumnDef<HrReconcileRow>> _problemColumns(
+    AppLocalizations l10n,
+    HrReconcilePlan plan,
+    bool masked,
+  ) {
+    final fields = <String>[];
+    final sampleItem = <String, HrReconcileItem>{};
+    for (final row in plan.rows) {
+      for (final item in row.items) {
+        if (!sampleItem.containsKey(item.field)) {
+          fields.add(item.field);
+          sampleItem[item.field] = item;
+        }
+      }
+    }
+    HrReconcileItem? itemOf(HrReconcileRow row, String field) {
+      for (final item in row.items) {
+        if (item.field == field) return item;
+      }
+      return null;
+    }
+
+    return [
+      for (final field in fields)
+        MasterColumnDef<HrReconcileRow>(
+          key: 'field-$field',
+          label: sampleItem[field]!.label,
+          width: 420,
+          value: (row) => itemOf(row, field)?.oldValue,
+          // 表头 ⓘ：向第一次用的人解释这格的「旧→新」视觉语法与三种改法。
+          info: sampleItem[field]!.writePath == 'CHANGE_IDENTITY'
+              ? l10n.hrReconcileIdNumberInfo
+              : null,
+          cellBuilder: (context, row) {
+            final item = itemOf(row, field);
+            if (item == null) return const Text('—');
+            if (item.writePath == 'CHANGE_IDENTITY') {
+              // 草稿提前建好：手输框必须在 build 时就拿到 controller（后建会丢字）；
+              // 只读计划不建（看一眼不该留 200 个 controller）。
+              final draft = plan.canApply ? _draftOf(row.rowNo) : null;
+              final editable =
+                  plan.canApply &&
+                  item.permitted &&
+                  row.kind == HrReconcileRowKind.update &&
+                  row.result == null;
+              return HrReconcileIdNumberCell(
+                rowNo: row.rowNo,
+                item: item,
+                masked: masked,
+                editable: editable,
+                draft: draft,
+                onAdoptToggled: editable
+                    ? () => setState(() {
+                        final d = _draftOf(row.rowNo);
+                        // 建议与候选互斥：采用建议清候选。
+                        d.adoptedOverride =
+                            !(d.adoptedOverride ?? item.preselected);
+                        d.candidateIndex = null;
+                      })
+                    : null,
+                onCandidateToggled: editable
+                    ? (index) => setState(() {
+                        final d = _draftOf(row.rowNo);
+                        d.candidateIndex = d.candidateIndex == index
+                            ? null
+                            : index;
+                      })
+                    : null,
+                onManualChanged: editable ? () => setState(() {}) : null,
+              );
+            }
+            // 通用字段(扩展占位)：旧新对照只读。
+            return UtenRevisionCell(
+              before: item.oldValue,
+              after: item.newValue,
+              masked: masked,
+            );
+          },
+          cardRendersBuilder: true,
+        ),
     ];
   }
 
@@ -891,7 +1060,19 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
     Set<String> selected,
   ) {
     final (people, items) = _applyCounts(selected);
+    final highCount = _selectableHighTierCount();
     return [
+      // 快捷勾选：一键选中全部「高把握」未执行行(算法 p≥0.90 且 verified 的建议，
+      // 蒙特卡洛保证正确)——大批量时先放行确定项，剩下的逐个看。
+      if (highCount > 0)
+        UtenButton(
+          key: const Key('hr-reconcile-select-high'),
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.large,
+          icon: Icons.bolt_rounded,
+          onPressed: !_busy ? _selectHighTier : null,
+          child: Text(l10n.hrReconcileSelectHigh),
+        ),
       UtenButton(
         key: const Key('hr-reconcile-apply'),
         type: UtenButtonType.danger,
@@ -903,5 +1084,41 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
         child: Text(l10n.hrReconcileApplyButton(people, items)),
       ),
     ];
+  }
+
+  /// 可被「只选把握高的」勾中的行数：UPDATE、未执行、未被他人认领、
+  /// 存在 tier=HIGH 的项，且当前未选中(重复点击不会反向取消)。
+  int _selectableHighTierCount() {
+    final plan = _plan;
+    if (plan == null || !plan.canApply) return 0;
+    var count = 0;
+    for (final row in plan.rows) {
+      if (_selectedIds.contains(row.employee.id)) continue;
+      if (row.kind != HrReconcileRowKind.update ||
+          row.claimedByOther ||
+          row.result != null) {
+        continue;
+      }
+      if (row.items.any((item) => item.tier == HrReconcileTier.high)) count++;
+    }
+    return count;
+  }
+
+  /// 勾选全部高把握未执行行(与表格 idOf 同一资格口径，叠加 tier=HIGH)。
+  void _selectHighTier() {
+    final plan = _plan;
+    if (plan == null || !plan.canApply || _busy) return;
+    final next = Set<String>.of(_selectedIds);
+    for (final row in plan.rows) {
+      if (row.kind != HrReconcileRowKind.update ||
+          row.claimedByOther ||
+          row.result != null) {
+        continue;
+      }
+      if (row.items.any((item) => item.tier == HrReconcileTier.high)) {
+        next.add(row.employee.id);
+      }
+    }
+    setState(() => _selectedIds = next);
   }
 }

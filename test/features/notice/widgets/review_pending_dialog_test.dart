@@ -357,7 +357,7 @@ void main() {
         ],
         routes: [GoRoute(path: entry.$2, builder: (_, _) => Text(entry.$3))],
       );
-      // ADR-163：头部摘要为分级计数（两条均 approval+normal → 待办 2，
+      // ADR-166：头部摘要为分级计数（两条均 approval+normal → 待办 2，
       // 2026-10-06 修订：审批类不因 normal 降进度级），不再是事件域 chips。
       expect(find.text('待办 2'), findsOneWidget);
       await tester.tap(find.text('生产申请'));
@@ -393,7 +393,7 @@ void main() {
         ),
       ],
     );
-    // ADR-163：两条 approval+normal 待办的头部摘要是「待办 2」分级计数
+    // ADR-166：两条 approval+normal 待办的头部摘要是「待办 2」分级计数
     // （2026-10-06 修订：审批类一律行动级）。
     expect(find.text('待办 2'), findsOneWidget);
     await tester.tap(find.text('委外可下单：EB-001 委外件 可下单 4 件'));
@@ -542,7 +542,7 @@ void main() {
       expect(find.text('待财务确认：SO-001'), findsOneWidget);
       expect(find.text('去工作台处理'), findsOneWidget);
       expect(find.text('打卡确认'), findsOneWidget);
-      // 紧急人工通知带「紧急」红徽章（ADR-163 分级徽章）。
+      // 紧急人工通知带「紧急」红徽章（ADR-166 分级徽章）。
       expect(find.text('紧急'), findsOneWidget);
       // 头部分级计数：待办(approval+normal→行动 1，2026-10-06 修订) + 人工紧急(紧急 1)。
       expect(find.text('待办 1'), findsOneWidget);
@@ -575,7 +575,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('打卡确认'), findsOneWidget);
     expect(find.text('查看详情'), findsOneWidget);
-    // ADR-163：人工 important 不再显示旧「重要」徽章，归广播级「公告」。
+    // ADR-166：人工 important 不再显示旧「重要」徽章，归广播级「公告」。
     expect(find.text('重要'), findsNothing);
     expect(find.text('公告'), findsOneWidget);
   });
@@ -818,7 +818,7 @@ void main() {
     expect(lastItem.hitTestable(), findsOneWidget);
   });
 
-  // ---------------- 分级体系（2026-10-06，ADR-163）----------------
+  // ---------------- 分级体系（2026-10-06，ADR-166）----------------
 
   /// 取标题文本所属卡片（唯一 Container 祖先）的 BoxDecoration。
   BoxDecoration decorationOfCard(WidgetTester tester, String title) {
@@ -882,7 +882,7 @@ void main() {
   });
 
   testWidgets(
-    'same sourceEvent splits into 行动/进度 levels by priority (ADR-163)',
+    'same sourceEvent splits into 行动/进度 levels by priority (ADR-166)',
     (tester) async {
       // 车间物料事件同源不同级：「可开工行动卡」important=行动(teal)、
       // 「到货进展」normal=进度(info 蓝)。
@@ -1005,7 +1005,7 @@ void main() {
     expect(find.text('待办 1'), findsOneWidget);
     expect(find.text('进度 1'), findsOneWidget);
     expect(find.text('公告 1'), findsOneWidget);
-    // 待办审核组在前、人事广播组在后（ADR-163 排序：broadcast 垫底）。
+    // 待办审核组在前、人事广播组在后（ADR-166 排序：broadcast 垫底）。
     expect(
       tester.getTopLeft(find.text('待办审核 · 3')).dy,
       lessThan(tester.getTopLeft(find.text('人事/公司通知 · 1')).dy),

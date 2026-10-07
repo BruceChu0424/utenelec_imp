@@ -20,6 +20,38 @@
       "doc": "docs/03-页面/AI服务设置页.md"
     },
     {
+      "route": "/admin/ai-usage",
+      "title": "AI 服务设置页(看板)",
+      "aliases": [],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/AI服务设置页.md"
+    },
+    {
+      "route": "/admin/ai-usage/:userId",
+      "title": "人员详情",
+      "aliases": [],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [],
+      "parent": "/admin/ai-usage",
+      "record": true,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/AI服务设置页.md"
+    },
+    {
       "route": "/admin/audit-logs",
       "title": "审计日志",
       "aliases": [

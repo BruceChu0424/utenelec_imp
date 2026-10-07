@@ -278,9 +278,9 @@ void main() {
     expect(table.columns.firstWhere((c) => c.key == 'note').label, '原因');
     expect(table.columns.firstWhere((c) => c.key == 'date').label, '入职日');
     expect(table.facets.containsKey('window'), isFalse);
-    // 2026-10-05 起开多选「批量核对(N)」进核对更正页(ADR-160)：能改档案或能改
+    // 2026-10-05 起开多选「批量处理(N)」进核对更正页(ADR-160)：能改档案或能改
     // 证件(employee:pii:edit)即可，与 /hr/tasks/reconcile 路由守卫同源。
-    expect(table.selectable, isTrue, reason: '证件核对开多选批量核对');
+    expect(table.selectable, isTrue, reason: '证件核对开多选批量处理');
     expect(table.batchActionsBuilder, isNotNull);
     final noteColumn = table.columns.firstWhere((c) => c.key == 'note');
     expect(noteColumn.value(table.items.first), '身份证号应为18位，当前为17位');
@@ -420,7 +420,7 @@ void main() {
     },
   );
 
-  testWidgets('identity 批量核对按钮存在且文字随选中数变化', (tester) async {
+  testWidgets('identity 批量处理按钮存在且文字随选中数变化', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
     final hrTasks = _FakeHrTaskRepository(
@@ -442,20 +442,20 @@ void main() {
     await tester.pumpAndSettle();
 
     final button = find.byKey(const Key('hr-task-batch-identity-review'));
-    expect(button, findsOneWidget, reason: '悬浮批量组里有「批量核对」');
-    expect(find.text('批量核对(0)'), findsOneWidget);
+    expect(button, findsOneWidget, reason: '悬浮批量组里有「批量处理」');
+    expect(find.text('批量处理(0)'), findsOneWidget);
     _table(tester).onSelectedIdsChanged!({'a'});
     await tester.pumpAndSettle();
-    expect(find.text('批量核对(1)'), findsOneWidget);
+    expect(find.text('批量处理(1)'), findsOneWidget);
     _table(tester).onSelectedIdsChanged!({'a', 'b'});
     await tester.pumpAndSettle();
-    expect(find.text('批量核对(2)'), findsOneWidget);
-    expect(find.text('批量核对(1)'), findsNothing);
+    expect(find.text('批量处理(2)'), findsOneWidget);
+    expect(find.text('批量处理(1)'), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('identity 未勾选时批量核对禁用，点禁用提示先勾选', (tester) async {
+  testWidgets('identity 未勾选时批量处理禁用，点禁用提示先勾选', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
     final hrTasks = _FakeHrTaskRepository(
@@ -484,14 +484,14 @@ void main() {
     );
     expect(
       container.read(appNotificationProvider).map((n) => n.message),
-      contains('请先勾选要核对的员工'),
+      contains('请先勾选要处理的员工'),
       reason: '点禁用态给引导提示，而不是毫无反应',
     );
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('identity 批量核对 push 核对更正页深链(排序 ids + returnTo)', (tester) async {
+  testWidgets('identity 批量处理 push 核对更正页深链(排序 ids + returnTo)', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
     final hrTasks = _FakeHrTaskRepository(
@@ -539,7 +539,7 @@ void main() {
     await tester.tap(find.byKey(const Key('hr-task-batch-identity-review')));
     await tester.pumpAndSettle();
 
-    expect(pushed, isNotNull, reason: '点了批量核对应跳核对更正页');
+    expect(pushed, isNotNull, reason: '点了批量处理应跳核对更正页');
     expect(
       pushed,
       RoutePath.hrReconcile(

@@ -1,4 +1,4 @@
-// CelebrationMascot 兜底契约（ADR-163 附带核实）：
+// CelebrationMascot 兜底契约（ADR-166 附带核实）：
 // assets/celebration/ 的「小优」美术是占位（磁盘缺失、目录为空），widget 必须经
 // Image.errorBuilder 安全回落 UtenBrandMascot(logo_ip.png)——不灰屏、不抛异常。
 import 'package:flutter/material.dart';

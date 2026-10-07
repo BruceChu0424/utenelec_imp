@@ -59,7 +59,7 @@ class AiConnectionTesterTest {
         AiHttpTransport transport = new AiHttpTransport(properties);
         AiGateway gateway = new AiGateway(mock(AiProviderService.class),
                 List.of(new OpenAiChatClient(transport), new AnthropicMessagesClient(transport)), callLogs,
-                properties, currentUser);
+                properties, currentUser, mock(com.uten.imp.features.ai.usage.AiUserLimitsService.class));
         tester = new AiConnectionTester(gateway, Clock.systemUTC());
     }
 

@@ -13,7 +13,9 @@ import 'ai_chat_models.dart';
 /// reported in [error] after the caller rolled the choice back.
 ///
 /// "Confirm before actions" is shown as always on: every AI action is a
-/// confirmation card first, and that is not a setting.
+/// confirmation card first, and that is not a setting. The two destructive
+/// buttons ([onClearHistory], [onClearMemory]) ask the caller for
+/// confirmation before anything is deleted.
 class AiChatSettingsPanel extends StatelessWidget {
   const AiChatSettingsPanel({
     super.key,
@@ -21,10 +23,13 @@ class AiChatSettingsPanel extends StatelessWidget {
     required this.reasoningSupported,
     required this.onChange,
     required this.onClearHistory,
+    required this.onClearMemory,
     this.savingField,
     this.error,
     this.clearing = false,
     this.canClear = true,
+    this.clearingMemory = false,
+    this.canClearMemory = true,
   });
 
   final AiChatSettings settings;
@@ -32,11 +37,18 @@ class AiChatSettingsPanel extends StatelessWidget {
   final void Function(String field, Object value) onChange;
   final VoidCallback onClearHistory;
 
+  /// ADR-163: clears the caller's own operation memory.
+  final VoidCallback onClearMemory;
+
   /// Wire name of the field being saved, if any.
   final String? savingField;
   final String? error;
   final bool clearing;
   final bool canClear;
+
+  /// Whether the operation memory is being cleared right now.
+  final bool clearingMemory;
+  final bool canClearMemory;
 
   @override
   Widget build(BuildContext context) {
@@ -247,6 +259,15 @@ class AiChatSettingsPanel extends StatelessWidget {
             enabled: !busy,
             onChanged: (value) => onChange('showSuggestions', value),
           ),
+          _Toggle(
+            field: 'operationMemory',
+            title: l10n.aiChatMemorySettingLabel,
+            hint: l10n.aiChatMemorySettingHint,
+            value: settings.operationMemory,
+            saving: savingField == 'operationMemory',
+            enabled: !busy,
+            onChanged: (value) => onChange('operationMemory', value),
+          ),
           ListTile(
             key: const ValueKey('ai-settings-confirm-always'),
             contentPadding: EdgeInsets.zero,
@@ -275,6 +296,20 @@ class AiChatSettingsPanel extends StatelessWidget {
               onPressed: clearing || busy || !canClear ? null : onClearHistory,
               // Wraps at large text sizes instead of overflowing the panel.
               child: Flexible(child: Text(l10n.aiChatSettingsClear)),
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: UtenButton(
+              key: const ValueKey('ai-settings-clear-memory'),
+              type: UtenButtonType.danger,
+              isLoading: clearingMemory,
+              onPressed: clearingMemory || busy || !canClearMemory
+                  ? null
+                  : onClearMemory,
+              // Wraps at large text sizes instead of overflowing the panel.
+              child: Flexible(child: Text(l10n.aiChatMemoryClear)),
             ),
           ),
         ],

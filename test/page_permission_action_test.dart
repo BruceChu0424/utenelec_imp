@@ -6,19 +6,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
-import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_picker.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
-import 'package:uten_imp/features/admin/pages/page_permission_settings_page.dart';
+import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_models.dart';
 import 'package:uten_imp/shared/auth/page_permission_delegation_repository.dart';
+import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
-import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 
 void main() {
   testWidgets(
@@ -63,7 +62,7 @@ void main() {
       );
     },
   );
-  test('models parse bounded backend workspace DTO shapes', () {
+  test('models parse grouped backend workspace DTO shapes', () {
     final staff = PagePermissionStaffPage.fromJson({
       'surfaceKey': 'sales.order',
       'departmentId': 'department-1',
@@ -87,7 +86,8 @@ void main() {
       ],
     });
     final detail = PagePermissionEmployeeDetail.fromJson({
-      'surfaceKey': 'sales.order',
+      'surfaceKey': 'sales.hub',
+      'surfaceTitle': '销售管理',
       'departmentId': 'department-1',
       'departmentName': '销售一组',
       'settingMode': 'CENTRAL_OVERRIDE',
@@ -98,16 +98,40 @@ void main() {
         'departmentManager': false,
         'hasAccount': true,
       },
-      'permissions': [
+      'groups': [
         {
-          'code': 'sales_order:view',
-          'name': '销售订货查看',
-          'actorEffective': true,
-          'targetBaseEffective': true,
-          'effective': true,
-          'configuredEffect': 'grant',
-          'rowVersion': 3,
-          'editable': true,
+          'surfaceKey': 'sales.hub',
+          'title': '销售管理',
+          'root': true,
+          'permissions': [
+            {
+              'code': 'sales_order:priority',
+              'name': '销售订单优先级',
+              'actorEffective': true,
+              'targetBaseEffective': true,
+              'effective': true,
+              'configuredEffect': 'grant',
+              'rowVersion': 3,
+              'editable': true,
+            },
+          ],
+        },
+        {
+          'surfaceKey': 'sales.quote',
+          'title': '销售报价',
+          'root': false,
+          'permissions': [
+            {
+              'code': 'sales_quote:view',
+              'name': '销售报价查看',
+              'actorEffective': true,
+              'targetBaseEffective': true,
+              'effective': true,
+              'configuredEffect': 'grant',
+              'rowVersion': 1,
+              'editable': true,
+            },
+          ],
         },
       ],
     });
@@ -116,8 +140,13 @@ void main() {
     expect(staff.items.single.departmentName, '销售一组');
     expect(staff.items.single.accountActive, isTrue);
     expect(detail.superAdminMode, isTrue);
-    expect(detail.permissions.single.baseEffective, isTrue);
-    expect(detail.permissions.single.delegationEnabled, isTrue);
+    expect(detail.surfaceTitle, '销售管理');
+    expect(detail.groups, hasLength(2));
+    expect(detail.groups.first.root, isTrue);
+    expect(detail.groups.last.title, '销售报价');
+    expect(detail.permissions, hasLength(2));
+    expect(detail.permissions.first.baseEffective, isTrue);
+    expect(detail.permissions.first.delegationEnabled, isTrue);
   });
 
   testWidgets('ordinary employee does not see permission settings action', (
@@ -129,9 +158,13 @@ void main() {
     expect(find.byKey(const ValueKey('page-permission-action')), findsNothing);
   });
 
-  testWidgets('enabled super admin opens independent page with full catalog', (
+  testWidgets('enabled super admin opens in-place drawer with grouped tree', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1200, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(_actionApp(canManage: true, superAdmin: true));
     await tester.pumpAndSettle();
 
@@ -140,7 +173,8 @@ void main() {
     await tester.tap(action);
     await tester.pumpAndSettle();
 
-    expect(find.text('独立权限设置页'), findsOneWidget);
+    expect(find.byType(PagePermissionDrawer), findsOneWidget);
+    expect(find.text('销售订货 · 页面权限'), findsOneWidget);
   });
 
   testWidgets('disabled release gate hides action even for super admin', (
@@ -162,7 +196,90 @@ void main() {
     );
   });
 
-  testWidgets('expanded page uses split view and submits one atomic diff', (
+  testWidgets(
+    'drawer groups by family, merges create into edit, and submits one atomic diff',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 820);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _FakePagePermissionRepository();
+
+      await tester.pumpWidget(_drawerApp(repository));
+      await tester.pumpAndSettle();
+
+      // 选人前是选人视图：部门筛选 + 人员列表。
+      expect(find.text('张三(S001)'), findsOneWidget);
+      expect(find.text('销售订货查看'), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('page-permission-staff-employee-1')),
+      );
+      await tester.pumpAndSettle();
+
+      // 普通页面（单根组）：不重复分组头，族行直接铺开。
+      expect(find.text('销售管理 · 本页'), findsNothing);
+      // 族折叠态：只看到族行（查看/编辑合并/执行·办理），明细行不可见。
+      expect(find.text('查看'), findsOneWidget);
+      expect(find.text('编辑（含新增与修改）'), findsOneWidget);
+      expect(find.text('执行·办理'), findsOneWidget);
+      expect(find.text('销售订货编辑'), findsNothing);
+
+      // 展开编辑族：新增与修改两颗明细开关都在里面。
+      await tester.tap(find.text('编辑（含新增与修改）'));
+      await tester.pumpAndSettle();
+      expect(find.text('销售订货编辑'), findsOneWidget);
+      expect(find.text('销售订贷新增'), findsOneWidget);
+
+      // 历史委派行在「执行·办理」族里，同样先展开。
+      await tester.tap(find.text('执行·办理'));
+      await tester.pumpAndSettle();
+      final historical = tester.widget<Switch>(
+        find.byKey(
+          const ValueKey('page-permission-employee-1-sales_order:priority'),
+        ),
+      );
+      expect(historical.value, isTrue);
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey('page-permission-employee-1-sales_order:edit'),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('page-permission-save')));
+      await tester.pumpAndSettle();
+
+      expect(repository.savedChanges, hasLength(1));
+      expect(repository.savedChanges.single.code, Perm.salesOrderEdit);
+      expect(repository.savedChanges.single.enabled, isTrue);
+      expect(repository.savedChanges.single.expectedVersion, 0);
+    },
+  );
+
+  testWidgets('hub drawer renders one section per child surface', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 820);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = _FakePagePermissionRepository(hubTree: true);
+
+    await tester.pumpWidget(_drawerApp(repository));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('page-permission-staff-employee-1')),
+    );
+    await tester.pumpAndSettle();
+
+    // hub 树：根面组保留没被认领的码，子面组各成一个分组条。
+    expect(find.text('销售管理 · 本页'), findsOneWidget);
+    expect(find.text('销售报价'), findsOneWidget);
+    expect(find.text('销售订货'), findsOneWidget);
+    expect(find.byType(PagePermissionDrawer), findsOneWidget);
+  });
+
+  testWidgets('family checkbox grants the whole family in one batch', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1200, 820);
@@ -171,50 +288,35 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final repository = _FakePagePermissionRepository();
 
-    await tester.pumpWidget(_settingsApp(repository));
+    await tester.pumpWidget(_drawerApp(repository));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('page-permission-staff-employee-1')),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byType(UtenSplitView), findsOneWidget);
-    expect(find.text('张三'), findsWidgets);
-    expect(find.text('销售订货查看'), findsOneWidget);
-    expect(find.text('供应商查看'), findsNothing);
-    final historical = tester.widget<SwitchListTile>(
-      find.byKey(
-        const ValueKey('page-permission-employee-1-sales_order:priority'),
-      ),
+    // 编辑族三态开关：一键全开 = 新增+修改两颗都进待提交集合。
+    final familyRow = find.ancestor(
+      of: find.text('编辑（含新增与修改）'),
+      matching: find.byType(InkWell),
     );
-    expect(historical.value, isTrue);
-
-    await tester.tap(
-      find.byKey(const ValueKey('page-permission-employee-1-sales_order:edit')),
+    final checkbox = find.descendant(
+      of: familyRow,
+      matching: find.byType(Checkbox),
     );
+    await tester.tap(checkbox);
     await tester.pump();
+    expect(find.text('已修改 2 项'), findsOneWidget);
+
     await tester.tap(find.byKey(const ValueKey('page-permission-save')));
     await tester.pumpAndSettle();
-
-    expect(repository.savedChanges, hasLength(1));
-    expect(repository.savedChanges.single.code, Perm.salesOrderEdit);
-    expect(repository.savedChanges.single.enabled, isTrue);
-    expect(repository.savedChanges.single.expectedVersion, 0);
+    expect(repository.savedChanges, hasLength(2));
+    expect(repository.savedChanges.map((change) => change.code).toSet(), {
+      Perm.salesOrderEdit,
+      Perm.salesOrderCreate,
+    });
   });
 
-  testWidgets('page settings filters authoritative action types', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 820);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-
-    await tester.pumpWidget(_settingsApp(_FakePagePermissionRepository()));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('page-permission-action-edit')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('销售订货编辑'), findsOneWidget);
-    expect(find.text('销售订货查看'), findsNothing);
-    expect(find.text('编辑销售订货草稿'), findsOneWidget);
-  });
   testWidgets(
     'department is optional, uses managed tree and can clear to all',
     (tester) async {
@@ -224,7 +326,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final repository = _FakePagePermissionRepository();
 
-      await tester.pumpWidget(_settingsApp(repository));
+      await tester.pumpWidget(_drawerApp(repository));
       await tester.pumpAndSettle();
 
       final picker = tester.widget<UtenDepartmentPicker>(
@@ -262,101 +364,55 @@ void main() {
     },
   );
 
-  testWidgets(
-    'cancel discard restores selected and cleared department filter',
-    (tester) async {
-      tester.view.physicalSize = const Size(1200, 820);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final repository = _FakePagePermissionRepository();
-
-      await tester.pumpWidget(_settingsApp(repository));
-      await tester.pumpAndSettle();
-
-      Future<void> chooseDepartment(String name) async {
-        await tester.tap(
-          find.descendant(
-            of: find.byType(UtenDepartmentPicker),
-            matching: find.byType(InputDecorator),
-          ),
-        );
-        await tester.pumpAndSettle();
-        final tree = find.byType(UtenDepartmentTreeView);
-        await tester.tap(find.descendant(of: tree, matching: find.text(name)));
-        await tester.pump();
-        await tester.tap(find.text('确定'));
-        await tester.pumpAndSettle();
-      }
-
-      await chooseDepartment('销售一组');
-      expect(repository.requestedDepartments.last, 'department-1');
-
-      final editPermission = find.byKey(
-        const ValueKey('page-permission-employee-1-sales_order:edit'),
-      );
-      await tester.tap(editPermission);
-      await tester.pump();
-      expect(tester.widget<SwitchListTile>(editPermission).value, isTrue);
-
-      await chooseDepartment('研发部');
-      expect(find.text('丢弃未保存修改'), findsOneWidget);
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-
-      var picker = tester.widget<UtenDepartmentPicker>(
-        find.byType(UtenDepartmentPicker),
-      );
-      expect(picker.initialSelection.single.id, 'department-1');
-      expect(repository.requestedDepartments.last, 'department-1');
-      expect(tester.widget<SwitchListTile>(editPermission).value, isTrue);
-
-      await tester.tap(
-        find.byKey(const ValueKey('uten-department-picker-clear')),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('丢弃未保存修改'), findsOneWidget);
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-
-      picker = tester.widget<UtenDepartmentPicker>(
-        find.byType(UtenDepartmentPicker),
-      );
-      expect(picker.initialSelection.single.id, 'department-1');
-      expect(repository.requestedDepartments.last, 'department-1');
-      expect(tester.widget<SwitchListTile>(editPermission).value, isTrue);
-    },
-  );
-
-  testWidgets('compact page keeps list then opens selected employee detail', (
+  testWidgets('dirty state guards switching person and closing the drawer', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(375, 812);
+    tester.view.physicalSize = const Size(1200, 820);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    const longDepartment = '总经办直属战略与国际业务协同管理办公室';
-    final repository = _FakePagePermissionRepository(
-      departmentName: longDepartment,
-      accountActive: false,
-    );
+    final repository = _FakePagePermissionRepository();
 
-    await tester.pumpWidget(_settingsApp(repository));
+    await tester.pumpWidget(_drawerApp(repository));
     await tester.pumpAndSettle();
-
-    expect(find.text('张三(S001)'), findsOneWidget);
-    expect(find.textContaining(longDepartment), findsOneWidget);
-    expect(find.byTooltip('账号未启用'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-    expect(find.text('销售订货查看'), findsNothing);
     await tester.tap(
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('销售订货查看'), findsOneWidget);
-    expect(find.byTooltip('返回人员列表'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('编辑（含新增与修改）'));
+    await tester.pumpAndSettle();
+    final editSwitch = find.byKey(
+      const ValueKey('page-permission-employee-1-sales_order:edit'),
+    );
+    await tester.tap(editSwitch);
+    await tester.pump();
+    expect(tester.widget<Switch>(editSwitch).value, isTrue);
+    expect(find.text('已修改 1 项'), findsOneWidget);
+
+    // 换人需确认；取消则保持待提交状态。
+    await tester.tap(find.text('更换'));
+    await tester.pumpAndSettle();
+    expect(find.text('丢弃未保存修改'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Switch>(editSwitch).value, isTrue);
+
+    // 关闭同样拦截。
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.text('丢弃未保存修改'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PagePermissionDrawer), findsOneWidget);
+
+    // 撤销修改恢复原值后即可直接关闭。
+    await tester.tap(find.text('撤销修改'));
+    await tester.pump();
+    expect(tester.widget<Switch>(editSwitch).value, isFalse);
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PagePermissionDrawer), findsNothing);
   });
 
   testWidgets('search is debounced on server and staff list loads next page', (
@@ -368,7 +424,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final repository = _FakePagePermissionRepository(totalPages: 2);
 
-    await tester.pumpWidget(_settingsApp(repository));
+    await tester.pumpWidget(_drawerApp(repository));
     await tester.pumpAndSettle();
     final searchField = find.descendant(
       of: find.byType(UtenSearchBar),
@@ -386,58 +442,6 @@ void main() {
   });
 
   testWidgets(
-    'wide auto selection prefers an existing account and never prompts',
-    (tester) async {
-      tester.view.physicalSize = const Size(1200, 820);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final repository = _FakePagePermissionRepository(
-        staffItems: const [
-          PagePermissionStaffSummary(
-            employeeId: 'employee-1',
-            departmentId: 'department-1',
-            departmentName: '销售一组',
-            code: 'S001',
-            fullName: '张三',
-            positionName: '业务员',
-            departmentManager: false,
-            hasAccount: false,
-            accountActive: false,
-          ),
-          PagePermissionStaffSummary(
-            employeeId: 'employee-2',
-            departmentId: 'department-1',
-            departmentName: '销售一组',
-            code: 'S002',
-            fullName: '李四',
-            positionName: '业务员',
-            departmentManager: false,
-            hasAccount: true,
-            accountActive: true,
-          ),
-        ],
-      );
-
-      await tester.pumpWidget(
-        _settingsApp(
-          repository,
-          permissions: const {Perm.accountSupport},
-          employeeRepository: _ProvisionEmployeeRepository(),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.byKey(const ValueKey('provision-selected-employee-dialog')),
-        findsNothing,
-      );
-      expect(repository.detailEmployeeIds, ['employee-2']);
-      expect(find.text('李四'), findsWidgets);
-    },
-  );
-
-  testWidgets(
     'unprovisioned employee is visible but cannot provision without account support',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 820);
@@ -448,15 +452,11 @@ void main() {
       final employeeRepository = _ProvisionEmployeeRepository();
 
       await tester.pumpWidget(
-        _settingsApp(repository, employeeRepository: employeeRepository),
+        _drawerApp(repository, employeeRepository: employeeRepository),
       );
       await tester.pumpAndSettle();
 
       expect(find.text('未开通账号'), findsOneWidget);
-      expect(find.text('此人还未开通账号，暂不能设置权限'), findsOneWidget);
-      expect(find.text('请联系具备“账号支持”权限的人员开通登录账号。'), findsOneWidget);
-      expect(repository.detailEmployeeIds, isEmpty);
-
       await tester.tap(
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
@@ -467,6 +467,9 @@ void main() {
         findsNothing,
       );
       expect(employeeRepository.provisionCalls, 0);
+      expect(find.text('此人还未开通账号，暂不能设置权限'), findsOneWidget);
+      expect(find.text('请联系具备“账号支持”权限的人员开通登录账号。'), findsOneWidget);
+      expect(repository.detailEmployeeIds, isEmpty);
     },
   );
 
@@ -481,7 +484,7 @@ void main() {
     final employeeRepository = _ProvisionEmployeeRepository();
 
     await tester.pumpWidget(
-      _settingsApp(
+      _drawerApp(
         repository,
         permissions: const {Perm.accountSupport},
         employeeRepository: employeeRepository,
@@ -517,7 +520,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        _settingsApp(
+        _drawerApp(
           repository,
           permissions: const {Perm.accountSupport},
           employeeRepository: employeeRepository,
@@ -554,7 +557,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repository.detailEmployeeIds, ['employee-1']);
-      expect(find.text('销售订货查看'), findsOneWidget);
+      expect(find.text('查看'), findsOneWidget);
       expect(employeeRepository.provisionCalls, 1);
     },
   );
@@ -570,10 +573,6 @@ Widget _actionApp({required bool canManage, bool superAdmin = false}) {
           appBar: UtenAppBar(title: '销售订货'),
           body: SizedBox.expand(),
         ),
-      ),
-      GoRoute(
-        path: '/page-permissions/:surfaceKey',
-        builder: (_, _) => const Scaffold(body: Text('独立权限设置页')),
       ),
     ],
   );
@@ -596,7 +595,7 @@ Widget _actionApp({required bool canManage, bool superAdmin = false}) {
   );
 }
 
-Widget _settingsApp(
+Widget _drawerApp(
   PagePermissionDelegationRepository repository, {
   Set<String> permissions = const {},
   EmployeeRepository? employeeRepository,
@@ -612,7 +611,9 @@ Widget _settingsApp(
       locale: Locale('zh'),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: PagePermissionSettingsPage(surfaceKey: 'sales.order'),
+      home: PagePermissionDrawer(
+        scope: PagePermissionScope(surfaceKey: 'sales.order', title: '销售订货'),
+      ),
     ),
   );
 }
@@ -621,17 +622,13 @@ class _FakePagePermissionRepository
     implements PagePermissionDelegationRepository {
   _FakePagePermissionRepository({
     this.totalPages = 1,
-    this.departmentName = '销售一组',
-    this.accountActive = true,
     this.hasAccount = true,
-    this.staffItems,
+    this.hubTree = false,
   });
 
   final int totalPages;
-  final String departmentName;
-  final bool accountActive;
   bool hasAccount;
-  final List<PagePermissionStaffSummary>? staffItems;
+  final bool hubTree;
   String? lastSearch;
   final List<int> requestedPages = [];
   final List<String?> requestedDepartments = [];
@@ -642,9 +639,9 @@ class _FakePagePermissionRepository
   Future<List<ManagedPermissionDepartment>> managedDepartments(
     String surfaceKey,
   ) async => [
-    ManagedPermissionDepartment(
+    const ManagedPermissionDepartment(
       departmentId: 'department-1',
-      departmentName: departmentName,
+      departmentName: '销售一组',
       level: '二级班组',
       code: 'DEPT_SALES_1',
       sortOrder: 10,
@@ -669,42 +666,27 @@ class _FakePagePermissionRepository
     lastSearch = search;
     requestedPages.add(page);
     requestedDepartments.add(departmentId);
-    final items = page == 1
-        ? staffItems ??
-              [
-                PagePermissionStaffSummary(
-                  employeeId: 'employee-1',
-                  departmentId: 'department-1',
-                  departmentName: departmentName,
-                  code: 'S001',
-                  fullName: '张三',
-                  positionName: '业务员',
-                  departmentManager: false,
-                  hasAccount: hasAccount,
-                  accountActive: hasAccount && accountActive,
-                ),
-              ]
-        : [
-            PagePermissionStaffSummary(
-              employeeId: 'employee-2',
-              departmentId: 'department-1',
-              departmentName: departmentName,
-              code: 'S002',
-              fullName: '李四',
-              positionName: '业务员',
-              departmentManager: false,
-              hasAccount: true,
-              accountActive: accountActive,
-            ),
-          ];
+    final items = [
+      PagePermissionStaffSummary(
+        employeeId: 'employee-1',
+        departmentId: 'department-1',
+        departmentName: '销售一组',
+        code: 'S001',
+        fullName: '张三',
+        positionName: '业务员',
+        departmentManager: false,
+        hasAccount: hasAccount,
+        accountActive: hasAccount,
+      ),
+    ];
     return PagePermissionStaffPage(
       surfaceKey: surfaceKey,
       departmentId: departmentId,
-      departmentName: departmentId == null ? null : departmentName,
+      departmentName: departmentId == null ? null : '销售一组',
       items: items,
       page: page,
       size: size,
-      total: staffItems?.length ?? (totalPages == 1 ? 1 : 2),
+      total: totalPages == 1 ? 1 : 2,
       totalPages: totalPages,
     );
   }
@@ -716,7 +698,7 @@ class _FakePagePermissionRepository
     required String employeeId,
   }) async {
     detailEmployeeIds.add(employeeId);
-    return _detail(surfaceKey, departmentId, employeeId);
+    return _detail(surfaceKey, departmentId, employeeId, hubTree: hubTree);
   }
 
   @override
@@ -727,7 +709,16 @@ class _FakePagePermissionRepository
     required List<PagePermissionChange> changes,
   }) async {
     savedChanges = List.of(changes);
-    return _detail(surfaceKey, departmentId, employeeId, editEnabled: true);
+    return _detail(
+      surfaceKey,
+      departmentId,
+      employeeId,
+      hubTree: hubTree,
+      granted: {
+        for (final change in changes)
+          if (change.enabled) change.code: true,
+      },
+    );
   }
 }
 
@@ -780,19 +771,10 @@ PagePermissionEmployeeDetail _detail(
   String surfaceKey,
   String departmentId,
   String employeeId, {
-  bool editEnabled = false,
-}) => PagePermissionEmployeeDetail(
-  surfaceKey: surfaceKey,
-  departmentId: departmentId,
-  departmentName: '销售一组',
-  employeeId: employeeId,
-  code: employeeId == 'employee-2' ? 'S002' : 'S001',
-  fullName: employeeId == 'employee-2' ? '李四' : '张三',
-  positionName: '业务员',
-  departmentManager: false,
-  hasAccount: true,
-  superAdminMode: false,
-  permissions: [
+  bool hubTree = false,
+  Map<String, bool> granted = const {},
+}) {
+  final orderStates = [
     const PageStaffPermissionState(
       code: Perm.salesOrderView,
       name: '销售订货查看',
@@ -811,9 +793,20 @@ PagePermissionEmployeeDetail _detail(
       actionType: PermissionActionType.edit,
       description: '编辑销售订货草稿',
       baseEffective: false,
-      delegationEnabled: editEnabled,
-      rowVersion: editEnabled ? 1 : 0,
-      effective: editEnabled,
+      delegationEnabled: granted[Perm.salesOrderEdit] ?? false,
+      rowVersion: granted.containsKey(Perm.salesOrderEdit) ? 1 : 0,
+      effective: granted[Perm.salesOrderEdit] ?? false,
+      editable: true,
+    ),
+    PageStaffPermissionState(
+      code: Perm.salesOrderCreate,
+      name: '销售订贷新增',
+      actionType: PermissionActionType.create,
+      description: '新增销售订货单',
+      baseEffective: false,
+      delegationEnabled: granted[Perm.salesOrderCreate] ?? false,
+      rowVersion: granted.containsKey(Perm.salesOrderCreate) ? 1 : 0,
+      effective: granted[Perm.salesOrderCreate] ?? false,
       editable: true,
     ),
     const PageStaffPermissionState(
@@ -828,8 +821,64 @@ PagePermissionEmployeeDetail _detail(
       editable: true,
       reason: '历史委派已失效，仅允许关闭',
     ),
-  ],
-);
+  ];
+  if (hubTree) {
+    return PagePermissionEmployeeDetail(
+      surfaceKey: 'sales.hub',
+      surfaceTitle: '销售管理',
+      departmentId: departmentId,
+      departmentName: '销售一组',
+      employeeId: employeeId,
+      code: 'S001',
+      fullName: '张三',
+      positionName: '业务员',
+      departmentManager: false,
+      hasAccount: true,
+      superAdminMode: false,
+      groups: [
+        PagePermissionSurfaceGroup(
+          surfaceKey: 'sales.hub',
+          title: '销售管理',
+          root: true,
+          permissions: [orderStates[3]],
+        ),
+        PagePermissionSurfaceGroup(
+          surfaceKey: 'sales.quote',
+          title: '销售报价',
+          root: false,
+          permissions: [orderStates[0]],
+        ),
+        PagePermissionSurfaceGroup(
+          surfaceKey: 'sales.order',
+          title: '销售订货',
+          root: false,
+          permissions: [orderStates[1], orderStates[2]],
+        ),
+      ],
+    );
+  }
+  return PagePermissionEmployeeDetail(
+    surfaceKey: surfaceKey,
+    surfaceTitle: '销售订货',
+    departmentId: departmentId,
+    departmentName: '销售一组',
+    employeeId: employeeId,
+    code: 'S001',
+    fullName: '张三',
+    positionName: '业务员',
+    departmentManager: false,
+    hasAccount: true,
+    superAdminMode: false,
+    groups: [
+      PagePermissionSurfaceGroup(
+        surfaceKey: surfaceKey,
+        title: '销售订货',
+        root: true,
+        permissions: orderStates,
+      ),
+    ],
+  );
+}
 
 class _FixedSnapshot extends SessionSnapshotNotifier {
   _FixedSnapshot(this._snapshot);

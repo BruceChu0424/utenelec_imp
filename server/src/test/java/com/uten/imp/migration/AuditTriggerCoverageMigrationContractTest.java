@@ -292,7 +292,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         // V798(ADR-143) 委外可领料通知高水位: 投递后的重算写入, 决定是否再次提醒。
                         "subcontract_draw_notice_marks",
                         // V809(ADR-156) 委外申请可下单通知高水位: 同上。
-                        "subcontract_application_kit_notice_marks")),
+                        "subcontract_application_kit_notice_marks",
+                        // V814(ADR-165) 车间任务到货进展产能高水位: 同上。
+                        "production_execution_segment_notice_state")),
             new NoneGroup("queue",
                     "队列、任务、认领、幂等命令与系统核对结果: 系统协调状态, 人的操作由请求级语义事件记录",
                     Set.of(

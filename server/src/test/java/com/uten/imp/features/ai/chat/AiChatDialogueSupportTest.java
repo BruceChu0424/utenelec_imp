@@ -216,6 +216,47 @@ class AiChatDialogueSupportTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    /**
+     * ADR-163: only the user's own create request names a form (verb first, one workflow); questions, negations,
+     * a plain 「来」 without a quantifier and two workflows named at once never fire.
+     */
+    @Test void requestedFormFiresOnlyOnTheUsersOwnUnambiguousCreateRequest() {
+        for (var row : List.of(new String[]{"帮我创建个销售订货单", "SALES_ORDER"},
+                new String[]{"创建销售订货单", "SALES_ORDER"},
+                new String[]{"开一张报价单", "SALES_QUOTE"},
+                new String[]{"来一份报销单", "EXPENSE_CLAIM"},
+                new String[]{"帮我弄个订货单", "SALES_ORDER"},
+                new String[]{"create a sales order", "SALES_ORDER"})) {
+            assertThat(AiChatDialogueSupport.requestedForm(row[0])).as(row[0]).isEqualTo(row[1]);
+        }
+        for (String question : List.of("怎么创建销售订货单", "销售订货单是什么", "不要创建订货单",
+                "创建报价单和订货单", "未来报价趋势", "")) {
+            assertThat(AiChatDialogueSupport.requestedForm(question)).as(question).isNull();
+        }
+        assertThat(AiChatDialogueSupport.requestedForm(null)).isNull();
+    }
+
+    /**
+     * ADR-163 red-team regressions: English questions and negations, weak verbs, viewing intent (「打开」) and
+     * bare 「报价」 never open a form; reimbursement is asked for with the word itself (a request marker plus
+     * 「报销」), never by the bare word a view request also contains.
+     */
+    @Test void requestedFormRejectsQuestionsNegationsAndViewingOrWeakVerbs() {
+        for (String question : List.of("how do I create a quotation", "which sales order should I create",
+                "don't create a quotation", "news about quotations", "我不想创建订货单",
+                "打开订货单", "帮我打开一张订货单看看", "整理一下报价", "做个报价方案",
+                "查看报销", "报销")) {
+            assertThat(AiChatDialogueSupport.requestedForm(question)).as(question).isNull();
+        }
+        for (var row : List.of(new String[]{"帮我报销", "EXPENSE_CLAIM"},
+                new String[]{"我要报销", "EXPENSE_CLAIM"},
+                new String[]{"想报销", "EXPENSE_CLAIM"},
+                new String[]{"帮我创建个销售订货单", "SALES_ORDER"},
+                new String[]{"开一张报价单", "SALES_QUOTE"})) {
+            assertThat(AiChatDialogueSupport.requestedForm(row[0])).as(row[0]).isEqualTo(row[1]);
+        }
+    }
+
     @Test void everyCurrentCatalogEntryPreservesItsTrustedSourceAndExampleInAllModes() {
         for (var entry : AiChatKnowledge.ALL) {
             for (String mode : List.of("OVERVIEW", "EXAMPLE", "STEPS", "SUMMARY")) {

@@ -20,7 +20,7 @@ import java.util.Set;
  */
 public record AiChatSettings(Detail detail, Reasoning reasoning, boolean pageAware, boolean showSources,
                              int memoryTurns, Language replyLanguage, SendKey sendKey, Style explanationStyle,
-                             boolean showSuggestions) {
+                             boolean showSuggestions, boolean operationMemory) {
     public static final String PREFERENCE_KEY = "ai.chat.settings";
     /** Allowed numbers of earlier turns the model sees (0 = no conversation memory). */
     public static final List<Integer> MEMORY_CHOICES = List.of(0, 3, 6, 10);
@@ -46,10 +46,10 @@ public record AiChatSettings(Detail detail, Reasoning reasoning, boolean pageAwa
      * that answer (see AiChatJobHandler.effort), and an account may choose a deeper default.
      */
     public static final AiChatSettings DEFAULTS = new AiChatSettings(Detail.STANDARD, Reasoning.FAST, true, true, 6,
-            Language.AUTO, SendKey.ENTER, Style.PLAIN, true);
+            Language.AUTO, SendKey.ENTER, Style.PLAIN, true, true);
 
     private static final Set<String> FIELDS = Set.of("detail", "reasoning", "pageAware", "showSources", "memoryTurns",
-            "replyLanguage", "sendKey", "explanationStyle", "showSuggestions");
+            "replyLanguage", "sendKey", "explanationStyle", "showSuggestions", "operationMemory");
 
     public AiChatSettings {
         if (detail == null || reasoning == null || replyLanguage == null || sendKey == null || explanationStyle == null
@@ -84,7 +84,8 @@ public record AiChatSettings(Detail detail, Reasoning reasoning, boolean pageAwa
                 choice(node.get("replyLanguage"), Language.class, DEFAULTS.replyLanguage),
                 choice(node.get("sendKey"), SendKey.class, DEFAULTS.sendKey),
                 choice(node.get("explanationStyle"), Style.class, DEFAULTS.explanationStyle),
-                flag(node.get("showSuggestions"), DEFAULTS.showSuggestions));
+                flag(node.get("showSuggestions"), DEFAULTS.showSuggestions),
+                flag(node.get("operationMemory"), DEFAULTS.operationMemory));
     }
 
     /**
@@ -104,7 +105,8 @@ public record AiChatSettings(Detail detail, Reasoning reasoning, boolean pageAwa
                 strictChoice(patch, "replyLanguage", Language.class, replyLanguage),
                 strictChoice(patch, "sendKey", SendKey.class, sendKey),
                 strictChoice(patch, "explanationStyle", Style.class, explanationStyle),
-                strictFlag(patch, "showSuggestions", showSuggestions));
+                strictFlag(patch, "showSuggestions", showSuggestions),
+                strictFlag(patch, "operationMemory", operationMemory));
     }
 
     public Map<String, Object> toJson() {
@@ -118,6 +120,7 @@ public record AiChatSettings(Detail detail, Reasoning reasoning, boolean pageAwa
         value.put("sendKey", sendKey.name());
         value.put("explanationStyle", explanationStyle.name());
         value.put("showSuggestions", showSuggestions);
+        value.put("operationMemory", operationMemory);
         return value;
     }
 

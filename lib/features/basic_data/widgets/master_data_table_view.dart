@@ -3625,6 +3625,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       items: _displayItems,
       primary: _usesPrimaryScroll,
       loadingMore: _loadingMore,
+      unselectableLeadingBuilder: widget.unselectableLeadingBuilder,
       footer: _prepending || _appendError == null ? null : _appendFailure(),
       overlay: _prependFeedback,
       physics: _prependAnchor.wrap(

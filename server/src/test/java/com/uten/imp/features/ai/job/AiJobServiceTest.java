@@ -2,6 +2,7 @@ package com.uten.imp.features.ai.job;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.AiJobHandler;
+import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.ai.AiProperties;
@@ -11,6 +12,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 
@@ -19,6 +23,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,6 +53,7 @@ class AiJobServiceTest {
     private static final byte[] CSV = "model,qty\nGZ23,10\n".getBytes(StandardCharsets.UTF_8);
 
     private final List<String> calls = new ArrayList<>();
+    private final Map<UUID, com.uten.imp.features.ai.usage.AiUserLimitsService.Limits> limitsRows = new HashMap<>();
     private AiJobRepository repository;
     private SubmitterPrincipalRestorer restorer;
     private ApplicationEventPublisher events;
@@ -138,6 +144,7 @@ class AiJobServiceTest {
     @BeforeEach
     void setUp() {
         calls.clear();
+        limitsRows.clear();
         repository = mock(AiJobRepository.class);
         restorer = mock(SubmitterPrincipalRestorer.class);
         events = mock(ApplicationEventPublisher.class);
@@ -145,8 +152,18 @@ class AiJobServiceTest {
         handler = new RecordingHandler();
         PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
+        // ADR-164 limits gate uses the real AiUserLimitsService (a fake on a mocked JdbcTemplate):
+        // the paused/personal-quota behaviour then asserts real messages, not stubbed ones.
+        NamedParameterJdbcTemplate limitsJdbc = mock(NamedParameterJdbcTemplate.class);
+        when(limitsJdbc.query(anyString(), any(MapSqlParameterSource.class), any(RowMapper.class)))
+                .thenAnswer(invocation -> {
+                    UUID limited = (UUID) ((MapSqlParameterSource) invocation.getArgument(1)).getValue("userId");
+                    var row = limitsRows.get(limited);
+                    return row == null ? List.of() : List.of(row);
+                });
         service = new AiJobService(new AiJobHandlerRegistry(List.of(handler)), repository, restorer, properties,
-                events, new ObjectMapper(), transactions,mock(AiInputOriginalStore.class));
+                events, new ObjectMapper(), transactions,mock(AiInputOriginalStore.class),
+                new com.uten.imp.features.ai.usage.AiUserLimitsService(limitsJdbc, mock(AuditService.class)));
         user = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "13900000001", Set.of("ai:use"), false, true,
                 false);
         when(restorer.currentStamps(user.getId()))
@@ -339,5 +356,80 @@ class AiJobServiceTest {
         when(repository.findOwned(running, user.getId())).thenReturn(Optional.of(row(running, "RUNNING", false)));
         service.cancel(running, user);
         verify(repository).requestCancel(running, user.getId());
+    }
+
+    // ------------------------------------------------------- ADR-164 按人限额与停用
+
+    @Test
+    void anAccountPausedByAnAdminCannotSubmitFileOrStructuredJobs() {
+        limitsRows.put(user.getId(),
+                new com.uten.imp.features.ai.usage.AiUserLimitsService.Limits(user.getId(), true, null, null, 0));
+
+        assertThatThrownBy(() -> submit(Map.of(), new TrackingStream(CSV)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.FORBIDDEN);
+                    assertThat(error.getMessage()).contains("已暂停");
+                });
+        assertThat(calls).containsExactly("authorizeSubmit").doesNotContain("readBody");
+        verify(repository, never()).insert(any());
+
+        handler.acceptsJson = true;
+        assertThatThrownBy(() -> service.submitStructured("TEST_KIND", Map.of(),
+                "{\"message\":\"我的工作台\"}".getBytes(StandardCharsets.UTF_8), user))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.FORBIDDEN);
+                    assertThat(error.getMessage()).contains("已暂停");
+                });
+        verify(repository, never()).insert(any());
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void anEnabledLimitsRowStillSubmitsNormally() throws Exception {
+        limitsRows.put(user.getId(),
+                new com.uten.imp.features.ai.usage.AiUserLimitsService.Limits(user.getId(), false, 500_000L, null, 3));
+
+        AiJobView view = submit(Map.of(), new ByteArrayInputStream(CSV));
+
+        assertThat(view.status()).isEqualTo("PENDING");
+        verify(repository).insert(any());
+        verify(events).publishEvent(any(AiJobSubmittedEvent.class));
+    }
+
+    @Test
+    void aPersonalDailyJobOverrideRejectsTheSixthSubmissionOfTheDay() throws Exception {
+        limitsRows.put(user.getId(),
+                new com.uten.imp.features.ai.usage.AiUserLimitsService.Limits(user.getId(), false, null, 5, 0));
+
+        when(repository.countToday(user.getId())).thenReturn(5);
+        assertThatThrownBy(() -> submit(Map.of(), new ByteArrayInputStream(CSV)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.RATE_LIMITED);
+                    assertThat(error.getMessage()).contains("今天的识别次数已用完");
+                });
+        verify(repository, never()).insert(any());
+
+        // 5 个之内(第 5 次提交时 countToday=4)仍可入队。
+        when(repository.countToday(user.getId())).thenReturn(4);
+        assertThat(submit(Map.of(), new ByteArrayInputStream(CSV)).status()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void withoutAPersonalOverrideTheGlobalDailyJobCapApplies() throws Exception {
+        properties.setMaxJobsPerUserPerDay(3);
+
+        when(repository.countToday(user.getId())).thenReturn(3);
+        assertThatThrownBy(() -> submit(Map.of(), new ByteArrayInputStream(CSV)))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> {
+                    assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.RATE_LIMITED);
+                    assertThat(error.getMessage()).contains("今天的识别次数已用完");
+                });
+
+        when(repository.countToday(user.getId())).thenReturn(2);
+        assertThat(submit(Map.of(), new ByteArrayInputStream(CSV)).status()).isEqualTo("PENDING");
     }
 }

@@ -405,6 +405,50 @@ class AggregateMaterialOrderEndToEndTest {
         amount("5",db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,request));
     }
 
+    /**
+     * 2026-10-07 用户现场：中间件是委外(V5ZJ001 型)时，先对深层子件超量下单，再合并顶层
+     * MAKE 父件——需求整体转进锚点树，而已下供给必须沿深层别名继承过去，锚点树子件
+     * 不得再报缺口(否则会像现场一样多下 200、累计 600 对 300 需求)。ADR-143 §4.5：
+     * 委外节点的直属物料真实消耗，别名随需求一起穿过委外中间件。
+     */
+    @Test void deepSupplyBelowSubcontractIntermediateStaysCoveredAfterParentMerge() {
+        Case c=createWithChild("1");
+        setRoute(c,c.child(),"SUBCONTRACT");
+        List<UUID> leafs=analyses.detail(c.analysis()).flatMaterials().stream()
+                .filter(row->row.goodsId().equals(c.material())).map(MaterialView::materialLineId).toList();
+        assertEquals(3,leafs.size());
+        GroupInput over=new GroupInput("deep-leaf-over",leafs,"BUY",new BigDecimal("8"),true,
+                null,null,null,null,null,null,null,BigDecimal.ZERO,null);
+        var supplied=writer.submit(c.analysis(),command(c,List.of(over)));
+        assertEquals(1,supplied.batches().size());
+        UUID request=supplied.batches().getFirst().documentId();
+        var merged=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","3",false))));
+        UUID anchor=merged.batches().getFirst().anchorAnalysisItemId();
+        amount("6",db.queryForObject("""
+                SELECT COALESCE(SUM(fn_preplan_aggregate_alias_qty(alias.id)),0) FROM preplan_aggregate_material_aliases alias
+                JOIN production_material_analysis_materials source ON source.id=alias.source_material_id
+                WHERE source.goods_id=? AND cardinality(alias.relative_bom_path)=2
+                """,BigDecimal.class,c.material()));
+        MaterialView anchorLeaf=analyses.detail(c.analysis()).flatMaterials().stream()
+                .filter(row->row.goodsId().equals(c.material())&&row.analysisLineId().equals(anchor)).findFirst().orElseThrow();
+        amount("6",anchorLeaf.requiredQty());
+        amount("0",anchorLeaf.planningUncoveredQty());
+        amount("0",anchorLeaf.netShortageQty());
+        var recheck=preview.preview(c.analysis(),request(c,List.of(input(c,c.material(),"BUY","0",false))));
+        assertNull(recheck.groups().getFirst().blockedReason(),"转交后的叶组必须还能正常核对");
+        // 已下 8 对需求 6：预览不能再报缺口(现场症状是补 200 的幽灵缺口)。
+        amount("0",recheck.groups().getFirst().remainingQty());
+        amount("8",db.queryForObject("SELECT SUM(qty) FROM purchase_request_items WHERE request_id=? AND NOT is_deleted",BigDecimal.class,request));
+        // 端态锁：本分析该货品的全部汇总请购明细合计必须仍是 8——幽灵第二张
+        // 请购单(不同单号)也会在这里暴露。
+        amount("8",db.queryForObject("""
+                SELECT COALESCE(SUM(item.qty),0) FROM purchase_request_items item
+                JOIN preplan_supply_actions action ON action.external_document_type='PURCHASE_REQUEST'
+                    AND action.external_document_id=item.request_id AND action.status<>'CANCELLED'
+                WHERE action.analysis_id=? AND item.goods_id=? AND NOT item.is_deleted
+                """,BigDecimal.class,c.analysis(),c.material()));
+    }
+
     @Test void fixedBatchClaimCreatedAfterMergeCoversOnlyItsCurrentOriginalShare() {
         Case c=createForkedFixed();
         List<UUID> originals=analyses.detail(c.analysis()).flatMaterials().stream()

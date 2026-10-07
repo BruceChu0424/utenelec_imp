@@ -2,6 +2,7 @@ package com.uten.imp.features.ai.job;
 
 import com.uten.imp.features.ai.AiProperties;
 import com.uten.imp.features.ai.chat.AiChatActionProposalService;
+import com.uten.imp.features.ai.chat.AiChatOperationMemoryService;
 import com.uten.imp.features.ai.gateway.AiCallLogService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -19,6 +20,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>调用技术记录: 超过 {@code call-log-retention-days}(默认 180 天)的删除;</li>
  *   <li>AI 确认卡(ADR-150): 过了 10 分钟还没确认的标成已过期; 发出超过 {@code job-retention-days} 的删除
  *       (谁在什么时候确认/取消了什么仍留在审计日志)。</li>
+ *   <li>个人操作记忆(ADR-163): 超过 {@code operation-memory-retention-days}(默认 90 天)没再使用的删除
+ *       (本人随时可在设置里自行清除)。</li>
+ *   <li>用量日汇总(ADR-164): 把 ai_call_logs 按人按日归档进 ai_usage_daily(终日回填 + 昨天/今日重算,
+ *       昨天重算并入跨天尾巴), 在调用记录归档之前跑, 支撑月/年视图。</li>
  * </ul>
  * 业务数据清空期间由排水调度器自动跳过本轮。
  */
@@ -32,13 +37,19 @@ public class AiJobHousekeeping {
     private final AiProperties properties;
     private final TransactionTemplate tx;
     private final AiChatActionProposalService proposals;
+    private final AiChatOperationMemoryService operationMemory;
+    private final com.uten.imp.features.ai.usage.AiUsageDailyService usageDaily;
 
     public AiJobHousekeeping(AiJobRepository repository, AiCallLogService callLogs, AiProperties properties,
-                             PlatformTransactionManager transactionManager, AiChatActionProposalService proposals) {
+                             PlatformTransactionManager transactionManager, AiChatActionProposalService proposals,
+                             AiChatOperationMemoryService operationMemory,
+                             com.uten.imp.features.ai.usage.AiUsageDailyService usageDaily) {
         this.repository = repository;
         this.callLogs = callLogs;
         this.properties = properties;
         this.proposals = proposals;
+        this.operationMemory = operationMemory;
+        this.usageDaily = usageDaily;
         this.tx = new TransactionTemplate(transactionManager);
         this.tx.setTimeout(30);
     }
@@ -56,12 +67,17 @@ public class AiJobHousekeeping {
                 break;
             }
         }
+        // 用量日汇总(ADR-164)在调用记录归档之前跑: 归档目前是软删(行保留、也计入), 但先汇总再清理
+        // 让「即使将来改成硬删」也不丢当日用量。
+        var usage = usageDaily.rollup();
         int logs = callLogs.purgeOlderThanDays(Math.max(1, properties.getCallLogRetentionDays()));
         int cards = proposals.expireAndPurge(Math.max(1, properties.getJobRetentionDays()));
-        if (stale + purged + deleted + logs + cards > 0) {
+        int forgotten = operationMemory.purgeUnused(Math.max(1, properties.getOperationMemoryRetentionDays()));
+        if (stale + purged + deleted + logs + cards + forgotten > 0 || usage.backfilled() > 0) {
             log.info("AI history retention: {} stale queued job(s) failed, {} result-bearing job(s) archived, {} job(s) archived,"
-                    + " {} call log(s) archived, {} confirmation card(s) expired or removed; contents preserved",
-                    stale, purged, deleted, logs, cards);
+                    + " {} call log(s) archived, {} confirmation card(s) expired or removed, {} operation memory row(s) forgotten;"
+                    + " {} usage day(s) backfilled, {} user(s) usage refreshed today; contents preserved",
+                    stale, purged, deleted, logs, cards, forgotten, usage.backfilled(), usage.refreshed());
         }
     }
 

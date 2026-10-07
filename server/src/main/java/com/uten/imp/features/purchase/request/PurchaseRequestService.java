@@ -365,7 +365,14 @@ public class PurchaseRequestService {
         requestRepo.save(r);
     }
 
-    /** 审核：链路起点，仅改状态（无库存联动、无上游回写）。 */
+    /**
+     * 审核：链路起点，仅改状态（无库存联动、无上游回写）。
+     *
+     * <p>申请单本体已是「计划下达的只读事实」，无任何控制器暴露本方法；
+     * 保留它是因为链路端到端测试用它把夹具推到已审核态。守卫取计划分解
+     * 权限——真正能把申请推到可执行态的就是计划侧分解，避免未来被无守卫接线。
+     */
+    @PreAuthorize("hasAuthority('purchase_order:decompose')")
     @Transactional
     public RequestDetail approve(UUID id) {
         tx.bind();
@@ -380,23 +387,6 @@ public class PurchaseRequestService {
                 items, PurchaseGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户
-        requestRepo.save(r);
-        return detail(id);
-    }
-
-    @Transactional
-    public RequestDetail reverse(UUID id) {
-        tx.bind();
-        PurchaseRequest r = requireRequestForUpdate(id);
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        productionSourceGuard.requirePurchaseRequestMutable(id);
-        List<PurchaseRequestItem> items = itemRepo.findByRequestIdOrderByLineNoAsc(id);
-        if (items.stream().anyMatch(it ->
-                it.getOrderedQty() != null && it.getOrderedQty().signum() > 0)) {
-            throw new ApiException(ErrorCode.BUSINESS, "采购申请已有订货记录，请先红冲下游订货单");
-        }
-        r.setStatus(STATUS_REVERSED);
         requestRepo.save(r);
         return detail(id);
     }

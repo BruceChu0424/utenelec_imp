@@ -1,6 +1,7 @@
 // 员工资料核对更正页(HrReconcilePage，ADR-160)的页面私有部件：
-// 把握徽标 / 行类型标签 / 证件号码格(UtenRevisionCell + 候选 chips + 手输区) /
-// 依据格 / 说明·结果列，以及页面行草稿(手输 controller + 采用状态，滚动不丢)。
+// 把握徽标(含依据 Tooltip) / 行类型标签 / 证件号码格(UtenRevisionCell +
+// 候选 chips + 手输区) / 说明·结果列，以及页面行草稿(手输 controller +
+// 采用状态，滚动不丢)。
 //
 // 只做展示与本地草稿，不读接口；提交语义(最终值 = 手输 > 候选 > 建议)的纯函数
 // [hrReconcileFinalValue] 也在这里，页面与单元格共用同一份真值。
@@ -104,15 +105,21 @@ List<int> hrReconcileDiffPositions(String? before, String after) {
 }
 
 /// 把握徽标：高=success 实底 / 中=warning / 需人工=error 描边 / 无候选=灰。
+/// [basisLabel] 非空时悬停/长按出 Tooltip 解释建议依据(生日锚点/校验位求解…，
+/// 2026-10-06 原「依据」列退役并入此处)。
 class HrReconcileTierBadge extends StatelessWidget {
   const HrReconcileTierBadge({
     super.key,
     required this.itemNo,
     required this.tier,
+    this.basisLabel,
   });
 
   final int itemNo;
   final HrReconcileTier tier;
+
+  /// 建议依据文案(如「生日锚点」)；null=无依据不出 Tooltip。
+  final String? basisLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +156,7 @@ class HrReconcileTierBadge extends StatelessWidget {
         theme.colorScheme.onSurfaceVariant,
       ),
     };
-    return Container(
+    final badge = Container(
       key: ValueKey('hr-reconcile-tier-$itemNo'),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -165,6 +172,8 @@ class HrReconcileTierBadge extends StatelessWidget {
         ),
       ),
     );
+    if (basisLabel == null || basisLabel!.isEmpty) return badge;
+    return Tooltip(message: l10n.hrReconcileBasisOf(basisLabel!), child: badge);
   }
 }
 

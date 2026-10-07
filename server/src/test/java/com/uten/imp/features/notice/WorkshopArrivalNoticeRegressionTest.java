@@ -49,20 +49,20 @@ class WorkshopArrivalNoticeRegressionTest {
         f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL, f.segment, payload);
         assertThat(f.content()).contains("原到货数量不再作为当前可用量依据").doesNotContain("已到货 900");
         verify(f.notices).resolveReviewNotices("PRODUCTION_EXECUTION_SEGMENT", f.segment, "ARRIVAL_PROGRESS");
+        // 撤销不受闸门约束, 但水位仍同步成当前产能(此处为 0), 让之后的回涨能再通知。
+        verify(f.jdbc).update(contains("arrival_notice_capacity"), eq(f.segment), eq(BigDecimal.ZERO));
     }
 
-    @Test void validEvidenceKeepsArrivalQuantityButDoesNotInventPartialReadiness() {
+    @Test void continuousWaitingWithoutProducibleCapacityStaysSilentUntilCapacityGrows() {
+        // 2026-10-06 修订二(ADR-165): 开工就绪信号(start_material_ready)不再触发到货卡;
+        // 可支撑产能(prepared_capacity)为 0 就静默——没有「可以生产 X 件」可说的到货不弹窗。
         Fixture f = new Fixture("WAITING", "CONTINUOUS", true);
-        f.task.put("start_material_ready", true); // Material eligibility cannot bypass execution status.
-        UUID source = UUID.randomUUID();
-        when(f.jdbc.queryForList(contains("SELECT document.id FROM stock_documents"), eq(UUID.class), eq(source.toString())))
-                .thenReturn(List.of(source));
-        doReturn(true).when(f.service).workshopArrivalCanBenefit(f.segment,"FINISHED_IN",List.of(source));
-        var payload = new ObjectMapper().createObjectNode().put("arrival", "本次合格入库 100 件")
-                .put("evidenceType", "FINISHED_IN");
-        payload.putArray("evidenceIds").add(source.toString());
-        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL, f.segment, payload);
-        assertThat(f.content()).contains("合格入库 100 件", "仍需等待各项必需物料共同支持部分产量").doesNotContain("可以开工");
+        f.task.put("start_material_ready", true);
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL, f.segment,
+                f.arrivalPayload("本次合格入库 100 件"));
+        verify(f.notices, never()).publishForUser(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(f.notices, never()).resolveReviewNotices(any(), any(), eq("ARRIVAL_PROGRESS"));
     }
 
     @Test void eventCarriesSourceIdentityAndDeduplicatesEvidence() {
@@ -93,8 +93,8 @@ class WorkshopArrivalNoticeRegressionTest {
         assertThat(f.content()).contains("共同支持部分产量，可以开工");
     }
 
-    @Test void partialArrivalNoLongerPublishesTheArrivalCard() {
-        // 2026-10-06 口径：只到了一部分物料、部分生产还撑不起来——静默，不发行动卡。
+    @Test void partialArrivalWithoutProducibleCapacityNoLongerPublishesTheArrivalCard() {
+        // 修订二: 齐套路线缺口没被盖住 = 可支撑产能 0——静默, 不发行动卡。
         Fixture f=new Fixture("WAITING","FULL_KIT",false);
         f.task.put("auto_promote_when_ready",true);f.task.put("route_allows_auto_promote",true);
         f.shortage("V5一开铁架","83.3334");
@@ -114,16 +114,111 @@ class WorkshopArrivalNoticeRegressionTest {
                 f.arrivalPayload("本次合格入库 1000 件"));
         verify(f.notices,never()).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
         verify(f.notices,never()).resolveReviewNotices(any(),any(),eq("ARRIVAL_PROGRESS"));
+        // 抑制路径不评估也不抬水位: 提升万一没成、任务随后被暂缓, 全齐卡仍要能弹出来。
+        verify(f.jdbc,never()).update(contains("arrival_notice_capacity"),any(),any());
     }
 
     @Test void batchFullKitStillGetsTheArrivalCardBecauseBatchNeverAutoPromotes() {
-        // 分批路线 fn_execution_route_allows_auto_promote 恒 FALSE，全齐感知只能靠到货卡补位。
+        // 分批路线 fn_execution_route_allows_auto_promote 恒 FALSE，全齐感知只能靠到货卡补位;
+        // 数字与分批领料核对页同一把尺子(workshopBatchCapacity)。
         Fixture f=new Fixture("WAITING","BATCH",false);
         f.task.put("auto_promote_when_ready",true);f.task.put("route_allows_auto_promote",false);
+        doReturn(new BigDecimal("1000")).when(f.service).workshopBatchCapacity(f.segment);
         f.validArrival();
         f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
                 f.arrivalPayload("本次合格入库 1000 件"));
-        assertThat(f.content()).contains("合格入库 1000 件","当前物料没有缺口");
+        assertThat(f.content()).contains("合格入库 1000 件","当前物料没有缺口","可支撑生产 1000 件");
+    }
+
+    @Test void deferredBatchTaskAdvisesReleasingDeferInsteadOfInvitingBlockedSplit() {
+        // 暂缓段(auto_promote_when_ready=FALSE)拆批会被页面拒绝, 卡片指引先解除暂缓。
+        Fixture f=new Fixture("WAITING","BATCH",false);
+        f.task.put("auto_promote_when_ready",false);
+        doReturn(new BigDecimal("30")).when(f.service).workshopBatchCapacity(f.segment);
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 60 件"));
+        assertThat(f.content()).contains("任务在暂缓中，请先解除暂缓再分批领料","可支撑生产 30 件");
+    }
+
+    @Test void arrivalCardFiresOnlyWhenProducibleCapacityGrows() {
+        // 2026-10-06 修订二核心口径: 每种物料都有一些→首次「可以生产 20 件」;
+        // 后续到货产能不涨(还是 20)→不弹; 再到货涨到 120(扣已领)→再弹。
+        Fixture f=new Fixture("WAITING","BATCH",false);
+        f.task.put("auto_promote_when_ready",false);
+        f.validArrival();
+        doReturn(new BigDecimal("20")).when(f.service).workshopBatchCapacity(f.segment);
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 40 件"));
+        assertThat(f.content()).contains("可支撑生产 20 件");
+        // 第二次到货: 产能没涨(水位已是 20)——静默。
+        f.task.put("arrival_notice_capacity",new BigDecimal("20"));
+        doReturn(new BigDecimal("20")).when(f.service).workshopBatchCapacity(f.segment);
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次又合格入库 30 件"));
+        verify(f.notices,times(1)).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
+        // 第三次到货: 产能涨到 120——再弹, 卡上说的是 120。
+        f.task.put("arrival_notice_capacity",new BigDecimal("20"));
+        doReturn(new BigDecimal("120")).when(f.service).workshopBatchCapacity(f.segment);
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次又合格入库 200 件"));
+        var contents=ArgumentCaptor.forClass(String.class);
+        verify(f.notices,times(2)).publishForUser(eq(f.user),anyString(),contents.capture(),eq("task"),anyString(),
+                eq("/production/workshop-tasks"),eq(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED),
+                anyString(),eq(f.segment));
+        assertThat(contents.getAllValues().getLast()).contains("可支撑生产 120 件");
+    }
+
+    @Test void watermarkDecaysWhenCapacityDropsSoLaterGrowthNotifiesAgain() {
+        // 领料后产能回落(20), 水位跟着落下来; 之后回涨到 50 就能再通知, 不会被旧水位 100 压住。
+        Fixture f=new Fixture("WAITING","CONTINUOUS",true);
+        f.task.put("prepared_capacity",new BigDecimal("100"));
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 100 件"));
+        assertThat(f.content()).contains("可支撑生产 100 件");
+        // 领走一部分: 产能回落到 20——静默, 水位同步成 20。
+        f.task.put("arrival_notice_capacity",new BigDecimal("100"));
+        f.task.put("prepared_capacity",new BigDecimal("20"));
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次又到货 10 件"));
+        verify(f.notices,times(1)).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verify(f.jdbc).update(contains("arrival_notice_capacity"),eq(f.segment),eq(new BigDecimal("20")));
+        // 再到货回涨到 50——重新弹窗。
+        f.task.put("arrival_notice_capacity",new BigDecimal("20"));
+        f.task.put("prepared_capacity",new BigDecimal("50"));
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次又到货 40 件"));
+        var contents=ArgumentCaptor.forClass(String.class);
+        verify(f.notices,times(2)).publishForUser(eq(f.user),anyString(),contents.capture(),eq("task"),anyString(),
+                eq("/production/workshop-tasks"),eq(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED),
+                anyString(),eq(f.segment));
+        assertThat(contents.getAllValues().getLast()).contains("可支撑生产 50 件");
+    }
+
+    @Test void fullKitCoveredNotifiesOnceAndExcessArrivalsStaySilent() {
+        // 齐套路线全有或全无: 盖住全部缺口弹一次「已齐套」; 之后多余到货产能不涨, 不再弹。
+        Fixture f=new Fixture("WAITING","FULL_KIT",false);
+        f.task.put("auto_promote_when_ready",false);f.task.put("route_allows_auto_promote",true);
+        f.validArrival();
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 1000 件"));
+        assertThat(f.content()).contains("物料已齐套，可提交领料");
+        f.task.put("arrival_notice_capacity",new BigDecimal("100"));
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次又合格入库 50 件"));
+        verify(f.notices,times(1)).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
+    }
+
+    @Test void batchCapacityUnmeasurableStaysSilentAndKeepsTheWatermark() {
+        // 尺子不可计量(如路线已改/前批固定料未领齐): 不发卡, 水位不动。
+        Fixture f=new Fixture("WAITING","BATCH",false);
+        f.validArrival();
+        // workshopBatchCapacity 默认返回 null(batchSplits 缺位)。
+        f.service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_WORKSHOP_MATERIAL_ARRIVAL,f.segment,
+                f.arrivalPayload("本次合格入库 100 件"));
+        verify(f.notices,never()).publishForUser(any(),any(),any(),any(),any(),any(),any(),any(),any());
+        verify(f.jdbc,never()).update(contains("arrival_notice_capacity"),any(),any());
     }
 
     private static final class Fixture {
@@ -148,6 +243,8 @@ class WorkshopArrivalNoticeRegressionTest {
             task.put("segment_code","GD-001");task.put("workshop_department_id",workshop);
             task.put("responsible_employee_id",person);task.put("start_material_ready",false);
             task.put("prepared_capacity",BigDecimal.ZERO);
+            task.put("planned_qty",new BigDecimal("100"));
+            task.put("product_unit_name","件");
         }
         void shortage(String name,String qty) {
             Map<String,Object> row=new HashMap<>();

@@ -14,10 +14,11 @@ import '../../features/admin/pages/admin_audit_log_page.dart';
 import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
 import '../../features/admin/pages/admin_ai_settings_page.dart';
+import '../../features/admin/pages/admin_ai_usage_page.dart';
+import '../../features/admin/pages/admin_ai_usage_person_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
-import '../../features/admin/pages/page_permission_settings_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
@@ -1881,8 +1882,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const HrWorkbenchPage(),
             routes: [
               // 员工资料核对更正页(ADR-160)：静态段，须先于 :type 声明。
+              // 子路由 path 必须写相对段——go_router 的 concatenatePaths 对子路径
+              // 无条件拼接，写成绝对常量 '/hr/tasks/reconcile' 会变成不可达的
+              // '/hr/tasks/hr/tasks/reconcile'，真实地址被下面的 :type 吞掉
+              // (type='reconcile' 未知 → 兜底渲染转正办理页)。
+              // RouteName.hrReconcile 常量仍是构造 URL/权限判定的单一事实源。
               DraftAwareGoRoute(
-                path: RouteName.hrReconcile,
+                path: 'reconcile',
                 name: 'hr-reconcile',
                 builder: (_, _) => const HrReconcilePage(),
               ),
@@ -1910,15 +1916,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'hr-profile-change-detail',
             builder: (_, s) =>
                 HrProfileChangeDetailPage(batchId: s.pathParameters['id']!),
-          ),
-
-          // —— 业务页面内权限设置（超管 / 部门负责人）——
-          DraftAwareGoRoute(
-            path: RouteName.pagePermissions,
-            name: 'page-permissions',
-            builder: (_, state) => PagePermissionSettingsPage(
-              surfaceKey: state.pathParameters['surfaceKey'] ?? '',
-            ),
           ),
 
           // —— 系统管理（超管）——
@@ -1965,6 +1962,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminAiSettings,
             name: 'admin-ai-settings',
             builder: (_, _) => const AdminAiSettingsPage(),
+          ),
+          // AI 用量看板与按人限额(ADR-164): 看板 + 人员详情, 页内再叠超管门禁。
+          DraftAwareGoRoute(
+            path: RouteName.adminAiUsage,
+            name: 'admin-ai-usage',
+            builder: (_, _) => const AdminAiUsagePage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminAiUsagePersonRoute,
+            name: 'admin-ai-usage-person',
+            builder: (_, state) => AdminAiUsagePersonPage(
+              userId: state.pathParameters['userId'] ?? '',
+            ),
           ),
         ],
       ),

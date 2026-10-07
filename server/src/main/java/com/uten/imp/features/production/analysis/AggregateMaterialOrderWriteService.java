@@ -782,22 +782,33 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 """).setParameter("batch",batch.id()).setParameter("rows",insertRows.toString()).setParameter("actor",user.requireId()).executeUpdate();
         }
     }
-    /** Descendant responsibility follows immutable BOM edges. An intermediate ordinary
-     * plan keeps its own material responsibility; its descendants cannot be delegated
-     * merely because an ancestor is combined into a different manufacturing batch. */
+    /** Descendant responsibility follows immutable BOM edges. MAKE and SUBCONTRACT
+     * intermediates forward their subtree together with the shared parent (a subcontract
+     * consumes its direct materials, ADR-143 §4.5), so demand and already-issued supply
+     * move through them in one piece — the effective-route rule mirrors
+     * {@link AggregateRouteForwarding#forwardsSubtree} (SQL cannot share the Java
+     * predicate; keep both sides in step);
+     * buying whole and unrouteable intermediates keep their subtree, and an intermediate
+     * ordinary plan keeps its own material responsibility — their descendants cannot be
+     * delegated merely because an ancestor is combined into a different manufacturing
+     * batch. */
     private static final String SOURCE_DESCENDANTS_SQL="""
             WITH RECURSIVE descendants AS (
                 SELECT parent.id source_parent_id,parent.id parent_id,child.id,child.analysis_item_id,child.node_key,
-                    child.confirmed_route,ARRAY[child.bom_item_id] path,ARRAY[child.id] visited,FALSE invalid,FALSE frozen
+                    child.confirmed_route,child.source_suggestion,ARRAY[child.bom_item_id] path,ARRAY[child.id] visited,FALSE invalid,FALSE frozen
                 FROM production_material_analysis_materials parent JOIN production_material_analysis_materials child
                   ON child.analysis_item_id=parent.analysis_item_id AND child.active AND child.node_role='BOM_COMPONENT'
                   AND ((parent.node_role='ROOT_SUPPLY' AND child.depth=1) OR child.parent_node_key=parent.node_key)
                 WHERE parent.id IN(:parents)
                 UNION ALL
                 SELECT parent.source_parent_id,parent.id,child.id,child.analysis_item_id,child.node_key,child.confirmed_route,
+                    child.source_suggestion,
                     parent.path||child.bom_item_id,parent.visited||child.id,
                     child.id=ANY(parent.visited) OR cardinality(parent.path)>=256,
-                    parent.frozen OR parent.confirmed_route IS DISTINCT FROM 'MAKE' OR EXISTS(
+                    parent.frozen
+                    OR (COALESCE(parent.confirmed_route,parent.source_suggestion) IS DISTINCT FROM 'MAKE'
+                        AND COALESCE(parent.confirmed_route,parent.source_suggestion) IS DISTINCT FROM 'SUBCONTRACT')
+                    OR EXISTS(
                         SELECT 1 FROM production_material_analysis_items anchor
                         JOIN production_material_analysis_plan_links link ON link.analysis_item_id=anchor.id
                           AND link.allocation_status IN('SUBMITTED','APPROVED')

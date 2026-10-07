@@ -999,7 +999,6 @@ void main() {
         '/admin/system-settings',
         '/admin/server-status',
         '/admin/ai-settings',
-        '/page-permissions/sales_orders',
         '/security/blacklist',
         '/settings/device-receipts',
         // A3 red team: letter case and doubled slashes are the same page.

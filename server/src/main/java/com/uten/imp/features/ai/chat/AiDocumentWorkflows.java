@@ -61,4 +61,14 @@ public class AiDocumentWorkflows {
             default -> "";
         };
     }
+
+    /** The blank form a guided card opens, shared by the file card and the pure-dialogue card (ADR-163). */
+    static String formName(String workflow) {
+        return switch (workflow) {
+            case "SALES_ORDER" -> "新建销售订货单";
+            case "SALES_QUOTE" -> "新建销售报价单";
+            case "EXPENSE_CLAIM" -> "新建报销申请";
+            default -> "对应的填写页面";
+        };
+    }
 }

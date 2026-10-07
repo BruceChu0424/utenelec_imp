@@ -4110,6 +4110,13 @@
   "aiChatSettingsClearBody": "All AI chat history of your account will be cleared and cannot be restored. Completed business actions are not affected.",
   "aiChatSettingsClearDone": "Chat history cleared",
   "aiChatSettingsClearFailed": "Chat history could not be cleared. Please try again later.",
+  "aiChatMemoryRecentTitle": "Recent operations",
+  "aiChatMemorySettingLabel": "Remember my frequent operations",
+  "aiChatMemorySettingHint": "Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.",
+  "aiChatMemoryClear": "Clear records",
+  "aiChatMemoryClearConfirm": "Clear the frequent operations I remember about you?",
+  "aiChatMemoryCleared": "Cleared",
+  "aiChatMemoryUnavailable": "Your account currently has no permission",
   "aiChatHiddenTurns": "{count} earlier messages are no longer shown because your account permissions changed.",
   "aiChatRestored": "Your recent chat. New questions continue it.",
   "aiChatRestoredDataChanged": "The business data this answer quoted has changed, so the old answer is not shown. Ask again if you need it.",
@@ -4131,26 +4138,71 @@
       }
     }
   },
-  "hrReconcileSummary": "{people} people · to update {update} · notice only {info} · match {same} · processed {applied}",
-  "@hrReconcileSummary": {
+  "hrReconcileStatPeople": "{count} to review",
+  "@hrReconcileStatPeople": {
     "placeholders": {
-      "people": {
-        "type": "int"
-      },
-      "update": {
-        "type": "int"
-      },
-      "info": {
-        "type": "int"
-      },
-      "same": {
-        "type": "int"
-      },
-      "applied": {
+      "count": {
         "type": "int"
       }
     }
   },
+  "hrReconcileStatUpdate": "{count} to update",
+  "@hrReconcileStatUpdate": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatInfo": "{count} notice only",
+  "@hrReconcileStatInfo": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatSame": "{count} match",
+  "@hrReconcileStatSame": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatApplied": "{count} processed",
+  "@hrReconcileStatApplied": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierHigh": "{count} high confidence",
+  "@hrReconcileStatTierHigh": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierMedium": "{count} medium",
+  "@hrReconcileStatTierMedium": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileStatTierManual": "{count} need manual input",
+  "@hrReconcileStatTierManual": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hrReconcileSelectHigh": "Select high confidence",
   "hrReconcileValidity": "Valid for 24 hours; unapplied changes are cleared after that",
   "hrReconcileExpiredTitle": "This reconciliation is past 24 hours; unapplied changes were cleared",
   "hrReconcileExpiredRetry": "Reconcile again",
@@ -4209,12 +4261,17 @@
   "hrReconcileApplyFailed": "The correction did not complete. Please try again later.",
   "hrReconcileIdEmpty": "(empty)",
   "hrReconcileColKind": "Type",
-  "hrReconcileColCode": "Employee No.",
-  "hrReconcileColName": "Name",
-  "hrReconcileColDept": "Department",
+  "hrReconcileColEmployee": "Employee",
   "hrReconcileColReason": "Reason",
-  "hrReconcileColIdNumber": "ID number",
-  "hrReconcileColBasis": "Basis",
+  "hrReconcileIdNumberInfo": "Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number",
+  "hrReconcileBasisOf": "Suggestion basis: {label}",
+  "@hrReconcileBasisOf": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
   "hrReconcileColTier": "Confidence",
   "hrReconcileColNotes": "Notes / result",
   "hrReconcileKindUpdate": "Update",
@@ -4252,5 +4309,127 @@
   "hrReconcileStatusOpen": "In progress",
   "hrReconcileStatusClosed": "Completed",
   "hrReconcileStatusExpired": "Expired",
-  "hrReconcileStatusDiscarded": "Discarded"
+  "hrReconcileStatusDiscarded": "Discarded",
+  "aiUsageTitle": "AI usage & quotas",
+  "aiUsageEntry": "Usage & quotas",
+  "aiUsageTodayTokens": "Tokens today",
+  "aiUsageTodayLabel": "Today",
+  "aiUsageTodayCalls": "Calls today",
+  "aiUsageActiveUsers": "Active users today",
+  "aiUsageDisabledCount": "Disabled",
+  "aiUsageBudgetOf": "{num} / {total}",
+  "@aiUsageBudgetOf": {
+    "placeholders": {
+      "num": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageWindowHour": "Last 24 hours",
+  "aiUsageWindowDaily": "Last 30 days",
+  "aiUsageWindowMonthly": "Last 12 months",
+  "aiUsageWindowYearly": "Last 5 years",
+  "aiUsageTrend": "Usage trend",
+  "aiUsageEmpty": "No usage yet",
+  "aiUsageLoadFailed": "Failed to load AI usage, please try again later",
+  "aiUsagePersonMissing": "Usage information for this person was not found",
+  "aiUsageColPerson": "Person",
+  "aiUsageColWindow": "Window usage",
+  "aiUsageColToday": "Today",
+  "aiUsageColLimit": "Personal quota",
+  "aiUsageColStatus": "Status",
+  "aiUsageColLastUsed": "Last used",
+  "aiUsageColCalls": "{count} calls",
+  "@aiUsageColCalls": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLimitFollowGlobal": "Follow global",
+  "aiUsageStatusNormal": "Normal",
+  "aiUsageStatusOverLimit": "Over limit",
+  "aiUsageStatusDisabled": "Disabled",
+  "aiUsageSetLimits": "Set quotas",
+  "aiUsageLimitTokensLabel": "Daily token quota",
+  "aiUsageLimitJobsLabel": "Daily job quota",
+  "aiUsageLimitHint": "Leave empty to follow the global default",
+  "aiUsageLimitRangeError": "Enter a whole number between 1 and {max}",
+  "@aiUsageLimitRangeError": {
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageDisableLabel": "Disable AI for this account",
+  "aiUsageDisableHint": "While disabled, AI chat and file recognition cannot be used; you can restore it anytime",
+  "aiUsageDisableConfirm": "Disable AI usage for this account?",
+  "aiUsageDisableAction": "Disable",
+  "aiUsageDisabledBanner": "AI usage for this account has been disabled",
+  "aiUsageNoPersonalLimit": "No personal quota; the site-wide budget applies",
+  "aiUsageByPurpose": "By purpose",
+  "aiUsageByProvider": "By provider",
+  "aiUsageRecentUses": "Recent uses",
+  "aiUsagePeople": "People usage",
+  "aiUsageConflict": "The settings changed. Refresh and save again",
+  "aiUsageTokensUnit": "{n} tokens",
+  "@aiUsageTokensUnit": {
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageTodayUsed": "Used {tokens} today",
+  "@aiUsageTodayUsed": {
+    "placeholders": {
+      "tokens": {
+        "type": "String"
+      }
+    }
+  },
+  "aiUsageLastUsedJustNow": "Just now",
+  "aiUsageLastUsedMinutesAgo": "{n} min ago",
+  "@aiUsageLastUsedMinutesAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedHoursAgo": "{n} h ago",
+  "@aiUsageLastUsedHoursAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageLastUsedDaysAgo": "{n} d ago",
+  "@aiUsageLastUsedDaysAgo": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageTrendSemantics": "{title}, {tokens} tokens and {calls} calls in total",
+  "@aiUsageTrendSemantics": {
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "tokens": {
+        "type": "String"
+      },
+      "calls": {
+        "type": "String"
+      }
+    }
+  }
 }

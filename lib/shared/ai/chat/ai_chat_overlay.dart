@@ -220,6 +220,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   bool _attachPreviewScheduled = false;
   AiChatCapabilities? _capabilities;
   AiChatPageSuggestions? _pageSuggestions;
+
+  /// ADR-163: the caller's own remembered operations, for the welcome area.
+  List<AiChatMemorySuggestion> _memorySuggestions = const [];
   AiJobCancelToken? _cancel;
   PlatformFile? _attachment;
 
@@ -235,6 +238,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   String? _settingsSaving;
   String? _settingsError;
   bool _clearingHistory = false;
+  bool _clearingMemory = false;
   bool _restoreStarted = false;
   bool _restored = false;
   int _hiddenTurns = 0;
@@ -380,6 +384,21 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
   }
 
+  /// ADR-163: the caller's own recent operations, fetched only while the
+  /// memory setting is on; failures stay silent (the welcome works without).
+  Future<void> _loadMemorySuggestions() async {
+    if (!_current || !_settings.operationMemory) return;
+    try {
+      final result = await ref
+          .read(aiChatRepositoryProvider)
+          .memorySuggestions();
+      if (!_current || !_settings.operationMemory) return;
+      setState(() => _memorySuggestions = result);
+    } catch (_) {
+      // Optional guidance failures do not interrupt the conversation.
+    }
+  }
+
   Future<void> _loadCapabilities() async {
     final repository = ref.read(aiChatRepositoryProvider);
     try {
@@ -393,6 +412,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         _error = null;
       });
       _loadPageSuggestions();
+      _loadMemorySuggestions();
       // The conversation is restored when the panel is first opened, not on
       // every page load: the overlay is always mounted and most page loads
       // never open the chat.
@@ -502,6 +522,15 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       _loadPageSuggestions();
       _scheduleAttachPreview();
     }
+    // ADR-163: the welcome area follows the memory switch at once; a failed
+    // save rolls the setting back and this runs against the rolled-back view.
+    if (field == 'operationMemory' && _current) {
+      if (_settings.operationMemory) {
+        _loadMemorySuggestions();
+      } else if (_memorySuggestions.isNotEmpty) {
+        setState(() => _memorySuggestions = const []);
+      }
+    }
   }
 
   /// Reading the page off means off for retries too: drop what earlier
@@ -537,6 +566,34 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (mounted) context.appError(l10n.aiChatSettingsClearFailed);
     } finally {
       if (_current) setState(() => _clearingHistory = false);
+    }
+  }
+
+  /// ADR-163: clears the caller's own operation memory; the welcome area's
+  /// recent operations disappear with it.
+  Future<void> _clearMemory() async {
+    if (!_current || _busy || _picking || _clearingMemory) return;
+    final l10n = aiPageL10n(context);
+    final accepted = await _confirmForIdentity(
+      title: l10n.aiChatMemoryClear,
+      content: Text(l10n.aiChatMemoryClearConfirm),
+    );
+    if (!_current || accepted != true || _busy || _picking) return;
+    setState(() {
+      _clearingMemory = true;
+      _settingsError = null;
+    });
+    try {
+      await ref.read(aiChatRepositoryProvider).clearOperationMemory();
+      if (!_current) return;
+      setState(() => _memorySuggestions = const []);
+      if (mounted) context.appSuccess(l10n.aiChatMemoryCleared);
+    } catch (_) {
+      if (!_current) return;
+      setState(() => _settingsError = _t('failed'));
+      if (mounted) context.appError(_t('failed'));
+    } finally {
+      if (_current) setState(() => _clearingMemory = false);
     }
   }
 
@@ -1105,10 +1162,60 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       !widget.identity.scope.readOnly &&
       ref.read(currentPermissionsProvider).containsAll(workflow.permissions);
 
-  /// OPEN_GUIDED_FORM: opens the new form with this chat's verified file only
-  /// after the user confirmed. Saving stays with the page's own button.
+  /// OPEN_GUIDED_FORM: after the user confirmed, opens the new form — with
+  /// this chat's verified file when the card came from a file answer, or the
+  /// blank form when it was proposed from the conversation itself (ADR-163).
+  /// Saving stays with the page's own button.
   Future<void> _executeGuidedCard(_ChatMessage message, AiChatCardUi ui) async {
     final l10n = aiPageL10n(context);
+    // ADR-163: a form card proposed from the conversation itself (no file):
+    // it only navigates to the blank new-form page for its workflow.
+    if (ui.card.args['sourceJobId'] == null) {
+      final workflow = AiGuidedWorkflow.parse(ui.card.args['workflow']);
+      if (!_workflowAllowed(workflow)) {
+        _cardNote(ui, _t('permissionChanged'));
+        return;
+      }
+      final args = await _consumeCard(ui);
+      if (args == null || !_current) return;
+      // The destination is selected from this enum; server/model route
+      // strings are never evaluated, and no save/submit endpoint is called.
+      final confirmed = AiGuidedWorkflow.parse(args['workflow']);
+      final blankRoute = switch (confirmed) {
+        AiGuidedWorkflow.salesOrder => RoutePath.salesDocNew(
+          SalesDocType.order.pathSegment,
+        ),
+        AiGuidedWorkflow.salesQuote => RoutePath.salesDocNew(
+          SalesDocType.quote.pathSegment,
+        ),
+        AiGuidedWorkflow.expenseClaim => RouteName.expenseNew,
+        AiGuidedWorkflow.none => null,
+      };
+      if (blankRoute == null || confirmed != workflow) {
+        await _receipt(
+          ui,
+          succeeded: false,
+          message: l10n.aiChatCardInvalidArgs,
+        );
+        return;
+      }
+      final landed = await _pushAndLand(blankRoute, null);
+      if (!_current) return;
+      if (landed != blankRoute) {
+        await _receipt(
+          ui,
+          succeeded: false,
+          message: landed == RouteName.accessDenied
+              ? l10n.aiChatCardFormNoAccess
+              : l10n.aiChatCardFormNotOpened,
+        );
+        return;
+      }
+      _focus.unfocus();
+      setState(() => _open = false);
+      await _receipt(ui, succeeded: true);
+      return;
+    }
     final jobId = message.documentJobId;
     final result = message.documentResult;
     final file = message.sourceFile;
@@ -1198,7 +1305,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   /// a router or when the push throws). A redirect, e.g. for missing access,
   /// lands elsewhere. The push future completes only when the page closes,
   /// so it is not awaited.
-  Future<String?> _pushAndLand(String route, Object extra) async {
+  Future<String?> _pushAndLand(String route, Object? extra) async {
     final router = GoRouter.maybeOf(context);
     if (router == null) return null;
     try {
@@ -1538,9 +1645,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         );
 
         // Launcher geometry: a draggable circle; pushed onto a side edge it
-        // docks half-out at reduced opacity. FloatingActionButton.small is 40
-        // visually but MaterialTapTargetSize.padded grows its box to 48 (a 4px
-        // transparent ring each side) — position math uses the 48 box.
+        // docks half-out at reduced opacity. The visual circle is 48 and, being
+        // already at the minimum tap-target size, its hit box is 48 too —
+        // position math uses that box.
         const launcherSize = 48.0;
         const launcherHalf = launcherSize / 2;
         const launcherMargin = 16.0;
@@ -1639,41 +1746,51 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 150),
                       opacity: docked ? 0.55 : 1.0,
-                      child: FloatingActionButton.small(
-                        key: const ValueKey('ai-chat-launcher'),
-                        heroTag: null,
-                        tooltip: _t('open'),
-                        shape: const CircleBorder(),
-                        backgroundColor: colors.primaryContainer,
-                        foregroundColor: colors.onPrimaryContainer,
-                        onPressed: () {
-                          if (_launcherDockEdge != 0) {
-                            // Docked: tap pulls the circle back inside first,
-                            // then the chat opens as usual.
-                            final edge = _launcherDockEdge;
-                            setState(() {
-                              _launcherDockEdge = 0;
-                              _launcherCenter = settleLauncherCenter(
-                                Offset(
-                                  edge > 0
-                                      ? constraints.maxWidth -
-                                            launcherMargin -
-                                            launcherHalf
-                                      : launcherMargin + launcherHalf,
-                                  (_launcherCenter ?? defaultLauncherCenter).dy,
-                                ),
-                              );
-                            });
-                          }
-                          setState(() => _open = true);
-                          if (_capabilities?.usable == true) {
-                            unawaited(_restoreConversation());
-                          }
-                          _loadPageSuggestions();
-                          _scheduleAttachPreview();
-                          _scrollToEnd();
-                        },
-                        child: const Icon(Icons.auto_awesome_outlined),
+                      child: SizedBox.square(
+                        dimension: launcherSize,
+                        child: FloatingActionButton(
+                          key: const ValueKey('ai-chat-launcher'),
+                          heroTag: null,
+                          tooltip: _t('open'),
+                          shape: const CircleBorder(),
+                          // Deep teal with a white icon in light mode; the
+                          // former primaryContainer teal100 circle was too
+                          // faint.
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
+                          onPressed: () {
+                            if (_launcherDockEdge != 0) {
+                              // Docked: tap pulls the circle back inside first,
+                              // then the chat opens as usual.
+                              final edge = _launcherDockEdge;
+                              setState(() {
+                                _launcherDockEdge = 0;
+                                _launcherCenter = settleLauncherCenter(
+                                  Offset(
+                                    edge > 0
+                                        ? constraints.maxWidth -
+                                              launcherMargin -
+                                              launcherHalf
+                                        : launcherMargin + launcherHalf,
+                                    (_launcherCenter ?? defaultLauncherCenter)
+                                        .dy,
+                                  ),
+                                );
+                              });
+                            }
+                            setState(() => _open = true);
+                            if (_capabilities?.usable == true) {
+                              unawaited(_restoreConversation());
+                            }
+                            _loadPageSuggestions();
+                            // ADR-163: the recent-operations list follows the
+                            // panel, like the page suggestions.
+                            _loadMemorySuggestions();
+                            _scheduleAttachPreview();
+                            _scrollToEnd();
+                          },
+                          child: const Icon(Icons.auto_awesome_outlined),
+                        ),
                       ),
                     ),
                   ),
@@ -1802,8 +1919,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
               error: _settingsError,
               clearing: _clearingHistory,
               canClear: !_busy && !_picking,
+              clearingMemory: _clearingMemory,
+              canClearMemory: !_busy && !_picking,
               onChange: _updateSetting,
               onClearHistory: _clearHistory,
+              onClearMemory: _clearMemory,
             ),
           ),
         if (!tight && !_settingsOpen)
@@ -1953,161 +2073,210 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         !_picking &&
         _capabilities?.usable == true &&
         (_input.text.trim().isNotEmpty || _attachment != null);
+    // WeChat-style split composer (2026-10-06): round attach button on the
+    // left, a freestanding rounded input field, round send button on the
+    // right; the pending file sits in a chip above the row. The 2/4px inner
+    // insets keep the buttons off the composer bounds the tests assert on.
+    final file = _attachment;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
+        key: const ValueKey('ai-chat-composer'),
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DecoratedBox(
-            key: const ValueKey('ai-chat-composer'),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLowest,
-              borderRadius: UtenRadius.xlAll,
-              border: Border.all(
-                color: _focus.hasFocus ? colors.primary : colors.outlineVariant,
-                width: _focus.hasFocus ? 1.5 : 1,
+          if (_attachPreviewText() case final preview?)
+            Padding(
+              key: const ValueKey('ai-chat-attach-preview'),
+              padding: const EdgeInsets.only(
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+                bottom: UtenSpacing.s8,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.table_view_outlined,
+                    size: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s6),
+                  Expanded(
+                    child: Text(
+                      preview,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          if (file != null)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+                bottom: UtenSpacing.s8,
+              ),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s12,
+                  UtenSpacing.s6,
+                  UtenSpacing.s6,
+                  UtenSpacing.s6,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHigh,
+                  borderRadius: UtenRadius.controlAll,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.description_outlined,
+                      size: 16,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Flexible(
+                      child: Text(
+                        file.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    IconButton(
+                      tooltip: _t('removeFile'),
+                      onPressed: () => setState(() => _attachment = null),
+                      constraints: const BoxConstraints.tightFor(
+                        width: 28,
+                        height: 28,
+                      ),
+                      padding: EdgeInsets.zero,
+                      style: const ButtonStyle(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: Icon(
+                        Icons.close,
+                        size: 14,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s4,
+              0,
+              UtenSpacing.s4,
+              UtenSpacing.s4,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (_attachPreviewText() case final preview?)
-                  Padding(
-                    key: const ValueKey('ai-chat-attach-preview'),
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s8,
-                      UtenSpacing.s12,
-                      0,
+                if (_canUpload) ...[
+                  IconButton(
+                    key: const ValueKey('ai-chat-attach'),
+                    tooltip: _t('attach'),
+                    onPressed: _busy || _picking ? null : _pickFile,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 36,
+                      height: 36,
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.table_view_outlined,
-                          size: 14,
-                          color: colors.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: UtenSpacing.s6),
-                        Expanded(
-                          child: Text(
-                            preview,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: colors.onSurfaceVariant),
+                    style: IconButton.styleFrom(
+                      backgroundColor: colors.surfaceContainerHigh,
+                      foregroundColor: colors.onSurfaceVariant,
+                      shape: const CircleBorder(),
+                    ),
+                    icon: const Icon(Icons.attach_file, size: 18),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerLowest,
+                      borderRadius: UtenRadius.controlAll,
+                      border: Border.all(
+                        color: _focus.hasFocus
+                            ? colors.primary
+                            : colors.outlineVariant,
+                        width: _focus.hasFocus ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Semantics(
+                      label: _t('label'),
+                      child: Focus(
+                        canRequestFocus: false,
+                        skipTraversal: true,
+                        onKeyEvent: _composerKey,
+                        child: TextField(
+                          key: const ValueKey('ai-chat-input'),
+                          controller: _input,
+                          focusNode: _focus,
+                          minLines: 1,
+                          maxLines: tight ? 2 : 4,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(2000),
+                          ],
+                          enabled: _capabilities?.usable == true,
+                          textInputAction: TextInputAction.newline,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            hintText: _t(_canUpload ? 'hint' : 'hintNoUpload'),
+                            hintStyle: TextStyle(
+                              color: colors.onSurfaceVariant,
+                            ),
+                            contentPadding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s12,
+                              UtenSpacing.s8,
+                              UtenSpacing.s12,
+                              UtenSpacing.s8,
+                            ),
+                            isDense: true,
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                if (_attachment != null)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: UtenSpacing.s12,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.description_outlined,
-                          size: 18,
-                          color: colors.primary,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Expanded(
-                          child: Text(
-                            _attachment!.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: _t('removeFile'),
-                          onPressed: () => setState(() => _attachment = null),
-                          icon: const Icon(Icons.close, size: 16),
-                        ),
-                      ],
-                    ),
-                  ),
-                Semantics(
-                  label: _t('label'),
-                  child: Focus(
-                    canRequestFocus: false,
-                    skipTraversal: true,
-                    onKeyEvent: _composerKey,
-                    child: TextField(
-                      key: const ValueKey('ai-chat-input'),
-                      controller: _input,
-                      focusNode: _focus,
-                      minLines: tight ? 1 : 2,
-                      maxLines: tight ? 2 : 4,
-                      inputFormatters: [LengthLimitingTextInputFormatter(2000)],
-                      enabled: _capabilities?.usable == true,
-                      textInputAction: TextInputAction.newline,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        hintText: _t(_canUpload ? 'hint' : 'hintNoUpload'),
-                        hintStyle: TextStyle(color: colors.onSurfaceVariant),
-                        contentPadding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s4,
-                        ),
-                        isDense: true,
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
                       ),
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s4,
-                    0,
-                    UtenSpacing.s4,
-                    UtenSpacing.s4,
+                const SizedBox(width: UtenSpacing.s8),
+                IconButton.filled(
+                  key: const ValueKey('ai-chat-send'),
+                  tooltip: _t(_cancel != null ? 'stop' : 'send'),
+                  constraints: const BoxConstraints.tightFor(
+                    width: 36,
+                    height: 36,
                   ),
-                  child: Row(
-                    children: [
-                      if (_canUpload)
-                        IconButton(
-                          key: const ValueKey('ai-chat-attach'),
-                          tooltip: _t('attach'),
-                          onPressed: _busy || _picking ? null : _pickFile,
-                          icon: Icon(
-                            Icons.attach_file,
-                            size: 20,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      const Spacer(),
-                      IconButton.filled(
-                        key: const ValueKey('ai-chat-send'),
-                        tooltip: _t(_cancel != null ? 'stop' : 'send'),
-                        constraints: const BoxConstraints(
-                          minWidth: 44,
-                          minHeight: 44,
-                        ),
-                        onPressed: _cancel != null
-                            ? _stop
-                            : canSend
-                            ? _send
-                            : null,
-                        icon: Icon(
-                          _cancel != null
-                              ? Icons.stop_rounded
-                              : Icons.arrow_upward_rounded,
-                          size: 20,
-                          color: _cancel != null || canSend
-                              ? colors.onPrimary
-                              : colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  style: IconButton.styleFrom(
+                    shape: const CircleBorder(),
+                    backgroundColor: colors.primary,
+                    foregroundColor: colors.onPrimary,
+                  ),
+                  onPressed: _cancel != null
+                      ? _stop
+                      : canSend
+                      ? _send
+                      : null,
+                  icon: Icon(
+                    _cancel != null
+                        ? Icons.stop_rounded
+                        : Icons.arrow_upward_rounded,
+                    size: 18,
+                    color: _cancel != null || canSend
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -2174,14 +2343,19 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
   );
 
   Widget _welcome() {
+    final pageTexts = _pageSuggestions?.suggestions ?? const <String>[];
     final suggestions = <String, bool>{
       if (_pageAware && _settings.showSuggestions)
-        for (final text in _pageSuggestions?.suggestions ?? const <String>[])
-          text: text == _t('pageQuestion'),
+        // Page questions carry PAGE_HELP when tapped (§3.4: membership in
+        // the fetched page list, not the text of any one question).
+        for (final text in pageTexts) text: true,
     };
     if (_settings.showSuggestions) {
       for (final text in _capabilities?.suggestions ?? const <String>[]) {
-        if (text == _t('pageQuestion')) continue;
+        // A page-list entry is already above; the generic page question is
+        // also skipped while no page guidance is loaded (reading off, or an
+        // unknown page) because without the page it answers nothing.
+        if (pageTexts.contains(text) || text == _t('pageQuestion')) continue;
         suggestions.putIfAbsent(text, () => false);
       }
     }
@@ -2194,6 +2368,24 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
           Text(_t('unavailable')),
         ],
         const SizedBox(height: UtenSpacing.s16),
+        if (_settings.operationMemory &&
+            _settings.showSuggestions &&
+            _memorySuggestions.isNotEmpty) ...[
+          Text(
+            aiPageL10n(context).aiChatMemoryRecentTitle,
+            key: const ValueKey('ai-chat-memory-title'),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          for (final memory in _memorySuggestions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+              child: _memoryButton(memory),
+            ),
+          const SizedBox(height: UtenSpacing.s8),
+        ],
         for (final suggestion in suggestions.entries.take(2))
           Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -2214,6 +2406,27 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
   }
 
+  /// ADR-163: one remembered operation as a welcome chip. A form the account
+  /// can no longer fill in stays visible but inert, with the reason.
+  Widget _memoryButton(AiChatMemorySuggestion memory) {
+    final usable =
+        memory.available &&
+        _workflowAllowed(AiGuidedWorkflow.parse(memory.workflowCode));
+    final button = UtenButton(
+      type: UtenButtonType.secondary,
+      onPressed: _capabilities?.usable == true && usable
+          ? () => _send(suggestion: memory.question)
+          : null,
+      child: Flexible(child: Text(memory.question)),
+    );
+    return usable
+        ? button
+        : Tooltip(
+            message: aiPageL10n(context).aiChatMemoryUnavailable,
+            child: button,
+          );
+  }
+
   void _sendPageSuggestion(String suggestion) {
     if (!_pageAware ||
         _pageSuggestions?.pageRoute !=
@@ -2223,7 +2436,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     }
     _send(
       suggestion: suggestion,
-      intentHint: suggestion == _t('pageQuestion') ? 'PAGE_HELP' : null,
+      intentHint: _pageSuggestions?.suggestions.contains(suggestion) == true
+          ? 'PAGE_HELP'
+          : null,
     );
   }
 

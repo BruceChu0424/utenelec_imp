@@ -330,46 +330,6 @@ public class SubcontractApplicationService {
         applicationRepo.save(r);
     }
 
-    /** 审核：0→1（仅状态变更；申请单无库存/ArAp 联动）。 */
-    @Transactional
-    public ApplicationDetail approve(UUID id) {
-        tx.bind();
-        SubcontractApplication r = requireApplicationForUpdate(id);
-        if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
-        }
-        List<SubcontractApplicationItem> items = itemRepo.findByApplicationIdOrderByLineNoAsc(id);
-        if (items.isEmpty()) {
-            throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
-        }
-        captureMasterGoodsSnapshots(
-                items, SubcontractGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
-        r.setStatus(STATUS_APPROVED);
-        r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
-        applicationRepo.save(r);
-        return detail(id);
-    }
-
-    /** 红冲：1→-1（仅状态变更；申请无 ArAp 无库存，无需反向冲销）。 */
-    @Transactional
-    public ApplicationDetail reverse(UUID id) {
-        tx.bind();
-        SubcontractApplication r = requireApplicationForUpdate(id);
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
-        List<SubcontractApplicationItem> items =
-                itemRepo.findByApplicationIdOrderByLineNoAsc(id);
-        if (items.stream().anyMatch(it ->
-                it.getOrderedQty() != null && it.getOrderedQty().signum() > 0)) {
-            throw new ApiException(ErrorCode.BUSINESS, "委外申请已有订货记录，请先红冲下游订货单");
-        }
-        productionSupply.onSubcontractApplicationRemoved(id);
-        r.setStatus(STATUS_REVERSED);
-        applicationRepo.save(r);
-        return detail(id);
-    }
-
     private void applyHeader(ApplicationSaveRequest req, SubcontractApplication r) {
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {

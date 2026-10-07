@@ -9784,6 +9784,30 @@ class AppLocalizationsEn extends AppLocalizations {
       'Chat history could not be cleared. Please try again later.';
 
   @override
+  String get aiChatMemoryRecentTitle => 'Recent operations';
+
+  @override
+  String get aiChatMemorySettingLabel => 'Remember my frequent operations';
+
+  @override
+  String get aiChatMemorySettingHint =>
+      'Remembers the forms you asked me to open and the queries you use often, so a similar request is ready right away next time.';
+
+  @override
+  String get aiChatMemoryClear => 'Clear records';
+
+  @override
+  String get aiChatMemoryClearConfirm =>
+      'Clear the frequent operations I remember about you?';
+
+  @override
+  String get aiChatMemoryCleared => 'Cleared';
+
+  @override
+  String get aiChatMemoryUnavailable =>
+      'Your account currently has no permission';
+
+  @override
   String aiChatHiddenTurns(int count) {
     return '$count earlier messages are no longer shown because your account permissions changed.';
   }
@@ -9833,15 +9857,47 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String hrReconcileSummary(
-    int people,
-    int update,
-    int info,
-    int same,
-    int applied,
-  ) {
-    return '$people people · to update $update · notice only $info · match $same · processed $applied';
+  String hrReconcileStatPeople(int count) {
+    return '$count to review';
   }
+
+  @override
+  String hrReconcileStatUpdate(int count) {
+    return '$count to update';
+  }
+
+  @override
+  String hrReconcileStatInfo(int count) {
+    return '$count notice only';
+  }
+
+  @override
+  String hrReconcileStatSame(int count) {
+    return '$count match';
+  }
+
+  @override
+  String hrReconcileStatApplied(int count) {
+    return '$count processed';
+  }
+
+  @override
+  String hrReconcileStatTierHigh(int count) {
+    return '$count high confidence';
+  }
+
+  @override
+  String hrReconcileStatTierMedium(int count) {
+    return '$count medium';
+  }
+
+  @override
+  String hrReconcileStatTierManual(int count) {
+    return '$count need manual input';
+  }
+
+  @override
+  String get hrReconcileSelectHigh => 'Select high confidence';
 
   @override
   String get hrReconcileValidity =>
@@ -9935,22 +9991,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileColKind => 'Type';
 
   @override
-  String get hrReconcileColCode => 'Employee No.';
-
-  @override
-  String get hrReconcileColName => 'Name';
-
-  @override
-  String get hrReconcileColDept => 'Department';
+  String get hrReconcileColEmployee => 'Employee';
 
   @override
   String get hrReconcileColReason => 'Reason';
 
   @override
-  String get hrReconcileColIdNumber => 'ID number';
+  String get hrReconcileIdNumberInfo =>
+      'Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number';
 
   @override
-  String get hrReconcileColBasis => 'Basis';
+  String hrReconcileBasisOf(String label) {
+    return 'Suggestion basis: $label';
+  }
 
   @override
   String get hrReconcileColTier => 'Confidence';
@@ -10027,4 +10080,177 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hrReconcileStatusDiscarded => 'Discarded';
+
+  @override
+  String get aiUsageTitle => 'AI usage & quotas';
+
+  @override
+  String get aiUsageEntry => 'Usage & quotas';
+
+  @override
+  String get aiUsageTodayTokens => 'Tokens today';
+
+  @override
+  String get aiUsageTodayLabel => 'Today';
+
+  @override
+  String get aiUsageTodayCalls => 'Calls today';
+
+  @override
+  String get aiUsageActiveUsers => 'Active users today';
+
+  @override
+  String get aiUsageDisabledCount => 'Disabled';
+
+  @override
+  String aiUsageBudgetOf(String num, String total) {
+    return '$num / $total';
+  }
+
+  @override
+  String get aiUsageWindowHour => 'Last 24 hours';
+
+  @override
+  String get aiUsageWindowDaily => 'Last 30 days';
+
+  @override
+  String get aiUsageWindowMonthly => 'Last 12 months';
+
+  @override
+  String get aiUsageWindowYearly => 'Last 5 years';
+
+  @override
+  String get aiUsageTrend => 'Usage trend';
+
+  @override
+  String get aiUsageEmpty => 'No usage yet';
+
+  @override
+  String get aiUsageLoadFailed =>
+      'Failed to load AI usage, please try again later';
+
+  @override
+  String get aiUsagePersonMissing =>
+      'Usage information for this person was not found';
+
+  @override
+  String get aiUsageColPerson => 'Person';
+
+  @override
+  String get aiUsageColWindow => 'Window usage';
+
+  @override
+  String get aiUsageColToday => 'Today';
+
+  @override
+  String get aiUsageColLimit => 'Personal quota';
+
+  @override
+  String get aiUsageColStatus => 'Status';
+
+  @override
+  String get aiUsageColLastUsed => 'Last used';
+
+  @override
+  String aiUsageColCalls(int count) {
+    return '$count calls';
+  }
+
+  @override
+  String get aiUsageLimitFollowGlobal => 'Follow global';
+
+  @override
+  String get aiUsageStatusNormal => 'Normal';
+
+  @override
+  String get aiUsageStatusOverLimit => 'Over limit';
+
+  @override
+  String get aiUsageStatusDisabled => 'Disabled';
+
+  @override
+  String get aiUsageSetLimits => 'Set quotas';
+
+  @override
+  String get aiUsageLimitTokensLabel => 'Daily token quota';
+
+  @override
+  String get aiUsageLimitJobsLabel => 'Daily job quota';
+
+  @override
+  String get aiUsageLimitHint => 'Leave empty to follow the global default';
+
+  @override
+  String aiUsageLimitRangeError(int max) {
+    return 'Enter a whole number between 1 and $max';
+  }
+
+  @override
+  String get aiUsageDisableLabel => 'Disable AI for this account';
+
+  @override
+  String get aiUsageDisableHint =>
+      'While disabled, AI chat and file recognition cannot be used; you can restore it anytime';
+
+  @override
+  String get aiUsageDisableConfirm => 'Disable AI usage for this account?';
+
+  @override
+  String get aiUsageDisableAction => 'Disable';
+
+  @override
+  String get aiUsageDisabledBanner =>
+      'AI usage for this account has been disabled';
+
+  @override
+  String get aiUsageNoPersonalLimit =>
+      'No personal quota; the site-wide budget applies';
+
+  @override
+  String get aiUsageByPurpose => 'By purpose';
+
+  @override
+  String get aiUsageByProvider => 'By provider';
+
+  @override
+  String get aiUsageRecentUses => 'Recent uses';
+
+  @override
+  String get aiUsagePeople => 'People usage';
+
+  @override
+  String get aiUsageConflict => 'The settings changed. Refresh and save again';
+
+  @override
+  String aiUsageTokensUnit(String n) {
+    return '$n tokens';
+  }
+
+  @override
+  String aiUsageTodayUsed(String tokens) {
+    return 'Used $tokens today';
+  }
+
+  @override
+  String get aiUsageLastUsedJustNow => 'Just now';
+
+  @override
+  String aiUsageLastUsedMinutesAgo(int n) {
+    return '$n min ago';
+  }
+
+  @override
+  String aiUsageLastUsedHoursAgo(int n) {
+    return '$n h ago';
+  }
+
+  @override
+  String aiUsageLastUsedDaysAgo(int n) {
+    return '$n d ago';
+  }
+
+  @override
+  String aiUsageTrendSemantics(String title, String tokens, String calls) {
+    return '$title, $tokens tokens and $calls calls in total';
+  }
 }

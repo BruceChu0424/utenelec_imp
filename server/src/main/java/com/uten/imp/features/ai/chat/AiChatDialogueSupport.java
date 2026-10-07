@@ -311,6 +311,84 @@ final class AiChatDialogueSupport {
         return marked || !asks;
     }
 
+    /** Negation of a create request inside the same sentence ("不用帮我开单", "don't create a quotation"). */
+    private static final java.util.regex.Pattern FORM_REFUSAL = java.util.regex.Pattern.compile(
+            "(?:不要|不用|无需|别|勿|禁止|不能|不想|不需要|不再).{0,20}(?:创建|新建|生成|开|做|弄|整|填|订货|报价|报销|单据)");
+    /** English negation needs its own pattern: the normalized form strips the spaces \b boundaries rely on. */
+    private static final java.util.regex.Pattern ENGLISH_FORM_REFUSAL = java.util.regex.Pattern.compile(
+            "\\b(?:don'?t|do not|never|no need to|stop)\\b.{0,20}(?:creat|mak|open|start|quot|sales ?order|expens|reimburse)");
+    /** A question never opens a form; it is answered ("什么是订货单", "怎么创建报价单？"). */
+    private static final java.util.regex.Pattern FORM_QUESTION = java.util.regex.Pattern.compile(
+            "什么|哪些|哪个|哪里|怎么|如何|怎样|为什么|为啥|为何|多少|吗|呢|么|是否");
+
+    /** One fillable form and how the user's own words ask for it (Chinese verbs then English verbs, ADR-163). */
+    private record RequestedForm(String workflow, java.util.regex.Pattern asked, java.util.regex.Pattern askedInEnglish,
+                                 java.util.regex.Pattern bareAsked) {
+        boolean askedBy(String value) {
+            return asked.matcher(value).find() || askedInEnglish.matcher(value).find()
+                    || (bareAsked != null && bareAsked.matcher(value).find());
+        }
+    }
+
+    /**
+     * One create request, two verb+noun shapes: Chinese verbs (including a quantified 「来一张…」so plain 「来」
+     * alone never fires, and 「开」 not right after 「打」 so "打开订货单" reads as viewing) before the noun with
+     * at most 10 characters between; English verbs with at most 15. Bare 「订货/报价」 are not nouns here
+     * ("整理一下报价" is not a request). Reimbursement is asked for with the word itself, so it also fires as
+     * 「帮我报销 / 我要报销」 — a request marker plus the word, never a bare 「报销」 that a view request also
+     * contains. Each form's Chinese alternation carries its own English noun too, so mixed words count.
+     */
+    private static RequestedForm form(String workflow, String nouns, String englishNouns) {
+        return form(workflow, nouns, englishNouns, null);
+    }
+
+    private static RequestedForm form(String workflow, String nouns, String englishNouns, String bareNouns) {
+        return new RequestedForm(workflow,
+                java.util.regex.Pattern.compile("(?:创建|新建|生成|建|(?<!打)开|做|弄|整|填).{0,10}(?:" + nouns + ")"
+                        + "|来(?:一|张|个|份|点).{0,8}(?:" + nouns + ")"),
+                java.util.regex.Pattern.compile("(?:create|make|open|start).{0,15}(?:" + englishNouns + ")"),
+                bareNouns == null ? null : java.util.regex.Pattern.compile(
+                        "(?:帮我|帮忙|给我|我要|想|麻烦|请|来).{0,4}(?:" + bareNouns + ")"));
+    }
+
+    private static final List<RequestedForm> REQUESTED_FORMS = List.of(
+            form("SALES_ORDER", "订货单|销售订单|salesorder", "salesorder"),
+            form("SALES_QUOTE", "报价单|quotation|quote", "quotation|quote"),
+            form("EXPENSE_CLAIM", "报销单|费用报销|expenseclaim|reimbursement", "expenseclaim|reimbursement",
+                    "报销|费用报销"));
+
+    /**
+     * ADR-163 the form the user's own words ask to create (SALES_ORDER, SALES_QUOTE or EXPENSE_CLAIM), or null
+     * when they did not name one or only asked about it: negation and questions never fire (Chinese and English),
+     * the verb must come first, and two different workflows named at once stay unanswered by this path. Only the
+     * user's own words count here; page, document or history text never triggers it.
+     */
+    static String requestedForm(String message) {
+        if (message == null || message.length() > 2000 || formRequestBlocked(message)) return null;
+        String value = normalized(message);
+        if (value.isEmpty()) return null;
+        String hit = null;
+        for (RequestedForm candidate : REQUESTED_FORMS) {
+            if (!candidate.askedBy(value)) continue;
+            if (hit != null) return null;  // two workflows named: ambiguous, the model answers
+            hit = candidate.workflow();
+        }
+        return hit;
+    }
+
+    /**
+     * The guards a create request must pass in the user's own words, also re-checked when a remembered way of
+     * asking repeats: its key carries no punctuation, so "创建订货单？" would otherwise collide with "创建订货单".
+     */
+    static boolean formRequestBlocked(String message) {
+        if (message == null || message.length() > 2000) return true;
+        if (message.contains("?") || message.contains("？")) return true;
+        String value = normalized(message);
+        if (FORM_REFUSAL.matcher(value).find() || FORM_QUESTION.matcher(value).find()) return true;
+        String words = Normalizer.normalize(message, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        return ENGLISH_FORM_REFUSAL.matcher(words).find() || ENGLISH_QUESTION.matcher(words).find();
+    }
+
     /** Returns a presentation intent, never a new business topic, permission or action. */
     static String followUpMode(String message) {
         String question = normalized(message);

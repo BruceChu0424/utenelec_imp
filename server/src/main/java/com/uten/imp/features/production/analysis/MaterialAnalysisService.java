@@ -3829,8 +3829,7 @@ public class MaterialAnalysisService {
                 String parentRoute = effectiveRoutes.getOrDefault(
                         parentKey, parentNode.suggestion());
                 // 自制与委外父件同构(ADR-143：委外只领直属物料)，子件都按父件展开。
-                boolean expandsChildren = ("MAKE".equals(parentRoute)
-                        || "SUBCONTRACT".equals(parentRoute))
+                boolean expandsChildren = AggregateRouteForwarding.forwardsSubtree(parentRoute, null)
                         && !delegatedMakeNodes.contains(parentKey);
                 // 子件毛需求跟随父件「还要自己产出多少」：
                 //   计划产出 = max(已承诺内部制造量, 物理缺口 - 外部最终件在途)

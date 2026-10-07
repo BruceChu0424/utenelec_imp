@@ -19,7 +19,7 @@
 // 「人事/公司通知」——打卡类型（公告/制度/系统/紧急/福利）每条带【打卡确认】，不打卡
 // 每次登录都弹；只提醒类型【知道了】= markRead；【查看详情】关弹窗进详情页；
 // 【全部稍后再看】对两组一起 snooze。人工条目不参与 pending-review-status 心跳。
-// 分级体系（2026-10-06，ADR-163）：条目按 (type, priority, interactive/manual)
+// 分级体系（2026-10-06，ADR-166）：条目按 (type, priority, interactive/manual)
 // 归入紧急/行动/进度/广播四档视觉级别（见 [ReviewNoticeLevel]），颜色+图标+
 // 徽章三重编码；排序 紧急 > 行动 > 进度 > 广播。修订（2026-10-06）：审批/
 // 工作流类(type=approval/workflow)一律行动级，不受 priority=normal 降级。
@@ -104,7 +104,7 @@ String workbenchRouteFor(
   _ => RouteName.dashboard,
 };
 
-// ========================= 分级体系（2026-10-06，ADR-163） =========================
+// ========================= 分级体系（2026-10-06，ADR-166） =========================
 //
 // 用户痛点：几十种事件此前全部同一个 teal 样式，无法一眼识别类型与轻重。
 // 分级按 (priority, interactive/manual) 归档，每级「颜色 + 图标 + 徽章文字」
@@ -582,7 +582,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    // 分级排序（ADR-163）：urgent → action → progress → broadcast，同级保持到达序。
+    // 分级排序（ADR-166）：urgent → action → progress → broadcast，同级保持到达序。
     final sortedReviews = sortByReviewLevel(_items);
     final sortedManual = sortByReviewLevel(_manualItems);
     // 仅一条审核待办且无人工通知 → 大卡；其余（多条 / 含人工通知）→ 分组列表。
@@ -617,7 +617,7 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
                     : ListView(
                         shrinkWrap: true,
                         children: [
-                          // 分组顺序（ADR-163）：待办审核组在前（urgent → action →
+                          // 分组顺序（ADR-166）：待办审核组在前（urgent → action →
                           // progress），人事广播组垫底（组内 urgent 人工条目仍置组首）。
                           if (sortedReviews.isNotEmpty) ...[
                             if (_manualItems.isNotEmpty)
@@ -702,7 +702,7 @@ class _Header extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final hasReviews = items.isNotEmpty;
     final count = items.length + manual.length;
-    // 分级计数摘要（ADR-163）：按视觉级别带色点聚合（「紧急 1 · 待办 2 · 进度 1 ·
+    // 分级计数摘要（ADR-166）：按视觉级别带色点聚合（「紧急 1 · 待办 2 · 进度 1 ·
     // 公告 1」），取代旧事件域分组 chips——级别一眼可辨，域信息仍在条目卡上。
     final levelCounts = <ReviewNoticeLevel, int>{};
     for (final notice in [...items, ...manual]) {
@@ -837,7 +837,7 @@ IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
 };
 
 /// 单条：大卡布局（图标+标题+摘要+状态+操作提示）。行动/紧急级的主力形态
-/// （ADR-163：urgent=红系强化——error 描边 + 左竖红条 + 标题 error w700；
+/// （ADR-166：urgent=红系强化——error 描边 + 左竖红条 + 标题 error w700；
 /// action=teal 现风格；progress=info 蓝、更紧凑）。
 class _LargeItemCard extends StatelessWidget {
   const _LargeItemCard({
@@ -1229,7 +1229,7 @@ class _GroupLabel extends StatelessWidget {
 /// 人工通知条目：类型图标 + 标题 + 发布人·时间 + 级别徽章 + 正文两行预览 +
 /// 操作（打卡类型【打卡确认】/ 只提醒【知道了】+【查看详情】）。
 /// 375px 宽下操作区用 Wrap 自动换行。
-/// ADR-163：广播级 = 暖色容器底（amber，与 urgent 红拉开色相）；人工紧急 =
+/// ADR-166：广播级 = 暖色容器底（amber，与 urgent 红拉开色相）；人工紧急 =
 /// 红系强化（errorContainer 底 + 1.5px error 描边 + 紧急红徽章，组内置顶）。
 class _ManualNoticeCard extends StatelessWidget {
   const _ManualNoticeCard({
@@ -1311,7 +1311,7 @@ class _ManualNoticeCard extends StatelessWidget {
                   ],
                 ),
               ),
-              // 级别徽章（ADR-163）：人工紧急=红底白字「紧急」，其余人工=琥珀底
+              // 级别徽章（ADR-166）：人工紧急=红底白字「紧急」，其余人工=琥珀底
               // 「公告」——徽章文字不同，色弱下与 urgent 红仍可区分。
               const SizedBox(width: UtenSpacing.s8),
               _LevelBadge(style: style, label: _levelLabel(l10n, level)),

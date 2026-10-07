@@ -12,6 +12,7 @@
 //   * 服务器没开放境外服务商时不能选; 开放了也要逐个勾选数据出境确认。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -30,6 +31,8 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -341,6 +344,10 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    // 返回即刷新：从 AI 用量看板/额度编辑回到本页时静默重拉(用量与限额可能已变)。
+    ref.onPageResume(RouteName.adminAiSettings, () {
+      if (_current) _load(quiet: true);
+    });
     final providers = _providers;
     final Widget body;
     if (_loading && providers == null) {
@@ -462,6 +469,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
           usage: _usage,
           providers: providers,
           unavailable: _usageFailed,
+          onOpenUsage: () => context.push(RouteName.adminAiUsage),
         ),
         const SizedBox(height: UtenSpacing.s16),
         AiUsageAuditPanel(

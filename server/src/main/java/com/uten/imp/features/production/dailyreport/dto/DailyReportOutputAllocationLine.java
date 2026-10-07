@@ -13,6 +13,8 @@ import java.util.UUID;
  * 实际超产)各写一条送仓明细并记下原因。
  */
 public record DailyReportOutputAllocationLine(UUID directTransferDemandId, @NotNull BigDecimal qty) {
+    @com.fasterxml.jackson.annotation.JsonProperty(value="qtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String qtyExact() { return qty == null ? null : qty.toPlainString(); }
 
     /** 送入仓库的去向。 */
     public static DailyReportOutputAllocationLine warehouse(BigDecimal qty) {

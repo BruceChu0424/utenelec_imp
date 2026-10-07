@@ -22,6 +22,7 @@ import '../models/daily_output_allocation.dart'
     show outputAllocationQuantityText;
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_daily_report.dart';
+import '../models/production_exact_quantity.dart';
 import '../models/production_execution_planning.dart'
     show isValidProductionPlanningQuantityText;
 import '../repositories/production_material_repository.dart';
@@ -63,6 +64,8 @@ class DailyGridRow extends EditableGridRow {
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController(); // 完工量
+  bool qtyNeedsVerification = false;
+  bool defectQtyNeedsVerification = false;
 
   /// 不良数(ADR-129)：只记录，不影响完工申报量、库存与产量分流；空 = 0。
   final TextEditingController defectQty = TextEditingController();
@@ -85,6 +88,9 @@ class DailyGridRow extends EditableGridRow {
   String? salesOrderNo;
   String? clientName;
   double? unitRate;
+  String? unitRateExact;
+  String? get unitRateText =>
+      productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
   double? orderQty;
   double? maxReportQty;
   bool allowActualOverproduction = false;
@@ -97,6 +103,10 @@ class DailyGridRow extends EditableGridRow {
   String? supplementRequestId;
   String? supplementProofId;
   double? supplementApprovedActualQty;
+  String? supplementApprovedActualQtyExact;
+  String? get supplementApprovedActualQtyText => productionExactQuantityText(
+    supplementApprovedActualQtyExact ?? supplementApprovedActualQty,
+  );
   bool get hasFixedSupplement =>
       !isFqcRecovery &&
       (supplementProofId != null ||
@@ -237,6 +247,9 @@ class DailyGridRow extends EditableGridRow {
   /// 去向分配子行(固定)：工人自己要的数量(不含顺带接下的余量)；产量变小时显示值被压低，
   /// 压到 0 就先藏起来，这个数不丢，产量回升时按它恢复。
   double? allocationRequested;
+  String? allocationRequestedExact;
+  String? directTransferPrecisionIssue;
+  Map<String, String> directTransferRoomBaseExact = const {};
 
   /// 去向分配子行：正在输入数量(输入框有焦点)，重排不改它的文字。
   bool allocationEditing = false;
@@ -329,6 +342,9 @@ class DailyGridRow extends EditableGridRow {
       ..salesOrderNo = salesOrderNo
       ..clientName = clientName
       ..unitRate = unitRate
+      ..unitRateExact = unitRateExact
+      ..qtyNeedsVerification = qtyNeedsVerification
+      ..defectQtyNeedsVerification = defectQtyNeedsVerification
       ..orderQty = orderQty
       ..maxReportQty = maxReportQty
       ..allowActualOverproduction = allowActualOverproduction
@@ -416,15 +432,20 @@ void restoreOutputAllocations(
 ) {
   final rows = <DailyGridRow>[];
   for (final entry in entries) {
-    final qty = (entry['qty'] as num?)?.toDouble();
-    if (qty == null || !qty.isFinite || qty <= 0) continue;
+    final qtyText = productionExactQuantityText(
+      entry['qtyExact'] ?? entry['qty'],
+    );
+    if (qtyText == null) throw const FormatException('去向数量缺少精确原文，请重新读取');
+    final qty = double.parse(qtyText);
+    if (qty <= 0) continue;
     final row = DailyGridRow()
       ..depth = 1
       ..allocationParent = product
       ..allocationDemandId = entry['directTransferDemandId'] as String?
       ..allocationFixed = true
-      ..allocationRequested = qty;
-    row.allocationQty.text = _quantityText(qty);
+      ..allocationRequested = qty
+      ..allocationRequestedExact = qtyText;
+    row.allocationQty.text = qtyText;
     rows.add(row);
   }
   product.allocationRows = rows;
@@ -452,7 +473,7 @@ List<Map<String, dynamic>>? outputAllocationBody(DailyGridRow product) {
       if ((double.tryParse(allocation.allocationQty.text.trim()) ?? 0) > 0)
         {
           'directTransferDemandId': allocation.allocationDemandId,
-          'qty': double.parse(allocation.allocationQty.text.trim()),
+          'qty': productionQuantityWire(allocation.allocationQty.text.trim()),
         },
   ];
   return body.any((entry) => entry['directTransferDemandId'] != null)
@@ -542,9 +563,12 @@ String? productionReportDefectIssue(DailyGridRow row) {
 }
 
 /// 随行提交的不良数；空或 0 返回 null(不提交)。先经 [productionReportDefectIssue] 校验。
-double? productionReportDefectQty(DailyGridRow row) {
-  final value = double.tryParse(row.defectQty.text.trim());
-  return value != null && value.isFinite && value > 0 ? value : null;
+Object? productionReportDefectQty(DailyGridRow row) {
+  final raw = row.defectQty.text.trim().replaceFirst(RegExp(r'\.$'), '');
+  final units = financeExactDecimalUnits(raw);
+  return units != null && units > BigInt.zero
+      ? productionQuantityWire(raw)
+      : null;
 }
 
 /// Keep stored draft use when a transient read failure hides its editor.
@@ -787,6 +811,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
               child: TextField(
                 controller: row.qty,
+                onChanged: (_) => row.qtyNeedsVerification = false,
                 readOnly: row.hasFixedSupplement,
                 textAlign: TextAlign.right,
                 keyboardType: const TextInputType.numberWithOptions(
@@ -857,6 +882,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   isEmpty: () => productionReportDefectIssue(row) != null,
                   child: TextField(
                     controller: row.defectQty,
+                    onChanged: (_) => row.defectQtyNeedsVerification = false,
                     textAlign: TextAlign.right,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,

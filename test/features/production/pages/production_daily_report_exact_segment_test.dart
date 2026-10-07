@@ -22,6 +22,8 @@ import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 import 'package:uten_imp/features/production/models/production_daily_report_create_request.dart';
+import 'package:uten_imp/features/production/models/production_daily_report.dart';
+import 'package:uten_imp/features/production/models/production_exact_quantity.dart';
 import 'package:uten_imp/features/production/pages/production_daily_report_create_recovery_page.dart';
 import '../../../support/native_detail_reader_overrides.dart';
 import '../../../support/controlled_attachment_pipeline.dart';
@@ -56,6 +58,7 @@ import '../../../shared/drafts/memory_form_draft_storage.dart';
 part 'production_daily_report_draft_identity_cases.dart';
 part 'production_daily_report_create_recovery_cases.dart';
 part 'production_daily_report_attachment_late_ack_cases.dart';
+part 'production_daily_report_precision_cases.dart';
 
 class _ExactSegmentSession extends SessionNotifier {
   @override
@@ -71,6 +74,7 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  registerDailyReportPrecisionTests();
   registerDailyReportDraftIdentityTests();
   registerDailyReportCreateRecoveryTests();
   registerDailyReportLateAttachmentAckTests();
@@ -687,7 +691,9 @@ void main() {
         expect(submittedItems, hasLength(2));
         expect(
           (submittedItems.first as Map)['qty'],
-          double.parse(sample.actual),
+          sample.actual == '10000000000110'
+              ? sample.actual
+              : double.parse(sample.actual),
         );
         expect((submittedItems.first as Map)['overLimitReason'], '同一批模具产出多于计划');
         expect(submitted!['materialLines'], [
@@ -2451,7 +2457,11 @@ class _ReportSaveAttachments extends AttachmentService {
   }
 }
 
-Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
+Future<void> _pumpNewReport(
+  WidgetTester tester,
+  ApiClient api, {
+  ProductionDailyReportEditPage? page,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1440, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
@@ -2467,6 +2477,16 @@ Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
         productionDailyReportRepositoryProvider.overrideWithValue(
           ProductionDailyReportRepository(api),
         ),
+        if (page?.id != null)
+          documentScopeCapabilityProvider(
+            DocumentDataScope.productionPlan,
+          ).overrideWith(
+            (ref) async => const DocumentScopeCapability(
+              scope: 'production_plan',
+              writeAll: true,
+              writableOwnerIds: {},
+            ),
+          ),
         employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
         sharedPreferencesProvider.overrideWithValue(preferences),
         currentPermissionsProvider.overrideWithValue({
@@ -2485,14 +2505,16 @@ Future<void> _pumpNewReport(WidgetTester tester, ApiClient api) async {
           Perm.productionDailyReportView,
         }),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
         home: Column(
           children: [
-            AppNotificationHost(),
+            const AppNotificationHost(),
             Expanded(
-              child: ProductionDailyReportEditPage(
-                initialExecutionSegmentId: 'segment-1',
-              ),
+              child:
+                  page ??
+                  const ProductionDailyReportEditPage(
+                    initialExecutionSegmentId: 'segment-1',
+                  ),
             ),
           ],
         ),

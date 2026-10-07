@@ -1,3 +1,5 @@
+import 'production_exact_quantity.dart';
+
 double? _asDouble(dynamic value) {
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value);
@@ -30,6 +32,8 @@ class ReportablePlanLine {
     this.unitId,
     this.unitName,
     this.unitRate,
+    this.unitRateExact,
+    this.maxReportQtyExact,
     this.plannedQty,
     this.producedQty,
     this.remainingPlanQty,
@@ -74,6 +78,12 @@ class ReportablePlanLine {
   final String? unitId;
   final String? unitName;
   final double? unitRate;
+  final String? unitRateExact;
+  final String? maxReportQtyExact;
+  String? get unitRateText =>
+      productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
+  String? get maxReportQtyText =>
+      productionExactQuantityText(maxReportQtyExact ?? maxReportQty);
   final double? plannedQty;
   final double? producedQty;
   final double? remainingPlanQty;
@@ -165,6 +175,13 @@ class ReportablePlanLine {
     unitId: json['unitId'] as String?,
     unitName: json['unitName'] as String?,
     unitRate: _asDouble(json['unitRate']),
+    unitRateExact: productionExactQuantityText(
+      json['unitRateExact'] ?? json['unitRate'],
+      scale: 6,
+    ),
+    maxReportQtyExact: productionExactQuantityText(
+      json['maxReportQtyExact'] ?? json['maxReportQty'],
+    ),
     plannedQty: _asDouble(json['plannedQty']),
     producedQty: _asDouble(json['producedQty']),
     remainingPlanQty: _asDouble(json['remainingPlanQty']),

@@ -101,4 +101,12 @@ public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.Pla
     public boolean carriesStaleRouteShape() {
         return staleRouteShape;
     }
+
+    /** Read-only originals when this request is returned as a saved supplement context. */
+    @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getQtyExact() { return qty == null ? null : qty.toPlainString(); }
+    @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getDefectQtyExact() { return defectQty == null ? null : defectQty.toPlainString(); }
+    @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getUnitRateExact() { return unitRate == null ? null : unitRate.toPlainString(); }
 }

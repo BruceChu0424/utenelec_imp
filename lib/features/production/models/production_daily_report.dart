@@ -9,6 +9,9 @@
 // JSON：camelCase；boolean isClosed/isCanceled → closed/canceled。
 //
 // 重新导出状态助手，方便日报页面从一处 import（plan/daily 共用 0/1/-1）。
+import '../../../shared/formatters/exact_decimal.dart';
+import 'production_exact_quantity.dart';
+
 export 'production_plan.dart'
     show
         kProductionStatusDraft,
@@ -113,6 +116,10 @@ class ProductionDailyReportItem {
     this.unitId,
     this.unitRate,
     this.qty,
+    this.qtyExact,
+    this.unitRateExact,
+    this.defectQtyExact,
+    this.outputBatchQtyExact,
     this.defectQty = 0,
     this.price,
     this.total,
@@ -172,6 +179,14 @@ class ProductionDailyReportItem {
   final String? unitId;
   final double? unitRate;
   final double? qty; // 完工量
+  final String? qtyExact, unitRateExact, defectQtyExact, outputBatchQtyExact;
+  String? get qtyText => productionExactQuantityText(qtyExact ?? qty);
+  String? get unitRateText =>
+      productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
+  String? get defectQtyText =>
+      productionExactQuantityText(defectQtyExact ?? defectQty);
+  String? get outputBatchQtyText =>
+      productionExactQuantityText(outputBatchQtyExact ?? outputBatchQty);
 
   /// 不良数(ADR-129)：只记录，不影响良品数、库存与产量分流；用来算实产单耗和不良率。
   /// 一次报工拆成多条明细时只记在第一条上，其余为 0。
@@ -265,6 +280,17 @@ class ProductionDailyReportItem {
         unitId: json['unitId'] as String?,
         unitRate: _asDouble(json['unitRate']),
         qty: _asDouble(json['qty']),
+        qtyExact: productionExactQuantityText(json['qtyExact'] ?? json['qty']),
+        unitRateExact: productionExactQuantityText(
+          json['unitRateExact'] ?? json['unitRate'],
+          scale: 6,
+        ),
+        defectQtyExact: productionExactQuantityText(
+          json['defectQtyExact'] ?? json['defectQty'] ?? 0,
+        ),
+        outputBatchQtyExact: productionExactQuantityText(
+          json['outputBatchQtyExact'] ?? json['outputBatchQty'],
+        ),
         defectQty: _asDouble(json['defectQty']) ?? 0,
         price: _asDouble(json['price']),
         total: _asDouble(json['total']),
@@ -328,6 +354,12 @@ class ProductionDailyReportInputGroup {
   ProductionDailyReportItem get source =>
       items.firstWhere((item) => !item.publicOutput, orElse: () => items.first);
   double? get qty => source.outputBatchQty ?? source.qty;
+  String? get qtyText =>
+      source.outputBatchQty == null && source.outputBatchQtyExact == null
+      ? source.qtyText
+      : source.outputBatchQtyText;
+  String? get defectQtyText =>
+      financeExactSumTexts(items.map((item) => item.defectQtyText));
   String? get overLimitReason => items
       .where((item) => item.overLimitReason?.trim().isNotEmpty == true)
       .map((item) => item.overLimitReason)
@@ -364,21 +396,33 @@ class ProductionDailyReportInputGroup {
   /// 本批产出的去向(与提交体同形 `{directTransferDemandId, qty}`)：每个上层工单一条，
   /// 送入仓库的部分(需求份、公共备货、实际超产)合成一条(V736/ADR-127)。
   List<Map<String, dynamic>> get allocations {
-    final direct = <String, double>{};
-    var warehouse = 0.0;
+    final direct = <String, BigInt>{};
+    var warehouse = BigInt.zero;
     for (final item in items) {
-      final qty = item.qty ?? 0;
+      final qty = financeExactDecimalUnits(item.qtyText);
+      if (qty == null) throw const FormatException('已存去向缺少精确数量');
       final demand = item.directTransferDemandId;
       if (item.isDirectTransfer && demand != null) {
-        direct[demand] = (direct[demand] ?? 0) + qty;
+        direct[demand] = (direct[demand] ?? BigInt.zero) + qty;
       } else {
         warehouse += qty;
       }
     }
     return [
       for (final entry in direct.entries)
-        {'directTransferDemandId': entry.key, 'qty': entry.value},
-      if (warehouse > 0) {'directTransferDemandId': null, 'qty': warehouse},
+        {
+          'directTransferDemandId': entry.key,
+          'qty': productionQuantityWire(
+            financeExactDecimalFromUnits(entry.value),
+          ),
+        },
+      if (warehouse > BigInt.zero)
+        {
+          'directTransferDemandId': null,
+          'qty': productionQuantityWire(
+            financeExactDecimalFromUnits(warehouse),
+          ),
+        },
     ];
   }
 }

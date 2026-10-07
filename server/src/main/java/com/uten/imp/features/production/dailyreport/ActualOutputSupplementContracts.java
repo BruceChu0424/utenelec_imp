@@ -33,13 +33,22 @@ public final class ActualOutputSupplementContracts {
                           UUID goodsId,UUID colorId,UUID unitId,BigDecimal unitRate,UUID workshopDepartmentId,UUID responsibleEmployeeId,
                           BigDecimal plannedQty,BigDecimal priorReportedQty,BigDecimal effectiveRate,BigDecimal thresholdQty,
                           BigDecimal remainingActualSurplusQty,BigDecimal actualQty,BigDecimal originalReportQty,BigDecimal supplementQty,
-                          boolean requiresSupplement,String fingerprint,UUID sourceSalesAllocationId,BigDecimal originalSalesQty,BigDecimal originalInternalQty) {}
+                          boolean requiresSupplement,String fingerprint,UUID sourceSalesAllocationId,BigDecimal originalSalesQty,BigDecimal originalInternalQty) {
+        @JsonProperty(value="actualQtyExact",access=JsonProperty.Access.READ_ONLY)
+        public String actualQtyExact(){return actualQty==null?null:actualQty.toPlainString();}
+    }
     public record View(UUID id,String status,UUID planId,String planNo,UUID proofId,UUID supplementSegmentId,Long supplementSegmentVersion,
                        BigDecimal actualQty,BigDecimal originalReportQty,BigDecimal supplementQty,UUID sourceSegmentId,
                        String supplementSegmentStatus,boolean canStart,com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine sourceLine,
                        com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest reportContext,Integer inputLineIndex,UUID excludedReportId,
-                       java.util.List<RelatedSupplement> relatedSupplements,java.util.List<InputSource> inputSources) {}
+                       java.util.List<RelatedSupplement> relatedSupplements,java.util.List<InputSource> inputSources) {
+        @JsonProperty(value="actualQtyExact",access=JsonProperty.Access.READ_ONLY)
+        public String actualQtyExact(){return actualQty==null?null:actualQty.toPlainString();}
+    }
     public record InputSource(int inputLineIndex,com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine sourceLine) {}
     public record RelatedSupplement(UUID id,Integer inputLineIndex,UUID sourceSegmentId,UUID sourceSalesAllocationId,BigDecimal actualQty,
-                                    UUID proofId,String status,UUID supplementSegmentId,String segmentStatus) {}
+                                    UUID proofId,String status,UUID supplementSegmentId,String segmentStatus) {
+        @JsonProperty(value="actualQtyExact",access=JsonProperty.Access.READ_ONLY)
+        public String actualQtyExact(){return actualQty==null?null:actualQty.toPlainString();}
+    }
 }

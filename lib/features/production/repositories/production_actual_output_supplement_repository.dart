@@ -19,6 +19,8 @@ class ProductionOutputSupplementPreview {
   String? get sourceSalesAllocationId =>
       data['sourceSalesAllocationId'] as String?;
   double get actualQty => productionRateNumber(data['actualQty'])!;
+  String? get actualQtyText =>
+      productionExactQuantityText(data['actualQtyExact'] ?? data['actualQty']);
   double get plannedQty => productionRateNumber(data['plannedQty'])!;
   double get originalReportQty =>
       productionRateNumber(data['originalReportQty'])!;
@@ -127,6 +129,8 @@ class ProductionOutputSupplementView {
   int? get supplementSegmentVersion =>
       (data['supplementSegmentVersion'] as num?)?.toInt();
   double get actualQty => productionRateNumber(data['actualQty'])!;
+  String? get actualQtyText =>
+      productionExactQuantityText(data['actualQtyExact'] ?? data['actualQty']);
   double get originalReportQty =>
       productionRateNumber(data['originalReportQty'])!;
   double get supplementQty => productionRateNumber(data['supplementQty'])!;
@@ -147,7 +151,7 @@ class ProductionOutputSupplementRepository {
   );
   Future<ProductionOutputSupplementPreview> preview({
     required String segmentId,
-    required double actualQty,
+    required Object actualQty,
     String? sourceSalesAllocationId,
     String? excludedReportId,
   }) async => ProductionOutputSupplementPreview(
@@ -155,7 +159,7 @@ class ProductionOutputSupplementRepository {
       '$_base/preview',
       body: {
         'sourceExecutionSegmentId': segmentId,
-        'actualQty': actualQty,
+        'actualQty': productionQuantityWire(actualQty),
         'sourceSalesAllocationId': ?sourceSalesAllocationId,
         'excludedReportId': ?excludedReportId,
       },
@@ -174,7 +178,7 @@ class ProductionOutputSupplementRepository {
       _base,
       body: {
         'sourceExecutionSegmentId': preview.sourceSegmentId,
-        'actualQty': preview.actualQty,
+        'actualQty': productionQuantityWire(preview.actualQtyText),
         'sourceSalesAllocationId': ?preview.sourceSalesAllocationId,
         'fingerprint': preview.fingerprint,
         'billDate': billDate,
@@ -185,7 +189,7 @@ class ProductionOutputSupplementRepository {
         'inputLineIndex': ?inputLineIndex,
         'idempotencyKey': businessIdempotencyKey(
           'actual-output-supplement',
-          '${preview.sourceSegmentId}|${preview.fingerprint}|${preview.actualQty}|$billDate|$deliveryDate|$remark|$excludedReportId|$inputLineIndex',
+          '${preview.sourceSegmentId}|${preview.fingerprint}|${productionQuantityWire(preview.actualQtyText)}|$billDate|$deliveryDate|$remark|$excludedReportId|$inputLineIndex',
         ),
       },
     ),

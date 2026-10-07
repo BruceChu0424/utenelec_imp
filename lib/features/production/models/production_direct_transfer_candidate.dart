@@ -1,7 +1,9 @@
-/// 报工页「转下一道工序」的候选工单(V584/V585/V595)。
-///
-/// 能不能送、还差多少只由服务端的一份判定给出(V736/ADR-127)：这里只收可送的上层工单，
-/// 本端不复写任何资格条件；一张报工里多行之间的扣减在 daily_output_allocation.dart 一处算。
+// 报工页「转下一道工序」的候选工单(V584/V585/V595)。
+//
+// 能不能送、还差多少只由服务端的一份判定给出(V736/ADR-127)：这里只收可送的上层工单，
+// 本端不复写任何资格条件；一张报工里多行之间的扣减在 daily_output_allocation.dart 一处算。
+import 'production_exact_quantity.dart';
+
 class ProductionDirectTransferCandidate {
   const ProductionDirectTransferCandidate({
     required this.demandId,
@@ -21,6 +23,9 @@ class ProductionDirectTransferCandidate {
     this.receivingGoodsName,
     this.requiredQty = 0,
     this.alreadyCoveredQty = 0,
+    this.remainingQtyExact,
+    this.requiredQtyExact,
+    this.alreadyCoveredQtyExact,
   });
 
   final String demandId;
@@ -49,6 +54,13 @@ class ProductionDirectTransferCandidate {
 
   /// 本来源可直送的基础数量：接收需求未覆盖量与本生产来源剩余责任量的较小值。
   final double remainingQty;
+  final String? remainingQtyExact, requiredQtyExact, alreadyCoveredQtyExact;
+  String? get remainingQtyText =>
+      productionExactQuantityText(remainingQtyExact ?? remainingQty);
+  String? get requiredQtyText =>
+      productionExactQuantityText(requiredQtyExact ?? requiredQty);
+  String? get alreadyCoveredQtyText =>
+      productionExactQuantityText(alreadyCoveredQtyExact ?? alreadyCoveredQty);
 
   /// 父件产品名 + 编号，缺哪项少哪项。
   String get receivingGoodsLabel {
@@ -97,6 +109,15 @@ class ProductionDirectTransferCandidate {
       requiredQty: number('requiredQty'),
       alreadyCoveredQty: number('alreadyCoveredQty'),
       remainingQty: number('remainingQty'),
+      remainingQtyExact: productionExactQuantityText(
+        json['remainingQtyExact'] ?? json['remainingQty'],
+      ),
+      requiredQtyExact: productionExactQuantityText(
+        json['requiredQtyExact'] ?? json['requiredQty'] ?? 0,
+      ),
+      alreadyCoveredQtyExact: productionExactQuantityText(
+        json['alreadyCoveredQtyExact'] ?? json['alreadyCoveredQty'] ?? 0,
+      ),
     );
   }
 }

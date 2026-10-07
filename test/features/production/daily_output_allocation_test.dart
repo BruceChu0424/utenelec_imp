@@ -54,6 +54,115 @@ List<OutputAllocationSlot> _slotsFrom(OutputAllocationRowPlan plan) => [
 
 void main() {
   test(
+    'exact large rows share receiver capacity without losing the final tick',
+    () {
+      final target = ProductionDirectTransferCandidate.fromJson({
+        'demandId': 'shared',
+        'executionSegmentId': 'target',
+        'remainingQty': 10000000000000.0,
+        'remainingQtyExact': '9999999999999.9999',
+        'requiredQty': 10000000000000.0,
+        'requiredQtyExact': '9999999999999.9999',
+      });
+      final plans = planOutputAllocations([
+        OutputAllocationRowInput(
+          sourceKey: 'a',
+          quantity: 10000000000000.0,
+          quantityExact: '9999999999999.9998',
+          unitRate: 1,
+          candidates: [target],
+          slots: const [],
+        ),
+        OutputAllocationRowInput(
+          sourceKey: 'b',
+          quantity: 0.0002,
+          quantityExact: '0.0002',
+          unitRate: 1,
+          candidates: [target],
+          slots: const [],
+        ),
+      ]);
+      expect(plans[0].lines.map((line) => (line.demandId, line.qtyExact)), [
+        ('shared', '9999999999999.9998'),
+      ]);
+      expect(plans[1].lines.map((line) => (line.demandId, line.qtyExact)), [
+        ('shared', '0.0001'),
+        (null, '0.0001'),
+      ]);
+      expect(
+        plans.every((plan) => plan.issues.isEmpty && plan.issue == null),
+        isTrue,
+      );
+    },
+  );
+
+  test(
+    'exact six place rate floors direct capacity and keeps the large remainder',
+    () {
+      final target = ProductionDirectTransferCandidate.fromJson({
+        'demandId': 'target',
+        'executionSegmentId': 'target',
+        'remainingQty': 319999999.9999,
+        'remainingQtyExact': '319999999.9999',
+      });
+      final plan = planOutputAllocations([
+        OutputAllocationRowInput(
+          sourceKey: 'a',
+          quantity: 10000000000000.0,
+          quantityExact: '9999999999999.9999',
+          unitRate: 0.000032,
+          unitRateExact: '0.000032',
+          candidates: [target],
+          slots: const [],
+        ),
+      ]).single;
+      expect(plan.lines.map((line) => (line.demandId, line.qtyExact)), [
+        ('target', '9999999999996.875'),
+        (null, '3.1249'),
+      ]);
+      expect(plan.issue, isNull);
+    },
+  );
+
+  test('exact fixed original survives quantity reduction then restoration', () {
+    const wanted = '9999999999999.9999';
+    final first = planOutputAllocations([
+      const OutputAllocationRowInput(
+        sourceKey: 'a',
+        quantity: 1,
+        unitRate: 1,
+        candidates: [],
+        slots: [
+          OutputAllocationSlot(
+            fixed: true,
+            requested: 10000000000000.0,
+            requestedExact: wanted,
+          ),
+        ],
+      ),
+    ]).single;
+    expect(first.lines.single.qtyExact, '1');
+    expect(first.lines.single.requestedExact, wanted);
+    final second = planOutputAllocations([
+      OutputAllocationRowInput(
+        sourceKey: 'a',
+        quantity: 10000000000000.0,
+        quantityExact: wanted,
+        unitRate: 1,
+        candidates: const [],
+        slots: [
+          OutputAllocationSlot(
+            fixed: true,
+            requested: first.lines.single.requested,
+            requestedExact: first.lines.single.requestedExact,
+          ),
+        ],
+      ),
+    ]).single;
+    expect(second.lines.single.qtyExact, wanted);
+    expect(second.lines.single.requestedExact, wanted);
+  });
+  test(
     'the most urgent parent comes first, the rest cascades, then the warehouse',
     () {
       final plan = planOutputAllocations([

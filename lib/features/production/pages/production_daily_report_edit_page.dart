@@ -66,6 +66,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../models/daily_output_allocation.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_exact_quantity.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_material_usage_source.dart';
 import '../models/reportable_plan_line.dart';
@@ -340,8 +341,8 @@ class _ProductionDailyReportEditPageState
                 {
                   'directTransferDemandId': allocation.allocationDemandId,
                   'qty':
-                      allocation.allocationRequested ??
-                      double.tryParse(allocation.allocationQty.text.trim()),
+                      allocation.allocationRequestedExact ??
+                      allocation.allocationQty.text,
                 },
           ],
           'executionSegmentVersion': row.executionSegmentVersion,
@@ -363,15 +364,20 @@ class _ProductionDailyReportEditPageState
           'colorId': row.colorId,
           'unitId': row.unitId,
           'unitRate': row.unitRate,
+          'unitRateExact': row.unitRateText,
           'orderQty': row.orderQty,
           'maxReportQty': row.maxReportQty,
           'supplementApprovedActualQty': row.supplementApprovedActualQty,
+          'supplementApprovedActualQtyExact':
+              row.supplementApprovedActualQtyText,
           'remainingPlanQty': row.remainingPlanQty,
           'allowActualOverproduction': row.allowActualOverproduction,
           'legacyManual': row.legacyManual,
           'isFinal': row.isFinal,
           'qty': row.qty.text,
+          'quantityTextConfirmed': !row.qtyNeedsVerification,
           'defectQty': row.defectQty.text,
+          'defectQuantityTextConfirmed': !row.defectQtyNeedsVerification,
           'weight': row.weight.text,
           'planNo': row.planNo.text,
           'remark': row.remark.text,
@@ -491,6 +497,14 @@ class _ProductionDailyReportEditPageState
       row.colorId = item['colorId'] as String?;
       row.unitId = item['unitId'] as String?;
       row.unitRate = (item['unitRate'] as num?)?.toDouble();
+      row.unitRateExact = productionExactQuantityText(
+        item['unitRateExact'] ?? item['unitRate'],
+        scale: 6,
+      );
+      row.supplementApprovedActualQtyExact = productionExactQuantityText(
+        item['supplementApprovedActualQtyExact'] ??
+            item['supplementApprovedActualQty'],
+      );
       row.orderQty = (item['orderQty'] as num?)?.toDouble();
       row.maxReportQty = (item['maxReportQty'] as num?)?.toDouble();
       row.supplementApprovedActualQty =
@@ -501,6 +515,14 @@ class _ProductionDailyReportEditPageState
       row.isFinal = item['isFinal'] == true;
       row.qty.text = draftText(item, 'qty');
       row.defectQty.text = draftText(item, 'defectQty');
+      // Old defaults were seeded through double before being saved as text.
+      // Text alone is therefore not evidence of an original large quantity.
+      row.qtyNeedsVerification =
+          item['quantityTextConfirmed'] != true &&
+          (double.tryParse(row.qty.text)?.abs() ?? 0) >= 10000000000;
+      row.defectQtyNeedsVerification =
+          item['defectQuantityTextConfirmed'] != true &&
+          (double.tryParse(row.defectQty.text)?.abs() ?? 0) >= 10000000000;
       row.weight.text = draftText(item, 'weight');
       row.planNo.text = draftText(item, 'planNo');
       row.remark.text = draftText(item, 'remark');
@@ -595,9 +617,9 @@ class _ProductionDailyReportEditPageState
                   code: item.goodsCode,
                   name: item.goodsName,
                 )
-          ..qty.text = item.qty?.toString() ?? ''
+          ..qty.text = item.qtyText ?? ''
           ..defectQty.text = item.defectQty > 0
-              ? _quantityText(item.defectQty)
+              ? (item.defectQtyText ?? '')
               : ''
           ..weight.text = item.weight?.toString() ?? ''
           ..remark.text = item.remark ?? ''
@@ -614,6 +636,7 @@ class _ProductionDailyReportEditPageState
           ..colorId = item.colorId
           ..unitId = item.unitId
           ..unitRate = item.unitRate
+          ..unitRateExact = item.unitRateText
           ..isFinal = item.isFinal,
     ]);
     _resumeBlocked = false;
@@ -715,6 +738,9 @@ class _ProductionDailyReportEditPageState
             ..supplementApprovedActualQty = group.supplementBatch
                 ? group.qty
                 : null
+            ..supplementApprovedActualQtyExact = group.supplementBatch
+                ? group.qtyText
+                : null
             ..fqcRecoveryAuthorizationId = it.fqcRecoveryAuthorizationId
             ..fqcRecoveryDispositionCode = it.fqcRecoveryAuthorizationId == null
                 ? null
@@ -723,6 +749,7 @@ class _ProductionDailyReportEditPageState
             ..salesOrderNo = it.salesOrderNo
             ..clientName = it.clientName
             ..unitRate = it.unitRate
+            ..unitRateExact = it.unitRateText
             ..orderQty = it.orderQty
             ..legacyManual =
                 it.planItemId == null && (it.planNo?.isEmpty ?? true)
@@ -732,10 +759,13 @@ class _ProductionDailyReportEditPageState
             ..goods = ref
                 .read(masterNameServiceProvider)
                 .goodsOptionOf(it.goodsId);
-          row.qty.text = group.qty?.toString() ?? '';
-          row.defectQty.text = group.defectQty > 0
-              ? _quantityText(group.defectQty)
-              : '';
+          if (group.qtyText == null ||
+              group.defectQtyText == null ||
+              it.unitRateText == null) {
+            throw const FormatException('原草稿数量缺少精确原文');
+          }
+          row.qty.text = group.qtyText!;
+          row.defectQty.text = group.defectQty > 0 ? group.defectQtyText! : '';
           row.weight.text = group.weight?.toString() ?? '';
           row.isFinal = it.isFinal;
           // V736：草稿里已分好的去向(每个上层工单一条 + 送入仓库合成一条)是用户的选择，
@@ -761,13 +791,15 @@ class _ProductionDailyReportEditPageState
         final source = supplement.sourceLine;
         if (source == null ||
             supplement.proofId == null ||
+            supplement.actualQtyText == null ||
             supplement.status != 'APPROVED' ||
             supplement.supplementSegmentStatus != 'IN_PROGRESS') {
           context.appError('追加计划尚未完成审批与开工，请先核对追加计划状态');
         } else {
           final row = _grid.rows.first;
           _applySource(row, source);
-          row.qty.text = _quantityText(supplement.actualQty);
+          row.qty.text = supplement.actualQtyText!;
+          row.supplementApprovedActualQtyExact = supplement.actualQtyText;
           row.supplementRequestId = supplement.id;
           row.supplementProofId = supplement.proofId;
           row.supplementApprovedActualQty = supplement.actualQty;
@@ -826,10 +858,17 @@ class _ProductionDailyReportEditPageState
       final restored = <DailyGridRow>[];
       for (final raw in rawItems) {
         final item = Map<String, dynamic>.from(raw as Map);
-        final qty = productionRateNumber(item['qty']);
+        final qtyText = productionExactQuantityText(
+          item['qtyExact'] ?? item['qty'],
+        );
+        final qty = qtyText == null ? null : double.parse(qtyText);
+        final rateText = productionExactQuantityText(
+          item['unitRateExact'] ?? item['unitRate'],
+          scale: 6,
+        );
         if (qty == null ||
-            !qty.isFinite ||
             qty <= 0 ||
+            rateText == null ||
             item['planItemId'] is! String ||
             item['executionSegmentId'] is! String ||
             item['goodsId'] is! String ||
@@ -837,7 +876,10 @@ class _ProductionDailyReportEditPageState
             (productionRateNumber(item['unitRate']) ?? 0) <= 0) {
           throw const FormatException('申请时来源或数量不完整，请回原表核对');
         }
-        final defect = productionRateNumber(item['defectQty']) ?? 0;
+        final defectText = productionExactQuantityText(
+          item['defectQtyExact'] ?? item['defectQty'] ?? 0,
+        );
+        if (defectText == null) throw const FormatException('申请时不良数缺少精确原文');
         final row = DailyGridRow()
           ..planItemId = item['planItemId'] as String
           ..executionSegmentId = item['executionSegmentId'] as String
@@ -850,11 +892,12 @@ class _ProductionDailyReportEditPageState
           ..unitId = item['unitId'] as String
           ..colorId = item['colorId'] as String?
           ..unitRate = productionRateNumber(item['unitRate'])
+          ..unitRateExact = rateText
           ..goods = ref
               .read(masterNameServiceProvider)
               .goodsOptionOf(item['goodsId'] as String)
-          ..qty.text = _quantityText(qty)
-          ..defectQty.text = defect > 0 ? _quantityText(defect) : ''
+          ..qty.text = qtyText!
+          ..defectQty.text = defectText == '0' ? '' : defectText
           ..weight.text = item['weight']?.toString() ?? ''
           ..planNo.text = item['planNo'] as String? ?? ''
           ..remark.text = item['remark'] as String? ?? ''
@@ -863,6 +906,7 @@ class _ProductionDailyReportEditPageState
         restoreOutputAllocations(row, draftMaps(item['allocations']));
         if (row.supplementProofId != null) {
           row.supplementApprovedActualQty = qty;
+          row.supplementApprovedActualQtyExact = qtyText;
         }
         restored.add(row);
       }
@@ -887,6 +931,7 @@ class _ProductionDailyReportEditPageState
               'sourceSalesAllocationId':
                   supplement.sourceLine?.executionSegmentSalesAllocationId,
               'actualQty': supplement.actualQty,
+              'actualQtyExact': supplement.actualQtyText,
               'proofId': supplement.proofId,
               'status': supplement.status,
               'supplementSegmentStatus': supplement.supplementSegmentStatus,
@@ -911,14 +956,19 @@ class _ProductionDailyReportEditPageState
         if (row.executionSegmentId != sourceId ||
             row.executionSegmentSalesAllocationId !=
                 binding['sourceSalesAllocationId'] ||
-            double.tryParse(row.qty.text) !=
-                productionRateNumber(binding['actualQty'])) {
+            productionExactQuantityText(row.qty.text) !=
+                productionExactQuantityText(
+                  binding['actualQtyExact'] ?? binding['actualQty'],
+                )) {
           throw const FormatException('追加申请与原表来源或数量不一致');
         }
         row.supplementRequestId =
             (binding['id'] ?? binding['requestId']) as String?;
         if (binding['status'] == 'APPROVED') {
           row.supplementApprovedActualQty = double.parse(row.qty.text);
+          row.supplementApprovedActualQtyExact = productionExactQuantityText(
+            row.qty.text,
+          );
         }
         if (binding['status'] == 'APPROVED' &&
             (binding['supplementSegmentStatus'] ?? binding['segmentStatus']) ==
@@ -1032,7 +1082,8 @@ class _ProductionDailyReportEditPageState
         source.goodsId != row.goods?.id ||
         source.colorId != row.colorId ||
         source.unitId != row.unitId ||
-        source.unitRate != row.unitRate) {
+        source.unitRateText == null ||
+        source.unitRateText != row.unitRateText) {
       throw const FormatException('来源快照与申请明细不一致');
     }
     row
@@ -1251,6 +1302,9 @@ class _ProductionDailyReportEditPageState
         ..salesOrderNo = source.orderNo
         ..clientName = source.clientName
         ..unitRate = source.unitRate
+        ..unitRateExact = source.unitRateText
+        ..qtyNeedsVerification = false
+        ..defectQtyNeedsVerification = false
         ..orderQty = source.orderQty
         ..maxReportQty = source.maxReportQty
         ..allowActualOverproduction = source.allowActualOverproduction
@@ -1259,6 +1313,7 @@ class _ProductionDailyReportEditPageState
         ..supplementRequestId = null
         ..supplementProofId = null
         ..supplementApprovedActualQty = null
+        ..supplementApprovedActualQtyExact = null
         ..remainingPlanQty = source.remainingCompletionQty
         ..legacyManual = false
         ..planNo.text = source.planNo
@@ -1275,7 +1330,7 @@ class _ProductionDailyReportEditPageState
         ..directTransferBlockedText = null
         ..directTransferLoadFailed = false
         ..qty.text = source.maxReportQty > 0
-            ? _quantityText(source.maxReportQty)
+            ? (source.maxReportQtyText ?? '')
             : ''
         ..defectQty.clear()
         ..overLimitReason.clear();
@@ -1331,6 +1386,7 @@ class _ProductionDailyReportEditPageState
         ..salesOrderNo = null
         ..clientName = null
         ..unitRate = null
+        ..unitRateExact = null
         ..orderQty = null
         ..maxReportQty = null
         ..allowActualOverproduction = false
@@ -1704,7 +1760,12 @@ class _ProductionDailyReportEditPageState
         OutputAllocationRowInput(
           sourceKey: product.planItemId ?? product.executionSegmentId!,
           quantity: double.tryParse(product.qty.text.trim()),
+          quantityExact: product.qty.text.trim().replaceFirst(
+            RegExp(r'\.$'),
+            '',
+          ),
           unitRate: product.unitRate ?? 1,
+          unitRateExact: product.unitRateText,
           candidates: product.directTransferCandidates,
           candidatesKnown: !product.directTransferLoadFailed,
           declined: product.allocationDeclined,
@@ -1721,6 +1782,12 @@ class _ProductionDailyReportEditPageState
                 requested: allocation.allocationEditing
                     ? double.tryParse(allocation.allocationQty.text.trim())
                     : allocation.allocationRequested,
+                requestedExact: allocation.allocationEditing
+                    ? allocation.allocationQty.text.trim().replaceFirst(
+                        RegExp(r'\.$'),
+                        '',
+                      )
+                    : allocation.allocationRequestedExact,
               ),
           ],
         ),
@@ -1731,6 +1798,8 @@ class _ProductionDailyReportEditPageState
     for (var index = 0; index < products.length; index++) {
       final product = products[index];
       final plan = plans[index];
+      product.directTransferPrecisionIssue = plan.issue;
+      if (plan.issue != null) continue;
       final previous = product.allocationRows;
       final spare = [
         for (final row in previous)
@@ -1752,8 +1821,9 @@ class _ProductionDailyReportEditPageState
           ..allocationFixed = line.fixed;
         // 只记工人自己要的数：固定条目顺带接下的余量每次重排重新分，不能变成「工人要的」。
         row.allocationRequested = line.fixed ? line.requested : null;
+        row.allocationRequestedExact = line.fixed ? line.requestedExact : null;
         if (!row.allocationEditing) {
-          final text = outputAllocationQuantityText(line.qty);
+          final text = line.qtyExact!;
           if (row.allocationQty.text != text) row.allocationQty.text = text;
         }
         row.allocationAutofilled.value = !line.fixed;
@@ -1763,6 +1833,7 @@ class _ProductionDailyReportEditPageState
       dropped.addAll(previous.where((row) => !used.contains(row)));
       product
         ..allocationRows = next
+        ..directTransferRoomBaseExact = plan.roomBaseExact
         ..directTransferRoomBase = plan.roomBase;
       final shown = [
         for (final row in _grid.rows)
@@ -1817,6 +1888,8 @@ class _ProductionDailyReportEditPageState
     final dropped = product.allocationRows;
     product.allocationRows = [];
     product.directTransferRoomBase = const {};
+    product.directTransferRoomBaseExact = const {};
+    product.directTransferPrecisionIssue = null;
     product.allocationRevision.value++;
     for (final row in dropped) {
       if (!_grid.rows.contains(row)) row.dispose();
@@ -1830,6 +1903,9 @@ class _ProductionDailyReportEditPageState
       if (row.allocationFixed) continue;
       row
         ..allocationFixed = true
+        ..allocationRequestedExact = productionExactQuantityText(
+          row.allocationQty.text.trim(),
+        )
         ..allocationRequested = double.tryParse(row.allocationQty.text.trim());
     }
   }
@@ -1842,7 +1918,9 @@ class _ProductionDailyReportEditPageState
     if (product == null) return;
     final index = product.allocationRows.indexOf(allocation);
     _fixOutputAllocationsThrough(product, index);
-    final current = double.tryParse(allocation.allocationQty.text.trim()) ?? 0;
+    final current =
+        productionExactQuantityText(allocation.allocationQty.text.trim()) ??
+        '0';
     // 工人把某个上层工单从这条改掉：余量重排时不再自动建议它；重新选它即恢复。
     final previous = allocation.allocationDemandId;
     if (previous != null && previous != demandId) {
@@ -1850,13 +1928,16 @@ class _ProductionDailyReportEditPageState
     }
     if (demandId != null) product.allocationDeclined.remove(demandId);
     allocation.allocationDemandId = demandId;
-    allocation.allocationRequested = demandId == null
+    allocation.allocationRequestedExact = demandId == null
         ? current
-        : outputAllocationWithinRoom(
+        : outputAllocationWithinRoomText(
             current,
-            product.directTransferRoomBase[demandId] ?? 0,
-            product.unitRate ?? 1,
+            product.directTransferRoomBaseExact[demandId] ?? '0',
+            product.unitRateText ?? '0',
           );
+    allocation.allocationRequested = double.parse(
+      allocation.allocationRequestedExact!,
+    );
     _reflowOutputAllocations();
   }
 
@@ -1869,6 +1950,9 @@ class _ProductionDailyReportEditPageState
     );
     allocation
       ..allocationEditing = true
+      ..allocationRequestedExact = productionExactQuantityText(
+        allocation.allocationQty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+      )
       ..allocationRequested = double.tryParse(
         allocation.allocationQty.text.trim(),
       );
@@ -1892,22 +1976,31 @@ class _ProductionDailyReportEditPageState
       if (row.directTransferLoadFailed) {
         issues.add('第 ${index + 1} 行：$directTransferLoadFailedText');
       }
-      final qty = double.tryParse(row.qty.text.trim()) ?? 0;
-      var total = 0.0;
+      final qtyText = productionExactQuantityText(
+        row.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+      );
+      final qty = financeExactDecimalUnits(qtyText);
+      if (row.directTransferPrecisionIssue != null) {
+        issues.add('第 ${index + 1} 行：${row.directTransferPrecisionIssue}');
+        continue;
+      }
+      var total = BigInt.zero;
       for (final allocation in row.allocationRows) {
         final issue = allocation.allocationIssue.value;
         if (issue != null) issues.add('第 ${index + 1} 行：$issue');
-        final value = double.tryParse(allocation.allocationQty.text.trim());
-        if (value == null || !value.isFinite || value < 0) {
+        final value = financeExactDecimalUnits(
+          productionExactQuantityText(allocation.allocationQty.text.trim()),
+        );
+        if (value == null || value.isNegative) {
           issues.add('第 ${index + 1} 行有一条去向数量无效');
         } else {
           total += value;
         }
       }
-      if (row.allocationRows.isNotEmpty && (total - qty).abs() > 0.00005) {
+      if (row.allocationRows.isNotEmpty && total != qty) {
         issues.add(
-          '第 ${index + 1} 行产出去向合计 ${_quantityText(total)} 与完工申报量 '
-          '${_quantityText(qty)} 不一致，请核对',
+          '第 ${index + 1} 行产出去向合计 ${financeExactDecimalFromUnits(total)} 与完工申报量 '
+          '${qtyText ?? '未知'} 不一致，请核对',
         );
       }
     }
@@ -2360,14 +2453,21 @@ class _ProductionDailyReportEditPageState
     for (var i = 0; i < _productRows.length; i++) {
       final r = _productRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
-      final qty = double.tryParse(r.qty.text);
-      if (qty == null || !qty.isFinite || qty <= 0) {
-        context.appError('第 ${i + 1} 行完工申报量必须大于 0');
+      if (r.qtyNeedsVerification || r.defectQtyNeedsVerification) {
+        context.appError('第 ${i + 1} 行旧草稿的大数缺少精度证明，请核对后重新填写完工量或不良数；原输入已保留');
+        return;
+      }
+      final qtyText = productionExactQuantityText(
+        r.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+      );
+      final qty = qtyText == null ? null : double.tryParse(qtyText);
+      if (qty == null || qty <= 0) {
+        context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多四位小数；缺少精确数量时请重新读取或填写');
         return;
       }
       if (r.hasFixedSupplement &&
-          (r.supplementApprovedActualQty == null ||
-              (qty - r.supplementApprovedActualQty!).abs() > 0.000001)) {
+          (r.supplementApprovedActualQtyText == null ||
+              qtyText != r.supplementApprovedActualQtyText)) {
         context.appError('第 ${i + 1} 行属于已批准的固定追加批次，总量不能修改；当前其他输入已保留');
         return;
       }
@@ -2386,7 +2486,9 @@ class _ProductionDailyReportEditPageState
         return;
       }
       if (r.hasLinkedSource &&
-          (r.unitId == null || r.unitRate == null || r.unitRate! <= 0)) {
+          (r.unitId == null ||
+              r.unitRateText == null ||
+              double.parse(r.unitRateText!) <= 0)) {
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
         return;
       }
@@ -2530,7 +2632,9 @@ class _ProductionDailyReportEditPageState
         context.appError('旧报工行只有销售订单号快照，请重新选择来源子任务或清除来源');
         return;
       }
-      final qty = double.tryParse(r.qty.text) ?? 0;
+      final qty = productionQuantityWire(
+        r.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+      );
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       itemsBody.add({
@@ -2542,7 +2646,8 @@ class _ProductionDailyReportEditPageState
         'weight': ?weight,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.unitRate != null)
+          'unitRate': productionQuantityWire(r.unitRateText, scale: 6),
         if (r.planItemId != null) 'planItemId': r.planItemId,
         if (r.executionSegmentId != null)
           'executionSegmentId': r.executionSegmentId,
@@ -2890,8 +2995,7 @@ class _ProductionDailyReportEditPageState
       final over = preview.lines
           .where((line) => line.overLimitQty > 0.000001)
           .toList();
-      if (over.isEmpty) return true;
-      for (final line in over) {
+      for (final line in preview.lines) {
         if (line.inputLineIndex < 0 || line.inputLineIndex >= rows.length) {
           context.appError('超限预览来源不完整，请重新核对；原输入已保留');
           return false;
@@ -2906,13 +3010,15 @@ class _ProductionDailyReportEditPageState
           return false;
         }
         final reason = row.overLimitReason.text.trim();
-        if (reason.length < 2 || reason.length > 500) {
+        if (line.overLimitQty > 0.000001 &&
+            (reason.length < 2 || reason.length > 500)) {
           context.appError(
             '第 ${line.inputLineIndex + 1} 行超限 ${line.overLimitQtyText}，请填写 2–500 字超限原因；原输入已保留',
           );
           return false;
         }
       }
+      if (over.isEmpty) return true;
       setState(() => _saving = false);
       final confirmed = await UtenDialog.show(
         context,
@@ -2980,7 +3086,9 @@ class _ProductionDailyReportEditPageState
           continue;
         }
         final source = supplement.sourceLine;
-        if (supplement.actualQty != double.tryParse(row.qty.text) ||
+        if (supplement.actualQtyText == null ||
+            supplement.actualQtyText !=
+                productionExactQuantityText(row.qty.text) ||
             source == null ||
             source.executionSegmentId != row.executionSegmentId ||
             source.executionSegmentSalesAllocationId !=
@@ -2992,12 +3100,14 @@ class _ProductionDailyReportEditPageState
         }
         if (supplement.status == 'APPROVED') {
           row.supplementApprovedActualQty = supplement.actualQty;
+          row.supplementApprovedActualQtyExact = supplement.actualQtyText;
         }
         if (supplement.status == 'APPROVED' &&
             supplement.proofId != null &&
             supplement.supplementSegmentStatus == 'IN_PROGRESS') {
           row.supplementProofId = supplement.proofId;
           row.supplementApprovedActualQty = supplement.actualQty;
+          row.supplementApprovedActualQtyExact = supplement.actualQtyText;
           items[index]['supplementProofId'] = supplement.proofId;
         } else {
           pending[index] = supplement;
@@ -3028,8 +3138,9 @@ class _ProductionDailyReportEditPageState
               line.sourceSegmentId ||
           rows[line.inputLineIndex].executionSegmentSalesAllocationId !=
               line.sourceSalesAllocationId ||
-          double.tryParse(rows[line.inputLineIndex].qty.text) !=
-              line.actualQty) {
+          line.actualQtyText == null ||
+          productionExactQuantityText(rows[line.inputLineIndex].qty.text) !=
+              line.actualQtyText) {
         context.appError('追加计划预览与当前明细不一致，请重新核对；当前输入保留');
         return false;
       }

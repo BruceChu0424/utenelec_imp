@@ -93,6 +93,12 @@ public class ProductionWorkshopDirectTransferService {
             UUID receivingGoodsId,
             String receivingGoodsCode,
             String receivingGoodsName) {
+        @com.fasterxml.jackson.annotation.JsonProperty(value="requiredQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String requiredQtyExact() { return requiredQty==null?null:requiredQty.toPlainString(); }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="alreadyCoveredQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String alreadyCoveredQtyExact() { return alreadyCoveredQty==null?null:alreadyCoveredQty.toPlainString(); }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="remainingQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String remainingQtyExact() { return remainingQty==null?null:remainingQty.toPlainString(); }
     }
 
     /** 结构上是它的上层、但现在不能收的工单(报工页下拉里置灰并用红字写明原因)。 */

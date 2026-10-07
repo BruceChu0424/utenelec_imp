@@ -2175,8 +2175,8 @@ class FullChainEndToEndTest {
                 productionAssignment("draw-life");
         UUID workshopUser = createUserWithPerms(
                 w, "draw-life-workshop",
-                "notice:read", "production_execution:view",
-                "production_daily_report:create");
+                "notice:read", "production_execution:view", "production_execution:start",
+                "production_daily_report:view", "production_daily_report:create");
         jdbc.update("""
                 update employees
                 set department_id = ?
@@ -2188,7 +2188,13 @@ class FullChainEndToEndTest {
                 UUID.class, workshopUser);
         UUID outsideUser = createUserWithPerms(
                 w, "draw-life-outside",
-                "notice:read", "production_execution:view");
+                "notice:read", "production_execution:view", "production_execution:start",
+                "production_daily_report:view", "production_daily_report:create");
+        UUID ordinaryWorkshopUser = createUserWithPerms(w, "draw-life-ordinary-member",
+                "notice:read", "production_execution:view", "production_execution:start",
+                "production_daily_report:view", "production_daily_report:create");
+        jdbc.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",
+                assignment.workshopId(), ordinaryWorkshopUser);
         loginAs(planner);
 
         AnalysisView analysis = analysisService.preview(
@@ -2215,7 +2221,7 @@ class FullChainEndToEndTest {
                                 null, analysisLineId, new BigDecimal("10"),
                                 LocalDate.of(2026, 8, 8), null,
                                 assignment.workshopId(), null,
-                                assignment.workerId(), null, null))))
+                                workshopEmployee, null, null))))
                 .plans().getFirst();
 
         confirmFullKitRoutes(generated.planId());
@@ -2380,6 +2386,13 @@ class FullChainEndToEndTest {
                   and resolved_at is null
                 """, outsideUser, segmentId),
                 "车间外同权限人员不得收到该工单通知");
+        assertEquals(0, count("""
+                select count(*) from notices
+                where audience_user_id = ?
+                  and source_event = 'PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED'
+                  and aggregate_id = ? and resolved_at is null
+                """, ordinaryWorkshopUser, segmentId),
+                "同车间同权限的普通成员不是任务负责人，不得收到该工单通知");
 
         StockDocIssueRequest cancel = drawIssueRequest(
                 drawId, "draw-life-cancel-0001",

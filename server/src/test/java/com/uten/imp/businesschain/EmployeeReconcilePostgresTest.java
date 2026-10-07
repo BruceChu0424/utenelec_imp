@@ -1098,29 +1098,9 @@ class EmployeeReconcilePostgresTest extends AuthSessionPostgresTestSupport {
         return ids;
     }
 
-    /**
-     * 明文只允许出现在值字段里：先剥掉 UUID、时间戳、日期、概率小数与 oldValue/newValue/value
-     * 的值，再检查剩余正文里既没有完整号码、也没有前 17 位或后四位。断言消息不带号码。
-     * (概率是 4 位小数，会随机撞上某个号码的尾四位，不算泄漏。)
-     */
+    /** 按 DTO 字段路径区分授权值、打码值与元数据；提示文案仍检查完整号、前 17 位和尾四位。 */
     private static void assertNoIdentityDigits(String responseBody, String... identities) {
-        String stripped = responseBody
-                .replaceAll("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<id>")
-                .replaceAll("\\d{4}-\\d{2}-\\d{2}T[^\"]*", "<ts>")
-                .replaceAll("\\d{4}-\\d{2}-\\d{2}", "<date>")
-                .replaceAll("\\\"probability\\\"\\s*:\\s*[0-9.Ee+-]+", "\\\"probability\\\":<p>")
-                .replaceAll("\\\"(?:oldValue|newValue|value)\\\"\\s*:\\s*\\\"[^\"]*\\\"", "\\\"<v>\\\"");
-        for (String identity : identities) {
-            String compact = identity.replace(" ", "");
-            assertTrue(!stripped.contains(compact) && !stripped.contains(identity),
-                    "response must not carry identity digits outside value fields");
-            if (compact.length() >= 18) {
-                assertTrue(!stripped.contains(compact.substring(0, 17)),
-                        "response must not carry the first seventeen digits");
-            }
-            assertTrue(!stripped.contains(compact.substring(compact.length() - 4)),
-                    "response must not carry the last four digits");
-        }
+        EmployeeReconcilePrivacyAssertions.assertNoIdentityDigits(responseBody, identities);
     }
 
     private static String withChecksum(String firstSeventeen) {

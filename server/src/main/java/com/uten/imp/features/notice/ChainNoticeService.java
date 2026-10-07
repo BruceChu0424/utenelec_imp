@@ -368,6 +368,18 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     /**
+     * 分批路线「当前可齐套生产量」的执行方(生产分批模块)。它自己又依赖本类发通知, 所以经
+     * ObjectProvider 延迟取用, 不形成构造期循环依赖; 直接 new 本类的单测里为空, 视为不可计量。
+     */
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.mrp.ProductionExecutionBatchService> batchSplits;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void setBatchSplits(
+            org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.production.mrp.ProductionExecutionBatchService> batchSplits) {
+        this.batchSplits = batchSplits;
+    }
+
+    /**
      * 仓库类通知按仓分发(ADR-149, 取代 ADR-115 的「负责人 ∩ 池, 为空发整个池」):
      * 该仓链上的子仓负责人 ∩ 池; 没有则主管 ∩ 池; 再没有(还没配置任何负责人)才发整个池。
      * 单据还没定仓时直接走主管那一级。与列表范围同一套负责关系(WarehouseNoticeRouter)。
@@ -3841,6 +3853,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                        task.responsible_employee_id,
                        route.start_route, route.continuous_supply,
                        route.auto_promote_when_ready,
+                       route.arrival_notice_capacity,
                        fn_execution_route_allows_auto_promote(task.segment_id) AS route_allows_auto_promote,
                        fn_execution_start_material_ready(task.segment_id) AS start_material_ready,
                        fn_execution_material_output_capacity(task.segment_id, FALSE) AS prepared_capacity
@@ -3883,25 +3896,32 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         Map<UUID, BigDecimal> arrivedByDemand = workshopWarehouseAvailableByDemand(segmentId,
                 missingRows.stream().map(row -> (UUID) row.get("demand_id")).toList());
         String route = str(task.get("start_route"));
-        // 2026-10-06 用户口径：部分到货不再发行动卡。只有仓库口径已全齐，或分批/持续
-        // 路线已能支撑部分生产，且齐套提升链路不会另发行动卡（分批永不自动提升、
-        // 暂缓/未确认路线不自动提升）时才发到货进展；其余静默，缺口以「我的车间任务」
-        // 页内徽章为准。到货撤销（validArrival=false）不受此闸门约束，仍即时通知。
-        if (validArrival && !arrivalProgressWarrantsNotice(task, status, route, missingRows, arrivedByDemand)) {
+        // 2026-10-06 修订二(ADR-165 / ADR-091 §九): 到货进展行动卡按「可支撑产能水位」弹——
+        // 每种物料都有一些才首次给「可以生产 X 件」; 后续到货产能不涨不弹, 涨了(扣已领)才再弹;
+        // 发卡或回落都把水位同步成当前值。路线未确认或会自动提升的段不发(齐套/可开工行动卡由
+        // publishWorkshopTask 体系负责); 到货撤销(validArrival=false)不受此闸门约束, 仍即时通知。
+        BigDecimal capacity = workshopArrivalCapacity(segmentId, task, status, route, missingRows, arrivedByDemand);
+        if (validArrival && !arrivalProgressWarrantsNotice(task, status, route, capacity)) {
+            syncArrivalCapacityWatermark(segmentId, capacity);
             return;
         }
+        String productUnit = str(task.get("product_unit_name"));
+        String capacityText = capacity == null || capacity.signum() <= 0 ? ""
+                : "（现有物料可支撑生产 " + qty(capacity) + (productUnit.isBlank() ? "" : " " + productUnit) + "）";
         String nextStep;
         if (route.isBlank()) {
             nextStep = "请先在「我的车间任务」确认生产路线（齐套 / 分批 / 持续生产）";
         } else if ("BATCH".equals(route)) {
-            nextStep = "本单为分批生产路线：部分物料已到，可按「分批领料」核对当前可生产量";
+            nextStep = "本单为分批生产路线：可按「分批领料」核对并领出本批" + capacityText;
         } else if ("CONTINUOUS".equals(route)) {
             nextStep = "IN_PROGRESS".equals(status)
-                    ? "持续生产中：请核对原工单的补料和报工进度；同车间直送按实际交接投入，无需再开工或另建工单"
+                    ? "持续生产中：请在原工单核对补料和报工进度" + capacityText
+                        + "；同车间直送按实际交接投入，无需再开工或另建工单"
                     : workshopStartSupported(status, route, Boolean.TRUE.equals(task.get("start_material_ready")))
-                        ? "现有物料已支持部分生产，可在原工单开工；直送料将在开工时实际投入，后续继续补料"
+                        ? "现有物料已支持部分生产，可在原工单开工" + capacityText
+                            + "；直送料将在开工时实际投入，后续继续补料"
                         : bd(task.get("prepared_capacity")).signum() > 0
-                            ? "持续生产路线：已备物料支持部分产量，请提交领料，实际发料后开工"
+                            ? "持续生产路线：已备物料支持部分产量" + capacityText + "，请提交领料，实际发料后开工"
                             : "持续生产路线：仍需等待各项必需物料共同支持部分产量；已有可领物料可先在原工单核对";
         } else if (missingRows.isEmpty()) {
             nextStep = "物料已齐套，可提交领料，领齐后开工";
@@ -3954,41 +3974,72 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     EVENT_PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED,
                     "normal", segmentId);
         }
+        syncArrivalCapacityWatermark(segmentId, capacity);
     }
 
     /**
-     * 到货进展是否值得发行动卡（2026-10-06 口径）。
+     * 到货进展行动卡闸门（2026-10-06 修订二, ADR-165 / ADR-091 §九）。
      * <ul>
-     *   <li>路线未确认或已在生产中：不发——页面内自办。</li>
-     *   <li>仓库口径已全齐（每种缺口都被同口径可用量盖住，或本就无缺口）：
-     *       值得发。</li>
-     *   <li>分批/持续路线已能支撑部分生产（start_material_ready 或
-     *       prepared_capacity&gt;0）：值得发。</li>
-     *   <li>其余（只到了一部分物料、部分生产还撑不起来）：不发。</li>
-     *   <li>会自动提升的段（含已提升的 READY/DISPATCHED）不发——齐套/可开工
-     *       行动卡由 publishWorkshopTask 体系负责（tryPromote→
-     *       notifyExecutionSegmentReady），到货进展再发就是同一件事弹两次，
-     *       而且发送前的 ARRIVAL_PROGRESS 办结还会把刚投递的 important 卡撤掉。
-     *       分批路线 {@code fn_execution_route_allows_auto_promote} 恒 FALSE、
+     *   <li>路线未确认或产能不可计量：不发——页面内自办。</li>
+     *   <li>会自动提升的段（{@code auto_promote_when_ready} 且路线放行）不发——齐套/可开工
+     *       行动卡由 publishWorkshopTask 体系负责（tryPromote→notifyExecutionSegmentReady），
+     *       到货进展再发就是同一件事弹两次，而且发送前的 ARRIVAL_PROGRESS 办结还会把刚投递的
+     *       important 卡撤掉。分批路线 {@code fn_execution_route_allows_auto_promote} 恒 FALSE、
      *       暂缓段 auto_promote_when_ready=FALSE，全齐感知只能靠这里补位。</li>
+     *   <li>其余只有「当前可支撑产能比上次通知水位高」才发：每种物料都有一些 → 首次
+     *       「可以生产 X 件」；后续到货产能不涨不弹；涨了（扣已领）才再弹。</li>
      * </ul>
      */
-    private boolean arrivalProgressWarrantsNotice(Map<String, Object> task, String status, String route,
+    boolean arrivalProgressWarrantsNotice(Map<String, Object> task, String status, String route,
+            BigDecimal capacity) {
+        if (route.isBlank() || capacity == null) return false;
+        if ("WAITING".equals(status)
+                && Boolean.TRUE.equals(task.get("auto_promote_when_ready"))
+                && Boolean.TRUE.equals(task.get("route_allows_auto_promote"))) {
+            return false;
+        }
+        return capacity.compareTo(bd(task.get("arrival_notice_capacity"))) > 0;
+    }
+
+    /**
+     * 本段「当前可支撑产量」——行动卡里“可以生产 X 件”用这把尺子量, 按路线取口径:
+     * <ul>
+     *   <li>BATCH: 分批领料核对页的“当前可齐套生产量”（冻结曲线二分 × 仓库可用量, 剩余段
+     *       自动扣前批），与页面同一个数；不可计量（路线已改、前批固定料未领齐等）返回 null。</li>
+     *   <li>CONTINUOUS: 已备预留产能 {@code fn_execution_material_output_capacity(segment, FALSE)}
+     *       ——已领走的料不占这口径，“还能生产多少”只算没领的。</li>
+     *   <li>FULL_KIT: 齐套是全有或全无——只在 WAITING 且仓库口径盖住全部缺口时给 planned_qty,
+     *       否则 0（READY 及之后由齐套/可开工行动卡接管）。</li>
+     * </ul>
+     */
+    BigDecimal workshopArrivalCapacity(UUID segmentId, Map<String, Object> task, String status, String route,
             List<Map<String, Object>> missingRows, Map<UUID, BigDecimal> arrivedByDemand) {
-        if (route.isBlank() || "IN_PROGRESS".equals(status)) return false;
-        boolean warehouseCovered = missingRows.stream().allMatch(row -> {
+        if ("BATCH".equals(route)) return workshopBatchCapacity(segmentId);
+        if ("CONTINUOUS".equals(route)) return bd(task.get("prepared_capacity")).max(BigDecimal.ZERO);
+        boolean covered = missingRows.stream().allMatch(row -> {
             BigDecimal shortage = bd(row.get("stock_shortage_qty"));
             BigDecimal arrived = arrivedByDemand.getOrDefault((UUID) row.get("demand_id"), BigDecimal.ZERO)
                     .max(BigDecimal.ZERO);
             return arrived.compareTo(shortage) >= 0;
         });
-        boolean partialStartCapable = Set.of("BATCH", "CONTINUOUS").contains(route)
-                && (Boolean.TRUE.equals(task.get("start_material_ready"))
-                        || bd(task.get("prepared_capacity")).signum() > 0);
-        if (!warehouseCovered && !partialStartCapable) return false;
-        return "WAITING".equals(status)
-                && !(Boolean.TRUE.equals(task.get("auto_promote_when_ready"))
-                        && Boolean.TRUE.equals(task.get("route_allows_auto_promote")));
+        return covered && "WAITING".equals(status) ? bd(task.get("planned_qty")).max(BigDecimal.ZERO) : BigDecimal.ZERO;
+    }
+
+    /** 分批路线当前可齐套生产量; 尺子缺位或不可计量返回 null(不发卡, 水位不动)。 */
+    BigDecimal workshopBatchCapacity(UUID segmentId) {
+        if (batchSplits == null) return null;
+        try {
+            return batchSplits.getObject().currentSplitCapacity(segmentId);
+        } catch (RuntimeException notMeasurable) {
+            return null;
+        }
+    }
+
+    /** 每次到货事件评估后同步水位: 上涨发卡时抬上去, 回落时落下来——“涨了”永远相对最近一次。值不变不写。 */
+    private void syncArrivalCapacityWatermark(UUID segmentId, BigDecimal capacity) {
+        if (capacity == null) return;
+        jdbc.update("UPDATE production_execution_segments SET arrival_notice_capacity = ? "
+                + "WHERE id = ? AND arrival_notice_capacity IS DISTINCT FROM ?", capacity, segmentId, capacity);
     }
 
     /**
@@ -4203,14 +4254,51 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     /**
-     * Main/secondary active workshop members plus explicit responsible person
-     * and workshop managers. Every candidate is intersected with the current
-     * effective notice + workshop-task permissions, including personal revoke.
+     * 车间任务行动卡收件人（2026-10-06 修订二, ADR-165）: 只发「持车间任务办理权限 且 是该车间的
+     * 负责人」——车间（含下级班组）各部门负责人 departments.manager_id 与本任务负责人
+     * responsible_employee_id, 再逐人校验当前有效权限（notice:read + production_execution:view +
+     * start/报工, 含个人回收）。计划部等职能岗即使个人加授了权限, 不是车间负责人也不收卡。
+     * 车间没登记任何负责人且任务无负责人时退回旧的全成员池（与 ADR-149 仓库通知
+     * 「负责人∩池, 为空发整个池」同一兜底形状）, 避免任务无人感知。
      */
     List<UUID> workshopRecipientUserIds(
             UUID workshopDepartmentId, UUID responsibleEmployeeId) {
         if (workshopDepartmentId == null) return List.of();
-        List<UUID> candidates = jdbc.queryForList("""
+        List<UUID> leaders = withWorkshopTaskPermission(jdbc.queryForList("""
+                WITH RECURSIVE workshop_tree(id) AS (
+                    SELECT id
+                    FROM departments
+                    WHERE id = ? AND is_deleted = FALSE
+                    UNION ALL
+                    SELECT child.id
+                    FROM departments child
+                    JOIN workshop_tree parent ON child.parent_id = parent.id
+                    WHERE child.is_deleted = FALSE
+                )
+                SELECT DISTINCT user_account.id
+                FROM (
+                    SELECT department.manager_id AS employee_id
+                    FROM departments department
+                    WHERE department.id IN (SELECT id FROM workshop_tree)
+                      AND department.manager_id IS NOT NULL
+                    UNION
+                    SELECT CAST(? AS uuid)
+                ) candidate
+                JOIN employees employee ON employee.id = candidate.employee_id
+                JOIN users user_account
+                  ON user_account.employee_id = employee.id
+                WHERE candidate.employee_id IS NOT NULL
+                  AND employee.is_deleted = FALSE
+                  AND employee.status IN (
+                      'active','probation','onLeave')
+                  AND user_account.is_deleted = FALSE
+                  AND user_account.status = 'active'
+                ORDER BY user_account.id
+                """, UUID.class, workshopDepartmentId, responsibleEmployeeId));
+        if (!leaders.isEmpty()) return leaders;
+        // 兜底: 该车间一个负责人都没登记(部门无 manager、任务无负责人), 任务不能无人感知,
+        // 退回车间树全体成员(主职/兼职/各级负责人)的旧口径。
+        return withWorkshopTaskPermission(jdbc.queryForList("""
                 WITH RECURSIVE workshop_tree(id) AS (
                     SELECT id
                     FROM departments
@@ -4250,7 +4338,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND user_account.is_deleted = FALSE
                   AND user_account.status = 'active'
                 ORDER BY user_account.id
-                """, UUID.class, workshopDepartmentId, responsibleEmployeeId);
+                """, UUID.class, workshopDepartmentId, responsibleEmployeeId));
+    }
+
+    /** 候选账号逐人过当前有效权限: 在职账号 + notice:read + 车间任务办理权(canHandleWorkshop, 含个人回收)。 */
+    private List<UUID> withWorkshopTaskPermission(List<UUID> candidates) {
         return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()

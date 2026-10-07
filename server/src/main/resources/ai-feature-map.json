@@ -1460,6 +1460,25 @@
       "doc": "docs/03-页面/HR任务中心.md"
     },
     {
+      "route": "/hr/tasks/reconcile",
+      "title": "人事花名册核对与员工资料更正页",
+      "aliases": [],
+      "module": "行政与人力资源部",
+      "purpose": "",
+      "paths": [],
+      "parent": "/hr/tasks",
+      "record": false,
+      "anyOf": [
+        "employee:edit",
+        "employee:pii:edit"
+      ],
+      "allOf": [
+        "employee:view"
+      ],
+      "hubOf": [],
+      "doc": "docs/03-页面/HR任务中心.md"
+    },
+    {
       "route": "/my-visitors",
       "title": "我的访客",
       "aliases": [],

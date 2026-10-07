@@ -42,6 +42,9 @@ void main() {
           3, // A+B: Tab 回调×2 + 根级 build×1
       'lib/features/subcontract/pages/subcontract_business_list_pages.dart':
           1, // B
+      // 2026-10-06 证件批量核对页(ADR-160)：GoRoute 页 didChangeDependencies
+      // 读路由身份/查询参数，同 B 类（声明式页路由，不发生爬升）。
+      'lib/features/hr_task/pages/hr_reconcile_page.dart': 1, // B
       'lib/features/warehouse/pages/stock_doc_list_page.dart': 1, // B
       'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart':
           2, // A: 行点击回调

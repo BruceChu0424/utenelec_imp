@@ -126,6 +126,10 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   // sales_quote_finance:view(无组合门槛)，改价/退回/确认按服务端 allowedActions。
   '/finance/quote-review': <String>[],
   '/finance/quote-review/:id': <String>[],
+  // 2026-10-06 HR 员工资料核对更正页(ADR-160, ca1a5042c 加路由时漏登记，
+  // 基线 204≠203 即此)：any=[employee:edit, employee:pii:edit]，
+  // 组合门槛要求还要能看员工档案。
+  '/hr/tasks/reconcile': [Perm.employeeView],
 };
 
 /// 2026-09-28 ADR-135 新增的 any-of 守卫页面：逐条核对精确路径与权限码。

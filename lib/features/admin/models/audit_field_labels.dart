@@ -206,6 +206,7 @@ abstract final class AuditFieldLabels {
     'allowance_standard_enc': '补贴标准',
     'old_value_enc': '修改前内容',
     'new_value_enc': '修改后内容',
+    'candidates_enc': '候选内容',
     'plate_no_enc': '车牌号',
 
     // 用户账号 / 权限

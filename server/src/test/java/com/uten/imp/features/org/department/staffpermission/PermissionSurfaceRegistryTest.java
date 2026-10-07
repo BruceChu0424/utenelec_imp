@@ -10,6 +10,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -107,6 +108,7 @@ class PermissionSurfaceRegistryTest {
                         UUID.randomUUID(),
                         "sales.order",
                         "销售订货",
+                        null,
                         UUID.randomUUID(),
                         null,
                         null,
@@ -120,6 +122,73 @@ class PermissionSurfaceRegistryTest {
                 () -> new PermissionSurfaceRegistry(incomplete));
     }
 
+    @Test
+    void surfaceTreeWalksRootFirstThenChildrenInCatalogOrder() {
+        UUID hubId = UUID.randomUUID();
+        PermissionSurfaceCatalogRepository repository =
+                mock(PermissionSurfaceCatalogRepository.class);
+        when(repository.loadEnabledCatalog()).thenReturn(List.of(
+                childRow(hubId, "sales.hub", "销售管理", null, "sales_order:priority"),
+                childRow(UUID.randomUUID(), "sales.quote", "销售报价", "sales.hub", "sales_quote:view"),
+                childRow(UUID.randomUUID(), "sales.order", "销售订货", "sales.hub", "sales_order:view"),
+                childRow(UUID.randomUUID(), "sales.tasks", "销售任务中心", "sales.hub", "sales_quote:view")));
+
+        PermissionSurfaceRegistry registry =
+                new PermissionSurfaceRegistry(repository);
+
+        List<PermissionSurfaceRegistry.Surface> tree =
+                registry.surfaceTree("sales.hub");
+        assertEquals(
+                List.of("sales.hub", "sales.quote", "sales.order", "sales.tasks"),
+                tree.stream().map(PermissionSurfaceRegistry.Surface::key).toList());
+        assertEquals("销售管理", registry.nameOf("sales.hub"));
+
+        // 树全集 = 根 + 子面；子面优先归属（目录序第一个含码的子面）。
+        assertEquals(
+                Set.of("sales_order:priority", "sales_quote:view", "sales_order:view"),
+                registry.treePermissions("sales.hub"));
+        assertTrue(registry.treeContains("sales.hub", "sales_quote:view"));
+        assertFalse(registry.treeContains("sales.hub", "stock:view"));
+        assertEquals(
+                "sales.quote",
+                registry.treeOwnerSurface("sales.hub", "sales_quote:view"));
+        assertEquals(
+                "sales.hub",
+                registry.treeOwnerSurface("sales.hub", "sales_order:priority"));
+        assertNull(registry.treeOwnerSurface("sales.hub", "stock:view"));
+
+        // 平级页面（无子面）的树就是自己。
+        assertEquals(
+                List.of("sales.quote"),
+                registry.surfaceTree("sales.quote").stream()
+                        .map(PermissionSurfaceRegistry.Surface::key)
+                        .toList());
+    }
+
+    @Test
+    void hierarchySnapshotRejectsMissingParentsAndSecondLevels() {
+        // 父面不存在于启用目录。
+        PermissionSurfaceCatalogRepository orphanParent =
+                mock(PermissionSurfaceCatalogRepository.class);
+        when(orphanParent.loadEnabledCatalog()).thenReturn(List.of(
+                childRow(UUID.randomUUID(), "sales.quote", "销售报价", "sales.hub", "sales_quote:view")));
+        assertThrows(
+                IllegalStateException.class,
+                () -> new PermissionSurfaceRegistry(orphanParent));
+
+        // 第二层子面（孙面）拒绝加载：层级只允许一层。
+        UUID hubId = UUID.randomUUID();
+        PermissionSurfaceCatalogRepository grandChild =
+                mock(PermissionSurfaceCatalogRepository.class);
+        when(grandChild.loadEnabledCatalog()).thenReturn(List.of(
+                childRow(hubId, "sales.hub", "销售管理", null, "sales_order:priority"),
+                childRow(UUID.randomUUID(), "sales.quote", "销售报价", "sales.hub", "sales_quote:view"),
+                childRow(UUID.randomUUID(), "sales.quote.edit", "报价编辑", "sales.quote", "sales_quote:edit")));
+        assertThrows(
+                IllegalStateException.class,
+                () -> new PermissionSurfaceRegistry(grandChild));
+    }
+
     private static PermissionSurfaceCatalogRepository.CatalogRow row(
             UUID surfaceId,
             String surfaceKey,
@@ -129,6 +198,28 @@ class PermissionSurfaceRegistryTest {
                 surfaceId,
                 surfaceKey,
                 surfaceName,
+                null,
+                UUID.randomUUID(),
+                permissionCode,
+                permissionCode,
+                "test",
+                "test",
+                "VIEW",
+                permissionCode,
+                1);
+    }
+
+    private static PermissionSurfaceCatalogRepository.CatalogRow childRow(
+            UUID surfaceId,
+            String surfaceKey,
+            String surfaceName,
+            String parentSurfaceKey,
+            String permissionCode) {
+        return new PermissionSurfaceCatalogRepository.CatalogRow(
+                surfaceId,
+                surfaceKey,
+                surfaceName,
+                parentSurfaceKey,
                 UUID.randomUUID(),
                 permissionCode,
                 permissionCode,
@@ -147,6 +238,7 @@ class PermissionSurfaceRegistryTest {
                 surfaceId,
                 surfaceKey,
                 surfaceName,
+                null,
                 null,
                 null,
                 null,

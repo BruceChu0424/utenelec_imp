@@ -4,7 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../components/buttons/uten_app_bar_action_button.dart';
 import '../../core/responsive/breakpoint.dart';
-import '../../core/router/route_names.dart';
+import '../../features/admin/widgets/page_permission_drawer.dart';
 import 'session_snapshot_provider.dart';
 import 'page_permission_scope.dart';
 
@@ -13,7 +13,9 @@ import 'page_permission_scope.dart';
 /// 是否显示读会话快照的「可委派页面」(ADR-108): 服务端按发布门禁 + 负责人/超管资格
 /// 一次算好随 /auth/me 带回, 本组件同步判断, 不再每进一个页面现拉一次 capability,
 /// 首帧就出按钮。普通员工是否为负责人只基于 departments.manager_id 与组织树, 前端
-/// 职位文字不参与授权; 进入权限设置页后的每个写操作仍由服务端逐条终审。
+/// 职位文字不参与授权; 面板内的每个写操作仍由服务端逐条终审。
+//
+// V812 起点击原地滑出右侧权限抽屉(hub 面板「父+子」一站式), 不再跳独立设置页。
 class PagePermissionAction extends ConsumerWidget {
   const PagePermissionAction({super.key, this.scope});
 
@@ -46,8 +48,8 @@ class _PagePermissionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tooltip = '设置「${scope.title}」本页权限';
-    void open() => context.push(RouteName.pagePermissionsFor(scope.surfaceKey));
+    final tooltip = '设置「${scope.title}」页面权限';
+    void open() => showPagePermissionDrawer(context, scope: scope);
 
     // 顶栏动作统一形态（深绿实心白字、固定 36 高），与「草稿(N)」同款；
     // 窄屏只收文案不改形态（此前宽屏 TextButton、窄屏 IconButton 是两种长相）。

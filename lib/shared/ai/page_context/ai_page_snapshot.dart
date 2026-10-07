@@ -230,14 +230,10 @@ const aiContentWithheldRoutes = [
 
 /// ADR-153 protected pages (AiChatPageSnapshot.PROTECTED_ROUTES): system
 /// administration (system settings, AI service settings, permissions, audit
-/// logs, server status), page permissions, security and device receipts.
-/// Nothing on them is captured or sent and no confirmation card runs there.
-const aiProtectedRoutes = [
-  '/admin',
-  '/page-permissions',
-  '/security',
-  '/settings/device-receipts',
-];
+/// logs, server status), security and device receipts. Nothing on them is
+/// captured or sent and no confirmation card runs there. Page-permission
+/// editing moved into an in-place drawer (V812) and is no longer a route.
+const aiProtectedRoutes = ['/admin', '/security', '/settings/device-receipts'];
 
 bool _aiRouteUnder(String? route, List<String> prefixes) {
   if (route == null) return false;

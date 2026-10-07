@@ -50,7 +50,6 @@ const _infrastructure = <String>{
   RouteName.accessDenied,
   RouteName.notFound,
   RouteName.formDrafts,
-  '/page-permissions/:surfaceKey',
 };
 
 bool _isInfrastructure(String route) =>

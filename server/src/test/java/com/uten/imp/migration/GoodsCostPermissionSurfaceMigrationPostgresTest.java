@@ -87,7 +87,7 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
             }
             assertThat(costMappingCount(db)).isZero();
             assertThat(flyway(postgres, "759").migrate().migrationsExecuted).isEqualTo(1);
-            assertCatalog(db);
+            assertCostCatalogFacts(db);
             assertThat(catalogSnapshot(db)).isEqualTo(catalogBefore);
             assertThat(surfaceSnapshot(db)).isEqualTo(surfacesBefore);
             assertThat(grantSnapshot(db)).isEqualTo(grantsBefore);
@@ -104,7 +104,11 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
             assertThat(mappingSnapshot(db)).isEqualTo(mappings);
             assertThat(catalogSnapshot(db)).isEqualTo(catalogBefore);
             assertThat(grantSnapshot(db)).isEqualTo(grantsBefore);
+            assertCostCatalogFacts(db);
+            // 重放出来的 759 态能一路升到当前 head：共享目录注册表(含 V812 层级列)照常装载。
+            assertThat(flyway(postgres, null).migrate().migrationsExecuted).isPositive();
             assertCatalog(db);
+            assertNoImplicitCostGrants(db);
         }
     }
 
@@ -121,6 +125,17 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
             assertThat(GrantPolicy.bulkEligible(policy)).isFalse();
             assertThat(GrantPolicy.baselineEligible(policy)).isFalse();
         }
+        assertCostCatalogFacts(db);
+    }
+
+    /**
+     * Raw-SQL subset of {@link #assertCatalog} that stays valid on schemas older
+     * than the surface hierarchy (V812): the 758→759 replay test freezes the
+     * schema at V759, where the shared catalog repository column set no longer
+     * matches. The registry itself is exercised after that test upgrades the
+     * replayed schema to head.
+     */
+    private static void assertCostCatalogFacts(JdbcTemplate db) {
         assertThat(costMappingCount(db)).isEqualTo(4);
         assertThat(db.queryForObject("SELECT count(*) FROM permissions WHERE code IN " + ACTION_SQL
                 + " AND sensitivity='SENSITIVE_COMMERCIAL' AND grant_policy=ARRAY['BULK_EXCLUDED']::text[] AND NOT baseline", Integer.class))

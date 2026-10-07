@@ -17,7 +17,6 @@ import '../../features/admin/pages/admin_ai_settings_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
-import '../../features/admin/pages/page_permission_settings_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
 import '../../features/basic_data/pages/client_category_page.dart';
@@ -1915,15 +1914,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'hr-profile-change-detail',
             builder: (_, s) =>
                 HrProfileChangeDetailPage(batchId: s.pathParameters['id']!),
-          ),
-
-          // —— 业务页面内权限设置（超管 / 部门负责人）——
-          DraftAwareGoRoute(
-            path: RouteName.pagePermissions,
-            name: 'page-permissions',
-            builder: (_, state) => PagePermissionSettingsPage(
-              surfaceKey: state.pathParameters['surfaceKey'] ?? '',
-            ),
           ),
 
           // —— 系统管理（超管）——

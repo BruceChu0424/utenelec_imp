@@ -178,19 +178,24 @@ class PageStaffPermissionState {
 class PagePermissionEmployeeDetail {
   const PagePermissionEmployeeDetail({
     required this.surfaceKey,
+    required this.surfaceTitle,
     required this.departmentId,
     required this.departmentName,
     required this.employeeId,
     required this.departmentManager,
     required this.hasAccount,
     required this.superAdminMode,
-    required this.permissions,
+    required this.groups,
     this.code,
     this.fullName,
     this.positionName,
   });
 
   final String surfaceKey;
+
+  /// 根页面标题（抽屉标题用，服务端目录权威）。
+  final String surfaceTitle;
+
   final String departmentId;
   final String departmentName;
   final String employeeId;
@@ -200,7 +205,14 @@ class PagePermissionEmployeeDetail {
   final bool departmentManager;
   final bool hasAccount;
   final bool superAdminMode;
-  final List<PageStaffPermissionState> permissions;
+
+  /// V812 hub 抽屉的父子分组：根面组在前（只含没被子面认领的码），
+  /// 子面组按目录序在后；平级页面只有一组。
+  final List<PagePermissionSurfaceGroup> groups;
+
+  /// 树内全部权限码的平铺视图（保存时按码取 rowVersion 用）。
+  List<PageStaffPermissionState> get permissions =>
+      groups.expand((group) => group.permissions).toList(growable: false);
 
   factory PagePermissionEmployeeDetail.fromJson(Map<String, dynamic> json) {
     final employee = json['employee'] is Map<String, dynamic>
@@ -209,6 +221,7 @@ class PagePermissionEmployeeDetail {
     final settingMode = (json['settingMode'] as String?)?.toUpperCase();
     return PagePermissionEmployeeDetail(
       surfaceKey: json['surfaceKey'] as String? ?? '',
+      surfaceTitle: json['surfaceTitle'] as String? ?? '',
       departmentId: json['departmentId'] as String,
       departmentName: json['departmentName'] as String? ?? '',
       employeeId: employee['employeeId'] as String,
@@ -220,14 +233,44 @@ class PagePermissionEmployeeDetail {
       superAdminMode:
           json['superAdminMode'] as bool? ??
           settingMode == 'SUPER_ADMIN' || settingMode == 'CENTRAL_OVERRIDE',
-      permissions: (json['permissions'] as List<dynamic>? ?? const [])
+      groups: (json['groups'] as List<dynamic>? ?? const [])
           .map(
-            (item) =>
-                PageStaffPermissionState.fromJson(item as Map<String, dynamic>),
+            (item) => PagePermissionSurfaceGroup.fromJson(
+              item as Map<String, dynamic>,
+            ),
           )
           .toList(growable: false),
     );
   }
+}
+
+/// 抽屉里的一个权限分组：hub 抽屉的子页面组或根面组。
+class PagePermissionSurfaceGroup {
+  const PagePermissionSurfaceGroup({
+    required this.surfaceKey,
+    required this.title,
+    required this.root,
+    required this.permissions,
+  });
+
+  final String surfaceKey;
+  final String title;
+  final bool root;
+  final List<PageStaffPermissionState> permissions;
+
+  factory PagePermissionSurfaceGroup.fromJson(Map<String, dynamic> json) =>
+      PagePermissionSurfaceGroup(
+        surfaceKey: json['surfaceKey'] as String? ?? '',
+        title: json['title'] as String? ?? '',
+        root: json['root'] as bool? ?? false,
+        permissions: (json['permissions'] as List<dynamic>? ?? const [])
+            .map(
+              (item) => PageStaffPermissionState.fromJson(
+                item as Map<String, dynamic>,
+              ),
+            )
+            .toList(growable: false),
+      );
 }
 
 class PagePermissionChange {

@@ -1538,9 +1538,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         );
 
         // Launcher geometry: a draggable circle; pushed onto a side edge it
-        // docks half-out at reduced opacity. FloatingActionButton.small is 40
-        // visually but MaterialTapTargetSize.padded grows its box to 48 (a 4px
-        // transparent ring each side) — position math uses the 48 box.
+        // docks half-out at reduced opacity. The visual circle is 48 and, being
+        // already at the minimum tap-target size, its hit box is 48 too —
+        // position math uses that box.
         const launcherSize = 48.0;
         const launcherHalf = launcherSize / 2;
         const launcherMargin = 16.0;
@@ -1639,41 +1639,48 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 150),
                       opacity: docked ? 0.55 : 1.0,
-                      child: FloatingActionButton.small(
-                        key: const ValueKey('ai-chat-launcher'),
-                        heroTag: null,
-                        tooltip: _t('open'),
-                        shape: const CircleBorder(),
-                        backgroundColor: colors.primaryContainer,
-                        foregroundColor: colors.onPrimaryContainer,
-                        onPressed: () {
-                          if (_launcherDockEdge != 0) {
-                            // Docked: tap pulls the circle back inside first,
-                            // then the chat opens as usual.
-                            final edge = _launcherDockEdge;
-                            setState(() {
-                              _launcherDockEdge = 0;
-                              _launcherCenter = settleLauncherCenter(
-                                Offset(
-                                  edge > 0
-                                      ? constraints.maxWidth -
-                                            launcherMargin -
-                                            launcherHalf
-                                      : launcherMargin + launcherHalf,
-                                  (_launcherCenter ?? defaultLauncherCenter).dy,
-                                ),
-                              );
-                            });
-                          }
-                          setState(() => _open = true);
-                          if (_capabilities?.usable == true) {
-                            unawaited(_restoreConversation());
-                          }
-                          _loadPageSuggestions();
-                          _scheduleAttachPreview();
-                          _scrollToEnd();
-                        },
-                        child: const Icon(Icons.auto_awesome_outlined),
+                      child: SizedBox.square(
+                        dimension: launcherSize,
+                        child: FloatingActionButton(
+                          key: const ValueKey('ai-chat-launcher'),
+                          heroTag: null,
+                          tooltip: _t('open'),
+                          shape: const CircleBorder(),
+                          // Deep teal with a white icon in light mode; the
+                          // former primaryContainer teal100 circle was too
+                          // faint.
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
+                          onPressed: () {
+                            if (_launcherDockEdge != 0) {
+                              // Docked: tap pulls the circle back inside first,
+                              // then the chat opens as usual.
+                              final edge = _launcherDockEdge;
+                              setState(() {
+                                _launcherDockEdge = 0;
+                                _launcherCenter = settleLauncherCenter(
+                                  Offset(
+                                    edge > 0
+                                        ? constraints.maxWidth -
+                                              launcherMargin -
+                                              launcherHalf
+                                        : launcherMargin + launcherHalf,
+                                    (_launcherCenter ?? defaultLauncherCenter)
+                                        .dy,
+                                  ),
+                                );
+                              });
+                            }
+                            setState(() => _open = true);
+                            if (_capabilities?.usable == true) {
+                              unawaited(_restoreConversation());
+                            }
+                            _loadPageSuggestions();
+                            _scheduleAttachPreview();
+                            _scrollToEnd();
+                          },
+                          child: const Icon(Icons.auto_awesome_outlined),
+                        ),
                       ),
                     ),
                   ),
@@ -1953,161 +1960,204 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         !_picking &&
         _capabilities?.usable == true &&
         (_input.text.trim().isNotEmpty || _attachment != null);
+    // WeChat-style split composer (2026-10-06): round attach button on the
+    // left, a freestanding rounded input field, round send button on the
+    // right; the pending file sits in a chip above the row. The 2/4px inner
+    // insets keep the buttons off the composer bounds the tests assert on.
+    final file = _attachment;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
+        key: const ValueKey('ai-chat-composer'),
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DecoratedBox(
-            key: const ValueKey('ai-chat-composer'),
-            decoration: BoxDecoration(
-              color: colors.surfaceContainerLowest,
-              borderRadius: UtenRadius.xlAll,
-              border: Border.all(
-                color: _focus.hasFocus ? colors.primary : colors.outlineVariant,
-                width: _focus.hasFocus ? 1.5 : 1,
+          if (_attachPreviewText() case final preview?)
+            Padding(
+              key: const ValueKey('ai-chat-attach-preview'),
+              padding: const EdgeInsets.only(
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+                bottom: UtenSpacing.s8,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.table_view_outlined,
+                    size: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s6),
+                  Expanded(
+                    child: Text(
+                      preview,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          if (file != null)
+            Padding(
+              padding: const EdgeInsets.only(
+                left: UtenSpacing.s4,
+                right: UtenSpacing.s4,
+                bottom: UtenSpacing.s8,
+              ),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(
+                  UtenSpacing.s12,
+                  UtenSpacing.s6,
+                  UtenSpacing.s6,
+                  UtenSpacing.s6,
+                ),
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHigh,
+                  borderRadius: UtenRadius.controlAll,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.description_outlined,
+                      size: 16,
+                      color: colors.primary,
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Flexible(
+                      child: Text(
+                        file.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s4),
+                    IconButton(
+                      tooltip: _t('removeFile'),
+                      onPressed: () => setState(() => _attachment = null),
+                      constraints: const BoxConstraints.tightFor(
+                        width: 28,
+                        height: 28,
+                      ),
+                      padding: EdgeInsets.zero,
+                      style: const ButtonStyle(
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      icon: Icon(
+                        Icons.close,
+                        size: 14,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              UtenSpacing.s4,
+              0,
+              UtenSpacing.s4,
+              UtenSpacing.s4,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                if (_attachPreviewText() case final preview?)
-                  Padding(
-                    key: const ValueKey('ai-chat-attach-preview'),
-                    padding: const EdgeInsets.fromLTRB(
-                      UtenSpacing.s12,
-                      UtenSpacing.s8,
-                      UtenSpacing.s12,
-                      0,
+                if (_canUpload) ...[
+                  IconButton(
+                    key: const ValueKey('ai-chat-attach'),
+                    tooltip: _t('attach'),
+                    onPressed: _busy || _picking ? null : _pickFile,
+                    constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                    style: IconButton.styleFrom(
+                      backgroundColor: colors.surfaceContainerHigh,
+                      foregroundColor: colors.onSurfaceVariant,
+                      shape: const CircleBorder(),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.table_view_outlined,
-                          size: 14,
-                          color: colors.onSurfaceVariant,
-                        ),
-                        const SizedBox(width: UtenSpacing.s6),
-                        Expanded(
-                          child: Text(
-                            preview,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: colors.onSurfaceVariant),
+                    icon: const Icon(Icons.attach_file, size: 18),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: colors.surfaceContainerLowest,
+                      borderRadius: UtenRadius.controlAll,
+                      border: Border.all(
+                        color: _focus.hasFocus
+                            ? colors.primary
+                            : colors.outlineVariant,
+                        width: _focus.hasFocus ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Semantics(
+                      label: _t('label'),
+                      child: Focus(
+                        canRequestFocus: false,
+                        skipTraversal: true,
+                        onKeyEvent: _composerKey,
+                        child: TextField(
+                          key: const ValueKey('ai-chat-input'),
+                          controller: _input,
+                          focusNode: _focus,
+                          minLines: 1,
+                          maxLines: tight ? 2 : 4,
+                          inputFormatters: [
+                            LengthLimitingTextInputFormatter(2000),
+                          ],
+                          enabled: _capabilities?.usable == true,
+                          textInputAction: TextInputAction.newline,
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            hintText: _t(_canUpload ? 'hint' : 'hintNoUpload'),
+                            hintStyle: TextStyle(
+                              color: colors.onSurfaceVariant,
+                            ),
+                            contentPadding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s12,
+                              UtenSpacing.s8,
+                              UtenSpacing.s12,
+                              UtenSpacing.s8,
+                            ),
+                            isDense: true,
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                if (_attachment != null)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      left: UtenSpacing.s12,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.description_outlined,
-                          size: 18,
-                          color: colors.primary,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        Expanded(
-                          child: Text(
-                            _attachment!.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: _t('removeFile'),
-                          onPressed: () => setState(() => _attachment = null),
-                          icon: const Icon(Icons.close, size: 16),
-                        ),
-                      ],
-                    ),
-                  ),
-                Semantics(
-                  label: _t('label'),
-                  child: Focus(
-                    canRequestFocus: false,
-                    skipTraversal: true,
-                    onKeyEvent: _composerKey,
-                    child: TextField(
-                      key: const ValueKey('ai-chat-input'),
-                      controller: _input,
-                      focusNode: _focus,
-                      minLines: tight ? 1 : 2,
-                      maxLines: tight ? 2 : 4,
-                      inputFormatters: [LengthLimitingTextInputFormatter(2000)],
-                      enabled: _capabilities?.usable == true,
-                      textInputAction: TextInputAction.newline,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                      onChanged: (_) => setState(() {}),
-                      decoration: InputDecoration(
-                        hintText: _t(_canUpload ? 'hint' : 'hintNoUpload'),
-                        hintStyle: TextStyle(color: colors.onSurfaceVariant),
-                        contentPadding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s4,
-                        ),
-                        isDense: true,
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
                       ),
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    UtenSpacing.s4,
-                    0,
-                    UtenSpacing.s4,
-                    UtenSpacing.s4,
+                const SizedBox(width: UtenSpacing.s8),
+                IconButton.filled(
+                  key: const ValueKey('ai-chat-send'),
+                  tooltip: _t(_cancel != null ? 'stop' : 'send'),
+                  constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+                  style: IconButton.styleFrom(
+                    shape: const CircleBorder(),
+                    backgroundColor: colors.primary,
+                    foregroundColor: colors.onPrimary,
                   ),
-                  child: Row(
-                    children: [
-                      if (_canUpload)
-                        IconButton(
-                          key: const ValueKey('ai-chat-attach'),
-                          tooltip: _t('attach'),
-                          onPressed: _busy || _picking ? null : _pickFile,
-                          icon: Icon(
-                            Icons.attach_file,
-                            size: 20,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
-                      const Spacer(),
-                      IconButton.filled(
-                        key: const ValueKey('ai-chat-send'),
-                        tooltip: _t(_cancel != null ? 'stop' : 'send'),
-                        constraints: const BoxConstraints(
-                          minWidth: 44,
-                          minHeight: 44,
-                        ),
-                        onPressed: _cancel != null
-                            ? _stop
-                            : canSend
-                            ? _send
-                            : null,
-                        icon: Icon(
-                          _cancel != null
-                              ? Icons.stop_rounded
-                              : Icons.arrow_upward_rounded,
-                          size: 20,
-                          color: _cancel != null || canSend
-                              ? colors.onPrimary
-                              : colors.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
+                  onPressed: _cancel != null
+                      ? _stop
+                      : canSend
+                      ? _send
+                      : null,
+                  icon: Icon(
+                    _cancel != null
+                        ? Icons.stop_rounded
+                        : Icons.arrow_upward_rounded,
+                    size: 18,
+                    color: _cancel != null || canSend
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
                   ),
                 ),
               ],

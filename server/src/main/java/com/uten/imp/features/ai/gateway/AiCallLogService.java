@@ -167,6 +167,19 @@ public class AiCallLogService {
         return total == null ? 0L : total;
     }
 
+    /** 今天(上海时区)某人已用 token(个人限额的对照值, 走 user+created_at 索引)。 */
+    @Transactional(readOnly = true)
+    public long todayTokens(UUID userId) {
+        Long total = jdbc.queryForObject("""
+                SELECT COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)), 0)
+                FROM ai_call_logs
+                WHERE user_id = :userId
+                  AND created_at >= (date_trunc('day', now() AT TIME ZONE 'Asia/Shanghai')
+                                     AT TIME ZONE 'Asia/Shanghai')
+                """, new MapSqlParameterSource("userId", userId), Long.class);
+        return total == null ? 0L : total;
+    }
+
     /** 近 {@code days} 天按服务商汇总。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")

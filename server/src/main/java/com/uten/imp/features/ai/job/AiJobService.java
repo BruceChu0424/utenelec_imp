@@ -55,11 +55,13 @@ public class AiJobService {
     private final TransactionTemplate readTx;
     private final TransactionTemplate reusableReadTx;
     private final AiInputOriginalStore originals;
+    private final com.uten.imp.features.ai.usage.AiUserLimitsService userLimits;
 
     public AiJobService(AiJobHandlerRegistry registry, AiJobRepository repository,
                         SubmitterPrincipalRestorer restorer, AiProperties properties,
                         ApplicationEventPublisher events, ObjectMapper objectMapper,
-                        PlatformTransactionManager transactionManager,AiInputOriginalStore originals) {
+                        PlatformTransactionManager transactionManager,AiInputOriginalStore originals,
+                        com.uten.imp.features.ai.usage.AiUserLimitsService userLimits) {
         this.registry = registry;
         this.repository = repository;
         this.restorer = restorer;
@@ -67,6 +69,7 @@ public class AiJobService {
         this.events = events;
         this.objectMapper = objectMapper;
         this.originals=originals;
+        this.userLimits = userLimits;
         this.writeTx = new TransactionTemplate(transactionManager);
         this.readTx = new TransactionTemplate(transactionManager);
         this.readTx.setReadOnly(true);
@@ -231,10 +234,16 @@ public class AiJobService {
     }
 
     private void requireWithinLimits(UUID userId) {
+        // 管理员停用(ADR-164)在限额之前: 停用的账号连排队资格都没有; 提交与入队两处都走到这里。
+        userLimits.requireEnabled(userId);
         if (repository.countActive(userId) >= Math.max(1, properties.getMaxActiveJobsPerUser())) {
             throw new ApiException(ErrorCode.RATE_LIMITED, "你已有识别任务在进行, 请稍等");
         }
-        if (repository.countToday(userId) >= Math.max(1, properties.getMaxJobsPerUserPerDay())) {
+        // 个人每日任务数覆盖(ADR-164): 有个人值用它, 否则跟随全局配置。
+        Integer personalDailyJobs = userLimits.jobLimitOverride(userId);
+        int dailyJobCap = personalDailyJobs != null ? Math.max(1, personalDailyJobs)
+                : Math.max(1, properties.getMaxJobsPerUserPerDay());
+        if (repository.countToday(userId) >= dailyJobCap) {
             throw new ApiException(ErrorCode.RATE_LIMITED, "今天的识别次数已用完, 请明天再试");
         }
         if (repository.countPending() >= Math.max(1, properties.getMaxPendingJobs())) {

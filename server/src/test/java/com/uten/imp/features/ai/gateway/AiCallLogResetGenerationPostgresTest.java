@@ -76,7 +76,8 @@ class AiCallLogResetGenerationPostgresTest {
         when(current.id()).thenReturn(Optional.empty());
         var properties = new AiProperties();
         properties.setDailyTokenBudget(0);
-        gateway = new AiGateway(providers, List.of(client), logs, properties, current);
+        gateway = new AiGateway(providers, List.of(client), logs, properties, current,
+                mock(com.uten.imp.features.ai.usage.AiUserLimitsService.class));
         started = new CountDownLatch(1);
         release = new CountDownLatch(1);
         executor = Executors.newSingleThreadExecutor();

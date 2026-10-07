@@ -69,6 +69,7 @@ class DailyGridRow extends EditableGridRow {
   final TextEditingController weight = TextEditingController(); // 本行实际总重量
   final TextEditingController planNo = TextEditingController(); // 关联生产计划号
   final TextEditingController remark = TextEditingController();
+  final TextEditingController overLimitReason = TextEditingController();
 
   /// 权威报工来源。合并排产必须同时带计划行和销售订单行，禁止只靠计划号猜分摊。
   String? planItemId;
@@ -113,6 +114,22 @@ class DailyGridRow extends EditableGridRow {
     return maxReportQty == null && surplus <= 0
         ? null
         : (maxReportQty ?? 0) + surplus;
+  }
+
+  /// 普通生产可如实登记超限量；品质恢复与历史固定追加仍按原授权执行。
+  bool get canRecordOverLimit =>
+      allowActualOverproduction && !isFqcRecovery && !hasFixedSupplement;
+
+  double get estimatedOverLimitQty {
+    final cap = reportQtyCap;
+    final actual = double.tryParse(qty.text.trim());
+    if (!canRecordOverLimit ||
+        cap == null ||
+        actual == null ||
+        !actual.isFinite) {
+      return 0;
+    }
+    return actual > cap ? actual - cap : 0;
   }
 
   /// Remaining output target, distinct from this delivery's material capacity.
@@ -337,6 +354,7 @@ class DailyGridRow extends EditableGridRow {
     c.weight.text = weight.text;
     c.planNo.text = planNo.text;
     c.remark.text = remark.text;
+    c.overLimitReason.text = hasFixedSupplement ? '' : overLimitReason.text;
     if (hasFixedSupplement) {
       c
         ..planId = null
@@ -375,6 +393,7 @@ class DailyGridRow extends EditableGridRow {
     unitIdNotifier.dispose();
     finalNotifier.dispose();
     qty.dispose();
+    overLimitReason.dispose();
     defectQty.dispose();
     weight.dispose();
     planNo.dispose();
@@ -777,6 +796,37 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   InputDecoration(isDense: true, hintText: '0'),
                 ),
               ),
+            ),
+    ),
+    EditableGridColumn<DailyGridRow>(
+      key: 'overLimitReason',
+      label: '超限原因',
+      width: 220,
+      headerInfo: '实际产量超过当前有效额度时填写原因。额度内产出继续原流程，超限部分由计划处理；不会自动增加需求或可用库存。',
+      textOf: (row) => row.isSubRow ? '' : row.overLimitReason.text,
+      listenableOf: (row) => row.overLimitReason,
+      cellBuilder: (context, row) => row.isSubRow
+          ? const SizedBox.shrink()
+          : ListenableBuilder(
+              listenable: Listenable.merge([row.qty, row.goodsNotifier]),
+              builder: (context, _) {
+                if (!row.canRecordOverLimit) return const SizedBox.shrink();
+                final over = row.estimatedOverLimitQty;
+                return TextField(
+                  key: ValueKey('over-limit-reason-${row.localRowId}'),
+                  controller: row.overLimitReason,
+                  maxLength: 500,
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      counterText: '',
+                      hintText: over > 0
+                          ? '超限 ${_quantityText(over)}，请填原因'
+                          : '超限时填写（2–500字）',
+                    ),
+                  ),
+                );
+              },
             ),
     ),
     // ADR-129 不良数：可选，只在已选报工工单的行上填；空 = 0。

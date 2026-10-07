@@ -39,6 +39,9 @@ class ProductionOutputSupplementReportLine {
       productionRateNumber(data['originalReportQty'])!;
   double get supplementQty => productionRateNumber(data['supplementQty'])!;
   bool get requiresSupplement => data['requiresSupplement'] == true;
+  double get overLimitQty => productionRateNumber(data['overLimitQty']) ?? 0;
+  double get withinAuthorizationQty =>
+      productionRateNumber(data['withinAuthorizationQty']) ?? actualQty;
 }
 
 class ProductionOutputSupplementReportPreview {

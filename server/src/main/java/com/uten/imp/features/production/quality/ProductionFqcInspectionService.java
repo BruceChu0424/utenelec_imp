@@ -5,6 +5,7 @@ import com.uten.imp.application.port.ProductionFinishedInboundReleasePort;
 import com.uten.imp.application.port.ProductionPreStockedInboundPort;
 import com.uten.imp.application.port.ProductionFqcRecoveryPort;
 import com.uten.imp.application.port.ProductionQualityInspectionPort;
+import com.uten.imp.application.port.ProductionOverLimitReleasePort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.NativeQueryResults;
@@ -72,7 +73,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProductionFqcInspectionService
-        implements ProductionQualityInspectionPort {
+        implements ProductionQualityInspectionPort, ProductionOverLimitReleasePort {
 
     static final String VIEW_AUTHORITY = "production_quality_inspection:view";
     static final String APPROVE_AUTHORITY =
@@ -997,7 +998,7 @@ public class ProductionFqcInspectionService
         }
         PendingRelease release = resolved.passQty().signum() > 0
                 ? new PendingRelease(inspectionId, eventId, (UUID) inspection[5],
-                        (UUID) inspection[6], resolved.passQty())
+                        (UUID) inspection[6], resolved.passQty(), false)
                 : null;
         return new DecisionWrite(eventId, false, release);
     }
@@ -1010,12 +1011,23 @@ public class ProductionFqcInspectionService
             List<PendingRelease> releases,
             ProductionPreStockedInboundPort.Batch inboundBatch) {
         if (releases.isEmpty()) return;
+        // Quality and planning are independent facts. The whole lot can be inspected,
+        // while only its authorized slices become available to warehouse receiving.
+        @SuppressWarnings("unchecked")
+        List<UUID> authorized = em.createNativeQuery("""
+                        SELECT id FROM production_daily_report_items
+                        WHERE id IN (:items) AND fn_daily_report_output_authorized(id)
+                        """)
+                .setParameter("items", releases.stream().map(PendingRelease::sourceReportItemId).distinct().toList())
+                .getResultList();
+        releases = releases.stream().filter(release -> authorized.contains(release.sourceReportItemId())).toList();
+        if (releases.isEmpty()) return;
         Map<UUID, ProductionFinishedInboundReleasePort.CreatedDraft> drafts =
                 finishedInbound.createReleasedDrafts(releases.stream()
                         .map(release -> new ProductionFinishedInboundReleasePort.ReleaseRequest(
                                 release.inspectionId(), release.decisionEventId(),
                                 release.sourceReportId(), release.sourceReportItemId(),
-                                release.passQty()))
+                                release.passQty(), release.requireFreshReceipt()))
                         .toList());
         Map<UUID, UUID> autoConfirm = new LinkedHashMap<>();
         for (PendingRelease release : releases) {
@@ -1057,6 +1069,43 @@ public class ProductionFqcInspectionService
                 inboundBatch.confirm(document.getKey(), key);
             }
         }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void releasePendingForReportItem(UUID sourceReportItemId) {
+        tx.bind();
+        if (sourceReportItemId == null) throw validation("超限放行缺少原报工明细");
+        if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_daily_report_output_authorized(:item)")
+                .setParameter("item", sourceReportItemId).getSingleResult())) {
+            throw conflict("本批超限产出尚未批准接收，不能生成入库任务");
+        }
+        @SuppressWarnings("unchecked")
+        List<UUID> inspectionIds = em.createNativeQuery("""
+                        SELECT id FROM production_fqc_inspections
+                        WHERE fn_daily_report_output_authorization_root(source_report_item_id)=:item
+                            AND status<>'CANCELLED' ORDER BY id
+                        """).setParameter("item", sourceReportItemId).getResultList();
+        if (inspectionIds.isEmpty()) return;
+        inspectionIds.forEach(mutationFootprint::requireInspection);
+        lockPassAllDecisionDimensions(inspectionIds);
+        List<Object[]> pending = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT inspection.id,inspection.source_report_id,inspection.source_report_item_id,
+                               decision.id, decision.pass_qty-COALESCE(SUM(allocation.qty),0)
+                        FROM production_fqc_decision_events decision
+                        JOIN production_fqc_inspections inspection ON inspection.id=decision.inspection_id
+                        JOIN production_daily_reports report ON report.id=inspection.source_report_id
+                        LEFT JOIN production_fqc_release_allocations allocation ON allocation.decision_event_id=decision.id
+                        WHERE decision.inspection_id IN (:inspections) AND inspection.status<>'CANCELLED'
+                          AND report.status=1 AND NOT report.is_deleted AND decision.pass_qty>0
+                        GROUP BY inspection.id,inspection.source_report_id,inspection.source_report_item_id,
+                                 decision.id,decision.pass_qty,decision.decided_at
+                        HAVING decision.pass_qty-COALESCE(SUM(allocation.qty),0)>0
+                        ORDER BY decision.decided_at,decision.id
+                        """).setParameter("inspections", inspectionIds));
+        List<PendingRelease> releases = pending.stream().map(row -> new PendingRelease(
+                (UUID) row[0], (UUID) row[3], (UUID) row[1], (UUID) row[2], dec(row[4]), true)).toList();
+        releaseLocked(releases, null);
     }
 
     /**
@@ -1197,7 +1246,7 @@ public class ProductionFqcInspectionService
                           AND NOT source_item.is_deleted
                         ORDER BY source_item.output_lot_id,
                                  fn_daily_report_output_slice_rank(
-                                     source_item.is_public_output, source_item.is_actual_surplus),
+                                     source_item.is_public_output, source_item.is_actual_surplus, source_item.is_over_limit),
                                  source_item.line_no NULLS LAST, source_item.id
                         """).setParameter("lotIds", lotIds))) {
             result.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>())
@@ -1224,7 +1273,7 @@ public class ProductionFqcInspectionService
     private record DecisionWrite(UUID decisionEventId, boolean replay, PendingRelease release) {}
 
     private record PendingRelease(UUID inspectionId, UUID decisionEventId, UUID sourceReportId,
-                                  UUID sourceReportItemId, BigDecimal passQty) {}
+                                  UUID sourceReportItemId, BigDecimal passQty, boolean requireFreshReceipt) {}
 
     private record LotWrite(UUID commandId, Map<UUID, UUID> decisions, List<PendingRelease> releases) {}
 
@@ -1994,7 +2043,7 @@ public class ProductionFqcInspectionService
                        registration.pre_stocked_by_name,
                        source_item.output_lot_id,
                        fn_daily_report_output_slice_rank(
-                           source_item.is_public_output, source_item.is_actual_surplus) AS slice_rank,
+                           source_item.is_public_output, source_item.is_actual_surplus, source_item.is_over_limit) AS slice_rank,
                        (SELECT COUNT(*)
                         FROM production_daily_report_items sibling_item
                         JOIN production_fqc_inspections sibling
@@ -2099,6 +2148,7 @@ public class ProductionFqcInspectionService
             BigDecimal demand = BigDecimal.ZERO;
             BigDecimal publicQty = BigDecimal.ZERO;
             BigDecimal surplus = BigDecimal.ZERO;
+            BigDecimal overLimit = BigDecimal.ZERO;
             boolean allCancelled = true;
             List<InspectionLotMemberView> memberViews = new ArrayList<>(members.size());
             for (InspectionView member : members) {
@@ -2109,6 +2159,10 @@ public class ProductionFqcInspectionService
                     failed = failed.add(member.failedQty());
                     remaining = remaining.add(member.remainingQty());
                     switch (member.sliceRank()) {
+                        case OutputLotText.RANK_OVER_LIMIT -> {
+                            surplus = surplus.add(member.reportedQty());
+                            overLimit = overLimit.add(member.reportedQty());
+                        }
                         case OutputLotText.RANK_ACTUAL_SURPLUS -> surplus = surplus.add(member.reportedQty());
                         case OutputLotText.RANK_PUBLIC -> publicQty = publicQty.add(member.reportedQty());
                         default -> demand = demand.add(member.reportedQty());
@@ -2127,7 +2181,7 @@ public class ProductionFqcInspectionService
                     lot.getKey(), head.sourceReportId(), head.reportNo(), head.planId(), head.planNo(),
                     head.goodsId(), head.goodsCode(), head.goodsName(), head.colorId(), head.colorName(),
                     head.unitId(), head.unitName(), reported, passed, failed, remaining,
-                    demand, publicQty, surplus, OutputLotText.split(demand, publicQty, surplus),
+                    demand, publicQty, surplus, OutputLotText.split(demand, publicQty, surplus, overLimit),
                     status, head.warehouseId(), head.warehouseName(), head.place(), head.preStocked(),
                     memberViews));
         }

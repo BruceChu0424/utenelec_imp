@@ -185,6 +185,8 @@ class ProductionExecutionWorkbenchSegment {
     required this.zeroMaterial,
     this.actualSurplusReportedQty = 0,
     this.actualSurplusInboundQty = 0,
+    this.overLimitPendingQty = 0,
+    this.overLimitDispositionId,
     this.allowedOverproductionRate,
     this.pendingOverproductionRate,
     this.pendingOverproductionRateRequestId,
@@ -288,6 +290,8 @@ class ProductionExecutionWorkbenchSegment {
   final double inboundQty;
   final double actualSurplusReportedQty;
   final double actualSurplusInboundQty;
+  final double overLimitPendingQty;
+  final String? overLimitDispositionId;
   final double? allowedOverproductionRate;
   final double? pendingOverproductionRate;
   final String? pendingOverproductionRateRequestId;
@@ -520,6 +524,8 @@ class ProductionExecutionWorkbenchSegment {
         json['actualOutputSupplementRequestId'] as String?,
     pendingSupplementQty: (json['pendingSupplementQty'] as num?)?.toDouble(),
     pendingSupplementRequestId: json['pendingSupplementRequestId'] as String?,
+    overLimitPendingQty: (json['overLimitPendingQty'] as num?)?.toDouble() ?? 0,
+    overLimitDispositionId: json['overLimitDispositionId'] as String?,
     plannedInboundQty: (json['plannedInboundQty'] as num?)?.toDouble(),
     segmentStatus: json['segmentStatus'] as String? ?? '',
     materialStatus: json['materialStatus'] as String? ?? '',

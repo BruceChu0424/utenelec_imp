@@ -440,6 +440,18 @@ class _ProductionPlanListPageState
                             ),
                             child: const Text('超产比例审批'),
                           ),
+                        if (ref
+                                .watch(currentPermissionsProvider)
+                                .contains(Perm.productionPlanApprove) ||
+                            ref.watch(isSuperAdminProvider))
+                          UtenButton(
+                            type: UtenButtonType.secondary,
+                            icon: Icons.inventory_2_outlined,
+                            onPressed: () => context.push(
+                              RouteName.productionOverLimitDispositions,
+                            ),
+                            child: const Text('超限产出处置'),
+                          ),
                         if (_canCreate &&
                             _statusFilter != kProductionStatusDraft) ...[
                           const SizedBox(width: UtenSpacing.s8),

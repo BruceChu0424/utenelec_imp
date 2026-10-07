@@ -128,6 +128,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
             case visitorHost->"我的访客"; case visitorApproval->"访客审批"; case hrProfileReview->"员工资料变更审核"; case hrTaskCenter->"人事任务";
             case financeAuditCenter->"业务财务审核"; case financeQuoteReview->"报价财务核价"; case financeStockCountReview->"财务盘点审核"; case financeDrafts->"财务单据草稿";
             case productionSchedule->"待排产"; case productionRateApprovals->"生产超产比例审批"; case productionMaterialIncrementApprovals->"生产补料审批";
+            case productionOverLimitPending->"超限产出处置";
             case productionPlanningUrges->"车间催计划"; case productionBatches->"生产批次"; case productionDrafts->"生产单据草稿"; case productionWorkshop->"我的车间任务";
             case rdTaskCenter->"研发任务"; case warehouseOutboundCenter->"仓库出库任务"; case warehouseInboundCenter->"仓库入库任务";
             case warehouseDrawCenter->"生产领退料"; case warehouseWorkshopMaterial->"车间内料仓"; case warehouseStockCountReview->"仓库盘点审核";

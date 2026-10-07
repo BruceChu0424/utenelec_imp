@@ -59,7 +59,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
                 "goods", "production_execution_segments", "production_fqc_recovery_authorizations",
                 "production_material_demands", "production_material_discovery_requests",
-                "production_overproduction_rate_requests", "v_production_fqc_recovery_balance");
+                "production_overproduction_rate_requests", "production_over_limit_dispositions", "v_production_fqc_recovery_balance");
         jdbc.execute("ALTER TABLE production_execution_segments ALTER COLUMN start_route SET DEFAULT 'FULL_KIT', ALTER COLUMN continuous_supply SET DEFAULT FALSE");
         jdbc.execute("ALTER TABLE v_production_fqc_recovery_balance ALTER COLUMN cancelled SET DEFAULT FALSE");
         jdbc.execute("CREATE TABLE workbench_execution_policy_facts(segment_id uuid PRIMARY KEY, overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE)");
@@ -689,6 +689,30 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             jdbc.update("DELETE FROM production_daily_reports WHERE id=?", report);
             jdbc.update("DELETE FROM production_actual_output_supplement_proofs WHERE id=?", proof);
             jdbc.update("DELETE FROM production_actual_output_supplement_requests WHERE id=?", request);
+        }
+    }
+
+    @Test
+    void pendingOverLimitShowsOnlyApprovedUnresolvedOriginalCases() {
+        UUID segment=new UUID(0,4),report=UUID.randomUUID(),draft=UUID.randomUUID();
+        UUID pending=UUID.randomUUID(),held=UUID.randomUUID(),accepted=UUID.randomUUID(),draftCase=UUID.randomUUID();
+        try {
+            jdbc.update("INSERT INTO production_daily_reports(id,status,is_deleted) VALUES(?,1,FALSE),(?,0,FALSE)",report,draft);
+            for(Object[] row:List.of(new Object[]{pending,report,"PENDING",100},new Object[]{held,report,"HELD",20},
+                    new Object[]{accepted,report,"ACCEPTED",30},new Object[]{draftCase,draft,"DRAFT",40})) {
+                jdbc.update("INSERT INTO production_over_limit_dispositions(id,report_item_id,report_id,execution_segment_id,qty,status) VALUES(?,?,?,?,?,?)",
+                        row[0],UUID.randomUUID(),row[1],segment,row[3],row[2]);
+            }
+            var task=service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(task.overLimitPendingQty()).isEqualByComparingTo("120");
+            assertThat(task.overLimitDispositionId()).isIn(pending,held);
+            jdbc.update("UPDATE production_daily_reports SET status=-1 WHERE id=?",report);
+            var reversed=service.workshopTasks(1,50,"P001","IN_PROGRESS",null,null,null).getItems().getFirst();
+            assertThat(reversed.overLimitPendingQty()).isEqualByComparingTo("0");
+            assertThat(reversed.overLimitDispositionId()).isNull();
+        } finally {
+            jdbc.update("DELETE FROM production_over_limit_dispositions WHERE report_id IN (?,?)",report,draft);
+            jdbc.update("DELETE FROM production_daily_reports WHERE id IN (?,?)",report,draft);
         }
     }
 

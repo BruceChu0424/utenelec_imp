@@ -322,7 +322,8 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
             """;
 
     private static final String COST_SCOPE_COMPLETE_SQL = """
-            SELECT NOT EXISTS(SELECT 1 FROM v_production_material_clearance clearance
+            SELECT NOT fn_production_execution_has_pending_output(:id)
+            AND NOT EXISTS(SELECT 1 FROM v_production_material_clearance clearance
                 JOIN production_material_demands demand ON demand.id=clearance.demand_id
                 WHERE demand.execution_segment_id IN (SELECT segment_id FROM fn_production_execution_cost_members(:id))
                     AND (clearance.uncleared_qty<>0 OR clearance.legal_wip_qty<>0))

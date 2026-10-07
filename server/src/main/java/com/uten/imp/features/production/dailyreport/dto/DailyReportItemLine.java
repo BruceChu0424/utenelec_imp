@@ -18,6 +18,10 @@ public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.Pla
     @com.fasterxml.jackson.annotation.JsonIgnore private BigDecimal outputBatchQty;
     @com.fasterxml.jackson.annotation.JsonIgnore private boolean publicOutput;
     @com.fasterxml.jackson.annotation.JsonIgnore private boolean actualSurplus;
+    @com.fasterxml.jackson.annotation.JsonIgnore private boolean overLimit;
+    /** 已经产出的超限事实说明；不能通过填写原因获得库存放行。 */
+    @jakarta.validation.constraints.Size(max = 500)
+    private String overLimitReason;
     /** Approved, exact same-batch additional-plan proof; never a free-form plan link. */
     private UUID supplementProofId;
     @com.fasterxml.jackson.annotation.JsonIgnore private Integer inputLineIndex;

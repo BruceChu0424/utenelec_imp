@@ -261,7 +261,7 @@ public class ProductionOverproductionRateService {
                         AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_stopped AND NOT plan.is_canceled
                         AND NOT plan.is_closed AND package.status='CONFIRMED' AND NOT package.is_deleted),
                        segment.product_goods_id,segment.product_color_id,segment.product_unit_id,segment.product_unit_rate,
-                       fn_execution_actual_surplus_qty(segment.id,TRUE),fn_execution_overproduction_policy_applies(segment.id)
+                       fn_execution_tolerance_surplus_qty(segment.id,TRUE),fn_execution_overproduction_policy_applies(segment.id)
                 FROM production_execution_segments segment
                 JOIN production_plans plan ON plan.id=segment.plan_id
                 JOIN production_planning_packages package ON package.id=segment.package_id

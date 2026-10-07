@@ -23,6 +23,7 @@ import 'pages/production_report_page.dart';
 import 'pages/where_used_report_page.dart';
 import 'pages/production_workshop_tasks_page.dart';
 import 'pages/production_overproduction_rate_pages.dart';
+import 'pages/production_over_limit_pages.dart';
 import 'pages/production_material_increment_pages.dart';
 import 'pages/production_actual_output_supplement_page.dart';
 import 'repositories/production_actual_output_supplement_repository.dart';
@@ -83,6 +84,15 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: RouteName.productionOverproductionRateRequests,
     builder: (_, _) => const ProductionOverproductionRateListPage(),
+  ),
+  DraftAwareGoRoute(
+    path: RouteName.productionOverLimitDispositions,
+    builder: (_, _) => const ProductionOverLimitListPage(),
+  ),
+  DraftAwareGoRoute(
+    path: '/production/over-limit-dispositions/:id',
+    builder: (_, state) =>
+        ProductionOverLimitDetailPage(id: state.pathParameters['id']!),
   ),
   DraftAwareGoRoute(
     path: '/production/overproduction-rate-requests/:id',

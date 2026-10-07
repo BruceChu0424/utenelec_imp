@@ -22,12 +22,18 @@ public interface ProductionFinishedInboundReleasePort {
     /** Returns one draft line per request, keyed by the request's decision event id. */
     Map<UUID, CreatedDraft> createReleasedDrafts(List<ReleaseRequest> requests);
 
+    /** requireFreshReceipt prevents a later planning approval from reusing an old physical count. */
     record ReleaseRequest(
             UUID inspectionId,
             UUID decisionEventId,
             UUID sourceReportId,
             UUID sourceReportItemId,
-            BigDecimal quantity) {
+            BigDecimal quantity,
+            boolean requireFreshReceipt) {
+        public ReleaseRequest(UUID inspectionId, UUID decisionEventId, UUID sourceReportId,
+                UUID sourceReportItemId, BigDecimal quantity) {
+            this(inspectionId, decisionEventId, sourceReportId, sourceReportItemId, quantity, false);
+        }
     }
 
     /**

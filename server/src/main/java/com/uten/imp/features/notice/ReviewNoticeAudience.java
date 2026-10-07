@@ -131,7 +131,7 @@ public class ReviewNoticeAudience {
                     && permissions.containsAll(Set.of("procurement_inspection:view", "procurement_inspection:handle"));
             case "SALES_ORDER_APPROVED" -> departments.contains("SUB_PLAN")
                     && permissions.containsAll(Set.of("production_material_analysis:view", "production_material_analysis:create"));
-            case "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED" ->
+            case "PRODUCTION_OVER_LIMIT_PENDING", "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED" ->
                     departments.contains("SUB_PLAN") && permissions.contains("production_plan:approve");
             // ADR-143 委外可领料：收件人在发卡时已按订货单归属可见范围精确算好(不限部门)，这里复核
             // 「现在还能不能领料」。

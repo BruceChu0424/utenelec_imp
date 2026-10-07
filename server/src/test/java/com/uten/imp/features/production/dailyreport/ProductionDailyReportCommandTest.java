@@ -60,6 +60,7 @@ class ProductionDailyReportCommandTest {
     @Mock private DailyReportExecutionSegmentGuard executionSegments;
     @Mock private DailyReportOutputAllocationService outputAllocation;
     @Mock private ActualOutputSupplementService outputSupplements;
+    @Mock private ProductionOverLimitDispositionService overLimitDispositions;
     @Mock private StockDocumentItemRepository stockDocItemRepo;
     @Mock private SecurityContextCurrentUser currentUser;
     @Mock private EmployeeNameResolver nameResolver;

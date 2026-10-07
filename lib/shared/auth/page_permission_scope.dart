@@ -416,6 +416,7 @@ PagePermissionScope? _productionScopeFor(List<String> segments) {
     // 超产比例/追加用料审批队列（V812 补挂）：审批动作复用 production_plan:approve，
     // 与 /production/plans 同一张 production.plan 权限面。
     case 'overproduction-rate-requests':
+    case 'over-limit-dispositions':
     case 'material-increment-requests':
       return _productionPlanScope;
     case 'workshop-tasks':

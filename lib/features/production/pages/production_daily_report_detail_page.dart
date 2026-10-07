@@ -1132,6 +1132,22 @@ class _ProductionDailyReportDetailPageState
                 label: '产出归属',
                 width: 180,
                 value: (it) => it.outputKindLabel,
+                cellBuilder: (context, it) => it.dispositionId == null
+                    ? Text(it.outputKindLabel)
+                    : TextButton(
+                        onPressed: () => context.push(
+                          RoutePath.productionOverLimitDisposition(
+                            it.dispositionId!,
+                          ),
+                        ),
+                        child: Text('${it.outputKindLabel} · 查看处置'),
+                      ),
+              ),
+              MasterColumnDef(
+                key: 'overLimitReason',
+                label: '超限原因',
+                width: 220,
+                value: (it) => it.overLimitReason,
               ),
               MasterColumnDef(
                 key: 'weight',

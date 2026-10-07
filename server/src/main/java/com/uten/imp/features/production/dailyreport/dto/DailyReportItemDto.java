@@ -84,8 +84,11 @@ public class DailyReportItemDto {
     @lombok.Setter private BigDecimal allowedOverproductionRate;
     @lombok.Setter private BigDecimal overproductionLimitQty;
     @lombok.Setter private BigDecimal remainingActualSurplusQty;
+    @lombok.Setter private boolean overLimit;
+    @lombok.Setter private String overLimitReason;
+    @lombok.Setter private UUID dispositionId;
 
     public String getOutputKind() {
-        return actualSurplus ? "ACTUAL_SURPLUS" : publicOutput ? "PLANNED_PUBLIC" : "PLANNED";
+        return overLimit ? "OVER_LIMIT" : actualSurplus ? "ACTUAL_SURPLUS" : publicOutput ? "PLANNED_PUBLIC" : "PLANNED";
     }
 }

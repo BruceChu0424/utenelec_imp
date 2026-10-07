@@ -16,7 +16,8 @@ public final class ActualOutputSupplementContracts {
     public record ReportPreviewRequest(@NotNull @jakarta.validation.Valid com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest report,UUID excludedReportId) {}
     public record ReportLinePreview(int inputLineIndex,UUID sourceExecutionSegmentId,UUID sourceSalesAllocationId,BigDecimal actualQty,
                                     BigDecimal originalReportQty,BigDecimal supplementQty,BigDecimal remainingActualSurplusQty,
-                                    boolean requiresSupplement,String fingerprint,BigDecimal originalSalesQty,BigDecimal originalInternalQty) {}
+                                    boolean requiresSupplement,String fingerprint,BigDecimal originalSalesQty,BigDecimal originalInternalQty,
+                                    BigDecimal withinAuthorizationQty,BigDecimal overLimitQty) {}
     public record ReportPreview(java.util.List<ReportLinePreview> lines,boolean requiresSupplements) {}
     public record ApproveRequest(@NotBlank @Size(min=8,max=128) String idempotencyKey) {}
     public record CancelRequest(@NotBlank @Size(max=1000) String reason,@NotBlank @Size(min=8,max=128) String idempotencyKey) {}

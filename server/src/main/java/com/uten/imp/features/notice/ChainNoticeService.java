@@ -435,6 +435,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         OUTBOX_EVENT.set(eventType);
         try {
             switch (eventType) {
+                case "PRODUCTION_OVER_LIMIT_PENDING", "PRODUCTION_OVER_LIMIT_DECIDED", "PRODUCTION_OVER_LIMIT_WITHDRAWN" ->
+                    deliverProductionOverLimit(eventType,aggregateId,payload);
                 case "PRODUCTION_MATERIAL_DISCOVERY_PENDING",
                      "PRODUCTION_MATERIAL_DISCOVERY_CONFIGURED",
                      "PRODUCTION_MATERIAL_DISCOVERY_VISIBILITY",
@@ -640,6 +642,45 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     }
 
     // ---------- 8 类通知入口（业务 Service 一行调用） ----------
+
+    private void deliverProductionOverLimit(String event,UUID requestId,JsonNode payload) {
+        deliverAtomically(() -> {
+            Map<String,Object> request=one("""
+                    SELECT request.status,request.row_version,request.created_by,request.qty,request.reason,
+                           segment.segment_code,plan.maker_id,decision.reason AS decision_reason
+                    FROM production_over_limit_dispositions request
+                    JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
+                    JOIN production_plans plan ON plan.id=request.plan_id
+                    LEFT JOIN production_over_limit_decisions decision ON decision.id=request.last_decision_id
+                    WHERE request.id=? FOR SHARE OF request
+                    """,requestId);
+            if(request==null)return;
+            String status=str(request.get("status")),route="/production/over-limit-dispositions/"+requestId;
+            String code=str(request.get("segment_code"));
+            if("WITHDRAWN".equals(status)) {
+                noticeService.resolveReviewNotices("PRODUCTION_OVER_LIMIT_DISPOSITION",requestId,"WITHDRAWN");
+                return;
+            }
+            if("PRODUCTION_OVER_LIMIT_PENDING".equals(event)) {
+                if(!Set.of("PENDING","HELD","RETURNED").contains(status))return;
+                for(UUID user:departmentUserIdsWithSecondaryAuthorities("SUB_PLAN",NOTICE_READ_AUTHORITY,"production_plan:approve")) {
+                    if(!canReadProductionAnalysis(user,(UUID)request.get("maker_id")))continue;
+                    sendToUser(user,TYPE_APPROVAL,"超限产出待处理："+code,
+                        "车间已登记实际产量，其中超限 "+qty(bd(request.get("qty")))+" 待处理。原因："+str(request.get("reason"))
+                        +"。允许范围内的产量继续正常办理；请决定本批超限产出的接收方式。",
+                        route,event,"normal",requestId);
+                }
+            } else if("PRODUCTION_OVER_LIMIT_DECIDED".equals(event)) {
+                if("ACCEPTED".equals(status))noticeService.resolveReviewNotices("PRODUCTION_OVER_LIMIT_DISPOSITION",requestId,"ACCEPTED");
+                // A newer decision supersedes an outbox item that has not been delivered yet.
+                if(payload.path("version").asLong(-1)!=((Number)request.get("row_version")).longValue())return;
+                String title=switch(status){case "ACCEPTED"->"超限产出已同意接收：";case "RETURNED"->"超限产出需要核实：";default->"超限产出继续待处理：";};
+                sendToUser((UUID)request.get("created_by"),TYPE_WORKFLOW,title+code,
+                    ("ACCEPTED".equals(status)?"本批已同意接收为公共备货，仍须品质合格并由仓库实际点收。":"实物和实际产量保留，超限部分继续冻结。")
+                    +"处理说明："+str(request.get("decision_reason")),route,event,"normal",requestId);
+            }
+        });
+    }
 
     private void deliverProductionRateReview(String event,UUID requestId) {
         deliverAtomically(() -> {

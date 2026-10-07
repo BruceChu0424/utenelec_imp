@@ -12,6 +12,20 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DailyReportCreateCanonicalStabilityTest {
+    @Test void overLimitReasonIsPartOfTheOriginalCommandButAbsentForUnchangedLegacyInput() {
+        var request=new DailyReportSaveRequest();request.setBillDate(LocalDate.of(2026,10,7));
+        var line=new DailyReportItemLine();line.setGoodsId(UUID.randomUUID());line.setQty(new BigDecimal("1200"));request.setItems(List.of(line));
+        String legacy=ProductionDailyReportService.createRequestHash(request);
+        line.setOverLimitReason(" ");assertEquals(legacy,ProductionDailyReportService.createRequestHash(request));
+        line.setOverLimitReason("设备停机后清点超限");
+        String recorded=ProductionDailyReportService.createRequestHash(request);
+        String fullRecorded=ProductionDailyReportService.createFullPayloadHash(request);
+        assertNotEquals(legacy,recorded);
+        line.setOverLimitReason("设备参数调整后超限");
+        assertNotEquals(recorded,ProductionDailyReportService.createRequestHash(request));
+        assertNotEquals(fullRecorded,ProductionDailyReportService.createFullPayloadHash(request));
+        line.setOverLimitReason(null);assertEquals(legacy,ProductionDailyReportService.createRequestHash(request));
+    }
     @Test void fullProofPreservesTextIdentityAndCellSetOrderWithoutChangingNativeV3() {
         var request=new DailyReportSaveRequest();request.setBillDate(LocalDate.of(2020,1,2));
         var line=new DailyReportItemLine();line.setGoodsId(UUID.randomUUID());line.setQty(BigDecimal.ONE);request.setItems(List.of(line));

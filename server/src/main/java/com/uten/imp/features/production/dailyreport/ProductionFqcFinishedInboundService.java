@@ -107,7 +107,10 @@ public class ProductionFqcFinishedInboundService
                                    AS pre_stocked_auto_confirm,
                                report_item.line_no,
                                fn_daily_report_output_slice_rank(
-                                   report_item.is_public_output, report_item.is_actual_surplus) AS slice_rank
+                                   report_item.is_public_output, report_item.is_actual_surplus, report_item.is_over_limit) AS slice_rank,
+                               COALESCE((SELECT SUM(allocation.qty)
+                                   FROM production_fqc_release_allocations allocation
+                                   WHERE allocation.decision_event_id=decision.id),0) AS allocated_qty
                         FROM production_daily_reports report
                         JOIN production_daily_report_items report_item
                           ON report_item.report_id = report.id
@@ -134,6 +137,7 @@ public class ProductionFqcFinishedInboundService
                           ON registration.id = registration_item.registration_id
                         WHERE decision.id IN (:decisionIds)
                           AND report.status = 1
+                          AND fn_daily_report_output_authorized(report_item.id)
                           AND report.is_deleted = FALSE
                           AND inspection.warehouse_id IS NOT NULL
                           AND report.maker_id IS NOT NULL
@@ -160,7 +164,7 @@ public class ProductionFqcFinishedInboundService
                     || !request.inspectionId().equals(row[18])
                     || !request.sourceReportId().equals(row[0])
                     || !request.sourceReportItemId().equals(row[6])
-                    || ((BigDecimal) row[23]).compareTo(request.quantity()) != 0) {
+                    || ((BigDecimal) row[23]).subtract((BigDecimal) row[28]).compareTo(request.quantity()) != 0) {
                 throw conflict(
                         "FQC 合格放行与报工、计划或执行段状态不一致，未生成入库任务");
             }
@@ -169,7 +173,7 @@ public class ProductionFqcFinishedInboundService
             }
             handoffs.computeIfAbsent(new HandoffKey(
                             (UUID) row[0], (UUID) row[24], (UUID) row[2], (UUID) row[14],
-                            Boolean.TRUE.equals(row[25])),
+                            Boolean.TRUE.equals(row[25]) && !request.requireFreshReceipt()),
                     ignored -> new ArrayList<>()).add(row);
         }
         Map<UUID, StockGoodsSnapshot> goodsSnapshots =
@@ -205,7 +209,7 @@ public class ProductionFqcFinishedInboundService
 
             int lineNo = 0;
             for (Object[] row : lines) {
-                BigDecimal quantity = (BigDecimal) row[23];
+                BigDecimal quantity = byDecision.get((UUID) row[19]).quantity();
                 UUID goodsId = (UUID) row[10];
                 BigDecimal unitRate = (BigDecimal) row[13];
                 StockDocumentItem item = new StockDocumentItem();
@@ -228,7 +232,7 @@ public class ProductionFqcFinishedInboundService
                 // 没称的登记行草稿重量为空, 由库存账按均重/单重推算; 报工单自己的重量列不进库存账。
                 item.setWeight(proratedActualWeight(
                         (BigDecimal) row[21], (BigDecimal) row[16],
-                        (BigDecimal) row[22], quantity));
+                        ((BigDecimal) row[22]).add((BigDecimal) row[28]), quantity));
                 item.setUpstreamItemId((UUID) row[7]);
                 item.setExecutionSegmentId((UUID) row[8]);
                 item.setExecutionSegmentSalesAllocationId((UUID) row[9]);

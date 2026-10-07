@@ -137,6 +137,12 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
 /// 库存分析是管理口径 (呆滞/供应商少数)，只给 stock_report:view；
 /// 独立称重计数页库存查看即可进 (保存抽样的称样权限由页面与后端另行把关)。
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  '/production/over-limit-dispositions': [Perm.productionPlanApprove],
+  '/production/over-limit-dispositions/:id': [
+    Perm.productionPlanView,
+    Perm.productionExecutionView,
+    Perm.productionDailyReportView,
+  ],
   '/workshop-material/count': [
     Perm.workshopMaterialCount,
     Perm.stockCountWarehouseReview,
@@ -237,16 +243,16 @@ void main() {
           reason: '${route.key} 必须只注册一次',
         );
         expect(
-          requiredAnyPermFor(route.key),
+          requiredAnyPermFor(_samplePath(route.key)),
           orderedEquals(route.value),
           reason: '${route.key} 不得放松或改换已核对的守卫',
         );
         expect(
-          requiredAllPermsFor(route.key),
+          requiredAllPermsFor(_samplePath(route.key)),
           isEmpty,
           reason: '${route.key} 是单一 any-of 守卫',
         );
-        expect(guarded, contains(route.key));
+        expect(guarded, contains(_samplePath(route.key)));
       }
       // 新路径按精确身份和组合权限比较；原清单仍按原数量锁定，禁止只抬总数。
       expect(

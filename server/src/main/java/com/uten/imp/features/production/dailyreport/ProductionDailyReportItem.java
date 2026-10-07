@@ -34,6 +34,10 @@ public class ProductionDailyReportItem extends BaseEntity {
 
     @Column(name = "is_actual_surplus", nullable = false)
     private boolean actualSurplus;
+    @Column(name = "is_over_limit", nullable = false)
+    private boolean overLimit;
+    @Column(name = "over_limit_reason")
+    private String overLimitReason;
     @Column(name = "supplement_proof_id")
     private UUID supplementProofId;
 

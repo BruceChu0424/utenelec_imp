@@ -1995,6 +1995,22 @@ class _ProductionWorkshopTasksPageState
                   '计划合格实收：${_taskQuantity(task.plannedInboundQty)}；'
                   '公共超产实收：${_taskQuantity(task.actualSurplusInboundQty)}',
                 ),
+                if (task.overLimitPendingQty > 0)
+                  TextButton(
+                    onPressed: task.overLimitDispositionId == null
+                        ? null
+                        : () {
+                            Navigator.of(dialogContext).pop();
+                            context.push(
+                              RoutePath.productionOverLimitDisposition(
+                                task.overLimitDispositionId!,
+                              ),
+                            );
+                          },
+                    child: Text(
+                      '超限待处理 ${_taskQuantity(task.overLimitPendingQty)}（未计入可用库存） · 查看最近一笔',
+                    ),
+                  ),
                 Text(
                   '待报数量（含品质恢复）：${_taskQuantity(_remainingReportOf(task))}'
                   '${_draftClaimedQty(task) > 0.000001 ? '；报工草稿待审核 ${_taskQuantity(_draftClaimedQty(task))}' : ''}',
@@ -3375,9 +3391,12 @@ class _ProductionWorkshopTasksPageState
         value: (task) {
           final reported = _taskQuantity(task.reportedQty);
           final surplus = task.actualSurplusReportedQty;
-          return surplus > 0
+          final summary = surplus > 0
               ? '报工 $reported · 超产 ${_taskQuantity(surplus)}'
               : '报工 $reported';
+          return task.overLimitPendingQty > 0
+              ? '$summary · 待处理 ${_taskQuantity(task.overLimitPendingQty)}'
+              : summary;
         },
       ),
     if (status == 'IN_PROGRESS')

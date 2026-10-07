@@ -278,6 +278,7 @@ class _ProductionDailyReportEditPageState
       row.weight,
       row.planNo,
       row.remark,
+      row.overLimitReason,
       row.colorIdNotifier,
       row.unitIdNotifier,
       row.finalNotifier,
@@ -356,6 +357,7 @@ class _ProductionDailyReportEditPageState
           'clientName': row.clientName,
           'supplementRequestId': row.supplementRequestId,
           'supplementProofId': row.supplementProofId,
+          'overLimitReason': row.overLimitReason.text,
           'colorId': row.colorId,
           'unitId': row.unitId,
           'unitRate': row.unitRate,
@@ -483,6 +485,7 @@ class _ProductionDailyReportEditPageState
       row.clientName = item['clientName'] as String?;
       row.supplementRequestId = item['supplementRequestId'] as String?;
       row.supplementProofId = item['supplementProofId'] as String?;
+      row.overLimitReason.text = item['overLimitReason'] as String? ?? '';
       row.colorId = item['colorId'] as String?;
       row.unitId = item['unitId'] as String?;
       row.unitRate = (item['unitRate'] as num?)?.toDouble();
@@ -596,6 +599,7 @@ class _ProductionDailyReportEditPageState
               : ''
           ..weight.text = item.weight?.toString() ?? ''
           ..remark.text = item.remark ?? ''
+          ..overLimitReason.text = item.overLimitReason ?? ''
           ..planNo.text = item.planNo ?? ''
           ..planItemId = item.planItemId
           ..planId = item.planId
@@ -696,6 +700,7 @@ class _ProductionDailyReportEditPageState
             ..platformFields.sourceRecordId = it.id
             ..planNo.text = group.planNo ?? ''
             ..remark.text = it.remark ?? ''
+            ..overLimitReason.text = group.overLimitReason ?? ''
             ..planItemId = group.planItemId
             ..planId = group.planId
             ..remainingPlanQty = it.remainingPlanQty
@@ -851,6 +856,7 @@ class _ProductionDailyReportEditPageState
           ..weight.text = item['weight']?.toString() ?? ''
           ..planNo.text = item['planNo'] as String? ?? ''
           ..remark.text = item['remark'] as String? ?? ''
+          ..overLimitReason.text = item['overLimitReason'] as String? ?? ''
           ..supplementProofId = item['supplementProofId'] as String?;
         restoreOutputAllocations(row, draftMaps(item['allocations']));
         if (row.supplementProofId != null) {
@@ -1268,7 +1274,8 @@ class _ProductionDailyReportEditPageState
         ..qty.text = source.maxReportQty > 0
             ? _quantityText(source.maxReportQty)
             : ''
-        ..defectQty.clear();
+        ..defectQty.clear()
+        ..overLimitReason.clear();
       _discardOutputAllocations(row);
       _watchProductQty(row);
       if (_departmentId == null && source.departmentId != null) {
@@ -1339,6 +1346,7 @@ class _ProductionDailyReportEditPageState
         ..directTransferLoadFailed = false
         ..qty.clear()
         ..defectQty.clear()
+        ..overLimitReason.clear()
         ..weight.clear();
     });
   }
@@ -2379,10 +2387,9 @@ class _ProductionDailyReportEditPageState
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
         return;
       }
-      // 2026-10-06 口径：上限 = 计划剩余 + 剩余有效超产额度(服务端已扣待续报追加量)。
-      // 固定追加批次行走上面的整批锁量校验；无上限(null)的行不在这里拦。
+      // 普通实际超限允许如实记录，由服务端分账冻结；品质恢复与旧固定追加仍守原授权。
       final cap = r.reportQtyCap;
-      if (cap != null && qty > cap + 0.000001) {
+      if (cap != null && qty > cap + 0.000001 && !r.canRecordOverLimit) {
         final pending = r.pendingSupplementQty ?? 0;
         final beyondPlan =
             r.maxReportQty == null || qty > r.maxReportQty! + 0.000001;
@@ -2395,6 +2402,12 @@ class _ProductionDailyReportEditPageState
         );
         return;
       }
+      final overLimitReason = r.overLimitReason.text.trim();
+      if (r.estimatedOverLimitQty > 0.000001 &&
+          (overLimitReason.length < 2 || overLimitReason.length > 500)) {
+        context.appError('第 ${i + 1} 行超出当前有效额度，请填写 2–500 字超限原因；实际数量与用料已保留');
+        return;
+      }
       if (r.fqcRecoveryAuthorizationId != null && r.isFinal) {
         context.appError('第 ${i + 1} 行是 FQC 返工/补产恢复报工，不能勾选完结');
         return;
@@ -2405,7 +2418,10 @@ class _ProductionDailyReportEditPageState
     // 同源累计口径(2026-10-06)：有上限(reportQtyCap 非空)的行才参与；cap 取该来源
     // 行自己的「计划剩余 + 剩余有效超产额度」，固定追加批次行与真无上限行不在此列。
     for (final r in rows.where(
-      (row) => row.hasLinkedSource && row.reportQtyCap != null,
+      (row) =>
+          row.hasLinkedSource &&
+          row.reportQtyCap != null &&
+          !row.canRecordOverLimit,
     )) {
       final key =
           r.fqcRecoveryAuthorizationId ??
@@ -2534,6 +2550,8 @@ class _ProductionDailyReportEditPageState
           'fqcRecoveryAuthorizationId': r.fqcRecoveryAuthorizationId,
         if (r.supplementProofId != null)
           'supplementProofId': r.supplementProofId,
+        if (r.overLimitReason.text.trim().isNotEmpty)
+          'overLimitReason': r.overLimitReason.text.trim(),
         if (r.salesOrderItemId != null) 'salesOrderItemId': r.salesOrderItemId,
         if (r.salesOrderNo != null) 'salesOrderNo': r.salesOrderNo,
         if (r.clientName != null) 'clientName': r.clientName,
@@ -2620,6 +2638,12 @@ class _ProductionDailyReportEditPageState
       if (materialBody.isNotEmpty) 'materialLines': materialBody,
       if (_surplusReturnRequested) 'surplusReturnRequested': true,
     };
+    if (!await _confirmOverLimitPreview(
+      rows.where((row) => row.goods != null).toList(),
+      body,
+    )) {
+      return;
+    }
     if (!await _prepareActualOutputSupplements(
       rows.where((row) => row.goods != null).toList(),
       body,
@@ -2838,6 +2862,81 @@ class _ProductionDailyReportEditPageState
     }
   }
 
+  Future<bool> _confirmOverLimitPreview(
+    List<DailyGridRow> rows,
+    Map<String, dynamic> body,
+  ) async {
+    if (!rows.any((row) => row.canRecordOverLimit)) return true;
+    final scope = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        ref.read(apiBaseUrlProvider) == server;
+    setState(() => _saving = true);
+    try {
+      final preview = await ref
+          .read(productionOutputSupplementRepositoryProvider)
+          .previewReport(body, excludedReportId: widget.id);
+      if (!mounted || !current()) return false;
+      final over = preview.lines
+          .where((line) => line.overLimitQty > 0.000001)
+          .toList();
+      if (over.isEmpty) return true;
+      for (final line in over) {
+        if (line.inputLineIndex < 0 || line.inputLineIndex >= rows.length) {
+          context.appError('超限预览来源不完整，请重新核对；原输入已保留');
+          return false;
+        }
+        final row = rows[line.inputLineIndex];
+        if (row.executionSegmentId != line.sourceSegmentId ||
+            double.tryParse(row.qty.text) != line.actualQty) {
+          context.appError('超限预览与当前明细不一致，请重新核对；原输入已保留');
+          return false;
+        }
+        final reason = row.overLimitReason.text.trim();
+        if (reason.length < 2 || reason.length > 500) {
+          context.appError(
+            '第 ${line.inputLineIndex + 1} 行超限 ${_quantityText(line.overLimitQty)}，请填写 2–500 字超限原因；原输入已保留',
+          );
+          return false;
+        }
+      }
+      setState(() => _saving = false);
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '记录实际产量与超限部分',
+        confirmLabel: '按实际数量保存',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final line in over)
+              Text(
+                '第 ${line.inputLineIndex + 1} 行：实际 ${_quantityText(line.actualQty)} · 额度内 ${_quantityText(line.withinAuthorizationQty)} · 超限待处理 ${_quantityText(line.overLimitQty)}',
+              ),
+            const SizedBox(height: 12),
+            const Text(
+              '日报审核后，额度内产出继续原品质与交接流程；超限部分通知计划处理，批准前不计入可用库存。原需求与有效比例不变。',
+            ),
+          ],
+        ),
+      );
+      return confirmed == true && current();
+    } on ApiException catch (error) {
+      if (mounted && current()) context.appError(error.message);
+      return false;
+    } catch (_) {
+      if (mounted && current()) {
+        context.appError('超限数量尚未核对成功，请重试；实际数量、原因和用料已保留');
+      }
+      return false;
+    } finally {
+      if (current()) setState(() => _saving = false);
+    }
+  }
+
   /// One authoritative preview covers the complete report, including shared
   /// margins and actual material use. No row receives an independent allowance.
   Future<bool> _prepareActualOutputSupplements(
@@ -2848,8 +2947,7 @@ class _ProductionDailyReportEditPageState
         !rows.any(
           (row) =>
               !row.isFqcRecovery &&
-              (row.allowActualOverproduction ||
-                  row.supplementProofId != null ||
+              (row.supplementProofId != null ||
                   row.supplementRequestId != null),
         )) {
       return true;

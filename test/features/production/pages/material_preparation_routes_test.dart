@@ -493,12 +493,12 @@ Future<void> _tapRowCheckbox(WidgetTester tester, String text) async {
       : find
             .ancestor(of: find.text(text).first, matching: find.byType(Row))
             .first;
-  final checkbox = find
-      .descendant(of: row, matching: find.byType(Checkbox))
-      .first;
-  await tester.ensureVisible(checkbox);
+  final checkboxes = find.descendant(of: row, matching: find.byType(Checkbox));
+  await tester.ensureVisible(checkboxes.first);
   await tester.pumpAndSettle();
-  await tester.tap(checkbox);
+  final target = checkboxes.hitTestable();
+  expect(target, findsOneWidget, reason: '滚动完成后只点目标行当前可交互的勾选框：$text');
+  await tester.tap(target);
   await tester.pumpAndSettle();
 }
 

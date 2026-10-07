@@ -6,3 +6,8 @@
 id = "GHSA-pc63-qcmh-9cmg"
 ignoreUntil = 2026-12-31T00:00:00Z
 reason = "CVE-2026-47884 只影响 Spring MVC 的 XsltView (XSLT 视图渲染的路径限制)。本项目服务端只提供 JSON 接口, 源码与资源里没有任何 XsltView/XSLT 模板, 由 server 测试 NoXsltViewUsageSourceScanTest 守住。Spring 6.2.x (Spring Boot 3.5) 没有开源修复, 只有 7.0.9 (需升级 Spring Boot 4); 到期前复查。2026-10-06 登记。"
+
+[[IgnoredVulns]]
+id = "GHSA-j9f9-w8pj-32f8"
+ignoreUntil = 2026-11-06T00:00:00Z
+reason = "CVE-2026-47890 不适用，不代表依赖已修复。Spring 官方 https://spring.io/security/cve-2026-47890/ 要求应用通过 SSE 向其他用户发送攻击者可影响的视图片段。本项目仅提供 JSON 接口，AI 使用任务轮询，未使用 SSE 或视图片段；NoSseViewFragmentsUsageSourceScanTest 检查生产源码、资源与实际编译类，并以 SSE 类型、媒体类型、反射类名和函数式 SSE 接口负例守住前提。官方 6.2.20 仅企业支持，公开 Maven Central 尚无该修复；不将 Spring 7 单独混入 Boot 3.5。到期或引入 SSE/视图能力时重新评估，已有支持权限时优先评估同线补丁。2026-10-07 登记。"

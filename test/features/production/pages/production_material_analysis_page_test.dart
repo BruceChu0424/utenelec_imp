@@ -9036,12 +9036,12 @@ Future<void> _tapBucketRowCheckbox(
 ) async {
   await _scrollBucketRowVisible(tester, goodsName);
   final row = _frozenRowOf(goodsName);
-  final checkbox = find
-      .descendant(of: row, matching: find.byType(Checkbox))
-      .first;
-  await tester.ensureVisible(checkbox);
+  final checkboxes = find.descendant(of: row, matching: find.byType(Checkbox));
+  await tester.ensureVisible(checkboxes.first);
   await tester.pumpAndSettle();
-  await tester.tap(checkbox);
+  final target = checkboxes.hitTestable();
+  expect(target, findsOneWidget, reason: '滚动完成后只点目标行当前可交互的勾选框：$goodsName');
+  await tester.tap(target);
   await tester.pump();
 }
 

@@ -1332,7 +1332,21 @@ void main() {
           findsOneWidget,
         );
         // Other rows wait while one is saving.
-        await tester.tap(find.text(_en.aiChatSettingsReasoningDeep));
+        final disabledReasoning = find.text(_en.aiChatSettingsReasoningDeep);
+        await tester.ensureVisible(disabledReasoning);
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('ai-settings-reasoning')),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is IgnorePointer && widget.ignoring,
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(disabledReasoning.hitTestable(), findsNothing);
+        // A user can tap this screen position, but the disabled choice must not receive it.
+        await tester.tapAt(tester.getCenter(disabledReasoning));
         await tester.pump();
         expect(repository.settingChanges, hasLength(1));
         repository.settingsGate!.complete();

@@ -116,6 +116,7 @@ mvn spring-boot:run
 2. 缺列/缺表：确认本轮源码需要的迁移已进入正式资源且Flyway成功完成；不关闭结构校验。
 3. `NoClassDefFoundError` 或依赖不匹配：停止旧进程，使用当前pom完整编译后启动。临时目录或旧依赖生成的classpath/argfile不能长期用作启动入口。
 4. 历史数据或迁移校验失败：保留错误及目标库备份，按对应迁移文档修正前提，再原样重跑；不修改已应用文件或执行repair掩盖差异。
+5. `Found more than one migration with version`：分别核对源码目录和 `target/classes/db/migration`。合并或切换分支后，Maven 增量资源复制不会删除旧 SQL；若重复文件仅存在于生成目录，确认默认构建目录没有运行中的应用或测试后，执行 `mvn clean spring-boot:run` 重建。若旧测试占用日志，先结束对应测试或改用独立构建目录；不要为清缓存修改数据库历史。源码本身重号则先核对是否已应用，按正式迁移规则处理。
 
 Flyway 的专用迁移连接初始化 `client_min_messages=WARNING`：历史 `IF EXISTS / IF NOT EXISTS` 的 PostgreSQL NOTICE 不再经 JDBC 被误报为 WARN；真正的 SQL WARNING 和异常仍保留，普通应用连接的消息级别不受影响。此设置不修改已应用迁移，也不关闭结构校验。首次空库创建引导超管仍提示首登改密；同库正常重启应单独检查，不能通过删掉安全提醒或降低全局日志等级获得“无告警”。
 

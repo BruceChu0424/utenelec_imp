@@ -159,9 +159,11 @@ columnHeaderGestureArea(            // 横拖换位 + 竖拖移除识别器（�
 `IntrinsicHeight` 拉齐；2026-10-06 起读表内容不得超过单行文本高度，见
 [MasterDataTableView · 行高统一口径](MasterDataTableView.md#行高统一口径2026-10-06)），两个窗格各自布局必然对不齐行高，还要再做一套竖向滚动同步。
 
-**测试注意**：横滚后同一行会出现**两个** `Checkbox`（行内原位 + 冻结副本），按行定位勾选框
-要用 `.first`；按 `find.ancestor(..., matching: find.byType(Row))` 取整行的老写法在冻结表上
-应改取 `UtenFrozenLeadingColumn`。
+**测试注意**：横滚后同一行会出现**两个** `Checkbox`（行内原位 + 冻结副本）。按行定位时取
+`UtenFrozenLeadingColumn`，先让目标行可见并等待滚动完成，再对该行的完整勾选框集合调用
+`.hitTestable()`，断言只有一个命中目标后点击。不要先 `.first` 再做命中筛选，也不要用
+`.last` 猜冻结副本：`ensureVisible` 会改变横滚位置，可点击的实例会随之变化。单纯读取两份
+同步控件的值可选一份；交互测试必须点当前真正可交互的实例，不能关闭点击未命中告警。
 
 ## 五、测试
 

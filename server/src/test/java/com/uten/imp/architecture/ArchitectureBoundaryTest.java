@@ -352,6 +352,7 @@ class ArchitectureBoundaryTest {
                         "\"/departments/{departmentId}/permissions/grant-all\"",
                         "\"/permission-baseline\""),
                 "features/admin/impersonation/ImpersonationController.java", List.of("\"/enter\""),
+                "features/org/employee/EmployeeController.java", List.of("\"/{id}/account/reset-password\""),
                 "features/admin/systemsetting/SystemSettingController.java", List.of("@PutMapping"),
                 "features/admin/systemtest/SystemTestController.java", List.of(
                         "\"/business-data/reset\""),

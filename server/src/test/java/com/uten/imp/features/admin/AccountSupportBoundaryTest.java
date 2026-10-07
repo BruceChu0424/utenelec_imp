@@ -24,6 +24,8 @@ import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.InOrder;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -179,6 +181,99 @@ class AccountSupportBoundaryTest {
                 org.mockito.ArgumentMatchers.argThat(body -> !body.contains("Random-Temp-42!Value")));
         verify(audit).logCommitted(any(), any(), eq("password_temporary_reset"), eq("user"),
                 eq(targetId.toString()), eq("success"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"active", "locked", "disabled"})
+    void employeeResetResolvesAccountIdAndPreservesExistingLifecyclePolicy(String status) {
+        AdminUserSupport support = mock(AdminUserSupport.class);
+        UUID employeeId = UUID.randomUUID();
+        UserAccount target = new UserAccount();
+        target.setEmployeeId(employeeId);
+        target.setStatus(status);
+        target.setFailedAttempts(5);
+        target.setLockedUntil(OffsetDateTime.now().plusMinutes(15));
+        when(users.findIdByEmployeeId(employeeId)).thenReturn(Optional.of(target.getId()));
+        var locked = lock(target, "disabled".equals(status) ? resignedEmployee() : activeEmployee());
+        when(support.requireCurrentUser()).thenReturn(actor());
+        when(passwords.generate()).thenReturn("Employee-Temporary-42!");
+        when(encoder.encode("Employee-Temporary-42!")).thenReturn("encoded-employee-password");
+        when(users.bumpAuthVersion(target.getId())).thenReturn(1);
+        when(settings.readInt(SystemSettingKey.TEMP_PASSWORD_TTL_HOURS)).thenReturn(72);
+
+        String temporary = service(support).resetPasswordByEmployee(employeeId);
+
+        assertEquals("Employee-Temporary-42!", temporary);
+        assertEquals("encoded-employee-password", target.getPasswordHash());
+        assertTrue(target.isMustChangePassword());
+        assertEquals("disabled".equals(status) ? "disabled" : "active", target.getStatus());
+        assertEquals(0, target.getFailedAttempts());
+        assertNull(target.getLockedUntil());
+        assertNotNull(target.getTempPasswordExpiresAt());
+        verify(tx).bind();
+        verify(users, never()).findByEmployeeId(any());
+        verify(accountLifecycle).lock(target.getId());
+        verify(support).requirePasswordResetAllowed(target);
+        if ("disabled".equals(status)) {
+            verify(accountLifecycle, never()).requireCurrentEmployee(any());
+        } else {
+            verify(accountLifecycle).requireCurrentEmployee(locked);
+        }
+        verify(refreshTokens).revokeAllByUserId(target.getId());
+        verify(sessions).revokeAllForUser(target.getId(), AuthSessionService.REASON_PASSWORD_RESET);
+        verify(audit).logCommitted(any(), any(), eq("password_temporary_reset"), eq("user"),
+                eq(target.getId().toString()), eq("success"));
+        verify(accountNotice).notifyAccountHolder(eq(target.getId()), eq("你的登录密码已被重置"),
+                org.mockito.ArgumentMatchers.argThat(body -> !body.contains(temporary)));
+    }
+
+    @Test
+    void employeeResetRejectsMissingOrDeletedAccount() {
+        UUID employeeId = UUID.randomUUID();
+        // 标量查询只返回未删除账号，缺账号与已删除账号都没有 ID。
+        when(users.findIdByEmployeeId(employeeId)).thenReturn(Optional.empty());
+
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service(mock(AdminUserSupport.class)).resetPasswordByEmployee(employeeId));
+
+        assertEquals(ErrorCode.NOT_FOUND, denied.getCode());
+        verify(accountLifecycle, never()).lock(any());
+        verify(passwords, never()).generate();
+        verify(users, never()).save(any());
+    }
+
+    @Test
+    void employeeResetRechecksAccountAfterResolvingItsId() {
+        UUID employeeId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(users.findIdByEmployeeId(employeeId)).thenReturn(Optional.of(userId));
+        when(accountLifecycle.lock(userId)).thenThrow(new ApiException(ErrorCode.NOT_FOUND));
+
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service(mock(AdminUserSupport.class)).resetPasswordByEmployee(employeeId));
+
+        assertEquals(ErrorCode.NOT_FOUND, denied.getCode());
+        verify(users, never()).findByEmployeeId(any());
+        verify(passwords, never()).generate();
+        verify(users, never()).save(any());
+    }
+
+    @Test
+    void employeeResetCannotBypassCredentialIssuanceRestrictions() {
+        AdminUserSupport support = mock(AdminUserSupport.class);
+        UUID employeeId = UUID.randomUUID();
+        UserAccount target = new UserAccount();
+        when(users.findIdByEmployeeId(employeeId)).thenReturn(Optional.of(target.getId()));
+        lock(target, activeEmployee());
+        doThrow(new ApiException(ErrorCode.FORBIDDEN)).when(support).requirePasswordResetAllowed(target);
+
+        ApiException denied = assertThrows(ApiException.class,
+                () -> service(support).resetPasswordByEmployee(employeeId));
+
+        assertEquals(ErrorCode.FORBIDDEN, denied.getCode());
+        verify(passwords, never()).generate();
+        verify(users, never()).save(any());
+        verify(sessions, never()).revokeAllForUser(any(), any());
     }
 
     @Test

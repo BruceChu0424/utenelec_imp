@@ -30,6 +30,7 @@ abstract interface class EmployeeRepository {
   Future<EmployeeAccountReadiness> accountReadiness(String id);
   Future<void> lockAccount(String id);
   Future<void> unlockAccount(String id);
+  Future<String> resetPassword(String id);
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<List<EmployeeSecondaryDepartment>> listSecondaryDepartments(String id);
   Future<void> replaceSecondaryDepartments(
@@ -146,6 +147,16 @@ class DioEmployeeRepository
   @override
   Future<void> lockAccount(String id) async {
     await api.post(ApiEndpoints.employeeAccountLock(id));
+  }
+
+  @override
+  Future<String> resetPassword(String id) async {
+    final json = await api.post(ApiEndpoints.employeeAccountResetPassword(id));
+    final issued = json['temporaryPassword'];
+    if (issued is! String || issued.trim().isEmpty) {
+      throw const FormatException('重置密码响应缺少 temporaryPassword');
+    }
+    return issued;
   }
 
   @override

@@ -647,6 +647,8 @@ abstract final class ApiEndpoints {
       '/org/employees/$id/account/lock';
   static String employeeAccountUnlock(String id) =>
       '/org/employees/$id/account/unlock';
+  static String employeeAccountResetPassword(String id) =>
+      '/org/employees/$id/account/reset-password';
   // 更换手机号（同步登录账号 + 踢会话；employee:pii:edit）—— ADR-021
   static String employeeChangePhone(String id) =>
       '/org/employees/$id/change-phone';

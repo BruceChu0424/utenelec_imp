@@ -5,6 +5,7 @@ import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.admin.UserAccountAdminService;
+import com.uten.imp.features.admin.dto.TemporaryPasswordResponse;
 import com.uten.imp.features.org.employee.dto.*;
 import com.uten.imp.responsibility.DataHandoverService;
 import com.uten.imp.responsibility.dto.DataHandoverPreview;
@@ -24,7 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** 员工档案与生命周期接口（/api/org/employees）：入职/转正/调岗/离职/复用 + 账号开通与锁定。 */
+/** 员工档案与生命周期接口（/api/org/employees）：入职/转正/调岗/离职/复用 + 账号开通、锁定与改密。 */
 @RestController
 @RequestMapping("/api/org/employees")
 @RequiredArgsConstructor
@@ -109,6 +110,14 @@ public class EmployeeController {
     public void unlockAccount(@PathVariable UUID id) {
         // 员工详情顶卡：解锁被锁定的登录账号。
         userAccountAdminService.unlockByEmployee(id);
+    }
+
+    /** 员工详情页修改密码：系统生成临时密码，员工首次登录必须修改。 */
+    @PostMapping("/{id}/account/reset-password")
+    @PreAuthorize("hasAuthority('account:support')")
+    @RequiresStepUp
+    public TemporaryPasswordResponse resetPassword(@PathVariable UUID id) {
+        return new TemporaryPasswordResponse(userAccountAdminService.resetPasswordByEmployee(id));
     }
 
     @PutMapping("/{id}")

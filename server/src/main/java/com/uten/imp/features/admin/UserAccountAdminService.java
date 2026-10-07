@@ -54,7 +54,7 @@ import java.util.stream.Collectors;
 public class UserAccountAdminService {
 
     /** 开通账号候选接口单次返回上限（权限页选择器用，防全量花名册外泄）。 */
-    private static final int PROVISION_CANDIDATE_LIMIT = 20;
+    private static final int PROVISION_CANDIDATE_LIMIT = 5000;
 
     private final UserAccountRepository userRepo;
     private final EmployeeRepository empRepo;
@@ -143,7 +143,10 @@ public class UserAccountAdminService {
     public List<ProvisionCandidateDto> provisionCandidates(String search) {
         String keyword = search == null ? "" : search.trim();
         List<Employee> employees = empRepo.findProvisionCandidates(
-                keyword, PageRequest.of(0, PROVISION_CANDIDATE_LIMIT));
+                keyword, PageRequest.of(0, PROVISION_CANDIDATE_LIMIT + 1));
+        if (employees.size() > PROVISION_CANDIDATE_LIMIT) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人员过多，请输入姓名或工号缩小范围");
+        }
         if (employees.isEmpty()) {
             return List.of();
         }
@@ -160,7 +163,8 @@ public class UserAccountAdminService {
                             e.getFullName(),
                             e.getCode(),
                             department == null ? null : department.getName(),
-                            s != null && hasText(s.getPhoneEnc()));
+                            s != null && hasText(s.getPhoneEnc()),
+                            department == null ? null : department.getId());
                 })
                 .toList();
     }
@@ -314,6 +318,17 @@ public class UserAccountAdminService {
     @Transactional
     public void unlockByEmployee(UUID employeeId) {
         unlock(requireUserByEmployee(employeeId).getId());
+    }
+
+    /** 按员工 ID 重置其登录密码，复用账号支持的凭据、安全边界、会话吊销与审计策略。 */
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public String resetPasswordByEmployee(UUID employeeId) {
+        // 只解析 ID，避免锁前把账号实体放入持久化上下文，导致锁内读到过时的账号状态。
+        UUID userId = userRepo.findIdByEmployeeId(employeeId)
+                .orElseThrow(() -> new ApiException(
+                        ErrorCode.NOT_FOUND, "该员工未开通账号，无法修改密码"));
+        return resetPassword(userId);
     }
 
     private UserAccount requireUserByEmployee(UUID employeeId) {

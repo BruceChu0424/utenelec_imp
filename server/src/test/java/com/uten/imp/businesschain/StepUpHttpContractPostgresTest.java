@@ -105,6 +105,8 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
                 json(post("/api/system-test/business-data/reset"), Map.of("confirm", "清空业务数据"), admin),
                 // 补开账号同样把明文临时密码交给操作人 (评审补例): 不在 /api/admin 前缀下也要再认证
                 json(post("/api/org/employees/" + target.employeeId() + "/account"), Map.of(), admin),
+                json(post("/api/org/employees/" + target.employeeId() + "/account/reset-password"),
+                        Map.of(), admin),
                 // 个人资料改手机号 (即登录账号): 服务端按提交内容要求再认证, 不再只靠前端先问密码
                 json(post("/api/profile/me/changes"), Map.of(
                         "idemKey", "step-up-contract-" + target.userId(),
@@ -258,6 +260,35 @@ class StepUpHttpContractPostgresTest extends AuthSessionPostgresTestSupport {
         } finally {
             jdbc.update("UPDATE system_settings SET value = '15' WHERE key = 'lockout_minutes'");
         }
+    }
+
+    @Test
+    void employeePasswordResetRequiresAccountSupportAndReauthWithoutAdminPageAccess() throws Exception {
+        String admin = adminToken();
+        Employee support = newEmployee(admin, "DEPT_ENG");
+        Employee target = newEmployee(admin, "DEPT_ENG");
+        String endpoint = "/api/org/employees/" + target.employeeId() + "/account/reset-password";
+
+        MvcResult forbidden = mvc.perform(json(post(endpoint), Map.of(), support.accessToken())).andReturn();
+        assertEquals(403, forbidden.getResponse().getStatus(), body(forbidden));
+        assertNotEquals("REAUTH_REQUIRED", json(forbidden).path("code").asText(), body(forbidden));
+
+        grantPersonally(support.userId(), "account:support");
+        String supportToken = login(support.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
+        MvcResult needReauth = mvc.perform(json(post(endpoint), Map.of(), supportToken)).andReturn();
+        assertEquals(403, needReauth.getResponse().getStatus(), body(needReauth));
+        assertEquals("REAUTH_REQUIRED", json(needReauth).path("code").asText());
+
+        MvcResult reset = mvc.perform(json(post(endpoint), Map.of(), supportToken)
+                .header(STEP_UP_HEADER, stepUp(supportToken, EMPLOYEE_PASSWORD))).andReturn();
+        assertEquals(200, reset.getResponse().getStatus(), body(reset));
+        String temporary = json(reset).path("temporaryPassword").asText();
+        assertTrue(temporary.length() >= 20);
+        assertEquals(401, me(target.accessToken()).getResponse().getStatus(), "员工旧会话立即失效");
+        assertTrue(login(target.loginAccount(), temporary).path("mustChangePassword").asBoolean());
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM audit_log WHERE action = 'password_temporary_reset' AND target_id = ?
+                """, Integer.class, target.userId()));
     }
 
     @Test

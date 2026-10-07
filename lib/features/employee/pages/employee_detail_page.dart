@@ -41,6 +41,7 @@ import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/contract_attachments_dialog.dart';
 import '../widgets/employee_account_provision_flow.dart';
+import '../widgets/employee_reset_password_dialog.dart';
 import '../widgets/employee_identity_correction_dialog.dart';
 import '../widgets/employee_identity_issue_notice.dart';
 import '../widgets/employee_status_badge.dart';
@@ -434,7 +435,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ),
       );
     }
-    // 账号支持（account:support，独立于 employee:edit）：开通 / 锁定 / 解锁。
+    // 账号支持（account:support，独立于 employee:edit）：开通 / 锁定 / 解锁 / 修改密码。
     if (perms.contains(Perm.accountSupport)) {
       if (p.accountStatus == null && !resigned) {
         actions.add(
@@ -458,6 +459,17 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
             icon: const Icon(Icons.lock_open_outlined, size: 18),
             label: Text(l10n.employeeActionUnlockAccount),
             onPressed: _onUnlockAccount,
+          ),
+        );
+      }
+      if (!resigned &&
+          (p.accountStatus == 'active' || p.accountStatus == 'locked')) {
+        actions.add(
+          FilledButton.tonalIcon(
+            key: const ValueKey('employee-reset-password-action'),
+            icon: const Icon(Icons.key_outlined, size: 18),
+            label: const Text('修改密码'),
+            onPressed: _onResetPassword,
           ),
         );
       }
@@ -1254,6 +1266,16 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   Future<void> _onLockAccount() => _toggleAccountLock(lock: true);
+
+  Future<void> _onResetPassword() async {
+    final profile = _profile;
+    if (profile == null) return;
+    final changed = await showEmployeeResetPasswordDialog(
+      context,
+      employee: profile,
+    );
+    if (changed == true && mounted) await _load();
+  }
 
   Future<void> _onUnlockAccount() => _toggleAccountLock(lock: false);
 

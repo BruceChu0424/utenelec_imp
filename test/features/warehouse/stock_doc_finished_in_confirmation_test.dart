@@ -100,7 +100,8 @@ void main() {
     expect(repository, contains('/finished-in/reverse'));
     expect(repository, contains('reverseFinishedInbound'));
     expect(page, contains('repository.reverseFinishedInbound(widget.id)'));
-    expect(page, contains('按原实收量重建待点收草稿'));
+    // 2026-09 口径改版：弹窗改为完整行为说明文案（b26906b70），补偿端点不变。
+    expect(page, contains('并按原来实际收到的数量重新生成待点收草稿'));
   });
 
   test(

@@ -1260,8 +1260,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('audit-select-actor')));
       await tester.pumpAndSettle();
       await tester.tap(
-        find.byKey(const ValueKey('audit-actor-${_AuditRepository.actorId}')),
+        find.byKey(
+          const ValueKey('employee-picker-item-${_AuditRepository.actorId}'),
+        ),
       );
+      await tester.pumpAndSettle();
+      // Confirming the panel applies the actor choice without loading data.
+      await tester.tap(find.widgetWithText(FilledButton, '确定'));
       await tester.pumpAndSettle();
       expect(repository.listCalls, isEmpty);
       expect(repository.summaryCalls, isEmpty);
@@ -1811,11 +1816,16 @@ Future<void> _selectDefaultAuditScope(
   await tester.tap(selectActor);
   await tester.pumpAndSettle();
 
+  // The actor directory now opens the employee selection panel: pick the
+  // person row (list tiles are keyed by candidate id), then confirm with the
+  // 确定 FilledButton. Tapping the row alone only drafts the selection.
   final actor = find.byKey(
-    const ValueKey('audit-actor-${_AuditRepository.actorId}'),
+    const ValueKey('employee-picker-item-${_AuditRepository.actorId}'),
   );
   expect(actor, findsOneWidget);
   await tester.tap(actor);
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(FilledButton, '确定'));
   await tester.pumpAndSettle();
 
   final today = find.byKey(const ValueKey('audit-date-today'));

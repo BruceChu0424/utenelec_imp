@@ -14,12 +14,19 @@ class EmployeePickerAccess {
     final source = container;
     if (source == null) return;
     _snapshot = _read();
-    _subscriptions.addAll([
-      source.listen(authenticatedScopeProvider, (_, _) => _refresh()),
-      source.listen(apiBaseUrlProvider, (_, _) => _refresh()),
-      source.listen(currentPermissionsProvider, (_, _) => _refresh()),
-      source.listen(isSuperAdminProvider, (_, _) => _refresh()),
-    ]);
+    for (final provider in [
+      authenticatedScopeProvider,
+      apiBaseUrlProvider,
+      currentPermissionsProvider,
+      isSuperAdminProvider,
+    ]) {
+      try {
+        _subscriptions.add(source.listen(provider, (_, _) => _refresh()));
+      } on UnimplementedError {
+        // 基础设施 provider（如 SharedPreferences）只由 main.dart 注入；
+        // 组件预览与 widget 测试没有它们——跳过订阅，快照按缺省值工作。
+      }
+    }
   }
 
   final ProviderContainer? container;
@@ -40,11 +47,22 @@ class EmployeePickerAccess {
     }
   }
 
+  /// 基础设施 provider 未注入（测试/预览）时取缺省值，不阻断构建。
+  T _readOr<T>(ProviderListenable<T> provider, T fallback) {
+    try {
+      return container!.read(provider);
+    } on UnimplementedError {
+      return fallback;
+    } on StateError {
+      return fallback;
+    }
+  }
+
   _AccessSnapshot _read() => _AccessSnapshot(
-    container!.read(authenticatedScopeProvider),
-    container!.read(apiBaseUrlProvider),
-    Set.of(container!.read(currentPermissionsProvider)),
-    container!.read(isSuperAdminProvider),
+    _readOr<AuthenticatedScope?>(authenticatedScopeProvider, null),
+    _readOr(apiBaseUrlProvider, ''),
+    Set.of(_readOr(currentPermissionsProvider, const <String>{})),
+    _readOr(isSuperAdminProvider, false),
   );
 
   void _refresh() {

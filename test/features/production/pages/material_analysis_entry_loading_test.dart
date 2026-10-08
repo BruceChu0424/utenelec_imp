@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_material_analysis_page.dart';
@@ -36,6 +37,53 @@ const _permissions = {
 };
 
 void main() {
+  for (final existing in [true, false]) {
+    testWidgets('进页只等仓库字典，不被颜色单位币种拖住 existing=$existing', (tester) async {
+      final server = _Server();
+      const unrelated = [
+        ApiEndpoints.colorsDict,
+        ApiEndpoints.unitsDict,
+        ApiEndpoints.currenciesDict,
+      ];
+      final gates = [for (final path in unrelated) server.gate(path)];
+      addTearDown(() {
+        for (final gate in gates) {
+          if (!gate.isCompleted) gate.complete();
+        }
+      });
+      await _pumpPage(
+        tester,
+        server,
+        ProductionMaterialAnalysisSeed(
+          analysisId: existing ? 'analysis-1' : null,
+          warehouseId: 'warehouse-1',
+          sources: existing
+              ? const []
+              : const [
+                  MaterialAnalysisSourceInput(
+                    salesOrderItemId: 'sales-1',
+                    requestedQty: 1000,
+                  ),
+                ],
+        ),
+      );
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      expect(
+        find.byKey(const Key('material-analysis-results')),
+        findsOneWidget,
+      );
+      expect(server.count(ApiEndpoints.warehousesDict), 1);
+      expect(
+        server.requests.where((request) => unrelated.contains(request.path)),
+        isEmpty,
+      );
+      expect(find.text('紧固件 1'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('带来源新建：第一次分析期间显示进度卡，不闪空候选表；算完零 PUT 并轻提示', (tester) async {
     final server = _Server()..autoConfirmedOnPreview = 2;
     final gate = server.gate('/preview');

@@ -87,6 +87,9 @@ final class ProductionJdbcMeasurement {
         if (sql==null) return false;
         String normalized=sql.replaceAll("\\s+"," ").trim().toLowerCase(java.util.Locale.ROOT);
         return normalized.startsWith("with recursive walk as") && normalized.contains("from goods_bom_items b")
+                || normalized.startsWith("with aliases as materialized") && normalized.contains("source_budgets as materialized")
+                || normalized.startsWith("with current_appends as materialized") && normalized.contains("growable_order_qty")
+                || normalized.startsWith("with sources as materialized") && normalized.contains("select material.id,source.kind")
                 || normalized.startsWith("with analysis_page as materialized")
                 || normalized.startsWith("with analysis_headers as materialized")
                 || normalized.startsWith("with recursive roots(") && normalized.contains("from goods_bom_items edge")
@@ -272,7 +275,9 @@ final class ProductionJdbcMeasurement {
         String fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(normalized.getBytes(StandardCharsets.UTF_8))).substring(0, 16);
         String lower = normalized.toLowerCase(java.util.Locale.ROOT);
-        var created = new QueryMetadata(fingerprint, queryLabel(normalized), explainCandidate(normalized),
+        boolean requestedExplain=java.util.Arrays.asList(System.getProperty("uten.jdbc.measurement.explain-fingerprints","").split(",")).contains(fingerprint)
+                &&(lower.startsWith("select ")||lower.startsWith("with "))&&!lower.contains("for update");
+        var created = new QueryMetadata(fingerprint, queryLabel(normalized), explainCandidate(normalized)||requestedExplain,
                 lower.contains("md5("), lower.contains("set_config("));
         // Test instrumentation only: bounded SQL-shape metadata, never values,
         // results, identities or transaction state. Bindings stay sample-local.

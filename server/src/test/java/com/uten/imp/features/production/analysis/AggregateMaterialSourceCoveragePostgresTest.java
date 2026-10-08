@@ -31,7 +31,9 @@ class AggregateMaterialSourceCoveragePostgresTest {
         migration.migrate();migration.validate();assertEquals(0,migration.migrate().migrationsExecuted);
     }
     @AfterAll static void stop(){DATABASE.stop();}
-    @AfterEach void close()throws Exception{db.close();}
+    @AfterEach void close()throws Exception{
+        try{if(db!=null&&!db.isClosed()&&analysis!=null)assertCoverageParity();}finally{if(db!=null)db.close();}
+    }
     @BeforeEach void fixture()throws Exception {
         db=DriverManager.getConnection(DATABASE.getJdbcUrl(),DATABASE.getUsername(),DATABASE.getPassword());
         schema="aggregate_scope_"+UUID.randomUUID().toString().replace("-","");
@@ -181,6 +183,46 @@ class AggregateMaterialSourceCoveragePostgresTest {
         sql("INSERT INTO preplan_stock_entitlement_events(event_type,source_entitlement_event_id,qty) VALUES('RELEASE',?,100)",incoming);
         sql("UPDATE preplan_supply_actions SET status='CANCELLED' WHERE id=?",action);
         amount("0",value("SELECT fn_preplan_aggregate_alias_qty(?)",source.alias));
+    }
+
+    @Test void oneSourceSharesWholePriorCapacityAcrossSeveralTargetsAndMinTickSourcesRemainExact()throws Exception {
+        Source source=source("1000","0","600","700","1000");
+        UUID otherTarget=UUID.randomUUID(),otherAlias=UUID.randomUUID(),otherAnchor=UUID.randomUUID(),otherBatch=UUID.randomUUID(),otherAction=UUID.randomUUID();
+        sql("INSERT INTO production_material_analysis_items(id,analysis_id,source_type,goods_id,unit_id,requested_qty,approved_qty,is_deleted) VALUES(?,?,'AGGREGATE_MAKE',?,?,400,400,false)",otherAnchor,analysis,parentGoods,unit);
+        sql("INSERT INTO preplan_supply_actions(id,analysis_id,route,operation_type,status,external_document_type,external_document_id,requested_qty,goods_id,unit_id) VALUES(?,?,'MAKE','SUPPLY','CREATED','PREPLAN_MAKE_TASK',?,400,?,?)",otherAction,analysis,otherAnchor,parentGoods,unit);
+        sql("INSERT INTO preplan_aggregate_batches(id,analysis_id,action_id,anchor_analysis_item_id,route,row_version) VALUES(?,?,?,?,'MAKE',0)",otherBatch,analysis,otherAction,otherAnchor);
+        sql("INSERT INTO preplan_supply_action_allocations(id,analysis_id,action_id,analysis_material_id,allocated_qty,external_item_id) VALUES(?,?,?,?,400,?)",UUID.randomUUID(),analysis,otherAction,source.parent,otherAnchor);
+        material(otherTarget,otherAnchor,edge.toString(),null,edge,component,"0");
+        sql("UPDATE preplan_aggregate_material_aliases SET created_at='2026-01-01T00:00:00Z' WHERE id=?",source.alias);
+        sql("INSERT INTO preplan_aggregate_material_aliases(id,batch_id,source_parent_material_id,source_material_id,aggregate_material_id,relative_bom_path,qty,source_capacity_qty,canonical_capacity_qty,capacity_version,created_at) VALUES(?,?,?,?,?,ARRAY[CAST(? AS uuid)],400,1000,1000,0,'2026-01-02T00:00:00Z')",
+                otherAlias,otherBatch,source.parent,source.material,otherTarget,edge);
+        amount("600",value("SELECT inherited_pending_qty FROM fn_preplan_aggregate_alias_coverage(?) WHERE analysis_material_id=?",analysis,canonical));
+        amount("100",value("SELECT inherited_pending_qty FROM fn_preplan_aggregate_alias_coverage(?) WHERE analysis_material_id=?",analysis,otherTarget));
+        assertCoverageParity();
+        source("0.0001","0","0.0001","0.0001","1000");
+        source("2.3456","0","2.3456","1.2345","1000");
+        assertCoverageParity();
+        receipt(source,"200",false);UUID delegation=delegated(source,"200");
+        assertCoverageParity();
+        UUID incoming=UUID.randomUUID();
+        sql("INSERT INTO preplan_stock_entitlement_events(id,event_group_id,event_type,qty) VALUES(?,?,'MAKE_DELEGATE_IN',200)",incoming,delegation);
+        sql("INSERT INTO preplan_stock_entitlement_events(event_type,source_entitlement_event_id,beneficiary_analysis_material_id,qty) VALUES('FORMALIZE',?,?,200)",incoming,canonical);
+        assertCoverageParity();
+    }
+
+    private void assertCoverageParity()throws Exception {
+        assertEquals(coverage(AggregateAliasCoverageSqlOracle.SQL),coverage(AggregateAliasCoverageReader.SQL),
+                "All IN/OUT/COVERED quantities and exact source-target keys must match the migrated authority");
+    }
+    private java.util.Map<String,BigDecimal> coverage(String query)throws Exception {
+        var result=new java.util.TreeMap<String,BigDecimal>();
+        try(var statement=db.prepareStatement(query.replace(":analysisId","?"))){statement.setObject(1,analysis);
+            try(var rows=statement.executeQuery()){while(rows.next()){
+                String key=rows.getString(1)+"|"+rows.getString(2)+"|"+java.util.Objects.toString(rows.getString(3),"");
+                assertNull(result.put(key,rows.getBigDecimal(4).stripTrailingZeros()),"Coverage keys cannot be duplicated");
+            }}
+        }
+        return result;
     }
 
     private Source source(String capacity,String retained,String aliasQty,String planned,String canonicalCapacity)throws Exception {

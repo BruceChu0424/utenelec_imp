@@ -1201,7 +1201,7 @@ abstract class _MaterialAnalysisPageBase
         // write/recompute its complete BOM and stock snapshot on every visit.
         // Explicit refresh and the server's version/BOM guards own that work.
         final results = await Future.wait<Object?>([
-          ref.read(masterNameServiceProvider).ensureCommonLoaded(),
+          ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
           _readMaterialAnalysisDetail(existingAnalysisId),
         ]);
         final view = results[1] as ProductionMaterialAnalysisView;
@@ -1218,7 +1218,7 @@ abstract class _MaterialAnalysisPageBase
         return;
       }
       await Future.wait([
-        ref.read(masterNameServiceProvider).ensureCommonLoaded(),
+        ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
         ref.read(materialAnalysisWarehousePrefsProvider.notifier).syncNow(),
       ]);
       if (!mounted) return;

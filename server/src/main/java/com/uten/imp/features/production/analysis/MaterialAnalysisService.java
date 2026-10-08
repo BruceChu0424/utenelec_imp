@@ -7275,18 +7275,7 @@ public class MaterialAnalysisService {
         if (!hasAggregateAliasSupply(analysisId)) return AggregateAliasCoverage.EMPTY;
         Map<UUID,BigDecimal> incoming=new HashMap<>(),outgoing=new HashMap<>();
         Map<UUID,Map<UUID,BigDecimal>> attributed=new HashMap<>();
-        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                WITH coverage AS MATERIALIZED(SELECT * FROM fn_preplan_aggregate_alias_coverage(:analysisId))
-                SELECT 'IN',analysis_material_id,NULL::uuid,inherited_pending_qty FROM coverage WHERE inherited_pending_qty>0
-                UNION ALL
-                SELECT 'OUT',CAST(source->>'sourceMaterialId' AS uuid),NULL::uuid,SUM(CAST(source->>'pendingQuantity' AS numeric))
-                FROM coverage CROSS JOIN LATERAL jsonb_array_elements(coverage.source_aliases) source
-                GROUP BY CAST(source->>'sourceMaterialId' AS uuid)
-                UNION ALL
-                SELECT 'COVERED',coverage.analysis_material_id,CAST(source->>'sourceMaterialId' AS uuid),SUM(CAST(source->>'inheritedQuantity' AS numeric))
-                FROM coverage CROSS JOIN LATERAL jsonb_array_elements(coverage.source_aliases) source
-                GROUP BY coverage.analysis_material_id,CAST(source->>'sourceMaterialId' AS uuid)
-                """).setParameter("analysisId",analysisId))) {
+        for(Object[] row:new AggregateAliasCoverageReader(em).read(analysisId)) {
             if("COVERED".equals(row[0]))attributed.computeIfAbsent(uuid(row[1]),ignored->new HashMap<>()).put(uuid(row[2]),decimal(row[3]));
             else ("IN".equals(row[0])?incoming:outgoing).put(uuid(row[1]),decimal(row[3]));
         }
@@ -8294,9 +8283,19 @@ public class MaterialAnalysisService {
     private Map<UUID, List<DownstreamReference>> downstreamReferences(UUID analysisId) {
         Map<UUID, List<DownstreamReference>> result = new HashMap<>();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                WITH selected_actions AS MATERIALIZED (
+                WITH current_appends AS MATERIALIZED (
+                    SELECT DISTINCT batch.action_id
+                    FROM preplan_aggregate_batches batch
+                    JOIN preplan_aggregate_batch_events event ON event.batch_id=batch.id
+                      AND event.event_type='APPEND' AND event.transaction_id=txid_current()
+                      AND event.resulting_version=batch.row_version
+                    WHERE batch.analysis_id=:id
+                ), selected_actions AS MATERIALIZED (
                     SELECT action.*,
-                           CASE WHEN fn_preplan_supply_action_growable(action.id)
+                           CASE WHEN action.route='MAKE' AND NOT EXISTS(
+                                    SELECT 1 FROM current_appends append WHERE append.action_id=action.id)
+                                THEN NULL
+                                WHEN fn_preplan_supply_action_growable(action.id)
                                 THEN action.requested_qty+action.public_surplus_qty END AS growable_order_qty
                     FROM preplan_supply_actions action
                     WHERE action.analysis_id=:id

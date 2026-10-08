@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
@@ -780,6 +781,16 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(viewerUserId)).thenReturn(Optional.of(viewer));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
+        // V825 计划提醒补投：审批事件补投前先读订单的财务审核版本，并按
+        // SalesPlanningNoticeReadPort 判定是否需要初次交接。夹具补这两个桩。
+        when(jdbc.queryForObject(
+                contains("finance_review_revision"),
+                eq(Long.class),
+                eq(orderId))).thenReturn(0L);
+        var planningSources =
+                mock(com.uten.imp.application.port.SalesPlanningNoticeReadPort.class);
+        when(planningSources.needsInitialHandoff(orderId)).thenReturn(true);
+        service.setPlanningSources(planningSources);
 
         service.deliverOutboxEvent(
                 ChainNoticeService.EVENT_ORDER_APPROVED,
@@ -790,19 +801,16 @@ class ChainNoticeOutboxEventTest {
         // (SALES_ORDER, orderId) 聚合——生产部创建物料分析后可按聚合撤回。
         assertTrue(ReviewNoticeCatalog.isReviewEvent(
                 ChainNoticeService.EVENT_ORDER_APPROVED));
-        verify(notice).publishForUser(
+        // V825：审批事件改走计划交接通道（publishSalesPlanningHandoff 带
+        // 财务审核版本），标题/正文与原物料分析待办同款。
+        verify(notice).publishSalesPlanningHandoff(
                 eq(plannerUserId),
+                eq(orderId),
+                eq(0L),
                 eq("新订单待物料分析：SO-001"),
-                contains("请先核对库存并按采购、委外、自制拆分需求"),
-                eq(ChainNoticeService.TYPE_TASK),
-                anyString(),
-                eq("/production/material-analysis"),
-                eq(ChainNoticeService.EVENT_ORDER_APPROVED),
-                eq("normal"),
-                eq(orderId));
-        verify(notice, never()).publishForUser(
-                eq(viewerUserId), anyString(), anyString(), anyString(),
-                anyString(), anyString(), anyString(), any(), any());
+                contains("请先核对库存并按采购、委外、自制拆分需求"));
+        verify(notice, never()).publishSalesPlanningHandoff(
+                eq(viewerUserId), any(), anyLong(), anyString(), anyString());
     }
 
     @Test

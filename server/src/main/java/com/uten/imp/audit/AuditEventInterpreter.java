@@ -93,6 +93,7 @@ public class AuditEventInterpreter {
             Map.entry("view_department_detail", "查看部门详情"),
             Map.entry("view_suggestion_detail", "查看建议详情"),
             Map.entry("view_material_analysis_detail", "查看物料分析详情"),
+            Map.entry("view_production_over_limit_detail", "查看超限产出处置详情"),
             Map.entry("view_payroll_slip_detail", "查看工资条详情"),
             Map.entry("view_payroll_batch_detail", "查看工资批次详情"),
             Map.entry("view_finance_receipt_detail", "查看销售收款单详情"),
@@ -1166,6 +1167,7 @@ public class AuditEventInterpreter {
         values.put("production_plans", "生产计划");
         values.put("production_plan_items", "生产计划明细");
         values.put("production_plan_costs", "生产计划成本");
+        values.put("production_over_limit_dispositions", "超限产出处置");
         values.put("plan_draw_links", "计划领料关联");
         values.put("plan_order_item_links", "计划订单明细关联");
         values.put("subplan_links", "子计划关联");

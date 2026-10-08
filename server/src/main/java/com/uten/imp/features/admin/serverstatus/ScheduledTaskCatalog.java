@@ -28,6 +28,8 @@ public final class ScheduledTaskCatalog {
                     "每小时登记未采用识别来源的归档状态，保留原文件、内容和关联，正式单据来源原件继续保留。")),
             Map.entry("AiJobScheduler.poll", new Entry("AI 识别任务",
                     "每 5 秒接手排队中的 AI 识别(销售上传的客户文件), 并把处理中断的识别重新排队或判失败。")),
+            Map.entry("SalesPlanningNoticeCatchUpScheduler.reconcile", new Entry("计划提醒补投",
+                    "每半分钟补发财务已确认但员工尚未接手的生产计划提醒, 同一订单同一个人同一审核版本只提醒一次。")),
             Map.entry("SalesQuoteTemplateCleanupScheduler.purgeExpired", new Entry("报价模板候选清理",
                     "每小时清理过期且尚未采用的客户报价模板候选，已采用的模板版本继续保留。")),
             Map.entry("SalesLearningEvidenceCleanupScheduler.purgeExpiredEvidence", new Entry("销售学习证据清理",

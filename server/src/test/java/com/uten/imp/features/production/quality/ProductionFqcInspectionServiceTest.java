@@ -191,7 +191,7 @@ class ProductionFqcInspectionServiceTest {
                 ProductionFqcInspectionService.requirePassAllReplayCompatible(
                         request.requestHash(), different))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("不同任务集合");
+                .hasMessageContaining("批量全合格任务集合");
     }
 
     @Test

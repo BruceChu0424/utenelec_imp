@@ -144,7 +144,9 @@ public class ActualOutputSupplementService {
         }
         UUID excluded=request.excludedReportId()==null?UUID.randomUUID():request.excludedReportId();
         requireEditableExcludedReport(request.excludedReportId());
-        var slices=output.split(excluded,List.of(line));
+        // 预览只算数量拆分，不做保存期校验：预览行不带超限原因，走 split 的
+        // 保存口径会把「超出额度的申报」整个拦下（与 previewReport 同款迁移）。
+        var slices=output.splitForPreview(excluded,List.of(line),List.of());
         BigDecimal extra=slices.stream().filter(DailyReportItemLine::isActualSurplus).map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add);
         BigDecimal salesPart=slices.stream().filter(linePart->linePart.getExecutionSegmentSalesAllocationId()!=null).map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add);
         BigDecimal available=db.queryForObject("SELECT fn_execution_actual_surplus_available(:segment,:excluded)",args("segment",request.sourceExecutionSegmentId(),"excluded",excluded),BigDecimal.class);

@@ -482,6 +482,11 @@ class BusinessOutboxPostgresTest {
             return currentUser;
         });
         context.registerBean(ChainNoticeService.class, () -> chainNotice);
+        // V825 给 ChainNoticeService 加了必选的 SalesPlanningNoticeReadPort 注入；
+        // 这里 chainNotice 本身是 mock，port 只需存在以满足装配，不会被调用。
+        context.registerBean(
+                com.uten.imp.application.port.SalesPlanningNoticeReadPort.class,
+                () -> mock(com.uten.imp.application.port.SalesPlanningNoticeReadPort.class));
         context.registerBean(BusinessOutboxPublisher.class);
         context.registerBean(BusinessOutboxProcessor.class, () -> new BusinessOutboxProcessor(
                 jdbc, context.getBean(ObjectMapper.class), chainNotice));

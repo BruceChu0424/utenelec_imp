@@ -24,7 +24,7 @@ class RequestUuidSetsTest {
         assertThatThrownBy(() -> RequestUuidSets.commaSeparated("probe", "货品 ID"))
                 .isInstanceOfSatisfying(ApiException.class, error -> {
                     assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
-                    assertThat(error.getMessage()).contains("非法 UUID");
+                    assertThat(error.getMessage()).contains("编号不正确");
                 });
     }
 }

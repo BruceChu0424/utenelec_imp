@@ -1770,7 +1770,7 @@
       "title": "生产管理",
       "aliases": [],
       "module": "生产管理",
-      "purpose": "包含：生产任务中心、超产比例审批、追加用料审批、新建生产计划单、新建生产日报、计划明细、链路健康初筛、计划汇总。",
+      "purpose": "包含：生产任务中心、超产比例审批、超限产出处置、追加用料审批、新建生产计划单、新建生产日报、计划明细、链路健康初筛。",
       "paths": [
         [
           "工作台",
@@ -1795,6 +1795,7 @@
       "hubOf": [
         "/production/schedule",
         "/production/overproduction-rate-requests",
+        "/production/over-limit-dispositions",
         "/production/material-increment-requests",
         "/production/plans/new",
         "/production/daily-reports/new",
@@ -1965,6 +1966,48 @@
       "allOf": [],
       "hubOf": [],
       "doc": null
+    },
+    {
+      "route": "/production/over-limit-dispositions",
+      "title": "超限产出处置",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "核对已生产的超限实物，记录处理意见",
+      "paths": [
+        [
+          "工作台",
+          "生产部",
+          "生产管理",
+          "超限产出处置"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "production_plan:approve"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/超限产出处置.md"
+    },
+    {
+      "route": "/production/over-limit-dispositions/:id",
+      "title": "超限产出处置(详情)",
+      "aliases": [],
+      "module": "生产管理",
+      "purpose": "给生产与品质人员看：车间实际报工超出计划额度时，多出来的产量怎么核实、怎么接收或退回、成本怎么归集。",
+      "paths": [],
+      "parent": "/production/over-limit-dispositions",
+      "record": true,
+      "anyOf": [
+        "production_daily_report:view",
+        "production_execution:view",
+        "production_plan:approve",
+        "production_plan:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/超限产出处置.md"
     },
     {
       "route": "/production/overproduction-rate-requests",

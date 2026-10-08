@@ -84,7 +84,7 @@ class PreplanStockEntitlementServiceTest {
                 UUID.randomUUID(), UUID.randomUUID(),
                 "make-delegate-cancel-test"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("no longer available");
+                .hasMessageContaining("已不在可用状态");
         assertThat(sql).noneMatch(value ->
                 value.contains("INSERT INTO preplan_stock_entitlement_events"));
     }

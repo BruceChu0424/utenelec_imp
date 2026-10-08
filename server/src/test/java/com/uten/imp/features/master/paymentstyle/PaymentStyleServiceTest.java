@@ -185,7 +185,7 @@ class PaymentStyleServiceTest {
                 () -> service().update(UUID.randomUUID(), request));
 
         assertEquals(ErrorCode.BUSINESS, error.getCode());
-        assertThat(error.getMessage()).contains("不能同时提交");
+        assertThat(error.getMessage()).contains("不能同时选择");
         verify(repo, never()).findById(any(UUID.class));
         verify(em, never()).createNativeQuery(anyString());
     }
@@ -272,7 +272,7 @@ class PaymentStyleServiceTest {
                 () -> service().update(node.getId(), request));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertThat(error.getMessage()).contains("系统科目").contains("不能移动");
+        assertThat(error.getMessage()).contains("系统内置科目").contains("不能移动");
         verify(repo, never()).findById(target.getId());
         verify(repo, never()).save(any(PaymentStyle.class));
     }
@@ -350,7 +350,7 @@ class PaymentStyleServiceTest {
                 () -> service().update(node.getId(), request));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertThat(error.getMessage()).contains("系统科目").contains("使用").contains("过账");
+        assertThat(error.getMessage()).contains("系统科目").contains("使用").contains("记账");
         assertEquals("使用", node.getStatus());
         verify(repo, never()).save(any(PaymentStyle.class));
     }

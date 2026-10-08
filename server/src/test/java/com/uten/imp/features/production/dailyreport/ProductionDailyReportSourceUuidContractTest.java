@@ -71,9 +71,9 @@ class ProductionDailyReportSourceUuidContractTest {
 
         assertThat(page)
                 .contains("r.planItemId == null && r.planNo.text.trim().isNotEmpty")
-                .contains("请重新选择来源子任务或清除来源")
+                .contains("请重新选择来源子任务，或清除来源")
                 .contains("r.salesOrderItemId == null")
-                .contains("旧报工行只有销售订单号快照");
+                .contains("旧报工行只保存了销售订单号");
         assertThat(row)
                 .contains("bool get hasSourceSnapshot")
                 // 来源列对「已关联」与「仅号快照」两类行都要展示（重构后经局部 linked 表达）。

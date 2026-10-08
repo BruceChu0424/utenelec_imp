@@ -85,7 +85,7 @@ class SupplierLegacyOpeningStatementPostgresTest {
                 """,UUID.randomUUID(),supplier,currency);
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service,"assertNoUnreplayablePaymentReversals",supplier,currency,LocalDate.parse("2025-02-28")))
-                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("独立反转日期事件");
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("红冲日期记录");
     }
 
     @Test void cutoffUsesShanghaiBusinessDateAtExactMonthBoundary() {

@@ -33,9 +33,9 @@ class AiInputOriginalStorageContractTest {
         var correct=new AiJobInput("source.csv","text/csv","CSV",1,bytes,ImmutableDocumentStore.digest(bytes));
         when(files.save(anyString(),anyString(),anyString(),any())).thenThrow(new IllegalStateException("private failure details"));
         assertThatThrownBy(()->store.capture(UUID.randomUUID(),actor,"SALES_DOCUMENT_INTAKE",correct)).hasMessageContaining("识别没有提交").hasMessageNotContaining("private failure");
-        assertThatThrownBy(()->store.capture(UUID.randomUUID(),actor,"SALES_DOCUMENT_INTAKE",new AiJobInput("source.csv","text/csv","CSV",2,bytes,"a".repeat(64)))).hasMessageContaining("摘要不一致");
+        assertThatThrownBy(()->store.capture(UUID.randomUUID(),actor,"SALES_DOCUMENT_INTAKE",new AiJobInput("source.csv","text/csv","CSV",2,bytes,"a".repeat(64)))).hasMessageContaining("内容与上传时不一致");
         byte[] large=new byte[15*1024*1024+1];
-        assertThatThrownBy(()->store.capture(UUID.randomUUID(),actor,"SALES_DOCUMENT_INTAKE",new AiJobInput("source.csv","text/csv","CSV",large.length,large,ImmutableDocumentStore.digest(large)))).hasMessageContaining("大小或摘要不一致");
+        assertThatThrownBy(()->store.capture(UUID.randomUUID(),actor,"SALES_DOCUMENT_INTAKE",new AiJobInput("source.csv","text/csv","CSV",large.length,large,ImmutableDocumentStore.digest(large)))).hasMessageContaining("内容与上传时不一致");
         verifyNoInteractions(jdbc);
     }
 }

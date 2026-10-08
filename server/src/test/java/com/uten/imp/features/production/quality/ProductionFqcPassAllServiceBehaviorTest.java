@@ -102,7 +102,7 @@ class ProductionFqcPassAllServiceBehaviorTest {
 
         assertThatThrownBy(() -> fixture.service().passAll(request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("不同任务集合");
+                .hasMessageContaining("批量全合格任务集合");
         verifyNoInteractions(
                 fixture.finishedInbound(), fixture.recovery(), fixture.outbox());
     }

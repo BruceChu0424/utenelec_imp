@@ -54,6 +54,8 @@ class ManualNoticePopupPostgresTest {
                 .addAnnotatedClass(Department.class)
                 .addAnnotatedClass(Employee.class)
                 .addAnnotatedClass(Position.class)
+                // V825 计划提醒补投：SCOPED_VISIBILITY 的 EXISTS 子查询引用 SalesOrder。
+                .addAnnotatedClass(com.uten.imp.features.sales.order.SalesOrder.class)
                 .setProperty("hibernate.connection.driver_class", "org.postgresql.Driver")
                 .setProperty("hibernate.connection.url", DB.getJdbcUrl())
                 .setProperty("hibernate.connection.username", DB.getUsername())

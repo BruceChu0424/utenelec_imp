@@ -74,7 +74,7 @@ class ReferenceMethodServiceTermsTest {
                 id, terms(null, "STATEMENT_END", "NET_DAYS", 30, null, 0)));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertTrue(error.getMessage().contains("系统角色"));
+        assertTrue(error.getMessage().contains("系统内置"));
     }
 
     @Test

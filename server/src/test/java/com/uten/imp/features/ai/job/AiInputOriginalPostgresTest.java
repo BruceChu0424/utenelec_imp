@@ -122,7 +122,7 @@ class AiInputOriginalPostgresTest {
         jdbc.execute("ALTER TABLE ai_input_original_bindings DISABLE TRIGGER trg_ai_original_binding_guard");
         try {jdbc.update("INSERT INTO ai_input_original_bindings(job_id,doc_type,doc_id,source_doc_type,source_doc_id) VALUES(?,'quote',?,'quote',?)",job,quote,quote);} finally {jdbc.execute("ALTER TABLE ai_input_original_bindings ENABLE TRIGGER trg_ai_original_binding_guard");} // private fixture represents pre-migration historical adoption
 
-        assertThatThrownBy(()->originals.download("quote",quote,job)).hasMessageContaining("不可用或校验异常");
+        assertThatThrownBy(()->originals.download("quote",quote,job)).hasMessageContaining("不可用或内容异常");
     }
     @Test void missingLegacyBytesAreAnExplicitPlaceholderNotAFabricatedFile() {
         UUID job=UUID.randomUUID(),quote=quote();
@@ -132,7 +132,7 @@ class AiInputOriginalPostgresTest {
 
         assertThat(jdbc.queryForObject("SELECT availability FROM ai_input_originals WHERE job_id=?",String.class,job)).isEqualTo("LEGACY_UNAVAILABLE");
         assertThat(jdbc.queryForObject("SELECT legacy_bytes IS NULL FROM ai_input_originals WHERE job_id=?",Boolean.class,job)).isTrue();
-        assertThatThrownBy(()->originals.download("quote",quote,job)).hasMessageContaining("不可用或校验异常");
+        assertThatThrownBy(()->originals.download("quote",quote,job)).hasMessageContaining("不可用或内容异常");
     }
     @Test void unadoptedTemporaryOriginalIsReclaimedButAnActiveLearningSourceAndFormalBindingAreProtected() {
         UUID abandoned=captured(),formal=captured(),quote=quote();bind(formal,quote);

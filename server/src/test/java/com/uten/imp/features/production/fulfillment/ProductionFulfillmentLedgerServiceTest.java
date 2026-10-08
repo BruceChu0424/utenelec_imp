@@ -53,7 +53,7 @@ class ProductionFulfillmentLedgerServiceTest {
                 .isInstanceOf(ApiException.class)
                 .satisfies(error -> assertThat(((ApiException) error).getCode())
                         .isEqualTo(ErrorCode.CONFLICT))
-                .hasMessageContaining("\u65b0\u7684\u5e42\u7b49\u952e");
+                .hasMessageContaining("请刷新后重新操作");
 
         verify(packageRepo, never()).lockConfirmedByPlan(planId);
     }

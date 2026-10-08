@@ -117,7 +117,7 @@ class FixedAssetRequestValidationTest {
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.message").value(
-                        org.hamcrest.Matchers.containsString("expectedVersion")));
+                        org.hamcrest.Matchers.containsString("刷新页面拿到最新数据")));
         mvc.perform(post("/api/finance/deferred-expenses")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

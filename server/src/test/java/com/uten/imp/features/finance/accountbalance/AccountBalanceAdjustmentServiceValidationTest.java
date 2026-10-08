@@ -112,7 +112,7 @@ class AccountBalanceAdjustmentServiceValidationTest {
         assertThatThrownBy(() -> service.adjust(request(
                 BusinessTime.today(), List.of(item(accountId, "0", "1")))))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("已用于另一笔");
+                .hasMessageContaining("已经用于另一笔");
     }
 
     @Test

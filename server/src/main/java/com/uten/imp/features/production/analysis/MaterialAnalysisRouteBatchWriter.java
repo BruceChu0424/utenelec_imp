@@ -69,7 +69,22 @@ final class MaterialAnalysisRouteBatchWriter {
                 change -> new Object[] {change.materialId(), change.groupKey(), change.route(), null, null});
         Object[] checked = (Object[]) em.createNativeQuery("""
                 WITH input AS MATERIALIZED (SELECT * FROM %s),
-                supply_scope AS MATERIALIZED (SELECT * FROM %s), conflicts AS (
+                supply_scope AS MATERIALIZED (SELECT * FROM %s), issued_sources AS MATERIALIZED (
+                    SELECT source.id, source.parent_analysis_material_id
+                    FROM production_material_analysis_plan_links link
+                    JOIN production_material_analysis_items source ON source.id=link.analysis_item_id
+                        AND source.analysis_id=:analysisId AND NOT source.is_deleted
+                    WHERE link.analysis_id=:analysisId AND link.allocation_status IN('SUBMITTED','APPROVED')
+                        AND link.submitted_qty+link.public_surplus_qty>0
+                ), issued_materials AS MATERIALIZED (
+                    SELECT material.id FROM issued_sources source
+                    JOIN production_material_analysis_materials material ON material.id=source.parent_analysis_material_id
+                        AND material.analysis_id=:analysisId
+                    UNION ALL
+                    SELECT material.id FROM issued_sources source
+                    JOIN production_material_analysis_materials material ON material.analysis_item_id=source.id
+                        AND material.analysis_id=:analysisId AND material.node_role='ROOT_SUPPLY'
+                ), conflicts AS (
                     SELECT input.material_id FROM supply_scope input JOIN preplan_supply_actions action
                       ON action.analysis_id=:analysisId AND action.action_group_key=input.group_key
                     WHERE action.status<>'CANCELLED' AND action.route IS DISTINCT FROM input.route
@@ -89,16 +104,8 @@ final class MaterialAnalysisRouteBatchWriter {
                         event.intent_snapshot->'materialLineIds','[]'::jsonb),input.material_id::text)
                     UNION ALL
                     SELECT input.material_id FROM supply_scope input
-                    JOIN production_material_analysis_materials material ON material.id=input.material_id
-                        AND material.analysis_id=:analysisId
-                    WHERE input.route<>'MAKE' AND EXISTS (
-                        SELECT 1 FROM production_material_analysis_items source
-                        JOIN production_material_analysis_plan_links link ON link.analysis_item_id=source.id
-                            AND link.analysis_id=:analysisId AND link.allocation_status IN('SUBMITTED','APPROVED')
-                        WHERE source.analysis_id=:analysisId AND NOT source.is_deleted
-                            AND (source.parent_analysis_material_id=material.id
-                                OR material.node_role='ROOT_SUPPLY' AND source.id=material.analysis_item_id)
-                            AND link.submitted_qty+link.public_surplus_qty>0)
+                    JOIN issued_materials issued ON issued.id=input.material_id
+                    WHERE input.route<>'MAKE'
                 )
                 SELECT (SELECT count(*) FROM input JOIN production_material_analysis_materials material
                         ON material.id=input.material_id AND material.analysis_id=:analysisId AND material.active),

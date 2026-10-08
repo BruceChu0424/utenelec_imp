@@ -437,7 +437,7 @@ systemd 单元只来自 `deploy/simple/units/`，其它主机配置只来自 `de
 | 异地仓 repo3 (待建) | 独立 OSS bucket, 开 WORM | 云 | 专用 RAM 子账号, 无删除权限 | 至少 3 天 |
 | 配置与密钥 | `/etc/uten-imp/*.env`, `/etc/uten-imp-updater.env`, `/etc/pgbackrest.conf`, `/etc/pgbackrest/conf.d/*.conf` | NVMe 根 | root 0600 / root:postgres 0640 | 另有离线托管件 |
 | 程序 | `/opt/uten-imp/releases/vX.Y.Z` (`current` 为 symlink) | NVMe 根 | root:uten-imp 0751, `web/` root:uten-web 0750 | 更新器保留 5 版 |
-| 告警状态 | `/var/lib/uten-alert` | NVMe 根 | root 0700 | - |
+| 告警状态 | `/var/lib/uten-alert` | NVMe 根 | root:uten-imp 0750 / 事件文件 0640 | 最多 128 条, 保留 7 天 |
 
 `/srv/uten-backup` 挂载点本身 `chattr +i`：卷没挂上时任何程序都写不进去，备份不会悄悄落到系统盘；
 fstab 带 `nofail`，阵列或备份卷出问题时系统照样启动、SSH 不丢。

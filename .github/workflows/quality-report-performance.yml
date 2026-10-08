@@ -1,0 +1,81 @@
+name: Quality and report performance
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/quality-report-performance.yml'
+      - 'server/ops/*quality_report_performance*'
+      - 'server/ops/verify_quality_report_snapshot.py'
+      - 'server/pom.xml'
+      - 'server/src/main/java/com/uten/imp/features/production/**'
+      - 'server/src/main/java/com/uten/imp/features/warehouse/inbound/**'
+      - 'server/src/main/java/com/uten/imp/features/stock/**'
+      - 'server/src/main/java/com/uten/imp/application/concurrency/**'
+      - 'server/src/main/java/com/uten/imp/application/port/Production*'
+      - 'server/src/main/resources/db/migration/**'
+      - 'server/src/test/java/com/uten/imp/businesschain/**'
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Git ref or commit used for baseline production classes
+        required: true
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-report-performance-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paired:
+    name: Sequential base and head / Java 21 / native PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout the exact candidate
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout baseline production source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || inputs.base_ref || 'main' }}
+          path: baseline
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: candidate/server/pom.xml
+      - name: Verify evidence validation without starting a JVM or container
+        run: python3 -m unittest discover -s candidate/server/ops -p 'test_native_quality_report_performance.py' -v
+      - name: Compile sequentially and run the isolated pair
+        # One job, no matrix, no service container, no parallel tests and no
+        # production secrets. PR expressions are checkout inputs, not shell code.
+        run: >-
+          python3 candidate/server/ops/run_native_quality_report_performance.py
+          --baseline baseline --candidate candidate
+          --output performance-evidence --isolated-runner
+      - name: Preserve raw evidence even after a failed side
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: quality-report-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            performance-evidence/
+            !performance-evidence/build-*/**
+            !performance-evidence/baseline/classes/**
+            !performance-evidence/baseline/test-classes/**
+            !performance-evidence/candidate/classes/**
+            !performance-evidence/candidate/test-classes/**
+            !performance-evidence/test-home/**
+          if-no-files-found: warn
+          retention-days: 14

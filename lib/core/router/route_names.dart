@@ -183,6 +183,9 @@ abstract final class RouteName {
   static const String adminAiUsagePersonRoute = '/admin/ai-usage/:userId';
   static String adminAiUsagePerson(String userId) =>
       '/admin/ai-usage/${Uri.encodeComponent(userId)}';
+  // AI 使用记录与费用(自 AI 服务设置页内嵌面板独立成页)。
+  // 注意不能挂在 /admin/ai-usage/ 下: 会被 adminAiUsagePersonRoute 的 :userId 吃掉。
+  static const String adminAiUsageRecords = '/admin/ai-usage-records';
 
   // 财税部主数据别名入口（复用基础资料真实页面）
   static const String financeCustomers = '/finance/customers';

@@ -59,7 +59,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get release254QuantityPrecision =>
-      'Material orders preserve full precision, fixing quantity errors in small quantities, unit conversions, split orders and confirmations of repeated submissions.';
+      'Material orders, production reports and direct transfers preserve original quantities, with fixes for small quantities, unit conversions, split orders and repeated-submission receipts.';
 
   @override
   String get release254AiAuthorization =>
@@ -68,6 +68,26 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release254SensitiveAuthorization =>
       'Changing sensitive permissions requires identity verification again, so important grants receive your confirmation.';
+
+  @override
+  String get release254OverLimit =>
+      'Record actual output in full. Planning reviews output above the limit while approval, quality, inventory and cost retain the same source.';
+
+  @override
+  String get release254PlanningReminders =>
+      'Planning staff whose accounts or permissions are added later receive reminders for orders not yet taken into material analysis, without repeating handled tasks.';
+
+  @override
+  String get release254PeoplePicker =>
+      'People pickers show departments and staff side by side, with employee codes, account status, search and selection across departments. Existing access rules still apply.';
+
+  @override
+  String get release254AccountSupport =>
+      'Authorized staff can verify their identity and generate a temporary password from employee details. The employee must change it at first login, and access changes stop password display.';
+
+  @override
+  String get release254Dashboard =>
+      'Dashboard metrics appear horizontally. Tasks occupy one row, with remaining tasks available through the task-count link.';
 
   @override
   String get release254Publishing =>
@@ -1306,7 +1326,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeIdIssueBadge => 'To verify';
 
   @override
-  String get employeeIdIssueInvalidTitle => 'ID number failed validation';
+  String get employeeIdIssueInvalidTitle => 'The ID number looks incorrect';
 
   @override
   String get employeeIdIssueMissingTitle => 'No ID number on file';
@@ -1355,7 +1375,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeIdentityCorrectHint =>
-      'Resident ID numbers are validated automatically, and the birth date and gender are updated from the number.';
+      'Resident ID numbers are checked automatically, and the birth date and gender are updated from the number.';
 
   @override
   String get employeeIdentityCorrectNoPrefill =>
@@ -1942,7 +1962,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileChangeRateLimited =>
-      'You already submitted a change for this field in the last 24 hours';
+      'You already submitted a change for this item in the last 24 hours';
 
   @override
   String get profileChangeListTitle => 'My change requests';
@@ -2092,7 +2112,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String profileEditPendingConflictHint(int count) {
-    return 'You have $count pending request(s); editing the same fields again before approval may conflict with them.';
+    return 'You have $count pending request(s); editing the same items again before approval may conflict with them.';
   }
 
   @override
@@ -2612,7 +2632,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get profileSessionUnavailable =>
-      'You are not signed in or the session is unavailable';
+      'You are not signed in, or your sign-in has expired';
 
   @override
   String get profileValueNotProvided => 'Not provided';
@@ -2683,7 +2703,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pagePermissionAccountNotProvisionedCanProvision =>
-      'Provision the account first. After the one-time credentials are saved, this person\'s permissions will load automatically.';
+      'Provision the account first. After the initial password is saved, this person\'s permissions will load automatically.';
 
   @override
   String get pagePermissionAccountNotProvisionedNoAccess =>
@@ -2895,7 +2915,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get orderChangeQtyInvalid =>
-      'Some quantities are invalid (must be greater than 0). Please check.';
+      'Some quantities are incorrect (must be greater than 0). Please check.';
 
   @override
   String get orderChangeQtySuccess =>
@@ -3274,7 +3294,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get systemSettingInvalidInteger =>
-      'Enter a valid non-negative integer';
+      'Enter a whole number of 0 or greater';
 
   @override
   String get systemSettingInvalidValue =>
@@ -3295,7 +3315,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get systemSettingEffectTiming =>
-      'Security limits apply to subsequent actions and token lifetimes to newly issued tokens. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.';
+      'Security limits apply to subsequent actions, and token lifetimes apply the next time you sign in. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.';
 
   @override
   String get auditSummaryUnavailable =>
@@ -3306,7 +3326,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get auditWorkspaceDescription =>
-      'Review sessions by person and time, then follow events to business changes.';
+      'Review sign-in records by person and time, then follow events to business changes.';
 
   @override
   String get materialReasonLabel => 'Reason';
@@ -3442,7 +3462,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String warehouseStockOutboundConfirmMessage(int count) {
-    return 'Issue the quantities shown for $count selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. Processing stops on an error; successful documents remain completed.';
+    return 'Issue the quantities shown for $count selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. If one fails, the rest stop there; documents already approved keep their results.';
   }
 
   @override
@@ -3496,7 +3516,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
-      'Lines are selected together for each outbound document. Reduce quantities for a partial issue; enter 0 to skip a material this time (the line is removed on save). To skip a whole document, use \"Return to subcontract (not issued)\" on its picking page. Each document is saved and approved separately; completed results are retained. Processing pauses on errors. Verify the result before continuing unprocessed documents.';
+      'Lines are selected together for each outbound document. Reduce quantities for a partial issue; enter 0 to skip a material this time (the line is removed on save). To skip a whole document, use \"Return to subcontract (not issued)\" on its picking page. Each document is saved and approved separately; completed results are retained. If one fails, processing pauses; verify the result before continuing the remaining documents.';
 
   @override
   String get warehouseSubcontractOutboundDocuments => 'Document details';
@@ -3957,7 +3977,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get visitorApprovalHostDeptColInfo =>
-      'Department snapshot of the host at apply time; the header filter pushes hostDepartmentId to the backend.';
+      'The host department recorded when the visitor applied; the header filter searches by this department.';
 
   @override
   String visitorBatchLimitError(int limit, int count) {
@@ -4145,7 +4165,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get myVisitorsStatusColInfo =>
-      'Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend).';
+      'Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected.';
 
   @override
   String get expenseFlowNew => 'New expense claim';
@@ -5253,29 +5273,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'There is no API key yet. Tap \"Edit\" to enter one, then test';
 
   @override
-  String aiSettingsUsageTitle(int days) {
-    return 'Usage in the last $days days';
+  String get aiSettingsTodayUsage => 'Today\'s usage';
+
+  @override
+  String aiSettingsTodayUsageFooter(int calls, int users) {
+    return '$calls calls · $users users';
   }
 
   @override
-  String get aiSettingsUsageCalls => 'Calls';
+  String get aiSettingsTodayUsageEmpty => 'No usage yet today';
 
   @override
-  String get aiSettingsUsageSuccessRate => 'Success rate';
-
-  @override
-  String get aiSettingsUsageTokens => 'Input / output tokens';
-
-  @override
-  String get aiSettingsUsageLatency => 'Average time';
-
-  @override
-  String aiSettingsUsageSeconds(String value) {
-    return '$value s';
-  }
-
-  @override
-  String get aiSettingsUsageEmpty => 'No calls yet';
+  String get aiSettingsTodayUsageOpenTooltip => 'View usage & quotas';
 
   @override
   String get aiSettingsUsageUnavailable =>
@@ -7311,7 +7320,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get costSaveDraft => 'Save draft';
 
   @override
-  String get costRecalculate => 'Validate and calculate';
+  String get costRecalculate => 'Check and recalculate';
 
   @override
   String get costConfirm => 'Confirm cost version';
@@ -7477,7 +7486,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get costImportReview =>
-      'Confirm each mapping. Verify cached prices in this sheet currency; external formulas are not adopted.';
+      'Check the match for each row. Cached prices are verified in this sheet currency; external formulas are not adopted.';
 
   @override
   String get costImportKind => 'Mapping type';
@@ -8161,7 +8170,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quoteTemplateReviewHint =>
-      'Review the worksheet and fields before saving. Similar layouts update the template; different layouts remain selectable.';
+      'Review the worksheet and its column matches before saving. Similar layouts update the template; different layouts remain selectable.';
 
   @override
   String get quoteTemplateSaveDownload => 'Save template and download';
@@ -8217,7 +8226,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatBoundary =>
-      'Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, with the same permission and validation checks.';
+      'Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, still checked against your permissions and system rules.';
 
   @override
   String get aiChatUnavailable =>
@@ -8287,7 +8296,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatPermissionChanged =>
-      'Your access or session changed. This chat was cleared. Refresh and try again.';
+      'Your access or sign-in changed. This chat was cleared. Refresh and try again.';
 
   @override
   String get aiChatEmptyReply =>
@@ -8347,7 +8356,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiChatDeliveryUnknown =>
-      'Delivery is unconfirmed. Sending again starts a new request.';
+      'Delivery is unconfirmed. Sending again will send it as a new message.';
 
   @override
   String get aiChatReplyFailed =>
@@ -8555,7 +8564,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quoteTemplateMappingDuplicate =>
-      'Each field can map to only one column. Adjust duplicate mappings.';
+      'Each piece of information can match only one column. Adjust duplicate matches.';
 
   @override
   String get aiAuditTitle => 'Usage and costs';
@@ -8587,16 +8596,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiAuditAllProviders => 'All services';
 
   @override
-  String aiAuditSummary(int uses, int calls) {
-    return 'Records: $uses · Model calls: $calls';
-  }
-
-  @override
   String get aiAuditPlatformOnly =>
       'This platform only. Estimates use the configured prices.';
-
-  @override
-  String get aiAuditByUser => 'View by employee';
 
   @override
   String aiAuditUses(int count) {
@@ -8605,17 +8606,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiAuditEmpty => 'No records in this period.';
-
-  @override
-  String aiAuditPagination(int total, int page) {
-    return 'Records: $total · Page $page';
-  }
-
-  @override
-  String get aiAuditPrevious => 'Previous page';
-
-  @override
-  String get aiAuditNext => 'Next page';
 
   @override
   String get aiAuditBillingTitle => 'Billing and plan allowance';
@@ -8764,13 +8754,24 @@ class AppLocalizationsEn extends AppLocalizations {
       'Use your provider prices. These are estimates, not a provider bill.';
 
   @override
-  String get aiAuditFiveHourQuota => 'Five-hour balance: not connected';
+  String get aiAuditFiveHourQuota => 'Quota per 5 hours (calls)';
 
   @override
-  String get aiAuditWeeklyQuota => 'Weekly balance: not connected';
+  String get aiAuditWeeklyQuota => 'Weekly quota (calls)';
 
   @override
-  String get aiAuditQuotaHint => 'Requires a quota API from the provider.';
+  String get aiAuditQuotaHint =>
+      'Used counts come from this platform\'s successful calls; remaining = quota - used. It may differ slightly from the provider\'s own accounting.';
+
+  @override
+  String aiAuditQuota5hUsed(int used, String quota) {
+    return 'Used in the last 5 hours: $used / $quota';
+  }
+
+  @override
+  String aiAuditQuotaWeeklyUsed(int used, String quota) {
+    return 'Used this week: $used / $quota';
+  }
 
   @override
   String get aiAuditSaveBilling => 'Save billing settings';
@@ -8846,7 +8847,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String weightParamsLoadFailed(String reason) {
-    return 'Unit weight data could not be loaded: $reason. Weigh-to-count and weight prefill are unavailable for now; quantities can still be registered.';
+    return 'Unit weight settings could not be loaded: $reason. Weigh-to-count and weight prefill are unavailable for now; quantities can still be registered.';
   }
 
   @override
@@ -9384,17 +9385,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiSettingsStepThinking => 'Thinking depth';
 
   @override
-  String get aiActionSetField => 'Fill in a field';
+  String get aiActionSetField => 'Fill in automatically';
 
   @override
-  String get aiActionParamField => 'Field';
+  String get aiActionParamField => 'Item to fill';
 
   @override
   String get aiActionParamValue => 'New value';
 
   @override
   String aiActionFieldMissing(String label) {
-    return 'The field \"$label\" is not on this page';
+    return 'There is no place to fill in \"$label\" on this page';
   }
 
   @override
@@ -9511,7 +9512,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String aiChatAttachSummary(int rows, int fields, int flagged) {
-    return 'This page will be attached: $rows table rows, $fields fields, $flagged items to review';
+    return 'This page will be attached: $rows table rows, $fields fill-in items, $flagged items to review';
   }
 
   @override
@@ -10150,9 +10151,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get aiUsageTitle => 'AI usage & quotas';
 
   @override
-  String get aiUsageEntry => 'Usage & quotas';
-
-  @override
   String get aiUsageTodayTokens => 'Tokens today';
 
   @override
@@ -10318,4 +10316,92 @@ class AppLocalizationsEn extends AppLocalizations {
   String aiUsageTrendSemantics(String title, String tokens, String calls) {
     return '$title, $tokens tokens and $calls calls in total';
   }
+
+  @override
+  String aiUsageKpiFooterCalls(String label, int count) {
+    return '$count calls in $label';
+  }
+
+  @override
+  String aiUsageKpiFooterPeople(int count) {
+    return '$count people in total';
+  }
+
+  @override
+  String aiUsageKpiFooterOverLimit(int count) {
+    return '$count over the limit';
+  }
+
+  @override
+  String get aiRecordsViewRecords => 'By record';
+
+  @override
+  String get aiRecordsViewByPerson => 'By person';
+
+  @override
+  String get aiRecordsStatUses => 'Usages';
+
+  @override
+  String aiRecordsStatCallsFooter(int count) {
+    return '$count model calls';
+  }
+
+  @override
+  String get aiRecordsStatCostActual => 'Actual cost';
+
+  @override
+  String get aiRecordsStatCostActualFooter => 'Per provider bills';
+
+  @override
+  String get aiRecordsStatCostEstimated => 'Estimated cost';
+
+  @override
+  String get aiRecordsStatCostEstimatedFooter => 'Per configured prices';
+
+  @override
+  String get aiRecordsStatUnknown => 'Cost pending';
+
+  @override
+  String aiRecordsStatUnknownFooter(int count) {
+    return '$count calls without prices';
+  }
+
+  @override
+  String get aiRecordsColTime => 'Time';
+
+  @override
+  String get aiRecordsColPurpose => 'Purpose';
+
+  @override
+  String get aiRecordsColQuestion => 'Prompt';
+
+  @override
+  String get aiRecordsColModel => 'Model';
+
+  @override
+  String get aiRecordsColCalls => 'Calls';
+
+  @override
+  String get aiRecordsColInputTokens => 'Input tokens';
+
+  @override
+  String get aiRecordsColOutputTokens => 'Output tokens';
+
+  @override
+  String get aiRecordsColCost => 'Cost';
+
+  @override
+  String get aiRecordsColStatus => 'Status';
+
+  @override
+  String get aiRecordsPersonEmpty => 'No one used AI in this period';
+
+  @override
+  String get aiRecordsPersonViewRecords => 'View records';
+
+  @override
+  String get aiRecordsDetailTitle => 'Usage detail';
+
+  @override
+  String get aiRecordsBillingOpen => 'Billing';
 }

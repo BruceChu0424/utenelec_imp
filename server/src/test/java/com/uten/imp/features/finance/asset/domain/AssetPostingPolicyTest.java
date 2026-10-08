@@ -27,7 +27,7 @@ class AssetPostingPolicyTest {
         assertThatThrownBy(() -> AssetPostingPolicy.requireDisposalMonthDepreciated(
                 LocalDate.parse("2026-08-15"), "2026-07"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("disposal month");
+                .hasMessageContaining("处置当月");
         assertThatCode(() -> AssetPostingPolicy.requireDisposalMonthDepreciated(
                 LocalDate.parse("2026-08-15"), "2026-08"))
                 .doesNotThrowAnyException();
@@ -38,7 +38,7 @@ class AssetPostingPolicyTest {
         assertThatThrownBy(() -> AssetPostingPolicy.requireStartNotBeforeActivationPeriod(
                 "2026-08", "2026-09"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("activation GL period");
+                .hasMessageContaining("启用时的会计期间");
         assertThatCode(() -> AssetPostingPolicy.requireStartNotBeforeActivationPeriod(
                 "2026-09", "2026-09"))
                 .doesNotThrowAnyException();

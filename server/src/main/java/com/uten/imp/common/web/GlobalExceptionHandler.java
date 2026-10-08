@@ -59,7 +59,7 @@ public class GlobalExceptionHandler {
                 .map(f -> new ApiError.FieldError(f.getField(), f.getDefaultMessage()))
                 .toList();
         return ResponseEntity.status(422)
-                .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "参数校验失败", fields));
+                .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -68,19 +68,19 @@ public class GlobalExceptionHandler {
                 .map(v -> new ApiError.FieldError(v.getPropertyPath().toString(), v.getMessage()))
                 .toList();
         return ResponseEntity.status(422)
-                .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "参数校验失败", fields));
+                .body(ApiError.of(ErrorCode.VALIDATION_FAILED, "填写的内容有误，请检查后重试", fields));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ApiError> handleMissingParam(MissingServletRequestParameterException ex) {
         return ResponseEntity.status(400)
-                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "缺少必需的查询参数: " + ex.getParameterName()));
+                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "缺少查询条件: " + ex.getParameterName()));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return ResponseEntity.status(400)
-                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "参数格式错误: " + ex.getName()));
+                .body(ApiError.of(ErrorCode.MALFORMED_REQUEST, "查询条件 " + ex.getName() + " 的格式不对"));
     }
 
     // 未匹配路由（无 controller）或静态资源不存在：Spring 6.1+ 抛 NoResourceFoundException；
@@ -451,12 +451,12 @@ public class GlobalExceptionHandler {
         }
         if (matches(constraint, text, "subcontract_target_outbound_consumption_guard")
                 || text.contains("subcontract receipt material consumption")) {
-            return "委外回厂核销的直属物料数量与回厂数量对不上，本次操作已回滚；请刷新后重试";
+            return "委外回厂核销的直属物料数量与回厂数量对不上，本次操作没有生效；请刷新后重试";
         }
         if (matches(constraint, text, "subcontract_receipt_material_basis_guard")
                 || matches(constraint, text, "subcontract_receipt_item_material_basis_chk")
                 || text.contains("approved subcontract receipt line lacks its frozen material basis")) {
-            return "委外回厂明细缺少物料核销依据，本次操作已回滚；请刷新后重试";
+            return "委外回厂明细缺少物料核销依据，本次操作没有生效；请刷新后重试";
         }
         if (matches(constraint, text, "subcontract_material_issue_item_requested_qty_chk")) {
             return "仓库出仓数量不能超过委外人员提交的领料数量，只能改少；请改小后再提交";
@@ -488,7 +488,7 @@ public class GlobalExceptionHandler {
         if (text.contains("approved subcontract draw issue lacks exact reservation coverage")
                 || text.contains("subcontract outbound allocation provenance is inconsistent")
                 || text.contains("subcontract outbound reservation lacks exact issue allocation")) {
-            return "委外领料单的库存占用与出仓明细对不上(可能刚被撤回、退回或改少)，本次操作已回滚；请刷新拣货页后重试";
+            return "委外领料单的库存占用与出仓明细对不上(可能刚被撤回、退回或改少)，本次操作没有生效；请刷新拣货页后重试";
         }
         return null;
     }

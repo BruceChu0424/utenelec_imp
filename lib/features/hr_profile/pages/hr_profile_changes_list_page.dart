@@ -428,7 +428,7 @@ class _HrProfileChangesListPageState
       key: 'departmentName',
       label: '部门',
       width: 150,
-      info: '员工当前所属部门（非提交时快照）；表头筛选按此下推后端 departmentId 参数。',
+      info: '员工当前所属部门（不是提交时的部门）；用这一列筛选时按当前部门查询。',
       value: (m) => m.departmentName,
     ),
     MasterColumnDef(

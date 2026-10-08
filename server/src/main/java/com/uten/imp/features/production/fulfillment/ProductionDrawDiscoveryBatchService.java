@@ -56,7 +56,7 @@ public class ProductionDrawDiscoveryBatchService {
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('stock_doc:view')")
     public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Resolution receipt(String rawKey) {
         String key = rawKey == null ? "" : rawKey.strip();
-        if (!key.matches("[A-Za-z0-9._:-]{8,128}")) throw validation("批量出库幂等键格式无效");
+        if (!key.matches("[A-Za-z0-9._:-]{8,128}")) throw validation("批量出库的防重复提交标识格式不正确");
         var rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT request_hash, response_snapshot::text, array_to_json(document_ids)::text
                 FROM production_draw_issue_batches WHERE actor_user_id=:actor AND idempotency_key=:key

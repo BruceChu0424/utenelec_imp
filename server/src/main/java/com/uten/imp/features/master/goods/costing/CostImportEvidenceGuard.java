@@ -27,7 +27,7 @@ public class CostImportEvidenceGuard {
         if (fields == null || !fields.containsKey("importId")) return fields;
         UUID importId;
         try { importId = UUID.fromString(fields.get("importId")); }
-        catch (RuntimeException error) { throw new ApiException(ErrorCode.VALIDATION_FAILED, "成本来源文件标识无效"); }
+        catch (RuntimeException error) { throw new ApiException(ErrorCode.VALIDATION_FAILED, "所选成本来源文件不正确，请重新选择"); }
         requireReadable(importId, goodsId);
         var evidence = db.queryForMap("SELECT source_name,storage_sha256 FROM goods_cost_imports WHERE id=?", importId);
         Map<String, String> verified = new LinkedHashMap<>(fields);
@@ -36,10 +36,10 @@ public class CostImportEvidenceGuard {
         if (fields.containsKey("importMappingId")) {
             UUID mapping;
             try { mapping = UUID.fromString(fields.get("importMappingId")); }
-            catch (RuntimeException error) { throw new ApiException(ErrorCode.VALIDATION_FAILED, "成本映射记录标识无效"); }
+            catch (RuntimeException error) { throw new ApiException(ErrorCode.VALIDATION_FAILED, "所选成本匹配记录不正确，请重新操作"); }
             var hashes = db.queryForList("SELECT mapping_hash FROM goods_cost_import_mappings WHERE id=? AND import_id=? AND goods_id=?",
                     String.class, mapping, importId, goodsId);
-            if (hashes.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "成本映射记录不存在");
+            if (hashes.size() != 1) throw new ApiException(ErrorCode.NOT_FOUND, "成本匹配记录不存在");
             verified.put("importMappingHash", hashes.getFirst());
         } else verified.remove("importMappingHash");
         return verified;

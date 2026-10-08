@@ -322,7 +322,7 @@ class _FinanceTaskCard extends StatelessWidget {
                 ),
                 if (task.excessAmountLocal?.isNotEmpty == true) ...[
                   const SizedBox(height: UtenSpacing.s4),
-                  Text('超量金额(服务端快照)：${task.excessAmountLocal}'),
+                  Text('超量金额(检测时记下)：${task.excessAmountLocal}'),
                 ],
               ],
             ),
@@ -764,10 +764,10 @@ class _ArrivalFactsCard extends StatelessWidget {
               value:
                   '${procurementQty(task.requestedExcessQty)} ${task.unitName ?? ''}',
             ),
-            _Fact(label: '检测时单价快照', value: task.unitPrice ?? '—'),
+            _Fact(label: '检测时单价', value: task.unitPrice ?? '—'),
             _Fact(label: '原申报原币金额', value: task.declaredAmountOriginal ?? '—'),
             _Fact(label: '原申报本币金额', value: task.declaredAmountLocal ?? '—'),
-            _Fact(label: '超量本币金额快照', value: task.excessAmountLocal ?? '—'),
+            _Fact(label: '超量本币金额(检测时)', value: task.excessAmountLocal ?? '—'),
             _Fact(label: '财务审核组', value: task.financeAssigneeName ?? '—'),
             _Fact(label: '仓库登记人', value: task.detectedByEmployeeName ?? '—'),
             _Fact(label: '发现时间', value: detected),

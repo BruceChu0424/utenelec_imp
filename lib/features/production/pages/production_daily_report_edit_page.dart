@@ -1059,10 +1059,15 @@ class _ProductionDailyReportEditPageState
       _resumeNotice = '已恢复申请时填写的整单内容（尚未保存日报），请核对其他明细、人员、实耗与未提交附件。';
       return true;
     } catch (error) {
+      final cause = error is FormatException
+          ? error.message
+          : error is ApiException
+          ? error.message
+          : '读取申请数据时出了问题';
       if (mounted) {
         setState(() {
           _resumeBlocked = true;
-          _resumeNotice = '恢复申请内容未完成：$error。原草稿未覆盖，请回追加详情核对。';
+          _resumeNotice = '恢复申请内容没完成：$cause。原草稿未覆盖，请回追加详情核对。';
         });
       }
       return false;
@@ -2454,7 +2459,9 @@ class _ProductionDailyReportEditPageState
       final r = _productRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       if (r.qtyNeedsVerification || r.defectQtyNeedsVerification) {
-        context.appError('第 ${i + 1} 行旧草稿的大数缺少精度证明，请核对后重新填写完工量或不良数；原输入已保留');
+        context.appError(
+          '第 ${i + 1} 行旧草稿里的完工量或不良数数字特别大，系统没法确认原来填的是多少；请重新填写这两项，其他内容已保留',
+        );
         return;
       }
       final qtyText = productionExactQuantityText(
@@ -2462,7 +2469,7 @@ class _ProductionDailyReportEditPageState
       );
       final qty = qtyText == null ? null : double.tryParse(qtyText);
       if (qty == null || qty <= 0) {
-        context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多四位小数；缺少精确数量时请重新读取或填写');
+        context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多四位小数；数量不对时请重新读取或手动填写');
         return;
       }
       if (r.hasFixedSupplement &&
@@ -2540,7 +2547,9 @@ class _ProductionDailyReportEditPageState
     for (final entry in sourceTotals.entries) {
       final cap = sourceCaps[entry.key];
       if (cap != null && entry.value > cap + 0.000001) {
-        context.appError('同一来源子任务的累计完工申报量超过当前可报数量 ${_quantityText(cap)}');
+        context.appError(
+          '多行用了同一个来源任务，加起来的完工量超过可报数量 ${_quantityText(cap)}，请分摊后再报',
+        );
         return;
       }
     }
@@ -2624,12 +2633,12 @@ class _ProductionDailyReportEditPageState
     for (final r in rows) {
       if (r.goods == null) continue;
       if (r.planItemId == null && r.planNo.text.trim().isNotEmpty) {
-        context.appError('旧报工行只有计划号快照，不能自动猜关联；请重新选择来源子任务或清除来源');
+        context.appError('旧报工行只保存了计划号，认不出对应的生产任务；请重新选择来源子任务，或清除来源');
         return;
       }
       if (r.salesOrderItemId == null &&
           (r.salesOrderNo?.trim().isNotEmpty ?? false)) {
-        context.appError('旧报工行只有销售订单号快照，请重新选择来源子任务或清除来源');
+        context.appError('旧报工行只保存了销售订单号，认不出对应的订单明细；请重新选择来源子任务，或清除来源');
         return;
       }
       final qty = productionQuantityWire(
@@ -3704,7 +3713,7 @@ class _ProductionDailyReportEditPageState
               if (_saving)
                 UtenBusyOverlay(
                   title: widget.id == null ? '正在提交生产日报' : '正在保存生产日报',
-                  description: '正在写入报工与物料消耗事实，请勿重复提交或离开本页。',
+                  description: '正在保存报工和用料记录，请勿重复提交或离开本页。',
                 ),
             ],
           ),

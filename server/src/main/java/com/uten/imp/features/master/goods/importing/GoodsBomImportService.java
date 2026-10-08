@@ -130,7 +130,7 @@ public class GoodsBomImportService {
     @Transactional
     public BomImportResult commit(UUID goodsId, byte[] xlsx, BomPasteRequest.Mode mode, String stateFingerprint) {
         if (stateFingerprint == null || !stateFingerprint.startsWith("v1:")) {
-            throw new ApiException(ErrorCode.CONFLICT, "缺少有效的导入检测凭据，请重新检测文件后提交（旧版客户端请先升级）");
+            throw new ApiException(ErrorCode.CONFLICT, "缺少有效的导入检测记录，请重新检测文件后提交（旧版客户端请先升级）");
         }
         if (mode == BomPasteRequest.Mode.REPLACE) {
             // 替换会删掉文件外的现有组件，与粘贴命令同口径要删除权(paste 内也会再查)。

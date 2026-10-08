@@ -20,6 +20,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../models/website_inquiry.dart';
 import '../providers/website_inquiry_providers.dart';
 
@@ -40,7 +41,7 @@ class WebsiteInquiryListPage extends ConsumerWidget {
             child: list.when(
               loading: () => const UtenSkeletonList(itemCount: 6),
               error: (e, _) => UtenEmpty.error(
-                message: '加载失败：$e',
+                message: humanErrorMessage(e) ?? '询盘列表加载失败，请稍后重试',
                 onAction: () => ref.invalidate(websiteInquiryListProvider),
               ),
               data: (page) {

@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -334,19 +335,41 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
       key: const ValueKey('ai-usage-list'),
       padding: const EdgeInsets.all(UtenSpacing.s16),
       children: [
-        _KpiRow(data: data),
+        _KpiRow(window: _window, data: data),
         const SizedBox(height: UtenSpacing.s16),
-        UtenSegmentedFilter<AiUsageWindow>(
-          key: const ValueKey('ai-usage-window-filter'),
-          segments: [
-            for (final window in AiUsageWindow.values)
-              UtenSegment(
-                value: window,
-                label: aiUsageWindowLabel(l10n, window),
+        // 窗口筛选与「使用记录与费用」入口同行; 窄屏自动换行。
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            UtenSegmentedFilter<AiUsageWindow>(
+              key: const ValueKey('ai-usage-window-filter'),
+              segments: [
+                for (final window in AiUsageWindow.values)
+                  UtenSegment(
+                    value: window,
+                    label: aiUsageWindowLabel(l10n, window),
+                  ),
+              ],
+              selected: _window,
+              onChanged: _loading ? (value) {} : _onWindowChanged,
+            ),
+            // 与分段栏同高(分段条=44 按钮+上下 4 padding): 按钮本体 44, 外框 52 居中。
+            SizedBox(
+              height: 52,
+              child: Center(
+                child: UtenButton(
+                  key: const ValueKey('ai-usage-open-records'),
+                  type: UtenButtonType.ghost,
+                  height: 44,
+                  icon: Icons.receipt_long_outlined,
+                  onPressed: () => context.push(RouteName.adminAiUsageRecords),
+                  child: Text(l10n.aiAuditTitle),
+                ),
               ),
+            ),
           ],
-          selected: _window,
-          onChanged: _loading ? (value) {} : _onWindowChanged,
         ),
         const SizedBox(height: UtenSpacing.s12),
         AiUsageTrendCard(
@@ -591,53 +614,76 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
 }
 
 /// KPI 四卡: 今日消耗(预算进度双通道)/今日调用/今日活跃人数/已停用人数。
+/// 四卡同构(图标行+数值+脚注)且统一最小高度, 同行底边对齐。
 class _KpiRow extends StatelessWidget {
-  const _KpiRow({required this.data});
+  const _KpiRow({required this.window, required this.data});
 
+  final AiUsageWindow window;
   final AiUsageDashboard? data;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final people = data?.people ?? const <AiUsagePerson>[];
+    final windowLabel = aiUsageWindowLabel(l10n, window);
+    final windowCalls = people.fold<int>(
+      0,
+      (sum, person) => sum + person.windowCalls,
+    );
+    final overLimit = people.where((person) => person.overLimit).length;
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 560 ? 4 : 2;
         const gap = UtenSpacing.s8;
         final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        // 今日消耗卡多一段预算进度, 最小高度以它为基准, 其余三卡撑到同高。
+        final minHeight = columns == 2 ? 150.0 : 138.0;
+        Widget cell(Key? key, Widget child) => SizedBox(
+          key: key,
+          width: width,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: child,
+          ),
+        );
+
         return Wrap(
           spacing: gap,
           runSpacing: gap,
           children: [
-            SizedBox(
-              width: width,
-              child: _TodayTokensCard(data: data, compact: columns == 2),
-            ),
-            SizedBox(
-              width: width,
-              child: _MetricCard(
-                key: const ValueKey('ai-usage-kpi-today-calls'),
+            cell(null, _TodayTokensCard(data: data, compact: columns == 2)),
+            cell(
+              const ValueKey('ai-usage-kpi-today-calls'),
+              _MetricCard(
                 label: l10n.aiUsageTodayCalls,
                 value: data?.todayCalls,
                 icon: Icons.call_made_rounded,
+                footer: data == null
+                    ? null
+                    : l10n.aiUsageKpiFooterCalls(windowLabel, windowCalls),
               ),
             ),
-            SizedBox(
-              width: width,
-              child: _MetricCard(
-                key: const ValueKey('ai-usage-kpi-active-users'),
+            cell(
+              const ValueKey('ai-usage-kpi-active-users'),
+              _MetricCard(
                 label: l10n.aiUsageActiveUsers,
                 value: data?.activeUsersToday,
                 icon: Icons.person_outline_rounded,
+                footer: data == null
+                    ? null
+                    : l10n.aiUsageKpiFooterPeople(people.length),
               ),
             ),
-            SizedBox(
-              width: width,
-              child: _MetricCard(
-                key: const ValueKey('ai-usage-kpi-disabled'),
+            cell(
+              const ValueKey('ai-usage-kpi-disabled'),
+              _MetricCard(
                 label: l10n.aiUsageDisabledCount,
                 value: data?.disabledCount,
                 icon: Icons.block_rounded,
                 danger: true,
+                footer: data == null
+                    ? null
+                    : l10n.aiUsageKpiFooterOverLimit(overLimit),
               ),
             ),
           ],
@@ -751,16 +797,19 @@ class _TodayTokensCard extends StatelessWidget {
 /// 简单计数卡(今日调用/活跃人数/已停用人数; 停用人数数字用 danger 色)。
 class _MetricCard extends StatelessWidget {
   const _MetricCard({
-    super.key,
     required this.label,
     required this.value,
     required this.icon,
+    this.footer,
     this.danger = false,
   });
 
   final String label;
   final int? value;
   final IconData icon;
+
+  /// 数值下的一行小字(如窗口累计/全员人数), 与今日消耗卡的预算行同位。
+  final String? footer;
   final bool danger;
 
   @override
@@ -768,40 +817,56 @@ class _MetricCard extends StatelessWidget {
     final theme = Theme.of(context);
     final color = danger ? theme.colorScheme.error : theme.colorScheme.primary;
     return UtenCard(
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: UtenRadius.mdAll,
-            ),
-            child: Icon(icon, size: 21, color: color),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: UtenRadius.mdAll,
                 ),
-                const SizedBox(height: UtenSpacing.s4),
-                UtenAnimatedNumber(
-                  value: value?.toDouble(),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: danger ? color : null,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                child: Icon(icon, size: 21, color: color),
+              ),
+              const SizedBox(width: UtenSpacing.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s4),
+                    UtenAnimatedNumber(
+                      value: value?.toDouble(),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: danger ? color : null,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          if (footer != null) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              footer!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );

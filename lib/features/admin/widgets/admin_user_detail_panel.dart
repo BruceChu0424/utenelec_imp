@@ -121,6 +121,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ? ref.watch(adminEffectivePermissionsProvider(widget.user.id))
         : null;
     final data = effectiveAsync?.valueOrNull;
+    // 人员信息行的「全部收回」需要整个目录的权限码；与权限分区共用同一 provider 缓存。
+    final catalog = widget.canManageAuthorization
+        ? ref.watch(permissionCatalogProvider).valueOrNull
+        : null;
     final dirtyCount = data == null ? 0 : _dirtyCount(data);
     final legacyUnknownCount = data == null
         ? 0
@@ -172,15 +176,44 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                     label: const Text('返回列表'),
                   ),
                 ),
-              _userSummary(),
+              _userSummary(data, catalog),
               if (!widget.user.currentEmployee) ...[
                 const SizedBox(height: UtenSpacing.s12),
                 _employmentRestrictionNotice(),
               ],
               if (widget.canManageAuthorization) ...[
                 const SizedBox(height: UtenSpacing.s12),
-                // 云端访问授权置于最顶部（用户要求「权限设置最顶部」），最显眼。
-                _remoteAccessTile(widget.user.remoteAccess),
+                // 云端访问授权置于最顶部（用户要求「权限设置最顶部」），与超管身份并排一行；
+                // 窄屏自动回退竖排。
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth >= 640) {
+                      // ListView 子项高度无界，stretch 须先经 IntrinsicHeight 定高。
+                      return IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _remoteAccessTile(
+                                widget.user.remoteAccess,
+                              ),
+                            ),
+                            const SizedBox(width: UtenSpacing.s12),
+                            Expanded(child: _superAdminTile(data)),
+                          ],
+                        ),
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _remoteAccessTile(widget.user.remoteAccess),
+                        const SizedBox(height: UtenSpacing.s12),
+                        _superAdminTile(data),
+                      ],
+                    );
+                  },
+                ),
                 const SizedBox(height: UtenSpacing.s12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -271,55 +304,157 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     setState(() => _section = section);
   }
 
-  Widget _userSummary() {
+  Widget _userSummary(
+    EffectivePermissions? data,
+    List<PermissionCatalogGroup>? catalog,
+  ) {
     final theme = Theme.of(context);
     final user = widget.user;
     final displayName = user.employeeName ?? user.loginAccount;
     final initial = displayName.trim().isEmpty
         ? '?'
         : displayName.trim().substring(0, 1).toUpperCase();
+    final subtitle = [
+      user.loginAccount,
+      if ((user.employeeCode ?? '').trim().isNotEmpty)
+        user.employeeCode!.trim(),
+      if ((user.departmentName ?? '').trim().isNotEmpty)
+        user.departmentName!.trim(),
+      if ((user.positionName ?? '').trim().isNotEmpty)
+        user.positionName!.trim(),
+    ].join(' · ');
+    // 「全部授权 / 全部收回」从权限目录顶部挪到人员信息行：可一键收回全部授权。
+    // 超管目标账号不可逐项调整，两个按钮随之隐藏。
+    final showBulkActions =
+        widget.canManageAuthorization && !(data?.superAdmin ?? false);
+    final bulkEnabled =
+        showBulkActions &&
+        data != null &&
+        catalog != null &&
+        user.authorizationGrantAllowed;
+    final explainDisabled =
+        !bulkEnabled && data != null && !user.authorizationGrantAllowed
+        ? _explainAuthorizationRestriction
+        : null;
+    final bulkButtons = [
+      UtenButton(
+        key: const ValueKey('admin-grant-all-permissions'),
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.small,
+        icon: Icons.done_all_rounded,
+        isLoading: _acting,
+        onPressed: bulkEnabled
+            ? () => _grantScope(data, PermissionBulkScope.everything)
+            : null,
+        onDisabledTap: explainDisabled,
+        child: const Text('全部授权'),
+      ),
+      const SizedBox(width: UtenSpacing.s8),
+      UtenButton(
+        key: const ValueKey('admin-revoke-all-permissions'),
+        type: UtenButtonType.danger,
+        size: UtenButtonSize.small,
+        icon: Icons.remove_done_outlined,
+        isLoading: _acting,
+        onPressed: bulkEnabled ? () => _confirmRevokeAll(data) : null,
+        onDisabledTap: explainDisabled,
+        child: const Text('全部收回'),
+      ),
+    ];
     return UtenCard(
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            child: Text(
-              initial,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final inlineBulk = showBulkActions && constraints.maxWidth >= 640;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    child: Text(
+                      initial,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  AccountStatusBadge(status: user.status),
+                  if (inlineBulk) ...[
+                    const SizedBox(width: UtenSpacing.s12),
+                    ...bulkButtons,
+                  ],
+                ],
               ),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  displayName,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${user.loginAccount}'
-                  '${user.departmentName == null ? '' : ' · ${user.departmentName}'}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              if (showBulkActions && !inlineBulk) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  children: bulkButtons,
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          AccountStatusBadge(status: user.status),
-        ],
+            ],
+          );
+        },
       ),
     );
+  }
+
+  /// 人员信息行「全部收回」：把整个目录的权限码全部标记为个人收回（本地暂存），
+  /// 并跳回操作权限分区露出保存条；实际生效仍走「保存更改」。
+  Future<void> _confirmRevokeAll(EffectivePermissions data) async {
+    if (!widget.user.authorizationGrantAllowed) {
+      _explainAuthorizationRestriction();
+      return;
+    }
+    final catalog = ref.read(permissionCatalogProvider).valueOrNull;
+    final codes = [
+      for (final group in catalog ?? const <PermissionCatalogGroup>[])
+        for (final permission in group.permissions) permission.code,
+    ];
+    if (codes.isEmpty) return;
+    final name = widget.user.employeeName ?? widget.user.loginAccount;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '全部收回权限',
+      content: Text(
+        '将把「$name」的全部 ${codes.length} 项权限设为未授权（含部门与基础权限，'
+        '仅对该账号个人收回），点击下方「保存更改」后生效。',
+      ),
+      confirmLabel: '确认收回',
+      danger: true,
+    );
+    if (!mounted || confirmed != true) return;
+    _setPermissionCodes(data, codes, false);
+    if (_section != _UserDetailSection.permissions) {
+      setState(() => _section = _UserDetailSection.permissions);
+    }
   }
 
   Widget _employmentRestrictionNotice() {
@@ -390,22 +525,9 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '完整权限不会减少。先按分组浏览，或搜索名称、代码和分组；'
-            '个人调整保存后会即时生效。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
-          ),
           if (!widget.user.authorizationGrantAllowed) ...[
             const SizedBox(height: UtenSpacing.s8),
             _authorizationRestrictionCard(data),
-          ],
-          if (widget.canManageAuthorization) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            _superAdminTile(data?.superAdmin ?? false),
           ],
           if (data?.departmentName != null) ...[
             const SizedBox(height: UtenSpacing.s8),
@@ -419,13 +541,6 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           ],
           const SizedBox(height: UtenSpacing.s12),
           _permMatrix(effectiveAsync, catalogAsync),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '整组批量操作位于分组右侧菜单；操作完整分组，不受当前搜索结果影响。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
         ],
       ),
     );
@@ -531,13 +646,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       isChanged: (permission) =>
           grants.contains(permission.code) || revokes.contains(permission.code),
       changedFilterLabel: '个人覆盖',
+      // 全量「全部授权 / 全部收回」已挪到顶部人员信息行；目录里只保留模块/子类分组批量。
+      showGlobalBulkActions: false,
       onGrantScope: canEdit ? (scope) => _grantScope(data, scope) : null,
       onDisableGroup: canEdit
           ? (permissions) => _setPermissions(data, permissions, false)
-          : null,
-      onDisableAll: canEdit
-          ? (permissions) =>
-                _setPermissionCodes(data, permissions.map((p) => p.code), false)
           : null,
       itemBuilder: (context, permission) => _permRow(data, permission),
     );
@@ -1059,18 +1172,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
-              if (user.mustChangePassword)
-                _tempPasswordPendingNotice(expiry, expiryExpired)
-              else
-                Text(
-                  '员工忘记密码时，可为其设置一次性临时密码；'
-                  '员工用临时密码登录后，系统会强制其设置新密码。',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1.5,
-                  ),
-                ),
-              const SizedBox(height: UtenSpacing.s12),
+              if (user.mustChangePassword) ...[
+                _tempPasswordPendingNotice(expiry, expiryExpired),
+                const SizedBox(height: UtenSpacing.s12),
+              ],
               UtenButton(
                 type: UtenButtonType.secondary,
                 size: UtenButtonSize.small,
@@ -1096,15 +1201,6 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 '账号状态',
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '锁定或停用后该账号立即无法登录，全部会话失效；'
-                '解锁/启用前请确认员工档案仍在职有效。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.5,
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -1187,25 +1283,6 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             ],
           ),
         ),
-        const SizedBox(height: UtenSpacing.s12),
-        Row(
-          children: [
-            Icon(
-              Icons.fact_check_outlined,
-              size: 16,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                '所有账号操作均记录审计日志，可追溯操作人、时间与结果。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -1278,10 +1355,14 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     );
   }
 
-  Widget _superAdminTile(bool isSuperAdmin) {
+  Widget _superAdminTile(EffectivePermissions? data) {
     final theme = Theme.of(context);
+    final isSuperAdmin = data?.superAdmin ?? false;
     final promote = !isSuperAdmin;
-    final toggleAllowed = !promote || widget.user.authorizationGrantAllowed;
+    // 生效权限未加载完成前先禁用按钮，避免普通账号状态闪现可点的「设为超管」。
+    final toggleAllowed =
+        data != null && (!promote || widget.user.authorizationGrantAllowed);
+    final promoteBlocked = promote && data != null && !toggleAllowed;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
       decoration: BoxDecoration(
@@ -1315,7 +1396,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   ),
                 ),
                 Text(
-                  promote && !toggleAllowed
+                  promoteBlocked
                       ? '${widget.user.authorizationRestrictionReason}，不能授予超级管理员。'
                       : isSuperAdmin
                       ? '默认拥有全部功能权限、可管理他人授权。'

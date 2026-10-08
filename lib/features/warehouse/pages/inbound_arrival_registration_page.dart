@@ -670,8 +670,8 @@ class _InboundArrivalRegistrationPageState
           icon: Icons.call_split_rounded,
           title: '本次登记涉及 ${effectiveLabels.length} 个入库仓库',
           detail:
-              '仓库：${effectiveLabels.join(' / ')}。服务端按「订货单 x 入库仓库」分组，'
-              '一个事务建好各张收货单；如需调整，点击各行「入库仓库」单独改仓。',
+              '仓库：${effectiveLabels.join(' / ')}。系统会按「订货单 x 入库仓库」分组，'
+              '一次把各张收货单一起建好；如需调整，点击各行「入库仓库」单独改仓。',
           key: const Key('warehouse-arrival-multi-warehouse-notice'),
         ),
       if (crossLineCount > 0)
@@ -683,7 +683,7 @@ class _InboundArrivalRegistrationPageState
           detail:
               '这些行的本次实收超过所选入库仓的分析预定量。可把本次实收改小到所选仓预定量，'
               '或勾选/右键移出整行，按实际到仓分批登记；若实物确在该仓，'
-              '确认后跨仓部分预计转公共库存，最终由 IQC 入库事务复核。',
+              '确认后多出的部分会先记到公共库存，入库时再由 IQC 核对。',
           key: const Key('warehouse-arrival-allocation-warehouse-notice'),
         ),
     ];
@@ -852,13 +852,13 @@ class _InboundArrivalRegistrationPageState
       // 有未勾选行时先说清去向，防「取消勾选=静默不登记」。
       description:
           (stockInFirst
-              ? '服务端按「订货单 x 入库仓库」分组建单，一个事务登记到货、送品质部待检，'
+              ? '系统按「订货单 x 入库仓库」分组建单，一次登记到货、送品质部待检，'
                     '并把每行实物按库位号上架(先入库后质检)：品质部到库位检验，合格后系统自动按上架位置转正入库，'
                     '不合格由仓库从库位取出登记退回；'
                     '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
                     '$overReceiptRule'
                     '实到超批准量的单自动隔离并通知财务审核组，隔离单不上架、不入库、不生成应付，也不影响其余单。'
-              : '服务端按「订货单 x 入库仓库」分组建单，一个事务登记到货并直送品质部待检(IQC)：'
+              : '系统按「订货单 x 入库仓库」分组建单，一次登记到货并直送品质部待检(IQC)：'
                     '检验合格后转仓库待入库，仓库确认实物与库位后库存才增加；'
                     '${hasCrossWarehouse ? '红色跨仓部分只是预计，将不绑定原计划并按实际仓公共入库，请重点复核；' : ''}'
                     '$overReceiptRule'

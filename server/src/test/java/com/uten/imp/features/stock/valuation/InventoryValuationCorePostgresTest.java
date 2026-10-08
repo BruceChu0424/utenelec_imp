@@ -225,7 +225,7 @@ class InventoryValuationCorePostgresTest {
         OpeningValue replay=locked(key,()->openings.open(command));
         assertThat(replay.replayed()).isTrue();assertThat(replay.eventId()).isEqualTo(first.eventId());
         assertThatThrownBy(()->locked(key,()->openings.open(new Opening(command.context(),key,bd("7"),bd("84"),bd("71"),true,command.reason()))))
-                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("防重复提交标识");
         assertThatThrownBy(()->opening(key,"7","70","70",true)).isInstanceOf(ApiException.class).hasMessageContaining("价值基准");
         assertThatThrownBy(()->tx.execute(status->openings.open(command))).isInstanceOf(IllegalStateException.class);
         assertBalance(key,"7","70");
@@ -352,7 +352,7 @@ class InventoryValuationCorePostgresTest {
                 context.sourceVersion(),context.actorUserId(),context.actorEmployeeId(),"different-retry-key",context.occurredAt());
         assertThat(locked(key,()->service.receive(new Receive(alias,UUID.randomUUID(),key,bd("2"),bd("2"),bd("20"),true))).replayed()).isTrue();
         assertThatThrownBy(()->locked(key,()->service.receive(new Receive(context,UUID.randomUUID(),key,bd("3"),bd("2"),bd("20"),true))))
-                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("防重复提交标识");
         assertThat(count("stock_value_events")).isEqualTo(events);assertThat(count("stock_movements")).isEqualTo(movements);assertBalance(key,"2","20");
     }
 

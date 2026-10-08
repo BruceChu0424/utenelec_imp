@@ -19,13 +19,13 @@ class ProductionFqcReplenishmentMaterialContractTest {
 
         assertThat(source)
                 .contains("WHERE attempt.idempotency_key = :key")
-                .contains("相同幂等键已用于另一补产物料确认请求")
+                .contains("同一防重复提交标识已用于另一补产物料确认请求，请刷新后重试")
                 .contains("demand.requiredQty()")
                 .contains(".subtract(demand.committedQty())")
                 .contains("stockAllocation.allocate(requests)")
                 .contains("shortages.isEmpty() && drawId(cycleId) == null")
                 .contains("FQC-MATERIAL-ALLOCATE:")
-                .contains("外购物料库存不足；采购到货入库后使用新幂等键重试")
+                .contains("外购物料库存不足；采购到货入库后请刷新页面重新确认")
                 .contains("当前不自动伪造子计划")
                 .contains("须先完成独立委外供应并入库");
     }

@@ -93,8 +93,8 @@ class FinanceLegacyOpeningSummaryPostgresTest {
     @ParameterizedTest @ValueSource(strings={"AR","AP"})
     void beforeOrAcrossShanghaiCutoffIsRejectedWhileTheNextWindowIsValid(String direction) {
         opening(direction,"17","2025-01-31T16:00:00Z"); // February 1, Shanghai.
-        assertThatThrownBy(()->summary(direction,"2025-01-01",null)).isInstanceOf(ApiException.class).hasMessageContaining("快照截止日");
-        assertThatThrownBy(()->summary(direction,"2025-02-01",null)).isInstanceOf(ApiException.class).hasMessageContaining("快照截止日");
+        assertThatThrownBy(()->summary(direction,"2025-01-01",null)).isInstanceOf(ApiException.class).hasMessageContaining("数据截止日");
+        assertThatThrownBy(()->summary(direction,"2025-02-01",null)).isInstanceOf(ApiException.class).hasMessageContaining("数据截止日");
         assertAmounts(summary(direction,"2025-03-01",null),"17","0","17",direction);
     }
 

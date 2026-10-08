@@ -45,7 +45,7 @@ public final class VisitorApplyDto {
             @NotBlank(message = "审批动作不能为空")
             @Pattern(
                     regexp = "^(?:approve|reject|forward)$",
-                    message = "审批动作不合法")
+                    message = "审批动作不正确")
             String action,
             @Size(max = 1000, message = "审批意见不能超过1000个字符")
             String comment,

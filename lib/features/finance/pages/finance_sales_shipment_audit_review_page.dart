@@ -296,7 +296,7 @@ class _FinanceSalesShipmentAuditReviewPageState
         claim == null ||
         !claim.isReady ||
         _busy) {
-      context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
+      context.appWarning('审核认领还没有生效，请重新认领并核对内容');
       return;
     }
     final String? exchangeRate;
@@ -367,7 +367,7 @@ class _FinanceSalesShipmentAuditReviewPageState
           generation != _loadGeneration ||
           !identical(info, _info)) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核内容或占用已变化，请重新认领并核对');
+          context.appWarning(claim.failureMessage ?? '审核内容或认领已变化，请重新认领并核对');
         }
         return;
       }
@@ -403,7 +403,7 @@ class _FinanceSalesShipmentAuditReviewPageState
         claim == null ||
         !claim.isReady ||
         _busy) {
-      context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
+      context.appWarning('审核认领还没有生效，请重新认领并核对内容');
       return;
     }
     final generation = _loadGeneration;
@@ -483,7 +483,7 @@ class _FinanceSalesShipmentAuditReviewPageState
           generation != _loadGeneration ||
           !identical(info, _info)) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核内容或占用已变化，请重新认领并核对');
+          context.appWarning(claim.failureMessage ?? '审核内容或认领已变化，请重新认领并核对');
         }
         return;
       }

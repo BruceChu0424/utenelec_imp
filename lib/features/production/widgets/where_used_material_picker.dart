@@ -430,7 +430,7 @@ class _MaterialTile extends StatelessWidget {
 
     final semanticSources = <String>[
       if (item.currentBom) '当前 BOM',
-      if (item.bomIssue) 'BOM 异常待治理',
+      if (item.bomIssue) 'BOM 异常待处理',
       if (item.productionHistory) '生产历史',
       if (item.subcontractHistory) '委外历史',
       if (!hasKnownEvidence) '暂无已知关系',

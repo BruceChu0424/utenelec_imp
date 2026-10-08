@@ -146,7 +146,7 @@ public class FinanceReceiptSourceAllocationService {
     @SuppressWarnings("unchecked")
     private void allocateLine(FinanceReceipt receipt, FinanceReceiptLine line) {
         if (line.getAppliedLedgerId() == null || line.getId() == null) {
-            throw validation("收款明细必须关联稳定的应收台账 UUID");
+            throw validation("收款明细必须关联确定的应收台账记录，请重新选择核销的应收");
         }
         if (hasIndependentLedgerAuthority(receipt,line)) return;
         long existing = number(em.createNativeQuery("""
@@ -199,12 +199,12 @@ public class FinanceReceiptSourceAllocationService {
                 FOR UPDATE
                 """).setParameter("ledgerId", line.getAppliedLedgerId()).getResultList();
         if (refs.isEmpty()) {
-            throw conflict("该应收没有不可变 SALES_ORDER 来源 UUID，禁止猜测收款归属");
+            throw conflict("该应收缺少固定的销售单来源，不能猜测收款归属，请核对来源数据");
         }
         BigDecimal sourceTotal = refs.stream().map(row -> NativeValueConverters.toBigDecimal(row[3]))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (sourceTotal.compareTo(NativeValueConverters.toBigDecimal(ledger[3])) != 0) {
-            throw conflict("应收原币与销售单来源原币不守恒，禁止自动分配");
+            throw conflict("应收原币与销售单来源的原币对不上，不能自动分配，请核对来源数据");
         }
 
         BigDecimal cashRemaining = cash;
@@ -237,7 +237,7 @@ public class FinanceReceiptSourceAllocationService {
                         ? refLocalRemaining : money(slice.multiply(recognitionRate)));
             if (bookLocal.signum() < 0 || bookLocal.compareTo(refLocalRemaining) > 0
                     || bookLocal.compareTo(bookLocalRemaining) > 0) {
-                throw conflict("销售单来源账面本币不足或尾差不守恒，禁止自动分配");
+                throw conflict("销售单来源的账面本币不够或尾差对不上，不能自动分配，请核对来源数据");
             }
             em.createNativeQuery("""
                     INSERT INTO finance_receipt_source_allocations(
@@ -282,7 +282,7 @@ public class FinanceReceiptSourceAllocationService {
         if (cashRemaining.signum() != 0 || cashLocalRemaining.signum() != 0
                 || writeOffRemaining.signum() != 0 || writeOffLocalRemaining.signum() != 0
                 || appliedRemaining.signum() != 0 || bookLocalRemaining.signum() != 0) {
-            throw conflict("销售单来源可用余额不足，收款来源分配不守恒");
+            throw conflict("销售单来源的可用余额不够分完这笔收款，请核对来源分配");
         }
     }
 
@@ -328,7 +328,7 @@ public class FinanceReceiptSourceAllocationService {
         if (originalPart.signum() == 0) return BigDecimal.ZERO.setScale(MONEY_SCALE);
         if (originalPart.compareTo(originalRemaining) == 0) return money(localRemaining);
         BigDecimal value = com.uten.imp.common.finance.FinancialBookAllocation.part(originalPart,originalRemaining,localRemaining);
-        if (value.compareTo(localRemaining) > 0) throw conflict("到账本币分配超过剩余快照");
+        if (value.compareTo(localRemaining) > 0) throw conflict("到账本币的分配金额超过了剩余可分配金额");
         return value;
     }
 

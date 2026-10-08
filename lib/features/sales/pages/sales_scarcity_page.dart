@@ -104,7 +104,9 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              decoration: InputDecoration(hintText: '让单数量(0 < 数量 ≤ $reserved)'),
+              decoration: InputDecoration(
+                hintText: '让单数量(要大于 0，不超过 $reserved)',
+              ),
             ),
             const SizedBox(height: UtenSpacing.s8),
             TextField(
@@ -133,11 +135,11 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
     if (!mounted) return;
     if (ok != true) return;
     if (qty == null || qty <= 0 || qty > reserved) {
-      context.appWarning('让单数量须 > 0 且 ≤ $reserved');
+      context.appWarning('让单数量要大于 0，且不能超过 $reserved');
       return;
     }
     if (reason.isEmpty) {
-      context.appWarning('让单须填原因');
+      context.appWarning('请填写让单原因');
       return;
     }
     setState(() => _busy = true);

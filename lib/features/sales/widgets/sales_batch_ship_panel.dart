@@ -97,8 +97,8 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = '可发行加载失败');
-      context.appApiError(e, fallback: '可发行加载失败');
+      setState(() => _error = '可发订单行加载失败');
+      context.appApiError(e, fallback: '可发订单行加载失败，请稍后重试');
     }
   }
 
@@ -134,7 +134,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
           !qty.isFinite ||
           qty <= 0 ||
           !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(raw)) {
-        _toast('订单 ${l.billNo} 本次数量须大于 0');
+        _toast('订单 ${l.billNo} 的本次数量要大于 0');
         return;
       }
       if (qty > reserved) {
@@ -144,7 +144,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
       final weightText = _weightCtl[l.orderItemId]?.text.trim() ?? '';
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
-        _toast('订单 ${l.billNo} 的实际重量必须大于 0');
+        _toast('订单 ${l.billNo} 的实际重量要大于 0');
         return;
       }
       lines.add({'orderItemId': l.orderItemId, 'qty': qty, 'weight': ?weight});
@@ -162,7 +162,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
             lines: _retainedLines!,
           );
       if (!mounted) return;
-      if (created.isEmpty) throw const FormatException('未收到开单结果');
+      if (created.isEmpty) throw const FormatException('没有收到开单结果，请重试确认');
       refreshBadges(ref);
       bumpListRefresh(ref, SalesDocConfig.shipment.refreshKey);
       bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
@@ -247,7 +247,7 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
                 : lines == null
                 ? const Center(child: CircularProgressIndicator())
                 : lines.isEmpty
-                ? const UtenEmpty(message: '暂无可发货的订单行(reserved > 0)')
+                ? const UtenEmpty(message: '暂无可发货的订单行（有可发数量的订单行才会显示在这里）')
                 : ListView.separated(
                     padding: const EdgeInsets.all(UtenSpacing.s8),
                     itemCount: lines.length,

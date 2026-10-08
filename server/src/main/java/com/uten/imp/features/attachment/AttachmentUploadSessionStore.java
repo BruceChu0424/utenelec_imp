@@ -73,7 +73,7 @@ class AttachmentUploadSessionStore {
                     Timestamp.from(grant.expiresAt()), storageProvider);
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Attachment upload reservation already exists");
+                    "这个文件的上传登记已存在，请重新上传");
         }
         return id;
     }
@@ -83,7 +83,7 @@ class AttachmentUploadSessionStore {
         UploadSession session = findForUpdate(grant.storageKey());
         if (session == null || !session.matches(grant)) {
             throw new ApiException(ErrorCode.FORBIDDEN,
-                    "Attachment upload reservation does not match the signed grant");
+                    "上传信息与登记的不一致，请重新上传");
         }
         if (!session.expiresAt().isAfter(Instant.now())) {
             jdbc.update("""
@@ -93,11 +93,11 @@ class AttachmentUploadSessionStore {
                     WHERE id = ? AND status IN ('PENDING','SCANNING')
                     """, session.id());
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Attachment upload reservation expired; upload again");
+                    "上传登记已过期，请重新上传");
         }
         if (!"PENDING".equals(session.status())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Attachment upload is already being processed");
+                    "这个文件正在处理中，请稍候再确认");
         }
         jdbc.update("""
                 UPDATE attachment_upload_sessions
@@ -252,8 +252,8 @@ class AttachmentUploadSessionStore {
         if (current.count() >= countLimit
                 || current.bytes() > byteLimit - requestedBytes) {
             throw new ApiException(ErrorCode.PAYLOAD_TOO_LARGE,
-                    "Attachment pending quota exceeded for " + scope
-                            + "; complete or expire earlier uploads first");
+                    "待完成的上传太多或占用空间太大（" + scope
+                            + "），请先完成或等待之前的上传过期，再重新上传");
         }
     }
 

@@ -87,14 +87,14 @@ public class FinanceAssetPostingService {
         for (Candidate candidate : candidates) {
             String message = continuity;
             if (message == null && candidate.amount().signum() <= 0) {
-                message = "Calculated amount rounds to zero at four-decimal ledger precision; adjust policy";
+                message = "算出来的金额按账面精度（4 位小数）四舍五入后是 0，请先调整折旧/摊销政策";
             }
             if (message == null && candidate.expectedPeriod() != null
                     && !command.period().equals(candidate.expectedPeriod())) {
-                message = "Object must post period " + candidate.expectedPeriod() + " before " + command.period();
+                message = "这项资产要先过账 " + candidate.expectedPeriod() + " 期间，才能过账 " + command.period();
             }
             if (message == null && !candidate.accountsReady()) {
-                message = "Approved account snapshot is incomplete or no longer usable";
+                message = "审批通过的科目信息不完整或已不可用，请重新提交审批";
             }
             if (message == null) {
                 message = postingAccountIssue(candidate);
@@ -144,10 +144,10 @@ public class FinanceAssetPostingService {
         requireVersion(locked.version(), command.expectedVersion());
         if (command.token() == null || locked.tokenHash() == null || !hash(command.token()).equals(locked.tokenHash())
                 || locked.tokenExpiresAt() == null || locked.tokenExpiresAt().isBefore(Instant.now())) {
-            throw conflict("Posting preview token is invalid or expired; create a new preview");
+            throw conflict("预览已失效或过期，请重新生成预览");
         }
         if (blockingIssues(locked.exceptionJson()) > 0) {
-            throw conflict("Posting preview has blocking exceptions");
+            throw conflict("预览里还有必须先处理的问题，请先处理再提交");
         }
         changed(em.createNativeQuery("""
                 UPDATE finance_asset_posting_runs
@@ -169,7 +169,7 @@ public class FinanceAssetPostingService {
         Run locked = lock(runId);
         FinanceAssetStateMachine.requireRunTransition(locked.status(), "APPROVED");
         requireVersion(locked.version(), command.expectedVersion());
-        AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "approve");
+        AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "审批");
         changed(em.createNativeQuery("""
                 UPDATE finance_asset_posting_runs
                 SET status='APPROVED',approved_at=now(),approved_by=:actor,
@@ -191,7 +191,7 @@ public class FinanceAssetPostingService {
         Run locked = lock(runId);
         FinanceAssetStateMachine.requireRunTransition(locked.status(), "POSTED");
         requireVersion(locked.version(), command.expectedVersion());
-        AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "post");
+        AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "过账");
         AssetPostingPolicy.requireCorporateGlBook(locked.bookType());
         periods.ensureOpen(locked.period(), FinanceAssetAuthorization.POST);
         advisoryLock(locked.runType(), locked.bookType(), locked.period());
@@ -209,7 +209,7 @@ public class FinanceAssetPostingService {
         Run original = lock(originalRunId);
         requireVersion(original.version(), command.expectedVersion());
         if (!"NORMAL".equals(original.runKind()) || !"POSTED".equals(original.status())) {
-            throw conflict("Only an effective posted normal run can be reversed");
+            throw conflict("只有已生效过账的正常批次才能红冲");
         }
         periods.ensureOpen(original.period(), FinanceAssetAuthorization.POST);
         advisoryLock(original.runType(), original.bookType(), original.period());
@@ -219,7 +219,7 @@ public class FinanceAssetPostingService {
                   AND period>:period AND is_deleted=false
                 """).setParameter("type", original.runType()).setParameter("book", original.bookType())
                 .setParameter("period", original.period()).getSingleResult();
-        if (later.intValue() > 0) throw conflict("Reverse later effective periods first");
+        if (later.intValue() > 0) throw conflict("请先红冲更晚期间的过账批次，再红冲本期间");
         Number derecognized = (Number) em.createNativeQuery("""
                 SELECT (SELECT COUNT(*) FROM finance_asset_posting_lines l
                         JOIN fixed_assets a ON a.id=l.fixed_asset_id
@@ -229,7 +229,7 @@ public class FinanceAssetPostingService {
                         WHERE l.run_id=:run AND d.lifecycle_status='TERMINATED')
                 """).setParameter("run", originalRunId).getSingleResult();
         if (derecognized.longValue() > 0) {
-            throw conflict("Reverse the later disposal or termination workflow before reversing this run");
+            throw conflict("请先撤销后面的处置或终止流程，再红冲这个过账批次");
         }
 
         UUID reversalId = UUID.randomUUID();
@@ -308,14 +308,14 @@ public class FinanceAssetPostingService {
                   AND run_kind='NORMAL' AND status='POSTED' AND id<>:id AND is_deleted=false
                 """).setParameter("type", run.runType()).setParameter("book", run.bookType())
                 .setParameter("period", run.period()).setParameter("id", run.id()).getSingleResult();
-        if (duplicate.intValue() > 0) throw conflict("An effective run is already posted for this period");
+        if (duplicate.intValue() > 0) throw conflict("这个期间已经有一个生效的过账批次，不能重复过账");
         String continuity = continuityIssue(run.runType(), run.bookType(), AssetPeriod.parse(run.period()));
         if (continuity != null) throw conflict(continuity);
         if (!unactivatedIssues(run.runType(), run.period()).isEmpty()) {
-            throw conflict("Approved objects must be activated before posting this period");
+            throw conflict("有资产已审批但还没启用，请先完成启用再过账这个期间");
         }
         if ("AMORTIZATION".equals(run.runType()) && !deferredBacklogIssues(run.period()).isEmpty()) {
-            throw conflict("Earlier deferred-expense schedule periods must be posted first");
+            throw conflict("更早期间的长期待摊费用还没过账，请先过账更早的期间");
         }
         List<Candidate> current = "DEPRECIATION".equals(run.runType())
                 ? fixedCandidates(run.bookType(), run.period()) : deferredCandidates(run.period());
@@ -325,7 +325,7 @@ public class FinanceAssetPostingService {
         }
         String currentFingerprint = fingerprint(run.runType(), run.bookType(), AssetPeriod.parse(run.period()), current);
         if (!run.fingerprint().equals(currentFingerprint)) {
-            throw conflict("Posting candidate set changed after preview; create and approve a new preview");
+            throw conflict("预览之后资产数据有变化，请重新生成预览并审批后再过账");
         }
         verifySnapshot(run);
         List<PostingFact> facts = facts(run.id());
@@ -343,7 +343,7 @@ public class FinanceAssetPostingService {
     private void postReversal(Run run, UUID actor) {
         Run original = lock(run.reversalOf());
         if (!"POSTED".equals(original.status())) {
-            throw conflict("Original posting run is no longer effective");
+            throw conflict("原过账批次已不是生效状态，不能红冲，请刷新后重试");
         }
         Number later = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_asset_posting_runs
@@ -351,7 +351,7 @@ public class FinanceAssetPostingService {
                   AND period>:period AND is_deleted=false
                 """).setParameter("type", original.runType()).setParameter("book", original.bookType())
                 .setParameter("period", original.period()).getSingleResult();
-        if (later.longValue() > 0) throw conflict("Reverse later effective periods first");
+        if (later.longValue() > 0) throw conflict("请先红冲更晚期间的过账批次，再红冲本期间");
         String objectLockSql = "DEPRECIATION".equals(original.runType()) ? """
                 SELECT a.id,a.lifecycle_status FROM finance_asset_posting_lines l
                 JOIN fixed_assets a ON a.id=l.fixed_asset_id
@@ -365,10 +365,10 @@ public class FinanceAssetPostingService {
                 .setParameter("run",original.id()).getResultList();
         boolean derecognized = objectStates.stream().anyMatch(row ->
                 "DISPOSED".equals(NativeValueConverters.text(row[1])) || "TERMINATED".equals(NativeValueConverters.text(row[1])));
-        if (derecognized) throw conflict("Reverse the later disposal or termination workflow first");
+        if (derecognized) throw conflict("请先撤销后面的处置或终止流程，再红冲这个批次");
         List<PostingFact> facts = facts(run.id());
         if (original.voucherId() == null && !facts.isEmpty()) {
-            throw conflict("Original non-zero run has no voucher");
+            throw conflict("原过账批次有金额但没有对应的凭证，不能红冲，请核对数据");
         }
         UUID voucher = original.voucherId() == null ? null : ledger.reverse(
                 original.voucherId(), voucherNo(run), run.period(), YearMonth.parse(run.period()).atEndOfMonth(),
@@ -406,7 +406,7 @@ public class FinanceAssetPostingService {
     }
 
     private void verifySnapshot(Run run) {
-        if (blockingIssues(run.exceptionJson()) > 0) throw conflict("Posting run contains blocking exceptions");
+        if (blockingIssues(run.exceptionJson()) > 0) throw conflict("过账批次里还有必须先处理的问题，请先处理再过账");
         String fixedSql = """
                 SELECT COUNT(*) FROM finance_asset_posting_lines l
                 JOIN finance_asset_books b ON b.id=l.asset_book_id
@@ -437,7 +437,7 @@ public class FinanceAssetPostingService {
                 """;
         int changed = ((Number) em.createNativeQuery(fixedSql).setParameter("run", run.id()).getSingleResult()).intValue()
                 + ((Number) em.createNativeQuery(deferredSql).setParameter("run", run.id()).getSingleResult()).intValue();
-        if (changed > 0) throw conflict("Asset inputs changed after preview; create and approve a new preview");
+        if (changed > 0) throw conflict("预览之后资产数据有变化，请重新生成预览并审批后再过账");
     }
 
     private List<Candidate> fixedCandidates(String bookType, String period) {
@@ -522,7 +522,7 @@ public class FinanceAssetPostingService {
                 GROUP BY d.id
                 """).setParameter("period",period).getResultList();
         return rows.stream().map(row -> issue("PERIOD_GAP","BLOCKING",
-                "Deferred expense must post period "+NativeValueConverters.text(row[1])+" first",NativeValueConverters.uuid(row[0]))).toList();
+                "这笔长期待摊费用要先过账 "+NativeValueConverters.text(row[1])+" 期间",NativeValueConverters.uuid(row[0]))).toList();
     }
 
     private List<Map<String, Object>> unactivatedIssues(String runType, String period) {
@@ -538,7 +538,7 @@ public class FinanceAssetPostingService {
         @SuppressWarnings("unchecked") List<Object> rows=em.createNativeQuery(sql).setParameter("period",period).getResultList();
         return rows.stream().map(NativeValueConverters::uuid)
                 .map(id -> issue("APPROVED_NOT_ACTIVATED","BLOCKING",
-                        "Approved object must be activated before this period can post",id)).toList();
+                        "已审批的资产要先启用，这个期间才能过账",id)).toList();
     }
 
     private void insertLine(UUID run, int sequence, String period, Candidate c, UUID actor) {
@@ -714,7 +714,7 @@ public class FinanceAssetPostingService {
                 FROM finance_asset_posting_runs r LEFT JOIN gl_vouchers v ON v.id=r.voucher_id
                 WHERE r.id=:id AND r.is_deleted=false
                 """).setParameter("id", id).getResultList();
-        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Posting run not found");
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "过账批次不存在或已被删除");
         Object[] r = rows.getFirst();
         List<AssetWorkbenchResponses.PostingLine> lines = lineResponses(id);
         String status = NativeValueConverters.text(r[5]);
@@ -755,7 +755,7 @@ public class FinanceAssetPostingService {
                        reversal_reason,row_version
                 FROM finance_asset_posting_runs WHERE id=:id AND is_deleted=false FOR UPDATE
                 """).setParameter("id", id).getResultList();
-        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Posting run not found");
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "过账批次不存在或已被删除");
         Object[] r = rows.getFirst();
         return new Run(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),NativeValueConverters.text(r[2]),NativeValueConverters.text(r[3]),NativeValueConverters.text(r[4]),NativeValueConverters.text(r[5]),NativeValueConverters.text(r[6]),NativeValueConverters.text(r[7]),
                 NativeValueConverters.toInstant(r[8]),NativeValueConverters.text(r[9]),NativeValueConverters.uuid(r[10]),NativeValueConverters.uuid(r[11]),NativeValueConverters.uuid(r[12]),NativeValueConverters.text(r[13]),number(r[14]).longValue());
@@ -769,17 +769,17 @@ public class FinanceAssetPostingService {
                 """).setParameter("type", runType).setParameter("book", bookType).getResultList();
         if (rows.isEmpty()) {
             AssetPeriod cutover = new AssetPeriod(YearMonth.now(SHANGHAI));
-            return cutover.equals(requested) ? null : "First posting period must be current cutover period " + cutover;
+            return cutover.equals(requested) ? null : "第一次过账必须从当前期间 " + cutover + " 开始";
         }
         AssetPeriod expected = AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next();
-        return expected.equals(requested) ? null : "Next posting period must be " + expected;
+        return expected.equals(requested) ? null : "过账期间必须接着上一次往后做，下一个应过账期间是 " + expected;
     }
 
     private void requireNormalRunHorizon(String runType, String bookType, AssetPeriod requested) {
         AssetPeriod current = new AssetPeriod(YearMonth.now(SHANGHAI));
         if (requested.value().isAfter(current.value())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Posting period cannot be later than current Shanghai period " + current);
+                    "过账期间不能晚于当前会计期间 " + current);
         }
         Number posted = (Number) em.createNativeQuery("""
                 SELECT COUNT(*) FROM finance_asset_posting_runs
@@ -788,7 +788,7 @@ public class FinanceAssetPostingService {
                 """).setParameter("type", runType).setParameter("book", bookType).getSingleResult();
         if (posted.longValue() == 0 && !requested.equals(current)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "First posting period must be current cutover period " + current);
+                    "第一次过账必须从当前期间 " + current + " 开始");
         }
     }
 
@@ -808,26 +808,26 @@ public class FinanceAssetPostingService {
 
     private String postingAccountIssue(Candidate candidate) {
         if (!candidate.accountsReady()) {
-            return "Approved account snapshot is incomplete";
+            return "审批通过的科目信息不完整，请重新提交审批";
         }
         List<UUID> accountIds = "FIXED_ASSET".equals(candidate.objectType())
                 ? List.of(candidate.costStyle(), candidate.accumulatedStyle(),
                         candidate.expenseStyle(), candidate.clearingStyle())
                 : List.of(candidate.costStyle(), candidate.expenseStyle(), candidate.clearingStyle());
         if (accountIds.stream().distinct().count() != accountIds.size()) {
-            return "Approved cost, accumulated depreciation, expense and clearing accounts must be distinct";
+            return "审批通过的成本、累计折旧、费用和清理科目必须互不相同";
         }
         if (!postableStyle(candidate.costStyle(), "ACCOUNT")) {
-            return "Approved cost account is not an active postable ACCOUNT leaf";
+            return "审批通过的成本科目不是在用的、可过账的账户类末级科目";
         }
         if (candidate.accumulatedStyle() != null && !postableStyle(candidate.accumulatedStyle(), "ACCOUNT")) {
-            return "Approved accumulated depreciation account is not an active postable ACCOUNT leaf";
+            return "审批通过的累计折旧科目不是在用的、可过账的账户类末级科目";
         }
         if (!postableStyle(candidate.expenseStyle(), "EXPENSE")) {
-            return "Approved expense account is not an active postable EXPENSE leaf";
+            return "审批通过的费用科目不是在用的、可过账的费用类末级科目";
         }
         if (!postableStyle(candidate.clearingStyle(), "ACCOUNT")) {
-            return "Approved clearing account is not an active postable ACCOUNT leaf";
+            return "审批通过的清理科目不是在用的、可过账的账户类末级科目";
         }
         return null;
     }
@@ -863,7 +863,7 @@ public class FinanceAssetPostingService {
 
     private List<Map<String, Object>> exceptions(String value) {
         try { return objectMapper.readValue(value, new TypeReference<>() {}); }
-        catch (JsonProcessingException exception) { throw new ApiException(ErrorCode.INTERNAL, "Invalid posting exception snapshot"); }
+        catch (JsonProcessingException exception) { throw new ApiException(ErrorCode.INTERNAL, "过账异常记录的数据无效，请重新发起过账"); }
     }
 
     private int blockingIssues(String value) {
@@ -884,7 +884,7 @@ public class FinanceAssetPostingService {
 
     private String json(Object value) {
         try { return objectMapper.writeValueAsString(value); }
-        catch (JsonProcessingException exception) { throw new ApiException(ErrorCode.INTERNAL, "Unable to serialize posting snapshot"); }
+        catch (JsonProcessingException exception) { throw new ApiException(ErrorCode.INTERNAL, "过账数据保存失败，请重试"); }
     }
 
     private static String hash(String value) {
@@ -898,10 +898,10 @@ public class FinanceAssetPostingService {
     }
 
     private static void requireVersion(long actual, Long expected) {
-        if (expected == null || actual != expected) throw conflict("Posting run changed; refresh and retry");
+        if (expected == null || actual != expected) throw conflict("过账批次已被别人修改，请刷新后重试");
     }
 
-    private static void changed(int count) { if (count != 1) throw conflict("Concurrent posting change; refresh and retry"); }
+    private static void changed(int count) { if (count != 1) throw conflict("过账批次刚被别人处理过，请刷新后重试"); }
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT, message); }
     private static Object[] single(Object value) { return value instanceof Object[] row ? row : new Object[]{value}; }
     private static Number number(Object value) { return (Number) value; }

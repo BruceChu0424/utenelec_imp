@@ -181,7 +181,7 @@ class _SupplierCreditApplyPanelState
       widget.source.outstandingOriginal,
     )?.abs();
     if (sourceCapacity == null || sourceCapacity == BigInt.zero) {
-      context.appError('贷项可用原币余额无效，请刷新后重试');
+      context.appError('贷项可用余额的数据有问题，请刷新后重试');
       return;
     }
     var total = BigInt.zero;

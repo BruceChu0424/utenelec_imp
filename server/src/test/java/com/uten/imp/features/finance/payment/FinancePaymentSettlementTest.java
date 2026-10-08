@@ -230,7 +230,7 @@ class FinancePaymentSettlementTest {
 
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("付款创建幂等键格式不正确");
+                .hasMessageContaining("付款提交标识格式不正确");
         verify(paymentRepo, never()).save(any());
     }
 
@@ -267,7 +267,7 @@ class FinancePaymentSettlementTest {
 
         assertThatThrownBy(() -> service.create(changed))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("幂等键已用于不同内容");
+                .hasMessageContaining("内容不同的付款单");
         assertThat(payments).hasSize(1);
     }
 
@@ -668,7 +668,7 @@ class FinancePaymentSettlementTest {
         assertThat(replay.getId()).isEqualTo(original.getId());assertThat(replay.getAmountAuthorityVersion()).isEqualTo((short)1);
         assertThat(replay.getAccountAmount()).isNull();verify(paymentRepo,never()).save(any());
         request.setAccountAmount(new BigDecimal("30"));
-        assertThatThrownBy(()->service.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("幂等键已用于不同内容");
+        assertThatThrownBy(()->service.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("内容不同的付款单");
     }
 
     private static void assertMoney(BigDecimal actual, String expected) {

@@ -1347,8 +1347,8 @@ class _ProcurementInspectionDetailPageState
         UtenNotify.error(
           context,
           rejected
-              ? '提交被拒：${error.message}；请刷新后按最新待检量重填'
-              : '提交结果尚未确认：${error.message}；请重试原报告核对，原数量和请求编号已保留',
+              ? '没有提交成功：${error.message}；请刷新后按最新待检量重填'
+              : '提交结果尚未确认：${error.message}；请点「核对原报告」重试，你填的数量都还在',
         );
       }
     } catch (error) {
@@ -1426,7 +1426,7 @@ class _ProcurementInspectionDetailPageState
     if (_submission != null && _items.isEmpty) {
       return UtenEmpty(
         message: '上次检验报告提交结果待确认',
-        description: '原始数量和请求编号已保留，核对将使用原报告，不会生成新的检验决定。',
+        description: '你填的数量都还在，核对会按原报告重试，不会重复出检验结果。',
         actionLabel: '核对原报告',
         onAction: _busyDecision ? null : _sendPendingReport,
       );
@@ -1623,7 +1623,7 @@ class _ProcurementInspectionDetailPageState
                     _canHandle
                         ? '行内直接修改合格数量/不合格数量（默认全合格），勾选后点'
                               '「提交报告」一次办结；含不合格数量时结论原因必填。'
-                        : '当前为只读查看；品质处置需要 procurement_inspection:handle 权限。',
+                        : '当前为只读查看；办理品质处置需要品质处理权限，请联系管理员开通。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.primary,
                       fontWeight: FontWeight.w600,

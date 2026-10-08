@@ -148,7 +148,7 @@ void main() {
         costMaps(costs.previewInput?['lineOverrides']).single['unitPrice'],
         '20',
       );
-      expect(find.text('校验重算'), findsNothing);
+      expect(find.text('检查并重算'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

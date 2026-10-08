@@ -25,7 +25,7 @@ class ProfileChangeAccess {
     AuthUser requireHr() {
         AuthUser u = requireStaff();
         if (!u.getPermissions().contains("profile:review") && !u.isSuperAdmin()) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "无 profile:review 权限");
+            throw new ApiException(ErrorCode.FORBIDDEN, "没有审核个人信息修改的权限");
         }
         return u;
     }

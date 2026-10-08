@@ -103,7 +103,7 @@ public class ClientCategoryService {
         boolean moveToRoot = Boolean.TRUE.equals(req.getMoveToRoot());
         if (moveToRoot && req.getParentId() != null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "parentId 与 moveToRoot 不能同时提交");
+                    "不能同时选择上级分类和移到顶层");
         }
         if (req.getParentId() != null || moveToRoot || req.getCodePrefix() != null) {
             lockCategoryHierarchy();
@@ -146,7 +146,7 @@ public class ClientCategoryService {
                     throw new ApiException(ErrorCode.CONFLICT, "上级不能是自己");
                 }
                 if (repo.isDescendant(id, requestedParentId)) {
-                    throw new ApiException(ErrorCode.CONFLICT, "不能将分类挂到其子分类下(会成环)");
+                    throw new ApiException(ErrorCode.CONFLICT, "不能把分类移到它自己的下级分类下");
                 }
                 c.setParent(requireCategory(requestedParentId));
             }
@@ -207,7 +207,7 @@ public class ClientCategoryService {
     /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */
     private void relevelSubtree(UUID rootId) {
         if (repo.rebuildSubtreeHierarchy(rootId) == 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "客户分类子树结构异常，无法安全移动");
+            throw new ApiException(ErrorCode.CONFLICT, "客户分类层级数据异常，无法移动，请联系管理员");
         }
     }
 

@@ -90,7 +90,7 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _detecting = false);
-      context.appError('Excel 文件选择异常，请重试'); // TODO(l10n): 补 arb
+      context.appError('选择文件时出了问题，请重试'); // TODO(l10n): 补 arb
     }
   }
 
@@ -121,7 +121,7 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _detecting = false);
-      context.appError('Excel 文件选择或检测异常，请重试'); // TODO(l10n): 补 arb
+      context.appError('读取或检测文件时出了问题，请重试'); // TODO(l10n): 补 arb
     }
   }
 
@@ -166,7 +166,7 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     } catch (_) {
       if (!mounted) return;
       _markUncertain();
-      context.appError('提交结果暂未确认，请先核对BOM；重试会沿用上次检测，防止重复写入');
+      context.appError('不确定导入是否成功，请先核对组装清单(BOM)；重试会沿用上次检测，避免重复写入');
     } finally {
       if (mounted) setState(() => _committing = false);
     }
@@ -254,7 +254,7 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
     if (_result != null) {
       final r = _result!;
       final done = Text(
-        '导入完成：共 ${r.added} 个组件写入 ${r.targets} 个货品'
+        '导入完成：已把 ${r.added} 个组件导入 ${r.targets} 个货品'
         '${r.removed > 0 ? '（替换掉 ${r.removed} 个旧组件）' : ''}，'
         '文件共 ${r.levels} 层。', // TODO(l10n): 补 arb
         style: theme.textTheme.bodyMedium,
@@ -327,9 +327,9 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_commitUncertain)
-          const Text('上次提交结果尚未确认，请先核对BOM；重试将沿用上次检测，防止重复写入。'),
+          const Text('上次提交结果还不确定，请先核对组装清单(BOM)；重试会沿用上次检测，避免重复写入。'),
         if (!r.hasErrors && r.stateFingerprint == null)
-          const Text('服务端未返回有效检测版本，请升级服务端后重新检测。'),
+          const Text('服务器没有返回检测结果，请升级服务端后重新检测。'),
         Text(
           r.hasErrors
               ? '共 ${r.totalRows} 行，发现 ${r.errors.length} 个问题，请修正后重传'

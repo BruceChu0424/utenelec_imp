@@ -32,6 +32,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
@@ -183,7 +184,9 @@ class _ExpenseApprovalListPageState
             key: const Key('expense-approval-table'),
             paginationScope: paginationScope,
             loadingMore: listAsync.isLoading,
-            error: listAsync.hasError ? '${listAsync.error}' : null,
+            error: listAsync.hasError
+                ? (humanErrorMessage(listAsync.error!) ?? '加载更多没有成功，请重试')
+                : null,
             onRetry: () => ref.invalidate(expenseApprovalListProvider),
             primary: true,
             columns: _columns,
@@ -326,7 +329,7 @@ class _ExpenseApprovalListPageState
       key: 'yearMonth',
       label: '年月',
       width: 90,
-      info: '报销单创建月份（业务时区）；表头筛选按此月份下推后端 year/month 参数。',
+      info: '报销单创建的年月；点击表头可按这个年月筛选。',
       value: (claim) => expenseYearMonth(claim.createdAt),
     ),
     MasterColumnDef(

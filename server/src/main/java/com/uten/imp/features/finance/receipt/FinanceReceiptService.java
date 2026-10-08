@@ -207,7 +207,7 @@ public class FinanceReceiptService {
         if (replay != null) {
             if (!Objects.equals(replay.getCreateRequestHash(), requestHash)) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "收款创建幂等键已用于不同内容，请刷新后重新提交");
+                        "同一个提交编号已提交过内容不同的收款单，请刷新页面后重新填写提交");
             }
             return detail(replay.getId());
         }
@@ -408,7 +408,7 @@ public class FinanceReceiptService {
         List<ArApLedger> created = ledgerRepo.findBySourceForUpdate(
                 r.getId(), SRC_DIRECT_RECEIPT);
         if (created.size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "直接收款立账结果不唯一");
+            throw new ApiException(ErrorCode.CONFLICT, "直接收款找到了多条立账记录，数据可能异常，请核对来源数据");
         }
         ArApLedger led = created.getFirst();
         led.setAmountWriteOffOriginal(BigDecimal.ZERO.setScale(MONEY_SCALE));
@@ -526,7 +526,7 @@ public class FinanceReceiptService {
         if (receipt.getSettlementAuthorityVersion() >= SETTLEMENT_AUTHORITY_V1
                 && money(writeOffLocalTotal).signum() != 0) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "新收款的AR商业冲销必须为0，手续费由独立费用快照承担");
+                    "新收款不能带商业冲销金额（必须为 0），手续费请在费用区单独登记");
         }
         if (receipt.getSettlementAuthorityVersion() == 0
                 && money(writeOffLocalTotal).compareTo(headerFees) != 0) {
@@ -797,7 +797,7 @@ public class FinanceReceiptService {
                 """).setParameter("id",receiptId)).getFirst();
         if(((Number)proof[0]).longValue()!=1L || ((Number)proof[1]).longValue()!=1L){
             throw new ApiException(ErrorCode.CONFLICT,
-                    "收款账户流水或总账投影未通过事务内完整性校验");
+                    "保存收款时检查到账户流水或总账数据不完整，本次操作没有生效，请重试");
         }
     }
 
@@ -1202,7 +1202,7 @@ public class FinanceReceiptService {
             lineRepo.save(line);
         }
         if(beforeOriginal.signum()!=0||beforeLocal.signum()!=0)
-            throw new ApiException(ErrorCode.CONFLICT,"收款明细必须完整分配同一笔银行事实，剩余金额不能丢失");
+            throw new ApiException(ErrorCode.CONFLICT,"收款明细必须把这笔银行入账的金额分配完整，不能有剩余金额");
     }
 
     private UUID requiredPostingStyle(String roleKey){
@@ -1212,7 +1212,7 @@ public class FinanceReceiptService {
                 .getSingleResult();
         if(!(value instanceof UUID id)){
             throw new ApiException(ErrorCode.CONFLICT,
-                    "收款总账系统角色未配置有效科目 UUID："+roleKey);
+                    "收款总账的科目还没配置（"+roleKey+"），请先到科目设置中配置");
         }
         return id;
     }
@@ -1437,7 +1437,7 @@ public class FinanceReceiptService {
         if (value == null || value.length() < 8 || value.length() > 128
                 || !value.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "收款创建幂等键格式不正确");
+                    "收款提交标识格式不正确，请刷新页面后重新提交");
         }
         return value;
     }
@@ -1461,14 +1461,14 @@ public class FinanceReceiptService {
         if (ids.isEmpty()) return null;
         if (ids.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "收款创建幂等键存在重复历史，请先完成数据核对");
+                    "同一个提交编号在历史记录里出现了多次，请先核对这几次提交的数据");
         }
         FinanceReceipt receipt = receiptRepo.findById((UUID) ids.getFirst())
                 .orElseThrow(() -> new ApiException(
-                        ErrorCode.CONFLICT, "收款幂等记录缺少来源单据"));
+                        ErrorCode.CONFLICT, "收款提交记录缺少来源单据，请重新填写提交"));
         if (receipt.isDeleted()) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该收款创建请求曾生成后删除，不能用同一幂等键重新造单");
+                    "这次提交之前生成过收款单又被删除了，请刷新页面后重新填写，不要重复用同一次提交");
         }
         access.requireReadable(receipt.getMakerId(), "销售收款单不存在");
         return receipt;

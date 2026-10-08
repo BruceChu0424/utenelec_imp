@@ -346,7 +346,7 @@ public class ProductionDailyReportService {
             if (!COMMAND_CREATE.equals(replay.commandKind())
                     || !requestHash.equals(replay.requestHash())) {
                 throw new ApiException(
-                        ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报创建请求");
+                        ErrorCode.CONFLICT, "同一防重复提交标识已用于不同的生产日报创建请求，请刷新后重试");
             }
             if (replay.createPayloadVersion() != null || replay.createPayloadHash() != null) {
                 if (!Integer.valueOf(1).equals(replay.createPayloadVersion())
@@ -454,7 +454,7 @@ public class ProductionDailyReportService {
             if (!COMMAND_APPROVE.equals(replay.commandKind())
                     || !id.equals(replay.reportId())) {
                 throw new ApiException(
-                        ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报审核请求");
+                        ErrorCode.CONFLICT, "同一防重复提交标识已用于不同的生产日报审核请求，请刷新后重试");
             }
             if (commandVersion == 2 && !Integer.valueOf(2).equals(replay.approvalProtocolVersion())) {
                 // Do not reinterpret a successful unversioned command as reviewed V2.
@@ -465,7 +465,7 @@ public class ProductionDailyReportService {
             if (!requestHash.equals(replay.requestHash())
                     || (commandVersion == 2 && !Objects.equals(reviewedVersion, replay.reviewedRowVersion()))
                     || (commandVersion == 1 && Integer.valueOf(2).equals(replay.approvalProtocolVersion()))) {
-                throw new ApiException(ErrorCode.CONFLICT, "同一幂等键已用于不同的生产日报审核请求");
+                throw new ApiException(ErrorCode.CONFLICT, "同一防重复提交标识已用于不同的生产日报审核请求，请刷新后重试");
             }
             return withApprovalReceipt(commandDetail(id), idempotencyKey,
                     replay.approvalProtocolVersion(), replay.reviewedRowVersion(), true);
@@ -753,7 +753,7 @@ public class ProductionDailyReportService {
             if (declaredQty.signum() <= 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "历史报工明细数量无效，禁止自动红冲");
+                        "历史报工明细数量不正确，不能自动红冲");
             }
             BigDecimal qty = fqcRecovery.effectiveContribution(
                     it.getId(), declaredQty);
@@ -1695,11 +1695,11 @@ public class ProductionDailyReportService {
     }
 
     static String normalizeCreateIdempotencyKey(String raw) {
-        return normalizeCommandIdempotencyKey(raw, "新建生产日报必须提供幂等键");
+        return normalizeCommandIdempotencyKey(raw, "新建生产日报必须提供防重复提交标识");
     }
 
     static String normalizeApproveIdempotencyKey(String raw) {
-        return normalizeCommandIdempotencyKey(raw, "审核生产日报必须提供幂等键");
+        return normalizeCommandIdempotencyKey(raw, "审核生产日报必须提供防重复提交标识");
     }
 
     /** 长度与去空白口径由 production_daily_report_command_key_chk 在库里兜底，两种命令不得分叉。 */
@@ -1712,7 +1712,7 @@ public class ProductionDailyReportService {
         if (normalized.length() < 8 || normalized.length() > 128) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "生产日报幂等键长度必须为 8-128");
+                    "生产日报的防重复提交标识长度必须为 8-128");
         }
         return normalized;
     }

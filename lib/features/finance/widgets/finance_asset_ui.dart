@@ -152,7 +152,7 @@ String? validateNonNegativeFinanceAmount(String? value, {String label = '金额'
   final raw = value?.trim() ?? '';
   if (raw.isEmpty) return '请填写$label';
   if (!RegExp(r'^\d{1,16}(?:\.\d{1,2})?$').hasMatch(raw)) {
-    return '$label应为不超过 16 位整数、2 位小数的非负数';
+    return '$label不能是负数，最多 16 位整数、2 位小数';
   }
   return null;
 }

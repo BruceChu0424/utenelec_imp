@@ -175,7 +175,7 @@ class ProductionDrawRequestPostgresTest {
         commit(request);
         assertThat(commit(request).replayed()).isTrue();
         assertThatThrownBy(() -> commit(new SubmitRequest(request.items(), request.idempotencyKey(), "0".repeat(64))))
-                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("防重复提交标识");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM production_execution_segment_events", Integer.class)).isEqualTo(1);
     }
 
@@ -220,7 +220,7 @@ class ProductionDrawRequestPostgresTest {
                 List.of(new Selection(ITEM_A, BigDecimal.ONE))));
         assertThatThrownBy(() -> commit(new SubmitRequest(List.of(new Item(SEGMENT, 1L)),
                 "valid-draw-01", preview.fingerprint(), List.of(new Selection(ITEM_A, new BigDecimal("2"))))))
-                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("防重复提交标识");
     }
 
     @Test void unselectedTaskRemainsUnrequestedAndReplayReturnsOnlySelectedTasks() {

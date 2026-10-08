@@ -37,8 +37,8 @@ class GlPostingServicePaymentAccountingTest {
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("系统过账角色")
-                .hasMessageContaining("科目 UUID");
+                .hasMessageContaining("系统过账科目")
+                .hasMessageContaining("还没有配置");
 
         assertThat(sqlStatements).hasSize(5);
         assertInventoryLockBeforePreflight(sqlStatements, inventoryLock);
@@ -166,8 +166,8 @@ class GlPostingServicePaymentAccountingTest {
                         "PAYMENT", UUID.randomUUID(), "CF-MIXED-1",
                         com.uten.imp.common.time.BusinessTime.today()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("归属不一致")
-                .hasMessageContaining("禁止物理删除");
+                .hasMessageContaining("对不上")
+                .hasMessageContaining("不能直接删除");
 
         assertThat(sqlStatements).hasSize(3);
         assertThat(sqlStatements.getFirst()).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
@@ -198,7 +198,7 @@ class GlPostingServicePaymentAccountingTest {
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("已财务确认")
-                .hasMessageContaining("禁止物理删除");
+                .hasMessageContaining("不能直接删除");
 
         assertThat(sqlStatements).hasSize(4);
         assertInventoryLockBeforePreflight(sqlStatements, inventoryLock);

@@ -218,7 +218,7 @@ void main() {
         find.byKey(const Key('plan-summary-workshops-error')),
         findsOneWidget,
       );
-      expect(find.textContaining('默认车间读取超时'), findsOneWidget);
+      expect(find.textContaining('默认车间信息加载时间过长'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
     },
   );

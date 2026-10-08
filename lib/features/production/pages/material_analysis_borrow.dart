@@ -419,7 +419,7 @@ abstract class _MaterialAnalysisBorrowState
         context.appError(
           productionErrorMessage(
             error,
-            fallback: '补供后的页面刷新失败，请重新读取计划；调料已完成，不会回滚',
+            fallback: '补供已经提交成功；只是页面刷新失败，请重新读取计划查看最新结果',
           ),
         );
       }

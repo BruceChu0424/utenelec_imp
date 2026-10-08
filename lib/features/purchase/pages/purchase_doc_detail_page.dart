@@ -161,13 +161,12 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       }
     }
     final values = current == null
-        ? '当前明细已变化。'
-        : '原数量 ${_qtyInputBases[id]?.qty ?? '—'}（版本 ${_qtyInputBases[id]?.version ?? '未知'}），'
-              '当前数量 ${_requestQtyText(current.qty)}（版本 ${current.rowVersion ?? '未知'}），'
-              '保留输入 ${_qtyControllers[id]?.text ?? '—'}。';
-    return '${_qtyInputConflicts.length} 行需要核对数量、版本、来源或占用情况。$values'
-        '${_qtyWriteReviewRequired.isEmpty ? '' : '先前提交尚未完成核对；当前数量相同也不能据此认定该次提交成功。'}'
-        '已保留未保存的输入；核对完成前不能保存或生成订货单。';
+        ? '该行内容已有变化。'
+        : '原数量 ${_qtyInputBases[id]?.qty ?? '—'}，当前数量 ${_requestQtyText(current.qty)}，'
+              '你填的是 ${_qtyControllers[id]?.text ?? '—'}。';
+    return '${_qtyInputConflicts.length} 行数量需要核对：可能别人也改过，或已被订货占用。$values'
+        '${_qtyWriteReviewRequired.isEmpty ? '' : '之前有一次提交结果不明；即使当前数量和你填的一样，也不能当作已保存成功。'}'
+        '你填的内容已保留；核对清楚前不能保存或生成订货单。';
   }
 
   ({String qty, String ordered, String pending, String source, int? version})
@@ -269,15 +268,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       builder: (ctx) => trackNativeReadDialog(
         ctx,
         AlertDialog(
-          title: const Text('核对数量与版本'),
+          title: const Text('核对数量变化'),
           content: SingleChildScrollView(
             child: Text(
               '${[for (final item in detail.items)
-                if (_qtyInputConflicts.contains(item.id)) '第 ${detail.items.indexOf(item) + 1} 行：原数量 ${_qtyInputBases[item.id]?.qty ?? '—'}'
-                      '（版本 ${_qtyInputBases[item.id]?.version ?? '未知'}），'
-                      '当前数量 ${_requestQtyText(item.qty)}（版本 ${item.rowVersion}），'
-                      '保留输入 ${_qtyControllers[item.id]?.text ?? '—'}。'].join('\n')}\n'
-              '请选择保留输入并采用当前版本，或采用当前数量。此操作只更新本页编辑基准，不会提交修改，也不会认定先前提交已成功。',
+                if (_qtyInputConflicts.contains(item.id)) '第 ${detail.items.indexOf(item) + 1} 行：原数量 ${_qtyInputBases[item.id]?.qty ?? '—'}，'
+                      '当前数量 ${_requestQtyText(item.qty)}，'
+                      '你填的是 ${_qtyControllers[item.id]?.text ?? '—'}。'].join('\n')}\n'
+              '请选择「保留我填的数量」，或「采用当前数量」。此操作只更新本页的对照基准，不会提交修改，也不能认定先前那次提交已成功。',
             ),
           ),
           actions: [
@@ -288,7 +286,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
             TextButton(
               key: const Key('purchase-request-qty-adopt-version'),
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('保留输入并采用当前版本'),
+              child: const Text('保留我填的数量'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
@@ -388,11 +386,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       if (_qtyInputConflicts.isEmpty) context.appSuccess('数量已修正');
     } on ApiException catch (error) {
       if (!mounted || !ownsNative()) return;
-      context.appError('${error.message}。输入已保留，请核对当前数量与版本后再操作。');
+      context.appError('${error.message}。你填的数量已保留；可能别人也改过这一行，请核对当前数量后再操作。');
       await _load();
     } catch (_) {
       if (!mounted || !ownsNative()) return;
-      context.appError('提交结果暂不确定，输入已保留；仅重新读取当前数量，请核对后再操作。');
+      context.appError('还不确定刚才是否提交成功；你填的数量已保留，页面已重新读取当前数量，请核对后再操作。');
       await _load();
     } finally {
       if (mounted && ownsNative()) setState(() => _busy = false);
@@ -1218,7 +1216,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           const Padding(
             padding: EdgeInsets.only(bottom: UtenSpacing.s8),
             child: Text(
-              '部分明细缺少数量版本，请重新加载后再修改。',
+              '部分明细的数据不完整，请重新加载后再修改。',
               key: Key('purchase-request-qty-missing-version'),
             ),
           ),

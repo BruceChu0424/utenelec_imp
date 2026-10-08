@@ -252,7 +252,7 @@ public class AccountFlowLedgerService {
         if (sourceId == null || reversalAt == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "账户流水红冲缺少来源 UUID 或红冲时间");
+                    "账户流水红冲缺少来源单据编号或红冲时间");
         }
 
         em.createNativeQuery(
@@ -381,7 +381,7 @@ public class AccountFlowLedgerService {
             if (inserted != 1) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "账户流水反向分录写入失败：" + posting.id());
+                        "账户流水反向分录保存失败：" + posting.id());
             }
             appended += inserted;
         }

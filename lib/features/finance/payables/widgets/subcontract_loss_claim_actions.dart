@@ -242,7 +242,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
     for (final line in widget.detail.lines) {
       final expected = financeDecimalUnits(line.excessLossQty);
       if (expected == null) {
-        context.appError('${line.goodsLabel} 的服务端超耗数量无效');
+        context.appError('系统里 ${line.goodsLabel} 的超耗数量有误，请刷新后重试');
         return;
       }
       var allocated = BigInt.zero;
@@ -254,7 +254,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
         }
         final quantity = financeDecimalUnits(draft.quantity.text);
         if (quantity == null || quantity.isNegative) {
-          context.appError('${line.goodsLabel} 的处理数量必须是最多四位小数的非负数');
+          context.appError('${line.goodsLabel} 的处理数量不能是负数，最多四位小数');
           return;
         }
         allocated += quantity;
@@ -852,7 +852,7 @@ class _LossFulfillmentEditorState
     if (widget.resolution.requiresPhysicalDocument &&
         (!_validUuid(_docId.text.trim()) ||
             !_validUuid(_docItemId.text.trim()))) {
-      context.appError('请填写已审核实物单据头和明细的有效 UUID');
+      context.appError('请把已审核实物单和对应明细的 UUID 填写完整');
       return;
     }
     Navigator.of(context).pop(
@@ -957,9 +957,7 @@ class _LossFulfillmentEditorState
               const SizedBox(height: UtenSpacing.s8),
               TextField(
                 controller: _docId,
-                decoration: const InputDecoration(
-                  labelText: '已审核实物单头 UUID(必填)',
-                ),
+                decoration: const InputDecoration(labelText: '已审核实物单 UUID(必填)'),
               ),
               const SizedBox(height: UtenSpacing.s8),
               TextField(

@@ -238,7 +238,7 @@ public class AccountBalanceAdjustmentService {
                 .setParameter("ids",ids));
         if(rows.size()!=ids.size()){
             throw new ApiException(ErrorCode.CONFLICT,
-                    "部分账户缺少流水重建余额，禁止用余额校准掩盖历史缺口");
+                    "部分账户缺少用流水算出来的余额，请先补齐历史流水，不能用余额核对直接抹平差额");
         }
         Map<UUID,AccountSnapshot> byId=new LinkedHashMap<>();
         for(AccountSnapshot account:accounts)byId.put(account.id(),account);
@@ -260,7 +260,7 @@ public class AccountBalanceAdjustmentService {
         if (request == null || request.scope() == null || request.effectiveDate() == null
                 || request.reason() == null || request.idempotencyKey() == null
                 || request.items() == null || request.items().isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "账户余额核对参数不完整");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "账户余额核对的填写内容不完整，请补齐后再提交");
         }
         String scope = request.scope().trim().toUpperCase();
         if (!Set.of(SCOPE_FULL, SCOPE_SELECTED).contains(scope)) {
@@ -275,7 +275,7 @@ public class AccountBalanceAdjustmentService {
         String key = request.idempotencyKey().trim();
         if (key.length() < 8 || key.length() > 128
                 || !key.matches("[A-Za-z0-9._:-]+")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "余额核对幂等键格式不正确");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "余额核对的提交标识格式不正确，请刷新页面后重新提交");
         }
         if (request.items().size() > 2000) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
@@ -286,7 +286,7 @@ public class AccountBalanceAdjustmentService {
         for (AccountBalanceAdjustmentItemRequest item : request.items()) {
             if (item == null || item.accountId() == null
                     || item.expectedBalance() == null || item.targetBalance() == null) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "余额核对明细参数不完整");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "余额核对的明细填写不完整，请补齐每行的账户和余额");
             }
             if (!ids.add(item.accountId())) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
@@ -345,7 +345,7 @@ public class AccountBalanceAdjustmentService {
                 && existing.requestHash().equals(legacyRequestHash);
         if (!currentMatch && !legacyMatch) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该幂等键已用于另一笔账户余额核对，请使用新的幂等键");
+                    "这个提交标识已经用于另一笔余额核对，请刷新页面后重新发起核对");
         }
         return loadResult(existing.id());
     }
@@ -369,7 +369,7 @@ public class AccountBalanceAdjustmentService {
                 .getResultList();
         if (rows.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "账户余额调整清算科目未配置为可用的权益类叶节点");
+                    "账户余额调整的清算科目未配置，或不是可用的权益类末级科目，请先到科目设置中配置");
         }
         return (UUID) rows.getFirst();
     }
@@ -444,7 +444,7 @@ public class AccountBalanceAdjustmentService {
                     || Boolean.TRUE.equals(row[13])
                     || Boolean.TRUE.equals(row[14])) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "活动账户未绑定可用的账户类叶子科目 UUID：" + row[1]);
+                        "有账户还没绑定可用的账户类末级科目，不能核对余额：" + row[1]);
             }
             String accountCode = row[1] == null ? "" : row[1].toString().trim();
             if (accountCode.isEmpty()) {
@@ -506,7 +506,7 @@ public class AccountBalanceAdjustmentService {
         int persistedChangedCount = ((Number) header[6]).intValue();
         if (items.size() != expectedCount || changed != persistedChangedCount) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "账户余额核对批次明细数量与不可变头记录不一致");
+                    "余额核对批次的明细数量与提交时的记录对不上，请刷新后重新核对");
         }
         return new AccountBalanceAdjustmentBatchResult(
                 (UUID) header[0], String.valueOf(header[1]), String.valueOf(header[2]),

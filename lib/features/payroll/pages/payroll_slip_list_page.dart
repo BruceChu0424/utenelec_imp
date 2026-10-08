@@ -30,6 +30,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_slip.dart';
@@ -61,7 +62,7 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
       skipError: true,
       loading: () => const UtenSkeletonList(itemCount: 8),
       error: (e, _) => UtenEmpty.error(
-        message: '加载失败：$e',
+        message: humanErrorMessage(e) ?? '工资条列表没有加载出来，请稍后重试',
         actionLabel: '重试',
         onAction: () => ref.invalidate(payrollListProvider),
       ),
@@ -73,7 +74,9 @@ class _PayrollSlipListPageState extends ConsumerState<PayrollSlipListPage> {
           key: const Key('payroll-slip-table'),
           paginationScope: paginationScope,
           loadingMore: list.isLoading,
-          error: list.hasError ? '${list.error}' : null,
+          error: list.hasError
+              ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
+              : null,
           onRetry: () => ref.invalidate(payrollListProvider),
           columns: _columns,
           items: page.items,

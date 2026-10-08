@@ -121,7 +121,7 @@ public class AttachmentUploadGrantService {
     }
 
     private static ApiException invalid() {
-        return new ApiException(ErrorCode.FORBIDDEN, "附件上传授权无效，请重新上传");
+        return new ApiException(ErrorCode.FORBIDDEN, "上传授权不正确或已失效，请重新上传");
     }
 
     public record Grant(

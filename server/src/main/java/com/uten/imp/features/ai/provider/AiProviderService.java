@@ -180,7 +180,7 @@ public class AiProviderService {
                         KEY_UNREADABLE_MESSAGE);
             } catch (IllegalStateException e) {
                 return Resolution.unavailable(row.getName(), row.getModel(), row.isSupportsVision(),
-                        "服务器没有配置密钥加密, 请联系运维");
+                        "服务器没有配置密钥加密，请联系管理员");
             }
         } else if (row.getPreset().requiresApiKey(row.getRegion())) {
             return Resolution.unavailable(row.getName(), row.getModel(), row.isSupportsVision(),
@@ -587,7 +587,7 @@ public class AiProviderService {
 
     private void storeKey(AiProvider row, String apiKey) {
         if (!cipher.available()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "服务器没有配置密钥加密, 请联系运维后再填写密钥");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "服务器没有配置密钥加密，请联系管理员后再填写密钥");
         }
         row.setSecret(cipher.encrypt(apiKey, AiProvider.secretAad(row.getId())));
         row.setApiKeyLast4(apiKey.length() >= LAST4_MIN_KEY_LENGTH ? apiKey.substring(apiKey.length() - 4) : null);

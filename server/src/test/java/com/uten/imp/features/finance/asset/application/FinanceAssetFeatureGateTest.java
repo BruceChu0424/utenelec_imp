@@ -17,7 +17,7 @@ class FinanceAssetFeatureGateTest {
         assertThatThrownBy(() -> gate.requirePostedWorkflowsEnabled("Initial recognition activation"))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.getCode()).isEqualTo(ErrorCode.CONFLICT);
-                    assertThat(exception.getMessage()).contains("reversal workflow");
+                    assertThat(exception.getMessage()).contains("还没开放");
                 });
     }
 

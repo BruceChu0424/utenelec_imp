@@ -41,11 +41,11 @@ class ApiException implements Exception {
 
 class NetworkException extends ApiException {
   NetworkException([String? message])
-    : super('NETWORK', message ?? '网络连接失败，请检查后重试');
+    : super('NETWORK', message ?? '网络连不上，请检查网络后再试');
 }
 
 class NetworkTimeoutException extends ApiException {
-  NetworkTimeoutException() : super('NETWORK_TIMEOUT', '网络连接超时，请检查网络后重试');
+  NetworkTimeoutException() : super('NETWORK_TIMEOUT', '等待服务器响应时间过长，请检查网络后再试');
 }
 
 class ApiExceptionFactory {
@@ -57,17 +57,17 @@ class ApiExceptionFactory {
       case null:
         return NetworkException();
       case 401:
-        return ApiException('UNAUTHORIZED', '会话已过期，请重新登录', httpStatus: status);
+        return ApiException('UNAUTHORIZED', '登录已过期，请重新登录', httpStatus: status);
       case 403:
-        return ApiException('FORBIDDEN', '无权限访问', httpStatus: status);
+        return ApiException('FORBIDDEN', '您没有权限做这个操作', httpStatus: status);
       case 404:
-        return ApiException('NOT_FOUND', '资源不存在', httpStatus: status);
+        return ApiException('NOT_FOUND', '要查看的内容不存在', httpStatus: status);
       case 429:
-        return ApiException('RATE_LIMITED', '请求过于频繁，请稍后再试', httpStatus: status);
+        return ApiException('RATE_LIMITED', '操作太频繁了，请稍后再试', httpStatus: status);
       case >= 500:
         return ApiException('INTERNAL', '服务器繁忙，请稍后再试', httpStatus: status);
       default:
-        return ApiException('UNKNOWN', '请求失败($status)', httpStatus: status);
+        return ApiException('UNKNOWN', '操作失败($status)', httpStatus: status);
     }
   }
 }

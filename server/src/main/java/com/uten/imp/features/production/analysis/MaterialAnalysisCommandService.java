@@ -1149,9 +1149,9 @@ public class MaterialAnalysisCommandService {
                             analysisId, product, plan, quantity, defaults, request.warehouseId());
                     PlanningPackageResult applied = null;
                     if (request.approveNow()) {
-                        applied = planService.approveForAnalysis(plan.id()).orElseThrow(() ->
-                                conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
-                    }
+                    applied = planService.approveForAnalysis(plan.id()).orElseThrow(() ->
+                            conflict("生产计划已审核但正式计划包未生成，本次操作没有生效"));
+                }
                     generated.add(toGenerated(plan, draft, applied));
                 }
             }
@@ -1337,9 +1337,9 @@ public class MaterialAnalysisCommandService {
                 PlanningPackageResult applied = null;
                 if (request.approveNow()) {
                     applied = planService.approveForAnalysis(plan.id()).orElseThrow(() ->
-                            conflict("生产计划已审核但正式计划包未生成，事务已回滚"));
+                            conflict("生产计划已审核但正式计划包未生成，本次操作没有生效"));
                 }
-                return toGenerated(plan, draft, applied).merged(added);
+                    return toGenerated(plan, draft, applied).merged(added);
             }
         }
         if (target.salesOrderItemId() != null && demandQty.signum() > 0) {
@@ -2100,7 +2100,7 @@ public class MaterialAnalysisCommandService {
                         || material.mainWarehouseOpenSafetySupplyQty().signum() < 0
                         || material.mainWarehouseSafetyReplenishmentGapQty().signum() < 0
                         || material.safetyStockQty().signum() < 0)) {
-            throw conflict("主仓安全库存汇总无效，请刷新物料分析后重试");
+            throw conflict("主仓安全库存汇总数据不正确，请刷新物料分析后重试");
         }
         BigDecimal safetyStock = materials.stream()
                 .map(MaterialView::safetyStockQty)
@@ -2623,7 +2623,7 @@ public class MaterialAnalysisCommandService {
                 .map(ExecutionSegmentPreview::plannedQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (expectedQty.compareTo(proposedQty) != 0) {
-            throw conflict("正式计划预览数量与分析结论不一致，事务已回滚，请重新分析");
+            throw conflict("正式计划预览数量与分析结论不一致，本次操作没有生效，请重新分析");
         }
         GeneratePlanningPackageRequest formal = new GeneratePlanningPackageRequest();
         formal.setWarehouseId(warehouseId);
@@ -2636,7 +2636,7 @@ public class MaterialAnalysisCommandService {
         for (ExecutionSegmentPreview proposal : preview.executionSegments()) {
             String requestedStatus = proposal.suggestedStatus();
             if (!Set.of("READY", "WAITING").contains(requestedStatus)) {
-                throw conflict("正式计划预览包含未知执行状态，事务已回滚，请重新分析");
+                throw conflict("正式计划预览包含未知执行状态，本次操作没有生效，请重新分析");
             }
             // CompleteKitAllocator 已按同一权威库存快照把计划行拆成“当前完整
             // 齐套 READY + 剩余 WAITING”。必须保留它的数量、稳定 key 和状态；
@@ -2718,7 +2718,7 @@ public class MaterialAnalysisCommandService {
         Object[] plan = one(em.createNativeQuery("""
                 SELECT id, bill_no, status FROM production_plans
                 WHERE id = :id AND is_deleted = FALSE
-                """).setParameter("id", planId), "幂等结果中的生产计划不存在");
+                """).setParameter("id", planId), "之前操作生成的生产计划已不存在，请联系管理员核对");
         UUID draftId = scalarUuid("""
                 SELECT id FROM production_planning_drafts
                 WHERE plan_id = :id ORDER BY planned_at DESC, id DESC LIMIT 1
@@ -2992,7 +2992,7 @@ public class MaterialAnalysisCommandService {
                 .setParameter("operation", operation).setParameter("key", key));
         if (rows.isEmpty()) return null;
         if (!Objects.equals(hash, Objects.toString(rows.getFirst()[0], ""))) {
-            throw conflict("同一幂等键已用于不同请求");
+            throw conflict("同一防重复提交标识已用于不同内容的请求，请刷新后重试");
         }
         return new CommandReplay(Objects.toString(rows.getFirst()[1], "{}"));
     }
@@ -3018,7 +3018,7 @@ public class MaterialAnalysisCommandService {
                     .setParameter("payload", objectMapper.writeValueAsString(payload))
                     .setParameter("actorId", currentUser.requireId()).executeUpdate();
         } catch (JsonProcessingException ex) {
-            throw conflict("幂等结果序列化失败");
+            throw conflict("保存操作结果时失败，请重试");
         }
     }
 
@@ -3029,7 +3029,7 @@ public class MaterialAnalysisCommandService {
             node.forEach(value -> result.add(UUID.fromString(value.asText())));
             return List.copyOf(result);
         } catch (JsonProcessingException | IllegalArgumentException ex) {
-            throw conflict("幂等结果损坏，不能安全重放");
+            throw conflict("之前操作的结果记录已损坏，不能自动给出结果，请联系管理员");
         }
     }
 

@@ -286,10 +286,7 @@ void main() {
     await _panel(
       tester,
       loader: (_) async {
-        throw ApiException(
-          'VALIDATION_FAILED',
-          '候选人员超过5000人，请输入姓名或工号缩小范围',
-        );
+        throw ApiException('VALIDATION_FAILED', '候选人员超过5000人，请输入姓名或工号缩小范围');
       },
     );
     expect(find.text('候选人员超过5000人，请输入姓名或工号缩小范围'), findsOneWidget);

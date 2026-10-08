@@ -189,7 +189,7 @@ public class SalesReturnAmountAuthority {
                 || priorLocal == null || priorLocal.signum() < 0 || priorQuantity.add(quantity).compareTo(sourceQuantity) > 0
                 || priorOriginal.compareTo(sourceOriginal) > 0 || priorLocal.compareTo(sourceLocal) > 0
                 || historicalAllocations < 0 || reversedAllocations < 0 || reversedAllocations > historicalAllocations) {
-            throw conflict("退货数量或来源累计无效，不能超过实际发运剩余可退量");
+            throw conflict("退货数量或来源累计不正确，不能超过实际发运剩余可退量");
         }
         // Reversing an earlier slice leaves the later slice's immutable truncation
         // increment intact. Only actual reversal history enables a bounded allowance

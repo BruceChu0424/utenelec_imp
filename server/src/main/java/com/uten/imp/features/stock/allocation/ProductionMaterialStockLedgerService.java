@@ -199,7 +199,7 @@ public class ProductionMaterialStockLedgerService {
                 .setParameter("key",normalizeKey(idempotencyKey)).getResultList();
         if (existing.isEmpty()) return false;
         if (!Objects.equals(existing.getFirst(),requestHash)) {
-            throw new ApiException(ErrorCode.CONFLICT,"相同幂等键对应不同领退料请求");
+            throw new ApiException(ErrorCode.CONFLICT,"同一防重复提交标识对应不同的领退料请求，请刷新后重试");
         }
         return true;
     }
@@ -940,7 +940,7 @@ public class ProductionMaterialStockLedgerService {
             if (!Objects.equals(existing.getFirst()[1], requestHash)) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "相同幂等键对应不同领退料请求");
+                        "同一防重复提交标识对应不同的领退料请求，请刷新后重试");
             }
             return new Event((UUID) existing.getFirst()[0], true);
         }
@@ -1130,13 +1130,13 @@ public class ProductionMaterialStockLedgerService {
         if (key == null || key.isBlank()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "领退料必须提供幂等键");
+                    "领退料必须提供防重复提交标识");
         }
         String normalized = key.strip();
         if (normalized.length() < 8 || normalized.length() > 128) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "领退料幂等键长度必须为 8 到 128 个字符");
+                    "领退料的防重复提交标识长度必须为 8 到 128 个字符");
         }
         return normalized;
     }

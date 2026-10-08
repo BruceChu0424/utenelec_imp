@@ -100,7 +100,9 @@ class CountStockRow {
     colorName: json['colorName'] as String?,
     unitId: json['unitId'] as String,
     unitName: json['unitName'] as String? ?? '',
-    qty: _decimal(json['qty']) ?? (throw const FormatException('盘点快照缺少数量')),
+    qty:
+        _decimal(json['qty']) ??
+        (throw const FormatException('盘点数据里缺少数量，请重新读取')),
     weightKg: _decimal(json['weightKg']),
     weightEstimated: json['weightEstimated'] == true,
     kgPerBaseUnit: _decimal(json['kgPerBaseUnit']),

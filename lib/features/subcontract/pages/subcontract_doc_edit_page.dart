@@ -659,11 +659,11 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     if (_cfg.settlementRequired) {
       final methodsState = ref.read(settlementMethodOptionsProvider);
       if (methodsState.isLoading) {
-        context.appError('结算方式字典仍在加载，请稍后重试');
+        context.appError('结算方式还在加载，请稍后再保存');
         return;
       }
       if (methodsState.hasError) {
-        context.appError('结算方式字典加载失败，请点击重试');
+        context.appError('结算方式没有加载出来，请点击重试后再保存');
         return;
       }
       final methods =
@@ -983,7 +983,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                 title: widget.id == null
                     ? '正在创建${_cfg.label}'
                     : '正在保存${_cfg.label}',
-                description: '正在写入单据内容，请勿重复提交或离开本页。',
+                description: '正在保存单据内容，请勿重复提交或离开本页。',
               ),
           ],
         ),

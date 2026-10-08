@@ -208,7 +208,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
       return '编号前缀须以字母开头，只能包含 1–8 位字母或数字';
     }
     if (int.tryParse(_sortCtl.text.trim()) == null) {
-      return '排序必须是整数';
+      return '显示顺序必须填整数';
     }
     if (_nameCtl.text.trim().isEmpty) {
       return '请输入分类名称'; // TODO(l10n): 补 arb
@@ -249,7 +249,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
       final samples = preview.conflictSamples.isEmpty
           ? ''
           : '：${preview.conflictSamples.join('、')}';
-      context.appError('发现 ${preview.conflicts} 个编号冲突$samples，请先调整前缀');
+      context.appError('有 ${preview.conflicts} 个编号重复$samples，请先调整前缀');
       return false;
     }
     if (preview.affectedRecords == 0) return true;
@@ -269,7 +269,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
           '会修改 ${preview.affectedRecords} 条当前主档编号。'
           '${preview.customOrLegacyRecords > 0 ? ' 其中 ${preview.customOrLegacyRecords} 条手工或历史编号也会纳入新的统一规则。' : ''}'
           '${preview.descendantOverrides > 0 ? ' ${preview.descendantOverrides} 个下级分类有自己的前缀，不受影响。' : ''}\n\n'
-          '订单等关联仍使用系统 UUID；已审核单据继续显示当时的编号快照。',
+          '订单等关联不受影响，仍按系统内部编号对应；已审核单据继续显示当时的编号。',
         ),
         actions: [
           UtenButton(
@@ -415,9 +415,9 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                       '编号前缀',
                       theme,
                       info:
-                          '留空继承最近上级。显式前缀是全系统专用 token，'
-                          '忽略大小写且终身保留；保存以服务端事务校验为准。'
-                          '若返回 409 冲突，当前输入会保留供修改。',
+                          '留空时沿用最近上级的前缀；前缀全系统唯一，'
+                          '不区分大小写，一经使用会一直占用。'
+                          '保存时服务器会查重；如提示重复，你填的内容会保留，改一下再保存。',
                     ),
                     hintText: '例如 V6',
                     counterText: '',

@@ -70,7 +70,7 @@ public class StockDrawIssueBatchReceipts {
 
     static String normalizeKey(String rawKey) {
         String key = rawKey == null ? "" : rawKey.strip();
-        if (!key.matches("[A-Za-z0-9._:-]{8,128}")) throw validation("批量出库幂等键格式无效");
+        if (!key.matches("[A-Za-z0-9._:-]{8,128}")) throw validation("批量出库的防重复提交标识格式不正确");
         return key;
     }
 
@@ -78,11 +78,11 @@ public class StockDrawIssueBatchReceipts {
         if (request == null || request.getIdempotencyKey() == null
                 || request.getIdempotencyKey().isBlank()
                 || request.getDocIds() == null || request.getDocIds().isEmpty()) {
-            throw validation("批量出库请求缺少幂等键或单据清单");
+            throw validation("批量出库请求缺少防重复提交标识或单据清单");
         }
         String key = request.getIdempotencyKey().strip();
         if (key.length() < 8 || key.length() > 128 || !key.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("批量出库幂等键格式无效");
+            throw validation("批量出库的防重复提交标识格式不正确");
         }
         var ids = new LinkedHashSet<>(request.getDocIds());
         if (ids.contains(null)) throw validation("批量出库单据清单含空值");
@@ -98,21 +98,21 @@ public class StockDrawIssueBatchReceipts {
         var weights = StockDocService.batchIssueWeights(request.getWeights());
         var documents = ids.stream().sorted(Comparator.comparing(UUID::toString)).toList();
         int protocol = request.getProtocolVersion() == null ? 1 : request.getProtocolVersion();
-        if (protocol != 1 && protocol != 2) throw validation("批量出库协议版本无效");
+        if (protocol != 1 && protocol != 2) throw validation("批量出库请求的版本不正确，请刷新页面后重试");
         Map<UUID, String> reviews = new java.util.TreeMap<>(Comparator.comparing(UUID::toString));
         if (request.getReviews() != null) {
             for (var review : request.getReviews()) {
                 if (review == null || review.docId() == null || review.reviewToken() == null
                         || !review.reviewToken().matches("[0-9a-f]{64}")
                         || reviews.putIfAbsent(review.docId(), review.reviewToken()) != null) {
-                    throw validation("批量出库所见版本含空值、重复或无效令牌");
+                    throw validation("批量出库勾选单据的版本信息有误，请刷新后重试");
                 }
             }
         }
         if (protocol == 2 && !reviews.keySet().equals(ids)) {
-            throw validation("批量出库所见版本必须完整覆盖所选单据");
+            throw validation("批量出库的版本信息没有覆盖所选单据，请刷新后重试");
         }
-        if (protocol == 1 && !reviews.isEmpty()) throw validation("所见版本必须使用批量出库协议2");
+        if (protocol == 1 && !reviews.isEmpty()) throw validation("版本信息与当前批量出库方式不匹配，请刷新页面后重试");
         List<String> parts = new ArrayList<>();
         parts.add("STOCK-DRAW-ISSUE-PARENT-V" + protocol);
         parts.add("reason:" + (reason == null ? "" : reason));

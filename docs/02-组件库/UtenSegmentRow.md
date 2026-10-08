@@ -15,8 +15,9 @@ SDK `SegmentedButton` 的渲染对象把**每个分段强制铺成同一宽度**
 - StadiumBorder 描边（enabled=`outline`，整条禁用=`onSurface@12%`）；
 - 选中格 `secondaryContainer` 填充、文字 `onSecondaryContainer`；未选透明、
   `onSurface`；禁用文字 `onSurface@38%`、不填充；
-- 格间 1px 分隔线（与描边同色）；高度下限 40（`minCellHeight`，工具条内由
-  IntrinsicHeight 拉齐搜索框）；图标 18、图标与文字间距 8；
+- 格间 1px 分隔线（与描边同色）；高度下限 36（`minCellHeight` 默认
+  `UtenFilterRow.minHeight`，与 UtenSearchBar 前后缀图标约束同源——InputDecorator
+  药丸描边只按内容高绘制，两侧共用同一枚下限才能恒同高）；图标 18、图标与文字间距 8；
 - 悬停/按压水波按 M3（选中 onSecondaryContainer@8%/10%，未选 onSurface 同比）。
 
 ## 二、API（与 SegmentedButton 同形，迁移只改组件名）

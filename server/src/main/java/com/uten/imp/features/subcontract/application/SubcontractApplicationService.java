@@ -94,7 +94,7 @@ public class SubcontractApplicationService {
     @Transactional(readOnly = true)
     public com.uten.imp.features.subcontract.kit.SubcontractKitService.ApplicationKit kit(UUID applicationItemId) {
         if (kit == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "委外齐套计算未就绪");
+            throw new ApiException(ErrorCode.CONFLICT, "委外齐料结果还没算好，请稍后刷新再试");
         }
         return kit.applicationKit(applicationItemId);
     }

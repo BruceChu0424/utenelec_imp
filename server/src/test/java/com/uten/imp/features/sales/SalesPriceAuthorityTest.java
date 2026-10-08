@@ -66,7 +66,7 @@ class SalesPriceAuthorityTest {
                 .isInstanceOf(ApiException.class);
         assertThatThrownBy(() -> SalesPriceAuthority.requireMasterPrice(UUID.randomUUID(), null, "销售订货"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("未维护销售单价");
+                .hasMessageContaining("还没有销售单价");
     }
 
     @Test

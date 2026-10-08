@@ -121,6 +121,17 @@ abstract final class UtenTableToolbar {
   static const double controlHeight = 44;
 }
 
+/// 筛选工具条（分类分段 + 搜索框）的描边高度下限，两侧共用同一枚值：
+/// - [UtenSegmentRow.minCellHeight] 的默认值（分段 StadiumBorder 画整盒高度）；
+/// - [UtenSearchBar] 前后缀图标约束的 minHeight——InputDecorator 的药丸描边
+///   只按内容高度绘制（`fixIconHeight = max(前后缀图标约束高)` 参与内容高），
+///   外部 minHeight 约束拉不高描边。两侧同取本值后，描边高度恒等于
+///   `max(36, 文本内容高)`，任意密度/字号/缩放下严格同高（2026-10-07 根因修复，
+///   同日用户口径「两条都再小点」：40 → 36，配套 UtenSearchBar 竖向内边距 10 → 6）。
+abstract final class UtenFilterRow {
+  static const double minHeight = 36;
+}
+
 /// 自研表格共用的表头文字样式，渲染与列宽测量使用同一入口。
 /// 可筛选、可排序和普通列保持相同字号/字重；仅生效状态使用主色。
 abstract final class UtenTableHeader {

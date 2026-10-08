@@ -169,7 +169,7 @@ public class ProductionFqcFinishedInboundService
                         "FQC 合格放行与报工、计划或执行段状态不一致，未生成入库任务");
             }
             if (((BigDecimal) row[13]).signum() <= 0) {
-                throw conflict("报工单位换算率无效，禁止生成合格入库");
+                throw conflict("报工的单位换算率不正确，不能生成合格入库");
             }
             handoffs.computeIfAbsent(new HandoffKey(
                             (UUID) row[0], (UUID) row[24], (UUID) row[2], (UUID) row[14],
@@ -278,7 +278,7 @@ public class ProductionFqcFinishedInboundService
                 || priorPassQty == null || priorPassQty.signum() < 0
                 || passQty == null || passQty.signum() <= 0
                 || priorPassQty.add(passQty).compareTo(reportedQty) > 0) {
-            throw conflict("登记实称重量或 FQC 放行比例无效");
+            throw conflict("登记的实称重量或 FQC 放行比例不正确");
         }
         BigDecimal previous = totalWeight.multiply(priorPassQty)
                 .divide(reportedQty, 4, RoundingMode.HALF_UP);

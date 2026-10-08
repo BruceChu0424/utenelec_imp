@@ -989,7 +989,7 @@ class _ProductionDailyReportDetailPageState
               title: _busyTitle ?? '正在处理',
               description: _busyReadOnly
                   ? '正在读取原审核记录，不会再次提交审核。'
-                  : '正在写入日报状态与派生任务，请勿重复提交或离开本页。',
+                  : '正在保存日报并生成后续任务，请勿重复提交或离开本页。',
             ),
         ],
       ),

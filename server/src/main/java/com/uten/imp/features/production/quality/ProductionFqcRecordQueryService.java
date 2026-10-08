@@ -338,7 +338,7 @@ public class ProductionFqcRecordQueryService {
         String effective = normalizeWhitelist(
                 rawEffective, EFFECTS, "检测记录当前效力仅支持 ACTIVE、EXPIRED 或 CANCELLED");
         String disposition = normalizeWhitelist(
-                rawDisposition, DISPOSITIONS, "检测记录不良处置码无效");
+                rawDisposition, DISPOSITIONS, "检测记录的不良处置方式不正确");
         String keyword = rawKeyword == null
                 ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
         if (keyword.length() > 200) {

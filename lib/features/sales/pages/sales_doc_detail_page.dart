@@ -307,7 +307,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return '正在核验质检冻结台账，核验完成前不开放退货红冲。';
     }
     if (snapshot.any((item) => item.blocksDirectReturnReversal)) {
-      return '该退货已发生质检处置，或质检台账处于未知/不可直接撤销状态，不能直接红冲原退货单。';
+      return '该退货已有质检处置记录，或质检情况暂时无法确认，不能直接红冲原退货单。';
     }
     return null;
   }
@@ -764,7 +764,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     } catch (_) {
       if (!acceptsRead()) return;
       setState(() {
-        _error = '加载详情失败';
+        _error = '详情加载失败，请稍后重试';
         _loading = false;
       });
     }
@@ -841,8 +841,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     }
     final message = switch (action) {
       SalesWarehouseWorkAction.confirmShipment =>
-        '确认出库将在同一事务里扣减库存、消耗预留、回写订单已发数量并生成应收；'
-            '不能通过普通编辑撤回。确认出库？',
+        '确认出库后，系统会一次性完成扣减库存、消耗预留、更新订单已发数量并生成应收；'
+            '之后不能通过普通编辑撤回。确认出库？',
     };
     await _doAction(
       message,
@@ -968,7 +968,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       final v = double.tryParse(ctrls[it.id!]!.text);
       ctrls[it.id!]!.dispose();
       if (v == null) {
-        if (mounted && ownsNative()) context.appError('存在无效数量，请检查');
+        if (mounted && ownsNative()) context.appError('有数量填写不正确，请检查后再试');
         return;
       }
       if (v != it.qty) {
@@ -2962,7 +2962,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
                   decimal: true,
                 ),
                 decoration: InputDecoration(
-                  hintText: '让单数量(0 < 数量 ≤ 可发 $reserved)',
+                  hintText: '让单数量(要大于 0，不超过可发 $reserved)',
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),
@@ -2994,7 +2994,7 @@ class _LineActionSheetState extends State<_LineActionSheet> {
   void _applyPriority() {
     final reason = _priorityReason.text.trim();
     if (_priority == 1 && reason.isEmpty) {
-      context.appWarning('急单须填原因');
+      context.appWarning('请填写急单原因');
       return;
     }
     widget.onSetPriority(_priority, _priority == 1 ? reason : null);
@@ -3005,12 +3005,12 @@ class _LineActionSheetState extends State<_LineActionSheet> {
     final qty = double.tryParse(_yieldQty.text.trim());
     final reserved = widget.item.reservedQty ?? 0;
     if (qty == null || qty <= 0 || qty > reserved) {
-      context.appWarning('让单数量须 > 0 且 ≤ 可发 $reserved');
+      context.appWarning('让单数量要大于 0，且不能超过可发数量 $reserved');
       return;
     }
     final reason = _yieldReason.text.trim();
     if (reason.isEmpty) {
-      context.appWarning('让单须填原因');
+      context.appWarning('请填写让单原因');
       return;
     }
     widget.onYield(qty, reason);

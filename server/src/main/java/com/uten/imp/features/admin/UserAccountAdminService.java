@@ -126,6 +126,9 @@ public class UserAccountAdminService {
                         employee.getStatus()),
                 department == null ? null : department.getId(),
                 department == null ? null : department.getName(),
+                employee == null || employee.getPosition() == null
+                        ? null
+                        : employee.getPosition().getName(),
                 user.getStatus(),
                 user.isMustChangePassword(),
                 user.getLastLoginAt(),

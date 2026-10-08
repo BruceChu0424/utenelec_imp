@@ -455,7 +455,7 @@ public class ProductionExecutionSegmentService {
                 || request.route().isBlank()
                 || !List.of(ROUTE_FULL_KIT, ROUTE_BATCH, ROUTE_CONTINUOUS)
                         .contains(request.route())) {
-            throw validation("确认生产路线请求缺少版本、幂等键或合法路线");
+            throw validation("确认生产路线请求缺少版本、防重复提交标识，或路线不正确");
         }
     }
 
@@ -878,7 +878,7 @@ public class ProductionExecutionSegmentService {
                         .setParameter("key", idempotencyKey.strip()));
         if (events.isEmpty()) return null;
         if (!Objects.equals(events.getFirst()[0], requestHash)) {
-            throw conflict("相同幂等键对应不同的执行段请求");
+            throw conflict("同一防重复提交标识对应不同的执行段请求，请刷新后重试");
         }
         return one(segment.planId(), segment.id());
     }
@@ -1211,7 +1211,7 @@ public class ProductionExecutionSegmentService {
                 || request.expectedVersion() == null
                 || request.idempotencyKey() == null
                 || request.idempotencyKey().isBlank()) {
-            throw validation("执行段分配缺少版本或幂等键");
+            throw validation("执行段分配缺少版本或防重复提交标识");
         }
     }
 
@@ -1221,7 +1221,7 @@ public class ProductionExecutionSegmentService {
                 || request.expectedVersion() == null
                 || request.idempotencyKey() == null
                 || request.idempotencyKey().isBlank()) {
-            throw validation("执行段状态请求缺少版本或幂等键");
+            throw validation("执行段状态请求缺少版本或防重复提交标识");
         }
     }
 
@@ -1237,11 +1237,11 @@ public class ProductionExecutionSegmentService {
                     || item.expectedVersion() == null
                     || item.idempotencyKey() == null
                     || item.idempotencyKey().isBlank()) {
-                throw validation("批量开工项缺少执行段、版本或幂等键");
+                throw validation("批量开工项缺少执行段、版本或防重复提交标识");
             }
             String key = item.idempotencyKey().strip();
             if (key.length() < 8 || key.length() > 128) {
-                throw validation("批量开工幂等键长度必须为 8-128 个字符");
+                throw validation("批量开工的防重复提交标识长度必须为 8-128 个字符");
             }
             BatchStartRequest.Item normalized = new BatchStartRequest.Item(
                     item.segmentId(), item.expectedVersion(), key);

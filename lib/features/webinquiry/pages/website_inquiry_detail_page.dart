@@ -17,6 +17,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/website_inquiry.dart';
 import '../providers/website_inquiry_providers.dart';
@@ -37,7 +38,7 @@ class WebsiteInquiryDetailPage extends ConsumerWidget {
     Widget body = detail.when(
       loading: () => const UtenSkeletonList(itemCount: 4),
       error: (e, _) => UtenEmpty.error(
-        message: '加载失败：$e',
+        message: humanErrorMessage(e) ?? '询盘详情加载失败，请稍后重试',
         onAction: () => ref.invalidate(websiteInquiryDetailProvider(inquiryId)),
       ),
       data: (inquiry) {

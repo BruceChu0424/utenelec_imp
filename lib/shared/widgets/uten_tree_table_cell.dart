@@ -22,6 +22,8 @@ class UtenTreeTableCell extends StatelessWidget {
     this.subtitle,
     this.levelLabel,
     this.sequenceInline = false,
+    this.titleBadge,
+    this.titleBadgeLabel,
     this.foregroundColor,
     this.hasChildren = false,
     this.expanded = false,
@@ -70,6 +72,14 @@ class UtenTreeTableCell extends StatelessWidget {
   /// 宿主不传即不变。行高更矮，适合列多、以编号辅助识别的工作台表格。
   final bool sequenceInline;
 
+  /// 名称前的业务徽章（如「顶层」）：与级联号同排、同胶囊形态，但由宿主
+  /// 自带整枚 Widget（语义色由徽章自己决定），层级色不掺和。不传即不变。
+  final Widget? titleBadge;
+
+  /// [titleBadge] 的语义朗读名（徽章本体在 ExcludeSemantics 里，读不到自己的
+  /// 文本）；不传则徽章纯视觉、不进朗读标签。
+  final String? titleBadgeLabel;
+
   final Color? foregroundColor;
   final bool hasChildren;
   final bool expanded;
@@ -114,6 +124,7 @@ class UtenTreeTableCell extends StatelessWidget {
     // 随副标题一并精简。
     final identityLabel = <String>[
       title,
+      if (titleBadgeLabel?.trim().isNotEmpty == true) titleBadgeLabel!,
       if (sequence.trim().isNotEmpty) '级联号 $sequence',
       if (!sequenceInline) effectiveLevelLabel,
       if (safeSubtitle?.isNotEmpty == true) safeSubtitle!,
@@ -266,6 +277,10 @@ class UtenTreeTableCell extends StatelessWidget {
                                 sequenceChip(theme),
                                 const SizedBox(width: UtenSpacing.s4),
                               ],
+                              if (titleBadge != null) ...[
+                                titleBadge!,
+                                const SizedBox(width: UtenSpacing.s4),
+                              ],
                               Expanded(
                                 child: Text(
                                   title,
@@ -286,6 +301,10 @@ class UtenTreeTableCell extends StatelessWidget {
                             children: [
                               if (sequence.trim().isNotEmpty) ...[
                                 sequenceChip(theme),
+                                const SizedBox(width: UtenSpacing.s4),
+                              ],
+                              if (titleBadge != null) ...[
+                                titleBadge!,
                                 const SizedBox(width: UtenSpacing.s4),
                               ],
                               Text(

@@ -860,7 +860,7 @@ class _MaterialSettlementSheetState
                   if (_busy)
                     const UtenBusyOverlay(
                       title: '正在登记实际用料',
-                      description: '正在写入用料台账，请勿重复提交或关闭面板。',
+                      description: '正在保存用料台账，请勿重复提交或关闭面板。',
                     ),
                 ],
               ),

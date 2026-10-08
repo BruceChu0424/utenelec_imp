@@ -187,7 +187,7 @@ class _WarehouseArrivalExceptionsViewState
           '系统将按财务批准量审核对应收货单，进入 IQC 待检隔离，并按现有收货链路回写到货与应付事实。'
           '这不代表已经进入可用库存；品质检验合格后只形成仓库待入库任务，'
           '仓库确认实物数量和实际库位后才会增加可用库存。'
-          '任一状态、版本、权限、审核、应付或并发校验失败，整批都会回滚。',
+          '只要有一条不符合办理条件（单据状态变了、权限不够、审核或应付未就绪、别人刚改过），本次整批都不会生效。',
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
@@ -244,7 +244,7 @@ class _WarehouseArrivalExceptionsViewState
       invalidateWarehouseTaskCounts(ref);
       context.appSuccess(
         result.replay
-            ? '该批次已完成，已安全重放 ${result.processedCount} 条结果'
+            ? '该批次已办理过，本次没有重复处理（共 ${result.processedCount} 条）'
             : '已批量按财务批准量处理 ${result.processedCount} 条到货异常',
       );
       await _load(_result?.page ?? 1);
@@ -261,7 +261,7 @@ class _WarehouseArrivalExceptionsViewState
     final count = selectedIds.length;
     return [
       Tooltip(
-        message: count == 0 ? '请选择“等待仓库重新审核”的异常' : '按财务批准量原子审核并送品质待检',
+        message: count == 0 ? '请选择“等待仓库重新审核”的异常' : '按财务批准量整批审核并送品质待检',
         child: UtenButton(
           key: const Key('warehouse-arrival-exception-batch-stock-in'),
           size: UtenButtonSize.large,

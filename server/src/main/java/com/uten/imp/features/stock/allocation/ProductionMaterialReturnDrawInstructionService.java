@@ -101,7 +101,7 @@ public class ProductionMaterialReturnDrawInstructionService {
     static Map<UUID,BigDecimal> exactReductions(BigDecimal budget,List<PendingDraw> pending) {
         BigDecimal total=BigDecimal.ZERO;
         for(PendingDraw row:pending) {
-            if(row.rate().signum()<=0)throw new ApiException(ErrorCode.CONFLICT,"原领料单单位换算无效，请先由仓库核对");
+            if(row.rate().signum()<=0)throw new ApiException(ErrorCode.CONFLICT,"原领料单的单位换算不正确，请先由仓库核对");
             total=total.add(row.qty().max(BigDecimal.ZERO).multiply(row.rate()));
         }
         BigDecimal target=budget.min(total).max(BigDecimal.ZERO);

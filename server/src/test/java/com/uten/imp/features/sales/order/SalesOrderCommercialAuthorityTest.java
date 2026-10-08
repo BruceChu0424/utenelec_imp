@@ -123,7 +123,7 @@ class SalesOrderCommercialAuthorityTest {
         assertThatThrownBy(() ->
                 SalesOrderService.requireMasterOrderPrice(goodsId, null))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("未维护销售单价");
+                .hasMessageContaining("还没有销售单价");
 
         OrderItemLine line = new OrderItemLine();
         line.setPrice(new BigDecimal("6.2500"));

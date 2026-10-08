@@ -1178,7 +1178,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       final quantity = prefill.quantities[item.id];
       if (quantity == null) continue;
       if (item.goodsId == null) {
-        throw const FormatException('所选订单产品缺少货品关联，请返回核对');
+        throw const FormatException('所选订单产品缺少货品信息，请返回订单核对');
       }
       final row = SalesGridRow.fromLinked(
         SalesLinkedItem(
@@ -1369,7 +1369,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     if (!mounted) return;
     if (result == null || result.items.isEmpty) return;
     if (_clientId != null && result.clientId != _clientId) {
-      context.appError('上游单据客户与表头客户不一致，已阻止引入');
+      context.appError('上游单据的客户与表头客户不一致，已停止引入，请选择同一客户的单据');
       return;
     }
     final goodsIds = result.items
@@ -1822,16 +1822,16 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       } else if (badRow > 0) {
         fail(
           'items',
-          '第 $badRow 行明细：数量须大于 0${priceRequired
+          '第 $badRow 行明细：数量要大于 0${priceRequired
               ? '，单价必填'
               : widget.docType == SalesDocType.quote
-              ? '，已填写的单价须为非负数'
+              ? '，已填写的单价不能是负数'
               : ''}',
         );
       } else if (badDiscountRow > 0) {
         fail(
           'items',
-          '第 $badDiscountRow 行明细：折扣须大于 0 且不大于 1，最多四位小数(1=原价，0.9=9折)',
+          '第 $badDiscountRow 行明细：折扣要大于 0 且不超过 1，最多四位小数(1=原价，0.9=9折)',
         );
       }
     }
@@ -1997,7 +1997,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     if (_cfg.hasShipInfo &&
         parcelText.isNotEmpty &&
         (parcelCount == null || parcelCount < 0)) {
-      context.appError('物流件数必须为不小于 0 的整数');
+      context.appError('物流件数要填 0 或正整数');
       return;
     }
     final itemsBody = <Map<String, dynamic>>[];
@@ -2249,7 +2249,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
             ),
       );
       if (!mounted) return;
-      if (created.isEmpty) throw const FormatException('未收到已创建的出货单，请重试确认本次结果');
+      if (created.isEmpty) {
+        throw const FormatException('没有收到已创建的出货单，请点击“重试确认开单”确认结果');
+      }
       setState(() {
         _createdShipments = created;
         _uncertainShipmentBody = null;
@@ -2270,13 +2272,13 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         if (!uncertain) _batchIntentKey = const Uuid().v4();
       });
       context.appError(
-        uncertain ? '尚未确认开单结果，当前内容已保留。点击“重试确认开单”使用原请求查询结果。' : error.message,
+        uncertain ? '尚未确认开单结果，当前内容已保留。请点击“重试确认开单”查看刚才提交的结果。' : error.message,
       );
     } catch (error) {
       if (mounted) {
         setState(() => _uncertainShipmentBody = body);
         context.appError(
-          describeSubmitError(error, fallback: '尚未确认开单结果，点击“重试确认开单”继续本次请求。'),
+          describeSubmitError(error, fallback: '尚未确认开单结果，请点击“重试确认开单”继续。'),
         );
       }
     } finally {

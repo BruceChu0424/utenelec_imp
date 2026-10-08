@@ -23,10 +23,10 @@ public class SalesFinanceClaimTargetLocks implements ReviewTaskTargetLockPort {
             UUID id;
             try { id=UUID.fromString(key); }
             catch (IllegalArgumentException | NullPointerException invalid) {
-                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED,"销售订单ID无效");
+                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED,"销售订单编号不正确，请刷新后重试");
                 continue; // Old malformed/orphan soft claims can still be released.
             }
-            if (requireExisting && !id.toString().equals(key)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"财务认领必须使用规范销售订单UUID");
+            if (requireExisting && !id.toString().equals(key)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"所选销售订单不正确，请刷新后重试");
             targets.add(new Target(key,"SALES_ORDER",id,id));
         }
         return targets;

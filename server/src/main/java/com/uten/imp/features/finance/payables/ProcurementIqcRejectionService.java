@@ -81,7 +81,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             UUID inspectionEventId,
             UUID actorUserId) {
         if (outboxEventId == null || inspectionEventId == null || actorUserId == null) {
-            throw validation("IQC不合格投影缺少事件或操作人身份");
+            throw validation("IQC不合格的财务记录缺少事件或操作人信息，无法处理");
         }
         tx.bindActor(actorUserId);
         String receiptType = type(rawReceiptType);
@@ -99,7 +99,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 || source.unitRate().signum() <= 0
                 || MoneyPolicy.quantity(source.receiptQty().multiply(source.unitRate()))
                         .compareTo(MoneyPolicy.quantity(source.receivedBase())) != 0) {
-            throw conflict("IQC失败数量、收货数量或单位换算不守恒");
+            throw conflict("IQC失败数量、收货数量或单位换算对不上，请核对这批收货");
         }
         BigDecimal failedQty = MoneyPolicy.quantityShare(
                 source.receiptQty(), source.failedBase(), source.receivedBase());
@@ -253,7 +253,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 .setParameter("receiptId",receiptId.toString())
                 .getSingleResult()).longValue();
         if(pendingProjection!=0){
-            throw conflict("该收货仍有IQC失败财务投影待处理或待重试，禁止红冲");
+            throw conflict("该收货还有IQC失败的财务记录待处理或待重试，不能红冲");
         }
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
@@ -521,7 +521,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 """).setParameter("inspectionItemId",inspectionItemId)
                 .getSingleResult()).longValue();
         if(pendingProjection!=0){
-            throw conflict("IQC失败检测事件尚未完成财务投影，不能登记实物退回");
+            throw conflict("IQC失败检测事件还没有生成财务记录，不能登记实物退回，请稍后再试");
         }
         String returnReference = bounded(
                 request.returnReference(), 200, "实物退回凭证编号");
@@ -576,7 +576,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         var caseIds=new java.util.TreeSet<UUID>();
         for(var allocation:request.allocations()){
             if(allocation==null||allocation.caseId()==null||!caseIds.add(allocation.caseId()))
-                throw validation("案件分项必须具有唯一的案件UUID");
+                throw validation("每个案件分项只能填一个案件，且不能重复");
         }
         if(!caseIds.contains(id))throw validation("实际贷项分项必须包含当前案件");
         var guard=mutationLocks.iqcCases(caseIds);
@@ -633,7 +633,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if(request.allocations()!=null){
             if(request.allocations().size()>100)throw validation("一次实际供应商贷项最多分配100个案件");
             for(var input:request.allocations()){
-                if(input==null||input.caseId()==null)throw validation("案件分项缺少案件UUID");
+                if(input==null||input.caseId()==null)throw validation("案件分项缺少所属案件，请重新选择");
                 caseIds.add(input.caseId());
             }
         }
@@ -1048,7 +1048,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         tx.bind();
         requireAction("procurement_iqc_rejection:confirm_credit");
         requireAction("procurement_iqc_rejection:amount:view");
-        if(request==null)throw validation("财务投影重试请求不能为空");
+        if(request==null)throw validation("财务记录重试请求不能为空，请填写后重试");
         var mutationGuard=mutationLocks.iqcCase(id);
         @SuppressWarnings("unchecked")
         List<Object[]> identities=em.createNativeQuery("""
@@ -1070,9 +1070,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         }
         requireVersion(row, request.expectedVersion());
         if (!"FINANCE_EXCEPTION".equals(row.status())) {
-            throw conflict("仅财务投影异常任务可重试");
+            throw conflict("只有财务处理出错的异常任务才能重试");
         }
-        String retryReason = bounded(request.reason(), 2000, "财务投影重试原因");
+        String retryReason = bounded(request.reason(), 2000, "财务记录重试原因");
         Projection projection=projection(
                 source,row.failedOriginal(),row.failedLocal(),NativeValueConverters.text(identity[0]),NativeValueConverters.uuid(identity[1]));
         boolean physicalReturned=((Number)em.createNativeQuery("""
@@ -1346,7 +1346,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     private boolean commandReplay(
             UUID commandId,UUID caseId,String commandType,String requestHash){
-        if(commandId==null)throw validation("命令UUID不能为空");
+        if(commandId==null)throw validation("缺少本次操作的指令编号，请刷新页面后重试");
         @SuppressWarnings("unchecked")
         List<Object[]> rows=em.createNativeQuery("""
                 SELECT case_id,command_type,request_hash
@@ -1358,7 +1358,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         if(rows.size()!=1||!java.util.Objects.equals(NativeValueConverters.uuid(row[0]),caseId)
                 ||!java.util.Objects.equals(NativeValueConverters.text(row[1]),commandType)
                 ||!java.util.Objects.equals(NativeValueConverters.text(row[2]),requestHash)){
-            throw conflict("相同命令UUID已用于不同IQC任务或不同请求");
+            throw conflict("同一个操作指令编号已用于别的任务或别的请求，请刷新页面后重新操作");
         }
         return true;
     }

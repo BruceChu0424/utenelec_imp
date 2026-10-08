@@ -26,16 +26,16 @@ public final class FinanceAssetStateMachine {
     private FinanceAssetStateMachine() {}
 
     public static void requireObjectTransition(String current, String target) {
-        requireTransition("asset object", OBJECT_TRANSITIONS, current, target);
+        requireTransition("资产", OBJECT_TRANSITIONS, current, target);
     }
 
     public static void requireRunTransition(String current, String target) {
-        requireTransition("posting run", RUN_TRANSITIONS, current, target);
+        requireTransition("过账批次", RUN_TRANSITIONS, current, target);
     }
 
     public static void requireDraft(String current) {
         if (!"DRAFT".equals(current)) {
-            throw new ApiException(ErrorCode.CONFLICT, "Only a draft can be edited or deleted");
+            throw new ApiException(ErrorCode.CONFLICT, "只有草稿状态的内容才能编辑或删除");
         }
     }
 
@@ -47,7 +47,7 @@ public final class FinanceAssetStateMachine {
         if (!transitions.getOrDefault(current, Set.of()).contains(target)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "Invalid " + subject + " transition: " + current + " -> " + target);
+                    "当前状态不能做这个操作：" + subject + "现在是 " + current + "，不能变成 " + target);
         }
     }
 }

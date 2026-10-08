@@ -152,7 +152,7 @@ void main() {
     expect(api.inventoryRequests, hasLength(2));
     expect(api.inventoryRequests.first['attention'], isNull);
     expect(api.inventoryRequests.last['attention'], 'NEGATIVE_BALANCE');
-    expect(find.text('当前服务暂不支持风险明细，请更新服务后重试。'), findsOneWidget);
+    expect(find.text('当前系统版本暂不支持风险明细，请联系管理员更新系统后重试。'), findsOneWidget);
     expect(find.text('重试加载清单'), findsOneWidget);
     expect(find.text('900'), findsOneWidget);
     expect(find.text('螺丝'), findsNothing);

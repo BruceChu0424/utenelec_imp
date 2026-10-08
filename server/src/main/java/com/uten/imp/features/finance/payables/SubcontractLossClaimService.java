@@ -988,7 +988,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
             documentItemId=null;
         } else {
             if (documentId==null || documentItemId==null || request.fulfillmentDocType()==null) {
-                throw validation("补货或废料返还必须关联已审核的实物单据头和明细 UUID");
+                throw validation("补货或废料返还必须关联已审核的实物单据，并选到具体明细行");
             }
             documentType="OUTPUT_REPLACEMENT".equals(type)
                     ? "SUBCONTRACT_RECEIPT" : "SUBCONTRACT_MATERIAL_RETURN";

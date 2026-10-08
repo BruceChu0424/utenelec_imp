@@ -145,8 +145,8 @@ Future<void> showWarehouseInboundAllocationDetails(
   builder: (_) => _WarehouseInboundAllocationDialog(
     title: title,
     description: actual
-        ? '以下为本次实际入库形成的生产预留与公共库存事实。'
-        : '以下为按当前输入数量顺序截取的预计去向；提交时服务端会重新锁定并复核。',
+        ? '以下为本次实际入库形成的生产预留与公共库存。'
+        : '以下为按当前输入数量顺序截取的预计去向；提交时系统会按最新数据重新锁定核对。',
     sections: sections,
     actual: actual,
   ),
@@ -237,7 +237,7 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
                   actionLabel: reviewerActionLabel ?? '仓库实物入库确认',
                   description: ownRelease
                       ? '本单品质放行也由当前账号执行，请再次核对实物数量、库位和预计去向。'
-                      : '请核对本次实物数量、库位和预计去向；最终分配以提交事务返回为准。',
+                      : '请核对本次实物数量、库位和预计去向；最终以提交后系统返回的结果为准。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
                 for (final section in sections)
@@ -453,8 +453,8 @@ class _AllocationSectionCard extends StatelessWidget {
             if (allocations.isEmpty)
               Text(
                 actual
-                    ? '旧版响应未返回实际去向明细；本次入库已完成，请以刷新后的入库历史为准。'
-                    : '旧版响应未返回预计去向；提交后仍由服务端按实时权益和目标仓权威分配。',
+                    ? '当前版本数据里没有实际去向明细；本次入库已完成，请以刷新后的入库历史为准。'
+                    : '当前版本数据里没有预计去向；提交后系统会按最新的预定量和所选仓库重新分配。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

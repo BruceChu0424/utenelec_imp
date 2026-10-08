@@ -48,7 +48,7 @@ void main() {
     await tester.tap(find.text('打开地址簿'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('当前客户为只读范围'), findsOneWidget);
+    expect(find.textContaining('当前客户只能查看'), findsOneWidget);
     expect(find.text('已有地址一号'), findsOneWidget);
     expect(find.text('新增地址'), findsNothing);
     expect(find.byTooltip('删除该地址'), findsNothing);

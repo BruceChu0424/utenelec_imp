@@ -2003,7 +2003,7 @@ void main() {
       expect(find.byKey(const ValueKey('cost-header-batchQty')), findsNothing);
       expect(find.byKey(const ValueKey('cost-header-name')), findsNothing);
       expect(find.byKey(const Key('cost-currency-selector')), findsNothing);
-      expect(find.text('校验重算'), findsNothing);
+      expect(find.text('检查并重算'), findsNothing);
       expect(find.text('导入成本表'), findsNothing);
       expect(find.text('确认成本版本'), findsNothing);
       expect(

@@ -794,9 +794,9 @@ class _SubcontractDocDetailPageState
         ? '${matchingSettlementMethods!.first.name}'
               '(${matchingSettlementMethods.first.code})'
         : settlementMethodsState.isLoading
-        ? '结算方式字典加载中…'
+        ? '结算方式加载中…'
         : settlementMethodsState.hasError
-        ? '结算方式字典加载失败(${d.settlementMethodId})'
+        ? '结算方式加载失败（编号 ${d.settlementMethodId}）'
         : '已停用或不可用(${d.settlementMethodId})';
     final rows = <_KV>[
       _KV('单据号', d.billNo),

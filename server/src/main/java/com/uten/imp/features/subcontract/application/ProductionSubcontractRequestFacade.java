@@ -213,7 +213,7 @@ public class ProductionSubcontractRequestFacade
                 row -> decimal(row[1]).signum() > 0)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "计划包委外申请已转委外订单，必须先反向处理下游单据");
+                    "计划包委外申请已转委外订单，请先红冲下游的委外订货单");
         }
         if (action == LifecycleAction.CANCEL) {
             com.uten.imp.common.web.StandardDocumentLifecycleCapabilities
@@ -242,7 +242,7 @@ public class ProductionSubcontractRequestFacade
                 || line.qty().signum() <= 0) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "委外需求行缺少必填维度或数量无效");
+                    "委外需求行填写不完整或数量不正确");
         }
     }
 

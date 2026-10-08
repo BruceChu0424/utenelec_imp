@@ -19,6 +19,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/goods_node.dart';
@@ -262,7 +263,7 @@ class _RequestState
       try {
         if (widget.segmentIds.length > 50 ||
             widget.segmentCodes.length != widget.segmentIds.length) {
-          throw const FormatException('车间任务来源参数不完整');
+          throw const FormatException('打开本页时带的车间任务信息不完整，请从「我的车间任务」重新进入');
         }
         final repository = ref.read(
           productionExecutionWorkbenchRepositoryProvider,
@@ -286,11 +287,12 @@ class _RequestState
         for (final task in loaded) {
           _rows.add(_newRow(task));
         }
-      } catch (error) {
+      } catch (e) {
         if (mounted) {
           setState(() {
             _sourceChanged = true;
-            _error = '$error';
+            // 服务端拒绝(如任务已变化/无权限)给的是中文原因，能看就如实展示。
+            _error = humanErrorMessage(e) ?? '车间任务信息没有加载出来，请返回「我的车间任务」重新进入';
           });
         }
       } finally {

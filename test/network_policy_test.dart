@@ -124,7 +124,7 @@ void main() {
       throwsA(
         isA<NetworkTimeoutException>()
             .having((e) => e.code, 'code', 'NETWORK_TIMEOUT')
-            .having((e) => e.message, 'message', contains('网络连接超时')),
+            .having((e) => e.message, 'message', contains('等待服务器响应时间过长')),
       ),
     );
   });

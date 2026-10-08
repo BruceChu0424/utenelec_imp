@@ -70,7 +70,7 @@ class AttachmentDownloadVerifier {
             cleanup(spool);slots.release();
             if(error instanceof ApiException api)throw api;
             if(error instanceof StorageResourceUnavailableException busy)throw busy;
-            throw new ApiException(ErrorCode.CONFLICT,"附件对象不存在或原始字节校验失败，请联系管理员核对");
+            throw new ApiException(ErrorCode.CONFLICT,"附件文件读取失败或内容与记录不一致，请联系管理员核对");
         }
     }
 

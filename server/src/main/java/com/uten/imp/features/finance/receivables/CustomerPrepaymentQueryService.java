@@ -167,7 +167,7 @@ public class CustomerPrepaymentQueryService {
         BigDecimal exactAppliedLocal = receiptBookLocal.add(prepaymentAppliedTargetLocal);
         if (formalOriginal.subtract(exactAppliedOriginal).signum() < 0 || formalLocal.subtract(exactAppliedLocal).signum() < 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "销售单应收来源已被超额核销，资金汇总不守恒；请财务核验来源分配");
+                    "销售单的应收被核销的金额超过了应收金额，请财务核对来源分配");
         }
         BigDecimal arOutstandingOriginal = invoicePosition.remainingOriginal();
         BigDecimal arOutstandingLocal = invoicePosition.remainingLocal();

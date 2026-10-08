@@ -47,7 +47,7 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release253Reset,
         l10n.release253Maintenance,
       ],
-      '2.5.4' => [
+      '2.5.6' => [
         l10n.release253Hr,
         l10n.release253Permissions,
         l10n.release253Materials,
@@ -58,6 +58,11 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release254QuantityPrecision,
         l10n.release254AiAuthorization,
         l10n.release254SensitiveAuthorization,
+        l10n.release254OverLimit,
+        l10n.release254PlanningReminders,
+        l10n.release254PeoplePicker,
+        l10n.release254AccountSupport,
+        l10n.release254Dashboard,
         l10n.release254Publishing,
       ],
       _ => <String>[],

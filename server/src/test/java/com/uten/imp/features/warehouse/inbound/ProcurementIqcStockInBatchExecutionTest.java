@@ -87,7 +87,7 @@ class ProcurementIqcStockInBatchExecutionTest {
         BatchConfirmEntry first = f.entry(1, "same-stock-in", "2");
         BatchConfirmEntry second = f.entry(2, " same-stock-in ", "3");
         assertThatThrownBy(() -> f.service.batchConfirm(new BatchConfirmRequest(List.of(first, second))))
-                .isInstanceOf(ApiException.class).hasMessageContaining("重复幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("重复的防重复提交标识");
         verifyNoInteractions(f.locks, f.stock, f.production);
     }
 
@@ -173,7 +173,7 @@ class ProcurementIqcStockInBatchExecutionTest {
         ConfirmRequest changed=new ConfirmRequest(entry.idempotencyKey(),List.of(new ConfirmItem(
                 item.passEventId(),item.baseQty(),item.expectedRemainingBaseQty(),item.place(),UUID.randomUUID())));
         assertThatThrownBy(()->f.service.confirm("PURCHASE",entry.receiptId(),changed))
-                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("防重复提交标识");
         assertThat(f.writeSql).isEmpty();
         verifyNoInteractions(f.stock,f.production,f.peg,f.warehouses);
     }
@@ -195,7 +195,7 @@ class ProcurementIqcStockInBatchExecutionTest {
         assertThat(explicitHash).isNotEqualTo(legacyHash);
         f.existing.put(entry.idempotencyKey(),new Object[]{UUID.randomUUID(),legacyHash,1,OffsetDateTime.now()});
         assertThatThrownBy(()->f.service.confirm("PURCHASE",entry.receiptId(),explicit))
-                .isInstanceOf(ApiException.class).hasMessageContaining("幂等键");
+                .isInstanceOf(ApiException.class).hasMessageContaining("防重复提交标识");
         assertThat(f.writeSql).isEmpty();
         verifyNoInteractions(f.stock,f.production,f.peg,f.warehouses);
     }

@@ -451,6 +451,10 @@ abstract class _MaterialAnalysisBomTreeState
         _MaterialAggregate(
           key: entry.key,
           paths: entry.value,
+          materialsById: {
+            for (final material in analysis.materials)
+              material.materialLineId: material,
+          },
           rootProductIds: {
             for (final material in entry.value)
               if (indexes

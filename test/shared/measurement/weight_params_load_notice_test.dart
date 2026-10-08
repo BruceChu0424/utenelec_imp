@@ -20,7 +20,7 @@ class _FlakyRepository extends WeightRepository {
       // 2026-10-04 的真实回包: 拼接 key 超长被逐行校验拒绝。
       throw ApiException(
         'VALIDATION_FAILED',
-        '参数校验失败',
+        '填写的内容有误',
         httpStatus: 422,
         fieldErrors: const [
           ApiFieldError(field: 'lines[0].key', message: '个数必须在0和100之间'),
@@ -60,7 +60,7 @@ void main() {
     await cache.ensure([line]);
     await tester.pump();
     expect(find.byKey(const Key('weight-params-load-notice')), findsOneWidget);
-    expect(find.textContaining('单重参数读取失败'), findsOneWidget);
+    expect(find.textContaining('单重设置读取失败'), findsOneWidget);
     expect(find.textContaining('个数必须在0和100之间'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('weight-params-load-retry')));

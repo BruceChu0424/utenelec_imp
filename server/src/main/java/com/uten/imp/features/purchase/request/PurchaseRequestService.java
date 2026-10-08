@@ -184,7 +184,7 @@ public class PurchaseRequestService {
     @PreAuthorize("hasAuthority('purchase_request:view') and hasAuthority('purchase_order:decompose')")
     public RequestDetail adjustItemQty(UUID requestId, UUID itemId, java.math.BigDecimal qty, Long expectedVersion) {
         if (expectedVersion == null || expectedVersion < 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "数量修正必须携带当前明细版本，请刷新后重试");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "页面上的明细数据不是最新的，请刷新后重试");
         }
         if (qty == null || qty.signum() <= 0 || qty.stripTrailingZeros().scale() > 4
                 || qty.precision() - qty.scale() > 14) {
@@ -213,7 +213,7 @@ public class PurchaseRequestService {
             throw new ApiException(ErrorCode.NOT_FOUND, "申请明细不存在");
         }
         if (item.getRowVersion() != expectedVersion) {
-            throw new ApiException(ErrorCode.CONFLICT, "申请明细已变化，请保留原输入并刷新核对");
+            throw new ApiException(ErrorCode.CONFLICT, "申请明细已被别人改过，请刷新后核对再重试");
         }
         if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED || r.isClosed()
                 || Boolean.TRUE.equals(r.getIsStopped()) || item.getUnitId() == null
@@ -241,7 +241,7 @@ public class PurchaseRequestService {
                 .setParameter("item", itemId).setParameter("request", requestId)
                 .setParameter("version", expectedVersion).getResultList();
         if (changed.size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "申请明细已变化，请保留原输入并刷新核对");
+            throw new ApiException(ErrorCode.CONFLICT, "申请明细已被别人改过，请刷新后核对再重试");
         }
         em.refresh(item);
         return detail(requestId);

@@ -273,7 +273,7 @@ public class SalesReportService {
             case DOC_SHIPMENT -> shipmentDetail(billNo, clientId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
             case DOC_RETURN -> returnDetail(billNo, clientId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
             case DOC_OTHER_SHIPMENT -> otherShipmentDetail(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
-            default -> throw new ApiException(ErrorCode.BUSINESS, "未知 docType：" + dt);
+            default -> throw new ApiException(ErrorCode.BUSINESS, "报表类型不正确：" + dt);
         };
     }
 
@@ -524,7 +524,7 @@ public class SalesReportService {
             case DOC_SHIPMENT -> shipmentSummary(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
             case DOC_RETURN -> returnSummary(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
             case DOC_OTHER_SHIPMENT -> otherShipmentSummary(billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, page, size, sort, order);
-            default -> throw new ApiException(ErrorCode.BUSINESS, "未知 docType：" + dt);
+            default -> throw new ApiException(ErrorCode.BUSINESS, "报表类型不正确：" + dt);
         };
     }
 
@@ -765,7 +765,7 @@ public class SalesReportService {
             case "RETURN/summary"         -> (pg, sz) -> summary(DOC_RETURN, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "OTHER_SHIPMENT/detail"  -> (pg, sz) -> detail(DOC_OTHER_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "OTHER_SHIPMENT/summary" -> (pg, sz) -> summary(DOC_OTHER_SHIPMENT, billNo, clientId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
@@ -783,7 +783,7 @@ public class SalesReportService {
         String dt = docType == null ? null : docType.trim().toUpperCase();
         if (dt != null && !java.util.Set.of("QUOTE", DOC_ORDER, DOC_SHIPMENT,
                 DOC_OTHER_SHIPMENT, DOC_RETURN).contains(dt)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知销售月报类型：" + docType);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "销售月报类型不正确：" + docType);
         }
         int safeLimit = Math.min(Math.max(1, limit), 2000);
         var ownerScope = accessPolicy.scope();
@@ -878,11 +878,11 @@ public class SalesReportService {
     // ======================== 内部结构 ========================
 
     private static String normalizeDocType(String docType) {
-        if (docType == null) throw new ApiException(ErrorCode.BUSINESS, "docType 必填");
+        if (docType == null) throw new ApiException(ErrorCode.BUSINESS, "请先选择报表类型");
         String dt = docType.trim().toUpperCase();
         if (dt.equals("QUOTE")) throw new ApiException(ErrorCode.BUSINESS, "销售报价无报表");
         if (!java.util.Set.of(DOC_ORDER, DOC_SHIPMENT, DOC_OTHER_SHIPMENT, DOC_RETURN).contains(dt)) {
-            throw new ApiException(ErrorCode.BUSINESS, "未知 docType：" + docType);
+            throw new ApiException(ErrorCode.BUSINESS, "报表类型不正确：" + docType);
         }
         return dt;
     }

@@ -18,8 +18,9 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/admin/models/ai_provider_models.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_settings_page.dart';
+import 'package:uten_imp/features/admin/models/ai_usage_dashboard_models.dart';
 import 'package:uten_imp/features/admin/repositories/ai_provider_repository.dart';
-import 'package:uten_imp/features/admin/repositories/ai_usage_audit_repository.dart';
+import 'package:uten_imp/features/admin/repositories/ai_usage_dashboard_repository.dart';
 import 'package:uten_imp/features/admin/widgets/ai_masked_key.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
@@ -428,28 +429,33 @@ class _SettingsSnapshot extends SessionSnapshotNotifier {
   Future<SessionSnapshot?> build() async => SessionSnapshot(generation: 1);
 }
 
-class _SettingsAudit implements AiUsageAuditRepository {
+/// 今日用量卡的数据源(设置页只读看板 day 窗口的今日三值)。
+class _SettingsDashboard implements AiUsageDashboardRepository {
   @override
-  Future<Map<String, dynamic>> read({
-    int days = 30,
-    int page = 0,
-    int size = 20,
-    String? userId,
-    String? providerId,
-  }) async => {
-    'total': 0,
-    'summary': <String, dynamic>{},
-    'records': <Object>[],
-    'users': <Object>[],
-  };
+  Future<AiUsageDashboard> dashboard(AiUsageWindow window) async =>
+      AiUsageDashboard.fromJson({
+        'window': 'day',
+        'todayTokens': 8888,
+        'dailyTokenBudget': 3000000,
+        'todayCalls': 56,
+        'activeUsersToday': 7,
+        'disabledCount': 0,
+        'series': <Object>[],
+        'people': <Object>[],
+      });
+
   @override
-  Future<Map<String, dynamic>> billing(String providerId) =>
-      throw StateError('Unexpected billing read');
+  Future<AiUsagePersonDetail> person(String userId, AiUsageWindow window) =>
+      throw UnimplementedError();
+
   @override
-  Future<Map<String, dynamic>> saveBilling(
-    String providerId,
-    Map<String, dynamic> values,
-  ) => throw StateError('Unexpected billing write');
+  Future<AiUserLimits> saveLimits(
+    String userId, {
+    required bool disabled,
+    int? dailyTokenLimit,
+    int? dailyJobLimit,
+    required int rowVersion,
+  }) => throw UnimplementedError();
 }
 
 Future<ProviderContainer> _pump(
@@ -471,7 +477,9 @@ Future<ProviderContainer> _pump(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
         aiProviderRepositoryProvider.overrideWithValue(repo),
-        aiUsageAuditRepositoryProvider.overrideWithValue(_SettingsAudit()),
+        aiUsageDashboardRepositoryProvider.overrideWithValue(
+          _SettingsDashboard(),
+        ),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'settings-admin'),
         ),
@@ -506,8 +514,27 @@ List<String> _messages(ProviderContainer container) => [
   for (final n in container.read(appNotificationProvider)) n.message,
 ];
 
+/// 服务商卡片默认收起: 先展开(幂等, 已展开则跳过)再点卡内操作。
+Future<void> _expandCard(WidgetTester tester, String id) async {
+  final header = find.byKey(ValueKey('ai-provider-header-$id'));
+  double turns() => tester
+      .widget<AnimatedRotation>(
+        find.descendant(of: header, matching: find.byType(AnimatedRotation)),
+      )
+      .turns;
+  if (turns() == 0.5) return;
+  await tester.ensureVisible(header);
+  await tester.tap(header);
+  await tester.pumpAndSettle();
+  expect(turns(), 0.5);
+}
+
 Future<void> _openEditorFor(WidgetTester tester, String id) async {
-  await tester.tap(find.byKey(ValueKey('ai-provider-edit-$id')));
+  await _expandCard(tester, id);
+  final edit = find.byKey(ValueKey('ai-provider-edit-$id'));
+  await tester.ensureVisible(edit);
+  await tester.pumpAndSettle();
+  await tester.tap(edit);
   await tester.pumpAndSettle();
 }
 
@@ -555,8 +582,45 @@ void main() {
     expect(find.byKey(const ValueKey('ai-settings-empty-add')), findsOneWidget);
     expect(find.byKey(const ValueKey('ai-settings-add')), findsNothing);
     expect(find.text(_zh.aiSettingsAdd), findsOneWidget);
-    expect(find.text(_zh.aiSettingsUsageEmpty), findsNothing);
     await _capture(tester, 'empty-light.png');
+  });
+
+  testWidgets('provider cards are collapsed until opened', (tester) async {
+    await _pump(
+      tester,
+      _Repo(
+        providers: [
+          _provider(),
+          _provider(id: _ollamaId, isDefault: false),
+        ],
+      ),
+    );
+    double turns(String id) => tester
+        .widget<AnimatedRotation>(
+          find.descendant(
+            of: find.byKey(ValueKey('ai-provider-header-$id')),
+            matching: find.byType(AnimatedRotation),
+          ),
+        )
+        .turns;
+    // 默认收起: 只有头部(名称/模型/徽章/开关); 详情在树里但不可点。
+    expect(turns(_deepseekId), 0);
+    expect(
+      find.byKey(const ValueKey('ai-provider-test-$_deepseekId')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('ai-provider-test-$_deepseekId')).hitTestable(),
+      findsNothing,
+    );
+    await _expandCard(tester, _deepseekId);
+    expect(turns(_deepseekId), 0.5);
+    expect(
+      find.byKey(const ValueKey('ai-provider-test-$_deepseekId')).hitTestable(),
+      findsOneWidget,
+    );
+    // 另一张卡互不影响, 仍收起。
+    expect(turns(_ollamaId), 0);
   });
 
   for (final (compact, dark) in [(false, false), (true, true)]) {
@@ -581,6 +645,19 @@ void main() {
         );
         await _pump(tester, repo, compact: compact, dark: dark);
 
+        // 今日用量卡与「正在使用」同屏, 数字来自看板 day 窗口。
+        expect(
+          find.byKey(const ValueKey('ai-settings-today-usage')),
+          findsOneWidget,
+        );
+        expect(find.text(_zh.aiSettingsTodayUsage), findsOneWidget);
+        expect(
+          find.text(_zh.aiSettingsTodayUsageFooter(56, 7)),
+          findsOneWidget,
+        );
+
+        await _expandCard(tester, _deepseekId);
+        await _expandCard(tester, _ollamaId);
         expect(
           find.text(_zh.aiSettingsHeroActive('DeepSeek 正式', 'deepseek-flash')),
           findsOneWidget,
@@ -624,8 +701,6 @@ void main() {
           find.byKey(const ValueKey('ai-provider-default-$_ollamaId')),
           findsOneWidget,
         );
-        expect(find.text('128'), findsOneWidget);
-        expect(find.text('97.7%'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await _capture(
           tester,
@@ -639,6 +714,7 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _Repo(providers: [_provider(unreadable: true)]));
+    await _expandCard(tester, _deepseekId);
     expect(
       find.byKey(const ValueKey('ai-provider-key-unreadable')),
       findsOneWidget,
@@ -650,6 +726,7 @@ void main() {
     final repo = _Repo(providers: [_provider(mask: '已配置')]);
     await _pump(tester, repo);
     expect(find.text(_zh.aiSettingsKeyConfiguredPlain), findsOneWidget);
+    await _expandCard(tester, _deepseekId);
     expect(find.textContaining('已配置 已配置'), findsNothing);
     expect(find.byType(AiMaskedKey), findsNothing);
     await _openEditorFor(tester, _deepseekId);
@@ -661,10 +738,14 @@ void main() {
   ) async {
     final repo = _Repo(providers: [_provider()]);
     await _pump(tester, repo);
+    await _expandCard(tester, _deepseekId);
 
-    await tester.tap(
-      find.byKey(const ValueKey('ai-provider-test-$_deepseekId')),
+    final testButton = find.byKey(
+      const ValueKey('ai-provider-test-$_deepseekId'),
     );
+    await tester.ensureVisible(testButton);
+    await tester.pumpAndSettle();
+    await tester.tap(testButton);
     await tester.pumpAndSettle();
 
     expect(repo.calls, contains('testStored $_deepseekId'));
@@ -858,6 +939,7 @@ void main() {
       ..storedResult = _serverWarnResult;
     await _pump(tester, repo);
 
+    await _expandCard(tester, _deepseekId);
     await tester.tap(
       find.byKey(const ValueKey('ai-provider-test-$_deepseekId')),
     );
@@ -896,6 +978,7 @@ void main() {
       ..storedResult = _serverAuthFailed;
     await _pump(tester, repo);
 
+    await _expandCard(tester, _deepseekId);
     await tester.tap(
       find.byKey(const ValueKey('ai-provider-test-$_deepseekId')),
     );
@@ -996,6 +1079,7 @@ void main() {
     await _pump(tester, repo);
 
     expect(find.text(_zh.aiSettingsHeroReady), findsOneWidget);
+    await _expandCard(tester, _ollamaId);
     expect(find.text(_zh.aiSettingsHeroNeedsKey), findsNothing);
     expect(find.text(_zh.aiSettingsKeyNotNeeded), findsOneWidget);
     expect(find.text(_zh.aiSettingsKeyMissing), findsNothing);
@@ -1143,17 +1227,25 @@ void main() {
       ],
     );
     final container = await _pump(tester, repo);
+    await _expandCard(tester, _deepseekId);
+    await _expandCard(tester, _ollamaId);
 
-    await tester.tap(
-      find.byKey(const ValueKey('ai-provider-delete-$_deepseekId')),
+    final defaultDelete = find.byKey(
+      const ValueKey('ai-provider-delete-$_deepseekId'),
     );
+    await tester.ensureVisible(defaultDelete);
+    await tester.pumpAndSettle();
+    await tester.tap(defaultDelete);
     await tester.pumpAndSettle();
     expect(_messages(container), contains(_zh.aiSettingsDeleteDefaultBlocked));
     expect(repo.calls.where((c) => c.startsWith('delete')), isEmpty);
 
-    await tester.tap(
-      find.byKey(const ValueKey('ai-provider-delete-$_ollamaId')),
+    final backupDelete = find.byKey(
+      const ValueKey('ai-provider-delete-$_ollamaId'),
     );
+    await tester.ensureVisible(backupDelete);
+    await tester.pumpAndSettle();
+    await tester.tap(backupDelete);
     await tester.pumpAndSettle();
     expect(find.text(_zh.aiSettingsDeleteTitle), findsOneWidget);
     await tester.tap(find.text(_zh.aiSettingsDelete).last);
@@ -1168,6 +1260,7 @@ void main() {
     (tester) async {
       final repo = _Repo(providers: [_provider()])..holdEnabled = Completer();
       await _pump(tester, repo);
+      await _expandCard(tester, _deepseekId);
 
       await tester.tap(
         find.byKey(const ValueKey('ai-provider-enabled-$_deepseekId')),

@@ -571,7 +571,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return switch (value) {
             case "", "NONE", "PENDING", "REJECTED" -> value.isEmpty() ? null : value;
             default -> throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED, "财务审批态筛选无效");
+                    ErrorCode.VALIDATION_FAILED, "财务审批状态的筛选值不正确，请刷新后重试");
         };
     }
 
@@ -958,7 +958,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (!same) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "既有采购订货单必须保持一套商业条款；多条款新单请使用批量拆单接口");
+                        "已有采购订货单只能保持一套商业条款；需要不同条款请另开新单");
             }
         }
     }
@@ -1122,7 +1122,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     && !java.util.Objects.equals(line.getSupplierId(), header)) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "既有采购订货单必须保持一单一商；多供应商新单请使用批量拆单接口");
+                        "已有采购订货单只能对应一个供应商；多个供应商请另开新单");
             }
         }
     }
@@ -1384,7 +1384,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (updated != 1) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "采购订货明细货品快照已锁定或不存在，请刷新后重试");
+                        "采购订货明细的货品资料已锁定或不存在，请刷新后重试");
             }
         }
     }

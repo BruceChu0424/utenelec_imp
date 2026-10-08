@@ -161,7 +161,9 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
 
     if (_isCreate && widget.categoryId == null) {
       return Scaffold(
-        body: Center(child: UtenEmpty.error(message: '缺少分类参数，无法新增货品')),
+        body: Center(
+          child: UtenEmpty.error(message: '缺少分类信息，无法新增货品；请从货品分类页进入'),
+        ),
       );
     }
     if (!_isCreate) {

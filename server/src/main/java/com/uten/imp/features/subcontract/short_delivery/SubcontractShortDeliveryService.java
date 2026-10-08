@@ -736,7 +736,7 @@ public class SubcontractShortDeliveryService
     private static String normalizeSegment(String segment) {
         String normalized = segment == null ? "PENDING" : segment.strip().toUpperCase();
         if (!SEGMENTS.contains(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "短交案件分段无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "短交案件的筛选值不正确，请刷新后重试");
         }
         return normalized;
     }
@@ -854,7 +854,7 @@ public class SubcontractShortDeliveryService
     @Transactional(readOnly = true)
     public SupplierLossSummary supplierSummary(UUID supplierId) {
         if (supplierId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "供应商 ID 不能为空");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择供应商");
         }
         Map<String, Object> summary = jdbc.query("""
                 SELECT settled_line_count, accepted_loss_count, ordered_qty, loss_qty, loss_pct,

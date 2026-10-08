@@ -79,7 +79,7 @@ public class ClientFromDocumentService {
         UUID categoryId = systemCategories.clientCategoryId();
         ClientCategory category = categories.findById(categoryId)
                 .filter(candidate -> !candidate.isDeleted())
-                .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "系统未分类客户分类缺失"));
+                .orElseThrow(() -> new ApiException(ErrorCode.INTERNAL, "系统缺少「未分类」客户分类，请联系管理员处理"));
         CategoryCodeAllocation code = categoryCodes.allocate(
                 CategoryDrivenCodeService.MasterType.CLIENT, category.getId(), null);
         Client client = new Client();

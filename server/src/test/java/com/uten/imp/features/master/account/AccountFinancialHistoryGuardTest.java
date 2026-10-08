@@ -149,8 +149,8 @@ class AccountFinancialHistoryGuardTest {
 
         assertThatThrownBy(() -> service.update(account.getId(), request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("会计科目不存在、已禁用")
-                .hasMessageContaining("叶节点");
+                .hasMessageContaining("会计科目不存在、已停用")
+                .hasMessageContaining("最末级账户科目");
         verify(repository, never()).save(account);
         verify(hierarchyLock).getSingleResult();
     }

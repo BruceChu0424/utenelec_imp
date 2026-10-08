@@ -119,7 +119,7 @@ class WorkshopFullQuantityIssueEndToEndTest {
                 request.warehouseId(), request.billDate(), request.deliveryDate(), request.approveNow(), request.lines(), false);
         ApiException conflict = assertThrows(ApiException.class,
                 () -> commands.issueWorkshopPlans(fixture.target().analysisId(), changed));
-        assertTrue(conflict.getMessage().contains("同一幂等键已用于不同请求"), conflict.getMessage());
+        assertTrue(conflict.getMessage().contains("同一防重复提交标识已用于不同内容的请求"), conflict.getMessage());
         assertEquals(1, plans(fixture));
         assertEquals(0, claims(fixture));
         qty("2", available(fixture));

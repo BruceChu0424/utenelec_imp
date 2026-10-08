@@ -19,7 +19,7 @@ public class CustomerShipmentPolicy {
 
     public static String requestedKind(String value) {
         String kind=value==null?ORDER:value.trim().toUpperCase(java.util.Locale.ROOT);
-        if(!ORDER.equals(kind)&&!DIRECT.equals(kind))throw new ApiException(ErrorCode.VALIDATION_FAILED,"发货业务类型无效");
+        if(!ORDER.equals(kind)&&!DIRECT.equals(kind))throw new ApiException(ErrorCode.VALIDATION_FAILED,"发货业务类型不正确，请刷新后重试");
         return kind;
     }
     public static boolean direct(SalesShipment shipment){return DIRECT.equals(shipment.getShipmentKind());}

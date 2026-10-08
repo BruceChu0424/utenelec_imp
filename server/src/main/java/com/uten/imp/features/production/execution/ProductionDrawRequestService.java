@@ -54,7 +54,7 @@ public class ProductionDrawRequestService {
                 || !request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}")
                 || request.previewFingerprint() == null
                 || !request.previewFingerprint().matches("[0-9a-f]{64}")) {
-            throw validation("领料提交缺少有效幂等键或汇总版本，请重新打开领料汇总");
+            throw validation("领料提交缺少有效的防重复提交标识或汇总版本，请重新打开领料汇总");
         }
         tx.bind();
         // Same actor/key serializes complete batch replays, including disjoint changed members.
@@ -381,7 +381,7 @@ public class ProductionDrawRequestService {
         List<UUID> segmentIds = rows.stream().map(row -> uuid(row[0])).distinct().sorted().toList();
         if (rows.stream().anyMatch(row -> !hash.equals(row[1]))
                 || !items.stream().map(Item::segmentId).toList().containsAll(segmentIds)) {
-            throw conflict("相同幂等键对应不同的领料批次，请重新核对");
+            throw conflict("同一防重复提交标识对应不同的领料批次，请刷新后重新核对");
         }
         return result(segmentIds, rows.stream().map(row -> uuid(row[2])).distinct().sorted().toList(), true);
     }

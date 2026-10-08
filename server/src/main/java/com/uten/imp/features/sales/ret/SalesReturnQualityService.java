@@ -113,7 +113,7 @@ public class SalesReturnQualityService {
         if (rows.isEmpty()) return false;
         if (rows.size() != expectedItemCount) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "退货质检冻结台账不完整，禁止红冲并请管理员核查");
+                    "退货质检记录不完整，不能红冲，请联系管理员核查");
         }
         UUID actor = currentUser.requireEmployeeId();
         for (Object[] row : rows) {
@@ -506,7 +506,7 @@ public class SalesReturnQualityService {
         }
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "该退货质检幂等键已用于不同处置内容，请刷新后重新操作");
+                "该退货质检操作编号已用于不同处置内容，请刷新后重新操作");
     }
 
     private boolean isCorrectionReplay(
@@ -532,7 +532,7 @@ public class SalesReturnQualityService {
         }
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "该退货质检纠错幂等键已用于不同内容，请刷新后重新操作");
+                "该退货质检纠错操作编号已用于不同内容，请刷新后重新操作");
     }
 
     /** 纠错幂等键独立键空间（与处置命令区分，同一键不会串出对方语义）。 */
@@ -598,7 +598,7 @@ public class SalesReturnQualityService {
                 || !normalized.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "退货质检幂等键必须为 8 到 128 位字母、数字或 ._:-");
+                    "退货质检操作编号必须为 8 到 128 位字母、数字或 ._:-");
         }
         return normalized;
     }
@@ -626,7 +626,7 @@ public class SalesReturnQualityService {
                 && !Objects.equals(normalized, "SCRAP")
                 && !Objects.equals(normalized, "REWORK")) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "质检处置仅支持 GOOD_RELEASE、SCRAP 或 REWORK");
+                    "质检处置方式不正确，请重新选择");
         }
         return normalized;
     }
@@ -696,7 +696,7 @@ public class SalesReturnQualityService {
         }
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "退货质检时间字段类型异常");
+                "退货质检的时间数据异常，请联系管理员处理");
     }
 
     private static BigDecimal decimal(Object value) {

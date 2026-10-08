@@ -445,7 +445,8 @@ abstract class _MaterialAnalysisCandidatesState
             children: [
               _candidateTabs(),
               if (salesTab)
-                SizedBox(width: 320, child: _candidateSearchBar())
+                // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
+                SizedBox(width: 160, child: _candidateSearchBar())
               else if (_canManage)
                 _addManualDemandButton(),
             ],

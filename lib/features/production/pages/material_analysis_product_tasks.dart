@@ -355,7 +355,10 @@ abstract class _MaterialAnalysisProductTasksState
     } catch (error) {
       if (!mounted) return false;
       // 用宿主 State 自己的 context 报错: 传进来的那个可能属于已被回收的行/弹窗。
-      this.context.appError('所属仓库保存失败: $error'); // TODO(l10n): 补 arb
+      // 服务端拒绝(如该货品已被别的规则占用)给的是中文原因，能看就如实展示。
+      this.context.appError(
+        humanErrorMessage(error) ?? '所属仓库没有保存成功，请稍后重试',
+      ); // TODO(l10n): 补 arb
       setState(() => _savingGoodsOwnership = false);
       return false;
     }
@@ -515,7 +518,15 @@ abstract class _MaterialAnalysisProductTasksState
           !supplement) {
         continue;
       }
-      if (material.shortageQty <= 0 && !supplement) continue;
+      // shortageQty is the frozen BOM expansion and can remain positive after
+      // exact shared supply covers this node. Only the node's own outstanding
+      // responsibility can create a MAKE task; an alias's preparation share is
+      // a display/command projection and must not create another source task.
+      final uncovered =
+          material.planningUncoveredQty ??
+          material.aggregatePreparation?.planningUncoveredQty ??
+          material.shortageQty;
+      if (uncovered <= 0 && !supplement) continue;
       if (material.confirmedRoute != MaterialSupplyRoute.make) continue;
       final hasActiveTask = material.notifiedTargets.any(
         (target) =>
@@ -792,7 +803,7 @@ abstract class _MaterialAnalysisProductTasksState
         for (final candidate in candidates) _BucketRow.candidate(candidate),
         for (final group in _materialGroups(analysis))
           if (group.representative.confirmedRoute == MaterialSupplyRoute.make &&
-              group.representative.preparationAdoptedQty > 0.0001 &&
+              group.representative.preparationAdoptedQty > 0 &&
               !representedGroups.contains(group.key))
             _BucketRow.group(group),
       ];
@@ -811,8 +822,8 @@ abstract class _MaterialAnalysisProductTasksState
                   group.representative.materialLineId,
                 )) &&
             ((group.representative.confirmedRoute == route &&
-                    (_preparationUncoveredQty(group) > 0.0001 ||
-                        _preparationOrderedQty(group) > 0.0001 ||
+                    (_preparationUncoveredQty(group) > 0 ||
+                        _preparationOrderedQty(group) > 0 ||
                         _hasSupplySubmitQty(group, route))) ||
                 group.paths.any(
                   (path) => path.notifiedTargets.any(
@@ -827,8 +838,8 @@ abstract class _MaterialAnalysisProductTasksState
     final groups = _preparationGroupsOf(row);
     if (groups.any(
       (group) =>
-          _preparationOrderedQty(group) > 0.0001 ||
-          group.paths.any((path) => path.preparationAdoptedQty > 0.0001),
+          _preparationOrderedQty(group) > 0 ||
+          group.paths.any((path) => path.preparationAdoptedQty > 0),
     )) {
       return true;
     }
@@ -880,7 +891,7 @@ abstract class _MaterialAnalysisProductTasksState
     if (group != null &&
         group.paths.any((path) => path.aggregatePreparation != null)) {
       final stage = _serverFlowStageOf(group);
-      if (stage != null && _preparationOrderedQty(group) > 0.0001) {
+      if (stage != null && _preparationOrderedQty(group) > 0) {
         return stage.tone != ProductionFlowTone.done;
       }
     }
@@ -922,7 +933,7 @@ abstract class _MaterialAnalysisProductTasksState
       return false;
     }
     if (groups.isNotEmpty) {
-      return groups.any((group) => _preparationUncoveredQty(group) > 0.0001) ||
+      return groups.any((group) => _preparationUncoveredQty(group) > 0) ||
           (!_bucketRowHasIssued(row, bucket) &&
               groups.any(_preparationCanIssue));
     }

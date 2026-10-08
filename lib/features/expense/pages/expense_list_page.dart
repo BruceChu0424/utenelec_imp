@@ -32,6 +32,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -294,7 +295,9 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     rowsController: _tableRows,
                     paginationScope: paginationScope,
                     loadingMore: list.isLoading,
-                    error: list.hasError ? '${list.error}' : null,
+                    error: list.hasError
+                        ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
+                        : null,
                     onRetry: () => ref.invalidate(expenseListProvider),
                     facets: {
                       'status': _statusFacets(filter),

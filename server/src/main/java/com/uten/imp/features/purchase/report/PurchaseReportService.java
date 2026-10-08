@@ -743,7 +743,7 @@ public class PurchaseReportService {
             case "receipt/summary" -> (pg, sz) -> receiptSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "return/detail"   -> (pg, sz) -> returnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             case "return/summary"  -> (pg, sz) -> returnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,

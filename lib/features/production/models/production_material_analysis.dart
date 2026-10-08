@@ -505,7 +505,7 @@ class ProductionMaterialAnalysisView {
             rawMaterials.any(
               (row) => row is! Map || row.keys.any((key) => key is! String),
             ))) {
-      throw const FormatException('物料分析节点快照不完整');
+      throw const FormatException('物料分析保存的数据不完整');
     }
     ProductionMaterialAnalysisMaterial material(Map<String, dynamic> row) {
       if (defaults != null) row = defaults.hydrate(row);
@@ -514,7 +514,7 @@ class ProductionMaterialAnalysisView {
       }
       final stocks = shared[row['materialKey']];
       if (stocks == null) {
-        throw const FormatException('物料分析缺少对应维度的仓库快照');
+        throw const FormatException('物料分析缺少对应的仓库数据');
       }
       return ProductionMaterialAnalysisMaterial.fromJson(
         row,
@@ -581,13 +581,13 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
   if (version == null) {
     if (json.containsKey('warehouseBreakdownsByMaterialKey') ||
         json.containsKey('materialDefaults')) {
-      throw const FormatException('物料分析共享快照缺少格式版本');
+      throw const FormatException('共享的物料分析数据缺少版本信息，无法读取');
     }
     return null;
   }
   if (version != 'shared-warehouses-v1' &&
       version != materialAnalysisProjectionVersion) {
-    throw const FormatException('不支持的物料分析快照格式');
+    throw const FormatException('这份数据是用更新版本的系统生成的，请升级应用后再打开');
   }
   if (version == 'shared-warehouses-v1' &&
       json.containsKey('materialDefaults')) {
@@ -595,14 +595,14 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
   }
   final raw = json['warehouseBreakdownsByMaterialKey'];
   if (raw is! Map) {
-    throw const FormatException('物料分析仓库快照不完整');
+    throw const FormatException('物料分析的仓库数据不完整');
   }
   final result = <String, List<MaterialWarehouseStock>>{};
   for (final entry in raw.entries) {
     final key = entry.key;
     final rows = entry.value;
     if (key is! String || key.isEmpty || rows is! List) {
-      throw const FormatException('物料分析仓库快照维度无效');
+      throw const FormatException('物料分析的仓库分组数据不正确');
     }
     final warehouseIds = <String>{};
     for (final row in rows) {
@@ -610,7 +610,7 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
           row['warehouseId'] is! String ||
           (row['warehouseId'] as String).trim().isEmpty ||
           !warehouseIds.add(row['warehouseId'] as String)) {
-        throw const FormatException('物料分析仓库快照身份无效或重复');
+        throw const FormatException('物料分析的仓库数据不正确或有重复');
       }
       for (final field in const [
         'onHandQty',
@@ -625,13 +625,13 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
       ]) {
         final quantity = _double(row[field]);
         if (quantity == null || !quantity.isFinite) {
-          throw const FormatException('物料分析仓库快照数量缺失或无效');
+          throw const FormatException('物料分析的仓库数量缺失或不正确');
         }
       }
     }
     final stocks = _mapList(rows, MaterialWarehouseStock.fromJson);
     if (stocks.length != rows.length) {
-      throw const FormatException('物料分析仓库快照明细无效');
+      throw const FormatException('物料分析的仓库明细不正确');
     }
     result[key] = List.unmodifiable(stocks);
   }
@@ -961,6 +961,7 @@ extension ProductionMaterialAnalysisBatchSuggestion
 /// 原 BOM 行的办理投影。目标身份由服务端精确来源关系解析，命令仍提交原行。
 class MaterialAggregatePreparation {
   const MaterialAggregatePreparation({
+    this.quantityFactsExact = const {},
     required this.requiredQty,
     required this.orderedQty,
     required this.allocatedOrderedQty,
@@ -974,6 +975,7 @@ class MaterialAggregatePreparation {
   });
 
   final double requiredQty;
+  final Map<String, String> quantityFactsExact;
   final double orderedQty;
   final double allocatedOrderedQty;
   final double totalOrderedQty;
@@ -986,6 +988,7 @@ class MaterialAggregatePreparation {
 
   factory MaterialAggregatePreparation.fromJson(Map<String, dynamic> json) =>
       MaterialAggregatePreparation(
+        quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
         requiredQty: _double(json['requiredQty']) ?? 0,
         orderedQty: _double(json['orderedQty']) ?? 0,
         allocatedOrderedQty: _double(json['allocatedOrderedQty']) ?? 0,
@@ -2021,6 +2024,7 @@ class MaterialAnalysisNotificationTarget {
 /// 显式确认的公共安全库存补库，二者不得在客户端合并后丢失来源语义。
 class MaterialAnalysisSupplyAction {
   const MaterialAnalysisSupplyAction({
+    this.quantityFactsExact = const {},
     required this.actionId,
     this.actionGroupKey,
     this.generation = 0,
@@ -2047,6 +2051,7 @@ class MaterialAnalysisSupplyAction {
   });
 
   final String actionId;
+  final Map<String, String> quantityFactsExact;
   final String? actionGroupKey;
   final int generation;
   final String? predecessorActionId;
@@ -2072,6 +2077,7 @@ class MaterialAnalysisSupplyAction {
 
   factory MaterialAnalysisSupplyAction.fromJson(Map<String, dynamic> json) =>
       MaterialAnalysisSupplyAction(
+        quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
         actionId: _string(json['actionId'] ?? json['id']) ?? '',
         actionGroupKey: _string(json['actionGroupKey']),
         generation: _int(json['generation']) ?? 0,

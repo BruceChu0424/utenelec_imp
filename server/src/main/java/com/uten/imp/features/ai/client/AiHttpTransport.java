@@ -121,7 +121,7 @@ public class AiHttpTransport {
             return new AiCallException(AiErrorCategory.INVALID_RESPONSE, "AI 服务返回的内容过大, 已放弃");
         }
         if (hasCause(cause, HttpConnectTimeoutException.class)) {
-            return new AiCallException(AiErrorCategory.NETWORK, "连接 AI 服务超时, 请检查接口地址或服务器网络");
+            return new AiCallException(AiErrorCategory.NETWORK, "连接 AI 服务花的时间过长，请检查接口地址或服务器网络");
         }
         if (hasCause(cause, HttpTimeoutException.class)) {
             return timeout(runtime);
@@ -147,8 +147,8 @@ public class AiHttpTransport {
     }
 
     private static AiCallException timeout(AiProviderRuntime runtime) {
-        return new AiCallException(AiErrorCategory.TIMEOUT, "AI 服务响应超时(超过 " + runtime.timeoutSeconds()
-                + " 秒), 请稍后再试或在高级设置里调大超时");
+        return new AiCallException(AiErrorCategory.TIMEOUT, "AI 服务响应时间过长(超过 " + runtime.timeoutSeconds()
+                + " 秒)，请稍后再试或在高级设置里调大超时秒数");
     }
 
     /** 超过上限即取消订阅并以 {@link ResponseTooLarge} 结束。 */

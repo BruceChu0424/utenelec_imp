@@ -166,7 +166,7 @@ public class DepartmentService {
     /** 移动后按 parent 关系递归重算整棵子树 level/path，不依赖移动前的旧 path 排序。 */
     private void relevelSubtree(UUID rootId) {
         if (deptRepo.rebuildSubtreeHierarchy(rootId) == 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "部门子树结构异常，无法安全移动");
+            throw new ApiException(ErrorCode.CONFLICT, "部门层级数据异常，不能安全移动，请联系管理员处理");
         }
     }
 

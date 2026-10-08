@@ -104,7 +104,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
     if (!_canOnboardWith(ref.read(currentPermissionsProvider))) {
-      throw StateError('没有恢复入职敏感信息的权限');
+      throw StateError('您没有恢复入职信息的权限');
     }
     restoreDraftTextValues(_draftFields, draftMap(data['fields']));
     if (!_canEditCompensationWith(ref.read(currentPermissionsProvider))) {
@@ -212,7 +212,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   Future<void> _submit() async {
     final permissions = ref.read(currentPermissionsProvider);
     if (!_canOnboardWith(permissions)) {
-      context.appError('无员工入职或敏感信息写入权限'); // TODO(l10n): 补 arb
+      context.appError('您没有办理员工入职的权限（需要员工新建和敏感信息两项权限）'); // TODO(l10n): 补 arb
       return;
     }
     if (!_formKey.currentState!.validate()) {

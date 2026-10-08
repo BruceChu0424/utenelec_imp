@@ -106,7 +106,7 @@ class _ProductionChainHealthPageState
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('扫描失败：$_error', textAlign: TextAlign.center),
+        const Text('链路健康数据没有加载出来，请点击「重试」重新加载', textAlign: TextAlign.center),
         const SizedBox(height: UtenSpacing.s12),
         FilledButton.icon(
           onPressed: _load,

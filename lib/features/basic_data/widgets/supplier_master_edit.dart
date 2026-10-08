@@ -174,7 +174,7 @@ Future<void> showSupplierMasterEdit(
       !settlementMethods.any(
         (method) => method.id == d.defaultSettlementMethodId,
       )) {
-    context.appError('当前默认结算方式已不可用，请先修复供应商结算方式关联');
+    context.appError('该供应商保存的默认结算方式已不可用，请先在列表里修正后再编辑');
     return;
   }
   final iv = <String, String>{

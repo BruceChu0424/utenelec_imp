@@ -653,7 +653,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         return switch (value) {
             case "", "NONE", "PENDING", "REJECTED", "IN_PROGRESS" -> value.isEmpty() ? null : value;
             default -> throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED, "财务审批态筛选无效");
+                    ErrorCode.VALIDATION_FAILED, "财务审批状态的筛选值不正确，请刷新后重试");
         };
     }
 
@@ -1546,7 +1546,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         }
         var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
                 em, req.getSettlementMethodId(), null, "结帐方式");
-        if (settlement == null) throw new ApiException(ErrorCode.CONFLICT, "委外订货结算方式无效");
+        if (settlement == null) throw new ApiException(ErrorCode.CONFLICT, "所选结算方式不存在或已停用，请重新选择");
         r.setSettlementMethodId(settlement.id());
         r.setTaxRate(req.getTaxRate());
         r.setPurchaserId(req.getPurchaserId());
@@ -1562,7 +1562,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                     && !java.util.Objects.equals(line.getSupplierId(), header)) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "既有委外订货单必须保持一单一商；多委外商新单请使用批量拆单接口");
+                        "已有委外订货单只能对应一个委外商；多个委外商请另开新单");
             }
         }
     }
@@ -1587,7 +1587,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             if (!same) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "既有委外订货单必须保持一套商业条款；多条款新单请使用批量拆单接口");
+                        "已有委外订货单只能保持一套商业条款；需要不同条款请另开新单");
             }
         }
     }
@@ -1864,7 +1864,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             if (updated != 1) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "委外订货明细货品快照已锁定或不存在，请刷新后重试");
+                        "委外订货明细的货品资料已锁定或不存在，请刷新后重试");
             }
         }
     }

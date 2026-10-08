@@ -1859,7 +1859,7 @@ class _SubcontractOrderEditPageState
             if (_saving)
               UtenBusyOverlay(
                 title: _isCreate ? '正在创建${_cfg.label}' : '正在保存${_cfg.label}',
-                description: '正在写入单据内容，请勿重复提交或离开本页。',
+                description: '正在保存单据内容，请勿重复提交或离开本页。',
               ),
           ],
         ),

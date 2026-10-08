@@ -123,6 +123,8 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   // 无组合权限; 服务端另校验 superAdmin。守卫断言见 test/features/admin/admin_ai_settings_page_test.dart
   // 的 'route inherits the system-administration guard'。
   '/admin/ai-settings': [],
+  // 2026-10-07 AI 使用记录与费用独立页: 同 /admin/* 的 authorization:manage 单一守卫。
+  '/admin/ai-usage-records': [],
   // 2026-09-27 报价财务核价(ADR-134)：列表与详情只挂 any 守卫
   // sales_quote_finance:view(无组合门槛)，改价/退回/确认按服务端 allowedActions。
   '/finance/quote-review': <String>[],

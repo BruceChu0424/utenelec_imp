@@ -58,7 +58,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get release254QuantityPrecision =>
-      '자재 주문의 수량 정밀도를 유지하며, 최소 수량·단위 환산·분할 주문·중복 제출 확인 결과의 수량 오차를 수정했습니다.';
+      '자재 주문, 생산 실적 및 직접 이관에서 원래 수량을 유지하며, 최소 수량·단위 환산·분할 주문·중복 제출 결과의 오차를 수정했습니다.';
 
   @override
   String get release254AiAuthorization =>
@@ -67,6 +67,26 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release254SensitiveAuthorization =>
       '민감한 권한을 변경할 때 본인 인증을 다시 진행하여 중요한 권한 부여를 직접 확인하도록 했습니다.';
+
+  @override
+  String get release254OverLimit =>
+      '실제 생산량을 모두 보고할 수 있습니다. 한도 초과분은 계획 부서에서 처리하며 승인, 품질, 입고 및 원가의 출처를 유지합니다.';
+
+  @override
+  String get release254PlanningReminders =>
+      '계정이나 권한이 나중에 추가된 계획 담당자도 아직 자재 분석을 시작하지 않은 주문 알림을 받을 수 있으며, 처리한 작업은 반복 알림하지 않습니다.';
+
+  @override
+  String get release254PeoplePicker =>
+      '부서와 직원을 좌우로 표시하고 사번, 계정 상태, 검색 및 부서 간 다중 선택을 지원합니다. 기존 후보 접근 권한을 유지합니다.';
+
+  @override
+  String get release254AccountSupport =>
+      '직원 상세에서 본인 인증 후 임시 비밀번호를 생성할 수 있습니다. 직원은 첫 로그인 때 변경해야 하며, 신원이나 권한이 바뀌면 표시를 중단합니다.';
+
+  @override
+  String get release254Dashboard =>
+      '대시보드 지표는 가로로 배치하고 할 일은 한 줄로 표시합니다. 나머지 작업은 남은 작업 수를 눌러 확인합니다.';
 
   @override
   String get release254Publishing =>
@@ -1271,13 +1291,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeIdIssueBadge => '확인 필요';
 
   @override
-  String get employeeIdIssueInvalidTitle => '신분증 번호 검증 실패';
+  String get employeeIdIssueInvalidTitle => '신분증 번호가 올바르지 않습니다';
 
   @override
   String get employeeIdIssueMissingTitle => '신분증 번호 미등록';
 
   @override
-  String get employeeIdIssueUncheckedTitle => '신분증 번호 미검증';
+  String get employeeIdIssueUncheckedTitle => '신분증 번호 미확인';
 
   @override
   String employeeIdIssueReason(Object reason) {
@@ -1320,7 +1340,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeIdentityCorrectHint =>
-      '주민등록번호는 자동으로 검증되며, 번호에 따라 생년월일과 성별이 갱신됩니다.';
+      '주민등록번호는 자동으로 확인되며, 번호에 따라 생년월일과 성별이 갱신됩니다.';
 
   @override
   String get employeeIdentityCorrectNoPrefill =>
@@ -2039,7 +2059,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String profileEditPendingConflictHint(int count) {
-    return '대기 중인 신청이 $count건 있습니다. 승인 전 같은 필드를 다시 수정하면 충돌할 수 있습니다.';
+    return '대기 중인 신청이 $count건 있습니다. 승인 전 같은 항목을 다시 수정하면 충돌할 수 있습니다.';
   }
 
   @override
@@ -2551,7 +2571,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '관리자 또는 인사 담당자에게 계정과 직원 기록 연결을 요청하세요.';
 
   @override
-  String get profileSessionUnavailable => '로그인하지 않았거나 세션을 사용할 수 없습니다';
+  String get profileSessionUnavailable => '로그인하지 않았거나 로그인이 만료되었습니다';
 
   @override
   String get profileValueNotProvided => '미입력';
@@ -2621,7 +2641,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get pagePermissionAccountNotProvisionedCanProvision =>
-      '먼저 로그인 계정을 개통하세요. 일회성 자격 증명을 저장하면 권한 상세가 자동으로 로드됩니다.';
+      '먼저 로그인 계정을 개통하세요. 초기 비밀번호 저장을 확인하면 권한 상세가 자동으로 불러와집니다.';
 
   @override
   String get pagePermissionAccountNotProvisionedNoAccess =>
@@ -2828,7 +2848,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get orderChangeQtyConfirm => '수량 변경 확인';
 
   @override
-  String get orderChangeQtyInvalid => '유효하지 않은 수량이 있습니다(0보다 커야 함). 확인해 주세요.';
+  String get orderChangeQtyInvalid => '올바르지 않은 수량이 있습니다(0보다 커야 함). 확인해 주세요.';
 
   @override
   String get orderChangeQtySuccess => '수량이 변경되었으며 주문이 재무 재검토로 돌아갔습니다';
@@ -3193,7 +3213,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get productionMaterialViewUsage => '사용 기록 보기';
 
   @override
-  String get systemSettingInvalidInteger => '유효한 음이 아닌 정수를 입력하세요';
+  String get systemSettingInvalidInteger => '0 이상의 정수를 입력하세요';
 
   @override
   String get systemSettingInvalidValue => '설정 값이 허용 범위를 벗어났습니다';
@@ -3222,7 +3242,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get auditWorkspaceDescription =>
-      '사람과 시간별 세션을 검토하고 이벤트에서 업무 변경 사항을 추적하세요.';
+      '사람과 시간별 로그인 기록을 살펴보고 이벤트에서 업무 변경 사항을 추적하세요.';
 
   @override
   String get materialReasonLabel => '사유';
@@ -3358,7 +3378,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String warehouseStockOutboundConfirmMessage(int count) {
-    return 'Issue the quantities shown for $count selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. Processing stops on an error; successful documents remain completed.';
+    return '선택한 $count건의 문서를 표시된 수량대로 출고할까요?\n각 문서는 개별 승인되어 실제 창고 재고에서 차감되며 승인자가 기록됩니다. 중간에 오류가 나면 이후 처리가 중지되고, 이미 완료된 문서는 결과가 유지됩니다.';
   }
 
   @override
@@ -3412,7 +3432,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
-      '출고 문서 단위로 명세를 함께 선택합니다. 부분 출고는 수량을 줄이고, 이번에 보내지 않을 자재는 0을 입력합니다(저장 시 해당 행 삭제). 문서 전체를 보내지 않으려면 개별 피킹 화면에서 \"외주로 반려(미출고)\"를 사용하세요. 문서별로 저장·승인하며 완료된 결과는 유지됩니다. 오류가 나면 일시 중지되며, 결과를 확인한 뒤 남은 문서를 계속 처리합니다.';
+      '출고 문서 단위로 명세를 함께 선택합니다. 부분 출고는 수량을 줄이고, 이번에 보내지 않을 자재는 0을 입력합니다(저장 시 해당 행 삭제). 문서 전체를 보내지 않으려면 개별 피킹 화면에서 \"외주로 반려(미출고)\"를 사용하세요. 문서별로 저장·승인하며 완료된 결과는 유지됩니다. 중간에 오류가 나면 일시 중지되며, 결과를 확인한 뒤 남은 문서를 계속 처리합니다.';
 
   @override
   String get warehouseSubcontractOutboundDocuments => 'Document details';
@@ -3871,7 +3891,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get visitorApprovalHostDeptColInfo =>
-      '신청 시점의 담당자 부서 스냅샷; 헤더 필터는 hostDepartmentId를 백엔드로 전달합니다.';
+      '방문 신청 시 기록된 담당자 부서입니다. 머리글 필터는 이 부서 기준으로 조회합니다.';
 
   @override
   String visitorBatchLimitError(int limit, int count) {
@@ -4056,7 +4076,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get myVisitorsStatusColInfo =>
-      '기본적으로 \'확인 대기\' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).';
+      '기본적으로 \'확인 대기\' 항목만 표시합니다. 머리글 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다.';
 
   @override
   String get expenseFlowNew => '경비 정산 신청';
@@ -5125,29 +5145,18 @@ class AppLocalizationsKo extends AppLocalizations {
       'API 키가 없습니다. \"편집\"에서 키를 입력한 뒤 테스트해 주세요';
 
   @override
-  String aiSettingsUsageTitle(int days) {
-    return '최근 $days일 사용량';
+  String get aiSettingsTodayUsage => '오늘 사용량';
+
+  @override
+  String aiSettingsTodayUsageFooter(int calls, int users) {
+    return '호출 $calls회 · $users명 사용';
   }
 
   @override
-  String get aiSettingsUsageCalls => '호출 수';
+  String get aiSettingsTodayUsageEmpty => '오늘 사용량이 없습니다';
 
   @override
-  String get aiSettingsUsageSuccessRate => '성공률';
-
-  @override
-  String get aiSettingsUsageTokens => '입력 / 출력 토큰';
-
-  @override
-  String get aiSettingsUsageLatency => '평균 소요 시간';
-
-  @override
-  String aiSettingsUsageSeconds(String value) {
-    return '$value초';
-  }
-
-  @override
-  String get aiSettingsUsageEmpty => '아직 호출 기록이 없습니다';
+  String get aiSettingsTodayUsageOpenTooltip => '사용량 및 한도 보기';
 
   @override
   String get aiSettingsUsageUnavailable => '사용량을 잠시 불러올 수 없습니다. 서비스에는 영향이 없습니다';
@@ -7070,7 +7079,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get costSaveDraft => '초안 저장';
 
   @override
-  String get costRecalculate => '검증 및 재계산';
+  String get costRecalculate => '확인 후 재계산';
 
   @override
   String get costConfirm => '원가 버전 확정';
@@ -7228,7 +7237,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get costImportReview =>
-      '각 행의 매핑을 확인하세요. 캐시 가격의 통화를 확인하며 외부 수식은 적용하지 않습니다.';
+      '각 행의 대응 관계를 확인하세요. 캐시 가격의 통화를 확인하며 외부 수식은 적용하지 않습니다.';
 
   @override
   String get costImportKind => '적용 방식';
@@ -7884,7 +7893,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get quoteTemplateReviewHint =>
-      '워크시트와 필드를 확인한 후 저장하세요. 유사한 레이아웃은 버전을 갱신하고 다른 레이아웃은 선택할 수 있도록 보관됩니다.';
+      '워크시트와 열 대응을 확인한 후 저장하세요. 유사한 레이아웃은 버전을 갱신하고 다른 레이아웃은 선택할 수 있도록 보관됩니다.';
 
   @override
   String get quoteTemplateSaveDownload => '양식 저장 및 다운로드';
@@ -7938,7 +7947,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatBoundary =>
-      '현재 계정 권한에 따라 답변합니다. AI가 제안한 작업은 확인 카드로 표시되며, 확인한 후에만 같은 권한과 검증으로 실행됩니다.';
+      '현재 계정 권한에 따라 답변합니다. AI가 제안한 작업은 확인 카드로 표시되며, 확인한 후에만 권한과 시스템 점검을 거쳐 실행됩니다.';
 
   @override
   String get aiChatUnavailable => '지금은 지원되는 업무 질문에만 답할 수 있습니다.';
@@ -8003,7 +8012,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiChatPermissionChanged =>
-      '권한 또는 세션이 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.';
+      '권한 또는 로그인 상태가 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.';
 
   @override
   String get aiChatEmptyReply => '답변이 반환되지 않았습니다. 질문을 다시 작성하세요.';
@@ -8057,7 +8066,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiChatRequestRejected => '메시지를 제출하지 못했습니다.';
 
   @override
-  String get aiChatDeliveryUnknown => '전달 여부를 확인하지 못했습니다. 다시 보내면 새 요청을 시작합니다.';
+  String get aiChatDeliveryUnknown => '전달 여부가 확인되지 않았습니다. 다시 보내면 새 메시지로 발송됩니다.';
 
   @override
   String get aiChatReplyFailed => '전달되었지만 AI가 답변을 완료하지 못했습니다.';
@@ -8250,11 +8259,11 @@ class AppLocalizationsKo extends AppLocalizations {
       '파일 처리 요청이 길어 전체 요구를 분석하지 못했습니다. 계속할 업무를 직접 선택해 주세요.';
 
   @override
-  String get quoteTemplateMappingRequired => '수량과 모델 또는 품명 필드를 유지하세요';
+  String get quoteTemplateMappingRequired => '수량과 모델 또는 품명에 해당하는 열을 유지하세요';
 
   @override
   String get quoteTemplateMappingDuplicate =>
-      '각 필드는 하나의 열에만 연결할 수 있습니다. 중복 매핑을 수정하세요';
+      '같은 정보는 하나의 열에만 연결할 수 있습니다. 중복 대응을 수정하세요';
 
   @override
   String get aiAuditTitle => '사용 기록 및 비용';
@@ -8286,15 +8295,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiAuditAllProviders => '전체 서비스';
 
   @override
-  String aiAuditSummary(int uses, int calls) {
-    return '기록 $uses건 · 모델 호출 $calls회';
-  }
-
-  @override
   String get aiAuditPlatformOnly => '이 플랫폼의 사용량입니다. 예상 비용은 설정한 단가로 계산합니다.';
-
-  @override
-  String get aiAuditByUser => '직원별 보기';
 
   @override
   String aiAuditUses(int count) {
@@ -8303,17 +8304,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiAuditEmpty => '이 기간에는 기록이 없습니다.';
-
-  @override
-  String aiAuditPagination(int total, int page) {
-    return '전체 $total건 · $page페이지';
-  }
-
-  @override
-  String get aiAuditPrevious => '이전 페이지';
-
-  @override
-  String get aiAuditNext => '다음 페이지';
 
   @override
   String get aiAuditBillingTitle => '요금 방식 및 이용 한도';
@@ -8449,13 +8439,24 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiAuditPriceHint => '서비스 제공업체의 단가를 입력하세요. 예상 비용이며 실제 청구서가 아닙니다.';
 
   @override
-  String get aiAuditFiveHourQuota => '5시간 잔여량: 연동되지 않음';
+  String get aiAuditFiveHourQuota => '5시간당 한도(회)';
 
   @override
-  String get aiAuditWeeklyQuota => '주간 잔여량: 연동되지 않음';
+  String get aiAuditWeeklyQuota => '주간 한도(회)';
 
   @override
-  String get aiAuditQuotaHint => '서비스 제공업체의 한도 조회 API가 필요합니다.';
+  String get aiAuditQuotaHint =>
+      '사용량은 이 플랫폼의 성공 호출로 자동 집계되며, 잔여 = 한도 - 사용입니다. 제공업체 집계와 다소 차이가 있을 수 있습니다.';
+
+  @override
+  String aiAuditQuota5hUsed(int used, String quota) {
+    return '최근 5시간 사용 $used / $quota';
+  }
+
+  @override
+  String aiAuditQuotaWeeklyUsed(int used, String quota) {
+    return '이번 주 사용 $used / $quota';
+  }
 
   @override
   String get aiAuditSaveBilling => '요금 설정 저장';
@@ -9053,17 +9054,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiSettingsStepThinking => '사고 깊이';
 
   @override
-  String get aiActionSetField => '필드 입력';
+  String get aiActionSetField => '자동 입력';
 
   @override
-  String get aiActionParamField => '필드';
+  String get aiActionParamField => '입력 항목';
 
   @override
   String get aiActionParamValue => '새 값';
 
   @override
   String aiActionFieldMissing(String label) {
-    return '이 페이지에 \"$label\" 필드가 없습니다';
+    return '이 페이지에 \"$label\" 입력 칸이 없습니다';
   }
 
   @override
@@ -9177,7 +9178,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String aiChatAttachSummary(int rows, int fields, int flagged) {
-    return '현재 페이지 첨부: 표 $rows행, 필드 $fields개, 확인 $flagged건';
+    return '현재 페이지 첨부: 표 $rows행, 입력 항목 $fields개, 확인 $flagged건';
   }
 
   @override
@@ -9784,9 +9785,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get aiUsageTitle => 'AI 사용량 및 한도';
 
   @override
-  String get aiUsageEntry => '사용량 및 한도';
-
-  @override
   String get aiUsageTodayTokens => '오늘 사용량';
 
   @override
@@ -9948,4 +9946,92 @@ class AppLocalizationsKo extends AppLocalizations {
   String aiUsageTrendSemantics(String title, String tokens, String calls) {
     return '$title, 총 $tokens 토큰 · $calls회 호출';
   }
+
+  @override
+  String aiUsageKpiFooterCalls(String label, int count) {
+    return '$label $count회';
+  }
+
+  @override
+  String aiUsageKpiFooterPeople(int count) {
+    return '전원 $count명';
+  }
+
+  @override
+  String aiUsageKpiFooterOverLimit(int count) {
+    return '$count명 한도 초과';
+  }
+
+  @override
+  String get aiRecordsViewRecords => '기록별';
+
+  @override
+  String get aiRecordsViewByPerson => '직원별';
+
+  @override
+  String get aiRecordsStatUses => '사용 건수';
+
+  @override
+  String aiRecordsStatCallsFooter(int count) {
+    return '모델 호출 $count회';
+  }
+
+  @override
+  String get aiRecordsStatCostActual => '실제 비용';
+
+  @override
+  String get aiRecordsStatCostActualFooter => '공급사 청구서 기준';
+
+  @override
+  String get aiRecordsStatCostEstimated => '추정 비용';
+
+  @override
+  String get aiRecordsStatCostEstimatedFooter => '설정한 단가로 추정';
+
+  @override
+  String get aiRecordsStatUnknown => '비용 미확정';
+
+  @override
+  String aiRecordsStatUnknownFooter(int count) {
+    return '$count회 호출 단가 미설정';
+  }
+
+  @override
+  String get aiRecordsColTime => '시간';
+
+  @override
+  String get aiRecordsColPurpose => '용도';
+
+  @override
+  String get aiRecordsColQuestion => '질문 내용';
+
+  @override
+  String get aiRecordsColModel => '모델';
+
+  @override
+  String get aiRecordsColCalls => '호출 수';
+
+  @override
+  String get aiRecordsColInputTokens => '입력 토큰';
+
+  @override
+  String get aiRecordsColOutputTokens => '출력 토큰';
+
+  @override
+  String get aiRecordsColCost => '비용';
+
+  @override
+  String get aiRecordsColStatus => '상태';
+
+  @override
+  String get aiRecordsPersonEmpty => '이 기간에는 AI를 사용한 직원이 없습니다';
+
+  @override
+  String get aiRecordsPersonViewRecords => '기록 보기';
+
+  @override
+  String get aiRecordsDetailTitle => '사용 상세';
+
+  @override
+  String get aiRecordsBillingOpen => '과금 설정';
 }

@@ -184,7 +184,7 @@ public class InventoryOpeningService extends InventoryValueLedger implements Inv
                 WHERE e.event_type=:kind AND e.source_item_id=:item AND (e.source_event_id=:event OR e.idempotency_key=:key)
                 """,args("kind",kind,"item",context.sourceItemId(),"event",context.sourceEventId(),"key",context.idempotencyKey()));
         if(rows.isEmpty())return null;
-        if(rows.size()!=1||!request.hash().equals(rows.getFirst().get("request_hash")))throw conflict("同一历史核对幂等键对应不同内容");
+        if(rows.size()!=1||!request.hash().equals(rows.getFirst().get("request_hash")))throw conflict("同一防重复提交标识对应不同的历史核对内容");
         var row=rows.getFirst();return new LegacyCaseAction((UUID)row.get("id"),(UUID)row.get("case_id"),LegacyState.valueOf((String)row.get("state")),true);
     }
 

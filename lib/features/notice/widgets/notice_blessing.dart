@@ -12,6 +12,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
 
@@ -404,7 +405,7 @@ class _BlessingWallSheet extends ConsumerWidget {
                   loading: () =>
                       const Center(child: CircularProgressIndicator()),
                   error: (e, _) => UtenEmpty.error(
-                    message: '$e',
+                    message: humanErrorMessage(e) ?? '祝福没有加载出来，请稍后重试',
                     onAction: () =>
                         ref.invalidate(noticeBlessingsProvider(noticeId)),
                   ),

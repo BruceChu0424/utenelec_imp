@@ -794,7 +794,7 @@ String _requiredText(Object? value, String message) {
 
 WarehouseIqcStockInReceiptType _requiredReceiptType(Object? value) {
   final result = WarehouseIqcStockInReceiptType.tryParse(value);
-  if (result == null) throw const FormatException('品质检查结果来源类型无效');
+  if (result == null) throw const FormatException('品质检查结果的来源类型不正确，请刷新后重试');
   return result;
 }
 

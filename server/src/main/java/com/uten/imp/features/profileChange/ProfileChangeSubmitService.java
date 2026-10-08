@@ -55,7 +55,7 @@ public class ProfileChangeSubmitService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "变更内容不能为空");
         }
         if (req.idemKey() == null || req.idemKey().isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "幂等键不能为空");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "提交标识缺失，请刷新页面后重新提交");
         }
         // 幂等键唯一约束兜底（DB 也会拦；早返回）
         Optional<ProfileChangeRequest> existing = repo.findByIdemKey(req.idemKey());

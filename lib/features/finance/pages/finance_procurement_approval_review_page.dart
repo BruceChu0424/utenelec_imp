@@ -187,7 +187,7 @@ class _FinanceProcurementApprovalReviewPageState
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady) {
-      context.appWarning('尚未取得有效审核占用，请重新认领');
+      context.appWarning('审核认领还没有生效，请重新认领');
       return;
     }
     final decision = review.decisionItem;
@@ -251,7 +251,7 @@ class _FinanceProcurementApprovalReviewPageState
           generation != _loadGeneration ||
           !identical(review, _review)) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核占用或内容已变化，请重新核对');
+          context.appWarning(claim.failureMessage ?? '审核认领或内容已变化，请重新核对');
         }
         return;
       }
@@ -281,7 +281,7 @@ class _FinanceProcurementApprovalReviewPageState
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady) {
-      context.appWarning('尚未取得有效审核占用，请重新认领');
+      context.appWarning('审核认领还没有生效，请重新认领');
       return;
     }
     final decision = review.decisionItem;
@@ -363,7 +363,7 @@ class _FinanceProcurementApprovalReviewPageState
           generation != _loadGeneration ||
           !identical(review, _review)) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核占用或内容已变化，请重新核对');
+          context.appWarning(claim.failureMessage ?? '审核认领或内容已变化，请重新核对');
         }
         return;
       }

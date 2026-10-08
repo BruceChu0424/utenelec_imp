@@ -46,7 +46,7 @@ public final class LegacyOpeningOffsetScope {
         Proof proof=history.get(id);
         if(proof==null)return nativeKind.equals(actualKind);
         if(!proof.eligible()||proof.cutoff()==null)throw conflict("历史抵扣目标缺少已核验的正数原币、本币、币种或来源证明");
-        if(effectiveDate==null||!effectiveDate.isAfter(proof.cutoff()))throw conflict("新的抵扣动作日期必须晚于历史快照截止日");
+        if(effectiveDate==null||!effectiveDate.isAfter(proof.cutoff()))throw conflict("新的抵扣动作日期必须晚于历史数据截止日");
         return "LEGACY_UNVERIFIED".equals(actualKind);
     }
 

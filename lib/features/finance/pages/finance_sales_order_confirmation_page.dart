@@ -370,7 +370,7 @@ class _FinanceSalesOrderConfirmationPageState
       );
       if (!mounted || !claim.isReady) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '整批未取得审核占用，请重试');
+          context.appWarning(claim.failureMessage ?? '整批还没有认领成功，请重试');
         }
         return;
       }
@@ -402,7 +402,7 @@ class _FinanceSalesOrderConfirmationPageState
                 children: [
                   const UtenReviewerResponsibilityNotice(
                     actionLabel: '销售订单批量财务确认',
-                    description: '本次选择将作为一个原子审核事务提交；任一订单校验失败时全部不放行。',
+                    description: '本次确认要么全部生效、要么全部不生效；有一笔订单有问题，整批都不会通过。',
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   const Text(
@@ -495,7 +495,7 @@ class _FinanceSalesOrderConfirmationPageState
       try {
         if (!await claim.validateForDecision() || !mounted) {
           if (mounted) {
-            context.appWarning(claim.failureMessage ?? '审核占用已失效，请重新核对');
+            context.appWarning(claim.failureMessage ?? '认领已失效，请重新认领后核对');
           }
           return;
         }
@@ -534,7 +534,7 @@ class _FinanceSalesOrderConfirmationPageState
     } on ApiException catch (error) {
       if (mounted) context.appError('整批尚未提交：${error.message}');
     } catch (_) {
-      if (mounted) context.appError('未能核对整批审核占用和内容，请重新选择后重试');
+      if (mounted) context.appError('没能核对整批认领和订单内容，请重新选择后重试');
     } finally {
       await claim.releaseAll();
       if (identical(_batchClaim, claim)) _batchClaim = null;

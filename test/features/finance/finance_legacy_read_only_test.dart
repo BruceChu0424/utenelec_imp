@@ -202,7 +202,7 @@ void main() {
         find.byKey(const ValueKey('finance-doc-edit-load-error')),
         findsOneWidget,
       );
-      expect(find.textContaining('收款类型待核实，不能根据明细数量推断或编辑。'), findsOneWidget);
+      expect(find.textContaining('收款类型待核实，本页暂不能编辑。'), findsOneWidget);
       expect(find.text('保存'), findsNothing);
       expect(find.text('登记订单预收'), findsNothing);
       expect(api.writes, isEmpty);

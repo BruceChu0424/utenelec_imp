@@ -89,7 +89,7 @@ public class ProductionOverproductionRateService {
                 WHERE submitted_by=:actor AND idempotency_key=:key
                 """).setParameter("actor",actor).setParameter("key",key));
         if(!replay.isEmpty()) {
-            if(!hash.equals(replay.getFirst()[1]))throw conflict("此幂等键已用于另一份比例调整申请");
+            if(!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一份比例调整申请，请刷新后重试");
             return detail((UUID)replay.getFirst()[0]);
         }
         Segment discovered=segment(request.segmentId(),false);
@@ -131,7 +131,7 @@ public class ProductionOverproductionRateService {
             String sort,String order,String planNo,String segmentCode) {
         requirePermission(APPROVE_PERMISSION);
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
-        if(!Set.of("PENDING","APPROVED","RETURNED","ALL").contains(filter))throw validation("比例调整状态无效");
+        if(!Set.of("PENDING","APPROVED","RETURNED","ALL").contains(filter))throw validation("比例调整状态不正确");
         String predicate="ALL".equals(filter)?"TRUE":"request.status=:status";
         boolean planFilter=planNo!=null&&!planNo.isBlank();
         boolean segmentFilter=segmentCode!=null&&!segmentCode.isBlank();
@@ -157,7 +157,7 @@ public class ProductionOverproductionRateService {
     public Map<String,List<Map<String,Object>>> facets(String status) {
         requirePermission(APPROVE_PERMISSION);
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
-        if(!Set.of("PENDING","APPROVED","RETURNED","ALL").contains(filter))throw validation("比例调整状态无效");
+        if(!Set.of("PENDING","APPROVED","RETURNED","ALL").contains(filter))throw validation("比例调整状态不正确");
         String predicate="ALL".equals(filter)?"TRUE":"request.status=:status";
         Map<String,List<Map<String,Object>>> result=new java.util.LinkedHashMap<>();
         for (String column : List.of("planNo","segmentCode")) {
@@ -218,7 +218,7 @@ public class ProductionOverproductionRateService {
                 WHERE decided_by=:actor AND idempotency_key=:key
                 """).setParameter("actor",actor).setParameter("key",key));
         if(!replay.isEmpty()) {
-            if(!Objects.equals(id,replay.getFirst()[0]) || !hash.equals(replay.getFirst()[1]))throw conflict("此幂等键已用于另一项审批");
+            if(!Objects.equals(id,replay.getFirst()[0]) || !hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项审批，请刷新后重试");
             return detail(id);
         }
         List<UUID> ids=NativeQueryResults.typedRows(em.createNativeQuery("SELECT execution_segment_id FROM production_overproduction_rate_requests WHERE id=:id")
@@ -333,8 +333,8 @@ public class ProductionOverproductionRateService {
             .setParameter("key","production-rate:"+kind+":"+actor+":"+key).getSingleResult();}
     private void requirePermission(String permission) {if(!access.hasAuthority(permission))throw forbidden("缺少此操作权限");}
     static BigDecimal rate(BigDecimal rate) {if(rate==null||rate.signum()<0||rate.stripTrailingZeros().scale()>6||rate.compareTo(new BigDecimal("1000"))>=0)
-        throw validation("允许超产比例无效，最多四位百分比小数");return rate;}
-    static String key(String key) {if(key==null||!key.strip().matches("[A-Za-z0-9._:-]{8,128}"))throw validation("幂等键格式无效");return key.strip();}
+        throw validation("允许超产比例不正确，最多四位百分比小数");return rate;}
+    static String key(String key) {if(key==null||!key.strip().matches("[A-Za-z0-9._:-]{8,128}"))throw validation("防重复提交标识格式不正确");return key.strip();}
     static String reason(String reason,boolean required) {String value=reason==null?null:reason.strip();
         if((required&&(value==null||value.length()<2))||(value!=null&&value.length()>500))throw validation("请填写2至500字的原因");
         return value==null||value.isEmpty()?null:value;}

@@ -330,7 +330,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             if (!Objects.equals(replay.getFirst()[1], requestHash)) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "相同幂等键对应不同的物料清账请求");
+                        "同一防重复提交标识对应不同的物料清账请求，请刷新后重试");
             }
             return readClearance(planId,responseScope);
         }
@@ -583,7 +583,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                 || request.getLines().isEmpty()) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "物料清账缺少有效幂等键或明细");
+                    "物料清账缺少防重复提交标识或明细");
         }
         List<Line> result = new ArrayList<>();
         for (ProductionMaterialSettlementRequest.Line line : request.getLines()) {
@@ -596,7 +596,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                     || (reverse != (line.getSourcePostingId() != null))) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "清账明细的需求、类型、正数基本量或红冲来源无效");
+                        "清账明细的需求、类型、数量或红冲来源填写有误");
             }
             result.add(new Line(
                     line.getDemandId(), type, line.getQtyBase(),

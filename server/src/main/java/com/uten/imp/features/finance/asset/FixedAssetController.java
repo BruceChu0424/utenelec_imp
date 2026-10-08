@@ -372,12 +372,12 @@ public class FixedAssetController {
 
     private static ApiException legacyPostingDisabled() {
         return new ApiException(ErrorCode.CONFLICT,
-                "Legacy delete-and-rebuild posting is disabled; use /api/finance/asset-posting-runs");
+                "旧的删除重建过账方式已停用，请改用「过账批次」功能");
     }
 
     private static void requireExpectedVersion(Long expectedVersion) {
         if (expectedVersion == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "expectedVersion is required for updates");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "修改前请先刷新页面拿到最新数据，再重试");
         }
     }
 

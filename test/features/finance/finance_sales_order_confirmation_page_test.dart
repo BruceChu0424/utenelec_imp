@@ -552,7 +552,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('批量确认 1 笔销售订单'), findsOneWidget);
-    expect(find.textContaining('任一订单校验失败时全部不放行'), findsOneWidget);
+    expect(find.textContaining('有一笔订单有问题，整批都不会通过'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('sales-order-finance-batch-remark')),
       '已逐笔核对',

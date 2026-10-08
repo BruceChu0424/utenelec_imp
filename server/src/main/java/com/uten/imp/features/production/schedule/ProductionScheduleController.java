@@ -132,12 +132,12 @@ public class ProductionScheduleController {
             return null;
         }
         if (!(value instanceof String text)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "startDate 必须是 ISO 日期");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "开始日期格式不正确，应为 YYYY-MM-DD");
         }
         try {
             return LocalDate.parse(text);
         } catch (DateTimeParseException ex) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "startDate 必须是 ISO 日期");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "开始日期格式不正确，应为 YYYY-MM-DD");
         }
     }
 

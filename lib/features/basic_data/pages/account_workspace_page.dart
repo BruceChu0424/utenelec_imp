@@ -398,7 +398,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       key: 'code',
       label: '账户编号',
       group: '基础',
-      hint: '留空自动生成；编号仅用于展示和检索，关系始终使用 UUID',
+      hint: '留空自动生成；编号只用于展示和查找，不影响系统内部关联',
     ),
     const MasterFieldDef(key: 'bankAccountNo', label: '银行账号', group: '基础'),
     MasterFieldDef(
@@ -427,7 +427,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       group: '基础',
       type: MasterFieldType.select,
       options: _styleOptions,
-      hint: '必须选择使用中的 ACCOUNT 末级科目（UUID 关联）',
+      hint: '必须选择使用中的最末级会计科目',
     ),
     const MasterFieldDef(
       key: 'status',
@@ -498,7 +498,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('删除账户'),
-        content: Text('确定删除「$label」吗？已有资金事实的账户会被服务端拒绝删除。'),
+        content: Text('确定删除「$label」吗？已有资金往来的账户不能删除。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),

@@ -841,7 +841,7 @@ public class SubcontractReportService {
             case "MATERIAL_RETURN/summary"-> (pg, sz) -> materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, kw, facets, pg, sz, sort, order);
             // 出入状况表综合聚合，不接受 sort/facets；忽略 sort/order 参数（无注入风险）。
             case "in-out-status"          -> (pg, sz) -> inOutStatus(supplierId, dateFrom, dateTo, kw, pg, sz);
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + report);
         };
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,

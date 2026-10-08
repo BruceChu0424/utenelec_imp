@@ -1,4 +1,5 @@
-// AI 服务卡片: 预设首字头像 + 区域标签 + 模型/地址/密钥掩码/上次测试 + 启用开关 + 操作。
+// AI 服务卡片(可折叠): 头部常显(头像/名称/模型/区域·默认徽章/启停开关), 点头部展开
+// 模型/地址/密钥掩码/上次测试 + 连接测试结果 + 操作按钮。
 //
 // 密钥只显示服务端给的掩码(「••••abcd」/「已配置」), 本卡片拿不到也不显示原文。
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -19,7 +21,7 @@ import 'ai_settings_labels.dart';
 /// 卡片与表头统一的操作按钮高度(适老化: 触控目标不小于 48)。
 const double aiSettingsActionHeight = 48;
 
-class AiProviderCard extends StatelessWidget {
+class AiProviderCard extends StatefulWidget {
   const AiProviderCard({
     super.key,
     required this.provider,
@@ -34,6 +36,7 @@ class AiProviderCard extends StatelessWidget {
     required this.onSetDefault,
     required this.onDelete,
     required this.onEnabledChanged,
+    this.initiallyExpanded,
   });
 
   final AiProviderConfig provider;
@@ -53,168 +56,244 @@ class AiProviderCard extends StatelessWidget {
   final VoidCallback onDelete;
   final ValueChanged<bool> onEnabledChanged;
 
+  /// 默认收起: 服务多时一屏只看「谁在用、开没开」, 要管理再展开。
+  final bool? initiallyExpanded;
+
+  @override
+  State<AiProviderCard> createState() => _AiProviderCardState();
+}
+
+class _AiProviderCardState extends State<AiProviderCard> {
+  late bool _expanded = widget.initiallyExpanded ?? false;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final keyNotNeeded = !provider.keyRequiredWith(preset);
+    final provider = widget.provider;
+    final keyNotNeeded = !provider.keyRequiredWith(widget.preset);
     return UtenCard(
       key: ValueKey('ai-provider-card-${provider.id}'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AiProviderAvatar(
-                label: presetLabel,
-                region: provider.region,
-                dimmed: !provider.enabled,
+          // 头部(常显): 点任意处展开/收起; 启停开关自己消化点按, 不会连带展开。
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: ValueKey('ai-provider-header-${provider.id}'),
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Semantics(
+                button: true,
+                expanded: _expanded,
+                label: provider.name,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s2),
+                  child: Row(
+                    children: [
+                      AiProviderAvatar(
+                        label: widget.presetLabel,
+                        region: provider.region,
+                        dimmed: !provider.enabled,
+                      ),
+                      const SizedBox(width: UtenSpacing.s12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              provider.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: UtenSpacing.s4),
+                            Wrap(
+                              spacing: UtenSpacing.s6,
+                              runSpacing: UtenSpacing.s4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  provider.model,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                Text(
+                                  widget.presetLabel,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                UtenStatusBadge(
+                                  label: provider.region.label(l10n),
+                                  type: provider.region.badgeType,
+                                  size: UtenStatusBadgeSize.small,
+                                ),
+                                if (provider.isDefault)
+                                  UtenStatusBadge(
+                                    key: const ValueKey(
+                                      'ai-provider-default-badge',
+                                    ),
+                                    label: l10n.aiSettingsDefaultBadge,
+                                    type: UtenStatusBadgeType.success,
+                                    icon: Icons.star_rounded,
+                                    size: UtenStatusBadgeSize.small,
+                                  ),
+                                if (!provider.enabled)
+                                  UtenStatusBadge(
+                                    label: l10n.aiSettingsDisabledBadge,
+                                    type: UtenStatusBadgeType.neutral,
+                                    size: UtenStatusBadgeSize.small,
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Semantics(
+                        label: l10n.aiSettingsEnabledSwitch,
+                        child: Switch(
+                          key: ValueKey('ai-provider-enabled-${provider.id}'),
+                          value: provider.enabled,
+                          onChanged: widget.busy
+                              ? null
+                              : widget.onEnabledChanged,
+                        ),
+                      ),
+                      // 与全站一致: 收起时箭头朝下(点开往下展开), 展开后朝上。
+                      AnimatedRotation(
+                        turns: _expanded ? 0.5 : 0,
+                        duration: UtenAnim.normal,
+                        curve: UtenAnim.standard,
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: UtenSpacing.s12),
+                _InfoLine(
+                  icon: Icons.memory_rounded,
+                  label: l10n.aiSettingsModel,
+                  child: _Value(provider.model),
+                ),
+                _InfoLine(
+                  icon: Icons.link_rounded,
+                  label: l10n.aiSettingsBaseUrl,
+                  child: _Value(provider.baseUrl, maxLines: 2),
+                ),
+                _InfoLine(
+                  icon: Icons.key_rounded,
+                  label: l10n.aiSettingsApiKey,
+                  child: _KeyStatus(
+                    provider: provider,
+                    keyNotNeeded: keyNotNeeded,
+                  ),
+                ),
+                _InfoLine(
+                  icon: Icons.fact_check_outlined,
+                  label: l10n.aiSettingsLastTest,
+                  child: _LastTest(provider: provider),
+                ),
+                if (widget.testing || widget.testResult != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  AiConnectionTestView(
+                    result: widget.testResult,
+                    running: widget.testing,
+                  ),
+                ],
+                const SizedBox(height: UtenSpacing.s12),
+                Divider(height: 1, color: theme.colorScheme.outlineVariant),
+                const SizedBox(height: UtenSpacing.s12),
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
                   children: [
-                    Text(
-                      provider.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                    UtenButton(
+                      key: ValueKey('ai-provider-test-${provider.id}'),
+                      type: UtenButtonType.tonal,
+                      size: UtenButtonSize.small,
+                      height: aiSettingsActionHeight,
+                      icon: Icons.network_check_rounded,
+                      isLoading: widget.testing,
+                      onPressed: widget.busy || widget.testing
+                          ? null
+                          : widget.onTest,
+                      child: Text(
+                        widget.testing
+                            ? l10n.aiSettingsTesting
+                            : l10n.aiSettingsTest,
                       ),
                     ),
-                    const SizedBox(height: UtenSpacing.s4),
-                    Wrap(
-                      spacing: UtenSpacing.s6,
-                      runSpacing: UtenSpacing.s4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(
-                          presetLabel,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        UtenStatusBadge(
-                          label: provider.region.label(l10n),
-                          type: provider.region.badgeType,
-                          size: UtenStatusBadgeSize.small,
-                        ),
-                        if (provider.isDefault)
-                          UtenStatusBadge(
-                            key: const ValueKey('ai-provider-default-badge'),
-                            label: l10n.aiSettingsDefaultBadge,
-                            type: UtenStatusBadgeType.success,
-                            icon: Icons.star_rounded,
-                            size: UtenStatusBadgeSize.small,
-                          ),
-                        if (!provider.enabled)
-                          UtenStatusBadge(
-                            label: l10n.aiSettingsDisabledBadge,
-                            type: UtenStatusBadgeType.neutral,
-                            size: UtenStatusBadgeSize.small,
-                          ),
-                      ],
+                    UtenButton(
+                      key: ValueKey('ai-provider-edit-${provider.id}'),
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.small,
+                      height: aiSettingsActionHeight,
+                      icon: Icons.edit_outlined,
+                      onPressed: widget.busy ? null : widget.onEdit,
+                      child: Text(l10n.aiSettingsEdit),
+                    ),
+                    if (!provider.isDefault)
+                      UtenButton(
+                        key: ValueKey('ai-provider-default-${provider.id}'),
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.small,
+                        height: aiSettingsActionHeight,
+                        icon: Icons.star_outline_rounded,
+                        onPressed: widget.busy ? null : widget.onSetDefault,
+                        child: Text(l10n.aiSettingsSetDefault),
+                      ),
+                    UtenButton(
+                      key: ValueKey('ai-provider-delete-${provider.id}'),
+                      type: UtenButtonType.ghost,
+                      size: UtenButtonSize.small,
+                      height: aiSettingsActionHeight,
+                      icon: Icons.delete_outline_rounded,
+                      onPressed: widget.busy || !widget.canDelete
+                          ? null
+                          : widget.onDelete,
+                      onDisabledTap: !widget.busy && !widget.canDelete
+                          ? widget.onDelete
+                          : null,
+                      child: Text(l10n.aiSettingsDelete),
                     ),
                   ],
                 ),
-              ),
-              Semantics(
-                label: l10n.aiSettingsEnabledSwitch,
-                child: Switch(
-                  key: ValueKey('ai-provider-enabled-${provider.id}'),
-                  value: provider.enabled,
-                  onChanged: busy ? null : onEnabledChanged,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _InfoLine(
-            icon: Icons.memory_rounded,
-            label: l10n.aiSettingsModel,
-            child: _Value(provider.model),
-          ),
-          _InfoLine(
-            icon: Icons.link_rounded,
-            label: l10n.aiSettingsBaseUrl,
-            child: _Value(provider.baseUrl, maxLines: 2),
-          ),
-          _InfoLine(
-            icon: Icons.key_rounded,
-            label: l10n.aiSettingsApiKey,
-            child: _KeyStatus(provider: provider, keyNotNeeded: keyNotNeeded),
-          ),
-          _InfoLine(
-            icon: Icons.fact_check_outlined,
-            label: l10n.aiSettingsLastTest,
-            child: _LastTest(provider: provider),
-          ),
-          if (testing || testResult != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            AiConnectionTestView(result: testResult, running: testing),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          Divider(height: 1, color: theme.colorScheme.outlineVariant),
-          const SizedBox(height: UtenSpacing.s12),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              UtenButton(
-                key: ValueKey('ai-provider-test-${provider.id}'),
-                type: UtenButtonType.tonal,
-                size: UtenButtonSize.small,
-                height: aiSettingsActionHeight,
-                icon: Icons.network_check_rounded,
-                isLoading: testing,
-                onPressed: busy || testing ? null : onTest,
-                child: Text(
-                  testing ? l10n.aiSettingsTesting : l10n.aiSettingsTest,
-                ),
-              ),
-              UtenButton(
-                key: ValueKey('ai-provider-edit-${provider.id}'),
-                type: UtenButtonType.secondary,
-                size: UtenButtonSize.small,
-                height: aiSettingsActionHeight,
-                icon: Icons.edit_outlined,
-                onPressed: busy ? null : onEdit,
-                child: Text(l10n.aiSettingsEdit),
-              ),
-              if (!provider.isDefault)
-                UtenButton(
-                  key: ValueKey('ai-provider-default-${provider.id}'),
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.small,
-                  height: aiSettingsActionHeight,
-                  icon: Icons.star_outline_rounded,
-                  onPressed: busy ? null : onSetDefault,
-                  child: Text(l10n.aiSettingsSetDefault),
-                ),
-              UtenButton(
-                key: ValueKey('ai-provider-delete-${provider.id}'),
-                type: UtenButtonType.ghost,
-                size: UtenButtonSize.small,
-                height: aiSettingsActionHeight,
-                icon: Icons.delete_outline_rounded,
-                onPressed: busy || !canDelete ? null : onDelete,
-                onDisabledTap: !busy && !canDelete ? onDelete : null,
-                child: Text(l10n.aiSettingsDelete),
-              ),
-            ],
-          ),
-          if (provider.updatedAt != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              l10n.aiSettingsUpdatedBy(
-                provider.updatedByName ?? '-',
-                DisplayDateTime.beijing(provider.updatedAt),
-              ),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+                if (provider.updatedAt != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Text(
+                    l10n.aiSettingsUpdatedBy(
+                      provider.updatedByName ?? '-',
+                      DisplayDateTime.beijing(provider.updatedAt),
+                    ),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
+            secondChild: const SizedBox(width: double.infinity),
+            crossFadeState: _expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            duration: UtenAnim.normal,
+            sizeCurve: UtenAnim.standard,
+          ),
         ],
       ),
     );

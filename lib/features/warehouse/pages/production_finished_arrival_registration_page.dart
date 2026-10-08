@@ -161,7 +161,7 @@ class _ProductionFinishedArrivalRegistrationPageState
     _route = _initialRoute();
     await _load();
     if (_error != null || _reports == null) {
-      throw StateError(_error ?? '最新登记单据未能读取');
+      throw StateError(_error ?? '最新登记单据没有加载出来');
     }
   }
 
@@ -242,7 +242,7 @@ class _ProductionFinishedArrivalRegistrationPageState
           .firstOrNull;
       // Current registration facts win over an old editable snapshot after a lost response.
       if (row == null && item['registered'] != true) {
-        throw const FormatException('原登记明细已变化或已由其他人办理，填写草稿保留；请核对服务器登记结果');
+        throw const FormatException('原登记明细已变化或已由其他人办理，你填写的内容都还在；请刷新核对最新登记结果');
       }
       if (row == null || row.registered) continue;
       row.setWarehouse(
@@ -592,12 +592,12 @@ class _ProductionFinishedArrivalRegistrationPageState
           '有 $excludedCount 行未勾选：本次不登记、不写库存，仍留在任务中心待登记，可稍后办理。',
         ...(stockInFirst
             ? const [
-                '同一事务按「报工单 x 入库仓库」逐组登记入库仓库与库位，并把每批实物按库位上架(先入库后质检)，送品质部检验。',
+                '按「报工单 x 入库仓库」逐组登记入库仓库与库位，并把每批实物按库位上架(先入库后质检)，一起送品质部检验。整批一起生效，不会只成功一半。',
                 '品质部到库位按整批检验：合格由系统按本次登记的仓库与库位自动入库，仓库不再确认第二次；不合格不动库存。',
                 '本次库位会记住为该仓默认库位，下次登记自动带出。',
               ]
             : const [
-                '同一事务按「报工单 x 入库仓库」逐组登记入库仓库与库位，送品质部按整批检验；同一仓库的行合并成一张品质检查单。',
+                '按「报工单 x 入库仓库」逐组登记入库仓库与库位，送品质部按整批检验；同一仓库的行合并成一张品质检查单。',
                 '品质放行后仓库再按实物最终点收入库，可短收(短收先扣实际超产)。',
                 '本次库位会记住为该仓默认库位，下次登记自动带出。',
               ]),

@@ -271,7 +271,7 @@ public class ProductionPurchaseRequestFacade {
         if (items.stream().anyMatch(row -> decimal(row[1]).signum() > 0)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "计划包采购申请已经转采购订单，必须先反向处理下游订货");
+                    "计划包采购申请已经转采购订单，请先红冲下游的订货单");
         }
 
         if (action == LifecycleAction.CANCEL) {
@@ -299,7 +299,7 @@ public class ProductionPurchaseRequestFacade {
                 || line.qty().signum() <= 0) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "采购需求草稿行缺少必填字段或数量无效");
+                    "采购需求草稿行填写不完整或数量不正确");
         }
     }
 

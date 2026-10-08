@@ -41,6 +41,7 @@ class PermissionCatalogBrowser extends StatefulWidget {
     this.onDisableAll,
     this.enableAllLabel = '全部授权',
     this.disableAllLabel = '全部收回',
+    this.showGlobalBulkActions = true,
   });
 
   final List<PermissionCatalogGroup> groups;
@@ -66,6 +67,10 @@ class PermissionCatalogBrowser extends StatefulWidget {
   final ValueChanged<List<AdminPermission>>? onDisableAll;
   final String enableAllLabel;
   final String disableAllLabel;
+
+  /// 是否渲染目录顶部的「全部授权 / 全部收回」整目录按钮。默认 true；
+  /// 全量入口挪去别处（如个人详情顶部操作行）的调用方传 false，分组菜单不受影响。
+  final bool showGlobalBulkActions;
 
   @override
   State<PermissionCatalogBrowser> createState() =>
@@ -328,7 +333,8 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
         ),
         if (actionTypes.isNotEmpty)
           _actionFilterBar(actionTypes, allPermissions),
-        if ((widget.onGrantScope != null || widget.onDisableAll != null) &&
+        if (widget.showGlobalBulkActions &&
+            (widget.onGrantScope != null || widget.onDisableAll != null) &&
             allPermissions.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s4),

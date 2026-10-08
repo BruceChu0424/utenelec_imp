@@ -203,7 +203,7 @@ public class CurrencyService {
         if (c.isBaseCurrency() && !"使用".equals(req.getStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "本位币 UUID 只能保持启用；变更本位币必须使用经复核的前向迁移");
+                    "本位币必须保持启用；如需更换本位币，请联系管理员按专门流程处理");
         }
         if (req.getStatus() != null && !java.util.Objects.equals(c.getStatus(), req.getStatus())) {
             com.uten.imp.security.CurrentAuthorityGuard.requireAll("currency:status");
@@ -223,7 +223,7 @@ public class CurrencyService {
         if (c.isBaseCurrency() && !"使用".equals(req.status())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "本位币 UUID 不能停用；变更本位币必须使用经复核的前向迁移");
+                    "本位币不能停用；如需更换本位币，请联系管理员按专门流程处理");
         }
         c.setStatus(req.status());
         repo.save(c);
@@ -238,7 +238,7 @@ public class CurrencyService {
         if (c.isBaseCurrency()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "本位币 UUID 不能删除；变更本位币必须使用经复核的前向迁移");
+                    "本位币不能删除；如需更换本位币，请联系管理员按专门流程处理");
         }
         c.setDeleted(true);
         c.setDeletedAt(OffsetDateTime.now());

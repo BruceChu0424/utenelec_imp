@@ -118,7 +118,7 @@ public record SubcontractGoodsSnapshot(UUID goodsId, String code, String name, S
         if (snapshot == null) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    subject + "关联的货品主数据不存在，请刷新后重试");
+                    subject + "关联的货品资料不存在，请刷新后重试");
         }
         return snapshot;
     }

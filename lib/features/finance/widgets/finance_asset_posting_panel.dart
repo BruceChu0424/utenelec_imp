@@ -150,7 +150,7 @@ class _FinanceAssetPostingPanelState
           _workflowAllowedActions = preview.allowedActions;
         });
         if (preview.errors.isNotEmpty) {
-          context.appWarning('预览发现阻断异常，请先修正后重新预览');
+          context.appWarning('预览发现必须处理的错误，请先修正后重新预览');
         } else {
           context.appSuccess('计提预览已生成，请核对明细后提交');
         }
@@ -399,7 +399,7 @@ class _FinanceAssetPostingPanelState
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(
-            '必须先预览并核对异常与逐项金额，禁止一键计提。',
+            '必须先预览并核对错误和逐项金额，不能跳过预览直接计提。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -498,7 +498,7 @@ class _FinanceAssetPostingPanelState
               _metric('笔数', '${preview.count}'),
               _metric('总额', '¥ ${formatFinanceDecimal(preview.totalAmount)}'),
               _metric('警告', '${preview.warnings.length}'),
-              _metric('阻断异常', '${preview.errors.length}'),
+              _metric('必须处理的错误', '${preview.errors.length}'),
               financeAssetStatusBadge(_workflowStatus),
             ],
           ),
@@ -508,7 +508,7 @@ class _FinanceAssetPostingPanelState
           ],
           if (preview.errors.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),
-            _messages('阻断异常', preview.errors, theme.colorScheme.error),
+            _messages('必须处理的错误', preview.errors, theme.colorScheme.error),
           ],
           const SizedBox(height: UtenSpacing.s16),
           Text(
@@ -555,7 +555,7 @@ class _FinanceAssetPostingPanelState
                 ),
               if (hasErrors)
                 Text(
-                  '存在阻断异常，提交与过账动作已锁定。',
+                  '还有必须处理的错误，提交和过账按钮已锁定。',
                   key: const Key('finance-asset-post-blocked'),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.error,

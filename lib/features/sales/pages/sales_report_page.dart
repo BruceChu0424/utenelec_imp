@@ -169,7 +169,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
-      context.appError('加载报表失败');
+      context.appError('报表加载失败，请稍后重试');
       setState(() => _loading = false);
     }
   }
@@ -674,7 +674,7 @@ class _SalesClientDetailDialogState
       });
     } catch (_) {
       if (!mounted || generation != _loadGeneration) return;
-      context.appError('加载客户明细失败');
+      context.appError('客户明细加载失败，请稍后重试');
       setState(() => _loading = false);
     }
   }

@@ -171,10 +171,10 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     descriptor: FormDraftCatalog.clientAddress,
     onResume: (parameters) async {
       final clientId = parameters['parentId'];
-      if (clientId == null) throw StateError('草稿缺少客户');
+      if (clientId == null) throw StateError('草稿里缺少客户信息');
       final client = await ref.read(clientRepositoryProvider).detail(clientId);
       if (!context.mounted) return;
-      if (!client.writable) throw StateError('当前客户已不在可写范围');
+      if (!client.writable) throw StateError('当前客户已不能编辑');
       await showClientShipAddressSheet(
         context,
         ref,

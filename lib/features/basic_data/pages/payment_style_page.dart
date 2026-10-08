@@ -508,7 +508,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     ready: !_treeLoading && _treeError == null,
     onResume: (parameters) async {
       final category = PaymentStyleCategory.byValue(parameters['categoryId']);
-      if (category == null) throw StateError('草稿的类别无效');
+      if (category == null) throw StateError('草稿的类别已失效');
       if (_category != category) {
         setState(() => _category = category);
         await _load();
@@ -858,7 +858,7 @@ class _InspectorHeader extends StatelessWidget {
                 onPressed: disabled || protectedLeaf ? null : onAddChild,
                 onDisabledTap: disabled || protectedLeaf
                     ? () => context.appWarning(
-                        disabled ? '已禁用类别不能新增子类别' : '该系统科目是可过账叶子节点，不能变成目录',
+                        disabled ? '已禁用类别不能新增子类别' : '该系统科目可直接记账，不能再挂下级分类',
                       )
                     : null,
                 child: const Text('新增子类别'),
@@ -991,7 +991,7 @@ class _BusinessAttributesSection extends StatelessWidget {
                 _InfoField(
                   label: '关联账户',
                   value: detail.linkedAccountId!,
-                  helper: '系统 UUID 关联；账户改编号不会影响此关系',
+                  helper: '按系统内部编号关联；账户改编号不会影响此关联',
                 ),
             ],
           ),
@@ -1000,7 +1000,7 @@ class _BusinessAttributesSection extends StatelessWidget {
             icon: Icons.info_outline_rounded,
             text: category == PaymentStyleCategory.method
                 ? '“结算方式”目前是预留分类，不等同于收款单、付款单中的具体结算方式。'
-                : '这些标志用于保留主档分类语义；业务能否选择该类别仍以所属大类、启用状态和是否叶子节点为准。',
+                : '这些标志用于标记分类用途；业务里能否选这个类别，还要看所属大类、启用状态和是否末级。',
           ),
         ],
       ),
@@ -1732,7 +1732,7 @@ class _PaymentStyleEditDialogState
                 const SizedBox(height: UtenSpacing.s8),
                 const _InlineNotice(
                   icon: Icons.lock_outline_rounded,
-                  text: '该名称被财务过账流程按稳定身份使用，不能修改。',
+                  text: '该名称已被财务记账流程使用，不能修改。',
                 ),
               ],
               const SizedBox(height: UtenSpacing.s12),
@@ -1816,7 +1816,7 @@ class _PaymentStyleEditDialogState
                 icon: Icons.info_outline_rounded,
                 text: widget.category == PaymentStyleCategory.method
                     ? '结算方式分类目前为预留主档，不会自动绑定收款单或付款单的具体结算方式。'
-                    : '业务是否允许选择还会校验大类、启用状态和叶子节点；这些开关不替代业务校验。',
+                    : '实际能否选用还会看大类、启用状态和是否末级；这些开关不能替代业务检查。',
               ),
               if (_formError != null) ...[
                 const SizedBox(height: UtenSpacing.s12),

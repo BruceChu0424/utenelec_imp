@@ -450,7 +450,7 @@ public class AccountService {
         }
         if (targetActive && a.getStyleId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "使用中的账户必须选择会计科目 UUID");
+                    "使用中的账户必须选择会计科目");
         }
         if (targetActive) requireActiveCurrency(a.getCurrencyId());
         if (!targetActive) {
@@ -502,7 +502,7 @@ public class AccountService {
         if (req.getStatus() != null && !req.getStatus().isBlank()) a.setStatus(req.getStatus());
         if ("使用".equals(a.getStatus()) && a.getStyleId() == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "使用中的账户必须选择会计科目 UUID");
+                    "使用中的账户必须选择会计科目");
         }
     }
 
@@ -598,7 +598,7 @@ public class AccountService {
     private void requireActiveCurrency(UUID currencyId) {
         if (currencyId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "使用中的账户必须明确选择币种 UUID，不能默认猜测人民币");
+                    "使用中的账户必须明确选择币种，系统不会默认按人民币处理");
         }
         long matches = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*) FROM currencies
@@ -682,7 +682,7 @@ public class AccountService {
                 .setParameter("accountId", accountId));
         if (rows.size()!=1) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "账户余额完整性投影缺失或重复，请先运行财务对账");
+                    "账户余额数据缺失或重复，请先运行财务对账");
         }
         Object[] row=rows.getFirst();
         return new BalanceIntegrity(
@@ -857,7 +857,7 @@ public class AccountService {
         if (styleId == null) {
             if (styleLegacyId != null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "styleLegacyId 不能用于建立关联，请选择会计科目 UUID");
+                        "不能用旧系统编号选择会计科目，请重新选择会计科目");
             }
             return;
         }
@@ -878,7 +878,7 @@ public class AccountService {
                 .getResultList();
         if (matches.size() != 1) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "会计科目不存在、已禁用或不是可过账的账户类叶节点");
+                    "会计科目不存在、已停用，或不是能记账的最末级账户科目");
         }
         Object[] resolved = matches.getFirst();
         Integer canonicalLegacyId = resolved[1] == null
@@ -886,7 +886,7 @@ public class AccountService {
         if (styleLegacyId != null
                 && !Objects.equals(styleLegacyId, canonicalLegacyId)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "会计科目 UUID 与 legacy 影子不一致");
+                    "所选会计科目与系统记录不一致，请重新选择");
         }
         account.setStyleId((UUID) resolved[0]);
         account.setStyleLegacyId(canonicalLegacyId);

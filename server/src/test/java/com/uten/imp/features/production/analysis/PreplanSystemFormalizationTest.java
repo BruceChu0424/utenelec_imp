@@ -26,7 +26,7 @@ class PreplanSystemFormalizationTest {
     @Test void missingSystemCapabilityCannotReleaseAnOwnedReservation() {
         Fixture f = new Fixture(false);
         assertThatThrownBy(() -> f.service.consumePhysicalForFormalize(f.source, BigDecimal.ONE, null))
-                .isInstanceOf(ApiException.class).hasMessageContaining("事务凭据");
+                .isInstanceOf(ApiException.class).hasMessageContaining("提交标识");
         assertThat(f.writes).isEmpty();
         assertThat(f.sql).singleElement().asString().contains(
                 "app.production_readiness_reconcile", "= 'v1'", "app.actor_id",

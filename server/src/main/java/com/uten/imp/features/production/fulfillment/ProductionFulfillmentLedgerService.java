@@ -54,12 +54,12 @@ public class ProductionFulfillmentLedgerService {
                     || !Objects.equals(existing.getWarehouseId(), warehouseId)) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "相同幂等键对应不同计划包请求");
+                        "同一防重复提交标识对应不同的计划包请求，请刷新后重试");
             }
             if (!ProductionPlanningPackage.STATUS_CONFIRMED.equals(existing.getStatus())) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "\u8be5\u5e42\u7b49\u952e\u5bf9\u5e94\u7684\u8ba1\u5212\u5305\u5df2\u53d6\u6d88\u6216\u7ea2\u51b2\uff1b\u5982\u9700\u91cd\u65b0\u786e\u8ba4\uff0c\u8bf7\u4f7f\u7528\u65b0\u7684\u5e42\u7b49\u952e");
+                        "这个防重复提交标识对应的计划包已取消或红冲；如需重新确认，请刷新后重新操作");
             }
             return new BeginConfirmation(existing, true);
         }
@@ -229,7 +229,7 @@ public class ProductionFulfillmentLedgerService {
                 || allocatedQty.signum() <= 0) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "供给挂接缺少必填字段或数量无效");
+                    "供给挂接填写的内容不完整或数量不正确");
         }
         ProductionMaterialSupplyPeg peg = new ProductionMaterialSupplyPeg();
         peg.setDemandId(demand.getId());
@@ -334,7 +334,7 @@ public class ProductionFulfillmentLedgerService {
             }
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "计划包已由另一个幂等请求完成相同操作");
+                    "这个操作可能已提交过（计划包已被同样操作处理），请刷新查看结果");
         }
         if (!ProductionPlanningPackage.STATUS_CONFIRMED.equals(planningPackage.getStatus())) {
             throw new ApiException(
@@ -485,7 +485,7 @@ public class ProductionFulfillmentLedgerService {
                 || !validRequirementSnapshot(draft)) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "物料需求缺少必填字段或数量/路线无效");
+                    "物料需求填写的内容不完整，或数量/路线不正确");
         }
     }
 
@@ -510,7 +510,7 @@ public class ProductionFulfillmentLedgerService {
                 || key.strip().length() > 128) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "幂等键长度必须为 8 到 128 个字符");
+                    "防重复提交标识长度必须为 8 到 128 个字符");
         }
     }
 

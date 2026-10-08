@@ -222,7 +222,7 @@ class StockCountInlineController extends ChangeNotifier {
       _loadedGoods.addAll(ids);
     } catch (e) {
       if (!_disposed && generation == _generation) {
-        error = e is ApiException ? e.message : '盘点快照未读到，请重试';
+        error = e is ApiException ? e.message : '盘点数据没有读到，请重试';
       }
     } finally {
       if (!_disposed && generation == _generation) {
@@ -328,7 +328,7 @@ class StockCountInlineCell extends StatelessWidget {
     listenable: controller,
     builder: (context, _) {
       final row = controller.rows[rowKey];
-      if (row == null) return Text(controller.busy ? '读取快照…' : '不可编辑');
+      if (row == null) return Text(controller.busy ? '读取中…' : '不可编辑');
       if (weight && row.snapshot.weightExact) {
         return Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）');
       }
@@ -481,8 +481,8 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
       final leave = await UtenDialog.show(
         context,
         title: '退出盘点模式',
-        content: const Text('尚未送审的实盘输入将丢弃。'),
-        confirmLabel: '丢弃并退出',
+        content: const Text('还没送审的实盘数字会被清空。'),
+        confirmLabel: '清空并退出',
         cancelLabel: '继续填写',
       );
       if (leave != true) return;

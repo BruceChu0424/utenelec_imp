@@ -730,7 +730,7 @@ public class PagePermissionWorkspaceService {
                     || change.expectedVersion() < 0L) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "权限变更参数不完整");
+                        "权限变更内容不完整，请刷新后重试");
             }
             String code = change.code().trim();
             if (!unique.add(code)) {

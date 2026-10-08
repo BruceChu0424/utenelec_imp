@@ -212,7 +212,7 @@ class _ProcurementIqcRejectionActionDialogState
                 if (_busy)
                   const UtenBusyOverlay(
                     title: '正在提交拒收办理',
-                    description: '正在写入退回/入库/改判事实，请勿重复提交或关闭弹窗。',
+                    description: '正在保存退回、入库或改判的记录，请勿重复提交或关闭弹窗。',
                   ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
@@ -386,7 +386,7 @@ class _ProcurementIqcRejectionActionDialogState
                                 _noteLabel,
                                 theme,
                                 required: true,
-                                info: '说明将进入追加式审计事件，提交后不能覆盖原记录',
+                                info: '说明会追加到操作记录里，提交后不能修改或删除',
                               ),
                             ),
                           ),

@@ -409,7 +409,7 @@ public class SalesReturnService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核退货单可确认客户处置");
         }
         if (req == null || req.disposition() == null || req.reason() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "客户处置请求不完整");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写完整的客户处置方式和原因");
         }
         String disposition = normalizeDisposition(req.disposition());
         String reason = req.reason().trim();
@@ -573,7 +573,7 @@ public class SalesReturnService {
                 && !Objects.equals(normalized, "RESHIP")
                 && !Objects.equals(normalized, "REPAIR_RETURN")) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "客户处置仅支持 REFUND_CLOSED/EXCHANGE/RESHIP/REPAIR_RETURN");
+                    "客户处置方式不正确，请重新选择");
         }
         return normalized;
     }
@@ -583,7 +583,7 @@ public class SalesReturnService {
         if (normalized.length() < 8 || normalized.length() > 128
                 || !normalized.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "客户处置幂等键必须为 8 到 128 位字母、数字或 ._:-");
+                    "客户处置操作编号必须为 8 到 128 位字母、数字或 ._:-");
         }
         return normalized;
     }
@@ -1042,7 +1042,7 @@ public class SalesReturnService {
             line.setOrderItemId(item.getOrderItemId());
             if (item.getQty() == null || item.getQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "历史退货明细数量无效，禁止继续联动");
+                        "历史退货明细的数量数据不对，不能继续本次操作，请联系管理员");
             }
             line.setGoodsId(item.getGoodsId());
             line.setColorId(item.getColorId());

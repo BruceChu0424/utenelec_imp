@@ -953,7 +953,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       if (_isCheck) {
         final bookQty = double.tryParse(r.bookQty.text);
         if (bookQty == null) {
-          return context.appError('${r.goods!.name} 的账面库存尚未读取');
+          return context.appError('${r.goods!.name} 的账面库存还没加载出来，请稍候再保存');
         }
         final countQty = double.tryParse(r.checkQty.text.trim());
         if (countQty == null || countQty < 0) {
@@ -1288,8 +1288,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                             ],
                             if (_isCheck) ...[
                               Text(
-                                '账面数量由系统按所选仓库读取，保存后形成盘点快照。'
-                                '审核前如发生其它出入库，系统会拒绝用旧快照修正库存，'
+                                '账面数量由系统按所选仓库带出，保存时会记下当时的库存数。'
+                                '送审前如有其它出入库，系统会提示库存已变化、不能按旧数字修正，'
                                 '请刷新账面并重新核对实盘数。',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant,

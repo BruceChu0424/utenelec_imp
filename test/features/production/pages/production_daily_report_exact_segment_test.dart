@@ -499,7 +499,7 @@ void main() {
           {'demandId': 'demand-1', 'qtyBase': 117.0},
         ]);
       } else {
-        expect(find.textContaining('恢复申请内容未完成'), findsOneWidget);
+        expect(find.textContaining('恢复申请内容没完成'), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
         await tester.pumpAndSettle();
         expect(saved, isNull);

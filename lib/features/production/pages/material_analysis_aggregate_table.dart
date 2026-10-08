@@ -66,7 +66,31 @@ final class _MaterialAggregateTableController {
               key: ValueKey('material-aggregate-split-${aggregate.key}'),
             ),
           );
-    if (actionIds.isEmpty) return note ?? const Text('勾选后下单');
+    if (actionIds.isEmpty) {
+      // 单一来源的量会并入既有车间计划 / 订货单而不另开汇总批次
+      // (AggregateMaterialOrderWriteService.issueExistingSingleSource)：这类行
+      // 名下没有可整批撤回的批次，但数量格已锁、确实下过单——如实标注去向，
+      // 不再误显「勾选后下单」让人以为这行没下成。
+      if (orderedQty(aggregate) > 0.000000001) {
+        final merged = Tooltip(
+          message:
+              '本行的量已并入来源既有的车间计划或订货单，未另开汇总批次。'
+              '撤回请在「按产品办理」视图的供给任务与撤回，或直接处理那张单据。',
+          child: Text(
+            '已并入既有单据',
+            key: ValueKey('material-aggregate-merged-${aggregate.key}'),
+          ),
+        );
+        return note == null
+            ? merged
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [merged, note],
+              );
+      }
+      return note ?? const Text('勾选后下单');
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,6 +227,8 @@ final class _MaterialAggregateTableController {
     required bool append,
   }) {
     final ordered = orderedQty(aggregate) > 0.000000001;
+    final displayedOrder = issuedText(aggregate) ?? '无法确认';
+    final breakdown = issuedBreakdown(aggregate);
     final cellKey = ValueKey(
       'material-aggregate-${append ? 'append' : 'order'}-${aggregate.key}',
     );
@@ -214,7 +240,8 @@ final class _MaterialAggregateTableController {
       // 裸文本会被读成「没锁住、还能改」(2026-09-25 用户实机误读)。
       return Tooltip(
         message:
-            '累计已下单 ${owner._qty(orderedQty(aggregate))}。'
+            '累计已下单 $displayedOrder。'
+            '${breakdown == null ? '' : '$breakdown。公共备货没有分配给某个产品，也不表示已合格入库。'}'
             '下达之后这一格不可改，要再下请填「追加下单」。',
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -227,7 +254,7 @@ final class _MaterialAggregateTableController {
             const SizedBox(width: UtenSpacing.s4),
             Flexible(
               child: Text(
-                owner._qty(orderedQty(aggregate)),
+                displayedOrder,
                 key: cellKey,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -236,6 +263,11 @@ final class _MaterialAggregateTableController {
                 ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
+            if (breakdown != null)
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.info_outline_rounded, size: 14),
+              ),
           ],
         ),
       );
@@ -258,7 +290,7 @@ final class _MaterialAggregateTableController {
     // 2026-09-27 用户口径「输入的值不能低于还缺数量，边输入边判断，不对就
     // 红」：下单格加与按产品视图同一规则的实时下限(见 [orderFloor])；追加格
     // 没有下限。悬浮里讲清下限与平分去向，红框含义不再靠猜。
-    final floor = append ? 0.0 : orderFloor(aggregate);
+    final floor = append ? '0' : orderFloor(aggregate);
     final field = owner._materialTableQtyField(
       theme,
       key: 'material-aggregate-qty-${aggregate.key}',
@@ -275,8 +307,8 @@ final class _MaterialAggregateTableController {
         final text = controller.text;
         if (!validText(text)) return true;
         if (append) return false;
-        final typed = double.tryParse(text.trim());
-        return typed == null || typed + 0.0001 < floor;
+        if (floor == 'NaN') return true;
+        return materialQuantityUnits(text) < materialQuantityUnits(floor);
       },
     );
     return SizedBox(
@@ -284,13 +316,14 @@ final class _MaterialAggregateTableController {
       child: append
           ? field
           : Tooltip(
-              message: floor > 0.000000001
-                  ? '本次合计不能低于各来源「还需安排」的合计 ${owner._qty(floor)}，'
+              message: floor == 'NaN'
+                  ? '来源缺少可核对的精确数量，请刷新后重试。'
+                  : materialQuantityUnits(floor) > BigInt.zero
+                  ? '本次合计不能低于各来源「还需安排」的合计 $floor，'
                         '边输入边核对，低于它这格会标红并拦下下达。'
-                        '多出的部分会平均分回各产品行；真实下达时按服务端分配'
-                        '(各来源需要量 + 公共备货)落账。'
-                  : '填多少下多少。多出的部分会平均分回各产品行；'
-                        '真实下达时按服务端分配(各来源需要量 + 公共备货)落账。',
+                        '超出需求的部分单独作为公共备货，实际归属以提交前预览为准。'
+                  : '填多少下多少。超出需求的部分单独作为公共备货，'
+                        '实际归属以提交前预览为准。',
               child: field,
             ),
     );
@@ -451,17 +484,21 @@ final class _MaterialAggregateTableController {
     return materialQuantityText(total);
   }
 
-  /// 各来源「还需安排」合计的最粗守恒整值（2026-10-06 用户口径「优先整数
-  /// 呈现」）：服务端把共享缺口按订单权重 1e-4 定点分摊，逐来源落在
-  /// 83.3334 这类值上，裸求和就成了 1000.0002——下限取整成 1000，红框与
-  /// 提交拦截才不会逼用户输 ≥1000.0002。只动展示与编辑层；提交读数与
-  /// 服务端守恒仍是 1e-4 口径。
-  static double _coarseFloor(List<double> residuals) {
-    var total = 0.0;
-    for (final residual in residuals) {
-      total += residual;
+  /// Business validation uses the exact source demand. Display rounding must
+  /// neither turn 0.5 + 0.5 + 0.5 into 2 nor discard a real 0.0002 remainder.
+  String _residualFloor(Iterable<_MaterialGroup> groups) {
+    // 2026-10-06 用户口径「优先整数」：下限取最粗守恒整分总量（83.3334×3 的
+    // 定点分摊尾巴按 1000 校验，不再逼人输 1000.0002）；真实分数需求
+    //（0.5×3=1.5）噪声预算外，下限保持精确（2026-10-07 用户口径）。
+    // 任一来源不可解析（含 build 期调用）fail closed 成 NaN → 红框拦下。
+    try {
+      return coalescedAggregateTotalText([
+            for (final group in groups) owner._tableGroupResidualText(group),
+          ]) ??
+          'NaN';
+    } on FormatException {
+      return 'NaN';
     }
-    return roundToScale(total, coarsestDisplayScale(total, residuals));
   }
 
   /// 汇总「下单数量」格的下限：参与来源(可选下单的组)的「还需安排」
@@ -469,11 +506,11 @@ final class _MaterialAggregateTableController {
   /// (2026-09-22 用户口径「输入小于需要就冒红」)：总量低于它，平分回去
   /// 必然有来源行低于自己的还需安排。已下达的汇总行走「追加下单」格，
   /// 追加是额外量、填多少都行，没有下限。
-  double orderFloor(_MaterialAggregate aggregate) {
-    if (orderedQty(aggregate) > 0.000000001) return 0;
-    return _coarseFloor([
+  String orderFloor(_MaterialAggregate aggregate) {
+    if (orderedQty(aggregate) > 0.000000001) return '0';
+    return _residualFloor([
       for (final group in groupsOf(aggregate))
-        if (selectableForOrder(group)) owner._tableGroupResidual(group),
+        if (selectableForOrder(group)) group,
     ]);
   }
 
@@ -847,18 +884,20 @@ final class _MaterialAggregateTableController {
       // 2026-09-27 用户口径「输入的值不能低于还缺数量」：手输总量的下单流草稿
       // 在红框之外由提交通道再拦一道。按产品「全选下单」并进来的草稿
       // (sourceRequested 逐行带着用户自己填的数，分批少下合法)与追加流(额外量)
-      // 都不套这条下限。下限与红框([orderFloor])同为最粗守恒整值(2026-10-06
-      // 口径「优先整数」)：显示 1000 就拦 <1000，不再逼用户输 ≥1000.0002。
+      // 都不套这条下限。下限与红框([orderFloor])同为权威四位定点数，
+      // 展示取整不得抬高真实小数需求，也不得吞掉小于一单位的真实缺口。
       if (draft.userEntered &&
           draft.sourceRequestedQtyByMaterialLineId == null &&
           !draft.appendFlow) {
-        final floor = _coarseFloor([
-          for (final group in groups) owner._tableGroupResidual(group),
-        ]);
-        if ((double.parse(draft.totalText) + 0.0001) < floor) {
+        final floor = _residualFloor(groups);
+        if (floor == 'NaN') {
+          throw const FormatException('来源缺少可核对的精确数量，请刷新后重试');
+        }
+        if (materialQuantityUnits(draft.totalText) <
+            materialQuantityUnits(floor)) {
           throw FormatException(
             '「${draft.label}」本次总量 ${draft.totalText} 不能低于各来源'
-            '「还需安排」的合计 ${owner._qty(floor)}；要分批少下请切到按产品逐行办理',
+            '「还需安排」的合计 $floor；要分批少下请切到按产品逐行办理',
           );
         }
       }
@@ -893,7 +932,7 @@ final class _MaterialAggregateTableController {
       final parts = partsOf(draft.key, sources, workshop: workshop);
       if (workshop &&
           parts.any((part) => part.params!.rate == null && part.rateExplicit)) {
-        throw FormatException('「${draft.label}」允许超产比例无效');
+        throw FormatException('「${draft.label}」允许超产比例填写有误，请填不小于 0 的百分比');
       }
       final quantities = partQuantities(draft, parts);
       for (var i = 0; i < parts.length; i++) {
@@ -1092,7 +1131,7 @@ final class _MaterialAggregateTableController {
           final effective = materials[source.materialLineId];
           if (effective == null ||
               !ownerIds.contains(effective.analysisLineId)) {
-            throw const FormatException('预览办理目标不属于本分析，未套用此结果');
+            throw const FormatException('预览结果不属于这份分析，本次没有套用，请刷新后重试');
           }
           final exactOrigins = [
             for (final id in input.materialLineIds)
@@ -1125,7 +1164,7 @@ final class _MaterialAggregateTableController {
                 !(original?.aggregatePreparation?.targetMaterialLineIds
                         .contains(source.materialLineId) ??
                     false)) {
-              throw const FormatException('预览办理目标缺少原来源的精确对应关系，未套用此结果');
+              throw const FormatException('预览结果对不上原来的来源行，本次没有套用，请刷新后重试');
             }
           }
           covered.addAll(originals);
@@ -1467,8 +1506,8 @@ final class _MaterialAggregateTableController {
         uncertain = !rejected;
         error = rejected
             ? failure.message
-            : '${productionErrorMessage(failure, fallback: '请求未获得确定结果')}；'
-                  '提交回执尚未确认，请保留本次总量并使用相同内容重试核对';
+            : '${productionErrorMessage(failure, fallback: '服务器没有返回确定的结果')}；'
+                  '提交结果尚未确认，请保留本次总量并使用相同内容重试核对';
         if (rejected) {
           _revision++;
           _preview = null;
@@ -1745,6 +1784,7 @@ final class _MaterialAggregateTableController {
     for (final group in groups)
       owner._overproductionPercentController(
         materialLineId: group.representative.materialLineId,
+        issued: owner._tableGroupIssued(group),
       ),
   ];
 
@@ -1777,6 +1817,15 @@ final class _MaterialAggregateTableController {
     final groups = workshopGroups(aggregate);
     if (groups.isEmpty) return const Text('—');
     final uniform = uniformRateText(groups);
+    if (groups.any(owner._tableGroupIssued)) {
+      return Tooltip(
+        message: '这一行已有下达记录，允许超产比例随工单锁定；要改已下达工单的比例须计划部审批。未下达来源可切换按产品分别设置。',
+        child: Text(
+          uniform == null ? '多个比例（已锁定）' : '$uniform%',
+          key: ValueKey('material-aggregate-rate-${aggregate.key}'),
+        ),
+      );
+    }
     final initial = drafts[aggregate.key]?.mixedRate == true
         ? ''
         : uniform ?? '';
@@ -1801,6 +1850,7 @@ final class _MaterialAggregateTableController {
         controller: controller,
         enabled: owner._canGenerate && !owner._busy && !uncertain,
         onChanged: (value) => owner._mutateAggregateTable(() {
+          if (workshopGroups(aggregate).any(owner._tableGroupIssued)) return;
           final draft = begin(aggregate);
           draft.mixedRate = false;
           for (final group in groups) {
@@ -1845,6 +1895,11 @@ final class _MaterialAggregateTableController {
     }
     if (row.aggregate case final aggregate?) return groupsOf(aggregate);
     if (row.product case final product?) {
+      // 按物料汇总视图：顶层产品行是独立可下单行，勾选只带根行自己——
+      // 组件在各自的聚合行上另勾另核，不随顶层整树联动（2026-10-07）。
+      if (owner._bomAggregateByMaterial) {
+        return owner._materialRowAllGroups(row);
+      }
       final indexes = owner._analysisIndexes(analysis);
       final nodes =
           owner
@@ -1946,6 +2001,91 @@ final class _MaterialAggregateTableController {
 
   /// Actual issue facts only. Shared plan anchors and public action slices are
   /// counted once even when multiple displayed paths point at the same source.
+  MaterialIssuedQuantitySummary? issuedSummary(_MaterialAggregate aggregate) {
+    final analysis = owner._analysis;
+    if (analysis == null) return null;
+    final byLine = {
+      for (final material in analysis.materials)
+        material.materialLineId: material,
+    };
+    final queue = aggregate.paths.toList();
+    final visited = <String>{};
+    final actions = <MaterialAnalysisSupplyAction>[];
+    for (var i = 0; i < queue.length; i++) {
+      final material = queue[i];
+      if (!visited.add(material.materialLineId)) continue;
+      for (final reference in material.notifiedTargets) {
+        if (reference.status == 'CANCELLED' || reference.isRootOutput) continue;
+        final action = owner._supplyActionOf(reference.actionId);
+        if (action != null) actions.add(action);
+      }
+      for (final target
+          in material.aggregatePreparation?.targetMaterialLineIds ??
+              const <String>[]) {
+        if (byLine[target] case final material?) queue.add(material);
+      }
+    }
+    // A legacy plan alongside a newer aggregate action needs its own explicit
+    // breakdown; do not relabel the action subset as the whole history.
+    if (groupsOf(aggregate).any(
+      (group) =>
+          owner._tableLegacyAnchorWithSharedSupply(
+                group,
+                authoritative: true,
+              ) !=
+              null ||
+          (owner._tableUsesMakeAnchor(group) &&
+              (owner
+                          ._tableMakeAnchorOf(group, authoritative: true)
+                          ?.issuedPlanQty ??
+                      0) >
+                  0),
+    )) {
+      return null;
+    }
+    final result = MaterialIssuedQuantitySummary(actions);
+    return actions.isEmpty ? null : result;
+  }
+
+  String? issuedText(_MaterialAggregate aggregate) {
+    final summary = issuedSummary(aggregate);
+    if (summary != null) return summary.total;
+    final groups = groupsOf(aggregate);
+    if (groups.isNotEmpty && groups.every(owner._tableUsesMakeAnchor)) {
+      final anchors = <String, String?>{};
+      for (final group in groups) {
+        final anchor = owner._tableMakeAnchorOf(group, authoritative: true);
+        if (anchor == null) return null;
+        final qty = materialPresentationFact(
+          anchor.quantityFactsExact,
+          'issuedPlanQty',
+          anchor.issuedPlanQty,
+        );
+        final rate = owner._tableIsRootSupply(group.representative)
+            ? materialPresentationFact(
+                anchor.quantityFactsExact,
+                'unitRate',
+                anchor.unitRate ?? 1,
+                scale: 6,
+              )
+            : '1';
+        final units = financeExactProductUnits(qty, rate);
+        anchors[anchor.analysisLineId] = units == null
+            ? null
+            : financeExactTrimmed(financeExactDecimalFromUnits(units));
+      }
+      return materialPresentationSum(anchors.values);
+    }
+    return materialPresentationFact(const {}, 'ordered', orderedQty(aggregate));
+  }
+
+  String? issuedBreakdown(_MaterialAggregate aggregate) {
+    final summary = issuedSummary(aggregate);
+    if (summary == null || !summary.known || summary.total == '0') return null;
+    return '已下单 ${summary.total} = 需求份 ${summary.demand} + 公共备货 ${summary.public}'
+        '${summary.safety == '0' ? '' : ' + 安全补库 ${summary.safety}'}';
+  }
+
   double orderedQty(_MaterialAggregate aggregate) {
     var total = 0.0;
     final anchors = <String>{};
@@ -2046,14 +2186,14 @@ final class _MaterialAggregateTableController {
   String orderText(_MaterialAggregate aggregate) {
     final ordered = orderedQty(aggregate);
     return ordered > 0.000000001
-        ? owner._qty(ordered)
+        ? (issuedText(aggregate) ?? '无法确认')
         : drafts[aggregate.key]?.totalText ?? owner._qty(pendingQty(aggregate));
   }
 
   String quantityRaw(_MaterialAggregate aggregate, {required bool append}) {
     final ordered = orderedQty(aggregate);
     if (append && ordered <= 0.000000001) return '0';
-    if (!append && ordered > 0.000000001) return ordered.toString();
+    if (!append && ordered > 0.000000001) return issuedText(aggregate) ?? '—';
     return drafts[aggregate.key]?.totalText ?? pendingQty(aggregate).toString();
   }
 

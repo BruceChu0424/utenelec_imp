@@ -57,7 +57,7 @@ public class AttachmentReconciliationService {
     public void reconcileInventory(List<StoredObjectRef> inventory) {
         if (!properties.getReconciliation().isEnabled()) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "Attachment reconciliation is disabled");
+                    "附件核对功能未开启");
         }
         for (StoredObjectRef object : inventory) {
             if (isReferenced(jdbc, storage.backend(), object.location().name(), object.storageKey(),
@@ -110,7 +110,7 @@ public class AttachmentReconciliationService {
         String reference = approvalReference == null ? "" : approvalReference.trim();
         if (!reference.matches("[A-Za-z0-9][A-Za-z0-9._:/ -]{2,254}")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Approval reference is not canonical");
+                    "审批依据编号格式不正确");
         }
         Finding finding = jdbc.query("""
                 SELECT id, object_location, storage_key, storage_version, size_bytes,
@@ -118,7 +118,7 @@ public class AttachmentReconciliationService {
                 FROM attachment_reconciliation_findings WHERE id = ?
                 """, result -> result.next() ? finding(result) : null, findingId);
         if (finding == null) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "Reconciliation finding not found");
+            throw new ApiException(ErrorCode.NOT_FOUND, "核对记录不存在");
         }
         StoredObjectRef exact = storageProviders.require(finding.storageProvider()).inventory().stream()
                 .filter(object -> object.location().name().equals(finding.location()))
@@ -127,10 +127,10 @@ public class AttachmentReconciliationService {
                 .filter(object -> object.size() == finding.sizeBytes())
                 .findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.CONFLICT,
-                        "The exact orphan object version is no longer present"));
+                        "这个文件已不在服务器上，请重新核对后再审批"));
         if (!evidenceDigest(finding.storageProvider(),exact).equals(finding.evidenceSha256())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Orphan evidence changed; reconcile again before approval");
+                    "文件核对信息发生了变化，请重新核对后再审批");
         }
         approvalTransaction.approve(findingId, user.getId(), reference);
     }

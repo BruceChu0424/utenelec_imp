@@ -864,7 +864,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       context.appError(e.message);
     } catch (_) {
       if (!mounted) return;
-      context.appError('审计标记失败，请稍后重试'); // TODO(l10n): 补 arb
+      context.appError('保存核对标记失败，请稍后重试'); // TODO(l10n): 补 arb
     } finally {
       _auditRevisions.update(
         row.parentGoodsId,
@@ -962,7 +962,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             final saving = _auditBusyRows.containsKey(_rowId(r));
             return Tooltip(
               message: saving
-                  ? '正在保存审计标记'
+                  ? '正在保存核对标记'
                   : r.node.item.audited
                   ? '已核对，点击取消'
                   : '点击标记已核对',
@@ -1697,8 +1697,8 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
               // 批量添加组件网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
               if (_saving)
                 const UtenBusyOverlay(
-                  title: '正在添加 BOM 组件',
-                  description: '正在一次写入全部组件关系，请勿重复提交或关闭弹窗。',
+                  title: '正在添加组件',
+                  description: '正在一次性保存全部组件，请勿重复提交或关闭弹窗。',
                 ),
               _dialogHeader(context, theme, '添加组件'),
               const Divider(height: 1),

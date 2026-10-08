@@ -385,7 +385,7 @@ class _CancelFutureTransferDialogState
                     title: _needsReview ? '正在核对双方最新状态' : '正在撤销未实收份额',
                     description: _needsReview
                         ? '正在重新加载双方供给归属，请稍候。'
-                        : '正在写入调拨撤销事实，请勿重复提交或关闭弹窗。',
+                        : '正在撤销调拨，请勿重复提交或关闭弹窗。',
                   ),
                 Text(
                   '${_record.sourceLabel ?? '原供料计划'} ← ${_record.targetLabel ?? '接受计划'}',

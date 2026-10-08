@@ -6,7 +6,7 @@ import 'package:uten_imp/features/settings/widgets/app_version_tile.dart';
 void main() {
   Future<void> pump(
     WidgetTester tester, {
-    String version = 'v2.5.4',
+    String version = 'v2.5.6',
     Locale locale = const Locale('zh'),
     double scale = 1,
     Brightness brightness = Brightness.light,
@@ -35,7 +35,7 @@ void main() {
     tester,
   ) async {
     await pump(tester);
-    expect(find.text('版本更新 · v2.5.4'), findsOneWidget);
+    expect(find.text('版本更新 · v2.5.6'), findsOneWidget);
     expect(find.textContaining('人事证件核对支持勾选多人'), findsOneWidget);
     expect(find.textContaining('物料下单保留完整精度'), findsOneWidget);
     expect(find.textContaining('AI 使用权限改为单独授权'), findsOneWidget);
@@ -55,8 +55,8 @@ void main() {
     expect(find.textContaining('物料下单保留完整精度'), findsNothing);
   });
 
-  test('the default client version is 2.5.4', () {
-    expect(const AppVersionTile().version, '2.5.4');
+  test('the default client version is 2.5.6', () {
+    expect(const AppVersionTile().version, '2.5.6');
   });
 
   testWidgets('2.5.3 retains its own notes without later release fixes', (
@@ -69,8 +69,8 @@ void main() {
     expect(find.textContaining('AI 使用权限改为单独授权'), findsNothing);
   });
 
-  testWidgets('a similar version never borrows 2.5.4 notes', (tester) async {
-    await pump(tester, version: 'v2.5.40');
+  testWidgets('a similar version never borrows 2.5.6 notes', (tester) async {
+    await pump(tester, version: 'v2.5.60');
     expect(find.text('此版本暂未附带更新说明。'), findsOneWidget);
     expect(find.textContaining('物料下单保留完整精度'), findsNothing);
   });
@@ -83,7 +83,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     for (final brightness in Brightness.values) {
-      await pump(tester, version: '2.5.4', scale: 2, brightness: brightness);
+      await pump(tester, version: '2.5.6', scale: 2, brightness: brightness);
       expect(tester.takeException(), isNull);
       await tester.drag(
         find.byType(SingleChildScrollView),

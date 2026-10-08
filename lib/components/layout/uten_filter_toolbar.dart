@@ -3,7 +3,8 @@
 // 2026-09-01 全平台 UI 统一的标准范式：凡是页面上有「分类/状态筛选」的地方，
 // 一律用本组件呈现，不再手写各种筛选按钮、Chip 行或自成一套的分段样式——
 //
-// - 分段导航：胶囊 StadiumBorder、与搜索框结构化同高（IntrinsicHeight+stretch）、
+// - 分段导航：胶囊 StadiumBorder、与搜索框**严格同高**（两侧共用下限令牌
+//   UtenFilterRow.minHeight，见 UtenSearchBar 头部机制说明）、
 //   选中只变背景色不出 ✓ 图标；2026-10-04 起分段行用 UtenSegmentRow 渲染
 //   （每格宽度跟随自身内容，字少的格不再被撑到最宽格的宽度）；
 // - 层级规则：大类分类（来源/方向/单据类型）在上、小类分类（状态）在下；
@@ -31,7 +32,9 @@
 //   · 「全部」与终态(已完结/已决定)一律不传 count；
 //   · 分段计数**永不**登记为徽章入口(服务端 WorkbenchBadgeCatalog, ADR-108)
 //     ——累加只认入口，分段是页面内的切片。
-// - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖）；
+// - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖），
+//   药丸描边与分类栏共用 40 下限恒同高；宽度 2026-10-07 起减半为 180
+//   （用户口径「搜索栏长度缩小一半」）；
 // - 响应式：宽屏一行（分段 | 搜索 | 行尾有界右对齐，超宽自动换行），窄屏
 //   （< [compactBreakpoint]）分段放得下照常显示、放不下自动收成一颗「分类」
 //   下拉按钮（带待办红徽章总量，点开下拉选分类——2026-09-14 起小屏不再左右拖）；
@@ -96,7 +99,7 @@ class UtenFilterToolbar<T> extends StatefulWidget {
     this.onSearchSubmitted,
     this.trailing,
     this.compactBreakpoint = 840,
-    this.searchWidth = 360,
+    this.searchWidth = 180,
   });
 
   /// 分类分段（进页面默认不选；带红/黄徽章的段由 [autoSelectBadge] 自动选）。
@@ -149,7 +152,7 @@ class UtenFilterToolbar<T> extends StatefulWidget {
   /// 低于该宽度切窄屏布局（分段横滚 + 搜索换行）。
   final double compactBreakpoint;
 
-  /// 宽屏搜索框宽度。
+  /// 宽屏搜索框宽度；2026-10-07 用户口径「搜索栏长度缩小一半」：360 → 180。
   final double searchWidth;
 
   @override
@@ -235,9 +238,11 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
         ? null
         : UtenSegmentRow<T>(
             key: widget.segmentsKey,
-            // 统一范式：选中只变背景色，不出现 ✓ 图标。高度不在此设置——
-            // 分段与搜索框的「严格同高」由下方 IntrinsicHeight+stretch 结构保证
-            //（visualDensity 对两侧的折减不一致，minimumSize 各自算高度算不平）。
+            // 统一范式：选中只变背景色，不出现 ✓ 图标。高度不设参数——分类栏与
+            // 搜索框药丸的「严格同高」靠两侧共用同一枚下限令牌（见 UtenFilterRow
+            // 注释）：InputDecorator 描边只按内容高绘制、不吃 minHeight 约束，
+            // 单靠 IntrinsicHeight+stretch 在「搜索内容高 < 分段下限」的密度/字号
+            // 下会出现分类栏厚、搜索药丸矮（2026-10-07 根因）。
             showSelectedIcon: false,
             // 进页面不预选（selected 空集）是支持形态，自动选中走
             // _tryAutoSelect 的 post-frame 回调。
@@ -266,6 +271,9 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
           );
     final showSearch =
         widget.searchHint != null || widget.searchController != null;
+    // 搜索框不加高度包装：InputDecorator 的药丸描边只认内容高与 maxHeight，
+    // 外部 minHeight 拉不高描边（拉高的只是盒子）。同高由 UtenSearchBar 的
+    // 图标约束下限与分段 minCellHeight 共用 UtenFilterRow.minHeight 保证。
     final search = showSearch
         ? UtenSearchBar(
             key: widget.searchKey,

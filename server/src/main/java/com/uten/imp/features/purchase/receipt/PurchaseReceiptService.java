@@ -471,7 +471,7 @@ public class PurchaseReceiptService {
         if (!expected.equals(actual)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "采购收货明细货品/颜色在库存预锁后发生变化，请刷新后重试");
+                    "采购收货明细的货品或颜色已发生变化，请刷新后重试");
         }
     }
 

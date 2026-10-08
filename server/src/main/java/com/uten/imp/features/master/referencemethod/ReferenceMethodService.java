@@ -262,7 +262,7 @@ public class ReferenceMethodService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "结算方式不存在"));
         if (m.getSystemRole() != null && !m.getSystemRole().isBlank()) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "系统角色(" + m.getSystemRole() + ")的账期口径由迁移锁定，不可在线修改");
+                    "「" + m.getSystemRole() + "」是系统内置的结算方式，账期规则不能在这里修改");
         }
         applyTerms(m, req, true);
         settlementMethods.save(m);
@@ -274,11 +274,11 @@ public class ReferenceMethodService {
         String dueRule = req.dueRule() == null ? "" : req.dueRule().trim().toUpperCase();
         if (!TERMS_BASES.contains(termsBase)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "到期基准必须是 RECEIPT_DATE/QC_ACCEPTANCE_DATE/STATEMENT_END/STATEMENT_CONFIRM_DATE/INVOICE_DATE");
+                    "到期基准不正确，请重新选择");
         }
         if (!DUE_RULES.contains(dueRule)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "到期规则必须是 NET_DAYS/EOM_PLUS_DAYS/FIXED_DAY_OF_MONTH");
+                    "到期规则不正确，请重新选择");
         }
         Integer days = req.defaultDueDays();
         if (days == null || days < 0 || days > 3650) {
@@ -292,11 +292,11 @@ public class ReferenceMethodService {
         if ("FIXED_DAY_OF_MONTH".equals(dueRule)) {
             if (fixedDay == null || fixedDay < 1 || fixedDay > 31) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "固定日规则必须提供 1-31 的固定日");
+                        "选择按每月固定日时，固定日要填 1-31 的某一天");
             }
         } else if (fixedDay != null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "仅 FIXED_DAY_OF_MONTH 规则允许填写固定日");
+                    "只有按每月固定日的规则才能填固定日");
         }
 
         if (renamingAllowed && req.name() != null && !req.name().isBlank()) {

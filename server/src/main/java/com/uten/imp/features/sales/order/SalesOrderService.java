@@ -539,7 +539,7 @@ public class SalesOrderService {
             case "production" -> cb.and(activeChain, cb.or(
                     cb.gt(unfinished, zero),
                     i.get("chainStatus").in((short) 5, (short) 6)));
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "chainGroup 只支持 pending/production");
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "筛选值不正确，请刷新后重试");
         };
     }
 
@@ -670,7 +670,7 @@ public class SalesOrderService {
             case "", "OPEN", "IN_PROGRESS", "READY_TO_SHIP", "DRAFT", "REJECTED", "PENDING",
                     "PRODUCING", "SHIPPABLE", "SHIPMENT_PENDING", "WAREHOUSE_PENDING",
                     "SHIPPED", "CANCELED", "CLOSED" -> normalized;
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段无效");
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订单进度阶段的筛选值不正确，请刷新后重试");
         };
     }
 
@@ -1450,7 +1450,7 @@ public class SalesOrderService {
             if (line.getId() != null) {
                 if (!seenExistingIds.add(line.getId())) {
                     throw new ApiException(
-                            ErrorCode.VALIDATION_FAILED, "修订明细 UUID 不能重复");
+                            ErrorCode.VALIDATION_FAILED, "修订明细不能重复");
                 }
                 SalesOrderItem stored = existingById.get(line.getId());
                 if (stored == null) {
@@ -2488,7 +2488,7 @@ public class SalesOrderService {
         }
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "报价转订货前必须存在唯一启用的本位币 UUID 权威");
+                "系统还没有设置唯一启用的本位币，请联系管理员处理后再转订货");
     }
 
     private String normalizeShipmentPolicy(String raw) {
@@ -2555,7 +2555,7 @@ public class SalesOrderService {
             if (quoteConversion && quoted == null) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "报价转订货的明细或单价快照已变化，请刷新报价后重试");
+                        "报价转订货的明细或单价已变化，请刷新报价后重试");
             }
             // 报价核定行用报价单价; 同一草稿既有行保留冻结单价; 其余新行取货品主档价。
             SalesOrderItem kept = quoteConversion ? null : existingPrices.takeItem(line);
@@ -2937,7 +2937,7 @@ public class SalesOrderService {
                 || isNegative(line.getCircumference())) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "订单货品、单位、正数数量和非负权威单价必须完整，金额由服务端计算");
+                    "订单的货品、单位、数量和单价要填完整（数量须大于 0、单价不能为负），金额由系统自动计算");
         }
         com.uten.imp.features.sales.SalesPriceAuthority.requireClientPrice(line.getClientPrice(), "文件单价");
     }
@@ -2970,7 +2970,7 @@ public class SalesOrderService {
                 || isNegative(order.getDeposit())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "订单商业条款无效，禁止审核");
+                    "订单的商业条款填写有误，不能审核，请检查后重试");
         }
         for (SalesOrderItem item : items) {
             BigDecimal expectedOriginal = item.getQty() == null
@@ -3331,14 +3331,14 @@ public class SalesOrderService {
                 || produced == null || produced.signum() < 0
                 || produced.compareTo(planned) > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "订单预留/排产/完工累计异常，禁止改量或取消");
+                    "订单的预留/排产/完工数据异常，不能改量或取消，请刷新后重试或联系管理员");
         }
         BigDecimal linkedAllocated = links.stream()
                 .map(PlanOrderItemLink::getAllocatedQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (planned.compareTo(linkedAllocated) != 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "订单已排产累计与有效分摊不一致，禁止自动修正");
+                    "订单的排产数量与分摊记录对不上，系统不能自动修正，请联系管理员");
         }
     }
 
@@ -3359,7 +3359,7 @@ public class SalesOrderService {
                     SalesOrderItem.class, itemId,
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
             if (item == null) {
-                throw new ApiException(ErrorCode.CONFLICT, "销售订货单明细已被并发删除");
+                throw new ApiException(ErrorCode.CONFLICT, "销售订货单明细已被别人删除，请刷新后重试");
             }
             em.refresh(item, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
             if (!orderId.equals(item.getOrderId())) {
@@ -3396,7 +3396,7 @@ public class SalesOrderService {
                     PlanOrderItemLink.class, linkId,
                     jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
             if (link == null) {
-                throw new ApiException(ErrorCode.CONFLICT, "排产分摊已被并发删除");
+                throw new ApiException(ErrorCode.CONFLICT, "排产分摊记录已被别人删除，请刷新后重试");
             }
             em.refresh(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
             BigDecimal allocated = link.getAllocatedQty();

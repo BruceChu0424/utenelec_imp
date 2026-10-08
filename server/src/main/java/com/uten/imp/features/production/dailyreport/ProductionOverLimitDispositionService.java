@@ -88,7 +88,7 @@ public class ProductionOverLimitDispositionService {
         requireApprover();
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
         if(!Set.of("PENDING","HELD","RETURNED","ACCEPTED","WITHDRAWN","ALL").contains(filter))
-            throw validation("超限处理状态无效");
+            throw validation("超限处理状态不正确");
         var scope=access.nativeReadScope("plan.maker_id","owners");
         String predicate=scope.predicate()+" AND request.status<>'DRAFT'";
         if("PENDING".equals(filter))predicate+=" AND request.status IN('PENDING','HELD','RETURNED')";
@@ -131,7 +131,7 @@ public class ProductionOverLimitDispositionService {
         tx.bind();requireApprover();membership.requireActiveOperator();
         if(request==null||request.expectedVersion()==null||request.expectedVersion()<0)throw validation("缺少处理版本");
         if(!Set.of("ACCEPT_PUBLIC","HOLD","RETURN_FOR_REVIEW").contains(Objects.toString(request.action(),"")))
-            throw validation("处理方式无效");
+            throw validation("处理方式不正确");
         String reason=reason(request.reason()),key=key(request.idempotencyKey());
         UUID actor=currentUser.requireId();
         String hash=CanonicalFingerprint.sha256(List.of("PRODUCTION-OVER-LIMIT-V1",id.toString(),request.action(),
@@ -145,7 +145,7 @@ public class ProductionOverLimitDispositionService {
                 WHERE decided_by=:actor AND idempotency_key=:key
                 """).setParameter("actor",actor).setParameter("key",key));
         if(!replay.isEmpty()) {
-            if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("此幂等键已用于另一项处理");
+            if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项处理，请刷新后重试");
             return detail(id);
         }
         UUID report=(UUID)source[3],item=(UUID)source[5];
@@ -202,7 +202,7 @@ public class ProductionOverLimitDispositionService {
     private String operatorName(){return Objects.toString(em.createNativeQuery("SELECT full_name FROM employees WHERE id=:id")
         .setParameter("id",currentUser.requireEmployeeId()).getSingleResult(),"员工");}
     static String reason(String value){if(value==null||value.strip().length()<2||value.strip().length()>500)throw validation("请填写2至500字的处理原因");return value.strip();}
-    static String key(String value){if(value==null||!value.strip().matches("[A-Za-z0-9._:-]{8,128}"))throw validation("幂等键格式无效");return value.strip();}
+    static String key(String value){if(value==null||!value.strip().matches("[A-Za-z0-9._:-]{8,128}"))throw validation("防重复提交标识格式不正确");return value.strip();}
     private static BigDecimal number(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static ApiException validation(String text){return new ApiException(ErrorCode.VALIDATION_FAILED,text);}
     private static ApiException conflict(String text){return new ApiException(ErrorCode.CONFLICT,text);}

@@ -53,6 +53,7 @@ MasterColumnDef<Row>(
 - `foregroundColor`：需要按行语义染色（如物料分析的路线徽标色）时覆盖默认轮换色；
 - `showLeafMarker`（2026-09-14）：叶子行是否画那枚小圆点，默认 true；物料分析主表、三个分桶详情与下层办齐弹窗传 false；
 - `childCount`（2026-09-10）：可选下级数量；未展开时在圆底右下角叠「N」徽章，Tooltip「展开 N 个下级」、Semantics「展开 X 的 N 个下级」，展开后不显示。宿主按**当前可见投影**传（筛选/视图切换后重算），懒加载宿主（展开前不知数量）不传即无徽章；
+- `titleBadge` / `titleBadgeLabel`（2026-10-07）：名称前的业务徽章槽——宿主自带整枚 Widget（如物料分析「顶层」红框 `MaterialTopLevelBadge`），与级联号同排、同胶囊位次，语义色由徽章自己决定、不掺层级轮换色；`titleBadgeLabel` 是它的语义朗读名（徽章本体在 `ExcludeSemantics` 里读不到自己的文本），不传则徽章纯视觉。不传两参数一切照旧。
 
 - `ancestorContinuations`（2026-09-15 起是**硬契约**）：长度恒等于 `depth`，
   `[i]` = **深度 i 的祖先**后面还有没有同深度的兄弟。`[0]`（深度 0 的祖先）的竖线

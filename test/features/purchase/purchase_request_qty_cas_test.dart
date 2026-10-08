@@ -267,13 +267,13 @@ void main() {
         expect(api.reads, 2);
         expect(_controller(tester).text, '37');
         expect(tester.widget<TextField>(_field()).enabled, isFalse);
-        expect(find.textContaining('原数量 10（版本 7）'), findsOneWidget);
+        expect(find.textContaining('原数量 10，当前数量'), findsOneWidget);
         staleSave();
         await tester.pumpAndSettle();
         await _recheck(tester, container);
         expect(api.puts, hasLength(1));
         expect(_controller(tester).text, '37');
-        expect(find.textContaining('原数量 10（版本 7）'), findsOneWidget);
+        expect(find.textContaining('原数量 10，当前数量'), findsOneWidget);
         await _adoptVersion(tester);
         expect(api.puts, hasLength(1));
         expect(_controller(tester).text, '37');
@@ -305,7 +305,7 @@ void main() {
         expect(api.reads, 2);
         expect(_controller(tester).text, '37');
         expect(tester.widget<TextField>(_field()).enabled, isFalse);
-        expect(find.textContaining('原数量 10（版本 7）'), findsOneWidget);
+        expect(find.textContaining('原数量 10，当前数量'), findsOneWidget);
         expect(find.text('数量已修正'), findsNothing);
         staleSave();
         await _recheck(tester, container);
@@ -346,7 +346,7 @@ void main() {
       expect(api.reads, 2);
       expect(_controller(tester).text, '37');
       expect(tester.widget<TextField>(_field()).enabled, isFalse);
-      expect(find.textContaining('原数量 10（版本 7）'), findsOneWidget);
+      expect(find.textContaining('原数量 10，当前数量'), findsOneWidget);
       expect(find.text('数量已修正'), findsNothing);
     });
   }
@@ -421,7 +421,7 @@ void main() {
       put.complete(api.apply('line-1', api.puts.single.body));
       await tester.pumpAndSettle();
       expect(_controller(tester).text, '37');
-      expect(find.textContaining('原数量 10（版本 7）'), findsOneWidget);
+      expect(find.textContaining('原数量 10，当前数量'), findsOneWidget);
       expect(find.text('数量已修正'), findsNothing);
       expect(api.puts, hasLength(1));
     },

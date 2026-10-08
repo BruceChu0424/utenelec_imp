@@ -23,6 +23,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
@@ -210,7 +211,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
             child: list.when(
               loading: () => const UtenSkeletonList(itemCount: 6),
               error: (e, _) => UtenEmpty.error(
-                message: '加载失败：$e',
+                message: humanErrorMessage(e) ?? '通知加载失败，请稍后重试',
                 onAction: () => ref.invalidate(noticeListProvider),
               ),
               data: (notices) {

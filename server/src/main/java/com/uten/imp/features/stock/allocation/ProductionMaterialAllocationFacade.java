@@ -887,7 +887,7 @@ public class ProductionMaterialAllocationFacade {
                 .setParameter("ids", demandIds)
                 .getResultList();
         if (locked.size() != demandIds.size()) {
-            throw new ApiException(ErrorCode.CONFLICT, "Production material demand changed");
+            throw new ApiException(ErrorCode.CONFLICT, "生产物料需求刚发生了变化，请刷新后重试");
         }
     }
 
@@ -908,7 +908,7 @@ public class ProductionMaterialAllocationFacade {
         if (locked.size() != demandIds.size()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "Production material demand changed");
+                    "生产物料需求刚发生了变化，请刷新后重试");
         }
     }
 
@@ -925,7 +925,7 @@ public class ProductionMaterialAllocationFacade {
                     || request.idempotencyKey().isBlank()) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "物料分配请求缺少必填字段或数量无效");
+                        "物料分配填写的内容不完整或数量不正确");
             }
         }
     }
@@ -938,7 +938,7 @@ public class ProductionMaterialAllocationFacade {
                 || request.requiredQty().compareTo(decimal(row[3])) < 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "相同幂等键对应不同物料分配请求");
+                    "同一防重复提交标识对应不同的物料分配请求，请刷新后重试");
         }
     }
 

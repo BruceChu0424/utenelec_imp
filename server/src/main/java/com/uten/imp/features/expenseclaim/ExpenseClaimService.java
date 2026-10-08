@@ -566,7 +566,7 @@ public class ExpenseClaimService {
     }
 
     private void expectedVersion(UUID id, Long expected) {
-        if(expected==null || expected<0) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请提供报销单版本并刷新后重试");
+        if(expected==null || expected<0) throw new ApiException(ErrorCode.VALIDATION_FAILED,"页面数据不完整，请刷新页面后重试");
         ExpenseClaim claim=requireClaimForUpdate(id);
         assertCanRead(claim);
         if(claim.getVersion()!=expected) throw new ApiException(ErrorCode.CONFLICT,"报销单已更新，请刷新后重新核对");
@@ -584,7 +584,7 @@ public class ExpenseClaimService {
         assertCanRead(claim);
         // A retry may carry the pre-payment version; the completed payment identity still must match.
         if(!"PAID".equals(claim.getStatus())) expectedVersion(id,request.expectedVersion());
-        else if(request.expectedVersion()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请提供报销单版本");
+        else if(request.expectedVersion()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"页面数据不完整，请刷新页面后再打款");
         return pay(id,request);
     }
     @Transactional public ExpenseClaimDto addInvoiceVersioned(UUID id,ExpenseClaimInvoiceInput input) { expectedVersion(id,input.expectedVersion());return addInvoice(id,input); }
@@ -592,7 +592,7 @@ public class ExpenseClaimService {
     @Transactional public ExpenseClaimDto deleteInvoice(UUID id,UUID invoiceId,Long version) { expectedVersion(id,version);return deleteInvoice(id,invoiceId); }
     @Transactional public ExpenseClaimBatchResultDto batchVersioned(ExpenseClaimBatchRequest request,boolean approved) {
         if(request.ids()==null || request.ids().isEmpty() || request.ids().size()>50 || request.ids().stream().anyMatch(Objects::isNull)
-                || request.expectedVersions()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请提供每张报销单的版本");
+                || request.expectedVersions()==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"部分报销单的页面数据不完整，请刷新后重新勾选");
         for(UUID id:request.ids().stream().distinct().sorted().toList()) expectedVersion(id,request.expectedVersions().get(id));
         return approved?approveBatch(request):rejectBatch(request);
     }

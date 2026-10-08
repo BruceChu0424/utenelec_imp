@@ -50,7 +50,7 @@ class AiProviderBillingPostgresTest {
     }
     private AiUsageDtos.Billing save(long version, String input, String output) {
         return transaction.execute(status -> billing.save(provider,
-                new AiUsageDtos.BillingRequest(version, "METERED", "USD", input, output)));
+                new AiUsageDtos.BillingRequest(version, "METERED", "USD", input, output, null, null)));
     }
     @Test void capturedPricesSurviveEditsAndNewModelsNeverReuseAnOldModelRate() {
         var first = save(0, "1.5", "3");
@@ -70,7 +70,7 @@ class AiProviderBillingPostgresTest {
         var displayed = billing.get(provider);
         assertThat(displayed.billingMode()).isEqualTo("UNKNOWN");
         assertThat(displayed.inputPerMillion()).isNull(); assertThat(displayed.outputPerMillion()).isNull();
-        assertThat(displayed.quota().status()).isEqualTo("UNSUPPORTED"); assertThat(displayed.quota().windows()).isEmpty();
+        assertThat(displayed.quota().status()).isEqualTo("NOT_CONFIGURED"); assertThat(displayed.quota().windows()).hasSize(2);
         assertThat(second.version()).isGreaterThan(first.version());
     }
     @Test void missingTokensStayNullAndCannotProduceAZeroEstimate() {
@@ -82,6 +82,32 @@ class AiProviderBillingPostgresTest {
         assertThat(record.get("input_tokens")).isNull(); assertThat(record.get("output_tokens")).isEqualTo(500);
         assertThat(record.get("estimated_cost")).isNull(); assertThat(record.get("actual_cost")).isNull();
         assertThat(((Number)record.get("usage_capture_version")).intValue()).isEqualTo(1);
+    }
+    @Test void subscriptionQuotasOnlySurviveInSubscriptionModeAndCountSuccessfulCalls() {
+        var saved = transaction.execute(status -> billing.save(provider,
+                new AiUsageDtos.BillingRequest(0L, "SUBSCRIPTION", "CNY", null, null, 5, 120)));
+        assertThat(saved.billingMode()).isEqualTo("SUBSCRIPTION");
+        assertThat(saved.quota5h()).isEqualTo(5L);
+        assertThat(saved.quotaWeekly()).isEqualTo(120L);
+        assertThatThrownBy(() -> transaction.execute(status -> billing.save(provider,
+                new AiUsageDtos.BillingRequest(saved.version(), "SUBSCRIPTION", null, null, null, 0, 120))))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        Long generation = logs.captureResetGeneration();
+        for (int calls = 0; calls < 3; calls++) logs.record(new AiCallLogService.CallRecord("QUOTA_WINDOW", provider,
+                "test-provider", "model-a", "OPENAI_CHAT", true, null, 200, 10, 10, 5, null, actorId, generation, employeeId, null));
+        logs.record(new AiCallLogService.CallRecord("QUOTA_WINDOW", provider, "test-provider", "model-a",
+                "OPENAI_CHAT", false, "UPSTREAM", 500, null, null, 5, null, actorId, generation, employeeId, null));
+        var quota = billing.get(provider).quota();
+        assertThat(quota.status()).isEqualTo("LOGGED");
+        assertThat(quota.windows()).extracting(AiUsageDtos.QuotaWindow::key, AiUsageDtos.QuotaWindow::used, AiUsageDtos.QuotaWindow::quota)
+                .containsExactly(tuple("FIVE_HOURS", 3L, 5L), tuple("WEEKLY", 3L, 120L));
+        var metered = transaction.execute(status -> billing.save(provider,
+                new AiUsageDtos.BillingRequest(saved.version(), "METERED", "USD", "1", "2", 5, 120)));
+        assertThat(metered.quota5h()).isNull();
+        assertThat(metered.quotaWeekly()).isNull();
+        assertThat(metered.quota().status()).isEqualTo("NOT_CONFIGURED");
+        assertThat(metered.quota().windows()).extracting(AiUsageDtos.QuotaWindow::used, AiUsageDtos.QuotaWindow::quota)
+                .containsExactly(tuple(3L, null), tuple(3L, null));
     }
     @Test void ordinaryOrImpersonatedAccountsCannotReadOrChangeRates() {
         when(current.get()).thenReturn(Optional.of(new AuthUser(actorId, employeeId, "staff", Set.of("authorization:manage"), false, true, false)));

@@ -231,7 +231,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         if (posting == null || posting.claimId() == null || posting.paymentDate() == null
                 || posting.accountId() == null || posting.expenseStyleId() == null
                 || posting.amount() == null || posting.amount().signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销记账参数不完整");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销记账的填写内容不完整，请补齐付款账户、日期和金额");
         }
         PaymentStyleHierarchyLock.lock(em);
         // Match ordinary finance approve/reverse lock order: GL period before account balance.

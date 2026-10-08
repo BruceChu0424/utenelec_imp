@@ -238,7 +238,7 @@ class _ProductionFinishedInboundTasksViewState
     if (task.isArrivalRegistration) {
       final reportId = task.reportId;
       if (reportId == null || reportId.isEmpty) {
-        context.appWarning('该到货登记任务缺少报工单标识，请刷新后重试', force: true);
+        context.appWarning('该到货登记任务缺少对应的报工单号，请刷新后重试', force: true);
         return;
       }
       // ADR-151 §5：双击 = 同一个登记页的 1 个来源，没选路线(两条路线并排)。
@@ -256,7 +256,7 @@ class _ProductionFinishedInboundTasksViewState
 
     final documentId = task.documentId;
     if (documentId == null || documentId.isEmpty) {
-      context.appWarning('该最终点收任务缺少入库单标识，请刷新后重试', force: true);
+      context.appWarning('该最终点收任务缺少对应的入库单号，请刷新后重试', force: true);
       return;
     }
     goFrom(
@@ -385,7 +385,7 @@ class _ProductionFinishedInboundTasksViewState
         Tooltip(
           message: count == 0
               ? '请选择“品质通过 · 待最终点收”的任务'
-              : '按每张单全部待点收数量原子入库；短收请逐单处理',
+              : '按每张单全部待点收数量一起入库；短收请逐单处理',
           child: UtenButton(
             key: const Key('production-finished-inbound-batch-confirm'),
             size: UtenButtonSize.large,
@@ -601,7 +601,8 @@ class _ProductionFinishedInboundTasksViewState
           }
           return Row(
             children: [
-              SizedBox(width: 420, child: search),
+              // 2026-10-07 用户口径：搜索栏宽度减半（420 → 210）。
+              SizedBox(width: 210, child: search),
               const Spacer(),
               count,
             ],

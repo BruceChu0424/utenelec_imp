@@ -27,7 +27,7 @@ class ProductionDailyReportControllerBatchFilterTest {
                 ProductionDailyReportController.normalizeExecutionSegmentIds(
                         null, "not-a-uuid"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("UUID 格式无效");
+                .hasMessageContaining("格式不正确");
 
         String oversized = IntStream.range(0, 101)
                 .mapToObj(ignored -> UUID.randomUUID().toString())

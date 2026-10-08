@@ -1125,7 +1125,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         String normalizedStatus = status == null ? "" : status.strip().toUpperCase();
         if (!normalizedStatus.isEmpty()) {
             if (!EXCEPTION_STATUSES.contains(normalizedStatus)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货异常状态无效");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货异常状态不正确");
             }
             clauses.add("exception.status = ?");
             args.add(normalizedStatus);
@@ -1758,7 +1758,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         String normalized = orderType == null ? "" : orderType.strip().toUpperCase();
         return switch (normalized) {
             case "", PURCHASE, SUBCONTRACT -> normalized;
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型不正确");
         };
     }
 
@@ -3221,7 +3221,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private static String requireOrderType(String value) {
         String normalized = value == null ? "" : value.trim().toUpperCase();
         if (!PURCHASE.equals(normalized) && !SUBCONTRACT.equals(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "orderType 仅支持 PURCHASE 或 SUBCONTRACT");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型只支持 PURCHASE（采购）或 SUBCONTRACT（委外）");
         }
         return normalized;
     }
@@ -3239,7 +3239,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 "APPROVE_ALL",
                 "APPROVE_CUSTOM",
                 "REJECT_EXCESS").contains(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "财务到货处理决定无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "财务到货处理决定不正确");
         }
         return normalized;
     }

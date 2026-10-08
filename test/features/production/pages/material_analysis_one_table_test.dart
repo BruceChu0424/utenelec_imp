@@ -26,8 +26,13 @@ import 'package:uten_imp/features/production/providers/material_analysis_warehou
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_overproduction_rate_field.dart';
 import 'package:uten_imp/features/production/widgets/material_preparation_status_style.dart';
+import 'package:uten_imp/features/production/widgets/material_preparation_route_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
+part 'material_analysis_policy_cases.dart';
+part 'material_analysis_quantity_presentation_cases.dart';
+part 'material_analysis_shared_source_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -217,6 +222,9 @@ bool _framedRed(WidgetTester tester, Finder field) {
 }
 
 void main() {
+  materialSharedSourceCases();
+  materialQuantityPresentationCases();
+  materialPolicyCases();
   Map<String, dynamic> withCoveredAppendPool(Map<String, dynamic> data) {
     _fixtureMaterial(data, 'm-3').addAll({
       'planningUncoveredQty': 0,
@@ -2591,7 +2599,13 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(find.textContaining('总量 3100'), findsOneWidget);
-      expect(find.textContaining('公共备货 100'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.textContaining('公共备货 100'),
+        ),
+        findsOneWidget,
+      );
       for (var i = 0; i < 3; i++) {
         expect(
           find.descendant(
@@ -2665,11 +2679,13 @@ void main() {
     );
   });
 
-  testWidgets('汇总产品任务与同货品组件分开，顶层只可切回原产品流程', (tester) async {
+  testWidgets('汇总视图顶层产品行：置顶带「顶层」徽章可勾选，同货品组件不合并', (tester) async {
     await _pump(
       tester,
+      permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
       mutate: (data) {
         _threeSharedBuySources(data);
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
         for (final raw in _records(data['flatMaterials'])) {
           if ((raw['materialLineId'] as String).startsWith('root-')) {
             raw['goodsId'] = 'g-m-2';
@@ -2690,12 +2706,122 @@ void main() {
       '3000',
       reason: '组件汇总不把顶层同货品3000算进来',
     );
-    expect(find.textContaining('产品任务（按产品办理）'), findsNWidgets(3));
-    final root = _productCheckbox('product-0');
-    expect(tester.widget<Checkbox>(root).onChanged, isNull);
-    await tester.tap(find.text('按产品办理').first);
+    // 2026-10-07 起顶层产品行是汇总视图的一等可下单行：真名 + 「顶层」徽章 +
+    // 可勾选；「产品任务（按产品办理）」前缀与切视图按钮退役。
+    expect(find.textContaining('产品任务'), findsNothing);
+    expect(find.text('按产品办理'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('material-analysis-top-level-badge')),
+      findsNWidgets(3),
+    );
+    expect(
+      tester.widget<Checkbox>(_productCheckbox('product-0')).onChanged,
+      isNotNull,
+      reason: '汇总视图顶层行可勾选下单',
+    );
+    // 顶层行固定排在所有聚合行之前。
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('material-table-tree-PRODUCT|product-0')),
+          )
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(
+                const ValueKey('material-table-tree-AGGREGATE|g-m-2|本色|unit-1'),
+              ),
+            )
+            .dy,
+      ),
+    );
+  });
+
+  testWidgets('汇总视图顶层与组件混合下单：顶层走 issue-plans、组件走汇总通道、一次确认', (tester) async {
+    await _pump(
+      tester,
+      overSupply: true,
+      permissions: {
+        ..._overSupplyPermissions,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        return _threeSharedBuySources(data);
+      },
+      defaultWorkshops: _workshopDefaultsFor(const [
+        'parent-0',
+        'parent-1',
+        'parent-2',
+      ]),
+      aggregatePreview: _sharedAggregatePreview,
+      aggregateSubmit: _sharedAggregateSubmit,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
     await tester.pumpAndSettle();
-    expect(find.textContaining('产品任务（按产品办理）'), findsNothing);
+    // 勾三个顶层产品行（只带根行自己，不联动聚合行）。
+    for (var i = 0; i < 3; i++) {
+      await _check(tester, _productCheckbox('product-$i'));
+    }
+    // 勾聚合行本身（汇总视图的逐路径行不设勾选框，路径选择在分桶详情页）。
+    await _check(
+      tester,
+      find
+          .descendant(
+            of: find.byKey(
+              const ValueKey('material-aggregate-g-m-2|本色|unit-1'),
+            ),
+            matching: find.byType(Checkbox),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+    requests.clear();
+    await tester.tap(find.byKey(const Key('material-analysis-submit-orders')));
+    await tester.pumpAndSettle();
+    // 混批共用按产品编排的主确认框：3 种顶层车间 + 1 种采购，共 4 种。
+    expect(find.textContaining('车间 3 种'), findsOneWidget);
+    expect(find.textContaining('采购 1 种'), findsOneWidget);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('确认下单'),
+      ),
+    );
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    // 一次确认全部下达：主确认框之后不再出现任何 AlertDialog。
+    expect(find.byType(AlertDialog), findsNothing);
+
+    // 顶层照常逐产品走 issue-plans（planDrafts 带 analysisLineId，保留销售来源）。
+    final plans = _submits()
+        .where((request) => request.path.endsWith('/issue-plans'))
+        .toList();
+    expect(plans, hasLength(1));
+    final lines = plans.single.body?['lines'] as List;
+    expect(
+      lines.map((line) => (line as Map)['analysisLineId']),
+      unorderedEquals(['product-0', 'product-1', 'product-2']),
+    );
+    // 组件照旧一次汇总提交：一组三来源、总量 3000、BUY。
+    final writes = requests
+        .where((request) => request.path.endsWith('/aggregate-orders/submit'))
+        .toList();
+    expect(writes, hasLength(1));
+    final group = _records(writes.single.body!['groups']).single;
+    expect(group['qty'], '3000');
+    expect(group['route'], 'BUY');
+    // 同料组件不再逐行走 notify。
+    expect(
+      _submits().where((request) => request.path.endsWith('/notify')),
+      isEmpty,
+    );
+    expect(find.text('下单(0)'), findsOneWidget);
   });
 
   testWidgets('汇总委外是外部批次：只展示进度，不把同批来源和公共份重复算下单', (tester) async {
@@ -7833,7 +7959,7 @@ Map<String, dynamic> _withIssuedMakeRow(
     ),
   );
   (data['allowedActions'] as List).add('GENERATE_PLAN');
-  (data['products'] as List).add({
+  (data['products'] as List).add(<String, dynamic>{
     'analysisLineId': 'anchor-7',
     'sourceType': 'MAKE_COMPONENT',
     'parentAnalysisLineId': 'product-1',

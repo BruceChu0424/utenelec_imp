@@ -393,7 +393,7 @@ public class StockReportService {
     @Transactional(readOnly = true)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
         if (report == null || report.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "report 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请指定要导出的报表");
         }
         // 即时库存（页面同款查询，report='instant-inventory'，走独立分支非 docType/kind）。
         if ("instant-inventory".equals(report.trim())) {
@@ -732,9 +732,9 @@ public class StockReportService {
     }
 
     private static String normalizeDocType(String docType) {
-        if (docType == null) throw new ApiException(ErrorCode.BUSINESS, "docType 必填");
+        if (docType == null) throw new ApiException(ErrorCode.BUSINESS, "请指定单据类型");
         String dt = docType.trim().toUpperCase();
-        if (!DOC_TYPES.contains(dt)) throw new ApiException(ErrorCode.BUSINESS, "未知 docType：" + docType);
+        if (!DOC_TYPES.contains(dt)) throw new ApiException(ErrorCode.BUSINESS, "未知的单据类型：" + docType);
         return dt;
     }
 

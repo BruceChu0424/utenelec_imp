@@ -87,7 +87,7 @@ public class SubcontractReportController {
             case "MATERIAL_ISSUE/summary"-> service.materialIssueSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "MATERIAL_RETURN/detail"-> service.materialReturnDetail(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
             case "MATERIAL_RETURN/summary"-> service.materialReturnSummary(billNo, supplierId, warehouseId, status, dateFrom, dateTo, keyword, facets, page, size, sort, order);
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表类型：" + key);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报表类型不正确：" + key);
         };
     }
 

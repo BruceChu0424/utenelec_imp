@@ -166,7 +166,7 @@ public class SuggestionService {
         }
         String category = req.category() == null ? "other" : req.category();
         if (!CATEGORIES.contains(category)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法建议类别: " + category);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "建议类别不正确: " + category);
         }
 
         Suggestion s = new Suggestion();
@@ -342,13 +342,13 @@ public class SuggestionService {
             return "square";
         }
         if ("mine".equals(scope)) return "mine";
-        throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法建议范围: " + scope);
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "建议范围不正确: " + scope);
     }
 
     private static String normalizeCategory(String category) {
         if (category == null || category.isBlank()) return null;
         if (!CATEGORIES.contains(category)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法建议类别: " + category);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "建议类别不正确: " + category);
         }
         return category;
     }
@@ -357,7 +357,7 @@ public class SuggestionService {
     private static String normalizeStatus(String status) {
         if (status == null || status.isBlank()) return null;
         if (!STATUSES.contains(status)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法建议状态: " + status);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "建议状态不正确: " + status);
         }
         return status;
     }
@@ -374,7 +374,7 @@ public class SuggestionService {
     private static boolean advanceStatus(Suggestion suggestion, String requested) {
         if (requested == null || requested.isBlank()) return false;
         if (!STATUSES.contains(requested)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法状态: " + requested);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "状态不正确: " + requested);
         }
         String current = suggestion.getStatus();
         if (requested.equals(current)) return false;

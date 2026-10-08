@@ -229,11 +229,11 @@ public class FinanceAssetQueryService {
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         Number found = (Number) em.createNativeQuery("SELECT COUNT(*) FROM " + table + " WHERE id=:id AND is_deleted=false")
                 .setParameter("id", id).getSingleResult();
-        if (found.longValue() == 0) throw new ApiException(ErrorCode.NOT_FOUND, "Asset record not found");
+        if (found.longValue() == 0) throw new ApiException(ErrorCode.NOT_FOUND, "资产记录不存在");
         PageResponse<AssetWorkbenchResponses.Summary> all = deferred
                 ? listDeferredExpenses(id.toString(), null, null, null, 1, 1)
                 : listFixedAssets(id.toString(), null, null, null, 1, 1);
-        if (all.getItems().isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Asset record not found");
+        if (all.getItems().isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "资产记录不存在");
         return all.getItems().getFirst();
     }
 

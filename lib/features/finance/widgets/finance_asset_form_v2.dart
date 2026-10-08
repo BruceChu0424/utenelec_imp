@@ -458,7 +458,7 @@ class _FinanceAssetFormSurfaceState
     final fieldValid = _formKey.currentState?.validate() ?? false;
     final selectionValid = _validateSelections();
     if (!fieldValid || !selectionValid) {
-      context.appWarning('请先修正表单中的字段错误');
+      context.appWarning('请先把表单里标红的填写项改正确');
       return;
     }
     final existing = widget.existing;

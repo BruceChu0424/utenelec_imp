@@ -168,7 +168,7 @@ public class MouldService {
     @Transactional(readOnly = true)
     public MouldFacets facets(UUID categoryId) {
         if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择模具分类");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();

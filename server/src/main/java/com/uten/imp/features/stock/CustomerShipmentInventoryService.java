@@ -146,7 +146,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                 """).setParameter("id",shipmentId));
     }
     private static BigDecimal base(BigDecimal value) {
-        if(value==null||value.setScale(4,RoundingMode.HALF_UP).signum()<=0)throw conflict("发货基本单位数量过小或无效");
+        if(value==null||value.setScale(4,RoundingMode.HALF_UP).signum()<=0)throw conflict("发货的基本单位数量太小或不正确");
         return value.setScale(4,RoundingMode.HALF_UP);
     }
     private static BigDecimal decimal(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}

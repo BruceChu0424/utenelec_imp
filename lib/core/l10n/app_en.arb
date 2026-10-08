@@ -12,9 +12,14 @@
   "release253Notices": "Material arrivals notify authorized workshop leaders when additional production becomes possible. Urgent alerts, tasks, progress and announcements have distinct styles.",
   "release253Reset": "Clearing business data also invalidates old drafts and clears business weight measurements and learned weight records.",
   "release253Maintenance": "Removed obsolete code and documentation, strengthened permission and concurrency checks, and added these release notes to the version entry.",
-  "release254QuantityPrecision": "Material orders preserve full precision, fixing quantity errors in small quantities, unit conversions, split orders and confirmations of repeated submissions.",
+  "release254QuantityPrecision": "Material orders, production reports and direct transfers preserve original quantities, with fixes for small quantities, unit conversions, split orders and repeated-submission receipts.",
   "release254AiAuthorization": "AI access must be granted separately. Accounts without permission cannot see the assistant or use its features.",
   "release254SensitiveAuthorization": "Changing sensitive permissions requires identity verification again, so important grants receive your confirmation.",
+  "release254OverLimit": "Record actual output in full. Planning reviews output above the limit while approval, quality, inventory and cost retain the same source.",
+  "release254PlanningReminders": "Planning staff whose accounts or permissions are added later receive reminders for orders not yet taken into material analysis, without repeating handled tasks.",
+  "release254PeoplePicker": "People pickers show departments and staff side by side, with employee codes, account status, search and selection across departments. Existing access rules still apply.",
+  "release254AccountSupport": "Authorized staff can verify their identity and generate a temporary password from employee details. The employee must change it at first login, and access changes stop password display.",
+  "release254Dashboard": "Dashboard metrics appear horizontally. Tasks occupy one row, with remaining tasks available through the task-count link.",
   "release254Publishing": "Aligned app and installation-package versions and strengthened checks before release to reduce upgrade issues.",
   "businessColumnAmountUnavailable": "This account cannot currently apply this column to amounts. Restore price access, or explicitly choose text or a number record.",
   "businessColumnEditorSubtitle": "Add document information or apply entered values to each line's official amount.",
@@ -510,7 +515,7 @@
   "employeeUnlockAccountSuccess": "Account unlocked",
   "employeeProvisionConfirm": "This creates a login account for the employee. The account defaults to the phone number; the initial password is the last six characters of the ID number on file, or a system-generated random password when there is no ID number or it is shorter than six characters (shown once, time-limited). It must be changed on first login. Continue?",
   "employeeIdIssueBadge": "To verify",
-  "employeeIdIssueInvalidTitle": "ID number failed validation",
+  "employeeIdIssueInvalidTitle": "The ID number looks incorrect",
   "employeeIdIssueMissingTitle": "No ID number on file",
   "employeeIdIssueUncheckedTitle": "ID number not yet checked",
   "employeeIdIssueReason": "Problem: {reason}",
@@ -528,7 +533,7 @@
   "employeeIdIssueCredentialUnchecked": "The initial password is the last six characters of the ID number on file; it is randomly generated when the number cannot be read or is shorter than six characters. Give the employee the password shown here.",
   "employeeIdentityCorrectAction": "Edit ID details",
   "employeeIdentityCorrectTitle": "Edit ID details",
-  "employeeIdentityCorrectHint": "Resident ID numbers are validated automatically, and the birth date and gender are updated from the number.",
+  "employeeIdentityCorrectHint": "Resident ID numbers are checked automatically, and the birth date and gender are updated from the number.",
   "employeeIdentityCorrectNoPrefill": "You cannot view the full ID number. Enter the complete new number.",
   "employeeIdentityCorrectNumberRequired": "ID number is required",
   "employeeIdentityCorrectNumberTooLong": "ID number cannot exceed 64 characters",
@@ -821,7 +826,7 @@
   "profileChangeSubmitApplied": "Changes saved",
   "profileChangeSubmitFailed": "Submit failed, please retry",
   "profileChangeConflict": "Profile has been updated by someone else, please refresh",
-  "profileChangeRateLimited": "You already submitted a change for this field in the last 24 hours",
+  "profileChangeRateLimited": "You already submitted a change for this item in the last 24 hours",
   "profileChangeListTitle": "My change requests",
   "profileChangeListEmpty": "No change requests yet",
   "profileChangeFilterAll": "All",
@@ -878,7 +883,7 @@
   "profileFieldGroupEmergency": "Emergency contacts",
   "profileFieldGroupOrganization": "Organization",
   "profileEditPolicyHint": "Green \"direct edit\" fields apply immediately; yellow fields take effect after HR review; all other fields are maintained by HR.",
-  "profileEditPendingConflictHint": "You have {count} pending request(s); editing the same fields again before approval may conflict with them.",
+  "profileEditPendingConflictHint": "You have {count} pending request(s); editing the same items again before approval may conflict with them.",
   "@profileEditPendingConflictHint": {
     "placeholders": {
       "count": {
@@ -1089,7 +1094,7 @@
   "profileLoadFailed": "Employee record failed to load",
   "profileUnboundTitle": "This account is not linked to an employee record",
   "profileUnboundDescription": "Contact an administrator or HR to link this account to an employee record.",
-  "profileSessionUnavailable": "You are not signed in or the session is unavailable",
+  "profileSessionUnavailable": "You are not signed in, or your sign-in has expired",
   "profileValueNotProvided": "Not provided",
   "profileValueNotRegistered": "Not registered",
   "profileAlternatePhoneLabel": "Alternate phone",
@@ -1110,7 +1115,7 @@
   "accountStatusNotProvisioned": "Not provisioned",
   "accountStatusInactive": "Account inactive",
   "pagePermissionAccountNotProvisionedTitle": "This person does not have an account, so permissions cannot be configured yet",
-  "pagePermissionAccountNotProvisionedCanProvision": "Provision the account first. After the one-time credentials are saved, this person's permissions will load automatically.",
+  "pagePermissionAccountNotProvisionedCanProvision": "Provision the account first. After the initial password is saved, this person's permissions will load automatically.",
   "pagePermissionAccountNotProvisionedNoAccess": "Contact someone with Account Support permission to provision the login account.",
   "employeePermissionSettingsTooltip": "Configure employee permissions",
   "employeeAccountNotProvisionedTooltip": "Employee account not provisioned",
@@ -1179,7 +1184,7 @@
   },
   "orderChangeQtyNewQty": "New qty",
   "orderChangeQtyConfirm": "Confirm Change",
-  "orderChangeQtyInvalid": "Some quantities are invalid (must be greater than 0). Please check.",
+  "orderChangeQtyInvalid": "Some quantities are incorrect (must be greater than 0). Please check.",
   "orderChangeQtySuccess": "Quantities changed; the order has re-entered finance review",
   "orderChangeQtyFailed": "Failed to change quantities. Please try again later.",
   "orderQtyChangeOld": "Before {value}",
@@ -1311,16 +1316,16 @@
   "attachmentUploadedFiles": "Uploaded {count} files",
   "productionMaterialRecheckHelp": "Recheck qualified receipts for this task and available stock. This does not receive stock or record actual consumption.",
   "productionMaterialViewUsage": "View usage records",
-  "systemSettingInvalidInteger": "Enter a valid non-negative integer",
+  "systemSettingInvalidInteger": "Enter a whole number of 0 or greater",
   "systemSettingInvalidValue": "The setting is outside its allowed range",
   "systemSettingEnabled": "Enabled",
   "systemSettingDisabled": "Disabled",
   "systemSettingFixFields": "Check the highlighted settings first",
   "systemSettingUnsavedRefresh": "Save or revert your changes before refreshing",
-  "systemSettingEffectTiming": "Security limits apply to subsequent actions and token lifetimes to newly issued tokens. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.",
+  "systemSettingEffectTiming": "Security limits apply to subsequent actions, and token lifetimes apply the next time you sign in. Celebrations and audit retention apply on their scheduled runs. Changes are audited and require password confirmation.",
   "auditSummaryUnavailable": "Summary unavailable; event records remain available",
   "auditSummaryRetry": "Retry summary",
-  "auditWorkspaceDescription": "Review sessions by person and time, then follow events to business changes.",
+  "auditWorkspaceDescription": "Review sign-in records by person and time, then follow events to business changes.",
   "materialReasonLabel": "Reason",
   "materialReasonRequired": "Enter a reason",
   "materialReasonTooLong": "Use no more than {max} characters for the reason",
@@ -1398,7 +1403,7 @@
   "warehouseStockOutboundTitle": "Review outbound documents",
   "warehouseStockOutboundAction": "Batch outbound",
   "warehouseStockOutboundConfirm": "Confirm batch outbound",
-  "warehouseStockOutboundConfirmMessage": "Issue the quantities shown for {count} selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. Processing stops on an error; successful documents remain completed.",
+  "warehouseStockOutboundConfirmMessage": "Issue the quantities shown for {count} selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. If one fails, the rest stop there; documents already approved keep their results.",
   "@warehouseStockOutboundConfirmMessage": {
     "placeholders": {
       "count": {
@@ -1427,7 +1432,7 @@
   "warehouseSubcontractOutboundBatchAction": "Batch outbound",
   "warehouseSubcontractOutboundBatchConfirm": "Confirm batch outbound",
   "warehouseSubcontractOutboundReviewHint": "Check each quantity and actual warehouse before confirming outbound.",
-  "warehouseSubcontractOutboundBatchHint": "Lines are selected together for each outbound document. Reduce quantities for a partial issue; enter 0 to skip a material this time (the line is removed on save). To skip a whole document, use \"Return to subcontract (not issued)\" on its picking page. Each document is saved and approved separately; completed results are retained. Processing pauses on errors. Verify the result before continuing unprocessed documents.",
+  "warehouseSubcontractOutboundBatchHint": "Lines are selected together for each outbound document. Reduce quantities for a partial issue; enter 0 to skip a material this time (the line is removed on save). To skip a whole document, use \"Return to subcontract (not issued)\" on its picking page. Each document is saved and approved separately; completed results are retained. If one fails, processing pauses; verify the result before continuing the remaining documents.",
   "warehouseSubcontractOutboundDocuments": "Document details",
   "warehouseSubcontractOutboundOrder": "Source order",
   "warehouseSubcontractOutboundSupplier": "Subcontractor",
@@ -1652,7 +1657,7 @@
       "app": {}
     }
   },
-  "visitorApprovalHostDeptColInfo": "Department snapshot of the host at apply time; the header filter pushes hostDepartmentId to the backend.",
+  "visitorApprovalHostDeptColInfo": "The host department recorded when the visitor applied; the header filter searches by this department.",
   "visitorBatchLimitError": "A single batch handles at most {limit} items; please split it (currently {count})",
   "@visitorBatchLimitError": {
     "placeholders": {
@@ -1859,7 +1864,7 @@
       }
     }
   },
-  "myVisitorsStatusColInfo": "Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected (pushed to the backend).",
+  "myVisitorsStatusColInfo": "Shows only items awaiting your confirmation by default; the header filter switches to forwarded / approved / rejected.",
   "expenseFlowNew": "New expense claim",
   "expenseFlowEdit": "Edit expense claim",
   "expenseFlowSaveAndContinue": "Save and add evidence",
@@ -2343,27 +2348,20 @@
     }
   },
   "aiSettingsTestNeedsKeyEdit": "There is no API key yet. Tap \"Edit\" to enter one, then test",
-  "aiSettingsUsageTitle": "Usage in the last {days} days",
-  "@aiSettingsUsageTitle": {
+  "aiSettingsTodayUsage": "Today's usage",
+  "aiSettingsTodayUsageFooter": "{calls} calls · {users} users",
+  "@aiSettingsTodayUsageFooter": {
     "placeholders": {
-      "days": {
+      "calls": {
+        "type": "int"
+      },
+      "users": {
         "type": "int"
       }
     }
   },
-  "aiSettingsUsageCalls": "Calls",
-  "aiSettingsUsageSuccessRate": "Success rate",
-  "aiSettingsUsageTokens": "Input / output tokens",
-  "aiSettingsUsageLatency": "Average time",
-  "aiSettingsUsageSeconds": "{value} s",
-  "@aiSettingsUsageSeconds": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "aiSettingsUsageEmpty": "No calls yet",
+  "aiSettingsTodayUsageEmpty": "No usage yet today",
+  "aiSettingsTodayUsageOpenTooltip": "View usage & quotas",
   "aiSettingsUsageUnavailable": "Usage is temporarily unavailable. This does not affect the service",
   "aiSettingsPreset": "Provider",
   "aiSettingsPresetInfo": "Choosing a provider fills in the endpoint and recommended settings. You can still change every field",
@@ -2967,7 +2965,7 @@
   "costConfirmed": "Confirmed",
   "costReview": "In review",
   "costSaveDraft": "Save draft",
-  "costRecalculate": "Validate and calculate",
+  "costRecalculate": "Check and recalculate",
   "costConfirm": "Confirm cost version",
   "costCopy": "Copy to new draft",
   "costSaveTemplate": "Save cost template",
@@ -3019,7 +3017,7 @@
   "costSnapshotReadOnly": "Historical snapshot is read only",
   "costImport": "Import cost workbook",
   "costImportBlock": "Product block",
-  "costImportReview": "Confirm each mapping. Verify cached prices in this sheet currency; external formulas are not adopted.",
+  "costImportReview": "Check the match for each row. Cached prices are verified in this sheet currency; external formulas are not adopted.",
   "costImportKind": "Mapping type",
   "costImportMaterial": "Material price",
   "costImportFee": "Cost per product",
@@ -3279,7 +3277,7 @@
   "quoteTemplateMissingHint": "Upload the customer's Excel template and review the field mapping before saving, or download the standard format.",
   "quoteTemplateUpload": "Upload and learn template",
   "quoteTemplateReviewTitle": "Review customer template",
-  "quoteTemplateReviewHint": "Review the worksheet and fields before saving. Similar layouts update the template; different layouts remain selectable.",
+  "quoteTemplateReviewHint": "Review the worksheet and its column matches before saving. Similar layouts update the template; different layouts remain selectable.",
   "quoteTemplateSaveDownload": "Save template and download",
   "quoteTemplateSheet": "Worksheet",
   "quoteTemplateReference": "Reference column (matching quotation fields only)",
@@ -3296,7 +3294,7 @@
   "aiChatCancel": "Cancel",
   "aiChatConfirm": "Confirm",
   "aiChatWelcome": "What can I help with today?",
-  "aiChatBoundary": "Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, with the same permission and validation checks.",
+  "aiChatBoundary": "Answers follow your account permissions. Actions suggested by the AI appear as a confirmation card and run only after you confirm, still checked against your permissions and system rules.",
   "aiChatUnavailable": "Only supported business questions are available right now.",
   "aiChatLoadFailed": "The assistant could not connect. Please retry.",
   "aiChatRetry": "Retry",
@@ -3317,7 +3315,7 @@
   "aiChatFailed": "Processing did not finish. Please try again.",
   "aiChatTimeout": "Processing took too long. Please try again later.",
   "aiChatGone": "This request has expired. Start a new chat.",
-  "aiChatPermissionChanged": "Your access or session changed. This chat was cleared. Refresh and try again.",
+  "aiChatPermissionChanged": "Your access or sign-in changed. This chat was cleared. Refresh and try again.",
   "aiChatEmptyReply": "No answer was returned. Please rephrase your question.",
   "aiChatYou": "You",
   "aiChatAssistant": "Assistant",
@@ -3334,7 +3332,7 @@
   "aiChatPrivacyNotice": "Your messages, the last few questions and answers of this chat and what you can see on this page are processed by the AI service configured by your administrator. Do not enter passwords or other sensitive information. Always check answers against the page. The assistant only answers how to use the platform, its business rules and business data you may see; it does not handle code, servers, commands, databases or passwords.",
   "aiChatReceived": "Delivered. Waiting for a reply…",
   "aiChatRequestRejected": "This message was not submitted successfully.",
-  "aiChatDeliveryUnknown": "Delivery is unconfirmed. Sending again starts a new request.",
+  "aiChatDeliveryUnknown": "Delivery is unconfirmed. Sending again will send it as a new message.",
   "aiChatReplyFailed": "Delivered, but AI could not complete the reply.",
   "aiChatReplyInterrupted": "Accepted, but the result could not be retrieved.",
   "aiChatWaitingStopped": "Stopped waiting for this reply.",
@@ -3397,7 +3395,7 @@
   "aiChatGuidedOrderRequest": "Fill the current sales order from this file for my review.",
   "aiChatDocumentLongRequest": "The file instructions are too long to analyze completely. Please choose the workflow to continue.",
   "quoteTemplateMappingRequired": "Keep quantity and either model or description",
-  "quoteTemplateMappingDuplicate": "Each field can map to only one column. Adjust duplicate mappings.",
+  "quoteTemplateMappingDuplicate": "Each piece of information can match only one column. Adjust duplicate matches.",
   "aiAuditTitle": "Usage and costs",
   "aiAuditRefresh": "Refresh records",
   "aiAuditLoadFailed": "Records are unavailable. Please retry.",
@@ -3414,19 +3412,7 @@
   "aiAuditAllUsers": "All employees",
   "aiAuditProvider": "AI service",
   "aiAuditAllProviders": "All services",
-  "aiAuditSummary": "Records: {uses} · Model calls: {calls}",
-  "@aiAuditSummary": {
-    "placeholders": {
-      "uses": {
-        "type": "int"
-      },
-      "calls": {
-        "type": "int"
-      }
-    }
-  },
   "aiAuditPlatformOnly": "This platform only. Estimates use the configured prices.",
-  "aiAuditByUser": "View by employee",
   "aiAuditUses": "Records: {count}",
   "@aiAuditUses": {
     "placeholders": {
@@ -3436,19 +3422,6 @@
     }
   },
   "aiAuditEmpty": "No records in this period.",
-  "aiAuditPagination": "Records: {total} · Page {page}",
-  "@aiAuditPagination": {
-    "placeholders": {
-      "total": {
-        "type": "int"
-      },
-      "page": {
-        "type": "int"
-      }
-    }
-  },
-  "aiAuditPrevious": "Previous page",
-  "aiAuditNext": "Next page",
   "aiAuditBillingTitle": "Billing and plan allowance",
   "aiAuditSelectProvider": "Choose a service",
   "aiAuditActualCost": "Actual cost: {currency} {amount}",
@@ -3556,9 +3529,31 @@
   "aiAuditInputPrice": "Price per million input tokens",
   "aiAuditOutputPrice": "Price per million output tokens",
   "aiAuditPriceHint": "Use your provider prices. These are estimates, not a provider bill.",
-  "aiAuditFiveHourQuota": "Five-hour balance: not connected",
-  "aiAuditWeeklyQuota": "Weekly balance: not connected",
-  "aiAuditQuotaHint": "Requires a quota API from the provider.",
+  "aiAuditFiveHourQuota": "Quota per 5 hours (calls)",
+  "aiAuditWeeklyQuota": "Weekly quota (calls)",
+  "aiAuditQuotaHint": "Used counts come from this platform's successful calls; remaining = quota - used. It may differ slightly from the provider's own accounting.",
+  "aiAuditQuota5hUsed": "Used in the last 5 hours: {used} / {quota}",
+  "@aiAuditQuota5hUsed": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditQuotaWeeklyUsed": "Used this week: {used} / {quota}",
+  "@aiAuditQuotaWeeklyUsed": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
   "aiAuditSaveBilling": "Save billing settings",
   "aiAuditEur": "Euro EUR",
   "aiAuditHkd": "Hong Kong dollar HKD",
@@ -3589,7 +3584,7 @@
   },
   "stockCountReasonLabel": "Count note (optional)",
   "stockCountReasonHint": "e.g. go-live count or routine count, up to 500 characters",
-  "weightParamsLoadFailed": "Unit weight data could not be loaded: {reason}. Weigh-to-count and weight prefill are unavailable for now; quantities can still be registered.",
+  "weightParamsLoadFailed": "Unit weight settings could not be loaded: {reason}. Weigh-to-count and weight prefill are unavailable for now; quantities can still be registered.",
   "weightParamsLoadFailedUnknown": "The network or service is temporarily unavailable",
   "warehouseOwningPickerTitle": "Select owning warehouse",
   "warehouseMasterUseColumn": "Warehouse use",
@@ -3875,10 +3870,10 @@
   "qualityBatchWholeLot": "Whole lot of {count} parts decided together",
   "qualityBatchWholeLotPass": "Ticking passes the whole lot",
   "aiSettingsStepThinking": "Thinking depth",
-  "aiActionSetField": "Fill in a field",
-  "aiActionParamField": "Field",
+  "aiActionSetField": "Fill in automatically",
+  "aiActionParamField": "Item to fill",
   "aiActionParamValue": "New value",
-  "aiActionFieldMissing": "The field \"{label}\" is not on this page",
+  "aiActionFieldMissing": "There is no place to fill in \"{label}\" on this page",
   "@aiActionFieldMissing": {
     "placeholders": {
       "label": {
@@ -3998,7 +3993,7 @@
       }
     }
   },
-  "aiChatAttachSummary": "This page will be attached: {rows} table rows, {fields} fields, {flagged} items to review",
+  "aiChatAttachSummary": "This page will be attached: {rows} table rows, {fields} fill-in items, {flagged} items to review",
   "@aiChatAttachSummary": {
     "placeholders": {
       "rows": {
@@ -4328,7 +4323,6 @@
   "hrReconcileStatusExpired": "Expired",
   "hrReconcileStatusDiscarded": "Discarded",
   "aiUsageTitle": "AI usage & quotas",
-  "aiUsageEntry": "Usage & quotas",
   "aiUsageTodayTokens": "Tokens today",
   "aiUsageTodayLabel": "Today",
   "aiUsageTodayCalls": "Calls today",
@@ -4448,5 +4442,69 @@
         "type": "String"
       }
     }
-  }
+  },
+  "aiUsageKpiFooterCalls": "{count} calls in {label}",
+  "@aiUsageKpiFooterCalls": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageKpiFooterPeople": "{count} people in total",
+  "@aiUsageKpiFooterPeople": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageKpiFooterOverLimit": "{count} over the limit",
+  "@aiUsageKpiFooterOverLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsViewRecords": "By record",
+  "aiRecordsViewByPerson": "By person",
+  "aiRecordsStatUses": "Usages",
+  "aiRecordsStatCallsFooter": "{count} model calls",
+  "@aiRecordsStatCallsFooter": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsStatCostActual": "Actual cost",
+  "aiRecordsStatCostActualFooter": "Per provider bills",
+  "aiRecordsStatCostEstimated": "Estimated cost",
+  "aiRecordsStatCostEstimatedFooter": "Per configured prices",
+  "aiRecordsStatUnknown": "Cost pending",
+  "aiRecordsStatUnknownFooter": "{count} calls without prices",
+  "@aiRecordsStatUnknownFooter": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsColTime": "Time",
+  "aiRecordsColPurpose": "Purpose",
+  "aiRecordsColQuestion": "Prompt",
+  "aiRecordsColModel": "Model",
+  "aiRecordsColCalls": "Calls",
+  "aiRecordsColInputTokens": "Input tokens",
+  "aiRecordsColOutputTokens": "Output tokens",
+  "aiRecordsColCost": "Cost",
+  "aiRecordsColStatus": "Status",
+  "aiRecordsPersonEmpty": "No one used AI in this period",
+  "aiRecordsPersonViewRecords": "View records",
+  "aiRecordsDetailTitle": "Usage detail",
+  "aiRecordsBillingOpen": "Billing"
 }

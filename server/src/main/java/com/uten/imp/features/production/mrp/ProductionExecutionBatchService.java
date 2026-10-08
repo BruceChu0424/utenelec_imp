@@ -72,7 +72,7 @@ public class ProductionExecutionBatchService {
         if (request == null || request.segmentId() == null || request.expectedVersion() == null
                 || request.idempotencyKey() == null || !request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}")
                 || request.previewFingerprint() == null || !request.previewFingerprint().matches("[0-9a-f]{64}"))
-            throw invalid("分批领料缺少任务、版本或幂等键，请重新核对汇总");
+            throw invalid("分批领料缺少任务、版本或防重复提交标识，请重新核对汇总");
         BigDecimal quantity = positive(request.quantity());
         tx.bind();
         UUID actor = currentUser.requireId();
@@ -91,7 +91,7 @@ public class ProductionExecutionBatchService {
                 """, Map.of("actor",actor,"key",request.idempotencyKey()));
         if (!prior.isEmpty()) {
             Object[] replay=prior.getFirst();
-            if (!request.segmentId().equals(replay[0]) || !hash.equals(replay[3])) throw conflict("相同幂等键对应不同分批领料请求");
+            if (!request.segmentId().equals(replay[0]) || !hash.equals(replay[3])) throw conflict("同一防重复提交标识对应不同的分批领料请求，请刷新后重试");
             return new Result(uuid(replay[1]),uuid(replay[2]),documents(uuid(replay[1])),true);
         }
         var guard=mutationFootprint.beginPlan(initial.planId(),List.of());

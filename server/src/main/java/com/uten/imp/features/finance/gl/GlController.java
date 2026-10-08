@@ -45,7 +45,7 @@ public class GlController {
     @PreAuthorize("hasAuthority('finance_post:execute')")
     public Map<String, Object> generate(@RequestParam String period) {
         if (!period.matches("\\d{4}-(0[1-9]|1[0-2])")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "period 格式必须为 YYYY-MM");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "会计期间格式必须为 YYYY-MM（例如 2026-09）");
         }
         int vouchers = posting.generate(period);
         return Map.of("period", period, "vouchers", vouchers);

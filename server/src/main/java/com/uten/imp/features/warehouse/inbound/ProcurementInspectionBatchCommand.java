@@ -33,7 +33,7 @@ record ProcurementInspectionBatchCommand(
         var lines = new ArrayList<Line>();
         var ids = new HashSet<UUID>();
         for (var item : request.items()) {
-            if (item == null || item.inspectionItemId() == null) throw invalid("批量合格明细 ID 不能为空");
+            if (item == null || item.inspectionItemId() == null) throw invalid("批量合格明细的编号不能为空");
             if (!ids.add(item.inspectionItemId())) throw invalid("批量合格明细不能重复");
             BigDecimal quantity = normalizeQty(item.expectedRemainingBaseQty());
             lines.add(new Line(item.inspectionItemId(), quantity, quantity, BigDecimal.ZERO,
@@ -49,7 +49,7 @@ record ProcurementInspectionBatchCommand(
         var ids = new HashSet<UUID>();
         boolean hasFail = false;
         for (var item : request.items()) {
-            if (item == null || item.inspectionItemId() == null) throw invalid("检验报告明细 ID 不能为空");
+            if (item == null || item.inspectionItemId() == null) throw invalid("检验报告明细的编号不能为空");
             if (!ids.add(item.inspectionItemId())) throw invalid("检验报告明细不能重复");
             BigDecimal remaining = normalizeQty(item.expectedRemainingBaseQty());
             BigDecimal pass = requireNonNegativeQty(item.passBaseQty(), "合格数量");
@@ -65,7 +65,7 @@ record ProcurementInspectionBatchCommand(
 
     private static ProcurementInspectionBatchCommand build(String type, UUID receipt, List<Line> lines,
                                                             String reason, boolean fullPass) {
-        if ((!"PURCHASE".equals(type) && !"SUBCONTRACT".equals(type)) || receipt == null) throw invalid("收货单类型或 ID 无效");
+        if ((!"PURCHASE".equals(type) && !"SUBCONTRACT".equals(type)) || receipt == null) throw invalid("收货单类型或编号不正确");
         lines.sort(Comparator.comparing(line -> line.inspectionItemId().toString()));
         List<String> identity = new ArrayList<>(List.of(
                 "operation:" + (fullPass ? "IQC-PASS-BATCH-V1" : "IQC-DECIDE-BATCH-V1"),

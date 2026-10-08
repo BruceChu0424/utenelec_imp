@@ -76,14 +76,14 @@ public class ProcurementIqcPreStockInService {
     public PreStockInResult preStockIn(String receiptType, UUID receiptId, PreStockInRequest request) {
         tx.bind();
         String type = normalizeReceiptType(receiptType);
-        if (receiptId == null) throw validation("收货单 UUID 不能为空");
+        if (receiptId == null) throw validation("缺少收货单，请重新选择后再试");
         if (request == null || request.items() == null || request.items().isEmpty()
                 || request.items().size() > 100) {
             throw validation("先入库上架必须包含 1 至 100 条待检明细");
         }
         List<PreStockLine> lines = new ArrayList<>(request.items().size());
         for (PreStockInItem item : request.items()) {
-            if (item == null || item.inspectionItemId() == null) throw validation("待检明细 UUID 不能为空");
+            if (item == null || item.inspectionItemId() == null) throw validation("请选择要上架的待检明细");
             lines.add(new PreStockLine(item.inspectionItemId(), item.warehouseId(), normalizePlace(item.place())));
         }
         return apply(type, receiptId, lines, currentUser.requireEmployeeId());

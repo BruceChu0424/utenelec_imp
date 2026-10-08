@@ -47,7 +47,7 @@ class CrossAnalysisReallocationWorkflowContractTest {
                 "analysisservice.requirecurrent(headers.get(sourceanalysisid)");
         assertThat(source).contains(
                 "analysisservice.requirecurrent(headers.get(request.targetanalysisid())");
-        assertThat(source).contains("同一幂等键已用于不同让料请求");
+        assertThat(source).contains("同一防重复提交标识已用于不同让料请求，请刷新后重试");
         assertThat(source).contains("同仓库、同货品、同颜色和同基本单位");
     }
 

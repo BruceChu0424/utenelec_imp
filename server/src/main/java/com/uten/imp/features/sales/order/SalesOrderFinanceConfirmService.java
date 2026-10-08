@@ -91,7 +91,7 @@ public class SalesOrderFinanceConfirmService {
     public record FinanceBatchConfirmRequest(
             @NotEmpty(message = "请选择至少一笔销售订货单")
             @Size(max = MAX_BATCH_CONFIRM_ORDERS, message = "一次最多确认 100 笔销售订货单")
-            List<@NotNull(message = "销售订货单 ID 不能为空") UUID> orderIds,
+            List<@NotNull(message = "请先选择销售订货单") UUID> orderIds,
             @Size(max = 500, message = "确认备注不能超过 500 个字符") String remark,
             Map<UUID, Long> expectedRevisions,
             @Size(max=MAX_BATCH_CONFIRM_ORDERS) Map<UUID,UUID> expectedClaimIds) {
@@ -856,7 +856,7 @@ public class SalesOrderFinanceConfirmService {
         }
         if (request.orderIds().stream().anyMatch(java.util.Objects::isNull)) {
             throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED, "销售订货单 ID 不能为空");
+                    ErrorCode.VALIDATION_FAILED, "请先选择销售订货单");
         }
         List<UUID> orderIds = request.orderIds().stream()
                 .distinct()

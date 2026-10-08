@@ -253,9 +253,9 @@ class AiJobServiceTest {
                 user)).isInstanceOf(ApiException.class)
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.NOT_FOUND);
         assertThatThrownBy(() -> submit(Map.of("bad key", "x"), new ByteArrayInputStream(CSV)))
-                .isInstanceOf(ApiException.class).hasMessage("识别参数不对");
+                .isInstanceOf(ApiException.class).hasMessage("识别的附加设置不正确");
         assertThatThrownBy(() -> submit(Map.of("note", "line\nbreak"), new ByteArrayInputStream(CSV)))
-                .isInstanceOf(ApiException.class).hasMessage("识别参数不对");
+                .isInstanceOf(ApiException.class).hasMessage("识别的附加设置不正确");
     }
 
     @Test

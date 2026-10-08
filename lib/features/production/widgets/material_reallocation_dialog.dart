@@ -665,7 +665,7 @@ class _MaterialReallocationDialogBodyState
               error.code == 'INTERNAL' ||
               (error.httpStatus ?? 0) >= 500;
           _submitError = _uncertain
-              ? '暂未确认调拨结果，原来源、数量和请求已保留，请同键重试确认。'
+              ? '暂未确认调拨结果，原来源、数量和填写内容已保留，请用同样内容重试确认。'
               : productionErrorMessage(error, fallback: '跨计划调拨失败，请重试');
         });
       }
@@ -772,7 +772,7 @@ class _MaterialReallocationDialogBodyState
           if (_uncertain) {
             _submitError =
                 '已提交 $_batchDone/${entries.length} 笔；剩余结果未知，'
-                '已冻结数量和来源，请同键重试确认，不会重复调入。';
+                '数量和来源已锁定，请用同样内容重试确认，不会重复调入。';
           } else {
             _submitError =
                 '已提交 $_batchDone/${entries.length} 笔；余下未提交。'
@@ -899,7 +899,7 @@ class _MaterialReallocationDialogBodyState
               if (_submitting)
                 const UtenBusyOverlay(
                   title: '正在提交跨批复用',
-                  description: '正在写入供给归属调整，请勿重复提交或关闭面板。',
+                  description: '正在保存供给归属调整，请勿重复提交或关闭面板。',
                 ),
               _header(theme),
               const Divider(height: 1),
@@ -1150,7 +1150,7 @@ class _MaterialReallocationDialogBodyState
       return ListTile(
         key: ValueKey('candidate-stale-$identity'),
         dense: true,
-        title: const Text('候选快照已失效，请重新加载'),
+        title: const Text('这条候选信息已过期，请关闭后重新加载'),
       );
     }
     final secondaryDetails = <String>[

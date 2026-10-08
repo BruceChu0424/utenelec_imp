@@ -236,7 +236,7 @@ public class FinanceAssetWorkflowService {
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
         Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "APPROVED");
-        version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "approve");
+        version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "审批");
         validateSubmission(id, deferred);
         Category category = categoryFor(id, deferred);
         if (deferred) createDeferredSchedule(id, category, actor); else createCorporateBook(id, category, actor);
@@ -257,10 +257,10 @@ public class FinanceAssetWorkflowService {
     @PreAuthorize("hasAuthority('finance_asset:approve')")
     public AssetWorkbenchResponses.WorkflowResult reject(UUID id, long expectedVersion, String reason, boolean deferred) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
-        if (reason == null || reason.isBlank()) throw validation("Reject reason is required");
+        if (reason == null || reason.isBlank()) throw validation("请填写驳回原因");
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "DRAFT");
-        version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "reject");
+        version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "驳回");
         changed(em.createNativeQuery("UPDATE " + table + " SET lifecycle_status='DRAFT', last_rejected_at=now(), last_rejected_by=:actor, last_rejection_reason=:reason, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='PENDING_APPROVAL' AND row_version=:version AND is_deleted=false")
                 .setParameter("actor", actor).setParameter("reason", reason.trim()).setParameter("id", id)
                 .setParameter("version", locked.version()).executeUpdate());
@@ -277,13 +277,13 @@ public class FinanceAssetWorkflowService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
-        featureGate.requirePostedWorkflowsEnabled("Initial recognition activation");
+        featureGate.requirePostedWorkflowsEnabled("初始确认启用");
         String table = deferred ? "deferred_expenses" : "fixed_assets";
         LocalDate date = LocalDate.now(SHANGHAI); String period = YearMonth.from(date).toString();
         periods.ensureOpen(period, FinanceAssetAuthorization.POST);
         lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
         Locked locked = lock(table, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "ACTIVE");
-        version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "post");
+        version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "过账");
         requireStartAfterLatestRun(id,deferred);
         Object[] row = (Object[]) em.createNativeQuery("SELECT code, " + (deferred ? "total_amount" : "original_value") + ", cost_style_snapshot_id, accumulated_style_snapshot_id, expense_style_snapshot_id, clearing_style_snapshot_id FROM " + table + " WHERE id=:id FOR UPDATE")
                 .setParameter("id", id).getSingleResult();
@@ -312,10 +312,10 @@ public class FinanceAssetWorkflowService {
     public AssetWorkbenchResponses.WorkflowResult transfer(UUID id, AssetWorkbenchRequests.TransferCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         lockPostingStream("DEPRECIATION");
-        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("Only ACTIVE assets can transfer");
+        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能转移");
         version(locked.version(), command.expectedVersion());
         requireFixedAssetChangeDate(id,command.effectiveDate());
-        requireResponsibility(command.targetDepartmentId(),command.custodianId(),command.location(),"custodian");
+        requireResponsibility(command.targetDepartmentId(),command.custodianId(),command.location(),"保管人");
         changed(em.createNativeQuery("UPDATE fixed_assets SET department_id=:department, custodian_employee_id=:custodian, location_text=:location, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
                 .setParameter("department", command.targetDepartmentId()).setParameter("custodian", command.custodianId())
                 .setParameter("location", command.location()).setParameter("actor", actor).setParameter("id", id)
@@ -328,7 +328,7 @@ public class FinanceAssetWorkflowService {
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public AssetWorkbenchResponses.WorkflowResult operatingStatus(UUID id, AssetWorkbenchRequests.OperatingStatusCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
-        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("Only ACTIVE assets can change operating status");
+        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能改使用状况");
         version(locked.version(), command.expectedVersion());
         requireFixedAssetChangeDate(id,command.effectiveDate());
         changed(em.createNativeQuery("UPDATE fixed_assets SET operating_status=:status, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
@@ -342,8 +342,8 @@ public class FinanceAssetWorkflowService {
     @PreAuthorize("hasAuthority('finance_asset:dispose')")
     public AssetWorkbenchResponses.WorkflowResult requestDisposal(UUID id, AssetWorkbenchRequests.DisposalCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
-        featureGate.requirePostedWorkflowsEnabled("Fixed-asset disposal");
-        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("Only ACTIVE assets can request disposal");
+        featureGate.requirePostedWorkflowsEnabled("固定资产处置");
+        Locked locked = lock("fixed_assets", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能申请处置");
         version(locked.version(), command.expectedVersion());
         requireWorkflowEffectiveDate(id, false, command.effectiveDate());
         changed(em.createNativeQuery("UPDATE fixed_assets SET lifecycle_status='DISPOSAL_PENDING', row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
@@ -359,8 +359,8 @@ public class FinanceAssetWorkflowService {
     @PreAuthorize("hasAuthority('finance_asset:dispose')")
     public AssetWorkbenchResponses.WorkflowResult requestTermination(UUID id, AssetWorkbenchRequests.TerminationCommand command) {
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
-        featureGate.requirePostedWorkflowsEnabled("Deferred-expense termination");
-        Locked locked = lock("deferred_expenses", id); if (!"ACTIVE".equals(locked.status())) throw conflict("Only ACTIVE deferrals can request termination");
+        featureGate.requirePostedWorkflowsEnabled("长期待摊费用终止");
+        Locked locked = lock("deferred_expenses", id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有摊销中的长期待摊费用才能申请终止");
         version(locked.version(), command.expectedVersion());
         requireWorkflowEffectiveDate(id, true, command.effectiveDate());
         changed(em.createNativeQuery("UPDATE deferred_expenses SET lifecycle_status='TERMINATION_PENDING', row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND row_version=:version")
@@ -377,10 +377,10 @@ public class FinanceAssetWorkflowService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
-        featureGate.requirePostedWorkflowsEnabled("Fixed-asset disposal posting");
+        featureGate.requirePostedWorkflowsEnabled("固定资产处置过账");
         authorization.require(FinanceAssetAuthorization.POST);
         RequestEvidence request=latestRequest("FIXED_ASSET",id,"DISPOSAL_REQUESTED");
-        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"approve disposal");
+        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"审批处置");
         String period=YearMonth.from(request.effectiveDate()).toString();
         periods.ensureOpen(period,FinanceAssetAuthorization.POST);
         lockPostingStream("DEPRECIATION");
@@ -393,13 +393,13 @@ public class FinanceAssetWorkflowService {
         Object[] book=(Object[])em.createNativeQuery("SELECT id,original_value,accumulated_amount,net_book_value,cost_style_id,accumulated_style_id,clearing_style_id,status,start_period,depreciable_amount,expense_style_id FROM finance_asset_books WHERE asset_id=:id AND book_type='CORPORATE' AND status IN ('ACTIVE','FULLY_DEPRECIATED') AND is_deleted=false FOR UPDATE").setParameter("id",id).getSingleResult();
         BigDecimal original=decimal(book[1]),accumulated=decimal(book[2]),net=decimal(book[3]);
         requireSnapshotAccounts(false,NativeValueConverters.uuid(book[4]),NativeValueConverters.uuid(book[5]),NativeValueConverters.uuid(book[10]),NativeValueConverters.uuid(book[6]));
-        if(accumulated.add(net).compareTo(original)!=0)throw conflict("Asset book does not reconcile to original cost");
+        if(accumulated.add(net).compareTo(original)!=0)throw conflict("资产台账的累计折旧加净值与原值对不上，请先核对台账");
         boolean depreciationDue = NativeValueConverters.text(book[8]).compareTo(period) <= 0
                 && decimal(book[9]).subtract(accumulated).signum() > 0;
         if("ACTIVE".equals(NativeValueConverters.text(book[7])) && depreciationDue){
             Number fact=(Number)em.createNativeQuery("SELECT COUNT(*) FROM fa_depreciation_log WHERE asset_id=:asset AND asset_book_id=:book AND period=:period AND entry_kind='NORMAL' AND status='ACTIVE' AND is_deleted=false")
                     .setParameter("asset",id).setParameter("book",NativeValueConverters.uuid(book[0])).setParameter("period",period).getSingleResult();
-            if(fact.longValue()!=1)throw conflict("This asset must be depreciated in the disposal month first");
+            if(fact.longValue()!=1)throw conflict("这张资产要先计提处置当月的折旧，再做过账处置");
         }
         List<FinanceAssetLedgerPostingService.Entry> entries=new ArrayList<>();
         if(accumulated.signum()>0)entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(book[5]),1,accumulated,"Remove accumulated depreciation"));
@@ -423,10 +423,10 @@ public class FinanceAssetWorkflowService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
-        featureGate.requirePostedWorkflowsEnabled("Deferred-expense termination posting");
+        featureGate.requirePostedWorkflowsEnabled("长期待摊费用终止过账");
         authorization.require(FinanceAssetAuthorization.POST);
         RequestEvidence request=latestRequest("DEFERRED_EXPENSE",id,"TERMINATION_REQUESTED");
-        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"approve termination");
+        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"审批终止");
         String period=YearMonth.from(request.effectiveDate()).toString();
         periods.ensureOpen(period,FinanceAssetAuthorization.POST);
         lockPostingStream("AMORTIZATION");
@@ -439,11 +439,11 @@ public class FinanceAssetWorkflowService {
         Object[] row=(Object[])em.createNativeQuery("SELECT d.total_amount,d.cost_style_snapshot_id,d.expense_style_snapshot_id,COALESCE((SELECT SUM(l.amount) FROM da_amortization_log l WHERE l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false),0),s.start_period,d.clearing_style_snapshot_id FROM deferred_expenses d JOIN finance_deferral_schedule_versions s ON s.deferred_id=d.id AND s.status='APPROVED' AND s.is_deleted=false WHERE d.id=:id FOR UPDATE").setParameter("id",id).getSingleResult();
         BigDecimal remaining=decimal(row[0]).subtract(decimal(row[3]));
         requireSnapshotAccounts(true,NativeValueConverters.uuid(row[1]),null,NativeValueConverters.uuid(row[2]),NativeValueConverters.uuid(row[5]));
-        if(remaining.signum()<0)throw conflict("Deferred-expense balance is negative");
+        if(remaining.signum()<0)throw conflict("这笔长期待摊费用的剩余金额是负数，请先核对摊销记录");
         Number fact=(Number)em.createNativeQuery("SELECT COUNT(*) FROM da_amortization_log WHERE deferred_id=:id AND period=:period AND entry_kind='NORMAL' AND status='ACTIVE' AND is_deleted=false")
                 .setParameter("id",id).setParameter("period",period).getSingleResult();
         boolean amortizationDue = NativeValueConverters.text(row[4]).compareTo(period) <= 0 && remaining.signum() > 0;
-        if(amortizationDue && fact.longValue()!=1)throw conflict("This deferred expense must be amortized in the termination month first");
+        if(amortizationDue && fact.longValue()!=1)throw conflict("这笔长期待摊费用要先摊销终止当月的金额，再做终止");
         List<FinanceAssetLedgerPostingService.Entry> entries=new ArrayList<>();
         if(remaining.signum()>0){
             entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(row[2]),1,remaining,"Terminate remaining deferred expense"));
@@ -466,7 +466,7 @@ public class FinanceAssetWorkflowService {
         Locked locked=lock("fixed_assets",id); version(locked.version(),command.expectedVersion());
         FinanceAssetStateMachine.requireObjectTransition(locked.status(),"ACTIVE");
         RequestEvidence request=latestRequest("FIXED_ASSET",id,"DISPOSAL_REQUESTED");
-        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"reject disposal");
+        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"驳回处置");
         changed(em.createNativeQuery("UPDATE fixed_assets SET lifecycle_status='ACTIVE',row_version=row_version+1,updated_at=now(),updated_by=:actor WHERE id=:id AND lifecycle_status='DISPOSAL_PENDING' AND row_version=:version")
                 .setParameter("actor",actor).setParameter("id",id).setParameter("version",locked.version()).executeUpdate());
         approval("FIXED_ASSET",id,"DISPOSAL","REJECT",command.reason(),actor);
@@ -480,7 +480,7 @@ public class FinanceAssetWorkflowService {
         tx.bind(); UUID actor=authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
         Locked locked=lock("deferred_expenses",id); version(locked.version(),command.expectedVersion());
         RequestEvidence request=latestRequest("DEFERRED_EXPENSE",id,"TERMINATION_REQUESTED");
-        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"reject termination");
+        AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"驳回终止");
         Object[] balance=(Object[])em.createNativeQuery("SELECT d.total_amount,COALESCE(SUM(l.amount),0) FROM deferred_expenses d LEFT JOIN da_amortization_log l ON l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false WHERE d.id=:id GROUP BY d.total_amount")
                 .setParameter("id",id).getSingleResult();
         String target=decimal(balance[0]).subtract(decimal(balance[1])).signum()==0?"COMPLETED":"ACTIVE";
@@ -537,9 +537,9 @@ public class FinanceAssetWorkflowService {
                 """.formatted(table);
         @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery(sql)
                 .setParameter("id", id).getResultList();
-        if (rows.isEmpty()) throw validation("An ACTIVE category policy is required");
+        if (rows.isEmpty()) throw validation("没有可用的生效类别政策，请先配置并启用资产类别");
         Object[] r=rows.getFirst(); String expected=deferred?"DEFERRED_EXPENSE":"FIXED_ASSET";
-        if(!expected.equals(NativeValueConverters.text(r[1]))) throw validation("Category object type does not match");
+        if(!expected.equals(NativeValueConverters.text(r[1]))) throw validation("资产类别与资产类型对不上，请重新选择类别");
         return new Category(NativeValueConverters.uuid(r[0]),NativeValueConverters.text(r[1]),number(r[2]).intValue(),NativeValueConverters.uuid(r[3]),NativeValueConverters.uuid(r[4]),NativeValueConverters.uuid(r[5]),NativeValueConverters.uuid(r[6]),NativeValueConverters.text(r[7]),
                 r[8]==null?null:number(r[8]).intValue(),(BigDecimal)r[9],NativeValueConverters.text(r[10]));
     }
@@ -597,16 +597,16 @@ public class FinanceAssetWorkflowService {
     private void requireSource(UUID objectId,boolean deferred,String type,UUID sourceId,String ref,String line,String documents){
         String normalizedType=normalizeType(type),normalizedRef=normalizeRef(ref),normalizedLine=normalizeRef(line);
         if(normalizedType==null||normalizedRef==null||normalizedLine==null){
-            throw validation("sourceType, sourceRef and a stable sourceLineRef are required before submit; use explicit HEADER for a header-level source");
+            throw validation("提交前请先填写来源单据类型、来源单号和来源行号；来源是整单时行号填 HEADER");
         }
-        if(!"[]".equals(documents)&&normalizedRef.isBlank())throw validation("Required document evidence is missing");
+        if(!"[]".equals(documents)&&normalizedRef.isBlank())throw validation("类别要求必备单据，请先填写来源单号");
         String identity=sourceId==null?normalizedRef.toLowerCase(java.util.Locale.ROOT):sourceId.toString();
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
                 .setParameter("key","FINANCE_ASSET_SOURCE|"+normalizedType+"|"+identity+"|"+normalizedLine.toLowerCase(java.util.Locale.ROOT))
                 .getSingleResult();
         long duplicates=sourceDuplicates("fixed_assets",objectId,!deferred,normalizedType,sourceId,normalizedRef,normalizedLine)
                 +sourceDuplicates("deferred_expenses",objectId,deferred,normalizedType,sourceId,normalizedRef,normalizedLine);
-        if(duplicates>0)throw conflict("The source document line is already linked to another asset or deferred expense");
+        if(duplicates>0)throw conflict("这个来源单据行已经关联到别的资产或长期待摊费用，不能重复关联");
     }
     private long sourceDuplicates(String table,UUID objectId,boolean currentTable,String type,UUID sourceId,String ref,String line){
         String exclude=currentTable?" AND id<>:objectId":"";
@@ -624,18 +624,18 @@ public class FinanceAssetWorkflowService {
     }
     private void requireResponsibility(UUID departmentId,UUID employeeId,String location,String role){
         if(departmentId==null||employeeId==null||location==null||location.isBlank()){
-            throw validation("department, location and "+role+" are required before submit or transfer");
+            throw validation("提交或转移前请先填写部门、存放地点和"+role);
         }
         Number department=(Number)em.createNativeQuery("SELECT COUNT(*) FROM departments WHERE id=:id AND is_deleted=false")
                 .setParameter("id",departmentId).getSingleResult();
         Number employee=(Number)em.createNativeQuery("SELECT COUNT(*) FROM employees WHERE id=:id AND department_id=:department AND status='active' AND is_deleted=false")
                 .setParameter("id",employeeId).setParameter("department",departmentId).getSingleResult();
         if(department.longValue()!=1||employee.longValue()!=1){
-            throw validation(role+" must be an active employee in the selected active department");
+            throw validation(role+"必须是在所选部门在职的员工，请重新选择");
         }
     }
     private static void requireNotFuture(LocalDate value,String field){
-        if(value!=null&&value.isAfter(LocalDate.now(SHANGHAI)))throw validation(field+" cannot be in the future when submitted");
+        if(value!=null&&value.isAfter(LocalDate.now(SHANGHAI)))throw validation(field+"不能晚于今天");
     }
     private void lockPostingStream(String runType){
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
@@ -649,7 +649,7 @@ public class FinanceAssetWorkflowService {
         @SuppressWarnings("unchecked") List<Object> rows=em.createNativeQuery("SELECT period FROM finance_asset_posting_runs WHERE run_type=:type AND book_type='CORPORATE' AND run_kind='NORMAL' AND status='POSTED' AND is_deleted=false ORDER BY period DESC LIMIT 1")
                 .setParameter("type",type).getResultList();
         if(!rows.isEmpty()&&start.compareTo(AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next().toString())<0){
-            throw validation("startPeriod must be at least "+AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next()+" because earlier periods are already posted");
+            throw validation("更早的期间已经过账，折旧/摊销开始期间最早只能是 "+AssetPeriod.parse(NativeValueConverters.text(rows.getFirst())).next());
         }
     }
     private static void requireStartNotBeforeCurrentPeriod(String startPeriod){
@@ -657,33 +657,33 @@ public class FinanceAssetWorkflowService {
         AssetPostingPolicy.requireStartNotBeforeActivationPeriod(startPeriod,current);
     }
     private void requireWorkflowEffectiveDate(UUID id,boolean deferred,LocalDate effectiveDate){
-        if(effectiveDate==null)throw validation("effectiveDate is required");
-        requireNotFuture(effectiveDate,"effectiveDate");
+        if(effectiveDate==null)throw validation("请填写生效日期");
+        requireNotFuture(effectiveDate,"生效日期");
         if(deferred){
             Object[] dates=(Object[])em.createNativeQuery("SELECT recognized_on,service_start_on FROM deferred_expenses WHERE id=:id AND is_deleted=false")
                     .setParameter("id",id).getSingleResult();
             LocalDate recognized=NativeValueConverters.toLocalDate(dates[0]),benefitStart=NativeValueConverters.toLocalDate(dates[1]);
-            if(recognized==null||benefitStart==null)throw conflict("Deferred expense has no recognition/benefit-start evidence");
+            if(recognized==null||benefitStart==null)throw conflict("这笔长期待摊费用缺少确认日期或受益开始日期，请先补齐");
             if(effectiveDate.isBefore(recognized)||effectiveDate.isBefore(benefitStart)){
-                throw validation("effectiveDate cannot precede recognition or benefit start");
+                throw validation("生效日期不能早于确认日期或受益开始日期");
             }
         }else{
             LocalDate capitalized=NativeValueConverters.toLocalDate(em.createNativeQuery("SELECT capitalized_on FROM fixed_assets WHERE id=:id AND is_deleted=false")
                     .setParameter("id",id).getSingleResult());
-            if(capitalized==null)throw conflict("Fixed asset has no capitalization evidence");
+            if(capitalized==null)throw conflict("这张资产缺少启用（资本化）日期，请先完成启用");
             if(effectiveDate.isBefore(capitalized)){
-                throw validation("effectiveDate cannot precede capitalization");
+                throw validation("生效日期不能早于资产启用日期");
             }
         }
     }
     private void requireFixedAssetChangeDate(UUID id,LocalDate effectiveDate){
-        if(effectiveDate==null)throw validation("effectiveDate is required");
-        requireNotFuture(effectiveDate,"effectiveDate");
+        if(effectiveDate==null)throw validation("请填写生效日期");
+        requireNotFuture(effectiveDate,"生效日期");
         LocalDate capitalized=NativeValueConverters.toLocalDate(em.createNativeQuery("SELECT capitalized_on FROM fixed_assets WHERE id=:id AND is_deleted=false")
                 .setParameter("id",id).getSingleResult());
-        if(capitalized==null)throw conflict("Fixed asset has no capitalization evidence");
+        if(capitalized==null)throw conflict("这张资产缺少启用（资本化）日期，请先完成启用");
         if(effectiveDate.isBefore(capitalized)){
-            throw validation("effectiveDate cannot precede capitalization");
+            throw validation("生效日期不能早于资产启用日期");
         }
     }
     private void requireSnapshotAccounts(boolean deferred,UUID cost,UUID accumulated,UUID expense,UUID clearing){
@@ -693,15 +693,15 @@ public class FinanceAssetWorkflowService {
         accounts.add(expense);
         accounts.add(clearing);
         if(accounts.stream().anyMatch(java.util.Objects::isNull)){
-            throw validation("Approved account snapshot is incomplete");
+            throw validation("审批通过的科目信息不完整，请重新提交审批");
         }
         if(accounts.stream().distinct().count()!=accounts.size()){
-            throw validation("Approved cost, accumulated depreciation, expense and clearing accounts must be distinct");
+            throw validation("审批通过的成本、累计折旧、费用和清理科目必须互不相同");
         }
-        requirePostableStyle(cost,"ACCOUNT","cost");
-        if(!deferred)requirePostableStyle(accumulated,"ACCOUNT","accumulated depreciation");
-        requirePostableStyle(expense,"EXPENSE","expense");
-        requirePostableStyle(clearing,"ACCOUNT","clearing");
+        requirePostableStyle(cost,"ACCOUNT","成本科目");
+        if(!deferred)requirePostableStyle(accumulated,"ACCOUNT","累计折旧科目");
+        requirePostableStyle(expense,"EXPENSE","费用科目");
+        requirePostableStyle(clearing,"ACCOUNT","清理科目");
     }
     private void requirePostableStyle(UUID styleId,String expectedCategory,String role){
         Number count=(Number)em.createNativeQuery("""
@@ -712,29 +712,29 @@ public class FinanceAssetWorkflowService {
                       WHERE child.parent_id=s.id AND child.is_deleted=false)
                 """).setParameter("id",styleId).setParameter("category",expectedCategory).getSingleResult();
         if(count.longValue()!=1){
-            throw validation("Approved "+role+" account is not an active postable "+expectedCategory+" leaf");
+            throw validation("审批通过的"+role+"不是在用的、可过账的末级科目，请重新配置");
         }
     }
     private RequestEvidence latestRequest(String objectType,UUID id,String eventType){
         @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("SELECT effective_date,actor_user_id,COALESCE(payload->>'proceedsAmount','0') FROM finance_asset_events WHERE object_type=:type AND object_id=:id AND event_type=:event ORDER BY occurred_at DESC,id DESC LIMIT 1")
                 .setParameter("type",objectType).setParameter("id",id).setParameter("event",eventType).getResultList();
-        if(rows.isEmpty())throw conflict("Workflow request evidence is missing");
-        Object[]r=rows.getFirst(); if(NativeValueConverters.toLocalDate(r[0])==null)throw conflict("Workflow effective date is missing");
+        if(rows.isEmpty())throw conflict("找不到这个流程的申请记录，请重新发起申请");
+        Object[]r=rows.getFirst(); if(NativeValueConverters.toLocalDate(r[0])==null)throw conflict("申请记录里缺少生效日期，请重新发起申请");
         return new RequestEvidence(NativeValueConverters.toLocalDate(r[0]),NativeValueConverters.uuid(r[1]),NativeValueConverters.text(r[2]));
     }
     private void requireEffectiveRun(String runType,String period){
         Number count=(Number)em.createNativeQuery("SELECT COUNT(*) FROM finance_asset_posting_runs WHERE run_type=:type AND book_type='CORPORATE' AND period=:period AND run_kind='NORMAL' AND status='POSTED' AND is_deleted=false")
                 .setParameter("type",runType).setParameter("period",period).getSingleResult();
-        if(count.longValue()!=1)throw conflict("The effective-month "+runType.toLowerCase()+" run must be posted first");
+        if(count.longValue()!=1)throw conflict("该生效月份的"+("DEPRECIATION".equals(runType)?"折旧":"摊销")+"还没过账，请先完成过账");
     }
     private void requireNoLaterRun(String runType,String period){
         Number count=(Number)em.createNativeQuery("SELECT COUNT(*) FROM finance_asset_posting_runs WHERE run_type=:type AND book_type='CORPORATE' AND period>:period AND run_kind='NORMAL' AND status='POSTED' AND is_deleted=false")
                 .setParameter("type",runType).setParameter("period",period).getSingleResult();
-        if(count.longValue()>0)throw conflict("Later effective posting runs must be reversed before this workflow");
+        if(count.longValue()>0)throw conflict("更晚期间已经过账，请先红冲后面的过账批次，再做这个操作");
     }
     private AssetSubmissionPolicy.PolicyInput policy(Category c){return new AssetSubmissionPolicy.PolicyInput(c.id(),c.cost(),c.accumulated(),c.expense(),c.clearing());}
-    private BigDecimal residual(UUID category,BigDecimal value){if(value!=null)return value;if(category!=null){Object v=em.createNativeQuery("SELECT default_salvage_rate FROM finance_asset_categories WHERE id=:id AND is_deleted=false").setParameter("id",category).getSingleResult();if(v!=null)return (BigDecimal)v;}throw validation("salvageRate or an active category residual policy is required");}
-    private Locked lock(String table,UUID id){@SuppressWarnings("unchecked")List<Object[]> rows=em.createNativeQuery("SELECT lifecycle_status,row_version,submitted_by FROM "+table+" WHERE id=:id AND is_deleted=false FOR UPDATE").setParameter("id",id).getResultList();if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"Asset record not found");Object[]r=rows.getFirst();return new Locked(NativeValueConverters.text(r[0]),number(r[1]).longValue(),NativeValueConverters.uuid(r[2]));}
+    private BigDecimal residual(UUID category,BigDecimal value){if(value!=null)return value;if(category!=null){Object v=em.createNativeQuery("SELECT default_salvage_rate FROM finance_asset_categories WHERE id=:id AND is_deleted=false").setParameter("id",category).getSingleResult();if(v!=null)return (BigDecimal)v;}throw validation("请填写残值率，或在生效的资产类别里配置默认残值率");}
+    private Locked lock(String table,UUID id){@SuppressWarnings("unchecked")List<Object[]> rows=em.createNativeQuery("SELECT lifecycle_status,row_version,submitted_by FROM "+table+" WHERE id=:id AND is_deleted=false FOR UPDATE").setParameter("id",id).getResultList();if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"资产记录不存在");Object[]r=rows.getFirst();return new Locked(NativeValueConverters.text(r[0]),number(r[1]).longValue(),NativeValueConverters.uuid(r[2]));}
     private AssetWorkbenchResponses.WorkflowResult result(String table,UUID id,boolean deferred){
         Object[]r=(Object[])em.createNativeQuery("SELECT lifecycle_status,row_version,COALESCE(submitted_by,created_by) FROM "+table+" WHERE id=:id AND is_deleted=false").setParameter("id",id).getSingleResult();
         String s=NativeValueConverters.text(r[0]); UUID maker=NativeValueConverters.uuid(r[2]);
@@ -749,9 +749,9 @@ public class FinanceAssetWorkflowService {
     private void approval(String type,UUID id,String workflow,String action,String comment,UUID actor){Number next=(Number)em.createNativeQuery("SELECT COALESCE(MAX(step_no),0)+1 FROM finance_asset_approval_steps WHERE object_type=:type AND object_id=:id AND workflow_type=:workflow").setParameter("type",type).setParameter("id",id).setParameter("workflow",workflow).getSingleResult();em.createNativeQuery("INSERT INTO finance_asset_approval_steps(object_type,object_id,workflow_type,step_no,action,status,actor_user_id,comment,created_by,updated_by) VALUES(:type,:id,:workflow,:step,:action,'RECORDED',:actor,:comment,:actor,:actor)").setParameter("type",type).setParameter("id",id).setParameter("workflow",workflow).setParameter("step",next.intValue()).setParameter("action",action).setParameter("actor",actor).setParameter("comment",comment).executeUpdate();}
     private void event(String type,UUID id,String event,String title,LocalDate date,String description,Map<String,Object> payload,UUID actor){em.createNativeQuery("INSERT INTO finance_asset_events(object_type,object_id,event_type,title,description,effective_date,payload,actor_user_id,created_by,updated_by) VALUES(:type,:id,:event,:title,:description,:date,CAST(:payload AS jsonb),:actor,:actor,:actor)").setParameter("type",type).setParameter("id",id).setParameter("event",event).setParameter("title",title).setParameter("description",description).setParameter("date",date).setParameter("payload",json(payload)).setParameter("actor",actor).executeUpdate();}
     private String accountSnapshot(Category c){return json(Map.of("categoryId",c.id().toString(),"categoryVersion",c.version(),"method",c.method(),"costStyleId",c.cost().toString(),"expenseStyleId",c.expense().toString(),"clearingStyleId",c.clearing().toString(),"accumulatedStyleId",c.accumulated()==null?"":c.accumulated().toString()));}
-    private String json(Object value){try{return objectMapper.writeValueAsString(value);}catch(JsonProcessingException e){throw new ApiException(ErrorCode.INTERNAL,"Unable to serialize accounting snapshot");}}
-    private static void version(long actual,Long expected){if(expected==null||actual!=expected)throw conflict("expectedVersion is required and must match; refresh and retry");}
-    private static void changed(int count){if(count!=1)throw conflict("Concurrent workflow change; refresh and retry");}
+    private String json(Object value){try{return objectMapper.writeValueAsString(value);}catch(JsonProcessingException e){throw new ApiException(ErrorCode.INTERNAL,"会计数据保存失败，请重试");}}
+    private static void version(long actual,Long expected){if(expected==null||actual!=expected)throw conflict("页面数据不是最新，请刷新后重试");}
+    private static void changed(int count){if(count!=1)throw conflict("这条资产刚被别人处理过，请刷新后重试");}
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
     private static Number number(Object v){return (Number)v;}

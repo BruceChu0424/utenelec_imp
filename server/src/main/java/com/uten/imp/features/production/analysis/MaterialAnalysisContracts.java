@@ -661,6 +661,8 @@ public final class MaterialAnalysisContracts {
             var values=new java.util.LinkedHashMap<String,String>();
             if(remainingQty!=null)values.put("remainingQty",remainingQty.toPlainString());
             if(unitRate!=null)values.put("unitRate",unitRate.toPlainString());
+            if(requestedQty!=null)values.put("requestedQty",requestedQty.toPlainString());
+            if(issuedPlanQty!=null)values.put("issuedPlanQty",issuedPlanQty.toPlainString());
             return java.util.Collections.unmodifiableMap(values);
         }
         public ProductView(
@@ -802,6 +804,17 @@ public final class MaterialAnalysisContracts {
         public AggregatePreparationView { targetMaterialLineIds=List.copyOf(targetMaterialLineIds); }
         @com.fasterxml.jackson.annotation.JsonProperty(value="planningUncoveredQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public String planningUncoveredQtyExact() { return planningUncoveredQty==null?null:planningUncoveredQty.toPlainString(); }
+        @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            var values=new java.util.LinkedHashMap<String,String>();
+            if(requiredQty!=null)values.put("requiredQty",requiredQty.toPlainString());
+            if(orderedQty!=null)values.put("orderedQty",orderedQty.toPlainString());
+            if(allocatedOrderedQty!=null)values.put("allocatedOrderedQty",allocatedOrderedQty.toPlainString());
+            if(totalOrderedQty!=null)values.put("totalOrderedQty",totalOrderedQty.toPlainString());
+            if(planningUncoveredQty!=null)values.put("planningUncoveredQty",planningUncoveredQty.toPlainString());
+            if(netShortageQty!=null)values.put("netShortageQty",netShortageQty.toPlainString());
+            return java.util.Collections.unmodifiableMap(values);
+        }
     }
 
     public record MaterialView(
@@ -980,6 +993,15 @@ public final class MaterialAnalysisContracts {
             if(minOrderQty!=null)values.put("minOrderQty",minOrderQty.toPlainString());
             if(orderMultipleQty!=null)values.put("orderMultipleQty",orderMultipleQty.toPlainString());
             if(mainWarehouseSafetyReplenishmentGapQty!=null)values.put("mainWarehouseSafetyReplenishmentGapQty",mainWarehouseSafetyReplenishmentGapQty.toPlainString());
+            if(sourceRequiredQty!=null)values.put("sourceRequiredQty",sourceRequiredQty.toPlainString());
+            if(requiredQty!=null)values.put("requiredQty",requiredQty.toPlainString());
+            if(planningUncoveredQty!=null)values.put("planningUncoveredQty",planningUncoveredQty.toPlainString());
+            if(netShortageQty!=null)values.put("netShortageQty",netShortageQty.toPlainString());
+            if(demandSupplyGapQty!=null)values.put("demandSupplyGapQty",demandSupplyGapQty.toPlainString());
+            if(preparationAvailableQty!=null)values.put("preparationAvailableQty",preparationAvailableQty.toPlainString());
+            if(mainWarehousePublicAvailableQty!=null)values.put("mainWarehousePublicAvailableQty",mainWarehousePublicAvailableQty.toPlainString());
+            if(sharedFutureClaimableQty!=null)values.put("sharedFutureClaimableQty",sharedFutureClaimableQty.toPlainString());
+            if(preparationSharedAvailableQty!=null)values.put("preparationSharedAvailableQty",preparationSharedAvailableQty.toPlainString());
             return java.util.Collections.unmodifiableMap(values);
         }
         /** 缺 BOM 标记与研发任务编号(只在详情最后一步按库内判定写入)。 */
@@ -1159,6 +1181,15 @@ public final class MaterialAnalysisContracts {
             UUID publicSurplusExternalItemId,
             String operationType,
             UUID claimSourceActionId) {
+        @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            var values=new java.util.LinkedHashMap<String,String>();
+            if(requestedQty!=null)values.put("requestedQty",requestedQty.toPlainString());
+            if(publicSurplusQty!=null)values.put("publicSurplusQty",publicSurplusQty.toPlainString());
+            if(safetyReplenishmentQty!=null)values.put("safetyReplenishmentQty",safetyReplenishmentQty.toPlainString());
+            if(totalRequestedQty!=null)values.put("totalRequestedQty",totalRequestedQty.toPlainString());
+            return java.util.Collections.unmodifiableMap(values);
+        }
     }
 
     public record GenerateResult(

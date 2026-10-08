@@ -1800,10 +1800,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             icon: Icons.undo_outlined,
             onPressed: () => _act(
               productionFinishedInbound
-                  ? '红冲将反向库存与入库累计，并按原实收量重建待点收草稿，确认？'
+                  ? '红冲后，系统会把这次入库的库存和累计数量减回去，并按原来实际收到的数量重新生成待点收草稿。确认红冲？'
                   : materialReturn
-                  ? '撤回后按原凭据恢复车间余料与库存。若已有后续领用，须先处理对应后续业务。确认撤回本次收仓？'
-                  : '红冲将反向冲销库存，确认？',
+                  ? '撤回后，系统会按原来那笔收仓记录恢复车间余料和库存。若这批料已被后面的工单领用，要先处理完那些领用。确认撤回本次收仓？'
+                  : '红冲会把这次入库的库存减回去，确认？',
               () {
                 final repository = ref.read(
                   stockDocRepositoryProvider(widget.docType),

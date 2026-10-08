@@ -1569,7 +1569,7 @@ public class ProductionExecutionReadinessService
             touched.add(demand.id());
         }
         if(receiptUnassigned.values().stream().anyMatch(value->value.signum()!=0))
-            throw conflict("正式供给来源未全部绑定到其真实入库仓领料行，当前备料已回滚");
+            throw conflict("正式供给来源未全部绑定到其真实入库仓领料行，本次备料没有生效");
         if (drawsByWarehouse.isEmpty() && !continuous) {
             throw conflict("执行分段领料单没有任何物料行");
         }
@@ -2670,7 +2670,7 @@ public class ProductionExecutionReadinessService
         if (value instanceof java.sql.Date date) {
             return date.toLocalDate();
         }
-        throw conflict("收货日期类型无效");
+        throw conflict("收货日期格式不正确");
     }
 
     private static UUID uuid(Object value) {

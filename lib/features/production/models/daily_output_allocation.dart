@@ -210,7 +210,7 @@ List<OutputAllocationRowPlan> planOutputAllocations(
         const OutputAllocationRowPlan(
           lines: [],
           roomBase: {},
-          issue: '转送数量缺少可核实的精确分配，请重新读取来源；原输入已保留',
+          issue: '转送数量对不上原来的分配，请重新读取来源；原输入已保留',
         ),
     ];
   }

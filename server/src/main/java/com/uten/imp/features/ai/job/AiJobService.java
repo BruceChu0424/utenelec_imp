@@ -266,14 +266,14 @@ public class AiJobService {
             return safe;
         }
         if (params.size() > MAX_PARAMS) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别参数太多");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别的附加设置太多");
         }
         for (Map.Entry<String, String> entry : params.entrySet()) {
             String key = entry.getKey();
             String value = entry.getValue() == null ? "" : entry.getValue();
             if (key == null || !PARAM_KEY.matcher(key).matches() || value.length() > MAX_PARAM_VALUE
                     || value.chars().anyMatch(Character::isISOControl)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别参数不对");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别的附加设置不正确");
             }
             safe.put(key, value);
         }
@@ -296,7 +296,7 @@ public class AiJobService {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (IOException e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别参数不对");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别的附加设置不正确");
         }
     }
 

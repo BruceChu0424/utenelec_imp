@@ -910,7 +910,7 @@ void main() {
       ..pages[1] = [_task('a', docStatus: '1')]
       ..onBatch = (_) => throw ApiException(
         'VALIDATION_FAILED',
-        '参数校验失败',
+        '填写的内容有误',
         fieldErrors: const [
           ApiFieldError(field: 'docIds', message: '一次最多批量出库 50 张领料单'),
         ],
@@ -925,7 +925,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('一次最多批量出库 50 张领料单'), findsOneWidget);
-    expect(find.text('参数校验失败'), findsNothing);
+    expect(find.text('填写的内容有误'), findsNothing);
   });
 
   testWidgets('reload prunes selected documents that are no longer open', (

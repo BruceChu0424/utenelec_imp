@@ -15,6 +15,7 @@ import '../../features/admin/pages/admin_audit_session_detail_page.dart';
 import '../../features/admin/models/audit_session.dart';
 import '../../features/admin/pages/admin_ai_settings_page.dart';
 import '../../features/admin/pages/admin_ai_usage_page.dart';
+import '../../features/admin/pages/admin_ai_usage_records_page.dart';
 import '../../features/admin/pages/admin_ai_usage_person_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
@@ -1975,6 +1976,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, state) => AdminAiUsagePersonPage(
               userId: state.pathParameters['userId'] ?? '',
             ),
+          ),
+          // AI 使用记录与费用: 独立路径避免被 :userId 人参路由吃掉。
+          DraftAwareGoRoute(
+            path: RouteName.adminAiUsageRecords,
+            name: 'admin-ai-usage-records',
+            builder: (_, _) => const AdminAiUsageRecordsPage(),
           ),
         ],
       ),

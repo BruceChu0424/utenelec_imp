@@ -136,7 +136,7 @@ public class GoodsMasterRelationshipResolver {
         if (id == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "当前关联必须提供主档 UUID；legacy_id 仅保留为历史快照");
+                    "选择货品时请从列表重新选择，旧系统编号只保留作历史记录");
         }
         return id;
     }

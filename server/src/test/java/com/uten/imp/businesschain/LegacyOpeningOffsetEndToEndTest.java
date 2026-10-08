@@ -215,7 +215,7 @@ class LegacyOpeningOffsetEndToEndTest {
         UUID source=jdbc.queryForObject("SELECT id FROM ar_ap_ledger WHERE source_doc_type='DIRECT_RECEIPT' AND source_doc_id=?",UUID.class,receipt);
         assertThatThrownBy(()->customerOffsets.apply(new CustomerPrepaymentContracts.ApplyRequest("opening-no-order-"+UUID.randomUUID(),source,
                 List.of(new CustomerPrepaymentContracts.Target(target,UUID.randomUUID(),new BigDecimal("4"))),"Order evidence must exist")))
-                .isInstanceOf(ApiException.class).hasMessageContaining("销售单 UUID 来源");
+                .isInstanceOf(ApiException.class).hasMessageContaining("销售单来源");
         assertBalance(target,"17");assertBalance(source,"-4");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM customer_open_item_offsets WHERE target_ledger_id=?",Integer.class,target)).isZero();
     }

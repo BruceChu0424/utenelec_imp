@@ -92,7 +92,7 @@ public class ProductionPlanningRequestValidator {
                 || request.getPreviewFingerprint() == null
                 || !request.getPreviewFingerprint()
                         .matches("(?i)[0-9a-f]{64}")) {
-            throw validation("预排草案缺少仓库、幂等键或有效预览指纹");
+            throw validation("预排草案缺少仓库、防重复提交标识或有效预览指纹");
         }
         if (request.getItems() != null && !request.getItems().isEmpty()) {
             throw conflict("items 是旧自制子计划字段，不能用于执行分段预排");

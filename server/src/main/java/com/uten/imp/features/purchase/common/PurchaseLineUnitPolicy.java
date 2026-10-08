@@ -55,7 +55,7 @@ public class PurchaseLineUnitPolicy {
                 || Boolean.TRUE.equals(goodsRows.getFirst()[2])) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    prefix(lineNo) + "货品不存在、已删除或未维护有效基本单位");
+                    prefix(lineNo) + "货品不存在、已删除，或还没有设置有效的基本单位");
         }
 
         UUID baseUnitId = (UUID) goodsRows.getFirst()[1];

@@ -281,7 +281,7 @@ class _QualityBatchApprovalPageState
             .where((item) => item.id == widget.draftId)
             .firstOrNull;
         if (draft == null) {
-          throw StateError('草稿不存在或无恢复权限');
+          throw StateError('没有找到这份草稿，或当前账号无权打开');
         }
         final selected = draftMap(draft.data['selection']);
         final fqc = ref.read(productionFqcRepositoryProvider);
@@ -305,7 +305,11 @@ class _QualityBatchApprovalPageState
     } catch (error) {
       if (mounted) {
         setState(() {
-          _draftLoadError = '$error';
+          _draftLoadError = switch (error) {
+            final ApiException e => e.message,
+            final StateError e => e.message,
+            _ => '$error',
+          };
           _loading = false;
         });
       }
@@ -669,7 +673,7 @@ class _QualityBatchApprovalPageState
     }
     final buffer = StringBuffer(
       '已确认 ${submission.completedReceiptCount}/${submission.receipts.length} 单'
-      '(按报告顺序逐单提交，每单一事务)',
+      '(按报告顺序一单一单提交，一张失败不影响其他单)',
     );
     if (submission.fqcInspectionIds.isNotEmpty) {
       buffer.write('，另含自制产成品 ${submission.fqcInspectionIds.length} 项');

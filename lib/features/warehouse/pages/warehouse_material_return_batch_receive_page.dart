@@ -84,10 +84,10 @@ class _WarehouseMaterialReturnBatchReceivePageState
       });
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = '退料单读取失败：${e.message}');
-    } catch (e) {
+      setState(() => _error = '退料单没有加载出来：${e.message}');
+    } catch (_) {
       if (!mounted) return;
-      setState(() => _error = '退料单读取失败：$e');
+      setState(() => _error = '退料单没有加载出来，请稍后重试');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -146,11 +146,11 @@ class _WarehouseMaterialReturnBatchReceivePageState
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      context.appError('${e.message}（已完成部分保留，重试只补未收的单）');
+      context.appError('${e.message}（已收成功的都保留了，重试只会补收还没收的单）');
       await _load();
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      context.appError('批量收料中断：$e');
+      context.appError('批量收料中断，已收成功的都保留了；请稍后重试，重试只会补收还没收的单');
       await _load();
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -263,7 +263,7 @@ class _WarehouseMaterialReturnBatchReceivePageState
                                     errorMessage:
                                         detail.materialReturnMainWarehouseId ==
                                             null
-                                        ? '来源主仓尚未读取，请刷新'
+                                        ? '来源主仓还没读到，请刷新'
                                         : allowed.isEmpty
                                         ? '此主仓下暂无有效正常收料仓库'
                                         : null,

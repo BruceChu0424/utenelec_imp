@@ -159,11 +159,11 @@ class _CustomerPrepaymentApplyPanelState
     var total = BigInt.zero;
     for (final target in _targets) {
       if (_targetOrderId(target) == null) {
-        return '${target.appliedBillNo ?? '该应收'}缺少唯一销售订单 UUID';
+        return '${target.appliedBillNo ?? '该应收'}没有对应到唯一的销售订单，请财务核对';
       }
       final units = financeAmountUnits(target.receiptAmountText);
       if (units == null || units <= BigInt.zero) {
-        return '${target.appliedBillNo ?? '该应收'}的应用金额无效';
+        return '${target.appliedBillNo ?? '该应收'}的应用金额填写得不对，请重新填写';
       }
       total += units;
     }

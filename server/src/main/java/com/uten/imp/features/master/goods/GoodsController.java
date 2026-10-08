@@ -131,7 +131,7 @@ public class GoodsController {
         if (ids == null || ids.isEmpty() || ids.size() > RequestLimits.LOOKUP_IDS) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "货品 ID 数量必须为 1-" + RequestLimits.LOOKUP_IDS);
+                    "一次最多查询 " + RequestLimits.LOOKUP_IDS + " 个货品");
         }
         return service.lookup(ids);
     }

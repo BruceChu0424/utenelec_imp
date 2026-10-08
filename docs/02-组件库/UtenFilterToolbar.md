@@ -9,6 +9,11 @@
 > 2026-09-11 立的两形态口径由 [ADR-100](../99-决策记录-ADR/ADR-100-进行中黄色数量徽章与三形态计数口径.md) 扩充;
 > 同日补记 `UtenFilterSegment.inProgressCount`: 双维度页大类行并排两枚、黄左红右)
 > 相关：[UtenSearchBar](UtenSearchBar.md) · [UtenHistoryTimeFilter](UtenHistoryTimeFilter.md) · UtenSegmentBadgeLabel（`components/feedback/`）
+> 更新：2026-10-07（用户口径「搜索栏高度和分类栏一样、长度缩小一半」：默认
+> `searchWidth` 360 → **180**。高度根因修复——InputDecorator 的药丸描边只按
+> 内容高绘制、不吃外部 minHeight，compact 密度空框实测药丸 33 vs 分段 40；两侧
+> 共用下限令牌 `UtenFilterRow.minHeight`(36)（分段 `minCellHeight` 默认值与搜索
+> 图标约束同源）后恒同高。工具条外手摆宽度的 6 处页面级搜索框同步减半）
 
 ## 一、定位
 
@@ -16,8 +21,10 @@
 自成一套的分段样式：
 
 - **分段导航**：M3 胶囊 StadiumBorder、**选中只变背景色不出 ✓ 图标**，
-  与搜索框**结构化严格同高**（宽屏字段组内 `IntrinsicHeight + stretch`，两者按内容高度拉齐；
-  密度/字号档变化下恒成立——visualDensity 对两侧折减不一致，不能靠各自设高度）；
+  与搜索框**严格同高**：两侧描边共用下限令牌 `UtenFilterRow.minHeight`(36)，
+  高度恒等于 `max(36, 文本内容高)`，密度/字号档变化下恒成立（机制见
+  [UtenSearchBar](UtenSearchBar.md)——InputDecorator 描边不吃外部 minHeight，
+  不能靠 stretch 单侧拉齐）；
 - **分段计数**：分段可挂数量(`count`)，呈现有**三种形态**
   （`UtenFilterSegment.countForm` → `UtenSegmentBadgeLabel`，见 §三）：
   **默认中性括号 `(N)`**（浏览型，0 显示 `(0)` 保持队形，`> 999` 显 `999+`）；
@@ -31,8 +38,10 @@
   只在一个大类里**同时**装着「等我动手」和「在办中」两批活时才传；该传不传的后果是大类行
   只显红数、点进去的小类行却有黄数，「大类 = 各小类之和」当场对不上(见 §三)。两枚各自
   遵守 0 与 null 不渲染；小屏收成「分类」下拉时两枚的总量也已自动合并，不必另行接线；
-- **搜索框**：全平台唯一组件 `UtenSearchBar`（胶囊 + 清除 + 300ms 防抖），
-  `searchHint` 不传且无 controller 时不渲染（纯分类工具条）；
+- **搜索框**：全平台唯一组件 `UtenSearchBar`（胶囊 + 清除 + 300ms 防抖，药丸
+  描边与分类栏共用 36 下限恒同高（2026-10-07 二次口径「两条都小点」：40 → 36，搜索框竖向内边距 10 → 6）），宽屏默认宽 **180**（2026-10-07 用户口径
+  「长度缩小一半」，原 360），`searchHint` 不传且无 controller 时不渲染
+  （纯分类工具条）；
 - **响应式**：宽屏一行 `分段 | 搜索 | 弹性 | trailing`；窄屏（默认 < 840）分段
   **放得下照常显示、放不下自动收成一颗「分类」下拉按钮**（2026-09-14 起小屏不再
   左右拖分类）+ 搜索换行。
@@ -185,8 +194,11 @@ UtenFilterSegment(
 分类较短时，空白留在搜索和行尾之间，动作仍贴页面右侧（此前裸 `trailing` 会让 `Wrap` 拿到
 无界宽度，840~1000px 宽度带出现溢出）。
 
-`UtenSearchBar` 高度由内容与主题密度决定；分类和搜索作为独立字段组，通过
-`IntrinsicHeight + stretch` 同高。**行尾不参与字段组的高度计算**：44px 动作按钮或多行
+`UtenSearchBar` 药丸描边高度 = `max(前后缀图标约束高, contentPadding + 文本行高)`
+（InputDecorator 只按内容高绘制、不吃外部 minHeight——外部约束拉高的只是盒子，
+描边居中浮在盒里）；图标约束下限与分段 `minCellHeight` 同源取
+`UtenFilterRow.minHeight`(36)，两侧描边恒相等，宽屏字段组内 `IntrinsicHeight +
+stretch` 同高兜底。**行尾不参与字段组的高度计算**：44px 动作按钮或多行
 `Wrap` 只增加工具条整体高度，不能把分类描边撑厚，分类和搜索在整条工具条内垂直居中。
 行尾筛选字段（`UtenFilterPickerField`）按同一口径算内边距，表单下拉传紧凑
 `contentPadding`（2026-09-10 回退过「搜索框强拉 48」；2026-09-23 修复行尾撑高分类）。

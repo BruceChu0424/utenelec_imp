@@ -133,7 +133,7 @@ public class PermissionSurfaceRegistry {
 
     private Surface require(String surfaceKey) {
         if (surfaceKey == null || surfaceKey.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "surfaceKey 不能为空");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "页面权限范围不能为空");
         }
         Surface surface = surfaces.get(surfaceKey);
         if (surface == null) {

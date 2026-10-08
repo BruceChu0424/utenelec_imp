@@ -64,7 +64,7 @@ public class ProductionMaterialIncrementService {
                 request.expectedDemandVersion().toString(),quantity.stripTrailingZeros().toPlainString(),reason));
         commandLock("SUBMIT",actor,key);
         List<Object[]> replay=rows("SELECT id,request_hash FROM production_material_increment_requests WHERE submitted_by=:actor AND idempotency_key=:key",actor,key);
-        if(!replay.isEmpty()) {if(!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一份补料申请");return detail((UUID)replay.getFirst()[0]);}
+        if(!replay.isEmpty()) {if(!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一份补料申请，请刷新后重试");return detail((UUID)replay.getFirst()[0]);}
         Segment discovered=segment(request.targetSegmentId(),false);
         if(!canRequest(discovered))throw forbidden("无权为此车间申请实际补料");
         var footprint=footprints.beginPlan(discovered.planId(),List.of());
@@ -102,7 +102,7 @@ public class ProductionMaterialIncrementService {
         String hash=CanonicalFingerprint.sha256(List.of("MATERIAL-INCREMENT-DECIDE-V1",id.toString(),decision,request.expectedVersion().toString(),Objects.toString(reason,"")));
         commandLock("DECISION",actor,key);
         List<Object[]> replay=rows("SELECT request_id,request_hash FROM production_material_increment_decisions WHERE decided_by=:actor AND idempotency_key=:key",actor,key);
-        if(!replay.isEmpty()) {if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一项补料审批");return detail(id);}
+        if(!replay.isEmpty()) {if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项补料审批，请刷新后重试");return detail(id);}
         RequestView discovered=detail(id);
         var footprint=footprints.beginPlan(discovered.planId(),List.of());
         Segment segment=segment(discovered.targetSegmentId(),true);
@@ -127,7 +127,7 @@ public class ProductionMaterialIncrementService {
 
     public PageResponse<RequestView> list(String status,int page,int size) {
         requirePermission(APPROVE_PERMISSION);String filter=status==null?"PENDING":status.strip().toUpperCase(Locale.ROOT);
-        if(!Set.of("PENDING","APPROVED","RETURNED","CANCELLED","ALL").contains(filter))throw validation("补料申请状态无效");
+        if(!Set.of("PENDING","APPROVED","RETURNED","CANCELLED","ALL").contains(filter))throw validation("补料申请状态不正确");
         String predicate="ALL".equals(filter)?"TRUE":"(CASE WHEN EXISTS(SELECT 1 FROM production_material_increment_reversals reversed WHERE reversed.request_id=request.id) THEN 'CANCELLED' ELSE request.status END)=:status";
         var count=em.createNativeQuery("SELECT count(*) FROM production_material_increment_requests request WHERE "+predicate);
         if(!"ALL".equals(filter))count.setParameter("status",filter);
@@ -150,7 +150,7 @@ public class ProductionMaterialIncrementService {
         String hash=CanonicalFingerprint.sha256(List.of("MATERIAL-INCREMENT-CANCEL-V1",id.toString(),request.expectedVersion().toString(),reason));
         commandLock("CANCEL",actor,key);
         List<Object[]> replay=rows("SELECT request_id,request_hash FROM production_material_increment_reversals WHERE created_by=:actor AND idempotency_key=:key",actor,key);
-        if(!replay.isEmpty()){if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一项撤销授权");return detail(id);}
+        if(!replay.isEmpty()){if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项撤销授权，请刷新后重试");return detail(id);}
         RequestView discovered=detail(id);var footprint=footprints.beginPlan(discovered.planId(),List.of());
         segment(discovered.targetSegmentId(),true);
         em.createNativeQuery("SELECT id FROM production_material_increment_requests WHERE id=:id FOR UPDATE").setParameter("id",id).getResultList();
@@ -262,7 +262,7 @@ public class ProductionMaterialIncrementService {
     private JsonNode json(Object value){try{return mapper.readTree(value.toString());}catch(java.io.IOException error){throw new IllegalStateException("补料快照损坏",error);}}
     private static void putUuid(ObjectNode node,String key,UUID value){if(value==null)node.putNull(key);else node.put(key,value.toString());}
     static BigDecimal quantity(BigDecimal value){if(value==null||value.signum()<=0||value.stripTrailingZeros().scale()>4||value.compareTo(new BigDecimal("100000000000000"))>=0)throw validation("补料数量必须大于0且最多四位小数");return value;}
-    static String key(String value){if(value==null||!value.strip().matches("[A-Za-z0-9._:-]{8,128}"))throw validation("幂等键格式无效");return value.strip();}
+    static String key(String value){if(value==null||!value.strip().matches("[A-Za-z0-9._:-]{8,128}"))throw validation("防重复提交标识格式不正确");return value.strip();}
     static String reason(String value,boolean required){String text=value==null?null:value.strip();if((required&&(text==null||text.length()<2))||(text!=null&&text.length()>500))throw validation("请填写2至500字的原因");return text==null||text.isEmpty()?null:text;}
     private static BigDecimal decimal(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}

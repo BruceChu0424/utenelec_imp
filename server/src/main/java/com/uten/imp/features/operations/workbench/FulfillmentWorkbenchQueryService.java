@@ -250,7 +250,7 @@ public class FulfillmentWorkbenchQueryService {
             LocalDate dateFrom, LocalDate dateTo, int page, int size,
             FulfillmentWorkbenchTableQuery table, WarehouseTaskScope warehouseScope) {
         if (!DEPARTMENTS.contains(department)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
@@ -589,7 +589,7 @@ public class FulfillmentWorkbenchQueryService {
     @Transactional(readOnly = true)
     public long countPending(String department, WarehouseTaskScope warehouseScope) {
         if (!DEPARTMENTS.contains(department)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
         if ("WAREHOUSE".equals(department)
                 && !accessPolicy.canAccessWarehouseTasks()) {
@@ -663,7 +663,7 @@ public class FulfillmentWorkbenchQueryService {
     @Transactional(readOnly = true)
     public long countInProgress(String department) {
         if (!DEPARTMENTS.contains(department)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "工作台部门不正确");
         }
         if (!usesDecompositionProjection(department)) {
             return 0;

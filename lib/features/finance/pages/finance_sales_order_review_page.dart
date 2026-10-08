@@ -181,7 +181,7 @@ class _FinanceSalesOrderReviewPageState
     final reviewed = _review;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady || reviewed == null || _busy) {
-      context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
+      context.appWarning('审核认领还没有生效，请重新认领并核对内容');
       return;
     }
     final controller = TextEditingController();
@@ -243,7 +243,7 @@ class _FinanceSalesOrderReviewPageState
           generation != _loadGeneration ||
           !identical(reviewed, _review)) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核内容或占用已变化，请重新认领并核对');
+          context.appWarning(claim.failureMessage ?? '审核内容或认领已变化，请重新认领并核对');
         }
         return;
       }
@@ -321,7 +321,7 @@ class _FinanceSalesOrderReviewPageState
     final reviewed = _review;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady || reviewed == null || _busy) {
-      context.appWarning('尚未取得有效审核占用，请重新认领并核对内容');
+      context.appWarning('审核认领还没有生效，请重新认领并核对内容');
       return;
     }
     final controller = TextEditingController();
@@ -397,7 +397,7 @@ class _FinanceSalesOrderReviewPageState
           generation != _loadGeneration ||
           !identical(reviewed, _review)) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核内容或占用已变化，请重新认领并核对');
+          context.appWarning(claim.failureMessage ?? '审核内容或认领已变化，请重新认领并核对');
         }
         return;
       }

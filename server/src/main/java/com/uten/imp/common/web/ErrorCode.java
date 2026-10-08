@@ -27,7 +27,7 @@ public enum ErrorCode {
     DAILY_REPORT_LEGACY_APPROVAL_RECEIPT(409, "原审核按旧规则登记，请先核对原回执；所见版本未被验证"),
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量异常，等待财务审核组处理"),
     SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED(409, "到货数量明显少于订货量，需仓库确认后登记并通知委外判定"),
-    VALIDATION_FAILED(422, "参数校验失败"),
+    VALIDATION_FAILED(422, "填写的内容有误"),
     PASSWORD_TOO_WEAK(422, "密码强度不足"),
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),
     RATE_LIMITED(429, "请求过于频繁，请稍后再试"),

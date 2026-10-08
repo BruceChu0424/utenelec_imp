@@ -143,7 +143,7 @@ public class PreplanMakePublicSupplyService {
         String hash=CanonicalFingerprint.sha256(List.of(analysisId.toString(),materialId.toString(),planItemId.toString(),qty.stripTrailingZeros().toPlainString()));
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT id,request_hash FROM preplan_make_public_claims WHERE target_analysis_id=:analysis AND idempotency_key=:key")
                 .setParameter("analysis",analysisId).setParameter("key",key));
-        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()[1]))throw conflict("相同幂等键不能用于不同自制供给采用意图");return (UUID)replay.getFirst()[0];}
+        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于不同内容的自制供给采用，请刷新后重试");return (UUID)replay.getFirst()[0];}
         return (UUID)em.createNativeQuery("""
                 INSERT INTO preplan_make_public_claims(source_plan_item_id,target_analysis_id,target_material_id,qty,idempotency_key,request_hash,created_by)
                 VALUES(:source,:analysis,:material,:qty,:key,:hash,:actor) RETURNING id
@@ -158,7 +158,7 @@ public class PreplanMakePublicSupplyService {
         String hash=CanonicalFingerprint.sha256(List.of(claimId.toString(),request.qty().stripTrailingZeros().toPlainString(),request.reason()));
         List<?> replay=em.createNativeQuery("SELECT request_hash FROM preplan_make_public_claim_cancellations WHERE claim_id=:id AND idempotency_key=:key")
                 .setParameter("id",claimId).setParameter("key",request.idempotencyKey()).getResultList();
-        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("相同幂等键不能用于不同撤回意图");return;}
+        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("同一防重复提交标识已用于不同内容的撤回，请刷新后重试");return;}
         BigDecimal pending=decimal(em.createNativeQuery("SELECT fn_preplan_make_public_claim_pending_qty(:id)").setParameter("id",claimId).getSingleResult());
         if(request.qty().compareTo(pending)>0)throw conflict("只能撤回尚未实收的自制供给采用量");
         em.createNativeQuery("""

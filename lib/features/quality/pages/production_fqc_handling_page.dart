@@ -224,7 +224,7 @@ class FqcReportRow {
     submissionMessage = null;
     try {
       if (idempotencyKey.trim().isEmpty) {
-        throw StateError('旧草稿缺少原提交标识，请保留草稿并联系管理员核对');
+        throw StateError('旧草稿里找不到上次提交的编号，请保留草稿并联系管理员核对');
       }
       final value = command;
       final result = await guard(
@@ -261,7 +261,7 @@ class FqcReportRow {
       );
       if (result.decisionEventId.isEmpty ||
           result.inspection.id != inspection.id) {
-        throw StateError('服务器回执不完整');
+        throw StateError('服务器返回的结果不完整，无法确认本次是否成功');
       }
       completed = true;
       selected = false;

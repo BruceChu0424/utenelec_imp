@@ -179,7 +179,7 @@ class SalesQuoteTemplateServiceTest {
                 .hasMessageContaining("报价已被修改");
         verifyNoInteractions(templates,audit);
         assertThatThrownBy(() -> export(new SalesQuoteTemplateService.ExportRequest(List.of(),false,null,null,8,Map.of(UUID.randomUUID(),1))))
-                .hasMessageContaining("版本选择无效");
+                .hasMessageContaining("版本选择不正确");
         verifyNoInteractions(audit);
     }
 
@@ -189,7 +189,7 @@ class SalesQuoteTemplateServiceTest {
                 .hasMessageContaining("缺少报价版本");
         UUID id=UUID.randomUUID(); when(templates.list(clientId)).thenReturn(List.of(view(id)));
         assertThatThrownBy(() -> service.export(quoteId,new SalesQuoteTemplateService.ExportRequest(List.of(id),false,null,null,0,null)))
-                .hasMessageContaining("版本选择无效");
+                .hasMessageContaining("版本选择不正确");
         verify(templates,never()).load(any(),any(),anyInt());
         verifyNoInteractions(audit);
     }

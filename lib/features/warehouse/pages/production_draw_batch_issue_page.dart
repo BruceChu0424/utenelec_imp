@@ -183,7 +183,7 @@ class _ProductionDrawBatchIssuePageState
     _showValidation = false;
     await _load();
     if (_error != null || _documents == null) {
-      throw StateError(_error ?? '最新领料单据未能读取');
+      throw StateError(_error ?? '最新领料单据没有加载出来');
     }
   }
 
@@ -315,7 +315,7 @@ class _ProductionDrawBatchIssuePageState
         Map<String, dynamic>.from(value),
       );
       if (!_receiptConfirmsBatch(restoredResult)) {
-        throw const FormatException('旧草稿回执不完整，请保留原提交并核对');
+        throw const FormatException('旧草稿里上次提交的结果不完整，请保留并核对上次的提交');
       }
       _uncertain = false;
     }
@@ -330,7 +330,7 @@ class _ProductionDrawBatchIssuePageState
       ]);
       if (_requestKey?.trim().isNotEmpty != true ||
           submittedSelection != _selection) {
-        throw const FormatException('旧草稿缺少原提交标识或批次不一致，请保留草稿并核对原提交');
+        throw const FormatException('旧草稿里找不到上次提交的编号，或本次勾选和上次不一致；请保留草稿并核对上次的提交');
       }
     }
     _nextDiscoveryRow = (data['nextRow'] as num?)?.toInt() ?? 0;
@@ -550,7 +550,9 @@ class _ProductionDrawBatchIssuePageState
     // The server's actor/key receipt is authoritative. Old detail status and a
     // later GET cannot prove this original batch committed or still needs approve.
     if (_uncertain) {
-      return formDraftCanReplaySubmission ? null : '旧草稿缺少原提交标识，请保留草稿并核对原提交';
+      return formDraftCanReplaySubmission
+          ? null
+          : '旧草稿里找不到上次提交的编号，请保留草稿并核对上次的提交';
     }
     if (_documents!.any((document) => document.status == -1)) {
       return '所选单据已红冲，请返回刷新后重新选择';
@@ -792,7 +794,9 @@ class _ProductionDrawBatchIssuePageState
                 reason: _submittedReason,
               );
       }, isDefiniteRejection: rejects);
-      if (!_receiptConfirmsBatch(result)) throw StateError('服务器回执不完整');
+      if (!_receiptConfirmsBatch(result)) {
+        throw StateError('服务器返回的结果不完整，无法确认本次是否成功');
+      }
       // Freeze business success before any local checkpoint, notification or
       // navigation. Those later failures must never turn into another POST.
       _confirmedResult = result;

@@ -138,7 +138,7 @@ void main() {
     await first;
     final second = cache.ensure([failing]);
     repository.replies.last.completeError(
-      ApiException('VALIDATION_FAILED', '参数校验失败', httpStatus: 422),
+      ApiException('VALIDATION_FAILED', '填写的内容有误', httpStatus: 422),
     );
     await second;
     expect(cache.hasFailed, isTrue);

@@ -16,7 +16,6 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -43,6 +42,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
@@ -60,6 +60,8 @@ import '../../employee/repositories/employee_picker_candidates.dart';
 import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_quantity_apportionment.dart';
+import '../models/material_quantity_presentation.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../models/material_future_transfer.dart';
 import '../models/material_aggregate_order.dart';
 import '../models/material_preparation_draft_budget.dart';
@@ -547,6 +549,10 @@ abstract class _MaterialAnalysisPageBase
   /// 只是展示投影：勾选与下达仍落到各自的逐路径节点任务，不合并任务身份。
   bool _bomAggregateByMaterial = false;
   final Set<String> _expandedMaterialAggregates = {};
+
+  /// 汇总视图 materialLineId → 所属聚合组（路径行取组内整分份额用）。
+  /// 仅在按物料汇总投影构建时填充；产品视图恒为空。
+  final Map<String, _MaterialAggregate> _aggregateByLineId = {};
   String _bomKeyword = '';
   List<String> _priorityDraft = [];
   List<String> _priorityBaseline = [];
@@ -667,7 +673,7 @@ abstract class _MaterialAnalysisPageBase
     // 蒙版 + 屏幕正中卡片；蒙版色贴近页面背景，见组件注释）。
     final title = _planSubmissionApproveNow ? '正在生成并审核下达' : '正在生成生产计划';
     final description = _planSubmissionApproveNow
-        ? '系统正在同一事务内创建子件任务、生成计划、审核下达并按需生成提货单。'
+        ? '系统正在一次性创建子件任务、生成计划、审核下达并按需生成提货单，中途不会只做一半。'
         : '系统正在创建计划草稿并提交审批。';
     return UtenBusyOverlay(
       semanticsKey: const Key('material-analysis-plan-submission-progress'),
@@ -681,7 +687,7 @@ abstract class _MaterialAnalysisPageBase
   String _actionBusyDescription(String message) =>
       message.startsWith('正在取消') || message.startsWith('正在撤回')
       ? '收到服务端结果后自动按最新事实刷新分析。'
-      : '同一事务内批量处理所选行，完成后自动刷新。';
+      : '所选行会一起处理，全部成功才算完成，完成后自动刷新。';
 
   bool get _canAdjustPriorities =>
       _canReallocate &&
@@ -1444,7 +1450,7 @@ abstract class _MaterialAnalysisPageBase
     if (!_isAnalysisConflict(error) || !mounted) return false;
     final analysisId = _analysis?.analysisId ?? widget.seed.analysisId;
     if (analysisId == null) return false;
-    final original = productionErrorMessage(error, fallback: '请求冲突');
+    final original = productionErrorMessage(error, fallback: '别人刚改过这条数据');
     try {
       final latest = await _readMaterialAnalysisDetail(analysisId);
       if (!mounted) return true;
@@ -1735,7 +1741,7 @@ abstract class _MaterialAnalysisPageBase
     if (parent != null && parent.isNotEmpty && !_looksLikeUuid(parent)) {
       return '$parent → ${material.goodsName ?? material.goodsCode ?? '当前物料'}';
     }
-    return '父项待解析';
+    return '父项信息还没读到';
   }
 
   bool _looksLikeUuid(String value) => RegExp(
@@ -2716,6 +2722,9 @@ class _ProductionMaterialAnalysisPageState
 
   @override
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view) {
+    String exactFacts(Map<String, String> values) => jsonEncode([
+      for (final key in (values.keys.toList()..sort())) [key, values[key]],
+    ]);
     final parts = <String>[
       view.status ?? '',
       // 货品档案改了供应方式时版本不变，但能自动确认的行变了：要套用才会静默刷新。
@@ -2734,6 +2743,7 @@ class _ProductionMaterialAnalysisPageState
       parts.add(
         <Object?>[
           product.analysisLineId,
+          exactFacts(product.quantityFactsExact),
           product.submittedQty,
           product.approvedQty,
           product.remainingQty,
@@ -2764,6 +2774,10 @@ class _ProductionMaterialAnalysisPageState
       parts.add(
         <Object?>[
           material.materialLineId,
+          exactFacts(material.quantityFactsExact),
+          exactFacts(
+            material.aggregatePreparation?.quantityFactsExact ?? const {},
+          ),
           material.owningWarehouseId,
           material.owningWarehouseName,
           material.owningWorkshopId,
@@ -2841,10 +2855,12 @@ class _ProductionMaterialAnalysisPageState
       parts.add(
         <Object?>[
           action.actionId,
+          exactFacts(action.quantityFactsExact),
           action.actionGroupKey,
           action.generation,
           action.status,
           action.requestedQty,
+          action.publicSurplusQty,
           action.safetyReplenishmentQty,
           action.totalRequestedQty,
           action.safetyStockSnapshotQty,

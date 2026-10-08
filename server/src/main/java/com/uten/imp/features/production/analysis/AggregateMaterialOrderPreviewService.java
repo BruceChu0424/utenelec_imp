@@ -162,7 +162,7 @@ public class AggregateMaterialOrderPreviewService {
             Map<UUID,BigDecimal> rateDefaults,Map<UUID,BigDecimal> makeBudget,Map<String,BigDecimal> externalBudget,Map<UUID,java.util.LinkedHashSet<UUID>> originalScope,Map<UUID,BigDecimal> requestedPrivateCaps,Map<UUID,MaterialView> originalMaterials) {
         MaterialView first=members.getFirst();
         String reason=null;
-        if(!Set.of("BUY","MAKE","SUBCONTRACT").contains(Objects.toString(input.route(),"")))throw invalid("汇总供应方式无效");
+        if(!Set.of("BUY","MAKE","SUBCONTRACT").contains(Objects.toString(input.route(),"")))throw invalid("汇总供应方式不正确");
         List<String> recipe=recipe(first,children);
         for(MaterialView member:members) {
             if(member.level()==0)throw invalid("顶层产品请按产品办理，保留原产品及销售订单来源；物料汇总只办理组件");
@@ -185,7 +185,7 @@ public class AggregateMaterialOrderPreviewService {
         }
         BigDecimal rate=manufacture?(input.allowedOverproductionRate()==null
                 ?defaultOverproductionRate(rateDefaults,first.goodsId()):input.allowedOverproductionRate()):null;
-        if(rate!=null&&(rate.signum()<0||rate.compareTo(new BigDecimal("1000"))>=0||rate.stripTrailingZeros().scale()>6))throw invalid("允许超产比例无效");
+        if(rate!=null&&(rate.signum()<0||rate.compareTo(new BigDecimal("1000"))>=0||rate.stripTrailingZeros().scale()>6))throw invalid("允许超产比例不正确");
         List<AggregateQuantityAllocator.SourceCapacity> capacities=new ArrayList<>();
         Map<UUID,BigDecimal> ordered=new LinkedHashMap<>();
         Map<UUID,BigDecimal> remainingBySource=new HashMap<>();

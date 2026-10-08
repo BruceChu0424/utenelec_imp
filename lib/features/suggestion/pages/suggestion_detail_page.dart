@@ -18,6 +18,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/suggestion.dart';
 import '../providers/suggestion_providers.dart';
@@ -35,7 +36,7 @@ class SuggestionDetailPage extends ConsumerWidget {
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => UtenEmpty.error(
-          message: '加载失败：$e',
+          message: humanErrorMessage(e) ?? '建议加载失败，请稍后重试',
           onAction: () =>
               ref.invalidate(suggestionDetailProvider(suggestionId)),
         ),

@@ -119,7 +119,7 @@ public class FinanceAssetLedgerPostingService {
                 .setParameter("id", voucherId)
                 .executeUpdate();
         if (posted != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "Asset voucher draft could not be finalized");
+            throw new ApiException(ErrorCode.CONFLICT, "资产凭证草稿没有完成生效，请刷新后重试");
         }
         return voucherId;
     }
@@ -147,7 +147,7 @@ public class FinanceAssetLedgerPostingService {
                 .setParameter("voucher", originalVoucherId)
                 .getResultList();
         if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "Original voucher has no active entries");
+            throw new ApiException(ErrorCode.NOT_FOUND, "原凭证下没有有效的分录，不能红冲");
         }
         List<Entry> reverseEntries = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
@@ -183,14 +183,14 @@ public class FinanceAssetLedgerPostingService {
 
     static void validateEntries(List<Entry> entries) {
         if (entries == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Voucher entries are required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写凭证分录");
         }
         BigDecimal debit = BigDecimal.ZERO;
         BigDecimal credit = BigDecimal.ZERO;
         for (Entry entry : entries) {
             if (entry.styleId() == null || (entry.direction() != 1 && entry.direction() != -1)
                     || entry.amount() == null || entry.amount().signum() <= 0) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "Invalid asset voucher entry");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "资产凭证的分录不正确，请核对科目、方向和金额");
             }
             if (entry.direction() == 1) debit = debit.add(entry.amount());
             else credit = credit.add(entry.amount());
@@ -198,7 +198,7 @@ public class FinanceAssetLedgerPostingService {
         if (debit.compareTo(credit) != 0) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "Asset voucher is not balanced: debit=" + debit + ", credit=" + credit);
+                    "资产凭证借贷不平：借方 " + debit + "，贷方 " + credit + "，请核对分录金额");
         }
     }
 

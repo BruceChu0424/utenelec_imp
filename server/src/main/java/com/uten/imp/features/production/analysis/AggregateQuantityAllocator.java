@@ -45,7 +45,7 @@ public final class AggregateQuantityAllocator {
         BigInteger capacity = BigInteger.ZERO;
         for (SourceCapacity source : sources) {
             if (source == null || source.sourceId() == null || source.allocationPriority() < 0) {
-                throw invalid("物料来源身份或分配优先级无效");
+                throw invalid("物料来源信息或分配优先级不正确");
             }
             if (!ids.add(source.sourceId())) throw invalid("汇总物料包含重复来源，请刷新后重试");
             capacity = capacity.add(ticks(source.remainingQty()));

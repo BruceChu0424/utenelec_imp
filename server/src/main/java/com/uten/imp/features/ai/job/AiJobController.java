@@ -94,7 +94,7 @@ public class AiJobController {
             return null;
         }
         if (values.size() > 1) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别参数不能重复: " + key);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "识别的附加设置不能重复: " + key);
         }
         return values.get(0);
     }

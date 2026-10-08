@@ -348,8 +348,8 @@ class _ProcurementIqcRejectionListPageState
                   ),
                   const SizedBox(height: UtenSpacing.s4),
                   Text(
-                    '采购/委外订单负责人登记真实退回凭证；财务只读取服务器冻结金额并确认贷项，'
-                    '或在权威金额为零时说明无需贷项结案。任何异常投影和反向都使用版本与命令号。',
+                    '采购/委外订单负责人登记真实退回凭证；财务只按服务器锁定的金额确认贷项，'
+                    '金额为零时可说明原因直接结案。异常处理和反向冲销都有防重复保护，不会重复记账。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
@@ -461,7 +461,8 @@ class _ProcurementIqcRejectionListPageState
     }
     return Row(
       children: [
-        SizedBox(width: 390, child: search),
+        // 2026-10-07 用户口径：搜索栏宽度减半（390 → 195）。
+        SizedBox(width: 195, child: search),
         const SizedBox(width: UtenSpacing.s12),
         SizedBox(width: 190, child: type),
         const SizedBox(width: UtenSpacing.s12),

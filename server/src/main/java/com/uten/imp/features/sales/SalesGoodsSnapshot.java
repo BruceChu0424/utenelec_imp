@@ -86,7 +86,7 @@ public record SalesGoodsSnapshot(String code, String name, String source, String
         if (snapshot == null) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    subject + "关联的货品历史快照不存在，请刷新后重试");
+                    subject + "关联的货品资料不存在，请刷新后重试");
         }
         return snapshot;
     }

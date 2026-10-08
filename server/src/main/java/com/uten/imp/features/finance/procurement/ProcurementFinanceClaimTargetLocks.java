@@ -24,11 +24,11 @@ public class ProcurementFinanceClaimTargetLocks implements ReviewTaskTargetLockP
         for (String key:keys) {
             try {
                 UUID id=UUID.fromString(key);
-                if (requireExisting && !id.toString().equals(key)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"财务认领必须使用规范审批任务UUID");
+                if (requireExisting && !id.toString().equals(key)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"财务认领必须使用正确的审批任务编号，请刷新后重试");
                 ids.put(id,key);
             }
             catch (IllegalArgumentException | NullPointerException invalid) {
-                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED,"财务审批任务ID无效");
+                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED,"财务审批任务编号不正确，请刷新后重试");
             }
         }
         if (ids.isEmpty()) return List.of();

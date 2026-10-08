@@ -73,7 +73,7 @@ class GoodsBomStubIsolationTest {
                 () -> service.create(parent.getId(), request));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
-        assertEquals("迁移占位货品只用于历史引用，不能加入当前组装清单", error.getMessage());
+        assertEquals("旧系统导入的占位货品只用于历史记录，不能加入当前组装清单", error.getMessage());
         verify(bomRepo, never()).save(any());
     }
 

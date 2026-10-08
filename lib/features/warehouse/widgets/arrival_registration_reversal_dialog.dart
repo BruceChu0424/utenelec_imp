@@ -74,8 +74,8 @@ class _ArrivalRegistrationReversalDialogState
             const SizedBox(height: UtenSpacing.s8),
             Text(
               '撤回后本批次的品质待检任务取消，报工行重新回到仓库待登记送检；'
-              '登记、库位快照与检查单明细保留为历史，不写库存、不改报工数量。'
-              '品质已登记决定、已放行或已进入恢复链的批次不能撤回。',
+              '登记记录、库位和检查单明细会保留为历史，不写库存、不改报工数量。'
+              '品质已登记决定、已放行或已进入恢复流程的批次不能撤回。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

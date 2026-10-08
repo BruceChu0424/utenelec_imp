@@ -300,7 +300,7 @@ public class PartyDirectoryService {
     private static String normalizeKind(String kind, Set<String> allowed, String label) {
         String normalized = kind == null ? "" : kind.trim().toUpperCase(Locale.ROOT);
         if (!allowed.contains(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "不合法");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "不正确");
         }
         return normalized;
     }

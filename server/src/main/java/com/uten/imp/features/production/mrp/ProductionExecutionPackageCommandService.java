@@ -109,7 +109,7 @@ public class ProductionExecutionPackageCommandService {
                 FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS frozen(id uuid,snapshot jsonb)
                 WHERE demand.id=frozen.id AND demand.consumption_snapshot IS NULL
                 """).setParameter("rows",json.valueToTree(frozen).toString()).executeUpdate();
-        if (updated != frozen.size()) throw conflict("冻结物料耗用规则数量不一致，当前下达已回滚");
+        if (updated != frozen.size()) throw conflict("冻结物料耗用规则数量不一致，本次下达没有生效");
     }
 
     /**
@@ -944,7 +944,7 @@ public class ProductionExecutionPackageCommandService {
                         demand.getId(), BigDecimal.ZERO);
                 if (planned.compareTo(actual) != 0) {
                     throw conflict(
-                            "库存分配与齐套方案不一致，事务已回滚，请刷新后重试");
+                            "库存分配与齐套方案不一致，本次操作没有生效，请刷新后重试");
                 }
             }
         }

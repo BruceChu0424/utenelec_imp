@@ -39,10 +39,10 @@ class MrpAnalysisApprovalValidationTest {
         when(em.createNativeQuery(anyString())).thenAnswer(call->((String)call.getArgument(0)).contains("AS has_cycle")?graph:inputs);
         when(inputs.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{"P-1","铜扣",false,true}));
         assertThatThrownBy(()->service(em).validatePlanBomGraph(UUID.randomUUID())).isInstanceOf(ApiException.class)
-                .hasMessageContaining("未完成采购行的单位或换算率无效");
+                .hasMessageContaining("其单位或换算率不正确");
         when(inputs.getResultList()).thenReturn(java.util.Collections.singletonList(new Object[]{"P-1","铜扣",true,false}));
         assertThatThrownBy(()->service(em).validatePlanBomGraph(UUID.randomUUID())).isInstanceOf(ApiException.class)
-                .hasMessageContaining("BOM、颜色或基本单位数据无效");
+                .hasMessageContaining("BOM、颜色或基本单位数据不正确");
     }
 
     private static Query query(){Query query=mock(Query.class);when(query.setParameter(anyString(),any())).thenReturn(query);return query;}

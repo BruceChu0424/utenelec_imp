@@ -747,7 +747,7 @@ public class StockQueryService {
     public List<UUID> instantInventoryMatchingCategoryIds(
             String keyword, Set<UUID> categoryRootIds) {
         if (keyword == null || keyword.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "keyword 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写搜索关键词");
         }
         if (categoryRootIds == null || categoryRootIds.isEmpty() || categoryRootIds.size() > 32) {
             throw new ApiException(

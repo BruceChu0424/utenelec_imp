@@ -149,7 +149,7 @@ public class UnitService {
         String massUnitCode = normalizedCode(req.getMassUnitCode());
         if (dimension != null && !MEASUREMENT_DIMENSIONS.contains(dimension)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "计量维度必须是 COUNT/MASS/LENGTH/AREA/VOLUME/OTHER：" + req.getMeasurementDimension());
+                    "计量维度只能是数量、重量、长度、面积、体积或其他，请重新选择：" + req.getMeasurementDimension());
         }
         if (massUnitCode != null) {
             if (!MASS_UNIT_LABELS.containsKey(massUnitCode)) {
@@ -283,7 +283,7 @@ public class UnitService {
         String dim = dimension.trim().toUpperCase(java.util.Locale.ROOT);
         if (!MEASUREMENT_DIMENSIONS.contains(dim)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "计量维度必须是 COUNT/MASS/LENGTH/AREA/VOLUME/OTHER：" + dimension);
+                    "计量维度只能是数量、重量、长度、面积、体积或其他，请重新选择：" + dimension);
         }
         List<?> rows = em.createNativeQuery("""
                         select unit_id from unit_measurement_profiles

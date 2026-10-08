@@ -118,7 +118,7 @@ public class SalesQuoteTemplateService {
         Map<UUID,Integer> versions=req.templateVersions()==null ? Map.of() : req.templateVersions();
         if (versions.size()>MAX_TEMPLATES_PER_EXPORT || !new HashSet<>(ids).equals(versions.keySet())
                 || versions.values().stream().anyMatch(version -> version==null || version<1))
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价模板版本选择无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价模板版本选择不正确，请刷新后重试");
         ClientProfile client=quote.getClientId()==null ? null : master.clientProfile(quote.getClientId());
         Map<String,String> header=new HashMap<>();
         if (client!=null) {

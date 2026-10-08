@@ -15,11 +15,16 @@
   `UtenFilterPickerField`（2026-09-11 起页面层级筛选的统一形态，见
   [UtenFilterPickerField](UtenFilterPickerField.md)）按同一口径算内边距；表单内下拉若同排，
   传紧凑 `contentPadding`（`WarehouseHierarchyDropdown` 的 `contentPadding` 参数）。M3 默认给 prefix/suffix 图标各 48×48 最小
-  约束会顶高输入框，本组件已显式收紧到 32。与分段导航条并排时的「严格同高」
-  由 `UtenFilterToolbar` 的 IntrinsicHeight+stretch 结构保证——不要在页面里给
-  分段设 minimumSize 对齐。
+  约束会顶高输入框，本组件已显式收紧。与分段导航条并排时的「严格同高」：
+  InputDecorator 的药丸**描边**只按内容高绘制（`max(前后缀图标约束高,
+  contentPadding + 文本行高)`），不吃外部 minHeight——外部约束拉高的只是盒子、
+  描边居中浮在盒里（2026-10-07 SDK 源码定位，compact 密度空框实测药丸 33 vs
+  分段 40，即用户看到的「搜索栏矮一截」）。因此本组件把前后缀图标约束的
+  minHeight 设为与 `UtenSegmentRow.minCellHeight` 同源的
+  `UtenFilterRow.minHeight`(36)：两侧描边恒等于 `max(36, 文本内容高)`，任意
+  密度/字号下相等；不要在页面里给分段设 minimumSize 对齐。
 - 内置：搜索前缀图标、清除按钮（有内容时）、300ms 防抖、自动聚焦控制。
-- **`dense: true`（2026-09-11）**：收紧内边距与图标（高约 36 而非 44），字号降一档。
+- **`dense: true`（2026-09-11）**：收紧内边距与图标（高约 30 而非 36），字号降一档。
   **只给「筛选面板里的一格」用**——报表/明细表左侧筛选区里搜索框只是一堆筛选项中的一项，
   默认高度显得笨重（用户要求「搜索的框显示小点」）。
   ⚠️ **不要给页面主搜索框或 `UtenFilterToolbar` 里的搜索框传 dense**：工具条用

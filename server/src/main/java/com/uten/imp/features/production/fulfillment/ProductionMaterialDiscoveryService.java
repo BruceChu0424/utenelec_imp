@@ -60,7 +60,7 @@ public class ProductionMaterialDiscoveryService {
         lockCommand(command.idempotencyKey());
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT id,request_hash FROM production_material_discovery_requests WHERE created_by=:actor AND idempotency_key=:key")
                 .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()));
-        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一项领料申请");return detail((UUID)replay.getFirst()[0]);}
+        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项领料申请，请刷新后重试");return detail((UUID)replay.getFirst()[0]);}
         var footprint=footprints.beginPlan(discovered.plan(),List.of());Segment segment=segment(segmentId,true);footprint.verifyUnchanged();requireWorkshop(segment,true);
         requireDiscoveryRoute(segment);
         if(!segment.eligible()||segment.version()!=command.expectedVersion())throw conflict("任务已变化，请刷新后重新申请");
@@ -90,7 +90,7 @@ public class ProductionMaterialDiscoveryService {
         String hash=hash(List.of("DISCOVERY-CANCEL",id.toString(),command.expectedVersion().toString()));lockCommand(command.idempotencyKey());
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT id,cancellation_hash FROM production_material_discovery_requests WHERE cancelled_by=:actor AND cancellation_key=:key")
                 .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()));
-        if(!replay.isEmpty()){if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一项撤回申请");return detail(id);}
+        if(!replay.isEmpty()){if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项撤回申请，请刷新后重试");return detail(id);}
         var footprint=footprints.beginPlan(before.plan(),List.of());Segment segment=segment(before.id(),true);
         Object[] request=requestRow(id,true);footprint.verifyUnchanged();requireWorkshop(segment,true);
         if(!"PENDING".equals(request[0])||((Number)request[1]).longValue()!=command.expectedVersion())throw conflict("申请已由仓库处理，不能撤回");
@@ -108,7 +108,7 @@ public class ProductionMaterialDiscoveryService {
         String hash=hash(parts);lockCommand(command.idempotencyKey());Detail before=detail(id);
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT id,configuration_hash FROM production_material_discovery_requests WHERE configured_by=:actor AND configuration_key=:key")
                 .setParameter("actor",currentUser.requireId()).setParameter("key",command.idempotencyKey()));
-        if(!replay.isEmpty()){if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("幂等键已用于另一项仓库登记");return before;}
+        if(!replay.isEmpty()){if(!id.equals(replay.getFirst()[0])||!hash.equals(replay.getFirst()[1]))throw conflict("同一防重复提交标识已用于另一项仓库登记，请刷新后重试");return before;}
         Segment discovered=segment(before.segmentId(),false);
         var footprint=footprints.beginPlan(discovered.plan(),items.stream()
                 .map(item->new ProductionPlanMutationFootprintService.RequestedLine(item.goodsId(),item.colorId(),null)).distinct().toList());
@@ -204,7 +204,7 @@ public class ProductionMaterialDiscoveryService {
     }
     public PageResponse<Detail> list(String status,int page,int size) {
         requireWarehouse(false);String filter=status==null?"PENDING":status;
-        if(!List.of("PENDING","CONFIGURED","CANCELLED").contains(filter))throw validation("申请状态无效");
+        if(!List.of("PENDING","CONFIGURED","CANCELLED").contains(filter))throw validation("申请状态不正确");
         int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
         String predicate=" FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id JOIN production_plans plan ON plan.id=segment.plan_id WHERE request.status=:status AND NOT segment.is_deleted AND segment.status NOT IN('CANCELLED','REVERSED') AND NOT plan.is_deleted AND NOT plan.is_canceled AND NOT plan.is_closed";
         long total=((Number)em.createNativeQuery("SELECT count(*)"+predicate).setParameter("status",filter).getSingleResult()).longValue();
@@ -244,7 +244,7 @@ public class ProductionMaterialDiscoveryService {
                       AND fn_warehouse_same_main(warehouse.id,:logical)
                       AND fn_warehouse_is_operational_leaf(warehouse.id))
                 """).setParameter("warehouse",item.warehouseId()).setParameter("logical",segment.warehouse()).getSingleResult());
-        if(!valid)throw validation("实际仓库无效；必须选择同主仓下的普通实际叶仓");
+        if(!valid)throw validation("实际仓库不正确；必须选择同主仓下的普通实际叶仓");
     }
     private void validateMaterialIdentity(Segment segment,UUID goodsId,UUID colorId,UUID unitId) {
         boolean valid=Boolean.TRUE.equals(em.createNativeQuery("""
@@ -253,7 +253,7 @@ public class ProductionMaterialDiscoveryService {
                       AND goods.id<>(SELECT product_goods_id FROM production_execution_segments WHERE id=:segment)
                       AND (CAST(:color AS uuid) IS NULL OR EXISTS(SELECT 1 FROM colors WHERE id=:color AND NOT is_deleted)))
                 """).setParameter("goods",goodsId).setParameter("unit",unitId).setParameter("segment",segment.id()).setParameter("color",colorId).getSingleResult());
-        if(!valid)throw validation("物料、颜色或基本单位无效，请重新选择实际材料");
+        if(!valid)throw validation("物料、颜色或基本单位不正确，请重新选择实际材料");
         requireOrderIssuedMaterial(goodsId);
         if(Boolean.TRUE.equals(em.createNativeQuery("""
                 WITH RECURSIVE descendants(id) AS (

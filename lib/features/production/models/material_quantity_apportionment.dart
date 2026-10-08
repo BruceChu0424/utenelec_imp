@@ -1,8 +1,4 @@
-/// 定点 4 位小数分摊的「最粗守恒」呈现与整分。
-///
-/// 服务端的还缺/建议量按 1e-4 tick 分摊，会落在 83.3334 这类值上；对整数计量的
-/// 物料，展示与编辑直接用最粗的守恒精度（优先整数），避免小数尾巴层层上屏。
-/// 守恒不变量：任何 scale 下各份之和恒等于该 scale 下对总量的取整值。
+/// 按明确输入粒度进行数量分配。权威需求与缺口展示不得调用取整分配来改写原值。
 ///
 /// 全部为纯函数、无 Flutter 依赖；输入按非负、至多 4 位小数对待（服务端与
 /// 输入框的共同口径），内部一律换算成整数 tick 运算，避免浮点累积尾差。
@@ -89,30 +85,6 @@ List<double> apportionLargestRemainder(
   return [for (final tick in ticks) tick / _factors[scale]];
 }
 
-/// 从 0 到 4 找最粗的 scale p：按 p 整分后每份与原值的偏差都不超过一个粒度
-/// （10^-p），且正的总量不会被取整抹成 0；找不到就用 4。
-///
-/// 「正量不消失」是不可省的一半：parts=[0.0005, 0.0005]、total=0.001 在 p=0
-/// 时整分成 [0, 0]，偏差虽在一个粒度内，但整组缺口被显示成 0——只能退到 p=3。
-int coarsestDisplayScale(double total, List<double> parts) {
-  if (parts.isEmpty) return 0;
-  for (var scale = 0; scale <= _maxScale; scale++) {
-    final unit = unitOfScale(scale);
-    final shares = apportionLargestRemainder(total, parts, scale);
-    var withinOneGrain = true;
-    var shareTicks = 0;
-    for (var i = 0; i < parts.length; i++) {
-      if ((shares[i] - parts[i]).abs() > unit + 1e-9) {
-        withinOneGrain = false;
-        break;
-      }
-      shareTicks += grainOf(shares[i], scale);
-    }
-    if (withinOneGrain && (total <= 0 || shareTicks > 0)) return scale;
-  }
-  return _maxScale;
-}
-
 /// 编辑层平分：把用户敲进汇总格的总量按各路径「还需安排」落到 10^-scale 上。
 ///
 /// - 总量盖得住各路径 ceil 后的合计：先各路径给足 ceil 的量（0 需求路径为 0，
@@ -169,6 +141,107 @@ String materialQuantityText(BigInt units, {int scale = _maxScale}) {
   return scale == 0
       ? text
       : text.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+}
+
+/// 服务端把共享量按 10^-4 定点摊到各来源时，每行可能带 ≤1 tick 的进位噪声，
+/// 合计与真值最多差「来源数」个 tick。据此找最粗的展示/校验粒度 10^-scale：
+/// 总量四舍五入到该粒度的偏差在噪声预算内就用它（2026-10-06 用户口径
+/// 「83.3334×3=1000.0002 的尾巴按整数 1000 呈现与校验，不再逼人输 1000.0002」）。
+/// 真实分数需求（0.5×3=1.5）与最近整数差 0.5，远超预算，不会被整掉
+/// （2026-10-07 用户口径「合计 1.5 取整为 2 是缺陷」）。预算内找不到返回 4。
+int coarsestAggregateScale(BigInt totalUnits, int partCount) {
+  final budget = BigInt.from(partCount);
+  for (var scale = 0; scale < _maxScale; scale++) {
+    final grain = BigInt.from(_factors[_maxScale] ~/ _factors[scale]);
+    // 向下取整：下界/展示值不得高于原值（四舍五入会上浮 ≤ n tick，把与
+    // 原值相同的合法输入拦在门外）。
+    final rounded = (totalUnits ~/ grain) * grain;
+    // 正量不消失：0.0001 这类合法最小量在粗粒度上会抹成 0，必须退到原粒度
+    //（与 2026-10-06 之前 HEAD 的「正量不消失」判据同源）。
+    if ((totalUnits - rounded).abs() <= budget &&
+        (totalUnits == BigInt.zero || rounded > BigInt.zero)) {
+      return scale;
+    }
+  }
+  return _maxScale;
+}
+
+/// [units] 向下取整到 10^-scale 粒度（整数 tick 运算，无浮点；下界保守）。
+BigInt roundUnitsToScale(BigInt units, int scale) {
+  assert(scale >= 0 && scale <= _maxScale);
+  final grain = BigInt.from(_factors[_maxScale] ~/ _factors[scale]);
+  return (units ~/ grain) * grain;
+}
+
+/// 最粗守恒整分后的总量文本：[partTexts] 为各来源的精确数量文本。任一来源
+/// 解析失败返回 null，调用方须 fail closed（退回原精确口径或拦下）。
+String? coalescedAggregateTotalText(Iterable<String> partTexts) {
+  final parts = <BigInt>[];
+  try {
+    for (final text in partTexts) {
+      parts.add(materialQuantityUnits(text));
+    }
+  } on FormatException {
+    return null;
+  }
+  if (parts.isEmpty) return null;
+  var total = BigInt.zero;
+  for (final part in parts) {
+    total += part;
+  }
+  return materialQuantityText(
+    roundUnitsToScale(total, coarsestAggregateScale(total, parts.length)),
+  );
+}
+
+/// 各来源在最粗守恒粒度上的份额文本：Σ份额 == 整分后的总量（最大余数法，
+/// 同小数按来源序）。权重为零的来源份额为 0；全零时均分。任一来源解析失败
+/// 抛 [FormatException]。
+List<String> coalescedAggregateShareTexts(List<String> partTexts) {
+  final parts = [for (final text in partTexts) materialQuantityUnits(text)];
+  if (parts.isEmpty) return const [];
+  var total = BigInt.zero;
+  var weightTotal = BigInt.zero;
+  for (final part in parts) {
+    total += part;
+    if (part > BigInt.zero) weightTotal += part;
+  }
+  final scale = coarsestAggregateScale(total, parts.length);
+  final grain = BigInt.from(_factors[_maxScale] ~/ _factors[scale]);
+  final totalGrains = roundUnitsToScale(total, scale) ~/ grain;
+  final count = BigInt.from(parts.length);
+  if (weightTotal == BigInt.zero) {
+    final base = totalGrains ~/ count;
+    final extra = (totalGrains % count).toInt();
+    return [
+      for (var i = 0; i < parts.length; i++)
+        materialQuantityText(
+          (base + (i < extra ? BigInt.one : BigInt.zero)) * grain,
+        ),
+    ];
+  }
+  final floors = <BigInt>[];
+  final remainders = <BigInt>[];
+  var floored = BigInt.zero;
+  for (final part in parts) {
+    final weight = part > BigInt.zero ? part : BigInt.zero;
+    final scaled = totalGrains * weight;
+    final floor = scaled ~/ weightTotal;
+    floors.add(floor);
+    remainders.add(scaled % weightTotal);
+    floored += floor;
+  }
+  var remaining = (totalGrains - floored).toInt();
+  if (remaining < 0) remaining = 0;
+  final order = [for (var i = 0; i < parts.length; i++) i]
+    ..sort((a, b) {
+      final byRemainder = remainders[b].compareTo(remainders[a]);
+      return byRemainder != 0 ? byRemainder : a.compareTo(b);
+    });
+  for (var i = 0; i < remaining && i < order.length; i++) {
+    floors[order[i]] += BigInt.one;
+  }
+  return [for (final floor in floors) materialQuantityText(floor * grain)];
 }
 
 String materialQuantityFact(String? exact, double legacy) {

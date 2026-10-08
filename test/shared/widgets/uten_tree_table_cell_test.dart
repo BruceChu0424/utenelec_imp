@@ -202,6 +202,39 @@ void main() {
     expect(find.textContaining('P1'), findsNothing);
   });
 
+  testWidgets(
+    'titleBadge renders before the title and joins the semantics label',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              child: UtenTreeTableCell(
+                depth: 0,
+                sequence: '',
+                sequenceInline: true,
+                title: '测试产品0',
+                titleBadge: Text('顶层', key: Key('top-level-badge')),
+                titleBadgeLabel: '顶层',
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('测试产品0'), findsOneWidget);
+      // 徽章在名称同一排、位于名称之前（2026-10-07 物料分析汇总视图顶层行口径）。
+      expect(
+        tester.getTopLeft(find.byKey(const Key('top-level-badge'))).dx,
+        lessThan(tester.getTopLeft(find.text('测试产品0')).dx),
+      );
+      // 徽章本体在 ExcludeSemantics 里，朗读名走 titleBadgeLabel。
+      expect(find.bySemanticsLabel(RegExp('测试产品0，顶层')), findsOneWidget);
+      semantics.dispose();
+    },
+  );
+
   testWidgets('showLeafMarker:false drops the leaf dot but keeps alignment', (
     tester,
   ) async {

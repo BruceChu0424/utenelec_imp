@@ -51,7 +51,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get release254QuantityPrecision =>
-      '物料下单保留完整精度，修复最小数量、单位换算、分单及重复提交回执中的数量偏差。';
+      '物料下单保留完整精度，报工与直送也按原始数量核对；修复最小数量、单位换算、分单及重复提交回执中的偏差。';
 
   @override
   String get release254AiAuthorization =>
@@ -59,6 +59,24 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get release254SensitiveAuthorization => '修改敏感权限时需要再次验证身份，让重要授权得到本人确认。';
+
+  @override
+  String get release254OverLimit => '实际超产可完整报工；超限部分交计划处置，审批、质检、入库和成本保持同一来源。';
+
+  @override
+  String get release254PlanningReminders =>
+      '计划人员晚开通账号或后来获得权限时，可补收尚未接手订单的任务提醒，已处理任务不重复提示。';
+
+  @override
+  String get release254PeoplePicker =>
+      '选人窗口按部门左右分栏，显示工号和账号状态，支持搜索及跨部门多选；候选继续按原权限筛选。';
+
+  @override
+  String get release254AccountSupport =>
+      '员工详情支持验证身份后生成临时密码，员工首次登录须修改；身份或权限变化后立即停止展示。';
+
+  @override
+  String get release254Dashboard => '工作台指标横向排列，待办只显示一行，其余任务通过「还有 XX 项任务」查看。';
 
   @override
   String get release254Publishing => '统一应用和安装包的版本信息，加强发布前检查，减少升级异常。';
@@ -1240,13 +1258,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeIdIssueBadge => '待核对';
 
   @override
-  String get employeeIdIssueInvalidTitle => '证件号码校验未通过';
+  String get employeeIdIssueInvalidTitle => '证件号码填写有误';
 
   @override
   String get employeeIdIssueMissingTitle => '未登记证件号码';
 
   @override
-  String get employeeIdIssueUncheckedTitle => '证件号码尚未校验';
+  String get employeeIdIssueUncheckedTitle => '证件号码尚未核对';
 
   @override
   String employeeIdIssueReason(Object reason) {
@@ -1284,7 +1302,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeIdentityCorrectTitle => '修改证件信息';
 
   @override
-  String get employeeIdentityCorrectHint => '身份证号码会自动校验，并按号码更新出生日期和性别。';
+  String get employeeIdentityCorrectHint => '身份证号码会自动核对，并按号码更新出生日期和性别。';
 
   @override
   String get employeeIdentityCorrectNoPrefill => '你没有查看证件号码明文的权限，请直接输入完整的新号码。';
@@ -1849,7 +1867,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileChangeConflict => '档案已被他人更新，请刷新后再试';
 
   @override
-  String get profileChangeRateLimited => '24h 内已提交过该字段的修改，请等待处理';
+  String get profileChangeRateLimited => '24 小时内已提交过这一项的修改，请等待处理';
 
   @override
   String get profileChangeListTitle => '我的修改申请';
@@ -1996,7 +2014,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String profileEditPendingConflictHint(int count) {
-    return '你有 $count 条待审申请；相关字段在审核通过前再次修改，可能与在途申请冲突。';
+    return '你有 $count 条待审申请；相关内容在审核通过前再次修改，可能与待审的申请冲突。';
   }
 
   @override
@@ -2507,7 +2525,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get profileUnboundDescription => '请联系管理员或人事完成账号与员工档案绑定。';
 
   @override
-  String get profileSessionUnavailable => '当前未登录或会话不可用';
+  String get profileSessionUnavailable => '当前未登录，或登录已过期';
 
   @override
   String get profileValueNotProvided => '未填写';
@@ -2573,7 +2591,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get pagePermissionAccountNotProvisionedCanProvision =>
-      '请先开通登录账号；一次性凭据确认保存后，将自动加载此人的权限详情。';
+      '请先开通登录账号；初始密码确认保存后，将自动加载此人的权限详情。';
 
   @override
   String get pagePermissionAccountNotProvisionedNoAccess =>
@@ -2773,7 +2791,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get orderChangeQtyConfirm => '确认改量';
 
   @override
-  String get orderChangeQtyInvalid => '存在无效数量（必须大于 0），请检查';
+  String get orderChangeQtyInvalid => '有数量不正确（必须大于 0），请检查';
 
   @override
   String get orderChangeQtySuccess => '已改量，订货单已重回财务复核';
@@ -3123,7 +3141,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get productionMaterialViewUsage => '查看用料记录';
 
   @override
-  String get systemSettingInvalidInteger => '请输入有效的非负整数';
+  String get systemSettingInvalidInteger => '请填写 0 或更大的整数';
 
   @override
   String get systemSettingInvalidValue => '设置值超出允许范围';
@@ -3142,7 +3160,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get systemSettingEffectTiming =>
-      '安全阈值在后续操作生效，令牌有效期在下次签发生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。';
+      '安全阈值在后续操作生效，令牌有效期在下次登录签发时生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。';
 
   @override
   String get auditSummaryUnavailable => '统计暂不可用，操作记录仍可核查';
@@ -3151,7 +3169,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get auditSummaryRetry => '重试统计';
 
   @override
-  String get auditWorkspaceDescription => '按人员与时间查看会话，沿操作记录追溯业务变化。';
+  String get auditWorkspaceDescription => '按人员与时间查看登录记录，沿操作记录追溯业务变化。';
 
   @override
   String get materialReasonLabel => '原因';
@@ -3283,7 +3301,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String warehouseStockOutboundConfirmMessage(int count) {
-    return '确认对所选 $count 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。发生异常时停止后续操作，已成功单据保留结果。';
+    return '确认对所选 $count 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。中途出错时会停止后面的操作，已成功的单据保留结果。';
   }
 
   @override
@@ -3334,7 +3352,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundBatchHint =>
-      '明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。';
+      '明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；中途出错时会暂停，核实后继续办理尚未执行的单据。';
 
   @override
   String get warehouseSubcontractOutboundDocuments => '单据信息';
@@ -3764,8 +3782,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get visitorApprovalHostDeptColInfo =>
-      '访客申请时记录的接待人所属部门快照；表头筛选按此下推后端 hostDepartmentId 参数。';
+  String get visitorApprovalHostDeptColInfo => '访客申请时记录的接待人所属部门；表头筛选会按这个部门查询。';
 
   @override
   String visitorBatchLimitError(int limit, int count) {
@@ -3947,8 +3964,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get myVisitorsStatusColInfo =>
-      '默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。';
+  String get myVisitorsStatusColInfo => '默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝。';
 
   @override
   String get expenseFlowNew => '新建报销';
@@ -4993,29 +5009,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsTestNeedsKeyEdit => '还没有密钥, 请先点「编辑」填写密钥再测试';
 
   @override
-  String aiSettingsUsageTitle(int days) {
-    return '近 $days 天用量';
+  String get aiSettingsTodayUsage => '今日用量';
+
+  @override
+  String aiSettingsTodayUsageFooter(int calls, int users) {
+    return '$calls 次调用 · $users 人使用';
   }
 
   @override
-  String get aiSettingsUsageCalls => '调用次数';
+  String get aiSettingsTodayUsageEmpty => '今日暂无用量';
 
   @override
-  String get aiSettingsUsageSuccessRate => '成功率';
-
-  @override
-  String get aiSettingsUsageTokens => '输入 / 输出 token';
-
-  @override
-  String get aiSettingsUsageLatency => '平均耗时';
-
-  @override
-  String aiSettingsUsageSeconds(String value) {
-    return '$value 秒';
-  }
-
-  @override
-  String get aiSettingsUsageEmpty => '还没有调用记录';
+  String get aiSettingsTodayUsageOpenTooltip => '查看用量与额度';
 
   @override
   String get aiSettingsUsageUnavailable => '用量暂时读不到, 不影响使用';
@@ -6900,7 +6905,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costSaveDraft => '保存草稿';
 
   @override
-  String get costRecalculate => '校验重算';
+  String get costRecalculate => '检查并重算';
 
   @override
   String get costConfirm => '确认成本版本';
@@ -7056,7 +7061,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get costImportBlock => '产品区块';
 
   @override
-  String get costImportReview => '逐行确认映射；缓存价格按本成本单币种核对，不自动采用外链公式。';
+  String get costImportReview => '逐行确认对应关系；缓存价格按本成本单币种核对，不自动采用外链公式。';
 
   @override
   String get costImportKind => '采用方式';
@@ -7706,7 +7711,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get quoteTemplateReviewHint =>
-      '核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。';
+      '核对工作表和各列对应后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。';
 
   @override
   String get quoteTemplateSaveDownload => '保存模板并下载';
@@ -7759,7 +7764,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiChatBoundary =>
-      '按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍按你的权限和系统校验。';
+      '按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍会按你的权限做系统检查。';
 
   @override
   String get aiChatUnavailable => '暂时只能回答部分业务问题。';
@@ -7823,7 +7828,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatGone => '这次处理已过期，请开始新对话。';
 
   @override
-  String get aiChatPermissionChanged => '当前权限或会话已变化，对话已清除。请刷新后重试。';
+  String get aiChatPermissionChanged => '当前权限或登录状态已变化，对话已清除。请刷新后重试。';
 
   @override
   String get aiChatEmptyReply => '本次未返回可显示的答复，请重新描述你的问题。';
@@ -7876,7 +7881,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatRequestRejected => '这条消息未成功提交。';
 
   @override
-  String get aiChatDeliveryUnknown => '送达状态未确认；再次发送会发起新请求。';
+  String get aiChatDeliveryUnknown => '送达状态未确认；再发一次会另发一条新消息。';
 
   @override
   String get aiChatReplyFailed => '消息已送达，AI 未能完成回复。';
@@ -7912,7 +7917,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatDocumentReady => '文件已分析';
 
   @override
-  String get aiChatDocumentSourceMismatch => '文件来源校验失败，请重新选择原文件。';
+  String get aiChatDocumentSourceMismatch => '所选文件和原文件对不上，请重新选择原文件。';
 
   @override
   String get aiChatDocumentOpenFailed => '页面未能打开，请重试。';
@@ -8062,10 +8067,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiChatDocumentLongRequest => '文件处理说明较长，尚未完整分析全部要求。请明确选择要继续的流程。';
 
   @override
-  String get quoteTemplateMappingRequired => '请保留数量，以及型号或品名字段';
+  String get quoteTemplateMappingRequired => '请保留数量，以及型号或品名对应的列';
 
   @override
-  String get quoteTemplateMappingDuplicate => '同一字段只能对应一列，请调整重复对应';
+  String get quoteTemplateMappingDuplicate => '同一信息只能对应一列，请调整重复的对应';
 
   @override
   String get aiAuditTitle => '使用记录与费用';
@@ -8097,15 +8102,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAuditAllProviders => '全部服务';
 
   @override
-  String aiAuditSummary(int uses, int calls) {
-    return '记录 $uses 条 · 调用模型 $calls 次';
-  }
-
-  @override
   String get aiAuditPlatformOnly => '仅统计本平台。估算费用按设置的单价计算。';
-
-  @override
-  String get aiAuditByUser => '按员工查看';
 
   @override
   String aiAuditUses(int count) {
@@ -8114,17 +8111,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiAuditEmpty => '这段时间没有记录。';
-
-  @override
-  String aiAuditPagination(int total, int page) {
-    return '共 $total 条 · 第 $page 页';
-  }
-
-  @override
-  String get aiAuditPrevious => '上一页';
-
-  @override
-  String get aiAuditNext => '下一页';
 
   @override
   String get aiAuditBillingTitle => '计费方式与套餐额度';
@@ -8260,13 +8246,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiAuditPriceHint => '请按服务商账单填写。这里计算估算费用，不是服务商扣费账单。';
 
   @override
-  String get aiAuditFiveHourQuota => '五小时余额：暂未接入';
+  String get aiAuditFiveHourQuota => '每 5 小时额度（次）';
 
   @override
-  String get aiAuditWeeklyQuota => '每周余额：暂未接入';
+  String get aiAuditWeeklyQuota => '每周额度（次）';
 
   @override
-  String get aiAuditQuotaHint => '需要服务商提供额度查询接口。';
+  String get aiAuditQuotaHint => '已用按平台成功调用自动统计，剩余 = 额度 − 已用；与服务商侧口径可能略有出入。';
+
+  @override
+  String aiAuditQuota5hUsed(int used, String quota) {
+    return '近 5 小时已用 $used / $quota';
+  }
+
+  @override
+  String aiAuditQuotaWeeklyUsed(int used, String quota) {
+    return '本周已用 $used / $quota';
+  }
 
   @override
   String get aiAuditSaveBilling => '保存计费设置';
@@ -8341,7 +8337,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String weightParamsLoadFailed(String reason) {
-    return '单重参数读取失败：$reason。称重折算与重量预填暂不可用，数量照常登记。';
+    return '单重设置读取失败：$reason。称重折算与重量预填暂不可用，数量照常登记。';
   }
 
   @override
@@ -8849,17 +8845,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiSettingsStepThinking => '思考程度';
 
   @override
-  String get aiActionSetField => '填写字段';
+  String get aiActionSetField => '自动填写';
 
   @override
-  String get aiActionParamField => '字段';
+  String get aiActionParamField => '填写项';
 
   @override
   String get aiActionParamValue => '新值';
 
   @override
   String aiActionFieldMissing(String label) {
-    return '页面上没有「$label」这个可填写的字段';
+    return '页面上没有「$label」这个可填写的地方';
   }
 
   @override
@@ -8973,7 +8969,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String aiChatAttachSummary(int rows, int fields, int flagged) {
-    return '将附带当前页面: 表格$rows行/字段$fields个/待核对$flagged项';
+    return '将附带当前页面: 表格$rows行/填写项$fields个/待核对$flagged项';
   }
 
   @override
@@ -9567,9 +9563,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aiUsageTitle => 'AI 用量与额度';
 
   @override
-  String get aiUsageEntry => '用量与额度';
-
-  @override
   String get aiUsageTodayTokens => '今日消耗';
 
   @override
@@ -9730,4 +9723,92 @@ class AppLocalizationsZh extends AppLocalizations {
   String aiUsageTrendSemantics(String title, String tokens, String calls) {
     return '$title，共 $tokens tokens、$calls 次调用';
   }
+
+  @override
+  String aiUsageKpiFooterCalls(String label, int count) {
+    return '$label $count 次';
+  }
+
+  @override
+  String aiUsageKpiFooterPeople(int count) {
+    return '全员 $count 人';
+  }
+
+  @override
+  String aiUsageKpiFooterOverLimit(int count) {
+    return '$count 人已超限额';
+  }
+
+  @override
+  String get aiRecordsViewRecords => '按记录';
+
+  @override
+  String get aiRecordsViewByPerson => '按人员';
+
+  @override
+  String get aiRecordsStatUses => '使用条数';
+
+  @override
+  String aiRecordsStatCallsFooter(int count) {
+    return '调用模型 $count 次';
+  }
+
+  @override
+  String get aiRecordsStatCostActual => '实际费用';
+
+  @override
+  String get aiRecordsStatCostActualFooter => '以服务商账单为准';
+
+  @override
+  String get aiRecordsStatCostEstimated => '估算费用';
+
+  @override
+  String get aiRecordsStatCostEstimatedFooter => '按设置的计费单价估算';
+
+  @override
+  String get aiRecordsStatUnknown => '费用待确认';
+
+  @override
+  String aiRecordsStatUnknownFooter(int count) {
+    return '$count 次调用未设单价';
+  }
+
+  @override
+  String get aiRecordsColTime => '时间';
+
+  @override
+  String get aiRecordsColPurpose => '用途';
+
+  @override
+  String get aiRecordsColQuestion => '问题内容';
+
+  @override
+  String get aiRecordsColModel => '模型';
+
+  @override
+  String get aiRecordsColCalls => '调用次数';
+
+  @override
+  String get aiRecordsColInputTokens => '输入 token';
+
+  @override
+  String get aiRecordsColOutputTokens => '输出 token';
+
+  @override
+  String get aiRecordsColCost => '费用';
+
+  @override
+  String get aiRecordsColStatus => '状态';
+
+  @override
+  String get aiRecordsPersonEmpty => '这段时间没有人使用 AI';
+
+  @override
+  String get aiRecordsPersonViewRecords => '查看记录';
+
+  @override
+  String get aiRecordsDetailTitle => '使用详情';
+
+  @override
+  String get aiRecordsBillingOpen => '计费设置';
 }

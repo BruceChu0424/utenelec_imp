@@ -304,8 +304,8 @@ class _ProductionPlanDetailPageState
     const confirm =
         '审核即下达执行：有子层级时按当前物料齐套情况生成执行段——未齐套的段为「物料不齐套 · 备料中」'
         '（零预留、暂无领料单，子料到仓验收合格后自动齐套并生成领料单）；'
-        '无下层物料时按直接自制下达，不生成生产领料单。审核与执行下达在同一事务完成，'
-        '任一步失败都会整体回滚。确认继续？';
+        '无下层物料时按直接自制下达，不生成生产领料单。审核与执行下达会一起完成，'
+        '任何一步没成功，本次操作整体不生效（不会只做一半）。确认继续？';
     await _doAction(
       confirm,
       (repo) => repo.approve(widget.id),
@@ -1198,7 +1198,7 @@ class _ProductionPlanDetailPageState
                 UtenBusyOverlay(
                   title: _busy ? '正在执行计划操作' : '正在加载已生成单据',
                   description: _busy
-                      ? '正在写入计划状态与派生单据，请勿重复提交或离开本页。'
+                      ? '正在保存计划并生成相关单据，请勿重复提交或离开本页。'
                       : '请稍候，完成后自动打开。',
                 ),
             ],

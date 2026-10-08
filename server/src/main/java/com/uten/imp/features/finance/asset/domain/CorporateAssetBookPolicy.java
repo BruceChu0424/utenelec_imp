@@ -13,7 +13,7 @@ public final class CorporateAssetBookPolicy {
 
     public static AssetPeriod deriveDepreciationStart(LocalDate readyForUseDate) {
         if (readyForUseDate == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "readyForUseDate is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写达到可使用状态的日期");
         }
         return new AssetPeriod(YearMonth.from(readyForUseDate).plusMonths(1));
     }
@@ -23,7 +23,7 @@ public final class CorporateAssetBookPolicy {
         if (!derived.equals(AssetPeriod.parse(requestedPeriod))) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "Corporate depreciation start must be " + derived + " for the ready-for-use date");
+                    "按可使用日期计算，折旧开始期间只能是 " + derived);
         }
     }
 }

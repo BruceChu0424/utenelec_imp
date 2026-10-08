@@ -54,14 +54,14 @@ final class AttachmentUploadSafetyGate {
     void requireUploadEnabled() {
         if (!properties.isUploadsEnabled()) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "Attachment upload is disabled pending security acceptance");
+                    "附件上传功能尚未开放（安全验收未完成），请联系管理员");
         }
         if ("oss".equals(storage.backend())) {
             throw new ApiException(ErrorCode.BUSINESS,"新附件只允许写入内部服务器，OSS仅供历史读取");
         }
         if (!storage.isEnabled() || "disabled".equals(scanner.provider())) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "Attachment scanning is unavailable; upload remains closed");
+                    "安全扫描服务暂不可用，暂时不能上传附件，请稍后再试");
         }
     }
 }

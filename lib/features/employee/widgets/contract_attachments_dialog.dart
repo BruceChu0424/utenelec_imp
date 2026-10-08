@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_empty.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/attachments/attachment.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/attachments/attachment_service.dart';
@@ -72,7 +73,7 @@ class _ContractAttachmentsDialogState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = '$e';
+        _error = humanErrorMessage(e) ?? '附件没有加载出来，请稍后重试';
       });
     }
   }

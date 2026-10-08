@@ -330,7 +330,7 @@ class _ClientShipAddressSheetState
                   color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(UtenRadius.md),
                 ),
-                child: const Text('当前客户为只读范围：可选择已有地址，但不能新增或删除地址。'),
+                child: const Text('当前客户只能查看：可选择已有地址，但不能新增或删除地址。'),
               ),
               const SizedBox(height: UtenSpacing.s12),
             ],

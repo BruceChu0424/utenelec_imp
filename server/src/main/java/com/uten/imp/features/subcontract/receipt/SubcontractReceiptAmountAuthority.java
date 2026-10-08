@@ -72,7 +72,7 @@ public class SubcontractReceiptAmountAuthority {
                     || sourceTaxRate.compareTo(new BigDecimal("100")) > 0
                     || sourceOriginal == null || sourceOriginal.signum() < 0
                     || sourceLocal == null || sourceLocal.signum() < 0) {
-                throw conflict("委外进仓来源订单未财务批准或商业快照不完整；历史空结算方式必须先专项核验");
+                throw conflict("委外进仓来源订单未财务批准或商业数据不完整；历史空结算方式必须先专项核验");
             }
             requireHeaderMatches(receipt.getSupplierId(), receipt.getCurrencyId(),
                     receipt.getExchangeRate(), receipt.getSettlementMethodId(), receipt.getTaxRate(),
@@ -196,7 +196,7 @@ public class SubcontractReceiptAmountAuthority {
                 || sourceRate == null || sourceRate.signum() <= 0
                 || postedOverageQty == null || postedOverageQty.signum() < 0
                 || currentApprovedOverageQty == null || currentApprovedOverageQty.signum() < 0) {
-            throw conflict("委外到货授权数量或金额快照无效");
+            throw conflict("委外到货的授权数量或金额数据不正确，请刷新后重试");
         }
         BigDecimal overageQty = postedOverageQty.add(currentApprovedOverageQty);
         BigDecimal overageOriginal = MoneyPolicy.orderOverageAmount(overageQty, sourcePrice, totalInput, baseQty);
@@ -216,7 +216,7 @@ public class SubcontractReceiptAmountAuthority {
                 || priorQty == null || priorQty.signum() < 0
                 || priorOriginal == null || priorOriginal.signum() < 0
                 || priorLocal == null || priorLocal.signum() < 0) {
-            throw conflict("委外进仓来源数量、加工单价、汇率或历史进仓累计无效");
+            throw conflict("委外进仓的来源数量、加工单价、汇率或历史进仓累计不正确，请刷新后重试");
         }
         BigDecimal remainingQty = sourceQty.subtract(priorQty);
         BigDecimal remainingOriginal = sourceOriginal.subtract(priorOriginal);

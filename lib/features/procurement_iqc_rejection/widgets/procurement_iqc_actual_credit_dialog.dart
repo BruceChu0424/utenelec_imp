@@ -271,7 +271,7 @@ class _ProcurementIqcActualCreditDialogState
       if (mounted) {
         setState(() {
           _uncertain = true;
-          _error = '暂未收到确认结果，请查询处理结果或重试同一次请求';
+          _error = '还没收到确认结果；请先点「查询处理结果」查看，或重试同一次确认（不会记两笔）';
         });
       }
     } finally {
@@ -295,7 +295,7 @@ class _ProcurementIqcActualCreditDialogState
           Navigator.pop(context, next);
           return;
         }
-        setState(() => _error = '尚未查到该凭证的处理结果。请重试同一次确认，金额和命令编号保持不变。');
+        setState(() => _error = '还没查到这笔凭证的结果。请点「重试同一次确认」，金额和编号会保持不变。');
         return;
       }
       final saved = {
@@ -321,7 +321,7 @@ class _ProcurementIqcActualCreditDialogState
           }
         }
         _needsRefresh = false;
-        _error = '来源与版本已刷新，请核对剩余数量、金额并重新预览。';
+        _error = '来源数据已刷新；请核对剩余数量和金额后重新预览。';
       });
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
@@ -399,7 +399,7 @@ class _ProcurementIqcActualCreditDialogState
                   if (_applying)
                     const UtenBusyOverlay(
                       title: '正在确认供应商实际贷项',
-                      description: '正在写入贷项与案件分摊，请勿重复提交或关闭弹窗。',
+                      description: '正在保存贷项和案件分摊，请勿重复提交或关闭弹窗。',
                     ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
@@ -610,7 +610,7 @@ class _ProcurementIqcActualCreditDialogState
                           if (_uncertain) ...[
                             const SizedBox(height: 12),
                             Text(
-                              '确认结果尚未查明，保留同一个请求编号与完整金额重试，避免重复贷项。',
+                              '还不确定刚才是否成功；请用同一编号和完整金额重试，系统会避免重复记贷项。',
                               style: TextStyle(color: theme.colorScheme.error),
                             ),
                           ],

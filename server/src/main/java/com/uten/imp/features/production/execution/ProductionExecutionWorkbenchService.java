@@ -615,7 +615,7 @@ public class ProductionExecutionWorkbenchService {
         if (value == null || value.isBlank()) return null;
         String normalized = value.strip().toUpperCase(Locale.ROOT);
         if (!Set.of("UNCONFIRMED", "FULL_KIT", "CONTINUOUS", "BATCH").contains(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产路线筛选无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产路线筛选值不正确");
         }
         return normalized;
     }
@@ -1244,7 +1244,7 @@ public class ProductionExecutionWorkbenchService {
                     + " AND NOT fn_material_discovery_pending(task.segment_id)"
                     + " AND (task.zero_material OR " + effectiveIssuedPredicate() + ")"
                     + resolvedBinMaterial;
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选无效");
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "等待物料状态筛选值不正确");
         };
     }
 

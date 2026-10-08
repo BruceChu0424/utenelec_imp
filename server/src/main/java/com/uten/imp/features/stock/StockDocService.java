@@ -1807,7 +1807,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             var currentReview = batchIssueReviewFacts(orderedIds);
             for (var reviewed : currentReview) {
                 if (!reviewed.reviewToken().equals(command.reviews().get(reviewed.docId()))) {
-                    throw new ApiException(ErrorCode.CONFLICT, "领料单所见版本或已申请/已出库数量已变化，请重新核对后提交");
+                    throw new ApiException(ErrorCode.CONFLICT, "领料单已被他人操作，或已申请/已出库数量有变化，请刷新后重新核对提交");
                 }
             }
         }
@@ -1901,7 +1901,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     @PreAuthorize("hasAuthority('stock_doc:view')")
     public com.uten.imp.features.stock.dto.StockDocIssueBatchReadContracts.Review issueBatchReview(List<UUID> ids) {
         if (ids == null || ids.isEmpty() || ids.stream().anyMatch(Objects::isNull) || ids.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "领料所见版本缺少单据清单");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量出库核对缺少单据清单，请刷新后重试");
         }
         var ordered = ids.stream().distinct().sorted(Comparator.comparing(UUID::toString)).toList();
         if (ordered.size() > StockDocIssueBatchRequest.MAX_DOCUMENTS) {
@@ -3027,14 +3027,14 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 || request.getDocumentIds().size() > 50) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "批量点收须包含幂等键和 1 至 50 张单据");
+                    "批量点收需要防重复提交标识，且一次只能选 1 至 50 张单据");
         }
         String key = request.getIdempotencyKey().strip();
         if (key.length() < 8 || key.length() > 128
                 || !key.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "批量点收幂等键格式无效");
+                    "批量点收的防重复提交标识格式不正确");
         }
         if (request.getDocumentIds().stream().anyMatch(Objects::isNull)) {
             throw new ApiException(
@@ -3090,7 +3090,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         if (!Objects.equals(header[1], requestHash)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "该批量点收幂等键已用于不同单据集合");
+                    "这个防重复提交标识已用于另一批单据，可能是重复提交出错，请刷新后重试");
         }
         UUID batchId = (UUID) header[0];
         int confirmedCount = ((Number) header[2]).intValue();
@@ -3114,7 +3114,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         if (items.size() != confirmedCount) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "批量点收冻结结果不完整，禁止猜测重放");
+                    "之前那次批量点收的结果记录不完整，不能自动给出结果，请联系管理员核对");
         }
         return new FinishedInboundBatchConfirmResponse(
                 batchId, true, confirmedCount, items);
@@ -3729,7 +3729,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         if (whole == null || whole.signum() <= 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "成品点收来源数量无效，不能按比例拆分");
+                    "成品点收的来源数量不正确（必须大于 0），不能按比例拆分");
         }
         return value.multiply(part).divide(
                 whole, 4, RoundingMode.HALF_UP);
@@ -5250,7 +5250,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                     && item.getUnitRate().compareTo(BigDecimal.ONE) != 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "第 " + lineNo + " 行盘点快照不是货品基本单位，不能审核");
+                        "第 " + lineNo + " 行盘点记录的货品单位不是基本单位，不能审核，请重新盘点");
             }
             StockCountPolicy.requireCountQuantity(item.getCountQty(), lineNo);
             InventoryKey key = new InventoryKey(item.getGoodsId(), item.getColorId());

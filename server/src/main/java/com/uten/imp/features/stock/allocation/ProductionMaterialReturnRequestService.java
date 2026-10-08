@@ -135,7 +135,7 @@ public class ProductionMaterialReturnRequestService {
                 WHERE created_by=:actor AND idempotency_key=:key ORDER BY id
                 """).setParameter("actor",user.requireId()).setParameter("key",key));
         if (!replay.isEmpty()) {
-            if (replay.stream().anyMatch(row -> !hash.equals(row[1]))) throw conflict("相同幂等键对应不同退料申请");
+            if (replay.stream().anyMatch(row -> !hash.equals(row[1]))) throw conflict("同一防重复提交标识对应不同的退料申请，请刷新后重试");
             return readDocuments(replay.stream().map(row -> uuid(row[0])).toList());
         }
         lockDemandsAndSources(demands,items);
@@ -343,7 +343,7 @@ public class ProductionMaterialReturnRequestService {
     private static String hash(UUID plan,UUID segment,String reason,List<Item> items){List<String> parts=new ArrayList<>(List.of("MATERIAL-RETURN-V1",plan.toString(),segment.toString(),reason));items.forEach(item->parts.add((item.issuePostingId()!=null?item.issuePostingId():"DIRECT_LOT:"+item.directTransferItemId())+":"+item.qty().stripTrailingZeros().toPlainString()));return CanonicalFingerprint.sha256(parts);}
     private static BigDecimal baseQty(BigDecimal qty,BigDecimal rate){try{return qty.multiply(rate).setScale(4,RoundingMode.UNNECESSARY);}catch(ArithmeticException failure){throw validation("按原单位换算后的基本量超过4位小数，请调整退料数量");}}
     private static BigDecimal inUnit(Object qty,BigDecimal rate){return decimal(qty).divide(rate,4,RoundingMode.DOWN);}
-    private static String key(String value){if(value==null||!value.matches("[A-Za-z0-9._:-]{8,128}"))throw validation("缺少有效幂等键");return value;}
+    private static String key(String value){if(value==null||!value.matches("[A-Za-z0-9._:-]{8,128}"))throw validation("缺少有效的防重复提交标识");return value;}
     private static String reason(String value){if(value==null||value.strip().length()<2||value.strip().length()>500)throw validation("请填写2-500字的退料或取消原因");return value.strip();}
     private static void requireSegment(UUID id){if(id==null)throw validation("请选择准确车间任务");}
     private static UUID uuid(Object value){return value==null?null:(UUID)value;}

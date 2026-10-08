@@ -782,7 +782,7 @@ class _AuditActorPickerState extends ConsumerState<AuditActorPicker>
       if (!mounted || !ticket.isCurrent || revision != _loadRevision) {
         return const [];
       }
-      if (page.page != pageNumber) throw StateError('人员目录分页响应不一致');
+      if (page.page != pageNumber) throw StateError('人员列表数据加载出了问题，请刷新重试');
       for (final actor in page.items) {
         rows[actor.actorId] = actor;
       }

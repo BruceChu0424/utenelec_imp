@@ -950,7 +950,7 @@ public class FinanceReportService {
         query.setParameter("direction", direction);
         if (((Number) query.getSingleResult()).longValue() > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "所选往来缺少已证明的历史本币期初，或期间跨越历史快照截止日；不能把原额或历史收付款猜作期初，请选择截止日之后的期间并核对来源证明");
+                    "所选往来缺少已证明的历史本币期初，或期间跨越历史数据截止日；不能把原额或历史收付款猜作期初，请选择截止日之后的期间并核对来源证明");
         }
     }
 
@@ -1653,7 +1653,7 @@ public class FinanceReportService {
                 .setParameter("pid",partyId).setParameter("direction",isAR ? "AR" : "AP")
                 .setParameter("from",from).setParameter("to",to);
         if (((Number)query.getSingleResult()).longValue()>0) {
-            throw new ApiException(ErrorCode.CONFLICT,"期间跨越历史快照截止日或缺少受验期初；迁入前逐月收付款无法还原，请选择截止日之后的期间");
+            throw new ApiException(ErrorCode.CONFLICT,"期间跨越了历史数据截止日或缺少核验过的期初；迁入前的逐月收付款无法还原，请选择截止日之后的期间");
         }
     }
 
@@ -2404,9 +2404,9 @@ public class FinanceReportService {
     }
 
     private static String normalizeDirection(String direction) {
-        if (direction == null) throw new ApiException(ErrorCode.BUSINESS, "direction 必填(AR/AP)");
+        if (direction == null) throw new ApiException(ErrorCode.BUSINESS, "请先选择方向（AR=应收，AP=应付）");
         String d = direction.trim().toUpperCase();
-        if (!d.equals("AR") && !d.equals("AP")) throw new ApiException(ErrorCode.BUSINESS, "direction 只能是 AR 或 AP");
+        if (!d.equals("AR") && !d.equals("AP")) throw new ApiException(ErrorCode.BUSINESS, "方向只能是 AR（应收）或 AP（应付）");
         return d;
     }
 

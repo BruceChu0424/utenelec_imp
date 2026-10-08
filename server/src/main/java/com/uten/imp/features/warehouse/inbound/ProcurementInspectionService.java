@@ -221,7 +221,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     }
 
     private static ApiException batchReplayConflict() {
-        return new ApiException(ErrorCode.CONFLICT, "批量检验报告与原请求不一致或历史记录不完整，请核对原报告；不能更换幂等键重复处置");
+        return new ApiException(ErrorCode.CONFLICT, "批量检验报告与原请求不一致或历史记录不完整，请核对原报告；不能换一个防重复提交标识重复处置");
     }
 
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ,
@@ -287,7 +287,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
 
     private void requireReceiptInspectionIds(String type,UUID receipt,List<UUID> ids){
         if(type==null||!List.of(PURCHASE,SUBCONTRACT).contains(type)||receipt==null||ids==null||ids.isEmpty()||ids.size()>100
-                ||ids.stream().anyMatch(Objects::isNull))throw new ApiException(ErrorCode.VALIDATION_FAILED,"检验报告来源或明细无效");
+                ||ids.stream().anyMatch(Objects::isNull))throw new ApiException(ErrorCode.VALIDATION_FAILED,"检验报告来源或明细不正确");
         long count=((Number)em.createNativeQuery("SELECT count(*) FROM procurement_inspection_items WHERE receipt_type=:type AND receipt_id=:receipt AND id IN(:ids)")
                 .setParameter("type",type).setParameter("receipt",receipt).setParameter("ids",ids).getSingleResult()).longValue();
         if(count!=new java.util.HashSet<>(ids).size())throw new ApiException(ErrorCode.NOT_FOUND,"检验报告来源或明细不存在");
@@ -850,7 +850,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         } else if (SUBCONTRACT.equals(receiptType)) {
             subcontractSupply.lockSubcontractReceiptMutationDimensions(receiptId);
         } else {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "收货单类型无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "收货单类型不正确");
         }
     }
 
@@ -883,7 +883,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 && Objects.equals(ex[3], reason)) {
             return (Boolean) ex[4];
         }
-        throw new ApiException(ErrorCode.CONFLICT, "该质检幂等键已用于不同结论，请刷新后重新操作");
+        throw new ApiException(ErrorCode.CONFLICT, "同一防重复提交标识已用于不同的质检结论，请刷新后重新操作");
     }
 
     static ReplayNotification replayNotification(
@@ -1000,7 +1000,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         String n = key == null ? "" : key.strip();
         if (n.length() < 8 || n.length() > 128 || !n.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "质检幂等键必须为 8 到 128 位字母、数字或 ._:-");
+                    "质检的防重复提交标识必须为 8 到 128 位字母、数字或 ._:-");
         }
         return n;
     }

@@ -111,7 +111,7 @@ class StockDocFinishedInboundBatchContractTest {
                 .isGreaterThan(batch.indexOf("confirmFinishedInboundAfterPrelock("));
         assertThat(source)
                 .contains("mutationLocks.acquire(() -> mutationFootprints.forStockDocuments(orderedIds))")
-                .contains("该批量点收幂等键已用于不同单据集合")
+                .contains("这个防重复提交标识已用于另一批单据")
                 // ADR-148：批量全量点收 = 每行实收等于该行待点收量，键只带幂等键(不经按批分配)。
                 .contains("keyOnlyConfirmRequest(childKey)")
                 .contains("fullAcceptance(itemRepo.findByDocIdOrderByLineNoAsc(documentId))");

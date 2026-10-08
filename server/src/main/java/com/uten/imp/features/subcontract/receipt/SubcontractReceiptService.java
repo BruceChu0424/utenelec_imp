@@ -506,7 +506,7 @@ public class SubcontractReceiptService {
         if (!expected.equals(actual)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "委外进仓明细货品/颜色在库存预锁后发生变化，请刷新后重试");
+                    "委外进仓明细的货品或颜色已发生变化，请刷新后重试");
         }
     }
 
@@ -545,7 +545,7 @@ public class SubcontractReceiptService {
     private static Short settlementStyleLegacy(Integer legacyId) {
         if (legacyId == null) return null;
         if (legacyId < Short.MIN_VALUE || legacyId > Short.MAX_VALUE) {
-            throw new ApiException(ErrorCode.CONFLICT, "委外进仓结账方式历史编号超出有效范围");
+            throw new ApiException(ErrorCode.CONFLICT, "委外进仓单关联的结算方式数据异常，请联系管理员处理");
         }
         return legacyId.shortValue();
     }

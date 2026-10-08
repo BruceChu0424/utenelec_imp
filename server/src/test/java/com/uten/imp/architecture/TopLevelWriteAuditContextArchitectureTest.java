@@ -112,7 +112,7 @@ class TopLevelWriteAuditContextArchitectureTest {
                 "public int amortize(")) {
             String body = methodBody(source(ASSET), signature);
             int bindingAt = body.indexOf("tx.bind();");
-            int disabledAt = body.indexOf("Legacy destructive posting is disabled");
+            int disabledAt = body.indexOf("旧的删除重建过账方式已停用");
             assertTrue(bindingAt >= 0, () -> signature + " must call tx.bind();");
             assertTrue(disabledAt >= 0, () -> signature + " must remain fail-closed");
             assertTrue(bindingAt < disabledAt,

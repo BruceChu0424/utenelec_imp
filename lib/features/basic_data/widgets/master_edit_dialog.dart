@@ -277,7 +277,7 @@ class MasterEditFormController extends ChangeNotifier {
           } else if (f.selectInteger) {
             final v = int.tryParse(sv);
             if (v == null) {
-              return _fail(f, '「${f.label}」值非法'); // TODO(l10n): 补 arb
+              return _fail(f, '「${f.label}」填写的值不正确'); // TODO(l10n): 补 arb
             }
             body[f.key] = v;
           } else {

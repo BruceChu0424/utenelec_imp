@@ -186,7 +186,7 @@ class _InstantInventoryOverviewPageState
       if (!mounted || !_riskRequests.isCurrent(generation)) return;
       setState(() {
         _riskError = error is ApiException && error.httpStatus == 404
-            ? '当前服务暂不支持风险明细，请更新服务后重试。'
+            ? '当前系统版本暂不支持风险明细，请联系管理员更新系统后重试。'
             : _errorText(error);
         _riskLoading = false;
       });
@@ -330,7 +330,7 @@ class _InstantInventoryOverviewPageState
             Text(
               summary.hasAnalysis
                   ? '当前规则未发现需要列出的货品。零库存不直接判定为缺货。'
-                  : '当前服务端尚未提供风险分析指标。',
+                  : '当前系统版本暂不支持风险分析。',
             )
           else ...[
             Text(

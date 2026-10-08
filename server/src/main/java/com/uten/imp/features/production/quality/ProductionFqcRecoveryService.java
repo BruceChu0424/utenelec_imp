@@ -283,7 +283,7 @@ public class ProductionFqcRecoveryService implements ProductionFqcRecoveryPort {
                 || !reportItemId.equals(persisted.getFirst()[1])
                 || decimal(persisted.getFirst()[2]).compareTo(quantity) != 0
                 || !"ALLOCATE".equals(persisted.getFirst()[3])) {
-            throw conflict("返工/补产报工幂等键已绑定不同的恢复授权或数量");
+            throw conflict("同一防重复提交标识已用于不同恢复授权或数量的返工/补产报工，请刷新后重试");
         }
     }
 

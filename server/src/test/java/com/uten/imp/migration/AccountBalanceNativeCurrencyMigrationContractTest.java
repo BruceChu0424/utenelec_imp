@@ -126,7 +126,7 @@ class AccountBalanceNativeCurrencyMigrationContractTest {
                 .contains("AND is_base_currency")
                 .doesNotContain("UPPER(BTRIM(code)) IN ('CNY','RMB')");
         assertThat(currencyService)
-                .contains("本位币 UUID 不能停用")
-                .contains("本位币 UUID 不能删除");
+                .contains("本位币不能停用")
+                .contains("本位币不能删除");
     }
 }

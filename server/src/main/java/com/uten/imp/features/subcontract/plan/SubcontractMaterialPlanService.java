@@ -513,7 +513,7 @@ public class SubcontractMaterialPlanService {
                         """).setParameter("qty", take).setParameter("actorId", actorId)
                         .setParameter("id", reservationId).executeUpdate();
                 if (updated != 1) {
-                    throw new ApiException(ErrorCode.CONFLICT, "领料占用已被并发修改，请刷新后重试");
+                    throw new ApiException(ErrorCode.CONFLICT, "领料占用刚被别人改过，请刷新后重试");
                 }
                 em.createNativeQuery("""
                         INSERT INTO subcontract_outbound_issue_reservation_allocations(
@@ -570,7 +570,7 @@ public class SubcontractMaterialPlanService {
                     """).setParameter("qty", qty).setParameter("actorId", actorId)
                     .setParameter("id", allocation[1]).executeUpdate();
             if (restored != 1) {
-                throw new ApiException(ErrorCode.CONFLICT, "委外出仓的占用消费记录不一致，禁止红冲");
+                throw new ApiException(ErrorCode.CONFLICT, "委外出仓的领料占用记录对不上，不能红冲，请刷新后重试");
             }
             em.createNativeQuery("""
                     UPDATE subcontract_outbound_issue_reservation_allocations
@@ -818,7 +818,7 @@ public class SubcontractMaterialPlanService {
         for (Object[] row : rows) {
             if (Boolean.TRUE.equals(row[3])) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "委外实发缺少冻结单耗，不能推算减量下限，请先核实原出仓来源");
+                        "这份委外发料没有记录单耗，算不出最少要保留的数量，请先核实原出仓来源");
             }
             minimum = minimum.max(decimal(row[2]));
         }

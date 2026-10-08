@@ -505,7 +505,7 @@ class _AccountBalanceReconciliationDialogState
                       const SizedBox(height: UtenSpacing.s8),
                       Text(
                         '期初余额、累计收付款、既有流水和总账历史均保留；'
-                        '本次只调整当前余额，并新增不可变余额调整证据。',
+                        '本次只调整当前余额，并会留下一份不可修改的调整记录。',
                         style: Theme.of(dialogContext).textTheme.bodySmall
                             ?.copyWith(
                               color: Theme.of(
@@ -537,7 +537,7 @@ class _AccountBalanceReconciliationDialogState
                     ),
                     const SizedBox(height: UtenSpacing.s8),
                     Text(
-                      '提交后会生成可审计的余额调整批次和账户流水；不能通过普通编辑覆盖。',
+                      '提交后会生成可查的调整批次和账户流水，不能用普通编辑改掉。',
                       style: Theme.of(dialogContext).textTheme.bodySmall
                           ?.copyWith(
                             color: Theme.of(
@@ -607,7 +607,7 @@ class _AccountBalanceReconciliationDialogState
             if (_submitting)
               const UtenBusyOverlay(
                 title: '正在提交余额核对',
-                description: '正在写入账户余额调整分录，请勿重复提交或关闭窗口。',
+                description: '正在保存账户余额调整记录，请勿重复提交或关闭窗口。',
               ),
             _buildHeader(),
             const Divider(height: 1),
@@ -898,7 +898,8 @@ class _AccountBalanceReconciliationDialogState
           const SizedBox(width: UtenSpacing.s8),
           Expanded(
             child: Text(
-              '高权限操作：目标余额必须逐项重录，并发变化会整批回滚。'
+              '高权限操作：目标余额必须逐项重新填写；若提交时数据已被别人改过，'
+              '本次提交会整体不生效，需重新填写。'
               '金额均为账户原币；外币本位币调账额只用于总账，不折算账户余额。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onErrorContainer,

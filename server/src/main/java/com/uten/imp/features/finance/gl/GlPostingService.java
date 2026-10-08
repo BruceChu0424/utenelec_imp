@@ -144,7 +144,7 @@ public class GlPostingService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockAutoProjectionPeriod(LocalDate billDate) {
         if (billDate == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "总账投影期间缺失，禁止继续处理");
+            throw new ApiException(ErrorCode.CONFLICT, "总账记录缺少业务日期（会计期间），不能继续处理");
         }
         lockAutoProjectionPeriod(YearMonth.from(billDate).toString());
     }
@@ -181,15 +181,15 @@ public class GlPostingService {
                 || billNo == null
                 || billNo.isBlank()
                 || billDate == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "总账投影标识不完整，禁止红冲");
+            throw new ApiException(ErrorCode.CONFLICT, "总账记录的来源信息不完整，不能红冲");
         }
         String period = YearMonth.from(billDate).toString();
         String reversalPeriod = YearMonth.from(BusinessTime.today()).toString();
         if (!period.equals(reversalPeriod)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "当前总账架构不支持跨会计期间红冲：原期间 " + period
+                    "目前不能跨会计期间红冲：原期间 " + period
                             + "，当前期间 " + reversalPeriod
-                            + "。请在原期间处理，或待通用会计期间与反向凭证能力上线后操作");
+                            + "。请在原期间处理，或等通用会计期间与反向凭证功能上线后再操作");
         }
         FinancialDocumentGlScope.requireMutable(em, sourceType, sourceDocId);
         lockAutoProjectionPeriod(period);
@@ -235,7 +235,7 @@ public class GlPostingService {
                 .getSingleResult()).longValue();
         if (foreignProjection > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "总账投影与业务单据归属不一致，禁止物理删除");
+                    "总账记录与业务单据对不上，不能直接删除这条总账记录");
         }
         em.createNativeQuery("""
                         DELETE FROM gl_vouchers voucher
@@ -377,7 +377,7 @@ public class GlPostingService {
                 .getSingleResult()).longValue();
         if (confirmed > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "一般费用已财务确认，禁止物理删除总账凭证");
+                    "一般费用已财务确认，不能直接删除总账凭证");
         }
     }
 
@@ -402,7 +402,7 @@ public class GlPostingService {
         if (confirmed > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "本期间存在 " + confirmed
-                            + " 张已财务确认的一般费用凭证，禁止物理删除或重生成");
+                            + " 张已财务确认的一般费用凭证，不能直接删除或重生成");
         }
     }
 
@@ -512,8 +512,8 @@ public class GlPostingService {
                 .getSingleResult()).longValue();
         if (missing > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "本期间所需的系统过账角色有 " + missing
-                            + " 个未配置有效科目 UUID，禁止删除并重生成总账凭证");
+                    "本期间有 " + missing
+                            + " 个系统过账科目还没有配置，请先到科目设置中配置，再删除并重生成总账凭证");
         }
     }
 
@@ -542,7 +542,7 @@ public class GlPostingService {
         if (missing > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "本期间存在 " + missing
-                            + " 条无法证明来源 UUID 的应收应付立账，禁止按单号猜测并重生成总账凭证");
+                            + " 条来源单据不明的应收应付立账，不能按单号猜测并重生成总账凭证");
         }
     }
 
@@ -1014,7 +1014,7 @@ public class GlPostingService {
     }
 
     private static String claimOffsetVoucherNo(UUID batchId) {
-        if (batchId==null) throw new ApiException(ErrorCode.CONFLICT,"索赔抵销批次 UUID 缺失");
+        if (batchId==null) throw new ApiException(ErrorCode.CONFLICT,"索赔抵销批次缺少来源编号，不能生成凭证");
         return "SCO-"+batchId.toString().replace("-","");
     }
 
@@ -1116,7 +1116,7 @@ public class GlPostingService {
                 """).setParameter("p",period).getSingleResult()).longValue();
         if(orphaned>0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "存在无法证明转销批次 UUID 的客户预收 AUTO 凭证，禁止重生成删除");
+                    "存在转销批次来源不明的客户预收 AUTO 凭证，不能重生成删除");
         }
     }
 
@@ -1161,7 +1161,7 @@ public class GlPostingService {
                 .getSingleResult()).longValue();
         if (invalid > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "总账重生成发现 " + invalid + " 张缺行或借贷不平凭证，已回滚本期间过账");
+                    "总账重生成发现 " + invalid + " 张缺行或借贷不平的凭证，本次操作没有生效，请先核对这几张凭证");
         }
     }
 
@@ -1547,7 +1547,7 @@ public class GlPostingService {
         if (invalid > 0) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "账户余额校准存在 " + invalid
-                            + " 个无效历史科目快照，禁止删除并重生成总账凭证");
+                            + " 个无效的历史科目记录，不能删除并重生成总账凭证，请先核对校准记录");
         }
     }
 
@@ -1698,7 +1698,7 @@ public class GlPostingService {
         tx.bind();
         if(receiptId==null || reversedAt==null){
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "收款总账红冲缺少来源 UUID 或红冲时间");
+                    "收款总账红冲缺少来源单据编号或红冲时间");
         }
         FinancialDocumentGlScope.requireMutable(em, "RECEIPT", receiptId);
         PaymentStyleHierarchyLock.lock(em);
@@ -1801,7 +1801,7 @@ public class GlPostingService {
                 .executeUpdate();
         if(linked!=1){
             throw new ApiException(ErrorCode.CONFLICT,
-                    "收款原始凭证反向链接写入失败，禁止红冲");
+                    "收款原始凭证的反向关联保存失败，不能红冲，请重试");
         }
         return reversalId;
     }
@@ -1827,8 +1827,8 @@ public class GlPostingService {
                 """).setParameter("period",period).getSingleResult()).longValue();
         if(invalid!=0){
             throw new ApiException(ErrorCode.CONFLICT,
-                    "本期间存在 "+invalid+" 张 V1 收款的不可变总账投影不完整；"
-                            +"请进入异常队列核对，禁止批量重建猜测修复");
+                    "本期间存在 "+invalid+" 张 V1 收款的总账留存记录不完整；"
+                            +"请进入异常队列核对，不能靠批量重建来猜测修复");
         }
     }
 

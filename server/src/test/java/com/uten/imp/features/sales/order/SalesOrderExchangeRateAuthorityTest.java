@@ -321,7 +321,7 @@ class SalesOrderExchangeRateAuthorityTest {
         assertThatThrownBy(() -> service.createFromQuote(
                 request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("本位币 UUID 权威");
+                .hasMessageContaining("唯一启用的本位币");
     }
 
     @Test
@@ -360,7 +360,7 @@ class SalesOrderExchangeRateAuthorityTest {
         assertThatThrownBy(() -> service.createFromQuote(
                 request(null, "7.2"), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("本位币 UUID 权威");
+                .hasMessageContaining("唯一启用的本位币");
     }
 
     private void prepareUpdate(SalesOrder order) {

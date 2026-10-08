@@ -157,7 +157,7 @@ public class ProductionFqcReplenishmentMaterialService {
                         """).setParameter("key", key), String.class);
         if (!replay.isEmpty()) {
             if (!Objects.equals(replay.getFirst(), requestHash)) {
-                throw conflict("相同幂等键已用于另一补产物料确认请求");
+                throw conflict("同一防重复提交标识已用于另一补产物料确认请求，请刷新后重试");
             }
             return detailInternal(authorizationId);
         }
@@ -460,7 +460,7 @@ public class ProductionFqcReplenishmentMaterialService {
             BigDecimal missing = shortage.requiredQty()
                     .subtract(shortage.committedQty());
             String reason = switch (shortage.supplyRoute()) {
-                case "BUY" -> "外购物料库存不足；采购到货入库后使用新幂等键重试";
+                case "BUY" -> "外购物料库存不足；采购到货入库后请刷新页面重新确认";
                 case "MAKE" -> "自制物料库存不足；须先完成独立上游生产并入库，当前不自动伪造子计划";
                 case "SUBCONTRACT" -> "委外物料库存不足；须先完成独立委外供应并入库";
                 default -> "物料库存不足";
@@ -858,7 +858,7 @@ public class ProductionFqcReplenishmentMaterialService {
         String value = raw == null ? "" : raw.strip();
         if (value.length() < 8 || value.length() > 128
                 || !value.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("幂等键必须为 8 到 128 位字母、数字或 ._:-");
+            throw validation("防重复提交标识必须为 8 到 128 位字母、数字或 ._:-");
         }
         return value;
     }

@@ -613,8 +613,8 @@ class _OutboundFact extends StatelessWidget {
 String _actionDescription(WarehouseSalesOutboundAction action) =>
     switch (action) {
       WarehouseSalesOutboundAction.confirmShipment =>
-        '确认出库会在同一事务里扣减库存、消耗预留、回写订单已发数量并生成应收，'
-            '不能撤回。请核对实物后再确认。',
+        '确认出库会一起完成：扣库存、释放预留、更新订单已发数量并生成应收，'
+            '确认后不能撤回。请核对实物后再确认。',
     };
 
 IconData _actionIcon(WarehouseSalesOutboundAction action) => switch (action) {

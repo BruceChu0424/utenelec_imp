@@ -1164,10 +1164,11 @@ void main() {
       expect(rect.right, lessThanOrEqualTo(tabs.right), reason: label);
       expect(rect.right, lessThanOrEqualTo(640), reason: label);
     }
-    // 放不下同一行时搜索框换到分段下方，仍完整可用。
+    // 2026-10-07 搜索框减半(320→160)：640 宽也放得下与分段同一行；更窄窗口
+    // 放不下时仍会换到分段下方。两种形态都须完整可用且不超窗。
     final search = tester.getRect(find.byType(UtenSearchBar));
-    expect(search.top, greaterThanOrEqualTo(tabs.bottom));
     expect(search.right, lessThanOrEqualTo(640));
+    expect(search.width, closeTo(160, 0.5));
 
     await tester.tap(find.text('手工需求 (0 行)'));
     await tester.pumpAndSettle();

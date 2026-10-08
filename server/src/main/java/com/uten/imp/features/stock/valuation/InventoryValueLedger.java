@@ -346,8 +346,8 @@ abstract class InventoryValueLedger {
         List<Event> rows=db.query("SELECT * FROM stock_value_events WHERE operation=:op AND source_item_id=:item AND (source_event_id=:event OR idempotency_key=:key)",
                 args("op",operation,"event",c.sourceEventId(),"item",c.sourceItemId(),"key",c.idempotencyKey()),(r,i)->eventRow(r));
         if(rows.isEmpty())return null;
-        if(rows.size()!=1)throw conflict("来源事件与幂等键指向不同的库存价值动作");
-        if(!request.hash().equals(rows.getFirst().hash()))throw conflict("同一幂等键对应不同库存价值请求");
+        if(rows.size()!=1)throw conflict("来源事件与防重复提交标识指向不同的库存价值记录");
+        if(!request.hash().equals(rows.getFirst().hash()))throw conflict("同一防重复提交标识对应不同的库存价值请求");
         return rows.getFirst();
     }
     protected Event event(UUID id){
@@ -424,16 +424,16 @@ abstract class InventoryValueLedger {
     protected String sourceText(BigDecimal exact){return exact.scale()<=4?exact.setScale(4).toPlainString():exact.stripTrailingZeros().toPlainString();}
     protected BigDecimal projectedAmount(BigDecimal value,String label,boolean negativeAllowed){
         if(!authority.installed)return decimal(value,label,negativeAllowed);
-        if(value==null||(!negativeAllowed&&value.signum()<0))throw invalid(label+"无效");
-        try{return value.setScale(4,java.math.RoundingMode.UNNECESSARY);}catch(ArithmeticException invalidScale){throw invalid(label+"不是四位兼容投影");}
+        if(value==null||(!negativeAllowed&&value.signum()<0))throw invalid(label+"不正确");
+        try{return value.setScale(4,java.math.RoundingMode.UNNECESSARY);}catch(ArithmeticException invalidScale){throw invalid(label+"的小数位数超出支持范围（最多4位）");}
     }
 
     protected static EventContext context(EventContext c){
         if(c==null)throw invalid("价值来源上下文不能为空");
         required(c.sourceEventId(),"来源事件UUID");required(c.sourceDocId(),"来源单据UUID");required(c.sourceItemId(),"来源明细UUID");
         required(c.actorUserId(),"责任账号UUID");required(c.actorEmployeeId(),"责任员工UUID");
-        if(c.sourceVersion()<0||c.sourceDocType()==null||!c.sourceDocType().matches("[A-Z][A-Z0-9_]{0,79}"))throw invalid("价值来源版本或类型无效");
-        if(c.idempotencyKey()==null||!c.idempotencyKey().matches("[A-Za-z0-9._:-]{8,160}"))throw invalid("价值幂等键须为8到160位稳定标识");
+        if(c.sourceVersion()<0||c.sourceDocType()==null||!c.sourceDocType().matches("[A-Z][A-Z0-9_]{0,79}"))throw invalid("价值来源的版本或类型不正确");
+        if(c.idempotencyKey()==null||!c.idempotencyKey().matches("[A-Za-z0-9._:-]{8,160}"))throw invalid("价值的防重复提交标识须为8到160位");
         if(c.occurredAt()==null)throw invalid("稳定来源发生时间不能为空");
         return new EventContext(c.sourceEventId(),c.sourceDocType(),c.sourceDocId(),c.sourceItemId(),c.sourceVersion(),c.actorUserId(),c.actorEmployeeId(),
                 c.idempotencyKey(),c.occurredAt().toInstant().truncatedTo(ChronoUnit.MICROS).atOffset(ZoneOffset.UTC));

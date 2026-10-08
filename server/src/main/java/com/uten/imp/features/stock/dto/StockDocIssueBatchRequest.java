@@ -27,8 +27,8 @@ public class StockDocIssueBatchRequest {
     /** 单次批量上限（与服务端校验同值；前端勾选超出时先行截断提示）。 */
     public static final int MAX_DOCUMENTS = 50;
 
-    @NotBlank(message = "批量出库缺少幂等键")
-    @Size(min = 8, max = 128, message = "批量出库幂等键长度须为 8~128 位")
+    @NotBlank(message = "批量出库缺少防重复提交标识")
+    @Size(min = 8, max = 128, message = "批量出库的防重复提交标识长度须为 8~128 位")
     private String idempotencyKey;
 
     @NotNull(message = "批量出库缺少单据清单")

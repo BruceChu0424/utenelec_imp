@@ -318,7 +318,7 @@ public class ClientService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ClientFacets facets(UUID categoryId, boolean excludeLegacyFinanceStub) {
         if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择客户分类");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
         ClientAccessPolicy.ClientScope accessScope = clientAccessPolicy.evaluate();
@@ -763,7 +763,7 @@ public class ClientService {
         if (!unchanged) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "旧库 Credit 是铺底来源的只读快照，不能作为信用额度修改；真实信用额度需使用后续显式核准模型");
+                    "这里显示的是旧系统导入的铺底参考值，不能当作信用额度来改；正式信用额度需另行核准");
         }
     }
 

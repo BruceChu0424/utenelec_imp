@@ -315,7 +315,7 @@ class _FinanceAssetWorkbenchPageState
             _MetricCard(
               width: width,
               icon: Icons.rule_folder_outlined,
-              label: '待办 / 异常',
+              label: '待办 / 有问题',
               value: overview.metrics.pendingOrExceptionCount.toString(),
             ),
           ],

@@ -47,7 +47,7 @@ class MaterialAnalysisMainWarehouseSafetyCommandTest {
     void negativeMainBudgetIsRejected(String invalid) {
         var material=material("10",invalid.equals("public")?"-1":"4",invalid.equals("open")?"-1":"2",invalid.equals("gap")?"-1":"4");
         assertThatThrownBy(()->MaterialAnalysisCommandService.groupSafetySnapshot(List.of(material)))
-                .isInstanceOf(ApiException.class).hasMessageContaining("主仓安全库存汇总无效");
+                .isInstanceOf(ApiException.class).hasMessageContaining("主仓安全库存汇总数据不正确");
     }
 
     @Test void inconsistentPublicOrInflightSnapshotsCannotBeCombinedIntoAnInventedBudget() {

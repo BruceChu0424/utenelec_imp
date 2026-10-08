@@ -143,8 +143,8 @@ class _ProductionPlanSummarySheetPageState
         _workshopsLoading = false;
         _workshopsLoaded = false;
         _workshopsError = error is NetworkTimeoutException
-            ? '默认车间读取超时。汇总内容可继续查看，重试成功后可打印。'
-            : '默认车间读取失败。汇总内容可继续查看，重试成功后可打印。';
+            ? '默认车间信息加载时间过长。汇总内容可继续查看，重试成功后可打印。'
+            : '默认车间信息没有读到。汇总内容可继续查看，重试成功后可打印。';
       });
       return;
     }
@@ -779,9 +779,9 @@ class _ProductionPlanSummarySheetPageState
       final ok = await printPdfBytes(bytes, '生产备料计划汇总单-$_today.pdf');
       if (!mounted) return;
       if (!ok) context.appWarning('打印流程未完成');
-    } catch (error) {
+    } catch (_) {
       if (!mounted) return;
-      context.appError('生成 PDF 失败：$error', force: true);
+      context.appError('生成 PDF 失败，请重新打印；连续失败时可重启打印服务后再试', force: true);
     } finally {
       if (mounted) setState(() => _printing = false);
     }

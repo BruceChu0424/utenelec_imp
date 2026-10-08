@@ -53,6 +53,6 @@ public class SystemMasterCategoryRegistry {
         return repository.findById(SystemMasterCategories.REGISTRY_ID)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.INTERNAL,
-                        "系统未分类 UUID 注册表缺失"));
+                        "系统缺少「未分类」分类的基础数据，请联系管理员处理"));
     }
 }

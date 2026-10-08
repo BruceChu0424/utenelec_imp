@@ -83,7 +83,7 @@ public class FinanceAssetPeriodService {
                 WHERE period=:period AND is_deleted=false
                 """).setParameter("period", period).getSingleResult());
         if (!"OPEN".equals(status)) {
-            throw new ApiException(ErrorCode.CONFLICT, "Asset accounting period is closed: " + period);
+            throw new ApiException(ErrorCode.CONFLICT, "资产会计期间已关闭，不能在 " + period + " 记账");
         }
     }
 
@@ -99,13 +99,13 @@ public class FinanceAssetPeriodService {
         UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.PERIOD_MANAGE);
         AssetPeriod.parse(period);
         if (reason == null || reason.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Close reason is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写关闭原因");
         }
         lockPeriod(period, actorId);
         PeriodRow current = periodForUpdate(period);
         requireVersion(current.rowVersion(), expectedVersion);
         if (!"OPEN".equals(current.status())) {
-            throw new ApiException(ErrorCode.CONFLICT, "Asset accounting period is already closed");
+            throw new ApiException(ErrorCode.CONFLICT, "该资产会计期间已经是关闭状态，请刷新后重试");
         }
 
         List<RunEvidence> runs = effectiveCorporateRuns(period);
@@ -166,13 +166,13 @@ public class FinanceAssetPeriodService {
         UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.PERIOD_MANAGE);
         AssetPeriod.parse(period);
         if (reason == null || reason.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Reopen reason is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写重新打开的原因");
         }
         lockPeriod(period, actorId);
         PeriodRow current = periodForUpdate(period);
         requireVersion(current.rowVersion(), expectedVersion);
         if (!"CLOSED".equals(current.status())) {
-            throw new ApiException(ErrorCode.CONFLICT, "Asset accounting period is already open");
+            throw new ApiException(ErrorCode.CONFLICT, "该资产会计期间没有关闭，无需重新打开");
         }
         int changed = em.createNativeQuery("""
                 UPDATE finance_asset_accounting_periods
@@ -256,7 +256,7 @@ public class FinanceAssetPeriodService {
     private static RunEvidence uniqueRun(List<RunEvidence> runs, String type) {
         List<RunEvidence> matches = runs.stream().filter(run -> type.equals(run.runType())).toList();
         if (matches.size() > 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "Multiple effective posted runs exist for " + type);
+            throw new ApiException(ErrorCode.CONFLICT, "该期间存在多个生效的过账批次（" + type + "），请先核对批次数据");
         }
         return matches.isEmpty() ? null : matches.getFirst();
     }
@@ -266,7 +266,7 @@ public class FinanceAssetPeriodService {
     }
 
     private static ApiException concurrentChange() {
-        return new ApiException(ErrorCode.CONFLICT, "The accounting period changed; refresh and retry");
+        return new ApiException(ErrorCode.CONFLICT, "这个会计期间已被别人修改，请刷新后重试");
     }
 
     private static Object[] singleRow(Object value) {

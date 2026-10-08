@@ -96,7 +96,7 @@ public class ProductionDailyReportController {
                 } catch (IllegalArgumentException error) {
                     throw new ApiException(
                             ErrorCode.VALIDATION_FAILED,
-                            "批量报工执行段 UUID 格式无效");
+                            "批量报工选择的执行段格式不正确");
                 }
             }
         }

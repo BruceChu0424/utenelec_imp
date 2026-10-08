@@ -537,7 +537,7 @@ class DefaultDeviceAuditStore implements DeviceAuditStore {
               'legacy_${source.key}_${sha256.convert(utf8.encode(raw))}';
           final existing = await _receiptStorage.read(key);
           if (existing != null && existing != raw) {
-            throw StateError('本机旧回执原件校验失败');
+            throw StateError('本机旧回执原件核对未通过');
           }
           if (existing == null) {
             await _storeMigrationValue(key, raw);

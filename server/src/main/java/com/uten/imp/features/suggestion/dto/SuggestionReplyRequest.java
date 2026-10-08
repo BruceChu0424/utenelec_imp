@@ -12,6 +12,6 @@ public record SuggestionReplyRequest(
         @NotBlank(message = "回复内容不能为空")
         @Size(max = 5_000, message = "回复内容最多 5000 字")
         String content,
-        @Pattern(regexp = "^(reviewing|resolved|rejected)$", message = "建议状态不合法")
+        @Pattern(regexp = "^(reviewing|resolved|rejected)$", message = "建议状态不正确")
         String newStatus) {
 }

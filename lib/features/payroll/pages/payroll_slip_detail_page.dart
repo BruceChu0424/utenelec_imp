@@ -20,6 +20,7 @@ import '../../../core/io/file_saver.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../models/payroll_download.dart';
 import '../models/payroll_item.dart';
 import '../models/payroll_slip.dart';
@@ -42,7 +43,9 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
     try {
       await markPayrollViewed(ref, widget.slipId);
     } catch (error) {
-      if (mounted) context.appError('查看状态记录失败：$error');
+      if (mounted) {
+        context.appError(humanErrorMessage(error) ?? '「已查看」没有记录成功，请稍后重试');
+      }
     }
   }
 
@@ -52,7 +55,7 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
     try {
       final bytes = await downloadPayrollSlip(ref, slip.id);
       if (!hasPdfSignature(bytes)) {
-        throw const FormatException('服务器返回的文件不是有效 PDF');
+        throw const FormatException('下载到的文件不是有效的 PDF，请稍后重试');
       }
       final savedPath = await saveBytes(
         bytes,
@@ -65,7 +68,8 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
       context.appSuccess('工资条已保存：$savedPath');
     } catch (error) {
       if (!mounted) return;
-      context.appError('下载失败：$error');
+      // 下载链路可能是网络(服务端给因)、也可能是本机保存问题：能给人看的都如实报。
+      context.appError(humanErrorMessage(error) ?? '工资条没有下载成功，请稍后重试');
     }
   }
 
@@ -78,7 +82,7 @@ class _PayrollSlipDetailPageState extends ConsumerState<PayrollSlipDetailPage> {
       body: detail.when(
         loading: () => const _LoadingView(),
         error: (e, _) => UtenEmpty.error(
-          message: '加载失败：$e',
+          message: humanErrorMessage(e) ?? '工资条没有加载出来，请稍后重试',
           actionLabel: '重试',
           onAction: () => ref.invalidate(payrollDetailProvider(widget.slipId)),
         ),

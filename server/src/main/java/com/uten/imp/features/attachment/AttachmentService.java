@@ -77,7 +77,7 @@ public class AttachmentService implements AttachmentAccessPort {
                         type, ownerId, AttachmentLifecycleState.CLEAN).stream()
                 .filter(Attachment::isAvatar).toList();
         if (selected.isEmpty()) return java.util.Optional.empty();
-        if (selected.size() != 1) throw new ApiException(ErrorCode.CONFLICT, "Selected avatar identity is not unique");
+        if (selected.size() != 1) throw new ApiException(ErrorCode.CONFLICT, "该记录有多个头像，数据异常，请联系管理员处理");
         Attachment image = selected.getFirst();
         String contentType=normalizeContentType(image.getContentType());
         if (contentType==null || !RENDERABLE_AVATAR_TYPES.contains(contentType)) return java.util.Optional.empty();
@@ -137,7 +137,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 return toDto(existing);
             }
             throw new ApiException(ErrorCode.CONFLICT,
-                    "The uploaded object is already bound and cannot be reused");
+                    "这个文件已经保存过，不能重复使用，请重新上传");
         }
 
         uploadGrants.requireUnexpired(grant);
@@ -147,19 +147,19 @@ public class AttachmentService implements AttachmentAccessPort {
             StoredObject stagingObject = objectStorage.describe(request.storageKey());
             if (!stagingObject.exists()) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "Attachment upload is not complete; upload before confirming");
+                        "文件还没有上传完成，请先上传完成再确认");
             }
             if (stagingObject.size() <= 0 || stagingObject.size() != request.sizeBytes()
                     || stagingObject.size() > properties.getMaxBytes()) {
                 reject(session, stagingObject, "SIZE_MISMATCH", null);
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "Uploaded object size does not match its signed policy");
+                        "上传的文件大小与登记的不一致，请重新上传");
             }
             String actualContentType = normalizeContentType(stagingObject.contentType());
             if (StringUtils.hasText(actualContentType) && !actualContentType.equals(contentType)) {
                 reject(session, stagingObject, "CONTENT_TYPE_MISMATCH", null);
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "Uploaded object content type does not match its signed policy");
+                        "上传的文件类型与登记的不一致，请重新上传");
             }
             uploadSessions.recordStaging(
                     session.id(), stagingObject.versionId(), stagingObject.eTag(), null);
@@ -175,7 +175,7 @@ public class AttachmentService implements AttachmentAccessPort {
             }
             if (stagingObject.contentSha256()!=null && !stagingObject.contentSha256().equals(inspection.sha256())) {
                 reject(session,stagingObject,"STAGED_DIGEST_CHANGED",null);
-                throw new ApiException(ErrorCode.CONFLICT,"Uploaded object digest changed before scanning");
+                throw new ApiException(ErrorCode.CONFLICT,"文件在安全扫描前内容发生了变化，请重新上传");
             }
             uploadSessions.recordStaging(
                     session.id(), stagingObject.versionId(), stagingObject.eTag(),
@@ -187,7 +187,7 @@ public class AttachmentService implements AttachmentAccessPort {
             if (scan.verdict() != Verdict.CLEAN) {
                 reject(session, stagingObject, "MALWARE_DETECTED", scan);
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "Attachment was quarantined by malware scanning");
+                        "文件没有通过安全扫描，已被隔离，请检查文件后重新上传");
             }
 
             StoredObject finalObject = objectStorage.promoteToFinal(
@@ -204,7 +204,7 @@ public class AttachmentService implements AttachmentAccessPort {
         } catch (AttachmentScanUnavailableException unavailable) {
             uploadSessions.releaseAfterTransientFailure(session.id(), "SCANNER_UNAVAILABLE");
             throw new ApiException(ErrorCode.BUSINESS,
-                    "Attachment scanning is unavailable; the object remains quarantined");
+                    "安全扫描服务暂时不可用，文件暂不能确认，请稍后重试");
         } catch (ApiException error) {
             uploadSessions.releaseAfterTransientFailure(session.id(), "CONFIRM_RETRYABLE");
             throw error;
@@ -291,9 +291,9 @@ public class AttachmentService implements AttachmentAccessPort {
         policy(ownerType).requireCanSelectAvatar(ownerId, user);
 
         Attachment selected = repository.findById(attachmentId)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         if (!ownerType.equals(selected.getOwnerType()) || !ownerId.equals(selected.getOwnerId())) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "Attachment not found");
+            throw new ApiException(ErrorCode.NOT_FOUND, "附件不存在");
         }
         requireClean(selected);
         // 2026-09-11：不能只看 image/ 前缀。tiff/heic/svg 也是 image/*，但客户端解码不了，
@@ -302,7 +302,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 || !RENDERABLE_AVATAR_TYPES.contains(
                         selected.getContentType().toLowerCase(Locale.ROOT))) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Only image attachments can be selected as an avatar");
+                    "只能选择图片附件作为头像");
         }
 
         repository.findByOwnerTypeAndOwnerIdOrderByCreatedAtAsc(ownerType, ownerId)
@@ -323,7 +323,7 @@ public class AttachmentService implements AttachmentAccessPort {
         AuthUser user = requireStaff();
         require(user, "attachment:download");
         Attachment attachment = repository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
         policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
 
@@ -345,7 +345,7 @@ public class AttachmentService implements AttachmentAccessPort {
         AuthUser user = requireStaff();
         require(user, "attachment:download");
         Attachment attachment = repository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
         policy(attachment.getOwnerType()).requireCanView(attachment.getOwnerId(), user);
         audit.logExplicit(user.getId(), user.getLoginAccount(),
@@ -373,7 +373,7 @@ public class AttachmentService implements AttachmentAccessPort {
         AuthUser user = requireStaff();
         require(user, "attachment:upload");
         Attachment attachment = repository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(attachment);
         policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
 
@@ -393,7 +393,7 @@ public class AttachmentService implements AttachmentAccessPort {
         String trimmed = category.trim();
         if (trimmed.length() > 48) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Attachment category exceeds 48 characters");
+                    "附件分类最多 48 个字");
         }
         return trimmed;
     }
@@ -405,7 +405,7 @@ public class AttachmentService implements AttachmentAccessPort {
         AuthUser user = requireStaff();
         require(user, "attachment:delete");
         Attachment attachment = repository.findById(id)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         policy(attachment.getOwnerType()).requireCanManageForUpdate(attachment.getOwnerId(), user);
         if (attachment.getLifecycleState() == AttachmentLifecycleState.DELETED
                 || attachment.getLifecycleState()==AttachmentLifecycleState.RETAINED_HISTORY
@@ -440,28 +440,28 @@ public class AttachmentService implements AttachmentAccessPort {
         AttachmentUploadSessionStore.UploadSession session = uploadSessions.findByStorageKey(storageKey);
         if (session == null || !session.matches(grant) || !"PENDING".equals(session.status())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Attachment upload reservation is absent or no longer writable");
+                    "上传登记不存在或已失效，请重新上传");
         }
         if (repository.existsByStorageKey(storageKey)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Attachment object is already bound and cannot be overwritten");
+                    "这个文件已保存过，不能覆盖，请重新上传");
         }
 
         StorageService objectStorage=storageProviders.require(session.storageProvider());
         if (!(objectStorage instanceof BlobStore store)) {
             throw new ApiException(ErrorCode.NOT_FOUND,
-                    "Local raw upload is not enabled for this storage provider");
+                    "当前存储方式不支持直传，请联系管理员");
         }
         try {
             store.store(storageKey, input, contentLength, contentType);
         } catch (IllegalStateException e) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Attachment write failed or the object already exists");
+                    "文件保存失败，或服务器上已有同名文件，请重试");
         }
         StoredObject stored = objectStorage.describe(storageKey);
         if (!stored.exists() || stored.size() != contentLength) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Stored attachment length differs from its signed grant");
+                    "保存的文件大小与登记的不一致，请重新上传");
         }
     }
 
@@ -470,7 +470,7 @@ public class AttachmentService implements AttachmentAccessPort {
         AuthUser user = requireStaff();
         require(user, "attachment:download");
         Attachment metadata = repository.findByStorageKey(storageKey)
-                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "Attachment not found"));
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "附件不存在"));
         requireClean(metadata);
         policy(metadata.getOwnerType()).requireCanView(metadata.getOwnerId(), user);
 
@@ -539,43 +539,43 @@ public class AttachmentService implements AttachmentAccessPort {
                 .toList();
         if (matches.size() != 1) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Unsupported attachment owner type: " + ownerType);
+                    "不支持的附件所属类型：" + ownerType);
         }
         return matches.getFirst();
     }
 
     private void requireStorageEnabled() {
         if (!storage.isEnabled()) {
-            throw new ApiException(ErrorCode.BUSINESS, "Attachment storage is disabled");
+            throw new ApiException(ErrorCode.BUSINESS, "附件存储功能未开启，请联系管理员");
         }
     }
 
     private static void requireClean(Attachment attachment) {
         if (attachment.getLifecycleState() != AttachmentLifecycleState.CLEAN) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "Attachment is not available");
+            throw new ApiException(ErrorCode.NOT_FOUND, "附件已删除或不可用");
         }
     }
 
     private void validateUpload(String fileName, String contentType, long size) {
         if (!StringUtils.hasText(fileName)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Attachment name is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写附件名称");
         }
         String normalized = normalizeContentType(contentType);
         if (!StringUtils.hasText(normalized)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Attachment type is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择附件类型");
         }
         boolean allowed = properties.getAllowedContentTypes().stream()
                 .anyMatch(allowedType -> allowedType.equalsIgnoreCase(normalized));
         if (!allowed) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Unsupported attachment type: " + normalized);
+                    "不支持这类附件：" + normalized);
         }
         if (size <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "Attachment size is invalid");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件大小不正确");
         }
         if (size > properties.getMaxBytes()) {
             throw new ApiException(ErrorCode.PAYLOAD_TOO_LARGE,
-                    "Attachment exceeds the limit of " + properties.getMaxBytes() + " bytes");
+                    "附件超过了大小限制（" + properties.getMaxBytes() + " 字节）");
         }
     }
 
@@ -590,7 +590,7 @@ public class AttachmentService implements AttachmentAccessPort {
                 || !Objects.equals(grant.contentType(), contentType)
                 || grant.sizeBytes() != sizeBytes) {
             throw new ApiException(ErrorCode.FORBIDDEN,
-                    "Attachment upload grant does not match this request");
+                    "上传信息与登记的不一致，请重新上传");
         }
     }
 
@@ -606,7 +606,7 @@ public class AttachmentService implements AttachmentAccessPort {
     private static String normalizeOwnerType(String ownerType) {
         if (!StringUtils.hasText(ownerType)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "Attachment owner type is required");
+                    "请提供附件所属类型");
         }
         return ownerType.trim().toUpperCase(Locale.ROOT);
     }

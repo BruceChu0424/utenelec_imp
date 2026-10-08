@@ -151,21 +151,21 @@ public class GoodsCostImportService {
             boolean hasOwnedFees=currentInput.fees()!=null&&currentInput.fees().stream().anyMatch(f->"IMPORT_REVIEWED".equals(f.source()));
             boolean hasOwnedOverrides=currentInput.lineOverrides()!=null&&currentInput.lineOverrides().stream()
                     .anyMatch(o->o.reason()!=null&&o.reason().startsWith("已核定导入: "));
-            if(hasOwnedFees||hasOwnedOverrides)throw conflict("现有导入项缺少映射凭据，请先恢复原草稿或明确改为手工项后再导入");
+            if(hasOwnedFees||hasOwnedOverrides)throw conflict("现有导入项缺少对应的导入记录，请先恢复原草稿或明确改为手工项后再导入");
             return withRows(currentInput,currentInput.lineOverrides(),currentInput.fees(),withoutImportFields(fields));
         }
         UUID mappingId;
-        try{mappingId=UUID.fromString(previousId);}catch(IllegalArgumentException invalidId){throw invalid("原成本映射凭据格式无效");}
+        try{mappingId=UUID.fromString(previousId);}catch(IllegalArgumentException invalidId){throw invalid("原成本匹配记录的编号格式不正确");}
         guard.validate(currentInput.goodsId(),fields);
         var rows=db.queryForList("""
                 SELECT goods_id,import_id,base_input::text base_input,result_input::text result_input
                 FROM goods_cost_import_mappings WHERE id=:id AND goods_id=:goods
                 """,Map.of("id",mappingId,"goods",currentInput.goodsId()));
-        if(rows.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"原成本映射凭据不存在");
+        if(rows.size()!=1)throw new ApiException(ErrorCode.NOT_FOUND,"原成本匹配记录不存在");
         var row=rows.getFirst();
-        if(!Objects.equals(Objects.toString(row.get("import_id")),fields.get("importId")))throw invalid("原文件与映射凭据不匹配");
+        if(!Objects.equals(Objects.toString(row.get("import_id")),fields.get("importId")))throw invalid("原文件与成本匹配记录不匹配");
         DraftInput before=decodeInput((String)row.get("base_input")),after=decodeInput((String)row.get("result_input"));
-        if(!currentInput.goodsId().equals(before.goodsId())||!currentInput.goodsId().equals(after.goodsId()))throw invalid("原成本映射货品不匹配");
+        if(!currentInput.goodsId().equals(before.goodsId())||!currentInput.goodsId().equals(after.goodsId()))throw invalid("原成本匹配记录的货品不匹配");
         sheets.requireInputScope(before);sheets.requireInputScope(after);
         List<LineOverride> overrides=restoreRows(currentInput.lineOverrides(),before.lineOverrides(),after.lineOverrides(),
                 LineOverride.class,"path","物料覆盖");

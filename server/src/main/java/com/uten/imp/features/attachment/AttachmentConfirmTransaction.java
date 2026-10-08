@@ -51,7 +51,7 @@ class AttachmentConfirmTransaction {
                 return existing;
             }
             throw new ApiException(ErrorCode.CONFLICT,
-                    "The uploaded object is already bound and cannot be reused");
+                    "这个文件已经保存过，不能重复使用，请重新上传");
         }
 
         Instant now = Instant.now();
@@ -90,7 +90,7 @@ class AttachmentConfirmTransaction {
             return saved;
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "The uploaded object is already bound and cannot be reused");
+                    "这个文件已经保存过，不能重复使用，请重新上传");
         }
     }
 }

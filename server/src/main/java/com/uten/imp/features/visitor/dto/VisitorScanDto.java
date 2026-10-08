@@ -13,7 +13,7 @@ public final class VisitorScanDto {
 
     /** 核验入参：qrToken（扫码）与 passcode（手动输入6位码）二选一。 */
     public record VisitorVerifyRequest(
-            @Size(max = 1_024, message = "二维码令牌过长")
+            @Size(max = 1_024, message = "二维码内容过长")
             String qrToken,
             @Pattern(regexp = "^\\d{6}$", message = "手工核验码必须为 6 位数字")
             String passcode) {}

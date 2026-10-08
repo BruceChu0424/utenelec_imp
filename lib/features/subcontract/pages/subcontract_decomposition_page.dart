@@ -690,7 +690,7 @@ class _SubcontractDecompositionPageState
       (task) =>
           task.actionDocument == null || _applicationItemIdsOf(task).isEmpty,
     )) {
-      return '所选任务缺少不可变的委外申请明细来源，请刷新后重试';
+      return '所选任务找不到对应的委外申请明细，请刷新后重试';
     }
     if (selected.any((task) => task.taskStatus != _waitingOrderStage)) {
       return '只能选择「待处理」的任务';

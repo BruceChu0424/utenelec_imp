@@ -52,7 +52,7 @@ public class CustomerPrepaymentOffsetService {
                 .distinct().count() != targets.size()) {
             throw validation("同一应收与销售单来源不能在一个转销批次中重复");
         }
-        String idempotencyKey = bounded(request.idempotencyKey(), 120, "幂等键");
+        String idempotencyKey = bounded(request.idempotencyKey(), 120, "提交标识");
         String reason = bounded(request.reason(), 2000, "应用原因");
         String requestHash = hash(request.sourceLedgerId(), targets, reason);
         BatchDetail existing = findIdempotent(idempotencyKey, requestHash);
@@ -103,7 +103,7 @@ public class CustomerPrepaymentOffsetService {
         if (inserted == 0) {
             BatchDetail raced = findIdempotent(idempotencyKey, requestHash);
             if (raced != null) return raced;
-            throw conflict("幂等键已被不同请求使用");
+            throw conflict("这个提交编号已提交过内容不同的请求，请刷新页面后重新填写提交");
         }
 
         BigDecimal sourceOriginal = source.balanceOriginal();
@@ -317,7 +317,7 @@ public class CustomerPrepaymentOffsetService {
                 """).setParameter("key", key).getResultList();
         if (rows.isEmpty()) return null;
         if (rows.size() != 1 || !Objects.equals(hash, rows.getFirst()[1])) {
-            throw conflict("幂等键已被不同的预收转销请求使用");
+            throw conflict("这个提交编号已提交过内容不同的预收转销，请刷新页面后重新填写提交");
         }
         return detail((UUID) rows.getFirst()[0]);
     }
@@ -386,7 +386,7 @@ public class CustomerPrepaymentOffsetService {
                 """).setParameter("ledgerId", target.id()).setParameter("salesOrderId", salesOrderId)
                 .setParameter("clientId", target.clientId()).setParameter("currencyId", target.currencyId())
                 .getResultList();
-        if (rows.size() != 1) throw conflict("目标应收没有唯一、同客户同币种的销售单 UUID 来源");
+        if (rows.size() != 1) throw conflict("目标应收找不到唯一、同客户同币种的销售单来源，请核对来源数据");
         Object[] row = rows.getFirst();
         BigDecimal availableOriginal = money(decimal(row[3]));
         BigDecimal availableLocal = money(decimal(row[4]));
@@ -405,7 +405,7 @@ public class CustomerPrepaymentOffsetService {
                 FROM ar_ap_ledger ledger WHERE ledger.id=:id
                 """).setParameter("id", ledgerId).getSingleResult();
         BigDecimal value = money(decimal(row[0]).subtract(decimal(row[1])));
-        if (value.signum() < 0) throw conflict("应收来源分配超过台账累计到账/冲销，数据不守恒");
+        if (value.signum() < 0) throw conflict("应收来源分配的金额超过了台账累计到账/冲销，请核对来源分配");
         return value;
     }
 
@@ -447,7 +447,7 @@ public class CustomerPrepaymentOffsetService {
         if (request.targets().stream().anyMatch(t -> t == null || t.receivableLedgerId() == null
                 || t.salesOrderId() == null || t.amountOriginal() == null
                 || t.amountOriginal().signum() <= 0)) {
-            throw validation("转销目标、销售单 UUID 和原币金额必须完整且大于 0");
+            throw validation("转销目标、来源销售单和原币金额必须填写完整，且金额大于 0");
         }
     }
 

@@ -86,7 +86,7 @@ class PurchaseLineUnitPolicyTest {
                         UUID.randomUUID(), null, null, 1));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertEquals("第 1 行货品不存在、已删除或未维护有效基本单位", error.getMessage());
+        assertEquals("第 1 行货品不存在、已删除，或还没有设置有效的基本单位", error.getMessage());
     }
 
     @Test

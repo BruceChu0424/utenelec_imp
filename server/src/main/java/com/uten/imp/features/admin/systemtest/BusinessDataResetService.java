@@ -657,7 +657,7 @@ public class BusinessDataResetService {
             // Its receipt is atomic, so require reconciliation instead of
             // claiming rollback or encouraging another destructive request.
             ApiException uncertain = new UncertainResetOutcome(
-                    "业务数据清空未确认完成，请重新登录核对本次结果（事务提交或完成回执写入失败）");
+                    "业务数据清空未确认完成，请重新登录核对本次结果（系统没能确认保存完成）");
             uncertain.initCause(ex);
             throw uncertain;
         }

@@ -513,7 +513,7 @@ class _MaterialAnalysisBucketPageState
                 ? Positioned.fill(
                     child: UtenBusyOverlay(
                       title: message,
-                      description: '同一事务内批量处理所选行，完成后自动刷新。',
+                      description: '所选行会一起处理，全部成功才算完成，完成后自动刷新。',
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -1065,30 +1065,10 @@ class _MaterialAnalysisBucketPageState
     // 编号/颜色/单位已各自成列；规格按 2026-09-29 用户口径不再显示。
     final cell = UtenGoodsIdentityCell(name: name);
     if (!_isTopLevelProduct(product)) return cell;
-    final theme = Theme.of(context);
-    final color = theme.colorScheme.error;
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       spacing: UtenSpacing.s4,
-      children: [
-        cell,
-        Container(
-          key: const ValueKey('material-analysis-top-level-badge'),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: UtenRadius.smAll,
-            border: Border.all(color: color.withValues(alpha: 0.5)),
-          ),
-          child: Text(
-            '顶层',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-      ],
+      children: [cell, const MaterialTopLevelBadge()],
     );
   }
 
@@ -1196,5 +1176,35 @@ class _MaterialAnalysisBucketPageState
         },
       ),
     ];
+  }
+}
+
+/// 顶层产品行的红色「顶层」小框（2026-09-15 起分桶详情用，2026-10-07 起按物料
+/// 汇总视图的顶层产品行同款复用）。整页族（本页与主表同库）共用这一枚，保证
+/// 两个页面「顶层」的视觉口径一致：error 语义色 12% 底 / 50% 描边 / labelSmall
+/// 加粗，紧凑行高不受影响。
+class MaterialTopLevelBadge extends StatelessWidget {
+  const MaterialTopLevelBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.error;
+    return Container(
+      key: const ValueKey('material-analysis-top-level-badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: UtenRadius.smAll,
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        '顶层',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
   }
 }

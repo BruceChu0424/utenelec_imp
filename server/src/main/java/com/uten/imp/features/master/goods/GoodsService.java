@@ -201,10 +201,10 @@ public class GoodsService {
     @Transactional(readOnly = true)
     public List<UUID> matchingCategoryIds(GoodsQueryFilter f) {
         if (f.keyword() == null || f.keyword().isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "keyword 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先填写搜索关键词");
         }
         if (f.categoryId() != null || f.categoryRootIds() == null || f.categoryRootIds().isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryRootIds 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择货品分类范围");
         }
         List<UUID> subtreeIds = resolveCategoryScopeIds(f);
         var scope = goodsScope();
@@ -327,11 +327,11 @@ public class GoodsService {
         Set<UUID> roots = f.categoryRootIds();
         if (f.categoryId() != null && roots != null && !roots.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "categoryId 与 categoryRootIds 不能同时传入");
+                    "分类筛选条件冲突，请只按一种方式选择分类");
         }
         if (roots != null && roots.size() > MAX_CATEGORY_ROOT_IDS) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "categoryRootIds 数量不能超过 " + MAX_CATEGORY_ROOT_IDS);
+                    "所选分类范围过多，最多 " + MAX_CATEGORY_ROOT_IDS + " 个，请减少后再试");
         }
         if (f.categoryId() != null) return resolveSubtreeIds(f.categoryId());
         if (roots == null || roots.isEmpty()) return null;
@@ -625,7 +625,7 @@ public class GoodsService {
     @Transactional(readOnly = true)
     public GoodsFacets facets(UUID categoryId) {
         if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择货品分类");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
         // 归属可见性（外贸按人授权）：与 list() 同规则

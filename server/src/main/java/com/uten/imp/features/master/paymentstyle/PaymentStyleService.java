@@ -73,7 +73,7 @@ public class PaymentStyleService {
     @Transactional(readOnly = true)
     public List<PaymentStyleNode> treeByCategory(String category) {
         if (category != null && !CATEGORIES.contains(category)) {
-            throw new ApiException(ErrorCode.BUSINESS, "未知类别：" + category);
+            throw new ApiException(ErrorCode.BUSINESS, "类别不正确：" + category);
         }
         List<PaymentStyle> all = (category == null)
                 ? repo.findByDeletedFalseOrderBySortOrderAscNameAsc()
@@ -121,7 +121,7 @@ public class PaymentStyleService {
     public PaymentStyleDetail create(PaymentStyleSaveRequest req) {
         tx.bind();
         if (!CATEGORIES.contains(req.getCategory())) {
-            throw new ApiException(ErrorCode.BUSINESS, "未知类别：" + req.getCategory());
+            throw new ApiException(ErrorCode.BUSINESS, "类别不正确：" + req.getCategory());
         }
         requireNameDoesNotClaimSystemIdentity(req.getCategory(), null, req.getName());
         if (req.getParentId() != null) {
@@ -160,7 +160,7 @@ public class PaymentStyleService {
         tx.bind();
         boolean moveToRoot = Boolean.TRUE.equals(req.getMoveToRoot());
         if (moveToRoot && req.getParentId() != null) {
-            throw new ApiException(ErrorCode.BUSINESS, "parentId 与 moveToRoot 不能同时提交");
+            throw new ApiException(ErrorCode.BUSINESS, "不能同时选择上级类别和移到顶层");
         }
         // PaymentStyle has no optimistic version column and Hibernate updates the
         // complete row. Serialize every edit before loading the entity so a
@@ -213,12 +213,12 @@ public class PaymentStyleService {
                 && isProtectedSystemStyle(s)
                 && !Objects.equals(s.getName(), requestedName)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该节点是系统科目，名称被财务流程使用，不能改名");
+                    "系统内置科目不能改名，名称被财务流程使用");
         }
         requireNameDoesNotClaimSystemIdentity(s.getCategory(), s.getName(), requestedName);
         if (parentChanged && isProtectedSystemStyle(s)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该节点是系统科目，不能移动；其固定路径被财务过账流程使用");
+                    "系统内置科目不能移动，它的固定位置被财务记账流程使用");
         }
 
         PaymentStyle requestedParent = null;
@@ -229,7 +229,7 @@ public class PaymentStyleService {
             requestedParent = requireStyle(requestedParentId);
             requireSameCategory(s.getCategory(), requestedParent);
             if (repo.isDescendant(id, requestedParentId)) {
-                throw new ApiException(ErrorCode.CONFLICT, "不能将类别挂到其子分类下(会成环)");
+                throw new ApiException(ErrorCode.CONFLICT, "不能把类别移到它自己的下级类别下");
             }
             requireParentCanBecomeDirectory(requestedParent);
         }
@@ -239,7 +239,7 @@ public class PaymentStyleService {
         }
         if (isProtectedSystemStyle(s) && "禁用".equals(requestedStatus)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该节点是财务系统科目，必须保持“使用”状态，否则会中断过账或报表");
+                    "财务系统科目必须保持“使用”状态，否则会影响记账和报表");
         }
         if ("使用".equals(requestedStatus)) {
             requireActiveAncestors(parentChanged ? requestedParent : s.getParent());
@@ -296,7 +296,7 @@ public class PaymentStyleService {
     /** 移动后按 parent 关系递归重建整棵子树，不依赖移动前的旧 path 排序。 */
     private void rebuildSubtreeHierarchy(UUID rootId) {
         if (repo.rebuildSubtreeHierarchy(rootId) == 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "收付款类别子树结构异常，无法安全移动");
+            throw new ApiException(ErrorCode.CONFLICT, "收付款类别层级数据异常，无法移动，请联系管理员");
         }
     }
 
@@ -449,7 +449,7 @@ public class PaymentStyleService {
         if (linkedAccountId == null) {
             if (linkedAccountLegacyId != null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "linkedAccountLegacyId 不能用于建立关联，请选择账户 UUID");
+                        "不能用旧系统编号选择账户，请重新选择账户");
             }
             return;
         }
@@ -476,7 +476,7 @@ public class PaymentStyleService {
         if (linkedAccountLegacyId != null
                 && !Objects.equals(linkedAccountLegacyId, canonicalLegacyId)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "关联账户 UUID 与 legacy 影子不一致");
+                    "所选账户与系统记录不一致，请重新选择");
         }
         style.setLinkedAccountId((UUID) resolved[0]);
         style.setLinkedAccountLegacyId(canonicalLegacyId);

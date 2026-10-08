@@ -289,7 +289,7 @@ class _MaterialReturnRequestState
         context.appError(
           [
             if (malformed.isNotEmpty)
-              '以下 ${malformed.length} 行退料数量填写不合法（不能为负，最多 4 位小数），'
+              '以下 ${malformed.length} 行退料数量填写有误（不能是负数，最多 4 位小数），'
                   '请改正后再提交：${_joinRowIssues(malformed)}',
             if (overAvailable.isNotEmpty)
               '以下 ${overAvailable.length} 行本次退料超过可退数量，'
@@ -515,7 +515,7 @@ class _MaterialReturnRequestState
                   if (_saving)
                     const UtenBusyOverlay(
                       title: '正在提交退仓申请',
-                      description: '正在写入退仓申请并通知仓库收料，请勿重复提交或关闭面板。',
+                      description: '正在提交退仓申请并通知仓库收料，请勿重复提交或关闭面板。',
                     ),
                 ],
               ),

@@ -29,7 +29,7 @@ public final class FinanceAssetFeatureGate {
         if (!postedWorkflowsEnabled) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    operation + " is disabled until the maker-checker business-event reversal workflow is enabled");
+                    "「" + operation + "」功能还没开放，要等红冲流程支持后才能使用，请联系管理员");
         }
     }
 }

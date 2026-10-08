@@ -32,7 +32,7 @@ abstract final class WarehouseSalesOutboundStatus {
       switch (value?.trim().toUpperCase()) {
         pendingPick => '核对货品、数量与库位后确认出库',
         shipped => '已完成出库',
-        _ => '请刷新后按服务端允许动作处理',
+        _ => '请刷新后按页面显示的可用操作处理',
       };
 }
 

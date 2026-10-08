@@ -46,7 +46,7 @@ public class GoodsCostCalculator {
             UUID parent=goodsId;
             String[] parts=path.split("/");if(parts.length>30)throw invalid("模板费用路径层数超出范围");
             for(String part:parts) {
-                UUID edgeId;try{edgeId=UUID.fromString(part);}catch(IllegalArgumentException invalidPath){throw invalid("模板费用「"+fee.name()+"」的BOM路径格式无效");}
+                UUID edgeId;try{edgeId=UUID.fromString(part);}catch(IllegalArgumentException invalidPath){throw invalid("模板费用「"+fee.name()+"」的BOM路径不正确，请重新选择");}
                 Edge edge=cache.computeIfAbsent(parent,sources::edges).stream().filter(candidate->candidate.id().equals(edgeId)).findFirst().orElse(null);
                 if(edge==null)throw invalid("模板费用「"+fee.name()+"」的BOM路径不属于该产品或已失效，请重新选择");
                 references.requireVisibleGoods(edge.goods().id());parent=edge.goods().id();
@@ -84,14 +84,14 @@ public class GoodsCostCalculator {
         if("PERCENT".equals(fee.type()))for(String dependency:list(fee.baseKeys()))validateDependency(dependency,fees,new HashSet<>(path),complete);
         complete.add(key);
     }
-    private static void type(String type) {if(type==null||!Set.of("PER_UNIT","PER_QUANTITY","FIXED_BATCH","PERCENT","PER_CYCLE").contains(type))throw invalid("费用算法无效");}
-    private static void category(String category) {if(category!=null&&!Set.of("MATERIAL","PROCESS","MANAGEMENT","OTHER").contains(category))throw invalid("费用分类无效");}
+    private static void type(String type) {if(type==null||!Set.of("PER_UNIT","PER_QUANTITY","FIXED_BATCH","PERCENT","PER_CYCLE").contains(type))throw invalid("费用算法不正确，请重新选择");}
+    private static void category(String category) {if(category!=null&&!Set.of("MATERIAL","PROCESS","MANAGEMENT","OTHER").contains(category))throw invalid("费用分类不正确，请重新选择");}
     public Calculation calculate(DraftInput input) {
         if(input==null || input.goodsId()==null) throw invalid("请选择货品");
         validateDefinitions(input.fees(),input.priceColumns());
         BigDecimal batch=positive(input.batchQty(),"成本批量"),fx=new BigDecimal(normalizeExchangeRate(input.currencyId(),input.exchangeRateToLocal()));
-        if(!Set.of("ACTUAL_FIRST","DESIGN").contains(input.usageStrategy())) throw invalid("成本用量策略无效");
-        if(!Set.of("AUTO","APPROVED_PURCHASE","INVENTORY","MANUAL").contains(input.priceStrategy())) throw invalid("成本取价策略无效");
+        if(!Set.of("ACTUAL_FIRST","DESIGN").contains(input.usageStrategy())) throw invalid("成本用量策略不正确，请重新选择");
+        if(!Set.of("AUTO","APPROVED_PURCHASE","INVENTORY","MANUAL").contains(input.priceStrategy())) throw invalid("成本取价策略不正确，请重新选择");
         if(input.effectiveDate()==null) throw invalid("请选择成本日期");
         GoodsInfo root=sources.goods(input.goodsId());
         String currency=sources.currency(input.currencyId());
@@ -159,7 +159,7 @@ public class GoodsCostCalculator {
         GoodsInfo goods=edge.goods();
         if(!ancestors.add(goods.id())) throw invalid("BOM存在循环，请修正后计算");
         references.requireVisibleGoods(goods.id());
-        if(goods.unitId()==null) throw invalid("组件未维护基本单位");
+        if(goods.unitId()==null) throw invalid("组件还没有设置基本单位");
         s.revisions.put("goods:"+goods.id(),goods.revision());
         s.revisions.put("edge:"+path,edge.revision()+"/"+text(edge.effectiveQty())+"/"+edge.samples());
         LineOverride override=s.overrides.get(path);

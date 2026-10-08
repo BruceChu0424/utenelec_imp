@@ -77,7 +77,7 @@ class WarehouseArrivalRegistrationIdempotencyTest {
                 "arrival-retry-key-002", "不同内容", BigDecimal.ONE)))
                 .isInstanceOfSatisfying(ApiException.class, error -> {
                     assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
-                    assertThat(error.getMessage()).contains("幂等键已用于不同内容");
+                    assertThat(error.getMessage()).contains("防重复提交标识已用于不同内容");
                 });
         verifyNoInteractions(purchase, subcontract);
     }

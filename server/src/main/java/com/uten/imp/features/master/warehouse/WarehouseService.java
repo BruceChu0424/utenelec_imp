@@ -463,7 +463,7 @@ public class WarehouseService {
         }
         if (w.getId() != null && repo.existsByParentIdAndDeletedFalse(w.getId())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "车间内料仓必须是叶子仓，该仓库下面还有子仓");
+                    "车间内料仓下面不能再挂子仓，请先移走它下面的子仓");
         }
     }
 

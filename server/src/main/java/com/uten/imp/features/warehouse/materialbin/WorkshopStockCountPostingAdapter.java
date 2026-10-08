@@ -160,7 +160,7 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
                     || estimated!=Boolean.TRUE.equals(line.get("expected_weight_estimated"))) {
                 throw conflict("库存数量或重量在提交后已变化，请退回申请重新盘点");
             }
-            if(target==null || target.signum()<0) throw conflict("盘点目标数量无效");
+            if(target==null || target.signum()<0) throw conflict("盘点目标数量不正确");
             if(factor!=null && !same(WeightMath.times(target,factor),targetWeight)) {
                 throw conflict("按重量计量的材料，目标重量必须与数量和单位换算一致");
             }

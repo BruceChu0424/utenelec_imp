@@ -437,8 +437,8 @@ public class StockCountRequestService {
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
                                                WarehouseTaskScope taskWarehouseScope,String keyword) {
-        if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属无效");
-        if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED").contains(status))throw invalid("盘点状态无效");
+        if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属不正确");
+        if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED").contains(status))throw invalid("盘点状态不正确");
         if(route!=null)require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
         var allowed=warehouses(false).stream().map(w->(UUID)w.get("id")).filter(w->warehouseId==null||warehouseId.equals(w)).toList();
         var paging=Pageables.of(page,size);if(allowed.isEmpty())return new PageResponse<>(List.of(),paging.getPageNumber()+1,paging.getPageSize(),0,0);

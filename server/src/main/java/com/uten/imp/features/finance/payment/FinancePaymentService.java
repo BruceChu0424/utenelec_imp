@@ -175,7 +175,7 @@ public class FinancePaymentService {
                         && legacyBankFactsAbsent(req)
                         && Objects.equals(replay.getCreateRequestHash(),requestHash(req,false)))) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "付款创建幂等键已用于不同内容，请刷新后重新提交");
+                        "同一个提交编号已提交过内容不同的付款单，请刷新页面后重新填写提交");
             }
             return detail(replay.getId());
         }
@@ -422,10 +422,10 @@ public class FinancePaymentService {
             var floor=floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO);
             validateAppliedLedger(payment, line.getSupplierId(), ledger, false);
             BigDecimal cashOriginal = positiveMoney(line.getAmountOriginal(), "本次付款金额");
-            if(line.getAmountLocal()==null)throw new ApiException(ErrorCode.CONFLICT,"付款行缺少实际本币快照，禁止红冲");
+            if(line.getAmountLocal()==null)throw new ApiException(ErrorCode.CONFLICT,"付款行缺少实际本币金额记录，不能红冲");
             BigDecimal cashLocal = money(line.getAmountLocal());
             BigDecimal appliedLocal = authoritativeAppliedAmountLocal(line);
-            if(cashLocal.signum()<0||appliedLocal.signum()<0)throw new ApiException(ErrorCode.CONFLICT,"付款账面快照不能为负数");
+            if(cashLocal.signum()<0||appliedLocal.signum()<0)throw new ApiException(ErrorCode.CONFLICT,"付款的本币账面金额不能是负数，请先核对这条付款");
             BigDecimal newSettled = money(nz(ledger.getAmountSettled()).subtract(appliedLocal));
             if (newSettled.compareTo(floor.settledLocal()) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT, "应付累计核销不足，禁止红冲该付款单");
@@ -566,7 +566,7 @@ public class FinancePaymentService {
         BigDecimal originalLocal = money(ledger.getAmountOriginalLocal());
         BigDecimal offsetLocal = money(nz(ledger.getAmountOffsetLocal()));
         if (offsetLocal.signum() < 0 || offsetLocal.compareTo(originalLocal) > 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "应付抵销本币快照异常，不能核销");
+            throw new ApiException(ErrorCode.CONFLICT, "应付抵销的本币金额记录异常，不能核销，请核对抵销记录");
         }
         BigDecimal oldSettledLocal = money(nz(ledger.getAmountSettled()));
         if(ledger.getAmountBalance()==null || ledger.getAmountBalance().compareTo(
@@ -839,7 +839,7 @@ public class FinancePaymentService {
         if (value == null || value.length() < 8 || value.length() > 128
                 || !value.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "付款创建幂等键格式不正确");
+                    "付款提交标识格式不正确，请刷新页面后重新提交");
         }
         return value;
     }
@@ -863,14 +863,14 @@ public class FinancePaymentService {
         if (ids.isEmpty()) return null;
         if (ids.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "付款创建幂等键存在重复历史，请先完成数据核对");
+                    "同一个提交编号在历史记录里出现了多次，请先核对这几次提交的数据");
         }
         FinancePayment payment = paymentRepo.findById((UUID) ids.getFirst())
                 .orElseThrow(() -> new ApiException(
-                        ErrorCode.CONFLICT, "付款幂等记录缺少来源单据"));
+                        ErrorCode.CONFLICT, "付款提交记录缺少来源单据，请重新填写提交"));
         if (payment.isDeleted()) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "该付款创建请求曾生成后删除，不能用同一幂等键重新造单");
+                    "这次提交之前生成过付款单又被删除了，请刷新页面后重新填写，不要重复用同一次提交");
         }
         access.requireReadable(payment.getMakerId(), "采购付款单不存在");
         return payment;
@@ -971,7 +971,7 @@ public class FinancePaymentService {
     private static BigDecimal authoritativeAppliedAmountLocal(FinancePaymentLine line) {
         if (line.getAppliedAmountLocal() == null) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "付款行缺少服务端账面核销快照，禁止红冲");
+                    "付款行缺少系统保存的账面核销金额，不能红冲");
         }
         return money(line.getAppliedAmountLocal());
     }
@@ -1021,7 +1021,7 @@ public class FinancePaymentService {
             lineRepo.save(line);
         }
         if(!lines.isEmpty()&&(beforeA.signum()!=0||beforeB.signum()!=0))
-            throw new ApiException(ErrorCode.CONFLICT,"付款明细未完整分配实际银行货款，剩余金额不能丢失");
+            throw new ApiException(ErrorCode.CONFLICT,"付款明细没有把银行实际付的货款全部分配完，不能有剩余金额");
         UUID accountStyle=(UUID)row[4];
         if(accountStyle==null)throw new ApiException(ErrorCode.CONFLICT,"付款账户缺少有效会计科目");
         payment.setAccountCurrencyId(currency);payment.setAccountExchangeRate(rate);

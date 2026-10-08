@@ -97,7 +97,7 @@ final class GoodsImportWorkbookSecurity {
                 // 下一条读取会完成当前 ZIP64 数据描述符；显式保留 JDK 流原有的 CRC/长度校验。
                 ZipEntry next = archive.getNextEntry();
                 if (entry.getCrc() != checksum.getValue() || entry.getSize() != entryExpanded) {
-                    throw rejected("Excel 压缩包校验失败，请重新导出文件后重试");
+                    throw rejected("这个 Excel 文件内容有问题，请重新导出后再上传");
                 }
                 entry = next;
             }
@@ -151,14 +151,14 @@ final class GoodsImportWorkbookSecurity {
         if (name == null || name.isEmpty() || name.length() > 255
                 || name.startsWith("/") || name.contains("\\") || name.contains(":")
                 || name.indexOf('\0') >= 0) {
-            throw rejected("Excel 压缩包包含非法路径");
+            throw rejected("这个 Excel 文件内部的路径不正确，请重新导出后再上传");
         }
         String[] segments = name.split("/", -1);
         for (int index = 0; index < segments.length; index++) {
             String segment = segments[index];
             boolean trailingDirectoryMarker = index == segments.length - 1 && segment.isEmpty();
             if (!trailingDirectoryMarker && (segment.isEmpty() || ".".equals(segment) || "..".equals(segment))) {
-                throw rejected("Excel 压缩包包含非法路径");
+                throw rejected("这个 Excel 文件内部的路径不正确，请重新导出后再上传");
             }
         }
         if (!names.add(name)) {

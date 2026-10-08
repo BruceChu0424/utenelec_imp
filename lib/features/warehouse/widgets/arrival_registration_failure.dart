@@ -13,7 +13,7 @@ import '../../../shared/drafts/form_draft_store.dart'
 
 /// 结果不确定时的提示(请求可能已在服务端提交)。
 const String arrivalRegistrationUncertainMessage =
-    '登记结果未确认(网络中断、超时或服务器异常)，请保持当前内容直接重试，同一内容重试不会重复登记';
+    '登记结果未确认(可能网络断了、处理时间过长或服务器出问题)，请保持已填内容直接重试，同样内容重试不会重复登记';
 
 /// 服务端是否给出了明确结论：有 HTTP 状态且不是 5xx。
 bool isDefiniteArrivalRejection(ApiException error) {

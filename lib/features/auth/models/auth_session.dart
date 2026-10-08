@@ -55,7 +55,7 @@ class UserProfile {
     final value = json['businessResetGeneration'];
     if (!json.containsKey('businessResetGeneration')) return 0;
     if (value is! int || value < 0) {
-      throw const FormatException('业务数据代际无效，请重新登录');
+      throw const FormatException('登录信息异常，请重新登录');
     }
     return value;
   }

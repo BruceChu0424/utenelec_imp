@@ -23,11 +23,11 @@ class AssetPeriodClosePolicyTest {
                 new AssetPeriodClosePolicy.Evidence(
                         true, false, 0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("Both depreciation");
+                .hasMessageContaining("折旧和摊销");
         assertThatThrownBy(() -> AssetPeriodClosePolicy.requireClosable(
                 new AssetPeriodClosePolicy.Evidence(
                         true, true, 0, new BigDecimal("1"), BigDecimal.ZERO, BigDecimal.ZERO)))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("does not reconcile");
+                .hasMessageContaining("对不上");
     }
 }

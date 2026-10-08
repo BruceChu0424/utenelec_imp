@@ -96,7 +96,7 @@ public class SupplierOpenItemOffsetService {
             String reason,
             UUID allowedIqcCaseId) {
         tx.bind();
-        if(offsetBatchId==null)throw validation("抵销批次 UUID 不能为空");
+        if(offsetBatchId==null)throw validation("请先选择要操作的抵销批次");
         closedPeriodGuard.requireOpen(
                 supplierId, currencyId, effectiveDate, "供应商贷项或索赔抵销");
         if (targets == null || targets.isEmpty()) {

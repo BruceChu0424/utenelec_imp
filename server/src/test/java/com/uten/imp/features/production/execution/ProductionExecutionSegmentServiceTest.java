@@ -732,7 +732,7 @@ class ProductionExecutionSegmentServiceTest {
                         new BatchStartRequest.Item(
                                 targetId, 4L, "batch-shared-key")))));
 
-        assertTrue(error.getMessage().contains("相同幂等键"));
+        assertTrue(error.getMessage().contains("同一防重复提交标识"));
         verify(em, times(2)).createNativeQuery(anyString());
         verifyNoInteractions(chainNotice);
     }

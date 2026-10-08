@@ -292,7 +292,7 @@ class DioAdminRepository implements AdminRepository {
     final json = await api.post(ApiEndpoints.userResetPassword(userId));
     final issued = json['temporaryPassword'];
     if (issued is! String || issued.trim().isEmpty) {
-      throw const FormatException('重置密码响应缺少 temporaryPassword');
+      throw const FormatException('服务器没有返回临时密码，请稍后重试');
     }
     return issued;
   }

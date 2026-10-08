@@ -126,7 +126,7 @@ public class ProductionFinishedArrivalRegistrationService {
             Object[] existing = replay.getFirst();
             if (!Objects.equals(existing[1], reportId)
                     || !Objects.equals(existing[2], normalized.requestHash())) {
-                throw conflict("该仓库登记幂等键已用于不同请求");
+                throw conflict("同一防重复提交标识已用于不同的仓库登记请求，请刷新后重试");
             }
             return new RegistrationOutcome(
                     (UUID) existing[0], true, (UUID) existing[3],
@@ -316,7 +316,7 @@ public class ProductionFinishedArrivalRegistrationService {
             Object[] existing = replay.getFirst();
             if (!Objects.equals(existing[1], registrationId)
                     || !Objects.equals(existing[2], normalized.requestHash())) {
-                throw conflict("该登记撤回幂等键已用于不同请求");
+                throw conflict("同一防重复提交标识已用于不同的登记撤回请求，请刷新后重试");
             }
             return detailInternal((UUID) existing[3], registrationId);
         }
@@ -1082,7 +1082,7 @@ public class ProductionFinishedArrivalRegistrationService {
         String batchKey = request.idempotencyKey().strip();
         if (batchKey.length() < 8 || batchKey.length() > 128
                 || !batchKey.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("入库登记幂等键格式无效");
+            throw validation("入库登记的防重复提交标识格式不正确");
         }
         String remark = normalizeRemark(request.remark());
         Map<UUID, ArrivalLotRequest> requested = normalizeLots(request.lots(), preStock);
@@ -1200,7 +1200,7 @@ public class ProductionFinishedArrivalRegistrationService {
                           AND NOT item.is_deleted
                         """).setParameter("lotIds", List.copyOf(lotIds)))) {
             if (result.put((UUID) row[0], (UUID) row[1]) != null) {
-                throw conflict("成品批身份异常，请联系管理员核查");
+                throw conflict("成品批信息异常，请联系管理员核查");
             }
         }
         return result;
@@ -1247,7 +1247,7 @@ public class ProductionFinishedArrivalRegistrationService {
         LinkedHashSet<UUID> distinct = new LinkedHashSet<>();
         for (UUID id : reportIds) {
             if (id == null || !distinct.add(id)) {
-                throw validation("批量送检登记的报工单清单无效或存在重复");
+                throw validation("批量送检登记的报工单清单不正确或存在重复");
             }
         }
         return List.copyOf(distinct);
@@ -1304,7 +1304,7 @@ public class ProductionFinishedArrivalRegistrationService {
                 .getResultList();
         if (names.size() != 1 || NativeValueConverters.text(names.getFirst()) == null
                 || NativeValueConverters.text(names.getFirst()).isBlank()) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "当前收货人员无效");
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号对应的收货人员信息不正确，请重新登录后再试");
         }
         return new EmployeeSnapshot(employeeId, NativeValueConverters.text(names.getFirst()));
     }
@@ -1415,12 +1415,12 @@ public class ProductionFinishedArrivalRegistrationService {
             ArrivalRegistrationReversalRequest request) {
         if (registrationId == null || request == null
                 || request.idempotencyKey() == null || request.reason() == null) {
-            throw validation("登记撤回缺少登记批次、幂等键或原因");
+            throw validation("登记撤回缺少登记批次、防重复提交标识或原因");
         }
         String key = request.idempotencyKey().strip();
         if (key.length() < 8 || key.length() > 128
                 || !key.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("登记撤回幂等键格式无效");
+            throw validation("登记撤回的防重复提交标识格式不正确");
         }
         String reason = request.reason().strip();
         if (reason.length() < 2 || reason.length() > 500) {

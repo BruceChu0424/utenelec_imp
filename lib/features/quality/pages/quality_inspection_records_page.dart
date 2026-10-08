@@ -346,7 +346,7 @@ class _QualityInspectionRecordsPageState
             : _error != null && _data == null
             ? UtenEmpty.error(
                 message: _error,
-                description: '记录来源仍保留在服务端，重新加载不会改写检验事实。',
+                description: '已有检验记录都完好保存在系统里，重新加载不会改动它们。',
                 actionLabel: '重新加载',
                 onAction: () => _load(page: 1),
               )

@@ -154,7 +154,7 @@ public class SubcontractReturnAmountAuthority {
                 || priorQty == null || priorQty.signum() < 0
                 || priorOriginal == null || priorOriginal.signum() < 0
                 || priorLocal == null || priorLocal.signum() < 0) {
-            throw conflict("委外退货来源数量、加工单价、汇率或历史退货累计无效");
+            throw conflict("委外退货的来源数量、加工单价、汇率或历史退货累计不正确，请刷新后重试");
         }
         BigDecimal remainingQty = sourceQty.subtract(priorQty);
         BigDecimal remainingOriginal = sourceOriginal.subtract(priorOriginal);

@@ -176,7 +176,7 @@ class MaterialStockReallocationServiceTest {
                 f.sourceAnalysisId(),
                 f.request(new BigDecimal("4"), "replay-conflict-01")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("同一幂等键已用于不同让料请求");
+                .hasMessageContaining("同一防重复提交标识已用于不同让料请求");
 
         verify(f.entitlements(), never()).appendPairedOutIn(
                 any(), any(), anyString(), anyString(), any(), any(),

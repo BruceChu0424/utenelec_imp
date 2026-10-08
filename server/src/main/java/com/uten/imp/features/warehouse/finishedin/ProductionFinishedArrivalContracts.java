@@ -96,7 +96,7 @@ public final class ProductionFinishedArrivalContracts {
             @NotBlank
             @Size(min = 8, max = 128)
             @Pattern(regexp = "[A-Za-z0-9._:-]+",
-                    message = "幂等键只能包含字母、数字或 ._:-")
+                    message = "防重复提交标识只能包含字母、数字或 ._:-")
             String idempotencyKey,
             @NotBlank
             @Size(min = 2, max = 500, message = "撤回原因必须为 2 到 500 个字符")
@@ -121,7 +121,7 @@ public final class ProductionFinishedArrivalContracts {
             @NotBlank
             @Size(min = 8, max = 128)
             @Pattern(regexp = "[A-Za-z0-9._:-]+",
-                    message = "幂等键只能包含字母、数字或 ._:-")
+                    message = "防重复提交标识只能包含字母、数字或 ._:-")
             String idempotencyKey,
             @Valid
             @NotNull

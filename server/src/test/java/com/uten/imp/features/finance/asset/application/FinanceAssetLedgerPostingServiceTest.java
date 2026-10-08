@@ -28,7 +28,7 @@ class FinanceAssetLedgerPostingServiceTest {
         assertThatThrownBy(() -> FinanceAssetLedgerPostingService.validateEntries(List.of(
                 new FinanceAssetLedgerPostingService.Entry(account, 1, BigDecimal.ONE, "debit"))))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("not balanced");
+                .hasMessageContaining("借贷不平");
         assertThatThrownBy(() -> FinanceAssetLedgerPostingService.validateEntries(List.of(
                 new FinanceAssetLedgerPostingService.Entry(account, 1, BigDecimal.ZERO, "zero"))))
                 .isInstanceOf(ApiException.class);

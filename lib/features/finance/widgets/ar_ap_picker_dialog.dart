@@ -428,7 +428,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       return '$bill：历史原币余额待财务核验，暂不能引用';
     }
     if (item.currencyId == null || item.currencyId!.isEmpty) {
-      return '$bill：币别待财务核验，暂不能引用';
+      return '$bill：币种待财务核验，暂不能引用';
     }
     return null;
   }

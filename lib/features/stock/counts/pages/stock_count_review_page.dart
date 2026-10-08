@@ -657,7 +657,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               ),
               MasterColumnDef(
                 key: 'stale',
-                label: '快照核对',
+                label: '账面核对',
                 width: 135,
                 value: (r) => r.stale ? '库存已变化' : '一致',
               ),

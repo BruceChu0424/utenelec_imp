@@ -61,7 +61,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 ""","id",analysisId);
         if (!invalid.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "根产品缺少基本单位或销售单位换算无效，请先修复历史单位与换算率");
+                    "根产品缺少基本单位或销售单位换算不正确，请先修复历史单位与换算率");
         }
 
         em.createNativeQuery("""
@@ -537,7 +537,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                       JOIN production_plans p ON p.id=pi.plan_id WHERE pi.sales_order_item_id=item.id
                         AND pi.is_deleted=FALSE AND p.is_deleted=FALSE AND p.status=0 AND p.is_canceled=FALSE),0))
                 """).setParameter("delta", delta).setParameter("id", root.salesOrderItemId()).executeUpdate();
-        if (updated!=1) throw conflict("根产品供给与销售剩余数量不一致，事务已回滚");
+        if (updated!=1) throw conflict("根产品供给与销售剩余数量不一致，本次操作没有生效");
     }
 
 

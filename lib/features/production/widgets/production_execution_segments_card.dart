@@ -778,7 +778,7 @@ class _ProductionExecutionSegmentsCardState
             if (_commanding)
               const UtenBusyOverlay(
                 title: '正在执行工单操作',
-                description: '正在写入工单状态，请勿重复提交或离开本页。',
+                description: '正在保存工单状态，请勿重复提交或离开本页。',
               ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,

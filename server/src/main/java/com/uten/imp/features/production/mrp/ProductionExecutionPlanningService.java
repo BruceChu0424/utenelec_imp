@@ -166,7 +166,7 @@ public class ProductionExecutionPlanningService {
         } catch (CompleteKitAllocator.InsufficientKitException ex) {
             throw conflict("标记为 READY 的执行分段没有完整库存齐套支持");
         } catch (IllegalArgumentException ex) {
-            throw validation("执行分段数量、状态或物料数据无效");
+            throw validation("执行分段的数量、状态或物料数据不正确");
         }
     }
 
@@ -408,11 +408,11 @@ public class ProductionExecutionPlanningService {
 
             String controlStage = requiredBomEnum(
                     row[24], SUPPORTED_CONTROL_STAGES,
-                    "BOM 管控阶段配置无效，禁止生成执行分段");
+                    "BOM 管控阶段配置不正确，不能生成执行分段");
             boolean hardGate = requiredBomBoolean(row[25]);
             String consumptionBasis = requiredBomEnum(
                     row[26], SUPPORTED_CONSUMPTION_BASES,
-                    "BOM 消耗计量配置无效，禁止生成执行分段");
+                    "BOM 消耗计量配置不正确，不能生成执行分段");
             BigDecimal basisOutputQty = decimal(row[27]);
             if (basisOutputQty.signum() <= 0) {
                 throw conflict("BOM 计量基数必须大于零，禁止生成执行分段");

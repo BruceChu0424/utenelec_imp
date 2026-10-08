@@ -25,7 +25,7 @@ public final class RequestUuidSets {
             try {
                 result.add(UUID.fromString(value));
             } catch (IllegalArgumentException ex) {
-                throw validation(fieldLabel + "包含非法 UUID");
+                throw validation(fieldLabel + "里有的编号不正确");
             }
         }
         return Set.copyOf(result);

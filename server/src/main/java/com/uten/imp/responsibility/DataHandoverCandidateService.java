@@ -30,7 +30,7 @@ public class DataHandoverCandidateService {
             String role, String query, int requestedPage, int requestedSize) {
         String normalizedRole = role == null ? "" : role.trim().toLowerCase(Locale.ROOT);
         if (!List.of("source", "target").contains(normalizedRole)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "role 必须是 source 或 target");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "交接方向不正确，应为 source(交出方) 或 target(接手方)");
         }
         String keyword = query == null ? "" : query.trim();
         if (keyword.length() > 100) {

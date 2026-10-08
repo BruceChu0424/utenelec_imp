@@ -263,7 +263,7 @@ class _WarehouseQualityBatchStockInPageState
       if (!mounted) return;
       await _showFailureDialog(
         error.code == 'CONFLICT'
-            ? '${error.message}（本次新入库已回滚；保留输入并刷新余量后重新核对）'
+            ? '${error.message}（本次入库没有生效；你填的数量和库位都还在，刷新后重新核对再提交）'
             : error.message,
       );
       if (mounted && error.code == 'CONFLICT') {
@@ -374,7 +374,7 @@ class _WarehouseQualityBatchStockInPageState
                       const Positioned.fill(
                         child: UtenBusyOverlay(
                           title: '正在批量入库',
-                          description: '按收货单分组织整批同事务提交，请稍候。',
+                          description: '按收货单整批一起提交，中途不会只成功一半，请稍候。',
                         ),
                       ),
                   ],

@@ -56,7 +56,7 @@ void main() {
         find.byKey(const ValueKey('finance-payment-amount-original')),
         findsNothing,
       );
-      expect(find.text('请先引用已入账应付；供应商预付链尚未开放'), findsOneWidget);
+      expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
       expect(find.textContaining('参考本币 ¥720.00'), findsOneWidget);
 
       final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
@@ -73,7 +73,7 @@ void main() {
       final notifications = ProviderScope.containerOf(
         tester.element(find.byType(FinanceDocEditPage)),
       ).read(appNotificationProvider);
-      expect(notifications.single.message, contains('供应商预付资产'));
+      expect(notifications.single.message, contains('暂不支持给供应商预付'));
     },
   );
 
@@ -118,8 +118,8 @@ void main() {
     final notifications = ProviderScope.containerOf(
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
-    expect(notifications.single.message, contains('供应商预付资产'));
-    expect(find.text('请先引用已入账应付；供应商预付链尚未开放'), findsOneWidget);
+    expect(notifications.single.message, contains('暂不支持给供应商预付'));
+    expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
   });
 
   testWidgets(
@@ -139,7 +139,7 @@ void main() {
         find.byKey(const ValueKey('finance-payment-amount-original')),
         findsNothing,
       );
-      expect(find.textContaining('供应商预付链尚未开放'), findsOneWidget);
+      expect(find.textContaining('暂不支持给供应商预付'), findsOneWidget);
       expect(find.text('保存').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -293,7 +293,7 @@ void main() {
     var notifications = ProviderScope.containerOf(
       tester.element(find.byType(FinanceDocEditPage)),
     ).read(appNotificationProvider);
-    expect(notifications.single.message, contains('最多 24 位有效小数'));
+    expect(notifications.single.message, contains('最多 24 位小数'));
 
     grid.controller.rows.single.amount.text = '50.1234';
     await tester.enterText(

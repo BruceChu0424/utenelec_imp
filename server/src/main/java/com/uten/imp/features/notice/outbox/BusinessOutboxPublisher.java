@@ -127,7 +127,7 @@ public class BusinessOutboxPublisher implements BusinessEventPublisher {
                 || !sameJson(json, existing.payload())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "相同幂等键对应了不同的业务事件，请刷新后重试");
+                    "这个提交标识已用于其他内容，请刷新后查看结果再操作");
         }
         return existing.id();
     }

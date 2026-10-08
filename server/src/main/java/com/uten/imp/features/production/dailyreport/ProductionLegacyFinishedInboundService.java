@@ -104,7 +104,7 @@ public class ProductionLegacyFinishedInboundService {
                     || unitRate.signum() <= 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "历史兼容报工数量或单位换算率无效");
+                        "历史兼容报工的数量或单位换算率不正确");
             }
             StockDocumentItem item = new StockDocumentItem();
             item.setDocId(document.getId());

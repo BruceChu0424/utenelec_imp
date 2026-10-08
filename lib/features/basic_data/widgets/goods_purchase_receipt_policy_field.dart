@@ -193,7 +193,7 @@ class _GoodsPurchaseReceiptPolicyDialogState
       }
       return;
     }
-    context.appSuccess(parsed.value == null ? '已清除采购允许超收记忆' : '采购允许超收已保存');
+    context.appSuccess(parsed.value == null ? '已清除采购允许超收设置' : '采购允许超收已保存');
     Navigator.of(context).pop(true);
   }
 

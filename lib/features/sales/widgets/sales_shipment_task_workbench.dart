@@ -332,7 +332,7 @@ class _SalesShipmentTaskWorkbenchState
     final items = _selectedItems;
     if (items.length != _selectedIds.length ||
         items.any((item) => !_canSelectItem(item))) {
-      return '部分出货单已变化或不可审，请刷新后重新选择';
+      return '部分出货单已变化或暂时不能审核，请刷新后重新选择';
     }
     return null;
   }
@@ -366,7 +366,9 @@ class _SalesShipmentTaskWorkbenchState
       );
       if (!mounted || !claim.isReady) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '整批未取得审核占用，请重试');
+          context.appWarning(
+            claim.failureMessage ?? '这批出货单还没有认领成功，可能正被别人处理，请稍后重试',
+          );
         }
         await _releaseBatchClaim(claim);
         return null;
@@ -375,7 +377,7 @@ class _SalesShipmentTaskWorkbenchState
         final info = await repo.financeAuditInfo(id);
         if (!mounted || !claim.isReady || !_readableSnapshot(info)) {
           if (mounted) {
-            context.appWarning('部分出货内容或占用已变化，请刷新后重新核对');
+            context.appWarning('部分出货单的内容或处理权已变化，请刷新后重新核对');
           }
           await _releaseBatchClaim(claim);
           return null;
@@ -421,11 +423,12 @@ class _SalesShipmentTaskWorkbenchState
               children: [
                 const UtenReviewerResponsibilityNotice(
                   actionLabel: '批量出货财务审核',
-                  description: '确认后，系统将以此登录员工记录整批放行责任；放行仅开放仓库作业，应收在仓库确认出库后生成。',
+                  description:
+                      '确认后，系统会按当前登录员工记录整批放行责任；放行后单据交给仓库出库，应收在仓库确认出库后生成。',
                   compact: true,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                Text('${_selectedBillSummary()}。整批原子提交：任一笔失败全部回滚。'),
+                Text('${_selectedBillSummary()}。整批一起提交：只要有一笔失败，这一批都不会生效。'),
               ],
             ),
           ),
@@ -486,7 +489,7 @@ class _SalesShipmentTaskWorkbenchState
                     compact: true,
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  Text('${_selectedBillSummary()}将使用同一个退回原因，整批原子提交。'),
+                  Text('${_selectedBillSummary()}将使用同一个退回原因，整批一起提交。'),
                   const SizedBox(height: UtenSpacing.s12),
                   TextField(
                     key: const Key('finance-shipment-batch-reject-reason'),
@@ -556,7 +559,7 @@ class _SalesShipmentTaskWorkbenchState
     try {
       if (!await claim.validateForDecision() || !mounted) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '审核占用已失效，请重新核对');
+          context.appWarning(claim.failureMessage ?? '这批单据的审核认领已失效，请刷新后重新核对');
         }
         return;
       }
@@ -880,8 +883,9 @@ class _SalesShipmentTaskWorkbenchState
   }
 
   Widget _filters() {
+    // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
     final search = SizedBox(
-      width: 320,
+      width: 160,
       child: UtenSearchBar(
         key: const Key('sales-shipment-task-search'),
         hint: '搜索出货单号 / 客户',

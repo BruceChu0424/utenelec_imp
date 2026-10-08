@@ -222,7 +222,7 @@ void main() {
     );
     expect(find.text('部分处置(PARTIAL)'), findsOneWidget);
     expect(find.text('红冲'), findsNothing);
-    expect(find.textContaining('已发生质检处置'), findsOneWidget);
+    expect(find.textContaining('已有质检处置记录'), findsOneWidget);
   });
 
   testWidgets('one dialog reuses its nonce after an ambiguous response', (

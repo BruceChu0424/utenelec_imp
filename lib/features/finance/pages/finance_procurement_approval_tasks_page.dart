@@ -113,7 +113,7 @@ class _FinanceProcurementApprovalTasksPageState
       );
       if (!mounted || !claim.isReady) {
         if (mounted) {
-          context.appWarning(claim.failureMessage ?? '整批未取得审核占用，请重试');
+          context.appWarning(claim.failureMessage ?? '整批还没有认领成功，请重试');
         }
         await _releaseBatchClaim(claim);
         return null;
@@ -127,7 +127,7 @@ class _FinanceProcurementApprovalTasksPageState
             review.version != command.expectedVersion ||
             !review.isPending ||
             !review.allowedActions.contains(action)) {
-          if (mounted) context.appWarning('部分订货内容、资格或占用已变化，请刷新后重新核对');
+          if (mounted) context.appWarning('部分订货内容、资格或认领已变化，请刷新后重新核对');
           await _releaseBatchClaim(claim);
           return null;
         }
@@ -309,7 +309,7 @@ class _FinanceProcurementApprovalTasksPageState
     // 双击/行菜单主入口 → 财务专用审核详情页（底部通过/驳回，不退回本列表即可决策）；
     // 与采购/委外业务订货详情页彻底分离（ADR-027 §五 2026-09-03 增补）。
     if (task.caseId.isEmpty) {
-      context.appWarning('该任务缺少有效的审批身份，请刷新后重试');
+      context.appWarning('这条任务的审批编号缺失，请刷新后重试');
       return;
     }
     final decided = await context.push<bool>(
@@ -547,7 +547,7 @@ class _FinanceProcurementApprovalTasksPageState
       final claim = _batchClaim;
       if (claim == null || !await claim.validateForDecision() || !mounted) {
         if (mounted) {
-          context.appWarning(claim?.failureMessage ?? '审核占用已失效，请重新核对');
+          context.appWarning(claim?.failureMessage ?? '审核认领已失效，请重新核对');
         }
         return;
       }

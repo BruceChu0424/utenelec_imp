@@ -49,13 +49,13 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
 
     @Override @Transactional public AnalysisView cancel(UUID analysisId,UUID actionId,MaterialAnalysisContracts.CancelRequest request) {
         if(request==null||request.version()==null||request.fingerprint()==null||request.idempotencyKey()==null
-                ||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("整批撤回缺少版本或幂等键");
+                ||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("整批撤回缺少版本或防重复提交标识");
         tx.bind();var guard=commands.lockAnalysisWithClaimableShared(analysisId);var header=analysis.headerAfterPrelock(analysisId);
         access.requireWritable(header.makerId(),"只能撤回本人负责的共享批次",analysis.scopeForAnalysis(header));
         String hash=CanonicalFingerprint.sha256(List.of("AGGREGATE-CANCEL-V1",analysisId.toString(),actionId.toString(),request.version().toString(),request.fingerprint(),request.effectiveReason()));
         List<?> replay=em.createNativeQuery("SELECT request_hash FROM production_material_analysis_commands WHERE analysis_id=:analysis AND operation='AGGREGATE_CANCEL' AND idempotency_key=:key")
                 .setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey()).getResultList();
-        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("相同撤回键已用于另一项操作");return analysis.detailInternal(analysisId,false);}
+        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("同一防重复提交标识已用于另一项操作，请刷新后重试");return analysis.detailInternal(analysisId,false);}
         guard.verifyUnchanged();analysis.requireCurrent(header,request.version(),request.fingerprint());
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT batch.id,batch.plan_id,batch.route,action.status,batch.row_version FROM preplan_aggregate_batches batch JOIN preplan_supply_actions action ON action.id=batch.action_id WHERE batch.analysis_id=:analysis AND batch.action_id=:action FOR UPDATE OF batch,action")
                 .setParameter("analysis",analysisId).setParameter("action",actionId));
@@ -101,7 +101,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 WHERE analysis_id=:analysis AND operation='AGGREGATE_ORDER' AND idempotency_key=:key
                 """).setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey()));
         if(!replay.isEmpty()) {
-            if(!hash.equals(replay.getFirst()[0]))throw conflict("相同幂等键不能用于不同汇总下单意图");
+            if(!hash.equals(replay.getFirst()[0]))throw conflict("同一防重复提交标识已用于不同内容的汇总下单，请刷新后重试");
             try{var payload=mapper.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree((String)replay.getFirst()[1]);return new SubmitResult(analysis.detailInternal(analysisId,false),true,
                     mapper.readValue(payload.path("batches").toString(),new TypeReference<List<BatchResult>>(){}),
                     payload.has("materialIdentityBridges")?mapper.readValue(payload.path("materialIdentityBridges").toString(),new TypeReference<List<MaterialIdentityBridge>>(){}):List.of());}
@@ -905,7 +905,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         return CanonicalFingerprint.sha256(List.of("AGGREGATE-ORDER-V1",analysisId.toString(),data.toString()));}
     private static String stepKey(String key,String group,String stage){return "AGG-"+CanonicalFingerprint.sha256(List.of(key,group,stage));}
     private static BigDecimal decimal(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
-    private static void validateRequest(SubmitRequest request){if(request==null||request.groups().isEmpty()||request.idempotencyKey()==null||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("汇总下单缺少有效内容或幂等键");AggregateMaterialOrderPreviewService.requireSourceScope(request.groups());}
+    private static void validateRequest(SubmitRequest request){if(request==null||request.groups().isEmpty()||request.idempotencyKey()==null||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("汇总下单缺少有效内容或防重复提交标识");AggregateMaterialOrderPreviewService.requireSourceScope(request.groups());}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException forbidden(String message){return new ApiException(ErrorCode.FORBIDDEN,message);}
@@ -916,7 +916,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     }
     private static BigDecimal childQuantity(BigDecimal output,BigDecimal bomQty,String basis,BigDecimal basisOutput,boolean partial) {
         try{return MaterialConsumptionMath.required(output,bomQty,basis,basisOutput,partial);}
-        catch(IllegalArgumentException invalid){throw conflict("BOM 包装/批次计量数据无效，不能计算可转交供给");}
+        catch(IllegalArgumentException invalid){throw conflict("BOM 包装/批次计量数据不正确，不能计算可转交供给");}
     }
     private record CapacitySnapshot(BigDecimal required,BigDecimal capacity,BigDecimal parentReleased,BigDecimal parentRetained,BigDecimal owned){}
 }

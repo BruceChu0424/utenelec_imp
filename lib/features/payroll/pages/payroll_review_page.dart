@@ -31,6 +31,7 @@ import '../../../components/layout/uten_section_header.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -65,7 +66,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
     Widget body = batchesAsync.when(
       loading: () => const UtenSkeletonList(),
       error: (error, _) => UtenEmpty.error(
-        message: '加载工资批次失败：$error',
+        message: humanErrorMessage(error) ?? '工资批次没有加载出来，请稍后重试',
         actionLabel: '重试',
         onAction: () => ref.invalidate(payrollBatchListProvider),
       ),
@@ -119,7 +120,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
               child: detailAsync!.when(
                 loading: () => const UtenSkeletonList(),
                 error: (error, _) => UtenEmpty.error(
-                  message: '加载批次详情失败：$error',
+                  message: humanErrorMessage(error) ?? '批次详情没有加载出来，请稍后重试',
                   actionLabel: '重试',
                   onAction: () =>
                       ref.invalidate(payrollBatchDetailProvider(selectedId!)),
@@ -211,7 +212,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
 
   Future<void> _act(PayrollBatch batch, _BatchAction action) async {
     if (action == _BatchAction.submit && batch.slips.isEmpty) {
-      context.appError('服务器未返回员工工资明细，不能提交空批次');
+      context.appError('这批工资没有任何员工明细，不能提交审核');
       return;
     }
 
@@ -277,7 +278,9 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
         _BatchAction.publish => '工资条已发布',
       });
     } catch (error) {
-      if (mounted) context.appError('操作失败：$error');
+      if (mounted) {
+        context.appError(humanErrorMessage(error) ?? '操作没有成功，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _acting = false);
     }

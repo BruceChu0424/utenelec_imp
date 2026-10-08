@@ -410,7 +410,7 @@ public class GoodsBomService {
             rows.add(row);
             if (v.isHasChildren()) {
                 if (path.contains(v.getComponentGoodsId())) {
-                    throw new ApiException(ErrorCode.CONFLICT, "BOM 存在循环引用，无法完整导出，请先检查组件结构");
+                    throw new ApiException(ErrorCode.CONFLICT, "BOM 里的组件互相套用形成循环，无法完整导出，请先检查组件结构");
                 }
                 Set<UUID> next = new java.util.HashSet<>(path);
                 next.add(v.getComponentGoodsId());
@@ -726,7 +726,7 @@ public class GoodsBomService {
             for (int size = queue.size(); size > 0; size--) {
                 UUID cur = queue.poll();
                 if (cur.equals(parentGoodsId)) {
-                    throw new ApiException(ErrorCode.CONFLICT, "不能添加：该组件的子组件已包含本货品，会形成组装环路");
+                    throw new ApiException(ErrorCode.CONFLICT, "不能添加：该组件下面已包含本货品，再添加会循环套用");
                 }
                 for (GoodsBomItem child : operationalRows(cur)) {
                     if (visited.add(child.getComponent().getId())) {
@@ -784,7 +784,7 @@ public class GoodsBomService {
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "组件货品不存在"));
         if (component.isAutoCreated()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "迁移占位货品只用于历史引用，不能加入当前组装清单");
+                    "旧系统导入的占位货品只用于历史记录，不能加入当前组装清单");
         }
         return component;
     }

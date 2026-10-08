@@ -493,7 +493,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
             Object[] row = replay.getFirst();
             if (!requestHash.equals(string(row[1]))
                     || !sourceAnalysisId.equals(uuid(row[2]))) {
-                throw conflict("同一幂等键已用于不同让料请求");
+                throw conflict("同一防重复提交标识已用于不同让料请求，请刷新后重试");
             }
             return analysisService.detailInternal(sourceAnalysisId, false);
         }

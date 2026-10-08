@@ -268,7 +268,7 @@ public class ProductionCompletionReverseService
         validateDocumentPlanLink(documentId, segment.planId());
         if ("COMPLETED".equals(segment.status())) {
             if (segment.completionReopened()) {
-                throw conflict("已完成执行子计划的纠错状态异常，禁止重复重开");
+                throw conflict("这个执行子计划已在重开处理中，请刷新后查看，不要重复提交");
             }
             BigDecimal approvedInbound = approvedInbound(segment.id());
             if (approvedInbound.compareTo(segment.plannedQty()) != 0) {
@@ -365,7 +365,7 @@ public class ProductionCompletionReverseService
             return;
         }
         if (!Objects.equals(events.getFirst()[0], requestHash)) {
-            throw conflict("相同成品入库红冲幂等键对应不同的执行子计划版本");
+            throw conflict("同一防重复提交标识对应不同版本的执行子计划，请刷新后重试");
         }
         throw conflict("该成品入库完成重开已处理，请刷新单据状态");
     }

@@ -425,6 +425,97 @@ class AggregateMaterialOrderEndToEndTest {
         assertDeepSupplyRemainsCovered(create(true,false,"100",true,2,"1"), "200", "200", "400", 2, "MAKE");
     }
 
+    @Test void threeProductsOf1000OrderAllMaterialsAfterTwo4000OrdersWithoutIssuingTopLevelTasks() throws Exception {
+        ThreeProductCase scenario=createThreeProductScreenshotCase();
+        Case c=scenario.data();UUID bag=scenario.bag(),tape=scenario.tape();
+        Map<UUID,String> laterRoutes=scenario.laterRoutes();
+        var roots=analyses.detail(c.analysis()).products().stream().filter(row->row.salesOrderItemId()!=null).toList();
+        assertEquals(3,roots.size());
+        List<GroupInput> selectedRemainder=laterRoutes.entrySet().stream()
+                .map(entry->input(c,entry.getKey(),entry.getValue(),entry.getKey().equals(tape)?"1.5":"3000",false)).toList();
+        var tapePreview=preview.preview(c.analysis(),request(c,List.of(input(c,tape,"BUY","1.5",false)))).groups().getFirst();
+        assertNull(tapePreview.blockedReason(),"Unit name 个 must not invent an integer minimum for a 1.5 material requirement");
+        amount("1.5",tapePreview.sourceRequiredQty());
+        amount("1.5",tapePreview.sources().stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+        amount("0",tapePreview.publicExtraQty());
+        SubmitRequest first=command(c,List.of(input(c,c.material(),"MAKE","4000",true),input(c,bag,"BUY","4000",true)));
+        assertEquals(2,writer.submit(c.analysis(),first).batches().size());
+        assertTrue(writer.submit(c.analysis(),first).replayed());
+        // Exactly the user's order: all remaining materials, while all three top-level workshop tasks remain unissued.
+        List<BatchResult> batches=new ArrayList<>();
+        for(GroupInput group:selectedRemainder) {
+            SubmitRequest command=command(c,List.of(group));
+            batches.addAll(writer.submit(c.analysis(),command).batches());
+            assertTrue(writer.submit(c.analysis(),command).replayed());
+        }
+        AnalysisView after=analyses.detail(c.analysis());
+        // This is the real service response, not a hand-built view that could hide a source/projection error.
+        java.nio.file.Path capture=java.nio.file.Path.of(System.getProperty("uten.build.directory","target-audit-material"),
+                "material_three_1000_after_all_materials.json");
+        java.nio.file.Files.createDirectories(capture.getParent());
+        java.nio.file.Files.writeString(capture,beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class)
+                .writerWithDefaultPrettyPrinter().writeValueAsString(after));
+        assertPhysicalSupply(c,c.material(),"4000");assertPhysicalSupply(c,bag,"4000");
+        amount("0",db.queryForObject("""
+                SELECT COALESCE(SUM(item.qty),0) FROM production_plan_items item
+                JOIN production_plans plan ON plan.id=item.plan_id
+                JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id
+                WHERE plan.material_analysis_id=? AND source.source_type='SALES_ORDER_ITEM'
+                  AND NOT plan.is_deleted AND NOT item.is_deleted
+                """,BigDecimal.class,c.analysis()));
+        for(ProductView root:after.products().stream().filter(row->row.salesOrderItemId()!=null).toList()) {
+            amount("1000",root.remainingQty());amount("0",root.issuedPlanQty());
+        }
+        for(var entry:laterRoutes.entrySet()) {
+            UUID goods=entry.getKey();String expected=goods.equals(tape)?"1.5":"3000";
+            assertPhysicalSupply(c,goods,expected);
+            List<MaterialView> originals=after.flatMaterials().stream().filter(row->row.goodsId().equals(goods)
+                    && roots.stream().anyMatch(root->root.analysisLineId().equals(row.analysisLineId()))).toList();
+            assertEquals(3,originals.size());
+            amount(expected,originals.stream().map(MaterialView::sourceRequiredQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+            amount(expected,originals.stream().map(row->row.aggregatePreparation().requiredQty()).reduce(BigDecimal.ZERO,BigDecimal::add));
+            amount(expected,originals.stream().map(row->row.aggregatePreparation().orderedQty()).reduce(BigDecimal.ZERO,BigDecimal::add));
+            for(MaterialView original:originals) {
+                amount("0",original.aggregatePreparation().planningUncoveredQty());
+                if(scenario.delegatedGoods().contains(goods)) {
+                    assertFalse(original.aggregatePreparation().targetMaterialLineIds().isEmpty(),"Transferred source must retain its exact canonical reference");
+                    assertTrue(original.aggregatePreparation().targetMaterialLineIds().stream().anyMatch(target->
+                            after.flatMaterials().stream().filter(row->row.materialLineId().equals(target))
+                                    .anyMatch(row->!row.downstreamReferences().isEmpty())),"Canonical authority must lead to the real action/document");
+                }
+            }
+        }
+        MaterialView canonicalUk=after.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())
+                && row.requiredQty().signum()>0&&row.level()>0).findFirst().orElseThrow();
+        amount("3000",canonicalUk.requiredQty());amount("0",canonicalUk.sourceRequiredQty());
+        amount("0",canonicalUk.planningUncoveredQty());
+        amount("0",canonicalUk.netShortageQty());
+        assertEquals(11,batches.size());
+    }
+
+    @Test void sharedMakeResidualAtOneTickRemainsARealResponsibility() throws Exception {
+        Case c=create(true,false,"1",true,1,"0.0001");
+        setRoute(c,c.child(),"SUBCONTRACT");setRoute(c,c.material(),"MAKE");
+        var made=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","1",false))));
+        UUID anchor=made.batches().getFirst().anchorAnalysisItemId();
+        AnalysisView after=analyses.detail(c.analysis());
+        MaterialView real=after.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())
+                && row.analysisLineId().equals(anchor)).findFirst().orElseThrow();
+        amount("0.0001",real.planningUncoveredQty());
+        assertTrue(real.actionable());
+        for(MaterialView alias:after.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())
+                && !row.analysisLineId().equals(anchor)).toList()) {
+            amount("0",alias.planningUncoveredQty());
+            amount("0.0001",alias.aggregatePreparation().planningUncoveredQty());
+            assertEquals(List.of(real.materialLineId()),alias.aggregatePreparation().targetMaterialLineIds());
+        }
+        java.nio.file.Path capture=java.nio.file.Path.of(System.getProperty("uten.build.directory","target-audit-material"),
+                "material_shared_make_one_tick_pending.json");
+        java.nio.file.Files.createDirectories(capture.getParent());
+        java.nio.file.Files.writeString(capture,beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class)
+                .writerWithDefaultPrettyPrinter().writeValueAsString(after));
+    }
+
     @ParameterizedTest @ValueSource(strings={"MAKE","BUY"})
     void twoPreorderedMaterialsKeep400EachWhenEveryRemainingLevelIsIssued(String siblingRoute) {
         UUID sibling=UUID.randomUUID();
@@ -493,6 +584,58 @@ class AggregateMaterialOrderEndToEndTest {
         assertTrue(writer.submit(c.analysis(),full).replayed());
         assertPhysicalSupply(c,c.material(),"450");
         assertPhysicalSupply(c,sibling,"400");
+    }
+
+    private record ThreeProductCase(Case data,UUID bag,UUID tape,Map<UUID,String> laterRoutes,Set<UUID> delegatedGoods) {}
+
+    private ThreeProductCase createThreeProductScreenshotCase() {
+        String tag="three-products-"+UUID.randomUUID();
+        var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        com.uten.imp.features.warehouse.materialbin.WorkshopBinTestSupport.openUnderMain(
+                beans.getBean(com.uten.imp.features.warehouse.materialbin.WorkshopBinService.class),db,
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class),workshop,world.warehouseId());
+        Map<String,UUID> goods=new LinkedHashMap<>();
+        Map<String,String> routes=Map.ofEntries(Map.entry("UK0057","MAKE"),Map.entry("UT3018","BUY"),
+                Map.entry("UT3015","BUY"),Map.entry("V50041","MAKE"),Map.entry("V50001","MAKE"),
+                Map.entry("V51032","SUBCONTRACT"),Map.entry("V51001","BUY"),Map.entry("V5G001","MAKE"),
+                Map.entry("V50010","MAKE"),Map.entry("V50014","MAKE"),Map.entry("V50026","MAKE"),
+                Map.entry("V5ZJ001","SUBCONTRACT"),Map.entry("V51030","BUY"));
+        Map<String,String> names=Map.ofEntries(Map.entry("UK0057","UK开关滑杆"),Map.entry("UT3018","包装袋（优腾通用）"),
+                Map.entry("UT3015","优腾封箱胶"),Map.entry("V50041","V5开关面板"),Map.entry("V50001","V5一开按钮"),
+                Map.entry("V51032","V5一开铁架（喷粉）"),Map.entry("V51001","V5一开铁架"),Map.entry("V5G001","V5一开单控功能件"),
+                Map.entry("V50010","V5一开压板"),Map.entry("V50014","V5一开单控10A后座（带UTEN）"),Map.entry("V50026","V5开关打子"),
+                Map.entry("V5ZJ001","V5开关滑杆组件"),Map.entry("V51030","V5开关弹簧"));
+        for(var entry:routes.entrySet()) {
+            UUID id=UUID.randomUUID();goods.put(entry.getKey(),id);
+            fixture.insertGoods(id,entry.getKey()+"-"+id,names.get(entry.getKey()),
+                    switch(entry.getValue()){case "BUY"->"采购";case "SUBCONTRACT"->"委外";default->"自制";},world.unitId(),world.unitLegacy());
+            db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",world.supplierId(),id);
+        }
+        for(String child:List.of("V50010","V50014","V50026","V5ZJ001"))fixture.insertBom(goods.get("V5G001"),goods.get(child),"1");
+        for(String child:List.of("UK0057","V51030"))fixture.insertBom(goods.get("V5ZJ001"),goods.get(child),"1");
+        fixture.insertBom(goods.get("V51032"),goods.get("V51001"),"1");
+        List<PreviewItem> sources=new ArrayList<>();
+        for(int n=0;n<3;n++) {
+            UUID root=UUID.randomUUID();
+            fixture.insertGoods(root,"TEST-"+root,n==0?"测试产品":"测试产品("+n+")","自制",world.unitId(),world.unitLegacy());
+            for(String child:List.of("V50041","UT3018","UT3015","V51032","V5G001","V50001"))
+                fixture.insertBom(root,goods.get(child),child.equals("UT3015")?"0.0005":"1");
+            UUID order=fixture.createApprovedOrder(world,root,"1000","100");
+            UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+            sources.add(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal("1000")));
+        }
+        var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"screenshot-analysis-"+UUID.randomUUID(),sources));
+        Map<UUID,String> byId=new LinkedHashMap<>();routes.forEach((code,route)->byId.put(goods.get(code),route));
+        analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"screenshot-routes-"+UUID.randomUUID(),
+                view.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),byId.getOrDefault(row.goodsId(),"MAKE"),null)).toList()));
+        Map<UUID,String> remaining=new LinkedHashMap<>();
+        for(String code:List.of("V5G001","V50010","V50014","V50026","V5ZJ001","V51030","UT3015","V50041","V50001","V51032","V51001"))
+            remaining.put(goods.get(code),routes.get(code));
+        return new ThreeProductCase(new Case(world,view.analysisId(),goods.get("V5G001"),goods.get("V5ZJ001"),goods.get("UK0057"),workshop,worker),
+                goods.get("UT3018"),goods.get("UT3015"),remaining,
+                Set.of(goods.get("V50010"),goods.get("V50014"),goods.get("V50026"),goods.get("V5ZJ001"),goods.get("V51030")));
     }
 
     private GroupInput currentSelectableInput(Case c,UUID goods,String route,String qty,boolean extra) {
@@ -582,8 +725,14 @@ class AggregateMaterialOrderEndToEndTest {
                    WHERE item.goods_id=? AND NOT item.is_deleted AND item.request_id IN (
                      SELECT external_document_id FROM preplan_supply_actions
                       WHERE analysis_id=? AND goods_id=? AND route='BUY' AND status<>'CANCELLED')
+                  UNION ALL
+                  SELECT item.qty FROM subcontract_application_items item
+                   JOIN subcontract_applications application ON application.id=item.application_id
+                   WHERE item.goods_id=? AND NOT application.is_deleted AND application.status=1 AND item.application_id IN (
+                     SELECT external_document_id FROM preplan_supply_actions
+                      WHERE analysis_id=? AND goods_id=? AND route='SUBCONTRACT' AND status<>'CANCELLED')
                 ) physical
-                """,BigDecimal.class,c.analysis(),goods,goods,c.analysis(),goods));
+                """,BigDecimal.class,c.analysis(),goods,goods,c.analysis(),goods,goods,c.analysis(),goods));
     }
 
     private void assertDeepSupplyRemainsCovered(Case c,String parentQty,String needed,String ordered,int sourceCount) {

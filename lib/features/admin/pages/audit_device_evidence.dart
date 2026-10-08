@@ -305,7 +305,7 @@ _DeviceEvidenceAssessment _assessDeviceEvidence({
   if (!receipt.integrityVerified) {
     return const _DeviceEvidenceAssessment(
       _DeviceEvidenceState.invalid,
-      '本机回执完整性校验失败',
+      '本机回执完整性核对未通过',
       '本机数据可能被修改、密钥已变化或写入中断；不能把这份回执作为一致性依据。服务器记录不受影响。',
     );
   }
@@ -691,7 +691,7 @@ class _LocalReceiptCard extends StatelessWidget {
               UtenSpacing.s12,
             ),
             child: UtenStatusBadge(
-              label: receipt.integrityVerified ? '本机完整性校验通过' : '本机完整性校验失败',
+              label: receipt.integrityVerified ? '本机完整性核对通过' : '本机完整性核对未通过',
               type: receipt.integrityVerified
                   ? UtenStatusBadgeType.success
                   : UtenStatusBadgeType.danger,

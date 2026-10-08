@@ -555,7 +555,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     if (!upstreamIsRequest &&
         _supplierId != null &&
         result.supplierId != _supplierId) {
-      context.appError('上游单据供应商与表头供应商不一致，已阻止引入');
+      context.appError('来源单据的供应商与表头选的供应商不是同一家，不能引入');
       return;
     }
     final goodsIds = result.items
@@ -674,7 +674,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         // 剩余量随行不同，必须逐行带出来，否则用户不知道各行该改到多少。
         overQty.add(
           '第 ${i + 1} 行（${r.goods!.name ?? r.goods!.code ?? '该货品'}，'
-          '上游剩余 ${r.maxQty}）',
+          '来源单据剩余 ${r.maxQty}）',
         );
         rowOk = false;
       }
@@ -716,7 +716,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       if (badQty.isNotEmpty)
         _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
       if (overQty.isNotEmpty)
-        _rowIssueMessage(overQty, '的数量超出上游剩余量', action: '请改小后再提交'),
+        _rowIssueMessage(overQty, '的数量超过来源单据的剩余量', action: '请改小后再提交'),
       if (badWeight.isNotEmpty)
         _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
     ];

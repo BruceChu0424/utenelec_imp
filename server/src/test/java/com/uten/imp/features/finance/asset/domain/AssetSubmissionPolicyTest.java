@@ -21,9 +21,9 @@ class AssetSubmissionPolicyTest {
 
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateFixedAsset(input))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("cost account")
-                .hasMessageContaining("acceptanceDate")
-                .hasMessageContaining("readyForUseDate");
+                .hasMessageContaining("成本科目")
+                .hasMessageContaining("验收日期")
+                .hasMessageContaining("可使用");
     }
 
     @Test
@@ -49,9 +49,9 @@ class AssetSubmissionPolicyTest {
                 1200, "2026-08", LocalDate.parse("2026-08-01"), LocalDate.parse("2126-07-31"));
 
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateFixedAsset(fixed))
-                .hasMessageContaining("four-decimal ledger precision");
+                .hasMessageContaining("月折旧额是 0");
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateDeferredExpense(deferred))
-                .hasMessageContaining("four-decimal ledger precision");
+                .hasMessageContaining("月摊销额是 0");
     }
 
     @Test
@@ -65,7 +65,7 @@ class AssetSubmissionPolicyTest {
 
         assertThatThrownBy(() -> AssetSubmissionPolicy.validateDeferredExpense(misaligned))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("benefitStartDate calendar month");
+                .hasMessageContaining("受益开始日期所在月份");
 
         var aligned = new AssetSubmissionPolicy.DeferredInput(
                 policy, new BigDecimal("1200.00"), 12, "2026-01",

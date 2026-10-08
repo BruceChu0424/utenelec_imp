@@ -255,10 +255,10 @@ class GlobalExceptionHandlerTest {
                                 + "请刷新后核对委外领料、退料与回厂记录"),
                 new Case("subcontract_target_outbound_consumption_guard",
                         "subcontract receipt material consumption 10.0000 differs from target 20.0000 beyond the reversal tolerance",
-                        "委外回厂核销的直属物料数量与回厂数量对不上，本次操作已回滚；请刷新后重试"),
+                        "委外回厂核销的直属物料数量与回厂数量对不上，本次操作没有生效；请刷新后重试"),
                 new Case("subcontract_receipt_material_basis_guard",
                         "approved subcontract receipt line lacks its frozen material basis",
-                        "委外回厂明细缺少物料核销依据，本次操作已回滚；请刷新后重试"),
+                        "委外回厂明细缺少物料核销依据，本次操作没有生效；请刷新后重试"),
                 new Case("subcontract_material_issue_item_requested_qty_chk",
                         "new row for relation \"subcontract_material_issue_items\" violates check constraint \"subcontract_material_issue_item_requested_qty_chk\"",
                         "仓库出仓数量不能超过委外人员提交的领料数量，只能改少；请改小后再提交"),
@@ -298,7 +298,7 @@ class GlobalExceptionHandlerTest {
         // 无约束名的出仓占用闸按固定英文句首识别；不相干的 23514 按 ADR-151 §4 是「规则不满足」:
         // 中性文案 422(不再说「被其他操作更新」)。
         var allocation = new java.sql.SQLException("ERROR: approved subcontract draw issue lacks exact reservation coverage", "23514");
-        assertEquals("委外领料单的库存占用与出仓明细对不上(可能刚被撤回、退回或改少)，本次操作已回滚；请刷新拣货页后重试",
+        assertEquals("委外领料单的库存占用与出仓明细对不上(可能刚被撤回、退回或改少)，本次操作没有生效；请刷新拣货页后重试",
                 handler.handleDataIntegrity(new DataIntegrityViolationException("x", allocation)).getBody().getMessage());
         var unrelated = new java.sql.SQLException("ERROR: something else entirely", "23514");
         var unrelatedResponse = handler.handleDataIntegrity(new DataIntegrityViolationException("x", unrelated));

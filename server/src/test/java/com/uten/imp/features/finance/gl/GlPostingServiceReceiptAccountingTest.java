@@ -129,8 +129,8 @@ class GlPostingServiceReceiptAccountingTest {
         assertThatThrownBy(() -> new GlPostingService(em, mock(TxSessionVars.class))
                 .generate("2026-08"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("系统过账角色")
-                .hasMessageContaining("科目 UUID");
+                .hasMessageContaining("系统过账科目")
+                .hasMessageContaining("还没有配置");
         assertThat(sqlStatements).hasSize(5);
         assertThat(sqlStatements.getFirst())
                 .isEqualTo("SELECT pg_advisory_xact_lock(hashtextextended('uten:inventory-cost:gl',0))");

@@ -145,34 +145,6 @@ void main() {
     });
   });
 
-  group('coarsestDisplayScale', () {
-    test('整数计量最粗到 0：1000.0002 的尾巴收敛成整数', () {
-      const parts = [83.3334, 83.3333, 833.3333];
-      expect(coarsestDisplayScale(1000.0002, parts), 0);
-    });
-
-    test('单路径 0.75 在整数粒度内（展示口径 CEILING 保守向上）', () {
-      expect(coarsestDisplayScale(0.75, [0.75]), 0);
-      expect(apportionLargestRemainder(0.75, [0.75], 0), [1]);
-    });
-
-    test('正量不能被粗化抹成 0：0.001 退到千分位', () {
-      expect(coarsestDisplayScale(0.001, [0.0005, 0.0005]), 3);
-      expect(apportionLargestRemainder(0.001, [0.0005, 0.0005], 3), [0.001, 0]);
-    });
-
-    test('真分数值保留小数：0.4 用不到整数粒度', () {
-      expect(coarsestDisplayScale(0.4, [0.4]), 1);
-      expect(coarsestDisplayScale(0.045, [0.045]), 2);
-    });
-
-    test('空列表最粗为 0；总量为 0 也为 0', () {
-      expect(coarsestDisplayScale(0, []), 0);
-      expect(coarsestDisplayScale(0, [0, 0]), 0);
-      expect(coarsestDisplayScale(0.00003, [0.00003]), 4);
-    });
-  });
-
   group('splitTypedTotal', () {
     test('总量盖住 ceil 合计：先给足 ceil 再均分富余', () {
       expect(splitTypedTotal(1002, [83.3334, 83.3333, 833.3333], 0), [

@@ -148,7 +148,7 @@ void registerDailyReportPrecisionTests() {
       } else {
         expect(previewed, isNull);
         expect(sent, isEmpty);
-        expect(find.textContaining('转送数量缺少可核实的精确分配'), findsOneWidget);
+        expect(find.textContaining('转送数量对不上原来的分配'), findsOneWidget);
       }
       expect(row.qty.text, quantity);
       expect(tester.takeException(), isNull);

@@ -162,7 +162,7 @@ class SubcontractDrawTaskList {
   factory SubcontractDrawTaskList.fromJson(Map<String, dynamic> json) {
     final page = json['page'];
     if (page is! Map) {
-      throw const FormatException('委外领料任务响应缺少分页数据');
+      throw const FormatException('委外领料任务列表数据不完整，请刷新重试');
     }
     return SubcontractDrawTaskList(
       page: PagedResult.fromJson(
@@ -337,7 +337,7 @@ class SubcontractDrawTaskDetail {
   factory SubcontractDrawTaskDetail.fromJson(Map<String, dynamic> json) {
     final task = json['task'];
     if (task is! Map) {
-      throw const FormatException('委外领料任务详情缺少任务行');
+      throw const FormatException('委外领料任务详情数据不完整，请刷新重试');
     }
     return SubcontractDrawTaskDetail(
       task: SubcontractDrawTaskRow.fromJson(task.cast<String, dynamic>()),

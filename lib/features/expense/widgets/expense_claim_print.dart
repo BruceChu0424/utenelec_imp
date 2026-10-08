@@ -62,7 +62,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
     if (cell == null) return '';
     if (cell.masked) return '***';
     if (cell.error != null) {
-      throw const FormatException('该次提交的扩展字段计算失败，不能生成缺失数据的报销打印件');
+      throw const FormatException('打印需要的部分数据没有算出来，请刷新页面后再试');
     }
     return cell.value ?? '';
   }
@@ -139,7 +139,7 @@ Future<void> showExpenseClaimPrintPreview(
   );
   if (TableColumnProjectionScope.hasCurrentTables(context) &&
       projection == null) {
-    context.appError('未找到当前报销明细表头，请刷新后重试');
+    context.appError('找不到报销明细的列设置，请刷新后重试');
     return;
   }
   UtenPrintTable itemsTable;
@@ -162,7 +162,7 @@ Future<void> showExpenseClaimPrintPreview(
   } catch (error) {
     if (context.mounted) {
       context.appError(
-        error is FormatException ? error.message : '报销明细或扩展字段暂时无法读取',
+        error is FormatException ? error.message : '报销明细暂时读取不出来，请稍后重试',
       );
     }
     return;

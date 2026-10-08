@@ -117,7 +117,7 @@ class _ProductionExecutionCardPrintDialogState
     List<ProductionWorkCardView> views,
   ) {
     if (views.isEmpty || views.any((view) => !view.isPrintable)) {
-      throw StateError('计划包不是可打印的已确认执行包');
+      throw StateError('计划包已经不是「已确认」状态，不能打印工卡，请刷新后重试');
     }
     final cardCount = views.fold<int>(
       0,
@@ -134,27 +134,27 @@ class _ProductionExecutionCardPrintDialogState
     final segmentCodes = <String>{};
     for (final view in views) {
       if (!_present(view.planId) || !_present(view.packageId)) {
-        throw StateError('批量打印包含无效的计划或计划包身份');
+        throw StateError('批量打印里有无效的生产计划或计划包，请刷新后重新选择');
       }
       final identity = '${view.planId}|${view.packageId}';
       if (!planIds.add(view.planId)) {
-        throw StateError('批量打印不能包含同一生产计划的多个计划包');
+        throw StateError('同一张生产计划只能选一个计划包，不能多选一起打印');
       }
       if (!identities.add(identity)) {
-        throw StateError('批量打印包含重复的生产计划包');
+        throw StateError('批量打印里有重复的生产计划包，请去掉重复的');
       }
       for (final card in view.cards) {
         if (!_isExecutionCardPrintableStatus(card.status)) {
-          throw StateError('已取消或已反向的执行分段不能打印');
+          throw StateError('已取消或已反向的执行分段不能打印，请去掉这些分段');
         }
         if (!_present(card.segmentId) || !_present(card.segmentCode)) {
-          throw StateError('批量打印包含无效的执行分段身份');
+          throw StateError('批量打印里有无效的执行分段，请刷新后重新选择');
         }
         if (!segmentIds.add(card.segmentId)) {
-          throw StateError('批量打印包含重复的执行分段');
+          throw StateError('批量打印里有重复的执行分段，请只保留一份');
         }
         if (!segmentCodes.add(card.segmentCode)) {
-          throw StateError('批量打印包含重复的分段条码');
+          throw StateError('批量打印里有重复的分段条码，请只保留一份');
         }
       }
     }
@@ -222,7 +222,7 @@ class _ProductionExecutionCardPrintDialogState
       if (mounted) context.appError(error.message, force: true);
     } catch (_) {
       if (mounted) {
-        context.appError('本次复核中有计划包或工卡失效；请重新读取后再试', force: true);
+        context.appError('刚才选的计划包或工卡已经发生变化，请刷新后重新打印', force: true);
       }
     } finally {
       if (mounted) setState(() => _printingTarget = null);
@@ -387,8 +387,8 @@ class _ProductionExecutionCardPrintDialogState
             Expanded(
               child: Text(
                 '本次共 ${_views.length} 张生产计划、$_cardCount 张执行工卡。'
-                '工卡来自已确认计划包、执行分段和物料需求的只读投影。'
-                '打印或补打不会锁料、开单或改变状态；货品、颜色、单位和人员名称按打印时当前主档解析。'
+                '工卡内容只是查看用，不会改动计划。'
+                '打印或补打不会锁料、开单或改变状态；货品、颜色、单位和人员名称按打印时的最新档案显示。'
                 '计划包版本 $versions。',
                 style: theme.textTheme.bodySmall,
               ),
@@ -1132,7 +1132,7 @@ pw.Widget _pdfFooter(
       children: [
         pw.Expanded(
           child: pw.Text(
-            '打印件非业务事实源 · 名称按当前主档解析 · 计划包 ${_shortId(view.packageId)} · 分段 ${card.segmentCode}',
+            '打印件只作参考 · 名称按最新档案显示 · 计划包 ${_shortId(view.packageId)} · 分段 ${card.segmentCode}',
             style: const pw.TextStyle(fontSize: 7.5, color: PdfColors.grey700),
           ),
         ),

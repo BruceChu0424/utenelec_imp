@@ -48,7 +48,7 @@ void main() {
           tester.widget(_saving('goods-a|row-a1')),
           isA<CircularProgressIndicator>(),
         );
-        expect(find.byTooltip('正在保存审计标记'), findsOneWidget);
+        expect(find.byTooltip('正在保存核对标记'), findsOneWidget);
 
         // A stale click callback must obey the same pending guard as the new UI.
         oldAction();
@@ -79,7 +79,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('外壳（服务端返回）'), findsOneWidget);
         expect(find.byTooltip(_unmarkTooltip), findsNWidgets(2));
-        expect(find.byTooltip('正在保存审计标记'), findsNothing);
+        expect(find.byTooltip('正在保存核对标记'), findsNothing);
         expect(repo.listCalls, ['goods-a'], reason: '审计成功只消费返回行，不重读清单');
         expect(tester.takeException(), isNull);
       },

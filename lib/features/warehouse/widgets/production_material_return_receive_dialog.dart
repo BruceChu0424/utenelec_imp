@@ -74,7 +74,7 @@ Future<String?> showProductionMaterialReturnReceiveDialog(
                   ),
                   info: '来源记录用于追溯；本次库存进入这里选择的正常仓库。',
                   errorMessage: mainWarehouseId == null
-                      ? '来源主仓尚未读取，请刷新单据'
+                      ? '来源主仓还没读到，请刷新单据'
                       : allowed.isEmpty
                       ? '此主仓下暂无有效正常收料仓库'
                       : null,

@@ -240,7 +240,7 @@ public class WarehouseArrivalRegistrationService {
     private WarehouseArrivalRegisterResult replayGroup(ArrivalCommand existing, WarehouseArrivalRegisterRequest request) {
         if (!Objects.equals(existing.requestHash(), requestHash(request))) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "到货登记幂等键已用于不同内容，请刷新预计到货任务后重新登记");
+                    "同一防重复提交标识已用于不同内容的到货登记，请刷新预计到货任务后重新登记");
         }
         return replayResult(existing);
     }
@@ -317,7 +317,7 @@ public class WarehouseArrivalRegistrationService {
         if (replay != null) {
             if (!Objects.equals(replay.requestHash(), requestHash)) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "到货登记幂等键已用于不同内容，请刷新预计到货任务后重新登记");
+                        "同一防重复提交标识已用于不同内容的到货登记，请刷新预计到货任务后重新登记");
             }
             return replayResult(replay);
         }
@@ -496,13 +496,13 @@ public class WarehouseArrivalRegistrationService {
             java.util.ArrayDeque<String> queue = places.get(rs.getObject("order_item_id", UUID.class));
             String place = queue == null ? null : queue.poll();
             if (place == null) {
-                throw new ApiException(ErrorCode.CONFLICT, "待检明细与本次登记明细对不上，本次登记已回滚");
+                throw new ApiException(ErrorCode.CONFLICT, "待检明细与本次登记明细对不上，本次登记没有生效");
             }
             result.add(new ProcurementIqcPreStockInService.PreStockLine(
                     rs.getObject("id", UUID.class), warehouseId, place));
         }, orderType, receiptId);
         if (result.size() != request.items().size()) {
-            throw new ApiException(ErrorCode.CONFLICT, "待检明细数量与本次登记明细不一致，本次登记已回滚");
+            throw new ApiException(ErrorCode.CONFLICT, "待检明细数量与本次登记明细不一致，本次登记没有生效");
         }
         return result;
     }
@@ -550,7 +550,7 @@ public class WarehouseArrivalRegistrationService {
         for (UUID id : request.receiptIds()) {
             if (id == null || !distinct.add(id)) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                        "批量送检收货单清单无效或存在重复");
+                        "批量送检收货单清单不正确或存在重复");
             }
         }
         UUID makerId = currentUser.requireEmployeeId();
@@ -652,7 +652,7 @@ public class WarehouseArrivalRegistrationService {
             UUID exceptionId = latestPendingExceptionId(receiptId);
             if (exceptionId == null) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "到货超量已被拦截，但缺少待财务异常记录；本次登记已回滚");
+                        "到货超量已被拦截，但缺少待财务异常记录；本次登记没有生效");
             }
             return new WarehouseArrivalRegisterResult(
                     OUTCOME_QUARANTINED, receiptId, billNo,
@@ -987,7 +987,7 @@ public class WarehouseArrivalRegistrationService {
                 makerId, idempotencyKey);
         if (rows.size() > 1) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "到货登记幂等键存在重复历史，请先完成数据核对");
+                    "同一防重复提交标识下有多条到货登记记录，请先完成数据核对");
         }
         return rows.isEmpty() ? null : rows.getFirst();
     }
@@ -1015,7 +1015,7 @@ public class WarehouseArrivalRegistrationService {
         boolean quarantined = OUTCOME_QUARANTINED.equals(result.outcome());
         if (quarantined && result.exceptionId() == null) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "到货隔离结果缺少异常标识，本次登记已回滚");
+                    "到货隔离结果缺少异常标识，本次登记没有生效");
         }
         UUID purchaseReceiptId = PURCHASE.equals(orderType)
                 ? result.receiptId() : null;
@@ -1035,7 +1035,7 @@ public class WarehouseArrivalRegistrationService {
                 commandId, makerId);
         if (updated != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "到货登记命令状态已变化，本次登记已回滚");
+                    "到货登记命令状态已变化，本次登记没有生效");
         }
     }
 
@@ -1051,7 +1051,7 @@ public class WarehouseArrivalRegistrationService {
                 || !("COMPLETED".equals(command.status())
                 || "QUARANTINED".equals(command.status()))) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "到货登记幂等记录不完整，请先完成数据核对");
+                    "之前那次到货登记的记录不完整，请先完成数据核对");
         }
         return new WarehouseArrivalRegisterResult(
                 command.outcome(), receiptId,
@@ -1063,7 +1063,7 @@ public class WarehouseArrivalRegistrationService {
         if (value == null || value.length() < 8 || value.length() > 128
                 || !value.matches("[A-Za-z0-9._:-]+")) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "到货登记幂等键格式不正确");
+                    "到货登记的防重复提交标识格式不正确");
         }
         return value;
     }
@@ -1147,7 +1147,7 @@ public class WarehouseArrivalRegistrationService {
         String normalized = orderType == null ? "" : orderType.strip().toUpperCase();
         return switch (normalized) {
             case PURCHASE, SUBCONTRACT -> normalized;
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型无效");
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货类型不正确");
         };
     }
 

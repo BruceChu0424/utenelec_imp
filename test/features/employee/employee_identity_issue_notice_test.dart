@@ -65,7 +65,7 @@ void main() {
 
     final notice = _notice(tester);
     expect(notice.level, UtenInlineNoticeLevel.error);
-    expect(notice.title, '证件号码校验未通过');
+    expect(notice.title, '证件号码填写有误');
     expect(
       notice.message,
       '具体问题：身份证号应为18位，当前为17位\n'
@@ -82,7 +82,7 @@ void main() {
   testWidgets('缺失和未校验用黄色，标题按种类区分', (tester) async {
     for (final (issue, title) in [
       (_missing, '未登记证件号码'),
-      (_unchecked, '证件号码尚未校验'),
+      (_unchecked, '证件号码尚未核对'),
     ]) {
       await tester.pumpWidget(
         _host(

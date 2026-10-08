@@ -44,7 +44,7 @@ class ClientCreditFloorPolicyTest {
         assertThatThrownBy(() -> ClientService.requireLegacyCreditSnapshotUnchanged(
                 legacy, new BigDecimal("60000")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("只读快照");
+                .hasMessageContaining("铺底参考值");
         assertThatThrownBy(() -> ClientService.requireLegacyCreditSnapshotUnchanged(
                 legacy, null))
                 .isInstanceOf(ApiException.class);

@@ -427,7 +427,7 @@ public class NoticeService {
         tx.bind();
         String type = req.type() == null ? "announcement" : req.type();
         if (!TYPES.contains(type)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法通知类型: " + type);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "通知类型不正确: " + type);
         }
 
         // 庆典（bless）类型特殊处理：自动派生 subjectName/eventLabel/title/audience
@@ -461,11 +461,11 @@ public class NoticeService {
         }
         String priority = req.priority() == null ? "normal" : req.priority();
         if (!PRIORITIES.contains(priority)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法重要度: " + priority);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "重要度不正确: " + priority);
         }
         String kind = req.kind() == null ? "NORMAL" : req.kind().strip().toUpperCase();
         if (!KINDS.contains(kind)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法通知用途: " + kind);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "通知用途不正确: " + kind);
         }
         String actionRoute = validatedActionRoute(req.actionRoute(), kind);
         if ("NORMAL".equals(kind) && req.dueAt() != null) {
@@ -475,7 +475,7 @@ public class NoticeService {
         // 庆典通知强制 audience=all（全员可祝福），忽略传入的 department/employee
         String audienceScope = bless ? "all" : (req.audienceScope() == null ? "all" : req.audienceScope());
         if (!Set.of("all", "selected").contains(audienceScope)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法接收范围: " + audienceScope);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "接收范围不正确: " + audienceScope);
         }
         NoticeAudienceService.ResolvedAudience audience = null;
         if (!bless && "selected".equals(audienceScope)) {
@@ -1197,7 +1197,7 @@ public class NoticeService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "定向通知缺少接收人");
         }
         if (!TYPES.contains(type)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "非法通知类型: " + type);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "通知类型不正确: " + type);
         }
         Notice n = new Notice();
         n.setTitle(title);
@@ -1263,7 +1263,7 @@ public class NoticeService {
     public int resolveReviewNoticesByEvent(String aggregateKind, UUID aggregateId, String sourceEvent, String reason) {
         if (aggregateKind == null || aggregateKind.isBlank() || aggregateId == null
                 || sourceEvent == null || sourceEvent.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "办结撤回必须提供聚合类型、主键与事件");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "办结撤回必须提供聚合类型、编号与事件");
         }
         int resolved = noticeRepo.resolveReviewPendingByEvent(aggregateKind, aggregateId, sourceEvent, reason);
         stateRepo.markReadForEventRecipients(aggregateKind, aggregateId, sourceEvent);
@@ -1309,7 +1309,7 @@ public class NoticeService {
         if (aggregateKind == null || aggregateKind.isBlank()
                 || aggregateId == null) {
             throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED, "办结撤回必须提供聚合类型与主键");
+                    ErrorCode.VALIDATION_FAILED, "办结撤回必须提供聚合类型与编号");
         }
         String safeReason = reason == null || reason.isBlank()
                 ? "COMPLETED"
@@ -1482,7 +1482,7 @@ public class NoticeService {
             if (!PRIORITIES.contains(normalized)) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "非法系统通知重要度: " + explicitPriority);
+                        "系统通知重要度不正确: " + explicitPriority);
             }
             return normalized;
         }
@@ -1789,7 +1789,7 @@ public class NoticeService {
         try {
             return objectMapper.writeValueAsString(attachments);
         } catch (Exception e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件格式不合法");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "附件格式不正确");
         }
     }
 
@@ -1799,7 +1799,7 @@ public class NoticeService {
         try {
             return objectMapper.writeValueAsString(templates);
         } catch (Exception e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "祝福模板格式不合法");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "祝福模板格式不正确");
         }
     }
 
@@ -1808,7 +1808,7 @@ public class NoticeService {
         try {
             return objectMapper.writeValueAsString(ids);
         } catch (Exception e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "接收范围格式不合法");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "接收范围格式不正确");
         }
     }
 

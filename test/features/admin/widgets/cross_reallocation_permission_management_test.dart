@@ -184,6 +184,35 @@ void main() {
       await tester.binding.setSurfaceSize(null);
     },
   );
+  testWidgets('top revoke-all marks every catalog code revoked then saves', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 1200));
+    final repository = _PermissionRepositoryFake(
+      effective: _effective(department: {_legacy, _cross}),
+    );
+    await tester.pumpWidget(_userSubject(repository, preferences));
+    await tester.pumpAndSettle();
+
+    // 人员信息行的「全部收回」：确认后把整个目录（含部门继承）标为个人收回。
+    await tester.tap(find.text('全部收回'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认收回'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已修改 2 项'), findsOneWidget);
+    await tester.tap(find.text('保存更改'));
+    await tester.pumpAndSettle();
+
+    expect(repository.overrideUpdates, hasLength(1));
+    expect(
+      repository.overrideUpdates.single.revokes,
+      containsAll({_legacy, _cross}),
+    );
+    expect(repository.overrideUpdates.single.grants, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.binding.setSurfaceSize(null);
+  });
   testWidgets(
     'department permission error retries and empty catalog is honest',
     (tester) async {

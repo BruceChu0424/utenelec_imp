@@ -898,7 +898,7 @@ class ProductionDailyReportCommandTest {
                 () -> service.approve(UUID.randomUUID(), approveRequest("  ")));
 
         assertEquals(ErrorCode.VALIDATION_FAILED, error.getCode());
-        assertEquals("审核生产日报必须提供幂等键", error.getMessage());
+        assertEquals("审核生产日报必须提供防重复提交标识", error.getMessage());
         verify(executionSegments, never()).approve(any(), any());
     }
 
@@ -937,7 +937,7 @@ class ProductionDailyReportCommandTest {
                 () -> service.approve(reportId, approveRequest("stable-approve-key")));
 
         assertEquals(ErrorCode.CONFLICT, error.getCode());
-        assertEquals("同一幂等键已用于不同的生产日报审核请求", error.getMessage());
+        assertEquals("同一防重复提交标识已用于不同的生产日报审核请求，请刷新后重试", error.getMessage());
         verify(executionSegments, never()).approve(any(), any());
     }
 

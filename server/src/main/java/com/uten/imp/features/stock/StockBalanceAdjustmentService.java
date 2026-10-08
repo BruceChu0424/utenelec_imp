@@ -132,7 +132,7 @@ public class StockBalanceAdjustmentService {
             StockDocDetail existing,
             StockBalanceAdjustmentRequest request) {
         if (existing.getItems() == null || existing.getItems().size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "该幂等键已有不完整的库存调整记录，请联系管理员");
+            throw new ApiException(ErrorCode.CONFLICT, "同一防重复提交标识下有一笔不完整的库存调整，请联系管理员");
         }
         var item = existing.getItems().getFirst();
         boolean sameRequest = request.getWarehouseId().equals(existing.getWarehouseId())
@@ -143,7 +143,7 @@ public class StockBalanceAdjustmentService {
                 && WeightMath.sameKg(targetWeight(request), item.getCountWeight())
                 && (REMARK_PREFIX + request.getReason().trim()).equals(existing.getRemark());
         if (!sameRequest) {
-            throw new ApiException(ErrorCode.CONFLICT, "该幂等键已用于另一笔库存调整，请重新提交");
+            throw new ApiException(ErrorCode.CONFLICT, "这个操作可能已提交过（标识已对应另一笔库存调整），请刷新查看结果");
         }
         return new StockBalanceAdjustmentResult(
                 existing.getId(),
@@ -180,13 +180,13 @@ public class StockBalanceAdjustmentService {
                 || request.getGoodsId() == null
                 || request.getExpectedQty() == null
                 || request.getTargetQty() == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "库存调整参数不完整");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "库存调整填写的内容不完整");
         }
         String idempotencyKey = request.getIdempotencyKey();
         if (idempotencyKey.length() < 8
                 || idempotencyKey.length() > 128
                 || !idempotencyKey.matches("[A-Za-z0-9._:-]+")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "库存调整幂等键格式不正确");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "库存调整的防重复提交标识格式不正确");
         }
         if (request.getTargetQty().signum() < 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "调整后数量不能小于 0");

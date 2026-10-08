@@ -320,7 +320,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       group: '基础',
       type: MasterFieldType.select,
       options: _styleOptions,
-      hint: '必须选择使用中的 ACCOUNT 末级科目（UUID 关联）',
+      hint: '必须选择使用中的最末级会计科目',
     ),
     const MasterFieldDef(
       key: 'status',
@@ -345,7 +345,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         detail.styleId != null &&
         _styleOptions.any((option) => option.value == detail.styleId);
     if (!styleAvailable) {
-      context.appError('该账户缺少可用的会计科目 UUID，请重新选择后再保存');
+      context.appError('该账户当前的会计科目已不可用，请重新选择后再保存');
     }
     await showMasterEditDialog(
       context: context,
@@ -483,7 +483,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
         title: const Text('删除账户'),
         content: Text(
           '确定删除「${detail.name?.isNotEmpty == true ? detail.name! : (detail.code ?? '该账户')}」吗？'
-          '已有资金事实的账户会被服务端拒绝删除。',
+          '已有资金往来的账户不能删除。',
         ),
         actions: [
           TextButton(

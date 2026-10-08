@@ -285,7 +285,7 @@ public class SupplierSettlementService {
                 .setParameter("supplierId", supplierId).setParameter("currencyId", currencyId)
                 .setParameter("start", start).setParameter("end", end).getSingleResult()).longValue();
         if (unknown > 0) {
-            throw conflict("历史期初缺少可核验截止时点或原币依据，或月份跨越快照截止日；"
+            throw conflict("历史期初缺少可核验的截止时点或原币依据，或月份跨越了历史数据截止日；"
                     + "无法重建迁入前月度付款，请先核对历史来源，选择截止日之后的完整月份");
         }
     }
@@ -354,7 +354,7 @@ public class SupplierSettlementService {
                 """).setParameter("end", end).setParameter("supplierId", supplierId)
                 .setParameter("currencyId", currencyId).getSingleResult()).longValue();
         if (count != 0) {
-            throw conflict("存在截止日前已红冲付款但缺少独立反转日期事件，禁止事后伪造月结快照；请财务专项核对");
+            throw conflict("有截止日前的红冲付款缺少独立的红冲日期记录，不能事后补造月结数据；请财务专项核对");
         }
     }
 

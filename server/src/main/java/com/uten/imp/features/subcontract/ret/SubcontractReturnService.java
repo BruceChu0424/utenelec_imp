@@ -478,7 +478,7 @@ public class SubcontractReturnService {
     private static Short settlementStyleLegacy(Integer legacyId) {
         if (legacyId == null) return null;
         if (legacyId < Short.MIN_VALUE || legacyId > Short.MAX_VALUE) {
-            throw new ApiException(ErrorCode.CONFLICT, "委外退货结账方式历史编号超出有效范围");
+            throw new ApiException(ErrorCode.CONFLICT, "委外退货单关联的结算方式数据异常，请联系管理员处理");
         }
         return legacyId.shortValue();
     }

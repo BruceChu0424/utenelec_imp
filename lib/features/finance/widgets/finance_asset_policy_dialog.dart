@@ -391,7 +391,7 @@ class _FinanceAssetPolicySurfaceState
     FocusScope.of(context).unfocus();
     setState(() => _showStyleErrors = true);
     if (!(_formKey.currentState?.validate() ?? false)) {
-      context.appWarning('请先修正会计政策字段');
+      context.appWarning('请先把会计政策里标红的填写项改正确');
       return;
     }
     final missingStyles =

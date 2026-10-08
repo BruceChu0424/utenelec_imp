@@ -138,7 +138,7 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
     _submittedItems = null;
     await _load();
     if (_error != null || _detail == null) {
-      throw StateError(_error ?? '最新材料申请未能读取');
+      throw StateError(_error ?? '最新材料申请没有加载出来');
     }
   }
 

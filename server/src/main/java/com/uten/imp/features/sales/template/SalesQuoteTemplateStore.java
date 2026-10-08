@@ -255,7 +255,7 @@ public class SalesQuoteTemplateStore {
     @Transactional(readOnly = true)
     public Stored load(UUID client, UUID id, Integer version) {
         if (client == null || id == null) throw new ApiException(ErrorCode.NOT_FOUND, "报价模板不存在或不属于此客户");
-        if (version != null && version < 1) throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价模板版本无效");
+        if (version != null && version < 1) throw new ApiException(ErrorCode.VALIDATION_FAILED,"报价模板版本不正确，请刷新后重试");
         Map<String,Object> parameters = new HashMap<>();
         parameters.put("client",client); parameters.put("id",id); parameters.put("version",version);
         Payload payload = jdbc.query("""

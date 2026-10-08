@@ -39,7 +39,7 @@ public class ExpenseClaimSettingsService {
         if(input.companyName()==null || input.companyName().isBlank() || input.companyName().trim().length()>200
                 || input.version()==null || input.version()<0
                 || (tax!=null && !tax.matches("[0-9A-Z]{15}|[0-9A-Z]{18}|[0-9A-Z]{20}")))
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"公司名称、纳税人识别号或版本无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"公司名称或纳税人识别号填写不正确，或页面不是最新，请刷新后重试");
         tx.bind();
         int rows=em.createNativeQuery("""
                 UPDATE expense_claim_settings SET company_name=:name, company_tax_no=:tax,

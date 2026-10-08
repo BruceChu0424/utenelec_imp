@@ -435,9 +435,9 @@ public class MrpService {
             Object[] row=invalid.getFirst();
             String label=java.util.Objects.toString(row[0], "")+" "+java.util.Objects.toString(row[1], "");
             if (Boolean.TRUE.equals(row[2])) throw new ApiException(ErrorCode.CONFLICT,
-                    "货品 "+label+" 的BOM、颜色或基本单位数据无效，禁止计算齐套");
+                    "货品 "+label+" 的BOM、颜色或基本单位数据不正确，不能计算齐套");
             throw new ApiException(ErrorCode.CONFLICT,
-                    "货品 "+label+" 存在未完成采购行的单位或换算率无效，禁止计算齐套");
+                    "货品 "+label+" 有未完成的采购行，其单位或换算率不正确，不能计算齐套");
         }
     }
 
@@ -613,7 +613,7 @@ public class MrpService {
                             value.requiredQty()) > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "直接层自制需求的货品、单位或数量无效，不能生成子计划");
+                        "直接层自制需求的货品、单位或数量不正确，不能生成子计划");
             }
             Key key = new Key(value.goodsId(), value.colorId());
             DirectMakeRequirement previous = unique.putIfAbsent(key, value);
@@ -680,7 +680,7 @@ public class MrpService {
             if (Boolean.TRUE.equals(x[16])) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
-                        "货品 " + goodsLabel + " 存在未完成采购行的单位或换算率无效，禁止计算齐套");
+                        "货品 " + goodsLabel + " 有未完成的采购行，其单位或换算率不正确，不能计算齐套");
             }
             if (x[14] == null) {
                 throw new ApiException(
@@ -724,12 +724,12 @@ public class MrpService {
         if (Boolean.TRUE.equals(x[17])) reasons.add("计划产品货品已删除");
         if (Boolean.TRUE.equals(x[18])) reasons.add("BOM 组件货品已删除");
         if (Boolean.TRUE.equals(x[23])) reasons.add("组件基本单位未维护或已禁用");
-        if (Boolean.TRUE.equals(x[19])) reasons.add("计划明细行的单位或换算率无效");
+        if (Boolean.TRUE.equals(x[19])) reasons.add("计划明细行的单位或换算率不正确");
         if (Boolean.TRUE.equals(x[20])) reasons.add("BOM " + MaterialConsumptionMath.NON_POSITIVE_BOM_QTY_REASON);
-        if (Boolean.TRUE.equals(x[22])) reasons.add("颜色映射无效");
+        if (Boolean.TRUE.equals(x[22])) reasons.add("颜色映射不正确");
         if (Boolean.TRUE.equals(x[21])) reasons.add("计划数量为负");
         if (reasons.isEmpty()) {
-            reasons.add("BOM 数量、颜色映射或需求单位无效");
+            reasons.add("BOM 数量、颜色映射或需求单位不正确");
         }
         return String.join("；", reasons);
     }
@@ -740,10 +740,10 @@ public class MrpService {
                 .getSingleResult();
         Object[] row = (Object[]) result;
         if (Boolean.TRUE.equals(row[0])) {
-            throw new ApiException(ErrorCode.CONFLICT, "BOM 结构存在循环引用，禁止计算物料需求");
+            throw new ApiException(ErrorCode.CONFLICT, "BOM 结构存在循环引用（某个物料用到了自己），不能计算物料需求");
         }
         if (Boolean.TRUE.equals(row[1])) {
-            throw new ApiException(ErrorCode.CONFLICT, "BOM 结构超过 10 层，禁止按截断结果排产");
+            throw new ApiException(ErrorCode.CONFLICT, "BOM 结构超过 10 层，不能按不完整的结果排产，请先调整 BOM");
         }
     }
 
@@ -757,6 +757,6 @@ public class MrpService {
         if (value == null) return null;
         if (value instanceof LocalDate date) return date;
         if (value instanceof java.sql.Date date) return date.toLocalDate();
-        throw new ApiException(ErrorCode.CONFLICT, "MRP 日期字段类型异常");
+        throw new ApiException(ErrorCode.CONFLICT, "MRP 的日期字段格式不正确");
     }
 }

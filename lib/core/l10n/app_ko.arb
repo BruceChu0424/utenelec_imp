@@ -12,9 +12,14 @@
   "release253Notices": "추가 생산이 가능해지면 권한이 있는 작업장 책임자에게 자재 도착을 알립니다. 긴급, 할 일, 진행 상황 및 공지에 서로 다른 스타일을 적용했습니다.",
   "release253Reset": "업무 데이터를 비우면 기존 임시 저장 자료가 무효화되고 업무 중량 측정 및 학습 기록도 삭제됩니다.",
   "release253Maintenance": "오래된 코드와 문서를 정리하고 권한 및 동시 처리 검사를 보강했습니다. 버전을 누르면 이 설명을 볼 수 있습니다.",
-  "release254QuantityPrecision": "자재 주문의 수량 정밀도를 유지하며, 최소 수량·단위 환산·분할 주문·중복 제출 확인 결과의 수량 오차를 수정했습니다.",
+  "release254QuantityPrecision": "자재 주문, 생산 실적 및 직접 이관에서 원래 수량을 유지하며, 최소 수량·단위 환산·분할 주문·중복 제출 결과의 오차를 수정했습니다.",
   "release254AiAuthorization": "AI 사용 권한은 별도로 부여합니다. 권한이 없는 계정에는 도우미가 표시되지 않으며 관련 기능도 사용할 수 없습니다.",
   "release254SensitiveAuthorization": "민감한 권한을 변경할 때 본인 인증을 다시 진행하여 중요한 권한 부여를 직접 확인하도록 했습니다.",
+  "release254OverLimit": "실제 생산량을 모두 보고할 수 있습니다. 한도 초과분은 계획 부서에서 처리하며 승인, 품질, 입고 및 원가의 출처를 유지합니다.",
+  "release254PlanningReminders": "계정이나 권한이 나중에 추가된 계획 담당자도 아직 자재 분석을 시작하지 않은 주문 알림을 받을 수 있으며, 처리한 작업은 반복 알림하지 않습니다.",
+  "release254PeoplePicker": "부서와 직원을 좌우로 표시하고 사번, 계정 상태, 검색 및 부서 간 다중 선택을 지원합니다. 기존 후보 접근 권한을 유지합니다.",
+  "release254AccountSupport": "직원 상세에서 본인 인증 후 임시 비밀번호를 생성할 수 있습니다. 직원은 첫 로그인 때 변경해야 하며, 신원이나 권한이 바뀌면 표시를 중단합니다.",
+  "release254Dashboard": "대시보드 지표는 가로로 배치하고 할 일은 한 줄로 표시합니다. 나머지 작업은 남은 작업 수를 눌러 확인합니다.",
   "release254Publishing": "앱과 설치 패키지의 버전 정보를 일치시키고 출시 전 검사를 강화하여 업데이트 오류를 줄였습니다.",
   "businessColumnAmountUnavailable": "현재 계정은 이 열을 금액 계산에 사용할 수 없습니다. 가격 권한을 복구하거나 문자 또는 숫자 기록을 명시적으로 선택하세요.",
   "businessColumnEditorSubtitle": "문서 정보를 추가하거나 입력값을 각 행의 공식 금액에 반영합니다.",
@@ -451,9 +456,9 @@
   "employeeUnlockAccountSuccess": "계정 잠금이 해제되었습니다",
   "employeeProvisionConfirm": "이 직원의 로그인 계정을 개통합니다. 계정은 기본적으로 휴대폰 번호이며, 초기 비밀번호는 등록된 신분증 번호의 마지막 6자리입니다. 신분증 번호가 없거나 6자리 미만이면 시스템이 무작위로 생성합니다(한 번만 표시, 유효기간 있음). 첫 로그인 시 변경해야 합니다. 계속하시겠습니까?",
   "employeeIdIssueBadge": "확인 필요",
-  "employeeIdIssueInvalidTitle": "신분증 번호 검증 실패",
+  "employeeIdIssueInvalidTitle": "신분증 번호가 올바르지 않습니다",
   "employeeIdIssueMissingTitle": "신분증 번호 미등록",
-  "employeeIdIssueUncheckedTitle": "신분증 번호 미검증",
+  "employeeIdIssueUncheckedTitle": "신분증 번호 미확인",
   "employeeIdIssueReason": "문제: {reason}",
   "employeeIdIssueDetailInvalid": "인사 담당자가 직원 신분증과 대조하여 수정하세요. 로그인 계정 개통과 사용에는 영향이 없습니다.",
   "employeeIdIssueDetailMissing": "인사 담당자가 신분증 번호를 등록하세요. 로그인 계정 개통과 사용에는 영향이 없습니다.",
@@ -464,7 +469,7 @@
   "employeeIdIssueCredentialUnchecked": "초기 비밀번호는 등록된 신분증 번호의 마지막 6자리입니다. 번호를 읽을 수 없거나 6자리 미만이면 무작위로 생성됩니다. 여기에 표시된 비밀번호를 직원에게 알려 주세요.",
   "employeeIdentityCorrectAction": "신분증 정보 수정",
   "employeeIdentityCorrectTitle": "신분증 정보 수정",
-  "employeeIdentityCorrectHint": "주민등록번호는 자동으로 검증되며, 번호에 따라 생년월일과 성별이 갱신됩니다.",
+  "employeeIdentityCorrectHint": "주민등록번호는 자동으로 확인되며, 번호에 따라 생년월일과 성별이 갱신됩니다.",
   "employeeIdentityCorrectNoPrefill": "신분증 번호 원문을 볼 권한이 없습니다. 새 번호 전체를 입력하세요.",
   "employeeIdentityCorrectNumberRequired": "신분증 번호를 입력하세요",
   "employeeIdentityCorrectNumberTooLong": "신분증 번호는 64자를 넘을 수 없습니다",
@@ -769,7 +774,7 @@
   "profileFieldGroupEmergency": "비상 연락처",
   "profileFieldGroupOrganization": "조직 정보",
   "profileEditPolicyHint": "녹색 '직접 수정' 필드는 제출 즉시 적용되고, 노란색 필드는 인사 검토 후 적용됩니다. 나머지 필드는 인사에서 관리합니다.",
-  "profileEditPendingConflictHint": "대기 중인 신청이 {count}건 있습니다. 승인 전 같은 필드를 다시 수정하면 충돌할 수 있습니다.",
+  "profileEditPendingConflictHint": "대기 중인 신청이 {count}건 있습니다. 승인 전 같은 항목을 다시 수정하면 충돌할 수 있습니다.",
   "@profileEditPendingConflictHint": {
     "placeholders": {
       "count": {
@@ -971,7 +976,7 @@
   "profileLoadFailed": "직원 기록을 불러오지 못했습니다",
   "profileUnboundTitle": "현재 계정에 직원 기록이 연결되어 있지 않습니다",
   "profileUnboundDescription": "관리자 또는 인사 담당자에게 계정과 직원 기록 연결을 요청하세요.",
-  "profileSessionUnavailable": "로그인하지 않았거나 세션을 사용할 수 없습니다",
+  "profileSessionUnavailable": "로그인하지 않았거나 로그인이 만료되었습니다",
   "profileValueNotProvided": "미입력",
   "profileValueNotRegistered": "미등록",
   "profileAlternatePhoneLabel": "보조 전화번호",
@@ -992,7 +997,7 @@
   "accountStatusNotProvisioned": "미개통",
   "accountStatusInactive": "계정 비활성",
   "pagePermissionAccountNotProvisionedTitle": "이 직원은 아직 계정이 없어 권한을 설정할 수 없습니다",
-  "pagePermissionAccountNotProvisionedCanProvision": "먼저 로그인 계정을 개통하세요. 일회성 자격 증명을 저장하면 권한 상세가 자동으로 로드됩니다.",
+  "pagePermissionAccountNotProvisionedCanProvision": "먼저 로그인 계정을 개통하세요. 초기 비밀번호 저장을 확인하면 권한 상세가 자동으로 불러와집니다.",
   "pagePermissionAccountNotProvisionedNoAccess": "계정 지원 권한이 있는 담당자에게 로그인 계정 개통을 요청하세요.",
   "employeePermissionSettingsTooltip": "직원 권한 설정",
   "employeeAccountNotProvisionedTooltip": "직원 계정 미개통",
@@ -1061,7 +1066,7 @@
   },
   "orderChangeQtyNewQty": "새 수량",
   "orderChangeQtyConfirm": "수량 변경 확인",
-  "orderChangeQtyInvalid": "유효하지 않은 수량이 있습니다(0보다 커야 함). 확인해 주세요.",
+  "orderChangeQtyInvalid": "올바르지 않은 수량이 있습니다(0보다 커야 함). 확인해 주세요.",
   "orderChangeQtySuccess": "수량이 변경되었으며 주문이 재무 재검토로 돌아갔습니다",
   "orderChangeQtyFailed": "수량 변경에 실패했습니다. 잠시 후 다시 시도해 주세요.",
   "orderQtyChangeOld": "이전 {value}",
@@ -1193,7 +1198,7 @@
   "attachmentUploadedFiles": "파일 {count}개 업로드 완료",
   "productionMaterialRecheckHelp": "이 작업의 합격 입고와 가용 재고를 다시 확인합니다. 창고 입고나 실제 사용량 등록을 대신하지 않습니다.",
   "productionMaterialViewUsage": "사용 기록 보기",
-  "systemSettingInvalidInteger": "유효한 음이 아닌 정수를 입력하세요",
+  "systemSettingInvalidInteger": "0 이상의 정수를 입력하세요",
   "systemSettingInvalidValue": "설정 값이 허용 범위를 벗어났습니다",
   "systemSettingEnabled": "활성화",
   "systemSettingDisabled": "비활성화",
@@ -1202,7 +1207,7 @@
   "systemSettingEffectTiming": "보안 한도는 이후 작업에, 토큰 유효 기간은 새로 발급되는 토큰에 적용됩니다. 기념 알림과 감사 보존은 예약 실행 시 적용됩니다. 변경 내용은 감사 기록에 남으며 비밀번호 확인이 필요합니다.",
   "auditSummaryUnavailable": "요약을 사용할 수 없지만 이벤트 기록은 확인할 수 있습니다",
   "auditSummaryRetry": "요약 다시 시도",
-  "auditWorkspaceDescription": "사람과 시간별 세션을 검토하고 이벤트에서 업무 변경 사항을 추적하세요.",
+  "auditWorkspaceDescription": "사람과 시간별 로그인 기록을 살펴보고 이벤트에서 업무 변경 사항을 추적하세요.",
   "materialReasonLabel": "사유",
   "materialReasonRequired": "사유를 입력하세요",
   "materialReasonTooLong": "사유는 {max}자 이내로 입력하세요",
@@ -1280,7 +1285,7 @@
   "warehouseStockOutboundTitle": "Review outbound documents",
   "warehouseStockOutboundAction": "Batch outbound",
   "warehouseStockOutboundConfirm": "Confirm batch outbound",
-  "warehouseStockOutboundConfirmMessage": "Issue the quantities shown for {count} selected documents?\nEach document is approved separately, deducting stock from its actual warehouse and recording your approval. Processing stops on an error; successful documents remain completed.",
+  "warehouseStockOutboundConfirmMessage": "선택한 {count}건의 문서를 표시된 수량대로 출고할까요?\n각 문서는 개별 승인되어 실제 창고 재고에서 차감되며 승인자가 기록됩니다. 중간에 오류가 나면 이후 처리가 중지되고, 이미 완료된 문서는 결과가 유지됩니다.",
   "@warehouseStockOutboundConfirmMessage": {
     "placeholders": {
       "count": {
@@ -1309,7 +1314,7 @@
   "warehouseSubcontractOutboundBatchAction": "Batch outbound",
   "warehouseSubcontractOutboundBatchConfirm": "Confirm batch outbound",
   "warehouseSubcontractOutboundReviewHint": "Check each quantity and actual warehouse before confirming outbound.",
-  "warehouseSubcontractOutboundBatchHint": "출고 문서 단위로 명세를 함께 선택합니다. 부분 출고는 수량을 줄이고, 이번에 보내지 않을 자재는 0을 입력합니다(저장 시 해당 행 삭제). 문서 전체를 보내지 않으려면 개별 피킹 화면에서 \"외주로 반려(미출고)\"를 사용하세요. 문서별로 저장·승인하며 완료된 결과는 유지됩니다. 오류가 나면 일시 중지되며, 결과를 확인한 뒤 남은 문서를 계속 처리합니다.",
+  "warehouseSubcontractOutboundBatchHint": "출고 문서 단위로 명세를 함께 선택합니다. 부분 출고는 수량을 줄이고, 이번에 보내지 않을 자재는 0을 입력합니다(저장 시 해당 행 삭제). 문서 전체를 보내지 않으려면 개별 피킹 화면에서 \"외주로 반려(미출고)\"를 사용하세요. 문서별로 저장·승인하며 완료된 결과는 유지됩니다. 중간에 오류가 나면 일시 중지되며, 결과를 확인한 뒤 남은 문서를 계속 처리합니다.",
   "warehouseSubcontractOutboundDocuments": "Document details",
   "warehouseSubcontractOutboundOrder": "Source order",
   "warehouseSubcontractOutboundSupplier": "Subcontractor",
@@ -1534,7 +1539,7 @@
       "app": {}
     }
   },
-  "visitorApprovalHostDeptColInfo": "신청 시점의 담당자 부서 스냅샷; 헤더 필터는 hostDepartmentId를 백엔드로 전달합니다.",
+  "visitorApprovalHostDeptColInfo": "방문 신청 시 기록된 담당자 부서입니다. 머리글 필터는 이 부서 기준으로 조회합니다.",
   "visitorBatchLimitError": "한 번에 최대 {limit}건까지 처리할 수 있습니다. 나누어 처리해 주세요(현재 {count}건)",
   "@visitorBatchLimitError": {
     "placeholders": {
@@ -1741,7 +1746,7 @@
       }
     }
   },
-  "myVisitorsStatusColInfo": "기본적으로 '확인 대기' 항목만 표시합니다. 헤더 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다(백엔드 전달).",
+  "myVisitorsStatusColInfo": "기본적으로 '확인 대기' 항목만 표시합니다. 머리글 필터로 전달됨/승인됨/거부됨으로 전환할 수 있습니다.",
   "expenseFlowNew": "경비 정산 신청",
   "expenseFlowEdit": "경비 정산 수정",
   "expenseFlowSaveAndContinue": "저장 후 증빙 추가",
@@ -2225,27 +2230,20 @@
     }
   },
   "aiSettingsTestNeedsKeyEdit": "API 키가 없습니다. \"편집\"에서 키를 입력한 뒤 테스트해 주세요",
-  "aiSettingsUsageTitle": "최근 {days}일 사용량",
-  "@aiSettingsUsageTitle": {
+  "aiSettingsTodayUsage": "오늘 사용량",
+  "aiSettingsTodayUsageFooter": "호출 {calls}회 · {users}명 사용",
+  "@aiSettingsTodayUsageFooter": {
     "placeholders": {
-      "days": {
+      "calls": {
+        "type": "int"
+      },
+      "users": {
         "type": "int"
       }
     }
   },
-  "aiSettingsUsageCalls": "호출 수",
-  "aiSettingsUsageSuccessRate": "성공률",
-  "aiSettingsUsageTokens": "입력 / 출력 토큰",
-  "aiSettingsUsageLatency": "평균 소요 시간",
-  "aiSettingsUsageSeconds": "{value}초",
-  "@aiSettingsUsageSeconds": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "aiSettingsUsageEmpty": "아직 호출 기록이 없습니다",
+  "aiSettingsTodayUsageEmpty": "오늘 사용량이 없습니다",
+  "aiSettingsTodayUsageOpenTooltip": "사용량 및 한도 보기",
   "aiSettingsUsageUnavailable": "사용량을 잠시 불러올 수 없습니다. 서비스에는 영향이 없습니다",
   "aiSettingsPreset": "제공업체",
   "aiSettingsPresetInfo": "제공업체를 고르면 엔드포인트와 권장 설정이 자동으로 채워집니다. 모든 항목은 수정할 수 있습니다",
@@ -2849,7 +2847,7 @@
   "costConfirmed": "확정됨",
   "costReview": "검토 중",
   "costSaveDraft": "초안 저장",
-  "costRecalculate": "검증 및 재계산",
+  "costRecalculate": "확인 후 재계산",
   "costConfirm": "원가 버전 확정",
   "costCopy": "새 초안으로 복사",
   "costSaveTemplate": "원가 템플릿 저장",
@@ -2901,7 +2899,7 @@
   "costSnapshotReadOnly": "과거 스냅샷은 읽기 전용입니다",
   "costImport": "원가표 가져오기",
   "costImportBlock": "제품 영역",
-  "costImportReview": "각 행의 매핑을 확인하세요. 캐시 가격의 통화를 확인하며 외부 수식은 적용하지 않습니다.",
+  "costImportReview": "각 행의 대응 관계를 확인하세요. 캐시 가격의 통화를 확인하며 외부 수식은 적용하지 않습니다.",
   "costImportKind": "적용 방식",
   "costImportMaterial": "재료 가격",
   "costImportFee": "제품당 비용",
@@ -3161,7 +3159,7 @@
   "quoteTemplateMissingHint": "고객의 Excel 양식을 업로드하고 열 매핑을 확인한 후 저장하세요. 표준 형식으로 다운로드할 수도 있습니다.",
   "quoteTemplateUpload": "양식 업로드 및 학습",
   "quoteTemplateReviewTitle": "고객 양식 확인",
-  "quoteTemplateReviewHint": "워크시트와 필드를 확인한 후 저장하세요. 유사한 레이아웃은 버전을 갱신하고 다른 레이아웃은 선택할 수 있도록 보관됩니다.",
+  "quoteTemplateReviewHint": "워크시트와 열 대응을 확인한 후 저장하세요. 유사한 레이아웃은 버전을 갱신하고 다른 레이아웃은 선택할 수 있도록 보관됩니다.",
   "quoteTemplateSaveDownload": "양식 저장 및 다운로드",
   "quoteTemplateSheet": "워크시트",
   "quoteTemplateReference": "참고 열 (견적의 동일한 필드만 입력)",
@@ -3178,7 +3176,7 @@
   "aiChatCancel": "취소",
   "aiChatConfirm": "확인",
   "aiChatWelcome": "어떤 업무를 도와드릴까요?",
-  "aiChatBoundary": "현재 계정 권한에 따라 답변합니다. AI가 제안한 작업은 확인 카드로 표시되며, 확인한 후에만 같은 권한과 검증으로 실행됩니다.",
+  "aiChatBoundary": "현재 계정 권한에 따라 답변합니다. AI가 제안한 작업은 확인 카드로 표시되며, 확인한 후에만 권한과 시스템 점검을 거쳐 실행됩니다.",
   "aiChatUnavailable": "지금은 지원되는 업무 질문에만 답할 수 있습니다.",
   "aiChatLoadFailed": "도우미에 연결할 수 없습니다. 다시 시도하세요.",
   "aiChatRetry": "다시 시도",
@@ -3199,7 +3197,7 @@
   "aiChatFailed": "처리를 완료하지 못했습니다. 다시 시도하세요.",
   "aiChatTimeout": "처리 시간이 초과되었습니다. 나중에 다시 시도하세요.",
   "aiChatGone": "요청이 만료되었습니다. 새 대화를 시작하세요.",
-  "aiChatPermissionChanged": "권한 또는 세션이 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.",
+  "aiChatPermissionChanged": "권한 또는 로그인 상태가 변경되어 대화를 지웠습니다. 새로고침 후 다시 시도하세요.",
   "aiChatEmptyReply": "답변이 반환되지 않았습니다. 질문을 다시 작성하세요.",
   "aiChatYou": "나",
   "aiChatAssistant": "도우미",
@@ -3216,7 +3214,7 @@
   "aiChatPrivacyNotice": "대화 내용, 같은 대화의 최근 질문과 답변, 현재 페이지에 보이는 내용은 관리자가 설정한 AI 서비스에서 처리합니다. 비밀번호 등 민감한 정보는 입력하지 마세요. 답변은 페이지 기준으로 확인하세요. AI는 플랫폼 사용 방법, 업무 규칙, 권한이 있는 업무 데이터만 답하며 코드, 서버, 명령, 데이터베이스, 비밀번호는 다루지 않습니다.",
   "aiChatReceived": "전송 완료. 답변을 기다리는 중…",
   "aiChatRequestRejected": "메시지를 제출하지 못했습니다.",
-  "aiChatDeliveryUnknown": "전달 여부를 확인하지 못했습니다. 다시 보내면 새 요청을 시작합니다.",
+  "aiChatDeliveryUnknown": "전달 여부가 확인되지 않았습니다. 다시 보내면 새 메시지로 발송됩니다.",
   "aiChatReplyFailed": "전달되었지만 AI가 답변을 완료하지 못했습니다.",
   "aiChatReplyInterrupted": "접수되었지만 결과를 가져오지 못했습니다.",
   "aiChatWaitingStopped": "이 답변 기다리기를 중지했습니다.",
@@ -3278,8 +3276,8 @@
   "aiChatGuidedQuoteRequest": "이 파일로 검토할 판매 견적서를 새로 작성해 주세요.",
   "aiChatGuidedOrderRequest": "이 파일로 현재 판매 주문서를 작성하여 검토할 수 있게 해 주세요.",
   "aiChatDocumentLongRequest": "파일 처리 요청이 길어 전체 요구를 분석하지 못했습니다. 계속할 업무를 직접 선택해 주세요.",
-  "quoteTemplateMappingRequired": "수량과 모델 또는 품명 필드를 유지하세요",
-  "quoteTemplateMappingDuplicate": "각 필드는 하나의 열에만 연결할 수 있습니다. 중복 매핑을 수정하세요",
+  "quoteTemplateMappingRequired": "수량과 모델 또는 품명에 해당하는 열을 유지하세요",
+  "quoteTemplateMappingDuplicate": "같은 정보는 하나의 열에만 연결할 수 있습니다. 중복 대응을 수정하세요",
   "aiAuditTitle": "사용 기록 및 비용",
   "aiAuditRefresh": "기록 새로 고침",
   "aiAuditLoadFailed": "기록을 불러올 수 없습니다. 다시 시도해 주세요.",
@@ -3296,19 +3294,7 @@
   "aiAuditAllUsers": "전체 직원",
   "aiAuditProvider": "AI 서비스",
   "aiAuditAllProviders": "전체 서비스",
-  "aiAuditSummary": "기록 {uses}건 · 모델 호출 {calls}회",
-  "@aiAuditSummary": {
-    "placeholders": {
-      "uses": {
-        "type": "int"
-      },
-      "calls": {
-        "type": "int"
-      }
-    }
-  },
   "aiAuditPlatformOnly": "이 플랫폼의 사용량입니다. 예상 비용은 설정한 단가로 계산합니다.",
-  "aiAuditByUser": "직원별 보기",
   "aiAuditUses": "{count}건",
   "@aiAuditUses": {
     "placeholders": {
@@ -3318,19 +3304,6 @@
     }
   },
   "aiAuditEmpty": "이 기간에는 기록이 없습니다.",
-  "aiAuditPagination": "전체 {total}건 · {page}페이지",
-  "@aiAuditPagination": {
-    "placeholders": {
-      "total": {
-        "type": "int"
-      },
-      "page": {
-        "type": "int"
-      }
-    }
-  },
-  "aiAuditPrevious": "이전 페이지",
-  "aiAuditNext": "다음 페이지",
   "aiAuditBillingTitle": "요금 방식 및 이용 한도",
   "aiAuditSelectProvider": "서비스 선택",
   "aiAuditActualCost": "실제 비용: {currency} {amount}",
@@ -3438,9 +3411,31 @@
   "aiAuditInputPrice": "입력 백만 토큰당 단가",
   "aiAuditOutputPrice": "출력 백만 토큰당 단가",
   "aiAuditPriceHint": "서비스 제공업체의 단가를 입력하세요. 예상 비용이며 실제 청구서가 아닙니다.",
-  "aiAuditFiveHourQuota": "5시간 잔여량: 연동되지 않음",
-  "aiAuditWeeklyQuota": "주간 잔여량: 연동되지 않음",
-  "aiAuditQuotaHint": "서비스 제공업체의 한도 조회 API가 필요합니다.",
+  "aiAuditFiveHourQuota": "5시간당 한도(회)",
+  "aiAuditWeeklyQuota": "주간 한도(회)",
+  "aiAuditQuotaHint": "사용량은 이 플랫폼의 성공 호출로 자동 집계되며, 잔여 = 한도 - 사용입니다. 제공업체 집계와 다소 차이가 있을 수 있습니다.",
+  "aiAuditQuota5hUsed": "최근 5시간 사용 {used} / {quota}",
+  "@aiAuditQuota5hUsed": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditQuotaWeeklyUsed": "이번 주 사용 {used} / {quota}",
+  "@aiAuditQuotaWeeklyUsed": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
   "aiAuditSaveBilling": "요금 설정 저장",
   "aiAuditEur": "유로 EUR",
   "aiAuditHkd": "홍콩 달러 HKD",
@@ -3757,10 +3752,10 @@
   "qualityBatchWholeLot": "{count}개 묶음을 로트 전체로 판정",
   "qualityBatchWholeLotPass": "선택하면 로트 전체 합격",
   "aiSettingsStepThinking": "사고 깊이",
-  "aiActionSetField": "필드 입력",
-  "aiActionParamField": "필드",
+  "aiActionSetField": "자동 입력",
+  "aiActionParamField": "입력 항목",
   "aiActionParamValue": "새 값",
-  "aiActionFieldMissing": "이 페이지에 \"{label}\" 필드가 없습니다",
+  "aiActionFieldMissing": "이 페이지에 \"{label}\" 입력 칸이 없습니다",
   "@aiActionFieldMissing": {
     "placeholders": {
       "label": {
@@ -3880,7 +3875,7 @@
       }
     }
   },
-  "aiChatAttachSummary": "현재 페이지 첨부: 표 {rows}행, 필드 {fields}개, 확인 {flagged}건",
+  "aiChatAttachSummary": "현재 페이지 첨부: 표 {rows}행, 입력 항목 {fields}개, 확인 {flagged}건",
   "@aiChatAttachSummary": {
     "placeholders": {
       "rows": {
@@ -4210,7 +4205,6 @@
   "hrReconcileStatusExpired": "만료",
   "hrReconcileStatusDiscarded": "폐기",
   "aiUsageTitle": "AI 사용량 및 한도",
-  "aiUsageEntry": "사용량 및 한도",
   "aiUsageTodayTokens": "오늘 사용량",
   "aiUsageTodayLabel": "오늘",
   "aiUsageTodayCalls": "오늘 호출",
@@ -4330,5 +4324,69 @@
         "type": "String"
       }
     }
-  }
+  },
+  "aiUsageKpiFooterCalls": "{label} {count}회",
+  "@aiUsageKpiFooterCalls": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageKpiFooterPeople": "전원 {count}명",
+  "@aiUsageKpiFooterPeople": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageKpiFooterOverLimit": "{count}명 한도 초과",
+  "@aiUsageKpiFooterOverLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsViewRecords": "기록별",
+  "aiRecordsViewByPerson": "직원별",
+  "aiRecordsStatUses": "사용 건수",
+  "aiRecordsStatCallsFooter": "모델 호출 {count}회",
+  "@aiRecordsStatCallsFooter": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsStatCostActual": "실제 비용",
+  "aiRecordsStatCostActualFooter": "공급사 청구서 기준",
+  "aiRecordsStatCostEstimated": "추정 비용",
+  "aiRecordsStatCostEstimatedFooter": "설정한 단가로 추정",
+  "aiRecordsStatUnknown": "비용 미확정",
+  "aiRecordsStatUnknownFooter": "{count}회 호출 단가 미설정",
+  "@aiRecordsStatUnknownFooter": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsColTime": "시간",
+  "aiRecordsColPurpose": "용도",
+  "aiRecordsColQuestion": "질문 내용",
+  "aiRecordsColModel": "모델",
+  "aiRecordsColCalls": "호출 수",
+  "aiRecordsColInputTokens": "입력 토큰",
+  "aiRecordsColOutputTokens": "출력 토큰",
+  "aiRecordsColCost": "비용",
+  "aiRecordsColStatus": "상태",
+  "aiRecordsPersonEmpty": "이 기간에는 AI를 사용한 직원이 없습니다",
+  "aiRecordsPersonViewRecords": "기록 보기",
+  "aiRecordsDetailTitle": "사용 상세",
+  "aiRecordsBillingOpen": "과금 설정"
 }

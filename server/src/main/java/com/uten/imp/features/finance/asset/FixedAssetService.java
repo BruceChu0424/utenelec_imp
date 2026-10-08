@@ -200,7 +200,7 @@ public class FixedAssetService {
         tx.bind();
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "Legacy destructive posting is disabled; use /api/finance/asset-posting-runs");
+                "旧的删除重建过账方式已停用，请改用「过账批次」功能");
     }
 
     /** 历史兼容入口：删除重建已禁用。 */
@@ -210,7 +210,7 @@ public class FixedAssetService {
         tx.bind();
         throw new ApiException(
                 ErrorCode.CONFLICT,
-                "Legacy destructive posting is disabled; use /api/finance/asset-posting-runs");
+                "旧的删除重建过账方式已停用，请改用「过账批次」功能");
     }
 
     // ======================== 报表 ========================
@@ -351,13 +351,13 @@ public class FixedAssetService {
 
     private static void validatePeriod(String p) {
         if (p == null || !p.matches("\\d{4}-\\d{2}")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "期间格式 YYYY-MM");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "期间格式必须为 YYYY-MM（例如 2026-09）");
         }
     }
 
     private static String req(Map<String, Object> b, String k) {
         String v = str(b, k);
-        if (v == null || v.isBlank()) throw new ApiException(ErrorCode.VALIDATION_FAILED, "缺少必填字段 " + k);
+        if (v == null || v.isBlank()) throw new ApiException(ErrorCode.VALIDATION_FAILED, "有必填项没填：" + k);
         return v;
     }
 

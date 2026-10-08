@@ -190,7 +190,7 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
                 .satisfies(failure -> assertThat(((ApiException) failure).getCode())
                         .isEqualTo(ErrorCode.CONFLICT))
                 .hasMessageContaining("已财务确认")
-                .hasMessageContaining("禁止物理删除");
+                .hasMessageContaining("不能直接删除");
 
         Map<String, Object> expenseAfter = jdbc.queryForMap("""
                 SELECT status, gl_status, gl_voucher_id

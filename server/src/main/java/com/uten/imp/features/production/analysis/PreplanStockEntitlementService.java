@@ -61,7 +61,7 @@ public class PreplanStockEntitlementService {
                     FALSE)
                 """).getSingleResult();
         if (!Boolean.TRUE.equals(authorized)) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "缺少系统自动核对备料的事务凭据");
+            throw new ApiException(ErrorCode.FORBIDDEN, "缺少系统自动核对备料的提交标识");
         }
     }
 
@@ -327,7 +327,7 @@ public class PreplanStockEntitlementService {
                           ), 0) > 0
                         """ + lock).setParameter("eventId", positiveEventId));
         if (rows.size() != 1) {
-            throw conflict("Entitlement lot is no longer available");
+            throw conflict("这条预排留料记录已不在可用状态，请刷新后重试");
         }
         return AvailableLot.from(rows.getFirst());
     }
@@ -756,11 +756,11 @@ public class PreplanStockEntitlementService {
                         .equals(sourceEntitlementEventId))
                 .findFirst()
                 .orElseThrow(() -> conflict(
-                        "Source entitlement lot is no longer available"));
+                        "来源预排留料记录已不在可用状态，请刷新后重试"));
         if (!sourceLot.beneficiaryAnalysisId().equals(beneficiaryAnalysisId)
                 || !sourceLot.beneficiaryAnalysisMaterialId()
                         .equals(beneficiaryAnalysisMaterialId)) {
-            throw conflict("Source entitlement beneficiary changed");
+            throw conflict("来源预排留料的归属已变化，请刷新后重试");
         }
         return appendFormalize(
                 eventGroupId, sourceLot, qty,
@@ -851,7 +851,7 @@ public class PreplanStockEntitlementService {
                 .setParameter("ownerType", OWNER_PREPLAN)
                 .executeUpdate();
         if (updated != 1) {
-            throw conflict("Analysis stock entitlement changed concurrently");
+            throw conflict("预排留料刚被其他人改动，请刷新后重试");
         }
     }
 
@@ -882,7 +882,7 @@ public class PreplanStockEntitlementService {
                 .setParameter("ownerType", OWNER_PREPLAN)
                 .executeUpdate();
         if (updated != 1) {
-            throw conflict("Source analysis reservation cannot be restored safely");
+            throw conflict("来源分析的预留无法安全还原，请刷新后核对");
         }
     }
 
@@ -1066,7 +1066,7 @@ public class PreplanStockEntitlementService {
                         .setParameter("toAnalysisId", toAnalysisId)
                         .setParameter("toMaterialId", toMaterialId), BigDecimal.class);
         if (headers.size() != 1) {
-            throw conflict("Only an open unfulfilled reallocation can be reversed");
+            throw conflict("只有未完成的让料才能撤销");
         }
         BigDecimal headerQty = headers.getFirst();
 
@@ -1095,7 +1095,7 @@ public class PreplanStockEntitlementService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (originalRoots.isEmpty()
                 || originalGranted.compareTo(headerQty) != 0) {
-            throw conflict("Reallocation origin lineage is incomplete");
+            throw conflict("让料的来源记录不完整，无法撤销，请联系管理员核对");
         }
 
         // Revoke the entitlement that exists now, including RESTORE descendants
@@ -1224,10 +1224,10 @@ public class PreplanStockEntitlementService {
             BigDecimal released = decimal(row[12]);
             BigDecimal targetQty = decimal(row[13]);
             if (consumed.signum() > 0) {
-                throw conflict("Formalized analysis stock has already been issued");
+                throw conflict("已转正式的分析库存已经发料，不能恢复");
             }
             if (released.compareTo(targetQty) < 0) {
-                throw conflict("Formal demand reservation must be released before restore");
+                throw conflict("正式需求预留必须先释放，才能恢复库存");
             }
             result.add(new Formalization(
                     uuid(row[0]), uuid(row[1]), uuid(row[2]), uuid(row[3]),

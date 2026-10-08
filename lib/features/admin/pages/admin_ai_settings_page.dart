@@ -1,8 +1,11 @@
 // AdminAiSettingsPage - AI 服务设置(ADR-133; 页面文档 docs/03-页面/AI服务设置页.md)
 //
 // 超级管理员配置公共 AI 平台用哪家大模型服务: 服务商预设、接口地址、模型、密钥、连接测试、
-// 设为默认、启停、近 30 天用量。任何功能(目前是销售客户文件识别)都经服务端公共网关
+// 设为默认、启停。任何功能(目前是销售客户文件识别)都经服务端公共网关
 // 调用这里的「默认服务」, 换服务商不用改代码。
+//
+// 页面结构: 顶部「正在使用」与「今日用量」并排(今日用量点开跳用量看板);
+// 服务商区块可折叠(默认收起, 展开后瀑布流); 用量记录与费用在独立页(/admin/ai-usage-records)。
 //
 // 安全:
 //   * 路由 /admin/* 要求 authorization:manage; 服务端 Controller 另校验 superAdmin;
@@ -17,6 +20,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -42,12 +46,13 @@ import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/ai_provider_models.dart';
+import '../models/ai_usage_dashboard_models.dart';
 import '../repositories/ai_provider_repository.dart';
+import '../repositories/ai_usage_dashboard_repository.dart';
 import '../widgets/ai_provider_card.dart';
 import '../widgets/ai_provider_editor.dart';
 import '../widgets/ai_settings_labels.dart';
-import '../widgets/ai_usage_card.dart';
-import '../widgets/ai_usage_audit_panel.dart';
+import '../widgets/ai_usage_trend_card.dart' show formatAiUsageNumber;
 
 Object? _settingsOwner(WidgetRef ref, {bool watch = false}) {
   final scope = watch
@@ -116,8 +121,10 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
       mounted && _owner != null && _owner == _settingsOwner(ref);
   List<AiProviderConfig>? _providers;
   AiPresetCatalog _catalog = AiPresetCatalog.empty;
-  AiUsageSummary? _usage;
-  bool _usageFailed = false;
+
+  /// 今日用量看板(点击卡跳 /admin/ai-usage); null=读取中, 失败看 _todayFailed。
+  AiUsageDashboard? _today;
+  bool _todayFailed = false;
   bool _loading = false;
   String? _error;
   bool _noAccess = false;
@@ -130,6 +137,8 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
 
   AiProviderRepository get _repository =>
       ref.read(aiProviderRepositoryProvider);
+  AiUsageDashboardRepository get _dashboardRepository =>
+      ref.read(aiUsageDashboardRepositoryProvider);
 
   @override
   void initState() {
@@ -160,7 +169,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
         _error = null;
         _noAccess = false;
       });
-      await _loadUsage(seq);
+      await _loadToday(seq);
       if (!_current) return;
     } on ApiException catch (error) {
       if (!_current || seq != _loadSeq) return;
@@ -181,7 +190,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
     if (noAccess) {
       _providers = null;
       _catalog = AiPresetCatalog.empty;
-      _usage = null;
+      _today = null;
       _testResults.clear();
       _testing.clear();
     }
@@ -198,14 +207,14 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
     });
   }
 
-  Future<void> _loadUsage(int seq) async {
+  Future<void> _loadToday(int seq) async {
     if (!_current) return;
     try {
-      final usage = await _repository.usage();
+      final dashboard = await _dashboardRepository.dashboard(AiUsageWindow.day);
       if (!_current || seq != _loadSeq) return;
       setState(() {
-        _usage = usage;
-        _usageFailed = false;
+        _today = dashboard;
+        _todayFailed = false;
       });
     } catch (error) {
       if (!_current || seq != _loadSeq) return;
@@ -216,7 +225,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
         _onLoadFailed(error.message, noAccess: true);
         return;
       }
-      setState(() => _usageFailed = true);
+      setState(() => _todayFailed = true);
     }
   }
 
@@ -408,6 +417,7 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
   }
 
   Widget _content(AppLocalizations l10n) {
+    final theme = Theme.of(context);
     final providers = _providers ?? const <AiProviderConfig>[];
     AiProviderConfig? defaultProvider;
     for (final provider in providers) {
@@ -417,9 +427,39 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
       key: const ValueKey('ai-settings-list'),
       padding: const EdgeInsets.all(UtenSpacing.s16),
       children: [
-        _StatusHero(
-          provider: defaultProvider,
-          preset: _catalog.byCode(defaultProvider?.preset),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final hero = _StatusHero(
+              provider: defaultProvider,
+              preset: _catalog.byCode(defaultProvider?.preset),
+            );
+            final today = _TodayUsageCard(
+              dashboard: _today,
+              unavailable: _todayFailed,
+              onOpen: () => context.push(RouteName.adminAiUsage),
+            );
+            // 窄屏上下堆叠; 宽屏同一行: 正在使用占大头, 今日用量在其右。
+            if (constraints.maxWidth < 780) {
+              return Column(
+                children: [
+                  hero,
+                  const SizedBox(height: UtenSpacing.s12),
+                  today,
+                ],
+              );
+            }
+            // IntrinsicHeight 给 Row 一个有界高: 两卡同高对齐, 又不顶爆 ListView。
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(flex: 3, child: hero),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(flex: 2, child: today),
+                ],
+              ),
+            );
+          },
         ),
         if (!_catalog.outboundEnabled) ...[
           const SizedBox(height: UtenSpacing.s12),
@@ -433,15 +473,24 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
         UtenSectionHeader(
           title: l10n.aiSettingsProvidersSection,
           icon: Icons.hub_outlined,
+          trailing: Text(
+            '${providers.length}',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
         ),
         const SizedBox(height: UtenSpacing.s8),
         if (providers.isEmpty)
           _EmptyProviders(onAdd: _busy == null ? () => _openEditor() : null)
         else
+          // 瀑布流网格: 每张卡片自身可折叠(默认收起只留头部), 高矮卡不会互相撑出空白。
           UtenResponsiveGrid(
             itemCount: providers.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
+            maxColumns: 2,
             itemBuilder: (context, index, _) {
               final provider = providers[index];
               return AiProviderCard(
@@ -464,18 +513,6 @@ class _AdminAiSettingsPageState extends ConsumerState<_AdminAiSettingsSession> {
               );
             },
           ),
-        const SizedBox(height: UtenSpacing.s20),
-        AiUsageCard(
-          usage: _usage,
-          providers: providers,
-          unavailable: _usageFailed,
-          onOpenUsage: () => context.push(RouteName.adminAiUsage),
-        ),
-        const SizedBox(height: UtenSpacing.s16),
-        AiUsageAuditPanel(
-          providers: providers,
-          onBillingSaved: () => _load(quiet: true),
-        ),
         const SizedBox(height: UtenSpacing.s16),
         _SecurityNote(text: l10n.aiSettingsSecurityNote),
         const SizedBox(height: UtenFloatingActionGroup.scrollClearance),
@@ -592,6 +629,129 @@ class _StatusHero extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 顶部「今日用量」卡: 与「正在使用」并排, 点开跳 AI 用量看板。
+class _TodayUsageCard extends StatelessWidget {
+  const _TodayUsageCard({
+    required this.dashboard,
+    required this.unavailable,
+    required this.onOpen,
+  });
+
+  final AiUsageDashboard? dashboard;
+  final bool unavailable;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final dashboard = this.dashboard;
+    final String footer;
+    if (unavailable) {
+      footer = l10n.aiSettingsUsageUnavailable;
+    } else if (dashboard == null) {
+      footer = '';
+    } else if (dashboard.todayTokens == 0 &&
+        dashboard.todayCalls == 0 &&
+        dashboard.activeUsersToday == 0) {
+      footer = l10n.aiSettingsTodayUsageEmpty;
+    } else {
+      footer = l10n.aiSettingsTodayUsageFooter(
+        dashboard.todayCalls,
+        dashboard.activeUsersToday,
+      );
+    }
+    return Tooltip(
+      message: l10n.aiSettingsTodayUsageOpenTooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: UtenRadius.xlAll,
+          child: Container(
+            key: const ValueKey('ai-settings-today-usage'),
+            padding: const EdgeInsets.all(UtenSpacing.s20),
+            decoration: BoxDecoration(
+              borderRadius: UtenRadius.xlAll,
+              border: Border.all(color: theme.colorScheme.outlineVariant),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.tertiaryContainer.withValues(alpha: 0.4),
+                  theme.colorScheme.surface,
+                ],
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primaryContainer.withValues(
+                          alpha: 0.8,
+                        ),
+                        borderRadius: UtenRadius.mdAll,
+                      ),
+                      child: Icon(
+                        Icons.bolt_rounded,
+                        size: 20,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        l10n.aiSettingsTodayUsage,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                if (dashboard == null && !unavailable)
+                  const UtenSkeleton(width: 96, height: 30)
+                else
+                  UtenAnimatedNumber(
+                    value: dashboard?.todayTokens.toDouble(),
+                    format: (raw) => formatAiUsageNumber(raw.toInt()),
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                const SizedBox(height: UtenSpacing.s2),
+                if (dashboard == null && !unavailable)
+                  const UtenSkeleton(width: 140, height: 14)
+                else
+                  Text(
+                    footer,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -174,7 +174,7 @@ Map<String, dynamic> _requireJson(
   String responseName,
 ) {
   if (json.isEmpty) {
-    throw FormatException('$responseName响应为空');
+    throw FormatException('$responseName数据没有传回来，请刷新重试');
   }
   return json;
 }

@@ -1668,8 +1668,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 + (warehouse.isBlank() ? "" : "，发料仓库「" + warehouse + "」")
                 + (department.isBlank() ? "" : "，领料车间「" + department + "」")
                 + (worker.isBlank() ? "" : "，领料负责人「" + worker + "」")
-                + "。请核对实物后直接点“出库”；首次出库会在同一事务完成审核与本次扣账，"
-                + "任一步失败都不会留下半审核状态。";
+                + "。请核对实物后直接点“出库”；首次出库会把审核和这次扣账一起完成，"
+                + "任何一步没成功就都不生效，不会留下审核了一半的状态。";
         for (UUID warehouseUser : warehouseRecipients(warehousePool("stock_doc:view", "stock_doc:approve",
                 "stock_doc:issue"), warehouseIdsOf(document.get("warehouse_id")))) {
             if (preserveExistingPending && Boolean.TRUE.equals(jdbc.queryForObject("""
@@ -2121,7 +2121,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                             + (warehouse.isBlank() ? "" : " 至「" + warehouse + "」")
                             + (failed.signum() > 0
                                     ? "；本单含不合格实物，请同时跟进退回处置。"
-                                    : "。请在仓库专属页面核对剩余待入库切片。");
+                                    : "。请在仓库专属页面核对剩余待入库数量。");
             if (hasWarehouseIqcStockInTask(passed) || preStockedLines > 0) {
                 String route = preStockedLines > 0
                         ? "/warehouse/quality-results/" + receiptType + '/' + receiptId
@@ -5474,7 +5474,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 type = TYPE_WORKFLOW;
             } else {
                 title = "委外超耗责任已反向：" + wasteNo;
-                content = "委外商 " + supplier + " 的超耗责任/履约发生受控反向，当前状态 "
+                content = "委外商 " + supplier + " 的超耗责任/履约已被反向更正，当前状态 "
                         + status + "。请重新核对后续应付、资金和实物事实。";
                 type = TYPE_URGENT;
             }
@@ -5618,7 +5618,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 title = "来料质检不合格财务处置异常待复核："
                         + displayNo(orderNo, receiptNo);
                 content = sourceLabel + goodsLabel
-                        + " 的财务动作未完成，任务仍停留在持久状态 "
+                        + " 的财务手续还没有办完，任务当前状态是 "
                         + str(rejection.get("status"))
                         + "。请从任务详情核对来源应付、贷项和抵销事实；"
                         + "不得据此通知手工修改应付余额。";
@@ -5657,7 +5657,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     title = "来料质检拒收处置已反向："
                             + displayNo(orderNo, receiptNo);
                     content = sourceLabel + goodsLabel
-                            + " 的退回/贷项处置发生受控反向，当前持久状态 "
+                            + " 的退回/贷项处置已被反向更正，当前状态 "
                             + str(rejection.get("status"))
                             + "。请按任务详情重新执行后续步骤；通知本身不改变库存或应付。";
                     type = TYPE_URGENT;

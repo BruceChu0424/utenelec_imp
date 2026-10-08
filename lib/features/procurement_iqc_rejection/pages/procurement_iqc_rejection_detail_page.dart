@@ -367,7 +367,7 @@ class _ProcurementIqcRejectionDetailPageState
       _Fact('原币金额', item.originalAmountLabel(item.failedAmountOriginal)),
       _Fact(
         '本币金额',
-        item.priceMasked ? '***' : item.failedAmountLocal ?? '无有限金额投影，保留来源份额',
+        item.priceMasked ? '***' : item.failedAmountLocal ?? '金额未生成，按来源记录保留份额',
       ),
     ],
   );
@@ -407,8 +407,8 @@ class _ProcurementIqcRejectionDetailPageState
             const SizedBox(height: UtenSpacing.s4),
             Text(
               specs.isEmpty
-                  ? '当前账号没有该状态的业务动作；可继续只读查看审计事实。'
-                  : '动作同时要求本地权限与服务端 allowedActions；状态阻断时保留禁用说明。',
+                  ? '当前账号在这个状态下没有可做的操作；相关记录仍可查看。'
+                  : '操作是否可用由你的权限和任务当前状态共同决定；被挡住时会说明原因。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -492,7 +492,7 @@ class _ProcurementIqcRejectionDetailPageState
       serverAction: ProcurementIqcRejectionAction.recordReturn,
       kind: ProcurementIqcRejectionActionKind.recordReturn,
       label: '登记实物退回',
-      description: '记录可审计的退回凭证、日期和说明',
+      description: '登记退回凭证、日期和说明，供日后查证',
       icon: Icons.assignment_return_outlined,
     );
     add(
@@ -507,7 +507,7 @@ class _ProcurementIqcRejectionDetailPageState
       icon: Icons.receipt_long_outlined,
       extraEnabled: !item.priceMasked && hasCreditSource,
       extraReason: item.priceMasked
-          ? '金额仍被服务端脱敏，不能确认贷项'
+          ? '金额仍被服务器隐藏，不能确认贷项'
           : resolution?.legacyUnclassified == true
           ? '历史案件需先核对原应付与资金来源，不能按旧派生金额新建贷项'
           : !hasCreditSource
@@ -520,7 +520,7 @@ class _ProcurementIqcRejectionDetailPageState
       serverAction: ProcurementIqcRejectionAction.closeNoCredit,
       kind: ProcurementIqcRejectionActionKind.closeNoCredit,
       label: '零金额无需贷项结案',
-      description: '仅服务器权威金额为零时可说明原因并结案',
+      description: '仅当服务器确认的金额为零时，才可说明原因并结案',
       icon: Icons.money_off_csred_outlined,
     );
     add(
@@ -531,7 +531,7 @@ class _ProcurementIqcRejectionDetailPageState
       serverAction: ProcurementIqcRejectionAction.retryFinanceProjection,
       kind: ProcurementIqcRejectionActionKind.retryFinanceProjection,
       label: '重试财务投影',
-      description: '修复异常原因后使用同一冻结事实重试',
+      description: '查明异常原因后重试；之前登记的退回数据保持不变',
       icon: Icons.sync_rounded,
     );
     add(
@@ -551,7 +551,7 @@ class _ProcurementIqcRejectionDetailPageState
       label: activeCredits.isNotEmpty ? '反向实际贷项凭证' : '反向当前处理',
       description: activeCredits.isNotEmpty
           ? '选择实际凭证，连同其全部案件分项一并反向'
-          : '按当前服务端状态执行合法反向',
+          : '按服务器当前状态执行反向冲销',
       icon: Icons.undo_rounded,
       extraEnabled:
           activeCredits.isEmpty || activeCredits.any((d) => d.canReverse),
@@ -573,7 +573,7 @@ class _ProcurementIqcRejectionDetailPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '追加式审计事件',
+              '操作记录（只增不改）',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -581,7 +581,7 @@ class _ProcurementIqcRejectionDetailPageState
             const SizedBox(height: UtenSpacing.s8),
             if (detail.events.isEmpty)
               Text(
-                '暂无可见事件',
+                '暂无操作记录',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -603,7 +603,7 @@ class _ProcurementIqcRejectionDetailPageState
     return _section(
       title: '替换收货分配',
       icon: Icons.swap_horiz_rounded,
-      description: '分配金额继续服从本任务 priceMasked；替换收货不是供应商贷项。',
+      description: '分配金额是否显示跟随本任务的金额权限；替换收货不是供应商贷项。',
       children: [
         for (final allocation in detail.replacementAllocations)
           _Fact(

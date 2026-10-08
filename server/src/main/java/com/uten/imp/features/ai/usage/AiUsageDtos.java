@@ -16,11 +16,14 @@ public final class AiUsageDtos {
                       Long outputTokens, long unknownTokenCalls, long unknownCostCalls, List<Cost> costs,
                       List<String> providerNames, List<String> models) {}
     public record Audit(int days, int page, int size, long total, Summary summary, List<User> users, List<Use> records) {}
-    public record Quota(String status, String message, List<Object> windows) {}
+    /** 套餐额度窗口: key=FIVE_HOURS|WEEKLY; used=平台成功调用次数(自动统计); quota=null 未配置。 */
+    public record QuotaWindow(String key, long used, Long quota) {}
+    public record Quota(String status, String message, List<QuotaWindow> windows) {}
     public record Billing(UUID providerId, String model, long version, String billingMode, String currency,
-                          String inputPerMillion, String outputPerMillion, Quota quota) {}
+                          String inputPerMillion, String outputPerMillion, Long quota5h, Long quotaWeekly,
+                          Quota quota) {}
     public record BillingRequest(Long version, String billingMode, String currency, String inputPerMillion,
-                                  String outputPerMillion) {}
+                                  String outputPerMillion, Integer quota5h, Integer quotaWeekly) {}
 
     /** 看板 KPI 的今日实时聚合(来自 ai_call_logs)。 */
     public record DashboardKpi(long todayTokens, long todayCalls, long activeUsersToday) {}

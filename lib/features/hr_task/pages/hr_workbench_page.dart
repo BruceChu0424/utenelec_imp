@@ -310,7 +310,7 @@ class HrWorkbenchPage extends ConsumerWidget {
         (
           HrTaskType.identity,
           s.identityReview.length,
-          '缺失、校验未通过或尚未校验',
+          '证件号缺失、填写有误或还没核对',
           theme.colorScheme.error,
         ),
     ];

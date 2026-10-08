@@ -311,7 +311,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           .read(purchaseRepositoryProvider(PurchaseDocType.request))
           .decompositionPreview(selectedIds);
       if (open.isEmpty) {
-        throw StateError('所选申请明细已全部分解，请返回任务中心刷新');
+        throw StateError('所选申请明细都已生成过订货，请回任务中心刷新后重新选择');
       }
       final goodsIds = open.map((item) => item.goodsId).toSet();
       await ref
@@ -374,7 +374,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         rows.add(row);
         merged[key] = row;
       }
-      if (rows.isEmpty) throw StateError('所选采购申请明细缺少有效物料');
+      if (rows.isEmpty) throw StateError('所选采购申请明细里没有可用的物料');
       _grid.replaceAll(rows);
       // 进页默认全选（2026-09-17 用户口径）：新建态勾选=本次要生成订货的行，
       // 保存只认勾选行；默认全选让「带单进来直接保存」与旧行为一致。
@@ -1238,7 +1238,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (badQty.isNotEmpty)
         _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
       if (badPrice.isNotEmpty)
-        _rowIssueMessage(badPrice, '的采购单价无效（须为不小于 0 的数字）', action: '请改正后再提交'),
+        _rowIssueMessage(badPrice, '的采购单价填写有误（需填不小于 0 的数字）', action: '请改正后再提交'),
       if (badWeight.isNotEmpty)
         _rowIssueMessage(badWeight, '的实际重量必须大于 0', action: '请改正后再提交'),
       if (badOverReceipt.isNotEmpty)

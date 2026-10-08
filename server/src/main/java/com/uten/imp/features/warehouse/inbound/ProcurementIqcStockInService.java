@@ -154,7 +154,7 @@ public class ProcurementIqcStockInService {
             throw validation("批量入库必须包含 1 至 20 张收货单");
         }
         if (request.batches().stream().anyMatch(entry -> entry == null || entry.receiptId() == null)) {
-            throw validation("批量入库缺少有效的收货单 UUID");
+            throw validation("批量入库缺少有效的收货单，请刷新后重试");
         }
         int totalItems = request.batches().stream()
                 .mapToInt(entry -> entry.items() == null ? 0 : entry.items().size())
@@ -181,7 +181,7 @@ public class ProcurementIqcStockInService {
                     entry.idempotencyKey(), entry.items());
             NormalizedCommand command = normalize(type, entry.receiptId(), single);
             if (!seenKeys.add(command.idempotencyKey())) {
-                throw validation("批量入库中存在重复幂等键");
+                throw validation("批量入库中存在重复的防重复提交标识");
             }
             commands.add(new NormalizedBatch(
                     type, entry.receiptId(), command));
@@ -451,7 +451,7 @@ public class ProcurementIqcStockInService {
         ExistingBatch existing = existingBatch(actorUserId, command.idempotencyKey());
         if (existing != null) {
             if (!existing.requestHash().equals(command.requestHash())) {
-                throw conflict("该入库幂等键已用于不同的数量、库位或任务，请更换后重试");
+                throw conflict("同一防重复提交标识已用于不同的数量、库位或任务，请刷新后重试");
             }
             return new PreparedConfirmation(batch, existing, Map.of());
         }
@@ -1040,7 +1040,7 @@ public class ProcurementIqcStockInService {
 
     private Object[] receiptHeader(String type, UUID receiptId) {
         if (receiptId == null) {
-            throw validation("收货单 UUID 不能为空");
+            throw validation("缺少收货单，请重新选择后再试");
         }
         String table = PURCHASE.equals(type) ? "purchase_receipts" : "subcontract_receipts";
         @SuppressWarnings("unchecked")
@@ -1095,7 +1095,7 @@ public class ProcurementIqcStockInService {
         String key = request.idempotencyKey() == null
                 ? "" : request.idempotencyKey().strip();
         if (!IDEMPOTENCY_KEY.matcher(key).matches()) {
-            throw validation("入库幂等键必须为 8 至 128 位字母、数字或 ._:-");
+            throw validation("入库的防重复提交标识必须为 8 至 128 位字母、数字或 ._:-");
         }
         Set<UUID> seen = new HashSet<>();
         List<NormalizedItem> items = new ArrayList<>();

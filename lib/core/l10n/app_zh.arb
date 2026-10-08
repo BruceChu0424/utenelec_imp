@@ -16,9 +16,14 @@
   "release253Notices": "车间到料提醒按新增可生产数量发送给有权限的负责人；紧急、待办、进度与公告使用不同样式。",
   "release253Reset": "清空业务数据同时作废旧草稿，并清除业务称重与重量学习记录。",
   "release253Maintenance": "清理旧代码和过时文档，补充权限、并发与数据一致性检查；点击版本号可查看本说明。",
-  "release254QuantityPrecision": "物料下单保留完整精度，修复最小数量、单位换算、分单及重复提交回执中的数量偏差。",
+  "release254QuantityPrecision": "物料下单保留完整精度，报工与直送也按原始数量核对；修复最小数量、单位换算、分单及重复提交回执中的偏差。",
   "release254AiAuthorization": "AI 使用权限改为单独授权；未获授权的账号不显示助手，也不能调用相关功能。",
   "release254SensitiveAuthorization": "修改敏感权限时需要再次验证身份，让重要授权得到本人确认。",
+  "release254OverLimit": "实际超产可完整报工；超限部分交计划处置，审批、质检、入库和成本保持同一来源。",
+  "release254PlanningReminders": "计划人员晚开通账号或后来获得权限时，可补收尚未接手订单的任务提醒，已处理任务不重复提示。",
+  "release254PeoplePicker": "选人窗口按部门左右分栏，显示工号和账号状态，支持搜索及跨部门多选；候选继续按原权限筛选。",
+  "release254AccountSupport": "员工详情支持验证身份后生成临时密码，员工首次登录须修改；身份或权限变化后立即停止展示。",
+  "release254Dashboard": "工作台指标横向排列，待办只显示一行，其余任务通过「还有 XX 项任务」查看。",
   "release254Publishing": "统一应用和安装包的版本信息，加强发布前检查，减少升级异常。",
   "businessColumnAmountUnavailable": "当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。",
   "businessColumnEditorSubtitle": "为单据补充信息，或让输入值参与每行正式金额计算。",
@@ -508,9 +513,9 @@
   "employeeUnlockAccountSuccess": "账号已解锁",
   "employeeProvisionConfirm": "将为该员工开通登录账号：账号默认为手机号；初始密码为档案证件号码的后六位，档案没有证件号码或不足六位时由系统随机生成(只显示一次，限时有效)；首次登录需修改。是否继续？",
   "employeeIdIssueBadge": "待核对",
-  "employeeIdIssueInvalidTitle": "证件号码校验未通过",
+  "employeeIdIssueInvalidTitle": "证件号码填写有误",
   "employeeIdIssueMissingTitle": "未登记证件号码",
-  "employeeIdIssueUncheckedTitle": "证件号码尚未校验",
+  "employeeIdIssueUncheckedTitle": "证件号码尚未核对",
   "employeeIdIssueReason": "具体问题：{reason}",
   "@employeeIdIssueReason": {
     "placeholders": {
@@ -526,7 +531,7 @@
   "employeeIdIssueCredentialUnchecked": "初始密码按档案证件号码后六位生成；号码读取不出来或不足六位时由系统随机生成。请以这里显示的密码为准告诉员工。",
   "employeeIdentityCorrectAction": "修改证件信息",
   "employeeIdentityCorrectTitle": "修改证件信息",
-  "employeeIdentityCorrectHint": "身份证号码会自动校验，并按号码更新出生日期和性别。",
+  "employeeIdentityCorrectHint": "身份证号码会自动核对，并按号码更新出生日期和性别。",
   "employeeIdentityCorrectNoPrefill": "你没有查看证件号码明文的权限，请直接输入完整的新号码。",
   "employeeIdentityCorrectNumberRequired": "证件号码不能为空",
   "employeeIdentityCorrectNumberTooLong": "证件号码不能超过64个字符",
@@ -819,7 +824,7 @@
   "profileChangeSubmitApplied": "修改已保存",
   "profileChangeSubmitFailed": "提交失败，请稍后重试",
   "profileChangeConflict": "档案已被他人更新，请刷新后再试",
-  "profileChangeRateLimited": "24h 内已提交过该字段的修改，请等待处理",
+  "profileChangeRateLimited": "24 小时内已提交过这一项的修改，请等待处理",
   "profileChangeListTitle": "我的修改申请",
   "profileChangeListEmpty": "暂无修改申请",
   "profileChangeFilterAll": "全部",
@@ -876,7 +881,7 @@
   "profileFieldGroupEmergency": "紧急联系人",
   "profileFieldGroupOrganization": "组织信息",
   "profileEditPolicyHint": "绿色「可直接修改」提交后立即生效；黄色「需 HR 审核」由人事核对后生效；其余字段由人事统一维护。",
-  "profileEditPendingConflictHint": "你有 {count} 条待审申请；相关字段在审核通过前再次修改，可能与在途申请冲突。",
+  "profileEditPendingConflictHint": "你有 {count} 条待审申请；相关内容在审核通过前再次修改，可能与待审的申请冲突。",
   "@profileEditPendingConflictHint": {
     "placeholders": {
       "count": {
@@ -1087,7 +1092,7 @@
   "profileLoadFailed": "员工档案加载失败",
   "profileUnboundTitle": "当前账号未绑定员工档案",
   "profileUnboundDescription": "请联系管理员或人事完成账号与员工档案绑定。",
-  "profileSessionUnavailable": "当前未登录或会话不可用",
+  "profileSessionUnavailable": "当前未登录，或登录已过期",
   "profileValueNotProvided": "未填写",
   "profileValueNotRegistered": "未登记",
   "profileAlternatePhoneLabel": "备用手机号",
@@ -1108,7 +1113,7 @@
   "accountStatusNotProvisioned": "未开通账号",
   "accountStatusInactive": "账号未启用",
   "pagePermissionAccountNotProvisionedTitle": "此人还未开通账号，暂不能设置权限",
-  "pagePermissionAccountNotProvisionedCanProvision": "请先开通登录账号；一次性凭据确认保存后，将自动加载此人的权限详情。",
+  "pagePermissionAccountNotProvisionedCanProvision": "请先开通登录账号；初始密码确认保存后，将自动加载此人的权限详情。",
   "pagePermissionAccountNotProvisionedNoAccess": "请联系具备“账号支持”权限的人员开通登录账号。",
   "employeePermissionSettingsTooltip": "设置员工权限",
   "employeeAccountNotProvisionedTooltip": "该员工未开通账号",
@@ -1216,7 +1221,7 @@
   "@orderChangeQtyConfirm": {
     "description": "改量弹窗确认按钮"
   },
-  "orderChangeQtyInvalid": "存在无效数量（必须大于 0），请检查",
+  "orderChangeQtyInvalid": "有数量不正确（必须大于 0），请检查",
   "@orderChangeQtyInvalid": {
     "description": "改量行内校验失败提示"
   },
@@ -1418,16 +1423,16 @@
   },
   "productionMaterialRecheckHelp": "重新核对本任务已合格到货和可用库存；不能代替仓库入库或登记实耗。",
   "productionMaterialViewUsage": "查看用料记录",
-  "systemSettingInvalidInteger": "请输入有效的非负整数",
+  "systemSettingInvalidInteger": "请填写 0 或更大的整数",
   "systemSettingInvalidValue": "设置值超出允许范围",
   "systemSettingEnabled": "开启",
   "systemSettingDisabled": "关闭",
   "systemSettingFixFields": "请先检查框内标记的设置项",
   "systemSettingUnsavedRefresh": "请先保存或还原修改，再刷新设置",
-  "systemSettingEffectTiming": "安全阈值在后续操作生效，令牌有效期在下次签发生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。",
+  "systemSettingEffectTiming": "安全阈值在后续操作生效，令牌有效期在下次登录签发时生效；庆典与审计留存在各自的计划任务生效。修改会记录审计并需要账号密码确认。",
   "auditSummaryUnavailable": "统计暂不可用，操作记录仍可核查",
   "auditSummaryRetry": "重试统计",
-  "auditWorkspaceDescription": "按人员与时间查看会话，沿操作记录追溯业务变化。",
+  "auditWorkspaceDescription": "按人员与时间查看登录记录，沿操作记录追溯业务变化。",
   "materialReasonLabel": "原因",
   "materialReasonRequired": "请填写原因",
   "materialReasonTooLong": "原因不能超过 {max} 个字符",
@@ -1505,7 +1510,7 @@
   "warehouseStockOutboundTitle": "批量出库详情",
   "warehouseStockOutboundAction": "批量出库",
   "warehouseStockOutboundConfirm": "确认批量出库",
-  "warehouseStockOutboundConfirmMessage": "确认对所选 {count} 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。发生异常时停止后续操作，已成功单据保留结果。",
+  "warehouseStockOutboundConfirmMessage": "确认对所选 {count} 张单据按表内数量出库？\n每张单据独立审核并扣减实际仓库库存，记录当前员工的审核责任。中途出错时会停止后面的操作，已成功的单据保留结果。",
   "@warehouseStockOutboundConfirmMessage": {
     "placeholders": {
       "count": {
@@ -1534,7 +1539,7 @@
   "warehouseSubcontractOutboundBatchAction": "批量出库",
   "warehouseSubcontractOutboundBatchConfirm": "确认批量出库",
   "warehouseSubcontractOutboundReviewHint": "请逐行核对本次出库数量和实际仓库，再确认出库。",
-  "warehouseSubcontractOutboundBatchHint": "明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；发生异常时暂停，核实后继续尚未执行的单据。",
+  "warehouseSubcontractOutboundBatchHint": "明细按整张出库单勾选，本次数量可改小分批出库；某条物料这次不发就填 0(保存时删掉这一行)，整张单都不发请到单张拣货页「退回委外(不发)」。各单独立保存并审核，保留已完成结果；中途出错时会暂停，核实后继续办理尚未执行的单据。",
   "warehouseSubcontractOutboundDocuments": "单据信息",
   "warehouseSubcontractOutboundOrder": "来源订单",
   "warehouseSubcontractOutboundSupplier": "委外商",
@@ -1759,7 +1764,7 @@
       "app": {}
     }
   },
-  "visitorApprovalHostDeptColInfo": "访客申请时记录的接待人所属部门快照；表头筛选按此下推后端 hostDepartmentId 参数。",
+  "visitorApprovalHostDeptColInfo": "访客申请时记录的接待人所属部门；表头筛选会按这个部门查询。",
   "visitorBatchLimitError": "单次最多批量处理 {limit} 条，请分批操作（当前 {count} 条）",
   "@visitorBatchLimitError": {
     "placeholders": {
@@ -1966,7 +1971,7 @@
       }
     }
   },
-  "myVisitorsStatusColInfo": "默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝（下推后端）。",
+  "myVisitorsStatusColInfo": "默认只看「待我确认」；表头筛选可切到已转 HR / 已批准 / 已拒绝。",
   "expenseFlowNew": "新建报销",
   "expenseFlowEdit": "编辑报销",
   "expenseFlowSaveAndContinue": "保存并补充凭证",
@@ -2536,27 +2541,20 @@
     }
   },
   "aiSettingsTestNeedsKeyEdit": "还没有密钥, 请先点「编辑」填写密钥再测试",
-  "aiSettingsUsageTitle": "近 {days} 天用量",
-  "@aiSettingsUsageTitle": {
+  "aiSettingsTodayUsage": "今日用量",
+  "aiSettingsTodayUsageFooter": "{calls} 次调用 · {users} 人使用",
+  "@aiSettingsTodayUsageFooter": {
     "placeholders": {
-      "days": {
+      "calls": {
+        "type": "int"
+      },
+      "users": {
         "type": "int"
       }
     }
   },
-  "aiSettingsUsageCalls": "调用次数",
-  "aiSettingsUsageSuccessRate": "成功率",
-  "aiSettingsUsageTokens": "输入 / 输出 token",
-  "aiSettingsUsageLatency": "平均耗时",
-  "aiSettingsUsageSeconds": "{value} 秒",
-  "@aiSettingsUsageSeconds": {
-    "placeholders": {
-      "value": {
-        "type": "String"
-      }
-    }
-  },
-  "aiSettingsUsageEmpty": "还没有调用记录",
+  "aiSettingsTodayUsageEmpty": "今日暂无用量",
+  "aiSettingsTodayUsageOpenTooltip": "查看用量与额度",
   "aiSettingsUsageUnavailable": "用量暂时读不到, 不影响使用",
   "aiSettingsPreset": "服务商",
   "aiSettingsPresetInfo": "选好服务商会自动填好接口地址和推荐设置, 每一项都还能改",
@@ -3733,7 +3731,7 @@
   "costConfirmed": "已确认",
   "costReview": "待审核",
   "costSaveDraft": "保存草稿",
-  "costRecalculate": "校验重算",
+  "costRecalculate": "检查并重算",
   "costConfirm": "确认成本版本",
   "costCopy": "复制为新草稿",
   "costSaveTemplate": "保存为成本模板",
@@ -3785,7 +3783,7 @@
   "costSnapshotReadOnly": "历史快照只读",
   "costImport": "导入成本表",
   "costImportBlock": "产品区块",
-  "costImportReview": "逐行确认映射；缓存价格按本成本单币种核对，不自动采用外链公式。",
+  "costImportReview": "逐行确认对应关系；缓存价格按本成本单币种核对，不自动采用外链公式。",
   "costImportKind": "采用方式",
   "costImportMaterial": "对应物料价格",
   "costImportFee": "每产品费用",
@@ -4045,7 +4043,7 @@
   "quoteTemplateMissingHint": "上传客户的 Excel 模板，核对列对应关系后保存。也可以先用标准格式下载。",
   "quoteTemplateUpload": "上传并学习模板",
   "quoteTemplateReviewTitle": "核对客户模板",
-  "quoteTemplateReviewHint": "核对工作表和字段后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。",
+  "quoteTemplateReviewHint": "核对工作表和各列对应后，保存为此客户的报价模板。相似版式更新版本，不同版式保留供选择。",
   "quoteTemplateSaveDownload": "保存模板并下载",
   "quoteTemplateSheet": "工作表",
   "quoteTemplateReference": "参考列（仅填本单同名信息）",
@@ -4062,7 +4060,7 @@
   "aiChatCancel": "取消",
   "aiChatConfirm": "确认",
   "aiChatWelcome": "今天需要处理什么？",
-  "aiChatBoundary": "按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍按你的权限和系统校验。",
+  "aiChatBoundary": "按当前账号权限回答。AI 提出的操作会先出确认卡, 你点确认后才执行, 执行时仍会按你的权限做系统检查。",
   "aiChatUnavailable": "暂时只能回答部分业务问题。",
   "aiChatLoadFailed": "暂时无法连接 AI 助手，请重试。",
   "aiChatRetry": "重试",
@@ -4083,7 +4081,7 @@
   "aiChatFailed": "处理未完成，请稍后重试。",
   "aiChatTimeout": "处理时间较长，已停止等待。请稍后重试。",
   "aiChatGone": "这次处理已过期，请开始新对话。",
-  "aiChatPermissionChanged": "当前权限或会话已变化，对话已清除。请刷新后重试。",
+  "aiChatPermissionChanged": "当前权限或登录状态已变化，对话已清除。请刷新后重试。",
   "aiChatEmptyReply": "本次未返回可显示的答复，请重新描述你的问题。",
   "aiChatYou": "你",
   "aiChatAssistant": "助手",
@@ -4100,7 +4098,7 @@
   "aiChatPrivacyNotice": "对话文字、同一对话里最近几轮的问答和当前页面上你能看到的内容, 由管理员配置的 AI 服务处理, 请勿输入密码等敏感信息。回答以页面为准。AI 只解答平台怎么用、业务规则和你有权限看的业务数据, 不处理代码、服务器、命令、数据库或密码。",
   "aiChatReceived": "已送达，正在等待回复…",
   "aiChatRequestRejected": "这条消息未成功提交。",
-  "aiChatDeliveryUnknown": "送达状态未确认；再次发送会发起新请求。",
+  "aiChatDeliveryUnknown": "送达状态未确认；再发一次会另发一条新消息。",
   "aiChatReplyFailed": "消息已送达，AI 未能完成回复。",
   "aiChatReplyInterrupted": "消息已受理，暂未能读取结果。",
   "aiChatWaitingStopped": "已停止等待这条消息的回复。",
@@ -4112,7 +4110,7 @@
   "aiChatDocumentParsing": "正在识别文件内容",
   "aiChatDocumentClassifying": "正在判断文件用途",
   "aiChatDocumentReady": "文件已分析",
-  "aiChatDocumentSourceMismatch": "文件来源校验失败，请重新选择原文件。",
+  "aiChatDocumentSourceMismatch": "所选文件和原文件对不上，请重新选择原文件。",
   "aiChatDocumentOpenFailed": "页面未能打开，请重试。",
   "aiChatDocumentManualSave": "尚未保存，请核对后保存。",
   "aiChatDocumentPlanSteps": "处理步骤",
@@ -4162,8 +4160,8 @@
   "aiChatGuidedQuoteRequest": "请根据这份文件新建销售报价单，供我核对。",
   "aiChatGuidedOrderRequest": "请根据这份文件填写当前销售订货单，供我核对。",
   "aiChatDocumentLongRequest": "文件处理说明较长，尚未完整分析全部要求。请明确选择要继续的流程。",
-  "quoteTemplateMappingRequired": "请保留数量，以及型号或品名字段",
-  "quoteTemplateMappingDuplicate": "同一字段只能对应一列，请调整重复对应",
+  "quoteTemplateMappingRequired": "请保留数量，以及型号或品名对应的列",
+  "quoteTemplateMappingDuplicate": "同一信息只能对应一列，请调整重复的对应",
   "aiAuditTitle": "使用记录与费用",
   "aiAuditRefresh": "刷新记录",
   "aiAuditLoadFailed": "记录暂时读不到，请重试。",
@@ -4180,19 +4178,7 @@
   "aiAuditAllUsers": "全部员工",
   "aiAuditProvider": "AI 服务",
   "aiAuditAllProviders": "全部服务",
-  "aiAuditSummary": "记录 {uses} 条 · 调用模型 {calls} 次",
-  "@aiAuditSummary": {
-    "placeholders": {
-      "uses": {
-        "type": "int"
-      },
-      "calls": {
-        "type": "int"
-      }
-    }
-  },
   "aiAuditPlatformOnly": "仅统计本平台。估算费用按设置的单价计算。",
-  "aiAuditByUser": "按员工查看",
   "aiAuditUses": "{count} 条",
   "@aiAuditUses": {
     "placeholders": {
@@ -4202,19 +4188,6 @@
     }
   },
   "aiAuditEmpty": "这段时间没有记录。",
-  "aiAuditPagination": "共 {total} 条 · 第 {page} 页",
-  "@aiAuditPagination": {
-    "placeholders": {
-      "total": {
-        "type": "int"
-      },
-      "page": {
-        "type": "int"
-      }
-    }
-  },
-  "aiAuditPrevious": "上一页",
-  "aiAuditNext": "下一页",
   "aiAuditBillingTitle": "计费方式与套餐额度",
   "aiAuditSelectProvider": "选择服务",
   "aiAuditActualCost": "实际费用：{currency} {amount}",
@@ -4322,9 +4295,31 @@
   "aiAuditInputPrice": "每百万输入 token 单价",
   "aiAuditOutputPrice": "每百万输出 token 单价",
   "aiAuditPriceHint": "请按服务商账单填写。这里计算估算费用，不是服务商扣费账单。",
-  "aiAuditFiveHourQuota": "五小时余额：暂未接入",
-  "aiAuditWeeklyQuota": "每周余额：暂未接入",
-  "aiAuditQuotaHint": "需要服务商提供额度查询接口。",
+  "aiAuditFiveHourQuota": "每 5 小时额度（次）",
+  "aiAuditWeeklyQuota": "每周额度（次）",
+  "aiAuditQuotaHint": "已用按平台成功调用自动统计，剩余 = 额度 − 已用；与服务商侧口径可能略有出入。",
+  "aiAuditQuota5hUsed": "近 5 小时已用 {used} / {quota}",
+  "@aiAuditQuota5hUsed": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
+  "aiAuditQuotaWeeklyUsed": "本周已用 {used} / {quota}",
+  "@aiAuditQuotaWeeklyUsed": {
+    "placeholders": {
+      "used": {
+        "type": "int"
+      },
+      "quota": {
+        "type": "String"
+      }
+    }
+  },
   "aiAuditSaveBilling": "保存计费设置",
   "aiAuditEur": "欧元 EUR",
   "aiAuditHkd": "港币 HKD",
@@ -4355,7 +4350,7 @@
   },
   "stockCountReasonLabel": "盘点说明(选填)",
   "stockCountReasonHint": "例如上线清点或例行盘点，最多 500 字",
-  "weightParamsLoadFailed": "单重参数读取失败：{reason}。称重折算与重量预填暂不可用，数量照常登记。",
+  "weightParamsLoadFailed": "单重设置读取失败：{reason}。称重折算与重量预填暂不可用，数量照常登记。",
   "@weightParamsLoadFailed": {
     "placeholders": {
       "reason": {
@@ -4693,10 +4688,10 @@
   },
   "qualityBatchWholeLotPass": "勾选即整批全部合格",
   "aiSettingsStepThinking": "思考程度",
-  "aiActionSetField": "填写字段",
-  "aiActionParamField": "字段",
+  "aiActionSetField": "自动填写",
+  "aiActionParamField": "填写项",
   "aiActionParamValue": "新值",
-  "aiActionFieldMissing": "页面上没有「{label}」这个可填写的字段",
+  "aiActionFieldMissing": "页面上没有「{label}」这个可填写的地方",
   "@aiActionFieldMissing": {
     "placeholders": {
       "label": {
@@ -4816,7 +4811,7 @@
       }
     }
   },
-  "aiChatAttachSummary": "将附带当前页面: 表格{rows}行/字段{fields}个/待核对{flagged}项",
+  "aiChatAttachSummary": "将附带当前页面: 表格{rows}行/填写项{fields}个/待核对{flagged}项",
   "@aiChatAttachSummary": {
     "placeholders": {
       "rows": {
@@ -5184,7 +5179,6 @@
   "hrReconcileStatusExpired": "已过期",
   "hrReconcileStatusDiscarded": "已放弃",
   "aiUsageTitle": "AI 用量与额度",
-  "aiUsageEntry": "用量与额度",
   "aiUsageTodayTokens": "今日消耗",
   "aiUsageTodayLabel": "今日",
   "aiUsageTodayCalls": "今日调用",
@@ -5304,5 +5298,69 @@
         "type": "String"
       }
     }
-  }
+  },
+  "aiUsageKpiFooterCalls": "{label} {count} 次",
+  "@aiUsageKpiFooterCalls": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageKpiFooterPeople": "全员 {count} 人",
+  "@aiUsageKpiFooterPeople": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiUsageKpiFooterOverLimit": "{count} 人已超限额",
+  "@aiUsageKpiFooterOverLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsViewRecords": "按记录",
+  "aiRecordsViewByPerson": "按人员",
+  "aiRecordsStatUses": "使用条数",
+  "aiRecordsStatCallsFooter": "调用模型 {count} 次",
+  "@aiRecordsStatCallsFooter": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsStatCostActual": "实际费用",
+  "aiRecordsStatCostActualFooter": "以服务商账单为准",
+  "aiRecordsStatCostEstimated": "估算费用",
+  "aiRecordsStatCostEstimatedFooter": "按设置的计费单价估算",
+  "aiRecordsStatUnknown": "费用待确认",
+  "aiRecordsStatUnknownFooter": "{count} 次调用未设单价",
+  "@aiRecordsStatUnknownFooter": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "aiRecordsColTime": "时间",
+  "aiRecordsColPurpose": "用途",
+  "aiRecordsColQuestion": "问题内容",
+  "aiRecordsColModel": "模型",
+  "aiRecordsColCalls": "调用次数",
+  "aiRecordsColInputTokens": "输入 token",
+  "aiRecordsColOutputTokens": "输出 token",
+  "aiRecordsColCost": "费用",
+  "aiRecordsColStatus": "状态",
+  "aiRecordsPersonEmpty": "这段时间没有人使用 AI",
+  "aiRecordsPersonViewRecords": "查看记录",
+  "aiRecordsDetailTitle": "使用详情",
+  "aiRecordsBillingOpen": "计费设置"
 }

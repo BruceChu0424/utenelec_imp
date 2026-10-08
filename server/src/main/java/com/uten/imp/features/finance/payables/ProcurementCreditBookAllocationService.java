@@ -35,7 +35,7 @@ public class ProcurementCreditBookAllocationService implements ProcurementCredit
         Object value=em.createNativeQuery("SELECT fn_plan_procurement_credit_book(:source,:actual)::text")
                 .setParameter("source",sourceApLedgerId).setParameter("actual",actual).getSingleResult();
         try { return JSON.readValue(value.toString(),BookAllocationPlan.class); }
-        catch(JsonProcessingException ex) { throw new ApiException(ErrorCode.CONFLICT,"应付账面分摊计划格式无效"); }
+        catch(JsonProcessingException ex) { throw new ApiException(ErrorCode.CONFLICT,"应付账面分摊计划的内容不正确，请核对后重试"); }
     }
 
     @Override
@@ -52,6 +52,6 @@ public class ProcurementCreditBookAllocationService implements ProcurementCredit
                     .setParameter("ledger",creditLedgerId).setParameter("plan",JSON.writeValueAsString(plan))
                     .setParameter("effectiveDate",effectiveDate).setParameter("reason",reason).getSingleResult();
             return value==null?null:(UUID)value;
-        } catch(JsonProcessingException ex) { throw new ApiException(ErrorCode.CONFLICT,"应付账面分摊计划格式无效"); }
+        } catch(JsonProcessingException ex) { throw new ApiException(ErrorCode.CONFLICT,"应付账面分摊计划的内容不正确，请核对后重试"); }
     }
 }

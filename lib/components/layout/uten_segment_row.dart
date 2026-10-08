@@ -24,6 +24,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/uten_tokens.dart';
+
 /// 自适应分段行：每格宽度跟随自身内容，整条按内容总宽收缩。
 class UtenSegmentRow<T> extends StatelessWidget {
   const UtenSegmentRow({
@@ -36,7 +38,7 @@ class UtenSegmentRow<T> extends StatelessWidget {
     this.emptySelectionAllowed = false,
     this.multiSelectionEnabled = false,
     this.minCellWidth,
-    this.minCellHeight = 40,
+    this.minCellHeight = UtenFilterRow.minHeight,
   });
 
   /// 分段定义（复用 Material 的 ButtonSegment：value/label/icon/enabled）。
@@ -65,7 +67,9 @@ class UtenSegmentRow<T> extends StatelessWidget {
   /// 默认不设限——宽度完全由内容决定。
   final double? minCellWidth;
 
-  /// 每格高度下限，默认 40（M3 分段高度；工具条内由 IntrinsicHeight 拉齐搜索框）。
+  /// 每格高度下限，默认 [UtenFilterRow.minHeight]（40）——与 UtenSearchBar 的
+  /// 图标约束下限同源，保证分类栏与搜索框药丸描边恒同高；工具条内由
+  /// IntrinsicHeight 拉齐搜索框。
   final double minCellHeight;
 
   @override

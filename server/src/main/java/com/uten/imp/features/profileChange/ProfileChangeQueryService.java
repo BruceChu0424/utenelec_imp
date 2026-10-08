@@ -83,7 +83,7 @@ public class ProfileChangeQueryService {
         snapshotCodec.bindWriteCapability();
         UUID employeeId = requireEmployeeId();
         List<ProfileChangeRequest> rs = repo.findByBatchIdAndStatus(batchId, "pending");
-        if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "无 pending 批次可撤销");
+        if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "没有待审核的修改可撤销");
         boolean mine = rs.stream().allMatch(r -> r.getSubmittedBy().equals(employeeId));
         if (!mine) throw new ApiException(ErrorCode.FORBIDDEN);
         OffsetDateTime now = OffsetDateTime.now();

@@ -30,6 +30,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
@@ -233,7 +234,7 @@ class _FinanceReportTablePageState
       });
     } catch (e) {
       if (!mounted || generation != _loadGeneration) return;
-      context.appError('加载报表失败：$e');
+      context.appError(humanErrorMessage(e) ?? '报表没有加载出来，请检查网络或权限后重试');
       setState(() {
         _loading = false;
         _error = '加载报表失败，请检查网络或权限后重试';

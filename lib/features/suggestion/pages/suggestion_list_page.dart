@@ -29,6 +29,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -61,7 +62,7 @@ class SuggestionListPage extends ConsumerWidget {
       child: list.when(
         loading: () => const UtenSkeletonList(itemCount: 6),
         error: (e, _) => UtenEmpty.error(
-          message: '加载失败：$e',
+          message: humanErrorMessage(e) ?? '建议列表加载失败，请稍后重试',
           onAction: () => ref.invalidate(suggestionListProvider),
         ),
         data: (page) {
@@ -184,7 +185,7 @@ final List<MasterColumnDef<Suggestion>> _columns = [
     key: 'status',
     label: '状态',
     width: 72,
-    info: '表头筛选下推后端 status 参数（与「建议广场/我的建议」分段正交），选中即回第 1 页。',
+    info: '按状态筛选（与「建议广场/我的建议」分段各自独立），选中后回到第 1 页。',
     value: (s) => s.status.label,
   ),
   MasterColumnDef(key: 'title', label: '标题', width: 260, value: (s) => s.title),

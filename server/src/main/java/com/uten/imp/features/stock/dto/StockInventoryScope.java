@@ -10,7 +10,7 @@ public record StockInventoryScope(UUID warehouseId, UUID colorId, boolean colorN
                                   boolean inventoryOnly, boolean includeDefective, boolean includeLineSide) {
     public StockInventoryScope {
         if (colorId != null && colorNull) {
-            throw new ApiException(ErrorCode.MALFORMED_REQUEST, "colorId 与 colorNull 不能同时指定");
+            throw new ApiException(ErrorCode.MALFORMED_REQUEST, "颜色筛选条件冲突：不能同时指定具体颜色和「无颜色」");
         }
     }
 

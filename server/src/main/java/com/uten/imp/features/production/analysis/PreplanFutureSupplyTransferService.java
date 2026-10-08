@@ -70,7 +70,7 @@ public class PreplanFutureSupplyTransferService {
         var guard=locks.acquire(()->footprints.forAnalyses(List.of(sourceAnalysis,targetAnalysis)));
         var headers=lockHeaders(sourceAnalysis,targetAnalysis);headers.values().forEach(this::requireWritable);
         if(!prior.isEmpty()) {
-            if(!hash.equals(prior.getFirst()[1]) || !targetAnalysis.equals(prior.getFirst()[2]))throw conflict("相同幂等键对应不同在途归属调整");
+            if(!hash.equals(prior.getFirst()[1]) || !targetAnalysis.equals(prior.getFirst()[2]))throw conflict("同一防重复提交标识对应不同的在途归属调整，请刷新后重试");
             return analyses.detailInternal(targetAnalysis,false);
         }
         analyses.requireCurrent(headers.get(sourceAnalysis),request.sourceVersion(),request.sourceFingerprint());
@@ -155,7 +155,7 @@ public class PreplanFutureSupplyTransferService {
                 request.reason().strip(),Boolean.toString(request.acceptPublicRelease())));
         var prior=rows("SELECT transfer_id,request_hash FROM preplan_future_supply_transfer_cancellations WHERE created_by=:actor AND idempotency_key=:key",
                 Map.of("actor",user.requireId(),"key",request.idempotencyKey()));
-        if(!prior.isEmpty()) {if(!transferId.equals(prior.getFirst()[0])||!hash.equals(prior.getFirst()[1]))throw conflict("相同幂等键对应不同撤销请求");return analyses.detailInternal(analysis,false);}
+        if(!prior.isEmpty()) {if(!transferId.equals(prior.getFirst()[0])||!hash.equals(prior.getFirst()[1]))throw conflict("同一防重复提交标识对应不同的撤销请求，请刷新后重试");return analyses.detailInternal(analysis,false);}
         analyses.requireCurrent(headers.get(source),request.sourceVersion(),request.sourceFingerprint());
         analyses.requireCurrent(headers.get(target),request.targetVersion(),request.targetFingerprint());guard.verifyUnchanged();
         em.createNativeQuery("SELECT id FROM preplan_future_supply_transfers WHERE id=:id FOR UPDATE").setParameter("id",transferId).getSingleResult();
@@ -275,7 +275,7 @@ public class PreplanFutureSupplyTransferService {
     private LocalDate needDate(UUID material){return date(em.createNativeQuery("SELECT source.delivery_date FROM production_material_analysis_materials material JOIN production_material_analysis_items source ON source.id=material.analysis_item_id WHERE material.id=:id").setParameter("id",material).getSingleResult());}
     private List<Object[]> rows(String sql,Map<String,?> parameters){var query=em.createNativeQuery(sql);parameters.forEach((key,value)->query.setParameter(key,value==Null.VALUE?null:value));return NativeQueryResults.objectArrayRows(query);}
     private void lockKey(String operation,String key){em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,569))").setParameter("key",user.requireId()+":"+operation+":"+key).getSingleResult();}
-    private static void validate(BigDecimal qty,String reason,String key){positive(qty);normalizedReason(reason);if(key==null||!key.matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("请填写有效数量及幂等键");}
+    private static void validate(BigDecimal qty,String reason,String key){positive(qty);normalizedReason(reason);if(key==null||!key.matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("请填写有效数量及防重复提交标识");}
 
     /**
      * 调入目标行形态不变量，与 V574 的 fn_guard_preplan_future_transfer 一一对应：

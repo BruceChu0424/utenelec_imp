@@ -21,7 +21,7 @@ class SalesShipmentPrefill {
           parts.first.isEmpty ||
           quantities.containsKey(parts.first) ||
           !RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(parts.last)) {
-        throw const FormatException('发货产品或数量无效，请返回订单重新选择');
+        throw const FormatException('发货产品或数量不正确，请回到订单重新选择');
       }
       final quantity = double.tryParse(parts.last);
       if (quantity == null || !quantity.isFinite || quantity <= 0) {

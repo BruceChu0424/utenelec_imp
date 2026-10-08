@@ -47,11 +47,11 @@ public class AiInputOriginalStore {
         if(!current.requireId().equals(actor))throw new ApiException(ErrorCode.FORBIDDEN);
         if(input.bytes()==null||input.bytes().length<1||input.bytes().length>MAX_BYTES||input.size()!=input.bytes().length
                 ||!Objects.equals(input.sha256(),ImmutableDocumentStore.digest(input.bytes())))
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"原文件大小或摘要不一致，请重新上传");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"原文件大小或内容与上传时不一致，请重新上传");
         ImmutableDocumentStore.Reference reference;
         try {reference=objects.save("AI_INPUT_ORIGINAL",input.fileName(),contentType(input.kind()),input.bytes());}
         catch(RuntimeException failed){throw new ApiException(ErrorCode.BUSINESS,"原文件尚未保存，识别没有提交，请稍后重新上传");}
-        if(reference.size()!=input.size()||!Objects.equals(reference.sha256(),input.sha256()))throw new ApiException(ErrorCode.CONFLICT,"原文件存储校验失败，识别没有提交");
+        if(reference.size()!=input.size()||!Objects.equals(reference.sha256(),input.sha256()))throw new ApiException(ErrorCode.CONFLICT,"原文件保存后与上传时不一致，识别没有提交");
         jdbc.update("""
                 INSERT INTO ai_input_originals(job_id,actor_user_id,original_name,input_kind,content_type,declared_size,declared_sha256,
                     availability,storage_provider,storage_key,storage_version,storage_size,storage_sha256,captured_at)
@@ -78,7 +78,7 @@ public class AiInputOriginalStore {
         if(!actor.equals(original.actor()))throw new ApiException(ErrorCode.FORBIDDEN);
         if(prior)return; // Historical unavailable evidence stays explicit; replay cannot fabricate an original.
         if(!readable(original)||!"AVAILABLE".equals(original.lifecycle()))throw new ApiException(ErrorCode.CONFLICT,
-                "LEGACY_CONFLICT".equals(original.availability())?"历史原文件校验不一致，请重新上传":"原识别文件不可用，请重新上传");
+                "LEGACY_CONFLICT".equals(original.availability())?"历史原文件内容不一致，请重新上传":"原识别文件不可用，请重新上传");
         jdbc.update("""
                 INSERT INTO ai_input_original_bindings(job_id,doc_type,doc_id,source_doc_type,source_doc_id)
                 VALUES(:job,:type,:doc,:type,:doc) ON CONFLICT DO NOTHING
@@ -116,15 +116,15 @@ public class AiInputOriginalStore {
                 FROM ai_input_originals original JOIN ai_input_original_bindings binding ON binding.job_id=original.job_id
                 WHERE original.job_id=:job AND binding.doc_type=:type AND binding.doc_id=:doc
                 """,Map.of("job",job,"type",type,"doc",doc),this::row).stream().findFirst().orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND));
-        if(!readable(original)||!"AVAILABLE".equals(original.lifecycle()))throw new ApiException(ErrorCode.CONFLICT,"历史原文件不可用或校验异常，不能下载");
-        if(original.size()==null||original.size()<1||original.size()>MAX_BYTES)throw new ApiException(ErrorCode.CONFLICT,"原文件大小校验失败");
+        if(!readable(original)||!"AVAILABLE".equals(original.lifecycle()))throw new ApiException(ErrorCode.CONFLICT,"历史原文件不可用或内容异常，不能下载");
+        if(original.size()==null||original.size()<1||original.size()>MAX_BYTES)throw new ApiException(ErrorCode.CONFLICT,"原文件大小不正确，不能下载");
         byte[] bytes;
         try {
             bytes="LEGACY_DB".equals(original.availability())
                     ?jdbc.queryForObject("SELECT legacy_bytes FROM ai_input_originals WHERE job_id=:job",Map.of("job",job),byte[].class)
                     :objects.read(new ImmutableDocumentStore.Reference(original.provider(),original.key(),original.version(),original.size(),original.sha()));
             if(bytes==null||bytes.length!=original.size()||!Objects.equals(ImmutableDocumentStore.digest(bytes),original.sha()))throw new IllegalStateException("Original mismatch");
-        } catch(RuntimeException mismatch){throw new ApiException(ErrorCode.CONFLICT,"原文件读取或校验失败，请联系维护核对");}
+        } catch(RuntimeException mismatch){throw new ApiException(ErrorCode.CONFLICT,"原文件读取或核对失败，请联系管理员处理");}
         var actor=current.get().orElseThrow();audit.logExplicit(actor.getId(),actor.getLoginAccount(),"download_ai_input_original","ai_input_originals",job.toString(),"success");
         return new Download(bytes,original.name().replaceAll("[\\p{Cntrl}\\\\/]","_"),contentType(original.kind()),original.sha());
     }

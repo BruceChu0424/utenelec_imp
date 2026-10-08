@@ -137,7 +137,7 @@ class QualityBatchSubmission {
     required ProductionFqcRepository fqc,
     void Function()? onProgress,
   }) async {
-    if (_running) throw StateError('同一检验报告不能并发提交');
+    if (_running) throw StateError('这份检验报告正在提交中，请等本次提交完成后再操作');
     _running = true;
     try {
       final pending = [

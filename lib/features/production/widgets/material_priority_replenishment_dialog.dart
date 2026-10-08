@@ -324,8 +324,8 @@ class _MaterialPriorityReplenishmentDialogState
         _uncertain = uncertain;
         _needsReview = !uncertain;
         _error = uncertain
-            ? '暂未确认补单结果。原计划、数量和请求已保留，请同键重试确认；已完成的调料不受影响。'
-            : '${error.message}。请重新核对补供信息；已完成的调料不受影响。';
+            ? '暂未确认补单结果。原计划、数量和填写内容已保留，请用同样内容重试确认；已完成的调拨不受影响。'
+            : '${error.message}。请重新核对补供信息；已完成的调拨不受影响。';
       });
     } catch (error) {
       if (!mounted) return;
@@ -334,7 +334,7 @@ class _MaterialPriorityReplenishmentDialogState
         _needsReview = !_uncertain;
         _error = error is FormatException
             ? error.message
-            : '暂未确认补单结果，请同键重试确认；调料已经生效。';
+            : '暂未确认补单结果，请用同样内容重试确认；调拨已经生效。';
       });
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -443,7 +443,7 @@ class _MaterialPriorityReplenishmentDialogState
                               Text(
                                 widget.futureTransfer
                                     ? '专属在途份额已调整，实际入库前不计现货。现在可以补原计划；稍后办理不会撤销本次调整。'
-                                    : '调料已生效。现在可以补原计划；选择稍后办理不会撤销调料。',
+                                    : '调拨已生效。现在可以补原计划；选择稍后办理不会撤销这次调拨。',
                                 style: theme.textTheme.bodyMedium,
                               ),
                               const SizedBox(height: UtenSpacing.s12),

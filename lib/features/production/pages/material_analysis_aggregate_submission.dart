@@ -145,7 +145,7 @@ final class _MaterialAggregateSubmission {
             )
             .toSet();
         if (ready.isEmpty) {
-          owner.context.appWarning('所选物料之间的层级责任无法确定先后，请刷新并核对来源');
+          owner.context.appWarning('系统没法确定这些物料谁先谁后，请刷新后核对各行的来源');
           return false;
         }
         final positive = ready
@@ -349,13 +349,15 @@ final class _MaterialAggregateSubmission {
       if (rewrites[old] case final replacements?) {
         final oldMaterial = indexes.groupsByLine[old]?.representative;
         if (oldMaterial != null && oldMaterial.requiredQty > 0) {
-          throw const FormatException('旧来源仍有制造责任，不能按整体替换桥重绑');
+          throw const FormatException('旧来源还挂着制造任务，不能整组换掉；请刷新后重新核对来源');
         }
         nextIds.addAll(replacements);
       } else {
         final group = indexes.groupsByLine[old];
         if (group == null || table.inactiveSourceContext(group)) {
-          throw FormatException('「${draft.label}」来源已变化但缺少精确身份桥，已保留总量，请重新核对');
+          throw FormatException(
+            '「${draft.label}」的来源已经变化，系统没法把原来的数量一一对应过去；总量已保留，请重新核对',
+          );
         }
         nextIds.add(old);
       }
@@ -374,7 +376,7 @@ final class _MaterialAggregateSubmission {
     for (final id in nextIds) {
       final material = indexes.groupsByLine[id]?.representative;
       if (material == null || owner._aggregateKeyOf(material) != draft.key) {
-        throw const FormatException('身份桥改变了物料、颜色或单位，未自动套用原数量');
+        throw const FormatException('来源对应的物料、颜色或单位变了，原来的数量不能自动沿用，请重新填写');
       }
     }
     for (final entry in oldSnapshots.entries) {

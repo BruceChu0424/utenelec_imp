@@ -336,7 +336,8 @@ class _WarehouseSubcontractOutboundWorkbenchState
         }
         return Row(
           children: [
-            SizedBox(width: 360, child: search),
+            // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
+            SizedBox(width: 180, child: search),
             const Spacer(),
             summary,
           ],

@@ -22,10 +22,10 @@ public class ShipmentFinanceClaimTargetLocks implements ReviewTaskTargetLockPort
             UUID id;
             try { id=UUID.fromString(key); }
             catch (IllegalArgumentException | NullPointerException invalid) {
-                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED,"出货单ID无效");
+                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED,"出货单编号不正确，请刷新后重试");
                 continue;
             }
-            if (requireExisting && !id.toString().equals(key)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请使用有效出货单ID");
+            if (requireExisting && !id.toString().equals(key)) throw new ApiException(ErrorCode.VALIDATION_FAILED,"所选出货单不正确，请刷新后重试");
             result.add(new Target(key,"SALES_SHIPMENT",id,id));
         }
         return result;

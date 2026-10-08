@@ -153,7 +153,7 @@ class _SalesReturnQualityCardState
       _error = null;
     });
     widget.onSnapshotChanged?.call(updated);
-    context.appSuccess('${action.label}已撤回，处置台账与库存已按补偿事件刷新');
+    context.appSuccess('${action.label}已撤回，处置台账与库存已更新');
   }
 
   @override

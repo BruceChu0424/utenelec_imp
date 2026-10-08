@@ -36,11 +36,11 @@ public class SalesQuoteFinanceClaimTargetLocks implements ReviewTaskTargetLockPo
             try {
                 id = UUID.fromString(key);
             } catch (IllegalArgumentException | NullPointerException invalid) {
-                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED, "销售报价单ID无效");
+                if (requireExisting) throw new ApiException(ErrorCode.VALIDATION_FAILED, "销售报价单编号不正确，请刷新后重试");
                 continue; // 旧的畸形认领仍允许释放。
             }
             if (requireExisting && !id.toString().equals(key)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "核价认领必须使用规范的销售报价单UUID");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "所选销售报价单不正确，请刷新后重试");
             }
             targets.add(new Target(key, "SALES_QUOTE", id, id));
         }

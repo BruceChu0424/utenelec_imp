@@ -171,7 +171,7 @@ public class ActualOutputSupplementService {
         var existing=db.queryForList("SELECT id,request_hash FROM production_actual_output_supplement_requests WHERE created_by=:actor AND idempotency_key=:key",
                 args("actor",user.requireId(),"key",request.idempotencyKey()));
         if(!existing.isEmpty()) {
-            if(!requestHash.equals(existing.getFirst().get("request_hash")))throw conflict("同一幂等键对应不同追加计划请求");
+            if(!requestHash.equals(existing.getFirst().get("request_hash")))throw conflict("同一防重复提交标识对应不同的追加计划请求，请刷新后重试");
             return detail(uuid(existing.getFirst(),"id"));
         }
         if(request.reportContext()!=null&&request.reportContext().getIdempotencyKey()!=null) {

@@ -23,6 +23,7 @@ class AdminUserSummary {
     this.lastLoginAt,
     this.departmentId,
     this.departmentName,
+    this.positionName,
     this.tempPasswordExpiresAt,
   });
 
@@ -45,6 +46,9 @@ class AdminUserSummary {
   final String? lastLoginAt;
   final String? departmentId;
   final String? departmentName;
+
+  /// 岗位名称（未绑定员工或未设岗位时为 null）。
+  final String? positionName;
 
   /// 管理员设置的临时密码有效期截止（ISO 字符串，V297）；null = 无临时密码或不设有效期。
   final String? tempPasswordExpiresAt;
@@ -102,6 +106,7 @@ class AdminUserSummary {
         lastLoginAt: json['lastLoginAt'] as String?,
         departmentId: json['departmentId'] as String?,
         departmentName: json['departmentName'] as String?,
+        positionName: json['positionName'] as String?,
         remoteAccess: json['remoteAccess'] as bool? ?? false,
         tempPasswordExpiresAt: json['tempPasswordExpiresAt'] as String?,
       );

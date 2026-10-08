@@ -219,7 +219,7 @@ class ProductionFqcReplenishmentMaterialServiceTest {
                 new ProductionFqcReplenishmentMaterialService.ConfirmRequest(
                         "material-attempt-0001")))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("相同幂等键");
+                .hasMessageContaining("同一防重复提交标识");
     }
 
     private static Query query(List<?> rows, Object single, int updated) {

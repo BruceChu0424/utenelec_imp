@@ -84,7 +84,7 @@ public class SalesQuoteFinanceService {
             case "returned" -> "o.status = 0 AND o.finance_returned_at IS NOT NULL"
                     + " AND o.submitted_at IS NOT NULL AND o.finance_returned_at >= o.submitted_at";
             case "cancelled" -> "o.status = -1 AND o.submitted_at IS NOT NULL";
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "核价列表分类无效: " + state);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "核价列表的分类不正确：" + state);
         };
         String orderBy = switch (normalizedState) {
             case "confirmed" -> " ORDER BY o.finance_confirmed_at DESC, o.bill_no";

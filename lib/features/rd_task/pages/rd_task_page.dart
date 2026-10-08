@@ -497,7 +497,8 @@ class _Filters extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             SizedBox(
-              width: compact ? constraints.maxWidth : 360,
+              // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
+              width: compact ? constraints.maxWidth : 180,
               child: UtenSearchBar(
                 key: const Key('rd-task-keyword'),
                 initialValue: keyword,

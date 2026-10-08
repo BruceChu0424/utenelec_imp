@@ -51,6 +51,6 @@ class SubcontractReturnAmountAuthorityTest {
                 BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE,
                 BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("来源数量、加工单价、汇率或历史退货累计无效");
+                .hasMessageContaining("来源数量、加工单价、汇率或历史退货累计不正确");
     }
 }

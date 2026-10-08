@@ -318,7 +318,7 @@ public class SubcontractDrawQueryService {
         Map<UUID, DrawItemRequest> distinct = new LinkedHashMap<>();
         for (DrawItemRequest item : items) {
             if (item == null || item.orderItemId() == null) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "领料任务缺少有效标识");
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "领料任务信息不正确，请刷新后重新选择");
             }
             if (item.qty() != null && (item.qty().signum() <= 0
                     || Math.max(item.qty().stripTrailingZeros().scale(), 0) > 4)) {
@@ -575,7 +575,7 @@ public class SubcontractDrawQueryService {
             case "WAITING_PLANNING" -> "status = 'WAITING_PLANNING'";
             case "WAITING_MATERIAL" -> "status = 'WAITING_MATERIAL'";
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "领料状态仅支持 DRAWABLE、DRAW_SUBMITTED、WAITING_PLANNING、WAITING_MATERIAL 或 ALL");
+                    "领料状态的筛选值不正确，请刷新后重试");
         };
     }
 

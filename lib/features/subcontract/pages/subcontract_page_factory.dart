@@ -82,7 +82,7 @@ abstract final class SubcontractPageFactory {
     if (id == null) {
       if (type == SubcontractDocType.application) {
         return const SubcontractExecutionCreateBlockedPage(
-          title: '计划委外申请不能在委外端新建',
+          title: '计划委外申请不能在这里新建',
           description: '申请由物料分析下达。请回到委外任务中心选择已下达且仍有余量的申请明细。',
           actionLabel: '进入委外任务中心',
           actionRoute: RouteName.operationsSubcontractWorkbench,
@@ -110,7 +110,8 @@ abstract final class SubcontractPageFactory {
         return const SubcontractExecutionCreateBlockedPage(
           title: '委外回厂必须从预计到货登记',
           description:
-              '请从仓库预计到货进入独立到货登记页。正式仓库服务会带入不可变来源并执行先出后进、数量与仓库校验；委外通用单据页不再受理新回厂登记。',
+              '请从「仓库预计到货」进入独立的到货登记页办理。登记时会自动带出来源单据，'
+              '并按先出后进的规则核对数量与仓库；委外通用单据页不再受理新的回厂登记。',
           actionLabel: '去仓库预计到货',
           actionRoute: RouteName.warehouseInboundExpectations,
         );
@@ -136,14 +137,14 @@ abstract final class SubcontractPageFactory {
       ),
       SubcontractDocType.application =>
         const SubcontractExecutionCreateBlockedPage(
-          title: '计划委外申请为只读事实',
-          description: '申请由物料分析下达，不能通过编辑深链修改。请进入委外任务中心处理尚未下单的数量。',
+          title: '计划委外申请由物料分析生成，这里不能改',
+          description: '申请是物料分析下达的，不能在这个页面修改。请进入委外任务中心处理尚未下单的数量。',
           actionLabel: '进入委外任务中心',
           actionRoute: RouteName.operationsSubcontractWorkbench,
         ),
       SubcontractDocType.inquiry => const SubcontractExecutionCreateBlockedPage(
         title: '委外询价当前未启用',
-        description: '询价深链仅保留历史只读查询，当前业务请进入委外订货。',
+        description: '询价单只能查看历史记录，不能办理新业务；请进入委外订货。',
         actionLabel: '进入委外订货',
         actionRoute: '/subcontract/orders',
       ),
@@ -345,7 +346,7 @@ class SubcontractExecutionCreateBlockedPage extends StatelessWidget {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-        title: '委外业务入口受控',
+        title: '这个入口不能直接新建单据',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),

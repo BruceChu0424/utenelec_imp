@@ -512,7 +512,7 @@ class _ProductionPlanEditPageState
       if (r.goods == null) continue;
       if (parseProductionOverproductionPercent(r.overproductionPercent.text) ==
           null) {
-        context.appError('第 ${i + 1} 行允许超产比例无效，请输入非负百分比，最多 4 位小数');
+        context.appError('第 ${i + 1} 行允许超产比例填写有误，请填不小于 0 的百分比，最多 4 位小数');
         return;
       }
       final qty = double.tryParse(r.qty.text);
@@ -1002,7 +1002,7 @@ class _ProductionPlanEditPageState
             if (_saving)
               UtenBusyOverlay(
                 title: widget.id == null ? '正在创建生产计划单' : '正在保存生产计划单',
-                description: '正在写入计划单，请勿重复提交或离开本页。',
+                description: '正在保存计划单，请勿重复提交或离开本页。',
               ),
           ],
         ),

@@ -879,8 +879,8 @@ abstract class _MaterialAnalysisSupplyActionsState
       });
       if (producedNothing) {
         context.appWarning(
-          '本次没有产生任何${route.label}下达：所选行在服务端已无可下达余量'
-          '（可能刚被他人下达、或在途已完全覆盖），也可能是同一份请求被幂等回放。'
+          '本次没有产生任何${route.label}下达：所选行已经没有可下达的余量'
+          '（可能刚被别人下过单，或在途数量已经足够），也可能是刚才的提交已经生效、这次重复提交了。'
           '页面已刷新，请重新核对后再提交。',
           force: true,
         );

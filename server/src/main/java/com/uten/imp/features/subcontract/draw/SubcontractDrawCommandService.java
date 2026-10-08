@@ -93,7 +93,7 @@ public class SubcontractDrawCommandService {
     public DrawSubmitResult submit(DrawSubmitRequest request) {
         if (request == null || request.idempotencyKey() == null
                 || !IDEMPOTENCY_KEY.matcher(request.idempotencyKey()).matches()) {
-            throw validation("领料提交缺少有效的幂等键，请重新打开领料页后再提交");
+            throw validation("领料提交的操作编号缺失或不正确，请重新打开领料页后再提交");
         }
         List<DrawItemRequest> items = SubcontractDrawQueryService.normalizeItems(request.items());
         requireDrawAuthority();
@@ -499,7 +499,7 @@ public class SubcontractDrawCommandService {
         }
         if (!replayedItems.equals(new HashSet<>(itemIds))) {
             // 撤回了其中部分任务的领料(行已删)也会对不上: 按「已变化」提示, 不说成键冲突。
-            throw conflict(changed ? REPLAY_CHANGED : "相同幂等键对应了不同的领料批次，请重新打开领料页后再提交");
+            throw conflict(changed ? REPLAY_CHANGED : "同一操作编号对应了不同的领料批次，请重新打开领料页后再提交");
         }
         return new DrawSubmitResult(issueIds, billNos, issueIds.size(), true);
     }

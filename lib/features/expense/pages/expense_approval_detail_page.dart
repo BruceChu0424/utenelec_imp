@@ -610,7 +610,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
           error: (error, _) => SizedBox(
             height: 300,
             child: UtenEmpty.error(
-              message: '付款主档加载失败',
+              message: '付款账户和费用类别没有加载出来',
               description: '请重试或联系财务维护付款账户和费用类别。',
               actionLabel: '重试',
               onAction: () => ref.invalidate(expensePaymentOptionsProvider),

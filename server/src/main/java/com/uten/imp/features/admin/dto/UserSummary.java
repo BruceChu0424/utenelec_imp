@@ -21,6 +21,8 @@ public class UserSummary {
     private boolean currentEmployee;
     private UUID departmentId;
     private String departmentName;
+    /** 员工岗位名称（未绑定员工或未设岗位时为NULL）。 */
+    private String positionName;
     private String status;
     private boolean mustChangePassword;
     private OffsetDateTime lastLoginAt;

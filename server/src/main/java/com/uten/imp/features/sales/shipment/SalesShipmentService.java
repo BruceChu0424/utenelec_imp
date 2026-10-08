@@ -156,7 +156,7 @@ public class SalesShipmentService {
         if (rawStage == null || rawStage.isBlank()) return;
         String stage = rawStage.trim().toUpperCase(java.util.Locale.ROOT);
         if (!SHIPMENT_STAGES.contains(stage)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段无效：" + rawStage);
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段的筛选值不正确：" + rawStage);
         }
         Predicate salesConfirmed = cb.and(
                 cb.isNotNull(root.get("salesConfirmedAt")),
@@ -193,7 +193,7 @@ public class SalesShipmentService {
             }
             case "SHIPPED" -> ps.add(cb.equal(root.get("status"), (short) 1));
             case "REVERSED" -> ps.add(cb.equal(root.get("status"), (short) -1));
-            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段无效：" + rawStage);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "出货阶段的筛选值不正确：" + rawStage);
         }
     }
 
@@ -533,7 +533,7 @@ public class SalesShipmentService {
         String batchKey = req.getIdempotencyKey() == null ? null : req.getIdempotencyKey().trim();
         String batchHash = null;
         if (batchKey != null) {
-            if (batchKey.length()<8 || batchKey.length()>128) throw new ApiException(ErrorCode.VALIDATION_FAILED,"批量出货幂等键长度应为8至128");
+            if (batchKey.length()<8 || batchKey.length()>128) throw new ApiException(ErrorCode.VALIDATION_FAILED,"批量出货操作编号长度应为8至128");
             batchHash = batchRequestHash(req);
             em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
                     .setParameter("key","SALES-SHIPMENT-BATCH:"+currentUser.requireId()+":"+batchKey).getSingleResult();
@@ -544,7 +544,7 @@ public class SalesShipmentService {
             if (!replay.isEmpty()) {
                 List<ShipmentDetail> result=new ArrayList<>();
                 for(Object[] row:replay) {
-                    if(!batchHash.equals(row[1])) throw new ApiException(ErrorCode.CONFLICT,"同一批量出货幂等键已用于不同内容");
+                    if(!batchHash.equals(row[1])) throw new ApiException(ErrorCode.CONFLICT,"同一批量出货操作编号已用于不同内容，请刷新后重试");
                     SalesShipment prior=requireReadableShipment((UUID)row[0]);
                     accessPolicy.requireWritable(prior.getOwnerEmployeeId(),"无权重放该批出货单",accessPolicy.scope());
                     result.add(detail(prior.getId()));
@@ -1222,7 +1222,7 @@ public class SalesShipmentService {
         String current = s.getWarehouseWorkStatus();
         if (SalesShipment.WORK_LEGACY_PENDING.equals(current)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "历史出货草稿是只读迁移异常，请人工核对后按当前财审→仓库两审流程重新开单");
+                    "历史出货草稿是旧数据迁移遗留问题，已转为只读，请核对后按当前财审→仓库两审流程重新开单");
         }
         String target = req.getTargetStatus().trim()
                 .toUpperCase(java.util.Locale.ROOT);
@@ -1614,7 +1614,7 @@ public class SalesShipmentService {
                 shipment.getWarehouseWorkStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "历史出货草稿是只读迁移异常，请人工重建当前两审任务");
+                    "历史出货草稿是旧数据迁移遗留问题，已转为只读，请核对后重建当前两审任务");
         }
         if (shipment.getStatus() == null || shipment.getStatus() != STATUS_DRAFT
                 || shipment.isRejected()
@@ -2126,7 +2126,7 @@ public class SalesShipmentService {
             return null;
         }
         if (paymentStyleId < Short.MIN_VALUE || paymentStyleId > Short.MAX_VALUE) {
-            throw new ApiException(ErrorCode.CONFLICT, "销售结账方式超出财务立账范围");
+            throw new ApiException(ErrorCode.CONFLICT, "销售出货单关联的结算方式数据异常，请联系管理员处理");
         }
         return paymentStyleId.shortValue();
     }
@@ -2332,7 +2332,7 @@ public class SalesShipmentService {
         for (SalesShipmentItem item : items) {
             requireNoActiveReturn(item);
             if (item.getQty() == null || item.getQty().signum() <= 0) {
-                throw new ApiException(ErrorCode.CONFLICT, "历史出货明细数量无效，禁止自动红冲");
+                throw new ApiException(ErrorCode.CONFLICT, "历史出货明细的数量数据不对，不能自动红冲，请联系管理员");
             }
             if (item.getOrderItemId() != null) {
                 reverseByOrderItem.merge(
@@ -2631,7 +2631,7 @@ public class SalesShipmentService {
         if (terms.taxRate() != null && terms.taxRate().signum() < 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "来源订单 " + sourceBillNo + " 税率无效，禁止生成出货应收");
+                    "来源订单 " + sourceBillNo + " 税率不正确，不能生成出货应收");
         }
     }
 
@@ -2701,7 +2701,7 @@ public class SalesShipmentService {
                 || priorNetQty.add(shipmentQty).compareTo(sourceQty) > 0) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "来源订单数量或金额无效，或本次出货超过订单未出数量，禁止生成出货应收");
+                    "来源订单的数量或金额不正确，或本次出货超过订单未出数量，不能生成出货应收，请刷新后重试");
         }
         return MoneyPolicy.prorate(sourceAmount, priorNetQty.add(shipmentQty), sourceQty, priorNetAmount);
     }
@@ -3527,7 +3527,7 @@ public class SalesShipmentService {
                 shipment.getWarehouseWorkStatus())) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "历史出货草稿是只读迁移异常，请人工核对后按当前订单关联两审流程重新开单");
+                    "历史出货草稿是旧数据迁移遗留问题，已转为只读，请核对后按当前订单关联两审流程重新开单");
         }
     }
 

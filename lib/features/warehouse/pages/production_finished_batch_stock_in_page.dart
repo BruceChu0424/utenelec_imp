@@ -86,7 +86,7 @@ class _ProductionFinishedBatchStockInPageState
       confirmLabel: '确认批量入库',
       content: _confirmPoints(Theme.of(context), const [
         '按每张单当前全部待点收数量执行实物全量接收。',
-        '同一事务写入库存、生产入库完成量和审计链；任一校验失败整批回滚。',
+        '整批一起办理：只要有一张填的有问题，本次入库整批都不会生效（不会只成功一半）。',
         '存在短收或拒收时，请取消并返回逐单处理。',
       ]),
     );
@@ -102,7 +102,7 @@ class _ProductionFinishedBatchStockInPageState
       if (!mounted) return;
       context.appSuccess(
         result.replay
-            ? '该批次已完成，已安全重放 ${result.confirmedCount} 张结果'
+            ? '该批次已办理过，本次没有重复入库（共 ${result.confirmedCount} 张）'
             : '已批量全量点收 ${result.confirmedCount} 张产成品入库任务',
       );
       // 徽章兜底：宿主待点收视图 pop 返回后会重拉任务计数，深链直入本页时
@@ -179,7 +179,7 @@ class _ProductionFinishedBatchStockInPageState
                 const Positioned.fill(
                   child: UtenBusyOverlay(
                     title: '正在批量全量点收',
-                    description: '同一事务写入库存、生产入库完成量和审计链。',
+                    description: '正在一次性写入库存和入库记录，请稍候。',
                   ),
                 ),
             ],
@@ -202,7 +202,7 @@ class _ProductionFinishedBatchStockInPageState
           children: [
             Text(
               '默认全选。本次不入库的单据取消勾选即可移出本批（不会提交、仍留在待点收）；'
-              '勾中的按每张单全部待点收数量原子入库，短收、拒收请逐单进入确认。',
+              '勾中的按每张单全部待点收数量一起入库，短收、拒收请逐单进入确认。',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: UtenSpacing.s8),

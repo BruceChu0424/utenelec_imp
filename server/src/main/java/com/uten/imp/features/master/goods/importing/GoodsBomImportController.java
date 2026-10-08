@@ -58,7 +58,7 @@ public class GoodsBomImportController {
         try {
             parsedMode = BomPasteRequest.Mode.valueOf(mode.toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "mode 必须为 REPLACE 或 APPEND");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "导入方式只能是覆盖或追加，请重新选择");
         }
         BomPasteRequest.Mode finalMode = parsedMode;
         return withImportSlot(() -> service.commit(id, read(request), finalMode, stateFingerprint));

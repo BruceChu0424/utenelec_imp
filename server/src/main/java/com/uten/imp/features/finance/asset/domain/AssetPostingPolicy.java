@@ -14,13 +14,13 @@ public final class AssetPostingPolicy {
 
     public static void requireDifferentActor(UUID actorId, UUID makerId, String action) {
         if (actorId != null && actorId.equals(makerId)) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "The maker cannot " + action + " their own document");
+            throw new ApiException(ErrorCode.FORBIDDEN, "制单人不能" + action + "自己的单据，请换一位同事处理");
         }
     }
 
     public static void requireCorporateGlBook(String bookType) {
         if (!"CORPORATE".equals(bookType)) {
-            throw new ApiException(ErrorCode.CONFLICT, "Only the CORPORATE book can post to the general ledger");
+            throw new ApiException(ErrorCode.CONFLICT, "只有法人账簿才能过总账");
         }
     }
 
@@ -32,7 +32,7 @@ public final class AssetPostingPolicy {
         if (start.value().isBefore(activation.value())) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "startPeriod cannot precede activation GL period " + activation);
+                    "开始期间不能早于启用时的会计期间 " + activation);
         }
     }
 
@@ -40,13 +40,13 @@ public final class AssetPostingPolicy {
             LocalDate disposalDate,
             String lastEffectiveDepreciationPeriod) {
         if (disposalDate == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "effectiveDate is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写生效日期");
         }
         String disposalPeriod = YearMonth.from(disposalDate).toString();
         if (!disposalPeriod.equals(lastEffectiveDepreciationPeriod)) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "The disposal month must be depreciated before disposal posting");
+                    "处置当月必须先计提折旧，才能做过账处置");
         }
     }
 }

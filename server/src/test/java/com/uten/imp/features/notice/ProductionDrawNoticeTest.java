@@ -216,7 +216,7 @@ class ProductionDrawNoticeTest {
         verify(notices).publishForUser(
                 eq(allowedId),
                 eq("待处理生产领料：SL-001"),
-                contains("首次出库会在同一事务完成审核与本次扣账"),
+                contains("首次出库会把审核和这次扣账一起完成"),
                 eq(ChainNoticeService.TYPE_TASK),
                 anyString(),
                 eq("/warehouse/DRAW/" + drawId),

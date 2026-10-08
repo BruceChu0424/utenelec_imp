@@ -292,7 +292,7 @@ class _WarehouseInboundExpectationsViewState
                     '$quarantined 张实到超量已隔离，待财务在「到货异常」定案'
               : '已批量送检 ${result.processedCount} 张收货单',
         );
-        if (replayed > 0) message.write('（其中 $replayed 张此前已处理，安全重放）');
+        if (replayed > 0) message.write('（其中 $replayed 张此前已处理，本次没有重复送检）');
         message.write('；检查进度与结果请在「品质部检查结果」页查看');
         quarantined > 0
             ? context.appWarning(message.toString())
@@ -381,7 +381,7 @@ class _WarehouseInboundExpectationsViewState
         busy: _batchSending,
         emptyWarning: '请先选择预计到货任务',
         extraHints: const {
-          InboundRoute.inspectFirst: '已登记 · 待送检的草稿单直接一个事务逐张送检；超量单自动隔离待财务',
+          InboundRoute.inspectFirst: '已登记 · 待送检的草稿单逐张一起送检；超量单自动隔离待财务',
         },
         onSelected: (route) => route.isStockInFirst
             ? _batchPreStockIn(selectedIds)

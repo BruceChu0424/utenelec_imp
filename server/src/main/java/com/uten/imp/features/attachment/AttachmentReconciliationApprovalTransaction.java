@@ -41,7 +41,7 @@ class AttachmentReconciliationApprovalTransaction {
                 findingId);
         if (finding == null || !"OBSERVED".equals(finding.state())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Reconciliation finding is no longer approvable");
+                    "这条核对记录当前不能审批，请刷新后重试");
         }
         jdbc.queryForObject(
                 "SELECT pg_advisory_xact_lock(hashtextextended(?, 0))::text",
@@ -50,13 +50,13 @@ class AttachmentReconciliationApprovalTransaction {
         if (AttachmentReconciliationService.isReferenced(
                 jdbc, finding.storageProvider(), finding.location(), finding.storageKey(), finding.storageVersion())) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Object became referenced; deletion approval was cancelled");
+                    "这个文件正在被其他数据使用，删除审批已取消");
         }
         Instant earliest = Instant.now().minusSeconds(
                 Math.max(1, properties.getReconciliation().getOrphanGraceHours()) * 3600L);
         if (finding.observationCount() < 2 || finding.firstSeenAt().isAfter(earliest)) {
             throw new ApiException(ErrorCode.CONFLICT,
-                    "Orphan needs two observations and the full grace period before deletion");
+                    "孤儿文件需被核对到两次并过了观察期才能删除，请稍后再审批");
         }
         jdbc.update("""
                 UPDATE attachment_reconciliation_findings

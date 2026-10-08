@@ -63,7 +63,7 @@ public class FinanceAssetCategoryService {
         PaymentStyleHierarchyLock.lock(em);
         UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.APPROVE);
         String objectType = objectType(request.objectType());
-        String code = requiredText(request.code(), "code").toUpperCase();
+        String code = requiredText(request.code(), "类别编码").toUpperCase();
         em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
                 .setParameter("key", "FINANCE_ASSET_CATEGORY|" + objectType + "|" + code)
                 .getSingleResult();
@@ -91,7 +91,7 @@ public class FinanceAssetCategoryService {
                 .setParameter("id", id)
                 .setParameter("objectType", objectType)
                 .setParameter("code", code)
-                .setParameter("name", requiredText(request.name(), "name"))
+                .setParameter("name", requiredText(request.name(), "类别名称"))
                 .setParameter("cost", request.costStyleId())
                 .setParameter("accumulated", request.accumulatedStyleId())
                 .setParameter("expense", request.expenseStyleId())
@@ -118,7 +118,7 @@ public class FinanceAssetCategoryService {
         requireDraftAndVersion(current, request.expectedVersion());
         if (!current.objectType().equals(objectType(request.objectType()))
                 || !current.code().equalsIgnoreCase(request.code())) {
-            throw new ApiException(ErrorCode.CONFLICT, "Category objectType and code are immutable; create a new version");
+            throw new ApiException(ErrorCode.CONFLICT, "资产类别的类型和编码不能修改，需要调整请新建一个新版本");
         }
         Number references = (Number) em.createNativeQuery("""
                 SELECT (SELECT COUNT(*) FROM fixed_assets WHERE category_id=:id AND is_deleted=false)
@@ -127,7 +127,7 @@ public class FinanceAssetCategoryService {
                         WHERE a.category_id=:id AND b.is_deleted=false)
                 """).setParameter("id", id).getSingleResult();
         if (references.longValue() != 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "A referenced policy version cannot be edited; create a new version");
+            throw new ApiException(ErrorCode.CONFLICT, "这个政策版本已被别的资产使用，不能修改，请新建一个新版本");
         }
         int changed = em.createNativeQuery("""
                 UPDATE finance_asset_categories
@@ -140,7 +140,7 @@ public class FinanceAssetCategoryService {
                     row_version=row_version+1, updated_at=now(), updated_by=:actor
                 WHERE id=:id AND status='DRAFT' AND row_version=:version AND is_deleted=false
                 """)
-                .setParameter("name", requiredText(request.name(), "name"))
+                .setParameter("name", requiredText(request.name(), "类别名称"))
                 .setParameter("cost", request.costStyleId())
                 .setParameter("accumulated", request.accumulatedStyleId())
                 .setParameter("expense", request.expenseStyleId())
@@ -225,7 +225,7 @@ public class FinanceAssetCategoryService {
                 FROM finance_asset_categories
                 WHERE id=:id AND is_deleted=false
                 """).setParameter("id", id).getResultList();
-        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Asset category not found");
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "资产类别不存在");
         return map(rows.getFirst());
     }
 
@@ -257,28 +257,28 @@ public class FinanceAssetCategoryService {
                 WHERE id=:id AND is_deleted=false
                 FOR UPDATE
                 """).setParameter("id", id).getResultList();
-        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "Asset category not found");
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "资产类别不存在");
         Object[] row = rows.getFirst();
         return new CategoryLock(NativeValueConverters.text(row[0]), NativeValueConverters.text(row[1]), NativeValueConverters.text(row[2]), ((Number) row[3]).longValue());
     }
 
     private static void requireDraftAndVersion(CategoryLock current, Long expectedVersion) {
         if (!"DRAFT".equals(current.status())) {
-            throw new ApiException(ErrorCode.CONFLICT, "Only an unused DRAFT category version can change");
+            throw new ApiException(ErrorCode.CONFLICT, "只有还没人用过的草稿版本才能修改");
         }
         if (expectedVersion == null || current.rowVersion() != expectedVersion) throw concurrentChange();
     }
 
     private static String objectType(String value) {
         if (!"FIXED_ASSET".equals(value) && !"DEFERRED_EXPENSE".equals(value)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "objectType must be FIXED_ASSET or DEFERRED_EXPENSE");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "资产类型只能是固定资产或长期待摊费用");
         }
         return value;
     }
 
     private static String requiredText(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, field + " is required");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, field + "不能为空");
         }
         return value.trim();
     }
@@ -315,7 +315,7 @@ public class FinanceAssetCategoryService {
                     .map(String::trim).filter(value -> !value.isEmpty()).distinct().toList();
             return objectMapper.writeValueAsString(clean);
         } catch (JsonProcessingException exception) {
-            throw new ApiException(ErrorCode.MALFORMED_REQUEST, "Invalid required document codes");
+            throw new ApiException(ErrorCode.MALFORMED_REQUEST, "必备用单据编码的内容不正确");
         }
     }
 
@@ -323,12 +323,12 @@ public class FinanceAssetCategoryService {
         try {
             return json == null ? List.of() : objectMapper.readValue(json, STRING_LIST);
         } catch (JsonProcessingException exception) {
-            throw new ApiException(ErrorCode.INTERNAL, "Stored category policy is invalid");
+            throw new ApiException(ErrorCode.INTERNAL, "保存的类别政策数据无效，请重新配置");
         }
     }
 
     private static ApiException concurrentChange() {
-        return new ApiException(ErrorCode.CONFLICT, "Asset category changed; refresh and retry");
+        return new ApiException(ErrorCode.CONFLICT, "资产类别已被别人修改，请刷新后重试");
     }
 
     private record CategoryLock(String objectType, String code, String status, long rowVersion) {}

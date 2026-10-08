@@ -30,8 +30,8 @@ public final class VisitorAuthDto {
             String code) {}
 
     public record VisitorRefreshRequest(
-            @NotBlank(message = "刷新令牌不能为空")
-            @Size(max = 512, message = "刷新令牌过长")
+            @NotBlank(message = "登录已过期，请重新登录")
+            @Size(max = 512, message = "登录已过期，请重新登录")
             String refreshToken) {}
 
     /** send-code 响应；devCode 仅开发期（log 网关）返回，便于联调。 */

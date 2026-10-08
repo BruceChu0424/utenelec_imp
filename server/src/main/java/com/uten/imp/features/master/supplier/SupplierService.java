@@ -250,7 +250,7 @@ public class SupplierService {
     @Transactional(readOnly = true)
     public SupplierFacets facets(UUID categoryId) {
         if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "categoryId 必填");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择供应商分类");
         }
         List<UUID> ids = resolveSubtreeIds(categoryId);
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();

@@ -811,7 +811,7 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                         padding: const EdgeInsets.only(top: 4),
                         child: _notificationText(
                           text:
-                              '涉及字段：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                              '出问题的地方：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
                           maxLines: 2,
                           foreground: fg,
                           style: theme.textTheme.bodySmall?.copyWith(

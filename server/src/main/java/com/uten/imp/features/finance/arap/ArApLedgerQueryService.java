@@ -275,7 +275,7 @@ public class ArApLedgerQueryService {
                             .map(UUID::fromString).toList();
             if (orderNos.size() != orderIds.size()) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "应收销售单来源 UUID 与单号快照顺序不守恒");
+                        "应收销售单的来源单据和单号对不上，数据可能异常，请刷新或联系管理员核对");
             }
             result.put((UUID) row[0], new LedgerMetadata(
                     (String) row[1], (String) row[2], (String) row[3], (String) row[4],

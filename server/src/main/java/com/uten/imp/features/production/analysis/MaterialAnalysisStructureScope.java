@@ -104,7 +104,7 @@ final class MaterialAnalysisStructureScope implements AnalysisStructureScope, Tr
             if (owner != owner(em) || TransactionSynchronizationManager.getResource(RESOURCE) != this
                     || !snapshot.equals(reader.get())) {
                 throw new ApiException(ErrorCode.CONFLICT,
-                        "物料或 BOM 在批量下达期间发生变化，请刷新后重新提交；本次下达已回滚");
+                        "物料或 BOM 在批量下达期间发生变化，本次下达没有生效；请刷新后重新提交");
             }
         } catch (RuntimeException | Error failure) {
             abort(failure);

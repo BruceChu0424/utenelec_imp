@@ -318,7 +318,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _detecting = false);
-      context.appError('Excel 文件选择异常，请重试');
+      context.appError('选择文件时出了问题，请重试');
     }
   }
 
@@ -348,7 +348,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
       setState(() => _detecting = false);
       context.appApiError(
         e,
-        fallback: 'Excel 文件选择或检测异常，请刷新页面后重试；仍失败请联系管理员重启 Web 服务',
+        fallback: '读取或检测文件时出了问题，请刷新页面重试；仍失败请联系管理员重启 Web 服务',
       );
     }
   }
@@ -357,7 +357,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
     final bytes = _bytes;
     final planId = _report?.planId;
     if (bytes == null || planId == null || planId.isEmpty) {
-      context.appError('检测计划已失效，请重新选择文件并检测');
+      context.appError('检测结果已过期，请重新选择文件并检测');
       return;
     }
     setState(() => _committing = true);

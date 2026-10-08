@@ -80,7 +80,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
                 batches.findExisting(actorUserId, normalized.idempotencyKey());
         if (existing != null) {
             if (!Objects.equals(existing.requestHash(), normalized.requestHash())) {
-                throw conflict("该批量入账幂等键已用于不同任务集合，请更换幂等键后重试");
+                throw conflict("同一防重复提交标识已用于不同任务集合，请刷新后重试");
             }
             if (!COMPLETED.equals(existing.status()) || existing.resultJson() == null) {
                 throw conflict("该批量入账命令尚未形成完整结果，请稍后重试");
@@ -198,7 +198,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
             subcontractReceipts.approveFromWarehouseDecision(expected.receiptId());
             return;
         }
-        throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货异常订货类型无效");
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货异常的订货类型不正确");
     }
 
     private static void validateLocked(
@@ -208,7 +208,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
         for (WarehouseArrivalExceptionStockInBatchRepository.LockedException item : locked) {
             Long expectedVersion = expectedVersions.get(item.exceptionId());
             if (expectedVersion == null || !seen.add(item.exceptionId())) {
-                throw conflict("批量到货异常任务身份不一致，请刷新后重试");
+                throw conflict("批量到货异常任务信息不一致，请刷新后重试");
             }
             if (item.version() != expectedVersion) {
                 throw conflict("到货异常任务版本已变化，请刷新后重新确认整批任务");
@@ -225,7 +225,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
                     || item.receiptId() == null
                     || item.receiptBillNo() == null
                     || item.receiptBillNo().isBlank()) {
-                throw conflict("到货异常缺少有效收货单身份，请刷新后重试");
+                throw conflict("到货异常缺少有效的收货单信息，请刷新后重试");
             }
         }
     }
@@ -237,7 +237,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
                 item -> item.receiptBillNo() != null
                         && billNo.equals(item.receiptBillNo().strip()));
         if (!consistent) {
-            throw conflict("同一收货单的到货异常编号快照不一致，请联系管理员");
+            throw conflict("同一收货单的到货异常编号记录不一致，请联系管理员");
         }
         return billNo;
     }
@@ -251,7 +251,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
         String key = request.idempotencyKey().strip();
         if (key.length() < 8 || key.length() > 128
                 || !key.matches("[A-Za-z0-9._:-]+")) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量入账幂等键格式无效");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "批量入账的防重复提交标识格式不正确");
         }
         if (request.items().size() > 100) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多处理 100 条到货异常");
@@ -264,7 +264,7 @@ public class WarehouseArrivalExceptionStockInBatchService {
                     || item.expectedVersion() < 1) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "批量入账任务身份或版本无效");
+                        "批量入账的任务信息不完整或已变化，请刷新后重试");
             }
             if (!ids.add(item.exceptionId())) {
                 throw new ApiException(

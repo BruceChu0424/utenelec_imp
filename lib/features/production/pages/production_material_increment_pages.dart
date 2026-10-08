@@ -651,7 +651,7 @@ class _IncrementDetailState
                     ),
                     Expanded(
                       child: !validSnapshots
-                          ? const Center(child: Text('审批快照不完整，请刷新核对'))
+                          ? const Center(child: Text('审批时的数据不完整，请刷新核对'))
                           : UtenRevisionTable<Map<String, dynamic>>(
                               tableKey:
                                   'features.production.pages.production_material_increment_pages.IncrementDetailState.build.1',

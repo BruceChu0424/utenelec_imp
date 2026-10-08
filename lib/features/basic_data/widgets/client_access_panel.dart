@@ -431,7 +431,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(
-            '保存后以服务端返回的查看人列表为准。后续移除查看人前，请先确认其没有引用该客户的在途草稿，'
+            '保存后以服务器返回的查看人名单为准。后续要移除查看人时，请先确认对方没有引用该客户的未完成草稿，'
             '否则草稿可能无法继续打开或提交。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

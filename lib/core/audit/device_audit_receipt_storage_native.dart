@@ -97,7 +97,7 @@ class NativeDeviceAuditReceiptStorage implements DeviceAuditReceiptStorage {
       final original = File('${history.path}/$key-$digest.json');
       if (await original.exists()) {
         if (await original.readAsString() != existing) {
-          throw StateError('本机回执历史校验失败，原记录未覆盖');
+          throw StateError('本机回执历史核对未通过，原记录未覆盖');
         }
       } else {
         await _replace(original, existing);

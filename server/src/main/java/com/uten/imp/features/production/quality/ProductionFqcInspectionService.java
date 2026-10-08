@@ -634,7 +634,7 @@ public class ProductionFqcInspectionService
         LotCommandRef existing = findLotCommand(actorUserId, normalized.idempotencyKey());
         if (existing != null) {
             if (!existing.lotId().equals(lotId) || !existing.requestHash().equals(normalized.requestHash())) {
-                throw conflict("该整批判定幂等键已用于不同的批或不同数量，请刷新后重试");
+                throw conflict("同一防重复提交标识已用于不同的批或不同数量，请刷新后重试");
             }
             return new LotDecisionResult(existing.id(), requireLotView(lotId), true);
         }
@@ -941,10 +941,10 @@ public class ProductionFqcInspectionService
         if (!replay.isEmpty()) {
             if (replay.getFirst().length < 3 || replay.getFirst()[2] == null
                     || !currentUser.requireId().equals(replay.getFirst()[2])) {
-                throw conflict("该质检幂等键缺少可核验的原操作人或属于其他操作人，请核查原结果，不能绑定新的提交");
+                throw conflict("这个防重复提交标识的原操作人核对不上，请先查看原结果，不能重复提交");
             }
             if (!Objects.equals(replay.getFirst()[1], normalized.requestHash())) {
-                throw conflict("该质检幂等键已用于不同决定，请刷新后重试");
+                throw conflict("同一防重复提交标识已用于不同的质检决定，请刷新后重试");
             }
             return new DecisionWrite((UUID) replay.getFirst()[0], true, null);
         }
@@ -1350,7 +1350,7 @@ public class ProductionFqcInspectionService
                     || !Objects.equals(existing[2], stockDocumentItemId)
                     || dec(existing[3]).compareTo(requested) != 0
                     || !Objects.equals(existing[4], requestHash)) {
-                throw conflict("该 FQC 入库幂等键已用于不同请求");
+                throw conflict("同一防重复提交标识已用于不同的 FQC 入库请求，请刷新后重试");
             }
             return new ReleaseAuthorization(
                     (UUID) existing[0], inspectionId,
@@ -1522,7 +1522,7 @@ public class ProductionFqcInspectionService
         }
         if (!List.of("ARRIVAL_SINGLE", "ARRIVAL_BATCH")
                 .contains(request.sourceKind())) {
-            throw validation("品质检查单来源类型无效");
+            throw validation("品质检查单来源类型不正确");
         }
         String commandKey = normalizeDecisionKey(request.commandKey());
         String remark = request.remark() == null ? null : request.remark().strip();
@@ -1789,13 +1789,13 @@ public class ProductionFqcInspectionService
                         .setParameter("actorId", actorUserId)
                         .setParameter("key", normalized.idempotencyKey()));
         if (rows.size() != 1) {
-            throw conflict("批量全合格幂等命令未能建立，请重试");
+            throw conflict("批量全合格的处理记录未能建立，请重试");
         }
         Object[] row = rows.getFirst();
         requirePassAllReplayCompatible(string(row[1]), normalized);
         UUID batchId = (UUID) row[0];
         if (inserted == 1 && !candidateId.equals(batchId)) {
-            throw conflict("批量全合格幂等命令身份冲突，请刷新后重试");
+            throw conflict("批量全合格的处理记录信息冲突，请刷新后重试");
         }
         return new BatchCommand(batchId, inserted == 0);
     }
@@ -2293,7 +2293,7 @@ public class ProductionFqcInspectionService
             String existingHash,
             NormalizedPassAllBatch request) {
         if (!Objects.equals(existingHash == null ? null : existingHash.strip(), request.requestHash())) {
-            throw conflict("该批量全合格幂等键已用于不同任务集合，请刷新后重试");
+            throw conflict("同一防重复提交标识已用于不同的批量全合格任务集合，请刷新后重试");
         }
     }
 
@@ -2339,7 +2339,7 @@ public class ProductionFqcInspectionService
                 "ACTIVE", "PENDING", "PARTIAL",
                 "RESOLVED", "CANCELLED", "ALL")
                 .contains(value)) {
-            throw validation("生产质检状态筛选无效");
+            throw validation("生产质检状态筛选值不正确");
         }
         return value;
     }
@@ -2348,7 +2348,7 @@ public class ProductionFqcInspectionService
         String value = raw == null || raw.isBlank()
                 ? "ACTIVE" : raw.strip().toUpperCase(Locale.ROOT);
         if (!List.of("ACTIVE", "CLOSED", "ALL").contains(value)) {
-            throw validation("品质检查单状态筛选无效");
+            throw validation("品质检查单状态筛选值不正确");
         }
         return value;
     }
@@ -2385,7 +2385,7 @@ public class ProductionFqcInspectionService
         String value = raw == null ? "" : raw.strip();
         if (value.length() < 8 || value.length() > 160
                 || !value.matches("[A-Za-z0-9._:-]+")) {
-            throw validation("幂等键必须为 8 到 160 位字母、数字或 ._:-");
+            throw validation("防重复提交标识必须为 8 到 160 位字母、数字或 ._:-");
         }
         return value;
     }
@@ -2393,7 +2393,7 @@ public class ProductionFqcInspectionService
     static String normalizeDecisionKey(String raw) {
         String value = normalizeKey(raw);
         if (value.length() > 128) {
-            throw validation("质检决定幂等键不能超过 128 位");
+            throw validation("质检决定的防重复提交标识不能超过 128 位");
         }
         return value;
     }
@@ -2522,7 +2522,7 @@ public class ProductionFqcInspectionService
                     pass = requestedPassQty;
                     fail = requestedFailQty;
                 }
-                default -> throw validation("质检决定无效");
+                default -> throw validation("质检决定不正确");
             }
             if (pass.add(fail).compareTo(remaining) > 0) {
                 throw conflict("质检决定数量超过待检数量 "

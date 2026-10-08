@@ -484,7 +484,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           final kind = d.receiptKind?.trim().toUpperCase();
           if (kind != _receiptKindCustomerPrepayment &&
               kind != _receiptKindArSettlement) {
-            _initializationError = '收款类型待核实，不能根据明细数量推断或编辑。';
+            _initializationError = '收款类型待核实，本页暂不能编辑。';
             return;
           }
           _receiptKind = kind!;
@@ -636,7 +636,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       if (_currencyId != null &&
           lockedCurrencyId != null &&
           _currencyId != lockedCurrencyId) {
-        context.appError('${_cfg.isClient ? '收款' : '付款'}头币种与已选明细不一致，请先修正当前单据');
+        context.appError('${_cfg.isClient ? '收款' : '付款'}单的币种和已选明细不一致，请先修正后再引用');
         return;
       }
     }
@@ -680,7 +680,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           additions.any(
             (item) => item.currencyId == null || item.currencyId!.isEmpty,
           )) {
-        context.appError('所选${_cfg.isClient ? '应收' : '应付'}明细必须使用同一个已核验币种');
+        context.appError('所选${_cfg.isClient ? '应收' : '应付'}明细必须使用同一种币种');
         return;
       }
       final pickedCurrencyId = pickedCurrencies.single;
@@ -992,7 +992,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         final amountOriginal = financeAmountFromUnits(amountUnits);
         final currencyId = r.currencyId;
         if (currencyId == null || currencyId.isEmpty) {
-          context.appError('引用的应收币别缺失，请重新引用应收');
+          context.appError('引用的应收没有币种信息，请删除后重新引用');
           return;
         }
         if (_currencyId != null && currencyId != _currencyId) {
@@ -1026,7 +1026,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
           return;
         }
         if (r.currencyId == null || r.currencyId!.isEmpty) {
-          context.appError('引用的应付币别缺失，请重新引用应付');
+          context.appError('引用的应付没有币种信息，请删除后重新引用');
           return;
         }
         if (r.currencyId != _currencyId) {
@@ -1035,7 +1035,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         }
         final amountUnits = financeAmountUnits(r.amount.text.trim());
         if (amountUnits == null || amountUnits <= BigInt.zero) {
-          context.appError('请填写大于 0、最多 24 位有效小数的本次付款原币金额');
+          context.appError('请填写大于 0、最多 24 位小数的本次付款原币金额');
           return;
         }
         final amountOriginal = financeAmountFromUnits(amountUnits);
@@ -1060,7 +1060,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
       final amountUnits = financeAmountUnits(amountText);
       if (amountUnits == null || amountUnits <= BigInt.zero) {
-        context.appError('请为每条明细填写大于 0、最多 24 位有效小数的实际金额');
+        context.appError('请为每条明细填写大于 0、最多 24 位小数的实际金额');
         return;
       }
       final unchangedAmount = amountText == r.amountInputSnapshot;
@@ -1119,7 +1119,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       return;
     }
     if (_cfg.type == FinanceDocType.payment && itemsBody.isEmpty) {
-      context.appError('供应商预付资产、应用和退款链尚未开放；请先引用已入账应付');
+      context.appError('暂不支持给供应商预付或退款；请先引用已入账的应付');
       return;
     }
     final paymentAuthorityBody = _cfg.type == FinanceDocType.payment
@@ -1241,7 +1241,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     }
     final accountCurrencyId = names.accountCurrencyId(accountId);
     if (accountCurrencyId == null || accountCurrencyId.isEmpty) {
-      context.appError('收款账户缺少币种 UUID，请修复账户资料后再保存');
+      context.appError('收款账户的资料里缺少币种，请先补全账户资料后再保存');
       return null;
     }
     final accountStatus = names.accountStatus(accountId);
@@ -1265,7 +1265,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     if (_isCustomerPrepayment) {
       final units = financeAmountUnits(_amountOriginal.text.trim());
       if (units == null || units <= BigInt.zero) {
-        context.appError('请填写大于 0、最多 24 位有效小数的本批预收原币金额');
+        context.appError('请填写大于 0、最多 24 位小数的本批预收原币金额');
         return null;
       }
       settlementUnits = units;
@@ -1274,7 +1274,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       for (final item in items) {
         final units = financeAmountUnits(item['amountOriginal']?.toString());
         if (units == null || units <= BigInt.zero) {
-          context.appError('AR 分配金额精度无效，请重新输入');
+          context.appError('应收明细的分配金额填写得不对，请重新输入');
           return null;
         }
         settlementUnits += units;
@@ -1320,7 +1320,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
 
     final accountAmountUnits = financeAmountUnits(_accountAmount.text.trim());
     if (accountAmountUnits == null || accountAmountUnits <= BigInt.zero) {
-      _receiptSettlementError('请填写真实收款账户大于 0、最多 24 位有效小数的实际入账金额');
+      _receiptSettlementError('请填写收款账户实际入账金额（大于 0，最多 24 位小数）');
       return null;
     }
     final bankFeeUnits = financeAmountUnits(
@@ -1333,7 +1333,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         otherFeeUnits == null ||
         bankFeeUnits < BigInt.zero ||
         otherFeeUnits < BigInt.zero) {
-      _receiptSettlementError('手续费必须为非负数，最多 24 位有效小数');
+      _receiptSettlementError('手续费不能是负数，最多 24 位小数');
       return null;
     }
     final feeUnits = bankFeeUnits + otherFeeUnits;
@@ -1451,11 +1451,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     if (names.accountLoadError != null ||
         currency == null ||
         currency.isEmpty) {
-      context.appError('付款账户币种未核验，请刷新账户资料后保存');
+      context.appError('付款账户的币种资料还没加载到，请刷新后再保存');
       return null;
     }
     if (names.accountStatus(_accountId) != '使用') {
-      context.appError('付款账户已停用或状态未核验');
+      context.appError('付款账户已停用，或状态还没有确认，请刷新后重试');
       return null;
     }
     final same = currency == _currencyId;
@@ -1473,14 +1473,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         fee == null ||
         fee < BigInt.zero ||
         fee >= debit) {
-      context.appError('银行实际扣款须大于0，手续费须非负且小于扣款；最多24位有效小数');
+      context.appError('银行实际扣款要大于 0；手续费不能是负数、且要小于扣款；最多 24 位小数');
       return null;
     }
     var original = BigInt.zero;
     for (final item in items) {
       final amount = financeAmountUnits(item['amountOriginal']?.toString());
       if (amount == null || amount <= BigInt.zero) {
-        context.appError('付款原币明细无效，请核对实际货款');
+        context.appError('有一条付款明细的货款金额填写得不对，请核对后重试');
         return null;
       }
       original += amount;
@@ -2385,7 +2385,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                         // 并说明去处，避免「点开没得选还必填」把单据卡死。
                                         required: financeMethods.isNotEmpty,
                                         info: financeMethods.isEmpty
-                                            ? '暂无可选的收付款方式：旧库方式名称尚未同步、标准方式也未播种。可先保存，请管理员升级到 V632 或导入旧库收付款方式后再补选。'
+                                            ? '暂无可选的收付款方式：系统里还没有维护收付款方式。可先保存，请管理员补齐后再补选。'
                                             : null,
                                       ),
                                     if (isReceipt)
@@ -2481,7 +2481,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                       listenable: _grid,
                                       builder: (context, _) => Text(
                                         _grid.isEmpty
-                                            ? '请先引用已入账应付；供应商预付链尚未开放'
+                                            ? '请先引用已入账的应付；暂不支持给供应商预付'
                                             : '由服务端按应付核销明细汇总',
                                         style: theme.textTheme.bodySmall,
                                       ),
@@ -2790,9 +2790,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         names.accountIsBaseCurrency(_accountId) != true &&
         accountCurrencyId != _currencyId;
     final message = names.accountLoadError != null
-        ? '账户币种资料加载失败；当前禁止保存，请刷新后重试。'
+        ? '账户币种资料没有加载出来，暂不能保存，请刷新后重试。'
         : currency == null
-        ? '该账户未返回币种 UUID，请修复账户资料后再保存。'
+        ? '这个账户的资料里缺少币种信息，请先补全账户资料再保存。'
         : thirdCurrency
         ? '暂不支持第三币种到账：该账户币种为 $currency，必须改选人民币账户或与应收原币相同的账户。'
         : null;

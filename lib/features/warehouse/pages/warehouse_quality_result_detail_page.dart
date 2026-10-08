@@ -265,7 +265,7 @@ class _WarehouseQualityResultDetailPageState
       // 刷新落位，每笔仍可点开看完整去向。
       if (result.replayed) {
         context.appInfo(
-          '本次入库此前已完成（安全重放 ${result.confirmedCount} 条），'
+          '本次入库此前已完成（没有重复入库，共 ${result.confirmedCount} 条），'
           '实际去向见下方入库历史',
         );
       } else {

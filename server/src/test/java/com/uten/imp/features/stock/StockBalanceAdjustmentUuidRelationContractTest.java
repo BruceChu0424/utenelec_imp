@@ -151,7 +151,7 @@ class StockBalanceAdjustmentUuidRelationContractTest {
 
         assertThat(resolver)
                 .contains("findById(requiredUuid(id))")
-                .contains("当前关联必须提供主档 UUID")
+                .contains("旧系统编号只保留作历史记录")
                 .doesNotContain("findByLegacyId(")
                 .doesNotContain("nonZero(legacyId)");
         assertThat(goodsModel)

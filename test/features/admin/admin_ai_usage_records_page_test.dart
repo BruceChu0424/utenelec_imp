@@ -7,16 +7,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/router/permission_by_path.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/admin/models/ai_provider_models.dart';
-import 'package:uten_imp/features/admin/pages/admin_ai_settings_page.dart';
+import 'package:uten_imp/features/admin/pages/admin_ai_usage_records_page.dart';
 import 'package:uten_imp/features/admin/repositories/ai_provider_repository.dart';
-import 'package:uten_imp/features/admin/widgets/ai_provider_card.dart';
 import 'package:uten_imp/features/admin/repositories/ai_usage_audit_repository.dart';
-import 'package:uten_imp/features/admin/widgets/ai_usage_audit_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -26,95 +29,45 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../ai_visual/ai_visual_support.dart';
 
 void main() {
-  testWidgets(
-    'billing refreshes parent provider versions before the next provider command',
-    (tester) async {
-      final providers = _Providers();
-      final repository = _Repository()
-        ..afterSave = (values) =>
-            providers.version = (values['version'] as int) + 1;
-      await _pump(tester, repository, providers: providers);
-      expect(
-        tester
-            .widget<AiProviderCard>(find.byType(AiProviderCard))
-            .provider
-            .version,
-        7,
-      );
-      await _openBilling(tester);
-      await _save(tester);
-      expect(providers.reads, 2);
-      final list = find
-          .descendant(
-            of: find.byKey(const ValueKey('ai-settings-list')),
-            matching: find.byType(Scrollable),
+  test('route inherits the system-administration guard', () {
+    expect(requiredAnyPermFor(RouteName.adminAiUsageRecords), const [
+      Perm.authorizationManage,
+    ]);
+    expect(requiredAllPermsFor(RouteName.adminAiUsageRecords), isEmpty);
+  });
+
+  testWidgets('billing save closes and refreshes the audit data', (
+    tester,
+  ) async {
+    final providers = _Providers();
+    final repository = _Repository()
+      ..afterSave = (values) =>
+          providers.version = (values['version'] as int) + 1;
+    await _pump(tester, repository, providers: providers);
+    final readsBefore = repository.reads.length;
+    await _openBilling(tester);
+    await _save(tester);
+    await _closeBilling(tester);
+    expect(repository.reads.length, readsBefore + 1);
+    expect(providers.reads, greaterThanOrEqualTo(1));
+  });
+
+  testWidgets('provider list failure keeps records readable and billing off', (
+    tester,
+  ) async {
+    final providers = _Providers()..listError = NetworkException();
+    await _pump(tester, _Repository(), providers: providers);
+    expect(find.text('原账号问题内容'), findsOneWidget);
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const ValueKey('ai-records-billing-open')),
           )
-          .first;
-      tester.state<ScrollableState>(list).position.jumpTo(0);
-      await tester.pumpAndSettle();
-      final card = tester.widget<AiProviderCard>(find.byType(AiProviderCard));
-      expect(card.provider.version, 8);
-      card.onEnabledChanged(false);
-      await tester.pumpAndSettle();
-      expect(providers.enabledVersions, [8]);
-      expect(repository.reads.length, greaterThanOrEqualTo(2));
-    },
-  );
-
-  for (final boundary in ['server', 'account', 'permission']) {
-    testWidgets(
-      'parent $boundary boundary hides old providers and late refreshes',
-      (tester) async {
-        final providers = _Providers();
-        final harness = await _pump(
-          tester,
-          _Repository(),
-          providers: providers,
-        );
-        final pending = Completer<List<AiProviderConfig>>();
-        providers.pending.add(pending.future);
-        await tester.tap(find.byKey(const ValueKey('ai-settings-refresh')));
-        await tester.pump();
-        providers.name = 'New provider context';
-        harness.change(boundary);
-        await tester.pumpAndSettle();
-        expect(find.text('测试 AI 服务'), findsNothing);
-        pending.complete([
-          AiProviderConfig.fromJson({
-            'id': _providerId,
-            'name': 'Late old provider',
-            'version': 7,
-          }),
-        ]);
-        await tester.pumpAndSettle();
-        expect(find.text('Late old provider'), findsNothing);
-        if (boundary == 'permission') {
-          expect(find.byType(AiProviderCard), findsNothing);
-        }
-      },
+          .onPressed,
+      isNull,
     );
-  }
-
-  for (final denied in ['list', 'usage']) {
-    testWidgets('parent authoritative $denied denial clears cached providers', (
-      tester,
-    ) async {
-      final providers = _Providers();
-      await _pump(tester, _Repository(), providers: providers);
-      expect(find.byType(AiProviderCard), findsOneWidget);
-      final error = ApiException('FORBIDDEN', 'Denied', httpStatus: 403);
-      if (denied == 'list') {
-        providers.listError = error;
-      } else {
-        providers.usageError = error;
-      }
-      await tester.tap(find.byKey(const ValueKey('ai-settings-refresh')));
-      await tester.pumpAndSettle();
-      expect(find.byType(AiProviderCard), findsNothing);
-      expect(find.text('测试 AI 服务'), findsNothing);
-      expect(find.byKey(const ValueKey('ai-settings-add')), findsNothing);
-    });
-  }
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('usage timestamps follow the platform Beijing display', (
     tester,
@@ -159,6 +112,7 @@ void main() {
   testWidgets('unknown cost stays unknown and currencies are never combined', (
     tester,
   ) async {
+    final zh = lookupAppLocalizations(const Locale('zh'));
     final repository = _Repository()
       ..data = _data(
         costs: [
@@ -168,15 +122,16 @@ void main() {
         unknown: 2,
       );
     await _pump(tester, repository);
-    expect(find.text('实际费用：CNY 1.23'), findsOneWidget);
-    expect(find.text('估算费用：USD 0.45'), findsOneWidget);
-    expect(find.text('2 次调用费用待确认'), findsOneWidget);
+    // 汇总卡分别显示实际/估算的币种+金额, 不做跨币种合并。
+    expect(find.text('CNY 1.23'), findsOneWidget);
+    expect(find.text('USD 0.45'), findsOneWidget);
+    expect(find.text(zh.aiRecordsStatUnknownFooter(2)), findsOneWidget);
     expect(find.textContaining('1.68'), findsNothing);
     expect(find.textContaining('0.00'), findsNothing);
     repository.data = _data(costs: [], unknown: 3);
     await tester.tap(find.byTooltip('刷新记录'));
     await tester.pumpAndSettle();
-    expect(find.text('3 次调用费用待确认'), findsOneWidget);
+    expect(find.text(zh.aiRecordsStatUnknownFooter(3)), findsOneWidget);
     expect(find.textContaining('CNY'), findsNothing);
     expect(find.textContaining('0.00'), findsNothing);
   });
@@ -226,7 +181,7 @@ void main() {
   );
 
   testWidgets(
-    'expanded records display the historical provider and model snapshot',
+    'record detail shows the historical provider and model snapshot',
     (tester) async {
       final repository = _Repository();
       final record = (repository.data['records'] as List).single as Map;
@@ -235,16 +190,19 @@ void main() {
       await _pump(tester, repository);
       await tester.tap(find.text('原账号问题内容'));
       await tester.pumpAndSettle();
-      final l10n = lookupAppLocalizations(const Locale('zh'));
+      final detail = find.byKey(const ValueKey('ai-records-detail'));
       expect(
-        find.text(l10n.aiAuditProviders('历史服务 A / 历史服务 B')),
+        find.descendant(of: detail, matching: find.text('历史服务 A / 历史服务 B')),
         findsOneWidget,
       );
       expect(
-        find.text(l10n.aiAuditModel('previous-model-1 / previous-model-2')),
+        find.descendant(
+          of: detail,
+          matching: find.text('previous-model-1 / previous-model-2'),
+        ),
         findsOneWidget,
       );
-      expect(find.text(l10n.aiAuditProviders('测试 AI 服务')), findsNothing);
+      expect(find.byTooltip('关闭'), findsOneWidget);
     },
   );
 
@@ -253,20 +211,21 @@ void main() {
     (tester) async {
       final repository = _Repository()..data = _data(total: 41);
       await _pump(tester, repository);
-      await tester.ensureVisible(find.byTooltip('下一页'));
-      await tester.tap(find.byTooltip('下一页'));
+      final next = find.text('下一页');
+      await tester.ensureVisible(next);
+      await tester.tap(next);
       await tester.pumpAndSettle();
       expect(repository.reads.last['page'], 1);
-      await _select<int>(tester, '时间', '近 7 天');
+      await _select(tester, '时间', '近 7 天');
       expect(repository.reads.last['days'], 7);
       expect(repository.reads.last['page'], 0);
-      await _select<String>(tester, '使用人', '示例员工（E001）');
+      await _select(tester, '使用人', '示例员工（E001）');
       expect(repository.reads.last['userId'], 'employee-1');
       expect(repository.reads.last['page'], 0);
-      await _select<String>(tester, 'AI 服务', '测试 AI 服务');
+      await _select(tester, 'AI 服务', '测试 AI 服务');
       expect(repository.reads.last['providerId'], _providerId);
       expect(repository.reads.last['userId'], 'employee-1');
-      await _select<String>(tester, '使用人', '全部员工');
+      await _select(tester, '使用人', '全部员工');
       expect(repository.reads.last['userId'], isNull);
       expect(repository.reads.last['providerId'], _providerId);
     },
@@ -290,6 +249,8 @@ void main() {
       'currency': 'CNY',
       'inputPerMillion': '1.2500000001',
       'outputPerMillion': '2.50',
+      'quota5h': null,
+      'quotaWeekly': null,
     });
     await _save(tester);
     expect(repository.saved.last.$2['version'], 8);
@@ -335,30 +296,58 @@ void main() {
     expect(repository.saved.single.$2['inputPerMillion'], '1000000.0000000000');
   });
 
+  testWidgets(
+    'subscription quota meters use logged usage and save configured quotas',
+    (tester) async {
+      final zh = lookupAppLocalizations(const Locale('zh'));
+      final repository = _Repository();
+      repository.billingValue
+        ..['billingMode'] = 'SUBSCRIPTION'
+        ..['currency'] = null
+        ..['inputPerMillion'] = null
+        ..['outputPerMillion'] = null
+        ..['quota5h'] = 120
+        ..['quotaWeekly'] = 600
+        ..['quota'] = {
+          'status': 'LOGGED',
+          'message': null,
+          'windows': [
+            {'key': 'FIVE_HOURS', 'used': 3, 'quota': 120},
+            {'key': 'WEEKLY', 'used': 5, 'quota': 600},
+          ],
+        };
+      await _pump(tester, repository);
+      await _openBilling(tester);
+      expect(find.text(zh.aiAuditQuota5hUsed(3, '120')), findsOneWidget);
+      expect(find.text(zh.aiAuditQuotaWeeklyUsed(5, '600')), findsOneWidget);
+      expect(find.byType(LinearProgressIndicator), findsNWidgets(2));
+      await _enter(tester, zh.aiAuditFiveHourQuota, '200');
+      await _save(tester);
+      expect(repository.saved.single.$2['billingMode'], 'SUBSCRIPTION');
+      expect(repository.saved.single.$2['quota5h'], 200);
+      expect(repository.saved.single.$2['quotaWeekly'], 600);
+    },
+  );
+
   for (final status in [401, 403]) {
-    testWidgets(
-      'server $status clears audit filters and the open billing editor',
-      (tester) async {
-        final repository = _Repository();
-        await _pump(tester, repository);
-        await _openBilling(tester);
-        expect(find.widgetWithText(FilledButton, '保存计费设置'), findsOneWidget);
-        final pending = Completer<Map<String, dynamic>>();
-        repository.pendingReads.add(pending.future);
-        await tester.ensureVisible(find.byTooltip('刷新记录'));
-        await tester.tap(find.byTooltip('刷新记录'));
-        await tester.pump();
-        pending.completeError(
-          ApiException('FORBIDDEN', '当前账号不能读取记录', httpStatus: status),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('当前账号不能读取记录'), findsOneWidget);
-        expect(find.text('原账号问题内容'), findsNothing);
-        expect(find.byType(DropdownButtonFormField<String>), findsNothing);
-        expect(find.widgetWithText(FilledButton, '保存计费设置'), findsNothing);
-        expect(repository.saved, isEmpty);
-      },
-    );
+    testWidgets('server $status hides the audit data and the filters', (
+      tester,
+    ) async {
+      final repository = _Repository();
+      await _pump(tester, repository);
+      final pending = Completer<Map<String, dynamic>>();
+      repository.pendingReads.add(pending.future);
+      await tester.tap(find.byTooltip('刷新记录'));
+      await tester.pump();
+      pending.completeError(
+        ApiException('FORBIDDEN', '当前账号不能读取记录', httpStatus: status),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('当前账号不能读取记录'), findsOneWidget);
+      expect(find.text('原账号问题内容'), findsNothing);
+      expect(find.byType(UtenDropdownField), findsNothing);
+      expect(repository.saved, isEmpty);
+    });
   }
 
   testWidgets('billing denial also hides previously visible audit data', (
@@ -375,7 +364,7 @@ void main() {
     await _save(tester);
     expect(find.text('当前账号不能修改计费'), findsOneWidget);
     expect(find.text('原账号问题内容'), findsNothing);
-    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+    expect(find.byType(UtenDropdownField), findsNothing);
     expect(find.widgetWithText(FilledButton, '保存计费设置'), findsNothing);
   });
 
@@ -399,17 +388,17 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await _pump(tester, repository);
+      final pendingRead = Completer<Map<String, dynamic>>();
+      repository.pendingReads.add(pendingRead.future);
+      await tester.tap(find.byTooltip('刷新记录'));
+      await tester.pump();
       await _openBilling(tester);
       final pendingSave = Completer<Map<String, dynamic>>();
       repository.pendingSave = pendingSave;
       await tester.ensureVisible(find.widgetWithText(FilledButton, '保存计费设置'));
       await tester.tap(find.widgetWithText(FilledButton, '保存计费设置'));
       await tester.pump();
-      final pendingRead = Completer<Map<String, dynamic>>();
-      repository.pendingReads.add(pendingRead.future);
-      await tester.ensureVisible(find.byTooltip('刷新记录'));
-      await tester.tap(find.byTooltip('刷新记录'));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       pendingSave.completeError(
         ApiException('FORBIDDEN', '不可继续读取费用', httpStatus: 403),
       );
@@ -417,7 +406,7 @@ void main() {
       pendingRead.complete(_data(question: '拒绝后的迟到内容'));
       await tester.pumpAndSettle();
       expect(find.text('拒绝后的迟到内容'), findsNothing);
-      expect(find.byType(DropdownButtonFormField<String>), findsNothing);
+      expect(find.byType(UtenDropdownField), findsNothing);
       expect(
         tester
             .widget<IconButton>(
@@ -432,36 +421,28 @@ void main() {
   );
 
   for (final locale in ['en', 'ko']) {
-    testWidgets(
-      '$locale audit and billing use localized labels and fit 390 width',
-      (tester) async {
-        final repository = _Repository();
-        await _pump(
-          tester,
-          repository,
-          width: 390,
-          height: 1100,
-          screenshot: true,
-          locale: Locale(locale),
-        );
-        final l10n = lookupAppLocalizations(Locale(locale));
-        expect(find.text(l10n.aiAuditTitle), findsOneWidget);
-        expect(find.text(l10n.aiAuditUnknownCost(1)), findsOneWidget);
-        expect(find.text('使用记录与费用'), findsNothing);
-        await tester.ensureVisible(find.text(l10n.aiAuditBillingTitle));
-        await tester.tap(find.text(l10n.aiAuditBillingTitle));
-        await tester.pumpAndSettle();
-        await _select<String>(tester, l10n.aiAuditSelectProvider, '测试 AI 服务');
-        expect(find.text(l10n.aiAuditInputPrice), findsOneWidget);
-        expect(find.text(l10n.aiAuditSaveBilling), findsOneWidget);
-        expect(tester.takeException(), isNull);
-        if (kCaptureUi) {
-          await tester.ensureVisible(find.text(l10n.aiAuditSaveBilling));
-          await tester.pumpAndSettle();
-          await capture(tester, 'usage-billing-$locale-390');
-        }
-      },
-    );
+    testWidgets('$locale records and billing use localized labels', (
+      tester,
+    ) async {
+      final repository = _Repository();
+      await _pump(
+        tester,
+        repository,
+        width: 390,
+        height: 1100,
+        locale: Locale(locale),
+      );
+      final l10n = lookupAppLocalizations(Locale(locale));
+      expect(find.text(l10n.aiAuditTitle), findsOneWidget);
+      expect(find.text(l10n.aiRecordsStatUnknownFooter(1)), findsOneWidget);
+      expect(find.text('使用记录与费用'), findsNothing);
+      await tester.ensureVisible(find.text(l10n.aiRecordsBillingOpen));
+      await tester.tap(find.text(l10n.aiRecordsBillingOpen));
+      await tester.pumpAndSettle();
+      expect(find.text(l10n.aiAuditInputPrice), findsOneWidget);
+      expect(find.text(l10n.aiAuditSaveBilling), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   }
 
   for (final boundary in [
@@ -526,20 +507,27 @@ void main() {
       expect(repository.saved, hasLength(1));
       final readCount = repository.reads.length;
       harness.change('account');
-      await tester.pumpAndSettle();
+      // 保存仍在途(抽屉转圈): 固定泵帧, 不能 settle。
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       pending.complete({
         'version': 8,
         'billingMode': 'METERED',
         'model': 'old-private-model',
       });
-      await tester.pumpAndSettle();
-      expect(repository.reads, hasLength(readCount + 1));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('已保存，仅影响后续调用。'), findsNothing);
       expect(find.textContaining('old-private-model'), findsNothing);
+      await _closeBilling(tester);
+      await tester.pumpAndSettle();
+      // 换账号后页面整体重建(owner 变化), 新会话只允许这一次全新读取;
+      // 旧会话的收尾回调不允许再读, 也不显示旧账号的成功提示。
+      expect(repository.reads, hasLength(readCount + 1));
     },
   );
 
-  testWidgets('390 wide audit and inline billing render without overflow', (
+  testWidgets('390 wide records and billing render without overflow', (
     tester,
   ) async {
     await setCaptureView(tester, const Size(390, 1100));
@@ -552,11 +540,11 @@ void main() {
         unknown: 2,
       );
     await _pump(tester, repository, width: 390, height: 1100, screenshot: true);
-    await capture(tester, 'usage-audit-390');
+    await capture(tester, 'usage-records-390');
     await _openBilling(tester);
     await tester.ensureVisible(find.widgetWithText(FilledButton, '保存计费设置'));
     await tester.pumpAndSettle();
-    await capture(tester, 'usage-billing-390');
+    await capture(tester, 'usage-records-billing-390');
     expect(tester.takeException(), isNull);
   }, skip: !kCaptureUi);
 }
@@ -658,8 +646,7 @@ Future<_Harness> _pump(
       sessionProvider.overrideWith(_Session.new),
       sessionSnapshotProvider.overrideWith(_Snapshot.new),
       aiUsageAuditRepositoryProvider.overrideWithValue(repository),
-      if (providers != null)
-        aiProviderRepositoryProvider.overrideWithValue(providers),
+      aiProviderRepositoryProvider.overrideWithValue(providers ?? _Providers()),
     ],
   );
   addTearDown(container.dispose);
@@ -674,22 +661,7 @@ Future<_Harness> _pump(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           theme: _auditTheme(korean: koreanFontLoaded),
-          home: providers != null
-              ? const AdminAiSettingsPage()
-              : Scaffold(
-                  body: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: AiUsageAuditPanel(
-                      providers: [
-                        AiProviderConfig.fromJson({
-                          'id': _providerId,
-                          'name': '测试 AI 服务',
-                          'model': 'fixture-model',
-                        }),
-                      ],
-                    ),
-                  ),
-                ),
+          home: const AdminAiUsageRecordsPage(),
         ),
       ),
     ),
@@ -737,17 +709,12 @@ ThemeData _auditTheme({required bool korean}) {
   );
 }
 
-Finder _dropdown<T>(String label) => find.byWidgetPredicate(
-  (widget) =>
-      widget is DropdownButtonFormField<T> &&
-      widget.decoration.labelText == label,
+Finder _field(String label) => find.byWidgetPredicate(
+  (widget) => widget is UtenDropdownField && widget.label == label,
 );
-Future<void> _select<T>(
-  WidgetTester tester,
-  String label,
-  String choice,
-) async {
-  final target = _dropdown<T>(label);
+
+Future<void> _select(WidgetTester tester, String label, String choice) async {
+  final target = _field(label);
   await tester.ensureVisible(target);
   await tester.tap(target);
   await tester.pumpAndSettle();
@@ -755,19 +722,30 @@ Future<void> _select<T>(
   await tester.pumpAndSettle();
 }
 
+/// 计费抽屉只有一个服务商时自动选中, 打开即出表单。
+/// 用固定时长泵帧: 页面可能在途读取(不确定进度条), pumpAndSettle 永不落定。
 Future<void> _openBilling(WidgetTester tester) async {
-  await tester.ensureVisible(find.text('计费方式与套餐额度'));
-  await tester.tap(find.text('计费方式与套餐额度'));
+  final button = find.byKey(const ValueKey('ai-records-billing-open'));
+  await tester.ensureVisible(button);
+  await tester.tap(button);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
+Future<void> _closeBilling(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('关闭'));
   await tester.pumpAndSettle();
-  await _select<String>(tester, '选择服务', '测试 AI 服务');
 }
 
 Future<void> _enter(WidgetTester tester, String label, String value) async {
   final field = find.byWidgetPredicate(
-    (widget) => widget is TextField && widget.decoration?.labelText == label,
+    (widget) => widget is UtenInput && widget.label == label,
   );
   await tester.ensureVisible(field);
-  await tester.enterText(field, value);
+  await tester.enterText(
+    find.descendant(of: field, matching: find.byType(EditableText)),
+    value,
+  );
   await tester.pump();
 }
 

@@ -12,6 +12,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -347,7 +348,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                         if (_draftBatch != null) ...[
                           const SizedBox(height: UtenSpacing.s8),
                           Text(
-                            '服务器草稿批次：${_draftBatch!.id}',
+                            '工资草稿编号：${_draftBatch!.id}',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
@@ -389,7 +390,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
     }
     if (_step == 2) {
       if (_draftBatch?.slips.isEmpty ?? true) {
-        context.appError('服务器未返回工资明细，不能提交空批次');
+        context.appError('这批工资没有生成任何员工明细，不能提交');
         return;
       }
       setState(() => _step = 3);
@@ -421,7 +422,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
       if (batch.status != PayrollBatchStatus.draft ||
           batch.year != _year ||
           batch.month != _month) {
-        throw const FormatException('服务器返回的工资草稿与所选期间或状态不一致');
+        throw const FormatException('生成的工资草稿和所选年月对不上，请返回上一步重新生成');
       }
       if (!mounted) return;
       setState(() {
@@ -433,7 +434,7 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
       if (!mounted) return;
       setState(
         () => _operationError =
-            '生成失败：${describeSubmitError(error, fallback: '$error')}',
+            '生成失败：${describeSubmitError(error, fallback: '网络或服务器出了问题，请稍后重试')}',
       );
       context.appError(_operationError!);
     } finally {
@@ -458,7 +459,9 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
       backTo(context, defaultPath: RouteName.employee);
     } catch (error) {
       if (!mounted) return;
-      setState(() => _operationError = '提交失败：$error');
+      setState(
+        () => _operationError = humanErrorMessage(error) ?? '提交没有成功，请稍后重试',
+      );
       context.appError(_operationError!);
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -514,7 +517,7 @@ class _ServerBatchPreview extends StatelessWidget {
         const SizedBox(height: UtenSpacing.s12),
         if (visibleSlips.isEmpty)
           Text(
-            '服务器未返回员工工资明细，请不要提交空批次。',
+            '这批工资没有任何员工明细，请不要提交。',
             style: TextStyle(color: theme.colorScheme.error),
           )
         else

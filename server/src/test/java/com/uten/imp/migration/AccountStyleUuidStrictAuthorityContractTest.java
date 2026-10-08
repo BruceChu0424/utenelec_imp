@@ -81,12 +81,12 @@ class AccountStyleUuidStrictAuthorityContractTest {
                 "../lib/features/basic_data/models/payment_style_node.dart"));
 
         assertThat(accounts)
-                .contains("stylelegacyid 不能用于建立关联")
+                .contains("不能用旧系统编号选择会计科目")
                 .contains("and id=:styleid")
-                .contains("使用中的账户必须选择会计科目 uuid")
+                .contains("使用中的账户必须选择会计科目")
                 .doesNotContain("legacy_id=:reference");
         assertThat(styles)
-                .contains("linkedaccountlegacyid 不能用于建立关联")
+                .contains("不能用旧系统编号选择账户")
                 .contains("and id=:accountid")
                 .doesNotContain("legacy_id=:reference");
         assertThat(styleRepository)

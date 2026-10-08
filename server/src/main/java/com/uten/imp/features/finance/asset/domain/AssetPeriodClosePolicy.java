@@ -14,14 +14,14 @@ public final class AssetPeriodClosePolicy {
         if (!evidence.depreciationPosted() || !evidence.amortizationPosted()) {
             throw new ApiException(
                     ErrorCode.CONFLICT,
-                    "Both depreciation and amortization require an effective posted run, including zero runs");
+                    "折旧和摊销都要先生成生效的过账批次（金额为 0 也要过账），才能关闭期间");
         }
         if (evidence.blockingExceptionCount() != 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "Posting runs still contain blocking exceptions");
+            throw new ApiException(ErrorCode.CONFLICT, "过账批次里还有必须先处理的问题，不能关闭期间");
         }
         if (evidence.subledgerAmount().compareTo(evidence.glDebitAmount()) != 0
                 || evidence.glDebitAmount().compareTo(evidence.glCreditAmount()) != 0) {
-            throw new ApiException(ErrorCode.CONFLICT, "Asset subledger does not reconcile with the general ledger");
+            throw new ApiException(ErrorCode.CONFLICT, "资产明细账与总账对不上，不能关闭期间");
         }
     }
 

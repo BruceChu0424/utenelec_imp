@@ -196,13 +196,13 @@ class _FinanceAssetLedgerPanelState
     if (!canDeleteNow()) return;
     final expectedVersion = item.version;
     if (expectedVersion == null) {
-      if (mounted) context.appWarning('缺少记录版本，请刷新后重试');
+      if (mounted) context.appWarning('这条数据可能刚被别人改过，请刷新后重试');
       return;
     }
     final confirmed = await UtenDialog.show(
       context,
       title: '删除草稿？',
-      content: Text('将删除 ${item.code} ${item.name}。仅草稿可删除，历史事件不会被伪造覆盖。'),
+      content: Text('将删除 ${item.code} ${item.name}。只有草稿能删除，已入账的历史记录不会受影响。'),
       confirmLabel: '删除草稿',
       danger: true,
     );

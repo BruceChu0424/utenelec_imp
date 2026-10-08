@@ -325,7 +325,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
     MasterDetailRow('币种名称', c.name),
     MasterDetailRow('参考汇率', c.exchangeRate?.toStringAsFixed(4)),
     MasterDetailRow('状态', c.status),
-    MasterDetailRow('本位币权威', c.baseCurrency ? '是(UUID 受保护)' : '否'),
+    MasterDetailRow('本位币权威', c.baseCurrency ? '是（受保护，不可改动）' : '否'),
     MasterDetailRow('旧系统 ID', c.legacyId?.toString()),
   ];
 

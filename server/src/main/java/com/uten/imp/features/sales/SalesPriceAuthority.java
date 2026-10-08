@@ -83,7 +83,7 @@ public class SalesPriceAuthority {
         if (price == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "货品未维护销售单价，无法创建" + documentLabel + "明细(" + goodsId + ")");
+                    "货品还没有销售单价，不能创建" + documentLabel + "明细(" + goodsId + ")");
         }
         return requireNonNegativePrice(price);
     }

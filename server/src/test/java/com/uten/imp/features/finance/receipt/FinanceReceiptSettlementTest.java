@@ -427,7 +427,7 @@ class FinanceReceiptSettlementTest {
 
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("收款创建幂等键已用于不同内容");
+                .hasMessageContaining("内容不同的收款单");
     }
 
     @Test
@@ -447,7 +447,7 @@ class FinanceReceiptSettlementTest {
 
         assertThatThrownBy(() -> service.create(request))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("收款创建幂等键已用于不同内容");
+                .hasMessageContaining("内容不同的收款单");
     }
 
     @Test

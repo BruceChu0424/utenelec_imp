@@ -990,7 +990,7 @@ public class ProcurementFinanceApprovalService {
                     || item.expectedVersion() < 1) {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED,
-                        "批量审批任务身份或版本无效");
+                        "批量审批里有任务不存在或已被别人处理，请刷新后重试");
             }
             if (expectedVersions.putIfAbsent(
                     item.caseId(), item.expectedVersion()) != null) {

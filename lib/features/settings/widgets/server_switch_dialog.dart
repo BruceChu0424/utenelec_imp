@@ -171,7 +171,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted) context.appError('恢复失败：$e');
+      if (mounted) context.appError('恢复默认设置失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -207,7 +207,7 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted) context.appError('保存失败：$e');
+      if (mounted) context.appError('保存失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

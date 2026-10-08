@@ -1528,7 +1528,7 @@ class _FinanceQuoteReviewPageState
               : !quantity &&
                     draft.directPricing &&
                     !isValidFinancePrice(controller.text)
-              ? const UtenFieldMessage.error('单价须为非负数')
+              ? const UtenFieldMessage.error('单价不能是负数')
               : null,
         ),
       ),

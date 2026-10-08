@@ -151,7 +151,7 @@ public class MaterialAnalysisService {
                         "只能打开本人负责的物料分析", scopeForAnalysis(replayHeader));
                 if (!isCommandReplay(initialReplay, "PREVIEW",
                         request.idempotencyKey(), requestHash)) {
-                    throw conflict("首次预览幂等锚缺少结果，不能安全重放");
+                    throw conflict("首次预览的结果记录缺失，不能自动给出结果，请重新预览");
                 }
                 return detailInternal(initialReplay, false);
             }
@@ -314,12 +314,12 @@ public class MaterialAnalysisService {
         if (!normalizedStatus.isEmpty()
                 && !Set.of("ACTIVE", "PARTIALLY_PLANNED", "COMPLETED", "CANCELLED")
                 .contains(normalizedStatus)) {
-            throw validation("物料分析状态筛选值无效");
+            throw validation("物料分析状态筛选值不正确");
         }
         if (!normalizedSource.isEmpty()
                 && !Set.of(SOURCE_SALES, "REWORK", "TRIAL", "SAMPLE", "STOCK",
                         "OTHER", SOURCE_MAKE_COMPONENT).contains(normalizedSource)) {
-            throw validation("生产需求来源筛选值无效");
+            throw validation("生产需求来源筛选值不正确");
         }
         var ownerScope = access.nativeReadScope(
                 "analysis.maker_id", "analysisOwners", access.scope());
@@ -3879,7 +3879,7 @@ public class MaterialAnalysisService {
                     material.bomQty(), material.consumptionBasis(),
                     material.basisOutputQty(), material.allowPartialPackage());
         } catch (IllegalArgumentException ex) {
-            throw conflict("BOM 包装/批次计量数据无效，不能预览生产计划");
+                throw conflict("BOM 包装/批次计量数据不正确，不能预览生产计划");
         }
     }
 
@@ -4817,7 +4817,7 @@ public class MaterialAnalysisService {
             }
             if (!Set.of(SOURCE_SALES, "REWORK", "TRIAL", "SAMPLE", "STOCK", "OTHER")
                     .contains(source)) {
-                throw validation("生产需求来源类型无效");
+                throw validation("生产需求来源类型不正确");
             }
             if (SOURCE_SALES.equals(source)) {
                 if (item.salesOrderItemId() == null
@@ -5991,7 +5991,7 @@ public class MaterialAnalysisService {
                         parentOutputQty, usage.usedQty(), consumptionBasis,
                         basisOutputQty, allowPartialPackage);
             } catch (IllegalArgumentException ex) {
-                throw conflict("BOM 包装/批次计量数据无效，不能进行物料分析");
+                throw conflict("BOM 包装/批次计量数据不正确，不能进行物料分析");
             }
             boolean hasChildren = Boolean.TRUE.equals(row[18]);
             BomNode node = new BomNode(
@@ -8212,7 +8212,7 @@ public class MaterialAnalysisService {
                 .getResultList();
         if (rows.isEmpty()) return false;
         if (!requestHash.equals(Objects.toString(rows.getFirst(), ""))) {
-            throw conflict("同一幂等键已用于不同请求");
+            throw conflict("同一防重复提交标识已用于不同内容的请求，请刷新后重试");
         }
         return true;
     }
@@ -9351,7 +9351,7 @@ public class MaterialAnalysisService {
                         parentOutputQty, bomQty(),
                         consumptionBasis, basisOutputQty, allowPartialPackage);
             } catch (IllegalArgumentException ex) {
-                throw conflict("BOM 包装/批次计量数据无效，不能计算齐套数量");
+                throw conflict("BOM 包装/批次计量数据不正确，不能计算齐套数量");
             }
         }
         BomNode withSnapshotRequiredQty(BigDecimal requiredQty) {
@@ -9540,7 +9540,7 @@ public class MaterialAnalysisService {
             try {
                 return MaterialConsumptionMath.required(output,bomQty,consumptionBasis,basisOutputQty,allowPartialPackage);
             } catch(IllegalArgumentException invalidBom) {
-                throw conflict("BOM 包装/批次计量数据无效，不能计算齐套数量");
+                throw conflict("BOM 包装/批次计量数据不正确，不能计算齐套数量");
             }
         }
         /** 下达预览(ADR-116): 换上内存重算的数量列(与刷新写回的列一一对应)。 */

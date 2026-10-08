@@ -15,6 +15,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../models/suggestion.dart';
@@ -253,7 +254,9 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
         context.replace(RoutePath.suggestionDetail(s.id));
       }
     } catch (e) {
-      if (mounted) UtenToast.error(context, '提交失败：$e');
+      if (mounted) {
+        UtenToast.error(context, humanErrorMessage(e) ?? '提交失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }

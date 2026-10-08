@@ -35,7 +35,7 @@ public class ProductionInspectionStockInService implements ProductionInspectionS
                         batch.receiptId(), batch.batchId());
                 case "SUBCONTRACT" -> subcontractSupply.advanceInspectionStockInState(
                         batch.receiptId());
-                default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "入库生产联动的收货类型无效");
+                default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "入库生产联动的收货类型不正确");
             }
         }
         // Run after every source has advanced, so mixed purchase/subcontract receipts

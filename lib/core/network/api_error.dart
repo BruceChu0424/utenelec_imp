@@ -17,7 +17,7 @@ class ApiError {
 
   factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
     code: json['code'] as String? ?? 'UNKNOWN',
-    message: json['message'] as String? ?? '请求失败',
+    message: json['message'] as String? ?? '操作失败',
     fieldErrors: (json['fieldErrors'] as List<dynamic>?)
         ?.map((e) => ApiFieldError.fromJson(e as Map<String, dynamic>))
         .toList(),

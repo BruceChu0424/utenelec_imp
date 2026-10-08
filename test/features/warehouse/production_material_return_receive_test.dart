@@ -282,7 +282,7 @@ void main() {
       );
       await tester.tap(find.text('收仓'));
       await tester.pumpAndSettle();
-      expect(find.byTooltip(RegExp('来源主仓尚未读取，请刷新单据')), findsOneWidget);
+      expect(find.byTooltip(RegExp('来源主仓还没读到，请刷新单据')), findsOneWidget);
       expect(
         tester
             .widget<FilledButton>(find.widgetWithText(FilledButton, '确认收料'))

@@ -163,11 +163,17 @@ class _MaterialAggregate {
     required this.key,
     required this.paths,
     this.rootProductIds,
+    this.materialsById = const {},
   });
 
   final String key;
   final List<ProductionMaterialAnalysisMaterial> paths;
   final Set<String?>? rootProductIds;
+  final Map<String, ProductionMaterialAnalysisMaterial> materialsById;
+  MaterialQualifiedCoverage get coverage =>
+      MaterialQualifiedCoverage(paths, materialsById);
+  String? get totalRequiredText => coverage.requiredText;
+  String? get qualifiedCoveredText => coverage.coveredText;
 
   ProductionMaterialAnalysisMaterial get representative => paths.first;
   String? get goodsName => representative.goodsName;
@@ -176,14 +182,13 @@ class _MaterialAggregate {
   String? get colorName => representative.colorName;
   String? get unitName => representative.unitName;
 
-  double get totalRequired =>
-      paths.fold(0.0, (sum, item) => sum + item.requiredQty);
+  double get totalRequired => double.tryParse(totalRequiredText ?? '') ?? 0;
   double get totalShortage =>
       paths.fold(0.0, (sum, item) => sum + item.shortageQty);
   double get totalDemandSupplyGap =>
-      paths.fold(0.0, (sum, item) => sum + item.demandSupplyGapQty);
+      double.tryParse(coverage.gapText ?? '') ?? double.infinity;
   double get qualifiedCoveredQty =>
-      (totalRequired - totalDemandSupplyGap).clamp(0.0, totalRequired);
+      double.tryParse(qualifiedCoveredText ?? '') ?? 0;
 
   /// 现货是同一目标仓共享池快照，同料各路径应一致；取最大值防御脏数据。
   double get warehouseStock => paths.fold(
@@ -195,9 +200,7 @@ class _MaterialAggregate {
       rootProductIds?.length ??
       paths.map((item) => item.analysisLineId).toSet().length;
 
-  double get coverageRatio => totalRequired <= 0
-      ? 0
-      : (qualifiedCoveredQty / totalRequired).clamp(0.0, 1.0);
+  double get coverageRatio => coverage.ratio;
 
   /// 所有路径的确认路线（未确认时取建议路线）一致时返回该路线，
   /// 否则返回 null，界面显示「路线不一」并引导展开逐条查看。

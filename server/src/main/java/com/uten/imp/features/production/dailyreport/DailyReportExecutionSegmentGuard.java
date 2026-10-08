@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,9 +109,10 @@ public class DailyReportExecutionSegmentGuard {
                         item.getUnitRate(),
                         item.getQty(),item.isFinal(),item.isActualSurplus()))
                 .toList();
-        Map<UUID, SegmentSnapshot> segments = lockAndValidateIdentity(null, lines, true);
+        Map<UUID, SegmentSnapshot> segments = lockAndValidateIdentity(lines, true);
+        Map<UUID, List<Object[]>> allocations = salesAllocations(segments.keySet());
         for (ReportLine line : lines) {
-            validateSalesAllocation(line, segments.get(line.executionSegmentId()));
+            validateSalesAllocation(line, segments.get(line.executionSegmentId()), allocations);
         }
     }
 
@@ -140,8 +142,7 @@ public class DailyReportExecutionSegmentGuard {
             }
         }
         Map<UUID, SegmentSnapshot> segments =
-                lockAndValidateIdentity(
-                        reportId, lines, false);
+                lockAndValidateIdentity(lines, false);
         for(ReportLine line:lines) {
             SegmentSnapshot segment=segments.get(line.executionSegmentId());
             if(line.finalReport()&&segment!=null&&segment.sourceSegmentId()!=null)
@@ -153,8 +154,9 @@ public class DailyReportExecutionSegmentGuard {
         for (ReportLine recoveryLine : recoveryLines) {
             validateRecoveryAuthorization(recoveryLine);
         }
+        Map<UUID, List<Object[]>> allocations = salesAllocations(segments.keySet());
         for (ReportLine line : lines) {
-            BigDecimal capacity = validateSalesAllocation(line, segments.get(line.executionSegmentId()));
+            BigDecimal capacity = validateSalesAllocation(line, segments.get(line.executionSegmentId()), allocations);
             if (line.executionSegmentSalesAllocationId() != null
                     && line.recoveryAuthorizationId() == null && !line.actualSurplus()) {
                 salesRequested.merge(
@@ -170,10 +172,10 @@ public class DailyReportExecutionSegmentGuard {
                 internalCapacities.put(line.executionSegmentId(), capacity);
             }
         }
+        ReportedQuantities quantities = reportedQuantities(segments.keySet(), reportId, countedStatus);
         for (Map.Entry<UUID, BigDecimal> entry : requested.entrySet()) {
             SegmentSnapshot segment = segments.get(entry.getKey());
-            BigDecimal existing = existingQuantity(
-                    entry.getKey(), reportId, countedStatus);
+            BigDecimal existing = quantities.segments().getOrDefault(entry.getKey(), BigDecimal.ZERO);
             if (existing.add(entry.getValue())
                     .compareTo(segment.plannedQty()) > 0) {
                 throw conflict(
@@ -194,8 +196,7 @@ public class DailyReportExecutionSegmentGuard {
         }
         for (Map.Entry<UUID, BigDecimal> entry :
                 salesRequested.entrySet()) {
-            BigDecimal existing = existingSalesQuantity(
-                    entry.getKey(), reportId, countedStatus);
+            BigDecimal existing = quantities.allocations().getOrDefault(entry.getKey(), BigDecimal.ZERO);
             BigDecimal capacity =
                     salesCapacities.get(entry.getKey());
             if (existing.add(entry.getValue())
@@ -205,7 +206,7 @@ public class DailyReportExecutionSegmentGuard {
             }
         }
         for (Map.Entry<UUID, BigDecimal> entry : internalRequested.entrySet()) {
-            BigDecimal existing = existingInternalQuantity(entry.getKey(), reportId, countedStatus);
+            BigDecimal existing = quantities.internal().getOrDefault(entry.getKey(), BigDecimal.ZERO);
             if (existing.add(entry.getValue()).compareTo(internalCapacities.get(entry.getKey())) > 0) {
                 throw conflict("公共备货累计报工超过工单独立备货数量，不能占用销售订单分摊");
             }
@@ -214,7 +215,6 @@ public class DailyReportExecutionSegmentGuard {
     }
 
     private Map<UUID, SegmentSnapshot> lockAndValidateIdentity(
-            UUID reportId,
             List<ReportLine> lines,
             boolean allowTerminalPackage) {
         validateLegacyPlanItemAccess(lines);
@@ -226,40 +226,48 @@ public class DailyReportExecutionSegmentGuard {
                         TreeSet::add,
                         TreeSet::addAll);
         Map<UUID, SegmentSnapshot> result = new LinkedHashMap<>();
-        for (UUID id : ids) {
-            List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                    em.createNativeQuery("""
-                                    SELECT s.id, s.source_plan_item_id,
-                                           s.product_goods_id,
-                                           s.product_color_id,
-                                           s.product_unit_id,
-                                           s.product_unit_rate,
-                                           s.planned_qty, s.status,
-                                           s.segment_code, package.status,
-                                           plan.maker_id,
-                                           s.workshop_department_id,
-                                           s.responsible_employee_id,
-                                           s.material_requirement_mode,
-                                           s.lock_version, s.source_segment_id,
-                                           s.continuous_supply,
-                                           (plan.status = 1 AND NOT plan.is_stopped
-                                            AND NOT plan.is_canceled AND NOT plan.is_closed) AS plan_open
-                                    FROM production_execution_segments s
-                                    JOIN production_planning_packages package
-                                      ON package.id = s.package_id
-                                     AND package.is_deleted = FALSE
-                                    JOIN production_plans plan
-                                      ON plan.id = s.plan_id
-                                     AND plan.is_deleted = FALSE
-                                    WHERE s.id = :id
-                                      AND s.is_deleted = FALSE
-                                    FOR UPDATE OF s
-                                    """)
-                            .setParameter("id", id));
-            if (rows.isEmpty()) {
-                throw conflict("报工关联的执行段不存在");
-            }
-            Object[] row = rows.getFirst();
+        if (ids.isEmpty()) return result;
+        List<?> locked = em.createNativeQuery("""
+                SELECT s.id FROM production_execution_segments s
+                WHERE s.id IN (:ids) AND NOT s.is_deleted ORDER BY s.id FOR UPDATE OF s
+                """).setParameter("ids", ids).getResultList();
+        if (locked.size() != ids.size()) throw conflict("报工关联的执行段不存在");
+        // A join returned by a lock-waiting statement may retain its old plan /
+        // package snapshot under READ COMMITTED. Start a new statement after all
+        // segment locks are held before trusting any associated source facts.
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                                SELECT s.id, s.source_plan_item_id,
+                                       s.product_goods_id,
+                                       s.product_color_id,
+                                       s.product_unit_id,
+                                       s.product_unit_rate,
+                                       s.planned_qty, s.status,
+                                       s.segment_code, package.status,
+                                       plan.maker_id,
+                                       s.workshop_department_id,
+                                       s.responsible_employee_id,
+                                       s.material_requirement_mode,
+                                       s.lock_version, s.source_segment_id,
+                                       s.continuous_supply,
+                                       (plan.status = 1 AND NOT plan.is_stopped
+                                        AND NOT plan.is_canceled AND NOT plan.is_closed) AS plan_open
+                                FROM production_execution_segments s
+                                JOIN production_planning_packages package
+                                  ON package.id = s.package_id
+                                 AND package.is_deleted = FALSE
+                                JOIN production_plans plan
+                                  ON plan.id = s.plan_id
+                                 AND plan.is_deleted = FALSE
+                                WHERE s.id IN (:ids)
+                                  AND s.is_deleted = FALSE
+                                ORDER BY s.id
+                                """)
+                        .setParameter("ids", ids));
+        if (rows.size() != ids.size()) {
+            throw conflict("报工关联的执行段不存在");
+        }
+        for (Object[] row : rows) {
             SegmentSnapshot snapshot = new SegmentSnapshot(
                     (UUID) row[0],
                     (UUID) row[1],
@@ -296,15 +304,9 @@ public class DailyReportExecutionSegmentGuard {
                     .equals(snapshot.status())) {
                 throw conflict("请先在我的车间任务中开工，开工后才能报工");
             }
-            if (!allowTerminalPackage) {
-                if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_execution_material_custody_valid(:id)")
-                        .setParameter("id", snapshot.id()).getSingleResult())) {
-                    throw conflict("任务当前车间与原领料或直送料所在车间不一致，请先按原来源退回或反向并核对车间；不能继续报工");
-                }
-                requireMaterialProvenance(snapshot);
-            }
-            result.put(id, snapshot);
+            result.put(snapshot.id(), snapshot);
         }
+        if (!allowTerminalPackage) requireMaterialProvenance(result);
         for (ReportLine line : lines) {
             if (line.executionSegmentId() == null) continue;
             SegmentSnapshot segment = result.get(line.executionSegmentId());
@@ -359,27 +361,54 @@ public class DailyReportExecutionSegmentGuard {
         }
     }
 
-    private void requireMaterialProvenance(SegmentSnapshot segment) {
-        if ("ZERO_MATERIAL".equals(segment.materialRequirementMode())) return;
-        if (segment.sourceSegmentId()!=null && !Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_prerequisites_issued(:id)")
-                .setParameter("id",segment.id()).getSingleResult()))
-            throw conflict("前批共享物料已退回或处于待退状态，请先核对后续批次用料");
-        List<?> demands = em.createNativeQuery("""
-                SELECT id FROM production_material_demands
-                WHERE execution_segment_id=:segmentId AND NOT is_deleted
-                  AND status NOT IN ('RELEASED','REVERSED')
-                ORDER BY id FOR UPDATE
-                """).setParameter("segmentId",segment.id()).getResultList();
-        if (demands.isEmpty()) {
-            if(Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_actual_supplement_material_ready(:id)")
-                    .setParameter("id",segment.id()).getSingleResult()))return;
-            if (segment.sourceSegmentId()!=null && Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_split_batch_empty_issued(:id)")
-                    .setParameter("id",segment.id()).getSingleResult())) return;
-            throw conflict("执行工单缺少正式物料需求，不能按零物料任务报工");
+    private void requireMaterialProvenance(Map<UUID, SegmentSnapshot> segments) {
+        // Read after acquiring every segment lock: a waiter must validate the
+        // newly committed material facts, not the snapshot that began its lock query.
+        List<Object[]> materialFacts = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id, fn_execution_material_custody_valid(segment.id),
+                       CASE WHEN segment.material_requirement_mode IS DISTINCT FROM 'ZERO_MATERIAL'
+                                  AND segment.source_segment_id IS NOT NULL
+                            THEN fn_split_batch_prerequisites_issued(segment.id) ELSE TRUE END
+                FROM production_execution_segments segment WHERE segment.id IN (:ids)
+                ORDER BY segment.id
+                """).setParameter("ids", segments.keySet()));
+        if (materialFacts.size() != segments.size()
+                || !materialFacts.stream().map(row -> (UUID) row[0]).collect(java.util.stream.Collectors.toSet()).equals(segments.keySet())) {
+            throw conflict("报工关联的执行段来源已变化，请刷新后重试");
         }
-        // FULL_KIT is a START condition. Once IN_PROGRESS, a genuine return may
-        // restore unused reservation quantity and move a demand back to ALLOCATED.
-        // Its still-supported output remains reportable under the shared net capacity.
+        for (Object[] row : materialFacts) {
+            if (!Boolean.TRUE.equals(row[1])) {
+                throw conflict("任务当前车间与原领料或直送料所在车间不一致，请先按原来源退回或反向并核对车间；不能继续报工");
+            }
+            if (!Boolean.TRUE.equals(row[2])) {
+                throw conflict("前批共享物料已退回或处于待退状态，请先核对后续批次用料");
+            }
+        }
+        Set<UUID> demanded = segments.values().stream()
+                .filter(segment -> !"ZERO_MATERIAL".equals(segment.materialRequirementMode()))
+                .map(SegmentSnapshot::id).collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+        if (demanded.isEmpty()) return;
+        Set<UUID> missing = new TreeSet<>(demanded);
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT execution_segment_id, id FROM production_material_demands
+                WHERE execution_segment_id IN (:ids) AND NOT is_deleted
+                  AND status NOT IN ('RELEASED','REVERSED')
+                ORDER BY execution_segment_id, id FOR UPDATE
+                """).setParameter("ids", demanded))) {
+            missing.remove((UUID) row[0]);
+        }
+        if (missing.isEmpty()) return;
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id, fn_actual_supplement_material_ready(segment.id),
+                       CASE WHEN segment.source_segment_id IS NOT NULL
+                            THEN fn_split_batch_empty_issued(segment.id) ELSE FALSE END
+                FROM production_execution_segments segment WHERE segment.id IN (:ids)
+                ORDER BY segment.id
+                """).setParameter("ids", missing))) {
+            if (!Boolean.TRUE.equals(row[1]) && !Boolean.TRUE.equals(row[2])) {
+                throw conflict("执行工单缺少正式物料需求，不能按零物料任务报工");
+            }
+        }
     }
 
     private void validateLegacyPlanItemAccess(List<ReportLine> lines) {
@@ -412,7 +441,24 @@ public class DailyReportExecutionSegmentGuard {
         }
     }
 
-    private BigDecimal validateSalesAllocation(ReportLine line, SegmentSnapshot segment) {
+    private Map<UUID, List<Object[]>> salesAllocations(Collection<UUID> segmentIds) {
+        Map<UUID, List<Object[]>> result = new HashMap<>();
+        if (segmentIds.isEmpty()) return result;
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT allocation.execution_segment_id, allocation.id,
+                       allocation.sales_order_item_id, allocation.allocated_qty
+                FROM execution_segment_sales_allocations allocation
+                WHERE allocation.execution_segment_id IN (:ids)
+                ORDER BY allocation.execution_segment_id, allocation.id
+                """).setParameter("ids", segmentIds))) {
+            result.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>())
+                    .add(new Object[] {row[1], row[2], row[3]});
+        }
+        return result;
+    }
+
+    private BigDecimal validateSalesAllocation(ReportLine line, SegmentSnapshot segment,
+                                               Map<UUID, List<Object[]>> allocations) {
         if (line.actualSurplus()) {
             if(line.executionSegmentId()==null || line.executionSegmentSalesAllocationId()!=null || line.salesOrderItemId()!=null)
                 throw validation("实际超产只能形成原工单的公共产出");
@@ -425,18 +471,7 @@ public class DailyReportExecutionSegmentGuard {
             }
             return null;
         }
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(
-                em.createNativeQuery("""
-                                SELECT allocation.id,
-                                       allocation.sales_order_item_id,
-                                       allocation.allocated_qty
-                                FROM execution_segment_sales_allocations allocation
-                                WHERE allocation.execution_segment_id = :segmentId
-                                ORDER BY allocation.id
-                                """)
-                        .setParameter(
-                                "segmentId",
-                                line.executionSegmentId()));
+        List<Object[]> rows = allocations.getOrDefault(line.executionSegmentId(), List.of());
         if (rows.isEmpty()) {
             if (line.executionSegmentSalesAllocationId() != null
                     || line.salesOrderItemId() != null) {
@@ -537,75 +572,39 @@ public class DailyReportExecutionSegmentGuard {
         }
     }
 
-    private BigDecimal existingQuantity(
-            UUID segmentId, UUID excludedReportId, String countedStatus) {
-        String statuses = "APPROVED".equals(countedStatus)
-                ? "report.status = 1"
-                : "report.status IN (0, 1)";
-        Object value = em.createNativeQuery("""
-                        SELECT COALESCE(SUM(item.qty), 0)
-                        FROM production_daily_report_items item
-                        JOIN production_daily_reports report
-                          ON report.id = item.report_id
-                        WHERE item.execution_segment_id = :segmentId
-                          AND item.fqc_recovery_authorization_id IS NULL
-                          AND NOT item.is_actual_surplus
-                          AND item.report_id <> :reportId
-                          AND item.is_deleted = FALSE
-                          AND report.is_deleted = FALSE
-                          """ + " AND " + statuses)
-                .setParameter("segmentId", segmentId)
-                .setParameter("reportId", excludedReportId)
-                .getSingleResult();
-        return decimal(value);
-    }
-
-    private BigDecimal existingSalesQuantity(
-            UUID allocationId,
-            UUID excludedReportId,
-            String countedStatus) {
-        String statuses = "APPROVED".equals(countedStatus)
-                ? "report.status = 1"
-                : "report.status IN (0, 1)";
-        Object value = em.createNativeQuery("""
-                        SELECT COALESCE(SUM(item.qty), 0)
-                        FROM production_daily_report_items item
-                        JOIN production_daily_reports report
-                          ON report.id = item.report_id
-                        WHERE item.execution_segment_sales_allocation_id =
-                              :allocationId
-                          AND item.fqc_recovery_authorization_id IS NULL
-                          AND NOT item.is_actual_surplus
-                          AND item.report_id <> :reportId
-                          AND item.is_deleted = FALSE
-                          AND report.is_deleted = FALSE
-                          """ + " AND " + statuses)
-                .setParameter("allocationId", allocationId)
-                .setParameter("reportId", excludedReportId)
-                .getSingleResult();
-        return decimal(value);
-    }
-
-    private BigDecimal existingInternalQuantity(UUID segmentId, UUID excludedReportId, String countedStatus) {
+    private ReportedQuantities reportedQuantities(
+            Collection<UUID> segmentIds, UUID excludedReportId, String countedStatus) {
+        Map<UUID, BigDecimal> segments = new HashMap<>();
+        Map<UUID, BigDecimal> allocations = new HashMap<>();
+        Map<UUID, BigDecimal> internal = new HashMap<>();
+        if (segmentIds.isEmpty()) return new ReportedQuantities(segments, allocations, internal);
         String statuses = "APPROVED".equals(countedStatus)
                 ? "report.status = 1" : "report.status IN (0, 1)";
-        Object value = em.createNativeQuery("""
-                SELECT COALESCE(SUM(item.qty), 0)
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.execution_segment_id, item.execution_segment_sales_allocation_id,
+                       COALESCE(SUM(item.qty), 0),
+                       COALESCE(SUM(item.qty) FILTER (WHERE item.execution_segment_sales_allocation_id IS NULL
+                                                        AND item.sales_order_item_id IS NULL), 0)
                 FROM production_daily_report_items item
                 JOIN production_daily_reports report ON report.id = item.report_id
-                WHERE item.execution_segment_id = :segmentId
-                  AND item.execution_segment_sales_allocation_id IS NULL
-                  AND item.sales_order_item_id IS NULL
-                  AND item.fqc_recovery_authorization_id IS NULL
-                          AND NOT item.is_actual_surplus
+                WHERE item.execution_segment_id IN (:ids)
+                  AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_actual_surplus
                   AND item.report_id <> :reportId
-                  AND item.is_deleted = FALSE AND report.is_deleted = FALSE
-                """ + " AND " + statuses)
-                .setParameter("segmentId", segmentId)
-                .setParameter("reportId", excludedReportId)
-                .getSingleResult();
-        return decimal(value);
+                  AND NOT item.is_deleted AND NOT report.is_deleted
+                """ + " AND " + statuses + "\n" + """
+                GROUP BY item.execution_segment_id, item.execution_segment_sales_allocation_id
+                """).setParameter("ids", segmentIds).setParameter("reportId", excludedReportId))) {
+            UUID segment = (UUID) row[0];
+            segments.merge(segment, decimal(row[2]), BigDecimal::add);
+            if (row[1] != null) allocations.merge((UUID) row[1], decimal(row[2]), BigDecimal::add);
+            internal.merge(segment, decimal(row[3]), BigDecimal::add);
+        }
+        return new ReportedQuantities(segments, allocations, internal);
     }
+
+    private record ReportedQuantities(Map<UUID, BigDecimal> segments,
+                                      Map<UUID, BigDecimal> allocations,
+                                      Map<UUID, BigDecimal> internal) { }
 
     private static BigDecimal decimal(Object value) {
         return value == null

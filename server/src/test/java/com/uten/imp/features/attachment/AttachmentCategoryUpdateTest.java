@@ -1,5 +1,7 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.common.files.malware.MalwareScanner;
+
 import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.storage.StorageProviderRegistry;
@@ -43,7 +45,7 @@ class AttachmentCategoryUpdateTest {
             mock(StorageService.class), repository, new StorageProperties(), currentUser,
             List.of(policy), mock(AttachmentUploadGrantService.class), audit,
             mock(AttachmentConfirmTransaction.class), mock(AttachmentUploadSafetyGate.class),
-            mock(AttachmentUploadSessionStore.class), mock(AttachmentMalwareScanner.class),
+            mock(AttachmentUploadSessionStore.class), mock(MalwareScanner.class),
             mock(AttachmentObjectOutboxStore.class), mock(StorageProviderRegistry.class),
             mock(AttachmentDownloadVerifier.class),mock(com.uten.imp.audit.AuditActorDirectory.class));
 

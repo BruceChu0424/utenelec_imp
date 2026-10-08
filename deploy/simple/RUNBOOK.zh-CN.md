@@ -97,16 +97,23 @@ install -d -o uten-imp -g uten-imp -m 0700 /var/log/uten-imp
 #    应用使用 uten，迁移使用 uten_migrator；schema 由正式 migrator 建立。
 
 # 4. 配置文件（从本仓库 deploy/ 拷贝后改 REPLACE）
-#    /etc/uten-imp/server.env        ← 参考 deploy/setup/server.env.internal-test.example
+#    /etc/uten-imp/server.env        ← 参考完整 deploy/setup/server.env.internal-storage.example
 #    /etc/uten-imp/migrator.env      ← 独立迁移角色 uten_migrator，不能复制应用账号配置
 #    /etc/uten-imp-updater.env       ← 参考 deploy/simple/updater.env.example
 #    /etc/uten-imp-updater/allowed_signers ← 发布公钥（见上）
-chmod 600 /etc/uten-imp/server.env /etc/uten-imp/migrator.env /etc/uten-imp-updater.env
+#    当前prod/internal例子含DB/JWT/PGP/HMAC/AI独立密钥和bootstrap基础字段；逐个生成并替换占位。
+#    internal-test例子只属于退役closed-local参考链，不能用于本Simple单元首装。
+#    首次激活前先准备ClamAV Unix socket（uten-imp组0660、父目录0755）；确认媒体卷、
+#    真干净文件/EICAR和成套备份恢复，再开放附件上传。旧引用存在时先只读盘点再显式开旧读取开关，不能删旧目录。
+chown root:uten-imp /etc/uten-imp/server.env
+chmod 640 /etc/uten-imp/server.env
+chmod 600 /etc/uten-imp/migrator.env /etc/uten-imp-updater.env
 
 # 5. 安装更新器与 systemd 单元
 cp deploy/simple/uten-imp-updater.sh /usr/local/sbin/uten-imp-updater && chmod 755 $_
 install -d -o root -g root -m 0755 /usr/local/lib/uten-imp
 install -o root -g root -m 0644 deploy/simple/update_schedule.py /usr/local/lib/uten-imp/update_schedule.py
+install -o root -g root -m 0755 deploy/simple/host/start-server.py /usr/local/lib/uten-imp/start-server.py
 cp deploy/simple/units/uten-imp.service deploy/simple/units/uten-imp-updater.{service,timer} \
    /etc/systemd/system/
 systemctl daemon-reload
@@ -155,7 +162,15 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 **repo 编号**：repo1 = `/data` 机械盘阵列 (现有)；repo2 = 本机 NVMe 加密仓 (`deploy/simple/host/pgbackrest-20-uten-imp-repo2.conf.example`)；repo3 = 异地 OSS (待建)。已退役的 `deploy/postgres/backup/README.zh-CN.md` 里 "repo2=OSS" 的编号作废，以本表为准。WAL 归档保持同步 (不开 archive-async)，archive-push 同时推 repo1 与 repo2。
 
-repo1 保留期改为 3 之前先只读确认健康检查的下限：服务器上的 `uten-pgbackup-health` 跑的是不在仓库里的 `/usr/local/libexec/uten-imp-monitoring/local_backup_health.py` (治理记录 C13)，它的输出 `/var/lib/uten-imp-backup-health/health.json` 直接决定状态页「最近备份」的颜色。先看它要求几个恢复点：`sudo grep -nE 'restore|minimum|full|>= *[0-9]|< *[0-9]' /usr/local/libexec/uten-imp-monitoring/local_backup_health.py`。下限大于 3 时，先把该脚本收回仓库并把下限改为 3 (C13)，再改保留期，否则下一次 02:17 expire 之后状态页会变红。确认下限不大于 3 后：`sudo sed -i 's/^repo1-retention-full=.*/repo1-retention-full=3/' /etc/pgbackrest.conf`，下一次 02:17 备份结束时自动 expire 到 3 份。仓库里旧双仓链路的门禁 (`deploy/postgres/backup/pgbackrest_repo2.py` 的 `MINIMUM_RESTORE_POINTS`、`backup_commissioner`、`backup_acceptance`、`release_updater` 恢复回执) 已同步为 3 个恢复点。repo2 口令只在服务器上由管道生成并直接写进正式文件，不进命令行参数、不落临时文件 (下面整段经 SSH 标准输入执行)，写完立即重做离线托管件 (第九节)：
+repo1 保留期改为 3 之前，先验收仓库化的[本地双仓只读健康入口](../postgres/backup/LOCAL_BACKUP_HEALTH.zh-CN.md)：
+`deploy/postgres/backup/local_backup_health.py` 与 `deploy/simple/units/uten-pgbackup-health.{service,timer}`。
+新入口共用 3 个恢复点门槛，仍输出 `/var/lib/uten-imp-backup-health/health.json` 给状态页。
+实际服务器若还指向 `/usr/local/libexec/uten-imp-monitoring/local_backup_health.py`，说明仍是旧的未版本化脚本，
+按交接手册先备份旧单元/脚本，再完整安装、只读验收新入口；不能仅凭仓库已有文件推断现场已切换。
+确认新健康入口与两仓恢复点通过后，才调整 repo1 的 `repo1-retention-full=3`；下一次 02:17 备份结束自动 expire。
+旧受控双仓链的门禁 (`pgbackrest_repo2`、`backup_commissioner`、`backup_acceptance`、`release_updater`) 同样保持 3 个恢复点。
+
+repo2 口令只在服务器上由管道生成并直接写进正式文件，不进命令行参数、不落临时文件 (下面整段经 SSH 标准输入执行)，写完立即重做离线托管件 (第九节)：
 
 ```bash
 sudo install -d -o root -g postgres -m 0750 /etc/pgbackrest /etc/pgbackrest/conf.d
@@ -361,7 +376,7 @@ OSS 请求签名 (2026-10-06 起)：AccessKey Secret 只经环境变量交给 py
 | 误激活坏版本 | 纯代码版早已自动回滚；含迁移版按上一条恢复备份 |
 | 应用反复崩溃（duplicate key users_employee_id_key） | 核对引导账号与已有员工/用户映射及环境配置；修复已确认的冲突后再启动，不能新建重复身份 |
 | 更新器报「启动或健康检查失败」，但日志里明明有 `Started …Application` | 不是新版本起不来，是判活拿不到 UP。`curl -sS $UTEN_HEALTH_URL` 看 readiness，再逐个查它的四个探针 `readinessState,db,diskSpace,attachmentSafety`——2026-09-22 就是发行版自动升级（clamav 1.5.3→1.5.4）后 `clamav-daemon.socket` 重复绑定 3310 起不来，附件探针 UNAVAILABLE 把整组拖成 DOWN，发布被误判失败并回滚 |
-| `clamav-daemon.socket` 报 `Address already in use` 但 3310 上没有进程 | 是自己绑了自己：clamav 1.5.4 起包里自带 socket 生成器，按 `clamd.conf` 生成了两条 `ListenStream`，我们 `/etc` 里的 drop-in 再追加一条就重复了。drop-in 必须先 `ListenStream=` 清空再写回环两条，见 `deploy/systemd/clamav-uten-imp-loopback.socket.conf.example` |
+| `clamav-daemon.socket` 报 `Address already in use` 但 3310 上没有进程 | 是自己绑了自己：clamav 1.5.4 起包里自带 socket 生成器，按 `clamd.conf` 生成了两条 `ListenStream`，我们 `/etc` 里的 drop-in 再追加一条就重复了。drop-in 必须先 `ListenStream=` 清空；新版应用已支持 Unix socket，当前模板只保留 `/run/clamav/clamd.ctl`，见 `deploy/systemd/clamav-uten-imp-unix.socket.conf.example` |
 
 ## 七、纪律红线
 
@@ -422,7 +437,7 @@ systemd 单元只来自 `deploy/simple/units/`，其它主机配置只来自 `de
 | 异地仓 repo3 (待建) | 独立 OSS bucket, 开 WORM | 云 | 专用 RAM 子账号, 无删除权限 | 至少 3 天 |
 | 配置与密钥 | `/etc/uten-imp/*.env`, `/etc/uten-imp-updater.env`, `/etc/pgbackrest.conf`, `/etc/pgbackrest/conf.d/*.conf` | NVMe 根 | root 0600 / root:postgres 0640 | 另有离线托管件 |
 | 程序 | `/opt/uten-imp/releases/vX.Y.Z` (`current` 为 symlink) | NVMe 根 | root:uten-imp 0751, `web/` root:uten-web 0750 | 更新器保留 5 版 |
-| 告警状态 | `/var/lib/uten-alert` | NVMe 根 | root 0700 | - |
+| 告警状态 | `/var/lib/uten-alert` | NVMe 根 | root:uten-imp 0750 / 事件文件 0640 | 最多 128 条, 保留 7 天 |
 
 `/srv/uten-backup` 挂载点本身 `chattr +i`：卷没挂上时任何程序都写不进去，备份不会悄悄落到系统盘；
 fstab 带 `nofail`，阵列或备份卷出问题时系统照样启动、SSH 不丢。
@@ -481,15 +496,22 @@ age -d -i <私钥> uten-keys-current-$(date +%Y%m%d).tar.age | tar -tvf -   # �
    真正起作用的是轮换密钥。日志里出现过现行密钥的，删日志的同时轮换该密钥。
 4. **记录**：删了什么、为什么、核对依据，写进当次治理记录。
 
-### 9.5 告警 (待告警通道)
+### 9.5 平台内服务器告警
 
 各单元已带 `OnFailure=uten-alert@%n.service`；每 10 分钟的只读巡检 `uten-host-check` 检查磁盘、
 RAID、关键服务、WAL 归档和备份新鲜度 (pgBackRest 26 小时、配套备份 16 小时)；SMART 与 mdadm
-各有钩子。消息只发固定的大白话，同一事件 6 小时内只发一次，webhook 地址放 root 0600 文件用
-`curl -K` 读取。**告警通道 (企业微信或钉钉群机器人，群里至少 2 人) 由用户决定 (治理记录 D1)**；
-定下来之前不安装 `uten-alert`、`uten-host-check` 与两个钩子脚本，各单元的 `OnFailure=` 只在 journal
-记一行 "unit not found"。接入后验证：`sudo systemctl start uten-alert@test.service` 群里收到测试消息；
-`sudo mdadm --monitor --scan --oneshot --test` 收到阵列测试消息。
+各有钩子。`uten-alert` 调用固定 Python 记录器, 在 root 控制的本机文件中保留有界事件。
+安装清单、权限和保留边界见 [主机配置](host/README.zh-CN.md)。群机器人配置已删除。
+应用单元读取 `UTEN_SERVER_STATUS_HOST_ALERT_FILE=/var/lib/uten-alert/events.json`, 后台按持久事件 UUID
+去重, 只发给当前有告警接收权和通知阅读权的活跃账号。警告与危急告警进入中央弹窗, 逐条确认;
+切换账号会立即关闭旧账号弹窗, 恢复通知仍用普通顶部提示。告警不依赖额外 webhook 或外网。
+
+接入验证: `sudo systemctl start uten-alert@test.service`, 确认本机事件文件成功写入, 再由授权员工
+登录平台看到测试弹窗; 重启后台后同一事件不重复发布。记录器损坏文件/队列满会失败并保留证据。
+ERP 完全停机时不能即时显示平台弹窗, 事件最多保留 7 天等待恢复, 不宣称替代外部宕机通知。
+含数据库迁移的升级由更新器在停应用前校验 `uten-imp` 可读取 migrator, 随后备份并以该账号执行
+迁移 JAR; 迁移配置只在独立子进程导出, 日志写 `/var/log/uten-imp/migrator.log`。安装前确认该目录
+归应用账号可写, 不给迁移进程主机 root 权限。数据库迁移仍使用专用数据库迁移角色。
 
 ### 9.6 恢复演练 (每月一次, 不碰生产库)
 
@@ -530,8 +552,14 @@ sudo rm -rf /srv/uten-backup/drill/pg /srv/uten-backup/drill/sock
 4. **更新器换新 + web 分组 (ERP 不停, nginx 两次秒级重启)**：按第四节「发行目录权限」切换 `uten-web`，
    换装新的 `uten-imp-updater` 与 `uten-imp-updater.service`，`uten-imp-updater status && check` 必须成功
    (新的签名计算访问 OSS)。
-5. **OCR 与 ClamAV (局部短暂中断)**：换装 `uten-paddle-ocr.service` 并重启 (识别中断约 1 分钟)；
-   `clamd.conf` 追加 `deploy/simple/host/clamd-uten-alerts.conf.snippet` 后重启 (上传约 20 秒不可用)。
+5. **OCR 与 ClamAV (局部短暂中断)**：先显式准备固定 OCR 模型并收紧为 root:uten-ocr、目录0750/文件0640，
+   再换装模型只读的 `uten-paddle-ocr.service`，验证真实样本；临时缓存由 PrivateTmp 隔离。
+   ClamAV 使用 `deploy/systemd/clamav-uten-imp-unix.socket.conf.example` 安装到
+   `/etc/systemd/system/clamav-daemon.socket.d/uten-unix.conf`，删除旧重复监听 drop-in；
+   `/run/clamav` 必须为0755可遍历，socket 为uten-imp组0660，clamd.conf 的 LocalSocket/LocalSocketGroup/LocalSocketMode 同步，
+   并移除 TCPAddr/TCPSocket。应用保持原来的 `Group=uten-imp`，与
+   `UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl` 同时生效；启动前由实际服务身份检查 socket 读写权限。
+   维护窗口完成后必须以应用身份验证 PING、干净文件、EICAR 拒绝和不可用失败关闭，并确认3310不再监听。
 6. **配套备份**：装带自动清理的 `paired_internal_backup.py`，换装两份单元 (每天 2 次)，再手动跑一次并 `--verify`。
 7. **停机段三 (约 5-10 分钟)**：系统更新并重启，开机后核对挂载、阵列、sshd、各服务与 WAL 归档。
 8. **收尾**：恢复定时器，重做离线托管件 (口令已换)，通知恢复；次日确认 02:17、03:40、13:10 的备份都成功。

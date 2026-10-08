@@ -390,3 +390,8 @@ b26906b7040181b99a785fd2ca24a3a34f22fb8e:test/fixtures/material_three_1000_after
 b26906b7040181b99a785fd2ca24a3a34f22fb8e:test/fixtures/material_three_1000_after_all_materials.json:generic-api-key:964
 b26906b7040181b99a785fd2ca24a3a34f22fb8e:test/fixtures/material_three_1000_after_all_materials.json:generic-api-key:990
 b26906b7040181b99a785fd2ca24a3a34f22fb8e:test/fixtures/material_three_1000_after_all_materials.json:generic-api-key:991
+
+# Current production environment example: literal REPLACE_INDEPENDENT_* instructions,
+# not generated credentials. Preserve history scanning; exempt only these two findings.
+da45c3b5af181a7f2275c88dc9a3d69298d6e4d9:deploy/setup/server.env.internal-storage.example:generic-api-key:17
+da45c3b5af181a7f2275c88dc9a3d69298d6e4d9:deploy/setup/server.env.internal-storage.example:generic-api-key:22

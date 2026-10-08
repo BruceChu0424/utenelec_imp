@@ -33,7 +33,7 @@ class RestoredLocalOriginalsTest {
         var storage = new LocalDiskStorageService(properties);
         ReflectionTestUtils.invokeMethod(storage, "init");
         var registry = new StorageProviderRegistry(storage, properties);
-        var privateReader = new ImmutableDocumentStore(storage, registry);
+        var privateReader = new ImmutableDocumentStore(storage, registry, com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning());
         var ordinaryReader = new AttachmentDownloadVerifier(registry, properties);
         int privateCount = 0, ordinaryCount = 0;
         for (var object : manifest.path("media")) {

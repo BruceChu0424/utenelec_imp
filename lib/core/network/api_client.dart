@@ -15,6 +15,7 @@ import 'connection_recovery.dart';
 import 'data_write_revision.dart';
 import 'api_error.dart';
 import 'api_exception.dart';
+import 'authenticated_request_scope.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/automatic_request_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
@@ -27,6 +28,17 @@ class ApiClient {
   ApiClient(this._dio);
 
   final Dio _dio;
+
+  Future<AuthenticatedRequestScope> captureRequestScope({
+    required bool Function() isCurrent,
+  }) {
+    final auth = _dio.interceptors.whereType<AuthInterceptor>().firstOrNull;
+    return AuthenticatedRequestScope.capture(
+      baseUrl: _dio.options.baseUrl,
+      storage: auth?.storage,
+      isCurrent: isCurrent,
+    );
+  }
 
   Future<Map<String, dynamic>> get(
     String path, {

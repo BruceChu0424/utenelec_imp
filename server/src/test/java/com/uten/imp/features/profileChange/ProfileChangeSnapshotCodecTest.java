@@ -136,7 +136,7 @@ class ProfileChangeSnapshotCodecTest {
     }
 
     @Test
-    void unversionedPgcryptoPacketUsesCurrentKeyCompatibilityInsteadOfDoubleEncryption() {
+    void unversionedPgcryptoPacketUsesConfiguredHistoricalVersionInsteadOfDoubleEncryption() {
         UUID rowId = UUID.randomUUID();
         byte[] pgpPacket = new byte[] {(byte) 0xc3, 0x01, 0x04, 0x00, 0x01, 0x02};
         String rawBase64 = Base64.getEncoder().encodeToString(pgpPacket);
@@ -148,5 +148,15 @@ class ProfileChangeSnapshotCodecTest {
                 "2:canonical",
                 codec.canonicalizeLegacySensitive(
                         rowId, ProfileFieldPolicy.Field.PHONE, "old", rawBase64));
+    }
+
+    @Test
+    void unversionedDomainWrappedPacketGetsAVersionPrefixWithoutDuplicatingItsDomain() {
+        byte[] packet=new byte[]{(byte)0xc3,0x01,0x04,0x00,0x01,0x02};
+        String raw=Base64.getEncoder().encodeToString(packet);
+        String payload=ProfileChangeSnapshotCodec.PAYLOAD_PREFIX+"旧手机号";
+        when(tx.decrypt(raw)).thenReturn(payload);when(tx.encrypt(payload)).thenReturn("2:canonical");
+        assertEquals("2:canonical",codec.canonicalizeLegacySensitive(UUID.randomUUID(),ProfileFieldPolicy.Field.PHONE,"old",raw));
+        verify(tx).encrypt(payload);
     }
 }

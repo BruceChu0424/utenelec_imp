@@ -9,6 +9,16 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get businessResetAuditScope =>
+      '테스트 업무 데이터, 삭제 이력, 필드 버전과 업무 감사 기록을 삭제합니다. 로그인 인증, 권한, 보안, 시스템 감사와 초기화 확인 기록은 보존됩니다.';
+
+  @override
+  String get serverAlertAcknowledge => '확인';
+
+  @override
+  String get serverAlertDetails => '자세히 보기';
+
+  @override
   String dashboardMoreTasks(int count) {
     return '남은 작업 $count건';
   }

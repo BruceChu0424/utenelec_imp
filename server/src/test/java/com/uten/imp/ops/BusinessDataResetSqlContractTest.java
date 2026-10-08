@@ -254,7 +254,9 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("employee_reconcile_plans", 810),
             Map.entry("employee_reconcile_plan_rows", 810),
             Map.entry("employee_reconcile_plan_items", 810),
-            Map.entry("employee_reconcile_applies", 810));
+            Map.entry("employee_reconcile_applies", 810),
+            Map.entry("pii_key_rotation_runs", 827),
+            Map.entry("document_malware_scans", 828));
 
     private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
         "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",

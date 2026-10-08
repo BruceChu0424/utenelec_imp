@@ -31,6 +31,9 @@ public class StorageProperties {
 
     /** Explicit production kill switch; storage can remain readable while intake is disabled. */
     private boolean uploadsEnabled = false;
+    /** Explicit read compatibility only; retire after an exact reference inventory reaches zero. */
+    private boolean legacyLocalReadEnabled = false;
+    private boolean legacyOssReadEnabled = false;
 
     private int maxPendingPerUser = 10;
     private int maxPendingPerOwner = 20;
@@ -137,6 +140,8 @@ public class StorageProperties {
         /** disabled / test-only / clamav. Production accepts only clamav when uploads are enabled. */
         private String provider = "disabled";
         private String host = "127.0.0.1";
+        /** When set, connects only to this absolute Unix socket; no TCP fallback. */
+        private String unixSocket;
         private int port = 3310;
         private int connectTimeoutMillis = 2000;
         private int readTimeoutMillis = 30000;

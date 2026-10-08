@@ -2004,8 +2004,26 @@ public class MaterialAnalysisService {
 
     /** Reconcile actionable coverage from authoritative downstream lifecycle facts. */
     private void reconcileSupplyActionStatuses(UUID analysisId) {
+        // The analysis is already locked. These updates change status only, so source kinds
+        // remain stable throughout reconciliation; an absent kind cannot acquire a matching row.
+        List<Object[]> kinds = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT external_document_type, bool_or(safety_replenishment_qty > 0),
+                       bool_or(safety_replenishment_qty = 0)
+                FROM preplan_supply_actions
+                WHERE analysis_id=:analysisId AND status<>'CANCELLED'
+                GROUP BY external_document_type
+                """).setParameter("analysisId", analysisId));
+        if (kinds.isEmpty()) return;
+        boolean hasPurchase = kinds.stream().anyMatch(row -> "PURCHASE_REQUEST".equals(row[0]));
+        boolean hasSafetyPurchase = kinds.stream().anyMatch(row -> "PURCHASE_REQUEST".equals(row[0])
+                && Boolean.TRUE.equals(row[1]));
+        boolean hasOrdinaryPurchase = kinds.stream().anyMatch(row -> "PURCHASE_REQUEST".equals(row[0])
+                && Boolean.TRUE.equals(row[2]));
+        boolean hasSubcontract = kinds.stream().anyMatch(row -> "SUBCONTRACT_APPLICATION".equals(row[0]));
+        boolean hasMake = kinds.stream().anyMatch(row -> "PREPLAN_MAKE_TASK".equals(row[0]));
         UUID actorId = currentUser.requireId();
-        em.createNativeQuery("""
+        if (hasPurchase || hasSubcontract || hasMake) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'CANCELLED', cancelled_by = :actorId,
                     cancelled_at = now(),
@@ -2045,11 +2063,13 @@ public class MaterialAnalysisService {
                   )
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
+        }
 
         // V420 BUY split actions reconcile demand-exact and public-safety slices
         // independently. Terminal FAIL releases only the planning projection;
         // every commercial, IQC and already-qualified inventory fact remains.
-        em.createNativeQuery("""
+        if (hasSafetyPurchase) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'CANCELLED', cancelled_by = :actorId,
                     cancelled_at = now(),
@@ -2079,6 +2099,7 @@ public class MaterialAnalysisService {
                   AND progress.safety_future_qty = 0
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
+        }
 
         // A physically completed order with rejected IQC quantity cannot satisfy the
         // planning action. The upstream request/application is already closed by the
@@ -2086,7 +2107,8 @@ public class MaterialAnalysisService {
         // the shortage and prevent a replacement notification. Keep every commercial and
         // inspection fact, but release only the planning projection after every linked
         // receipt is terminal and no approved order quantity remains in transit.
-        em.createNativeQuery("""
+        if (hasOrdinaryPurchase) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'CANCELLED', cancelled_by = :actorId,
                     cancelled_at = now(),
@@ -2213,8 +2235,10 @@ public class MaterialAnalysisService {
                       WHERE allocation.action_id = action.id)
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasSubcontract) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'CANCELLED', cancelled_by = :actorId,
                     cancelled_at = now(),
@@ -2339,8 +2363,10 @@ public class MaterialAnalysisService {
                       WHERE allocation.action_id = action.id)
                 """).setParameter("actorId", actorId)
                 .setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasSafetyPurchase) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
                 FROM v_preplan_buy_action_slice_progress progress
@@ -2356,8 +2382,10 @@ public class MaterialAnalysisService {
                           < progress.safety_requested_qty)
                   AND (progress.demand_order_exists OR progress.safety_order_exists)
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasOrdinaryPurchase) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
@@ -2419,8 +2447,10 @@ public class MaterialAnalysisService {
                           WHERE allocation.action_id = action.id
                             AND allocation.external_item_id IS NOT NULL)))
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasSubcontract) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
@@ -2447,8 +2477,10 @@ public class MaterialAnalysisService {
                           WHERE allocation.action_id = action.id
                             AND allocation.external_item_id IS NOT NULL)))
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasMake) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'IN_PROGRESS', updated_at = now()
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
@@ -2484,8 +2516,10 @@ public class MaterialAnalysisService {
                             ),0), 0) > 0
                   )
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasSafetyPurchase) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
                 FROM v_preplan_buy_action_slice_progress progress
@@ -2499,8 +2533,10 @@ public class MaterialAnalysisService {
                   AND progress.safety_qualified_qty
                       >= progress.safety_requested_qty
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasOrdinaryPurchase) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
@@ -2548,8 +2584,10 @@ public class MaterialAnalysisService {
                             AND allocation.external_item_id IS NOT NULL)
                   ),0)
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasSubcontract) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
@@ -2563,8 +2601,10 @@ public class MaterialAnalysisService {
                 """ + SUBCONTRACT_ACTION_SETTLED_SQL + """
                   )
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
 
-        em.createNativeQuery("""
+        if (hasMake) {
+            em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status = 'DONE', updated_at = now()
                 WHERE action.analysis_id = :analysisId AND NOT fn_preplan_action_has_future_transfer(action.id) AND action.operation_type<>'SHARED_FUTURE_CLAIM'
@@ -2598,6 +2638,7 @@ public class MaterialAnalysisService {
                             ),0), 0) = 0
                   )
                 """).setParameter("analysisId", analysisId).executeUpdate();
+        }
         em.createNativeQuery("""
                 UPDATE preplan_supply_actions action
                 SET status=CASE WHEN action.operation_type='FUTURE_TRANSFER' AND fn_preplan_action_admitted_qty(action.id)=0 THEN 'CANCELLED'

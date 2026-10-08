@@ -41,6 +41,7 @@ import '../../../shared/drafts/identified_platform_drafts.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -107,6 +108,7 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
 class _ProductionDailyReportEditPageState
     extends ConsumerState<ProductionDailyReportEditPage>
     with FormDraftMixin<ProductionDailyReportEditPage> {
+  bool _saveOperationActive = false;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
   DateTime _billDate = ChinaDateTime.today();
@@ -2226,14 +2228,19 @@ class _ProductionDailyReportEditPageState
   }
 
   /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
-  Future<void> _finishCreatedReport(String createdId) async {
+  Future<void> _finishCreatedReport(
+    String createdId,
+    AuthenticatedRequestScope requestScope,
+  ) async {
+    await requestScope.verify();
+    if (!mounted) return;
     if (_pendingFiles.needsReceiptFor(createdId)) {
       await _openCreateRecovery();
       return;
     }
     if (!_pendingFiles.hasPendingFor(createdId)) {
       await completeFormDraft();
-      if (!mounted || !formDraftIdentityIsCurrent) {
+      if (!mounted || !requestScope.isCurrent || !formDraftIdentityIsCurrent) {
         return;
       }
       _openSavedReport(createdId);
@@ -2257,6 +2264,7 @@ class _ProductionDailyReportEditPageState
     var revoked = false;
     bool current() =>
         mounted &&
+        requestScope.isCurrent &&
         formDraftIdentityIsCurrent &&
         ref.read(authenticatedScopeProvider) == scope &&
         ref.read(apiBaseUrlProvider) == server;
@@ -2386,7 +2394,21 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _save() async {
-    if (_saving || !formDraftIdentityIsCurrent) return;
+    if (_saving || _saveOperationActive || !formDraftIdentityIsCurrent) return;
+    _saveOperationActive = true;
+    try {
+      final requestScope = await captureFormDraftRequestScope();
+      await requestScope.run(() => _saveWithRequestScope(requestScope));
+    } on ApiException catch (error) {
+      if (mounted) context.appWarning(error.message);
+    } finally {
+      _saveOperationActive = false;
+    }
+  }
+
+  Future<void> _saveWithRequestScope(
+    AuthenticatedRequestScope requestScope,
+  ) async {
     if (widget.id == null &&
         _createdReportId == null &&
         formDraftHasUnknownSubmission) {
@@ -2394,7 +2416,7 @@ class _ProductionDailyReportEditPageState
       return;
     }
     if (_createdReportId case final createdId?) {
-      await _finishCreatedReport(createdId);
+      await _finishCreatedReport(createdId, requestScope);
       return;
     }
     final initialScope = ref.read(authenticatedScopeProvider);
@@ -2451,8 +2473,10 @@ class _ProductionDailyReportEditPageState
           ),
         );
         if (confirmed != true || !mounted) return;
+        await requestScope.verify();
       }
     }
+    if (!mounted) return;
     final submitted = rows.toSet();
     // 行号按用户在界面数到的成品行序（_productRows），未勾选行跳过不校验不报号。
     for (var i = 0; i < _productRows.length; i++) {
@@ -2592,12 +2616,14 @@ class _ProductionDailyReportEditPageState
     ];
     if (unreadRows.isNotEmpty) {
       await _reloadDirectTransferCandidates();
+      await requestScope.verify();
       if (!mounted) return;
       if (unreadRows.any((row) => !row.directTransferLoadFailed)) {
         context.appWarning('转给工单候选已重新读到，产出去向已按先急后缓重新分配，请核对后再提交');
         return;
       }
     }
+    if (!mounted) return;
     // V736 产出去向分配：每条去向的问题(已不能收、超出还差的量、数量无效、候选读取失败)与合计核对；
     // 更强的不变量(同车间、同货品同颜色、需求份上限、同主仓)由服务端与数据库守卫兜底。
     final transferIssues = _outputAllocationIssues(rows);
@@ -2615,6 +2641,7 @@ class _ProductionDailyReportEditPageState
       final lots = await _undrawnDirectLotsByDemand({
         for (final candidate in surplus) candidate.demandId,
       });
+      await requestScope.verify();
       if (!mounted) return;
       if (lots.isNotEmpty) {
         surplus = _surplusCandidates(rows, undrawnDirectLots: lots);
@@ -2624,11 +2651,13 @@ class _ProductionDailyReportEditPageState
         candidates: surplus,
       );
       if (!mounted || decision == null) return;
+      await requestScope.verify();
       _surplusReturnRequested = decision.returnToWarehouse;
       surplusCounted = decision.countedByDemandId;
     } else if (_isCreate || _materialReadsComplete) {
       _surplusReturnRequested = false;
     }
+    if (!mounted) return;
     final itemsBody = <Map<String, dynamic>>[];
     for (final r in rows) {
       if (r.goods == null) continue;
@@ -2761,9 +2790,11 @@ class _ProductionDailyReportEditPageState
     )) {
       return;
     }
+    await requestScope.verify();
     if (!await _prepareActualOutputSupplements(
       rows.where((row) => row.goods != null).toList(),
       body,
+      requestScope,
     )) {
       return;
     }
@@ -2786,6 +2817,7 @@ class _ProductionDailyReportEditPageState
     }
     bool ownsSubmission() =>
         mounted &&
+        requestScope.isCurrent &&
         formDraftIdentityIsCurrent &&
         ref.read(authenticatedScopeProvider) == submissionScope &&
         ref.read(apiBaseUrlProvider) == submissionServer &&
@@ -2820,6 +2852,7 @@ class _ProductionDailyReportEditPageState
       final repo = ref.read(productionDailyReportRepositoryProvider);
       final d = widget.id == null
           ? await runFormDraftSubmission(() async {
+              await requestScope.verify();
               if (!ownsSubmission() ||
                   !ref
                       .read(currentPermissionsProvider)
@@ -2835,6 +2868,7 @@ class _ProductionDailyReportEditPageState
                 idempotencyKey: _frozenCreate!.idempotencyKey,
               );
               createAcknowledged = true;
+              await requestScope.verify();
               if (!ownsSubmission() ||
                   !ref
                       .read(currentPermissionsProvider)
@@ -2845,6 +2879,7 @@ class _ProductionDailyReportEditPageState
                 throw const FormatException('创建返回的单据身份无效');
               }
               final resolution = await repo.createReceipt(_frozenCreate!);
+              await requestScope.verify();
               if (!ownsSubmission() ||
                   !ref
                       .read(currentPermissionsProvider)
@@ -2857,7 +2892,9 @@ class _ProductionDailyReportEditPageState
               _createReceiptCheckpoint = resolution.toCheckpoint();
               return resolution.detail!;
             }, isDefiniteRejection: mayTreatCreateAsRejected)
-          : await repo.update(widget.id!, body, expectedVersion: _rowVersion);
+          : await requestScope.run(
+              () => repo.update(widget.id!, body, expectedVersion: _rowVersion),
+            );
       if (!ownsSubmission()) {
         if (widget.id == null) holdFormDraftForReadRecovery();
         return;
@@ -2891,11 +2928,11 @@ class _ProductionDailyReportEditPageState
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdReportId = d.id);
         _adoptAcceptedReport(d);
-        await _finishCreatedReport(d.id);
+        await _finishCreatedReport(d.id, requestScope);
         return;
       }
       await completeFormDraft();
-      if (!mounted) return;
+      if (!ownsSubmission()) return;
       _openSavedReport(d.id);
     } on ApiException catch (e) {
       if (!mounted || !ownsSubmission()) return;
@@ -3067,6 +3104,7 @@ class _ProductionDailyReportEditPageState
   Future<bool> _prepareActualOutputSupplements(
     List<DailyGridRow> rows,
     Map<String, dynamic> body,
+    AuthenticatedRequestScope requestScope,
   ) async {
     if (!_restoredSupplementContext &&
         !rows.any(
@@ -3088,6 +3126,7 @@ class _ProductionDailyReportEditPageState
         final id = row.supplementRequestId;
         if (id == null) continue;
         final supplement = await repository.detail(id);
+        await requestScope.verify();
         if (supplement.status == 'CANCELLED') {
           row.supplementRequestId = null;
           row.supplementProofId = null;
@@ -3126,6 +3165,7 @@ class _ProductionDailyReportEditPageState
         body,
         excludedReportId: widget.id,
       );
+      await requestScope.verify();
     } on ApiException catch (error) {
       if (mounted) context.appError(error.message);
       return false;
@@ -3229,6 +3269,8 @@ class _ProductionDailyReportEditPageState
       ),
     );
     if (!mounted || action == null) return false;
+    await requestScope.verify();
+    if (!mounted) return false;
     if (action.startsWith('view:')) {
       final index = int.parse(action.substring(5));
       await context.push(
@@ -3243,6 +3285,7 @@ class _ProductionDailyReportEditPageState
     setState(() => _saving = true);
     try {
       for (final line in uncreated) {
+        await requestScope.verify();
         final supplement = await repository.create(
           ProductionOutputSupplementPreview({
             ...line.data,
@@ -3256,6 +3299,7 @@ class _ProductionDailyReportEditPageState
         );
         rows[line.inputLineIndex].supplementRequestId = supplement.id;
         created++;
+        await requestScope.verify();
       }
       if (mounted) {
         refreshBadges(ref);

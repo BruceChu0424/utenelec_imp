@@ -112,7 +112,7 @@ public class ProfileChangeSnapshotCodec {
                             + rowId + " field " + fieldCode);
         }
         if (decrypted.startsWith(PAYLOAD_PREFIX)) {
-            return stored;
+            return looksLikeVersionedCipher(stored) ? stored : tx.encrypt(decrypted);
         }
         return encryptPayload(decrypted);
     }

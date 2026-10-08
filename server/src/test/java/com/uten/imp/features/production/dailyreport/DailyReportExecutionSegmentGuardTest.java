@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,9 +23,89 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class DailyReportExecutionSegmentGuardTest {
+
+    @Test
+    void tenDifferentSegmentsUseOneLockedIdentityReadAndOneQuantityAggregate() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+        List<Object[]> snapshots = new ArrayList<>();
+        List<Object[]> custody = new ArrayList<>();
+        List<DailyReportItemLine> inputs = new ArrayList<>();
+        Object[] source = (Object[]) fixture.lock.getResultList().getFirst();
+        for (int index = 0; index < 10; index++) {
+            Object[] row = source.clone();
+            row[0] = UUID.randomUUID(); row[1] = UUID.randomUUID();
+            snapshots.add(row);
+            custody.add(new Object[] {row[0], true, true});
+            var input = fixture.line("10");
+            input.setExecutionSegmentId((UUID) row[0]); input.setPlanItemId((UUID) row[1]);
+            inputs.add(input);
+        }
+        when(fixture.lock.getResultList()).thenReturn(snapshots);
+        when(fixture.custody.getResultList()).thenReturn(custody);
+        when(fixture.reported.getResultList()).thenReturn(List.of());
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId, inputs));
+        verify(fixture.em, times(1)).createNativeQuery(org.mockito.ArgumentMatchers.contains("FOR UPDATE OF s"));
+        verify(fixture.em, times(1)).createNativeQuery(org.mockito.ArgumentMatchers.contains("SUM(item.qty)"));
+        verify(fixture.em, times(1)).createNativeQuery(org.mockito.ArgumentMatchers.contains("FROM execution_segment_sales_allocations"));
+        verify(fixture.em, times(1)).createNativeQuery(org.mockito.ArgumentMatchers.contains("fn_execution_material_custody_valid"));
+    }
+
+    @Test
+    void batchIdentityReadCannotSilentlyDropAMissingSegment() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+        var absent = fixture.line("1"); absent.setExecutionSegmentId(UUID.randomUUID());
+        var failure = assertThrows(ApiException.class, () -> fixture.guard.validateDraft(
+                UUID.randomUUID(), fixture.workshopId, List.of(fixture.line("1"), absent)));
+        assertTrue(failure.getMessage().contains("执行段不存在"));
+    }
+
+    @Test
+    void incompleteOrForeignMaterialFactsCannotPassTheLockedSourceSet() {
+        for (boolean foreign : List.of(false,true)) {
+            Fixture fixture=fixture("IN_PROGRESS","10","0");
+            when(fixture.custody.getResultList()).thenReturn(foreign
+                    ? Collections.singletonList(new Object[]{UUID.randomUUID(),true,true}) : List.of());
+            var failure=assertThrows(ApiException.class,()->fixture.guard.validateDraft(UUID.randomUUID(),
+                    fixture.workshopId,List.of(fixture.line("1"))));
+            assertTrue(failure.getMessage().contains("执行段来源已变化"));
+        }
+    }
+
+    @Test
+    void batchAggregateKeepsSalesAndPublicConsumptionSeparate() {
+        Fixture fixture = fixture("IN_PROGRESS", "20", "0");
+        UUID[] sales = fixture.salesAllocation("10");
+        when(fixture.reported.getResultList()).thenReturn(List.of(
+                new Object[] {fixture.segmentId, sales[0], new BigDecimal("8"), BigDecimal.ZERO},
+                new Object[] {fixture.segmentId, null, new BigDecimal("1"), new BigDecimal("1")}));
+        var sale = fixture.line("2");
+        sale.setExecutionSegmentSalesAllocationId(sales[0]); sale.setSalesOrderItemId(sales[1]);
+        assertDoesNotThrow(() -> fixture.guard.validateDraft(UUID.randomUUID(), fixture.workshopId,
+                List.of(sale, fixture.line("9"))));
+        sale.setQty(new BigDecimal("2.0001"));
+        var failure = assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(),
+                fixture.workshopId, List.of(sale, fixture.line("1"))));
+        assertTrue(failure.getMessage().contains("超出所选销售订单分摊"));
+    }
+
+    @Test
+    void batchAggregateRejectsSecondSegmentWithoutBorrowingFirstSegmentsRoom() {
+        Fixture fixture = fixture("IN_PROGRESS", "10", "0");
+        Object[] first = (Object[]) fixture.lock.getResultList().getFirst();
+        Object[] second = first.clone(); second[0] = UUID.randomUUID(); second[1] = UUID.randomUUID();
+        when(fixture.lock.getResultList()).thenReturn(List.of(first, second));
+        when(fixture.custody.getResultList()).thenReturn(List.of(
+                new Object[] {first[0], true, true}, new Object[] {second[0], true, true}));
+        when(fixture.reported.getResultList()).thenReturn(Collections.singletonList(
+                new Object[] {second[0], null, new BigDecimal("9"), new BigDecimal("9")}));
+        var line = fixture.line("2"); line.setExecutionSegmentId((UUID) second[0]); line.setPlanItemId((UUID) second[1]);
+        assertThrows(ApiException.class, () -> fixture.guard.validateDraft(UUID.randomUUID(),
+                fixture.workshopId, List.of(fixture.line("1"), line)));
+    }
 
     @Test
     void crossPlanSegmentIsRejectedByExactPlanItemIdentity() {
@@ -361,18 +442,24 @@ class DailyReportExecutionSegmentGuardTest {
         Query internalCumulative = scalarQuery(new BigDecimal(existing));
         Query demands=query();
         when(demands.getResultList()).thenReturn(demandStatus==null ? List.of() : Collections.singletonList(
-                new Object[]{UUID.randomUUID(),demandStatus,false}));
+                new Object[]{segmentId,UUID.randomUUID()}));
         Query capacityQuery=scalarQuery(capacity==null?null:new BigDecimal(capacity));
         Query custodyQuery=scalarQuery(custodyValid);
+        when(custodyQuery.getResultList()).thenReturn(Collections.singletonList(new Object[] {segmentId,custodyValid,true}));
+        Query segmentLocks=query();
+        when(segmentLocks.getResultList()).thenAnswer(ignored -> ((List<?>) lock.getResultList()).stream()
+                .map(row -> ((Object[]) row)[0]).toList());
+        Query reported = query();
+        when(reported.getResultList()).thenAnswer(ignored -> Collections.singletonList(
+                new Object[] {segmentId, null, cumulative.getSingleResult(), internalCumulative.getSingleResult()}));
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql=invocation.getArgument(0);
+            if(sql.contains("SELECT s.id FROM production_execution_segments"))return segmentLocks;
             if(sql.contains("fn_execution_material_custody_valid"))return custodyQuery;
             if(sql.contains("fn_execution_material_output_capacity"))return capacityQuery;
             if(sql.contains("FROM production_material_demands"))return demands;
             if(sql.contains("FROM execution_segment_sales_allocations"))return allocation;
-            if(sql.contains("SUM(item.qty)")
-                    && sql.contains("item.execution_segment_sales_allocation_id IS NULL")) return internalCumulative;
-            if(sql.contains("SUM(item.qty)"))return cumulative;
+            if(sql.contains("SUM(item.qty)"))return reported;
             return lock;
         });
         // 车间归属判定已抽到 ProductionWorkshopMembership（2026-09-11，与执行段写侧同一份
@@ -394,7 +481,7 @@ class DailyReportExecutionSegmentGuardTest {
                 planMakerId,
                 workshopId,
                 access,
-                notices, allocation, internalCumulative, lock);
+                notices, allocation, internalCumulative, lock, em, reported, custodyQuery);
     }
 
     private static Query query() {
@@ -422,12 +509,15 @@ class DailyReportExecutionSegmentGuardTest {
             ChainNoticeService notices,
             Query allocation,
             Query internalCumulative,
-            Query lock) {
+            Query lock,
+            EntityManager em,
+            Query reported,
+            Query custody) {
         UUID[] salesAllocation(String qty) {
             UUID allocationId = UUID.randomUUID();
             UUID orderItemId = UUID.randomUUID();
             when(allocation.getResultList()).thenReturn(Collections.singletonList(
-                    new Object[]{allocationId, orderItemId, new BigDecimal(qty)}));
+                    new Object[]{segmentId, allocationId, orderItemId, new BigDecimal(qty)}));
             return new UUID[]{allocationId, orderItemId};
         }
         DailyReportItemLine line(String qty) {

@@ -9,6 +9,16 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get businessResetAuditScope =>
+      '清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。';
+
+  @override
+  String get serverAlertAcknowledge => '已知悉';
+
+  @override
+  String get serverAlertDetails => '查看详情';
+
+  @override
   String dashboardMoreTasks(int count) {
     return '还有 $count 项任务';
   }

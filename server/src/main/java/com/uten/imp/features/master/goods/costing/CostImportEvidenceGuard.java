@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.costing;
 
 import com.uten.imp.application.port.MasterReferenceValidationPort;
+import com.uten.imp.common.storage.ImmutableDocumentStore;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.CurrentAuthorityGuard;
@@ -16,11 +17,14 @@ import java.util.LinkedHashMap;
 public class CostImportEvidenceGuard {
     private final JdbcTemplate db;
     private final MasterReferenceValidationPort references;
+    private final ImmutableDocumentStore documents;
     public void requireReadable(UUID importId, UUID goodsId) {
         CurrentAuthorityGuard.requireAll("goods:cost:view");
         references.requireVisibleGoods(goodsId);
-        if (!Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM goods_cost_imports WHERE id=? AND goods_id=?)",
-                Boolean.class, importId, goodsId))) throw new ApiException(ErrorCode.NOT_FOUND, "成本来源文件不存在");
+        var sources=db.query("SELECT storage_provider,storage_key,storage_version,storage_size,storage_sha256 FROM goods_cost_imports WHERE id=? AND goods_id=?",
+                (rs,row)->new ImmutableDocumentStore.Reference(rs.getString(1),rs.getString(2),rs.getString(3),rs.getLong(4),rs.getString(5)),importId,goodsId);
+        if(sources.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"成本来源文件不存在");
+        documents.read(sources.getFirst());
     }
 
     public Map<String, String> validate(UUID goodsId, Map<String, String> fields) {

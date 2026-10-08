@@ -49,7 +49,10 @@ public class GoodsCostImportService {
         var args = new MapSqlParameterSource().addValue("goods", goodsId).addValue("actor", actor).addValue("hash", hash);
         db.query("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:goods AS text)||CAST(:actor AS text)||:hash,755))", args, r -> null);
         var old = db.queryForList("SELECT preview::text FROM goods_cost_imports WHERE goods_id=:goods AND actor_id=:actor AND storage_sha256=:hash", args, String.class);
-        if (!old.isEmpty()) return decode(old.getFirst());
+        if (!old.isEmpty()) {
+            files.checkLegacy("GOODS_COST_IMPORT_REPLAY",bytes);
+            return decode(old.getFirst());
+        }
         String name = sourceName == null ? "cost.xlsx" : sourceName.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_");
         if (name.isBlank() || name.length() > 240) throw invalid("文件名称过长或无效");
         UUID id = UUID.randomUUID();

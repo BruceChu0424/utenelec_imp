@@ -1,5 +1,8 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.common.files.malware.MalwareScanner;
+import com.uten.imp.common.files.malware.MalwareScanUnavailableException;
+
 import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.application.port.AttachmentAccessPort.AttachmentView;
 import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
@@ -13,8 +16,8 @@ import com.uten.imp.common.storage.StorageService.UploadRequest;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.config.props.StorageProperties;
-import com.uten.imp.features.attachment.AttachmentMalwareScanner.ScanResult;
-import com.uten.imp.features.attachment.AttachmentMalwareScanner.Verdict;
+import com.uten.imp.common.files.malware.MalwareScanner.ScanResult;
+import com.uten.imp.common.files.malware.MalwareScanner.Verdict;
 import com.uten.imp.features.attachment.AttachmentUploadGrantService.Grant;
 import com.uten.imp.features.attachment.dto.AttachmentConfirmRequest;
 import com.uten.imp.features.attachment.dto.AttachmentDownloadResponse;
@@ -61,7 +64,7 @@ public class AttachmentService implements AttachmentAccessPort {
     private final AttachmentConfirmTransaction confirmTransaction;
     private final AttachmentUploadSafetyGate uploadSafetyGate;
     private final AttachmentUploadSessionStore uploadSessions;
-    private final AttachmentMalwareScanner malwareScanner;
+    private final MalwareScanner malwareScanner;
     private final AttachmentObjectOutboxStore objectOutbox;
     private final StorageProviderRegistry storageProviders;
     private final AttachmentDownloadVerifier downloadVerifier;
@@ -201,7 +204,7 @@ public class AttachmentService implements AttachmentAccessPort {
                     StringUtils.hasText(actualContentType) ? actualContentType : contentType,
                     inspection.sha256(), scan, request.category(), session.storageProvider());
             return toDto(entity);
-        } catch (AttachmentScanUnavailableException unavailable) {
+        } catch (MalwareScanUnavailableException unavailable) {
             uploadSessions.releaseAfterTransientFailure(session.id(), "SCANNER_UNAVAILABLE");
             throw new ApiException(ErrorCode.BUSINESS,
                     "安全扫描服务暂时不可用，文件暂不能确认，请稍后重试");

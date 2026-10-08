@@ -21,9 +21,12 @@ import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
@@ -31,6 +34,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -65,6 +69,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
         "uten.inventory.value-work-initial-delay-ms=3600000"})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Import(ProductionJdbcMeasurement.Configuration.class)
 @TestExecutionListeners(listeners = ProcurementIqcPreStockInEndToEndTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class ProcurementIqcPreStockInEndToEndTest {
@@ -96,9 +101,52 @@ class ProcurementIqcPreStockInEndToEndTest {
     @Autowired WarehouseQualityResultService qualityResults;
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired BusinessOutboxProcessor outbox;
+    @MockitoSpyBean com.uten.imp.features.production.fulfillment.ProductionPurchaseSupplyTransitionService purchase;
+    @MockitoSpyBean com.uten.imp.features.production.fulfillment.ProductionSubcontractSupplyTransitionService subcontract;
 
     @AfterEach
-    void cleanup() { SecurityContextHolder.clearContext(); }
+    void cleanup() { SecurityContextHolder.clearContext(); ProductionJdbcMeasurement.end(); }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"PURCHASE", "SUBCONTRACT"})
+    void automaticStockAndQualityCloseoutReconcileOnceInTheSameTransaction(String type) {
+        Case c = prepare(type);
+        UUID leaf = c.leaves().getFirst();
+        preStock.preStockIn(type, c.receipt(), new PreStockInRequest(c.rows().stream()
+                .map(row -> new PreStockInItem(row.inspectionId(), leaf, "CLOSEOUT-01")).toList()));
+        var request = new BatchInspectionPassRequest(c.rows().stream().map(row ->
+                new BatchInspectionPassRequest.Item(row.inspectionId(), RECEIPT_QTY,
+                        "closeout-once-" + row.inspectionId())).toList(), null);
+        org.mockito.Mockito.clearInvocations(purchase, subcontract);
+
+        var measured = ProductionJdbcMeasurement.begin();
+        inspections.passBatch(type, c.receipt(), request);
+        ProductionJdbcMeasurement.end();
+
+        assertEquals(1, measured.commits, "品质、自动入库、正式供给与整单结案仍同事务提交");
+        String closure = type.equals("PURCHASE") ? "purchase.order_closure" : "subcontract.order_closure";
+        long closureStatements = measured.labelsByFingerprint.entrySet().stream()
+                .filter(entry -> closure.equals(entry.getValue()))
+                .mapToLong(entry -> measured.fingerprints.getOrDefault(entry.getKey(), 0L)).sum();
+        assertEquals(1, closureStatements, "同一命令不能在自动入库和品质结案各重算一次订单");
+        UUID batch = jdbc.queryForObject("SELECT id FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",
+                UUID.class, c.receipt());
+        if (type.equals("PURCHASE")) {
+            org.mockito.Mockito.verify(purchase).advanceInspectionStockInState(c.receipt(), batch);
+            org.mockito.Mockito.verify(purchase, org.mockito.Mockito.never()).onPurchaseReceiptApproved(c.receipt());
+        } else {
+            org.mockito.Mockito.verify(subcontract).advanceInspectionStockInState(c.receipt());
+            org.mockito.Mockito.verify(subcontract, org.mockito.Mockito.never()).onSubcontractReceiptApproved(c.receipt());
+        }
+        assertEquals(1, events(c.receipt(), "RECEIPT_RESOLVED"));
+        for (var row : c.rows()) {
+            assertEquals(0, RECEIPT_QTY.compareTo(balance(leaf, row.goodsId())));
+        }
+        inspections.passBatch(type, c.receipt(), request);
+        assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",
+                Integer.class, c.receipt()));
+        assertEquals(1, events(c.receipt(), "RECEIPT_RESOLVED"));
+    }
 
     // ------------------------------------------------------------------ 采购：上架 → 合格自动转正 / 不合格不进库存
 

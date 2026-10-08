@@ -31,6 +31,26 @@ class TestResetHistoryExceptionPostgresTest {
     }
     @AfterEach void close() throws Exception {if(database!=null)database.close();}
 
+    @Test void resetPreservesEverySecurityCategoryInLiveAndArchivedAudit() {
+        jdbc.queryForObject("SELECT fn_audit_ensure_partition('audit_log_archive',DATE '1998-01-01')", String.class);
+        String marker = UUID.randomUUID().toString();
+        for (String table : java.util.List.of("audit_log", "audit_log_archive")) {
+            for (String category : java.util.List.of("authentication", "authorization", "security", "system", "business")) {
+                jdbc.update("INSERT INTO " + table + """
+                        (actor_account,action,target_type,target_id,result,event_source,risk_level,event_category,device_capture_status,created_at)
+                        VALUES('fixture','security_retention_fixture','users',?,'retained','business','low',?,'missing',
+                            CASE WHEN ?='audit_log_archive' THEN TIMESTAMPTZ '1998-01-02 00:00:00+00' ELSE CURRENT_TIMESTAMP END)
+                        """, marker, category, table);
+            }
+        }
+        jdbc.queryForMap("SELECT * FROM business_data_reset()");
+        for (String table : java.util.List.of("audit_log", "audit_log_archive")) {
+            assertThat(jdbc.queryForList("SELECT event_category FROM " + table + " WHERE target_id=?",
+                    String.class, marker)).containsExactlyInAnyOrder(
+                    "authentication", "authorization", "security", "system");
+        }
+    }
+
     @Test void ordinaryDeleteRetainsItsOriginalWhileUntrustedFlagsCannotDestroyHistory() throws Exception {
         UUID id=UUID.randomUUID();
         jdbc.update("INSERT INTO sales_quotes(id,bill_no,bill_date,status) VALUES(?,'XB'||to_char(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai','YYYYMMDD')||'991001',(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date,0)",id);

@@ -210,14 +210,17 @@ class AlertingAndHostFilesTest(unittest.TestCase):
             text = raw.decode("utf-8")
             self.assertIsNone(live_address.search(text), path.name)
         self.assertIn("REPLACE", read(HOST / "pgbackrest-20-uten-imp-repo2.conf.example").split("repo2-cipher-pass=")[1])
-        self.assertIn("REPLACE", read(HOST / "alert.curl.example"))
+        self.assertFalse((HOST / "alert.curl.example").exists())
         self.assertIn("__ADMIN_TAILSCALE_IP__", read(HOST / "fail2ban-00-uten-ignore.local.example"))
 
-    def test_alert_webhook_is_read_from_a_root_file_not_from_argv(self):
+    def test_alerts_are_recorded_locally_without_network_credentials(self):
         alert = read(HOST / "uten-alert.sh")
-        self.assertIn("-K /etc/uten-imp/alert.curl", alert)
-        self.assertNotRegex(alert, r"curl[^\n]*https?://")
-        self.assertIn("umask 077", alert)
+        self.assertIn("/usr/bin/python3 -I /usr/local/libexec/uten-host-alert.py", alert)
+        self.assertNotIn("curl", alert)
+        unit = read(UNITS / "uten-alert@.service")
+        self.assertIn("IPAddressDeny=any", unit)
+        self.assertIn("UTEN_SERVER_STATUS_HOST_ALERT_FILE=/var/lib/uten-alert/events.json",
+                      read(UNITS / "uten-imp.service"))
 
     def test_ssh_snippets_keep_passwords_off(self):
         sshd = read(HOST / "sshd-00-uten-imp.conf.example")

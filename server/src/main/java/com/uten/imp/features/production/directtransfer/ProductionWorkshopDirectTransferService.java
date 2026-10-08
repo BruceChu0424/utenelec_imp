@@ -473,11 +473,13 @@ public class ProductionWorkshopDirectTransferService {
                     "DT-TOPUP-" + item.getId());
             return;
         }
-        readiness.promoteAfterWorkshopDirectTransfer(
+        boolean lineSideIssueChecked = readiness.promoteAfterWorkshopDirectTransfer(
                 resolved.receivingSegmentId(), resolved.packageWarehouseId());
-        stockDocs.issueWorkshopDirectTransferDraws(
-                resolved.receivingSegmentId(), resolved.lineSideWarehouseId(),
-                "DT-ISSUE-" + resolved.demandId());
+        if (!lineSideIssueChecked) {
+            stockDocs.issueWorkshopDirectTransferDraws(
+                    resolved.receivingSegmentId(), resolved.lineSideWarehouseId(),
+                    "DT-ISSUE-" + resolved.demandId());
+        }
     }
 
     /**

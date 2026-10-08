@@ -9,6 +9,16 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get businessResetAuditScope =>
+      'Clears test business data, deletion history, field versions and business audit records. Authentication, authorization, security and system audit records, and reset receipts, are retained.';
+
+  @override
+  String get serverAlertAcknowledge => 'Acknowledge';
+
+  @override
+  String get serverAlertDetails => 'View details';
+
+  @override
   String dashboardMoreTasks(int count) {
     return '$count more tasks';
   }

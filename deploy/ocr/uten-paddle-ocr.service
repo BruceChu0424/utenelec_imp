@@ -12,6 +12,9 @@ User=uten-ocr
 Group=uten-ocr
 WorkingDirectory=/opt/uten-ocr
 Environment=PADDLE_PDX_CACHE_HOME=/opt/uten-ocr/models
+Environment=XDG_CACHE_HOME=/tmp/uten-ocr-cache
+Environment=MPLCONFIGDIR=/tmp/uten-ocr-matplotlib
+Environment=PADDLE_HOME=/tmp/uten-ocr-runtime
 Environment=UTEN_OCR_PORT=8501
 Environment=PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
 Environment=OMP_NUM_THREADS=2
@@ -28,13 +31,12 @@ MemoryMax=4G
 CPUQuota=200%
 TasksMax=128
 UMask=0077
-# 只读代码目录；模型缓存目录可写。
-ReadOnlyPaths=/opt/uten-ocr/ocr_server.py
+# 固定模型由受控准备步骤安装；服务运行时只读代码与模型。
+ReadOnlyPaths=/opt/uten-ocr/ocr_server.py /opt/uten-ocr/models
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 PrivateDevices=true
-ReadWritePaths=/opt/uten-ocr/models
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 IPAddressDeny=any

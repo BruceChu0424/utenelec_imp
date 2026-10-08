@@ -1,8 +1,8 @@
 [Unit]
 Description=Uten IMP backend
 Documentation=man:systemd.service(5) man:systemd.resource-control(5)
-After=network-online.target data.mount postgresql@16-main.service uten-imp-recovery-commit-verifier.service
-Wants=network-online.target
+After=network-online.target data.mount postgresql@16-main.service uten-imp-recovery-commit-verifier.service clamav-daemon.service
+Wants=network-online.target clamav-daemon.service
 Requires=postgresql@16-main.service uten-imp-recovery-commit-verifier.service
 BindsTo=data.mount postgresql@16-main.service
 PartOf=postgresql@16-main.service
@@ -15,6 +15,8 @@ StartLimitAction=none
 Type=simple
 User=uten-imp
 Group=uten-imp
+Environment=UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl
+ExecStartPre=/bin/sh -c 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" = clamav ]; then test -S "$${UTEN_CLAMAV_UNIX_SOCKET}" && test -r "$${UTEN_CLAMAV_UNIX_SOCKET}" && test -w "$${UTEN_CLAMAV_UNIX_SOCKET}"; fi'
 # /opt/uten-imp/current must be an atomically replaced symlink to an immutable
 # /opt/uten-imp/releases/<version> directory. Never overwrite files through it.
 WorkingDirectory=/opt/uten-imp/current
@@ -78,7 +80,7 @@ ProtectSystem=strict
 # The root ExecStartPre verifier atomically consumes a one-use activation or
 # recovery authorization from this root:root 0700 runtime directory. The
 # leading '-' keeps ordinary boot valid when no transaction directory exists.
-ReadWritePaths=-/run/uten-imp-release
+ReadWritePaths=-/run/uten-imp-release /var/lib/uten-imp-media/attachments /var/log/uten-imp
 ProtectControlGroups=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
@@ -92,9 +94,9 @@ RestrictNamespaces=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 CapabilityBoundingSet=
 AmbientCapabilities=
-# Production attachments are authoritative in split unversioned-staging and
-# versioned-final OSS Buckets. PrivateTmp gives
-# bounded lifecycle-local scratch without granting the JVM writes on /data.
+# New originals use the private internal media volume. Retained local/OSS objects
+# require explicit historical read capability and keep their exact identities.
+# PrivateTmp isolates runtime scratch; the old /data original directory stays read-only.
 UMask=0027
 LimitNOFILE=65536
 TasksMax=512

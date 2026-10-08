@@ -14,6 +14,8 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -144,8 +146,10 @@ class ProductionWorkshopDirectTransferServiceTest {
      * ADR-127 §8：一行报工分给三个上层工单(同一车间、同一收料主仓)。仍逐块办——每块自己的检验、
      * 入库确认与投料，一块办完才写下一块的直送明细；线边仓只确定一次。
      */
-    @Test
-    void piecesToSeveralReceiversAreHandledOneByOneAndResolveTheLineSideOnce() {
+    @ParameterizedTest
+    @CsvSource({"true,false","false,true","false,false"})
+    void piecesToSeveralReceiversAreHandledOneByOneAndResolveTheLineSideOnce(
+            boolean continuous, boolean lineSideIssueChecked) {
         EntityManager em = mock(EntityManager.class);
         SecurityContextCurrentUser currentUser = mock(SecurityContextCurrentUser.class);
         AuthUser user = mock(AuthUser.class);
@@ -179,6 +183,9 @@ class ProductionWorkshopDirectTransferServiceTest {
         var readiness = mock(ProductionExecutionReadinessService.class);
         doAnswer(call -> events.add("handover:" + receivers.indexOf(call.<UUID>getArgument(0))))
                 .when(readiness).topUpDirectSupply(any(), any(), any(), any(), anyString());
+        when(readiness.promoteAfterWorkshopDirectTransfer(any(),any())).thenAnswer(call->{
+            events.add("handover:"+receivers.indexOf(call.<UUID>getArgument(0)));return lineSideIssueChecked;
+        });
         var stockDocs = mock(StockDocService.class);
         doAnswer(call -> events.add("confirm"))
                 .when(stockDocs).confirmWorkshopDirectTransferInbound(any(), anyString());
@@ -197,7 +204,7 @@ class ProductionWorkshopDirectTransferServiceTest {
                     int at = index.apply(params.get("itemId"));
                     return java.util.Collections.singletonList(new Object[] {
                             demands.get(at), receivers.get(at), UUID.randomUUID(), workshop,
-                            warehouse, warehouse, "IN_PROGRESS", true, "子件", true, null});
+                            warehouse, warehouse, "IN_PROGRESS", continuous, "子件", true, null});
                 }
                 return java.util.Collections.singletonList(new Object[] {workshop, UUID.randomUUID()});
             });
@@ -220,6 +227,8 @@ class ProductionWorkshopDirectTransferServiceTest {
                 "transfer:1", "inspect:1", "confirm", "handover:1",
                 "transfer:2", "inspect:2", "confirm", "handover:2");
         verify(locations, times(1)).openedBinOf(workshop);
+        verify(stockDocs,times(!continuous&&!lineSideIssueChecked?3:0))
+                .issueWorkshopDirectTransferDraws(any(),any(),anyString());
     }
 
     /**

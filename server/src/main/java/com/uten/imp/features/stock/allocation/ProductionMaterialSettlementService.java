@@ -225,7 +225,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             UUID planId,
             ProductionMaterialSettlementRequest request,
             UUID actorId) {
-        return mutate(planId, request, actorId, false);
+        return mutate(planId, request, actorId, false, true);
     }
 
     @Transactional
@@ -233,7 +233,19 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             UUID planId,
             ProductionMaterialSettlementRequest request,
             UUID actorId) {
-        return mutate(planId, request, actorId, true);
+        return mutate(planId, request, actorId, true, true);
+    }
+
+    /** Report orchestration needs the posting, not the material-page projection. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void postForDailyReport(UUID planId, ProductionMaterialSettlementRequest request, UUID actorId) {
+        mutate(planId, request, actorId, false, false);
+    }
+
+    /** Reversal uses the same scope, source locks and idempotency contract as the public command. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void reverseForDailyReport(UUID planId, ProductionMaterialSettlementRequest request, UUID actorId) {
+        mutate(planId, request, actorId, true, false);
     }
 
     @Transactional
@@ -302,7 +314,8 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
             UUID planId,
             ProductionMaterialSettlementRequest request,
             UUID actorId,
-            boolean reverse) {
+            boolean reverse,
+            boolean includeClearance) {
         tx.bind();
         var sourceGuard=planFootprints.beginPlan(planId,List.of());
         requirePlanExists(planId, true);
@@ -332,7 +345,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         ErrorCode.CONFLICT,
                         "同一防重复提交标识对应不同的物料清账请求，请刷新后重试");
             }
-            return readClearance(planId,responseScope);
+            return includeClearance ? readClearance(planId,responseScope) : List.of();
         }
 
         List<UUID> locked = NativeQueryResults.typedRows(em.createNativeQuery("""
@@ -419,7 +432,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
                         """)
                 .setParameter("planId", planId)
                 .executeUpdate();
-        return readClearance(planId,responseScope);
+        return includeClearance ? readClearance(planId,responseScope) : List.of();
     }
 
     /**

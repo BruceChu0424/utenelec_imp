@@ -50,6 +50,7 @@ public class AiInputOriginalStore {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"原文件大小或内容与上传时不一致，请重新上传");
         ImmutableDocumentStore.Reference reference;
         try {reference=objects.save("AI_INPUT_ORIGINAL",input.fileName(),contentType(input.kind()),input.bytes());}
+        catch(ApiException rejected){throw rejected;}
         catch(RuntimeException failed){throw new ApiException(ErrorCode.BUSINESS,"原文件尚未保存，识别没有提交，请稍后重新上传");}
         if(reference.size()!=input.size()||!Objects.equals(reference.sha256(),input.sha256()))throw new ApiException(ErrorCode.CONFLICT,"原文件保存后与上传时不一致，识别没有提交");
         jdbc.update("""
@@ -124,7 +125,9 @@ public class AiInputOriginalStore {
                     ?jdbc.queryForObject("SELECT legacy_bytes FROM ai_input_originals WHERE job_id=:job",Map.of("job",job),byte[].class)
                     :objects.read(new ImmutableDocumentStore.Reference(original.provider(),original.key(),original.version(),original.size(),original.sha()));
             if(bytes==null||bytes.length!=original.size()||!Objects.equals(ImmutableDocumentStore.digest(bytes),original.sha()))throw new IllegalStateException("Original mismatch");
-        } catch(RuntimeException mismatch){throw new ApiException(ErrorCode.CONFLICT,"原文件读取或核对失败，请联系管理员处理");}
+            if("LEGACY_DB".equals(original.availability()))bytes=objects.checkLegacy("AI_INPUT_ORIGINAL_LEGACY",bytes);
+        } catch(ApiException rejected){throw rejected;}
+        catch(RuntimeException mismatch){throw new ApiException(ErrorCode.CONFLICT,"原文件读取或核对失败，请联系管理员处理");}
         var actor=current.get().orElseThrow();audit.logExplicit(actor.getId(),actor.getLoginAccount(),"download_ai_input_original","ai_input_originals",job.toString(),"success");
         return new Download(bytes,original.name().replaceAll("[\\p{Cntrl}\\\\/]","_"),contentType(original.kind()),original.sha());
     }

@@ -294,6 +294,13 @@ final class ProductionJdbcMeasurement {
         if (normalized.startsWith("with recursive roots(")) return "bom.expansion";
         if (normalized.startsWith("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
         if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
+        if (normalized.startsWith("select id, status") && normalized.contains("from production_fqc_inspections")
+                && normalized.contains("source_report_item_id") && normalized.contains("for update")) return "fqc.release_inspections";
+        if (normalized.startsWith("select id, source_report_item_id, stock_document_item_id, requested_qty")
+                && normalized.contains("from production_fqc_release_commands")) return "fqc.release_replay";
+        if (normalized.contains("from production_fqc_decision_events decision")
+                && normalized.contains("left join production_fqc_release_allocations allocation")
+                && normalized.contains("group by decision.id")) return "fqc.release_balances";
         // ADR-149: Java 侧的仓库数据范围解析(一次汇总里的解析次数 ≤ 不同范围数, 准则 14)。
         if (normalized.contains("fn_user_warehouse_access(")) return "warehouse.scope_access";
         if (normalized.startsWith("select segment.id from production_execution_segments segment")

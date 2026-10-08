@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -49,6 +50,59 @@ def location_block(configuration: str, declaration: str) -> str:
 
 
 class InternalTestRuntimeContractTest(unittest.TestCase):
+    def test_pgp_rotation_accepts_current_and_historical_keys_without_printing_values(self) -> None:
+        policies = []
+        for relative in (
+            "deploy/setup/validate-server-env.sh",
+            "deploy/setup/validate-internal-test-server-env.sh",
+        ):
+            source = read(relative)
+            match = re.search(r"<<'PGP'\n(?P<policy>.*?)\nPGP", source, re.DOTALL)
+            self.assertIsNotNone(match)
+            policies.append(match.group("policy"))
+            self.assertIn("\nvalidate_pgp_configuration\n", source)
+        self.assertEqual(policies[0], policies[1], "both installed validators must enforce one version/keyring contract")
+
+        def evaluate(values: dict[str, str]) -> subprocess.CompletedProcess[str]:
+            with tempfile.TemporaryDirectory() as directory:
+                environment = Path(directory) / "server.env"
+                environment.write_text("".join(f"{key}={value}\n" for key, value in values.items()), encoding="utf-8")
+                return subprocess.run(
+                    [sys.executable, "-I", "-", str(environment)],
+                    input=policies[0], text=True, capture_output=True, check=False,
+                )
+
+        initial = {"UTEN_PGP_KEY_VERSION": "1"}
+        rotated = {
+            "UTEN_PGP_KEY_VERSION": "3",
+            "UTEN_PGP_UNVERSIONED_KEY_VERSION": "1",
+            "UTEN_PGP_ROTATION_ENABLED": "true",
+            "UTEN_CRYPTO_PGPLEGACYKEYS_1": "old-short-key",
+            "UTEN_CRYPTO_PGPLEGACYKEYS_2": "TEST_ONLY_HISTORICAL_VALUE_CANARY_2",
+        }
+        for accepted in (initial, rotated, rotated | {"UTEN_PGP_ROTATION_ENABLED": "false"}):
+            result = evaluate(accepted)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("", result.stdout + result.stderr)
+        for replacement in (
+            {"UTEN_PGP_KEY_VERSION": "TEST_ONLY_PRIVATE_VALUE_CANARY"},
+            {"UTEN_PGP_KEY_VERSION": "01"},
+            {"UTEN_PGP_UNVERSIONED_KEY_VERSION": "9"},
+            {"UTEN_PGP_ROTATION_ENABLED": "yes"},
+            {"UTEN_CRYPTO_PGPLEGACYKEYS_1": ""},
+            {"UTEN_CRYPTO_PGPLEGACYKEYS_3": "TEST_ONLY_PRIVATE_VALUE_CANARY"},
+            {"UTEN_CRYPTO_PGPLEGACYKEYS_01": "TEST_ONLY_PRIVATE_VALUE_CANARY"},
+            {"UTEN_CRYPTO_PGPLEGACYKEYS_JAVA_TOOL_OPTIONS": "TEST_ONLY_PRIVATE_VALUE_CANARY"},
+        ):
+            result = evaluate(rotated | replacement)
+            self.assertNotEqual(0, result.returncode)
+            self.assertNotIn("TEST_ONLY_PRIVATE_VALUE_CANARY", result.stdout + result.stderr)
+            self.assertNotIn("TEST_ONLY_HISTORICAL_VALUE_CANARY_2", result.stdout + result.stderr)
+        self.assertNotEqual(0, evaluate({"UTEN_PGP_KEY_VERSION": "2"}).returncode)
+        internal = read("deploy/setup/validate-internal-test-server-env.sh")
+        self.assertIn("UTEN_CRYPTO_PGPLEGACYKEYS_*)", internal)
+        self.assertNotIn("expect_exact UTEN_PGP_KEY_VERSION 1", internal)
+
     def test_application_profile_is_production_like_but_fixed_local(self) -> None:
         profile = read("server/src/main/resources/application-internal-test.yml")
         for expected in (
@@ -132,7 +186,7 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
 
     def test_production_permission_delegation_gate_is_explicit_boolean(self) -> None:
         validator = read("deploy/setup/validate-server-env.sh")
-        template = read("deploy/setup/server.env.oss-migration.example")
+        template = read("deploy/setup/server.env.internal-storage.example")
         phase3 = read("deploy/setup/phase3-runtime.sh")
         match = re.search(
             r"expect_boolean\(\) \{(?P<body>.*?)\n\}",

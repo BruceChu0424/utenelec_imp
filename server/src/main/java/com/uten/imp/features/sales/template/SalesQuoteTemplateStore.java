@@ -106,10 +106,10 @@ public class SalesQuoteTemplateStore {
                 """, p, (rs, i) -> payload(rs));
         if (candidates.isEmpty()) return;
         Payload candidate = candidates.getFirst();
+        byte[] checkedCandidate = candidate.object()==null ? storage.readLegacy(candidate.legacyBytes()) : storage.read(candidate.object());
         if(confirmedRoles!=null) {
             try {
-                byte[] bytes=candidate.object()==null ? candidate.legacyBytes() : storage.read(candidate.object());
-                var mapped=QuoteTemplateWorkbook.remap(new QuoteTemplateWorkbook.Candidate(bytes,candidate.fingerprint(),candidate.mapping(),candidate.features()),confirmedRoles);
+                var mapped=QuoteTemplateWorkbook.remap(new QuoteTemplateWorkbook.Candidate(checkedCandidate,candidate.fingerprint(),candidate.mapping(),candidate.features()),confirmedRoles);
                 candidate=new Payload(candidate.legacyBytes(),mapped.mapping(),mapped.features(),mapped.fingerprint(),candidate.sourceName(),candidate.object());
             } catch(IllegalArgumentException invalid) { throw new ApiException(ErrorCode.VALIDATION_FAILED,invalid.getMessage()
                     +(invalid instanceof QuoteTemplateWorkbook.LayoutException ? "，请调整源文件后重新上传学习模板" : "")); }
@@ -266,7 +266,7 @@ public class SalesQuoteTemplateStore {
                 WHERE t.id=:id AND t.client_id=:client
                 """, parameters, (rs,i) -> payload(rs)).stream().findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND,"报价模板不存在或不属于此客户"));
-        return new Stored(payload.object() == null ? payload.legacyBytes() : storage.read(payload.object()),
+        return new Stored(payload.object() == null ? storage.readLegacy(payload.legacyBytes()) : storage.read(payload.object()),
                 payload.mapping(), payload.features(), payload.fingerprint(), payload.sourceName());
     }
 

@@ -27,6 +27,9 @@ public class StorageProviderRegistry {
                 || !java.util.Set.of("internal","oss","local").contains(provider))
             throw new ApiException(ErrorCode.CONFLICT,"历史附件存储来源尚未核定，暂不能读取或删除");
         if (provider.equals(active.backend())) return active;
+        if ("local".equals(provider) && !properties.isLegacyLocalReadEnabled()
+                || "oss".equals(provider) && !properties.isLegacyOssReadEnabled())
+            throw new ApiException(ErrorCode.CONFLICT,"此历史文件存储的读取开关尚未启用，请管理员先核对原件引用与目录后启用");
         synchronized(historical) { return historical.computeIfAbsent(provider,this::openHistorical); }
     }
 

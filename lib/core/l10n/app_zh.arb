@@ -1,4 +1,7 @@
 {
+  "businessResetAuditScope": "清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。",
+  "serverAlertAcknowledge": "已知悉",
+  "serverAlertDetails": "查看详情",
   "dashboardMoreTasks": "还有 {count} 项任务",
   "@dashboardMoreTasks": {
     "description": "今日概览单行待办中未展示的待处理件数",

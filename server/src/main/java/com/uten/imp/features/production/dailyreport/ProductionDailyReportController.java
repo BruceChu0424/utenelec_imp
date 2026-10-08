@@ -34,17 +34,17 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 生产日报 API（生产管理 · 空结构保未来）。
+ * 生产日报 API：实际产量、用料、产出去向与审核回执。
  *
- * <p>CRUD + 审核 + 红冲。本期审核仅置状态，<b>不调</b> {@code StockService}
- * （F_DateReport 老库从未启用，design §3.4；库存联动归未来车间/工序模块）。
+ * <p>保存形成草稿；审核同事务确认来源数量、实际用料及车间直送。
+ * 送仓产出在仓库登记、品质放行与点收入库后形成库存；红冲沿原来源反向。
  *
  * <ul>
  *   <li>GET    /api/production/daily-reports            列表分页</li>
  *   <li>GET    /api/production/daily-reports/{id}       详情（含明细）</li>
  *   <li>POST   /api/production/daily-reports            新建（草稿）</li>
  *   <li>PUT    /api/production/daily-reports/{id}       编辑（仅草稿）</li>
- *   <li>DELETE /api/production/daily-reports/{id}       软删（仅草稿/红冲）</li>
+ *   <li>DELETE /api/production/daily-reports/{id}       软删（仅草稿）</li>
  *   <li>POST   /api/production/daily-reports/{id}/approve  审核(0→1，body 带幂等键，同键重发原样回放)</li>
  *   <li>POST   /api/production/daily-reports/{id}/reverse  红冲（1→-1）</li>
  * </ul>

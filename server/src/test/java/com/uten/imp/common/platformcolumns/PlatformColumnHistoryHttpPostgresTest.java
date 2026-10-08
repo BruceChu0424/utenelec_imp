@@ -29,10 +29,15 @@ class PlatformColumnHistoryHttpPostgresTest extends AiPlatformPostgresTestSuppor
 
     @TestConfiguration(proxyBeanMethods=false)
     static class LegacyDataSource {
-        @Bean @Primary @FlywayDataSource
+        @Bean(destroyMethod="close") @Primary @FlywayDataSource
         DataSource legacyHistoryDataSource() {
             genuinePreRetentionRow();
-            return new DriverManagerDataSource(LEGACY_DATABASE.getJdbcUrl(),LEGACY_DATABASE.getUsername(),LEGACY_DATABASE.getPassword());
+            var configuration=new com.zaxxer.hikari.HikariConfig();
+            configuration.setJdbcUrl(LEGACY_DATABASE.getJdbcUrl());
+            configuration.setUsername(LEGACY_DATABASE.getUsername());
+            configuration.setPassword(LEGACY_DATABASE.getPassword());
+            configuration.setMaximumPoolSize(4);configuration.setMinimumIdle(0);
+            return new com.zaxxer.hikari.HikariDataSource(configuration);
         }
     }
 

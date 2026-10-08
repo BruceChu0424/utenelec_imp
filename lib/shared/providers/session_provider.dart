@@ -5,10 +5,13 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/network/connection_recovery.dart';
 import '../../core/network/session_event_bus.dart';
+import '../../core/network/server_config.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/security/auth_logout_fence.dart';
 import '../../core/security/secure_storage.dart';
 import '../../features/admin/repositories/impersonation_repository.dart';
@@ -63,9 +66,19 @@ class SessionNotifier extends Notifier<SessionState> {
   bool _restoreInProgress = false;
   bool _restoreRequested = false;
 
-  // Local ordering complements the cross-tab intentGeneration stored in the
-  // authoritative record. Network exchanges remain outside this short queue.
+  // Local ordering complements the persisted intentGeneration across async
+  // operations. Web records remain tab-scoped; network exchanges stay outside
+  // this short commit queue.
   var _sessionMutationEpoch = 0;
+  var _impersonationIntentEpoch = 0;
+  String? _visibleImpersonationLineage;
+  int? _pendingImpersonationOperation;
+  bool _requestOwnerDisposed = false;
+
+  /// Synchronous intent fence, including same-account re-login. Token refresh
+  /// and profile refresh preserve it; no credentials are exposed.
+  int get requestIntentEpoch =>
+      _sessionMutationEpoch + _impersonationIntentEpoch;
   Future<void> _sessionCommitTail = Future<void>.value();
 
   // When an authoritative replacement/logout write fails, visible state stays
@@ -80,6 +93,7 @@ class SessionNotifier extends Notifier<SessionState> {
 
   @override
   SessionState build() {
+    _requestOwnerDisposed = false;
     // 模拟身份绝不跨重启恢复（安全）：必须先 await 清掉残留模拟键，再恢复会话。
     // 否则 _restore→/auth/me 抢跑读到残留模拟 token，会以目标身份冷启动（actor=null，无横幅无出口）。
     unawaited(_clearImpersonationThenRestore());
@@ -106,10 +120,11 @@ class SessionNotifier extends Notifier<SessionState> {
     final impersonationExpiredSubscription = SessionEventBus
         .instance
         .onImpersonationExpired
-        .listen((_) {
-          unawaited(_handleImpersonationExpired());
+        .listen((notice) {
+          unawaited(_handleImpersonationExpired(notice));
         });
     ref.onDispose(() {
+      _requestOwnerDisposed = true;
       unawaited(expirationSubscription.cancel());
       unawaited(profileSubscription.cancel());
       unawaited(impersonationExpiredSubscription.cancel());
@@ -156,6 +171,9 @@ class SessionNotifier extends Notifier<SessionState> {
         state = SessionState(
           status: AuthStatus.authenticated,
           user: _toAppUser(UserProfile.fromJson(userJson)),
+          impersonationModeExpiresAt: state.impersonationModeExpiresAt,
+          impersonationReadOnly: state.impersonationReadOnly,
+          recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
         );
       }
     } catch (_) {
@@ -525,73 +543,171 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// 进入模拟模式：admin 重新确认密码 → 后端签发限时 modeToken（窗口内免密切换）。
   Future<void> enterImpersonationMode() async {
-    final mode = await _impersonationRepo.enter();
-    await _storage.saveImpersonationModeToken(mode.modeToken);
-    state = SessionState(
-      status: state.status,
-      user: state.user,
-      actor: state.actor,
-      impersonationModeExpiresAt: DateTime.now().add(
-        Duration(seconds: mode.expiresIn),
-      ),
-      impersonationReadOnly: state.impersonationReadOnly,
-      recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
-    );
+    final operation = ++_impersonationIntentEpoch;
+    final staffOperation = _sessionMutationEpoch;
+    final server = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        _impersonationOperationCurrent(operation, staffOperation, server);
+    _pendingImpersonationOperation = operation;
+    try {
+      final staff = await _storage.getAuthTokenSnapshot();
+      if (!current() || !staff.hasAccessToken || staff.sessionLineage == null) {
+        throw AuthenticatedRequestScope.changed();
+      }
+      final mode = await _impersonationRepo.enter();
+      if (!current()) throw AuthenticatedRequestScope.changed();
+      final saved = await _storage.saveImpersonationModeTokenIfCurrent(
+        token: mode.modeToken,
+        staffLineage: staff.sessionLineage!,
+        staffIntent: staff.intentGeneration,
+        isCurrent: current,
+      );
+      if (!saved || !current()) throw AuthenticatedRequestScope.changed();
+      state = SessionState(
+        status: state.status,
+        user: state.user,
+        actor: state.actor,
+        impersonationModeExpiresAt: DateTime.now().add(
+          Duration(seconds: mode.expiresIn),
+        ),
+        impersonationReadOnly: state.impersonationReadOnly,
+        recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
+      );
+    } finally {
+      if (_pendingImpersonationOperation == operation) {
+        _pendingImpersonationOperation = null;
+      }
+    }
   }
 
   /// 切换到目标员工身份（首次或中途切换）。modeToken 有效内免密。
   Future<void> startImpersonation({required String targetEmployeeId}) async {
-    final modeToken = await _storage.getImpersonationModeToken();
-    if (modeToken == null || modeToken.isEmpty) {
-      throw StateError('impersonation mode not active');
+    final operation = ++_impersonationIntentEpoch;
+    final staffOperation = _sessionMutationEpoch;
+    final server = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        _impersonationOperationCurrent(operation, staffOperation, server);
+    _pendingImpersonationOperation = operation;
+    try {
+      final staff = await _storage.getAuthTokenSnapshot();
+      if (!current()) return;
+      if (!staff.hasAccessToken || staff.sessionLineage == null) {
+        throw AuthenticatedRequestScope.changed();
+      }
+      final modeToken = await _storage.getImpersonationModeToken();
+      if (!current()) return;
+      if (modeToken == null || modeToken.isEmpty) {
+        throw StateError('impersonation mode not active');
+      }
+      final result = await _impersonationRepo.start(
+        targetEmployeeId: targetEmployeeId,
+        modeToken: modeToken,
+      );
+      if (!current()) return;
+      final lineage = const Uuid().v4();
+      final saved = await _storage.saveImpersonationRecordIfCurrent(
+        staffLineage: staff.sessionLineage!,
+        staffIntent: staff.intentGeneration,
+        isCurrent: current,
+        record: ImpersonationRecord(
+          accessToken: result.accessToken,
+          windowExpiresAtEpochMs: result.meta.windowExpiresAtEpochMs,
+          lineage: lineage,
+        ),
+      );
+      if (!saved || !current()) return;
+      _visibleImpersonationLineage = lineage;
+      final admin = state.actor ?? state.user;
+      final recents = <String>[targetEmployeeId]
+          .followedBy(
+            state.recentImpersonatedEmployeeIds.where(
+              (id) => id != targetEmployeeId,
+            ),
+          )
+          .take(5)
+          .toList();
+      state = SessionState(
+        status: AuthStatus.authenticated,
+        user: _toAppUser(result.user),
+        actor: admin,
+        impersonationModeExpiresAt: state.impersonationModeExpiresAt,
+        impersonationReadOnly: result.meta.readOnly,
+        recentImpersonatedEmployeeIds: recents,
+      );
+    } finally {
+      if (_pendingImpersonationOperation == operation) {
+        _pendingImpersonationOperation = null;
+      }
     }
-    final result = await _impersonationRepo.start(
-      targetEmployeeId: targetEmployeeId,
-      modeToken: modeToken,
-    );
-    final lineage =
-        '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-imp';
-    await _storage.saveImpersonationRecord(
-      ImpersonationRecord(
-        accessToken: result.accessToken,
-        windowExpiresAtEpochMs: result.meta.windowExpiresAtEpochMs,
-        lineage: lineage,
-      ),
-    );
-    final admin = state.actor ?? state.user;
-    final recents = <String>[targetEmployeeId]
-        .followedBy(
-          state.recentImpersonatedEmployeeIds.where(
-            (id) => id != targetEmployeeId,
-          ),
-        )
-        .take(5)
-        .toList();
-    state = SessionState(
-      status: AuthStatus.authenticated,
-      user: _toAppUser(result.user),
-      actor: admin,
-      impersonationModeExpiresAt: state.impersonationModeExpiresAt,
-      impersonationReadOnly: result.meta.readOnly,
-      recentImpersonatedEmployeeIds: recents,
-    );
   }
 
   /// 退出模拟：恢复 admin 身份。best-effort 通知后端审计（带模拟 token）。
   Future<void> endImpersonation() async {
     if (!state.isImpersonating) return;
+    final operation = ++_impersonationIntentEpoch;
+    final staffOperation = _sessionMutationEpoch;
+    final server = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        _impersonationOperationCurrent(operation, staffOperation, server);
+    _pendingImpersonationOperation = operation;
     try {
-      await _impersonationRepo.end();
-    } catch (_) {
-      // 审计端点失败不阻断本地退出。
+      final records = await readAuthRequestRecords(_storage);
+      if (!current()) return;
+      if (!records.auth.hasAccessToken || records.auth.sessionLineage == null) {
+        throw AuthenticatedRequestScope.changed();
+      }
+      final impersonation = records.impersonation;
+      if (impersonation == null) {
+        final cleared = await _storage.clearImpersonationIfUnchanged(
+          lineage: null,
+          staffLineage: records.auth.sessionLineage!,
+          staffIntent: records.auth.intentGeneration,
+          clearMode: true,
+          isCurrent: current,
+        );
+        if (cleared && current()) _restoreAdminState();
+        return;
+      }
+      if (_visibleImpersonationLineage != null &&
+          _visibleImpersonationLineage != impersonation.lineage) {
+        throw AuthenticatedRequestScope.changed();
+      }
+      try {
+        await _impersonationRepo.end();
+      } catch (_) {
+        // 审计端点失败不阻断本地退出。
+      }
+      if (!current()) return;
+      final cleared = await _storage.clearImpersonationIfUnchanged(
+        lineage: impersonation.lineage,
+        staffLineage: records.auth.sessionLineage!,
+        staffIntent: records.auth.intentGeneration,
+        clearMode: true,
+        isCurrent: current,
+      );
+      if (!cleared || !current()) return;
+      _restoreAdminState();
+    } finally {
+      if (_pendingImpersonationOperation == operation) {
+        _pendingImpersonationOperation = null;
+      }
     }
-    await _storage.clearAllImpersonation(); // 清目标 token + mode token
-    _restoreAdminState();
   }
+
+  bool _impersonationOperationCurrent(
+    int operation,
+    int staffOperation,
+    String server,
+  ) =>
+      !_requestOwnerDisposed &&
+      operation == _impersonationIntentEpoch &&
+      staffOperation == _sessionMutationEpoch &&
+      ref.read(apiBaseUrlProvider) == server;
 
   /// 恢复 admin 视角。[keepModeWindow]=true 时若模式窗口仍有效则保留
   /// （模拟 token 到期但窗口未到 → admin 仍可免密切换）；false=显式退出，彻底清。
   void _restoreAdminState({bool keepModeWindow = false}) {
+    _visibleImpersonationLineage = null;
     final admin = state.actor ?? state.user;
     final modeExpiresAt = state.impersonationModeExpiresAt;
     final keep =
@@ -609,12 +725,63 @@ class SessionNotifier extends Notifier<SessionState> {
 
   /// 模拟 token 到期（AuthInterceptor / 横幅触发）：恢复 admin 视角，
   /// 仅清目标 token 记录、保留 mode token——若模式窗口仍有效可免密切换。
-  Future<void> _handleImpersonationExpired() async {
-    if (!state.isImpersonating) return;
+  Future<void> _handleImpersonationExpired(
+    ImpersonationExpiryNotice? notice,
+  ) async {
+    if (!state.isImpersonating || _pendingImpersonationOperation != null) {
+      return;
+    }
+    // An old failure is observation, not a new user intent. It must never
+    // cancel a newer pending switch by incrementing the intent epoch.
+    final epoch = requestIntentEpoch;
+    final visibleLineage = _visibleImpersonationLineage;
+    final server = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        !_requestOwnerDisposed &&
+        _pendingImpersonationOperation == null &&
+        requestIntentEpoch == epoch &&
+        _visibleImpersonationLineage == visibleLineage &&
+        state.isImpersonating &&
+        ref.read(apiBaseUrlProvider) == server;
     try {
-      await _storage.clearImpersonationRecord();
-    } catch (_) {}
-    _restoreAdminState(keepModeWindow: true);
+      if (notice != null && notice.baseUrl != server) return;
+      final records = await readAuthRequestRecords(_storage);
+      if (!current()) return;
+      final impersonation = records.impersonation;
+      if (impersonation == null ||
+          !records.auth.hasAccessToken ||
+          records.auth.sessionLineage == null) {
+        return;
+      }
+      if (notice == null) {
+        if (!impersonation.isExpired) {
+          return; // A stale banner cannot expire a live new target.
+        }
+      } else if (notice.lineage != impersonation.lineage ||
+          notice.staffLineage != records.auth.sessionLineage ||
+          notice.staffIntent != records.auth.intentGeneration) {
+        return;
+      }
+      final cleared = await _storage.clearImpersonationIfUnchanged(
+        lineage: impersonation.lineage,
+        staffLineage: records.auth.sessionLineage!,
+        staffIntent: records.auth.intentGeneration,
+        isCurrent: current,
+      );
+      if (!cleared || !current()) return;
+      final latest = await readAuthRequestRecords(_storage);
+      if (!current() ||
+          latest.impersonation != null ||
+          latest.auth.sessionLineage != records.auth.sessionLineage ||
+          latest.auth.intentGeneration != records.auth.intentGeneration) {
+        return;
+      }
+      // ADR-022: a rejected target token is not rejection of the admin mode.
+      // In particular, an old target's 401 cannot revoke a newly entered mode.
+      _restoreAdminState(keepModeWindow: true);
+    } catch (_) {
+      // Storage uncertainty is not authority to clear another identity or alter UI.
+    }
   }
 
   AppUser _toAppUser(UserProfile profile) => AppUser(

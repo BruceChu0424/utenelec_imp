@@ -2,6 +2,7 @@
 // 文档：docs/00-项目准则/10-安全准则.md（敏感数据走 flutter_secure_storage，不进 shared_preferences）
 // 员工令牌记录/模拟身份键落在标签页级存储（Web=sessionStorage，每标签页独立会话）：
 // 见 ADR-061「多账号多标签页独立会话」。
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -203,10 +204,14 @@ class _AuthTokenRecordRead {
 }
 
 class SecureStorage {
-  SecureStorage(this._storage, {TabScopedStore? sessionScope})
-    : _sessionScope = sessionScope ?? defaultSessionScopeStore(_storage),
-      _staffTokenRecordLock = AuthRefreshLock('staff-token-record.v2'),
-      _legacyAdoptionLock = AuthRefreshLock('staff-token-record-adopt.v1');
+  SecureStorage(
+    this._storage, {
+    TabScopedStore? sessionScope,
+    AuthRefreshLock? staffTokenRecordLock,
+  }) : _sessionScope = sessionScope ?? defaultSessionScopeStore(_storage),
+       _staffTokenRecordLock =
+           staffTokenRecordLock ?? AuthRefreshLock('staff-token-record.v2'),
+       _legacyAdoptionLock = AuthRefreshLock('staff-token-record-adopt.v1');
 
   final FlutterSecureStorage _storage;
 
@@ -232,6 +237,7 @@ class SecureStorage {
   static const _keyVisitorRefresh = 'visitor.refresh_token';
 
   static final Random _random = Random.secure();
+  static Future<void> _staffRecordAccessTail = Future<void>.value();
 
   Future<String?> getAccessToken() async =>
       (await getAuthTokenSnapshot()).accessToken;
@@ -461,30 +467,164 @@ class SecureStorage {
   /// 读取当前模拟会话记录（含可能已过期的）。
   /// 注意：不在此处按过期自动删除——由调用方（AuthInterceptor / 横幅 / 退出）判定过期并
   /// 触发恢复 admin，避免「读到过期记录→静默回退 admin」导致 UI 与真实身份不一致。
-  Future<ImpersonationRecord?> getImpersonationRecord() async {
+  Future<ImpersonationRecord?> getImpersonationRecord() =>
+      _accessStaffRecord(_readImpersonationRecordLocked);
+
+  Future<ImpersonationRecord?> _readImpersonationRecordLocked() async {
     final raw = await _sessionScope.read(_keyImpersonationRecord);
     return ImpersonationRecord.tryParse(raw);
   }
 
   Future<void> saveImpersonationRecord(ImpersonationRecord record) =>
-      _sessionScope.write(_keyImpersonationRecord, jsonEncode(record.toJson()));
+      _mutateStaffTokens(
+        () => _sessionScope.write(
+          _keyImpersonationRecord,
+          jsonEncode(record.toJson()),
+        ),
+      );
+
+  /// Commits a switch only for its original staff session and local intent.
+  /// The staff record lock also excludes login/logout/password writes. Readers
+  /// share the local access gate so a superseded platform write is never exposed
+  /// before its rollback completes.
+  Future<bool> saveImpersonationRecordIfCurrent({
+    required ImpersonationRecord record,
+    required String staffLineage,
+    required int staffIntent,
+    bool Function()? isCurrent,
+  }) => _saveImpersonationValueIfCurrent(
+    key: _keyImpersonationRecord,
+    value: jsonEncode(record.toJson()),
+    staffLineage: staffLineage,
+    staffIntent: staffIntent,
+    isCurrent: () =>
+        !record.isExpired &&
+        record.accessToken.isNotEmpty &&
+        record.lineage.isNotEmpty &&
+        isCurrent?.call() != false,
+  );
+
+  Future<bool> _saveImpersonationValueIfCurrent({
+    required String key,
+    required String value,
+    required String staffLineage,
+    required int staffIntent,
+    required bool Function() isCurrent,
+  }) => _mutateStaffTokens(() async {
+    if (!isCurrent()) return false;
+    final auth = await _readOrMigrateStaffTokensLocked();
+    if (auth.sessionLineage != staffLineage ||
+        auth.intentGeneration != staffIntent ||
+        !auth.hasAccessToken ||
+        !isCurrent()) {
+      return false;
+    }
+    final previous = await _sessionScope.read(key);
+    if (!isCurrent()) return false;
+    var retained = false;
+    try {
+      await _sessionScope.write(key, value);
+      retained = isCurrent();
+      return retained;
+    } finally {
+      if (!retained) {
+        if (previous == null) {
+          await _sessionScope.delete(key);
+        } else {
+          await _sessionScope.write(key, previous);
+        }
+      }
+    }
+  });
+
+  /// Compare and delete under the same lock used by every impersonation and
+  /// staff-session write. An old expiry must not clear a later switch or mode.
+  /// Null lineage requires an absent raw record, not an unreadable record.
+  Future<bool> clearImpersonationIfUnchanged({
+    required String? lineage,
+    String? staffLineage,
+    int? staffIntent,
+    bool clearMode = false,
+    bool Function()? isCurrent,
+  }) => _mutateStaffTokens(() async {
+    if ((staffLineage == null) != (staffIntent == null)) {
+      throw ArgumentError('Staff lineage and intent must be supplied together');
+    }
+    if (isCurrent?.call() == false) return false;
+    if (staffLineage != null) {
+      final auth = await _readOrMigrateStaffTokensLocked();
+      if (auth.sessionLineage != staffLineage ||
+          auth.intentGeneration != staffIntent) {
+        return false;
+      }
+    }
+    final previous = await _sessionScope.read(_keyImpersonationRecord);
+    final current = ImpersonationRecord.tryParse(previous);
+    if (lineage == null
+        ? previous != null
+        : current == null || current.lineage != lineage) {
+      return false;
+    }
+    final previousMode = clearMode
+        ? await _sessionScope.read(_keyImpersonationMode)
+        : null;
+    if (isCurrent?.call() == false) return false;
+    var cleared = false;
+    try {
+      await _clearImpersonationLocked(clearMode: clearMode);
+      cleared = isCurrent?.call() != false;
+      return cleared;
+    } finally {
+      if (!cleared) {
+        if (previous == null) {
+          await _sessionScope.delete(_keyImpersonationRecord);
+        } else {
+          await _sessionScope.write(_keyImpersonationRecord, previous);
+        }
+        if (clearMode) {
+          if (previousMode == null) {
+            await _sessionScope.delete(_keyImpersonationMode);
+          } else {
+            await _sessionScope.write(_keyImpersonationMode, previousMode);
+          }
+        }
+      }
+    }
+  });
 
   Future<String?> getImpersonationModeToken() =>
-      _sessionScope.read(_keyImpersonationMode);
+      _accessStaffRecord(() => _sessionScope.read(_keyImpersonationMode));
 
-  Future<void> saveImpersonationModeToken(String token) =>
-      _sessionScope.write(_keyImpersonationMode, token);
+  Future<void> saveImpersonationModeToken(String token) => _mutateStaffTokens(
+    () => _sessionScope.write(_keyImpersonationMode, token),
+  );
+
+  Future<bool> saveImpersonationModeTokenIfCurrent({
+    required String token,
+    required String staffLineage,
+    required int staffIntent,
+    bool Function()? isCurrent,
+  }) => _saveImpersonationValueIfCurrent(
+    key: _keyImpersonationMode,
+    value: token,
+    staffLineage: staffLineage,
+    staffIntent: staffIntent,
+    isCurrent: () => token.isNotEmpty && isCurrent?.call() != false,
+  );
 
   /// 清除全部模拟状态（退出 / 到期 / 冷启动丢弃）。
-  Future<void> clearAllImpersonation() async {
+  Future<void> clearAllImpersonation() =>
+      _mutateStaffTokens(() => _clearImpersonationLocked(clearMode: true));
+
+  Future<void> _clearImpersonationLocked({required bool clearMode}) async {
     await _sessionScope.delete(_keyImpersonationRecord);
-    await _sessionScope.delete(_keyImpersonationMode);
+    if (clearMode) await _sessionScope.delete(_keyImpersonationMode);
   }
 
   /// 仅清模拟会话记录（目标 token），保留 mode token。
   /// 用于模拟 token 到期但模式窗口仍有效时——admin 可在窗口内免密切换。
   Future<void> clearImpersonationRecord() =>
-      _sessionScope.delete(_keyImpersonationRecord);
+      _mutateStaffTokens(() => _clearImpersonationLocked(clearMode: false));
 
   Future<_AuthTokenRecordRead> _readStaffTokenRecord() async {
     final scopedRaw = await _sessionScope.read(_keyTokenRecord);
@@ -635,8 +775,23 @@ class SecureStorage {
     }
   }
 
+  /// Web session records belong to one tab. Reads need the local write/rollback
+  /// boundary, not a cross-tab lease (whose fallback acquisition waits 40ms).
+  /// All record writes still acquire the established platform mutation lock.
+  Future<T> _accessStaffRecord<T>(Future<T> Function() action) async {
+    final predecessor = _staffRecordAccessTail;
+    final release = Completer<void>();
+    _staffRecordAccessTail = release.future;
+    await predecessor;
+    try {
+      return await action();
+    } finally {
+      release.complete();
+    }
+  }
+
   Future<T> _mutateStaffTokens<T>(Future<T> Function() mutation) =>
-      _staffTokenRecordLock.synchronized(mutation);
+      _accessStaffRecord(() => _staffTokenRecordLock.synchronized(mutation));
 
   static String _newIdentifier() =>
       '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-'

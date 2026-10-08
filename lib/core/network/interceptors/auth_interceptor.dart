@@ -6,6 +6,8 @@ import 'package:dio/dio.dart';
 
 import '../../security/auth_refresh_lock.dart';
 import '../../security/secure_storage.dart';
+import '../api_exception.dart';
+import '../authenticated_request_scope.dart';
 import '../network_policy.dart';
 import '../session_event_bus.dart';
 import 'token_refresh_result.dart';
@@ -25,6 +27,7 @@ class AuthInterceptor extends Interceptor {
   final AuthRefreshLock _refreshLock;
 
   static const _requestLineageKey = '_utenAuthRequestLineage';
+  static const _requestIdentityKey = '_utenAuthRequestIdentity';
   static const _requestIntentKey = '_utenAuthRequestIntent';
   static const _autoAuthorizationKey = '_utenAuthHeaderInjected';
   static const _usedImpersonationKey = '_utenAuthUsedImpersonation';
@@ -47,6 +50,9 @@ class AuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
+    // Capture the operation binding before the first await. Retries retain the
+    // original object even when their interceptor callbacks run in another Zone.
+    final scope = AuthenticatedRequestScope.attach(options);
     if (_isPublicAuthExchange(options.path)) {
       // Login, refresh, and logout must remain reachable even when the local
       // secure token record is unavailable. Never leak a stale bearer header
@@ -58,75 +64,122 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
-    // 模拟身份凭证路由：enter/start/targets 是管理端点，始终用 admin 凭证；
-    // 其余请求若模拟激活（记录在且未过期）则带模拟 token（主体=目标）。
-    // end 不是管理端点：它在模拟中调用，需带模拟 token（后端按 imp 审计）。
-    final isManagement = _isImpersonationManagementPath(options.path);
-    final impersonation = isManagement
-        ? null
-        : await storage.getImpersonationRecord();
-
-    if (impersonation != null && !impersonation.isExpired) {
-      options.extra[_requestLineageKey] = 'imp:${impersonation.lineage}';
-      options.extra[_requestIntentKey] = null;
-      options.extra[_usedImpersonationKey] = true;
-      options.extra[_autoAuthorizationKey] = false;
-      if (_authorizationHeader(options) == null) {
-        options.headers['Authorization'] =
-            'Bearer ${impersonation.accessToken}';
-        options.extra[_autoAuthorizationKey] = true;
+    try {
+      scope?.checkCurrent();
+      final initial = await _readContext();
+      final identity = AuthenticatedRequestIdentity.fromRecords(
+        options.baseUrl,
+        initial.auth,
+        initial.impersonation,
+      );
+      options.extra.putIfAbsent(
+        _requestIdentityKey,
+        () => _credentialIdentity(options, identity),
+      );
+      _requireIdentity(options, identity);
+      final isManagement = _isImpersonationManagementPath(options.path);
+      final usesImpersonation =
+          !isManagement && initial.impersonation?.isExpired == false;
+      options.extra.putIfAbsent(
+        _requestLineageKey,
+        () => usesImpersonation
+            ? 'imp:${initial.impersonation!.lineage}'
+            : initial.auth.sessionLineage,
+      );
+      options.extra.putIfAbsent(
+        _requestIntentKey,
+        () => initial.auth.intentGeneration,
+      );
+      options.extra.putIfAbsent(_autoAuthorizationKey, () => false);
+      if (!usesImpersonation &&
+          _authorizationHeader(options) == null &&
+          initial.auth.hasAccessToken &&
+          initial.auth.hasRefreshToken &&
+          isNearExpiry(initial.auth.accessToken!)) {
+        await _refresh(initial.auth, initial.auth.sessionLineage!);
       }
+      // Re-read after every credential/refresh await. Never adopt a new identity
+      // or preserve an old admin header after entering impersonation.
+      final current = await _readContext();
+      _requireIdentity(
+        options,
+        AuthenticatedRequestIdentity.fromRecords(
+          options.baseUrl,
+          current.auth,
+          current.impersonation,
+        ),
+      );
+      if (current.impersonation?.isExpired == true) {
+        _publishImpersonationExpiry(options);
+        // Expiry cannot promote this logical request from target to staff.
+        // Only a new request after UI restoration may use the staff identity.
+        if (!isManagement || scope != null) {
+          throw AuthenticatedRequestScope.changed();
+        }
+      }
+      final impersonation =
+          isManagement || current.impersonation?.isExpired != false
+          ? null
+          : current.impersonation;
+      if (scope != null && !current.auth.hasAccessToken) {
+        throw AuthenticatedRequestScope.changed();
+      }
+      options.extra[_usedImpersonationKey] = impersonation != null;
+      if (_authorizationHeader(options) == null ||
+          options.extra[_autoAuthorizationKey] == true) {
+        _removeAuthorizationHeader(options);
+        final access = impersonation?.accessToken ?? current.auth.accessToken;
+        if (access != null && access.isNotEmpty) {
+          options.headers['Authorization'] = 'Bearer $access';
+          options.extra[_autoAuthorizationKey] = true;
+        }
+      }
+      scope?.checkCurrent();
       handler.next(options);
-      return;
+    } on ApiException catch (error) {
+      handler.reject(
+        _localSessionBoundaryError(
+          options,
+          code: error.code,
+          message: error.message,
+        ),
+      );
+    } catch (_) {
+      handler.reject(_sessionCheckUnavailableError(options));
     }
+  }
 
-    if (impersonation != null && impersonation.isExpired) {
-      // 模拟窗口已到期：主动触发恢复 admin，避免读到过期记录后静默回退 admin
-      // 导致「UI 仍显示目标、但请求以 admin 发（只读守卫失效）」的不一致。
-      // 本请求按 admin 凭证继续（不附带过期 token）；notifier 监听后清记录 + 恢复。
-      SessionEventBus.instance.impersonationExpired();
-    }
+  Future<({AuthTokenSnapshot auth, ImpersonationRecord? impersonation})>
+  _readContext() async {
+    return readAuthRequestRecords(storage);
+  }
 
-    var current = await storage.getAuthTokenSnapshot();
-    final alreadyCaptured = options.extra.containsKey(_requestLineageKey);
-    if (!alreadyCaptured) {
-      // This marker is immutable for the logical request, including safe
-      // connectivity retries. A later login must never adopt an older request.
-      options.extra[_requestLineageKey] = current.sessionLineage;
-      options.extra[_requestIntentKey] = current.intentGeneration;
-      options.extra[_autoAuthorizationKey] = false;
+  void _requireIdentity(
+    RequestOptions options,
+    AuthenticatedRequestIdentity current,
+  ) {
+    if (options.extra[_requestIdentityKey] !=
+        _credentialIdentity(options, current)) {
+      throw AuthenticatedRequestScope.changed();
     }
-    options.extra[_usedImpersonationKey] = false;
+    final scope = AuthenticatedRequestScope.attach(options);
+    scope?.checkEndpoint(options);
+    scope?.checkIdentity(current);
+  }
 
-    final requestLineage = options.extra[_requestLineageKey] as String?;
-    if (alreadyCaptured &&
-        requestLineage != current.sessionLineage &&
-        options.extra[_autoAuthorizationKey] == true) {
-      _removeAuthorizationHeader(options);
-      options.extra[_autoAuthorizationKey] = false;
-    }
-
-    if (_authorizationHeader(options) == null &&
-        requestLineage != null &&
-        requestLineage == current.sessionLineage &&
-        current.hasAccessToken &&
-        current.hasRefreshToken &&
-        isNearExpiry(current.accessToken!)) {
-      // 临近过期: 走与 401 同一把刷新锁(跨标签页单飞), 已被兄弟请求刷新过则直接取最新。
-      final result = await _refresh(current, requestLineage);
-      if (result.disposition == TokenRefreshDisposition.refreshed) {
-        current = await storage.getAuthTokenSnapshot();
-      }
-    }
-
-    if (_authorizationHeader(options) == null &&
-        requestLineage != null &&
-        requestLineage == current.sessionLineage &&
-        current.hasAccessToken) {
-      options.headers['Authorization'] = 'Bearer ${current.accessToken!}';
-      options.extra[_autoAuthorizationKey] = true;
-    }
-    handler.next(options);
+  AuthenticatedRequestIdentity _credentialIdentity(
+    RequestOptions options,
+    AuthenticatedRequestIdentity context,
+  ) {
+    // Impersonation management and step-up intentionally use the staff session.
+    // A scoped business operation still checks the full context separately.
+    if (!_isImpersonationManagementPath(options.path)) return context;
+    return AuthenticatedRequestIdentity(
+      baseUrl: context.baseUrl,
+      lineage: context.lineage,
+      intent: context.intent,
+      impersonationLineage: null,
+    );
   }
 
   /// 访问令牌是否已进入「提前刷新」窗口(剩余寿命 ≤ [refreshAhead])。
@@ -170,23 +223,19 @@ class AuthInterceptor extends Interceptor {
     }
 
     try {
-      final usedImpersonation = options.extra[_usedImpersonationKey] == true;
-      if (usedImpersonation) {
-        // 模拟请求：当前模拟世系若已变（切换/退出）则丢弃旧响应，避免串身份。
-        // 后端只读守卫已杜绝跨账号写串，此处仅防读到上一个目标的陈旧数据。
-        final currentImp = await storage.getImpersonationRecord();
-        final requestLineage = options.extra[_requestLineageKey] as String?;
-        if (currentImp == null ||
-            'imp:${currentImp.lineage}' != requestLineage) {
-          handler.reject(_sessionChangedError(options));
-          return;
-        }
-        handler.next(response);
-      } else if (await _requestSessionMatches(options)) {
+      if (await _requestSessionMatches(options)) {
         handler.next(response);
       } else {
         handler.reject(_sessionChangedError(options));
       }
+    } on ApiException catch (error) {
+      handler.reject(
+        _localSessionBoundaryError(
+          options,
+          code: error.code,
+          message: error.message,
+        ),
+      );
     } catch (_) {
       // Returning data to a different account is worse than discarding one
       // response. The write, if any, is never replayed; the user is told to
@@ -202,13 +251,31 @@ class AuthInterceptor extends Interceptor {
     final usedImpersonation =
         err.requestOptions.extra[_usedImpersonationKey] == true;
 
+    if (status == 401 && !_isPublicAuthExchange(path)) {
+      try {
+        if (!await _requestSessionMatches(err.requestOptions)) {
+          handler.next(_sessionChangedError(err.requestOptions));
+          return;
+        }
+      } on ApiException catch (error) {
+        handler.next(
+          _localSessionBoundaryError(
+            err.requestOptions,
+            code: error.code,
+            message: error.message,
+          ),
+        );
+        return;
+      } catch (_) {
+        handler.next(_sessionCheckUnavailableError(err.requestOptions));
+        return;
+      }
+    }
+
     // 模拟 token 401（到期 / 失效）：退出模拟、恢复 admin。不刷新（模拟 token 无
     // refresh）、不登出 admin 主会话——admin 真实令牌始终有效。
     if (status == 401 && usedImpersonation) {
-      try {
-        await storage.clearAllImpersonation();
-      } catch (_) {}
-      SessionEventBus.instance.impersonationExpired();
+      _publishImpersonationExpiry(err.requestOptions);
       handler.next(err);
       return;
     }
@@ -231,7 +298,13 @@ class AuthInterceptor extends Interceptor {
       return;
     }
 
-    final current = await storage.getAuthTokenSnapshot();
+    final AuthTokenSnapshot current;
+    try {
+      current = await storage.getAuthTokenSnapshot();
+    } catch (_) {
+      handler.next(_sessionCheckUnavailableError(err.requestOptions));
+      return;
+    }
     // A new login/logout/password-change intent is a hard boundary. The old
     // request is never replayed under the new account, for reads or writes.
     if (current.sessionLineage != requestLineage ||
@@ -270,7 +343,13 @@ class AuthInterceptor extends Interceptor {
     String requestLineage,
     int requestIntent,
   ) async {
-    final latest = await storage.getAuthTokenSnapshot();
+    final AuthTokenSnapshot latest;
+    try {
+      latest = await storage.getAuthTokenSnapshot();
+    } catch (_) {
+      handler.next(_sessionCheckUnavailableError(err.requestOptions));
+      return;
+    }
     if (latest.sessionLineage != requestLineage ||
         latest.intentGeneration != requestIntent ||
         !latest.hasAccessToken) {
@@ -283,6 +362,11 @@ class AuthInterceptor extends Interceptor {
         ..extra['retried'] = true
         ..headers['Authorization'] = 'Bearer ${latest.accessToken!}';
       final retryDio = _dioFactory();
+      // The factory may include asynchronous device-audit work. Re-run the
+      // immutable request fence after it, immediately before replay dispatch.
+      if (!retryDio.interceptors.contains(this)) {
+        retryDio.interceptors.add(this);
+      }
       final response = await retryDio.fetch<dynamic>(opts);
       if (!await _requestSessionMatches(opts)) {
         handler.next(_sessionChangedError(opts));
@@ -293,6 +377,14 @@ class AuthInterceptor extends Interceptor {
       // A successful refresh followed by a business/replay failure is not
       // evidence that the newly issued session is invalid.
       handler.next(retryError);
+    } on ApiException catch (error) {
+      handler.next(
+        _localSessionBoundaryError(
+          err.requestOptions,
+          code: error.code,
+          message: error.message,
+        ),
+      );
     } catch (error, stackTrace) {
       handler.next(
         DioException(
@@ -431,16 +523,24 @@ class AuthInterceptor extends Interceptor {
 
   bool _isTrackedAuthenticatedRequest(RequestOptions options) =>
       !_isPublicAuthExchange(options.path) &&
-      options.extra[_autoAuthorizationKey] == true;
+      options.extra.containsKey(_requestIdentityKey) &&
+      _authorizationHeader(options) != null;
 
   Future<bool> _requestSessionMatches(RequestOptions options) async {
-    final requestLineage = options.extra[_requestLineageKey] as String?;
-    final requestIntent = options.extra[_requestIntentKey] as int?;
-    if (requestLineage == null || requestIntent == null) return false;
-
-    final current = await storage.getAuthTokenSnapshot();
-    return current.sessionLineage == requestLineage &&
-        current.intentGeneration == requestIntent;
+    if (!options.extra.containsKey(_requestIdentityKey)) return false;
+    final current = await _readContext();
+    final identity = AuthenticatedRequestIdentity.fromRecords(
+      options.baseUrl,
+      current.auth,
+      current.impersonation,
+    );
+    final scope = AuthenticatedRequestScope.attach(options);
+    scope?.checkIdentity(identity);
+    if (scope != null && current.impersonation?.isExpired == true) {
+      throw AuthenticatedRequestScope.changed();
+    }
+    return _credentialIdentity(options, identity) ==
+        options.extra[_requestIdentityKey];
   }
 
   static DioException _sessionChangedError(RequestOptions options) =>
@@ -478,6 +578,22 @@ class AuthInterceptor extends Interceptor {
       path.endsWith('/auth/login') ||
       path.endsWith('/auth/refresh') ||
       path.endsWith('/auth/logout');
+
+  void _publishImpersonationExpiry(RequestOptions options) {
+    final identity =
+        options.extra[_requestIdentityKey] as AuthenticatedRequestIdentity?;
+    if (identity?.lineage == null || identity?.impersonationLineage == null) {
+      return;
+    }
+    SessionEventBus.instance.impersonationExpired(
+      ImpersonationExpiryNotice(
+        lineage: identity!.impersonationLineage!,
+        staffLineage: identity.lineage!,
+        staffIntent: identity.intent,
+        baseUrl: identity.baseUrl,
+      ),
+    );
+  }
 
   /// 模拟管理端点（enter/start/targets）始终用 admin 凭证——即便正在模拟目标 A，
   /// 切换/搜索仍以 admin 身份发请求（后端按 superAdmin 放行）。

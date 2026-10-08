@@ -1,6 +1,53 @@
 part of 'production_daily_report_detail_approve_test.dart';
 
 void registerDailyReportReviewV2Cases() {
+  testWidgets(
+    'approval session fence rejects a changed intent during confirmation',
+    (tester) async {
+      final (api, _) = await _pump(
+        tester,
+        capability: 2,
+        onApprove: (server) {
+          server.serverStatus = 1;
+          server.rememberApproval();
+          server.includeReceipt = true;
+          return null;
+        },
+      );
+      await tester.tap(find.widgetWithText(UtenButton, '审核'));
+      await tester.pumpAndSettle();
+      (api.container.read(sessionProvider.notifier) as _ApprovalSession)
+          .intentEpoch++;
+      await tester.tap(find.widgetWithText(FilledButton, '确认审核'));
+      await tester.pumpAndSettle();
+      expect(api.approveKeys, isEmpty);
+      expect(api.approvalStorage.records, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'approval session fence preserves unknown original key when intent changes after dispatch',
+    (tester) async {
+      final (api, _) = await _pump(
+        tester,
+        capability: 2,
+        onApprove: (server) {
+          (server.container.read(sessionProvider.notifier) as _ApprovalSession)
+              .intentEpoch++;
+          return NetworkTimeoutException();
+        },
+      );
+      await _tapApprove(tester);
+      expect(api.approveKeys, hasLength(1));
+      expect(api.receiptReads, 0);
+      final pending =
+          jsonDecode(api.approvalStorage.records.values.single) as Map;
+      expect(pending['idempotencyKey'], api.approveKeys.single);
+      expect(pending['phase'], 'DISPATCHED');
+      expect(tester.takeException(), isNull);
+    },
+  );
   if (Platform.environment['UTEN_CAPTURE_DAILY_REPORT_V2'] == 'true') {
     for (final mobile in [false, true]) {
       testWidgets('V2 visual unknown receipt ${mobile ? '375' : '1440'}', (

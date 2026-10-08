@@ -25,6 +25,8 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -41,6 +43,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../models/production_daily_report.dart';
 import '../models/daily_report_approval_intent.dart';
 import '../models/production_execution_planning.dart'
@@ -124,14 +127,21 @@ class _ProductionDailyReportDetailPageState
     });
   }
 
-  bool Function() _approvalViewFence({bool requireCurrentRoute = true}) {
+  bool Function() _approvalViewFence({
+    bool requireCurrentRoute = true,
+    bool requireCurrentIntent = true,
+  }) {
     final scope = ref.read(authenticatedScopeProvider);
     final server = ref.read(apiBaseUrlProvider);
     final id = widget.id;
     final generation = _approvalViewGeneration;
     final route = ModalRoute.of(context);
+    final session = ref.read(sessionProvider.notifier);
+    final intentEpoch = session.requestIntentEpoch;
     return () =>
         mounted &&
+        identical(ref.read(sessionProvider.notifier), session) &&
+        (!requireCurrentIntent || session.requestIntentEpoch == intentEpoch) &&
         _approvalViewGeneration == generation &&
         widget.id == id &&
         ref.read(authenticatedScopeProvider) == scope &&
@@ -239,12 +249,15 @@ class _ProductionDailyReportDetailPageState
   void _signalExecutionChanged() =>
       bumpListRefresh(ref, productionExecutionRefreshKey);
 
-  Future<void> _approve() async {
+  Future<void> _approve({AuthenticatedRequestScope? retainedScope}) async {
     if (_busy || _approvalConfirming || !_canApprove) return;
     final reviewed = _detail;
     if (reviewed == null || reviewed.id != widget.id) return;
     final isCurrent = _approvalViewFence();
-    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    final sameOwner = _approvalViewFence(
+      requireCurrentRoute: false,
+      requireCurrentIntent: false,
+    );
     late final DailyReportApprovalIntent intent;
     try {
       // All confirmation semantics come from this one detail, before opening the dialog.
@@ -262,17 +275,35 @@ class _ProductionDailyReportDetailPageState
     }
     setState(() => _approvalConfirming = true);
     bool confirmed;
+    late final AuthenticatedRequestScope requestScope;
     try {
+      requestScope =
+          retainedScope ??
+          await ref
+              .read(apiClientProvider)
+              .captureRequestScope(isCurrent: isCurrent);
+      await requestScope.verify();
+      if (!mounted || !isCurrent()) return;
       confirmed = await showUtenReviewerConfirmDialog(
         context,
         message: intent.confirmation,
       );
+      if (confirmed) await requestScope.verify();
+    } on ApiException catch (error) {
+      if (mounted) context.appWarning(error.message);
+      return;
     } finally {
       if (sameOwner()) setState(() => _approvalConfirming = false);
     }
     if (!mounted || !isCurrent()) return;
     if (confirmed != true) return;
-    await _sendApproval(intent);
+    try {
+      await requestScope.run(
+        () => _sendApproval(intent, requestScope: requestScope),
+      );
+    } on ApiException catch (error) {
+      if (mounted) context.appWarning(error.message);
+    }
   }
 
   Future<bool> _clearApprovalRecord(StoredDailyReportApproval record) async {
@@ -326,11 +357,15 @@ class _ProductionDailyReportDetailPageState
 
   Future<void> _sendApproval(
     DailyReportApprovalIntent intent, {
+    required AuthenticatedRequestScope requestScope,
     StoredDailyReportApproval? original,
   }) async {
     if (_busy) return;
     final isCurrent = _approvalViewFence();
-    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    final sameOwner = _approvalViewFence(
+      requireCurrentRoute: false,
+      requireCurrentIntent: false,
+    );
     final repository = ref.read(productionDailyReportRepositoryProvider);
     final store = ref.read(dailyReportApprovalIntentStoreProvider);
     StoredDailyReportApproval? record = original;
@@ -349,6 +384,7 @@ class _ProductionDailyReportDetailPageState
       final claimed = await store.claim(prepared);
       beforeClaim = prepared;
       record = claimed;
+      await requestScope.verify();
       if (!mounted || !isCurrent()) return;
       setState(() {
         _pendingApproval = record;
@@ -363,6 +399,7 @@ class _ProductionDailyReportDetailPageState
         commandVersion: intent.legacy ? null : 2,
         expectedVersion: intent.expectedVersion,
       );
+      await requestScope.verify();
       if (!mounted || !isCurrent()) return;
       final receipt = updated.approvalReceipt;
       final verified = receipt != null && intent.verifiedReceipt(receipt);
@@ -401,6 +438,13 @@ class _ProductionDailyReportDetailPageState
           () => _approvalRecoveryMessage = '本机审核保护尚未保存，本次未发送审核。请保留页面并重新读取本机记录。',
         );
         context.appError(_approvalRecoveryMessage!);
+        return;
+      }
+      if (isSessionBoundaryError(error)) {
+        setState(
+          () => _approvalRecoveryMessage = '登录状态已变化，原审核标识与待核对记录继续保留，请重新进入后核对。',
+        );
+        context.appWarning(_approvalRecoveryMessage!);
         return;
       }
       final staleV2 =
@@ -562,24 +606,32 @@ class _ProductionDailyReportDetailPageState
     final isCurrent = _approvalViewFence();
     final store = ref.read(dailyReportApprovalIntentStoreProvider);
     try {
-      if (!await store.cancelPrepared(record)) {
-        final latest = await store.read(record.intent.reportId);
-        if (isCurrent()) {
-          setState(() {
-            _pendingApproval = latest;
-            _approvalLocallySettled = false;
-            _approvalRecoveryMessage = '原记录已由另一页面领取，请先核对原审核。';
-          });
+      final requestScope = await ref
+          .read(apiClientProvider)
+          .captureRequestScope(isCurrent: isCurrent);
+      await requestScope.run(() async {
+        if (!await store.cancelPrepared(record)) {
+          final latest = await store.read(record.intent.reportId);
+          if (isCurrent()) {
+            setState(() {
+              _pendingApproval = latest;
+              _approvalLocallySettled = false;
+              _approvalRecoveryMessage = '原记录已由另一页面领取，请先核对原审核。';
+            });
+          }
+          return;
         }
-        return;
-      }
-      if (!isCurrent()) return;
-      setState(() {
-        _pendingApproval = null;
-        _approvalRecoveryMessage = null;
+        if (!isCurrent()) return;
+        setState(() {
+          _pendingApproval = null;
+          _approvalRecoveryMessage = null;
+        });
+        await _load();
+        await requestScope.verify();
+        if (isCurrent() && _canApprove) {
+          await _approve(retainedScope: requestScope);
+        }
       });
-      await _load();
-      if (isCurrent() && _canApprove) await _approve();
     } catch (_) {
       if (mounted && isCurrent()) context.appWarning('本机待审核记录暂未完成核对，本次未发送审核。');
     }
@@ -589,7 +641,10 @@ class _ProductionDailyReportDetailPageState
     final record = _pendingApproval;
     if (_busy || record == null) return;
     final isCurrent = _approvalViewFence();
-    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    final sameOwner = _approvalViewFence(
+      requireCurrentRoute: false,
+      requireCurrentIntent: false,
+    );
     setState(() {
       _busy = true;
       _busyReadOnly = true;
@@ -634,6 +689,16 @@ class _ProductionDailyReportDetailPageState
       return;
     }
     final isCurrent = _approvalViewFence();
+    late final AuthenticatedRequestScope requestScope;
+    try {
+      requestScope = await ref
+          .read(apiClientProvider)
+          .captureRequestScope(isCurrent: isCurrent);
+    } on ApiException catch (error) {
+      if (mounted) context.appWarning(error.message);
+      return;
+    }
+    if (!mounted || !isCurrent()) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -655,7 +720,17 @@ class _ProductionDailyReportDetailPageState
       ),
     );
     if (confirmed == true && isCurrent()) {
-      await _sendApproval(record.intent, original: record);
+      try {
+        await requestScope.run(
+          () => _sendApproval(
+            record.intent,
+            original: record,
+            requestScope: requestScope,
+          ),
+        );
+      } on ApiException catch (error) {
+        if (mounted) context.appWarning(error.message);
+      }
     }
   }
 

@@ -13,13 +13,72 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
+  testWidgets(
+    'confirmation cannot adopt a newer same-account authentication intent',
+    (tester) async {
+      final session = _IntentSession();
+      final iqc = _Iqc();
+      await _pump(tester, iqc, 2, session: session);
+      await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
+      await tester.pumpAndSettle();
+      session.epoch++;
+      await tester.tap(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(iqc.sent, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('disposing an in-flight batch stops before the next receipt', (
+    tester,
+  ) async {
+    final reply = Completer<void>();
+    final iqc = _Iqc(decide: (_) => reply.future);
+    await _pump(tester, iqc, 2);
+    await _confirm(tester);
+    await tester.pump();
+    expect(iqc.sent, hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+    reply.complete();
+    await tester.pumpAndSettle();
+    expect(iqc.sent, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('changing server and returning does not revive the old batch', (
+    tester,
+  ) async {
+    final reply = Completer<void>();
+    final iqc = _Iqc(decide: (_) => reply.future);
+    await _pump(tester, iqc, 2);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(QualityBatchApprovalPage)),
+    );
+    await _confirm(tester);
+    await tester.pump();
+    expect(iqc.sent, hasLength(1));
+    container.read(_serverForTest.notifier).state =
+        'https://changed.example.test/api';
+    await tester.pump();
+    container.read(_serverForTest.notifier).state =
+        'https://original.example.test/api';
+    await tester.pump();
+    reply.complete();
+    await tester.pumpAndSettle();
+    expect(iqc.sent, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'compact grouped tables preserve edits and clear selection from floating controls',
     (tester) async {
@@ -351,6 +410,7 @@ Future<void> _pump(
   int count, {
   bool settle = true,
   Size size = const Size(1400, 1000),
+  _IntentSession? session,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -390,6 +450,8 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        apiBaseUrlProvider.overrideWith((ref) => ref.watch(_serverForTest)),
+        sessionProvider.overrideWith(() => session ?? _IntentSession()),
         procurementInspectionRepositoryProvider.overrideWithValue(iqc),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
@@ -407,6 +469,18 @@ Future<void> _pump(
   } else {
     await tester.pump();
   }
+}
+
+final _serverForTest = StateProvider<String>(
+  (ref) => 'https://original.example.test/api',
+);
+
+class _IntentSession extends SessionNotifier {
+  int epoch = 0;
+  @override
+  int get requestIntentEpoch => epoch;
+  @override
+  SessionState build() => const SessionState();
 }
 
 Future<void> _confirm(WidgetTester tester) async {

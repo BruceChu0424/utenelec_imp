@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../repositories/production_fqc_repository.dart';
@@ -99,6 +100,7 @@ class QualityBatchSubmission {
   final Set<int> _acknowledged = <int>{};
   bool _fqcAcknowledged = false;
   bool _running = false;
+  AuthenticatedRequestScope? _requestScope;
 
   /// 服务端确认判定的检查任务份数(整批展开后); 还没发或从草稿恢复时为空。
   int? fqcProcessedCount;
@@ -127,42 +129,53 @@ class QualityBatchSubmission {
   Future<void> send({
     required ProcurementInspectionRepository iqc,
     required ProductionFqcRepository fqc,
+    required AuthenticatedRequestScope requestScope,
     void Function()? onProgress,
   }) async {
     if (_running) throw StateError('这份检验报告正在提交中，请等本次提交完成后再操作');
+    final scope = _requestScope ??= requestScope;
     _running = true;
     try {
-      final pending = [
-        for (var i = 0; i < receipts.length; i++)
-          if (!_acknowledged.contains(i)) i,
-      ];
-      // 共用主仓锁的收货单按报告顺序提交。失败不取消其它单，重试保留原命令身份。
-      Object? firstFailure;
-      for (final index in pending) {
-        final receipt = receipts[index];
-        try {
-          await iqc.decideBatch(
-            receiptType: receipt.receiptType,
-            receiptId: receipt.receiptId,
-            items: receipt.items,
-            reason: reason,
-          );
-          _acknowledged.add(index);
-          onProgress?.call();
-        } catch (error) {
-          firstFailure ??= error;
+      await scope.run(() async {
+        final pending = [
+          for (var i = 0; i < receipts.length; i++)
+            if (!_acknowledged.contains(i)) i,
+        ];
+        // 共用主仓锁的收货单按报告顺序提交。失败不取消其它单，重试保留原命令身份。
+        Object? firstFailure;
+        for (final index in pending) {
+          await scope.verify();
+          final receipt = receipts[index];
+          try {
+            await iqc.decideBatch(
+              receiptType: receipt.receiptType,
+              receiptId: receipt.receiptId,
+              items: receipt.items,
+              reason: reason,
+            );
+            _acknowledged.add(index);
+            onProgress?.call();
+          } catch (error) {
+            if (isSessionBoundaryError(error)) rethrow;
+            // A business rejection and a concurrent identity change are distinct:
+            // stop the old operation before another command can adopt new tokens.
+            await scope.verify();
+            firstFailure ??= error;
+          }
         }
-      }
-      if (firstFailure != null) throw firstFailure;
-      if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
-        final result = await fqc.passAll(
-          inspectionIds: fqcInspectionIds,
-          idempotencyKey: fqcIdempotencyKey,
-        );
-        fqcProcessedCount = result.processedCount;
-        _fqcAcknowledged = true;
-        onProgress?.call();
-      }
+        await scope.verify();
+        if (firstFailure != null) throw firstFailure;
+        if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
+          final result = await fqc.passAll(
+            inspectionIds: fqcInspectionIds,
+            idempotencyKey: fqcIdempotencyKey,
+          );
+          fqcProcessedCount = result.processedCount;
+          _fqcAcknowledged = true;
+          onProgress?.call();
+        }
+        await scope.verify();
+      });
     } finally {
       _running = false;
     }

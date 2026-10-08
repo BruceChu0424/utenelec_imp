@@ -13,6 +13,7 @@
 // 权限分别门控：IQC 读 procurement_inspection:view、写 :handle；
 // FQC 读 production_quality_inspection:view、决定 :approve + 服务端品质组织校验。
 import 'package:flutter/material.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -1015,6 +1016,8 @@ class _ProcurementInspectionDetailPageState
     with FormDraftMixin<ProcurementInspectionDetailPage> {
   String _draftReason = '';
   QualityBatchSubmission? _submission;
+  AuthenticatedRequestScope? _submissionRequestScope;
+  bool _confirmingReport = false;
   bool _submissionRejected = false;
   @override
   bool get formDraftBusy => _busyDecision;
@@ -1208,7 +1211,7 @@ class _ProcurementInspectionDetailPageState
   /// 「提交报告」（2026-09-05 用户口径：唯一动作按钮）：所选行合格/不合格数量
   /// 一次提交——总结确认弹窗（仿计划部下达采购）后走 decide-batch 单事务。
   Future<void> _submitReport() async {
-    if (_busyDecision) return;
+    if (_busyDecision || _confirmingReport) return;
     if (_submission != null) {
       await _sendPendingReport();
       return;
@@ -1234,38 +1237,55 @@ class _ProcurementInspectionDetailPageState
     }
     final rows = [for (final item in selected) _reportRows[item.id]!];
     final hasFail = rows.any((row) => row.failValue > 0);
-    final reason = await showInspectionReportConfirmDialog(
-      context,
-      initialReason: _draftReason,
-      onReasonChanged: (value) {
-        _draftReason = value;
-        markFormDraftChanged();
-      },
-      lineCount: rows.length,
-      passTotalText: inspectionQuantityTotalText(
+    _confirmingReport = true;
+    late AuthenticatedRequestScope requestScope;
+    String? reason;
+    try {
+      requestScope = await captureFormDraftRequestScope();
+      if (!mounted) return;
+      requestScope.checkCurrent();
+      reason = await showInspectionReportConfirmDialog(
         context,
-        rows.map((row) => (row.item, row.passValue)),
-      ),
-      failTotalText: inspectionQuantityTotalText(
-        context,
-        rows.map((row) => (row.item, row.failValue)),
-      ),
-      requireReason: hasFail,
-      lines: [
-        for (final row in rows)
-          InspectionReportConfirmLine(
-            label: [
-              row.item.goodsName,
-              row.item.goodsCode,
-              row.item.colorName,
-            ].where((text) => text?.isNotEmpty == true).join(' · '),
-            passText: _fmt(row.passValue),
-            failText: _fmt(row.failValue),
-            dim: inspectionQuantityUnit(context, row.item),
-          ),
-      ],
-    );
+        initialReason: _draftReason,
+        onReasonChanged: (value) {
+          _draftReason = value;
+          markFormDraftChanged();
+        },
+        lineCount: rows.length,
+        passTotalText: inspectionQuantityTotalText(
+          context,
+          rows.map((row) => (row.item, row.passValue)),
+        ),
+        failTotalText: inspectionQuantityTotalText(
+          context,
+          rows.map((row) => (row.item, row.failValue)),
+        ),
+        requireReason: hasFail,
+        lines: [
+          for (final row in rows)
+            InspectionReportConfirmLine(
+              label: [
+                row.item.goodsName,
+                row.item.goodsCode,
+                row.item.colorName,
+              ].where((text) => text?.isNotEmpty == true).join(' · '),
+              passText: _fmt(row.passValue),
+              failText: _fmt(row.failValue),
+              dim: inspectionQuantityUnit(context, row.item),
+            ),
+        ],
+      );
+      if (reason != null) await requestScope.verify();
+    } on ApiException catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        UtenNotify.error(context, error.message);
+      }
+      return;
+    } finally {
+      _confirmingReport = false;
+    }
     if (reason == null || !mounted) return;
+    _submissionRequestScope = requestScope;
     _submission = QualityBatchSubmission(
       reason: reason.isEmpty ? null : reason,
       fqcInspectionIds: const [],
@@ -1294,15 +1314,21 @@ class _ProcurementInspectionDetailPageState
     final submission = _submission!;
     final retained = captureFormDraft();
     setState(() => _busyDecision = true);
+    AuthenticatedRequestScope? requestScope;
     try {
+      requestScope = _submissionRequestScope ??=
+          await captureFormDraftRequestScope();
       await runFormDraftSubmission(
         () => submission.send(
+          requestScope: requestScope!,
           iqc: ref.read(procurementInspectionRepositoryProvider),
           fqc: ref.read(productionFqcRepositoryProvider),
         ),
       );
+      await requestScope.verify();
       await completeFormDraft();
-      if (!mounted) return;
+      await requestScope.verify();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final completedIds = submission.receipts
           .expand((receipt) => receipt.items)
           .map((item) => item.inspectionItemId)
@@ -1314,12 +1340,14 @@ class _ProcurementInspectionDetailPageState
         ];
         _selectedItemIds = const {};
         _submission = null;
+        _submissionRequestScope = null;
         _submissionRejected = false;
         _draftReason = '';
       });
-      await _load(preserveEdits: false);
-      if (!mounted) return;
+      await requestScope.run(() => _load(preserveEdits: false));
+      await requestScope.verify();
       await resetFormDraftAfterSubmission();
+      await requestScope.verify();
       final leftovers = draftMaps(
         retained['rows'],
       ).where((row) => !completedIds.contains(row['id'])).toList();
@@ -1331,18 +1359,21 @@ class _ProcurementInspectionDetailPageState
           'reason': '',
           'submission': null,
         });
+        await requestScope.verify();
         await saveFormDraftNow();
+        await requestScope.verify();
       }
       // 徽章汇总重拉一次: 品质待检与仓库「品质部检查结果」红黄两数随之更新。
       refreshBadges(ref);
-      if (mounted) {
+      if (mounted && requestScope.isCurrent) {
         UtenNotify.success(context, '检验报告已提交；合格部分已转仓库待入库，尚未增加可用库存');
       }
     } on ApiException catch (error) {
-      if (mounted) {
+      if (mounted && requestScope?.isCurrent != false) {
         final rejected =
-            error.code == 'CONFLICT' ||
-            const {400, 409, 422}.contains(error.httpStatus);
+            !isSessionBoundaryError(error) &&
+            (error.code == 'CONFLICT' ||
+                const {400, 409, 422}.contains(error.httpStatus));
         setState(() => _submissionRejected = rejected);
         UtenNotify.error(
           context,
@@ -1353,7 +1384,7 @@ class _ProcurementInspectionDetailPageState
       }
     } catch (error) {
       // 草稿保护在发出请求前拒绝(另一页面改过草稿、保护尚未就绪等)时如实报因(ADR-151 §2)。
-      if (mounted) {
+      if (mounted && requestScope?.isCurrent != false) {
         UtenNotify.error(
           context,
           describeSubmitError(error, fallback: '提交检验报告失败，请稍后重试'),

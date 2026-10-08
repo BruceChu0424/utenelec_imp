@@ -3,6 +3,21 @@
 // sessionProvider 监听后置为未登录 + 跳登录页。避免 Riverpod 与 Dio 之间的循环依赖。
 import 'dart:async';
 
+/// Identifies the expired operation without carrying any credential bytes.
+class ImpersonationExpiryNotice {
+  const ImpersonationExpiryNotice({
+    required this.lineage,
+    required this.staffLineage,
+    required this.staffIntent,
+    required this.baseUrl,
+  });
+
+  final String lineage;
+  final String staffLineage;
+  final int staffIntent;
+  final String baseUrl;
+}
+
 class SessionEventBus {
   SessionEventBus._();
   static final SessionEventBus instance = SessionEventBus._();
@@ -12,8 +27,9 @@ class SessionEventBus {
 
   // 模拟身份（admin 切换人）到期 / 失效事件：模拟 token 401 时由 AuthInterceptor 触发，
   // sessionProvider 监听后退出模拟、恢复 admin（不登出 admin 主会话）。
-  final _impersonationExpiredController = StreamController<void>.broadcast();
-  Stream<void> get onImpersonationExpired =>
+  final _impersonationExpiredController =
+      StreamController<ImpersonationExpiryNotice?>.broadcast();
+  Stream<ImpersonationExpiryNotice?> get onImpersonationExpired =>
       _impersonationExpiredController.stream;
 
   // access token 静默刷新成功事件：携带 /auth/refresh 响应里的 user JSON（含最新权限）。
@@ -28,9 +44,9 @@ class SessionEventBus {
   }
 
   /// 模拟身份到期（模拟 token 401）：退出模拟，恢复 admin。不影响 admin 主会话。
-  void impersonationExpired() {
+  void impersonationExpired([ImpersonationExpiryNotice? notice]) {
     if (!_impersonationExpiredController.isClosed) {
-      _impersonationExpiredController.add(null);
+      _impersonationExpiredController.add(notice);
     }
   }
 

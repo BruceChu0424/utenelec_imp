@@ -35,6 +35,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -324,6 +325,7 @@ class _QualityBatchApprovalPageState
   bool _confirming = false;
   bool _leaving = false;
   QualityBatchSubmission? _submission;
+  AuthenticatedRequestScope? _submissionRequestScope;
 
   // 2026-09-22 全站表格滚动口径：各分组明细表表头吸顶（stickyHeaderPinned）；
   // 一页动态多表（IQC 按单 + FQC 按检查单），任一张置顶 = 处于「表内滚动」段
@@ -578,7 +580,11 @@ class _QualityBatchApprovalPageState
     );
     setState(() => _confirming = true);
     String? reason;
+    late AuthenticatedRequestScope requestScope;
     try {
+      requestScope = await captureFormDraftRequestScope();
+      if (!mounted) return;
+      requestScope.checkCurrent();
       reason = await showInspectionReportConfirmDialog(
         context,
         initialReason: _draftReason,
@@ -631,10 +637,17 @@ class _QualityBatchApprovalPageState
             ),
         ],
       );
+      if (reason != null) await requestScope.verify();
+    } on ApiException catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(error.message);
+      }
+      return;
     } finally {
       if (mounted) setState(() => _confirming = false);
     }
     if (reason == null || !mounted) return;
+    _submissionRequestScope = requestScope;
     _submission = QualityBatchSubmission(
       reason: reason.isEmpty ? null : reason,
       fqcInspectionIds: fqcIds,
@@ -692,13 +705,17 @@ class _QualityBatchApprovalPageState
     }
 
     setState(() => _submitting = true);
+    AuthenticatedRequestScope? requestScope;
     try {
+      requestScope = _submissionRequestScope ??=
+          await captureFormDraftRequestScope();
       await runFormDraftSubmission(
         () => submission.send(
+          requestScope: requestScope!,
           iqc: ref.read(procurementInspectionRepositoryProvider),
           fqc: ref.read(productionFqcRepositoryProvider),
           onProgress: () {
-            if (!mounted) return;
+            if (!formDraftIdentityIsCurrent) return;
             final completed = submission.acknowledgedIqcIds.toSet();
             setState(() {
               for (final row in _flatRows ?? const <_EditableIqcRow>[]) {
@@ -711,8 +728,10 @@ class _QualityBatchApprovalPageState
           },
         ),
       );
+      await requestScope.verify();
       await completeFormDraft();
-      if (!mounted) return;
+      await requestScope.verify();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       invalidateCounts();
       setState(() => _submitting = false);
       context.appSuccess(
@@ -727,7 +746,7 @@ class _QualityBatchApprovalPageState
         context.go(RouteName.warehouseInspections);
       }
     } on ApiException catch (error) {
-      if (mounted) {
+      if (mounted && requestScope?.isCurrent != false) {
         context.appError(
           '${submission.currentLabel}：${error.message}。重试将核对原报告，已确认成功的单据不会重发',
         );
@@ -735,7 +754,7 @@ class _QualityBatchApprovalPageState
     } catch (error) {
       // 本机检查点或回执校验的原因如实给人看(ADR-151 §2); 真正未知才提示核对原报告。
       final reason = describeFormSaveError(error);
-      if (mounted) {
+      if (mounted && requestScope?.isCurrent != false) {
         context.appError(
           reason == null
               ? '${submission.currentLabel}提交未确认，请重试原报告'

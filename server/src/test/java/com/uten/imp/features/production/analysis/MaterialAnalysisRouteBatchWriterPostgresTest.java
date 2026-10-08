@@ -57,7 +57,8 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
                 CREATE FUNCTION fn_goods_has_order_bom(uuid) RETURNS boolean LANGUAGE SQL AS 'SELECT false';
                 CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,analysis_item_id uuid NOT NULL,
                     node_role varchar DEFAULT 'BOM_COMPONENT',active boolean DEFAULT true,confirmed_route varchar,source_suggestion varchar,
-                    route_reason varchar,route_confirmed_by uuid,route_confirmed_at timestamptz,updated_at timestamptz,updated_by uuid);
+                    route_reason varchar,route_confirmed_by uuid,route_confirmed_at timestamptz,updated_at timestamptz,updated_by uuid,
+                    actual_bom_qty numeric,expected_ready_date date);
                 CREATE UNIQUE INDEX material_analysis ON production_material_analysis_materials(analysis_id,id);
                 CREATE UNIQUE INDEX material_source ON production_material_analysis_materials(analysis_item_id,id);
                 CREATE TABLE production_material_analysis_items(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,is_deleted boolean DEFAULT false,parent_analysis_material_id uuid);
@@ -72,7 +73,7 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
                 CREATE INDEX allocation_material ON preplan_supply_action_allocations(analysis_material_id,action_id);
                 CREATE TABLE preplan_aggregate_batches(id uuid PRIMARY KEY,analysis_id uuid NOT NULL,action_id uuid NOT NULL,configuration_snapshot jsonb);
                 CREATE INDEX batch_analysis ON preplan_aggregate_batches(analysis_id);
-                CREATE TABLE preplan_aggregate_batch_events(batch_id uuid NOT NULL,event_type varchar,intent_snapshot jsonb);
+                CREATE TABLE preplan_aggregate_batch_events(batch_id uuid NOT NULL,event_type varchar,intent_snapshot jsonb,expected_version bigint);
                 CREATE INDEX event_batch ON preplan_aggregate_batch_events(batch_id);
                 CREATE TABLE row_audit(old_row jsonb,new_row jsonb);
                 CREATE FUNCTION audit_material() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO row_audit VALUES(to_jsonb(OLD),to_jsonb(NEW));RETURN NEW;END $$;

@@ -162,6 +162,9 @@ class FixtureSchemaDriftGuardPostgresTest {
 
     // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
     private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            // 路由批量写入器的行级审计取证探针（MaterialAnalysisRouteBatchWriterPostgresTest）：
+            // 只捕获 OLD/NEW jsonb 对拍写入行数，不是业务审计表。
+            "com/uten/imp/features/production/analysis/MaterialAnalysisRouteBatchWriterPostgresTest.java#row_audit",
             // Issue-watermark SQL/locking oracle: controlled physical capacity returned by a private function stub.
             "com/uten/imp/features/notice/WorkshopArrivalWatermarkPostgresTest.java#capacity_fixture",
             "com/uten/imp/application/concurrency/FulfillmentCommandDeadlinePostgresTest.java#deadline_evidence",

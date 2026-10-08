@@ -47,7 +47,11 @@ void main() {
       final iqc = DioProcurementInspectionRepository(api);
       final fqc = ProductionFqcRepository(api);
       await expectLater(
-        report.send(iqc: iqc, fqc: fqc),
+        report.send(
+          iqc: iqc,
+          fqc: fqc,
+          requestScope: await api.captureRequestScope(isCurrent: () => true),
+        ),
         throwsA(isA<NetworkTimeoutException>()),
       );
       expect(report.completedReceiptCount, 1);
@@ -63,7 +67,11 @@ void main() {
       );
       expect(report.completedReceiptCount, 1);
       expect(report.fqcIdempotencyKey, originalFqcKey);
-      await report.send(iqc: iqc, fqc: fqc);
+      await report.send(
+        iqc: iqc,
+        fqc: fqc,
+        requestScope: await api.captureRequestScope(isCurrent: () => true),
+      );
       expect(api.requests.length, 4);
       expect(
         api.requests
@@ -76,7 +84,11 @@ void main() {
       expect(api.requests[2].$2['reason'], '按原报告确认少量不合格');
       expect(report.complete, isTrue);
       expect(report.acknowledgedIqcIds, ['inspection-1', 'inspection-2']);
-      await report.send(iqc: iqc, fqc: fqc);
+      await report.send(
+        iqc: iqc,
+        fqc: fqc,
+        requestScope: await api.captureRequestScope(isCurrent: () => true),
+      );
       expect(
         api.requests.length,
         4,
@@ -103,11 +115,19 @@ void main() {
       final iqc = DioProcurementInspectionRepository(api);
       final fqc = ProductionFqcRepository(api);
       await expectLater(
-        report.send(iqc: iqc, fqc: fqc),
+        report.send(
+          iqc: iqc,
+          fqc: fqc,
+          requestScope: await api.captureRequestScope(isCurrent: () => true),
+        ),
         throwsA(isA<NetworkException>()),
       );
       expect(report.complete, isFalse);
-      await report.send(iqc: iqc, fqc: fqc);
+      await report.send(
+        iqc: iqc,
+        fqc: fqc,
+        requestScope: await api.captureRequestScope(isCurrent: () => true),
+      );
       expect(api.requests[0].$1, api.requests[1].$1);
       expect(api.requests[0].$2, api.requests[1].$2);
       expect(api.requests[1].$2['inspectionIds'], ['fqc-2', 'fqc-1']);
@@ -126,8 +146,20 @@ void main() {
     );
     final iqc = DioProcurementInspectionRepository(api);
     final fqc = ProductionFqcRepository(api);
-    final running = report.send(iqc: iqc, fqc: fqc);
-    await expectLater(report.send(iqc: iqc, fqc: fqc), throwsStateError);
+    final running = report.send(
+      iqc: iqc,
+      fqc: fqc,
+      requestScope: await api.captureRequestScope(isCurrent: () => true),
+    );
+    await expectLater(
+      report.send(
+        iqc: iqc,
+        fqc: fqc,
+        requestScope: await api.captureRequestScope(isCurrent: () => true),
+      ),
+      throwsStateError,
+    );
+    await Future<void>.delayed(Duration.zero);
     expect(api.requests.length, 1);
     gate.complete({'processedCount': 1});
     await running;
@@ -162,7 +194,11 @@ void main() {
       final fqc = ProductionFqcRepository(api);
       for (var i = 0; i < 2; i++) {
         await expectLater(
-          report.send(iqc: iqc, fqc: fqc),
+          report.send(
+            iqc: iqc,
+            fqc: fqc,
+            requestScope: await api.captureRequestScope(isCurrent: () => true),
+          ),
           throwsA(isA<ApiException>()),
         );
       }
@@ -211,7 +247,11 @@ void main() {
     );
     final iqc = DioProcurementInspectionRepository(api);
     final fqc = ProductionFqcRepository(api);
-    final running = report.send(iqc: iqc, fqc: fqc);
+    final running = report.send(
+      iqc: iqc,
+      fqc: fqc,
+      requestScope: await api.captureRequestScope(isCurrent: () => true),
+    );
     for (var i = 0; i < 4; i++) {
       await Future<void>.delayed(Duration.zero);
       expect(gates.length, i + 1, reason: '同一时刻只有一张单在飞');

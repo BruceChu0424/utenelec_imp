@@ -87,6 +87,9 @@ final class ProductionJdbcMeasurement {
         if (sql==null) return false;
         String normalized=sql.replaceAll("\\s+"," ").trim().toLowerCase(java.util.Locale.ROOT);
         return normalized.startsWith("with recursive walk as") && normalized.contains("from goods_bom_items b")
+                || normalized.startsWith("with aliases as materialized") && normalized.contains("source_budgets as materialized")
+                || normalized.startsWith("with current_appends as materialized") && normalized.contains("growable_order_qty")
+                || normalized.startsWith("with sources as materialized") && normalized.contains("select material.id,source.kind")
                 || normalized.startsWith("with analysis_page as materialized")
                 || normalized.startsWith("with analysis_headers as materialized")
                 || normalized.startsWith("with recursive roots(") && normalized.contains("from goods_bom_items edge")
@@ -272,7 +275,9 @@ final class ProductionJdbcMeasurement {
         String fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(normalized.getBytes(StandardCharsets.UTF_8))).substring(0, 16);
         String lower = normalized.toLowerCase(java.util.Locale.ROOT);
-        var created = new QueryMetadata(fingerprint, queryLabel(normalized), explainCandidate(normalized),
+        boolean requestedExplain=java.util.Arrays.asList(System.getProperty("uten.jdbc.measurement.explain-fingerprints","").split(",")).contains(fingerprint)
+                &&(lower.startsWith("select ")||lower.startsWith("with "))&&!lower.contains("for update");
+        var created = new QueryMetadata(fingerprint, queryLabel(normalized), explainCandidate(normalized)||requestedExplain,
                 lower.contains("md5("), lower.contains("set_config("));
         // Test instrumentation only: bounded SQL-shape metadata, never values,
         // results, identities or transaction state. Bindings stay sample-local.
@@ -289,6 +294,13 @@ final class ProductionJdbcMeasurement {
         if (normalized.startsWith("with recursive roots(")) return "bom.expansion";
         if (normalized.startsWith("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
         if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
+        if (normalized.startsWith("select id, status") && normalized.contains("from production_fqc_inspections")
+                && normalized.contains("source_report_item_id") && normalized.contains("for update")) return "fqc.release_inspections";
+        if (normalized.startsWith("select id, source_report_item_id, stock_document_item_id, requested_qty")
+                && normalized.contains("from production_fqc_release_commands")) return "fqc.release_replay";
+        if (normalized.contains("from production_fqc_decision_events decision")
+                && normalized.contains("left join production_fqc_release_allocations allocation")
+                && normalized.contains("group by decision.id")) return "fqc.release_balances";
         // ADR-149: Java 侧的仓库数据范围解析(一次汇总里的解析次数 ≤ 不同范围数, 准则 14)。
         if (normalized.contains("fn_user_warehouse_access(")) return "warehouse.scope_access";
         if (normalized.startsWith("select segment.id from production_execution_segments segment")

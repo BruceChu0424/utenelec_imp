@@ -17,7 +17,7 @@ class SalesQuoteTemplateStorageTest {
     @Test void exactStoredBytesAreCheckedAndRollbackCleansBothNamespaces() throws Exception {
         var properties = new StorageProperties(); properties.setLocalDir(root.toString());
         var local = new LocalDiskStorageService(properties); ReflectionTestUtils.invokeMethod(local, "init");
-        var storage = new SalesQuoteTemplateStorage(local, new StorageProviderRegistry(local, properties));
+        var storage = new SalesQuoteTemplateStorage(new com.uten.imp.common.storage.ImmutableDocumentStore(local, new StorageProviderRegistry(local, properties), com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning()));
         byte[] bytes = QuoteTemplateWorkbook.defaultTemplate().xlsx();
         TransactionSynchronizationManager.initSynchronization();
         try {

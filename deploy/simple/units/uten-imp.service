@@ -1,7 +1,7 @@
 # Uten IMP 后端（简化链 ADR-060）
 # 安装为 /etc/systemd/system/uten-imp.service
 # 2026-10-06 加固 (ADR-157): 附件卷 + 日志之外全只读、无任何特权、不产生 core dump、
-# 新建文件 0600、反复崩溃时触发 uten-alert@ (告警通道未接入前该单元不存在, systemd 只记一行日志)。
+# 新建文件 0600、反复崩溃时由 uten-alert@ 记录本机事件, 恢复后在平台内补送。
 # 旧 drop-in uten-v538-mounts.conf 的附件卷依赖已并入本文件, 安装本文件后删除该 drop-in。
 [Unit]
 Description=Uten IMP backend
@@ -17,16 +17,20 @@ OnFailure=uten-alert@%n.service
 Type=simple
 User=uten-imp
 Group=uten-imp
+Environment=UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl
+ExecStartPre=/bin/sh -c 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" = clamav ]; then test -S "$${UTEN_CLAMAV_UNIX_SOCKET}" && test -r "$${UTEN_CLAMAV_UNIX_SOCKET}" && test -w "$${UTEN_CLAMAV_UNIX_SOCKET}"; fi'
 # current 是指向 releases/<version> 的原子 symlink，禁止原位覆盖
 WorkingDirectory=/opt/uten-imp/current
 EnvironmentFile=/etc/uten-imp/server.env
+Environment=UTEN_SERVER_STATUS_HOST_ALERT_FILE=/var/lib/uten-alert/events.json
 ExecStartPre=/usr/bin/pg_isready -q -h 127.0.0.1 -p 5432 -d uten_imp -t 10
 ExecStartPre=/usr/bin/test -L /opt/uten-imp/current
 ExecStartPre=/usr/bin/test -r /opt/uten-imp/current/server/uten-imp-server.jar
 # 迁移一律走独立 migrator JAR（updater 激活时执行），应用自身禁用 Flyway
-ExecStart=/usr/bin/java -Xms512m -Xmx4g -Dserver.address=127.0.0.1 -Dserver.port=8080 \
+ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/start-server.py \
+  -Xms512m -Xmx4g -Dserver.address=127.0.0.1 -Dserver.port=8080 \
   -Dspring.flyway.enabled=false -XX:+ExitOnOutOfMemoryError \
-  -jar /opt/uten-imp/current/server/uten-imp-server.jar
+  -jar server/uten-imp-server.jar
 SuccessExitStatus=143
 Restart=always
 RestartSec=5

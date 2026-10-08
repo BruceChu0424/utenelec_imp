@@ -1,4 +1,7 @@
 {
+  "businessResetAuditScope": "테스트 업무 데이터, 삭제 이력, 필드 버전과 업무 감사 기록을 삭제합니다. 로그인 인증, 권한, 보안, 시스템 감사와 초기화 확인 기록은 보존됩니다.",
+  "serverAlertAcknowledge": "확인",
+  "serverAlertDetails": "자세히 보기",
   "dashboardMoreTasks": "남은 작업 {count}건",
   "dashboardMoreTasksTitle": "추가 대기 작업",
   "releaseNotesOpen": "이 버전의 업데이트 보기",

@@ -792,15 +792,18 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 本行里**可以改供料路线**的操作组(已有未撤销下游任务的组不在内)。
-  List<_MaterialGroup> _materialRowGroups(_MaterialTableRow row) =>
-      row.isAggregateSource ||
-          (row.aggregate == null &&
-              row.material != null &&
-              _aggregateTable.ownsLine(row.material!.materialLineId))
-      ? const []
-      : _materialRowAllGroups(
-          row,
-        ).where(_canEditMaterialRoute).toList(growable: false);
+  List<_MaterialGroup> _materialRowGroups(_MaterialTableRow row) {
+    if (row.isAggregateSource ||
+        (row.aggregate == null &&
+            row.material != null &&
+            _aggregateTable.ownsLine(row.material!.materialLineId))) {
+      return const [];
+    }
+    final groups = _materialRowAllGroups(row);
+    // One displayed route must never edit only an invisible subset of sources.
+    if (groups.any((group) => !_canEditMaterialRoute(group))) return const [];
+    return groups;
+  }
 
   /// 勾选只表示下单/追加意图；供应方式另行自动保存。
   /// 汇总和原行共用办理资格，缺少可编辑指派不隐藏选择入口。
@@ -3480,6 +3483,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final analysis = _analysis;
     final warehouseId = _warehouseId;
     if (analysis == null || warehouseId == null || !mounted) return;
+    final sessionScope = _sessionScopeKey();
     final activeTyped = _selectedTableTypedOutputs();
     if (activeTyped.isNotEmpty && _tableCascadeInFlight) {
       // 单飞：上一份还在路上，只记「回来后按最新填数再要一次」。在途那份照常装上
@@ -3542,7 +3546,11 @@ abstract class _MaterialAnalysisMaterialTableState
             typedOutputs: Map<String, double>.from(typedSent),
           );
       // 代际丢弃：用户还在敲，迟到的那一份直接作废。
-      if (!mounted || generation != _tableCascadeGeneration) return;
+      if (!mounted ||
+          !_sameAnalysisSnapshot(analysis, sessionScope) ||
+          generation != _tableCascadeGeneration) {
+        return;
+      }
       setState(() {
         _tableCascadePreview = view;
         _tableCascadePreviewTyped = typedSent;
@@ -3556,7 +3564,11 @@ abstract class _MaterialAnalysisMaterialTableState
       _reseedTableQtyInputs(autoSelect: true);
     } catch (_) {
       // 重算失败不打断填数：退回按权威快照换算的估算值，并停掉预览态。
-      if (!mounted || generation != _tableCascadeGeneration) return;
+      if (!mounted ||
+          !_sameAnalysisSnapshot(analysis, sessionScope) ||
+          generation != _tableCascadeGeneration) {
+        return;
+      }
       setState(() {
         _tableCascadePreview = null;
         _tableCascadePreviewTyped = const {};
@@ -3575,6 +3587,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // 批完由 _submitMaterialTableRows 统一决定)。
       if (_tableCascadeTrailing &&
           mounted &&
+          _sameAnalysisSnapshot(analysis, sessionScope) &&
           !_tableSubmitting &&
           !_preparationSubmissionActive) {
         _tableCascadeTrailing = false;
@@ -4404,6 +4417,13 @@ abstract class _MaterialAnalysisMaterialTableState
   }) {
     if (_aggregateTable.inactiveSourceContext(group)) {
       return _tableTransferredSourceReason;
+    }
+    final analysis = _analysis;
+    if (analysis != null &&
+        !_analysisIndexes(analysis).sourceGraph
+            .resolve(group.paths.map((path) => path.materialLineId))
+            .complete) {
+      return '来源单据关联不完整，请刷新核对后下单';
     }
     if (!forAggregate &&
         _aggregateTable.ownsLine(group.representative.materialLineId) &&
@@ -5338,8 +5358,13 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final analysis = _analysis;
     if (analysis == null || _busy || groups.isEmpty) return false;
+    final sessionScope = _sessionScopeKey();
     await _ensureTableMandatoryAssignments(groups);
-    if (!mounted) return false;
+    if (!mounted ||
+        !_sameAnalysisSnapshot(analysis, sessionScope) ||
+        !_preparationSubmissionStillCurrent) {
+      return false;
+    }
 
     final pending = <_MaterialGroup, double>{};
     final blocked = <String>[];
@@ -5419,7 +5444,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // (上下 + 左右都到位，格子实时红框指路)，补齐后再点下单。行可能藏在别的
       // 分页或横向滚出视口——不能只弹一句话让人自己找。
       await _revealTableAssignmentCell(needAssignment.first);
-      if (!mounted) return false;
+      if (!mounted || !_preparationSubmissionStillCurrent) return false;
       context.appWarning(
         '还有 ${needAssignment.length} 行没填生产车间/负责人'
         '（自制行必填），已滚动到第一处红框格，请补齐后再下单',
@@ -5427,7 +5452,7 @@ abstract class _MaterialAnalysisMaterialTableState
       return false;
     }
     if (pending.isEmpty) {
-      if (!mounted) return false;
+      if (!mounted || !_preparationSubmissionStillCurrent) return false;
       context.appInfo(
         blocked.isEmpty ? '所选的行本次都没有要下的数量，请先在「下单数量」或「追加下单」里填数' : blocked.first,
       );
@@ -5437,7 +5462,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final claimUsage = await _askClaimableSupplyUsage(pending.keys, pending);
     if (claimUsage == null) return false;
     final skipAutoClaim = !claimUsage;
-    if (!mounted) return false;
+    if (!mounted || !_preparationSubmissionStillCurrent) return false;
     // 根产品保持来源计划；全部组件按同一依赖图先父后子，同料自动合单。
     final split = _splitMergeableSupplyGroups(
       pending.keys.toList(growable: false),
@@ -5447,6 +5472,11 @@ abstract class _MaterialAnalysisMaterialTableState
       blocked,
       hiddenSelected: fromShortagePage ? 0 : _selectedIssuableGroups().hidden,
     )) {
+      return false;
+    }
+    if (!mounted ||
+        !_sameAnalysisSnapshot(analysis, sessionScope) ||
+        !_preparationSubmissionStillCurrent) {
       return false;
     }
     // ADR-117：下单前记下每件的累计已下单量，下完比一比就知道这次刚下了什么。
@@ -5492,6 +5522,7 @@ abstract class _MaterialAnalysisMaterialTableState
         for (final group in split.separate) group.representative.level,
       }.toList()..sort();
       for (final level in levels) {
+        if (!mounted || !_preparationSubmissionStillCurrent) return false;
         final atLevel = split.separate
             .where((group) => group.representative.level == level)
             .toList(growable: false);
@@ -5505,6 +5536,7 @@ abstract class _MaterialAnalysisMaterialTableState
             pending,
             skipAutoClaim: skipAutoClaim,
           );
+          if (!mounted || !_preparationSubmissionStillCurrent) return false;
           // ADR-104：追加并入了还没开工的原计划(同一单号)时如实说出来，免得用户去
           // 生产计划列表找一张不存在的新单。
           final merged = _lastIssuedPlans
@@ -5537,6 +5569,7 @@ abstract class _MaterialAnalysisMaterialTableState
             pending,
             skipAutoClaim: skipAutoClaim,
           );
+          if (!mounted || !_preparationSubmissionStillCurrent) return false;
           steps.add((
             label: '下达委外(第 $level 层，${subcontract.length} 行)',
             ok: ok,
@@ -5564,6 +5597,7 @@ abstract class _MaterialAnalysisMaterialTableState
             pending,
             skipAutoClaim: skipAutoClaim,
           );
+          if (!mounted || !_preparationSubmissionStillCurrent) return false;
           steps.add((
             label: '下达采购(${buy.length} 行)',
             ok: ok,
@@ -5582,6 +5616,7 @@ abstract class _MaterialAnalysisMaterialTableState
 
     // 汇总段：默认段(根产品计划 + 不合并的行)全部落地后再走。父子顺序由
     // 「根产品先出计划」保证，汇总预览/提交也按每段结束后的最新快照核对。
+    if (!mounted || !_preparationSubmissionStillCurrent) return false;
     if (!halted && split.merged.isNotEmpty && mounted) {
       final aggregateOk = await _aggregateTable.submit(
         split.merged,
@@ -5597,7 +5632,7 @@ abstract class _MaterialAnalysisMaterialTableState
       ));
     }
 
-    if (!mounted) return false;
+    if (!mounted || !_preparationSubmissionStillCurrent) return false;
     // 成功下达的行：追加格回 0、勾选撤掉；失败的保留，让人原地重试。
     setState(() {
       if (steps.every((step) => step.ok)) {
@@ -6701,12 +6736,19 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<bool> _revokeRootOutput(String eventId) async {
     final analysis = _analysis;
     if (analysis == null || !_canRevokeRootOutput || _busy) return false;
+    final sessionScope = _sessionScopeKey();
     final reason = await _promptCancellationReason(
       _l10n.materialRevokeRootStock,
       confirmLabel: '确认撤回',
       dismissLabel: '暂不撤回',
     );
     if (!mounted || reason == null) return false;
+    if (_busy ||
+        !_canRevokeRootOutput ||
+        !_sameAnalysisSnapshot(analysis, sessionScope)) {
+      context.appWarning('分析状态或撤回权限已变化，请按最新资料重新核对撤回');
+      return false;
+    }
     final key = businessIdempotencyKey(
       'material-root-output-revoke',
       '${analysis.analysisId}|$eventId|${analysis.version}|${analysis.fingerprint}|$reason',
@@ -6725,6 +6767,10 @@ abstract class _MaterialAnalysisMaterialTableState
           );
       bucketActionBusyMessage.value = null;
       if (!mounted) return false;
+      if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
+        setState(() => _cancellingAction = false);
+        return false;
+      }
       setState(() {
         _cancellingAction = false;
         _applyAnalysis(view);
@@ -6734,6 +6780,10 @@ abstract class _MaterialAnalysisMaterialTableState
     } catch (error) {
       bucketActionBusyMessage.value = null;
       if (!mounted) return false;
+      if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
+        setState(() => _cancellingAction = false);
+        return false;
+      }
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: _l10n.materialRevokeRootStock,
@@ -6802,7 +6852,26 @@ abstract class _MaterialAnalysisMaterialTableState
 
   bool _canCancelSpecificAction(String? actionId) {
     if (!_canCancelAction || actionId == null) return false;
-    final operation = _supplyOperationType(actionId);
+    final action = _supplyActionOf(actionId);
+    if (action == null) return false;
+    if (const {
+      'CANCELLED',
+      'WITHDRAWN',
+      'REVERSED',
+      'DONE',
+    }.contains(action.status)) {
+      final pendingReversal =
+          _analysis?.materials.any(
+            (material) => material.notifiedTargets.any(
+              (target) =>
+                  target.actionId == actionId &&
+                  target.notificationReversalPending,
+            ),
+          ) ??
+          false;
+      if (!pendingReversal) return false;
+    }
+    final operation = action.operationType;
     if (operation == 'FUTURE_TRANSFER') return false;
     if (operation == 'AGGREGATE_SUPPLY') {
       final action = _supplyActionOf(actionId);
@@ -6824,15 +6893,27 @@ abstract class _MaterialAnalysisMaterialTableState
     ThemeData theme,
     ProductionMaterialAnalysisMaterial material,
   ) {
-    final targets = material.notifiedTargets
-        .where(
-          (target) =>
-              target.actionId?.trim().isNotEmpty == true &&
-              (target.status?.toUpperCase() != 'CANCELLED' ||
-                  target.notificationReversalPending) &&
-              target.status?.toUpperCase() != 'DONE',
-        )
-        .toList(growable: false);
+    final analysis = _analysis;
+    final resolution = analysis == null
+        ? null
+        : _analysisIndexes(
+            analysis,
+          ).sourceGraph.resolve([material.materialLineId]);
+    final sources = resolution?.materials ?? [material];
+    final targets =
+        {
+              for (final source in sources)
+                for (final target in source.notifiedTargets)
+                  if (target.actionId != null) target.actionId!: target,
+            }.values
+            .where(
+              (target) =>
+                  target.actionId?.trim().isNotEmpty == true &&
+                  (target.status?.toUpperCase() != 'CANCELLED' ||
+                      target.notificationReversalPending) &&
+                  target.status?.toUpperCase() != 'DONE',
+            )
+            .toList(growable: false);
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
@@ -6862,7 +6943,8 @@ abstract class _MaterialAnalysisMaterialTableState
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
-                if (_canCancelSpecificAction(target.actionId))
+                if (resolution?.complete != false &&
+                    _canCancelSpecificAction(target.actionId))
                   TextButton.icon(
                     key: ValueKey(
                       'material-table-cancel-action-${target.actionId}',
@@ -7086,12 +7168,19 @@ abstract class _MaterialAnalysisMaterialTableState
   Future<void> _cancelCurrentAnalysis() async {
     final analysis = _analysis;
     if (analysis == null || !_canCancelAnalysis || _busy) return;
+    final sessionScope = _sessionScopeKey();
     final reason = await _promptCancellationReason(
       '取消物料分析',
       confirmLabel: '确认取消分析',
       dismissLabel: '暂不取消',
     );
     if (reason == null || !mounted) return;
+    if (_busy ||
+        !_canCancelAnalysis ||
+        !_sameAnalysisSnapshot(analysis, sessionScope)) {
+      context.appWarning('分析状态或取消权限已变化，请按最新资料重新核对');
+      return;
+    }
     final idempotencyKey = businessIdempotencyKey(
       'material-analysis-cancel',
       '${analysis.analysisId}|${analysis.version}|${analysis.fingerprint}|$reason',
@@ -7112,6 +7201,10 @@ abstract class _MaterialAnalysisMaterialTableState
       bucketActionBusyMessage.value = null;
       if (!mounted) return;
       setState(() => _cancellingAnalysis = false);
+      if (!_sameAnalysisSnapshot(analysis, sessionScope) ||
+          !_canCancelAnalysis) {
+        return;
+      }
       // 2026-09-24 用户口径「确认取消后应该返回任务中心并刷新，现在是还停留在
       // 物料分析准备页面」：分析已取消，本页语义失效，不再就地应用已取消视图；
       // 返回来源页（调度台/记录页/补产横幅都是 await push 打开的，返回即重拉），
@@ -7122,6 +7215,10 @@ abstract class _MaterialAnalysisMaterialTableState
     } catch (error) {
       bucketActionBusyMessage.value = null;
       if (!mounted) return;
+      if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
+        setState(() => _cancellingAnalysis = false);
+        return;
+      }
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '取消物料分析',
@@ -7138,6 +7235,20 @@ abstract class _MaterialAnalysisMaterialTableState
     }
   }
 
+  bool _cancellationStillCurrent(
+    ProductionMaterialAnalysisView expected,
+    String actionId,
+    String sessionScope,
+  ) {
+    if (_busy ||
+        !_sameAnalysisSnapshot(expected, sessionScope) ||
+        !_canCancelSpecificAction(actionId)) {
+      context.appWarning('分析状态或撤回权限已变化，请按最新资料重新核对撤回');
+      return false;
+    }
+    return true;
+  }
+
   Future<bool> _cancelMaterialAction(String actionId) async {
     if (_supplyOperationType(actionId) == 'AGGREGATE_SUPPLY') {
       return _aggregateTable.cancelAction(actionId);
@@ -7146,6 +7257,7 @@ abstract class _MaterialAnalysisMaterialTableState
     if (analysis == null || !_canCancelSpecificAction(actionId) || _busy) {
       return false;
     }
+    final sessionScope = _sessionScopeKey();
     final sharedClaim = _isSharedFutureClaimAction(actionId);
     final reason = await _promptCancellationReason(
       sharedClaim ? '撤回公共认领（不撤回原采购 / 委外单）' : '撤回供给任务',
@@ -7153,6 +7265,9 @@ abstract class _MaterialAnalysisMaterialTableState
       dismissLabel: '暂不撤回',
     );
     if (reason == null || !mounted) return false;
+    if (!_cancellationStillCurrent(analysis, actionId, sessionScope)) {
+      return false;
+    }
     final idempotencyKey = businessIdempotencyKey(
       'material-analysis-cancel-action',
       '${analysis.analysisId}|$actionId|${analysis.version}|${analysis.fingerprint}|$reason',
@@ -7171,6 +7286,10 @@ abstract class _MaterialAnalysisMaterialTableState
           );
       bucketActionBusyMessage.value = null;
       if (!mounted) return false;
+      if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
+        setState(() => _cancellingAction = false);
+        return false;
+      }
       setState(() {
         _cancellingAction = false;
         _applyAnalysis(view);
@@ -7182,6 +7301,10 @@ abstract class _MaterialAnalysisMaterialTableState
     } catch (error) {
       bucketActionBusyMessage.value = null;
       if (!mounted) return false;
+      if (!_sameAnalysisSnapshot(analysis, sessionScope)) {
+        setState(() => _cancellingAction = false);
+        return false;
+      }
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '撤回供给任务',

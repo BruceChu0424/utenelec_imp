@@ -27,6 +27,9 @@ public class CryptoProperties {
     /** 当前密钥版本（密文前缀 `<version>:`，便于轮换）。默认 1。 */
     private String pgpKeyVersion = "1";
 
+    /** 无版本前缀的历史密文固定归属的密钥版本；轮换当前主钥时不得随之改变。 */
+    private String pgpUnversionedKeyVersion = "1";
+
     /** 旧版本 → 旧密钥。轮换后保留用于解密历史密文（新增数据始终用当前版本）。 */
     private Map<String, String> pgpLegacyKeys = new HashMap<>();
 

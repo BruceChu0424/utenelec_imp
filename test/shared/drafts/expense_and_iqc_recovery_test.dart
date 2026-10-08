@@ -31,6 +31,66 @@ import 'memory_form_draft_storage.dart';
 const _iqcPath = '${RouteName.warehouseInspections}/PURCHASE/receipt-1';
 
 void main() {
+  for (final code in ['SESSION_CHANGED', 'SESSION_STATE_UNAVAILABLE']) {
+    testWidgets(
+      'IQC $code 409 retains uncertain report and its original keys',
+      (tester) async {
+        final storage = MemoryFormDraftStorage();
+        final iqc = _Iqc()..boundaryFailure = code;
+        final env = await _open(tester, storage, _iqcPath, iqc: iqc);
+        await _prepareIqc(tester);
+        await tester.tap(find.byKey(const Key('iqc-submit-report')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, '原检验结论');
+        await tester.tap(
+          find.byKey(const Key('inspection-report-confirm-submit')),
+        );
+        await tester.pumpAndSettle();
+        expect(iqc.sent, hasLength(1));
+        final editor =
+            tester.state(find.byType(ProcurementInspectionDetailPage))
+                as FormDraftMixin<ProcurementInspectionDetailPage>;
+        final captured = editor.captureFormDraft();
+        expect(captured['submissionRejected'], isFalse);
+        expect(captured['submission'], isNotNull);
+        await editor.saveFormDraftNow();
+        expect(
+          env.container
+              .read(formDraftsProvider)
+              .single
+              .data['_formDraftSubmissionPending'],
+          isTrue,
+        );
+        expect(find.textContaining('没有提交成功'), findsNothing);
+        await tester.tap(find.byKey(const Key('iqc-submit-report')));
+        await tester.pumpAndSettle();
+        expect(iqc.sent, hasLength(2));
+        expect(iqc.sent.last, iqc.sent.first);
+        await _dispose(tester, env);
+      },
+    );
+  }
+
+  testWidgets(
+    'IQC confirmation is bound before a same-account intent changes',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final iqc = _Iqc();
+      final env = await _open(tester, storage, _iqcPath, iqc: iqc);
+      await _prepareIqc(tester);
+      await tester.tap(find.byKey(const Key('iqc-submit-report')));
+      await tester.pumpAndSettle();
+      (env.container.read(sessionProvider.notifier) as _Session).epoch++;
+      await tester.enterText(find.byType(TextField).last, '旧窗口结论');
+      await tester.tap(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(iqc.sent, isEmpty);
+      expect(tester.takeException(), isNull);
+      await _dispose(tester, env);
+    },
+  );
   testWidgets(
     'legacy expense rows without unique local IDs never share extension values',
     (tester) async {
@@ -360,6 +420,9 @@ Future<void> _dispose(WidgetTester tester, _Environment env) async {
 }
 
 class _Session extends SessionNotifier {
+  int epoch = 0;
+  @override
+  int get requestIntentEpoch => epoch;
   @override
   SessionState build() => const SessionState();
 }
@@ -393,6 +456,7 @@ class _Iqc extends DioProcurementInspectionRepository {
   _Iqc() : super(_Api());
   bool resolved = false;
   bool rejectConflict = false;
+  String? boundaryFailure;
   final sent = <Map<String, dynamic>>[];
   @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async => resolved
@@ -443,6 +507,14 @@ class _Iqc extends DioProcurementInspectionRepository {
     );
     if (rejectConflict) {
       throw ApiException('CONFLICT', '待检数量已变化', httpStatus: 409);
+    }
+    if (boundaryFailure != null) {
+      throw ApiException(
+        boundaryFailure!,
+        '会话边界，原请求可能已经提交',
+        httpStatus: 409,
+        hasResponseCode: true,
+      );
     }
     resolved = true;
     if (sent.length == 1) throw NetworkTimeoutException();

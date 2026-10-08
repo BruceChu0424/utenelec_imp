@@ -91,9 +91,11 @@ class MaterialAnalysisRouteAutoConfirmTest {
     }
 
     @Test
-    void issuedThresholdMatchesThePageEpsilon() {
-        assertThat(MaterialAnalysisRouteAutoConfirm.issued(new BigDecimal("0.0001"))).isFalse();
+    void minimumValidIssuedQuantityStillLocksTheRoute() {
+        assertThat(MaterialAnalysisRouteAutoConfirm.issued(new BigDecimal("0.0001"))).isTrue();
         assertThat(MaterialAnalysisRouteAutoConfirm.issued(new BigDecimal("0.0002"))).isTrue();
+        assertThat(MaterialAnalysisRouteAutoConfirm.issued(BigDecimal.ZERO)).isFalse();
+        assertThat(MaterialAnalysisRouteAutoConfirm.issued(new BigDecimal("-0.0001"))).isFalse();
         assertThat(MaterialAnalysisRouteAutoConfirm.issued(null)).isFalse();
     }
 

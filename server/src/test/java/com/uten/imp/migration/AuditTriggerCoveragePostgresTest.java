@@ -97,10 +97,27 @@ class AuditTriggerCoveragePostgresTest {
                     'YYYYMM')) IS NOT NULL
                 """, Integer.class), "current month and the next three are pre-created");
         assertEquals(Set.of("audit_log_pk", "idx_audit_log_created", "idx_audit_log_target",
-                        "idx_audit_log_request", "idx_audit_log_session", "idx_audit_log_actor"),
+                        "idx_audit_log_request", "idx_audit_log_session", "idx_audit_log_actor",
+                        "idx_audit_login_failure_window"),
                 Set.copyOf(db.queryForList(
                         "SELECT indexrelid::regclass::text FROM pg_index WHERE indrelid='audit_log'::regclass",
-                        String.class)), "only the indexes the audit pages actually use");
+                        String.class)), "only the indexes used by audit pages and login security observation");
+        assertEquals(List.of("created_at", "ip"), db.queryForList("""
+                SELECT a.attname::text
+                FROM pg_index i
+                CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum, position)
+                JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.attnum
+                WHERE i.indexrelid='public.idx_audit_login_failure_window'::regclass
+                ORDER BY k.position
+                """, String.class), "the login observation window keeps its time and network-source key order");
+        assertEquals(2, db.queryForObject("""
+                SELECT indnkeyatts FROM pg_index
+                WHERE indexrelid='public.idx_audit_login_failure_window'::regclass
+                """, Integer.class), "both columns are index keys, with no included columns");
+        assertEquals("(action = 'login_failed'::text)", db.queryForObject("""
+                SELECT pg_get_expr(indpred, indrelid) FROM pg_index
+                WHERE indexrelid='public.idx_audit_login_failure_window'::regclass
+                """, String.class), "the partial index contains only login failures");
         assertEquals(0, db.queryForObject(
                 "SELECT count(*) FROM pg_proc WHERE proname IN ('fn_audit_classify','fn_audit_classify_row','fn_audit_redacted')",
                 Integer.class), "classification is computed once at write time");

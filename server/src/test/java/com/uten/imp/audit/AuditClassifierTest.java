@@ -9,6 +9,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 风险等级与事件类型只在写入时按明确目录算一次(ADR-105, audit-retention-settings-05)。 */
 class AuditClassifierTest {
 
+    @Test
+    void piiRotationEvidenceIsSystemHistoryAndNotResettableBusinessHistory() {
+        assertEquals(new AuditClassifier.Classification("high", "system"),
+                classify("business", "pii_key_rotation.batch", "pii_key_rotation_runs",
+                        "/api/admin/pii-key-rotation/batches", "success; PII 密钥轮换批次已提交", 200));
+        assertEquals(new AuditClassifier.Classification("medium", "system"),
+                classify("business", "pii_key_rotation.batch", "pii_key_rotation_runs",
+                        "/api/admin/pii-key-rotation/batches", "failure", 409));
+    }
+
     private static AuditClassifier.Classification classify(
             String source, String action, String targetType, String path, String result, Integer status) {
         return AuditClassifier.classify(source, action, targetType, path, result, status);

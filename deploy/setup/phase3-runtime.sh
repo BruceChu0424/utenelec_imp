@@ -260,7 +260,7 @@ required_sources=(
   "$SCRIPT_DIR/validate-migrator-env.sh"
   "$SCRIPT_DIR/harden-existing-postgres-roles.sh"
   "$SCRIPT_DIR/migrate-postgres-secrets-path.sh"
-  "$SCRIPT_DIR/server.env.oss-migration.example"
+  "$SCRIPT_DIR/server.env.internal-storage.example"
   "$SCRIPT_DIR/wait-for-erp-readiness.sh"
   "$DEPLOY_ROOT/watchdog/uten-imp-watchdog.sh"
   "$DEPLOY_ROOT/watchdog/uten-imp-entry-watchdog.sh"
@@ -584,8 +584,12 @@ else
     fi
   fi
 fi
-[[ ! -e /data/uten-imp/attachments && ! -L /data/uten-imp/attachments ]] \
-  || die 'legacy local attachments exist under /data; preserve them as read-only migration evidence and complete a separately approved OSS migration before runtime installation'
+if [[ -e /data/uten-imp/attachments || -L /data/uten-imp/attachments ]]; then
+  [[ -d /data/uten-imp/attachments && ! -L /data/uten-imp/attachments && -f "$ENV_FILE" ]] \
+    || die 'retained local originals require a real directory and an approved existing environment'
+  [[ "$(awk -F= '$1 == "UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED" {print $2}' "$ENV_FILE")" == true ]] \
+    || die 'retained local originals require explicit historical-read configuration and a reviewed reference report; no files are deleted'
+fi
 
 echo '==> Install Java 21, Nginx, PostgreSQL client, and watchdog dependencies'
 apt-get update -qq
@@ -702,8 +706,8 @@ install -m 0755 -o root -g root \
   "$SCRIPT_DIR/migrate-postgres-secrets-path.sh" \
   /usr/local/sbin/uten-imp-migrate-postgres-secrets-path
 install -m 0600 -o root -g root \
-  "$SCRIPT_DIR/server.env.oss-migration.example" \
-  /etc/uten-imp/templates/server.env.oss-migration.example
+  "$SCRIPT_DIR/server.env.internal-storage.example" \
+  /etc/uten-imp/templates/server.env.internal-storage.example
 
 [[ ! -L "$ENV_FILE" ]] || die "$ENV_FILE must not be a symlink"
 [[ ! -L "$PENDING_ENV" ]] || die "$PENDING_ENV must not be a symlink"
@@ -794,6 +798,7 @@ if [[ ! -e "$ENV_FILE" ]]; then
     cat >"$PENDING_ENV" <<EOF
 # PENDING Uten IMP production environment. Root review is required before activation.
 UTEN_PROFILE=prod
+UTEN_BUSINESS_DATA_RESET_ENABLED=false
 UTEN_DEPLOYMENT_SITE=local
 UTEN_LOCAL_ALLOWED_CIDRS=127.0.0.0/8,::1/128,REPLACE_EXACT_OFFICE_CIDR
 SERVER_ADDRESS=127.0.0.1
@@ -820,6 +825,8 @@ UTEN_JWT_SECRET=$(generate_secret 32)
 UTEN_JWT_ISSUER=uten-imp-production
 UTEN_PGP_MASTER_KEY=$(generate_secret 32)
 UTEN_PGP_KEY_VERSION=1
+UTEN_PGP_UNVERSIONED_KEY_VERSION=1
+UTEN_PGP_ROTATION_ENABLED=false
 UTEN_HMAC_KEY=$(generate_secret 32)
 UTEN_SECRET_CIPHER_KEY=$(generate_secret 32)
 
@@ -835,23 +842,16 @@ BOOTSTRAP_ADMIN_LOGIN=REPLACE_APPROVED_BOOTSTRAP_ADMIN_LOGIN
 BOOTSTRAP_ADMIN_PASSWORD=$(generate_secret 24)
 UTEN_SMS_PROVIDER=disabled
 
-UTEN_STORAGE_PROVIDER=oss
+UTEN_STORAGE_PROVIDER=internal
+UTEN_INTERNAL_STORAGE_ROOT=/var/lib/uten-imp-media/attachments
 UTEN_ATTACHMENT_UPLOADS_ENABLED=false
-UTEN_ATTACHMENT_SCANNER_PROVIDER=disabled
+UTEN_ATTACHMENT_SCANNER_PROVIDER=clamav
+UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl
+UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED=false
+UTEN_STORAGE_LEGACY_OSS_READ_ENABLED=false
 UTEN_ATTACHMENT_RECONCILIATION_ENABLED=false
 UTEN_STORAGE_MAX_BYTES=26214400
 UTEN_STORAGE_PRESIGN_EXPIRY=300
-UTEN_OSS_ENDPOINT=https://REPLACE_WITH_PUBLIC_OSS_ENDPOINT
-UTEN_OSS_INTERNAL_ENDPOINT=
-UTEN_OSS_STAGING_BUCKET=REPLACE_WITH_UNVERSIONED_STAGING_BUCKET
-UTEN_OSS_FINAL_BUCKET=REPLACE_WITH_VERSIONED_FINAL_BUCKET
-UTEN_OSS_REGION=REPLACE_WITH_REGION
-UTEN_OSS_USE_INSTANCE_ROLE=false
-UTEN_OSS_ACCESS_KEY_ID=REPLACE_WITH_LEAST_PRIVILEGE_RAM_ACCESS_KEY_ID
-UTEN_OSS_ACCESS_KEY_SECRET=REPLACE_WITH_LEAST_PRIVILEGE_RAM_ACCESS_KEY_SECRET
-UTEN_OSS_KEY_PREFIX=attachments/
-UTEN_OSS_REQUIRE_VERSIONING=true
-
 UTEN_AI_OUTBOUND_ENABLED=true
 UTEN_AI_ALLOW_OVERSEAS=false
 EOF
@@ -859,7 +859,7 @@ EOF
     chown root:root "$PENDING_ENV"
     chmod 0600 "$PENDING_ENV"
   fi
-  die "no live server.env exists. Review $PENDING_ENV with sudoedit, verify split OSS Bucket versioning and existing attachment migration, then install it as $ENV_FILE (root:uten-imp 0640) and rerun phase3"
+  die "no live server.env exists. Review $PENDING_ENV with sudoedit, verify private internal storage, ClamAV Unix socket and retained-original compatibility, then install it as $ENV_FILE (root:uten-imp 0640) and rerun phase3"
 fi
 
 # Existing secrets and metadata are never regenerated, overwritten, or silently
@@ -1092,4 +1092,4 @@ printf '%s\n' \
   'DATABASE_BOOT_AUTHORITY_VERIFIED: postgresql.service and postgresql@16-main.service are active and persistently enabled through exact start.conf=auto and the Debian generator dependency.' \
   'POSTGRES_STORAGE_BOOT_GATE_INSTALLED: PostgreSQL is bound to data.mount and verifies the commissioned md source/UUID, mount policy, capacity, inodes, and effective 16/main data_directory before every future start.' \
   'STORAGE_LATE_MOUNT_OBSERVER_INSTALLED: the network watchdog retains PrivateDevices; a separate non-networked exact-device read-only observer may issue one short-lived boot-bound receipt before data.mount is started.' \
-  'A signed release, accepted TLS site, V238-to-V255 migration/reconciliation, OSS acceptance, and restore evidence remain separate gates.'
+  'A signed release, accepted TLS site, migration/reconciliation, private storage and ClamAV acceptance, and restore evidence remain separate gates.'

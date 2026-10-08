@@ -292,7 +292,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
             for (String table : List.of("production_material_analyses", "production_material_analysis_items", "goods_bom_items", "goods")) {
                 jdbc.execute("ANALYZE " + table);
             }
-            emit(Map.of("event", "wire-scale", "products", size, "materials", size * 98,
+            emit(Map.of("event", "wire-scale", "products", size, "materials", size * scenario.expectedExpandedRowsPerProduct(),
                     "historyRows", historyRows, "databaseSettings", databaseSettings(),
                     "databaseProfile", System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE", "test-default")));
             AnalysisView view = analysis.preview(request(scenario, null, "wire-preview-" + suffix()));
@@ -309,7 +309,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
             });
             var wire = json.readTree(response);
             assertEquals(com.uten.imp.features.production.analysis.MaterialAnalysisSparseProjection.VERSION, wire.path("projection").asText());
-            assertEquals(size * 98, wire.path("flatMaterials").size());
+            assertEquals(size * scenario.expectedExpandedRowsPerProduct(), wire.path("flatMaterials").size());
             factory.login(scenario);
             var decisions = view.flatMaterials().stream().filter(MaterialView::actionable).limit(500)
                     .map(row -> new RouteDecision(row.materialLineId(), row.actionGroupKey(), row.sourceSuggestion(), null)).toList();
@@ -350,6 +350,13 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 WHERE analysis_id=? AND node_role='BOM_COMPONENT' ORDER BY analysis_item_id,depth,node_key LIMIT 1000
                 """, view.analysisId());
         assertEquals(1000, rows.size());
+        int roots=scenario.products().size();
+        int expectedRows=roots*scenario.expectedExpandedRowsPerProduct();
+        List<String> baselineRows=nodeProfileRows(view.analysisId());
+        Map<String,Long> expectedRoles=Map.of("ROOT_SUPPLY",(long)roots,"BOM_COMPONENT",(long)expectedRows-roots);
+        assertEquals(expectedRows,baselineRows.size());
+        assertEquals(expectedRoles,nodeProfileRoles(view.analysisId()));
+        Map<String,Object> baselineAudit=nodeProfileAudit(view.analysisId());
         String ids = rows.stream().map(row -> row.get("id").toString()).collect(java.util.stream.Collectors.joining(","));
         boolean noOp = Boolean.getBoolean("uten.production.profileNodeNoop");
         for (int sampleIndex : java.util.stream.IntStream.range(0, noOp ? 5 : 1).toArray()) {
@@ -397,10 +404,31 @@ class ProductionMaterialAnalysisScalePostgresTest {
                 } catch (Exception failure) { throw new IllegalStateException(failure); }
                 finally { ProductionJdbcMeasurement.end(); status.setRollbackOnly(); }
             });
+            assertEquals(baselineRows,nodeProfileRows(view.analysisId()),"Every batch rollback must restore all identities, quantities and route metadata");
+            assertEquals(expectedRoles,nodeProfileRoles(view.analysisId()));
+            assertEquals(baselineAudit,nodeProfileAudit(view.analysisId()),"Profiling must not leave audit mutations after rollback");
         }
         }
-        assertEquals(9800, jdbc.queryForObject("SELECT count(*) FROM production_material_analysis_materials WHERE analysis_id=?",
-                Integer.class, view.analysisId()), "Every profiling mutation must have rolled back");
+        emit(Map.of("event","node-upsert-rollback-baseline","products",roots,"materialRows",expectedRows,
+                "roles",expectedRoles,"completeRowsAndAuditRestored",true));
+    }
+
+    private List<String> nodeProfileRows(UUID analysisId) {
+        return jdbc.queryForList("SELECT to_jsonb(material)::text FROM production_material_analysis_materials material WHERE analysis_id=? ORDER BY id",
+                String.class,analysisId);
+    }
+
+    private Map<String,Long> nodeProfileRoles(UUID analysisId) {
+        return jdbc.query("SELECT node_role,count(*) FROM production_material_analysis_materials WHERE analysis_id=? GROUP BY node_role",
+                rs->{Map<String,Long> roles=new java.util.TreeMap<>();while(rs.next())roles.put(rs.getString(1),rs.getLong(2));return roles;},analysisId);
+    }
+
+    private Map<String,Object> nodeProfileAudit(UUID analysisId) {
+        return jdbc.queryForMap("""
+                SELECT count(*) AS entries,md5(COALESCE(string_agg(to_jsonb(event)::text,E'\\n' ORDER BY event.id),'')) AS fingerprint
+                FROM audit_log event WHERE event.target_type='production_material_analysis_materials'
+                  AND event.target_id IN(SELECT id::text FROM production_material_analysis_materials WHERE analysis_id=?)
+                """,analysisId);
     }
 
     @Test

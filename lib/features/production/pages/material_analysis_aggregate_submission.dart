@@ -55,6 +55,16 @@ final class _MaterialAggregateSubmission {
     bool? skipAutoClaim,
   }) async {
     if (running || table.saving || selected.isEmpty) return false;
+    final sessionScope = owner._sessionScopeKey();
+    final analysis = owner._analysis;
+    if (analysis == null || !owner._preparationSubmissionStillCurrent) {
+      return false;
+    }
+    bool currentSession() =>
+        owner.mounted &&
+        owner._sessionScopeKey() == sessionScope &&
+        owner._analysis?.analysisId == analysis.analysisId &&
+        owner._preparationSubmissionStillCurrent;
     // 2026-09-29 用户口径：编排入口(main 表全选下单)已问过并把标志传进来(非 null)；
     // 汇总视图直接下单在这里问一次「是否扣可用数量」，整轮所有段共用同一选择。
     final bool skipClaims;
@@ -65,7 +75,7 @@ final class _MaterialAggregateSubmission {
       if (claimUsage == null) return false;
       skipClaims = !claimUsage;
     }
-    if (!owner.mounted) return false;
+    if (!owner.mounted || !currentSession()) return false;
     final keys = selected
         .map((group) => owner._aggregateKeyOf(group.representative))
         .toSet();
@@ -133,10 +143,16 @@ final class _MaterialAggregateSubmission {
           ),
           confirmLabel: '确认下单',
         );
-        if (confirmedOnce != true || !owner.mounted) return false;
+        if (confirmedOnce != true ||
+            !owner.mounted ||
+            !currentSession() ||
+            !owner._sameAnalysisSnapshot(analysis, sessionScope)) {
+          return false;
+        }
       }
       final dependencies = _dependencies(keys);
       while (remaining.isNotEmpty) {
+        if (!owner.mounted || !currentSession()) return false;
         final ready = remaining
             .where(
               (key) => (dependencies[key] ?? const <String>{})
@@ -185,7 +201,7 @@ final class _MaterialAggregateSubmission {
           sources,
           skipAutoClaim: skipClaims,
         );
-        if (!owner.mounted) return false;
+        if (!owner.mounted || !currentSession()) return false;
         if (!success) {
           if (completed.isNotEmpty) {
             owner.context.appInfo('前面的物料已下达，其余数量和来源仍保留，可继续核对或重试');
@@ -517,6 +533,7 @@ final class _MaterialAggregateSubmission {
   Future<void> _offerRemainingChildren(Set<String> ids) async {
     final analysis = owner._analysis;
     if (!owner.mounted || analysis == null || table.hasDrafts) return;
+    final sessionScope = owner._sessionScopeKey();
     final indexes = owner._analysisIndexes(analysis);
     final originalIds = {
       for (final material in analysis.materials)
@@ -543,7 +560,7 @@ final class _MaterialAggregateSubmission {
     );
     if (confirm != true ||
         !owner.mounted ||
-        owner._analysis?.analysisId != analysis.analysisId) {
+        !owner._sameAnalysisSnapshot(analysis, sessionScope)) {
       return;
     }
     await owner._submitPreparationGroups(groups, append: false);

@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -81,16 +80,21 @@ public class ServerStatusAlertScheduler {
     private final ServerStatusService service;
     private final NoticeService notices;
     private final JdbcTemplate jdbc;
+    private final HostAlertReader hostAlerts;
+    private final ServerAlertAudience audiencePolicy;
 
     /** 上一轮每个指标的告警 (仅用于「恢复」判定与其人话名称, 见类注释的已知边界)。 */
     private final Map<String, ServerStatusView.Alert> lastAlerts = new HashMap<>();
 
     public ServerStatusAlertScheduler(ServerStatusService service,
                                       NoticeService notices,
-                                      JdbcTemplate jdbc) {
+                                      JdbcTemplate jdbc, HostAlertReader hostAlerts,
+                                      ServerAlertAudience audiencePolicy) {
         this.service = service;
         this.notices = notices;
         this.jdbc = jdbc;
+        this.hostAlerts = hostAlerts;
+        this.audiencePolicy = audiencePolicy;
     }
 
     /**
@@ -99,6 +103,7 @@ public class ServerStatusAlertScheduler {
      */
     @Scheduled(fixedDelayString = "300000", initialDelayString = "120000")
     public void scan() {
+        scanHostEvents();
         try {
             ServerStatusView snapshot = service.current();
             if (snapshot == null) return;
@@ -139,7 +144,7 @@ public class ServerStatusAlertScheduler {
                 for (ServerStatusView.Alert previous : lastAlerts.values()) {
                     if (!"CRITICAL".equals(previous.status())) continue;
                     ServerStatusView.Alert now = current.get(previous.key());
-                    if (now != null && "CRITICAL".equals(now.status())) continue;
+                    if (now != null && !"NORMAL".equals(now.status())) continue;
                     if (audience == null) audience = receivers();
                     if (audience.isEmpty()) break;
                     String label = displayLabel(previous);
@@ -149,6 +154,13 @@ public class ServerStatusAlertScheduler {
                             "【已恢复】" + label + "已回到正常范围",
                             "此前处于危急状态的「" + label + "」已回到正常范围, 无需处理。",
                             TYPE_RECOVERED, PRIORITY_RECOVERED);
+                }
+                // A downgrade to WARNING/UNKNOWN is not recovery. Retain the
+                // unresolved critical episode until this metric is truly normal.
+                for (var previous : lastAlerts.values()) {
+                    var now = current.get(previous.key());
+                    if ("CRITICAL".equals(previous.status()) && now != null
+                            && !"NORMAL".equals(now.status())) current.put(previous.key(), previous);
                 }
                 lastAlerts.clear();
                 lastAlerts.putAll(current);
@@ -194,24 +206,45 @@ public class ServerStatusAlertScheduler {
         return hit != null && hit > 0;
     }
 
+    private void scanHostEvents() {
+        try {
+            var events = hostAlerts.read(Instant.now());
+            if (events.isEmpty()) return;
+            for (UUID user : receivers()) {
+                for (var event : events) {
+                    // Stable local event UUID survives process restarts. A saved event is never
+                    // re-delivered merely because the six-hour live-metric throttle elapsed.
+                    String source = "SERVER_HOST_ALERT:" + event.id();
+                    try {
+                        if (sentRecently(user, source, Instant.EPOCH)) continue;
+                        boolean critical = "CRITICAL".equals(event.severity());
+                        notices.publishForUser(user, event.title(),
+                                "服务器记录了一次异常，请在服务器状态页核对当前情况并联系维护人员。发生时间: "
+                                        + event.occurredAt(),
+                                critical ? TYPE_CRITICAL : TYPE_WARNING, PUBLISHER, ACTION_ROUTE,
+                                source, critical ? PRIORITY_CRITICAL : PRIORITY_WARNING);
+                    } catch (Exception failed) {
+                        log.warn("主机告警单项送达失败，将重试 user={} event={} type={}",
+                                user, event.id(), failed.getClass().getSimpleName());
+                    }
+                }
+            }
+        } catch (Exception unavailable) {
+            log.warn("主机告警读取或送达失败，将在下轮重试: {}", unavailable.getClass().getSimpleName());
+            try {
+                publishThrottled(receivers(), sourceEvent("HOST_ALERT_RECORDS", "CRITICAL"),
+                        "服务器告警记录无法读取",
+                        "本机告警记录暂时无法读取，可能有异常尚未送达，请联系维护人员检查告警服务。",
+                        TYPE_CRITICAL, PRIORITY_CRITICAL);
+            } catch (Exception failed) {
+                log.warn("告警通道故障提醒暂时无法送达: {}", failed.getClass().getSimpleName());
+            }
+        }
+    }
+
     /** 持有接收权的活跃账号（含超管）。 */
     private List<UUID> receivers() {
-        List<UUID> result = new ArrayList<>(jdbc.query("""
-                SELECT DISTINCT account.id
-                FROM users account
-                WHERE COALESCE(account.is_deleted,FALSE)=FALSE AND account.status='active'
-                  AND (account.is_super_admin = TRUE OR EXISTS (
-                      SELECT 1 FROM user_permission_overrides override
-                      JOIN permissions permission ON permission.id = override.permission_id
-                      WHERE override.user_id = account.id AND override.active = TRUE
-                        AND override.effect = 'grant' AND permission.code = ?)
-                   OR EXISTS (
-                      SELECT 1 FROM department_permissions allocation
-                      JOIN permissions permission ON permission.id = allocation.permission_id
-                      JOIN employees staff ON staff.id = account.employee_id
-                      WHERE allocation.department_id = staff.department_id
-                        AND permission.code = ?))
-                """, (rs, row) -> (UUID) rs.getObject(1), RECEIVE_AUTHORITY, RECEIVE_AUTHORITY));
+        List<UUID> result = audiencePolicy.receivers();
         if (result.isEmpty()) {
             log.debug("没有账号持有 {}，服务器状态告警本轮不发送", RECEIVE_AUTHORITY);
         }

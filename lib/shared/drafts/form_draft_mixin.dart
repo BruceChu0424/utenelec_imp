@@ -8,10 +8,13 @@ import 'package:uuid/uuid.dart';
 import '../../components/layout/uten_editable_grid.dart';
 import '../../components/layout/uten_draft_status_layout.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/authenticated_request_scope.dart';
 import '../../core/network/server_config.dart';
 import '../../core/router/nav_helpers.dart';
 
 import '../providers/authenticated_scope_provider.dart';
+import '../providers/session_provider.dart';
 import 'form_draft.dart';
 import 'form_draft_lifecycle.dart';
 import 'form_draft_navigation.dart';
@@ -90,6 +93,26 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// Returning to equal account/server values cannot revive this old page.
   bool get formDraftIdentityIsCurrent =>
       mounted && !_draftDisposed && !_draftIdentityChanged;
+
+  /// Capture synchronously before secure-storage awaits. An old page cannot
+  /// acquire the new login's identity even when it returns to the same user ID.
+  Future<AuthenticatedRequestScope> captureFormDraftRequestScope() {
+    startFormDraftIdentityGuard();
+    final session = ref.read(sessionProvider.notifier);
+    final epoch = session.requestIntentEpoch;
+    final client = ref.read(apiClientProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final owner = ref.read(authenticatedScopeProvider);
+    return client.captureRequestScope(
+      isCurrent: () =>
+          formDraftIdentityIsCurrent &&
+          identical(ref.read(sessionProvider.notifier), session) &&
+          session.requestIntentEpoch == epoch &&
+          identical(ref.read(apiClientProvider), client) &&
+          ref.read(apiBaseUrlProvider) == server &&
+          ref.read(authenticatedScopeProvider) == owner,
+    );
+  }
 
   /// Pages with an initial asynchronous GET start this before loading. Other
   /// editors start it when initializing the draft, before any storage await.

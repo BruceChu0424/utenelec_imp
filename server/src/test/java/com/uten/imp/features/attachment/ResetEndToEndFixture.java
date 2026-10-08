@@ -121,11 +121,12 @@ public final class ResetEndToEndFixture implements AutoCloseable {
         root = Files.createDirectories(files.resolve("internal"));
         properties = new StorageProperties();
         properties.setProvider("internal");
+        properties.setLegacyLocalReadEnabled(true);
         properties.getInternal().setRoot(root.toRealPath().toString());
         properties.getInternal().setMinFreeBytes(0);
         internal = InternalStorageResetTestSupport.open(properties);
         registry = new StorageProviderRegistry(internal, properties);
-        documents = new ImmutableDocumentStore(internal, registry);
+        documents = new ImmutableDocumentStore(internal, registry, com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning());
         outboxWorker = new AttachmentObjectOutboxProcessor(jdbc, registry, properties, mock(AttachmentPreviewEvictor.class), transactions);
         SecurityContextCurrentUser aiCurrent = mock(SecurityContextCurrentUser.class);
         when(aiCurrent.get()).thenReturn(Optional.of(new AuthUser(aiUser, aiEmployee, aiAccount, Set.of("ai:use"), false, true, false)));

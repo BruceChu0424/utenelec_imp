@@ -49,6 +49,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 @SpringBootTest(properties = {
         "spring.profiles.active=dev",
+        "uten.storage.malware-scan.provider=test-only",
         "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.jwt.secret=ai-platform-jwt-secret-0123456789-test-only",

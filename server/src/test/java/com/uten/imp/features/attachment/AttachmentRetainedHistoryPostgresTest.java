@@ -1,5 +1,7 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.common.files.malware.MalwareScanner;
+
 import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
 import com.uten.imp.audit.AuditActorDirectory;
 import com.uten.imp.audit.AuditService;
@@ -86,7 +88,7 @@ class AttachmentRetainedHistoryPostgresTest {
         var outbox=new AttachmentObjectOutboxStore(jdbc);
         service=new AttachmentService(storage,repository,properties,current,List.of(policy),mock(AttachmentUploadGrantService.class),
                 mock(AuditService.class),mock(AttachmentConfirmTransaction.class),mock(AttachmentUploadSafetyGate.class),
-                mock(AttachmentUploadSessionStore.class),mock(AttachmentMalwareScanner.class),outbox,providers,
+                mock(AttachmentUploadSessionStore.class),mock(MalwareScanner.class),outbox,providers,
                 new AttachmentDownloadVerifier(providers,properties),actors);
         processor=new AttachmentObjectOutboxProcessor(jdbc,providers,properties,mock(AttachmentPreviewEvictor.class),transactions.getTransactionManager());
     }

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -571,7 +573,8 @@ void main() {
       );
       expect(submitEnd, greaterThan(submitStart));
       final submitSource = source.substring(submitStart, submitEnd);
-      final reload = submitSource.indexOf('await _load(preserveEdits: false);');
+      // 会话绑定改造后重载在 requestScope.run 内执行；锚点取裸调用以匹配两种形态。
+      final reload = submitSource.indexOf('_load(preserveEdits: false)');
       expect(reload, greaterThanOrEqualTo(0));
       expect(submitSource.indexOf('refreshBadges(ref);'), greaterThan(reload));
       expect(
@@ -653,6 +656,10 @@ List<Override> _taskCenterOverrides(_FakeInspectionRepository repository) {
     // The authenticated report now initializes durable draft protection. Keep
     // these business-widget fixtures off platform file I/O and health probes.
     apiBaseUrlProvider.overrideWithValue('https://quality-test.invalid/api'),
+    // 提交报告先经 captureFormDraftRequestScope 绑定当前会话；裸 ApiClient（无
+    // AuthInterceptor → 无 SecureStorage）让该闸门按未认证客户端直通，与
+    // quality_batch_approval_recovery_test.dart 同一测试缝隙。
+    apiClientProvider.overrideWithValue(ApiClient(Dio())),
     formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
     currentPermissionsProvider.overrideWithValue({
       Perm.procurementInspectionView,

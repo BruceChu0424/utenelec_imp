@@ -59,8 +59,22 @@ part 'production_daily_report_draft_identity_cases.dart';
 part 'production_daily_report_create_recovery_cases.dart';
 part 'production_daily_report_attachment_late_ack_cases.dart';
 part 'production_daily_report_precision_cases.dart';
+part 'production_daily_report_session_boundary_cases.dart';
 
 class _ExactSegmentSession extends SessionNotifier {
+  int intentEpoch = 0;
+
+  void switchAccount() {
+    intentEpoch++;
+    state = const SessionState(
+      status: AuthStatus.authenticated,
+      user: AppUser(id: 'another-report-user', code: 'E002', name: '另一员工'),
+    );
+  }
+
+  @override
+  int get requestIntentEpoch => intentEpoch;
+
   @override
   SessionState build() => const SessionState(
     status: AuthStatus.authenticated,
@@ -74,6 +88,7 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  registerDailyReportSessionBoundaryTests();
   registerDailyReportPrecisionTests();
   registerDailyReportDraftIdentityTests();
   registerDailyReportCreateRecoveryTests();
@@ -2461,6 +2476,8 @@ Future<void> _pumpNewReport(
   WidgetTester tester,
   ApiClient api, {
   ProductionDailyReportEditPage? page,
+  Set<String> extraPermissions = const {},
+  bool followSessionIdentity = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1440, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -2492,17 +2509,23 @@ Future<void> _pumpNewReport(
         currentPermissionsProvider.overrideWithValue({
           Perm.productionDailyReportCreate,
           Perm.productionDailyReportView,
+          ...extraPermissions,
         }),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_ExactSegmentSession.new),
-        authenticatedScopeProvider.overrideWithValue(
-          const AuthenticatedScope(userId: 'report-user'),
+        authenticatedScopeProvider.overrideWith(
+          (ref) => AuthenticatedScope(
+            userId: followSessionIdentity
+                ? ref.watch(sessionProvider).user!.id
+                : 'report-user',
+          ),
         ),
         sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
         apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
         currentPermissionsProvider.overrideWithValue({
           Perm.productionDailyReportCreate,
           Perm.productionDailyReportView,
+          ...extraPermissions,
         }),
       ],
       child: MaterialApp(

@@ -1,0 +1,12 @@
+# /etc/systemd/system/clamav-daemon.socket.d/uten-unix.conf
+# Activate only with UTEN_CLAMAV_UNIX_SOCKET and the application's primary group.
+# First clear generated/system package listeners so a package update cannot add TCP
+# or bind the same socket twice. Remove the retired uten-loopback.conf in that rollout.
+# /run/clamav must be traversable (0755); PID 1 creates the socket for the app
+# group, without granting the scanner daemon access to application secret files.
+[Socket]
+ListenStream=
+ListenStream=/run/clamav/clamd.ctl
+SocketUser=clamav
+SocketGroup=uten-imp
+SocketMode=0660

@@ -12,10 +12,11 @@
 //     显示将删除的文件计数和现在不能清空的原因(服务端原文，逐条显示)，有原因时禁用确认；
 //     服务端在排水前再查一次，清空事务里加锁后、删除任何文件之前再查一次，然后删除并清库；
 //   · 完成后全员(含当前账号)强制下线，需重新登录。
-// 安全门禁(后端)：运行开关(dev / internal-test 及内网公司服务器测试期开启；云端一律拒绝)
+// 安全门禁(后端)：运行开关(dev / 受控 internal-test；正式环境默认关闭，云端一律拒绝)
 // + 超管本人 + 再认证 + 输入口令 + 排水闸。
 // 时序：清空是同步长请求(受理后 5 分钟内完成检查、排水和删除测试文件，之后清库)，本端点
-// 接收超时 10 分钟(网关同步放宽)；仍超时则提示「可能仍在后台执行」，重登后本区回显上次结果。
+// 受控内测入口的接收超时 10 分钟；正式网关拒绝测试入口。仍超时则提示「可能仍在后台执行」，
+// 重登后本区回显上次结果。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -659,7 +661,7 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
               const SizedBox(height: UtenSpacing.s12),
               ...[
                 '保留：基础资料（货品/客户/供应商/账户/仓库…）、人事、账号权限与配置',
-                '清空：销售/采购/委外/生产/仓库/财务全部测试业务数据、删除历史、字段版本和历史审计记录（含登录及主档操作）；清空操作的核对凭据保留',
+                AppLocalizations.of(context).businessResetAuditScope,
                 '删除：测试业务文件(业务附件、上传中的文件、AI识别原件、报价模板候选)随清空物理删除；人事档案/合同、货品图片/图纸、成本导入原件和已采用的报价模板不删除',
                 '归零：库存、账户期初/累计收款/累计付款/累计调整/当前余额、各类期初往来',
                 '重排：业务表自增 ID 与编号序列从 1 重新开始',

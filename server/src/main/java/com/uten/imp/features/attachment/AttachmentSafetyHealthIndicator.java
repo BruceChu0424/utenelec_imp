@@ -1,5 +1,7 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.common.files.malware.MalwareScanner;
+
 import com.uten.imp.config.props.StorageProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.actuate.health.Health;
@@ -12,7 +14,7 @@ import org.springframework.stereotype.Component;
 final class AttachmentSafetyHealthIndicator implements HealthIndicator {
     private final JdbcTemplate jdbc;
     private final StorageProperties properties;
-    private final AttachmentMalwareScanner scanner;
+    private final MalwareScanner scanner;
 
     @Override
     public Health health() {

@@ -48,7 +48,8 @@ final class MaterialNodeUpsertProbe {
     static String snapshots(UUID analysis,UUID actor,List<Map<String,Object>> rows) {
         var columns=(List<String>)ReflectionTestUtils.getField(MaterialAnalysisService.class,"NODE_INPUT_COLUMNS");
         Object shape=ReflectionTestUtils.getField(MaterialAnalysisService.class,"NODE_INPUT");
-        assertNotNull(columns);assertNotNull(shape);assertEquals(42,columns.size());
+        assertNotNull(columns);assertNotNull(shape);assertEquals(46,columns.size());
+        assertEquals(List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at"),columns.subList(42,46));
         Function<Map<String,Object>,Object[]> values=row->{
             Object[] result=new Object[columns.size()];
             for(int index=0;index<columns.size();index++) {
@@ -58,6 +59,8 @@ final class MaterialNodeUpsertProbe {
                     case "analysis_id" -> analysis;
                     case "created_by","updated_by" -> actor;
                     case "allocated_available_qty","allocated_start_qty","allocated_finish_qty","allocated_ship_qty" -> BigDecimal.ZERO;
+                    // These fixtures have no issued-order proof; a stored manual route is not such proof.
+                    case "confirmed_route","route_reason","route_confirmed_by","route_confirmed_at" -> null;
                     case "calculation_mode" -> "EDGE_RULE";
                     case "active" -> true;
                     default -> row.get(column);

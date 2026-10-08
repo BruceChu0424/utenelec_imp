@@ -77,8 +77,7 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 .contains("if (\"PASS\".equals(action))")
                 .contains("publishIqcStockInPending(")
                 .contains("if (!wholeReceiptResolved || alreadyReceiptResolved(receiptType, receiptId))")
-                .contains("purchaseSupply.onPurchaseReceiptApproved(receiptId)")
-                .contains("subcontractSupply.onSubcontractReceiptApproved(receiptId)")
+                .contains("stockInProduction.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches())")
                 .doesNotContain("advanceProductionAfterInspectionPass(")
                 .doesNotContain("purchaseSupply.afterPurchaseInspectionStockInConfirmed(")
                 .doesNotContain("subcontractSupply.afterSubcontractInspectionStockInConfirmed(");
@@ -104,6 +103,13 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
                 "materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)")
                 .contains("materialAnalysisWakeup.afterInspectionStockInConfirmed(")
                 .contains("readiness.onSubcontractReceiptApproved(");
+        String completion = source("features/production/fulfillment/ProductionInspectionStockInService.java");
+        assertThat(completion)
+                .contains("advanceBatches(batches)")
+                .contains("materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId)")
+                .contains("materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId)")
+                .doesNotContain("purchaseSupply.onPurchaseReceiptApproved(")
+                .doesNotContain("subcontractSupply.onSubcontractReceiptApproved(");
     }
 
     @Test

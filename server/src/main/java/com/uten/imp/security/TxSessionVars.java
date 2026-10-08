@@ -268,7 +268,7 @@ public class TxSessionVars {
         return crypto.getPgpKeyVersion() + ":" + b64;
     }
 
-    /** 解密 "<version>:<base64>"（或无前缀旧数据→当前密钥）→ 明文。 */
+    /** 解密 "<version>:<base64>"；无前缀旧数据始终使用配置的历史版本。 */
     public String decrypt(String cipher) {
         if (cipher == null || cipher.isBlank()) {
             return null;
@@ -276,7 +276,7 @@ public class TxSessionVars {
         VersionedCipher parsed = parse(cipher);
         String key = keyring().get(parsed.version());
         if (key == null) {
-            throw new IllegalStateException("未知密钥版本 [" + parsed.version() + "]，请在 uten.crypto.pgp-legacy-keys 配置旧密钥");
+            throw new IllegalStateException("密文所需的历史密钥未配置，请核对 uten.crypto.pgp-legacy-keys");
         }
         return (String) em.createNativeQuery(
                         "SELECT pgp_sym_decrypt(decode(:c, 'base64'), :key)")
@@ -298,7 +298,12 @@ public class TxSessionVars {
         if (cipher == null || cipher.isBlank()) {
             return Optional.empty();
         }
-        VersionedCipher parsed = parse(cipher);
+        final VersionedCipher parsed;
+        try {
+            parsed = parse(cipher);
+        } catch (IllegalArgumentException malformed) {
+            return Optional.empty();
+        }
         String key = keyring().get(parsed.version());
         if (key == null) {
             return Optional.empty();
@@ -326,12 +331,10 @@ public class TxSessionVars {
         });
     }
 
-    /** "<version>:<base64>" 拆成版本与正文；没有版本前缀的旧数据按当前密钥版本。 */
+    /** 没有版本前缀的旧密文不能因切换当前版本而改变其原密钥归属。 */
     private VersionedCipher parse(String cipher) {
-        int idx = cipher.indexOf(':');
-        return idx > 0
-                ? new VersionedCipher(cipher.substring(0, idx), cipher.substring(idx + 1))
-                : new VersionedCipher(crypto.getPgpKeyVersion(), cipher);
+        var parsed = PgpCipherEnvelope.parse(cipher, crypto.getPgpUnversionedKeyVersion());
+        return new VersionedCipher(parsed.version(), parsed.body());
     }
 
     private record VersionedCipher(String version, String body) {
@@ -363,7 +366,7 @@ public class TxSessionVars {
         for (Map.Entry<String, List<CipherPart>> entry : byVersion.entrySet()) {
             String key = keyring().get(entry.getKey());
             if (key == null) {
-                throw new IllegalStateException("未知加密版本 [" + entry.getKey() + "]，请配置历史密钥");
+                throw new IllegalStateException("密文所需的历史密钥未配置，请核对历史密钥配置");
             }
             List<CipherPart> parts = entry.getValue();
             session.doWork(connection -> {

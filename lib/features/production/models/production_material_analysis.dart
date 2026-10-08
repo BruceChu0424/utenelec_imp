@@ -1971,6 +1971,7 @@ String _formatModelQty(double value) {
 
 class MaterialAnalysisNotificationTarget {
   const MaterialAnalysisNotificationTarget({
+    this.quantityFactsExact = const {},
     required this.target,
     this.actionId,
     this.documentType,
@@ -1982,6 +1983,7 @@ class MaterialAnalysisNotificationTarget {
     this.growableLineQty,
   });
 
+  final Map<String, String> quantityFactsExact;
   final MaterialSupplyRoute? target;
   final String? actionId;
   final String? documentType;
@@ -2006,6 +2008,7 @@ class MaterialAnalysisNotificationTarget {
   factory MaterialAnalysisNotificationTarget.fromJson(
     Map<String, dynamic> json,
   ) => MaterialAnalysisNotificationTarget(
+    quantityFactsExact: _quantityFactsExact(json['quantityFactsExact']),
     target: MaterialSupplyRoute.fromWire(json['target'] ?? json['route']),
     actionId: _string(json['actionId']),
     documentType: _string(json['documentType']),

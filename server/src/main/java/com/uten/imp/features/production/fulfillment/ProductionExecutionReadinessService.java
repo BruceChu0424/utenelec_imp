@@ -1090,10 +1090,12 @@ public class ProductionExecutionReadinessService
      * 或采购/委外供给未完成来源入库时都静默返回，料留在线边仓等既有就绪补偿，
      * 绝不把「上层没齐套」抛成报工审核的失败。缺料原因要抛错解释的是
      * {@link #promoteAfterMaterialRecheck} 那条人工重核路径，不是这里。
+     *
+     * @return 本次提升已经完成线边仓领料单出库检查；false 表示提前返回，调用方仍须补查既有待出库单。
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void promoteAfterWorkshopDirectTransfer(UUID segmentId, UUID warehouseId) {
-        tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true);
+    public boolean promoteAfterWorkshopDirectTransfer(UUID segmentId, UUID warehouseId) {
+        return tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECHECK, null, true);
     }
 
     /** Actual direct-transfer provenance wakes the same incremental allocation path as warehouse receipts. */
@@ -1113,8 +1115,8 @@ public class ProductionExecutionReadinessService
                 """,UUID.class).setParameter("segment",segmentId).setParameter("demand",demandId)
                 .setParameter("warehouse",lineSideWarehouseId),UUID.class);
         if (!warehouses.isEmpty()) {
-            tryPromote(segmentId,segmentId,warehouses.getFirst(),ReceiptKind.RECHECK,null,true);
-            issuePendingLineSideDraws(segmentId);
+            boolean lineSideIssueChecked = tryPromote(segmentId,segmentId,warehouses.getFirst(),ReceiptKind.RECHECK,null,true);
+            if (!lineSideIssueChecked) issuePendingLineSideDraws(segmentId);
         }
     }
 
@@ -1171,12 +1173,12 @@ public class ProductionExecutionReadinessService
                 .getSingleResult());
     }
 
-    private void tryPromote(
+    private boolean tryPromote(
             UUID segmentId,
             UUID triggeringReceiptId,
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind) {
-        tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId, triggeringKind, null);
+        return tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId, triggeringKind, null);
     }
 
     /** A distinct internal actor keeps automatic advancement from impersonating a staff member. */
@@ -1194,13 +1196,13 @@ public class ProductionExecutionReadinessService
         tryPromote(segmentId, segmentId, warehouseId, ReceiptKind.RECONCILE, new PromotionActor(null, null));
     }
 
-    private void tryPromote(
+    private boolean tryPromote(
             UUID segmentId,
             UUID triggeringReceiptId,
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind,
             PromotionActor systemActor) {
-        tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId,
+        return tryPromote(segmentId, triggeringReceiptId, expectedWarehouseId,
                 triggeringKind, systemActor, false);
     }
 
@@ -1208,28 +1210,32 @@ public class ProductionExecutionReadinessService
      * @param tolerateShortage 车间直送路径为 true：缺料与供给未齐都静默返回，
      *                         不把「上层没齐套」抛成报工审核的失败(ADR-087 §2.3)。
      */
-    private void tryPromote(
+    private boolean tryPromote(
             UUID segmentId,
             UUID triggeringReceiptId,
             UUID expectedWarehouseId,
             ReceiptKind triggeringKind,
             PromotionActor systemActor,
             boolean tolerateShortage) {
-        tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,tolerateShortage,false);
+        return tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,tolerateShortage,false);
     }
 
-    private void tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
+    private boolean tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
                             PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody) {
-        tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,tolerateShortage,reclaimReturnedCustody,false);
+        boolean lineSideIssueChecked = tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,tolerateShortage,reclaimReturnedCustody,false);
         if(Boolean.TRUE.equals(em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM production_material_increment_requests increment
                     WHERE increment.target_segment_id=:id AND increment.status='APPROVED')
                 """).setParameter("id",segmentId).getSingleResult())) {
-            tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,true,reclaimReturnedCustody,true);
+            // Always execute the increment pass, even if ordinary material was
+            // already issued. Only the redundant final pending-DRAW scan is skipped.
+            lineSideIssueChecked = tryPromote(segmentId,triggeringReceiptId,expectedWarehouseId,triggeringKind,systemActor,true,reclaimReturnedCustody,true)
+                    || lineSideIssueChecked;
         }
+        return lineSideIssueChecked;
     }
 
-    private void tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
+    private boolean tryPromote(UUID segmentId,UUID triggeringReceiptId,UUID expectedWarehouseId,ReceiptKind triggeringKind,
                             PromotionActor systemActor,boolean tolerateShortage,boolean reclaimReturnedCustody,boolean incrementOnly) {
         lockExecutionSegmentMaterialDimensions(
                 segmentId, expectedWarehouseId);
@@ -1267,17 +1273,17 @@ public class ProductionExecutionReadinessService
                                 """)
                         .setParameter("segmentId", segmentId).setParameter("incrementOnly",incrementOnly));
         if (segmentRows.isEmpty()) {
-            return;
+            return false;
         }
         Object[] segmentRow = segmentRows.getFirst();
         boolean supplement = Boolean.TRUE.equals(em.createNativeQuery("""
                 SELECT EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
                     WHERE proof.supplement_execution_segment_id=:id)
                 """).setParameter("id",segmentId).getSingleResult());
-        if(incrementOnly && "WAITING".equals(segmentRow[4]) && !supplement)return;
+        if(incrementOnly && "WAITING".equals(segmentRow[4]) && !supplement)return false;
         boolean continuous = Boolean.TRUE.equals(segmentRow[10]) || incrementOnly;
         if (!"WAITING".equals(segmentRow[4])
-                && !(continuous && List.of("READY", "DISPATCHED", "IN_PROGRESS").contains(segmentRow[4]))) return;
+                && !(continuous && List.of("READY", "DISPATCHED", "IN_PROGRESS").contains(segmentRow[4]))) return false;
         UUID packageId = uuid(segmentRow[0]);
         UUID planId = uuid(segmentRow[1]);
         String planNo = (String) segmentRow[2];
@@ -1291,7 +1297,7 @@ public class ProductionExecutionReadinessService
         UUID responsibleEmployeeId = uuid(segmentRow[8]);
         if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_warehouse_same_main(:logical,:actual)")
                 .setParameter("logical", warehouseId).setParameter("actual", expectedWarehouseId).getSingleResult())) {
-            return;
+            return false;
         }
 
         // An approved additional-output proof owns its original workshop's
@@ -1304,11 +1310,11 @@ public class ProductionExecutionReadinessService
             if(Boolean.TRUE.equals(em.createNativeQuery("""
                     SELECT EXISTS(SELECT 1 FROM production_material_demands
                         WHERE execution_segment_id=:id AND material_increment_request_id IS NOT NULL AND NOT is_deleted)
-                    """).setParameter("id",segmentId).getSingleResult()))return;
+                    """).setParameter("id",segmentId).getSingleResult()))return false;
             if (!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_actual_supplement_material_ready(:id)")
                     .setParameter("id",segmentId).getSingleResult())) {
                 if (!tolerateShortage) throw conflict("追加产出尚无本批可用的原工单实际物料来源，不能重复引用已结耗材料");
-                return;
+                return false;
             }
             if ("WAITING".equals(segmentRow[4])) {
                 em.createNativeQuery("""
@@ -1318,7 +1324,7 @@ public class ProductionExecutionReadinessService
                         .setParameter("actor",systemActor==null?currentUser.requireId():systemActor.userId()).executeUpdate();
                 chainNotice.notifyExecutionSegmentReady(segmentId,triggeringReceiptId,"ACTUAL_OUTPUT_SUPPLEMENT");
             }
-            return;
+            return false;
         }
 
         List<DemandRow> allDemands = NativeQueryResults.objectArrayRows(
@@ -1349,7 +1355,7 @@ public class ProductionExecutionReadinessService
                         triggeringReceiptId, triggeringKind,reclaimReturnedCustody)
                 : null;
         List<DemandRow> demands = increment == null ? unreservedDemand(allDemands) : increment.demands();
-        if (continuous && demands.isEmpty()) return;
+        if (continuous && demands.isEmpty()) return false;
         if (!continuous && !allDemands.isEmpty() && demands.isEmpty()) {
             // Fixed-batch growth can require no additional material. Existing physical
             // reservations and DRAWs still cover the enlarged task; no duplicate issue.
@@ -1359,7 +1365,7 @@ public class ProductionExecutionReadinessService
                     WHERE id=:id AND status='WAITING' AND NOT is_deleted
                     """).setParameter("id", segmentId).executeUpdate();
             ledger.refreshDemandStatuses(allDemands.stream().map(DemandRow::id).toList());
-            return;
+            return false;
         }
         if (demands.isEmpty()) {
             // A continuation with no incremental material still needs the
@@ -1372,7 +1378,7 @@ public class ProductionExecutionReadinessService
                           AND jsonb_array_length(segment.split_material_snapshot)>0
                           AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(segment.split_material_snapshot) material
                               WHERE (material->>'requiredQty')::numeric<>0))
-                    """).setParameter("id",segmentId).getSingleResult())) return;
+                    """).setParameter("id",segmentId).getSingleResult())) return false;
             throw conflict("执行分段没有物料需求");
         }
 
@@ -1389,7 +1395,7 @@ public class ProductionExecutionReadinessService
         if (!isFullyAvailable(demands, availability,
                 !continuous && (!tolerateShortage
                         && triggeringKind == ReceiptKind.RECHECK),reclaimReturnedCustody)) {
-            return;
+            return false;
         }
 
         Map<UUID, List<ReceiptContribution>> contributions =
@@ -1408,7 +1414,7 @@ public class ProductionExecutionReadinessService
             if (!tolerateShortage && triggeringKind == ReceiptKind.RECHECK) {
                 throw conflict("采购或委外供给尚未完成对应来源入库，仍须等待仓库实际入库");
             }
-            return;
+            return false;
         }
         PromotionActor actor = systemActor == null
                 ? new PromotionActor(currentUser.requireId(), currentUser.requireEmployeeId()) : systemActor;
@@ -1612,6 +1618,7 @@ public class ProductionExecutionReadinessService
                 triggeringKind == null
                         ? "MANUAL_RELEASE"
                         : triggeringKind.name());
+        return systemActor == null && triggeringKind != ReceiptKind.PLAN_GROWTH;
     }
 
     /**

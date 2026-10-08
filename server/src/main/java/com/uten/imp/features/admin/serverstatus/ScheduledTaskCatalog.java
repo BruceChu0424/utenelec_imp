@@ -21,6 +21,8 @@ public final class ScheduledTaskCatalog {
     public record Entry(String label, String purpose) {}
 
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("LoginFailureAlertScheduler.scan", new Entry("登录安全提醒",
+                    "每分钟核对近期登录失败记录, 同一网络来源在 10 分钟内连续失败达到 10 次时提醒管理员检查。")),
             Map.entry("AiJobHousekeeping.purge", new Entry("AI 数据清理",
                     "每 10 分钟清理 AI 数据: 排队太久没开始的识别判失败, 用过或超过 48 小时的识别结果清空,"
                             + " 7 天前的识别任务与 180 天前的调用记录删除。")),

@@ -1030,16 +1030,18 @@ public class ProductionFqcInspectionService
                                 release.passQty(), release.requireFreshReceipt()))
                         .toList());
         Map<UUID, UUID> autoConfirm = new LinkedHashMap<>();
+        List<ReleaseAllocationRequest> allocationRequests = new ArrayList<>(releases.size());
         for (PendingRelease release : releases) {
-            ProductionFinishedInboundReleasePort.CreatedDraft draft = drafts.get(release.decisionEventId());
+            var draft = drafts.get(release.decisionEventId());
             if (draft == null) {
                 throw conflict("FQC 合格放行未能生成对应的入库明细，请刷新后重试");
             }
-            allocateReleasedQuantity(
-                    release.sourceReportItemId(),
-                    draft.stockDocumentItemId(),
-                    release.passQty(),
-                    "FQC-FINISHED-IN:" + release.decisionEventId());
+            allocationRequests.add(normalizeReleaseAllocation(release.sourceReportItemId(),
+                    draft.stockDocumentItemId(), release.passQty(), "FQC-FINISHED-IN:" + release.decisionEventId()));
+        }
+        allocateReleasedQuantities(allocationRequests);
+        for (PendingRelease release : releases) {
+            ProductionFinishedInboundReleasePort.CreatedDraft draft = drafts.get(release.decisionEventId());
             if (draft.preStockedAutoConfirm()) {
                 autoConfirm.putIfAbsent(draft.stockDocumentId(), release.decisionEventId());
             }
@@ -1304,6 +1306,17 @@ public class ProductionFqcInspectionService
             BigDecimal quantity,
             String idempotencyKey) {
         tx.bind();
+        return allocateReleasedQuantities(List.of(normalizeReleaseAllocation(
+                sourceReportItemId, stockDocumentItemId, quantity, idempotencyKey))).getFirst();
+    }
+
+    private record ReleaseAllocationRequest(UUID reportItemId, UUID stockItemId, BigDecimal quantity,
+                                            String key, String hash) { }
+
+    private record ReleaseAllocationKey(UUID inspectionId, String key) { }
+
+    private static ReleaseAllocationRequest normalizeReleaseAllocation(
+            UUID sourceReportItemId, UUID stockDocumentItemId, BigDecimal quantity, String idempotencyKey) {
         if (sourceReportItemId == null || stockDocumentItemId == null) {
             throw validation("FQC 入库放行缺少报工行或库存行 UUID");
         }
@@ -1314,75 +1327,114 @@ public class ProductionFqcInspectionService
                 sourceReportItemId.toString(),
                 stockDocumentItemId.toString(),
                 canonicalQty(requested)));
+        return new ReleaseAllocationRequest(sourceReportItemId, stockDocumentItemId, requested, key, requestHash);
+    }
 
-        // V548 后同一报工行可有多条 CANCELLED（登记撤回）历史 inspection，
-        // 只有未取消的那条（部分唯一索引保证至多一条）可以放行。
+    /** One locked snapshot for the entire command; FIFO PASS balances are consumed in request order. */
+    private List<ReleaseAuthorization> allocateReleasedQuantities(List<ReleaseAllocationRequest> requests) {
+        if (requests.isEmpty()) return List.of();
         List<Object[]> inspections = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT id, status
+                                SELECT id, status, source_report_item_id
                                 FROM production_fqc_inspections
-                                WHERE source_report_item_id = :reportItemId
-                                ORDER BY (status = 'CANCELLED'), created_at DESC, id
+                                WHERE source_report_item_id IN (:reportItemIds)
+                                ORDER BY id
                                 FOR UPDATE
                                 """)
-                        .setParameter("reportItemId", sourceReportItemId));
-        if (inspections.isEmpty()) {
-            throw conflict("该报工明细没有显式 FQC 待检事实，禁止生成合格入库");
+                        .setParameter("reportItemIds", requests.stream()
+                                .map(ReleaseAllocationRequest::reportItemId).distinct().toList()));
+        Map<UUID, UUID> activeInspections = new LinkedHashMap<>();
+        var knownReportItems = new HashSet<UUID>();
+        for (Object[] row : inspections) {
+            UUID reportItemId = (UUID) row[2];
+            knownReportItems.add(reportItemId);
+            if (!"CANCELLED".equals(row[1]) && activeInspections.putIfAbsent(reportItemId, (UUID) row[0]) != null) {
+                throw conflict("同一报工明细出现多个有效 FQC 待检事实，禁止生成入库");
+            }
         }
-        UUID inspectionId = (UUID) inspections.getFirst()[0];
-        if ("CANCELLED".equals(inspections.getFirst()[1])) {
-            throw conflict("该生产质检已随来源报工红冲或登记撤回取消，禁止生成入库");
+        var commandKeys = new HashSet<ReleaseAllocationKey>();
+        for (var request : requests) {
+            if (!knownReportItems.contains(request.reportItemId())) {
+                throw conflict("该报工明细没有显式 FQC 待检事实，禁止生成合格入库");
+            }
+            UUID inspectionId = activeInspections.get(request.reportItemId());
+            if (inspectionId == null) {
+                throw conflict("该生产质检已随来源报工红冲或登记撤回取消，禁止生成入库");
+            }
+            if (!commandKeys.add(new ReleaseAllocationKey(inspectionId, request.key()))) {
+                throw conflict("同一 FQC 入库放行命令在本批中重复，请核对来源");
+            }
         }
         List<Object[]> replay = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT id, source_report_item_id,
                                        stock_document_item_id, requested_qty,
-                                       request_hash
+                                       request_hash, inspection_id, idempotency_key
                                 FROM production_fqc_release_commands
-                                WHERE inspection_id = :inspectionId
-                                  AND idempotency_key = :key
+                                WHERE inspection_id IN (:inspectionIds)
+                                  AND idempotency_key IN (:keys)
                                 """)
-                        .setParameter("inspectionId", inspectionId)
-                        .setParameter("key", key));
-        if (!replay.isEmpty()) {
-            Object[] existing = replay.getFirst();
-            if (!Objects.equals(existing[1], sourceReportItemId)
-                    || !Objects.equals(existing[2], stockDocumentItemId)
-                    || dec(existing[3]).compareTo(requested) != 0
-                    || !Objects.equals(existing[4], requestHash)) {
+                        .setParameter("inspectionIds", activeInspections.values())
+                        .setParameter("keys", requests.stream().map(ReleaseAllocationRequest::key).distinct().toList()));
+        Map<ReleaseAllocationKey, Object[]> prior = new LinkedHashMap<>();
+        for (Object[] row : replay) prior.put(new ReleaseAllocationKey((UUID) row[5], (String) row[6]), row);
+        var newInspections = new LinkedHashSet<UUID>();
+        for (var request : requests) {
+            UUID inspectionId = activeInspections.get(request.reportItemId());
+            Object[] existing = prior.get(new ReleaseAllocationKey(inspectionId, request.key()));
+            if (existing == null) {
+                newInspections.add(inspectionId);
+            } else if (!Objects.equals(existing[1], request.reportItemId())
+                    || !Objects.equals(existing[2], request.stockItemId())
+                    || dec(existing[3]).compareTo(request.quantity()) != 0
+                    || !Objects.equals(existing[4], request.hash())) {
                 throw conflict("同一防重复提交标识已用于不同的 FQC 入库请求，请刷新后重试");
             }
-            return new ReleaseAuthorization(
-                    (UUID) existing[0], inspectionId,
-                    sourceReportItemId, stockDocumentItemId, requested);
         }
 
-        List<Object[]> lots = NativeQueryResults.objectArrayRows(
+        List<Object[]> lots = newInspections.isEmpty() ? List.of() : NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT decision.id,
                                        decision.pass_qty
                                            - COALESCE(SUM(allocation.qty), 0)
-                                           AS remaining_qty
+                                           AS remaining_qty, decision.inspection_id
                                 FROM production_fqc_decision_events decision
                                 LEFT JOIN production_fqc_release_allocations allocation
                                   ON allocation.decision_event_id = decision.id
-                                WHERE decision.inspection_id = :inspectionId
+                                WHERE decision.inspection_id IN (:inspectionIds)
                                   AND decision.pass_qty > 0
-                                GROUP BY decision.id, decision.pass_qty,
+                                GROUP BY decision.id, decision.inspection_id, decision.pass_qty,
                                          decision.decided_at
                                 HAVING decision.pass_qty
                                            - COALESCE(SUM(allocation.qty), 0) > 0
-                                ORDER BY decision.decided_at, decision.id
+                                ORDER BY decision.inspection_id, decision.decided_at, decision.id
                                 """)
-                        .setParameter("inspectionId", inspectionId));
-        BigDecimal available = lots.stream()
-                .map(row -> dec(row[1]))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (available.compareTo(requested) < 0) {
-            throw conflict("FQC 合格未分配量不足，当前仅可入库 "
-                    + available.stripTrailingZeros().toPlainString());
+                        .setParameter("inspectionIds", newInspections));
+        Map<UUID, List<Object[]>> lotsByInspection = new LinkedHashMap<>();
+        for (Object[] row : lots) {
+            lotsByInspection.computeIfAbsent((UUID) row[2], ignored -> new ArrayList<>()).add(row);
         }
+        List<ReleaseAuthorization> results = new ArrayList<>(requests.size());
+        for (var request : requests) {
+            UUID inspectionId = activeInspections.get(request.reportItemId());
+            Object[] existing = prior.get(new ReleaseAllocationKey(inspectionId, request.key()));
+            if (existing != null) {
+                results.add(new ReleaseAuthorization((UUID) existing[0], inspectionId,
+                        request.reportItemId(), request.stockItemId(), request.quantity()));
+                continue;
+            }
+            results.add(writeReleaseAllocation(inspectionId, request,
+                    lotsByInspection.getOrDefault(inspectionId, List.of())));
+        }
+        return List.copyOf(results);
+    }
 
+    private ReleaseAuthorization writeReleaseAllocation(
+            UUID inspectionId, ReleaseAllocationRequest request, List<Object[]> lots) {
+        BigDecimal available = lots.stream().map(row -> dec(row[1])).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (available.compareTo(request.quantity()) < 0) {
+            throw conflict("FQC 合格未分配量不足，当前仅可入库 " + available.stripTrailingZeros().toPlainString());
+        }
         UUID commandId = UUID.randomUUID();
         UUID actorId = currentUser.requireId();
         em.createNativeQuery("""
@@ -1396,18 +1448,19 @@ public class ProductionFqcInspectionService
                         """)
                 .setParameter("id", commandId)
                 .setParameter("inspectionId", inspectionId)
-                .setParameter("reportItemId", sourceReportItemId)
-                .setParameter("stockItemId", stockDocumentItemId)
-                .setParameter("qty", requested)
-                .setParameter("key", key)
-                .setParameter("hash", requestHash)
+                .setParameter("reportItemId", request.reportItemId())
+                .setParameter("stockItemId", request.stockItemId())
+                .setParameter("qty", request.quantity())
+                .setParameter("key", request.key())
+                .setParameter("hash", request.hash())
                 .setParameter("actorId", actorId)
                 .executeUpdate();
 
-        BigDecimal remaining = requested;
+        BigDecimal remaining = request.quantity();
         for (Object[] lot : lots) {
             if (remaining.signum() == 0) break;
             BigDecimal chunk = remaining.min(dec(lot[1]));
+            if (chunk.signum() == 0) continue;
             em.createNativeQuery("""
                             INSERT INTO production_fqc_release_allocations(
                                 id, release_command_id, inspection_id,
@@ -1424,10 +1477,10 @@ public class ProductionFqcInspectionService
                     .setParameter("actorId", actorId)
                     .executeUpdate();
             remaining = remaining.subtract(chunk);
+            lot[1] = dec(lot[1]).subtract(chunk);
         }
         return new ReleaseAuthorization(
-                commandId, inspectionId, sourceReportItemId,
-                stockDocumentItemId, requested);
+                commandId, inspectionId, request.reportItemId(), request.stockItemId(), request.quantity());
     }
 
     @Override
@@ -1963,27 +2016,6 @@ public class ProductionFqcInspectionService
                         .setParameter("inspectionId", inspectionId));
         if (rows.size() != 1) throw notFound("生产质检任务不存在");
         return rows.getFirst();
-    }
-
-    /**
-     * 该报工明细的现行送检登记是否勾了「先入库后质检」(V597)。
-     * 撤回的登记行不算；没有登记行(历史豁免任务)自然走原流程。
-     */
-    private boolean preStockedForAutoConfirm(UUID sourceReportItemId) {
-        if (sourceReportItemId == null) return false;
-        return Boolean.TRUE.equals(em.createNativeQuery("""
-                        SELECT EXISTS (
-                            SELECT 1
-                            FROM production_finished_arrival_registration_items registration_item
-                            JOIN production_finished_arrival_registrations registration
-                              ON registration.id = registration_item.registration_id
-                            WHERE registration_item.source_report_item_id = :reportItemId
-                              AND registration_item.reversal_id IS NULL
-                              AND registration.stock_in_before_inspection
-                              AND fn_finished_arrival_count_is_proven(registration_item.id))
-                        """)
-                .setParameter("reportItemId", sourceReportItemId)
-                .getSingleResult());
     }
 
     /** Common decision/reversal row-lock order: inspection -> segment -> plan item. */

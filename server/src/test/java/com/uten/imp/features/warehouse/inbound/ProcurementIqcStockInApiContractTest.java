@@ -123,13 +123,39 @@ class ProcurementIqcStockInApiContractTest {
         String source = Files.readString(Path.of(
                 "src/main/java/com/uten/imp/features/warehouse/inbound/"
                         + "ProcurementIqcStockInService.java"), StandardCharsets.UTF_8);
-        int projection = source.indexOf("incrementStockedProjection(");
-        int orderClosure = source.indexOf("recalculateOrderClosure(type, receiptId)");
+        String physical = source.substring(source.indexOf("private ConfirmResult confirmOne("),
+                source.indexOf("private NormalizedCommand splitSubcontractMaterialBatches("));
+        int projection = physical.indexOf("incrementStockedProjection(");
+        int shortDelivery = physical.indexOf("shortDelivery.settleAfterStockIn(receiptId)");
         assertThat(projection).isGreaterThanOrEqualTo(0);
-        assertThat(orderClosure).isGreaterThan(projection);
-        int shortDelivery = source.indexOf("shortDelivery.settleAfterStockIn(receiptId)");
         assertThat(shortDelivery).isGreaterThan(projection);
-        assertThat(orderClosure).isGreaterThan(shortDelivery);
+        // Both root commands close only after confirmOne has posted stock and
+        // settled accepted loss. The shared physical kernel must not close twice.
+        assertThat(physical).doesNotContain("recalculateOrderClosure(");
+        String warehouse = source.substring(source.indexOf("private List<ConfirmResult> confirmCommands("),
+                source.indexOf("private Map<UUID, List<InboundAllocation>> actualAllocationsByBatch("));
+        int warehouseConfirm = warehouse.indexOf("ConfirmResult result = confirmOne(");
+        int warehouseClosure = warehouse.indexOf("recalculateOrderClosure(batch.type(), batch.receiptId())");
+        assertThat(warehouseConfirm).isGreaterThanOrEqualTo(0);
+        assertThat(warehouseClosure).isGreaterThan(warehouseConfirm);
+        assertThat(warehouse.indexOf("stockInProduction.afterInspectionStockInConfirmed(newStockIns)"))
+                .isGreaterThan(warehouseClosure);
+        assertThat(warehouse).containsOnlyOnce("recalculateOrderClosure(");
+
+        String qualitySource = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionService.java"),
+                StandardCharsets.UTF_8);
+        int qualityStart = qualitySource.indexOf(
+                "private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(");
+        String quality = qualitySource.substring(qualityStart,
+                qualitySource.indexOf("return autoStockIn;", qualityStart));
+        int automaticConfirm = quality.indexOf("iqcStockIn.confirmPreStockedReleases(");
+        int qualityClosure = quality.indexOf("recalculateOrderClosure(receiptType, receiptId)");
+        assertThat(automaticConfirm).isGreaterThanOrEqualTo(0);
+        assertThat(qualityClosure).isGreaterThan(automaticConfirm);
+        assertThat(quality.indexOf("stockInProduction.afterQualityReceiptResolved("))
+                .isGreaterThan(qualityClosure);
+        assertThat(quality).containsOnlyOnce("recalculateOrderClosure(");
     }
 
     private boolean containsCommercialToken(String fieldName) {

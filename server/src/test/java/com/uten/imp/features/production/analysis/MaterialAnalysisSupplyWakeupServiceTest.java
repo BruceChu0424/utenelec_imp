@@ -195,7 +195,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 "PURCHASE", UUID.randomUUID(), UUID.randomUUID(), List.of(UUID.randomUUID()));
 
         // 整单在同一次品质结论里结案：结案回调随后按 RESOLVED 维度刷新，这里只发到货进展通知。
-        service.afterInspectionStockInConfirmed(List.of(batch), false);
+        service.notifyInspectionStockIn(List.of(batch));
 
         verify(analysis, never()).refreshLocked(org.mockito.ArgumentMatchers.any());
         assertThat(statements).hasSize(1);

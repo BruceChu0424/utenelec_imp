@@ -35,7 +35,9 @@ class MaterialSnapshotInputPostgresTest {
     void typedJsonRetainsTheEntireScalarContractAndArrayOrder(String name)throws Exception {
         MaterialSnapshotInput shape=(MaterialSnapshotInput)ReflectionTestUtils.getField(MaterialAnalysisService.class,name);
         assertNotNull(shape);
-        List<String> columns=shape.columns();assertEquals(name.equals("NODE_INPUT")?42:15,columns.size());
+        List<String> columns=shape.columns();assertEquals(name.equals("NODE_INPUT")?46:15,columns.size());
+        if(name.equals("NODE_INPUT"))assertEquals(
+                List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at"),columns.subList(42,46));
         String definitions=(String)ReflectionTestUtils.getField(shape,"definitions");assertNotNull(definitions);
         String[] types=Arrays.stream(definitions.split(", ")).limit(columns.size())
                 .map(definition->definition.substring(definition.indexOf(' ')+1)).toArray(String[]::new);
@@ -49,6 +51,13 @@ class MaterialSnapshotInputPostgresTest {
         }
         assertTrue(tree.get(1).path("expected_ready_date").isNull());
         assertEquals(new BigDecimal("12345678901234.1234"),tree.get(0).path("required_qty").decimalValue());
+        if(name.equals("NODE_INPUT")) {
+            assertEquals("BUY",tree.get(0).path("confirmed_route").asText());
+            assertEquals(first[columns.indexOf("route_reason")],tree.get(0).path("route_reason").asText());
+            assertEquals(first[columns.indexOf("route_confirmed_by")].toString(),tree.get(0).path("route_confirmed_by").asText());
+            assertEquals("2026-09-12T09:10:11.123456+08:00",tree.get(0).path("route_confirmed_at").asText());
+            for(String column:columns.subList(42,46))assertTrue(tree.get(1).path(column).isNull(),column);
+        }
         var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         try(Connection connection=source.getConnection()) {
             String actual="SELECT "+shape.selection("snapshot")+" FROM "+shape.recordset("snapshot")+" ORDER BY snapshot._position";
@@ -80,6 +89,9 @@ class MaterialSnapshotInputPostgresTest {
         Object[] values=new Object[columns.size()];
         for(int index=0;index<columns.size();index++) {
             String column=columns.get(index);
+            if(alternate&&List.of("confirmed_route","route_reason","route_confirmed_by","route_confirmed_at").contains(column)) {
+                values[index]=null;continue;
+            }
             values[index]=switch(types[index]) {
                 case "uuid" -> !alternate&&List.of("color_id","bom_item_id").contains(column)?null:
                         UUID.nameUUIDFromBytes((column+alternate).getBytes(StandardCharsets.UTF_8));
@@ -88,7 +100,8 @@ class MaterialSnapshotInputPostgresTest {
                 case "bigint" -> alternate?0L:3L;
                 case "boolean" -> alternate;
                 case "date" -> alternate?null:LocalDate.of(2026,9,12);
-                case "varchar","text" -> column.equals("parent_node_key")?(alternate?"":null):
+                case "timestamptz" -> "2026-09-12T09:10:11.123456+08:00";
+                case "varchar","text" -> column.equals("confirmed_route")?"BUY":column.equals("parent_node_key")?(alternate?"":null):
                         alternate?"":"节点, (部件) \"引号\" '单引号' \\ 斜线\n下一行 🧪";
                 default -> throw new IllegalStateException(types[index]);
             };

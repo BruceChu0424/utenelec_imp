@@ -2,7 +2,13 @@ $ErrorActionPreference = 'Stop'
 
 $paths = @{
     Nginx = 'nginx/uten-imp.conf.example'
-    LegacyLanNginx = 'nginx/uten-imp-http-lan.conf'
+    SimpleNginx = 'nginx/uten-imp-http-lan.conf'
+    SimpleAppUnit = 'simple/units/uten-imp.service'
+    SimpleRunbook = 'simple/RUNBOOK.zh-CN.md'
+    InternalStorageEnv = 'setup/server.env.internal-storage.example'
+    ClamAvSocket = 'systemd/clamav-uten-imp-unix.socket.conf.example'
+    BaseProfile = '../server/src/main/resources/application.yml'
+    ProdProfile = '../server/src/main/resources/application-prod.yml'
     AppUnit = 'systemd/uten-imp.service.example'
     MigratorUnit = 'systemd/uten-imp-migrate.service.example'
     WatchdogUnit = 'systemd/uten-imp-watchdog.service.example'
@@ -150,9 +156,9 @@ function Assert-Regex {
     }
 }
 
-# Dedicated internal ERP test profile: production-like network/secrets/runtime
-# boundaries with one fixed NVMe local-storage exception. Production/cloud OSS
-# contracts below remain independent and unchanged.
+# Retired controlled internal-test chain: preserve its fixed closed-local storage
+# and network boundaries. Current Simple production uses internal media; historical
+# OSS reads, release downloads and deferred cloud contracts are checked separately.
 $internalProfile = $text.InternalTestProfile
 Assert-Contains $internalProfile 'address: 127.0.0.1' 'internal-test loopback backend'
 Assert-Contains $internalProfile 'lazy-initialization: false' 'internal-test global lazy initialization disabled'
@@ -234,12 +240,12 @@ Assert-Contains $text.InternalTestOnboardingGuide '--approve-database-change' 'i
 Assert-Contains $text.InternalTestOnboardingGuide '<!-- INTERNAL-TEST-NEW-MIGRATION-HARD-NO-GO -->' 'internal-test new migration hard stop'
 Assert-NotContains $text.InternalTestOnboardingGuide '192.168.' 'internal-test onboarding topology redaction'
 
-# Even the legacy HTTP template must remain topology-free because source
-# snapshots can include it. Live values belong only in ignored private handoff.
-Assert-Contains $text.LegacyLanNginx 'server_name __INTERNAL_DOMAIN__ _;' 'legacy LAN DNS placeholder'
-Assert-Contains $text.LegacyLanNginx 'allow __EXACT_OFFICE_CIDR__;' 'legacy LAN CIDR placeholder'
-if ([regex]::IsMatch($text.LegacyLanNginx, '(?m)^\s*server_name\s+(?:\d{1,3}\.){3}\d{1,3}')) {
-    throw 'Forbidden deployment contract: legacy LAN template contains a raw server address'
+# Current Simple LAN template must remain topology-free. Live values belong
+# only in ignored private handoff, never in source snapshots.
+Assert-Contains $text.SimpleNginx 'server_name __INTERNAL_DOMAIN__ _;' 'Simple LAN DNS placeholder'
+Assert-Contains $text.SimpleNginx 'allow __EXACT_OFFICE_CIDR__;' 'Simple LAN CIDR placeholder'
+if ([regex]::IsMatch($text.SimpleNginx, '(?m)^\s*server_name\s+(?:\d{1,3}\.){3}\d{1,3}')) {
+    throw 'Forbidden deployment contract: Simple LAN template contains a raw server address'
 }
 
 # The LAN template is what the company server actually renders (2026-10-06, ADR-157):
@@ -250,7 +256,7 @@ if ([regex]::IsMatch($text.LegacyLanNginx, '(?m)^\s*server_name\s+(?:\d{1,3}\.){
 Assert-Contains $text.Nginx 'NOT SUITABLE AS-IS BEHIND A SHARED NAT / VPN / CGNAT EGRESS' 'production template shared-egress warning'
 Assert-NotContains $text.Nginx 'office NAT can contain 1,000 recovering clients' 'production template stale NAT sizing claim'
 $tlsCiphers = "ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305';"
-foreach ($authTemplate in @(@{ Name = 'LAN'; Text = $text.LegacyLanNginx }, @{ Name = 'production'; Text = $text.Nginx })) {
+foreach ($authTemplate in @(@{ Name = 'Simple LAN'; Text = $text.SimpleNginx }, @{ Name = 'production reference'; Text = $text.Nginx })) {
     $authText = $authTemplate.Text
     $authName = $authTemplate.Name
     Assert-Contains $authText 'limit_req_zone $binary_remote_addr zone=uten_login_ip:10m rate=30r/m;' "$authName login per-IP rate"
@@ -275,13 +281,19 @@ foreach ($authTemplate in @(@{ Name = 'LAN'; Text = $text.LegacyLanNginx }, @{ N
     Assert-Contains $authText 'ssl_session_tickets off;' "$authName TLS session tickets disabled"
     Assert-Regex $authText '(?m)^\s*add_header Strict-Transport-Security "max-age=[1-9][0-9]*[^"]*" always;\s*$' "$authName HSTS"
     Assert-NotContains $authText 'https://$host' "$authName redirect reflects the caller Host header"
+    Assert-Contains $authText 'location = /api/system-test { return 404; }' "$authName exact test-surface denial"
+    Assert-Contains $authText 'location ^~ /api/system-test/ { return 404; }' "$authName test-subtree denial before API regex locations"
+    $testLocations = [regex]::Matches($authText, '(?m)^\s*location\s+[^\r\n{]*/api/system-test[^\r\n{]*\{')
+    if ($testLocations.Count -ne 2) {
+        throw "Forbidden deployment contract: $authName has an additional test-surface location"
+    }
     if (([regex]::Matches($authText, [regex]::Escape('{'))).Count -ne
         ([regex]::Matches($authText, [regex]::Escape('}'))).Count) {
         throw "Nginx $authName template braces are unbalanced"
     }
 }
-Assert-Contains $text.LegacyLanNginx 'return 308 https://__INTERNAL_DOMAIN__$request_uri;' 'LAN fixed-host HTTPS redirect'
-foreach ($locationBlock in [regex]::Matches($text.LegacyLanNginx, '(?ms)^\s*location\b[^{]*\{.*?^\s*\}')) {
+Assert-Contains $text.SimpleNginx 'return 308 https://__INTERNAL_DOMAIN__$request_uri;' 'LAN fixed-host HTTPS redirect'
+foreach ($locationBlock in [regex]::Matches($text.SimpleNginx, '(?ms)^\s*location\b[^{]*\{.*?^\s*\}')) {
     if ($locationBlock.Value.Contains('add_header')) {
         throw 'Forbidden deployment contract: a LAN location-level add_header drops the server-level security headers'
     }
@@ -341,7 +353,24 @@ Assert-Contains $appUnit '-Dspring.flyway.enabled=false' 'backend Flyway hard di
 Assert-Contains $appUnit '-Xmx4g' 'JVM heap ceiling'
 Assert-Contains $appUnit 'MemoryHigh=5G' 'cgroup memory throttle'
 Assert-Contains $appUnit 'MemoryMax=6G' 'cgroup memory ceiling'
-Assert-NotContains $appUnit 'ReadWritePaths=/data/uten-imp/attachments' 'OSS production JVM data-RAID write grant'
+Assert-NotContains $appUnit 'ReadWritePaths=/data/uten-imp/attachments' 'production JVM write grant to retained local originals'
+Assert-Contains $appUnit 'ReadWritePaths=-/run/uten-imp-release /var/lib/uten-imp-media/attachments /var/log/uten-imp' 'reference runtime private-media and release-receipt write boundary'
+Assert-Contains $text.SimpleAppUnit 'ReadWritePaths=/var/lib/uten-imp-media/attachments /var/log/uten-imp' 'current Simple runtime private-media write boundary'
+foreach ($storageUnit in @(@{ Name = 'Simple'; Text = $text.SimpleAppUnit }, @{ Name = 'reference'; Text = $appUnit })) {
+    Assert-Contains $storageUnit.Text 'Group=uten-imp' "$($storageUnit.Name) application primary group"
+    Assert-Contains $storageUnit.Text 'Wants=network-online.target clamav-daemon.service' "$($storageUnit.Name) scanner startup dependency"
+    Assert-Regex $storageUnit.Text '(?m)^After=[^\r\n]*clamav-daemon\.service(?:\s|$)' "$($storageUnit.Name) scanner startup ordering"
+    Assert-Contains $storageUnit.Text 'Environment=UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl' "$($storageUnit.Name) Unix scanner endpoint"
+    Assert-Contains $storageUnit.Text 'if [ "$${UTEN_ATTACHMENT_SCANNER_PROVIDER:-disabled}" = clamav ]; then' "$($storageUnit.Name) conditional scanner preflight"
+    foreach ($socketCheck in @('test -S "$${UTEN_CLAMAV_UNIX_SOCKET}"', 'test -r "$${UTEN_CLAMAV_UNIX_SOCKET}"', 'test -w "$${UTEN_CLAMAV_UNIX_SOCKET}"')) {
+        Assert-Contains $storageUnit.Text $socketCheck "$($storageUnit.Name) service-identity socket access check"
+    }
+    Assert-NotContains $storageUnit.Text 'SupplementaryGroups=clamav' "$($storageUnit.Name) unnecessary scanner group membership"
+}
+Assert-Regex $text.ClamAvSocket '(?m)^ListenStream=\r?\nListenStream=/run/clamav/clamd\.ctl\r?$' 'scanner clears generated listeners before binding its sole Unix socket'
+Assert-Contains $text.ClamAvSocket 'SocketUser=clamav' 'scanner socket ownership'
+Assert-Contains $text.ClamAvSocket 'SocketGroup=uten-imp' 'scanner socket restricted application group'
+Assert-Contains $text.ClamAvSocket 'SocketMode=0660' 'scanner socket owner/group-only access'
 $migratorUnit = $text.MigratorUnit
 Assert-Contains $migratorUnit 'Type=oneshot' 'migration-only oneshot unit'
 Assert-Contains $migratorUnit 'User=uten-imp-migrate' 'dedicated migration identity'
@@ -677,12 +706,82 @@ Assert-Contains $text.Phase3 'systemctl disable nginx.service uten-imp-migrate.s
 Assert-Contains $text.EnvValidator 'root:root:600 || "$env_metadata" == root:uten-imp:640' 'exact server.env owner/group/mode gate'
 Assert-Contains $text.EnvValidator 'BOOTSTRAP_ADMIN_PASSWORD' 'bootstrap administrator secret gate'
 Assert-Contains $text.EnvValidator 'UTEN_MIGRATOR_DB_PASSWORD' 'backend environment rejects migrator secrets'
-Assert-Contains $text.Phase3 'UTEN_OSS_STAGING_BUCKET=REPLACE_WITH_UNVERSIONED_STAGING_BUCKET' 'unversioned attachment staging Bucket placeholder'
-Assert-Contains $text.Phase3 'UTEN_OSS_FINAL_BUCKET=REPLACE_WITH_VERSIONED_FINAL_BUCKET' 'versioned attachment final Bucket placeholder'
-Assert-Contains $text.Phase3 'UTEN_ATTACHMENT_UPLOADS_ENABLED=false' 'attachment intake remains disabled during commissioning'
-Assert-Contains $text.EnvValidator 'UTEN_OSS_STAGING_BUCKET and UTEN_OSS_FINAL_BUCKET must be different' 'split attachment Bucket identity gate'
-Assert-Contains $text.EnvValidator 'expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false' 'attachment production NO-GO environment gate'
-Assert-NotContains $text.Phase3 'UTEN_OSS_BUCKET=' 'legacy single attachment Bucket contract'
+# New local writes use private internal media, not OSS staging/final buckets.
+# Both first-install sources start with intake and historical readers closed.
+foreach ($environmentSource in @(@{ Name = 'Phase 3'; Text = $text.Phase3 }, @{ Name = 'Simple template'; Text = $text.InternalStorageEnv })) {
+    foreach ($expected in @('UTEN_STORAGE_PROVIDER=internal',
+            'UTEN_INTERNAL_STORAGE_ROOT=/var/lib/uten-imp-media/attachments',
+            'UTEN_ATTACHMENT_UPLOADS_ENABLED=false', 'UTEN_ATTACHMENT_SCANNER_PROVIDER=clamav',
+            'UTEN_CLAMAV_UNIX_SOCKET=/run/clamav/clamd.ctl',
+            'UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED=false', 'UTEN_STORAGE_LEGACY_OSS_READ_ENABLED=false',
+            'UTEN_ATTACHMENT_RECONCILIATION_ENABLED=false', 'UTEN_BUSINESS_DATA_RESET_ENABLED=false')) {
+        Assert-Contains $environmentSource.Text $expected "$($environmentSource.Name) initial private-storage and closed-intake contract"
+    }
+    foreach ($retiredKey in @('UTEN_STORAGE_PROVIDER=oss', 'UTEN_OSS_BUCKET=', 'UTEN_OSS_STAGING_BUCKET=', 'UTEN_OSS_FINAL_BUCKET=')) {
+        Assert-NotContains $environmentSource.Text $retiredKey "$($environmentSource.Name) retired OSS write configuration"
+    }
+}
+Assert-Contains $text.Phase3 'server.env.internal-storage.example' 'Phase 3 installs the reviewed internal-storage template'
+Assert-NotContains $text.Phase3 'server.env.oss-migration.example' 'Phase 3 retired OSS-migration template installation'
+Assert-Contains $text.SimpleRunbook '参考完整 deploy/setup/server.env.internal-storage.example' 'Simple first-install environment uses the complete production template'
+Assert-Contains $text.SimpleRunbook 'cp deploy/nginx/uten-imp-http-lan.conf /etc/nginx/sites-available/uten-imp' 'Simple runbook installs the verified production Nginx entry'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_STORAGE_PROVIDER internal' 'production validator requires internal writes'
+Assert-Contains $text.EnvValidator 'expect_boolean UTEN_ATTACHMENT_UPLOADS_ENABLED' 'intake activation is an explicit boolean'
+Assert-Contains $text.EnvValidator 'disabled) expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false' 'disabled scanner cannot open attachment intake'
+Assert-Contains $text.EnvValidator 'production scanning requires clamav or explicitly disabled intake' 'production scanner provider allowlist'
+Assert-Contains $text.EnvValidator 'UTEN_INTERNAL_STORAGE_ROOT must be an explicit absolute private directory' 'private-media absolute directory gate'
+Assert-Contains $text.EnvValidator 'UTEN_CLAMAV_UNIX_SOCKET must be an explicit absolute Unix socket' 'Unix scanner endpoint gate'
+Assert-Contains $text.EnvValidator 'retained local originals require a separate explicit absolute directory' 'historical local originals cannot share the active media root'
+Assert-Contains $text.EnvValidator 'expect_boolean UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED' 'explicit historical local read capability'
+Assert-Contains $text.EnvValidator 'expect_boolean UTEN_STORAGE_LEGACY_OSS_READ_ENABLED' 'explicit historical OSS read capability'
+# Keep the historical OSS exact-version and HTTPS gates; release-download and
+# deferred cloud OSS security checks below remain independent of local writes.
+Assert-Contains $text.EnvValidator 'if [[ "$(env_value UTEN_STORAGE_LEGACY_OSS_READ_ENABLED)" == true ]]; then' 'historical OSS validation only behind its explicit read capability'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_OSS_REQUIRE_VERSIONING true' 'historical OSS exact-version requirement'
+Assert-Contains $text.EnvValidator 'historical OSS requires an HTTPS endpoint without user information' 'historical OSS TLS and credential-free endpoint gate'
+Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_FINAL_BUCKET' 'historical OSS final bucket identity'
+Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_REGION' 'historical OSS region identity'
+
+foreach ($productionProfile in @($text.BaseProfile, $text.ProdProfile)) {
+    Assert-Contains $productionProfile 'business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:false}' 'production business reset defaults closed'
+}
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false' 'production deployment refuses an enabled test reset'
+Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_STORAGE_PROVIDER local' 'retired internal-test validator still requires its fixed local provider'
+Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false' 'retired internal-test intake remains closed'
+Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_SCANNER_PROVIDER disabled' 'retired internal-test scanner remains explicitly disabled'
+
+# Current and controlled historical deployments share one PGP keyring contract.
+# First-install labels never replace a live key; legacy key values are not judged
+# against a new-key strength rule that could make historical ciphertext unreadable.
+$pgpPolicy = $null
+foreach ($validator in @(@{ Name = 'production'; Text = $text.EnvValidator }, @{ Name = 'internal-test'; Text = $text.InternalTestEnvValidator })) {
+    $policy = [regex]::Match($validator.Text, '(?ms)^validate_pgp_configuration\(\) \{\r?\n(?<body>.*?)^\}')
+    if (-not $policy.Success) {
+        throw "Missing deployment contract: $($validator.Name) PGP configuration policy"
+    }
+    $body = $policy.Groups['body'].Value.Replace("`r`n", "`n")
+    if ($null -ne $pgpPolicy -and $pgpPolicy -cne $body) {
+        throw 'Deployment PGP version/keyring policies differ between production and controlled internal-test'
+    }
+    $pgpPolicy = $body
+    Assert-Regex $validator.Text '(?m)^validate_pgp_configuration\r?$' "$($validator.Name) invokes its PGP policy"
+    Assert-NotContains $validator.Text 'expect_exact UTEN_PGP_KEY_VERSION 1' "$($validator.Name) current key version must not be forced back to first-install version"
+}
+foreach ($expected in @('version_pattern = re.compile(r"[1-9][0-9]{0,17}")',
+        'values.get("UTEN_PGP_UNVERSIONED_KEY_VERSION", "1")',
+        'values.get("UTEN_PGP_ROTATION_ENABLED", "false") not in ("true", "false")',
+        'prefix = "UTEN_CRYPTO_PGPLEGACYKEYS_"',
+        'if version == current:',
+        'if unversioned != current and unversioned not in historical:',
+        'if not value or len(value) > 4096 or any(character.isspace() for character in value):')) {
+    Assert-Contains $pgpPolicy $expected 'canonical PGP versions, opt-in maintenance and retained historical key contract'
+}
+Assert-Contains $text.InternalTestEnvValidator 'UTEN_PGP_UNVERSIONED_KEY_VERSION|UTEN_PGP_ROTATION_ENABLED|' 'controlled internal-test permits narrow PGP maintenance configuration'
+Assert-Contains $text.InternalTestEnvValidator 'UTEN_CRYPTO_PGPLEGACYKEYS_*)' 'controlled internal-test permits validated historical key entries'
+Assert-Contains $text.BaseProfile 'pgp-unversioned-key-version: ${UTEN_PGP_UNVERSIONED_KEY_VERSION:1}' 'runtime preserves fixed unversioned historical key identity'
+Assert-Contains $text.BaseProfile 'enabled: ${UTEN_PGP_ROTATION_ENABLED:false}' 'runtime key rotation defaults closed'
+Assert-Contains $text.Phase3 'UTEN_PGP_UNVERSIONED_KEY_VERSION=1' 'Phase 3 first-install unversioned key identity'
+Assert-Contains $text.Phase3 'UTEN_PGP_ROTATION_ENABLED=false' 'Phase 3 first-install maintenance remains closed'
 Assert-Contains $text.ServerEnvInstaller 'INSTALL VALIDATED UTEN SERVER ENV' 'explicit server environment install confirmation'
 Assert-Contains $text.ServerEnvInstaller 'installed environment validator differs from the reviewed Phase 3 source' 'reviewed environment validator parity'
 Assert-Contains $text.ServerEnvInstaller 'mv -T -- "$INSTALLING_ENV" "$LIVE_ENV"' 'same-directory atomic server environment promotion'

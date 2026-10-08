@@ -1072,7 +1072,18 @@ abstract class _MaterialAnalysisProductTasksState
     final warehouseId = _warehouseId;
     final candidates = candidateInputs ?? const <_BucketCandidatePlanInput>[];
     final products = planDrafts ?? const <_BucketPlanDraft>[];
-    if (analysis == null || warehouseId == null) return false;
+    if (analysis == null ||
+        warehouseId == null ||
+        !_canGenerate ||
+        !_preparationSubmissionStillCurrent) {
+      return false;
+    }
+    final sessionScope = _sessionScopeKey();
+    bool currentScope() =>
+        mounted &&
+        _sameAnalysisSnapshot(analysis, sessionScope) &&
+        _preparationSubmissionStillCurrent &&
+        _canGenerate;
     if (candidates.isEmpty && products.isEmpty) return false;
     final lines = <MaterialAnalysisIssueLine>[
       for (final input in candidates)
@@ -1139,7 +1150,7 @@ abstract class _MaterialAnalysisProductTasksState
             lines: lines,
             skipAutoClaim: skipAutoClaim,
           );
-      if (!mounted) return false;
+      if (!mounted || !currentScope()) return false;
       setState(() {
         _setGenerating(false);
         _applyAnalysis(result.analysis);
@@ -1176,7 +1187,7 @@ abstract class _MaterialAnalysisProductTasksState
       await _showGeneratedPlans(plans);
       return true;
     } catch (error) {
-      if (!mounted) return false;
+      if (!mounted || !currentScope()) return false;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '创建生产计划',
@@ -1184,7 +1195,7 @@ abstract class _MaterialAnalysisProductTasksState
         if (mounted) setState(() => _setGenerating(false));
         return false;
       }
-      if (!mounted) return false;
+      if (!mounted || !currentScope()) return false;
       setState(() => _setGenerating(false));
       context.appError(
         productionErrorMessage(error, fallback: '创建生产计划失败，请刷新后重试'),

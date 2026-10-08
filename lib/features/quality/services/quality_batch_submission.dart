@@ -1,9 +1,10 @@
 import 'package:uuid/uuid.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../repositories/production_fqc_repository.dart';
 
-/// One receipt stays atomic on the server. Across receipts, each lane keeps the
+/// One receipt stays atomic on the server. Across receipts, each command keeps the
 /// exact accepted report and only its own acknowledgement advances that receipt.
 class QualityReceiptSubmission {
   QualityReceiptSubmission({
@@ -89,14 +90,6 @@ class QualityBatchSubmission {
     return result;
   }
 
-  /// 2026-09-21 起收货单按报告顺序逐单提交(此前 2026-09-18 为最多 4 条并行通道)。
-  /// 实测(QualityBatchApprovalPerfProbeTest)：同一主仓/同一订货单的收货单在服务端本就
-  /// 按同一把物料分析仓级锁与订单行锁串行执行，4 条通道并不比逐单快，反而互相等锁、
-  /// 撞「来源集合在预读后变化」后整笔回滚重跑；真正的提速在服务端(一次结论一个自动
-  /// 转正批次、只刷一遍物料分析)。每张单仍是服务端一个独立原子事务(冻结命令 + 幂等键
-  /// 不变)，失败不连坐、重试只补未确认的单。
-  static const int _sendLanes = 1;
-
   final List<QualityReceiptSubmission> receipts;
 
   /// 本次全部合格的自制产成品批数(ADR-148: 一批实物一行; 批内各份的检查任务都在 [fqcInspectionIds] 里)。
@@ -107,6 +100,7 @@ class QualityBatchSubmission {
   final Set<int> _acknowledged = <int>{};
   bool _fqcAcknowledged = false;
   bool _running = false;
+  AuthenticatedRequestScope? _requestScope;
 
   /// 服务端确认判定的检查任务份数(整批展开后); 还没发或从草稿恢复时为空。
   int? fqcProcessedCount;
@@ -135,22 +129,22 @@ class QualityBatchSubmission {
   Future<void> send({
     required ProcurementInspectionRepository iqc,
     required ProductionFqcRepository fqc,
+    required AuthenticatedRequestScope requestScope,
     void Function()? onProgress,
   }) async {
     if (_running) throw StateError('这份检验报告正在提交中，请等本次提交完成后再操作');
+    final scope = _requestScope ??= requestScope;
     _running = true;
     try {
-      final pending = [
-        for (var i = 0; i < receipts.length; i++)
-          if (!_acknowledged.contains(i)) i,
-      ];
-      // 一张单失败不再连坐取消其余单：通道全部跑完后按报告顺序抛最早失败，
-      // 未确认的单重试时原样重发（串行时代的快速失败在并行下只会白丢进度）。
-      final failures = <int, Object>{};
-      var next = 0;
-      Future<void> worker() async {
-        while (next < pending.length) {
-          final index = pending[next++];
+      await scope.run(() async {
+        final pending = [
+          for (var i = 0; i < receipts.length; i++)
+            if (!_acknowledged.contains(i)) i,
+        ];
+        // 共用主仓锁的收货单按报告顺序提交。失败不取消其它单，重试保留原命令身份。
+        Object? firstFailure;
+        for (final index in pending) {
+          await scope.verify();
           final receipt = receipts[index];
           try {
             await iqc.decideBatch(
@@ -162,27 +156,26 @@ class QualityBatchSubmission {
             _acknowledged.add(index);
             onProgress?.call();
           } catch (error) {
-            failures[index] = error;
+            if (isSessionBoundaryError(error)) rethrow;
+            // A business rejection and a concurrent identity change are distinct:
+            // stop the old operation before another command can adopt new tokens.
+            await scope.verify();
+            firstFailure ??= error;
           }
         }
-      }
-
-      await Future.wait([
-        for (var i = 0; i < _sendLanes && i < pending.length; i++) worker(),
-      ]);
-      if (failures.isNotEmpty) {
-        final earliest = failures.keys.reduce((a, b) => a < b ? a : b);
-        throw failures[earliest]!;
-      }
-      if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
-        final result = await fqc.passAll(
-          inspectionIds: fqcInspectionIds,
-          idempotencyKey: fqcIdempotencyKey,
-        );
-        fqcProcessedCount = result.processedCount;
-        _fqcAcknowledged = true;
-        onProgress?.call();
-      }
+        await scope.verify();
+        if (firstFailure != null) throw firstFailure;
+        if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
+          final result = await fqc.passAll(
+            inspectionIds: fqcInspectionIds,
+            idempotencyKey: fqcIdempotencyKey,
+          );
+          fqcProcessedCount = result.processedCount;
+          _fqcAcknowledged = true;
+          onProgress?.call();
+        }
+        await scope.verify();
+      });
     } finally {
       _running = false;
     }

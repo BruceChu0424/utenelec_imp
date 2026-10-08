@@ -100,6 +100,24 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @businessResetAuditScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。'**
+  String get businessResetAuditScope;
+
+  /// No description provided for @serverAlertAcknowledge.
+  ///
+  /// In zh, this message translates to:
+  /// **'已知悉'**
+  String get serverAlertAcknowledge;
+
+  /// No description provided for @serverAlertDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看详情'**
+  String get serverAlertDetails;
+
   /// 今日概览单行待办中未展示的待处理件数
   ///
   /// In zh, this message translates to:

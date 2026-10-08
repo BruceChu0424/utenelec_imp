@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 /** Preserves receipt-level supply provenance while refreshing each affected analysis once. */
 @Service
@@ -22,24 +23,43 @@ public class ProductionInspectionStockInService implements ProductionInspectionS
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches) {
-        afterInspectionStockInConfirmed(batches, true);
+        if (batches.isEmpty()) return;
+        advanceBatches(batches);
+        materialAnalysisWakeup.afterInspectionStockInConfirmed(batches);
     }
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
-    public void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches, boolean refreshAnalyses) {
-        if (batches.isEmpty()) return;
-        for (ReceiptStockIn batch : batches) {
-            switch (batch.receiptType()) {
-                case "PURCHASE" -> purchaseSupply.advanceInspectionStockInState(
-                        batch.receiptId(), batch.batchId());
-                case "SUBCONTRACT" -> subcontractSupply.advanceInspectionStockInState(
-                        batch.receiptId());
-                default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "入库生产联动的收货类型不正确");
-            }
+    public void afterQualityReceiptResolved(String receiptType, UUID receiptId, List<ReceiptStockIn> batches) {
+        if (receiptId == null || !("PURCHASE".equals(receiptType) || "SUBCONTRACT".equals(receiptType))
+                || batches.stream().anyMatch(batch -> !receiptType.equals(batch.receiptType())
+                        || !receiptId.equals(batch.receiptId()))) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "品质结案与自动入库的收货来源不一致");
         }
-        // Run after every source has advanced, so mixed purchase/subcontract receipts
-        // cannot repeatedly rebuild the same analysis from intermediate batch states.
-        materialAnalysisWakeup.afterInspectionStockInConfirmed(batches, refreshAnalyses);
+        if (batches.isEmpty()) {
+            advanceReceipt(receiptType, receiptId, null);
+        } else {
+            advanceBatches(batches);
+            materialAnalysisWakeup.notifyInspectionStockIn(batches);
+        }
+        switch (receiptType) {
+            case "PURCHASE" -> materialAnalysisWakeup.afterPurchaseReceiptApproved(receiptId);
+            case "SUBCONTRACT" -> materialAnalysisWakeup.afterSubcontractReceiptApproved(receiptId);
+            default -> throw new IllegalStateException("Validated receipt type changed");
+        }
+    }
+
+    private void advanceBatches(List<ReceiptStockIn> batches) {
+        for (ReceiptStockIn batch : batches) {
+            advanceReceipt(batch.receiptType(), batch.receiptId(), batch.batchId());
+        }
+    }
+
+    private void advanceReceipt(String receiptType, UUID receiptId, UUID batchId) {
+        switch (receiptType) {
+            case "PURCHASE" -> purchaseSupply.advanceInspectionStockInState(receiptId, batchId);
+            case "SUBCONTRACT" -> subcontractSupply.advanceInspectionStockInState(receiptId);
+            default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "入库生产联动的收货类型不正确");
+        }
     }
 }

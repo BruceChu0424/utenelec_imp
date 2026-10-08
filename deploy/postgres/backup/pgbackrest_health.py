@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 try:
-    from pgbackrest_repo2 import ContractError, _load_json, parse_policy
+    from pgbackrest_repo2 import ContractError, MINIMUM_RESTORE_POINTS, _load_json, parse_policy
 except ModuleNotFoundError as exc:
     if exc.name != "pgbackrest_repo2":
         raise
@@ -35,6 +35,7 @@ except ModuleNotFoundError as exc:
     sys.modules["pgbackrest_repo2"] = module
     specification.loader.exec_module(module)
     ContractError = module.ContractError
+    MINIMUM_RESTORE_POINTS = module.MINIMUM_RESTORE_POINTS
     _load_json = module._load_json
     parse_policy = module.parse_policy
 

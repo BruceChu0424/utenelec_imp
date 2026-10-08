@@ -319,7 +319,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "ai_chat_action_proposals",
                         // V810(ADR-160) 员工核对记录：密文列与统计，不入行级审计；操作由显式业务事件记录。
                         "employee_reconcile_plans", "employee_reconcile_plan_rows",
-                        "employee_reconcile_plan_items", "employee_reconcile_applies")),
+                        "employee_reconcile_plan_items", "employee_reconcile_applies",
+                        "pii_key_rotation_runs")),
             new NoneGroup("reservation",
                     "编号终身预留、冲突证据与改号历史: 只追加, 行本身就是占用/改号记录",
                     Set.of(
@@ -392,6 +393,7 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("ledger",
                     "只追加的事件/流水/批次账: 行内带操作人与时间(子行经父行追溯), 行本身就是留痕",
                     Set.of(
+                        "document_malware_scans",
                         "account_balance_adjustment_batches", "account_balance_adjustment_items",
                         "ar_ap_source_refs", "client_access_change_events",
                         "employee_offboarding_events", "expense_claim_events",

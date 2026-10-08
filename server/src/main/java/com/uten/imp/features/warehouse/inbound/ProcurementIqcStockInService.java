@@ -248,6 +248,7 @@ public class ProcurementIqcStockInService {
             }
             ConfirmResult result = confirmOne(
                     batch.type(), batch.receiptId(), batch.command(), item.locked(), ORIGIN_WAREHOUSE_CONFIRM);
+            recalculateOrderClosure(batch.type(), batch.receiptId());
             results.add(result);
             newStockIns.add(new ReceiptStockIn(batch.type(), batch.receiptId(), result.batchId(),
                     batch.command().items().stream()
@@ -609,12 +610,11 @@ public class ProcurementIqcStockInService {
         // ADR-103: 「子件到货叫醒委外出仓」不在这里调——recordMovementWithId 走的是库存内核
         // 的入库分支, 内核已经在同一事务里按每笔入库维度叫醒过了(StockService.recordMovementInternal)。
         // ADR-101：货已上架，累计回厂落在本单约定的允许损耗范围内就直接结案(损耗单 + 受控
-        // 改量)，不再挂在「容差内待结案」等人点一下。必须排在 recalculateOrderClosure 之前：
+        // 改量)，不再挂在「容差内待结案」等人点一下。调用方在全部实物确认后重算订单结案：
         // 结案会把订货量改成实收量，关单判定要按改完的数算。
         if (SUBCONTRACT.equals(type) && shortDelivery != null) {
             shortDelivery.settleAfterStockIn(receiptId);
         }
-        recalculateOrderClosure(type, receiptId);
         // 已全部入库的品质放行切片：撤回「待仓库入库」居中行动卡（仍有余量
         // 的切片保留）。幂等，重放路径在方法开头提前返回不会重复执行。
         chainNotice.resolveIqcStockInPendingForWarehouse(type, receiptId);

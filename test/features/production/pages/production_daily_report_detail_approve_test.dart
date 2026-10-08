@@ -39,6 +39,8 @@ import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -54,6 +56,17 @@ final _scope = StateProvider<AuthenticatedScope>(
 final _server = StateProvider<String>(
   (ref) => 'https://daily-report.example/api',
 );
+
+class _ApprovalSession extends SessionNotifier {
+  int intentEpoch = 0;
+  @override
+  int get requestIntentEpoch => intentEpoch;
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(id: 'daily-report-tester', code: 'reviewer', name: '审核员'),
+  );
+}
 
 /// 服务端替身：状态是它自己的事实，post 只决定「客户端这次拿不拿得到结果」。
 class _DailyReportApi extends ApiClient {
@@ -246,6 +259,7 @@ Future<(_DailyReportApi, List<String>)> _pump(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(preferences),
       apiClientProvider.overrideWithValue(api),
+      sessionProvider.overrideWith(_ApprovalSession.new),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_scope)),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
       formDraftStorageProvider.overrideWithValue(api.approvalStorage),

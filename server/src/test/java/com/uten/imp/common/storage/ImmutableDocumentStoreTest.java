@@ -12,7 +12,7 @@ class ImmutableDocumentStoreTest {
         var storage = setup();
         TransactionSynchronizationManager.initSynchronization();
         try {
-            new ImmutableDocumentStore(storage, mock(StorageProviderRegistry.class)).save("GOODS_COST_IMPORT", "source.xlsx", "application/octet-stream", new byte[]{1});
+            new ImmutableDocumentStore(storage, mock(StorageProviderRegistry.class), com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning()).save("GOODS_COST_IMPORT", "source.xlsx", "application/octet-stream", new byte[]{1});
             TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_UNKNOWN));
             verify(storage, never()).delete(anyString(), any());
             verify(storage, never()).deleteStaging(anyString(), any());
@@ -22,7 +22,7 @@ class ImmutableDocumentStoreTest {
         var storage = setup();
         TransactionSynchronizationManager.initSynchronization();
         try {
-            new ImmutableDocumentStore(storage, mock(StorageProviderRegistry.class)).save("GOODS_COST_IMPORT", "source.xlsx", "application/octet-stream", new byte[]{1});
+            new ImmutableDocumentStore(storage, mock(StorageProviderRegistry.class), com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning()).save("GOODS_COST_IMPORT", "source.xlsx", "application/octet-stream", new byte[]{1});
             TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
             verify(storage).delete("object-key", "version-1");
             verify(storage).deleteStaging("object-key", "version-1");

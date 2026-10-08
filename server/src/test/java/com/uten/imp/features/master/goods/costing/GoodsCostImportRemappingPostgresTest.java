@@ -65,7 +65,7 @@ class GoodsCostImportRemappingPostgresTest {
         when(line.path()).thenReturn(path);when(line.included()).thenReturn(true);when(line.unitName()).thenReturn("个");
         when(calculation.lines()).thenReturn(List.of(line));when(sheets.preview(any())).thenReturn(calculation);
         service=new GoodsCostImportService(new NamedParameterJdbcTemplate(dataSource),json,mock(ImmutableDocumentStore.class),current,references,
-                new CostImportEvidenceGuard(sql,references),sheets,mock(TxSessionVars.class));
+                new CostImportEvidenceGuard(sql,references,mock(ImmutableDocumentStore.class)),sheets,mock(TxSessionVars.class));
         transaction=new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         transaction.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }

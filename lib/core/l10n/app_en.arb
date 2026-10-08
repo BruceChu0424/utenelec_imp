@@ -1,4 +1,7 @@
 {
+  "businessResetAuditScope": "Clears test business data, deletion history, field versions and business audit records. Authentication, authorization, security and system audit records, and reset receipts, are retained.",
+  "serverAlertAcknowledge": "Acknowledge",
+  "serverAlertDetails": "View details",
   "dashboardMoreTasks": "{count} more tasks",
   "dashboardMoreTasksTitle": "More pending tasks",
   "releaseNotesOpen": "See what's new in this version",

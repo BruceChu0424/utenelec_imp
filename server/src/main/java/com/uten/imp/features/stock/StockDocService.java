@@ -2407,18 +2407,23 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             StockDocument draw = requireDocForUpdate(drawId);
             // 生产领料单是草稿，出库前必须先审核 —— 与仓库那条「审核并出库」一段式端点
             // 同一条路径，只是授权走直送这条窄路。
-            // 守卫必须一动作一取：审核自己就会改履约图，跨两个动作复用同一个快照
-            // 会被自己的写入判成「相关单据已变化」。
+            // 守卫必须一动作一取。审核修改状态/主档快照，但不释放本调用已取得的
+            // 计划、执行段、单据与明细行锁；和 issueFullBatch 一样只复用物理锁，
+            // 出库仍重新取得嵌套守卫，并重读当前状态、申请/预留余量与库存事实。
+            boolean graphLockedForApproval = false;
             if (draw.getStatus() != null && draw.getStatus() == STATUS_DRAFT) {
                 var approveGuard = lockProductionDocuments(List.of(drawId));
                 approveGuard.verifyUnchanged();
                 approveDocumentAfterPrelock(drawId, false, true, null,
                         FinishedInLane.WORKSHOP_DIRECT_TRANSFER);
+                graphLockedForApproval = true;
             }
             // 车间直送的自动投入是内部步骤，调用方从不使用回显的详情(原先算完即丢)；
             // 不再多做一次按读范围装配详情的查询。
             issueLocked(
-                    drawId, request, lockProductionDocuments(List.of(drawId)), true);
+                    drawId, request, graphLockedForApproval
+                            ? guardAlreadyLockedProductionDocument(drawId)
+                            : lockProductionDocuments(List.of(drawId)), true);
         }
     }
 
@@ -3768,9 +3773,11 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     }
 
     /**
-     * Only used by issueFullBatch after its complete ordered document set has
-     * acquired all physical graph/document locks. Those locks survive each
-     * child approval and issue until the atomic batch commits or rolls back.
+     * Used after this synchronous command has acquired the complete ordered
+     * graph/document locks: issueFullBatch, or direct-transfer DRAW approval
+     * immediately followed by issue. No savepoint rollback occurs between the
+     * acquisition and this call. An approved DRAW without that acquisition must
+     * use lockProductionDocuments instead.
      * Keep the nested source guard and its diagnostic coverage verification;
      * repeating SELECT FOR UPDATE for the same graph adds no protection.
      */

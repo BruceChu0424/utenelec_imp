@@ -23,6 +23,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 /**
  * 服务器状态告警推送的四条硬约束。
@@ -36,6 +37,8 @@ class ServerStatusAlertSchedulerTest {
     private NoticeService notices;
     private JdbcTemplate jdbc;
     private ServerStatusAlertScheduler scheduler;
+    private HostAlertReader hostAlerts;
+    private ServerAlertAudience audience;
     private final UUID receiver = UUID.randomUUID();
 
     @BeforeEach
@@ -50,7 +53,10 @@ class ServerStatusAlertSchedulerTest {
                 .thenReturn(List.of(receiver));
         when(jdbc.queryForObject(anyString(), eq(Integer.class), any(), any(), any()))
                 .thenReturn(0);
-        scheduler = new ServerStatusAlertScheduler(status, notices, jdbc);
+        hostAlerts = mock(HostAlertReader.class);
+        audience = mock(ServerAlertAudience.class);
+        when(audience.receivers()).thenReturn(List.of(receiver));
+        scheduler = new ServerStatusAlertScheduler(status, notices, jdbc, hostAlerts, audience);
     }
 
     private void snapshot(ServerStatusView.Alert... alerts) {
@@ -153,6 +159,7 @@ class ServerStatusAlertSchedulerTest {
     /** 没有接收人时整轮静默——不抛异常、不影响业务。 */
     @Test
     void staysSilentWithoutReceivers() {
+        when(audience.receivers()).thenReturn(List.of());
         when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<UUID>>notNull(), any(), any()))
                 .thenReturn(List.of());
         snapshot(new ServerStatusView.Alert("disk-1", "CRITICAL", "附件存储", "危急", ""));
@@ -161,6 +168,59 @@ class ServerStatusAlertSchedulerTest {
 
         verify(notices, never()).publishForUser(any(), anyString(), anyString(),
                 anyString(), anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void warningOrUnknownAfterCriticalDoesNotClaimRecovery() {
+        snapshot(new ServerStatusView.Alert("disk", "CRITICAL", "磁盘", "危急", "检查"));
+        scheduler.scan();
+        snapshot(new ServerStatusView.Alert("disk", "WARNING", "磁盘", "警告", "检查"));
+        scheduler.scan();
+        verify(notices, never()).publishForUser(any(),
+                org.mockito.ArgumentMatchers.contains("已恢复"), anyString(),
+                anyString(), anyString(), anyString(), anyString(), anyString());
+        snapshot(new ServerStatusView.Alert("disk", "NORMAL", "磁盘", "正常", ""));
+        scheduler.scan();
+        verify(notices).publishForUser(eq(receiver), org.mockito.ArgumentMatchers.contains("已恢复"),
+                anyString(), eq("system"), anyString(), anyString(),
+                eq("SERVER_STATUS_ALERT:disk:RECOVERED"), eq("normal"));
+    }
+
+    @Test
+    void localHostEventUsesDurableIdentityEvenAfterThrottleWindow() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(hostAlerts.read(any())).thenReturn(List.of(new HostAlertReader.Event(
+                id, "CRITICAL", "备份失败", Instant.now().minusSeconds(86400))));
+        scheduler.scan();
+        verify(jdbc).queryForObject(anyString(), eq(Integer.class),
+                eq("SERVER_HOST_ALERT:" + id), eq(receiver), eq(Timestamp.from(Instant.EPOCH)));
+        verify(notices).publishForUser(eq(receiver), eq("备份失败"), anyString(),
+                eq("urgent"), anyString(), eq("/admin/server-status"),
+                eq("SERVER_HOST_ALERT:" + id), eq("urgent"));
+    }
+
+    @Test
+    void failedReceiverDoesNotBlockOtherReceiversOrEvents() throws Exception {
+        UUID other = UUID.randomUUID();
+        when(audience.receivers()).thenReturn(List.of(receiver, other));
+        when(hostAlerts.read(any())).thenReturn(List.of(
+                new HostAlertReader.Event(UUID.randomUUID(), "CRITICAL", "备份失败", Instant.now()),
+                new HostAlertReader.Event(UUID.randomUUID(), "WARNING", "磁盘预警", Instant.now())));
+        doThrow(new IllegalStateException("fixture"))
+                .when(notices).publishForUser(eq(receiver), anyString(), anyString(), anyString(),
+                        anyString(), anyString(), anyString(), anyString());
+        scheduler.scan();
+        verify(notices, times(2)).publishForUser(eq(other), anyString(), anyString(), anyString(),
+                anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void corruptHostQueueRaisesAnInPlatformChannelFailureAlert() throws Exception {
+        when(hostAlerts.read(any())).thenThrow(new java.io.IOException("fixture"));
+        scheduler.scan();
+        verify(notices).publishForUser(eq(receiver), eq("服务器告警记录无法读取"), anyString(),
+                eq("urgent"), anyString(), anyString(),
+                eq("SERVER_STATUS_ALERT:HOST_ALERT_RECORDS:CRITICAL"), eq("urgent"));
     }
 
     /** 任何异常只记日志，绝不冒泡到定时器线程。 */

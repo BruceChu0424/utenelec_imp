@@ -2372,7 +2372,7 @@ public class ProductionDailyReportService {
                 Boolean.TRUE.equals(req.getSurplusReturnRequested()));
     }
 
-    private List<DailyReportItemDto> saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines) {
+    private void saveItems(ProductionDailyReport r, List<DailyReportItemLine> lines) {
         if (lines.stream().anyMatch(line -> line != null && (line.getPrice() != null
                 || line.getTotal() != null || line.getStotal() != null))) {
             throw new ApiException(
@@ -2384,7 +2384,6 @@ public class ProductionDailyReportService {
         outputAllocation.requireAllowance(r.getId(),lines);
         executionSegments.validateDraft(r.getId(), r.getDepartmentId(), lines);
         canonicalizeSourceSnapshots(lines);
-        List<DailyReportItemDto> out = new ArrayList<>(lines.size());
         int auto = 1;
         for (DailyReportItemLine l : lines) {
             ProductionDailyReportItem it = new ProductionDailyReportItem();
@@ -2433,10 +2432,8 @@ public class ProductionDailyReportService {
             it.setOutputRouteReason(l.getOutputRouteReason());
             itemRepo.save(it);
             com.uten.imp.common.platformcolumns.PlatformColumnSaveLineage.registerSaved(l, it.getId());
-            out.add(toItemDto(it));
             auto++;
         }
-        return out;
     }
 
     /**
@@ -2522,11 +2519,6 @@ public class ProductionDailyReportService {
         return new DailyReportListItem(r.getId(), r.getBillNo(), r.getBillDate(), r.getWarehouseId(),
                 r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(), r.getSupplierId(),
                 r.getStatus(), r.isClosed(), r.isCanceled(), r.getLegacyId());
-    }
-
-    /** 保存路径用：返回值不进响应，身份名称留空，避免多一次字典查询。 */
-    private DailyReportItemDto toItemDto(ProductionDailyReportItem it) {
-        return toItemDto(it, Map.of(), Map.of());
     }
 
     private DailyReportItemDto toItemDto(

@@ -46,7 +46,7 @@ class AiInputOriginalPostgresTest {
         jdbc.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,'来源测试','其他',id,CURRENT_DATE,'active','regular' FROM departments WHERE code='DEPT_FIN'",employee,"ORI-"+employee);
         jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status) VALUES(?,?,?,'test-only',false,'active')",actor,employee,"original-"+actor);
         var properties=new StorageProperties();properties.setLocalDir(files.toString());local=new LocalDiskStorageService(properties);ReflectionTestUtils.invokeMethod(local,"init");
-        objects=new ImmutableDocumentStore(local,new StorageProviderRegistry(local,properties));
+        objects=new ImmutableDocumentStore(local,new StorageProviderRegistry(local,properties),com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning());
         current=mock(SecurityContextCurrentUser.class);when(current.requireId()).thenReturn(actor);
         when(current.get()).thenReturn(Optional.of(new AuthUser(actor,employee,"original-test",Set.of("ai:use","sales_order:price:view"),false,true,false)));
         quotePolicy=mock(AttachmentOwnerAccessPolicy.class);when(quotePolicy.ownerType()).thenReturn("SALES_QUOTE");

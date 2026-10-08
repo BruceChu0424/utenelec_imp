@@ -13,7 +13,7 @@ from test_simple_release_retention import SCRIPT, bash_path
 class SimpleReleaseActivationTest(unittest.TestCase):
     def activation(self, *, migration=False, first=False, start=True,
                    candidate_health=True, restart=True, old_health=True, migrate=True, final_stop=True,
-                   backup_dir_blocked=False, web_group=True):
+                   backup_dir_blocked=False, web_group=True, migrator_readable=True):
         source = SCRIPT.read_text(encoding="utf-8")
         activate = re.search(r"(?ms)^do_activate\(\) \{.*?^\}", source).group(0)
         with tempfile.TemporaryDirectory(prefix="uten-activation-") as temp:
@@ -37,7 +37,7 @@ class SimpleReleaseActivationTest(unittest.TestCase):
                        START=str(int(start)), CANDIDATE_HEALTH=str(int(candidate_health)),
                        RESTART=str(int(restart)), OLD_HEALTH=str(int(old_health)), MIGRATE=str(int(migrate)),
                        FINAL_STOP=str(int(final_stop)), UTEN_BACKUP_DIR=backup_dir.as_posix(),
-                       WEB_GROUP_PRESENT=str(int(web_group)))
+                       WEB_GROUP_PRESENT=str(int(web_group)), MIGRATOR_READABLE=str(int(migrator_readable)))
             fixture = r'''
 set -euo pipefail
 log() { printf '%s\n' "$*"; }
@@ -48,7 +48,11 @@ migration_digest() {
   if [[ "$1" == *"releases/v1.1.0/"* && "$MIGRATION" == 1 ]]; then printf new; else printf old; fi
 }
 create_database_backup() { printf 'backup\n' >> "$EVENTS"; printf '%s/backup.dump\n' "$UTEN_BASE"; }
-timeout() { printf 'migrate\n' >> "$EVENTS"; [[ "$MIGRATE" == 1 ]]; }
+runuser() { [[ "$1 $2 $3 $4" == '-u uten-imp -- test' && "$MIGRATOR_READABLE" == 1 ]]; }
+timeout() {
+  [[ "$1 $2 $3 $4 $5 $6" == '900 runuser -u uten-imp -- /usr/bin/java' ]] || return 99
+  printf 'migrate\n' >> "$EVENTS"; [[ "$MIGRATE" == 1 ]];
+}
 systemctl() {
   local current
   current=$(basename "$(readlink -f "$UTEN_BASE/current" 2>/dev/null)" || true)
@@ -90,6 +94,13 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
         # Release permissions (web/ only for uten-web) are fixed before the application is stopped.
         self.assertLess(events.index("web-group"), events.index("stop:v1.0.0"))
         self.assertLess(events.index("perms:v1.1.0"), events.index("stop:v1.0.0"))
+
+    def test_unreadable_migrator_fails_before_stopping_application(self):
+        result, events, current, active = self.activation(migration=True, migrator_readable=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertFalse(any(event.startswith("stop:") for event in events))
+        self.assertNotIn("backup", events)
+        self.assertNotIn("migrate", events)
 
     def test_missing_web_group_or_unwritable_backup_dir_fails_before_the_application_stops(self):
         for case in ({"web_group": False}, {"backup_dir_blocked": True}):

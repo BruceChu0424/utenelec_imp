@@ -42,6 +42,8 @@ import static org.mockito.Mockito.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
+        "uten.production.readiness-reconcile.enabled=false", "uten.workshop-material.auto-close.enabled=false",
+        "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
         "uten.inventory.value-work-initial-delay-ms=3600000",
         "uten.concurrency.verify-nested-footprint=${uten.fqc.batch.verifyNestedFootprint:true}"})
@@ -58,7 +60,8 @@ class ProductionFqcPreStockBatchEndToEndTest {
     private static final int POSTED_BATCH_SQL = 234;
     private static final int DRAFT_BATCH_SQL = 57;
     private static final int SQL_HEADROOM = 12;
-    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:16-alpine")
+            .withCommand("postgres", "-c", "fsync=on", "-c", "synchronous_commit=on", "-c", "full_page_writes=on");
     private static final String SECRET = UUID.randomUUID() + "-" + UUID.randomUUID();
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
@@ -91,6 +94,7 @@ class ProductionFqcPreStockBatchEndToEndTest {
     @Autowired org.springframework.context.ApplicationContext applicationContext;
     @Autowired org.springframework.core.env.Environment environment;
     @Autowired DeadlineProbe deadlineProbe;
+    @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxScheduler outboxScheduler;
 
     @AfterEach void cleanup() {
         SecurityContextHolder.clearContext();
@@ -247,14 +251,102 @@ class ProductionFqcPreStockBatchEndToEndTest {
         assertFacts(scenario, 1);
     }
 
+    @Test void batchedReleaseCommandsRemainIndividuallyReplayableAndRejectChangedQuantity() {
+        Scenario scenario = prepare(2, "plain");
+        quality.passAll(new PassAllBatchRequest(scenario.inspections(), "fqc-release-replay-" + scenario.reportId()));
+        List<Map<String, Object>> releases = db.queryForList("""
+                SELECT command.id, command.source_report_item_id, command.stock_document_item_id,
+                       command.requested_qty, command.idempotency_key
+                FROM production_fqc_release_commands command
+                JOIN production_fqc_inspections inspection ON inspection.id=command.inspection_id
+                WHERE inspection.source_report_id=? ORDER BY command.id
+                """, scenario.reportId());
+        assertEquals(2, releases.size());
+        long allocations = db.queryForObject("SELECT count(*) FROM production_fqc_release_allocations", Long.class);
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        for (var row : releases) {
+            var replay = transaction.execute(status -> quality.allocateReleasedQuantity(
+                    (UUID) row.get("source_report_item_id"), (UUID) row.get("stock_document_item_id"),
+                    (BigDecimal) row.get("requested_qty"), (String) row.get("idempotency_key")));
+            assertNotNull(replay);
+            assertEquals(row.get("id"), replay.releaseCommandId());
+            assertThrows(com.uten.imp.common.web.ApiException.class, () -> transaction.execute(status ->
+                    quality.allocateReleasedQuantity((UUID) row.get("source_report_item_id"),
+                            (UUID) row.get("stock_document_item_id"),
+                            ((BigDecimal) row.get("requested_qty")).add(BigDecimal.ONE),
+                            (String) row.get("idempotency_key"))));
+        }
+        assertEquals(allocations, db.queryForObject("SELECT count(*) FROM production_fqc_release_allocations", Long.class));
+        assertFacts(scenario);
+    }
+
+    @Test void fourPreStockedReportsKeepPhysicalFactsAndShareFinalAnalysisRefresh() throws Exception {
+        outboxScheduler.close();
+        assertEquals(Boolean.parseBoolean(System.getProperty("uten.fqc.batch.verifyNestedFootprint", "true")),
+                environment.getProperty("uten.concurrency.verify-nested-footprint", Boolean.class, true));
+        int repetitions = Integer.getInteger("uten.fqc.handoffs.repetitions", 1);
+        assertTrue(repetitions >= 1 && repetitions <= 10);
+        for (int repetition = 0; repetition < repetitions; repetition++) {
+            List<Scenario> scenarios = prepareReports(1, "prestock", 4);
+            Scenario first = scenarios.getFirst();
+            List<UUID> inspections = scenarios.stream().flatMap(row -> row.inspections().stream()).toList();
+            assertEquals(4, scenarios.stream().map(Scenario::reportId).distinct().count());
+            assertEquals(4, inspections.size());
+            var request = new PassAllBatchRequest(inspections, "fqc-four-handoffs-" + first.reportId());
+            Measured measured = measure(scenarios, "four-handoffs-pass-" + repetition, () -> quality.passAll(request));
+            assertEquals(1, measured.sql().commits, "Four quality reports and all physical receipts remain one atomic FQC command");
+            assertEquals(4, measured.result().items().size());
+            assertEquals(1, measured.analysisRefreshes(), "The real shared observer analysis refreshes once after all four receipts");
+            assertFourHandoffFacts(scenarios);
+            Measured replay = measure(scenarios, "four-handoffs-replay-" + repetition, () -> quality.passAll(request));
+            assertTrue(replay.result().replay());
+            assertEquals(measured.result().items(), replay.result().items());
+            assertEquals(0, replay.analysisRefreshes());
+            assertFourHandoffFacts(scenarios);
+        }
+    }
+
+    private void assertFourHandoffFacts(List<Scenario> scenarios) {
+        Scenario first = scenarios.getFirst();
+        assertEquals(0, BigDecimal.valueOf(4).compareTo(balance(first)));
+        for (Scenario scenario : scenarios) {
+            assertEquals(1, sourceCount("stock_documents", "source_daily_report_id", scenario));
+            assertEquals(1, approvedDocs(scenario));
+            assertEquals(1, db.queryForObject("""
+                    SELECT count(*) FROM production_finished_in_confirmations confirmation
+                    JOIN stock_documents document ON document.id=confirmation.stock_document_id
+                    WHERE document.source_daily_report_id=? AND confirmation.origin='PRE_STOCKED_AUTO'
+                    """, Integer.class, scenario.reportId()));
+            assertEquals(0, BigDecimal.ONE.compareTo(db.queryForObject("""
+                    SELECT SUM(movement.qty) FROM stock_movements movement
+                    JOIN stock_documents document ON document.id=movement.source_doc_id
+                    WHERE movement.source_doc_type='STOCK_DOC' AND movement.direction=1
+                      AND document.source_daily_report_id=?
+                    """, BigDecimal.class, scenario.reportId())));
+            UUID inspection = scenario.inspections().getFirst();
+            assertEquals("RESOLVED", quality.detail(inspection).status());
+            assertEquals(0, BigDecimal.ONE.compareTo(db.queryForObject(
+                    "SELECT SUM(qty) FROM production_fqc_release_allocations WHERE inspection_id=?", BigDecimal.class, inspection)));
+        }
+        assertEquals(0, db.queryForObject("""
+                SELECT count(*) FROM stock_reservations WHERE owner_type='PREPLAN_ANALYSIS' AND owner_id=?
+                  AND goods_id=? AND NOT is_deleted AND status=0 AND qty>consumed_qty+released_qty
+                """, Integer.class, first.watcherAnalysis(), first.world().goodsA()),
+                "The observer must not acquire another order's private output");
+    }
+
     private Scenario prepare(int size, String mode) {
+        return prepareReports(size, mode, 1).getFirst();
+    }
+
+    private List<Scenario> prepareReports(int size, String mode, int reportCount) {
         assertTrue(Set.of("prestock", "mixed", "plain").contains(mode));
         FullChainEndToEndTest fixture = new FullChainEndToEndTest();
         beans.autowireBean(fixture);
         String tag = "fqc-batch-" + UUID.randomUUID();
         var world = fixture.seedWorld(tag);
         fixture.loginAs(world.superAdminUserId());
-        BigDecimal total = BigDecimal.valueOf(size);
+        BigDecimal total = BigDecimal.valueOf((long) size * reportCount);
         ReflectionTestUtils.invokeMethod(fixture, "receiveOpeningInputsForA", world, total.toPlainString());
         UUID order = fixture.createApprovedOrder(world, world.goodsA(), total.toPlainString(), "100");
         UUID orderItem = db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=? AND NOT is_deleted",
@@ -281,10 +373,14 @@ class ProductionFqcPreStockBatchEndToEndTest {
         UUID planItem = db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=? AND goods_id=? AND NOT is_deleted",
                 UUID.class, plan, world.goodsA());
         String[] quantities = Collections.nCopies(size, "1").toArray(String[]::new);
-        Object report = ReflectionTestUtils.invokeMethod(fixture, "approvedMultiLineReport", world,
-                plan, planItem, orderItem, (Object) quantities);
-        UUID reportId = ReflectionTestUtils.invokeMethod(report, "id");
-        assertNotNull(reportId);
+        List<UUID> reportIds = new ArrayList<>();
+        for (int index = 0; index < reportCount; index++) {
+            Object report = ReflectionTestUtils.invokeMethod(fixture, "approvedMultiLineReport", world,
+                    plan, planItem, orderItem, (Object) quantities);
+            UUID reportId = ReflectionTestUtils.invokeMethod(report, "id");
+            assertNotNull(reportId);
+            reportIds.add(reportId);
+        }
         fixture.loginAs(world.superAdminUserId());
 
         // A real active analysis in the same warehouse genuinely observes A.
@@ -298,16 +394,20 @@ class ProductionFqcPreStockBatchEndToEndTest {
         assertTrue(watcher.flatMaterials().stream().anyMatch(row -> world.goodsA().equals(row.goodsId())),
                 "性能夹具必须有真实参与本次供给维度的分析材料");
 
-        List<UUID> items = db.queryForList("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted ORDER BY line_no",
+        List<Scenario> scenarios = new ArrayList<>();
+        for (UUID reportId : reportIds) {
+            List<UUID> items = db.queryForList("SELECT id FROM production_daily_report_items WHERE report_id=? AND NOT is_deleted ORDER BY line_no",
                 UUID.class, reportId);
-        assertEquals(size, items.size());
-        int preStocked = mode.equals("prestock") ? size : mode.equals("mixed") ? (size + 1) / 2 : 0;
-        register(reportId, world.warehouseId(), items.subList(0, preStocked), true);
-        register(reportId, world.warehouseId(), items.subList(preStocked, size), false);
-        List<UUID> inspections = db.queryForList("SELECT id FROM production_fqc_inspections WHERE source_report_id=? ORDER BY id",
+            assertEquals(size, items.size());
+            int preStocked = mode.equals("prestock") ? size : mode.equals("mixed") ? (size + 1) / 2 : 0;
+            register(reportId, world.warehouseId(), items.subList(0, preStocked), true);
+            register(reportId, world.warehouseId(), items.subList(preStocked, size), false);
+            List<UUID> inspections = db.queryForList("SELECT id FROM production_fqc_inspections WHERE source_report_id=? ORDER BY id",
                 UUID.class, reportId);
-        assertEquals(size, inspections.size());
-        return new Scenario(world, source.analysisId(), watcher.analysisId(), reportId, inspections, preStocked, mode);
+            assertEquals(size, inspections.size());
+            scenarios.add(new Scenario(world, source.analysisId(), watcher.analysisId(), reportId, inspections, preStocked, mode));
+        }
+        return List.copyOf(scenarios);
     }
 
     private void register(UUID report, UUID warehouse, List<UUID> items, boolean preStocked) {
@@ -318,6 +418,11 @@ class ProductionFqcPreStockBatchEndToEndTest {
     }
 
     private Measured measure(Scenario scenario, String action, java.util.function.Supplier<PassAllBatchResult> command) throws Exception {
+        return measure(List.of(scenario), action, command);
+    }
+
+    private Measured measure(List<Scenario> scenarios, String action, java.util.function.Supplier<PassAllBatchResult> command) throws Exception {
+        Scenario scenario = scenarios.getFirst();
         Object spy = AopTestUtils.getUltimateTargetObject(analyses);
         clearInvocations(spy);
         ProductionJdbcMeasurement.Sample sql = ProductionJdbcMeasurement.begin();
@@ -330,11 +435,17 @@ class ProductionFqcPreStockBatchEndToEndTest {
                 call.getMethod().getName().equals("refreshLocked") && call.getArguments().length == 1
                         && scenario.watcherAnalysis().equals(call.getArgument(0))).count();
         var output = new LinkedHashMap<String, Object>(sql.result());
-        output.put("action", action); output.put("size", scenario.inspections().size());
+        output.put("action", action); output.put("size", scenarios.stream().mapToInt(row -> row.inspections().size()).sum());
+        output.put("reportCount", scenarios.size());
         output.put("mode", scenario.mode()); output.put("watcherRefreshes", refreshes);
         output.put("wallMillis", elapsed / 1_000_000.0);
         output.put("candidate", System.getProperty("uten.fqc.batch.run", "after"));
         output.put("verifyNestedFootprint", environment.getProperty("uten.concurrency.verify-nested-footprint", Boolean.class, true));
+        var databaseSettings = db.queryForMap("SELECT current_setting('server_version') AS version,current_setting('fsync') AS fsync,current_setting('synchronous_commit') AS synchronous_commit,current_setting('full_page_writes') AS full_page_writes");
+        for (String setting : List.of("fsync", "synchronous_commit", "full_page_writes")) assertEquals("on", databaseSettings.get(setting));
+        output.put("databaseSettings", databaseSettings);
+        output.put("sourceIdentity", System.getProperty("uten.perf.source-identity", "unspecified"));
+        output.put("backgroundWork", "four-handoff method closes outbox; audit retention, materialized-view refresh, readiness reconcile, workshop auto-close and policy intelligence disabled; value worker delayed one hour");
         output.put("stockBytecodeSha256", bytecodeHash(StockDocService.class));
         output.put("qualityBytecodeSha256", bytecodeHash(ProductionFqcInspectionService.class));
         System.out.println("FQC-BATCH-PROFILE " + json.writeValueAsString(output));
@@ -342,6 +453,12 @@ class ProductionFqcPreStockBatchEndToEndTest {
     }
 
     private void assertWorkBudget(Scenario scenario, Measured command, Measured replay) {
+        for (String label : List.of("fqc.release_inspections", "fqc.release_replay", "fqc.release_balances")) {
+            long calls = command.sql().labelsByFingerprint.entrySet().stream()
+                    .filter(entry -> label.equals(entry.getValue()))
+                    .mapToLong(entry -> command.sql().fingerprints.getOrDefault(entry.getKey(), 0L)).sum();
+            assertEquals(1, calls, "All PASS releases share one authoritative read: " + label);
+        }
         if ("before".equals(System.getProperty("uten.fqc.batch.run"))
                 || environment.getProperty("uten.concurrency.verify-nested-footprint", Boolean.class, true)) return;
         int physical = scenario.preStocked();

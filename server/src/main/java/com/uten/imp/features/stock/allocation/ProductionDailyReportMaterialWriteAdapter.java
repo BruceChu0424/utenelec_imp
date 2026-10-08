@@ -67,7 +67,7 @@ public class ProductionDailyReportMaterialWriteAdapter
             return out;
         }).toList());
 
-        settlements.post(planId, request, currentUser.requireId());
+        settlements.postForDailyReport(planId, request, currentUser.requireId());
         stampDailyReport(planId, "POST", idempotencyKey, dailyReportId);
     }
 
@@ -152,7 +152,7 @@ public class ProductionDailyReportMaterialWriteAdapter
         request.setReason(reason);
         request.setLines(lines);
         try {
-            settlements.reverse(planId, request, currentUser.requireId());
+            settlements.reverseForDailyReport(planId, request, currentUser.requireId());
         } catch (ApiException failure) {
             if (failure.getCode() == ErrorCode.FORBIDDEN) {
                 throw new ApiException(

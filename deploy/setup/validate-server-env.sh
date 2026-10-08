@@ -45,6 +45,60 @@ expect_absent() {
   [[ "$count" == 0 ]] || die "$key must not exist in the application environment"
 }
 
+validate_pgp_configuration() {
+  # Read secrets from the protected file, never argv/environment expansion or stdout.
+  if ! /usr/bin/python3 -I - "$ENV_FILE" <<'PGP'
+import pathlib
+import re
+import sys
+
+def reject(reason):
+    print("PGP_ENV_INVALID: " + reason, file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    reject("cannot read the protected configuration")
+values = {}
+for line in raw.splitlines():
+    if not line or line.startswith("#"):
+        continue
+    key, separator, value = line.partition("=")
+    if not separator or key in values:
+        reject("duplicate or malformed configuration")
+    values[key] = value
+
+version_pattern = re.compile(r"[1-9][0-9]{0,17}")
+current = values.get("UTEN_PGP_KEY_VERSION", "")
+unversioned = values.get("UTEN_PGP_UNVERSIONED_KEY_VERSION", "1")
+if not version_pattern.fullmatch(current) or not version_pattern.fullmatch(unversioned):
+    reject("PGP versions must be canonical positive integers")
+if values.get("UTEN_PGP_ROTATION_ENABLED", "false") not in ("true", "false"):
+    reject("rotation flag must be exactly true or false")
+prefix = "UTEN_CRYPTO_PGPLEGACYKEYS_"
+historical = {}
+for key, value in values.items():
+    if not key.startswith(prefix):
+        continue
+    version = key[len(prefix):]
+    if not version_pattern.fullmatch(version):
+        reject("historical key version is not a canonical positive integer")
+    if version == current:
+        reject("current and historical key versions must not overlap")
+    # Old imported data may genuinely use an older weak key. Do not force its
+    # replacement or reject reading it under the new current-key strength rule.
+    if not value or len(value) > 4096 or any(character.isspace() for character in value):
+        reject("historical key is empty or outside the supported file format")
+    historical[version] = value
+if unversioned != current and unversioned not in historical:
+    reject("the fixed unversioned-data key is missing from the historical keyring")
+PGP
+  then
+    die 'PGP version/keyring configuration is invalid; no secret values were emitted'
+  fi
+}
+
 validate_exclusive_service_account() {
   local account_name="$1" group_name="$2" passwd_record account_uid account_gid account_home account_shell
   local group_record expected_gid explicit_members primary_members uid_names gid_names
@@ -182,6 +236,7 @@ fi
 
 expect_exact UTEN_PROFILE prod
 expect_exact UTEN_DEPLOYMENT_SITE local
+expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false
 expect_exact SERVER_ADDRESS 127.0.0.1
 expect_exact SERVER_PORT 8080
 expect_exact UTEN_DB_URL jdbc:postgresql://127.0.0.1:5432/uten_imp
@@ -212,6 +267,7 @@ done <"$ENV_FILE"
 unset migrator_secret environment_line environment_value
 require_secret UTEN_JWT_SECRET
 require_secret UTEN_PGP_MASTER_KEY
+validate_pgp_configuration
 require_secret UTEN_HMAC_KEY
 # ADR-133: optional AI provider credential cipher key; when present it must be a real secret (the startup gate enforces it too).
 secret_cipher_key_count="$(awk -F= '$1 == "UTEN_SECRET_CIPHER_KEY" { n++ } END { print n + 0 }' "$ENV_FILE")"
@@ -241,31 +297,39 @@ sms_provider="$(env_value UTEN_SMS_PROVIDER)"
 [[ "$sms_provider" == disabled || "$sms_provider" == aliyun ]] \
   || die 'UTEN_SMS_PROVIDER must be disabled or aliyun in production (never log)'
 
-expect_exact UTEN_STORAGE_PROVIDER oss
-expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false
-expect_exact UTEN_ATTACHMENT_SCANNER_PROVIDER disabled
+expect_exact UTEN_STORAGE_PROVIDER internal
+expect_boolean UTEN_ATTACHMENT_UPLOADS_ENABLED
+scanner_provider="$(env_value UTEN_ATTACHMENT_SCANNER_PROVIDER)"
+case "$scanner_provider" in
+  clamav) ;;
+  disabled) expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false ;;
+  *) die 'production scanning requires clamav or explicitly disabled intake' ;;
+esac
 expect_exact UTEN_ATTACHMENT_RECONCILIATION_ENABLED false
-expect_exact UTEN_OSS_REQUIRE_VERSIONING true
-expect_exact UTEN_OSS_USE_INSTANCE_ROLE false
-endpoint="$(env_value UTEN_OSS_ENDPOINT)"
-[[ "$endpoint" == https://* ]] || die 'UTEN_OSS_ENDPOINT must start with https://'
-[[ "$endpoint" != *REPLACE* && "$endpoint" != *CHANGE_ME* ]] || die 'UTEN_OSS_ENDPOINT still contains a placeholder'
-[[ "$endpoint" != *[[:space:]@]* ]] || die 'UTEN_OSS_ENDPOINT must not contain whitespace or user information'
-authority="${endpoint#https://}"
-[[ -n "$authority" && "$authority" != */* && "$authority" != *\?* && "$authority" != *#* ]] \
-  || die 'UTEN_OSS_ENDPOINT must be exactly https://host[:port] without a path, query, or fragment'
-require_value UTEN_OSS_STAGING_BUCKET
-require_value UTEN_OSS_FINAL_BUCKET
-staging_bucket="$(env_value UTEN_OSS_STAGING_BUCKET)"
-final_bucket="$(env_value UTEN_OSS_FINAL_BUCKET)"
-[[ "$staging_bucket" != "$final_bucket" ]] \
-  || die 'UTEN_OSS_STAGING_BUCKET and UTEN_OSS_FINAL_BUCKET must be different'
-require_value UTEN_OSS_REGION
-require_value UTEN_OSS_ACCESS_KEY_ID
-require_credential UTEN_OSS_ACCESS_KEY_SECRET 16
-expect_exact UTEN_OSS_KEY_PREFIX attachments/
-
+expect_boolean UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED
+expect_boolean UTEN_STORAGE_LEGACY_OSS_READ_ENABLED
+internal_root="$(env_value UTEN_INTERNAL_STORAGE_ROOT)"
+[[ "$internal_root" == /* && "$internal_root" != / && "$internal_root" != *'/../'* && "$internal_root" != */.. ]] \
+  || die 'UTEN_INTERNAL_STORAGE_ROOT must be an explicit absolute private directory'
+if [[ "$scanner_provider" == clamav ]]; then
+  scanner_socket="$(env_value UTEN_CLAMAV_UNIX_SOCKET)"
+  [[ "$scanner_socket" == /* && "$scanner_socket" != *'/../'* && "$scanner_socket" != */.. ]] \
+    || die 'UTEN_CLAMAV_UNIX_SOCKET must be an explicit absolute Unix socket'
+fi
+if [[ "$(env_value UTEN_STORAGE_LEGACY_LOCAL_READ_ENABLED)" == true ]]; then
+  legacy_root="$(env_value UTEN_STORAGE_LOCAL_DIR)"
+  [[ "$legacy_root" == /* && "$legacy_root" != / && "$legacy_root" != "$internal_root" && "$legacy_root" != *'/../'* && "$legacy_root" != */.. ]] \
+    || die 'retained local originals require a separate explicit absolute directory'
+fi
+if [[ "$(env_value UTEN_STORAGE_LEGACY_OSS_READ_ENABLED)" == true ]]; then
+  expect_exact UTEN_OSS_REQUIRE_VERSIONING true
+  endpoint="$(env_value UTEN_OSS_ENDPOINT)"
+  [[ "$endpoint" == https://* && "$endpoint" != *[[:space:]@]* ]] \
+    || die 'historical OSS requires an HTTPS endpoint without user information'
+  require_value UTEN_OSS_FINAL_BUCKET
+  require_value UTEN_OSS_REGION
+fi
 printf '%s\n' \
   'SERVER_ENV_CONFIGURATION_OK' \
   'BOOTSTRAP_ADMIN_CONTROL: if the one-time credential is active, complete the HTTPS first-login password change; verify the old credential is rejected and users.must_change_password=false with last_password_changed_at set; then, in an approved maintenance window, empty BOOTSTRAP_ADMIN_PASSWORD, set UTEN_BOOTSTRAP_ADMIN_RETIRED=true, revalidate, and restart through the controlled activation path.' \
-  'NOTE: attachment intake remains disabled; this validates local configuration only. OSS connectivity, least-privilege RAM policy, HTTPS certificate, staging=Off/final=Enabled versioning and all attachment acceptance drills still require live evidence.'
+  'NOTE: static configuration only. Verify the private media mount, Unix socket permissions, clean/EICAR scan, exact originals and paired restore before enabling intake. Retiring legacy readers/directories requires a zero-reference report, pending object-job reconciliation and expired backup retention; this validator never deletes data.'

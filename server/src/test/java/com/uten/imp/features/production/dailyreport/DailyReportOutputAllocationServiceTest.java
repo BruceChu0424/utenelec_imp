@@ -25,6 +25,51 @@ class DailyReportOutputAllocationServiceTest {
     private static final UUID B = UUID.fromString("00000000-0000-0000-0000-00000000000b");
     private static final UUID C = UUID.fromString("00000000-0000-0000-0000-00000000000c");
 
+    @Test void tenDifferentWorkOrdersShareOneSourceAndCapacityRead() {
+        var em = database(List.of(),"10","10");
+        var inputs = IntStream.range(0,10).mapToObj(index -> {
+            var input = line("10"); input.setExecutionSegmentId(UUID.randomUUID()); input.setPlanItemId(UUID.randomUUID());
+            return input;
+        }).toList();
+        var result = new DailyReportOutputAllocationService(em).split(UUID.randomUUID(), inputs);
+        assertEquals(10, result.size());
+        assertEquals(new BigDecimal("100"), result.stream().map(DailyReportItemLine::getQty).reduce(BigDecimal.ZERO,BigDecimal::add));
+        assertEquals(10, result.stream().map(DailyReportItemLine::getOutputBatchId).distinct().count());
+        Mockito.verify(em, Mockito.times(1)).createNativeQuery(ArgumentMatchers.contains("SELECT segment.id, segment.planned_qty"));
+        Mockito.verify(em, Mockito.times(1)).createNativeQuery(ArgumentMatchers.contains("fn_actual_supplement_reserved_original_qty"));
+        Mockito.verify(em, Mockito.times(1)).createNativeQuery(ArgumentMatchers.contains("GROUP BY item.plan_item_id"));
+    }
+
+    @Test void batchedCapacityKeepsDraftAndSupplementReservationsAcrossDuplicateInputs() {
+        var em = database(List.of(),"10","10");
+        var input = line("2");
+        var used = rowsQuery(Collections.singletonList(new Object[] {
+                input.getExecutionSegmentId(), null, BigDecimal.ZERO, new BigDecimal("6"), BigDecimal.ONE}));
+        Mockito.when(em.createNativeQuery(ArgumentMatchers.contains("fn_actual_supplement_reserved_original_qty"))).thenReturn(used);
+        assertThrows(ApiException.class, () -> new DailyReportOutputAllocationService(em).split(UUID.randomUUID(),
+                List.of(input,line("2"))));
+    }
+
+    @Test void batchRoutingCannotUseAnAllocationFromAnotherWorkOrder() {
+        var em = database(List.of(),"10","10");
+        var input = line("2");
+        UUID allocation = UUID.randomUUID(); UUID order = UUID.randomUUID();
+        input.setExecutionSegmentSalesAllocationId(allocation); input.setSalesOrderItemId(order);
+        var foreignAllocation = rowsQuery(Collections.singletonList(new Object[]{allocation,UUID.randomUUID(),order,BigDecimal.TEN}));
+        Mockito.when(em.createNativeQuery(ArgumentMatchers.contains("SELECT id, execution_segment_id, sales_order_item_id")))
+                .thenReturn(foreignAllocation);
+        var failure = assertThrows(ApiException.class, () -> new DailyReportOutputAllocationService(em)
+                .split(UUID.randomUUID(),List.of(input)));
+        assertTrue(failure.getMessage().contains("所选销售分摊与原执行工单不一致"));
+    }
+
+    private static Query rowsQuery(List<Object[]> rows) {
+        var query = Mockito.mock(Query.class);
+        Mockito.when(query.setParameter(ArgumentMatchers.anyString(),ArgumentMatchers.any())).thenReturn(query);
+        Mockito.when(query.getResultList()).thenReturn(rows);
+        return query;
+    }
+
     @Test void nullAndInvalidQuantityFailBeforeAnyDatabaseAccess() {
         var em=Mockito.mock(EntityManager.class);
         var service=new DailyReportOutputAllocationService(em);
@@ -315,10 +360,17 @@ class DailyReportOutputAllocationServiceTest {
             Mockito.when(query.getResultList()).thenAnswer(ignored->{
                 if(sql.contains("fn_workshop_direct_targets(:source) target"))return new ArrayList<>(targets);
                 if(sql.contains("fn_workshop_direct_targets(:source,:target)"))return List.of();
-                if(sql.contains("SELECT segment.planned_qty"))return Collections.singletonList(
-                        new Object[]{new BigDecimal(planned),BigDecimal.ZERO,new BigDecimal(needShare),false});
-                if(sql.contains("fn_actual_supplement_reserved_original_qty"))return Collections.singletonList(
-                        new Object[]{BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO});
+                if(sql.contains("SELECT segment.id, segment.planned_qty")) {
+                    @SuppressWarnings("unchecked") var ids = (List<UUID>) value(bound,"ids");
+                    return ids.stream().map(id -> new Object[]{id,new BigDecimal(planned),BigDecimal.ZERO,new BigDecimal(needShare),false}).toList();
+                }
+                if(sql.contains("fn_actual_supplement_reserved_original_qty")) {
+                    String[] segments = ((String) value(bound,"segmentKeys")).split(",");
+                    String[] allocations = ((String) value(bound,"allocationKeys")).split(",");
+                    return IntStream.range(0,segments.length).mapToObj(index -> new Object[] {
+                            UUID.fromString(segments[index]), "-".equals(allocations[index]) ? null : UUID.fromString(allocations[index]),
+                            BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO}).toList();
+                }
                 return List.of();
             });
             return query;

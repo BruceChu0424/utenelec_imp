@@ -115,6 +115,8 @@ class DailyReportApprovalV2PostgresTest {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired ProductionDailyReportService reports;
     @Autowired DocNumberService numbers;
+    @Autowired com.uten.imp.features.production.dailyreport.DailyReportExecutionSegmentGuard segmentGuard;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
 
@@ -158,6 +160,39 @@ class DailyReportApprovalV2PostgresTest {
         }
         assertEquals(1L,db.queryForObject("SELECT row_version FROM production_daily_reports WHERE id=?",Long.class,id));
         assertNoApproval(id);
+    }
+
+    @Test void segmentLockWaitRechecksThePlanFromANewStatementSnapshot() throws Exception {
+        var workshop=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(workshop);workshop.prepare();
+        Object task=ReflectionTestUtils.invokeMethod(workshop,"createStartedTask","guard-wait-"+UUID.randomUUID().toString().substring(0,8),false,"10");
+        var taskWorld=(FullChainEndToEndTest.World)ReflectionTestUtils.invokeMethod(task,"world");
+        @SuppressWarnings("unchecked") var sources=(List<ReportablePlanLine>)ReflectionTestUtils.invokeMethod(workshop,"sources",task);
+        DailyReportSaveRequest input=ReflectionTestUtils.invokeMethod(workshop,"reportRequest",task,sources.getFirst(),"4","4");
+        UUID segment=input.getItems().getFirst().getExecutionSegmentId();
+        UUID plan=db.queryForObject("SELECT plan_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
+        Authentication actor=auth(taskWorld.superAdminUserId());
+        try(var executor=Executors.newSingleThreadExecutor();Connection writer=db.getDataSource().getConnection()) {
+            writer.setAutoCommit(false);int writerPid;
+            try(var q=writer.prepareStatement("SELECT pg_backend_pid()");var row=q.executeQuery()){assertTrue(row.next());writerPid=row.getInt(1);}
+            try(var q=writer.prepareStatement("SELECT id FROM production_execution_segments WHERE id=? FOR UPDATE")){q.setObject(1,segment);q.executeQuery().close();}
+            var waiting=executor.submit(()->{
+                SecurityContextHolder.getContext().setAuthentication(actor);
+                try {
+                    return assertThrows(com.uten.imp.common.web.ApiException.class,()->
+                            new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(status->
+                                    segmentGuard.validateDraft(UUID.randomUUID(),input.getDepartmentId(),input.getItems())));
+                } finally {SecurityContextHolder.clearContext();}
+            });
+            boolean blocked=false;
+            for(int attempt=0;attempt<100&&!blocked;attempt++) {
+                blocked=Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE ? = ANY(pg_blocking_pids(pid)))",Boolean.class,writerPid));
+                if(!blocked)Thread.sleep(25);
+            }
+            assertTrue(blocked,"the guard must wait inside PostgreSQL before the associated plan changes");
+            update(writer,"UPDATE production_plans SET is_stopped=TRUE WHERE id=?",plan);writer.commit();
+            assertTrue(waiting.get(15,TimeUnit.SECONDS).getMessage().contains("生产计划当前未生效"));
+        }
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_items WHERE execution_segment_id=?",Integer.class,segment));
     }
 
     @Test void normalQuantityMaterialAndParticipantEditsAdvanceVersionAndRejectTheOldReview() throws Exception {

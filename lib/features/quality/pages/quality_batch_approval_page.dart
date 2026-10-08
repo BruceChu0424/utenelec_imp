@@ -688,9 +688,6 @@ class _QualityBatchApprovalPageState
     void invalidateCounts() {
       if (!mounted || countsInvalidated) return;
       refreshBadges(ref);
-      // 仓库侧品质结果的红黄两个数字都从 type-counts 这一支派生, 失效只能打在
-      // 源头上: 对派生 provider 调 invalidate 不会重新发请求, 徽章要等 60s 才动。
-      refreshBadges(ref);
       countsInvalidated = true;
     }
 

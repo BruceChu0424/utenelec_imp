@@ -30,6 +30,48 @@ import static org.mockito.Mockito.when;
 class ProductionFqcPassAllServiceBehaviorTest {
 
     @Test
+    void releaseUsesTheActiveInspectionAndConsumesPassEvidenceInFifoOrder() {
+        UUID actor = UUID.randomUUID(), reportItem = UUID.randomUUID(), stockItem = UUID.randomUUID();
+        UUID inspection = UUID.randomUUID(), earlier = UUID.randomUUID(), later = UUID.randomUUID();
+        Query commands = query(List.of());
+        Query firstAllocation = query(List.of());
+        Query secondAllocation = query(List.of());
+        Fixture fixture = fixture(actor,
+                query(List.of(new Object[]{UUID.randomUUID(), "CANCELLED", reportItem},
+                        new Object[]{inspection, "RESOLVED", reportItem})),
+                query(List.of()),
+                query(List.of(new Object[]{earlier, new BigDecimal("0.4"), inspection},
+                        new Object[]{later, new BigDecimal("0.6"), inspection})),
+                commands, firstAllocation, secondAllocation);
+
+        var result = fixture.service().allocateReleasedQuantity(reportItem, stockItem,
+                new BigDecimal("0.75"), "fqc-fifo-release");
+
+        assertThat(result.inspectionId()).isEqualTo(inspection);
+        assertThat(result.quantity()).isEqualByComparingTo("0.75");
+        org.mockito.Mockito.verify(firstAllocation).setParameter("decisionId", earlier);
+        org.mockito.Mockito.verify(firstAllocation).setParameter("qty", new BigDecimal("0.4"));
+        org.mockito.Mockito.verify(secondAllocation).setParameter("decisionId", later);
+        org.mockito.Mockito.verify(secondAllocation).setParameter("qty", new BigDecimal("0.3500"));
+    }
+
+    @Test
+    void anUncoveredReleaseCannotCreateACommandOrAllocation() {
+        UUID actor = UUID.randomUUID(), reportItem = UUID.randomUUID(), inspection = UUID.randomUUID();
+        Fixture fixture = fixture(actor,
+                query(Collections.singletonList(new Object[]{inspection, "PARTIAL", reportItem})),
+                query(List.of()),
+                query(Collections.singletonList(new Object[]{UUID.randomUUID(), new BigDecimal("0.4"), inspection})));
+
+        assertThatThrownBy(() -> fixture.service().allocateReleasedQuantity(reportItem, UUID.randomUUID(),
+                BigDecimal.ONE, "fqc-insufficient-release")).isInstanceOf(ApiException.class)
+                .hasMessageContaining("合格未分配量不足");
+
+        org.mockito.Mockito.verify(fixture.em(), org.mockito.Mockito.never()).createNativeQuery(
+                org.mockito.ArgumentMatchers.argThat((String sql) -> sql.contains("INSERT INTO")));
+    }
+
+    @Test
     void committedBatchReplaysItsImmutableDecisionLinksWithoutSideEffects() {
         UUID actorId = UUID.randomUUID();
         UUID batchId = UUID.randomUUID();

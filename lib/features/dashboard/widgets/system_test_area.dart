@@ -26,6 +26,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -659,7 +660,7 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
               const SizedBox(height: UtenSpacing.s12),
               ...[
                 '保留：基础资料（货品/客户/供应商/账户/仓库…）、人事、账号权限与配置',
-                '清空：销售/采购/委外/生产/仓库/财务全部测试业务数据、删除历史、字段版本和历史审计记录（含登录及主档操作）；清空操作的核对凭据保留',
+                AppLocalizations.of(context).businessResetAuditScope,
                 '删除：测试业务文件(业务附件、上传中的文件、AI识别原件、报价模板候选)随清空物理删除；人事档案/合同、货品图片/图纸、成本导入原件和已采用的报价模板不删除',
                 '归零：库存、账户期初/累计收款/累计付款/累计调整/当前余额、各类期初往来',
                 '重排：业务表自增 ID 与编号序列从 1 重新开始',

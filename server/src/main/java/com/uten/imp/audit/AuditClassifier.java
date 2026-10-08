@@ -69,7 +69,7 @@ public final class AuditClassifier {
             "page_permission_workspace", "impersonation", "client_access");
     /** 系统级资源: 成功的写入一律记高风险(AI 服务配置与系统设置同级, ADR-133)。 */
     private static final Set<String> SYSTEM_RESOURCES = Set.of(
-            "system_setting", "system_test", "legacy_migration", "ai_provider");
+            "system_setting", "system_test", "legacy_migration", "ai_provider", "pii_key_rotation");
     private static final Set<String> AUTHENTICATION_RESOURCES = Set.of("auth", "visitor_auth");
     /** 语义写事件里的高风险方法(按「资源.方法」的方法部分判断, 前缀匹配)。 */
     private static final List<String> HIGH_RISK_VERB_PREFIXES = List.of(

@@ -60,7 +60,7 @@ class SalesQuoteTemplateStorePostgresTest {
         lookup = mock(MasterIntakeLookupPort.class); when(lookup.canLearnClientDocument(any())).thenReturn(true);
         var properties = new StorageProperties(); properties.setLocalDir(files.toString());
         var local = new LocalDiskStorageService(properties); ReflectionTestUtils.invokeMethod(local, "init");
-        var storage = new SalesQuoteTemplateStorage(local, new StorageProviderRegistry(local, properties));
+        var storage = new SalesQuoteTemplateStorage(new com.uten.imp.common.storage.ImmutableDocumentStore(local, new StorageProviderRegistry(local, properties), com.uten.imp.common.files.malware.DocumentSafetyTestSupport.scanning()));
         store = new SalesQuoteTemplateStore(new NamedParameterJdbcTemplate(source), new ObjectMapper(), lookup, current,
                 mock(AuditService.class), storage);
     }

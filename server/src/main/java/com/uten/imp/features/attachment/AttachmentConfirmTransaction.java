@@ -1,10 +1,12 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.common.files.malware.MalwareScanner;
+
 import com.uten.imp.application.port.AttachmentOwnerAccessPolicy;
 import com.uten.imp.common.storage.StorageService.StoredObject;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.attachment.AttachmentMalwareScanner.ScanResult;
+import com.uten.imp.common.files.malware.MalwareScanner.ScanResult;
 import com.uten.imp.features.attachment.AttachmentUploadGrantService.Grant;
 import com.uten.imp.security.AuthUser;
 import lombok.RequiredArgsConstructor;

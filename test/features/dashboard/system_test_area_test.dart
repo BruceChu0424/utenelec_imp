@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/dashboard/repositories/system_test_repository.dart';
@@ -168,7 +169,12 @@ Future<void> _pump(
         systemTestRepositoryProvider.overrideWithValue(repository),
         sessionProvider.overrideWith(() => notifier),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     ),
   );
   await tester.pumpAndSettle();

@@ -74,6 +74,31 @@ import static org.junit.jupiter.api.Assertions.*;
 @org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 class WorkshopDirectTransferBatchEndToEndTest {
 
+    @Test
+    void failureOnSecondTransferRollsBackTheAlreadyPostedFirstPieceAndCanRetry() {
+        var prepared=ControlledDailyReportInputs.prepare(beans,db,3,"direct-rollback-"+UUID.randomUUID());
+        UUID secondItem=db.queryForObject("SELECT id FROM production_daily_report_items WHERE report_id=? ORDER BY line_no,id OFFSET 1 LIMIT 1",UUID.class,prepared.reportId());
+        String probe="test_direct_failure_"+UUID.randomUUID().toString().replace("-","");
+        db.execute("CREATE FUNCTION "+probe+"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.source_report_item_id='"
+                +secondItem+"'::uuid THEN RAISE EXCEPTION 'synthetic second transfer failure' USING ERRCODE='23514'; END IF; RETURN NEW; END $$");
+        try {
+            db.execute("CREATE TRIGGER "+probe+" BEFORE INSERT ON production_workshop_direct_transfer_items FOR EACH ROW EXECUTE FUNCTION "+probe+"()");
+            assertThrows(RuntimeException.class,prepared.command()::get);
+            assertEquals(0,db.queryForObject("SELECT status FROM production_daily_reports WHERE id=?",Integer.class,prepared.reportId()));
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM production_daily_report_commands WHERE report_id=? AND command_kind='APPROVE'",Integer.class,prepared.reportId()));
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_settlement_events WHERE daily_report_id=?",Integer.class,prepared.reportId()));
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_documents WHERE source_daily_report_id=?",Integer.class,prepared.reportId()));
+            assertEquals(0,db.queryForObject("""
+                    SELECT count(*) FROM production_workshop_direct_transfer_items transfer
+                    JOIN production_daily_report_items item ON item.id=transfer.source_report_item_id WHERE item.report_id=?
+                    """,Integer.class,prepared.reportId()));
+        } finally {
+            db.execute("DROP TRIGGER IF EXISTS "+probe+" ON production_workshop_direct_transfer_items");
+            db.execute("DROP FUNCTION "+probe+"()");
+        }
+        prepared.command().get();prepared.verify().run();
+    }
+
     /**
      * 一行车间直送审核的语句预算。V710 后当前自制叶件不能沿用零原料夹具；
      * 此夹具现在先真实登记原料、标准 DRAW 实发，再在报工中计入真实耗料/成本及 BOM 学习。

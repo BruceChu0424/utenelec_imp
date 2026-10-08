@@ -162,7 +162,7 @@ ERP、Nginx 和两个 watchdog timer 才作为正常开机链自动恢复；migr
    不使用级联撤权猜测其他角色的用途。V624 首导来源证据表对应用仅保留查询，签发函数不给应用执行权；
    V625 的私有维护校验函数也不授予应用直接执行权，应用通过七个固定维护入口调用。
    通用业务授权不得覆盖这些明确边界。加固完成及中断重放都会重新验证权限，不能仅凭成功标记恢复登录。
-6. 使用 `sudoedit` 合并 `server.env.oss-migration.example`。不得覆盖现有 JWT、PGP、HMAC、数据库或引导账号秘密。
+6. 使用 `sudoedit` 合并 `server.env.internal-storage.example`。不得覆盖现有 JWT、PGP、HMAC、数据库或引导账号秘密。
 7. `phase3-runtime.sh` 只安装运行时和 systemd 模板；它不会启动应用。
 8. 准备并验证内网域名、TLS 证书/私钥、批准 CIDR、发布公钥和只读 OSS 拉取身份；不要提前手改 live Nginx。运行 `phase4-updater-nginx.sh --help` 后，由 Phase 4 受控渲染、备份、执行 `nginx -t` 并替换旧入口。它会逐字节复核第 4 步的稳定 guard 和同一公钥，再为非特权 updater 安装独立只读副本；当前版本只安装，始终拒绝启用 staging timer。
 9. 完成权威库迁移、对账、隔离恢复和 UAT 后，再按第 6 节激活首版。

@@ -10,13 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * security-06: 测试期决定保留开关 (prod 默认开、只加启动告警与再认证), 但对公网开放的云端站点
- * 不论开关一律关闭 (UTEN_PROFILE=cloud,prod 会继承 prod 的默认 true)。
+ * Production defaults closed. Explicit local testing retains all authorization gates;
+ * cloud cannot enable this operation even with an explicit true flag.
  */
 class BusinessDataResetFeatureGateTest {
 
     @Test
-    void prodProfileKeepsTheTestPhaseDecision() {
+    void prodCanExplicitlyEnableTheControlledLocalTestOperation() {
         MockEnvironment prod = new MockEnvironment();
         prod.setActiveProfiles("prod");
 
@@ -27,7 +27,18 @@ class BusinessDataResetFeatureGateTest {
     }
 
     @Test
-    void cloudSiteIsAlwaysClosedEvenWhenTheFlagInheritsTrue() {
+    void productionYamlDefaultsClosedAndOnlyAnExplicitOverrideCanEnableIt() throws java.io.IOException {
+        var environment = new MockEnvironment();
+        var source = new org.springframework.boot.env.YamlPropertySourceLoader().load("prod",
+                new org.springframework.core.io.FileSystemResource("src/main/resources/application-prod.yml")).getFirst();
+        environment.getPropertySources().addLast(source);
+        assertFalse(Boolean.TRUE.equals(environment.getProperty(BusinessDataResetFeatureGate.PROPERTY, Boolean.class)));
+        environment.setProperty("UTEN_BUSINESS_DATA_RESET_ENABLED", "true");
+        assertTrue(Boolean.TRUE.equals(environment.getProperty(BusinessDataResetFeatureGate.PROPERTY, Boolean.class)));
+    }
+
+    @Test
+    void cloudSiteIsAlwaysClosedEvenWhenTheFlagIsExplicitlyTrue() {
         MockEnvironment cloud = new MockEnvironment();
         cloud.setActiveProfiles("cloud", "prod");
 

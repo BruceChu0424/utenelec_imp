@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import errno
 import gzip
 import hashlib
 import json
@@ -350,13 +351,98 @@ def check_object(path: Path, row: dict, max_original: int = 1024**3) -> dict:
             "stored_size_bytes": count, "storage_encoding": "IDENTITY", "storage_version": None}
 
 
-def copy_object(source_root: Path, target_root: Path, row: dict, budget: Budget) -> dict:
+@dataclasses.dataclass(frozen=True)
+class ReusableObject:
+    path: Path
+    metadata: dict
+    owner: int
+
+
+def object_identity(row: dict) -> tuple:
+    return tuple(row.get(key) for key in IDENTITY_FIELDS)
+
+
+def reusable_objects(root: Path, budget: Budget) -> dict[tuple, ReusableObject]:
+    """Only a published, manifest-verified backup may supply hard links."""
+    try:
+        with open_original(root, Path("latest-success.json")) as source:
+            pointer_bytes = source.read(8193)
+        if len(pointer_bytes) > 8192:
+            return {}
+        pointer = json.loads(pointer_bytes)
+        name = pointer.get("set_id") if isinstance(pointer, dict) else None
+        owner = root.stat().st_uid
+        if not isinstance(name, str) or complete_set_time(root, name, owner) is None:
+            return {}
+        directory = root / name
+        with open_original(directory, Path("manifest.json")) as source:
+            manifest_bytes = source.read(65537)
+        if (len(manifest_bytes) > 65536
+                or hashlib.sha256(manifest_bytes).hexdigest() != pointer.get("manifest_sha256")):
+            return {}
+        summary = json.loads(manifest_bytes)
+        if (summary.get("format") != "uten-paired-internal-v2"
+                or digest_file(directory / "objects.jsonl") != summary.get("objects_manifest_sha256")):
+            return {}
+        records = read_records(directory / "objects.jsonl")
+        if len(unique_references(records)) != len(records):
+            return {}
+        result = {}
+        for record in records:
+            budget.check()
+            row = normalize_reference(record)
+            relative = relative_key(row["storage_key"])
+            if row.get("relative_path") != relative.as_posix():
+                return {}
+            result[object_identity(row)] = ReusableObject(
+                media_final(directory / "media", row["storage_provider"]) / relative, row, owner)
+        return result
+    except (OSError, ValueError, TypeError, KeyError):
+        # Reuse is optional. A missing/damaged prior index never prevents a new full copy.
+        return {}
+
+
+def link_verified_object(previous: ReusableObject, live: Path, target: Path, row: dict, budget: Budget) -> bool:
+    """Validate bytes and ownership before linking; never share an inode with live media."""
+    try:
+        real_directory(previous.path.parent)
+        with open_original(previous.path.parent, Path(previous.path.name)) as source:
+            before = os.fstat(source.fileno())
+            if (before.st_uid != previous.owner
+                    or (os.name == "posix" and before.st_mode & 0o022)
+                    or os.path.samestat(before, live.stat())):
+                return False
+            verified = check_object(previous.path, row, budget.config.max_object_bytes)
+            if (verified["storage_sha256"] != previous.metadata.get("storage_sha256")
+                    or verified["storage_sha256"] != row["storage_sha256"]
+                    or not os.path.samestat(before, previous.path.lstat())):
+                return False
+            budget.check()
+            try:
+                os.link(previous.path, target, follow_symlinks=False)
+            except OSError as failure:
+                if failure.errno in (errno.EXDEV, errno.EPERM, errno.EACCES, errno.ENOTSUP, errno.EOPNOTSUPP):
+                    return False
+                raise
+            if not os.path.samestat(before, target.lstat()):
+                target.unlink()
+                raise ValueError("Backup object changed during hard-link creation")
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def copy_object(source_root: Path, target_root: Path, row: dict, budget: Budget,
+                previous: ReusableObject | None = None) -> dict:
     relative = relative_key(row["storage_key"])
     real_directory((source_root / relative).parent)
     confirmed = check_object(source_root / relative, row, budget.config.max_object_bytes)
     row = {**row, **confirmed}
     target = target_root / relative
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if previous is not None and link_verified_object(previous, source_root / relative, target, row, budget):
+        return {**row, "relative_path": relative.as_posix(), "backup_copy_mode": "HARDLINK",
+                **check_object(target, row, budget.config.max_object_bytes)}
     budget.check(row["stored_size_bytes"])
     copied = 0
     with open_original(source_root, relative) as source, target.open("xb") as destination:
@@ -370,7 +456,7 @@ def copy_object(source_root: Path, target_root: Path, row: dict, budget: Budget)
         os.fsync(destination.fileno())
     if copied != row["stored_size_bytes"]:
         raise ValueError("Stored object is incomplete")
-    return {**row, "relative_path": relative.as_posix(),
+    return {**row, "relative_path": relative.as_posix(), "backup_copy_mode": "COPY",
             **check_object(target, row, budget.config.max_object_bytes)}
 
 
@@ -431,7 +517,7 @@ def dump_snapshot(config: Config, snapshot: str, target: Path, budget: Budget):
 
 def digest_file(path: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with open_original(path.parent, Path(path.name)) as stream:
         while chunk := stream.read(CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
@@ -478,13 +564,14 @@ def _backup_locked(config: Config) -> Path:
     root = Path(config.backup_root)
     budget = Budget(config, root)
     budget.check()
+    reusable = reusable_objects(root, budget)
     set_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ-") + uuid.uuid4().hex[:12]
     work = root / (".incomplete-" + set_id)
     work.mkdir(mode=0o700)
     media = work / "media" / "final"
     media.mkdir(parents=True, mode=0o700)
     connection = connect_peer(config)
-    stored_bytes = original_bytes = 0
+    stored_bytes = original_bytes = reused_objects = reused_bytes = 0
     started_at = now()
     try:
         connection.set_session(isolation_level="REPEATABLE READ", readonly=False)
@@ -497,7 +584,9 @@ def _backup_locked(config: Config) -> Path:
             assert_reference_consistency(cursor, references)
             objects = unique_references(references)
             cursor.execute("SELECT pg_database_size(current_database())")
-            budget.check(int(cursor.fetchone()[0]) + sum(row.get("stored_size_bytes") or row["size_bytes"] + 57 for row in objects))
+            budget.check(int(cursor.fetchone()[0]) + sum(
+                row.get("stored_size_bytes") or row["size_bytes"] + 57
+                for row in objects if object_identity(row) not in reusable))
         with (work / "references.jsonl").open("x", encoding="utf-8") as manifest:
             for row in references:
                 manifest.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -511,10 +600,13 @@ def _backup_locked(config: Config) -> Path:
                     raise ValueError("Referenced local files require an explicit local_media_root")
                 target = media_final(work / "media", provider)
                 target.mkdir(parents=True, mode=0o700, exist_ok=True)
-                record = copy_object(Path(source) / "final", target, row, budget)
+                record = copy_object(Path(source) / "final", target, row, budget, reusable.get(object_identity(row)))
                 manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
                 stored_bytes += record["stored_size_bytes"]
                 original_bytes += record["size_bytes"]
+                if record["backup_copy_mode"] == "HARDLINK":
+                    reused_objects += 1
+                    reused_bytes += record["stored_size_bytes"]
             manifest.flush()
             os.fsync(manifest.fileno())
         with connection.cursor() as cursor:
@@ -539,6 +631,8 @@ def _backup_locked(config: Config) -> Path:
                "clean_objects": sum(row["source_table"] == "attachments" for row in references),
                "private_document_references": sum(row["source_table"] != "attachments" for row in references),
                "media_objects": len(objects), "original_bytes": original_bytes, "stored_bytes": stored_bytes,
+               "reused_media_objects": reused_objects, "reused_media_bytes": reused_bytes,
+               "copied_media_objects": len(objects) - reused_objects,
                "database_dump_bytes": dump_size, "data_bytes": dump_size + stored_bytes,
                "database_dump_sha256": digest_file(work / "database.dump"),
                "objects_manifest_sha256": digest_file(work / "objects.jsonl"),
@@ -661,9 +755,9 @@ def success_pointer_set(root: Path) -> str | None:
     return set_id if isinstance(set_id, str) and SET_NAME.fullmatch(set_id) else None
 
 
-def tree_bytes(path: Path) -> int:
+def tree_bytes(path: Path, reclaimable: bool = False) -> int:
     """Apparent size of regular files, never descending through links or junctions."""
-    total, pending = 0, [path]
+    total, pending, inodes = 0, [path], {}
     while pending:
         with os.scandir(pending.pop()) as entries:
             for entry in entries:
@@ -674,7 +768,14 @@ def tree_bytes(path: Path) -> int:
                     pending.append(Path(entry.path))
                 elif stat.S_ISREG(info.st_mode):
                     total += info.st_size
-    return total
+                    # Windows DirEntry.stat() does not populate inode/link counts.
+                    # A full no-follow stat also observes the current count after prior-set pruning.
+                    if reclaimable:
+                        info = os.stat(entry.path, follow_symlinks=False)
+                    identity = (info.st_dev, info.st_ino)
+                    size, links, seen = inodes.get(identity, (info.st_size, info.st_nlink, 0))
+                    inodes[identity] = (size, links, seen + 1)
+    return sum(size for size, links, seen in inodes.values() if links <= seen) if reclaimable else total
 
 
 def remove_owned_directory(root: Path, name: str, owner: int) -> int:
@@ -689,7 +790,7 @@ def remove_owned_directory(root: Path, name: str, owner: int) -> int:
         raise ValueError("Refusing to delete outside the backup root or through a link")
     if os.name == "posix" and not shutil.rmtree.avoids_symlink_attacks:
         raise OSError("This platform cannot delete a tree without following links")
-    size = tree_bytes(target)
+    size = tree_bytes(target, reclaimable=True)
     # Leave the published namespace atomically first: an interrupted delete can never look
     # like a valid set, and the next successful run finishes the leftover .expired-* tree.
     doomed = root / (".expired-" + (name if set_match else other[2]))

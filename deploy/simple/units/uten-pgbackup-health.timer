@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Uten IMP local backup evidence every five minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=uten-pgbackup-health.service
+
+[Install]
+WantedBy=timers.target

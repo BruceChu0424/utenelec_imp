@@ -22,9 +22,9 @@ public interface ProductionInspectionStockInPort {
     void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches);
 
     /**
-     * Same follow-up; {@code refreshAnalyses=false} only advances supply state and arrival notices.
-     * A caller may pass false only when this very transaction still refreshes every affected analysis
-     * afterwards (the whole receipt resolves in the same quality command), never to skip a refresh outright.
+     * Completes a newly resolved receipt after its optional automatic stock-in.
+     * Advances each physical source once and refreshes the whole receipt's affected analyses,
+     * including unstocked FAIL/fallback lines. New batches keep their original allocation identity.
      */
-    void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches, boolean refreshAnalyses);
+    void afterQualityReceiptResolved(String receiptType, UUID receiptId, List<ReceiptStockIn> batches);
 }

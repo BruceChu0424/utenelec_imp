@@ -4,8 +4,8 @@
 // - 按账号/模拟身份持久化 (publishedAt,id) 游标；首次由服务端补显未读且未确认到达的通知；
 // - 前台每 20s 按游标增量拉取(页面隐藏暂停; 徽章汇总提示有新通知时立即拉)；游标后方的
 //   遗漏由未读索引摘要驱动补拉，不再每 2s 轮询、每分钟从纪元全量对账(ADR-108)；
-// - 所有优先级均进入非阻塞顶部叠放层；重要度只改变视觉与停留时长；
-//   interactive 待办（含 urgent，ADR-166）另进中央审核弹窗（主交互）；
+// - 普通通知进入顶部叠放层; interactive 待办进入中央审核卡;
+//   服务器重要/紧急告警通过独立串行中央确认队列送达 (ADR-157)。
 // - 同一批通知逐条跟踪真实关闭回调，点击才标注已读并跳 actionRoute。
 
 import 'dart:async';
@@ -19,6 +19,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../components/feedback/uten_center_alert.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/app_visibility_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
@@ -31,6 +34,29 @@ import '../widgets/review_pending_dialog.dart';
 
 typedef NoticeArrivalLoader =
     Future<NoticeArrivalPage> Function(NoticeArrivalCursor? after);
+
+final _serverAlertQueueProvider = Provider<_ServerAlertQueue>((ref) {
+  return _ServerAlertQueue();
+});
+
+class _ServerAlertQueue {
+  Future<void> _tail = Future<void>.value();
+
+  void add(Future<void> Function() delivery, void Function(Object) failed) {
+    _tail = _tail.then((_) => delivery()).catchError((Object error) {
+      failed(error);
+    });
+  }
+}
+
+class _ServerAlertInterrupt extends ChangeNotifier {
+  void interrupt() => notifyListeners();
+}
+
+bool isServerAlert(Notice notice) =>
+    notice.priority != NoticePriority.normal &&
+    ((notice.sourceEvent?.startsWith('SERVER_STATUS_ALERT:') ?? false) ||
+        (notice.sourceEvent?.startsWith('SERVER_HOST_ALERT:') ?? false));
 typedef NoticeArrivalDispatcher =
     void Function(
       BuildContext context,
@@ -244,6 +270,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   final ListQueue<Notice> _pendingReviewArrivals = ListQueue<Notice>();
   bool _normalAuditPending = false;
   final Map<String, Notice> _activeArrivals = <String, Notice>{};
+  final _ServerAlertInterrupt _serverAlertInterrupt = _ServerAlertInterrupt();
   int _generation = 0;
   int _requestSequence = 0;
   int? _activeRequest;
@@ -300,6 +327,12 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
       _dispatchNext();
     } else {
       _generation++;
+      for (final notice
+          in _activeArrivals.values.where(isServerAlert).toList()) {
+        _activeArrivals.remove(notice.id);
+        _queueFor(notice).addFirst(notice);
+      }
+      _serverAlertInterrupt.interrupt();
       _activeRequest = null;
       _timer?.cancel();
       _timer = null;
@@ -311,6 +344,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
   @override
   void dispose() {
     _generation++;
+    _serverAlertInterrupt.interrupt();
+    _serverAlertInterrupt.dispose();
     _timer?.cancel();
     _retryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -331,6 +366,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
 
   void _resetForIdentity() {
     _generation++;
+    _serverAlertInterrupt.interrupt();
     _retryTimer?.cancel();
     _retryTimer = null;
     _cursorLoaded = false;
@@ -592,6 +628,7 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
             onDelivered: delivered,
             onRetry: () => _retryArrival(identityKey, generation, notice),
             isCurrent: () => _isDeliveryCurrent(identityKey, generation),
+            interruptSignal: _serverAlertInterrupt,
           );
         }
       } catch (_) {
@@ -682,13 +719,8 @@ class _NoticeArrivalListenerState extends ConsumerState<NoticeArrivalListener>
 
 /// 分派一条新到达通知。
 ///
-/// 所有优先级都进入非阻塞顶部叠放层；important / urgent 仅使用更强语义色和更长
-/// 停留时间。居中窗口只给 interactive 审核待办（`dispatchReviewCard`，主交互在
-/// 弹窗内）——**含 urgent**：2026-10-06 ADR-166 修订 ADR-059 §六口径，interactive
-/// 紧急事件（source_event 在审核卡目录内，如 SUBCONTRACT_SHORT_DELIVERY_DETECTED）
-/// 恢复进中央弹窗并以红卡呈现，顶部红条 8s 并行保留；弹前真态校验对 urgent 同样
-/// 生效（办结不弹）。非 interactive 的 urgent（驳回类纯告知，如
-/// SALES_ORDER_FINANCE_REJECTED）维持只弹顶部红条——纯告知不打断当前操作。
+/// 普通通知按优先级进入顶部层; interactive 审核待办使用中央卡片并重查真态。
+/// 服务器重要/紧急告警按 ADR-157 逐条中央确认, 其余纯告知不打断当前操作。
 void dispatchNoticeArrival(
   BuildContext context,
   Notice notice, {
@@ -696,6 +728,7 @@ void dispatchNoticeArrival(
   VoidCallback? onDelivered,
   VoidCallback? onRetry,
   bool Function()? isCurrent,
+  Listenable? interruptSignal,
 }) {
   // 点击可能发生在来源页切换后：提前捕获 app 级 container、router 与根
   // Navigator context，避免延迟回调读取已失效的 WidgetRef/页面 context。
@@ -731,6 +764,66 @@ void dispatchNoticeArrival(
     } else {
       navigateToTarget();
     }
+  }
+
+  if (isServerAlert(notice)) {
+    container
+        .read(_serverAlertQueueProvider)
+        .add(
+          () async {
+            if (isCurrent?.call() == false || !detailContext.mounted) return;
+            final current = await container
+                .read(noticeRepositoryProvider)
+                .getById(notice.id);
+            if (isCurrent?.call() == false || !detailContext.mounted) return;
+            if (current == null || current.isRead || !isServerAlert(current)) {
+              onDelivered?.call();
+              return;
+            }
+            final acknowledged = await UtenNotify.alert(
+              detailContext,
+              title: current.title,
+              message: current.content,
+              level: current.priority == NoticePriority.urgent
+                  ? UtenAlertLevel.urgent
+                  : UtenAlertLevel.important,
+              confirmLabel: AppLocalizations.of(
+                detailContext,
+              ).serverAlertAcknowledge,
+              cancelLabel: AppLocalizations.of(
+                detailContext,
+              ).serverAlertDetails,
+              barrierDismissible: false,
+              blockSystemBack: true,
+              interruptSignal: interruptSignal,
+            );
+            if (isCurrent?.call() == false || acknowledged == null) return;
+            await markNoticeReadContainer(container, current.id);
+            if (isCurrent?.call() == false) return;
+            onDelivered?.call();
+            if (!acknowledged && detailContext.mounted) {
+              if (onOpenDetail != null) {
+                onOpenDetail();
+              } else {
+                navigateToTarget();
+              }
+            }
+          },
+          (error) {
+            if (isCurrent?.call() == false) return;
+            if (error is ApiException &&
+                error.httpStatus == 404 &&
+                error.hasResponseCode &&
+                error.code == 'NOT_FOUND') {
+              // An authoritative disappearance is terminal. A proxy's generic 404
+              // cannot prove this, so transport failures remain eligible for retry.
+              onDelivered?.call();
+            } else {
+              onRetry?.call();
+            }
+          },
+        );
+    return;
   }
 
   final (kind, duration, priorityPrefix) = switch (notice.priority) {

@@ -1,6 +1,7 @@
 package com.uten.imp.common.storage;
 
 import com.uten.imp.common.files.document.BoundedBodyReader;
+import com.uten.imp.common.files.malware.DocumentSafety;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -13,15 +14,18 @@ import java.util.HexFormat;
 public class ImmutableDocumentStore {
     private final StorageService active;
     private final StorageProviderRegistry providers;
-    public ImmutableDocumentStore(StorageService active, StorageProviderRegistry providers) {
-        this.active = active; this.providers = providers;
+    private final DocumentSafety safety;
+    public ImmutableDocumentStore(StorageService active, StorageProviderRegistry providers, DocumentSafety safety) {
+        this.active = active; this.providers = providers; this.safety = safety;
     }
     public record Reference(String provider, String key, String version, long size, String sha256) {}
     public Reference save(String category, String filename, String contentType, byte[] bytes) {
         if (bytes == null || bytes.length == 0 || bytes.length > 15 * 1024 * 1024) throw new IllegalArgumentException("文件大小无效");
+        bytes = bytes.clone();
         if (!active.isEnabled() || !(active instanceof BlobStore blobs)
                 || !("internal".equals(active.backend()) || "local".equals(active.backend())))
             throw new IllegalStateException("请先启用内部文件存储");
+        safety.requireClean(category, bytes);
         String key = active.presignUpload(new StorageService.UploadRequest(category, filename, contentType, bytes.length)).storageKey();
         Reference reference;
         try {
@@ -48,8 +52,11 @@ public class ImmutableDocumentStore {
             byte[] bytes = BoundedBodyReader.read(stream, reference.size());
             if (bytes.length != reference.size() || !digest(bytes).equals(reference.sha256()))
                 throw new IllegalStateException("来源文件校验失败");
-            return bytes;
+            return safety.requireClean("IMMUTABLE_DOCUMENT_READ", bytes);
         } catch (java.io.IOException error) { throw new IllegalStateException("来源文件读取失败", error); }
+    }
+    public byte[] checkLegacy(String category, byte[] bytes) {
+        return safety.requireClean(category, bytes == null ? null : bytes.clone());
     }
     public static String digest(byte[] bytes) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }

@@ -318,6 +318,10 @@ do_activate() {
   if [ "$code_only" = 0 ]; then
     install -d -m 0700 -- "$UTEN_BACKUP_DIR" \
       || die "升级前备份目录不可写：$UTEN_BACKUP_DIR (备份盘没挂载?), 未停应用、未改数据库"
+    runuser -u uten-imp -- test -r "$RELEASES_DIR/$version/server/uten-imp-migrator.jar" \
+      || die "应用账号无法读取迁移程序，未停应用、未改数据库"
+    [ -f "$UTEN_MIGRATOR_ENV" ] && [ ! -L "$UTEN_MIGRATOR_ENV" ] \
+      || die "迁移环境文件不存在或不是普通文件，未停应用、未改数据库"
   fi
 
   systemctl stop "$UTEN_APP_SERVICE"
@@ -326,10 +330,13 @@ do_activate() {
     backup_file=$(create_database_backup "$version") \
       || die "数据库备份失败或为空，中止激活（数据库未改动）"
     log "运行 migrator（${UTEN_MIGRATOR_ENV}）"
-    set -a; . "$UTEN_MIGRATOR_ENV"; set +a
-    timeout 900 /usr/bin/java -jar "$RELEASES_DIR/$version/server/uten-imp-migrator.jar" \
-      || { set +a; die "migrator 失败：库已备份在 $backup_file，应用保持停止，请人工排查"; }
-    set +a
+    (
+      set -a; . "$UTEN_MIGRATOR_ENV"; set +a
+      cd "$RELEASES_DIR/$version"
+      timeout 900 runuser -u uten-imp -- /usr/bin/java \
+        -Dlogging.file.name=/var/log/uten-imp/migrator.log \
+        -jar "$RELEASES_DIR/$version/server/uten-imp-migrator.jar"
+    ) || die "migrator 失败：库已备份在 $backup_file，应用保持停止，请人工排查"
   fi
 
   ln -sfn "releases/$version" "$UTEN_BASE/current.new"

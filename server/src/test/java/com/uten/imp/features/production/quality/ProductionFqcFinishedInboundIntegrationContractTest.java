@@ -19,7 +19,7 @@ class ProductionFqcFinishedInboundIntegrationContractTest {
         int create = source.indexOf(
                 "finishedInbound.createReleasedDrafts(");
         int allocate = source.indexOf(
-                "allocateReleasedQuantity(",
+                "allocateReleasedQuantities(allocationRequests)",
                 create);
         int publish = source.indexOf(
                 "EVENT_RELEASED",

@@ -1,5 +1,7 @@
 package com.uten.imp.features.attachment;
 
+import com.uten.imp.common.files.malware.MalwareScanner;
+
 import com.uten.imp.common.storage.StorageService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -16,7 +18,7 @@ import java.util.Arrays;
 final class AttachmentUploadSafetyGate {
     private final StorageProperties properties;
     private final StorageService storage;
-    private final AttachmentMalwareScanner scanner;
+    private final MalwareScanner scanner;
     private final Environment environment;
 
     @PostConstruct

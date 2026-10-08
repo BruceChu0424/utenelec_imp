@@ -61,6 +61,60 @@ require_secret() {
   (( ${#value} >= minimum )) || die "$key must contain at least $minimum characters"
 }
 
+validate_pgp_configuration() {
+  # Read secrets from the protected file, never argv/environment expansion or stdout.
+  if ! /usr/bin/python3 -I - "$ENV_FILE" <<'PGP'
+import pathlib
+import re
+import sys
+
+def reject(reason):
+    print("PGP_ENV_INVALID: " + reason, file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+except (OSError, UnicodeError):
+    reject("cannot read the protected configuration")
+values = {}
+for line in raw.splitlines():
+    if not line or line.startswith("#"):
+        continue
+    key, separator, value = line.partition("=")
+    if not separator or key in values:
+        reject("duplicate or malformed configuration")
+    values[key] = value
+
+version_pattern = re.compile(r"[1-9][0-9]{0,17}")
+current = values.get("UTEN_PGP_KEY_VERSION", "")
+unversioned = values.get("UTEN_PGP_UNVERSIONED_KEY_VERSION", "1")
+if not version_pattern.fullmatch(current) or not version_pattern.fullmatch(unversioned):
+    reject("PGP versions must be canonical positive integers")
+if values.get("UTEN_PGP_ROTATION_ENABLED", "false") not in ("true", "false"):
+    reject("rotation flag must be exactly true or false")
+prefix = "UTEN_CRYPTO_PGPLEGACYKEYS_"
+historical = {}
+for key, value in values.items():
+    if not key.startswith(prefix):
+        continue
+    version = key[len(prefix):]
+    if not version_pattern.fullmatch(version):
+        reject("historical key version is not a canonical positive integer")
+    if version == current:
+        reject("current and historical key versions must not overlap")
+    # Old imported data may genuinely use an older weak key. Do not force its
+    # replacement or reject reading it under the new current-key strength rule.
+    if not value or len(value) > 4096 or any(character.isspace() for character in value):
+        reject("historical key is empty or outside the supported file format")
+    historical[version] = value
+if unversioned != current and unversioned not in historical:
+    reject("the fixed unversioned-data key is missing from the historical keyring")
+PGP
+  then
+    die 'PGP version/keyring configuration is invalid; no secret values were emitted'
+  fi
+}
+
 validate_supported_environment_keys() {
   local environment_line environment_key
   while IFS= read -r environment_line || [[ -n "$environment_line" ]]; do
@@ -70,6 +124,7 @@ validate_supported_environment_keys() {
       UTEN_PROFILE|UTEN_DEPLOYMENT_SITE|UTEN_LOCAL_ALLOWED_CIDRS|SERVER_ADDRESS|SERVER_PORT|\
       UTEN_DB_URL|UTEN_DB_USER|UTEN_DB_PASSWORD|SPRING_FLYWAY_ENABLED|\
       UTEN_JWT_SECRET|UTEN_JWT_ISSUER|UTEN_PGP_MASTER_KEY|UTEN_PGP_KEY_VERSION|\
+      UTEN_PGP_UNVERSIONED_KEY_VERSION|UTEN_PGP_ROTATION_ENABLED|\
       UTEN_HMAC_KEY|UTEN_SECRET_CIPHER_KEY|UTEN_CORS_ORIGINS|UTEN_REQUIRE_HTTPS|UTEN_SSL_ENABLED|\
       UTEN_TRUSTED_PROXY_REGEX|UTEN_SWAGGER_ENABLED|UTEN_BOOTSTRAP_ADMIN_RETIRED|\
       BOOTSTRAP_ADMIN_LOGIN|BOOTSTRAP_ADMIN_PASSWORD|UTEN_SMS_PROVIDER|UTEN_SMS_EXPOSE_CODE|\
@@ -78,6 +133,9 @@ validate_supported_environment_keys() {
       UTEN_STORAGE_LOCAL_DIR|UTEN_ATTACHMENT_UPLOADS_ENABLED|\
       UTEN_ATTACHMENT_SCANNER_PROVIDER|UTEN_ATTACHMENT_RECONCILIATION_ENABLED|\
       UTEN_STORAGE_MAX_BYTES|UTEN_STORAGE_PRESIGN_EXPIRY)
+        ;;
+      UTEN_CRYPTO_PGPLEGACYKEYS_*)
+        # Exact numeric suffix and historical-key policy are checked below.
         ;;
       # Retired with the legacy policy AI (ADR-133, V741). Live files installed
       # before the retirement may still carry it; it is accepted and ignored.
@@ -240,7 +298,7 @@ unset migrator_password environment_line environment_value
 require_secret UTEN_JWT_SECRET 32
 expect_exact UTEN_JWT_ISSUER uten-imp-internal-test
 require_secret UTEN_PGP_MASTER_KEY 32
-expect_exact UTEN_PGP_KEY_VERSION 1
+validate_pgp_configuration
 require_secret UTEN_HMAC_KEY 32
 # Optional dedicated AI-credential encryption key (ADR-133); derived from the
 # HMAC key when absent, but a configured value must be a strong secret.
@@ -314,4 +372,4 @@ done
 printf '%s\n' \
   'INTERNAL_TEST_SERVER_ENV_OK' \
   'Runtime is loopback-only behind HTTPS Nginx; Flyway, Swagger, website integration, external APIs and attachment intake remain disabled.' \
-  'Local attachments are pinned to /data/uten-imp/attachments and require the independent storage preflight.'
+  'Retired closed-local test runtime only; current internal production deployments use the simple runbook and server.env.internal-storage.example.'

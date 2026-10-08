@@ -82,7 +82,10 @@ public class DailyReportOutputAllocationService {
         List<UUID> receivers=routings.stream().flatMap(routing->routing.direct().keySet().stream()).distinct().sorted().toList();
         if(!receivers.isEmpty())em.createNativeQuery("SELECT id FROM production_material_demands WHERE id IN (:ids) ORDER BY id FOR UPDATE")
                 .setParameter("ids",receivers).getResultList();
-        Map<String, Capacity> capacities = new HashMap<>();
+        List<DailyReportItemLine> ordinary = requested.stream()
+                .filter(input -> input.getExecutionSegmentId() != null && input.getFqcRecoveryAuthorizationId() == null).toList();
+        RoutingFacts facts = routingFacts(reportId, ordinary, previewProofs);
+        Map<CapacityKey, Capacity> capacities = new HashMap<>();
         Map<UUID, Capacity> responsibility = new HashMap<>();
         Map<UUID, BigDecimal> surplusRemaining = new HashMap<>();
         DirectLedger ledger=new DirectLedger();
@@ -132,45 +135,32 @@ public class DailyReportOutputAllocationService {
                 result.add(recovery);
                 continue;
             }
-            List<Object[]> context = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                    SELECT segment.planned_qty, COALESCE((SELECT SUM(allocated_qty)
-                            FROM execution_segment_sales_allocations WHERE execution_segment_id=segment.id),0),
-                           COALESCE((SELECT SUM(link.submitted_qty)
-                            FROM production_material_analysis_plan_links link
-                            WHERE link.plan_id=segment.plan_id AND link.allocation_status='APPROVED'),plan_item.qty),
-                           EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof WHERE proof.supplement_execution_segment_id=segment.id)
-                    FROM production_execution_segments segment
-                    JOIN production_plan_items plan_item ON plan_item.id=segment.source_plan_item_id
-                    WHERE segment.id=:id AND NOT segment.is_deleted
-                    """).setParameter("id", segment));
-            if (context.size() != 1) throw validation("报工来源执行工单不存在");
-            BigDecimal planned = number(context.getFirst()[0]);
-            BigDecimal sales = number(context.getFirst()[1]);
+            SourceContext context = facts.sources().get(segment);
+            if (context == null) throw validation("报工来源执行工单不存在");
+            BigDecimal planned = context.planned();
+            BigDecimal sales = context.sales();
             BigDecimal publicQuota = planned.subtract(sales).max(BigDecimal.ZERO);
             BigDecimal selectedQuota = publicQuota;
             if (input.getExecutionSegmentSalesAllocationId() != null) {
-                List<Object[]> selected = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT sales_order_item_id, allocated_qty FROM execution_segment_sales_allocations
-                        WHERE id=:allocation AND execution_segment_id=:segment
-                        """).setParameter("allocation", input.getExecutionSegmentSalesAllocationId())
-                        .setParameter("segment", segment));
-                if (selected.size()!=1 || !Objects.equals(input.getSalesOrderItemId(), selected.getFirst()[0]))
+                AllocationContext selected = facts.allocations().get(input.getExecutionSegmentSalesAllocationId());
+                if (selected == null || !segment.equals(selected.segment())
+                        || !Objects.equals(input.getSalesOrderItemId(), selected.orderItem()))
                     throw validation("所选销售分摊与原执行工单不一致");
-                selectedQuota=number(selected.getFirst()[1]);
+                selectedQuota=selected.quantity();
             } else if (input.getSalesOrderItemId()!=null) {
                 throw validation("报工销售来源必须同时保留精确执行分摊");
             }
-            Capacity selected = capacity(capacities, reportId, segment,
-                    input.getExecutionSegmentSalesAllocationId(), selectedQuota,previewProofs);
+            Capacity selected = capacity(capacities, facts, segment,
+                    input.getExecutionSegmentSalesAllocationId(), selectedQuota);
             BigDecimal plannedTake = selected.take(input.getQty());
             BigDecimal left = input.getQty().subtract(plannedTake);
             BigDecimal demandTake = plannedTake;
             if (plannedTake.signum()>0 && input.getExecutionSegmentSalesAllocationId()==null) {
-                if (sales.signum()>0 || Boolean.TRUE.equals(context.getFirst()[3])) demandTake=BigDecimal.ZERO;
+                if (sales.signum()>0 || context.supplement()) demandTake=BigDecimal.ZERO;
                 else {
                     Capacity remaining=responsibility.computeIfAbsent(input.getPlanItemId(), ignored ->
-                            new Capacity(number(context.getFirst()[2]).subtract(existingDemandQuantity(reportId,input.getPlanItemId(),false)).max(BigDecimal.ZERO),
-                                number(context.getFirst()[2]).subtract(existingDemandQuantity(reportId,input.getPlanItemId(),true)).max(BigDecimal.ZERO)));
+                            new Capacity(context.needShare().subtract(facts.demands().getOrDefault(input.getPlanItemId(), UsedQuantity.ZERO).approved()).max(BigDecimal.ZERO),
+                                context.needShare().subtract(facts.demands().getOrDefault(input.getPlanItemId(), UsedQuantity.ZERO).total()).max(BigDecimal.ZERO)));
                     demandTake=remaining.take(demandTake);
                 }
             }
@@ -192,7 +182,7 @@ public class DailyReportOutputAllocationService {
             BigDecimal publicTake=plannedTake.subtract(demandTake);
             if(publicTake.signum()>0)pieces.add(copy(input,publicTake,batch,true,false));
             if(left.signum()>0 && input.getExecutionSegmentSalesAllocationId()!=null) {
-                BigDecimal extraPlanned=capacity(capacities,reportId,segment,null,publicQuota,previewProofs).take(left);
+                BigDecimal extraPlanned=capacity(capacities,facts,segment,null,publicQuota).take(left);
                 if(extraPlanned.signum()>0)pieces.add(copy(input,extraPlanned,batch,true,false));
                 left=left.subtract(extraPlanned);
             }
@@ -364,21 +354,103 @@ public class DailyReportOutputAllocationService {
                         +"现在分给上层工单合计 "+plain(directTotal));
     }
 
-    private Capacity capacity(Map<String,Capacity> cache,UUID report,UUID segment,UUID allocation,BigDecimal quota,List<UUID> previewProofs) {
-        String key=segment+":"+allocation;
-        return cache.computeIfAbsent(key,ignored -> {
-            Object[] row=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                    SELECT COALESCE(SUM(item.qty) FILTER (WHERE report.status=1),0),COALESCE(SUM(item.qty),0),
-                           fn_actual_supplement_reserved_original_qty(:segment,CAST(:allocation AS uuid),:report,CAST(string_to_array(:proofs,',') AS uuid[]))
+    private record CapacityKey(UUID segment, UUID allocation) { }
+    private record UsedQuantity(BigDecimal approved, BigDecimal total, BigDecimal reserved) {
+        private static final UsedQuantity ZERO = new UsedQuantity(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+    private record SourceContext(BigDecimal planned, BigDecimal sales, BigDecimal needShare, boolean supplement) { }
+    private record AllocationContext(UUID segment, UUID orderItem, BigDecimal quantity) { }
+    private record RoutingFacts(Map<UUID, SourceContext> sources, Map<UUID, AllocationContext> allocations,
+                                Map<CapacityKey, UsedQuantity> quantities, Map<UUID, UsedQuantity> demands) { }
+
+    private RoutingFacts routingFacts(UUID report, List<DailyReportItemLine> inputs, List<UUID> previewProofs) {
+        Map<UUID, SourceContext> sources = new HashMap<>();
+        Map<UUID, AllocationContext> allocations = new HashMap<>();
+        Map<CapacityKey, UsedQuantity> quantities = new HashMap<>();
+        Map<UUID, UsedQuantity> demands = new HashMap<>();
+        if (inputs.isEmpty()) return new RoutingFacts(sources, allocations, quantities, demands);
+        List<UUID> segments = inputs.stream().map(DailyReportItemLine::getExecutionSegmentId).distinct().toList();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT segment.id, segment.planned_qty,
+                       COALESCE((SELECT SUM(allocated_qty) FROM execution_segment_sales_allocations
+                                 WHERE execution_segment_id=segment.id),0),
+                       COALESCE((SELECT SUM(link.submitted_qty) FROM production_material_analysis_plan_links link
+                                 WHERE link.plan_id=segment.plan_id AND link.allocation_status='APPROVED'),plan_item.qty),
+                       EXISTS(SELECT 1 FROM production_actual_output_supplement_proofs proof
+                              WHERE proof.supplement_execution_segment_id=segment.id)
+                FROM production_execution_segments segment
+                JOIN production_plan_items plan_item ON plan_item.id=segment.source_plan_item_id
+                WHERE segment.id IN (:ids) AND NOT segment.is_deleted
+                """).setParameter("ids", segments))) {
+            sources.put((UUID) row[0], new SourceContext(number(row[1]), number(row[2]), number(row[3]), Boolean.TRUE.equals(row[4])));
+        }
+        List<UUID> allocationIds = inputs.stream().map(DailyReportItemLine::getExecutionSegmentSalesAllocationId)
+                .filter(Objects::nonNull).distinct().toList();
+        if (!allocationIds.isEmpty()) {
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id, execution_segment_id, sales_order_item_id, allocated_qty
+                    FROM execution_segment_sales_allocations WHERE id IN (:ids)
+                    """).setParameter("ids", allocationIds))) {
+                allocations.put((UUID) row[0], new AllocationContext((UUID) row[1], (UUID) row[2], number(row[3])));
+            }
+        }
+        Set<CapacityKey> keys = new LinkedHashSet<>();
+        for (DailyReportItemLine input : inputs) {
+            keys.add(new CapacityKey(input.getExecutionSegmentId(), input.getExecutionSegmentSalesAllocationId()));
+            keys.add(new CapacityKey(input.getExecutionSegmentId(), null));
+        }
+        // Lock acquisition precedes this statement. All buckets see the same
+        // committed snapshot; rows within this request still consume their shared
+        // mutable Capacity below, so duplicate inputs cannot each claim a full quota.
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH requested(segment_id, allocation_id) AS (
+                    SELECT * FROM unnest(CAST(string_to_array(:segmentKeys,',') AS uuid[]),
+                                         CAST(string_to_array(:allocationKeys,',','-') AS uuid[]))
+                ), existing AS (
+                    SELECT item.execution_segment_id, item.execution_segment_sales_allocation_id,
+                           SUM(item.qty) FILTER (WHERE report.status=1) AS approved, SUM(item.qty) AS total
                     FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
-                    WHERE item.execution_segment_id=:segment
-                      AND item.execution_segment_sales_allocation_id IS NOT DISTINCT FROM CAST(:allocation AS uuid)
+                    WHERE item.execution_segment_id IN (:ids)
                       AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_actual_surplus
-                      AND item.report_id<>:report AND NOT item.is_deleted AND NOT report.is_deleted AND report.status IN(0,1)
-                    """).setParameter("segment",segment).setParameter("allocation",allocation)
-                    .setParameter("report",report).setParameter("proofs",previewProofs.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",")))).getFirst();
-            return new Capacity(quota.subtract(number(row[0])).max(BigDecimal.ZERO),
-                    quota.subtract(number(row[1])).subtract(number(row[2])).max(BigDecimal.ZERO));
+                      AND item.report_id<>:report AND NOT item.is_deleted AND NOT report.is_deleted AND report.status IN (0,1)
+                    GROUP BY item.execution_segment_id, item.execution_segment_sales_allocation_id
+                )
+                SELECT requested.segment_id, requested.allocation_id, COALESCE(existing.approved,0), COALESCE(existing.total,0),
+                       fn_actual_supplement_reserved_original_qty(requested.segment_id,requested.allocation_id,:report,
+                           CAST(string_to_array(:proofs,',') AS uuid[]))
+                FROM requested LEFT JOIN existing ON existing.execution_segment_id=requested.segment_id
+                    AND existing.execution_segment_sales_allocation_id IS NOT DISTINCT FROM requested.allocation_id
+                """).setParameter("ids", segments).setParameter("report", report)
+                .setParameter("segmentKeys", keys.stream().map(key -> key.segment().toString()).collect(java.util.stream.Collectors.joining(",")))
+                .setParameter("allocationKeys", keys.stream().map(key -> key.allocation() == null ? "-" : key.allocation().toString()).collect(java.util.stream.Collectors.joining(",")))
+                .setParameter("proofs", previewProofs.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","))))) {
+            quantities.put(new CapacityKey((UUID) row[0], (UUID) row[1]), new UsedQuantity(number(row[2]), number(row[3]), number(row[4])));
+        }
+        List<UUID> planItems = inputs.stream().filter(input -> input.getExecutionSegmentSalesAllocationId() == null)
+                .map(DailyReportItemLine::getPlanItemId).filter(Objects::nonNull).distinct().toList();
+        if (!planItems.isEmpty()) {
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT item.plan_item_id, COALESCE(SUM(item.qty) FILTER (WHERE report.status=1),0), SUM(item.qty)
+                    FROM production_daily_report_items item JOIN production_daily_reports report ON report.id=item.report_id
+                    WHERE item.plan_item_id IN (:ids) AND item.report_id<>:report
+                      AND NOT item.is_public_output AND NOT item.is_actual_surplus
+                      AND item.fqc_recovery_authorization_id IS NULL AND NOT item.is_deleted AND NOT report.is_deleted
+                      AND report.status IN (0,1)
+                    GROUP BY item.plan_item_id
+                    """).setParameter("ids", planItems).setParameter("report", report))) {
+                demands.put((UUID) row[0], new UsedQuantity(number(row[1]), number(row[2]), BigDecimal.ZERO));
+            }
+        }
+        return new RoutingFacts(sources, allocations, quantities, demands);
+    }
+
+    private static Capacity capacity(Map<CapacityKey, Capacity> capacities, RoutingFacts facts,
+                                     UUID segment, UUID allocation, BigDecimal quota) {
+        CapacityKey key = new CapacityKey(segment, allocation);
+        return capacities.computeIfAbsent(key, ignored -> {
+            UsedQuantity used = facts.quantities().getOrDefault(key, UsedQuantity.ZERO);
+            return new Capacity(quota.subtract(used.approved()).max(BigDecimal.ZERO),
+                    quota.subtract(used.total()).subtract(used.reserved()).max(BigDecimal.ZERO));
         });
     }
 
@@ -407,19 +479,6 @@ public class DailyReportOutputAllocationService {
     }
     public void requirePersistedAllowance(UUID reportId) {
         em.createNativeQuery("SELECT fn_assert_actual_output_policy_limit_for_report(:report)").setParameter("report",reportId).getSingleResult();
-    }
-
-    private BigDecimal existingDemandQuantity(UUID report,UUID planItem,boolean drafts) {
-        return number(em.createNativeQuery("""
-                SELECT COALESCE(SUM(item.qty),0) FROM production_daily_report_items item
-                JOIN production_daily_reports report ON report.id=item.report_id
-                WHERE item.plan_item_id=:planItem AND item.report_id<>:report
-                  AND NOT item.is_public_output AND NOT item.is_actual_surplus
-                  AND item.fqc_recovery_authorization_id IS NULL
-                  AND NOT item.is_deleted AND NOT report.is_deleted
-                  AND (report.status=1 OR (:drafts AND report.status=0))
-                """).setParameter("planItem",planItem).setParameter("report",report)
-                .setParameter("drafts",drafts).getSingleResult());
     }
 
     /** A physical report records actual use against real ISSUE sources, never a BOM percentage. */

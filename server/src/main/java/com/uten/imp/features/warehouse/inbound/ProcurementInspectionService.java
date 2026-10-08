@@ -477,8 +477,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     /**
      * 本次结论的收尾(单张与批量同一条路)：先入库后检的合格行合成一个自动转正批次(2026-09-21 起不再逐行)，
      * 上架仓已不可用的行改投「待仓库确认入库」；随后按收货单重算订单结案，整单结案时唤醒生产。
-     * 整单在本次结论里结案时，结案回调本来就会按整单 RESOLVED 维度刷新同一批物料分析，自动转正那一步
-     * 只推进供给状态与到货通知、不再先刷一遍(同一事务里两遍算的是同一份事实，此前每张单白刷一次)。
+     * 自动转正与品质结案共用一次生产推进，保持原批次来源，再按整单范围刷新分析。
      */
     private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(
             String receiptType, UUID receiptId, List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
@@ -492,14 +491,14 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         boolean wholeReceiptResolved = allResolved(receiptType, receiptId);
         boolean wakeProduction = productionWakePending(receiptType, receiptId, wholeReceiptResolved);
-        if (!autoStockIn.batches().isEmpty()) {
-            stockInProduction.afterInspectionStockInConfirmed(autoStockIn.batches(), !wakeProduction);
-        }
         // Closure reads warehouse-stocked/returned quantities, not PASS/FAIL.
         // No intermediate event changes those inputs; reconcile each order once.
         recalculateOrderClosure(receiptType, receiptId);
         if (wakeProduction) {
-            wakeWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now());
+            stockInProduction.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches());
+            recordWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now());
+        } else if (!autoStockIn.batches().isEmpty()) {
+            stockInProduction.afterInspectionStockInConfirmed(autoStockIn.batches());
         }
         if (wholeReceiptResolved) {
             chainNotice.resolveReviewNotices("IQC_INSPECTION", receiptId, "INSPECTED");
@@ -809,11 +808,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         return resolved > 0;
     }
 
-    private void wakeWholeReceiptResolved(String receiptType, UUID receiptId, OffsetDateTime now) {
-        // Reconcile quality-terminal shortage/replacement projections once.
-        // The transition services now read warehouse_stocked_base_qty, so this
-        // callback cannot turn an unstocked PASS quantity into READY inventory.
-        reconcileProductionAfterQualityResolved(receiptType, receiptId);
+    private void recordWholeReceiptResolved(String receiptType, UUID receiptId, OffsetDateTime now) {
         appendReceiptEvent(
                 receiptType,
                 receiptId,
@@ -829,15 +824,6 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 receiptId,
                 Map.of("receiptType", receiptType),
                 EVENT_IQC_RESOLVED + ':' + receiptId);
-    }
-
-    private void reconcileProductionAfterQualityResolved(
-            String receiptType, UUID receiptId) {
-        if (PURCHASE.equals(receiptType)) {
-            purchaseSupply.onPurchaseReceiptApproved(receiptId);
-        } else {
-            subcontractSupply.onSubcontractReceiptApproved(receiptId);
-        }
     }
 
     private void recalculateOrderClosure(String receiptType, UUID receiptId) {

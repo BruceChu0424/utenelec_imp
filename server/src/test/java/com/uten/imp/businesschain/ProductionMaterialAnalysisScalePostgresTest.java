@@ -295,7 +295,8 @@ class ProductionMaterialAnalysisScalePostgresTest {
             emit(Map.of("event", "wire-scale", "products", size, "materials", size * scenario.expectedExpandedRowsPerProduct(),
                     "historyRows", historyRows, "databaseSettings", databaseSettings(),
                     "databaseProfile", System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE", "test-default")));
-            AnalysisView view = analysis.preview(request(scenario, null, "wire-preview-" + suffix()));
+            AnalysisView view = measured("SERVICE", "analysis.preview.initial", size,
+                    () -> analysis.preview(request(scenario, null, "wire-preview-" + suffix())));
             assertInitialDemand(scenario, view);
             MaterialAnalysisWireMeasurement.compare(json, view, size, samples, this::emit);
             var actor = SecurityContextHolder.getContext().getAuthentication();
@@ -475,7 +476,9 @@ class ProductionMaterialAnalysisScalePostgresTest {
         emit(scale);
         List<RouteDecision> roots=view.flatMaterials().stream().filter(row->row.level()==0)
                 .map(row->new RouteDecision(null,row.actionGroupKey(),"MAKE",null)).toList();
-        view=analysis.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"notify-roots-"+suffix(),roots));
+        var rootsVersion=view.version();var rootsFingerprint=view.fingerprint();var rootsAnalysisId=view.analysisId();
+        view=measured("SERVICE","analysis.saveRoutes.roots",size,
+                ()->analysis.saveRoutes(rootsAnalysisId,new RouteRequest(rootsVersion,rootsFingerprint,"notify-roots-"+suffix(),roots)));
         // ADR-143 §4.5: subcontract nodes (all with direct materials) are notified as subcontract applications only.
         for (String mode:List.of("BUY","SUBCONTRACT")) {
             String route=mode;
@@ -489,7 +492,9 @@ class ProductionMaterialAnalysisScalePostgresTest {
             var selectedSet=java.util.Set.copyOf(selected);
             assertTrue(selected.size()>=Math.min(size,100),"The notification must remain a real bulk command");
             List<RouteDecision> decisions=selected.stream().map(key->new RouteDecision(null,key,route,null)).toList();
-            view=analysis.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"notify-route-"+suffix(),decisions));
+            var modeVersion=view.version();var modeFingerprint=view.fingerprint();var modeAnalysisId=view.analysisId();
+            view=measured("SERVICE","analysis.saveRoutes."+mode,size,
+                    ()->analysis.saveRoutes(modeAnalysisId,new RouteRequest(modeVersion,modeFingerprint,"notify-route-"+suffix(),decisions)));
             var before=new LinkedHashMap<UUID,BigDecimal>();
             for (MaterialView row:view.flatMaterials()) if (selectedSet.contains(row.actionGroupKey())) {
                 before.put(row.materialLineId(),row.shortageQty());

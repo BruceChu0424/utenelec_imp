@@ -60,6 +60,14 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 @RequiredArgsConstructor
 public class MaterialAnalysisCommandService {
 
+    /**
+     * V830 读回拆分: 命令的最终详情响应在提交后按只读快照组装(同
+     * {@link MaterialAnalysisService#preview} 的拆分), 不再占用写事务的 40s 预算;
+     * 命令中途喂决策的详情读取仍留在写事务内。直连 new 本类的单测里为空, 走原地直呼。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<MaterialAnalysisCommandService> selfProxy;
+
     private static final String OP_NOTIFY = "NOTIFY";
     private static final String OP_GENERATE = "GENERATE_PLAN";
     private static final String OP_CANCEL_ANALYSIS = "CANCEL_ANALYSIS";
@@ -95,8 +103,14 @@ public class MaterialAnalysisCommandService {
      * 下达备料任务（采购/委外/自制）：先重算分配（库存与到货变化不触动分析头），再按操作组只补建「超过既有未结任务量」的增量，
      * 生成代际与外部单据；幂等键命中时重放既有结果。
      */
-    @Transactional
     public AnalysisView notifySupply(UUID analysisId, NotifyRequest request) {
+        MaterialAnalysisCommandService writer = selfProxy == null ? this : selfProxy.getObject();
+        UUID written = writer.notifySupplyWrite(analysisId, request);
+        return analysisService.committedDetailView(written);
+    }
+
+    @Transactional
+    public UUID notifySupplyWrite(UUID analysisId, NotifyRequest request) {
         tx.bind();
         // ADR-099：外部路线下达时会先自动认领同主仓公共在途，认领引用的是别的分析的
         // 申请/委外申请，必须与本分析一起预锁(与 claimSharedFuture 同一份足迹)，否则
@@ -111,7 +125,7 @@ public class MaterialAnalysisCommandService {
         CommandReplay replay = commandReplay(analysisId, OP_NOTIFY,
                 request.idempotencyKey(), requestHash);
         if (replay != null) {
-            return analysisService.detailInternal(analysisId, false);
+            return analysisId;
         }
         mutationGuard.verifyUnchanged();
         analysisService.requireCurrent(header, request.version(), request.fingerprint());
@@ -411,7 +425,7 @@ public class MaterialAnalysisCommandService {
                         "claimActionIds", List.copyOf(claimActionIds),
                         "makeAdoptedQuantities",makeAdoptedQuantities,
                         "acceptedLateSources", List.copyOf(acceptedLateSources)));
-        return analysisService.detailInternal(analysisId, false);
+        return analysisId;
     }
 
     /**

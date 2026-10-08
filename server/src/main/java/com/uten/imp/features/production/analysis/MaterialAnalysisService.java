@@ -96,6 +96,17 @@ public class MaterialAnalysisService {
     /** ADR-143 §二.3 委外件缺 BOM 转研发(研发任务模块实现)；直接 new 本类的单测里为空，只跳过登记。 */
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.RdBomGapPort> rdBomGaps;
+    /**
+     * V830 读回拆分: preview/saveRoutes 的详情读回移出写事务(500 来源规模下写事务已贴近
+     * 40s 预算)。写侧经自代理进入, 保住重试/期限拦截器与事务边界; 直连 new 本类的单测里
+     * 为空, 走原地直呼的原路径。
+     */
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<MaterialAnalysisService> selfProxy;
+    /** 提交后只读快照的事务管理器; 直连构造时为空, 详情读回退化为原路径。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
+    private volatile org.springframework.transaction.support.TransactionTemplate committedReadTemplate;
 
     /** 分析的对象级范围：与生产单据同一套经手人可见规则(ADR-088)。 */
     OwnerVisibility.OwnerScope scopeForAnalysis(AnalysisHeader header){
@@ -111,9 +122,57 @@ public class MaterialAnalysisService {
     /**
      * 物料分析的创建与刷新入口：按来源重算分配树。幂等键命中既有分析时直接重放；新建走 per(员工+幂等键) advisory 锁，
      * 可复用来源相同的进行中分析；刷新时来源、仓库变化须一并重算。
+     *
+     * <p>V830: 写事务(重算+快照 upsert+自动确认)与详情读回拆开——写侧经 {@link #selfProxy}
+     * 进入保住重试/期限拦截器, 详情视图在提交后按只读快照组装, 不再占用写事务的 40s 预算
+     * (500 来源规模下读回约占写事务三分之一)。</p>
      */
-    @Transactional
     public AnalysisView preview(PreviewRequest request) {
+        MaterialAnalysisService writer = selfProxy == null ? this : selfProxy.getObject();
+        PreviewOutcome outcome = writer.previewWrite(request);
+        AnalysisView view = committedDetailView(outcome.analysisId());
+        return outcome.replayed() ? view
+                : view.withRouteOutcome(outcome.routeResets(), outcome.autoConfirmedRoutes());
+    }
+
+    /** preview 写事务的落账结果; 详情视图由调用方在提交后组装。 */
+    record PreviewOutcome(UUID analysisId, boolean replayed, int routeResets, int autoConfirmedRoutes) {
+        static PreviewOutcome replay(UUID analysisId) {
+            return new PreviewOutcome(analysisId, true, 0, 0);
+        }
+    }
+
+    /** saveRoutes 写事务的落账结果; 详情视图由调用方在提交后组装。 */
+    record RouteSaveOutcome(UUID analysisId, boolean replayed, int autoConfirmedRoutes) {
+        static RouteSaveOutcome replay(UUID analysisId) {
+            return new RouteSaveOutcome(analysisId, true, 0);
+        }
+    }
+
+    /**
+     * 提交后的详情读回: 只读快照(REPEATABLE_READ)保证多查询视图不被并发命令撕开。
+     * 直连构造(无事务管理器)时退化为原路径。preview/saveRoutes 与命令服务的响应组装共用。
+     */
+    AnalysisView committedDetailView(UUID analysisId) {
+        if (transactionManager == null) return detailInternal(analysisId, false);
+        var template = committedReadTemplate;
+        if (template == null) {
+            synchronized (this) {
+                template = committedReadTemplate;
+                if (template == null) {
+                    var created = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+                    created.setReadOnly(true);
+                    created.setIsolationLevel(
+                            org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+                    committedReadTemplate = template = created;
+                }
+            }
+        }
+        return template.execute(status -> detailInternal(analysisId, false));
+    }
+
+    @Transactional
+    public PreviewOutcome previewWrite(PreviewRequest request) {
         tx.bind();
         if (request == null || request.items() == null || request.items().isEmpty()) {
             throw validation("至少选择一个生产需求来源");
@@ -130,7 +189,7 @@ public class MaterialAnalysisService {
         if (completedPreview!=null && isCommandReplay(completedPreview,"PREVIEW",request.idempotencyKey(),requestHash)) {
             AnalysisHeader replayHeader = readHeader(completedPreview,false);
             access.requireWritable(replayHeader.makerId(),"只能打开本人负责的物料分析",scopeForAnalysis(replayHeader));
-            return detailInternal(completedPreview,false);
+            return PreviewOutcome.replay(completedPreview);
         }
         previewGuard.verifyUnchanged();
         lockSourceIdentities(normalized);
@@ -153,7 +212,7 @@ public class MaterialAnalysisService {
                         request.idempotencyKey(), requestHash)) {
                     throw conflict("首次预览的结果记录缺失，不能自动给出结果，请重新预览");
                 }
-                return detailInternal(initialReplay, false);
+                return PreviewOutcome.replay(initialReplay);
             }
         }
         if (analysisId != null) {
@@ -166,7 +225,7 @@ public class MaterialAnalysisService {
             access.requireWritable(requestedHeader.makerId(), "只能刷新本人负责的物料分析",
                     scopeForAnalysis(requestedHeader));
             if (isCommandReplay(analysisId, "PREVIEW", request.idempotencyKey(), requestHash)) {
-                return detailInternal(analysisId, false);
+                return PreviewOutcome.replay(analysisId);
             }
             requireCurrent(requestedHeader, request.version(), request.fingerprint());
             requireSameSources(analysisId, normalized);
@@ -187,7 +246,7 @@ public class MaterialAnalysisService {
                     recordSimpleCommand(analysisId, "PREVIEW",
                             request.idempotencyKey(), requestHash);
                 }
-                return detailInternal(analysisId, false);
+                return PreviewOutcome.replay(analysisId);
             }
         }
         Map<UUID, BigDecimal> previousMakeAnchorRequirements = Map.of();
@@ -259,8 +318,8 @@ public class MaterialAnalysisService {
         RefreshOutcome refreshed = refreshWithAnchorGrowth(analysisId, previousMakeAnchorRequirements,
                 Map.of(), true);
         recordSimpleCommand(analysisId, "PREVIEW", request.idempotencyKey(), requestHash);
-        return detailInternal(analysisId, false)
-                .withRouteOutcome(refreshed.routeResets(), refreshed.autoConfirmedRoutes());
+        return new PreviewOutcome(analysisId, false,
+                refreshed.routeResets(), refreshed.autoConfirmedRoutes());
     }
 
     /**
@@ -446,15 +505,23 @@ public class MaterialAnalysisService {
      * 同批同货品的节点选用了不同路线时，各节点决定独立保存，保留原主档默认与建议，
      * 不以请求顺序挑选主档路线，也不在刷新时清掉合法的混合路线决定。
      */
-    @Transactional
     public AnalysisView saveRoutes(UUID analysisId, RouteRequest request) {
+        // V830: 详情读回移出写事务(同 {@link #preview}); 幂等重放只读不加 routeOutcome。
+        MaterialAnalysisService writer = selfProxy == null ? this : selfProxy.getObject();
+        RouteSaveOutcome outcome = writer.saveRoutesWrite(analysisId, request);
+        AnalysisView view = committedDetailView(outcome.analysisId());
+        return outcome.replayed() ? view : view.withRouteOutcome(0, outcome.autoConfirmedRoutes());
+    }
+
+    @Transactional
+    public RouteSaveOutcome saveRoutesWrite(UUID analysisId, RouteRequest request) {
         tx.bind();
         AnalysisHeader header = lockHeader(analysisId);
         access.requireWritable(header.makerId(), "只能维护本人负责的物料分析",
                 scopeForAnalysis(header));
         String requestHash = routeRequestHash(analysisId, request);
         if (isCommandReplay(analysisId, "ROUTE", request.idempotencyKey(), requestHash)) {
-            return detailInternal(analysisId, false);
+            return RouteSaveOutcome.replay(analysisId);
         }
         requireCurrent(header, request.version(), request.fingerprint());
         Set<String> seen = new HashSet<>();
@@ -502,7 +569,7 @@ public class MaterialAnalysisService {
         // 人工改了父件路线后, 下层可能刚出现独立需求: 同一次重算里按货品档案把它们一并确认.
         RefreshOutcome refreshed = refreshLockedOutcome(analysisId, Map.of(), true);
         recordSimpleCommand(analysisId, "ROUTE", request.idempotencyKey(), requestHash);
-        return detailInternal(analysisId, false).withRouteOutcome(0, refreshed.autoConfirmedRoutes());
+        return new RouteSaveOutcome(analysisId, false, refreshed.autoConfirmedRoutes());
     }
 
     /**
@@ -1346,6 +1413,97 @@ public class MaterialAnalysisService {
      * 改货品主档、多拿货品行锁; 它们留下的待确认行由详情里的 pendingAutoConfirmRouteCount
      * 告诉页面, 页面静默刷新一次即可.
      */
+    /** 操作组键的唯一推导。 */
+    static String materialActionGroupKey(UUID analysisItemId, String path, UUID goodsId, UUID colorId, UUID unitId) {
+        return PlanningPackageFingerprint.sha256(List.of(
+                "MATERIAL-NODE-ACTION-V3", analysisItemId.toString(), path,
+                goodsId.toString(), Objects.toString(colorId, "NONE"), unitId.toString()));
+    }
+
+    /** 首建预确认的结果: nodeRef → {确认路线, 持久化行id}, 外加确认的操作组数与写入器变更清单。 */
+    record FirstSnapshotAutoConfirm(Map<String, String> routesByNodeRef, Map<String, UUID> materialIdByNodeRef,
+                                    List<MaterialAnalysisRouteBatchWriter.Change> changes, int groupCount) {
+        static final FirstSnapshotAutoConfirm NONE =
+                new FirstSnapshotAutoConfirm(Map.of(), Map.of(), List.of(), 0);
+    }
+
+    /** 该分析是否写过任何 BOM 组件行(含失活与已确认; 单次索引探测)。 */
+    private boolean analysisHasBomRows(UUID analysisId) {
+        return Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_material_analysis_materials
+                              WHERE analysis_id = :analysisId AND node_role = 'BOM_COMPONENT')
+                """).setParameter("analysisId", analysisId).getSingleResult());
+    }
+
+    /**
+     * 首建快照的自动确认预计划 (V830): 判据与 {@link #autoConfirmDecisiveRoutes} 同一份
+     * ({@link MaterialAnalysisRouteAutoConfirm}), 输入换成内存快照行 + **分配投影后**的数量
+     * (与写入后再读的 MaterialRow 同口径: required/shortage 取 {@link NodeAllocationRow}),
+     * 确认列随快照 INSERT 一次写出。49k 行规模下省掉「先插空行再批量 UPDATE」的整段
+     * 二次堆重写; 主档空白来源的回写仍由写入器照旧执行(物料 UPDATE 幂等零命中, 不产生行审计)。
+     * 顶层供给行不在这里(由 ensureRootNodes 单独插入), 仍走写入器并留行审计。
+     */
+    private FirstSnapshotAutoConfirm planFirstSnapshotAutoConfirm(UUID analysisId, List<SourceLine> sources,
+            List<NodeSnapshotRow> snapshotRows, AllocationSnapshot allocation) {
+        if (!access.hasAuthority("production_material_analysis:view")
+                || !access.hasAuthority("production_material_analysis:route")) return FirstSnapshotAutoConfirm.NONE;
+        Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
+        Map<String, NodeAllocationRow> projectedByNodeRef = new LinkedHashMap<>();
+        for (NodeAllocationRow row : allocation.nodeRows()) {
+            projectedByNodeRef.put(nodeRef(row.analysisItemId(), row.nodeKey()), row);
+        }
+        Map<String, UUID> materialIdByNodeRef = new LinkedHashMap<>();
+        List<SnapshotCandidate> candidates = new ArrayList<>();
+        for (NodeSnapshotRow row : snapshotRows) {
+            String nodeRef = nodeRef(row.node().analysisItemId(), row.node().nodeKey());
+            UUID materialId = UUID.randomUUID();
+            materialIdByNodeRef.put(nodeRef, materialId);
+            NodeAllocationRow projected = projectedByNodeRef.get(nodeRef);
+            if (projected != null) {
+                candidates.add(new SnapshotCandidate(materialId, row.node(), projected.required(), projected.shortage()));
+            }
+        }
+        if (!MaterialAnalysisRouteAutoConfirm.hasCandidates(candidates, planningBlocks)) {
+            return FirstSnapshotAutoConfirm.NONE;
+        }
+        if (!canConfirmRoutes(readHeader(analysisId), fqcRecoveryAuthorizationId(analysisId) != null)) {
+            return FirstSnapshotAutoConfirm.NONE;
+        }
+        Map<UUID, List<DownstreamReference>> references = downstreamReferences(analysisId);
+        if (rootSupply != null) rootSupply.addOutputReferences(analysisId, references);
+        MaterialAnalysisRouteAutoConfirm.Plan plan = MaterialAnalysisRouteAutoConfirm.plan(candidates,
+                planningBlocks, MaterialAnalysisRouteAutoConfirm.facts(sources, productPlanStates(analysisId),
+                        planAnchorByMaterial(analysisId,
+                                hasAggregateSources(sources) ? aggregateMembers(analysisId) : List.of()),
+                        references, supplyActions(analysisId)));
+        if (plan.changes().isEmpty()) return FirstSnapshotAutoConfirm.NONE;
+        Map<String, String> routes = new LinkedHashMap<>();
+        Map<UUID, String> nodeRefByMaterialId = new HashMap<>();
+        materialIdByNodeRef.forEach((ref, id) -> nodeRefByMaterialId.put(id, ref));
+        for (var change : plan.changes()) routes.put(nodeRefByMaterialId.get(change.materialId()), change.route());
+        return new FirstSnapshotAutoConfirm(routes, materialIdByNodeRef, plan.changes(), plan.groupCount());
+    }
+
+    /** 首建预确认的最小行视图: 数量取分配投影后的值, 与写入后读回的 MaterialRow 同口径。 */
+    record SnapshotCandidate(UUID id, UUID analysisItemId, String path, UUID goodsId, UUID colorId,
+                             UUID unitId, int depth, String suggestion, BigDecimal requiredQty,
+                             BigDecimal shortageQty) implements MaterialAnalysisRouteAutoConfirm.Candidate {
+        SnapshotCandidate(UUID id, BomNode node, BigDecimal required, BigDecimal shortage) {
+            this(id, node.analysisItemId(), node.path(), node.goodsId(), node.colorId(), node.unitId(),
+                    node.depth(), node.suggestion(), required, shortage);
+        }
+
+        @Override public String confirmedRoute() { return null; }
+
+        @Override public boolean actionable() {
+            return requiredQty.signum() > 0 && (depth == 0 || shortageQty.signum() > 0);
+        }
+
+        @Override public String actionGroupKey() {
+            return materialActionGroupKey(analysisItemId, path, goodsId, colorId, unitId);
+        }
+    }
+
     private RefreshOutcome refreshLockedOutcome(UUID analysisId, Map<UUID, BigDecimal> typedOutputByMaterialLine,
             boolean autoConfirmRoutes) {
         AnalysisHeader header = lockHeader(analysisId);
@@ -1397,7 +1555,40 @@ public class MaterialAnalysisService {
         // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
         Set<String> confirmedBefore = baseline.confirmedNodes();
         List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
-        boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline, sources,previousRouteLinks);
+        // V830 首建分支: 快照行还没写库时, 分配投影先在内存里算 (有效路线 = 写入后
+        // COALESCE(confirmed_route, source_suggestion) 的精确等值映射), 预确认按分配后口径
+        // (NodeAllocationRow 的 required/shortage, 与写入后读回的 MaterialRow 同口径)定下,
+        // 确认列随 INSERT 一次写出; 主档空白来源仍由写入器回写 (物料 UPDATE 幂等零命中)。
+        // 非首建路径的顺序与语义原样不动。
+        // 首建 = 该分析从未写过任何 BOM 行(不过滤 active/confirmed)。不能只看
+        // baseline.identities(): 它只含 active 或已确认的行, 「全部行失活且从未确认」
+        // 的重建态(根路线改外购/BOM 边软删后恢复等)同样让它为空——那种状态下库里
+        // 残留的失活行会被 upsert 的 ON CONFLICT 重激活并沿用旧 id, 预生成的行 id
+        // 与其失配, 且分配的 active 行关联读(覆盖/借用/锚点)与按行 id 索引的预确认
+        // 事实都拿不到, 必须走写后再读的老路径。
+        boolean firstSnapshot = !analysisHasBomRows(analysisId);
+        FirstSnapshotAutoConfirm firstConfirm = FirstSnapshotAutoConfirm.NONE;
+        AllocationSnapshot allocation;
+        if (firstSnapshot) {
+            Map<String, String> suggestionRoutes = new LinkedHashMap<>();
+            for (BomNode node : nodes) {
+                suggestionRoutes.put(nodeRef(node.analysisItemId(), node.nodeKey()), node.suggestion());
+            }
+            allocation = computeAllocationSnapshot(
+                    analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
+                    typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE, suggestionRoutes);
+            if (autoConfirmRoutes) {
+                firstConfirm = planFirstSnapshotAutoConfirm(analysisId, sources, snapshotRows, allocation);
+            }
+        } else {
+            allocation = null;
+        }
+        boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline, sources,
+                previousRouteLinks, firstConfirm);
+        if (firstSnapshot && !firstConfirm.changes().isEmpty()) {
+            new MaterialAnalysisRouteBatchWriter(em).applyAutomatic(analysisId, currentUser.requireId(),
+                    firstConfirm.changes());
+        }
         int routeResets = structureChanged && !confirmedBefore.isEmpty()
                 ? clearedConfirmations(analysisId, nodes, confirmedBefore) : 0;
         // 分配读写入后的路线；选用量用的路线若已被这次写入改掉，按写入后的路线再选一次用量，
@@ -1408,12 +1599,15 @@ public class MaterialAnalysisService {
             sources = tree.sources();
             snapshotRows = nodeSnapshotRows(tree, availability);
             upsertNodeSnapshots(analysisId, snapshotRows,
-                    MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS), sources,previousRouteLinks);
+                    MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS), sources,
+                    previousRouteLinks, FirstSnapshotAutoConfirm.NONE);
         }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
-        AllocationSnapshot allocation = computeAllocationSnapshot(
-                analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
-                typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE);
+        if (!firstSnapshot) {
+            allocation = computeAllocationSnapshot(
+                    analysisId, header.warehouseId(), sources, nodes, availability, snapshotRows,
+                    typedOutputByMaterialLine, MaterialAnalysisIssuePreviewOverlay.NONE);
+        }
         if (allocation.hasBorrows()) {
             persistBorrowEffectiveQuantities(allocation.borrowEffective());
         }
@@ -1423,7 +1617,8 @@ public class MaterialAnalysisService {
         // Root refresh needs direct promises only, including original-root public claims.
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId,false));
         // 快照 (含顶层行) 写完之后、换指纹之前: 自动确认只看本次重算的结果, 版本只涨一次.
-        int autoConfirmed = autoConfirmRoutes ? autoConfirmDecisiveRoutes(analysisId, sources) : 0;
+        int autoConfirmed = firstConfirm.groupCount()
+                + (autoConfirmRoutes ? autoConfirmDecisiveRoutes(analysisId, sources) : 0);
         // 被清掉又在上面按货品档案马上重新确认的不算「需重新确认」: 刷新提示只数真要人补选的
         // (与以前页面补发 PUT /routes、套用新快照后这条提示随之消失的结果相同).
         if (autoConfirmed > 0 && routeResets > 0) routeResets = clearedConfirmations(analysisId, nodes, confirmedBefore);
@@ -1876,16 +2071,21 @@ public class MaterialAnalysisService {
     private static String nodeUpsertSql() { return NODE_UPSERT_SQL; }
 
     /** Same complete input row as the former VALUES form; exact numeric values never pass through double. */
-    private static Object[] nodeSnapshotValues(UUID analysisId, UUID actorId, NodeSnapshotRow row,String preservedRoute) {
+    private static Object[] nodeSnapshotValues(UUID analysisId, UUID actorId, NodeSnapshotRow row,
+            String preservedRoute, String autoConfirmedRoute, UUID materialId) {
         BomNode node = row.node();
+        // 既有有效供给的保留路线优先; 首建预确认 (ADR-102, 分配后口径) 随 INSERT 直接带出确认列。
+        // 两条路径的确认元数据形状一致: route_confirmed_by/at 记操作人; 保留路径另注明恢复依据。
+        String confirmedRoute = preservedRoute != null ? preservedRoute : autoConfirmedRoute;
+        String reason = preservedRoute != null ? "依据已下达供给恢复，未重新选择供应方式" : null;
         return java.util.stream.Stream.of(
-                new Object[] {UUID.randomUUID(), analysisId, node.analysisItemId(), node.nodeKey()},
+                new Object[] {materialId, analysisId, node.analysisItemId(), node.nodeKey()},
                 nodeStructure(node),
                 new Object[] {row.required(), row.available(), row.reserved(), BigDecimal.ZERO,
                         node.safetyStock(), row.inbound(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        row.shortage(), row.expectedReadyDate(), row.lowerPending(), actorId, actorId,preservedRoute,
-                        preservedRoute==null?null:"依据已下达供给恢复，未重新选择供应方式",
-                        preservedRoute==null?null:actorId,preservedRoute==null?null:OffsetDateTime.now().toString()})
+                        row.shortage(), row.expectedReadyDate(), row.lowerPending(), actorId, actorId,confirmedRoute,
+                        reason, confirmedRoute==null?null:actorId,
+                        confirmedRoute==null?null:OffsetDateTime.now().toString()})
                 .flatMap(java.util.Arrays::stream).toArray();
     }
 
@@ -1895,7 +2095,7 @@ public class MaterialAnalysisService {
     }
 
     private boolean upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows, MaterialAnalysisSnapshotBaseline baseline,List<SourceLine> sources,
-            MaterialAnalysisIssuedRoutePreservation.SourceLinks previousRouteLinks) {
+            MaterialAnalysisIssuedRoutePreservation.SourceLinks previousRouteLinks, FirstSnapshotAutoConfirm firstConfirm) {
         Map<String, NodeSnapshotRow> distinct = new LinkedHashMap<>();
         for (NodeSnapshotRow row : rows) {
             distinct.put(nodeRef(row.node().analysisItemId(), row.node().nodeKey()), row);
@@ -1906,7 +2106,13 @@ public class MaterialAnalysisService {
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < ordered.size(); from += NODE_WRITE_CHUNK) {
             List<NodeSnapshotRow> chunk = ordered.subList(from, Math.min(ordered.size(), from + NODE_WRITE_CHUNK));
-            String snapshots = NODE_INPUT.json(chunk, row -> nodeSnapshotValues(analysisId, actorId, row,preserved.get(nodeAllocationKey(row.node()))));
+            String snapshots = NODE_INPUT.json(chunk, row -> {
+                String nodeRef = nodeRef(row.node().analysisItemId(), row.node().nodeKey());
+                return nodeSnapshotValues(analysisId, actorId, row,
+                        preserved.get(nodeAllocationKey(row.node())),
+                        firstConfirm.routesByNodeRef().get(nodeRef),
+                        firstConfirm.materialIdByNodeRef().getOrDefault(nodeRef, UUID.randomUUID()));
+            });
             em.createNativeQuery(NODE_UPSERT_SQL).setParameter("snapshots", snapshots).executeUpdate();
         }
         return !ordered.isEmpty();
@@ -2673,6 +2879,24 @@ public class MaterialAnalysisService {
             List<NodeSnapshotRow> inputs,
             Map<UUID, BigDecimal> typedOutputByMaterialLine,
             MaterialAnalysisIssuePreviewOverlay overlay) {
+        return computeAllocationSnapshot(analysisId, warehouseId, sources, nodes, availability, inputs,
+                typedOutputByMaterialLine, overlay, null);
+    }
+
+    /**
+     * [preloadedEffectiveRoutes] 非空时替代 {@link #loadEffectiveRoutes} 的读库——只在首建分支
+     * (快照行还没写)使用, 传入「写入后 COALESCE(confirmed_route, source_suggestion) 的精确等值映射」。
+     */
+    private AllocationSnapshot computeAllocationSnapshot(
+            UUID analysisId,
+            UUID warehouseId,
+            List<SourceLine> sources,
+            List<BomNode> nodes,
+            AvailabilitySnapshot availability,
+            List<NodeSnapshotRow> inputs,
+            Map<UUID, BigDecimal> typedOutputByMaterialLine,
+            MaterialAnalysisIssuePreviewOverlay overlay,
+            Map<String, String> preloadedEffectiveRoutes) {
         Map<String, NodeSnapshotRow> inputsByNode = inputs.stream().collect(Collectors.toMap(
                 row -> nodeAllocationKey(row.node()), row -> row));
         Map<UUID, List<BomNode>> directBySource = nodes.stream()
@@ -2684,7 +2908,8 @@ public class MaterialAnalysisService {
         Set<MaterialDimension> dimensions = Set.copyOf(stockAfterSafety.keySet());
         Map<MaterialDimension, BigDecimal> externalHardCommitments = softCommittedStock(
                 analysisId, warehouseId, dimensions, HARD_COMMITMENT_STAGES);
-        Map<String, String> effectiveRoutes = loadEffectiveRoutes(analysisId);
+        Map<String, String> effectiveRoutes = preloadedEffectiveRoutes != null
+                ? preloadedEffectiveRoutes : loadEffectiveRoutes(analysisId);
         // 2026-09-05 简化：子件不再接管子树需求（delegated 清零口径废除）。
         Set<String> delegatedMakeNodes = Set.of();
         // 子层展开基准的输入：父件已被外部最终件在途覆盖的量，以及父件已经
@@ -9606,7 +9831,8 @@ public class MaterialAnalysisService {
             /** V587 货品主档「所属仓库」，与落点仓/分析范围仓无关；未登记为 null。 */
             UUID owningWarehouseId, String owningWarehouseName,
             /** V590 货品主档「归属生产车间」（最近一次排产确认/改派学习回写）。 */
-            UUID owningWorkshopId, String owningWorkshopName) {
+            UUID owningWorkshopId, String owningWorkshopName)
+            implements MaterialAnalysisRouteAutoConfirm.Candidate {
         static MaterialRow from(Object[] row) {
             return new MaterialRow(uuid(row[0]), uuid(row[1]), string(row[2]),
                     uuid(row[3]), string(row[4]), string(row[5]), string(row[6]),
@@ -9763,17 +9989,15 @@ public class MaterialAnalysisService {
                     false, null);
         }
 
-        String actionGroupKey() {
-            return PlanningPackageFingerprint.sha256(List.of(
-                    "MATERIAL-NODE-ACTION-V3", analysisItemId.toString(), path,
-                    goodsId.toString(), Objects.toString(colorId, "NONE"), unitId.toString()));
+        @Override public String actionGroupKey() {
+            return materialActionGroupKey(analysisItemId, path, goodsId, colorId, unitId);
         }
 
         MaterialNodeIdentity nodeIdentity() {
             return new MaterialNodeIdentity(analysisItemId, nodeKey);
         }
 
-        boolean actionable() {
+        @Override public boolean actionable() {
             return requiredQty.signum() > 0 && (depth == 0 || shortageQty.signum() > 0);
         }
 

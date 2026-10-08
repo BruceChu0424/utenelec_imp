@@ -35,6 +35,24 @@ final class MaterialAnalysisRouteAutoConfirm {
     private static final Set<String> ROUTES = Set.of("BUY", "MAKE", "SUBCONTRACT");
     private static final Set<String> ROOT_OUTPUT_DOCUMENTS = Set.of("ROOT_STOCK_ALLOCATION", "ROOT_OUTPUT_FULFILLMENT");
 
+    /**
+     * 自动确认判定的最小行视图 (V830): 人工/刷新后路径用完整 {@code MaterialRow},
+     * 首建快照在写入前用内存快照行 ({@code MaterialAnalysisService.SnapshotCandidate}) 预确认,
+     * 两边共用同一份判定与分组, 不复制规则。
+     */
+    interface Candidate {
+        UUID id();
+        UUID analysisItemId();
+        UUID goodsId();
+        UUID colorId();
+        UUID unitId();
+        int depth();
+        String suggestion();
+        String confirmedRoute();
+        boolean actionable();
+        String actionGroupKey();
+    }
+
     private MaterialAnalysisRouteAutoConfirm() {}
 
     /**
@@ -58,7 +76,7 @@ final class MaterialAnalysisRouteAutoConfirm {
         }
 
         /** 这一行自己 (顶层) 或它的锚点子件是否已下达过自制计划. */
-        boolean issuedMakePlan(MaterialAnalysisService.MaterialRow row) {
+        boolean issuedMakePlan(Candidate row) {
             UUID anchor = row.depth() == 0 ? row.analysisItemId() : anchorByMaterial.get(row.id());
             return anchor != null && itemsWithIssuedPlan.contains(anchor);
         }
@@ -105,7 +123,7 @@ final class MaterialAnalysisRouteAutoConfirm {
     /**
      * 纯内存预筛 (不查库): 有没有可能被自动确认的行. 为 false 时重算里连事实都不用读.
      */
-    static boolean hasCandidates(List<MaterialAnalysisService.MaterialRow> rows, Map<UUID, String> planningBlocks) {
+    static boolean hasCandidates(List<? extends Candidate> rows, Map<UUID, String> planningBlocks) {
         return rows.stream().anyMatch(row -> row.confirmedRoute() == null && row.actionable()
                 && !planningBlocks.containsKey(row.analysisItemId())
                 && (row.depth() == 0 || route(row.suggestion()) != null));
@@ -115,11 +133,17 @@ final class MaterialAnalysisRouteAutoConfirm {
      * 按操作组给出要写的确认. 分组与 PUT /routes 解析决定用的同一份
      * {@link MaterialAnalysisService.MaterialGroupIndex} (只含有独立需求的行).
      */
-    static Plan plan(List<MaterialAnalysisService.MaterialRow> rows, Map<UUID, String> planningBlocks, Facts facts) {
+    static Plan plan(List<? extends Candidate> rows, Map<UUID, String> planningBlocks, Facts facts) {
         if (!hasCandidates(rows, planningBlocks)) return Plan.NONE;
         List<MaterialAnalysisRouteBatchWriter.Change> result = new ArrayList<>();
         int groups = 0;
-        for (var group : MaterialAnalysisService.MaterialGroupIndex.of(rows).byKey().entrySet()) {
+        // 分组与 MaterialGroupIndex.of 同式: 只按有独立需求的行、同一 actionGroupKey 归组。
+        Map<String, List<Candidate>> byKey = new java.util.LinkedHashMap<>();
+        for (Candidate row : rows) {
+            if (!row.actionable()) continue;
+            byKey.computeIfAbsent(row.actionGroupKey(), ignored -> new ArrayList<>()).add(row);
+        }
+        for (var group : byKey.entrySet()) {
             String key = group.getKey();
             if (facts.groupKeysWithLiveAction().contains(key)) continue;
             String route = null;
@@ -153,7 +177,7 @@ final class MaterialAnalysisRouteAutoConfirm {
     }
 
     /** 这一行可以自动定下的路线; 不能自动确认返回 null. */
-    private static String decide(MaterialAnalysisService.MaterialRow row, Map<UUID, String> planningBlocks, Facts facts) {
+    private static String decide(Candidate row, Map<UUID, String> planningBlocks, Facts facts) {
         if (row.confirmedRoute() != null || planningBlocks.containsKey(row.analysisItemId())) return null;
         if (facts.materialsWithLiveDownstream().contains(row.id()) || facts.issuedMakePlan(row)) return null;
         if (row.depth() == 0 && facts.itemsWithRootPlan().contains(row.analysisItemId())) return "MAKE";

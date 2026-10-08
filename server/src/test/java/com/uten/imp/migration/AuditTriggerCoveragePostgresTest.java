@@ -136,7 +136,9 @@ class AuditTriggerCoveragePostgresTest {
                           FROM unnest(t.tgattr) WITH ORDINALITY k(attnum, ord)
                           JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attnum = k.attnum) AS columns
                 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
-                WHERE NOT t.tgisinternal AND t.tgparentid = 0 AND t.tgfoid = 'public.fn_audit()'::regprocedure
+                WHERE NOT t.tgisinternal AND t.tgparentid = 0
+                  AND t.tgfoid IN ('public.fn_audit()'::regprocedure,
+                                   'public.fn_audit_route_columns()'::regprocedure)
                 """);
         Map<String, List<Map<String, Object>>> byTable = new HashMap<>();
         triggers.forEach(row -> byTable.computeIfAbsent((String) row.get("relname"), ignored -> new ArrayList<>()).add(row));
@@ -169,8 +171,11 @@ class AuditTriggerCoveragePostgresTest {
             }
             var policy = scoped.get(table);
             String columns = String.join(",", policy.columns());
+            // UPDATE 审计触发器核对列清单与 WHEN; 通用 fn_audit 与专用窄函数(如 V830 的
+            // fn_audit_route_columns)同型同核, 专用函数触发器不许逃过形状核对。
             boolean updateTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 16)
-                    && (Boolean) row.get("has_when") && columns.equals(row.get("columns")));
+                    && (Boolean) row.get("has_when") && columns.equals(row.get("columns"))
+                    && "A".equals(row.get("enabled")));
             boolean rowTrigger = rows.stream().anyMatch(row -> ((Number) row.get("tgtype")).intValue() == (1 | 4 | 8));
             if (!updateTrigger || rowTrigger != policy.insertDelete() || rows.size() != (policy.insertDelete() ? 2 : 1)) {
                 problems.add(table + " COLUMN_SCOPED shape " + rows);

@@ -165,6 +165,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             // 路由批量写入器的行级审计取证探针（MaterialAnalysisRouteBatchWriterPostgresTest）：
             // 只捕获 OLD/NEW jsonb 对拍写入行数，不是业务审计表。
             "com/uten/imp/features/production/analysis/MaterialAnalysisRouteBatchWriterPostgresTest.java#row_audit",
+            // V830 审计窄投影金样等值测试的探针表：给 fn_audit/窄函数挂触发器做逐字段对拍，
+            // 不承载业务数据（MaterialRouteAuditNarrowParityPostgresTest）。
+            "com/uten/imp/audit/MaterialRouteAuditNarrowParityPostgresTest.java#route_audit_parity_probe",
             // Issue-watermark SQL/locking oracle: controlled physical capacity returned by a private function stub.
             "com/uten/imp/features/notice/WorkshopArrivalWatermarkPostgresTest.java#capacity_fixture",
             "com/uten/imp/application/concurrency/FulfillmentCommandDeadlinePostgresTest.java#deadline_evidence",

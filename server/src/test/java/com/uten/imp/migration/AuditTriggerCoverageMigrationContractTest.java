@@ -61,7 +61,7 @@ class AuditTriggerCoverageMigrationContractTest {
             "(?s)fn_audit_track_table\\(t, 'FULL', '([a-z_]+)', (true|false)\\)\\s+FROM unnest\\(ARRAY\\[(.*?)]\\) AS t;");
     private static final Pattern SCOPED_CALL = Pattern.compile(
             "(?s)fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'COLUMN_SCOPED'\\s*,\\s*'([a-z_]+)'\\s*,\\s*(true|false)\\s*,\\s*"
-                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*\\);");
+                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*(?:,\\s*'([a-z_][a-z0-9_.]*\\(\\))')?\\s*\\);");
     private static final Pattern REGISTRATION = Pattern.compile(
             "fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'(FULL|COLUMN_SCOPED|NONE)'");
     private static final Pattern QUOTED = Pattern.compile("'([a-z_][a-z0-9_]*)'");
@@ -73,7 +73,11 @@ class AuditTriggerCoverageMigrationContractTest {
     }
 
     record ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
-                       String reason) {
+                       String reason, String updateFn) {
+        ScopedTable(String table, String category, boolean insertDelete, List<String> columns,
+                    String reason) {
+            this(table, category, insertDelete, columns, reason, null);
+        }
     }
 
     record NoneGroup(String key, String reason, Set<String> tables) {
@@ -239,7 +243,9 @@ class AuditTriggerCoverageMigrationContractTest {
                     "物料分析表头: 只记新建/删除与状态、取消、仓库、制单人这些人为决定, 版本号和指纹每次刷新都会变, 不记"),
             new ScopedTable("production_material_analysis_materials", "data_change", false,
                     List.of("confirmed_route", "route_reason", "route_confirmed_by"),
-                    "物料分析物料行是每次刷新重算的投影: 只记人工确认路线与理由, 需求/可用/缺口等派生数量不记"),
+                    "物料分析物料行是每次刷新重算的投影: 只记人工确认路线与理由, 需求/可用/缺口等派生数量不记;"
+                            + "V830 起 UPDATE 审计走窄投影函数(金样等值测试钉死与通用 fn_audit 逐字段一致)",
+                    "public.fn_audit_route_columns()"),
             new ScopedTable("production_material_analysis_items", "data_change", false,
                     List.of("requested_qty", "delivery_date", "line_priority", "source_reason", "is_deleted"),
                     "物料分析来源行: 只记人工改的需求数量、交期、优先级、原因和删除, 就绪量等派生数量不记"),
@@ -648,8 +654,10 @@ class AuditTriggerCoverageMigrationContractTest {
             }
             ScopedTable expected = scopedTables().get(scoped.group(1));
             assertTrue(expected != null, scoped.group(1) + " is scoped in V670 but not listed");
+            // 基线调用只承载类别/列清单/插入删除开关; 专用 UPDATE 函数(V830 窄投影)只能由
+            // 基线之后的再登记引入, 这里取清单当前值, 由"基线之后登记"用例独立钉住迁移里真写了。
             declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
-                    Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
+                    Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), expected.updateFn()));
         }
         // 基线之后新建的 COLUMN_SCOPED 表(如 V742 ai_providers)由各自建表迁移登记, 形状在下一个用例核对。
         // 基线之后新建的 COLUMN_SCOPED 表(如 V743 称重观测)由建表迁移登记, 形态见下一个用例。
@@ -701,7 +709,7 @@ class AuditTriggerCoverageMigrationContractTest {
                 ScopedTable expected = scopedTables().get(scoped.group(1));
                 registeredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
                         Boolean.parseBoolean(scoped.group(5)), columns,
-                        expected == null ? "" : expected.reason()));
+                        expected == null ? "" : expected.reason(), scoped.group(6)));
             }
         }
         // 基线之后新建的 COLUMN_SCOPED 表: 建表迁移里的类别、列清单与插入/删除开关必须与清单逐项一致。
@@ -741,7 +749,7 @@ class AuditTriggerCoverageMigrationContractTest {
                     columns.add(column.group(1));
                 }
                 declaredScoped.put(scoped.group(1), new ScopedTable(scoped.group(1), scoped.group(2),
-                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason()));
+                        Boolean.parseBoolean(scoped.group(5)), columns, expected.reason(), scoped.group(6)));
             }
         }
         Map<String, ScopedTable> listed = new LinkedHashMap<>(scopedTables());

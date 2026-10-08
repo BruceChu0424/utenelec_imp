@@ -118,10 +118,21 @@ class AiDocumentClassifierTest {
         assertThat(AiDocumentClassifier.classify(List.of("电子发票", "发票号码:12345678", "价税合计:100", "价税合计（大写）:壹佰元")).multipleInvoices()).isFalse();
     }
 
-    @Test void untitledEnglishInvoiceReferencesAreCommercialRatherThanDomesticTaxEvidence() {
-        assertThat(AiDocumentClassifier.classify(List.of("Invoice No: REF-2026", "Grand Total:100")).type()).isEqualTo("COMMERCIAL_INVOICE");
+    @Test void untitledEnglishInvoiceReferencesDoNotEstablishCommercialOrDomesticTaxType() {
+        assertThat(AiDocumentClassifier.classify(List.of("Invoice No: REF-2026", "Grand Total:100")).type()).isEqualTo("UNKNOWN");
+        assertThat(AiDocumentClassifier.classify(List.of("Invoice No: REF-2026", "Grand Total:100", GOODS_HEADER)).type()).isEqualTo("SALES_TABLE");
         assertThat(AiDocumentClassifier.classifySections(List.of(List.of("报价单", GOODS_HEADER),
                 List.of("Invoice No: REF-2026", "Grand Total:100"))).type()).isEqualTo("SALES_QUOTATION");
+    }
+
+    @Test void genericInvoiceTemplateDoesNotProveCommercialInvoiceOrOverrideQuotationEvidence() {
+        assertThat(AiDocumentClassifier.classify(List.of("Invoice", GOODS_HEADER)))
+                .isEqualTo(new AiDocumentClassifier.Classification("SALES_TABLE", false, "COLUMNS"));
+        assertThat(AiDocumentClassifier.classify(List.of("Invoice", "报价单", GOODS_HEADER)).type()).isEqualTo("SALES_QUOTATION");
+        assertThat(AiDocumentClassifier.classify(List.of("Invoice", "unknown content")).type()).isEqualTo("UNKNOWN");
+        assertThat(AiDocumentClassifier.classify(List.of("Invoice No: REF-2026", "Grand Total:100")).evidence()).isEqualTo("FIELDS");
+        assertThat(AiDocumentClassifier.classifySections(List.of(
+                List.of("Invoice No: ONE-2026", "Grand Total:100"), List.of("Invoice No: TWO-2026", "Grand Total:200"))).multipleInvoices()).isTrue();
     }
 
     @Test void untitledDomesticInvoiceNumberAndTaxTotalRemainDistinctFromTradeSheets() {

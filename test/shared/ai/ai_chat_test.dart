@@ -18,6 +18,8 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_en.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
@@ -1970,6 +1972,91 @@ void main() {
     },
   );
 
+  for (final scenario in [
+    (
+      name: 'desktop light',
+      size: const Size(1000, 850),
+      scale: 1.0,
+      dark: false,
+    ),
+    (name: 'narrow light', size: const Size(320, 850), scale: 1.0, dark: false),
+    (
+      name: 'narrow large text',
+      size: const Size(320, 850),
+      scale: 2.0,
+      dark: false,
+    ),
+    (
+      name: 'desktop dark large text',
+      size: const Size(1000, 850),
+      scale: 2.0,
+      dark: true,
+    ),
+  ]) {
+    testWidgets('composer controls share the input height: ${scenario.name}', (
+      tester,
+    ) async {
+      final pending = Completer<AiJobSnapshot>();
+      await _pump(
+        tester,
+        size: scenario.size,
+        theme: scenario.dark ? buildDarkTheme() : buildLightTheme(),
+        textScaler: TextScaler.linear(scenario.scale),
+        repository: _FakeChatRepository()..pending = pending,
+      );
+      await _open(tester);
+      void alignedControls() {
+        final input = tester.getRect(
+          find.byKey(const ValueKey('ai-chat-input-surface')),
+        );
+        final attach = tester.getRect(
+          find.byKey(const ValueKey('ai-chat-attach')),
+        );
+        final send = tester.getRect(find.byKey(const ValueKey('ai-chat-send')));
+        for (final button in [attach, send]) {
+          expect(button.top, closeTo(input.top, 0.1));
+          expect(button.bottom, closeTo(input.bottom, 0.1));
+          expect(button.width, greaterThanOrEqualTo(kMinInteractiveDimension));
+          expect(button.height, greaterThanOrEqualTo(kMinInteractiveDimension));
+        }
+        expect(input.left - attach.right, greaterThanOrEqualTo(8));
+        expect(send.left - input.right, greaterThanOrEqualTo(8));
+        expect(tester.takeException(), isNull);
+      }
+
+      alignedControls();
+      final singleLine = tester
+          .getSize(find.byKey(const ValueKey('ai-chat-input-surface')))
+          .height;
+      await tester.enterText(
+        find.byKey(const ValueKey('ai-chat-input')),
+        'Quotation\nPlease prepare an order\nKeep the quantities',
+      );
+      await tester.pumpAndSettle();
+      alignedControls();
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('ai-chat-input-surface')))
+            .height,
+        greaterThan(singleLine),
+      );
+      await tester.tap(find.byKey(const ValueKey('ai-chat-send')));
+      await tester.pump();
+      alignedControls();
+      expect(
+        tester
+            .widget<IconButton>(find.byKey(const ValueKey('ai-chat-attach')))
+            .onPressed,
+        isNull,
+      );
+      expect(find.byTooltip(_en.aiChatStop), findsOneWidget);
+      pending.complete(_success('Ready for review'));
+      await tester.pumpAndSettle();
+      alignedControls();
+      expect(find.byTooltip(_en.aiChatSend), findsOneWidget);
+    });
+  }
+
   test(
     'page-help hint requires an allowlisted value and a safe current path',
     () async {
@@ -2461,6 +2548,159 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'continuing with a file keeps the draft and sends the original source with the correction',
+    (tester) async {
+      final file = PlatformFile(
+        name: 'quotation.xlsx',
+        size: 4,
+        bytes: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {'workflow': 'NONE', 'needsChoice': false};
+      final harness = await _pump(tester, jobs: jobs);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, 'What is this file?');
+      await tester.pumpAndSettle();
+      // A new ordinary question is never silently diverted to document routing.
+      await _send(tester, 'What can you help with?');
+      await tester.pumpAndSettle();
+      expect(
+        harness.repository.messages.single['message'],
+        'What can you help with?',
+      );
+      expect(jobs.requests, hasLength(1));
+      const correction = 'This is a quotation, please prepare a sales order';
+      await tester.enterText(
+        find.byKey(const ValueKey('ai-chat-input')),
+        correction,
+      );
+      await _scrollMessagesTo(
+        tester,
+        find.byKey(const ValueKey('ai-doc-reuse-file-job-1')),
+        up: true,
+      );
+      await _tapCard(tester, 'ai-doc-reuse-file-job-1');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .controller!
+            .text,
+        correction,
+      );
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+            .focusNode!
+            .hasFocus,
+        isTrue,
+      );
+      expect(find.byTooltip(_en.aiChatRemoveFile), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-send')));
+      await tester.pumpAndSettle();
+      expect(jobs.requests, hasLength(2));
+      expect(jobs.requests.last.params['message'], correction);
+      expect(jobs.requests.last.params.containsKey('workflow'), isFalse);
+      expect(jobs.requests.last.fileName, file.name);
+      expect(jobs.requests.last.bytes, file.bytes);
+      expect(harness.repository.messages, hasLength(1));
+      expect(harness.repository.actionCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'file continuation cannot replace a new attachment or run while busy',
+    (tester) async {
+      final original = PlatformFile(
+        name: 'original.xlsx',
+        size: 1,
+        bytes: Uint8List.fromList([1]),
+      );
+      final replacement = PlatformFile(
+        name: 'replacement.xlsx',
+        size: 1,
+        bytes: Uint8List.fromList([2]),
+      );
+      FilePicker.platform = _Picker(original);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {'workflow': 'NONE', 'needsChoice': false};
+      final repository = _FakeChatRepository();
+      await _pump(tester, jobs: jobs, repository: repository);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, 'What is this file?');
+      await tester.pumpAndSettle();
+      final reuse = find.byKey(const ValueKey('ai-doc-reuse-file-job-1'));
+      FilePicker.platform = _Picker(replacement);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<ActionChip>(reuse).onPressed, isNull);
+      await _send(tester, 'Read the new file');
+      await tester.pumpAndSettle();
+      expect(jobs.requests.last.bytes, replacement.bytes);
+      final pending = Completer<AiJobSnapshot>();
+      repository.pending = pending;
+      await _send(tester, 'Explain this page');
+      await _scrollMessagesTo(tester, reuse, up: true);
+      expect(tester.widget<ActionChip>(reuse).onPressed, isNull);
+      pending.complete(_success('Page guidance'));
+      await tester.pumpAndSettle();
+      await _scrollMessagesTo(tester, reuse, up: true);
+      expect(tester.widget<ActionChip>(reuse).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final boundary in ['new chat', 'identity']) {
+    testWidgets('a reused file is discarded on $boundary', (tester) async {
+      final file = PlatformFile(
+        name: 'private.xlsx',
+        size: 1,
+        bytes: Uint8List.fromList([1]),
+      );
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository()
+        ..routeOverride = {'workflow': 'NONE', 'needsChoice': false};
+      final harness = await _pump(tester, jobs: jobs);
+      await _open(tester);
+      await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+      await tester.pumpAndSettle();
+      await _send(tester, 'What is this file?');
+      await tester.pumpAndSettle();
+      await _tapCard(tester, 'ai-doc-reuse-file-job-1');
+      expect(find.byTooltip(_en.aiChatRemoveFile), findsOneWidget);
+      if (boundary == 'identity') {
+        harness.container.read(harness.identity.notifier).state = _identity(
+          user: 'bob',
+        );
+        await tester.pumpAndSettle();
+        await _open(tester);
+      } else {
+        await tester.tap(find.byKey(const ValueKey('ai-chat-new')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(_en.aiChatConfirm));
+        await tester.pumpAndSettle();
+      }
+      expect(find.byTooltip(_en.aiChatRemoveFile), findsNothing);
+      expect(
+        find.byKey(const ValueKey('ai-doc-reuse-file-job-1')),
+        findsNothing,
+      );
+      await _send(tester, 'New question');
+      expect(jobs.requests, hasLength(1));
+      expect(harness.repository.messages.single['message'], 'New question');
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('purposes this account cannot fill in are not offered as chips', (
     tester,
@@ -3036,6 +3276,8 @@ Future<_Harness> _pump(
   void Function(Uri, Object?)? onDraftOpened,
   String? Function(String path)? redirect,
   Size size = const Size(1000, 850),
+  ThemeData? theme,
+  TextScaler? textScaler,
   Widget page = const SizedBox(key: ValueKey('business-surface')),
 }) async {
   tester.view.physicalSize = size;
@@ -3080,8 +3322,10 @@ Future<_Harness> _pump(
       child: Scaffold(body: page),
     ),
   );
-  Widget scoped(BuildContext context, Widget? child) =>
-      AiPageContextScope(controller: pageContext, child: child!);
+  Widget scoped(BuildContext context, Widget? child) => MediaQuery(
+    data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+    child: AiPageContextScope(controller: pageContext, child: child!),
+  );
   final router = onDraftOpened == null
       ? null
       : GoRouter(
@@ -3124,6 +3368,7 @@ Future<_Harness> _pump(
       container: container,
       child: router != null
           ? MaterialApp.router(
+              theme: theme,
               routerConfig: router,
               locale: const Locale('en'),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -3131,6 +3376,7 @@ Future<_Harness> _pump(
               builder: scoped,
             )
           : MaterialApp(
+              theme: theme,
               locale: const Locale('en'),
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,

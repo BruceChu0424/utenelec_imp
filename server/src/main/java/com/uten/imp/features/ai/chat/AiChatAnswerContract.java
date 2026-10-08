@@ -24,7 +24,7 @@ public record AiChatAnswerContract(String schemaName, Map<String, Object> schema
     public static AiChatAnswerContract create(List<AiChatToolPort> allowedTools, List<String> sourceIds,
                                               boolean pageSnapshot, boolean pageGuide, boolean knowledge,
                                               List<AiChatPageSnapshot.PageAction> actions) {
-        List<String> intents = new ArrayList<>(List.of("CLARIFY", "OUT_OF_SCOPE", "NON_WORK", "UNSUPPORTED"));
+        List<String> intents = new ArrayList<>(List.of("CLARIFY", "OUT_OF_SCOPE", "NON_WORK", "UNSUPPORTED", "SMALL_TALK", "GENERAL_HELP"));
         if (pageSnapshot) intents.add("PAGE_STATE");
         if (pageSnapshot || pageGuide) intents.add("PAGE_HELP");
         if (knowledge) intents.add("KNOWLEDGE");

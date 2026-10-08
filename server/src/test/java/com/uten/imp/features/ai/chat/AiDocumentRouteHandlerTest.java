@@ -269,7 +269,7 @@ class AiDocumentRouteHandlerTest {
         verifyNoInteractions(invoices);
     }
 
-    @Test void expensePageOnlyRanksCommercialChoicesAndUnknownContentIsNeverForcedIntoAForm() {
+    @Test void expensePageOnlyRanksChoicesButExplicitRequestCanPrepareAnUnrecognizedFile() {
         commercial(); page("/expense/new","expense_claim_new","SELF");
         when(ctx.params()).thenReturn(Map.of("pageRoute","/expense/new"));
         var commercial=handler.process(ctx);
@@ -278,7 +278,7 @@ class AiDocumentRouteHandlerTest {
         assertThat(choices.getFirst().get("workflow")).isEqualTo("EXPENSE_CLAIM");
         file("unknown.csv","无法确定用途的文字");
         when(ctx.params()).thenReturn(Map.of("pageRoute","/expense/new","message","生成报销单"));
-        assertThat(handler.process(ctx)).containsEntry("workflow","NONE");
+        assertThat(handler.process(ctx)).containsEntry("workflow","EXPENSE_CLAIM").containsEntry("fields", Map.of());
         verifyNoInteractions(invoices);
     }
 
@@ -337,7 +337,7 @@ class AiDocumentRouteHandlerTest {
         commercial(); when(access.contextualDomains()).thenReturn(new java.util.LinkedHashSet<>(List.of("SUBCONTRACT","SALES")));
         var original=handler.process(ctx);
         @SuppressWarnings("unchecked") var routing=(Map<String,Object>)original.get("_routing");
-        assertThat(routing).containsEntry("version","v3").containsEntry("domains",List.of("SALES","SUBCONTRACT"));
+        assertThat(routing).containsEntry("version","v4").containsEntry("domains",List.of("SALES","SUBCONTRACT"));
         assertThat(handler.filterResultForReader(original)).doesNotContainKeys("_access","_routing");
         var old = new java.util.LinkedHashMap<>(original); old.remove("_routing");
         assertThatThrownBy(()->handler.filterResultForReader(old)).isInstanceOf(ApiException.class);
@@ -548,6 +548,108 @@ class AiDocumentRouteHandlerTest {
         workbook("花名册.xls", "XLS", AiDocumentFixtures.roster(true, 3, true));
         assertThat(handler.process(ctx)).containsEntry("typeSource", "RULES");
         verify(ctx, never()).completeJson(any());
+    }
+
+    @Test void identificationQuestionExplainsTradeEvidenceWithoutAssumingAnActionOrOfferingExpense() {
+        commercial();
+        when(access.contextualDomains()).thenReturn(Set.of("SALES"));
+        when(ctx.params()).thenReturn(Map.of("message", "这是什么文件"));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("documentType", "COMMERCIAL_INVOICE").containsEntry("workflow", "NONE")
+                .containsEntry("actions", List.of());
+        assertThat(result.get("summary").toString()).contains("文件标题标注", "实际用于报价", "销售订货单", "名称不必")
+                .doesNotContain("已识别为商业发票");
+        assertThat(result.get("choices").toString()).contains("SALES_ORDER", "SALES_QUOTE").doesNotContain("EXPENSE_CLAIM");
+        verify(proposals, never()).propose(any());
+    }
+
+    @Test void conversionQuestionsDescribeSupportedUseInsteadOfIssuingACard() {
+        file("quote.csv", "报价单\n品名,数量,单价\n产品A,10,20\n");
+        for (String question : List.of("报价单怎么转成订货单", "这份文件能不能转成订货单", "把报价单转成订货单的流程是什么",
+                "帮我核对报价明细", "分析这份报价单", "导入这些报价资料")) {
+            when(ctx.params()).thenReturn(Map.of("message", question));
+            var result = handler.process(ctx);
+            assertThat(result).containsEntry("workflow", "NONE").containsEntry("actions", List.of());
+            assertThat(result.get("summary").toString()).contains("报价文件", "销售订货单", "逐行识别");
+        }
+        verify(proposals, never()).propose(any());
+    }
+
+    @Test void repeatedWeakInvoiceReferencesCannotLoseMultipleSourceProtection() {
+        file("references.csv", "Invoice No: A123\nGrand Total:100\nInvoice No: B234\nGrand Total:200\n品名,数量,单价\n");
+        when(ctx.params()).thenReturn(Map.of("message", "转成订货单"));
+        when(ctx.aiAllowed()).thenReturn(true);
+        when(ctx.remainingAiCalls()).thenReturn(1);
+        assertThat(handler.process(ctx)).containsEntry("workflow", "NONE").containsEntry("actions", List.of())
+                .containsEntry("choices", List.of()).containsEntry("fields", Map.of());
+        verify(ctx, never()).completeJson(any());
+    }
+
+    @Test void userCorrectionChoosesOrderWithoutRewritingTheDocumentsActualTitle() {
+        commercial();
+        when(ctx.params()).thenReturn(Map.of("message", "这不是发票，是报价单，转成订货单"));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("documentType", "COMMERCIAL_INVOICE").containsEntry("workflow", "SALES_ORDER")
+                .containsEntry("needsChoice", false).containsEntry("fields", Map.of());
+        assertThat((List<?>) result.get("actions")).hasSize(1);
+        assertThat(result.get("summary").toString()).contains("标题标注", "按你的要求", "新建销售订货单", "确认卡", "保存和提交仍由你")
+                .doesNotContain("文件与要做的单据不一致");
+        verifyNoInteractions(invoices);
+    }
+
+    @Test void weakTradeStructureCanBeRefinedButModelGuessAloneNeverAuthorizesACard() throws Exception {
+        workbook("template.xlsx", "XLSX", AiDocumentFixtures.table(false, "客户询价", List.of(
+                List.of("品名", "数量", "单价"), List.of("私密产品名称", 37, 23.81))));
+        when(ctx.aiAllowed()).thenReturn(true);
+        when(ctx.remainingAiCalls()).thenReturn(1);
+        when(ctx.completeJson(any())).thenReturn(new com.uten.imp.application.port.AiCompletionPort.AiCompletionResult(
+                "{\"type\":\"SALES_QUOTATION\",\"intent\":\"QUESTION\",\"confidence\":\"HIGH\"}", "p", "m", 1, 1, 1L));
+        when(ctx.params()).thenReturn(Map.of("message", "这是什么文件"));
+        var question = handler.process(ctx);
+        assertThat(question).containsEntry("typeSource", "AI").containsEntry("documentType", "SALES_QUOTATION")
+                .containsEntry("workflow", "NONE").containsEntry("actions", List.of());
+        assertThat(question.get("summary").toString()).contains("推测", "不一定准确", "销售订货单");
+        var request = org.mockito.ArgumentCaptor.forClass(com.uten.imp.application.port.AiCompletionPort.AiCompletionRequest.class);
+        verify(ctx).completeJson(request.capture());
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(request.getValue()))
+                .contains("品名", "数量", "单价").doesNotContain("私密产品名称", "23.81", "template.xlsx");
+
+        when(ctx.params()).thenReturn(Map.of("message", "把报价单转成订货单"));
+        var requested = handler.process(ctx);
+        assertThat(requested).containsEntry("workflow", "SALES_ORDER").containsEntry("needsChoice", false);
+        assertThat((List<?>) requested.get("actions")).hasSize(1);
+        assertThat(requested.get("summary").toString()).contains("推测", "按你的要求");
+        verifyNoInteractions(invoices);
+    }
+
+    @Test void weakModelRefinementCannotInventTaxEvidenceAndProviderFailureKeepsHonestEvidence() {
+        file("generic.csv", "Invoice\n品名,数量,单价\n产品A,10,20\n");
+        when(ctx.aiAllowed()).thenReturn(true);
+        when(ctx.remainingAiCalls()).thenReturn(1);
+        when(ctx.params()).thenReturn(Map.of("message", "这是什么文件"));
+        when(ctx.completeJson(any())).thenReturn(new com.uten.imp.application.port.AiCompletionPort.AiCompletionResult(
+                "{\"type\":\"INVOICE\",\"intent\":\"QUESTION\",\"confidence\":\"HIGH\"}", "p", "m", 1, 1, 1L));
+        assertThat(handler.process(ctx)).containsEntry("documentType", "SALES_TABLE").containsEntry("workflow", "NONE");
+        when(ctx.completeJson(any())).thenThrow(new IllegalStateException("provider down"));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("documentType", "SALES_TABLE").containsEntry("typeSource", "RULES");
+        assertThat(result.get("summary").toString()).contains("仅凭这些列还不能确定");
+        verifyNoInteractions(invoices);
+    }
+
+    @Test void explicitConversionKeepsPermissionsAndRejectsPersonnelAndTaxInvoiceSources() {
+        when(ctx.params()).thenReturn(Map.of("message", "转成订货单"));
+        for (String source : List.of("员工花名册\n姓名,部门,岗位\n", "电子发票\n发票号码:12345678\n价税合计:100\n")) {
+            file("source.csv", source);
+            assertThat(handler.process(ctx)).containsEntry("workflow", "NONE").containsEntry("actions", List.of())
+                    .containsEntry("fields", Map.of());
+        }
+        commercial();
+        when(workflows.available()).thenReturn(List.of(all.get(2)));
+        assertThat(handler.process(ctx)).containsEntry("workflow", "NONE").containsEntry("actions", List.of())
+                .containsEntry("choices", List.of());
+        verify(proposals, never()).propose(any());
+        verifyNoInteractions(invoices);
     }
 
     private void actor(boolean superAdmin, String... permissions) {

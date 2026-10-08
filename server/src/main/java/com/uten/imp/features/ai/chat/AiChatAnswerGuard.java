@@ -280,6 +280,37 @@ final class AiChatAnswerGuard {
      */
     static Verdict check(String reply, String evidence, String memory, String question, List<ColourFact> colours,
                          int maxChars, String visible, Derivation derivation) {
+        return check(reply, evidence, memory, question, colours, maxChars, visible, derivation, false);
+    }
+
+    /**
+     * General knowledge may introduce numbers, but cannot quote company/page/history facts as authority.
+     * No page or history is evidence here; public concept names may contain letters/digits just like record codes.
+     * Actual business questions must use the grounded path. Internal content, arithmetic, navigation
+     * and completion claims retain the same checks as grounded answers.
+     */
+    static Verdict general(String reply, String question, int maxChars) {
+        if (AiChatGeneralConversation.transformsUserText(question) || AiChatGeneralConversation.draftsUserMessage(question)) {
+            // Rewording the user's own text is allowed, including the supplied company facts. It is
+            // not permission to invent additional figures/codes or to read any system record.
+            return check(reply, "", "", question, List.of(), maxChars, "", null, false, true);
+        }
+        Verdict checked = check(reply, "", "", question, List.of(), maxChars, "", null, true);
+        if (reply != null && AiChatGeneralConversation.claimsAuthoritativeFacts(reply)) {
+            List<String> problems = new ArrayList<>(checked.problems());
+            problems.add("GENERAL_AS_AUTHORITY");
+            return new Verdict(false, checked.reply(), List.copyOf(problems));
+        }
+        return checked;
+    }
+
+    private static Verdict check(String reply, String evidence, String memory, String question, List<ColourFact> colours,
+                                 int maxChars, String visible, Derivation derivation, boolean general) {
+        return check(reply, evidence, memory, question, colours, maxChars, visible, derivation, general, false);
+    }
+
+    private static Verdict check(String reply, String evidence, String memory, String question, List<ColourFact> colours,
+                                 int maxChars, String visible, Derivation derivation, boolean general, boolean userText) {
         List<String> problems = new ArrayList<>();
         if (reply != null) {
             for (String kind : AiChatInternalContent.problems(reply, (visible == null ? "" : visible) + "\n"
@@ -322,7 +353,7 @@ final class AiChatAnswerGuard {
             StringBuilder withoutCodes = new StringBuilder();
             while (codes.find()) {
                 String code = codes.group().toLowerCase(Locale.ROOT);
-                if (!lowerSource.contains(code)) {
+                if (!general && !lowerSource.contains(code)) {
                     if (!lowerMemory.contains(code)) problems.add("CODE:" + codes.group());
                     else if (!line.recalled()) problems.add("MEMORY_AS_FACT:" + codes.group());
                 }
@@ -331,6 +362,7 @@ final class AiChatAnswerGuard {
             codes.appendTail(withoutCodes);
             Matcher numbers = NUMBER.matcher(withoutCodes);
             while (numbers.find()) {
+                if (general) continue;
                 String value = normalize(numbers.group());
                 if (known.contains(value)) continue;
                 if (derivation != null && (derivation.allows(numbers.group(), line.text())
@@ -344,14 +376,19 @@ final class AiChatAnswerGuard {
         String places = source + "\n" + (visible == null ? "" : visible) + "\n" + remembered;
         List<String> navigation = new ArrayList<>();
         checkNavigation(text, places, navigation);
-        if (FIRST_PERSON_DONE.matcher(text).find()) problems.add("COMPLETION_CLAIM");
+        Matcher claims = FIRST_PERSON_DONE.matcher(text);
+        while (claims.find()) {
+            String claim = text.substring(claims.start()).split("[。！!；;，,\\n.]", 2)[0];
+            if (!userText || !AiChatGeneralConversation.suppliedCompletion(claim, question)) problems.add("COMPLETION_CLAIM");
+        }
         // A rule explanation describes states ("已提交的单据 ..."); only page and tool answers are checked for bare claims.
         if (derivation == null) {
             Matcher done = DONE_PHRASE.matcher(text);
             while (done.find()) {
                 // A status the page or tool itself shows ("已提交") is read off, not claimed.
                 String core = done.group(1) != null ? done.group(1) : done.group().strip();
-                if (!source.contains(core)) problems.add("COMPLETION_CLAIM:" + core);
+                if (!source.contains(core) && (!userText || !AiChatGeneralConversation.suppliedCompletion(core, question)))
+                    problems.add("COMPLETION_CLAIM:" + core);
             }
         }
         List<String> dropped = List.of();

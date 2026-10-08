@@ -32,14 +32,12 @@ final class AiChatDialogueSupport {
 
     private AiChatDialogueSupport() {}
 
-    /** Obvious recreational requests are rejected locally; other input still uses the closed ERP router. */
-    static boolean clearlyNonWork(String message) {
+    /** An offline convenience for colloquial questions about the assistant itself, not the semantic routing boundary. */
+    static boolean asksAboutAssistant(String message) {
         String value = normalized(message);
-        return value.matches("(?:请|帮我|给我|能不能|可以)?(?:讲|说|编)(?:一个|个|一段)?(?:笑话|鬼故事|童话|段子).*"
-                + "|(?:请|帮我|给我)?(?:写|创作)(?:一首|首|一封|封|一个|个)?(?:情诗|情书|小说|歌曲).*"
-                + "|(?:请|帮我|给我)?推荐(?:几部|一部|个|一个)?(?:电影|电视剧|游戏).*"
-                + "|(?:陪我闲聊|陪我聊天|今天的?星座运势|tellmeajoke|writealovepoem).*"
-                + "|(?:今天|明天)(?:天气|会下雨)(?:怎么样|如何|吗)?");
+        return CAPABILITIES.contains(value) || value.matches(
+                "(?:请问|我想知道|能说说)?你(?:到底|究竟|平时)?(?:是)?(?:用来)?(?:干嘛|干吗|干什么|做什么|有什么用|能干啥|能干什么|有什么本事)(?:的|得|呀|啊|呢|吗|嘛)?"
+                + "|(?:请问)?你是谁(?:啊|呀|呢)?|what(?:areyoufor|doyoudo)|whatareyouabletodo");
     }
 
     /** Exact social utterances only: additional requests or claimed identities remain normal input. */
@@ -49,7 +47,7 @@ final class AiChatDialogueSupport {
             return Optional.of("不客气，有问题再问我。");
         }
         boolean greeting = GREETINGS.contains(question);
-        if (!greeting && !CAPABILITIES.contains(question)) return Optional.empty();
+        if (!greeting && !asksAboutAssistant(message)) return Optional.empty();
         if (greeting) return Optional.of("你好，需要我帮你做什么？");
         Set<String> scope = domains == null ? Set.of() : domains;
         Set<String> tools = toolNames == null ? Set.of() : toolNames;
@@ -81,9 +79,12 @@ final class AiChatDialogueSupport {
             examples.add("给员工开通一项查看权限。");
         }
         if (examples.isEmpty()) {
-            return Optional.of("告诉我遇到的问题，或打开页面问我怎么填。");
+            return Optional.of("我是这里的 AI 工作助手，可以解释页面和业务流程、帮你整理工作内容，也可以简单聊几句。"
+                    + "查询数据和办理操作要以你的权限为准；实际操作会先请你确认。可以打开页面，告诉我你想做什么。");
         }
-        return Optional.of("可以这样问我：\n" + String.join("\n", examples.stream().limit(3).map(value -> "• " + value).toList()));
+        return Optional.of("我是这里的 AI 工作助手，可以解释页面和业务流程、整理工作内容，也能简单聊几句。"
+                + "我按你的权限查询数据，实际操作会先请你确认。比如：\n"
+                + String.join("\n", examples.stream().limit(3).map(value -> "• " + value).toList()));
     }
 
     static boolean isQueryPresentationFollowUp(String message) {

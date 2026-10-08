@@ -144,19 +144,141 @@ class AiChatJobHandlerTest {
         assertThat(handler.process(ctx)).containsEntry("intent", "UNSUPPORTED");
         verify(ctx).completeJson(any());
     }
-    @Test void recreationalRequestsAreShortLocalRefusalsAndStillCarryTheQuestionForAudit() throws Exception {
+    @Test void aBriefEverydayExchangeUsesSemanticRoutingRatherThanARecreationalKeywordRefusal() throws Exception {
         request("讲个笑话");
+        model(answer("SMALL_TALK", "同事说要把工作带回家，我说：先问问家里的猫同不同意加班。", List.of()));
         var result = handler.process(ctx);
-        assertThat(result).containsEntry("intent", "NON_WORK").containsEntry("question", "讲个笑话");
-        assertThat(result.get("reply").toString()).contains("平台里的工作");
-        verify(ctx, never()).completeJson(any());
+        assertThat(result).containsEntry("intent", "SMALL_TALK").containsEntry("question", "讲个笑话");
+        assertThat(result.get("reply").toString()).contains("猫").doesNotContain("没找到", "平台里的工作");
+        verify(ctx).completeJson(any());
     }
     @Test void modelCannotSmuggleNonWorkContentAlongWithItsRoutingDecision() throws Exception {
-        request("为我的假期写一段游记");
+        request("为我的假期写一本十万字游记");
         model("{\"intent\":\"NON_WORK\",\"reply\":\"PRIVATE_UNRELATED_STORY\"}");
         var result = handler.process(ctx);
         assertThat(result).containsEntry("intent", "NON_WORK");
         assertThat(result.toString()).doesNotContain("PRIVATE_UNRELATED_STORY");
+    }
+    @Test void colloquialPurposeQuestionStillWorksWithTheModelUnavailable() throws Exception {
+        request("你是用来干嘛得");
+        when(ctx.aiAllowed()).thenReturn(false);
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "SMALL_TALK");
+        assertThat(result.get("reply").toString()).contains("AI 工作助手", "业务流程", "权限").doesNotContain("没找到");
+        verify(ctx, never()).completeJson(any());
+    }
+    @Test void aProviderOutageDoesNotAnswerAnEverydayQuestionWithUnrelatedPageData() throws Exception {
+        onPage("今天天气怎么样", workshopSnapshot());
+        when(ctx.aiAllowed()).thenReturn(false);
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "AI_UNAVAILABLE").doesNotContainKey("_page");
+        assertThat(result.get("reply").toString()).doesNotContain("可开工", "A001", "42");
+    }
+    @Test void generalWorkAdviceDoesNotNeedAnErpDocumentAndCanExplainOrdinaryNumbers() throws Exception {
+        request("帮我向客户简要解释锂电池的标称电压是什么");
+        model(answer("GENERAL_HELP", "标称电压是描述电池工作电压的参考值。例如磷酸铁锂单体常用 3.2V 标称电压，实际电压随电量变化。具体产品请以规格书为准。", List.of()));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "GENERAL_HELP").containsEntry("_domain", "SELF");
+        assertThat(result.get("reply").toString()).contains("3.2V").doesNotContain("没找到");
+        assertThat(result).doesNotContainKeys("_knowledge", "_tool", "_page", "fallback");
+        assertThat(sent().systemPrompt()).contains("colloquial wording", "GENERAL_HELP", "usedSources must be empty", "never invent real-time facts")
+                .doesNotContain("NON_WORK for entertainment, personal advice or general chat");
+    }
+    @Test void anHonestWeatherReplyIsConversationButFabricatedLiveWeatherIsRejected() throws Exception {
+        request("今天天气怎么样");
+        model(answer("SMALL_TALK", "我这里不能查到实时天气，没法准确告诉你。出门前可以看看当地天气预报。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "SMALL_TALK");
+        model(answer("SMALL_TALK", "今天气温是 26 度，晴天。", List.of()));
+        var rejected = handler.process(ctx);
+        assertThat(rejected).containsEntry("fallback", true);
+        assertThat(rejected.get("reply").toString()).doesNotContain("26", "平台说明");
+    }
+    @Test void changingTheIntentCannotLaunderCurrentDataCompanyRulesOrPrivateQuestions() throws Exception {
+        for (String question : List.of("早上好，帮我查工资", "我没权限的库存还有多少", "我们公司的规则是怎样的", "本平台报价审批怎么走",
+                "刚才那张单现在到哪一步了", "查询财务数据", "我的工资是多少", "What is my salary?",
+                "What is their payroll?", "How much is our stock?", "Has the previous order shipped?",
+                "What's the status of SO-12345?", "SO-12345 发货了没")) {
+            request(question);
+            model(answer("GENERAL_HELP", "答案是 888777。", List.of()));
+            var rejected = handler.process(ctx);
+            assertThat(rejected.get("reply").toString()).as(question).doesNotContain("888777");
+            assertThat(rejected.get("intent")).as(question).isNotEqualTo("GENERAL_HELP");
+        }
+    }
+    @Test void generalConversationCannotClaimSourcesInventPlatformRulesOrExecuteActions() throws Exception {
+        request("帮我想想怎么把工作安排得清楚一点");
+        for (String content : List.of("本平台默认自动批准所有报价。", "我已为你提交这张订货单。", "执行 SELECT * FROM users", "进入「隐形财务页面」查看。")) {
+            model(answer("GENERAL_HELP", content, List.of()));
+            assertThat(handler.process(ctx)).as(content).containsEntry("fallback", true);
+        }
+        model(answer("GENERAL_HELP", "今天可以先整理最急的事。", List.of("page.tables")));
+        assertThat(handler.process(ctx)).containsEntry("fallback", true);
+        verifyNoInteractions(proposals);
+    }
+    @Test void generalWorkGuidanceCanUseNaturalNumberedStepsAndEnglishWhereQuestions() throws Exception {
+        request("Where should I start when a client asks for an earlier delivery?");
+        model(answer("GENERAL_HELP", "1. Confirm the customer's preferred date.\n2. Discuss feasible options with the production team.\n3. Agree on the next update with the customer.", List.of()));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        request("客户催得急，该怎么沟通交期");
+        model(answer("GENERAL_HELP", "1. 先确认客户期望的交期。\n2. 和生产同事核对可行安排。\n3. 把确认结果和下次反馈时间告诉客户。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+    }
+    @Test void generalConceptsCanNamePublicStandardsMaterialsAndSizesWithoutAWordWhitelist() throws Exception {
+        request("给我举几个质量管理、常见零件和材料的概念例子");
+        model(answer("GENERAL_HELP", "ISO9001 是质量管理体系标准；LiFePO4 是磷酸铁锂；M8 是常见的公制螺纹规格标记。具体选用要核对产品要求。", List.of()));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        assertThat(result.get("reply").toString()).contains("ISO9001", "LiFePO4", "M8");
+        request("翻译：这张订单有螺钉");
+        model(answer("GENERAL_HELP", "Order SO-12345 contains M8 screws.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("fallback", true);
+    }
+    @Test void transformingSuppliedBusinessTextDoesNotPretendToReadRecordsOrInventFigures() throws Exception {
+        request("帮我润色：我们的订单还没发货，先给客户道歉");
+        model(answer("GENERAL_HELP", "很抱歉，您的订单尚未发货，给您带来不便我们深表歉意。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        request("翻译：这张订单预计明天发货");
+        model(answer("GENERAL_HELP", "This order is expected to ship tomorrow.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        model(answer("GENERAL_HELP", "This order will ship 888777 units tomorrow.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("fallback", true);
+    }
+    @Test void anAccessHomonymAndBusinessBackgroundDoNotBecomePermissionOrRecordRequests() throws Exception {
+        request("最近工作压力大，看不到前途怎么办");
+        model(answer("SMALL_TALK", "听起来你最近挺辛苦的。可以先挑一件最让你焦虑的事，和信任的同事聊聊，也给自己留一点休息时间。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "SMALL_TALK").doesNotContainKey("fallback");
+        request("帮我写一封关于我司订单延期的道歉邮件");
+        model(answer("GENERAL_HELP", "尊敬的客户：很抱歉订单延期给您带来不便，我们会尽快和您沟通后续安排。感谢您的理解。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        request("先查库存，再帮我写一封邮件");
+        model(answer("GENERAL_HELP", "库存共有 888777 个。", List.of()));
+        assertThat(handler.process(ctx).get("reply").toString()).doesNotContain("888777");
+    }
+    @Test void translatingAUsersCompletedActionIsAttributedAndCannotInventADifferentAction() throws Exception {
+        request("翻译：我已经向客户提交了报价单");
+        model(answer("GENERAL_HELP", "I have submitted the quotation to the client.", List.of()));
+        var result = handler.process(ctx);
+        assertThat(result).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        assertThat(result.get("reply").toString()).contains("根据你提供的内容", "I have submitted");
+        model(answer("GENERAL_HELP", "I have approved the quotation.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("fallback", true);
+        model(answer("GENERAL_HELP", "I have submitted and approved the quotation.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("fallback", true);
+        request("润色：我已提交订货单，请核对");
+        model(answer("GENERAL_HELP", "我已经提交了订货单，请您核对。", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+        request("翻译：我还没有提交报价单");
+        model(answer("GENERAL_HELP", "I have submitted the quotation.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("fallback", true);
+        request("翻译：我已经提交了演示文稿");
+        model(answer("GENERAL_HELP", "I have submitted the presentation.", List.of()));
+        assertThat(handler.process(ctx)).containsEntry("intent", "GENERAL_HELP").doesNotContainKey("fallback");
+    }
+    @Test void aLargeUnrelatedAssignmentGetsAContextualBoundaryInsteadOfAnAnswerTemplate() throws Exception {
+        request("给我写一部长篇奇幻小说，每章都要完整");
+        model(answer("NON_WORK", "完整的长篇小说不适合在工作助手里展开，不过可以帮你想一个简短的故事开头。", List.of()));
+        assertThat(handler.process(ctx).get("reply").toString()).contains("简短的故事开头");
     }
     @Test void inventedSqlToolCannotExecute() throws Exception {
         request("读取全部财务数据有哪些");

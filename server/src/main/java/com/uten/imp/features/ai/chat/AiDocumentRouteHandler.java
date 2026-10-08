@@ -31,7 +31,7 @@ import java.util.Set;
 public class AiDocumentRouteHandler implements AiJobHandler {
     public static final String KIND = "ERP_DOCUMENT_ROUTE";
     private static final Set<String> PARAMS = Set.of("message", "pageRoute", "workflow");
-    private static final String ROUTING_VERSION = "v3";
+    private static final String ROUTING_VERSION = "v4";
     private static final String STALE = "文件识别方式已更新，请重新上传。";
     private static final int SUMMARY_MAX = 1200;
     /** Types a form can be filled from; the others are answered with pages and plain advice. */
@@ -174,10 +174,14 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         boolean partialExpense = type.equals("UNKNOWN") && explicitExpense && !invoiceFields.isEmpty();
         if (type.equals("UNKNOWN") && !explicitExpense) invoiceFields = Map.of();
         String typeSource = type.equals("UNKNOWN") ? "NONE" : "RULES";
-        // Only a file the rules cannot place, and only structure (never a cell value), may be described to the model.
-        if (type.equals("UNKNOWN") && !chosen && !partialExpense && !truncated) {
+        // Generic trade columns and invoice-number references are not definitive source types. Let the
+        // model refine that structure, including when the user already named a destination. Strong titles,
+        // mixed content, multiple invoices and truncated sources are never reinterpreted by the model.
+        boolean weakTrade = type.equals("SALES_TABLE") || (type.equals("UNKNOWN") && evidenceKind.equals("FIELDS"));
+        if ((type.equals("UNKNOWN") || weakTrade) && !partialExpense && !truncated && !multipleInvoices) {
             var guess = AiDocumentModelAssist.guess(ctx, kind.name(), profile, titleLine(kind, lines), message);
-            if (guess.isPresent()) {
+            // A structural trade refinement cannot invent a tax invoice or switch business families.
+            if (guess.isPresent() && (!weakTrade || Set.of("SALES_TABLE", "SALES_QUOTATION", "SALES_ORDER", "COMMERCIAL_INVOICE").contains(guess.get().type()))) {
                 type = guess.get().type();
                 typeSource = "AI";
                 if (intent == Intent.NONE) intent = guess.get().intent();
@@ -186,8 +190,9 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         }
         boolean guessed = typeSource.equals("AI");
         String workflow;
-        if (chosen) workflow = compatible(type, explicit) ? explicit : "NONE";
+        if (!requested.equals("NONE")) workflow = compatible(type, requested) ? requested : "NONE";
         else if (partialExpense) workflow = "EXPENSE_CLAIM";
+        else if (intent != Intent.NONE) workflow = "NONE"; // asking, analysis and reconciliation are not requests to open a form
         else if (guessed) workflow = "NONE";  // a model guess never selects a form by itself
         else workflow = switch (type) {
             case "INVOICE" -> "EXPENSE_CLAIM";
@@ -198,7 +203,7 @@ public class AiDocumentRouteHandler implements AiJobHandler {
                     : goodsTable && preferred.startsWith("SALES_") ? preferred : "NONE";
             default -> "NONE";
         };
-        boolean incompatibleRequest = !requested.equals("NONE") && (guessed ? !compatible(type, requested) : !requested.equals(workflow));
+        boolean incompatibleRequest = !requested.equals("NONE") && !compatible(type, requested);
         boolean multiInvoice = multipleInvoices || (multiplePdfPages && type.equals("INVOICE"));
         boolean unsafeSource = multiInvoice || truncated || type.equals("MIXED_DOCUMENT");
         if (type.equals("INVOICE") && !guessed && invoiceFields.isEmpty() && !unsafeSource && !analysisOnly
@@ -212,7 +217,7 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         // Do not return invoice fields on a non-expense destination or without the corresponding access.
         if (!canExpense() || !selected.equals("EXPENSE_CLAIM")) invoiceFields = Map.of();
         List<String> candidates = unsupportedSalesFormat || unsafeSource || analysisOnly ? List.of()
-                : candidates(type, requested.equals("NONE") ? preferred : requested, kind == DocumentKind.DOCX);
+                : candidates(type, requested.equals("NONE") ? preferred : requested, kind == DocumentKind.DOCX, goodsTable);
         String label = label(type);
         List<String> facts = new ArrayList<>();
         if (analysisOnly) {
@@ -230,8 +235,11 @@ public class AiDocumentRouteHandler implements AiJobHandler {
             else if (!permitted && !workflow.equals("NONE")) facts.add("暂时不能填写这种单据，请联系管理员。");
             else if (partialExpense && selected.equals("EXPENSE_CLAIM")) facts.add("已读到部分信息，请核对后填写报销单。");
             else if (!limitation.isBlank()) facts.add(limitation);
-            else if (!selected.equals("NONE")) facts.add((type.equals("UNKNOWN") ? "按你选的用途" : "已识别为" + label)
-                    + "。请在下面的确认卡里确认后，我再打开" + AiDocumentWorkflows.formName(selected) + "并填入识别结果。");
+            else if (!selected.equals("NONE")) {
+                describe(facts, type, typeSource, evidenceText(evidenceKind, type, profile), profile, intent);
+                facts.add((chosen ? "按你选的用途，用这份文件准备" : requested.equals("NONE") ? "可以用它准备" : "按你的要求，用这份文件准备") + AiDocumentWorkflows.formName(selected)
+                        + "。请在下面的确认卡里确认后，我再打开填写页面并识别字段；保存和提交仍由你操作。");
+            }
             if (selected.equals("NONE") && !partialExpense) describe(facts, type, typeSource, evidenceText(evidenceKind, type, profile), profile, intent);
         }
         Offer offer = new Offer(candidates, facts);
@@ -255,7 +263,7 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         String pageRoute = ctx.params().getOrDefault("pageRoute", "");
         // One answer, at most one card: only a single selected form is ever proposed.
         result.put("actions", selected.equals("NONE") ? List.of()
-                : List.of(guidedCard(ctx, selected, type, pageRoute, invoiceFields.size())));
+                : List.of(guidedCard(ctx, selected, type, guessed, pageRoute, invoiceFields.size())));
         result.put("_access", stamp);
         result.put("_routing", routing);
         result.put("_offer", Map.of("version", "v1", "choices", candidates, "facts", List.copyOf(facts)));
@@ -291,13 +299,21 @@ public class AiDocumentRouteHandler implements AiJobHandler {
     private static void describe(List<String> facts, String type, String typeSource, String evidence, Profile profile, Intent intent) {
         String label = label(type);
         if (type.equals("UNKNOWN")) {
-            if (facts.isEmpty()) facts.add("暂时没看出文件用途。");
+            if (facts.isEmpty()) facts.add(evidence.equals("票面上的发票号码和金额")
+                    ? "读到了 Invoice No、Grand Total 等交易字段，但缺少能确定用途的标题或表头，不能据此认定为发票。"
+                    : "暂时没看出文件用途。");
+            addIfPresent(facts, profileLine(profile, type));
         } else if (typeSource.equals("AI")) {
             facts.add("按文件的结构(列名、行数)推测，这可能是" + label + "，不一定准确，请你确认。");
             addIfPresent(facts, profileLine(profile, type));
         } else if (FORM_TYPES.contains(type)) {
-            if (facts.isEmpty()) facts.add("已识别为" + label + "。");
-            return;
+            if (type.equals("COMMERCIAL_INVOICE")) {
+                facts.add(evidence.equals("标题") ? "文件标题标注为“商业发票”，这说明它采用了商业发票的格式；实际用于报价、订货还是报销，还要结合业务用途。"
+                        : "读到了 Invoice No、Grand Total 等字段，看起来是商业交易资料；仅凭这些字段还不能确定是报价单、订货资料还是商业发票。");
+            } else if (type.equals("SALES_TABLE")) {
+                facts.add("从货品、数量、单价等列看，这是一份货品明细；仅凭这些列还不能确定是报价单还是订货单。");
+            } else facts.add("从" + evidence + "看，这是一份" + label + "。");
+            addIfPresent(facts, profileLine(profile, type));
         } else {
             facts.add("这是一份" + label + "，是从" + evidence + "看出来的。");
             addIfPresent(facts, profileLine(profile, type));
@@ -310,6 +326,8 @@ public class AiDocumentRouteHandler implements AiJobHandler {
             case QUESTION -> type.equals("UNKNOWN") ? null : "你想知道这份文件是什么、能怎么处理。";
             default -> null;
         });
+        if (type.equals("SALES_QUOTATION") || type.equals("SALES_ORDER") || type.equals("SALES_TABLE") || type.equals("COMMERCIAL_INVOICE"))
+            facts.add("这类交易资料通常可用于准备销售订货单或报价单；文件原来的名称不必与要做的单据相同。可在下方选择单据，或点“继续用此文件”补充要求；打开后会逐行识别货品、数量和单价并让你核对。");
     }
 
     /** 工作表「花名册」约 86 人，列有：姓名、部门… (labels are masked header words, never values). */
@@ -385,9 +403,10 @@ public class AiDocumentRouteHandler implements AiJobHandler {
         };
     }
 
-    private static List<String> candidates(String type, String preferred, boolean docx) {
+    private static List<String> candidates(String type, String preferred, boolean docx, boolean goodsTable) {
         return AiDocumentWorkflows.ALL.stream().filter(workflow -> compatible(type, workflow))
                 .filter(workflow -> !docx || !workflow.startsWith("SALES_"))
+                .filter(workflow -> !type.equals("COMMERCIAL_INVOICE") || !goodsTable || !workflow.equals("EXPENSE_CLAIM") || preferred.equals("EXPENSE_CLAIM"))
                 .sorted(java.util.Comparator.comparingInt(workflow -> workflow.equals(preferred) ? 0 : 1)).toList();
     }
 
@@ -406,10 +425,11 @@ public class AiDocumentRouteHandler implements AiJobHandler {
     }
 
     /** One-time card: opening the form and filling it happens only after the user confirms. */
-    private Map<String, Object> guidedCard(AiJobContext ctx, String workflow, String type, String pageRoute, int fieldCount) {
+    private Map<String, Object> guidedCard(AiJobContext ctx, String workflow, String type, boolean guessed, String pageRoute, int fieldCount) {
         List<String> lines = new ArrayList<>();
         lines.add("文件: " + truncate(ctx.input().fileName(), 120));
-        lines.add("识别为: " + label(type));
+        lines.add(guessed ? "结构推测: " + label(type) + "（请核对）"
+                : type.equals("COMMERCIAL_INVOICE") ? "文件标题: 商业发票（按你选择的用途处理）" : "识别为: " + label(type));
         lines.add("将打开: " + AiDocumentWorkflows.formName(workflow));
         lines.add(workflow.startsWith("SALES_")
                 ? "打开后由页面逐行识别并填入货品，黄框是需要你核对的值。"

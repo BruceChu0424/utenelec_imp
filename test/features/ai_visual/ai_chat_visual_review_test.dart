@@ -1,6 +1,8 @@
 // Opt-in actual widget captures with synthetic business data:
 // flutter test --no-pub --dart-define=UTEN_CAPTURE_UI=true test/features/ai_visual/ai_chat_visual_review_test.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
@@ -20,19 +22,34 @@ void main() {
     'authorization-dark',
     'failure-desktop',
     'failure-mobile',
+    'composer-mobile',
+    'composer-dark-large',
   ]) {
+    final composer = variant.startsWith('composer');
     final mobile =
         variant == 'mobile' ||
         variant == 'failure-mobile' ||
-        variant == 'authorization-dark';
+        variant == 'authorization-dark' ||
+        composer;
     final grant = variant == 'authorization-dark';
     final failure = variant.startsWith('failure');
     testWidgets('chat $variant renders current-page guidance', (tester) async {
       debugDisableShadows = false;
-      await setCaptureView(tester, mobile ? kMobile : kDesktop);
+      await setCaptureView(
+        tester,
+        composer
+            ? const Size(320, 844)
+            : mobile
+            ? kMobile
+            : kDesktop,
+      );
+      if (variant == 'composer-dark-large') {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      }
       await tester.pumpWidget(
         captureApp(
-          dark: grant,
+          dark: grant || variant == 'composer-dark-large',
           home: AiChatOverlay(
             currentRoute: '/sales/orders/new',
             child: Scaffold(
@@ -103,6 +120,20 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('ai-chat-launcher')));
       await tester.pumpAndSettle();
+      if (composer) {
+        FilePicker.platform = _VisualPicker();
+        addTearDown(() => FilePicker.platform = _VisualPicker(hasFile: false));
+        await tester.tap(find.byKey(const ValueKey('ai-chat-attach')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          '这是客户的报价单。\n请按原数量和价格生成订货单，先给我核对。',
+        );
+        await tester.pumpAndSettle();
+        await capture(tester, 'chat-$variant');
+        debugDisableShadows = true;
+        return;
+      }
       if (variant == 'desktop' || variant == 'mobile') {
         await capture(tester, 'chat-$variant-welcome');
       }
@@ -136,6 +167,34 @@ void main() {
       debugDisableShadows = true;
     }, skip: !kCaptureUi);
   }
+}
+
+class _VisualPicker extends FilePicker {
+  _VisualPicker({this.hasFile = true});
+  final bool hasFile;
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    void Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async => hasFile
+      ? FilePickerResult([
+          PlatformFile(
+            name: 'SUNAS 客户报价单与订货明细.xlsx',
+            size: 1,
+            bytes: Uint8List.fromList([1]),
+          ),
+        ])
+      : null;
 }
 
 class _VisualChatRepository implements AiChatRepository {

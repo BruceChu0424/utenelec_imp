@@ -1039,7 +1039,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       // 盘点入口常驻右下：进入盘点直达独立会话页(带当前仓库)；盘点历史看申请记录。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: ref
+      floatingActionButton:
+          ref
               .watch(currentPermissionsProvider)
               .contains(stockCountSubmitPermission)
           ? UtenFloatingActionGroup(

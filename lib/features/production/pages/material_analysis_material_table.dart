@@ -6433,7 +6433,9 @@ abstract class _MaterialAnalysisMaterialTableState
     return [...actions, const UtenMenuDivider(), ..._bomExpansionMenuEntries()];
   }
 
-  List<UtenContextMenuEntry> _materialTableRowMenuActions(_MaterialTableRow row) {
+  List<UtenContextMenuEntry> _materialTableRowMenuActions(
+    _MaterialTableRow row,
+  ) {
     final group = row.group;
     if (group == null) return const [];
     if (!group.paths.every(_hasResolvedMaterialSource)) {

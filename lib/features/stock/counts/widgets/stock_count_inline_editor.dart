@@ -435,8 +435,7 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
       }
       StockCountWarehouse? selected;
       for (final warehouse in scope.warehouses) {
-        if (widget.warehouseId != null &&
-            warehouse.id == widget.warehouseId) {
+        if (widget.warehouseId != null && warehouse.id == widget.warehouseId) {
           selected = warehouse;
         }
       }

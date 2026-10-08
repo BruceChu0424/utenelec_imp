@@ -623,10 +623,10 @@ abstract class _MaterialAnalysisCandidatesState
         child: Text(
           widget.planCreateEntry
               ? '在「手工需求单」里选择要投产的产品与数量，点右下角「联合分析」'
-                  '展开 BOM 层级表；在表里逐行填下单数量、指派车间/负责人后「下单」，'
-                  '每个自制行生成一张生产计划单。'
+                    '展开 BOM 层级表；在表里逐行填下单数量、指派车间/负责人后「下单」，'
+                    '每个自制行生成一张生产计划单。'
               : '勾选销售订单产品，或在「手工需求」录入返工、试制、样品、备库需求，'
-                  '再点右下角「联合分析」一起分析。',
+                    '再点右下角「联合分析」一起分析。',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -836,18 +836,18 @@ abstract class _MaterialAnalysisCandidatesState
     if (_busy) return;
     final manualCount = _manualGoodsLineCount;
     if (manualCount > 0) {
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '清空本次分析？',
-      content: Text(
-        widget.planCreateEntry
-            ? '会同时清空手工需求单里已选的 $manualCount 个货品和单头。'
-            : '会同时清空已勾选的 ${_sourceQtyControllers.length} 个销售订单产品，'
-              '以及手工需求单里已选的 $manualCount 个货品和单头。',
-      ),
-      confirmLabel: '清空',
-      danger: true,
-    );
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '清空本次分析？',
+        content: Text(
+          widget.planCreateEntry
+              ? '会同时清空手工需求单里已选的 $manualCount 个货品和单头。'
+              : '会同时清空已勾选的 ${_sourceQtyControllers.length} 个销售订单产品，'
+                    '以及手工需求单里已选的 $manualCount 个货品和单头。',
+        ),
+        confirmLabel: '清空',
+        danger: true,
+      );
       if (confirmed != true || !mounted || _busy) return;
     }
     setState(() {

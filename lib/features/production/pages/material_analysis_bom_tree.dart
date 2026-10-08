@@ -325,11 +325,8 @@ abstract class _MaterialAnalysisBomTreeState
     ],
   );
 
-  Widget _bomToolbarGroupDivider(ThemeData theme) => Container(
-    width: 1,
-    height: 24,
-    color: theme.colorScheme.outlineVariant,
-  );
+  Widget _bomToolbarGroupDivider(ThemeData theme) =>
+      Container(width: 1, height: 24, color: theme.colorScheme.outlineVariant);
 
   /// chip 计数与表格同口径：视图条件 × 关键词 × 表头筛选（产品视图）。
   /// 汇总视图的表头筛选作用于聚合行，chip 仍按节点计数（不含表头筛选）。
@@ -584,8 +581,10 @@ abstract class _MaterialAnalysisBomTreeState
     setState(() {
       if (_bomAggregateByMaterial) {
         _expandedMaterialAggregates.addAll(
-          _materialAggregates(analysis, _analysisIndexes(analysis))
-              .map((aggregate) => aggregate.key),
+          _materialAggregates(
+            analysis,
+            _analysisIndexes(analysis),
+          ).map((aggregate) => aggregate.key),
         );
       } else {
         _collapsedBomProducts.clear();
@@ -633,7 +632,10 @@ abstract class _MaterialAnalysisBomTreeState
     final analysis = _analysis;
     if (analysis == null || analysis.materials.isEmpty) return null;
     if (_bomAggregateByMaterial) {
-      final aggregates = _materialAggregates(analysis, _analysisIndexes(analysis));
+      final aggregates = _materialAggregates(
+        analysis,
+        _analysisIndexes(analysis),
+      );
       if (aggregates.isEmpty) return null;
       final expandedAll =
           _expandedMaterialAggregates.length >= aggregates.length;

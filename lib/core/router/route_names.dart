@@ -443,6 +443,7 @@ abstract final class RouteName {
 
   /// 车间内料仓用量报表与结算页 (生产、钱流报表入口)。
   static const String workshopMaterialReports = '/reports/workshop-material';
+
   /// 盘点模式独立页 (即时库存「盘点模式」直达；?warehouseId= 带入当前仓库)。
   /// 各仓未送审输入随本机表单草稿保留 (见 docs/03-页面/库存盘点审核页.md)。
   static const String stockCountSession = '/stock/count-session';

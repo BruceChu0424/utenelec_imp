@@ -440,10 +440,7 @@ void main() {
       paints
         ..line(p1: const Offset(8, 0), p2: Offset(8, height))
         ..line(p1: const Offset(24, 0), p2: Offset(24, height / 2))
-        ..line(
-          p1: Offset(24, height / 2),
-          p2: Offset(40, height / 2),
-        ),
+        ..line(p1: Offset(24, height / 2), p2: Offset(40, height / 2)),
     );
 
     // 顶层行（depth = 0）没有连线画布，分组线也无从谈起。

@@ -1018,9 +1018,7 @@ class _PlatformCellEditorState<T> extends State<_PlatformCellEditor<T>> {
                     icon: writable
                         ? Icons.info_outline_rounded
                         : Icons.lock_outline_rounded,
-                    text: writable
-                        ? '清空后保存，这格的内容会删掉，列还在。'
-                        : '这条数据或你的权限不允许修改。',
+                    text: writable ? '清空后保存，这格的内容会删掉，列还在。' : '这条数据或你的权限不允许修改。',
                   ),
               ],
               if (_error != null) ...[

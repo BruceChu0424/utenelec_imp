@@ -129,14 +129,11 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
             }
           }
         }
-        stashes[entry.key] = _WarehouseStash(
-          value['reason'] as String? ?? '',
-          inputs,
-          {
-            for (final key in value['added'] as List? ?? const [])
-              if (key is String) key,
-          },
-        );
+        stashes[entry.key] =
+            _WarehouseStash(value['reason'] as String? ?? '', inputs, {
+              for (final key in value['added'] as List? ?? const [])
+                if (key is String) key,
+            });
       }
     }
     _stashByWarehouse
@@ -212,7 +209,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       await _switchWarehouse(selected, initial: true);
     } catch (error) {
       if (mounted) {
-        setState(() => _error = error is ApiException ? error.message : '盘点模式未能开启，请重试');
+        setState(
+          () => _error = error is ApiException ? error.message : '盘点模式未能开启，请重试',
+        );
       }
     } finally {
       if (mounted) setState(() => _starting = false);
@@ -325,7 +324,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       setState(() => _page = result);
     } catch (error) {
       if (mounted && _warehouse?.id == warehouse.id) {
-        setState(() => _error = error is ApiException ? error.message : '盘点数据没有读到，请重试');
+        setState(
+          () => _error = error is ApiException ? error.message : '盘点数据没有读到，请重试',
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -349,8 +350,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       final rows = await _fetchByGoods(warehouse.id, goodsIds);
       if (!mounted || _warehouse?.id != warehouse.id) return;
       _count.addAll(rows);
-      final pageKeys =
-          (_page?.items ?? const <CountStockRow>[]).map((r) => r.key).toSet();
+      final pageKeys = (_page?.items ?? const <CountStockRow>[])
+          .map((r) => r.key)
+          .toSet();
       for (final row in rows) {
         if (!pageKeys.contains(row.key)) {
           _extraRows.putIfAbsent(row.key, () => row);
@@ -375,10 +377,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     final rows = <CountStockRow>[];
     final ids = goodsIds.toList();
     for (var offset = 0; offset < ids.length; offset += 50) {
-      final chunk = ids.sublist(
-        offset,
-        (offset + 50).clamp(0, ids.length),
-      );
+      final chunk = ids.sublist(offset, (offset + 50).clamp(0, ids.length));
       var page = 1;
       while (true) {
         final result = await _repo.candidates(
@@ -411,8 +410,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       return;
     }
     _count.addAll(rows, expectedSession: session);
-    final pageKeys =
-        (_page?.items ?? const <CountStockRow>[]).map((r) => r.key).toSet();
+    final pageKeys = (_page?.items ?? const <CountStockRow>[])
+        .map((r) => r.key)
+        .toSet();
     for (final row in rows) {
       if (!pageKeys.contains(row.key)) {
         _extraRows.putIfAbsent(row.key, () => row);

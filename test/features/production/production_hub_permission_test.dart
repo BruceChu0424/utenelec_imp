@@ -29,28 +29,31 @@ void main() {
     );
   });
 
-  test('plan-create entry = analysis workbench: view gate + either create code', () {
-    final route = productionRoutes.whereType<GoRoute>().singleWhere(
-      (entry) => entry.path == RoutePath.productionPlanNew(),
-    );
+  test(
+    'plan-create entry = analysis workbench: view gate + either create code',
+    () {
+      final route = productionRoutes.whereType<GoRoute>().singleWhere(
+        (entry) => entry.path == RoutePath.productionPlanNew(),
+      );
 
-    // 2026-10-08 起新建生产计划单 = 物料分析工作台(planCreateEntry)：
-    // 仍是直接 builder（无重定向）；任一创建码放行(analysis:create 或 plan:create)，
-    // 但工作台首屏要读分析数据（仓库字典/联合分析），analysis:view 成为 all 门槛。
-    expect(route.redirect, isNull);
-    expect(route.builder, isNotNull);
-    expect(
-      requiredAnyPermFor(RoutePath.productionPlanNew()),
-      equals([
-        Perm.productionMaterialAnalysisCreate,
-        Perm.productionPlanCreate,
-      ]),
-    );
-    expect(
-      requiredAllPermsFor(RoutePath.productionPlanNew()),
-      equals([Perm.productionMaterialAnalysisView]),
-    );
-  });
+      // 2026-10-08 起新建生产计划单 = 物料分析工作台(planCreateEntry)：
+      // 仍是直接 builder（无重定向）；任一创建码放行(analysis:create 或 plan:create)，
+      // 但工作台首屏要读分析数据（仓库字典/联合分析），analysis:view 成为 all 门槛。
+      expect(route.redirect, isNull);
+      expect(route.builder, isNotNull);
+      expect(
+        requiredAnyPermFor(RoutePath.productionPlanNew()),
+        equals([
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionPlanCreate,
+        ]),
+      );
+      expect(
+        requiredAllPermsFor(RoutePath.productionPlanNew()),
+        equals([Perm.productionMaterialAnalysisView]),
+      );
+    },
+  );
 
   test('material analysis history route requires view only', () {
     expect(

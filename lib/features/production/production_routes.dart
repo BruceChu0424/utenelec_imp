@@ -200,9 +200,8 @@ final List<RouteBase> productionRoutes = [
     // →联合分析展开 BOM 层级表→逐行填下单数量/车间/负责人→「下达车间」为每个
     // 自制行生成计划单（ADR-071/ADR-099 漏斗）。旧空白表单页保留在 :id/edit
     // 只服务既有草稿的编辑。
-    builder: (_, _) => const ProductionMaterialAnalysisPage(
-      planCreateEntry: true,
-    ),
+    builder: (_, _) =>
+        const ProductionMaterialAnalysisPage(planCreateEntry: true),
   ),
   DraftAwareGoRoute(
     path: '/production/plans/:id/edit',

@@ -60,22 +60,16 @@ class _SessionRepo extends StockCountRequestRepository {
   bool canSubmit = true;
   final candidateQueries =
       <({String warehouse, bool stockedOnly, String? keyword})>[];
-  final submissions = <
-    ({
-      String warehouse,
-      List<Map<String, dynamic>> lines,
-      String reason,
-    })
-  >[];
+  final submissions =
+      <({String warehouse, List<Map<String, dynamic>> lines, String reason})>[];
 
   @override
-  Future<StockCountScope> scope({String? warehouseId}) async =>
-      StockCountScope(
-        warehouses: warehouses
-            .where((w) => warehouseId == null || w.id == warehouseId)
-            .toList(),
-        allowedActions: canSubmit ? const ['SUBMIT'] : const [],
-      );
+  Future<StockCountScope> scope({String? warehouseId}) async => StockCountScope(
+    warehouses: warehouses
+        .where((w) => warehouseId == null || w.id == warehouseId)
+        .toList(),
+    allowedActions: canSubmit ? const ['SUBMIT'] : const [],
+  );
 
   @override
   Future<PagedResult<CountStockRow>> candidates({
@@ -115,11 +109,7 @@ class _SessionRepo extends StockCountRequestRepository {
     required String idempotencyKey,
     required List<Map<String, dynamic>> lines,
   }) async {
-    submissions.add((
-      warehouse: warehouseId,
-      lines: lines,
-      reason: reason,
-    ));
+    submissions.add((warehouse: warehouseId, lines: lines, reason: reason));
     return StockCountRequest(
       id: 'request-1',
       requestNo: 'PD-1',
@@ -193,10 +183,7 @@ Future<GoRouter> _mount(
 void main() {
   testWidgets('进入即选仓并列出全部物料(账面为 0 也要盘)', (tester) async {
     final repo = _SessionRepo({
-      'leaf-a': [
-        _row(_screw, qty: '10', weight: '1.5'),
-        _row(_nut),
-      ],
+      'leaf-a': [_row(_screw, qty: '10', weight: '1.5'), _row(_nut)],
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
     expect(find.text('盘点仓库'), findsNothing, reason: '带仓库直达不再弹选仓窗');
@@ -215,15 +202,17 @@ void main() {
     );
     expect(
       table.columns.map((c) => c.key),
-      containsAll(['stockPlace', 'countTargetQty', 'countTargetWeight', 'delta']),
+      containsAll([
+        'stockPlace',
+        'countTargetQty',
+        'countTargetWeight',
+        'delta',
+      ]),
     );
     final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
     await tester.enterText(qty, '12');
     await tester.pump();
-    await tester.enterText(
-      find.byKey(const Key('stock-count-reason')),
-      '例行盘点',
-    );
+    await tester.enterText(find.byKey(const Key('stock-count-reason')), '例行盘点');
     await tester.tap(find.byKey(const Key('stock-count-save')));
     await tester.pumpAndSettle();
     expect(repo.submissions.single.warehouse, 'leaf-a');
@@ -234,13 +223,13 @@ void main() {
 
   testWidgets('「有库存」筛段只列账面数量非零的行', (tester) async {
     final repo = _SessionRepo({
-      'leaf-a': [
-        _row(_screw, qty: '10'),
-        _row(_nut),
-      ],
+      'leaf-a': [_row(_screw, qty: '10'), _row(_nut)],
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
-    expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
     await tester.tap(find.text('有库存'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsNothing);
@@ -302,18 +291,21 @@ void main() {
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
     // 默认全部物料：零库存行也在表里，直接可录实盘数。
-    expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
     expect(find.text('共 1 项'), findsOneWidget);
     await tester.tap(find.text('有库存'));
     await tester.pumpAndSettle();
     expect(find.text('共 0 项'), findsOneWidget);
-    expect(
-      find.text('本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'),
-      findsOneWidget,
-    );
+    expect(find.text('本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'), findsOneWidget);
     await tester.tap(find.text('全部物料'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

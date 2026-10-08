@@ -335,12 +335,12 @@ void main() {
       final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
         find.byType(MasterDataTableView<InstantInventoryRow>),
       );
-      expect(table.columns.any((c) => c.key == 'countTargetQty'), false,
-          reason: '盘点录入已迁独立页，本表恢复纯查询口径');
       expect(
-        table.items.map((r) => r.goodsId),
-        contains(_screw),
+        table.columns.any((c) => c.key == 'countTargetQty'),
+        false,
+        reason: '盘点录入已迁独立页，本表恢复纯查询口径',
       );
+      expect(table.items.map((r) => r.goodsId), contains(_screw));
       expect(tester.takeException(), isNull);
     },
   );

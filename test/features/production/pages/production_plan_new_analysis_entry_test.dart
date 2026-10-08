@@ -59,10 +59,16 @@ void main() {
       findsNothing,
     );
     // 手工需求选货区 + 单据日期/交货日 + 仓库。
-    expect(find.byKey(const Key('plan-entry-manual-demand-list')), findsOneWidget);
+    expect(
+      find.byKey(const Key('plan-entry-manual-demand-list')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('plan-entry-bill-date')), findsOneWidget);
     expect(find.byKey(const Key('plan-entry-delivery-date')), findsOneWidget);
-    expect(find.byKey(const Key('material-analysis-warehouse')), findsOneWidget);
+    expect(
+      find.byKey(const Key('material-analysis-warehouse')),
+      findsOneWidget,
+    );
     // 右下「联合分析」按钮在（0 项禁用态）。
     expect(find.byKey(const Key('material-analysis-start')), findsOneWidget);
     expect(find.text('联合分析'), findsOneWidget);
@@ -107,7 +113,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final preview = server.requests.singleWhere(
-      (r) => r.method == 'POST' && r.path.endsWith('/material-analyses/preview'),
+      (r) =>
+          r.method == 'POST' && r.path.endsWith('/material-analyses/preview'),
     );
     expect((preview.data as Map)['sources'], [
       {
@@ -146,7 +153,10 @@ void main() {
     expect(find.byType(ProductionMaterialAnalysisPage), findsOneWidget);
     expect(find.byType(ProductionPlanEditPage), findsNothing);
     expect(find.text('新建生产计划单'), findsWidgets);
-    expect(find.byKey(const Key('plan-entry-manual-demand-list')), findsOneWidget);
+    expect(
+      find.byKey(const Key('plan-entry-manual-demand-list')),
+      findsOneWidget,
+    );
     expect(
       server.requests.where((r) => r.path.contains('/sales-candidates')),
       isEmpty,

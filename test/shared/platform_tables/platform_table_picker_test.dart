@@ -238,7 +238,7 @@ Future<void> _newFormula(WidgetTester tester) async {
   await _tap(tester, find.byKey(const Key('platform-column-new')));
   await tester.enterText(find.byKey(const Key('platform-column-name')), '参考合计');
   await tester.pumpAndSettle();
-  await _choose(tester, 'platform-column-type', '辅助计算');
+  await _choose(tester, 'platform-column-type', '自动计算');
   await _choose(tester, 'platform-formula-base', '数量');
 }
 
@@ -419,7 +419,7 @@ void main() {
         '包数',
       );
       await tester.pumpAndSettle();
-      await _choose(tester, 'platform-column-type', '数字记录');
+      await _choose(tester, 'platform-column-type', '记数字');
       expect(find.byKey(const Key('platform-formula-base')), findsNothing);
       await _tap(tester, find.byKey(const Key('platform-column-create')));
       expect(repository.created?.type, 'NUMBER');
@@ -499,7 +499,7 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, find.byKey(const Key('platform-column-create')));
       expect(repository.creates, 0);
-      expect(find.text('计算基础已不可用，请重新选择'), findsOneWidget);
+      expect(find.text('所选数字列已不可用，请重新选择'), findsOneWidget);
       await _choose(tester, 'platform-formula-base', '参考数量');
       await _tap(tester, find.byKey(const Key('platform-column-create')));
       expect(repository.created?.formula?.base.columnId, 'number');
@@ -543,7 +543,7 @@ void main() {
       await _open(tester, controller);
       expect(find.text('列目录暂时不可用'), findsOneWidget);
       repository.failSearch = false;
-      await _tap(tester, find.text('重新加载列目录'));
+      await _tap(tester, find.text('重新加载'));
       expect(find.text('包装说明'), findsOneWidget);
       expect(repository.creates, 0);
     },

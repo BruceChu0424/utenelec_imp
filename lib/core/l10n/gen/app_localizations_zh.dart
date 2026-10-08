@@ -93,10 +93,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get businessColumnAmountUnavailable =>
-      '当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。';
+      '当前账号不能把这列算进金额。请联系管理员恢复价格权限，或改选写说明、记数字。';
 
   @override
-  String get businessColumnEditorSubtitle => '为单据补充信息，或让输入值参与每行正式金额计算。';
+  String get businessColumnEditorSubtitle =>
+      '给单子加一列：可以写说明，也可以填运费、优惠等费用，费用会计入金额。';
 
   @override
   String get businessColumnBrowse => '选择已有列';
@@ -114,19 +115,19 @@ class AppLocalizationsZh extends AppLocalizations {
   String get businessColumnNewHint => '先填写名称，再选择这列的用途。每行的实际数值在表格里填写。';
 
   @override
-  String get businessColumnOfficialAmount => '参与正式金额';
+  String get businessColumnOfficialAmount => '费用（计入金额）';
 
   @override
-  String get businessColumnAmountTarget => '计算目标';
+  String get businessColumnAmountTarget => '算到哪一列';
 
   @override
   String get businessColumnRowAmount => '本行金额';
 
   @override
-  String get businessColumnRecordHint => '每行分别填写，保存为单据补充信息。';
+  String get businessColumnRecordHint => '每行分别填写，只作记录，不改金额。';
 
   @override
-  String get businessColumnOfficialHint => '输入值会计入本行金额；保存、财务审核和后续业务沿用计算后的金额。';
+  String get businessColumnOfficialHint => '填的数会算进本行金额；保存、财务审核和后面的环节都用算出来的金额。';
 
   @override
   String get businessColumnExampleTitle => '试算一下';
@@ -138,8 +139,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get businessColumnExampleValue => '本列输入值（示例）';
 
   @override
-  String get businessColumnExampleHint =>
-      '示例只帮助理解计算，不会填入单据。留空不参与计算，填写 0 则按 0 计算。';
+  String get businessColumnExampleHint => '示例只是帮你理解算法，不会填进单子。留空不算，填 0 就按 0 算。';
 
   @override
   String get businessColumnExampleInvalid => '请填写有效数值；不能除以 0，结果须为非负的精确有限小数。';
@@ -155,25 +155,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get businessColumnRemoveHint =>
-      '移除后，本单各行的该列内容会清除，金额会重新计算。保存单据后生效；其他单据和可复用列不受影响。';
+      '移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。';
 
   @override
   String get businessColumnUseExisting => '使用已有列';
 
   @override
-  String get businessColumnAlreadyAdded => '本单已经添加了相同定义的列，可到“本单已添加”查看。';
+  String get businessColumnAlreadyAdded => '这张单子已经加过这一列，可在“本单已添加”里查看。';
 
   @override
-  String get businessColumnOrderHint => '金额按列的添加顺序计算。拖动表头只改变显示顺序；有值的费用列保持可见。';
+  String get businessColumnOrderHint => '金额按列添加的先后顺序算；拖动表头只改显示位置。填了数的费用列会一直显示。';
 
   @override
-  String get businessColumnNoAdded => '本单还没有添加自定义列。';
+  String get businessColumnNoAdded => '这张单子还没加过自定义列。';
 
   @override
   String get businessColumnNameRequired => '请输入列名称';
 
   @override
-  String get businessColumnAmountRule => '金额运算';
+  String get businessColumnAmountRule => '怎么算';
 
   @override
   String get businessColumnSubtractHint => '填写要从本行金额扣减的数值，例如 100 减 20 等于 80。';
@@ -6671,23 +6671,23 @@ class AppLocalizationsZh extends AppLocalizations {
   String get businessColumnName => '列名称';
 
   @override
-  String get businessColumnSearch => '输入名称，搜索已有表头';
+  String get businessColumnSearch => '输入名称，搜索已有列';
 
   @override
-  String get businessColumnReuseHint => '选择已有表头，或创建新列。保存后可复用，新单据默认不添加。';
+  String get businessColumnReuseHint => '直接用之前建过的列，或新建一个。新单据默认不添加，需要时再加。';
 
   @override
-  String get businessColumnSystem => '系统表头';
+  String get businessColumnSystem => '单子原有的列';
 
   @override
   String get businessColumnReference => '仅记录信息';
 
   @override
-  String get businessColumnLimit => '每张单据最多添加 32 个扩展列';
+  String get businessColumnLimit => '每张单子最多能加 32 列';
 
   @override
   String get businessColumnAmountHint =>
-      '按照添加顺序，对每行原金额依次计算；拖动表头只调整显示顺序，不改变计算顺序。空值跳过，除数不能为 0，结果必须精确且不为负数。';
+      '按列添加的先后顺序，逐行算到本行金额上；拖动表头只改显示位置，不改计算顺序。空着不算，不能除以 0，结果不能是负数。';
 
   @override
   String get businessColumnType => '内容类型';
@@ -6723,7 +6723,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get businessColumnSaveFailed => '保存表头失败，请重试';
 
   @override
-  String get businessColumnInvalid => '附加列数字或计算有误，请检查数字、除数以及最终金额';
+  String get businessColumnInvalid => '附加列的数字或算法有误，请检查数字、除数和最终金额';
 
   @override
   String get businessColumnNameEn => '英文名称';

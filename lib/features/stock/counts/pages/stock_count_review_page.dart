@@ -82,7 +82,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   String get _title => switch (widget.reviewRoute) {
     'FINANCE' => '普通仓盘点财务审核',
     'WAREHOUSE' => '车间内料仓盘点审核',
-    _ => '我的盘点',
+    _ => '盘点历史',
   };
 
   @override
@@ -775,7 +775,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   Widget _floatingActions(StockCountRequest detail) {
     final stale = detail.lines.any((line) => line.stale);
     // 2026-10-02 用户口径：审核视图（仓库/财务队列）只有「退回 + 审批通过」，审批通过
-    // 摆最右；「撤回申请」是提交人动作，只出现在我的盘点（/stock/count-requests）视图。
+    // 摆最右；「撤回申请」是提交人动作，只出现在盘点历史（/stock/count-requests）视图。
     final reviewerView = widget.reviewRoute != null;
     return UtenFloatingActionGroup(
       children: [

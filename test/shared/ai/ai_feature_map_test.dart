@@ -159,7 +159,7 @@ class _Doc {
   /// Declared routes in document order; the first one is the page itself.
   final List<String> routes;
 
-  /// Chinese label written right after a route: 「`/stock/count-requests`(我的盘点)」.
+  /// Chinese label written right after a route: 「`/stock/count-requests`(盘点历史)」.
   final Map<String, String> labels;
 
   /// Other names: the file name and the 「> 别名：」 line (what people call the page).

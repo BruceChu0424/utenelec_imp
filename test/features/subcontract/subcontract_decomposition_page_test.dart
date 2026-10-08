@@ -339,7 +339,6 @@ void main() {
         find.byKey(const Key('subcontract-decomposition-table')),
       );
       final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
-      expect(table.rowColor!(ready), isNull);
       expect(table.idOf!(ready), 'task-1');
       final denied = _task(
         'denied',
@@ -348,7 +347,8 @@ void main() {
         canCreateOrder: false,
       );
       expect(table.idOf!(denied), isNull);
-      expect(table.rowColor!(denied), isNotNull);
+      // 整行底色已退役（2026-10-08 用户口径）：任何行都不再铺行底色。
+      expect(table.rowColor, isNull);
 
       await _doubleTapRow(tester, find.text('FG-task-1'));
       await tester.pumpAndSettle();
@@ -448,9 +448,9 @@ void main() {
       final missing = table.items.firstWhere(
         (task) => task.taskId == 'task-bom',
       );
-      // 不能勾选下单；等研发不是本部门的错，不铺红底，状态格黄色。
+      // 不能勾选下单；等研发不是本部门的错，状态格黄色（行底色已退役）。
       expect(table.idOf!(missing), isNull);
-      expect(table.rowColor!(missing), isNull);
+      expect(table.rowColor, isNull);
       final status = table.columns.firstWhere((c) => c.key == 'status');
       final context = tester.element(find.byType(SubcontractDecompositionPage));
       expect(
@@ -608,11 +608,10 @@ void main() {
         final ready = row('task-ready');
         expect(locked.isWaitingKit, isTrue);
         expect(partial.isKitPartial, isTrue);
-        // 锁行：不能勾选，沿用旧锁(ADR-103)整行红底 + 黄色状态格。
+        // 锁行：不能勾选，黄色状态格；整行红底已退役（2026-10-08 用户口径）。
         expect(table.idOf!(locked), isNull);
-        expect(table.rowColor!(locked), isNotNull);
+        expect(table.rowColor, isNull);
         expect(table.idOf!(partial), 'task-partial');
-        expect(table.rowColor!(partial), isNull);
         expect(table.idOf!(ready), 'task-ready');
         final status = table.columns.firstWhere((c) => c.key == 'status');
         final context = tester.element(

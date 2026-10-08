@@ -4095,7 +4095,6 @@ com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.max_qty
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.min_order_qty
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.min_qty
-com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.model
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.mould_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.mould_legacy_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.name_en
@@ -4130,8 +4129,6 @@ com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.short_name
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.source_e
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.source_type
-com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.spec
-com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.stock_place
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.subcontract_allowed_loss_pct
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.thickness
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.thickness_unit_id

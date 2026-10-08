@@ -284,6 +284,9 @@ class _EmptyGroupPlaceholder extends StatelessWidget {
 // ===== 分组定义（稳定 key 与 workbench_layout_provider.defaultOrder 对应）=====
 
 const _allGroups = <_ModuleGroup>[
+  // 常用功能：四张自助卡的权限码在权限目录里归「常用模块」分组(V831，排目录最前，
+  // 子类与卡片同名)，权限管理页勾选/收回即控卡片显隐；基础资料卡不设单一码，
+  // 仍由「基础资料」模块各主档 view 码并集控制(hub 守卫=子卡并集)。
   _ModuleGroup(
     key: 'common',
     title: '常用功能',

@@ -1,12 +1,12 @@
 // 仓库发料到车间内料仓 (/workshop-material/issue, ADR-131 §5.2 / §5.3)。
 //
 // 三种用法, 同一页:
-// - 直接发料 (?mode=direct, 主路径): 选车间、料、袋数 (公斤按每袋净重自动算, 可改)、
+// - 直接发料 (?mode=direct, 主路径): 选车间、料、数量(几袋) (重量按每袋净重自动算, 可改)、
 //   出库仓库 (默认货品归属仓)、领料人 (默认该车间上一次的领料人), 一次确认;
 //   同一种料从两个仓库出就填两行。
 // - 按申请发料 (?requisitionId=, 车间申请领料): 预填申请量与建议出库仓库, 可按整袋改,
 //   同一行可"从另一个仓库再发一部分"。
-// - 收退回 (?requisitionId=, 车间退回): 按实收填公斤, 选退到哪个仓库。
+// - 收退回 (?requisitionId=, 车间退回): 按实收填重量, 选退到哪个仓库。
 // 内料仓正在盘点时, 发的料自动算到下一期 (页面提示); 盘点前漏录的发料可勾选
 // "这批料是上一期漏录的", 选补到哪一期并写原因。
 // 库存不足、版本冲突整笔不成功, 页面保留输入; 原样再点确认是同一个请求号, 不会重复发。
@@ -814,7 +814,7 @@ class _WorkshopMaterialIssuePageState
           pickLeafWarehouse: (row) => _pickLeaf(l10n, row),
           warehouseNameOf: (id) => warehouseFullLabel(_leafHierarchy, id) ?? '',
           showWarehouseAvailable: !_isReturn,
-          qtyLabel: _isReturn ? '实收数量' : null,
+          qtyLabel: _isReturn ? '实收重量' : null,
           onChanged: () {
             if (_submitError != null && _showValidation) {
               setState(() => _submitError = null);

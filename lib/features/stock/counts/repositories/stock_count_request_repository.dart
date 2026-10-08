@@ -19,6 +19,7 @@ class StockCountRequestRepository {
     String? keyword,
     String? categoryId,
     List<String> goodsIds = const [],
+    bool stockedOnly = false,
     int page = 1,
     int size = 50,
   }) async => PagedResult.fromJson(
@@ -28,6 +29,7 @@ class StockCountRequestRepository {
         'warehouseId': warehouseId,
         'keyword': ?keyword,
         'categoryId': ?categoryId,
+        'stockedOnly': stockedOnly,
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
         'page': page,
         'size': size,

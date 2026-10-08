@@ -218,8 +218,10 @@ abstract class _MaterialAnalysisMaterialTableState
 
   Widget? _preparationSupplyUsageAction() => _preparationUseAvailableQty == null
       ? null
-      : TextButton.icon(
+      : UtenButton(
           key: const Key('material-preparation-supply-usage'),
+          type: UtenButtonType.ghost,
+          height: UtenTableToolbar.controlHeight,
           onPressed:
               _busy || _preparationSubmissionActive || _aggregateTable.uncertain
               ? null
@@ -230,8 +232,7 @@ abstract class _MaterialAnalysisMaterialTableState
                     forceChoice: true,
                   ),
                 ),
-          icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-          label: Text('下单方式：$_preparationUsageLabel'),
+          child: Text('下单方式：$_preparationUsageLabel'),
         );
 
   @override
@@ -1126,7 +1127,13 @@ abstract class _MaterialAnalysisMaterialTableState
         onRowTap: _openMaterialTableRow,
         canOpenRow: (row) => !row.contextOnly && row.group != null,
         rowMenuBuilder: _materialTableRowMenu,
-        canShowRowMenu: (row) => !row.contextOnly && row.group != null,
+        // 2026-10-08：无业务组的顶层产品行（汇总视图）与聚合行也开右键菜单——
+        // 菜单里只有整树展开/收起；孤儿头行（kind=orphan）不弹。
+        canShowRowMenu: (row) =>
+            !row.contextOnly &&
+            (row.group != null ||
+                row.kind != _MaterialTableRowKind.orphan &&
+                    (row.aggregate != null || row.product != null)),
       ),
     );
   }
@@ -1978,6 +1985,13 @@ abstract class _MaterialAnalysisMaterialTableState
       sequence: '',
       sequenceInline: true,
       showLeafMarker: false,
+      // 2026-10-08 用户口径「按产品看左边加条竖线，分得清产品和子层级两个
+      // 部分」：子件行（depth>0）左缘画贯穿竖线；汇总视图不画（聚合行另带
+      // 来源展开，左缘线没有「同一棵子树」的语义）。
+      subtreeRail: !_bomAggregateByMaterial,
+      // 2026-10-08 用户口径：汇总视图顶层产品行永远无下级，48px 展开位空着，
+      // 标题（「顶层」徽章+名称）顶到左缘；产品视图产品行可能有下级，不收。
+      compactLeading: _bomAggregateByMaterial && product != null,
       // 连线要跨过宿主给每个数据格的纵向内边距，否则行与行之间空出 2×8px，
       // 整列看着像虚线（2026-09-15：这里原来没传，默认 0，与级联页观感不同的
       // 一大来源）。数值取自表格组件自己公开的常量，不在调用点抄魔数。
@@ -6407,6 +6421,19 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   List<UtenContextMenuEntry> _materialTableRowMenu(_MaterialTableRow row) {
+    final actions = _materialTableRowMenuActions(row);
+    // 行级动作为空的行也挂整树展开/收起（2026-10-08 用户口径）：汇总视图的
+    // 顶层产品行（无根供料组）与聚合物料行没有行级动作，但在哪行右键都该
+    // 顺手收/放整棵树。孤儿警示头行（无组无产品无聚合）两者皆空，不弹菜单。
+    if (actions.isEmpty) {
+      return row.aggregate != null || row.product != null
+          ? _bomExpansionMenuEntries()
+          : const [];
+    }
+    return [...actions, const UtenMenuDivider(), ..._bomExpansionMenuEntries()];
+  }
+
+  List<UtenContextMenuEntry> _materialTableRowMenuActions(_MaterialTableRow row) {
     final group = row.group;
     if (group == null) return const [];
     if (!group.paths.every(_hasResolvedMaterialSource)) {

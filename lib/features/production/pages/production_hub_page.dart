@@ -154,8 +154,8 @@ class ProductionHubPage extends ConsumerWidget {
                     icon: Icons.assignment_outlined,
                     label: '新建生产计划单',
                     description: l10n.productionHubPlanSub,
-                    // 2026-10-01 恢复空白手工新建页（原来重定向到物料分析工作台，
-                    // 与「新建单据进去都是默认新建页」口径冲突）。
+                    // 2026-10-08 换物料分析工作台的计划入口：手工选货→联合分析
+                    // →层级表逐行填数量/车间/负责人→下达车间生成计划单。
                     location: RoutePath.productionPlanNew(),
                   ),
                   _Entry(

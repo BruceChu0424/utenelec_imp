@@ -1004,7 +1004,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
           width: column.numeric ? 140 : 180,
           numeric: column.numeric,
           exportDefinition: _platform.projectionDefinition(column),
-          headerInfo: column.calculated ? '仅用于展示，不改变单据金额或库存数量' : '随本单据保存的补充信息',
+          headerInfo: column.calculated ? '仅供参考，不改单子的金额和数量' : '跟着单子一起保存的说明',
           textOf: (row) => _platform.value(row, column) ?? '',
           listenableOf: (row) => row.platformFields,
           cellBuilder: (_, row) => PlatformColumnValue(
@@ -1210,7 +1210,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         context: context,
         builder: (dialogContext) => ColumnEditorDialog(
           title: '添加列',
-          subtitle: '选择这列的用途，再设置内容和计算规则。',
+          subtitle: '先选这列的用途：',
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
@@ -1221,16 +1221,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
-                leading: const Icon(Icons.calculate_outlined),
-                title: const Text('单据附加项'),
-                subtitle: const Text('输入附加费或优惠，计入正式金额；也可补充文字、数字和管理本单已添加列'),
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: const Text('加费用或写说明'),
+                subtitle: const Text('这列跟单子走：可写说明、记数字，或填运费、优惠等，会计入金额'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.pop(dialogContext, 'business'),
               ),
               ListTile(
                 leading: const Icon(Icons.view_column_outlined),
-                title: const Text('辅助计算与说明'),
-                subtitle: const Text('引用已有数值做辅助计算，或添加记录信息'),
+                title: const Text('记备注或自动算数'),
+                subtitle: const Text('这列自己看：写备注，或按表里已有的数字自动算个参考值，不改金额'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => Navigator.pop(dialogContext, 'platform'),
               ),

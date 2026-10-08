@@ -29,12 +29,14 @@ void main() {
     );
   });
 
-  test('new-plan route opens the blank manual editor (2026-10-01 restore)', () {
+  test('plan-create entry = analysis workbench: view gate + either create code', () {
     final route = productionRoutes.whereType<GoRoute>().singleWhere(
       (entry) => entry.path == RoutePath.productionPlanNew(),
     );
 
-    // 2026-10-01 恢复空白手工新建页：不再是重定向到物料分析工作台。
+    // 2026-10-08 起新建生产计划单 = 物料分析工作台(planCreateEntry)：
+    // 仍是直接 builder（无重定向）；任一创建码放行(analysis:create 或 plan:create)，
+    // 但工作台首屏要读分析数据（仓库字典/联合分析），analysis:view 成为 all 门槛。
     expect(route.redirect, isNull);
     expect(route.builder, isNotNull);
     expect(
@@ -44,7 +46,10 @@ void main() {
         Perm.productionPlanCreate,
       ]),
     );
-    expect(requiredAllPermsFor(RoutePath.productionPlanNew()), isEmpty);
+    expect(
+      requiredAllPermsFor(RoutePath.productionPlanNew()),
+      equals([Perm.productionMaterialAnalysisView]),
+    );
   });
 
   test('material analysis history route requires view only', () {
@@ -135,7 +140,7 @@ void main() {
     },
   );
 
-  testWidgets('create without analysis view still opens the plan editor', (
+  testWidgets('create code without analysis view hides the create card', (
     tester,
   ) async {
     await _setDesktopSize(tester);
@@ -147,15 +152,35 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 2026-10-01 新建生产计划单落点 = /production/plans/new 空白新建页，
-    // 守卫只要 create 码（analysis:create 或 plan:create），不再要求 analysis:view。
+    // 2026-10-08 新建卡落点 = 物料分析工作台，首屏读分析数据：
+    // all 契约要求 analysis:view，只有创建码（任一）而无 view 时卡片隐藏。
     expect(find.text('生产计划历史'), findsNothing);
+    expect(find.text('新建生产计划单'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('plan create code with analysis view sees the create card', (
+    tester,
+  ) async {
+    await _setDesktopSize(tester);
+    await tester.pumpWidget(
+      _hubApp(const {
+        Perm.productionMaterialAnalysisView,
+        Perm.productionPlanCreate,
+      }, preferences),
+    );
+    await tester.pumpAndSettle();
+
+    // 对称用例：直接持 plan:create（不走 analysis:create）+ analysis:view，
+    // any/all 双契约都满足，新建卡可见。
     expect(find.text('新建生产计划单'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('manage user opens the blank plan editor', (tester) async {
+  testWidgets('manage user opens the plan-create workbench', (tester) async {
     await _setDesktopSize(tester);
+    // 自建桩路由：只验证「新建生产计划单」卡可点且落点是 /production/plans/new，
+    // 与真实 builder（物料分析工作台）解耦，工作台自身行为另有页面测试覆盖。
     final router = GoRouter(
       routes: [
         GoRoute(path: '/', builder: (_, _) => const ProductionHubPage()),

@@ -2094,8 +2094,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         _capabilities?.usable == true &&
         (_input.text.trim().isNotEmpty || _attachment != null);
     // The input's natural height drives both buttons, including wrapped text
-    // and accessibility text scaling. A shared minimum keeps all three
-    // controls usable by touch; no fixed input height can clip a new line.
+    // and accessibility text scaling. A shared compact minimum keeps all
+    // three controls flush; no fixed input height can clip a new line.
+    const controlSize = UtenFilterRow.minHeight;
     final file = _attachment;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -2201,13 +2202,13 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                 children: [
                   if (_canUpload) ...[
                     SizedBox(
-                      width: kMinInteractiveDimension,
+                      width: controlSize,
                       child: IconButton(
                         key: const ValueKey('ai-chat-attach'),
                         tooltip: _t('attach'),
                         onPressed: _busy || _picking ? null : _pickFile,
                         constraints: const BoxConstraints(
-                          minHeight: kMinInteractiveDimension,
+                          minHeight: UtenFilterRow.minHeight,
                         ),
                         style: IconButton.styleFrom(
                           padding: EdgeInsets.zero,
@@ -2257,7 +2258,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                             onChanged: (_) => setState(() {}),
                             decoration: InputDecoration(
                               constraints: const BoxConstraints(
-                                minHeight: kMinInteractiveDimension,
+                                minHeight: UtenFilterRow.minHeight,
                               ),
                               hintText: _t(
                                 _canUpload ? 'hint' : 'hintNoUpload',
@@ -2265,11 +2266,17 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                               hintStyle: TextStyle(
                                 color: colors.onSurfaceVariant,
                               ),
+                              // Zero-slack vertical centering: bodyMedium is
+                              // 14 * 1.5 = 21px per line; 21 + 7.5 * 2 = 36,
+                              // exactly the surface's min height, so the text
+                              // cannot drift off-center regardless of how
+                              // InputDecorator distributes leftover space
+                              // (isDense sinks it to the bottom).
                               contentPadding: const EdgeInsets.fromLTRB(
                                 UtenSpacing.s12,
-                                UtenSpacing.s8,
+                                7.5,
                                 UtenSpacing.s12,
-                                UtenSpacing.s8,
+                                7.5,
                               ),
                               isDense: true,
                               filled: false,
@@ -2285,12 +2292,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                   SizedBox(
-                    width: kMinInteractiveDimension,
+                    width: controlSize,
                     child: IconButton.filled(
                       key: const ValueKey('ai-chat-send'),
                       tooltip: _t(_cancel != null ? 'stop' : 'send'),
                       constraints: const BoxConstraints(
-                        minHeight: kMinInteractiveDimension,
+                        minHeight: UtenFilterRow.minHeight,
                       ),
                       style: IconButton.styleFrom(
                         padding: EdgeInsets.zero,

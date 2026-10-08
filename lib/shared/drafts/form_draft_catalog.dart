@@ -354,6 +354,14 @@ abstract final class FormDraftCatalog {
     draftKind: 'stockDocument',
   );
 
+  static const stockCount = FormDraftDescriptor(
+    title: '盘点模式',
+    module: BadgeModule.warehouse,
+    route: RouteName.stockCountSession,
+    permission: Perm.stockCountSubmit,
+    draftKind: 'stockCount',
+  );
+
   static const arrival = FormDraftDescriptor(
     title: '登记实际到货',
     module: BadgeModule.warehouse,
@@ -440,6 +448,7 @@ abstract final class FormDraftCatalog {
     'warehouseDraw': warehouseDraw,
     'warehouseDiscovery': warehouseDiscovery,
     'stockDocument': stockDocument,
+    'stockCount': stockCount,
     'arrival': arrival,
     'subcontractOutbound': subcontractOutbound,
     'suggestion': suggestion,

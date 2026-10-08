@@ -65,8 +65,12 @@ class CountStockRow {
     required this.goodsVersion,
     this.goodsCode = '',
     this.categoryId,
+    this.categoryName,
     this.colorId,
     this.colorName,
+    this.stockPlace,
+    this.model,
+    this.spec,
     this.weightKg,
     this.weightEstimated = false,
     this.kgPerBaseUnit,
@@ -76,9 +80,13 @@ class CountStockRow {
   final String goodsId;
   final String goodsCode;
   final String? categoryId;
+  final String? categoryName;
   final String goodsName;
   final String? colorId;
   final String? colorName;
+  final String? stockPlace;
+  final String? model;
+  final String? spec;
   final String unitId;
   final String unitName;
   final String qty;
@@ -95,9 +103,13 @@ class CountStockRow {
     goodsId: json['goodsId'] as String,
     goodsCode: json['goodsCode'] as String? ?? '',
     categoryId: json['categoryId'] as String?,
+    categoryName: json['categoryName'] as String?,
     goodsName: json['goodsName'] as String? ?? '',
     colorId: json['colorId'] as String?,
     colorName: json['colorName'] as String?,
+    stockPlace: json['stockPlace'] as String?,
+    model: json['model'] as String?,
+    spec: json['spec'] as String?,
     unitId: json['unitId'] as String,
     unitName: json['unitName'] as String? ?? '',
     qty:

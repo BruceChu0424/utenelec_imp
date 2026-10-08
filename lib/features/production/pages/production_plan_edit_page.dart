@@ -1,8 +1,13 @@
-// 生产计划单编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
+// 生产计划单编辑页（编辑既有草稿，全页路由）：主表头表单 + 明细可编辑 Excel 表
+// （UtenEditableGrid）+ 保存。
 //
-// 2026-10-01 恢复手工空白新建：新建态直接 repo.create 落服务端 status=0 草稿，
+// 2026-10-08 起「新建生产计划单」入口换到物料分析工作台（/production/plans/new
+// → ProductionMaterialAnalysisPage(planCreateEntry)），本页只服务既有直建草稿的
+// 编辑（/production/plans/:id/edit）。历史沿革：2026-10-01 曾恢复手工空白新建，
 // 手工来源三要素（类型/需求编号/原因）落行级 sourceDocNo/requestNote 留底；
-// 销售单来源的计划仍走物料分析下达（ADR-099 漏斗不变，两条入口并存）。
+// 2026-10-08 起手工计划回归 ADR-099 漏斗（不绕过物料分析），该语义由计划入口
+// 的手工需求单（ADR-130）承接，与服务端白名单 REWORK/TRIAL/SAMPLE/STOCK/OTHER
+// 同一套来源类型。
 // 与销售/采购编辑页同构（统一模板：UtenFormGrid 表头 + UtenDateField 日期 + UtenEditableGrid 明细）。
 // 生产计划特点：
 //   - 无币种/供应商/金额（数量驱动）：只报排产量合计，挂在明细表尾（按单位分组，不跨单位相加）。
@@ -599,8 +604,9 @@ class _ProductionPlanEditPageState
     setState(() => _saving = true);
     try {
       final repo = ref.read(productionPlanRepositoryProvider);
-      // 2026-10-01 恢复手工直接建单（不再跳物料分析带种生成）；
-      // 生成计划仍走物料分析下达（ADR-099 漏斗不变，两条入口并存）。
+      // 直建通道（POST /production/plans，status=0 草稿）：2026-10-08 起「新建」
+      // 入口走物料分析工作台（ADR-099 漏斗），本页直建仅在页面以新建态实例化时
+      // 可达（服务端能力与既有草稿编辑不受影响）。
       final d = widget.id == null
           ? await repo.create(body)
           : await repo.update(widget.id!, body);

@@ -155,6 +155,7 @@ import '../../features/payroll/pages/payroll_slip_list_page.dart';
 import '../../features/production/production_routes.dart';
 import '../../features/production/pages/workshop_material_reports_page.dart';
 import '../../features/stock/counts/pages/stock_count_review_page.dart';
+import '../../features/stock/counts/pages/stock_count_session_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart';
 import '../../features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
 import '../../features/profile/pages/my_profile_changes_page.dart';
@@ -1347,6 +1348,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
 
+          DraftAwareGoRoute(
+            path: RouteName.stockCountSession,
+            name: 'stock-count-session',
+            builder: (_, s) => StockCountSessionPage(
+              warehouseId: s.uri.queryParameters['warehouseId'],
+            ),
+          ),
           DraftAwareGoRoute(
             path: RouteName.stockCountRequests,
             name: 'stock-count-requests',

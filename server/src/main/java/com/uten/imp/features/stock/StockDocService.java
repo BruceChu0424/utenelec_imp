@@ -494,10 +494,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                     LEFT JOIN unit_measurement_profiles profile ON profile.unit_id=unit.id
                     LEFT JOIN stock_balances balance ON balance.warehouse_id=:warehouse AND balance.goods_id=goods.id
                       AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
-                    WHERE goods.id=:goods AND NOT goods.is_deleted AND goods.status='使用'
-                      AND NOT unit.is_deleted AND unit.status='使用'
+                    WHERE goods.id=:goods AND NOT goods.is_deleted AND NOT unit.is_deleted
                     """).setParameter("warehouse",warehouse).setParameter("goods",line[1]).setParameter("color",line[2]));
-            if(current.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"盘点物料或单位已停用，请驳回后重新核对");
+            if(current.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"盘点物料或单位已删除，请驳回后重新核对");
             Object[] now=current.getFirst();
             if(!sameCountNumber(line[4],now[0])||!sameCountNumber(line[5],now[1])||!Objects.equals(line[6],now[2])
                     ||!Objects.equals(line[3],now[3])||!sameCountNumber(line[10],now[4]))

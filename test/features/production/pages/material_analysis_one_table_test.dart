@@ -12,6 +12,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -506,7 +507,7 @@ void main() {
     expect(_records(submitted['groups']).single['qty'], '100');
     expect(
       tester
-          .widget<TextButton>(
+          .widget<UtenButton>(
             find.byKey(const Key('material-preparation-supply-usage')),
           )
           .onPressed,

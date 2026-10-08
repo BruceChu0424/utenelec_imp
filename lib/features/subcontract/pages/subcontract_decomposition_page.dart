@@ -757,23 +757,6 @@ class _SubcontractDecompositionPageState
               _applicationItemIdsOf(task).isNotEmpty &&
               (task.openQty > 0 || task.openLineCount > 0)));
 
-  /// 缺 BOM 的申请行同样不能下单，但它在等研发、不是本部门的错：状态格黄色，
-  /// 不铺红底。等物料齐套的锁行沿用旧锁(ADR-103)的样子：整行红底、状态格黄色。
-  bool _orderBlocked(OperationsWorkbenchTask task) =>
-      _seg?.code == _waitingOrderStage &&
-      !_canOrderTask(task) &&
-      !task.isBomMissing;
-
-  /// 行 / 卡片底色：待处理段下不能下单的行与回厂短交待判定单沿用红底(ADR-098)。
-  Color? _rowColorOf(BuildContext context, OperationsWorkbenchTask task) {
-    if (_orderBlocked(task) || _shortDelivery(task)) {
-      return Theme.of(
-        context,
-      ).colorScheme.errorContainer.withValues(alpha: 0.42);
-    }
-    return null;
-  }
-
   void _openTask(OperationsWorkbenchTask task) {
     if (task.taskStatus == _waitingOrderStage) {
       showSubcontractApplicationProgressDialog(context, task: task);
@@ -1145,7 +1128,6 @@ class _SubcontractDecompositionPageState
                     stageType: _progressType(task.progressStatus),
                     urgent: _shortDelivery(task),
                     statusAction: _statusActionOf(task),
-                    cardColor: _rowColorOf(context, task),
                     selected: _selectedIds.contains(task.id),
                     selectable:
                         _canOrderTask(task) &&
@@ -1339,8 +1321,8 @@ class _SubcontractDecompositionPageState
         _load(page: 1);
       },
       onRowTap: _openTask,
-      // 待处理段下不能下单的行、进行中段下回厂短交待判定的订货单：整行标红 (ADR-098)。
-      rowColor: (task) => _rowColorOf(context, task),
+      // 整行底色已退役（2026-10-08 用户口径）：状态色只在状态列整格底色，
+      // 不能下单的锁行/回厂短交待判定行不再铺红。
       // 待处理行双击 = 产品进度弹窗；其余行 = 关联申请 / 订货详情。
       canOpenRow: (task) =>
           task.taskStatus == _waitingOrderStage ||
@@ -1648,7 +1630,6 @@ class _SubcontractDemandCard extends StatelessWidget {
     required this.stageType,
     required this.urgent,
     required this.statusAction,
-    required this.cardColor,
     required this.selected,
     required this.selectable,
     required this.onSelected,
@@ -1661,9 +1642,6 @@ class _SubcontractDemandCard extends StatelessWidget {
   final UtenStatusBadgeType stageType;
   final bool urgent;
   final _StatusAction? statusAction;
-
-  /// 阻断底色 (红 = 不可下单 / 短交待判定)；null = 正常。
-  final Color? cardColor;
   final bool selected;
   final bool selectable;
   final VoidCallback onSelected;
@@ -1680,8 +1658,7 @@ class _SubcontractDemandCard extends StatelessWidget {
       label: '${task.title}，$stageLabel',
       child: Card(
         margin: EdgeInsets.zero,
-        color:
-            cardColor ?? (selected ? theme.colorScheme.primaryContainer : null),
+        color: selected ? theme.colorScheme.primaryContainer : null,
         child: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s12),
           child: Column(

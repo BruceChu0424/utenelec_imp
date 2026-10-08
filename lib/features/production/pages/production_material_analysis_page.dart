@@ -16,6 +16,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -118,9 +119,16 @@ class ProductionMaterialAnalysisPage extends ConsumerStatefulWidget {
   const ProductionMaterialAnalysisPage({
     super.key,
     this.seed = const ProductionMaterialAnalysisSeed(),
+    this.planCreateEntry = false,
   });
 
   final ProductionMaterialAnalysisSeed seed;
+
+  /// 「新建生产计划单」入口模式（/production/plans/new）：候选区只留手工需求
+  /// 选货（不读销售候选），标题/返回落点换成计划口径，顶部多一排单据日期/
+  /// 交货日。联合分析后的层级表与「下达车间」逐行生成计划单的流程（ADR-071）
+  /// 与普通物料分析完全一致——这正是手工计划不绕过物料分析的 ADR-099 漏斗。
+  final bool planCreateEntry;
 
   @override
   ConsumerState<ProductionMaterialAnalysisPage> createState() =>
@@ -1241,7 +1249,8 @@ abstract class _MaterialAnalysisPageBase
         } finally {
           if (mounted) setState(() => _autoPreviewFromSeed = false);
         }
-      } else {
+      } else if (!widget.planCreateEntry) {
+        // 计划入口模式不读销售候选：候选区只有手工需求选货，无候选网络调用。
         await _loadCandidates();
       }
     } catch (error) {
@@ -2047,17 +2056,24 @@ class _ProductionMaterialAnalysisPageState
     // 返回即刷新（须与 ref.listen 同位置=build 内注册）：采购/委外到货、IQC 合格放行
     // 等下游事实由服务端在各自事务里重算分析快照；本页从子页面返回时静默重拉详情，
     // 计划员看到的备料进度始终是最新权威值（不写业务事实，纯 GET 安全读）。
+    // 计划入口模式挂在 /production/plans/new，登记路径必须跟着换，否则返回刷新失效。
     ref.onPageResume(
-      RouteName.productionMaterialAnalysis,
+      widget.planCreateEntry
+          ? RoutePath.productionPlanNew()
+          : RouteName.productionMaterialAnalysis,
       () => _reloadAnalysisSilently(protectUnsavedEditing: true),
     );
     final theme = Theme.of(context);
     final compact = context.breakpoint.isCompact;
+    // 计划入口只换标题：分析表、下达车间、备料链与物料分析完全一致。
+    final pageTitle = widget.planCreateEntry
+        ? _l10n.productionHubPlan
+        : _l10n.productionHubMaterialAnalysis;
     final page = Scaffold(
       appBar: UtenAppBar(
-        title: _l10n.productionHubMaterialAnalysis,
+        title: pageTitle,
         titleWidget: Text(
-          _l10n.productionHubMaterialAnalysis,
+          pageTitle,
           style: theme.appBarTheme.titleTextStyle?.copyWith(
             fontFamily: theme.textTheme.titleLarge?.fontFamily,
           ),
@@ -2067,7 +2083,9 @@ class _ProductionMaterialAnalysisPageState
             : UtenBackButton(
                 onPressed: () => popOrBackTo(
                   context,
-                  defaultPath: RouteName.productionSchedule,
+                  defaultPath: widget.planCreateEntry
+                      ? '/production'
+                      : RouteName.productionSchedule,
                 ),
               ),
         actions: [

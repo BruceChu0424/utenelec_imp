@@ -73,7 +73,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('显示列'), findsWidgets);
     expect(find.byKey(const Key('platform-column-new')), findsNothing);
-    expect(find.text('复用已有列'), findsNothing);
+    expect(find.text('之前建过的列'), findsNothing);
     await tester.tap(find.text('默认隐藏'));
     await tester.pumpAndSettle();
     expect(find.text('隐藏值'), findsWidgets);

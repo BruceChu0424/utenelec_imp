@@ -253,13 +253,13 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnAmountUnavailable.
   ///
   /// In zh, this message translates to:
-  /// **'当前账号暂不能让此列参与金额计算。请恢复价格权限，或明确改选文字、数字记录。'**
+  /// **'当前账号不能把这列算进金额。请联系管理员恢复价格权限，或改选写说明、记数字。'**
   String get businessColumnAmountUnavailable;
 
   /// No description provided for @businessColumnEditorSubtitle.
   ///
   /// In zh, this message translates to:
-  /// **'为单据补充信息，或让输入值参与每行正式金额计算。'**
+  /// **'给单子加一列：可以写说明，也可以填运费、优惠等费用，费用会计入金额。'**
   String get businessColumnEditorSubtitle;
 
   /// No description provided for @businessColumnBrowse.
@@ -295,13 +295,13 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnOfficialAmount.
   ///
   /// In zh, this message translates to:
-  /// **'参与正式金额'**
+  /// **'费用（计入金额）'**
   String get businessColumnOfficialAmount;
 
   /// No description provided for @businessColumnAmountTarget.
   ///
   /// In zh, this message translates to:
-  /// **'计算目标'**
+  /// **'算到哪一列'**
   String get businessColumnAmountTarget;
 
   /// No description provided for @businessColumnRowAmount.
@@ -313,13 +313,13 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnRecordHint.
   ///
   /// In zh, this message translates to:
-  /// **'每行分别填写，保存为单据补充信息。'**
+  /// **'每行分别填写，只作记录，不改金额。'**
   String get businessColumnRecordHint;
 
   /// No description provided for @businessColumnOfficialHint.
   ///
   /// In zh, this message translates to:
-  /// **'输入值会计入本行金额；保存、财务审核和后续业务沿用计算后的金额。'**
+  /// **'填的数会算进本行金额；保存、财务审核和后面的环节都用算出来的金额。'**
   String get businessColumnOfficialHint;
 
   /// No description provided for @businessColumnExampleTitle.
@@ -343,7 +343,7 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnExampleHint.
   ///
   /// In zh, this message translates to:
-  /// **'示例只帮助理解计算，不会填入单据。留空不参与计算，填写 0 则按 0 计算。'**
+  /// **'示例只是帮你理解算法，不会填进单子。留空不算，填 0 就按 0 算。'**
   String get businessColumnExampleHint;
 
   /// No description provided for @businessColumnExampleInvalid.
@@ -373,7 +373,7 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnRemoveHint.
   ///
   /// In zh, this message translates to:
-  /// **'移除后，本单各行的该列内容会清除，金额会重新计算。保存单据后生效；其他单据和可复用列不受影响。'**
+  /// **'移除后，这列在各行的内容会清掉，金额重新算；保存单子后生效，其他单子不受影响。'**
   String get businessColumnRemoveHint;
 
   /// No description provided for @businessColumnUseExisting.
@@ -385,19 +385,19 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnAlreadyAdded.
   ///
   /// In zh, this message translates to:
-  /// **'本单已经添加了相同定义的列，可到“本单已添加”查看。'**
+  /// **'这张单子已经加过这一列，可在“本单已添加”里查看。'**
   String get businessColumnAlreadyAdded;
 
   /// No description provided for @businessColumnOrderHint.
   ///
   /// In zh, this message translates to:
-  /// **'金额按列的添加顺序计算。拖动表头只改变显示顺序；有值的费用列保持可见。'**
+  /// **'金额按列添加的先后顺序算；拖动表头只改显示位置。填了数的费用列会一直显示。'**
   String get businessColumnOrderHint;
 
   /// No description provided for @businessColumnNoAdded.
   ///
   /// In zh, this message translates to:
-  /// **'本单还没有添加自定义列。'**
+  /// **'这张单子还没加过自定义列。'**
   String get businessColumnNoAdded;
 
   /// No description provided for @businessColumnNameRequired.
@@ -409,7 +409,7 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnAmountRule.
   ///
   /// In zh, this message translates to:
-  /// **'金额运算'**
+  /// **'怎么算'**
   String get businessColumnAmountRule;
 
   /// No description provided for @businessColumnSubtractHint.
@@ -12187,19 +12187,19 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnSearch.
   ///
   /// In zh, this message translates to:
-  /// **'输入名称，搜索已有表头'**
+  /// **'输入名称，搜索已有列'**
   String get businessColumnSearch;
 
   /// No description provided for @businessColumnReuseHint.
   ///
   /// In zh, this message translates to:
-  /// **'选择已有表头，或创建新列。保存后可复用，新单据默认不添加。'**
+  /// **'直接用之前建过的列，或新建一个。新单据默认不添加，需要时再加。'**
   String get businessColumnReuseHint;
 
   /// No description provided for @businessColumnSystem.
   ///
   /// In zh, this message translates to:
-  /// **'系统表头'**
+  /// **'单子原有的列'**
   String get businessColumnSystem;
 
   /// No description provided for @businessColumnReference.
@@ -12211,13 +12211,13 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnLimit.
   ///
   /// In zh, this message translates to:
-  /// **'每张单据最多添加 32 个扩展列'**
+  /// **'每张单子最多能加 32 列'**
   String get businessColumnLimit;
 
   /// No description provided for @businessColumnAmountHint.
   ///
   /// In zh, this message translates to:
-  /// **'按照添加顺序，对每行原金额依次计算；拖动表头只调整显示顺序，不改变计算顺序。空值跳过，除数不能为 0，结果必须精确且不为负数。'**
+  /// **'按列添加的先后顺序，逐行算到本行金额上；拖动表头只改显示位置，不改计算顺序。空着不算，不能除以 0，结果不能是负数。'**
   String get businessColumnAmountHint;
 
   /// No description provided for @businessColumnType.
@@ -12289,7 +12289,7 @@ abstract class AppLocalizations {
   /// No description provided for @businessColumnInvalid.
   ///
   /// In zh, this message translates to:
-  /// **'附加列数字或计算有误，请检查数字、除数以及最终金额'**
+  /// **'附加列的数字或算法有误，请检查数字、除数和最终金额'**
   String get businessColumnInvalid;
 
   /// No description provided for @businessColumnNameEn.

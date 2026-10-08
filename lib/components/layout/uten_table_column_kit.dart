@@ -432,11 +432,11 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
     return CompositedTransformTarget(
       link: _link,
       // 深绿大号白字（UtenButton 默认 primary 实心深绿，与工具条「预览打印/下载表格」同款）。
-      // 高度对齐表格工具条统一口径 48（UtenTableToolbar.controlHeight）。
+      // 高度对齐表格工具条统一口径 48（UtenTableToolbar.controlHeight）；纯文字
+      // 无图标（2026-10-08 用户口径：工具条按钮不带 icon，省横向空间）。
       child: UtenButton(
         size: UtenButtonSize.large,
         height: UtenTableToolbar.controlHeight,
-        icon: Icons.view_column_outlined,
         onPressed: _open,
         child: Text('表头设置 $visible/${widget.entries.length}'),
       ),

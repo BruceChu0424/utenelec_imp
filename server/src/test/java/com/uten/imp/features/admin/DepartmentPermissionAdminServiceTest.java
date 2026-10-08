@@ -246,6 +246,24 @@ class DepartmentPermissionAdminServiceTest {
     }
 
     @Test
+    void catalogLeadsWithTheCommonModuleGroup() {
+        Permission self = permission("payroll:view:self", GrantPolicy.NORMAL);
+        self.setModule("常用模块");
+        self.setCategory("工资条");
+        self.setSortOrder(20);
+        Permission master = permission("goods:view", GrantPolicy.NORMAL);
+        Permission hr = permission("employee:view", GrantPolicy.NORMAL);
+        hr.setModule("人事行政");
+        hr.setCategory("员工档案");
+        when(permissionRepo.findAll()).thenReturn(List.of(master, hr, self));
+
+        var modules = service.catalog().stream().map(group -> group.module()).toList();
+
+        // V831：工作台「常用功能」自助码的分组排目录最前，管理员一进权限管理页就能看到。
+        assertThat(modules).containsExactly("常用模块", "基础资料", "人事行政");
+    }
+
+    @Test
     void baselineRejectsBulkExcludedCodeAndWritesOnlyTheDifference() {
         when(permissionRepo.findBaselineCodes()).thenReturn(List.of("notice:read", "visitor:host_confirm"));
         Permission price = permission("goods:price:view", GrantPolicy.BULK_EXCLUDED);

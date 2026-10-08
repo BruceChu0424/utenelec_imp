@@ -196,9 +196,13 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/plans/new',
     name: 'production-plan-new',
-    // 2026-10-01 恢复空白手工新建页（用户口径：新建单据进去都是默认新建页）。
-    // 此前该路由被重定向到物料分析工作台；计划列表「新建」与生产 hub 卡共用本页。
-    builder: (_, _) => const ProductionPlanEditPage(),
+    // 2026-10-08 新建生产计划单换物料分析工作台（planCreateEntry）：手工选货
+    // →联合分析展开 BOM 层级表→逐行填下单数量/车间/负责人→「下达车间」为每个
+    // 自制行生成计划单（ADR-071/ADR-099 漏斗）。旧空白表单页保留在 :id/edit
+    // 只服务既有草稿的编辑。
+    builder: (_, _) => const ProductionMaterialAnalysisPage(
+      planCreateEntry: true,
+    ),
   ),
   DraftAwareGoRoute(
     path: '/production/plans/:id/edit',

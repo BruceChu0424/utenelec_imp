@@ -58,7 +58,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       ? PlatformColumnDefinition(
           id: definition.id,
           scope: definition.scope,
-          name: '受保护字段',
+          name: '不能查看的列',
           type: definition.type,
           priceProtected: true,
         )
@@ -265,7 +265,7 @@ class PlatformTableController<T> extends ChangeNotifier {
 
   void updateLayout(PlatformTableLayout value) {
     if (utf8.encode(jsonEncode(value.toJson())).length > 16000) {
-      throw const FormatException('表头配置过大，请减少辅助计算列或运算步骤');
+      throw const FormatException('列的设置太大，请减少自动计算的列或运算步骤');
     }
     layoutTouched = true;
     value = value.copyWith(sourceInstance: _instance);

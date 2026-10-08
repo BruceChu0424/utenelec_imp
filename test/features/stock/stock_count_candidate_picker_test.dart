@@ -72,6 +72,7 @@ class _Repo extends StockCountRequestRepository {
     String? keyword,
     String? categoryId,
     List<String> goodsIds = const [],
+    bool stockedOnly = false,
     int page = 1,
     int size = 50,
   }) async {

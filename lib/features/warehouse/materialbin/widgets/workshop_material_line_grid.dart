@@ -1,6 +1,6 @@
-// 车间内料仓发料 / 申请 / 退回共用的"料 × 袋数 × 公斤 (× 出库叶仓)"明细表 (ADR-131)。
+// 车间内料仓发料 / 申请 / 退回共用的"料 × 数量(袋) × 重量 (× 出库叶仓)"明细表 (ADR-131)。
 //
-// - 袋数 ↔ 公斤联动: 改袋数按每袋净重算公斤 (可再改); 改公斤反算袋数。
+// - 数量 ↔ 重量联动: 改数量(几袋)按每袋净重算重量 (可再改); 改重量反算数量。
 // - 勾选多行后改任一勾选行的单元格 = 对全部勾选行生效 (看到的勾选 = 提交的内容);
 //   没勾选的行只改自己。
 // - 每行提示"仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤" (数字全部来自服务端)。
@@ -13,7 +13,7 @@ import '../../../../core/l10n/gen/app_localizations.dart';
 import '../models/workshop_material_models.dart';
 import 'workshop_material_labels.dart';
 
-/// 一行: 选的料、出库叶仓、袋数、公斤。按申请发料时带着原申请行。
+/// 一行: 选的料、出库叶仓、数量(几袋)、重量(公斤)。按申请发料时带着原申请行。
 class WmIssueLineRow extends EditableGridRow {
   WmIssueLineRow({
     required this.id,
@@ -43,7 +43,7 @@ class WmIssueLineRow extends EditableGridRow {
   double? get qtyValue => wmParseQty(qty.text);
   double? get bagsValue => wmParseQty(bags.text);
 
-  /// 袋数改了: 按每袋净重算公斤 (没设每袋净重时不动公斤)。
+  /// 数量(几袋)改了: 按每袋净重算重量 (没设每袋净重时不动重量)。
   void bagsEdited() {
     final net = bagNet;
     if (net == null || net <= 0) return;
@@ -51,7 +51,7 @@ class WmIssueLineRow extends EditableGridRow {
     qty.text = b == null ? '' : wmQty(b * net, maxDecimals: 4);
   }
 
-  /// 公斤改了: 反算袋数。
+  /// 重量改了: 反算数量(几袋)。
   void qtyEdited() {
     final net = bagNet;
     if (net == null || net <= 0) return;
@@ -287,7 +287,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       key: 'bags',
       exactValueOf: (r) => r.bags.text,
       exactListenableOf: (r) => r.bags,
-      label: l10n.wmBags,
+      label: '数量',
       width: 100,
       numeric: true,
       frozenTextOf: (row) => row.bags.text,
@@ -311,7 +311,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       key: 'qty',
       exactValueOf: (r) => r.qty.text,
       exactListenableOf: (r) => r.qty,
-      label: qtyLabel ?? '数量',
+      label: qtyLabel ?? '重量',
       width: 120,
       numeric: true,
       required: true,

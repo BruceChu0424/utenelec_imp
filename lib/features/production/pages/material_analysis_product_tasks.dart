@@ -638,6 +638,10 @@ abstract class _MaterialAnalysisProductTasksState
         _isExecutableSupplyGroup(group, MaterialSupplyRoute.make);
   }
 
+  /// 生产准备任务卡右上角的整树展开/收起按钮；基类默认不显示，
+  /// 实现在 bom_tree 层（动作与行右键菜单同源）。
+  Widget? _bomTreeExpansionToggle() => null;
+
   Widget _productSection(
     ThemeData theme,
     ProductionMaterialAnalysisView analysis,
@@ -670,11 +674,17 @@ abstract class _MaterialAnalysisProductTasksState
                 ],
               ),
             ),
+            // 整树展开/收起（控制下方表格子层级）：紧挨「调整物料优先顺序」
+            // 左侧；实现在 bom_tree 层（动作与行右键菜单同源）。
+            if (_bomTreeExpansionToggle() case final expansionToggle?) ...[
+              expansionToggle,
+              if (_canAdjustPriorities && analysis.products.length > 1)
+                const SizedBox(width: UtenSpacing.s8),
+            ],
             if (_canAdjustPriorities && analysis.products.length > 1)
               UtenButton(
                 key: const Key('material-analysis-priority-edit'),
                 type: UtenButtonType.ghost,
-                icon: Icons.swap_vert_rounded,
                 onPressed: _busy || _editingPriorities
                     ? null
                     : _beginPriorityEdit,

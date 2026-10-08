@@ -227,7 +227,7 @@ void main() {
         find.byKey(const Key('editable-grid-add-column')).hitTestable().last,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('单据附加项'));
+      await tester.tap(find.text('加费用或写说明'));
       await tester.pumpAndSettle();
       expect(find.text('文件型号'), findsOneWidget);
     },

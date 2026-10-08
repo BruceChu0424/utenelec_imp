@@ -12,7 +12,6 @@ import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/route_names.dart';
-import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
@@ -388,7 +387,9 @@ class StockCountReasonField extends StatelessWidget {
   }
 }
 
-/// One toolbar shared by both existing inventory tables; no replacement table or separate count layout.
+/// Right-bottom floating count actions shared by both existing inventory tables;
+/// no replacement table or separate count layout. 盘点说明输入框由宿主页自带
+/// (即时库存页放表格工具条, 内料仓页放页头), 组件只负责动作按钮。
 class StockCountModeToolbar extends ConsumerStatefulWidget {
   const StockCountModeToolbar({
     super.key,
@@ -397,19 +398,18 @@ class StockCountModeToolbar extends ConsumerStatefulWidget {
     required this.goodsIds,
     required this.onStart,
     required this.onSubmitted,
-    this.warehouseId,
-    this.fixedWarehouse = false,
-    this.floating = false,
-    this.inactiveActionsBuilder,
+    required this.inactiveActionsBuilder,
+    required this.warehouseId,
   });
   final StockCountInlineController controller;
   final bool allowed;
-  final String? warehouseId;
-  final bool fixedWarehouse;
 
-  /// Hosts that keep the count summary/reason in their header can place the actions in the standard FAB group.
-  final bool floating;
-  final List<Widget> Function(VoidCallback? start, VoidCallback history)?
+  /// 固定盘点目标仓（内料仓页把自己的 binWarehouseId 传进来；null 时提示不可盘）。
+  final String? warehouseId;
+
+  /// 宿主自己的非盘点态动作组（如内料仓页把「库存盘点/盘点历史」并进既有悬浮组）。
+  /// 即时库存页已改为本页右下悬浮按钮直达独立盘点会话页，不再用本组件。
+  final List<Widget> Function(VoidCallback? start, VoidCallback history)
   inactiveActionsBuilder;
   final Iterable<String> Function() goodsIds;
   final Future<void> Function(StockCountWarehouse warehouse) onStart;
@@ -426,7 +426,7 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
     setState(() => _starting = true);
     try {
       final scope = await widget.controller.repository.scope(
-        warehouseId: widget.fixedWarehouse ? widget.warehouseId : null,
+        warehouseId: widget.warehouseId,
       );
       if (!mounted || !widget.allowed) return;
       if (!scope.canSubmit) {
@@ -435,31 +435,15 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
       }
       StockCountWarehouse? selected;
       for (final warehouse in scope.warehouses) {
-        if (warehouse.id == widget.warehouseId) selected = warehouse;
+        if (widget.warehouseId != null &&
+            warehouse.id == widget.warehouseId) {
+          selected = warehouse;
+        }
       }
-      if (selected == null && widget.fixedWarehouse) {
+      if (selected == null) {
         context.appWarning('当前内料仓不在可盘点范围内');
         return;
       }
-      selected ??= await showDialog<StockCountWarehouse>(
-        context: context,
-        builder: (dialogContext) => SimpleDialog(
-          title: const Text('盘点请选择具体仓库'),
-          children: [
-            if (scope.warehouses.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('当前没有可盘点的仓库'),
-              ),
-            for (final warehouse in scope.warehouses)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, warehouse),
-                child: Text('${warehouse.name} · ${warehouse.reviewerLabel}审核'),
-              ),
-          ],
-        ),
-      );
-      if (!mounted || !widget.allowed || selected == null) return;
       widget.controller.begin(selected);
       await widget.onStart(selected);
       if (!mounted || !widget.allowed) return;
@@ -520,8 +504,15 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
 
   List<Widget> _activeActions(StockCountInlineController controller) => [
     UtenButton(
+      key: const Key('stock-count-exit'),
+      size: UtenButtonSize.large,
+      type: UtenButtonType.secondary,
+      onPressed: controller.busy ? null : _exit,
+      child: const Text('退出盘点'),
+    ),
+    UtenButton(
       key: const Key('stock-count-add'),
-      size: widget.floating ? UtenButtonSize.large : UtenButtonSize.medium,
+      size: UtenButtonSize.large,
       type: UtenButtonType.secondary,
       onPressed: controller.busy
           ? null
@@ -540,26 +531,14 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
                 controller.addAll(rows, expectedSession: session);
               }
             },
-      child: Text(widget.floating ? '添加物料' : '添加零库存物料'),
+      child: const Text('添加物料'),
     ),
     UtenButton(
       key: const Key('stock-count-save'),
-      size: widget.floating ? UtenButtonSize.large : UtenButtonSize.medium,
+      size: UtenButtonSize.large,
       onPressed: controller.busy || controller.changedCount == 0 ? null : _save,
       child: const Text('保存并送审'),
     ),
-    if (widget.floating)
-      UtenButton(
-        size: UtenButtonSize.large,
-        type: UtenButtonType.secondary,
-        onPressed: controller.busy ? null : _exit,
-        child: const Text('退出盘点'),
-      )
-    else
-      TextButton(
-        onPressed: controller.busy ? null : _exit,
-        child: const Text('退出盘点'),
-      ),
   ];
 
   @override
@@ -569,51 +548,14 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
       if (!widget.allowed) return const SizedBox.shrink();
       final controller = widget.controller;
       if (!controller.active) {
-        final actions = widget.floating && widget.inactiveActionsBuilder != null
-            ? widget.inactiveActionsBuilder!(
-                _starting ? null : _start,
-                _history,
-              )
-            : <Widget>[
-                UtenButton(
-                  key: const Key('stock-count-mode'),
-                  type: UtenButtonType.secondary,
-                  icon: Icons.fact_check_outlined,
-                  onPressed: _starting ? null : _start,
-                  child: Text(_starting ? '正在开启盘点…' : '盘点模式'),
-                ),
-                TextButton(onPressed: _history, child: const Text('我的盘点')),
-              ];
-        return widget.floating
-            ? UtenFloatingActionGroup(children: actions)
-            : Wrap(spacing: UtenSpacing.s8, children: actions);
-      }
-      if (widget.floating) {
-        final actions = _activeActions(controller);
         return UtenFloatingActionGroup(
-          children: [actions[2], actions[0], actions[1]],
+          children: widget.inactiveActionsBuilder(
+            _starting ? null : _start,
+            _history,
+          ),
         );
       }
-      return Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          // 2026-10-02 用户口径：盘点说明放最左、选填；「已改 N 项」计数退役。
-          StockCountReasonField(controller: controller, maxWidth: 240),
-          Text(
-            '${controller.warehouse!.name} · ${controller.warehouse!.reviewerLabel}审核',
-          ),
-          ..._activeActions(controller),
-          if (controller.error != null)
-            TextButton(
-              onPressed: controller.busy
-                  ? null
-                  : () => controller.ensureRows(widget.goodsIds()),
-              child: Text('${controller.error} · 重试'),
-            ),
-        ],
-      );
+      return UtenFloatingActionGroup(children: _activeActions(controller));
     },
   );
 }

@@ -98,6 +98,9 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.workshopMaterialIssue) {
     return const [Perm.workshopMaterialIssue];
   }
+  if (location == RouteName.stockCountSession) {
+    return const [Perm.stockCountSubmit];
+  }
   if (location == RouteName.stockCountRequests) {
     return const [Perm.stockCountSubmit];
   }
@@ -659,8 +662,8 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.productionWhereUsedView];
   }
   if (location == RoutePath.productionPlanNew()) {
-    // 2026-10-01 恢复空白手工新建页：计划员(analysis:create)或直接创建码
-    // (production_plan:create，V714) 都能进；与服务端 @PreAuthorize 同口径。
+    // 2026-10-08 新建入口=物料分析工作台(planCreateEntry)：首屏读分析数据，
+    // view 是门槛；create 仍按任一创建码放行(analysis:create 或 plan:create V714)。
     return const [
       Perm.productionMaterialAnalysisCreate,
       Perm.productionPlanCreate,
@@ -839,9 +842,11 @@ List<String> requiredAllPermsFor(String rawLocation) {
   }
 
   // 物料分析所有首屏查询都要求 view；manage/route 等只是附加动作。
-  // （/production/plans/new 2026-10-01 起是计划编辑页，不读分析数据，
-  //  只按上面 requiredAnyPermFor 的 create 码放行。）
+  // /production/plans/new（2026-10-08 起=物料分析工作台的计划入口）同样首屏
+  // 读分析数据（仓库字典/联合分析），view 是门槛，见上方 requiredAnyPermFor
+  // 的 create 码放行说明。
   if (location == RouteName.productionMaterialAnalysis ||
+      location == RoutePath.productionPlanNew() ||
       location.startsWith('/production/material-analyses/') &&
           location.endsWith('/summary')) {
     return const [Perm.productionMaterialAnalysisView];

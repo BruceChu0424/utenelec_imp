@@ -64,11 +64,12 @@ final class _MaterialAggregateTableController {
 
   Widget? toolbarAction() => drafts.isEmpty
       ? null
-      : TextButton.icon(
+      : UtenButton(
           key: const Key('material-aggregate-cancel-drafts'),
+          type: UtenButtonType.ghost,
+          height: UtenTableToolbar.controlHeight,
           onPressed: saving ? null : () => unawaited(cancelAll()),
-          icon: const Icon(Icons.undo_rounded),
-          label: Text('撤销汇总草稿(${drafts.length})'),
+          child: Text('撤销汇总草稿(${drafts.length})'),
         );
 
   Widget quantityCell(

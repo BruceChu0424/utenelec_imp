@@ -2016,8 +2016,10 @@ void main() {
         for (final button in [attach, send]) {
           expect(button.top, closeTo(input.top, 0.1));
           expect(button.bottom, closeTo(input.bottom, 0.1));
-          expect(button.width, greaterThanOrEqualTo(kMinInteractiveDimension));
-          expect(button.height, greaterThanOrEqualTo(kMinInteractiveDimension));
+          // Compact composer: buttons match the input's 36-high surface
+          // (same token as the filter row).
+          expect(button.width, greaterThanOrEqualTo(36));
+          expect(button.height, greaterThanOrEqualTo(36));
         }
         expect(input.left - attach.right, greaterThanOrEqualTo(8));
         expect(send.left - input.right, greaterThanOrEqualTo(8));
@@ -2028,6 +2030,24 @@ void main() {
       final singleLine = tester
           .getSize(find.byKey(const ValueKey('ai-chat-input-surface')))
           .height;
+      void centeredSingleLine() {
+        final surface = tester.getRect(
+          find.byKey(const ValueKey('ai-chat-input-surface')),
+        );
+        final editable = tester.getRect(
+          find.descendant(
+            of: find.byKey(const ValueKey('ai-chat-input-surface')),
+            matching: find.byType(EditableText),
+          ),
+        );
+        expect(
+          (editable.top - surface.top) - (surface.bottom - editable.bottom),
+          lessThanOrEqualTo(1),
+          reason: 'single-line input text must sit vertically centered',
+        );
+      }
+
+      centeredSingleLine();
       await tester.enterText(
         find.byKey(const ValueKey('ai-chat-input')),
         'Quotation\nPlease prepare an order\nKeep the quantities',

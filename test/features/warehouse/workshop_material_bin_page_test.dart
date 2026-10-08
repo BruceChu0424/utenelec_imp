@@ -586,7 +586,7 @@ void main() {
     await tester.tap(find.byKey(const Key('wm-bin-more')));
     await tester.pumpAndSettle();
     expect(find.text('周期盘点'), findsOneWidget);
-    expect(find.text('我的盘点'), findsOneWidget);
+    expect(find.text('盘点历史'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

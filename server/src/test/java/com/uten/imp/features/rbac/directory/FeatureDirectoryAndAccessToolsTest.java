@@ -39,7 +39,7 @@ class FeatureDirectoryAndAccessToolsTest {
             name("finance:view:all", "查看全部财务单据", "财税管理", "数据范围"),
             name("finance_report:view", "查看钱流报表", "财税管理", "钱流报表"),
             name("payroll:view:all", "查看全员工资条", "人事行政", "工资条"),
-            name("payroll:view:self", "查看本人工资条", "人事行政", "工资条"),
+            name("payroll:view:self", "查看本人工资条", "常用模块", "工资条"),
             name("sales_order:approve", "审核销售订货单", "销售管理", "销售订货"),
             name("sales_order:create", "新增销售订货单", "销售管理", "销售订货"),
             name("sales_order:view", "查看销售订货", "销售管理", "销售订货"),

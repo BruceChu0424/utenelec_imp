@@ -3536,14 +3536,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 全屏切换按钮：工具条与空态共用一份（全屏里 0 行时也必须能退出，否则
   /// 表头筛选把表过滤成空后会被困在全屏路由——2026-09-10 物料分析反馈）。
-  /// 高度对齐工具条统一口径 48；按钮态靠 `_fsTick` 重建时读 `_fullscreen`。
+  /// 高度对齐工具条统一口径 48；纯文字无图标（2026-10-08 用户口径）。
+  /// 按钮态靠 `_fsTick` 重建时读 `_fullscreen`。
   Widget _fullscreenToggleButton() => UtenButton(
     key: const ValueKey('master-table-fullscreen-toggle'),
     size: UtenButtonSize.large,
     height: UtenTableToolbar.controlHeight,
-    icon: _fullscreen
-        ? Icons.fullscreen_exit_rounded
-        : Icons.fullscreen_rounded,
     onPressed: _toggleFullscreen,
     child: Text(_fullscreen ? '退出全屏' : '全屏'),
   );

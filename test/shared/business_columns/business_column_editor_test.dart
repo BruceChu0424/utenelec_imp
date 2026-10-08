@@ -193,7 +193,7 @@ void main() {
       await _open(tester, repository, (value) => selected = value);
       await _new(tester);
       expect(find.byKey(const Key('business-column-operation')), findsNothing);
-      await _select(tester, 'business-column-type', '参与正式金额');
+      await _select(tester, 'business-column-type', '费用（计入金额）');
       expect(find.text('本行金额'), findsOneWidget);
       expect(find.text('100 + 20 = 120'), findsOneWidget);
       await tester.ensureVisible(
@@ -221,7 +221,7 @@ void main() {
     BusinessColumnChoice? selected;
     await _open(tester, repository, (value) => selected = value);
     await _new(tester);
-    await _select(tester, 'business-column-type', '参与正式金额');
+    await _select(tester, 'business-column-type', '费用（计入金额）');
     await _select(tester, 'business-column-operation', '减 (−)');
     await tester.tap(find.byKey(const Key('business-column-create')));
     await tester.pumpAndSettle();
@@ -261,7 +261,7 @@ void main() {
       BusinessColumnChoice? selected;
       await _open(tester, repository, (value) => selected = value);
       await _new(tester);
-      await _select(tester, 'business-column-type', '参与正式金额');
+      await _select(tester, 'business-column-type', '费用（计入金额）');
       await tester.tap(find.byKey(const Key('business-column-create')));
       await tester.pumpAndSettle();
       expect(selected!.column!.id, 'fee');
@@ -273,7 +273,7 @@ void main() {
         existing: [column],
       );
       await _new(tester);
-      await _select(tester, 'business-column-type', '参与正式金额');
+      await _select(tester, 'business-column-type', '费用（计入金额）');
       expect(
         tester
             .widget<UtenButton>(find.byKey(const Key('business-column-create')))
@@ -440,7 +440,7 @@ void main() {
         onContainer: (value) => container = value,
       );
       await _new(tester);
-      await _select(tester, 'business-column-type', '参与正式金额');
+      await _select(tester, 'business-column-type', '费用（计入金额）');
       container.updateOverrides([
         businessColumnsRepositoryProvider.overrideWithValue(restricted),
       ]);
@@ -475,7 +475,7 @@ void main() {
           brightness: brightness,
         );
         await _new(tester);
-        await _select(tester, 'business-column-type', '参与正式金额');
+        await _select(tester, 'business-column-type', '费用（计入金额）');
         expect(tester.takeException(), isNull);
         expect(
           find.byKey(const Key('business-column-create')).hitTestable(),
@@ -509,7 +509,7 @@ void main() {
           keyboard: 260,
         );
         await _new(tester);
-        await _select(tester, 'business-column-type', '参与正式金额');
+        await _select(tester, 'business-column-type', '费用（计入金额）');
         await tester.ensureVisible(
           find.byKey(const Key('business-column-example-value')),
         );

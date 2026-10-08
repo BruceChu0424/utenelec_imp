@@ -2071,7 +2071,9 @@
         "production_material_analysis:create",
         "production_plan:create"
       ],
-      "allOf": [],
+      "allOf": [
+        "production_material_analysis:view"
+      ],
       "hubOf": [],
       "doc": "docs/03-页面/生产订单排产页.md"
     },
@@ -3098,7 +3100,23 @@
     },
     {
       "route": "/stock/count-requests",
-      "title": "我的盘点",
+      "title": "盘点历史",
+      "aliases": [],
+      "module": "仓库管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "stock:count:submit"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/库存盘点审核页.md"
+    },
+    {
+      "route": "/stock/count-session",
+      "title": "盘点模式",
       "aliases": [
         "库存盘点审核页",
         "库存盘点模式与审核"

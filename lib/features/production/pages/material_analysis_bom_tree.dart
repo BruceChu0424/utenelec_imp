@@ -197,7 +197,8 @@ abstract class _MaterialAnalysisBomTreeState
   }
 
   /// 树顶筛选按钮（全部 BOM/只看缺料/待确认路线 + 按产品看/按物料汇总）。
-  /// 与旁边搜索框等高（最小 48px）、纯文字无图标；选中态用主题深绿实底 +
+  /// 与「表头设置/全屏」按钮同高（[UtenTableToolbar.controlHeight]，2026-10-08
+  /// 用户口径：工具条按钮高度统一）、纯文字无图标；选中态用主题深绿实底 +
   /// 白字——默认 ChoiceChip 的选中色偏淡，年长用户看不出当前选中了哪个视图。
   Widget _bomViewChip(
     ThemeData theme, {
@@ -226,7 +227,9 @@ abstract class _MaterialAnalysisBomTreeState
           onTap: onSelected,
           canRequestFocus: onSelected != null,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 48),
+            constraints: const BoxConstraints(
+              minHeight: UtenTableToolbar.controlHeight,
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: UtenSpacing.s16,
@@ -282,30 +285,51 @@ abstract class _MaterialAnalysisBomTreeState
         }),
         label: '${mode.label} ${_bomModeCount(analysis, mode)}',
       ),
-    _bomViewChip(
-      theme,
-      key: const ValueKey('material-bom-layout-product'),
-      selected: !_bomAggregateByMaterial,
-      onSelected: () => setState(() {
-        _bomAggregateByMaterial = false;
-        _pruneMaterialTableFilters();
-      }),
-      label: _l10n.materialByProduct,
-    ),
-    _bomViewChip(
-      theme,
-      key: const ValueKey('material-bom-layout-material'),
-      selected: _bomAggregateByMaterial,
-      // 汇总视图的进度桶是「已覆盖/部分覆盖/未覆盖」三档，与产品视图不同；
-      // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
-      onSelected: () => setState(() {
-        _bomAggregateByMaterial = true;
-        _pruneMaterialTableFilters();
-      }),
-      label: _l10n.materialByMaterial,
-    ),
+    _bomLayoutSwitchGroup(theme),
     ?_materialAggregateToolbarAction(),
   ];
+
+  /// 布局切换组（按产品看/按物料汇总）左右各一条竖分割线：与前面的视图
+  /// 筛选 chip、后面的动作按钮明确分组（2026-10-08 用户口径「要有区分」）。
+  Widget _bomLayoutSwitchGroup(ThemeData theme) => Row(
+    key: const Key('material-bom-layout-switch-group'),
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _bomToolbarGroupDivider(theme),
+      const SizedBox(width: UtenSpacing.s8),
+      _bomViewChip(
+        theme,
+        key: const ValueKey('material-bom-layout-product'),
+        selected: !_bomAggregateByMaterial,
+        onSelected: () => setState(() {
+          _bomAggregateByMaterial = false;
+          _pruneMaterialTableFilters();
+        }),
+        label: _l10n.materialByProduct,
+      ),
+      const SizedBox(width: UtenSpacing.s4),
+      _bomViewChip(
+        theme,
+        key: const ValueKey('material-bom-layout-material'),
+        selected: _bomAggregateByMaterial,
+        // 汇总视图的进度桶是「已覆盖/部分覆盖/未覆盖」三档，与产品视图不同；
+        // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
+        onSelected: () => setState(() {
+          _bomAggregateByMaterial = true;
+          _pruneMaterialTableFilters();
+        }),
+        label: _l10n.materialByMaterial,
+      ),
+      const SizedBox(width: UtenSpacing.s8),
+      _bomToolbarGroupDivider(theme),
+    ],
+  );
+
+  Widget _bomToolbarGroupDivider(ThemeData theme) => Container(
+    width: 1,
+    height: 24,
+    color: theme.colorScheme.outlineVariant,
+  );
 
   /// chip 计数与表格同口径：视图条件 × 关键词 × 表头筛选（产品视图）。
   /// 汇总视图的表头筛选作用于聚合行，chip 仍按节点计数（不含表头筛选）。
@@ -547,6 +571,92 @@ abstract class _MaterialAnalysisBomTreeState
       }
     });
   }
+
+  // ===== 整树展开/收起（2026-10-08 用户口径，右键菜单入口） =====
+  //
+  // 全部展开 = 每个产品都展开子层级（产品折叠与分支折叠一并清空）；
+  // 全部收起 = 只显示顶层产品行。汇总视图对应聚合行的来源明细展开/收起。
+  // 纯本地展示状态，不触服务端，.busy 期间也可用。
+
+  void _expandAllBomNodes() {
+    final analysis = _analysis;
+    if (analysis == null) return;
+    setState(() {
+      if (_bomAggregateByMaterial) {
+        _expandedMaterialAggregates.addAll(
+          _materialAggregates(analysis, _analysisIndexes(analysis))
+              .map((aggregate) => aggregate.key),
+        );
+      } else {
+        _collapsedBomProducts.clear();
+        _collapsedBomBranches.clear();
+      }
+    });
+  }
+
+  void _collapseAllBomNodes() {
+    final analysis = _analysis;
+    if (analysis == null) return;
+    setState(() {
+      if (_bomAggregateByMaterial) {
+        _expandedMaterialAggregates.clear();
+      } else {
+        for (final product in analysis.products) {
+          if (!_isEmbeddedMakeChildProduct(product)) {
+            _collapsedBomProducts.add(product.analysisLineId);
+          }
+        }
+      }
+    });
+  }
+
+  /// 行右键菜单尾部的整树展开/收起两项；挂在每一条能弹菜单的行上，
+  /// 计划员在哪行右键都能顺手收起整棵树。
+  List<UtenContextMenuEntry> _bomExpansionMenuEntries() => [
+    UtenMenuItem(
+      label: _bomAggregateByMaterial ? '全部展开来源' : '全部展开',
+      icon: Icons.unfold_more_rounded,
+      onTap: _expandAllBomNodes,
+    ),
+    UtenMenuItem(
+      label: _bomAggregateByMaterial ? '全部收起来源' : '全部收起',
+      icon: Icons.unfold_less_rounded,
+      onTap: _collapseAllBomNodes,
+    ),
+  ];
+
+  /// 生产准备任务卡右上角的「全部展开/全部收起」按钮（动作与右键菜单同源，
+  /// 2026-10-08 用户口径：比逐行右键顺手）。还有收起空间时显示「全部展开」，
+  /// 整树已全展开时显示「全部收起」；纯文字无图标。
+  @override
+  Widget? _bomTreeExpansionToggle() {
+    final analysis = _analysis;
+    if (analysis == null || analysis.materials.isEmpty) return null;
+    if (_bomAggregateByMaterial) {
+      final aggregates = _materialAggregates(analysis, _analysisIndexes(analysis));
+      if (aggregates.isEmpty) return null;
+      final expandedAll =
+          _expandedMaterialAggregates.length >= aggregates.length;
+      return _bomTreeExpansionToggleButton(
+        expandedAll ? '全部收起' : '全部展开',
+        expandedAll ? _collapseAllBomNodes : _expandAllBomNodes,
+      );
+    }
+    final anyCollapsed =
+        _collapsedBomProducts.isNotEmpty || _collapsedBomBranches.isNotEmpty;
+    return _bomTreeExpansionToggleButton(
+      anyCollapsed ? '全部展开' : '全部收起',
+      anyCollapsed ? _expandAllBomNodes : _collapseAllBomNodes,
+    );
+  }
+
+  Widget _bomTreeExpansionToggleButton(String label, VoidCallback onTap) =>
+      UtenButton(
+        key: const Key('material-analysis-bom-expansion-toggle'),
+        type: UtenButtonType.ghost,
+        onPressed: onTap,
+        child: Text(label),
+      );
 
   // ===== 表头筛选协作契约：实现在 material_analysis_material_table.dart =====
   //

@@ -330,7 +330,7 @@ void main() {
         expect(controller.value(row, _hidden), '***');
         if (!history) {
           expect(find.byKey(const Key('platform-column-value')), findsNothing);
-          expect(find.text('当前账号没有查看此字段的权限'), findsOneWidget);
+          expect(find.text('当前账号没有查看这一列的权限'), findsOneWidget);
         }
         expect(
           row.platformFields.cells
@@ -342,7 +342,7 @@ void main() {
           controller.definitions
               .firstWhere((column) => column.id == 'hidden')
               .name,
-          '受保护字段',
+          '不能查看的列',
         );
         if (history) {
           expect(permitted.reads + denied.reads, 0);
@@ -547,7 +547,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('platform-column-new')), findsNothing);
         expect(find.byKey(const Key('platform-column-create')), findsNothing);
-        expect(find.text('复用已有列'), findsNothing);
+        expect(find.text('之前建过的列'), findsNothing);
         expect(repo.searches, isEmpty);
         await tester.tap(find.text('补充说明'));
         await tester.pumpAndSettle();

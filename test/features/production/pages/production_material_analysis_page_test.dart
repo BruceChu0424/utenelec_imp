@@ -8224,6 +8224,171 @@ void main() {
     },
   );
 
+  // 2026-10-08 用户口径：表格任意行右键都带「全部展开 / 全部收起」——
+  // 全部展开 = 每个产品展开子层级（含分支折叠一并放开）；全部收起 = 只显示
+  // 顶层产品行。纯本地展示状态，两步往返必须整棵树原样回来。
+  testWidgets(
+    'material-table-right-click expand-all and collapse-all toggle the whole bom tree',
+    (tester) async {
+      final json = _makeTreeAnalysisJson();
+      await _pumpPage(
+        tester,
+        size: const Size(1440, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisRoute,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: json,
+      );
+
+      await _scrollToMaterialTable(tester);
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsOneWidget,
+      );
+
+      // 子件行右键 → 菜单尾部带整树展开/收起。
+      final row = find.byKey(const ValueKey('material-table-row-make-path-1'));
+      await _rightClickMaterialTableRow(tester, row);
+      expect(find.text('全部展开'), findsOneWidget);
+      expect(find.text('全部收起'), findsOneWidget);
+
+      // 全部收起：只剩顶层产品行，三个子件行全部消失。
+      await tester.tap(find.text('全部收起'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-bom-product-product-line-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsNothing,
+      );
+
+      // 产品行右键 → 全部展开：子层级整棵回来。
+      await _rightClickMaterialTableRow(
+        tester,
+        find.byKey(const ValueKey('material-bom-product-product-line-1')),
+      );
+      await tester.tap(find.text('全部展开'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  // 2026-10-08 用户口径：生产准备任务卡右上角常驻「全部展开/全部收起」按钮
+  // （动作与右键菜单同源）；工具条控件统一与「表头设置/全屏」同高，
+  // 「按产品看/按物料汇总」布局组左右各一条分割线。
+  testWidgets(
+    'material-analysis toolbar expansion toggle, unified heights and layout group dividers',
+    (tester) async {
+      final json = _makeTreeAnalysisJson();
+      await _pumpPage(
+        tester,
+        size: const Size(1440, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisRefresh,
+          Perm.productionMaterialAnalysisRoute,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: json,
+      );
+
+      // 工具条统一高度：视图 chip 与「全屏」按钮（=「表头设置」同款
+      // UtenTableToolbar.controlHeight）同高。
+      await _scrollToMaterialTable(tester);
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('material-bom-view-all')))
+            .height,
+        tester
+            .getSize(
+              find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+            )
+            .height,
+      );
+
+      // 布局切换组：按产品看/按物料汇总 左右各一条竖分割线。
+      final group = find.byKey(const Key('material-bom-layout-switch-group'));
+      expect(group, findsOneWidget);
+      expect(
+        find.descendant(of: group, matching: find.byType(Container)),
+        findsNWidgets(2),
+      );
+
+      // 顶部按钮初始为「全部收起」（默认整树展开）。
+      final toggle = find.byKey(
+        const Key('material-analysis-bom-expansion-toggle'),
+      );
+      expect(toggle, findsOneWidget);
+      expect(
+        find.descendant(of: toggle, matching: find.text('全部收起')),
+        findsOneWidget,
+      );
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-bom-product-product-line-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsNothing,
+      );
+
+      // 按钮翻转成「全部展开」，点回后整树原样回来。
+      expect(
+        find.descendant(of: toggle, matching: find.text('全部展开')),
+        findsOneWidget,
+      );
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-buy-child')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets(
     'material-table-lower-level-pending MAKE remains an explicit executable task',
     (tester) async {

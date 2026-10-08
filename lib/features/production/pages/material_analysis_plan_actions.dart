@@ -5,7 +5,6 @@ abstract class _MaterialAnalysisPlanActionsState
   Widget _preparationPlanResultsButton() => UtenButton(
     key: const Key('material-preparation-view-plans'),
     type: UtenButtonType.ghost,
-    icon: Icons.receipt_long_outlined,
     onPressed: _busy
         ? null
         : () => unawaited(

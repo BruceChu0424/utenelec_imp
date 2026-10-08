@@ -131,8 +131,8 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
         }
         if(!setups.isEmpty()) materialSetup.setup(List.copyOf(setups.values()),"WM-COUNT-"+approvalEventId);
         List<UUID> goodsIds=lines.stream().map(line->(UUID)line.get("goods_id")).distinct().toList();
-        for(var goods:db.queryForList("SELECT id,status,is_deleted FROM goods WHERE id IN (:ids) ORDER BY id FOR UPDATE",Map.of("ids",goodsIds))) {
-            if(!"使用".equals(goods.get("status")) || Boolean.TRUE.equals(goods.get("is_deleted"))) throw conflict("盘点材料已停用或删除");
+        for(var goods:db.queryForList("SELECT id,is_deleted FROM goods WHERE id IN (:ids) ORDER BY id FOR UPDATE",Map.of("ids",goodsIds))) {
+            if(Boolean.TRUE.equals(goods.get("is_deleted"))) throw conflict("盘点材料已删除");
         }
         List<LinePosting> posted=new ArrayList<>();
         for(Map<String,Object> line:lines) {
@@ -140,13 +140,13 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
             var material=bins.periodicMaterial(goods);
             if(!Objects.equals(material.unitId(),unit)) throw conflict("材料基本单位已变化，请退回申请重新盘点");
             Map<String,Object> unitFact=db.queryForMap("""
-                    SELECT unit.status,unit.is_deleted,profile.measurement_dimension,
+                    SELECT unit.is_deleted,profile.measurement_dimension,
                            fn_weight_unit_kg_factor(profile.mass_unit_code) AS factor
                     FROM units unit JOIN unit_measurement_profiles profile ON profile.unit_id=unit.id
                     WHERE unit.id=:unit FOR SHARE OF unit,profile
                     """,Map.of("unit",unit));
-            if(!"使用".equals(unitFact.get("status")) || Boolean.TRUE.equals(unitFact.get("is_deleted"))
-                    || !"MASS".equals(unitFact.get("measurement_dimension"))) throw conflict("材料重量单位已停用或变化");
+            if(Boolean.TRUE.equals(unitFact.get("is_deleted"))
+                    || !"MASS".equals(unitFact.get("measurement_dimension"))) throw conflict("材料重量单位已删除或变化");
             BigDecimal factor=number(unitFact.get("factor")), frozenFactor=number(line.get("kg_per_base_unit"));
             if(!same(factor,frozenFactor)) throw conflict("材料重量换算已变化，请退回申请重新盘点");
             BigDecimal expected=number(line.get("expected_qty")), target=number(line.get("target_qty"));

@@ -61,7 +61,7 @@ class _PlatformColumnPicker<T> extends StatefulWidget {
 
 class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
   static const _columnLimitMessage =
-      '最多添加 32 个扩展列。可继续显示已添加的列；需要重新选择时，可在表头设置中恢复默认布局。';
+      '最多能加 32 列。已经加的列还能继续显示；想重新选择时，可在表头设置中恢复默认布局。';
   final _name = TextEditingController();
   final _query = TextEditingController();
   final _steps = <_FormulaStepDraft>[_FormulaStepDraft()];
@@ -229,9 +229,9 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
   ];
 
   String? _baseError(List<UtenDropdownItem> sources) {
-    if (_base == null) return '请选择一个数字列作为计算基础';
+    if (_base == null) return '请先选一个数字列';
     if (!sources.any((source) => source.value == _base)) {
-      return '计算基础已不可用，请重新选择';
+      return '所选数字列已不可用，请重新选择';
     }
     return null;
   }
@@ -374,10 +374,10 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           ? '新建列'
           : '添加列',
       subtitle: !_editing
-          ? '重新显示当前表格中隐藏的列'
+          ? '把隐藏的列重新显示出来'
           : _creating
           ? '填写名称，再选择需要记录或计算的内容'
-          : '显示已有表头、复用已有列，或新建一列',
+          : '找回隐藏的列、用之前建过的列，或新建一列',
       actions: [
         UtenButton(
           type: UtenButtonType.ghost,
@@ -449,7 +449,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
         if (system.isNotEmpty) ...[
           ColumnEditorSection(
             title: '已有表头',
-            description: '重新显示当前隐藏的列',
+            description: '隐藏的列，点一下重新显示',
             child: Column(
               children: [
                 for (final column in system)
@@ -488,13 +488,13 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
             child: TextButton.icon(
               onPressed: _load,
               icon: const Icon(Icons.refresh_rounded),
-              label: const Text('重新加载列目录'),
+              label: const Text('重新加载'),
             ),
           ),
         ] else if (results.isNotEmpty)
           ColumnEditorSection(
-            title: '复用已有列',
-            description: '沿用同一个字段定义和计算规则',
+            title: '之前建过的列',
+            description: '直接拿来用，不用重新建',
             child: Column(
               children: [
                 for (final column in results)
@@ -516,8 +516,8 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           ColumnEditorNotice(
             icon: Icons.view_column_outlined,
             text: query.isEmpty
-                ? '暂无可复用的扩展列，可点击“新建一列”开始设置。'
-                : '没有找到“${_query.text.trim()}”对应的扩展列，可以用这个名称新建。',
+                ? '还没有建过这样的列，可点“新建一列”新建。'
+                : '没有叫“${_query.text.trim()}”的列，可以直接用这个名字新建。',
           ),
         if (_editing && !_canDefine && !_loading) ...[
           const SizedBox(height: UtenSpacing.s12),
@@ -577,10 +577,10 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                   enabled: !_saving && _values,
                   items: [
                     if (_values)
-                      const UtenDropdownItem(value: 'TEXT', label: '文字信息'),
+                      const UtenDropdownItem(value: 'TEXT', label: '文字说明'),
                     if (_values)
-                      const UtenDropdownItem(value: 'NUMBER', label: '数字记录'),
-                    const UtenDropdownItem(value: 'CALCULATED', label: '辅助计算'),
+                      const UtenDropdownItem(value: 'NUMBER', label: '记数字'),
+                    const UtenDropdownItem(value: 'CALCULATED', label: '自动计算'),
                   ],
                   onChanged: (value) => setState(() {
                     _type = value!;
@@ -592,15 +592,15 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                 ColumnEditorNotice(
                   icon: _columnIcon(_activeType),
                   text: _activeType == 'TEXT'
-                      ? '逐行填写说明、规格或客户编号；编号里的前导零会保留。'
+                      ? '每行都能写说明或编号；编号开头的 0 不会丢。'
                       : _activeType == 'NUMBER'
-                      ? '逐行填写数字，可供辅助公式引用。记录值会保存，不直接计入正式金额或数量。'
-                      : '按步骤计算一个参考结果。原单据金额、库存数量和已过账数据仍按业务规则计算。',
+                      ? '每行填一个数字，只作记录，不改单子的金额和数量。'
+                      : '按你设的算法自动算出结果，仅供参考；单子的金额、数量仍按原来的规则算。',
                 ),
                 if (!_values) ...[
                   const SizedBox(height: UtenSpacing.s8),
                   Text(
-                    '此表当前可添加辅助计算列，手填内容需要对应记录的编辑权限。',
+                    '这张表只能加自动计算的列；要手填文字或数字，需要有编辑权限。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
@@ -618,19 +618,19 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
 
   Widget _formulaEditor(List<UtenDropdownItem> sources) => ColumnEditorSection(
     title: '设置计算方式',
-    description: '先选择计算基础，再按顺序添加运算',
+    description: '先选一个数字列作基础，再一步步加运算',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (sources.isEmpty)
           const ColumnEditorNotice(
             icon: Icons.info_outline_rounded,
-            text: '此表暂无可引用的数字列。可先添加数字记录列，或确认当前账号有权查看所需数值。',
+            text: '这张表还没有能拿来算的数字列。可先新建一个记数字的列，或确认你有权查看相应的数。',
           )
         else
           UtenDropdownField(
             key: const Key('platform-formula-base'),
-            label: '计算基础',
+            label: '用哪个数字列算',
             value: sources.any((source) => source.value == _base)
                 ? _base
                 : null,
@@ -669,7 +669,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
           ColumnEditorNotice(
             icon: Icons.calculate_outlined,
             text:
-                '计算预览：${_formulaPreview(sources)}\n${_steps.isEmpty ? '直接显示计算基础的数值。' : '从第 1 步开始依次计算，括号表示前一步结果。'}',
+                '计算预览：${_formulaPreview(sources)}\n${_steps.isEmpty ? '直接显示所选数字列的值。' : '从第 1 步开始一步步算，括号里是上一步的结果。'}',
           ),
         ],
       ],
@@ -731,7 +731,7 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
                 ),
                 UtenDropdownField(
                   key: Key('platform-formula-source-$index'),
-                  label: '运算值来源',
+                  label: '跟哪个数算',
                   value: validSource ? step.source : null,
                   allowClear: false,
                   enabled: !_saving,
@@ -822,9 +822,9 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
 }
 
 String _columnPurpose(String type) => switch (type) {
-  'CALCULATED' => '辅助计算 · 按已保存的公式显示结果',
-  'NUMBER' => '数字记录 · 可填写并供辅助公式引用',
-  _ => '文字信息 · 说明、规格或客户编号',
+  'CALCULATED' => '自动计算 · 按设好的算法显示结果',
+  'NUMBER' => '记数字 · 手动填写，只作记录',
+  _ => '文字说明 · 写说明或编号',
 };
 
 IconData _columnIcon(String type) => switch (type) {
@@ -953,12 +953,12 @@ class _PlatformCellEditorState<T> extends State<_PlatformCellEditor<T>> {
       return PopScope(
         canPop: !_saving,
         child: ColumnEditorDialog(
-          title: masked ? '受保护字段' : widget.column.name,
+          title: masked ? '不能查看的列' : widget.column.name,
           subtitle: masked
-              ? '字段访问权限已受限'
+              ? '这一列你没有权限查看'
               : widget.column.numeric
-              ? '填写此行的数字记录，供辅助计算使用'
-              : '填写此行的补充信息',
+              ? '填这行的数字，只作记录'
+              : '填这行的说明',
           icon: masked
               ? Icons.lock_outline_rounded
               : _columnIcon(widget.column.type),
@@ -982,7 +982,7 @@ class _PlatformCellEditorState<T> extends State<_PlatformCellEditor<T>> {
               if (masked)
                 const ColumnEditorNotice(
                   icon: Icons.lock_outline_rounded,
-                  text: '当前账号没有查看此字段的权限',
+                  text: '当前账号没有查看这一列的权限',
                 )
               else ...[
                 TextField(
@@ -1001,7 +1001,7 @@ class _PlatformCellEditorState<T> extends State<_PlatformCellEditor<T>> {
                   onChanged: (_) => setState(() => _error = null),
                   decoration: UtenInputDecoration(
                     InputDecoration(
-                      labelText: widget.column.numeric ? '数值' : '补充信息',
+                      labelText: widget.column.numeric ? '数值' : '说明内容',
                       error: utenFieldError(_submitted ? _valueError : null),
                     ),
                   ),
@@ -1019,8 +1019,8 @@ class _PlatformCellEditorState<T> extends State<_PlatformCellEditor<T>> {
                         ? Icons.info_outline_rounded
                         : Icons.lock_outline_rounded,
                     text: writable
-                        ? '清空后保存会移除此行的填写内容，保留列定义。'
-                        : '当前记录或账号权限不允许修改此字段。',
+                        ? '清空后保存，这格的内容会删掉，列还在。'
+                        : '这条数据或你的权限不允许修改。',
                   ),
               ],
               if (_error != null) ...[

@@ -104,6 +104,7 @@ class _CountRepo extends StockCountRequestRepository {
     String? keyword,
     String? categoryId,
     List<String> goodsIds = const [],
+    bool stockedOnly = false,
     int page = 1,
     int size = 50,
   }) async {
@@ -111,6 +112,7 @@ class _CountRepo extends StockCountRequestRepository {
     if (deferred != null) return deferred!(warehouseId, goodsIds);
     final rows = result
         .where((r) => goodsIds.isEmpty || goodsIds.contains(r.goodsId))
+        .where((r) => !stockedOnly || (double.tryParse(r.qty) ?? 0) != 0)
         .toList();
     return PagedResult(
       items: rows,
@@ -187,47 +189,6 @@ Future<void> _mountInstant(
 }
 
 void main() {
-  for (final warehouse in [_normal, _workshop]) {
-    testWidgets(
-      'count mode queries ${warehouse.kind} stock in the original table',
-      (tester) async {
-        final api = InstantInventoryApiFixture(
-          withTotals: false,
-          withAnalysis: false,
-        );
-        api.onInventory = (query) async {
-          final response = api.response();
-          if (query['warehouseId'] == 'bin1' &&
-              query['includeLineSide'] != true) {
-            response['items'] = <Object?>[];
-          }
-          return response;
-        };
-        final repo = _CountRepo()
-          ..warehouses = [warehouse]
-          ..result = [_row(_screw, qty: '10', weight: '1.5')];
-        await _mountInstant(tester, repo, api: api);
-        await tester.tap(find.byKey(const Key('stock-count-mode')));
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.text('${warehouse.name} · ${warehouse.reviewerLabel}审核'),
-        );
-        await tester.pumpAndSettle();
-        expect(api.inventoryRequests.last['warehouseId'], warehouse.id);
-        expect(
-          api.inventoryRequests.last['includeLineSide'] ?? false,
-          warehouse.isWorkshop,
-        );
-        final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
-          find.byType(MasterDataTableView<InstantInventoryRow>),
-        );
-        expect(table.items.map((r) => r.goodsId), contains(_screw));
-        expect(table.columns.map((c) => c.key), contains('countTargetQty'));
-        expect(tester.takeException(), isNull);
-      },
-    );
-  }
-
   test(
     'exact quantity text and unknown weight survive submit; failed retry is idempotent',
     () async {
@@ -366,56 +327,20 @@ void main() {
   );
 
   testWidgets(
-    'instant inventory keeps its original table and requires an exact warehouse before inline count',
+    'instant inventory no longer embeds count columns; entry stays permission gated',
     (tester) async {
       final repo = _CountRepo()
         ..result = [_row(_screw, qty: '10', weight: '1.5')];
       await _mountInstant(tester, repo);
-      final before = tester.widget<MasterDataTableView<InstantInventoryRow>>(
-        find.byType(MasterDataTableView<InstantInventoryRow>),
-      );
-      expect(before.columns.any((c) => c.key == 'countTargetQty'), false);
-      await tester.tap(find.byKey(const Key('stock-count-mode')));
-      await tester.pumpAndSettle();
-      expect(find.text('盘点请选择具体仓库'), findsOneWidget);
-      await tester.tap(find.text('原料仓 A · 财务审核'));
-      await tester.pumpAndSettle();
       final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
         find.byType(MasterDataTableView<InstantInventoryRow>),
       );
+      expect(table.columns.any((c) => c.key == 'countTargetQty'), false,
+          reason: '盘点录入已迁独立页，本表恢复纯查询口径');
       expect(
-        table.columns.map((c) => c.key),
-        containsAll([
-          'name',
-          'qty',
-          'weight',
-          'countTargetQty',
-          'countTargetWeight',
-        ]),
+        table.items.map((r) => r.goodsId),
+        contains(_screw),
       );
-      final row = table.items.first;
-      expect(table.columns.singleWhere((c) => c.key == 'qty').value(row), '10');
-      final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
-      await tester.ensureVisible(qty);
-      await tester.enterText(qty, '12');
-      await tester.enterText(
-        find.byKey(const Key('stock-count-reason')),
-        '例行盘点',
-      );
-      await tester.ensureVisible(find.byKey(const Key('stock-count-save')));
-      await tester.tap(find.byKey(const Key('stock-count-save')));
-      await tester.pumpAndSettle();
-      expect(repo.submissions.single.warehouse, 'leaf-a');
-      expect(repo.submissions.single.lines.single['targetQty'], '12');
-      final after = tester.widget<MasterDataTableView<InstantInventoryRow>>(
-        find.byType(MasterDataTableView<InstantInventoryRow>),
-      );
-      expect(
-        after.items.first.qty,
-        10,
-        reason: 'pending must not mutate official stock',
-      );
-      expect(after.columns.any((c) => c.key == 'countTargetQty'), false);
       expect(tester.takeException(), isNull);
     },
   );

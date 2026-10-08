@@ -36,7 +36,6 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../shared/widgets/metric_filter_cards.dart' show metricToneColor;
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -1032,14 +1031,10 @@ class _DesktopTaskTable extends StatelessWidget {
         ];
       },
       rowColor: (item) {
-        // 选中行由组件统一高亮接管；这里只保留未选行的状态/异常着色。
-        // 采购任务台：行按状态着色（全部视图下绿/蓝/黄/红一眼可辨）；
-        // 仓库履约部门保留异常行高亮。
-        if (data.department == OperationsWorkbenchDepartment.purchase) {
-          return metricToneColor(
-            _statusTone(item.taskStatus),
-            Theme.of(context),
-          ).withValues(alpha: 0.10);
+        // 行底色已退役（2026-10-08 用户口径：状态色只保留在状态列整格底色，
+        // 行不再按状态铺色）；仅仓库履约部门保留异常行高亮。
+        if (data.department != OperationsWorkbenchDepartment.warehouse) {
+          return null;
         }
         return item.hasException
             ? Theme.of(
@@ -1065,7 +1060,7 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
 }
 
 /// 任务状态 → 色调（与概览计数卡同色系）：申请待分解=警示黄、等待财务审核=信息蓝、
-/// 财务已通过/执行中=主色青、已完成=成功绿、驳回/阻塞=红。用于行级状态药丸与行底色。
+/// 财务已通过/执行中=主色青、已完成=成功绿、驳回/阻塞=红。用于状态列整格底色。
 String _statusTone(String taskStatus) {
   return switch (taskStatus.toUpperCase()) {
     'WAITING_ORDER' ||

@@ -96,9 +96,14 @@ public class StockCountRequestService {
         return result;
     }
 
+    // 候选口径：只挡「删除」与 auto_created 占位锚；「禁用」货品/单位/颜色照常可盘
+    // (实物盘点必须能修正停用货品的账面库存，与普通出入库单同口径——那边也只挡删除)。
+    // 审批过账的两处同口径校验见 StockDocService.applyApprovedStockCount 与
+    // WorkshopStockCountPostingAdapter，三处必须一起改。
     private static final String SNAPSHOT_SELECT="""
             SELECT g.id AS goods_id,g.code AS goods_code,g.name AS goods_name,c.id AS color_id,c.name AS color_name,
                    g.unit_id,u.name AS unit_name,g.version AS goods_version,g.issue_method,
+                   g.stock_place,g.model,g.spec,category.name AS category_name,
                    COALESCE(category.id,'00000000-0000-0000-0000-00000000c076'::uuid) AS category_id,
                    COALESCE(b.qty,0) AS qty, b.weight AS weight_kg,COALESCE(b.weight_estimated,false) AS weight_estimated,
                    CASE WHEN p.measurement_dimension='MASS' THEN fn_weight_unit_kg_factor(p.mass_unit_code) END AS kg_factor
@@ -108,8 +113,8 @@ public class StockCountRequestService {
             LEFT JOIN unit_measurement_profiles p ON p.unit_id=g.unit_id
             LEFT JOIN stock_balances b ON b.warehouse_id=:warehouse AND b.goods_id=g.id AND b.color_id IS NOT DISTINCT FROM k.color_id
             WHERE NOT g.is_deleted AND NOT COALESCE(g.auto_created,false)
-              AND g.status='使用' AND NOT u.is_deleted AND u.status='使用'
-              AND (k.color_id IS NULL OR (c.id IS NOT NULL AND NOT c.is_deleted AND c.status='使用'))
+              AND NOT u.is_deleted
+              AND (k.color_id IS NULL OR NOT c.is_deleted)
             """;
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,int page,int size) {
@@ -117,12 +122,17 @@ public class StockCountRequestService {
     }
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,int page,int size) {
+        return candidates(warehouseId,keyword,ids,categoryId,false,page,size);
+    }
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,
+            boolean stockedOnly,int page,int size) {
         require(SUBMIT);var w=warehouse(warehouseId);
         if(ids!=null&&ids.size()>500)throw invalid("一次最多查询500种物料");
         var paging=Pageables.of(page,size);
         var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword==null?"":keyword.strip())
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
-        String eligible=candidateSnapshots(w,ids,categoryId,params);
+        String eligible=candidateSnapshots(w,ids,categoryId,stockedOnly,params);
         long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*) FROM snapshot",params,Long.class));
         var rows=db.queryForList(eligible+"SELECT * FROM snapshot ORDER BY goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST LIMIT :limit OFFSET :offset",params)
                 .stream().map(this::snapshotView).toList();
@@ -131,6 +141,9 @@ public class StockCountRequestService {
 
     /** One eligibility/colour/search projection for candidate pages, the tree, and search relocation. */
     private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,MapSqlParameterSource params) {
+        return candidateSnapshots(warehouse,ids,categoryId,false,params);
+    }
+    private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,boolean stockedOnly,MapSqlParameterSource params) {
         String idFilter=ids==null||ids.isEmpty()?"":" AND g.id IN (:ids)";
         if(!idFilter.isEmpty())params.addValue("ids",ids);
         String categoryCte="";
@@ -149,13 +162,18 @@ public class StockCountRequestService {
                     """;
             categoryFilter=" AND g.category_id IN (SELECT id FROM category_scope)";
         }
+        // 候选行必须与即时库存表行同键(货品×该仓余额色)：有余额的货品只出余额色行；
+        // 该仓无余额的货品出一行无色(数量 0)——不能用货品主档默认色造行, 否则零余额行
+        // 在前端按「无色」键寻不到候选, 表现为一整片「不可编辑」。
         return "WITH RECURSIVE "+categoryCte+"""
-                eligible AS (SELECT g.id,g.color_id FROM goods g WHERE NOT g.is_deleted
+                eligible AS (SELECT g.id FROM goods g WHERE NOT g.is_deleted
                 """+idFilter+categoryFilter+("WORKSHOP".equals(warehouse.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+"""
-                ), candidate AS (SELECT id AS goods_id,color_id FROM eligible UNION
+                ), candidate AS (SELECT g.id AS goods_id,NULL::uuid AS color_id FROM eligible g
+                    WHERE NOT EXISTS(SELECT 1 FROM stock_balances b WHERE b.warehouse_id=:warehouse AND b.goods_id=g.id)
+                  UNION
                     SELECT b.goods_id,b.color_id FROM stock_balances b JOIN eligible g ON g.id=b.goods_id WHERE b.warehouse_id=:warehouse),
                 snapshot AS (
-                """+SNAPSHOT_SELECT+" AND strpos(lower(concat_ws(' ',g.code,g.name,c.name)),lower(:keyword))>0) ";
+                """+SNAPSHOT_SELECT+(stockedOnly?" AND COALESCE(b.qty,0)<>0":"")+" AND strpos(lower(concat_ws(' ',g.code,g.name,c.name)),lower(:keyword))>0) ";
     }
 
     @Transactional(readOnly=true)
@@ -224,14 +242,15 @@ public class StockCountRequestService {
     private Map<String,Object> snapshot(UUID warehouse,UUID goods,UUID color) {
         var rows=db.queryForList("WITH candidate AS (SELECT CAST(:goods AS uuid) AS goods_id,CAST(:color AS uuid) AS color_id) "+SNAPSHOT_SELECT,
                 new MapSqlParameterSource("goods",goods).addValue("color",color).addValue("warehouse",warehouse));
-        if(rows.size()!=1)throw conflict("物料、颜色或计量单位已停用或变化，请重新选择");
+        if(rows.size()!=1)throw conflict("物料、颜色或计量单位已删除或变化，请重新选择");
         return rows.getFirst();
     }
     private Map<String,Object> snapshotView(Map<String,Object> row) {
         Map<String,Object> out=new LinkedHashMap<>();
         String[][] ids={{"goodsId","goods_id"},{"goodsCode","goods_code"},{"goodsName","goods_name"},
                 {"colorId","color_id"},{"colorName","color_name"},{"unitId","unit_id"},{"unitName","unit_name"},
-                {"goodsVersion","goods_version"},{"issueMethod","issue_method"},{"categoryId","category_id"}};
+                {"goodsVersion","goods_version"},{"issueMethod","issue_method"},{"categoryId","category_id"},
+                {"stockPlace","stock_place"},{"model","model"},{"spec","spec"},{"categoryName","category_name"}};
         for(String[] field:ids)out.put(field[0],row.get(field[1]));
         out.put("qty",exact(row.get("qty")));out.put("weightKg",exact(row.get("weight_kg")));
         out.put("weightEstimated",row.get("weight_estimated"));out.put("kgPerBaseUnit",exact(row.get("kg_factor")));

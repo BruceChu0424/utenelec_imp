@@ -24,9 +24,9 @@ public class StockCountRequestController {
     }
     @GetMapping("/candidates") public PageResponse<Map<String,Object>> candidates(@RequestParam UUID warehouseId,
             @RequestParam(defaultValue="") String keyword, @RequestParam(required=false) List<UUID> goodsIds,
-            @RequestParam(required=false) UUID categoryId,
+            @RequestParam(required=false) UUID categoryId, @RequestParam(defaultValue="false") boolean stockedOnly,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
-        return service.candidates(warehouseId,keyword,goodsIds,categoryId,page,size);
+        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,page,size);
     }
     /** Existing Java callers keep the unfiltered candidate contract. */
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> goodsIds,int page,int size) {

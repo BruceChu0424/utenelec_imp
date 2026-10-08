@@ -311,30 +311,24 @@ void main() {
     );
 
     test(
-      'plan creation accepts either analysis create or plan create (2026-10-01)',
+      'plan-create entry requires analysis view besides either create code',
       () {
         final location = RoutePath.productionPlanNew();
+        // 2026-10-08 起新建入口=物料分析工作台(planCreateEntry)：首屏读分析数据，
+        // view 是门槛(all) + 任一 create 码放行(any，与服务端 @PreAuthorize 同口径)。
+        expect(requiredAnyPermFor(location), const [
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionPlanCreate,
+        ]);
+        expect(requiredAllPermsFor(location), const [
+          Perm.productionMaterialAnalysisView,
+        ]);
         // 空权限 → 拒绝。
         expect(
           employeePermissionRedirect(_userWith(<String>[]), location),
           RouteName.accessDenied,
         );
-        // 任一创建码即可进（either-of，与服务端 @PreAuthorize 同口径）。
-        expect(
-          employeePermissionRedirect(
-            _userWith([Perm.productionMaterialAnalysisCreate]),
-            location,
-          ),
-          isNull,
-        );
-        expect(
-          employeePermissionRedirect(
-            _userWith([Perm.productionPlanCreate]),
-            location,
-          ),
-          isNull,
-        );
-        // 仅有查看码不能进（创建是写操作）。
+        // 仅 view 不能进（创建是写操作，还需任一创建码）。
         expect(
           employeePermissionRedirect(
             _userWith([Perm.productionMaterialAnalysisView]),
@@ -342,10 +336,36 @@ void main() {
           ),
           RouteName.accessDenied,
         );
+        // 仅任一创建码也不能进（缺首屏分析数据的 view 门槛）。
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.productionMaterialAnalysisCreate]),
+            location,
+          ),
+          RouteName.accessDenied,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([Perm.productionPlanCreate]),
+            location,
+          ),
+          RouteName.accessDenied,
+        );
+        // 任一创建码 + view 才放行（either-of + all 门槛）。
         expect(
           employeePermissionRedirect(
             _userWith([
               Perm.productionMaterialAnalysisCreate,
+              Perm.productionMaterialAnalysisView,
+            ]),
+            location,
+          ),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            _userWith([
+              Perm.productionPlanCreate,
               Perm.productionMaterialAnalysisView,
             ]),
             location,

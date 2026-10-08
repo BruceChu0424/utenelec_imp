@@ -1,6 +1,6 @@
 // 车间申请领料 / 退回面板 (ADR-131 §5.2 按申请发、§5.3 退回)。
 //
-// 只列整批领料的料; 每行填公斤或袋数 (袋数按每袋净重自动算公斤), 同时显示
+// 只列整批领料的料; 每行填数量(几袋)或重量 (数量按每袋净重自动算重量), 同时显示
 // "仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤"。提交只生成申请, 服务端通知该仓仓管。
 // 提交失败保留输入; 原样再点提交用同一个请求号, 服务端不会重复登记。
 import 'package:flutter/material.dart';
@@ -160,7 +160,7 @@ class _WorkshopMaterialRequestPanelState
       final material = row.material.value;
       if (material == null) return '有一行还没选料';
       if ((row.qtyValue ?? 0) <= 0) {
-        return '「${material.displayName}」请填申请数量 (${material.unitName ?? '基本单位'})';
+        return '「${material.displayName}」请填申请重量 (${material.unitName ?? '基本单位'})';
       }
       if (!seen.add(material.key)) {
         return '「${material.displayName}」填了两行, 请合成一行';
@@ -271,7 +271,7 @@ class _WorkshopMaterialRequestPanelState
                         Text(
                           _isReturn
                               ? '只退没拆袋、没掺色母的料。仓库按实收确认后, 料从内料仓退回仓库。'
-                              : '选择要申请的物料，按各行单位填数量，也可按已设置的每袋净重填写袋数。提交后通知仓库发到本车间内料仓。',
+                              : '选择要申请的物料。数量填几袋，重量按每袋净重自动算出；也可以直接改重量。提交后通知仓库发到本车间内料仓。',
                           style: theme.textTheme.bodyMedium,
                         ),
                         const SizedBox(height: UtenSpacing.s8),

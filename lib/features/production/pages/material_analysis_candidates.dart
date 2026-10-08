@@ -19,6 +19,8 @@ abstract class _MaterialAnalysisCandidatesState
   @override
   void initState() {
     super.initState();
+    // 计划入口模式没有销售分段，固定落在手工需求选货。
+    if (widget.planCreateEntry) _candidateTab = _CandidateTab.manual;
     _manualDemandDrafts.add(_createManualDemandDraft());
   }
 
@@ -410,6 +412,7 @@ abstract class _MaterialAnalysisCandidatesState
   }
 
   Widget _candidateBody(ThemeData theme) {
+    if (widget.planCreateEntry) return _planEntryBody(theme);
     if (_error != null && _candidatePage == null) {
       return _errorState(_error!, _loadCandidates);
     }
@@ -481,6 +484,128 @@ abstract class _MaterialAnalysisCandidatesState
     );
   }
 
+  /// 计划入口模式的候选区（/production/plans/new，planCreateEntry）：只有手工
+  /// 需求选货——没有销售分段条/销售候选表/候选搜索；顶部多一排单据日期/交货日
+  /// （随「下达车间」单头提交）；分析失败走内联错误（重试=重新联合分析），
+  /// 不落「重读销售候选」的整页错误态。
+  Widget _planEntryBody(ThemeData theme) {
+    if (context.breakpoint.isCompact) return _planEntryBodyCompact(theme);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: _candidateGuidance(theme)),
+              const SizedBox(width: UtenSpacing.s12),
+              SizedBox(width: 260, child: _warehouseField()),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          Wrap(
+            key: const Key('plan-entry-header-fields'),
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _planEntryBillDateField(width: 220),
+                  const SizedBox(width: UtenSpacing.s12),
+                  _planEntryDeliveryDateField(width: 220),
+                ],
+              ),
+              if (_canManage) _addManualDemandButton(),
+            ],
+          ),
+          const SizedBox(height: UtenSpacing.s8),
+          if (_error != null) ...[
+            _inlineError(theme, _error!, () => _previewAnalysis()),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
+          Expanded(
+            child: SingleChildScrollView(
+              key: const Key('plan-entry-manual-demand-list'),
+              padding: const EdgeInsets.only(
+                bottom: UtenFloatingActionGroup.scrollClearance,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _manualDemandIntro(theme),
+                  const SizedBox(height: UtenSpacing.s8),
+                  ..._manualDemandCards(compact: false),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _planEntryBodyCompact(ThemeData theme) {
+    const gap = SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s8));
+    return CustomScrollView(
+      key: const Key('plan-entry-manual-demand-mobile-list'),
+      slivers: [
+        gap,
+        SliverToBoxAdapter(child: _candidateGuidance(theme)),
+        gap,
+        SliverToBoxAdapter(child: _warehouseField()),
+        gap,
+        SliverToBoxAdapter(child: _planEntryBillDateField()),
+        gap,
+        SliverToBoxAdapter(child: _planEntryDeliveryDateField()),
+        if (_error != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              child: _inlineError(theme, _error!, () => _previewAnalysis()),
+            ),
+          ),
+        gap,
+        SliverToBoxAdapter(child: _manualDemandIntro(theme)),
+        gap,
+        for (final card in _manualDemandCards(compact: true))
+          SliverToBoxAdapter(child: card),
+        if (_canManage) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: UtenSpacing.s12)),
+          SliverToBoxAdapter(child: _addManualDemandButton(expanded: true)),
+        ],
+        const SliverToBoxAdapter(
+          child: SizedBox(height: UtenFloatingActionGroup.scrollClearance),
+        ),
+      ],
+    );
+  }
+
+  /// 计划入口的单据日期（「下达车间」单头 billDate，默认今天必填）。
+  Widget _planEntryBillDateField({double? width}) => SizedBox(
+    width: width,
+    child: UtenDateField(
+      key: const Key('plan-entry-bill-date'),
+      label: '单据日期',
+      required: true,
+      value: _billDate,
+      onChanged: (date) => setState(() => _billDate = date),
+    ),
+  );
+
+  /// 计划入口的交货日（「下达车间」单头 deliveryDate，可空）。
+  Widget _planEntryDeliveryDateField({double? width}) => SizedBox(
+    width: width,
+    child: UtenDateField(
+      key: const Key('plan-entry-delivery-date'),
+      label: '交货日',
+      value: _deliveryDate,
+      onChanged: (date) => setState(() => _deliveryDate = date),
+    ),
+  );
+
   /// 顶部一行说明：两个分段录入的内容合在一起联合分析。
   Widget _candidateGuidance(ThemeData theme) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -496,8 +621,12 @@ abstract class _MaterialAnalysisCandidatesState
       const SizedBox(width: UtenSpacing.s8),
       Expanded(
         child: Text(
-          '勾选销售订单产品，或在「手工需求」录入返工、试制、样品、备库需求，'
-          '再点右下角「联合分析」一起分析。',
+          widget.planCreateEntry
+              ? '在「手工需求单」里选择要投产的产品与数量，点右下角「联合分析」'
+                  '展开 BOM 层级表；在表里逐行填下单数量、指派车间/负责人后「下单」，'
+                  '每个自制行生成一张生产计划单。'
+              : '勾选销售订单产品，或在「手工需求」录入返工、试制、样品、备库需求，'
+                  '再点右下角「联合分析」一起分析。',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
@@ -674,7 +803,11 @@ abstract class _MaterialAnalysisCandidatesState
         ? null
         : _startCandidateAnalysis,
     onDisabledTap: selectedCount == 0
-        ? () => context.appWarning('请先勾选销售订单产品，或在「手工需求」里选择货品')
+        ? () => context.appWarning(
+            widget.planCreateEntry
+                ? '请先在手工需求单里选择要投产的货品'
+                : '请先勾选销售订单产品，或在「手工需求」里选择货品',
+          )
         : null,
     child: Text(selectedCount == 0 ? '联合分析' : '联合分析所选 $selectedCount 项'),
   );
@@ -703,16 +836,18 @@ abstract class _MaterialAnalysisCandidatesState
     if (_busy) return;
     final manualCount = _manualGoodsLineCount;
     if (manualCount > 0) {
-      final confirmed = await UtenDialog.show(
-        context,
-        title: '清空本次分析？',
-        content: Text(
-          '会同时清空已勾选的 ${_sourceQtyControllers.length} 个销售订单产品，'
-          '以及手工需求单里已选的 $manualCount 个货品和单头。',
-        ),
-        confirmLabel: '清空',
-        danger: true,
-      );
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '清空本次分析？',
+      content: Text(
+        widget.planCreateEntry
+            ? '会同时清空手工需求单里已选的 $manualCount 个货品和单头。'
+            : '会同时清空已勾选的 ${_sourceQtyControllers.length} 个销售订单产品，'
+              '以及手工需求单里已选的 $manualCount 个货品和单头。',
+      ),
+      confirmLabel: '清空',
+      danger: true,
+    );
       if (confirmed != true || !mounted || _busy) return;
     }
     setState(() {

@@ -850,14 +850,12 @@ class _WorkshopMaterialBinPageState
       return StockCountModeToolbar(
         controller: _countEditor,
         allowed: true,
-        floating: true,
         inactiveActionsBuilder: (start, history) => _businessActions(
           l10n,
           startInventoryCount: start,
           openCountHistory: history,
         ),
         warehouseId: _current?.binWarehouseId,
-        fixedWarehouse: true,
         goodsIds: () => _position?.rows.map((row) => row.goodsId) ?? const [],
         onStart: (_) async {
           setState(() => _view = _viewStock);
@@ -915,7 +913,7 @@ class _WorkshopMaterialBinPageState
           key: const Key('wm-bin-my-counts'),
           leadingIcon: const Icon(Icons.history_outlined),
           onPressed: openCountHistory,
-          child: const Text('我的盘点'),
+          child: const Text('盘点历史'),
         ),
     ];
     return [

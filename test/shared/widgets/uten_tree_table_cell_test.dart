@@ -399,4 +399,89 @@ void main() {
     await tester.pumpWidget(cell(true));
     expect(tester.takeException(), isNull);
   });
+
+  // 2026-10-08 物料分析按产品视图：子件行左缘的分组竖线（块边界）——
+  // depth>0 画在 x=8、贯穿整行；末位子件照画（不参与肘线收口）；
+  // depth=0 的顶层行不画；默认关闭时一条都不多。
+  testWidgets('subtreeRail draws a full-height block rail on child rows', (
+    tester,
+  ) async {
+    const childKey = Key('rail-child');
+    Widget cell({required bool rail, int depth = 1}) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 420,
+          child: UtenTreeTableCell(
+            key: childKey,
+            depth: depth,
+            sequence: '',
+            sequenceInline: true,
+            title: '子组件',
+            ancestorContinuations: const [false],
+            isLastChild: true,
+            showLeafMarker: false,
+            subtreeRail: rail,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(cell(rail: false));
+    expect(
+      tester.renderObject(guideOf(childKey)),
+      paints
+        ..line(p1: const Offset(24, 0), p2: const Offset(24, 24))
+        ..line(p1: const Offset(24, 24), p2: const Offset(40, 24)),
+    );
+
+    await tester.pumpWidget(cell(rail: true));
+    final height = tester.getSize(guideOf(childKey)).height;
+    expect(
+      tester.renderObject(guideOf(childKey)),
+      paints
+        ..line(p1: const Offset(8, 0), p2: Offset(8, height))
+        ..line(p1: const Offset(24, 0), p2: Offset(24, height / 2))
+        ..line(
+          p1: Offset(24, height / 2),
+          p2: Offset(40, height / 2),
+        ),
+    );
+
+    // 顶层行（depth = 0）没有连线画布，分组线也无从谈起。
+    await tester.pumpWidget(cell(rail: true, depth: 0));
+    expect(guideOf(childKey), findsNothing);
+  });
+
+  // 2026-10-08 物料分析汇总视图：顶层产品行永远无下级，compactLeading 把
+  // 48px 展开槽让出来、标题顶到左缘；默认（false）占位不变。
+  testWidgets('compactLeading drops the empty toggle slot on childless rows', (
+    tester,
+  ) async {
+    const titleKey = Key('compact-title');
+    Widget cell({required bool compact}) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 420,
+          child: UtenTreeTableCell(
+            depth: 0,
+            sequence: '',
+            sequenceInline: true,
+            title: '汇总顶层',
+            showLeafMarker: false,
+            compactLeading: compact,
+            titleBadge: const Text('顶层', key: titleKey),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(cell(compact: false));
+    final cellLeft = tester.getTopLeft(find.byType(UtenTreeTableCell)).dx;
+    final reserved = tester.getTopLeft(find.byKey(titleKey)).dx - cellLeft;
+    // 默认：徽章在展开槽之后（48 槽 + 4 间距）。
+    expect(reserved, greaterThanOrEqualTo(48));
+
+    await tester.pumpWidget(cell(compact: true));
+    final cellLeft2 = tester.getTopLeft(find.byType(UtenTreeTableCell)).dx;
+    expect(tester.getTopLeft(find.byKey(titleKey)).dx - cellLeft2, 0);
+  });
 }

@@ -27,10 +27,16 @@ const aiUsePermissionScope = PagePermissionScope(
 PagePermissionScope? pagePermissionScopeFor(String location) {
   final path = _normalizedPath(location);
   if (path == null) return null;
+  if (path == '/stock/count-session') {
+    return const PagePermissionScope(
+      surfaceKey: 'warehouse.stock-item',
+      title: '盘点模式',
+    );
+  }
   if (path == '/stock/count-requests') {
     return const PagePermissionScope(
       surfaceKey: 'warehouse.stock-item',
-      title: '我的盘点',
+      title: '盘点历史',
     );
   }
   if (path == '/finance/stock-count-review') {

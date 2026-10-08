@@ -7,6 +7,10 @@ const double _treeIndent = 16;
 const double _treeToggleExtent = 48;
 const double _treeToggleCenter = _treeToggleExtent / 2;
 
+/// 子树分组竖线（[UtenTreeTableCell.subtreeRail]）的 x 坐标：落在第一个缩进
+/// 槽的中间，比最浅的祖先连线（x = 24）更靠左，两条平行线不会贴在一起。
+const double _treeSubtreeRailX = 8;
+
 /// Reusable tree identity cell for data tables.
 ///
 /// Hierarchy is deliberately redundant: indentation + continuous guide rails +
@@ -35,6 +39,8 @@ class UtenTreeTableCell extends StatelessWidget {
     this.childCount,
     this.showLeafMarker = true,
     this.guideBleed = 0,
+    this.subtreeRail = false,
+    this.compactLeading = false,
   });
 
   /// 视觉缩进的深度上限（全站一个数，2026-09-15）：与业务侧的 BOM 展开上限
@@ -50,6 +56,20 @@ class UtenTreeTableCell extends StatelessWidget {
   /// 宿主把自己的纵向内边距传进来，连线就跨过那段空白连成一条。
   /// 0 = 独立使用（非表格宿主），不溢出。
   final double guideBleed;
+
+  /// 子树分组竖线（2026-10-08 物料分析按产品视图口径）：depth > 0 的行在
+  /// 缩进区最左（x = 8，见 [_treeSubtreeRailX]）画一条贯穿本行的竖线，同棵
+  /// 子树的行各自画自己那段、靠 [guideBleed] 接成整条——把「顶层产品行」和
+  /// 「子层级行块」分成一眼可辨的两个部分。与祖先连线（x ≥ 24）平行但更靠
+  /// 左、贯穿到最后一个子件的行底（肘线在末位行是要收口的），语义是块边界
+  /// 而不是父子连线。depth = 0 的行不画；默认关闭，不影响既有宿主。
+  final bool subtreeRail;
+
+  /// 无下级的行不保留展开槽（2026-10-08 物料分析汇总视图口径）：该视图的
+  /// 顶层产品行永远没有下级，48px 展开位空着，标题（徽章+名称）顶到左缘。
+  /// 有下级的行照常占位（展开按钮还得放）。默认 false：叶子行的占位宽度
+  /// 仍保留，名称列在各层级对齐不变（见 [showLeafMarker]）。
+  final bool compactLeading;
 
   /// 叶子行（无下级）是否画那枚小圆点。2026-09-14 用户口径：物料分析主表与
   /// 三个分桶详情的最底层不要圆点——层级已由缩进 + 连接线表达，一列密密麻麻
@@ -175,6 +195,7 @@ class UtenTreeTableCell extends StatelessWidget {
                   painter: _TreeGuidePainter(
                     depth: depth,
                     maxVisualDepth: maxVisualDepth,
+                    subtreeRail: subtreeRail,
                     // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色模式下
                     // 浅点」：原来两种明暗都取 outlineVariant——白底上它几乎与
                     // 表格网格线同色。改成按明暗两档对称调：浅色用
@@ -197,11 +218,14 @@ class UtenTreeTableCell extends StatelessWidget {
           Row(
             children: [
               SizedBox(width: guideWidth),
-              SizedBox(
-                width: _treeToggleExtent,
-                height: _treeToggleExtent,
-                child: hasChildren
-                    ? Semantics(
+              // compactLeading：永远没有下级的行把展开槽连同间距一起让出来，
+              // 标题顶到左缘（汇总视图顶层产品行）；有下级的行照常占位。
+              if (!compactLeading || hasChildren) ...[
+                SizedBox(
+                  width: _treeToggleExtent,
+                  height: _treeToggleExtent,
+                  child: hasChildren
+                      ? Semantics(
                         button: true,
                         expanded: expanded,
                         excludeSemantics: true,
@@ -241,8 +265,8 @@ class UtenTreeTableCell extends StatelessWidget {
                           ),
                         ),
                       )
-                    : showLeafMarker
-                    ? ExcludeSemantics(
+                      : showLeafMarker
+                      ? ExcludeSemantics(
                         child: Center(
                           child: Container(
                             width: 8,
@@ -255,9 +279,10 @@ class UtenTreeTableCell extends StatelessWidget {
                           ),
                         ),
                       )
-                    : const SizedBox.shrink(),
-              ),
-              const SizedBox(width: UtenSpacing.s4),
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(width: UtenSpacing.s4),
+              ],
               Expanded(
                 child: Semantics(
                   container: true,
@@ -489,11 +514,23 @@ List<({double x1, double y1, double x2, double y2})> utenTreeGuideSegments({
   required double width,
   required double connectorY,
   bool hasExpandedChildren = false,
+  bool subtreeRail = false,
   int maxVisualDepth = UtenTreeTableCell.defaultMaxVisualDepth,
 }) {
   final result = <({double x1, double y1, double x2, double y2})>[];
   double centerX(int level) =>
       level.clamp(0, maxVisualDepth) * _treeIndent + _treeToggleCenter;
+
+  // 子树分组竖线：块边界，贯穿本行上下（宿主给 guideBleed 后与邻行接成整条），
+  // 不参与肘线在末位行的收口。depth = 0（顶层行本身）不画。
+  if (subtreeRail && depth > 0) {
+    result.add((
+      x1: _treeSubtreeRailX,
+      y1: 0,
+      x2: _treeSubtreeRailX,
+      y2: height,
+    ));
+  }
 
   if (depth > 0) {
     // 每条竖线与对应父行的箭头圆心同轴。槽 level 承载深度 level+1
@@ -538,11 +575,15 @@ class _TreeGuidePainter extends CustomPainter {
     required this.ancestorContinuations,
     required this.isLastChild,
     required this.hasExpandedChildren,
+    this.subtreeRail = false,
   });
 
   final int depth;
   final int maxVisualDepth;
   final Color color;
+
+  /// 子树分组竖线开关（见 [UtenTreeTableCell.subtreeRail]）。
+  final bool subtreeRail;
 
   /// `[i]` = 深度 i 的祖先后面还有没有兄弟。长度 = 本行深度
   /// （见 [UtenTreeTableCell.ancestorContinuations]）。
@@ -566,6 +607,7 @@ class _TreeGuidePainter extends CustomPainter {
       // Stack 和 Row 都垂直居中，画布上下 bleed 对称，故中线即箭头圆心。
       connectorY: size.height / 2,
       hasExpandedChildren: hasExpandedChildren,
+      subtreeRail: subtreeRail,
       maxVisualDepth: maxVisualDepth,
     )) {
       canvas.drawLine(
@@ -583,5 +625,6 @@ class _TreeGuidePainter extends CustomPainter {
       oldDelegate.color != color ||
       oldDelegate.isLastChild != isLastChild ||
       oldDelegate.hasExpandedChildren != hasExpandedChildren ||
+      oldDelegate.subtreeRail != subtreeRail ||
       !listEquals(oldDelegate.ancestorContinuations, ancestorContinuations);
 }

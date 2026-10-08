@@ -56,7 +56,8 @@ class StockCountCandidateCategoriesPostgresTest {
                   sort_order integer DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,category_id uuid,color_id uuid,unit_id uuid,
                   version bigint DEFAULT 2,issue_method text DEFAULT 'ORDER',status text DEFAULT '使用',
-                  is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false);
+                  is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false,
+                  stock_place text,model text,spec text);
                 CREATE TABLE stock_balances(warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric(18,4),
                   weight numeric(18,4),weight_estimated boolean DEFAULT false);
                 CREATE FUNCTION fn_weight_unit_kg_factor(text) RETURNS numeric LANGUAGE sql IMMUTABLE
@@ -83,25 +84,38 @@ class StockCountCandidateCategoriesPostgresTest {
                 mock(TxSessionVars.class),new ObjectMapper(),mock(Validator.class));
     }
 
-    @Test void treeContainsOnlyEligibleCategoriesAndAncestorsAndWorkshopKeepsMassMaterials() {
+    @Test void treeKeepsDisabledGoodsCountableAndPrunesStubOnlyCategories() {
         UUID root=category("ROOT","全部物料",null),raw=category("RAW","原材料",root);
         UUID resin=category("RESIN","颗粒",raw),fasteners=category("FAST","紧固件",root);
         UUID empty=category("EMPTY","空分类",root),stubCategory=category("STUB","不明货品",root);
-        UUID disabledCategory=category("OFF","无可用货品",root);
+        UUID retired=category("RETIRED","老料",root);
         UUID mass=goods("PP","PP 颗粒",resin,kg,null),count=goods("SCREW","螺丝",fasteners,pieces,null);
-        UUID stub=goods("STUB-G","占位",stubCategory,kg,null),disabled=goods("OFF-G","停用",disabledCategory,kg,null);
+        // 停用货品且带主档默认色: 两个历史根因一起锁——禁用可盘, 候选行仍是无色(不是默认色)。
+        UUID stub=goods("STUB-G","占位",stubCategory,kg,null),disabled=goods("OFF-G","停用",retired,kg,color("米白"));
         db.update("UPDATE goods SET auto_created=true WHERE id=?",stub);
+        // 「禁用」不挡盘点: 停用货品照常入候选/分类树, 只有删除与 auto_created 占位被排除。
         db.update("UPDATE goods SET status='禁用' WHERE id=?",disabled);
         var ordinary=service.candidateCategories(leaf);
-        assertThat(flatten(ordinary).keySet()).containsExactlyInAnyOrder(root,raw,resin,fasteners);
+        assertThat(flatten(ordinary).keySet()).containsExactlyInAnyOrder(root,raw,resin,fasteners,retired);
         assertThat(flatten(ordinary).get(resin)).containsEntry("parentId",raw).containsEntry("name","颗粒");
         assertThat(ordinary).hasSize(1);
-        assertThat(flatten(service.candidateCategories(bin)).keySet()).containsExactlyInAnyOrder(root,raw,resin);
-        assertThat(service.candidates(bin,"",null,1,50).getItems()).extracting(r->r.get("goodsId")).containsExactly(mass);
-        assertThat(service.candidates(leaf,"",List.of(stub,disabled),1,50).getTotal()).isZero();
+        assertThat(flatten(service.candidateCategories(bin)).keySet()).containsExactlyInAnyOrder(root,raw,resin,retired);
+        assertThat(service.candidates(bin,"",null,1,50).getItems()).extracting(r->r.get("goodsId"))
+                .containsExactlyInAnyOrder(mass,disabled);
+        assertThat(service.candidates(leaf,"",List.of(stub),1,50).getTotal()).isZero();
+        // 零余额货品出一行无色候选(与即时库存表的无色行同键), 不是货品主档默认色。
+        assertThat(service.candidates(leaf,"",List.of(disabled),1,50).getTotal()).isEqualTo(1);
+        assertThat(service.candidates(leaf,"",List.of(disabled),1,50).getItems())
+                .extracting(r->r.get("colorId")).containsOnlyNulls();
+        // 盘点页「有库存」段: stockedOnly 把零余额行滤掉, 只留本仓有账面数量的行。
+        assertThat(service.candidates(leaf,"",null,null,true,1,50).getItems())
+                .extracting(r->r.get("goodsId")).doesNotContain(disabled);
+        db.update("INSERT INTO stock_balances VALUES (?,?,NULL,3,NULL,false)",leaf,disabled);
+        assertThat(service.candidates(leaf,"",null,null,true,1,50).getItems())
+                .extracting(r->r.get("goodsId")).contains(disabled);
         assertThat(service.candidateCategoryIds(bin,"螺丝")).isEmpty();
         assertThat(service.candidateCategoryIds(leaf,"螺丝")).containsExactly(fasteners);
-        assertThat(flatten(ordinary).keySet()).doesNotContain(empty,stubCategory,disabledCategory);
+        assertThat(flatten(ordinary).keySet()).doesNotContain(empty,stubCategory);
     }
 
     @Test void parentSubtreeIntersectsIdsAndSearchWithoutCollapsingColorsAndPages() {
@@ -127,7 +141,7 @@ class StockCountCandidateCategoriesPostgresTest {
         assertThat(service.candidates(leaf,"",null,branch,1,50).getTotal()).isZero();
     }
 
-    @Test void searchLocatesExactCategoriesUsingOnlySelectedWarehouseColorsAndActiveIdentities() {
+    @Test void searchUsesSelectedWarehouseColorsWhileDisabledIdentitiesStayCountable() {
         UUID root=category("ROOT","全部物料",null),resin=category("RESIN","颗粒",root);
         UUID rejected=category("BAD","停用候选",root);
         UUID material=goods("PP","聚丙烯",resin,kg,null),privateColor=color("别仓专用金色"),localColor=color("本仓蓝色");
@@ -136,6 +150,7 @@ class StockCountCandidateCategoriesPostgresTest {
         assertThat(service.candidateCategoryIds(bin,"别仓专用金色")).isEmpty();
         assertThat(service.candidateCategoryIds(bin,"  pp ")).containsExactly(resin);
         assertThat(service.candidateCategoryIds(bin," ")).isEmpty();
+        // 禁用颜色/单位的货品照常可盘(与普通库存单同口径, 只挡删除); 已删货品仍排除。
         UUID offColor=color("失效红色");
         goods("COLOR-OFF","颜色失效料",rejected,kg,offColor);
         db.update("UPDATE colors SET status='禁用' WHERE id=?",offColor);
@@ -143,10 +158,11 @@ class StockCountCandidateCategoriesPostgresTest {
         db.update("UPDATE goods SET is_deleted=true WHERE id=?",deleted);
         UUID wrongUnit=goods("UNIT-OFF","停用单位料",rejected,pieces,null);
         db.update("UPDATE units SET status='禁用' WHERE id=?",pieces);
-        assertThat(flatten(service.candidateCategories(leaf)).keySet()).doesNotContain(rejected);
-        assertThat(service.candidateCategoryIds(leaf,"失效")).isEmpty();
-        assertThat(service.candidateCategoryIds(leaf,"停用单位")).isEmpty();
-        assertThat(service.candidates(leaf,"",List.of(wrongUnit),1,50).getItems()).isEmpty();
+        assertThat(flatten(service.candidateCategories(leaf)).keySet()).contains(rejected);
+        assertThat(service.candidateCategoryIds(leaf,"失效")).containsExactly(rejected);
+        assertThat(service.candidateCategoryIds(leaf,"停用单位")).containsExactly(rejected);
+        assertThat(service.candidates(leaf,"",List.of(wrongUnit),1,50).getItems()).hasSize(1);
+        assertThat(service.candidates(leaf,"",List.of(deleted),1,50).getTotal()).isZero();
     }
 
     @Test void uncategorizedBucketCoversNullAndDeletedCategoryWithoutChangingMasterIdentity() {

@@ -42,6 +42,7 @@ final class _SupplyNotificationTarget {
 
 final class _MaterialAnalysisIndexes {
   const _MaterialAnalysisIndexes({
+    required this.sourceGraph,
     required this.productsById,
     required this.materialsByProduct,
     required this.groups,
@@ -51,6 +52,7 @@ final class _MaterialAnalysisIndexes {
     required this.childrenByParentNodeKey,
   });
 
+  final MaterialAnalysisSourceGraph sourceGraph;
   final Map<String, ProductionMaterialAnalysisProduct> productsById;
   final Map<String?, List<ProductionMaterialAnalysisMaterial>>
   materialsByProduct;

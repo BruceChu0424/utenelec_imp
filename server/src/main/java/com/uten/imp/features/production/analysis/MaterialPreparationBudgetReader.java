@@ -60,7 +60,7 @@ final class MaterialPreparationBudgetReader {
         // A single statement returns a shared physical-source identity and row-specific
         // eligibility. Source UUIDs and private document metadata never leave this reader.
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                WITH sources AS (
+                WITH sources AS MATERIALIZED (
                   SELECT 'EXTERNAL_PUBLIC'::text kind,source_action_id source_id,claim_external_item_id item_id,
                          source_analysis_id,goods_id,color_id,unit_id,available_to_claim_qty,warehouse_id
                   FROM fn_preplan_public_surplus_sources(:analysis)

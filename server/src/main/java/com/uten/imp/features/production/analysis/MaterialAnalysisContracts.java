@@ -1113,6 +1113,13 @@ public final class MaterialAnalysisContracts {
              * 就地改大)时 = 明细当前数量(需求份 + 公共份)；已订货/已处理为 null。
              */
             BigDecimal growableLineQty) {
+        @JsonProperty(value="quantityFactsExact",access=JsonProperty.Access.READ_ONLY)
+        public Map<String,String> quantityFactsExact() {
+            var values=new java.util.LinkedHashMap<String,String>();
+            if(allocatedQty!=null)values.put("allocatedQty",allocatedQty.toPlainString());
+            if(growableLineQty!=null)values.put("growableLineQty",growableLineQty.toPlainString());
+            return java.util.Collections.unmodifiableMap(values);
+        }
         public DownstreamReference(UUID actionId, String route, String status,
                 String documentType, UUID documentId, String documentNo, BigDecimal allocatedQty) {
             this(actionId,route,status,documentType,documentId,documentNo,allocatedQty,null);

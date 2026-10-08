@@ -56,6 +56,26 @@ class MaterialAnalysisResponseProjectionTest {
         assertEquals("9999999999999.9999",wireTree(preparation).path("planningUncoveredQtyExact").asText());
     }
 
+    @Test void exactDownstreamSharesSurviveEveryWireProjectionAtMaximumAndMinimumQuantity() throws Exception {
+        ObjectNode raw=(ObjectNode)wireTree(material("downstream-decimal",stock("0")));
+        raw.remove("nodeRole");
+        raw.set("downstreamReferences",json.valueToTree(List.of(
+                new DownstreamReference(UUID.randomUUID(),"BUY","OPEN","PURCHASE_REQUEST",UUID.randomUUID(),"REQ-1",
+                        new BigDecimal("9999999999999.9999"),new BigDecimal("9999999999999.9999")),
+                new DownstreamReference(UUID.randomUUID(),"MAKE","CREATED","PRODUCTION_PLAN",UUID.randomUUID(),"PLAN-1",
+                        new BigDecimal("0.0001")))));
+        var view=view(List.of(json.treeToValue(raw,MaterialView.class)));
+        for(JsonNode snapshot:List.of(wireTree(view),expand(wireTree(MaterialAnalysisResponseProjection.project(view))),
+                expand(wireTree(MaterialAnalysisSparseProjection.project(view))))) {
+            JsonNode refs=snapshot.path("flatMaterials").get(0).path("downstreamReferences");
+            assertEquals("9999999999999.9999",refs.get(0).path("quantityFactsExact").path("allocatedQty").asText());
+            assertEquals("9999999999999.9999",refs.get(0).path("quantityFactsExact").path("growableLineQty").asText());
+            assertEquals("0.0001",refs.get(1).path("quantityFactsExact").path("allocatedQty").asText());
+            assertFalse(refs.get(1).path("quantityFactsExact").has("growableLineQty"));
+            assertTrue(refs.get(0).path("allocatedQty").isNumber());
+        }
+    }
+
     @Test
     void httpNegotiationPreservesEveryLegacyFieldAndSharesOnlyIdenticalDimensionFacts() throws Exception {
         AnalysisView view = view(List.of(material("1", stock("0.0000")), material("2", stock("0.0000"))));

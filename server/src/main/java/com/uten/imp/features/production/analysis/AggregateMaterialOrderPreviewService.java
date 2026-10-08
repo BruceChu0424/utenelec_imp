@@ -95,7 +95,8 @@ public class AggregateMaterialOrderPreviewService {
                     if(inheritedBlock!=null)throw conflict(inheritedBlock);
                 }
                 List<UUID> targets=material.aggregatePreparation()==null?List.of():material.aggregatePreparation().targetMaterialLineIds();
-                boolean retainOriginal=targets.isEmpty()||number(material.requiredQty()).signum()>0;
+                boolean retainOriginal=targets.isEmpty()||number(material.requiredQty()).signum()>0
+                        ||AggregateMaterialSourceEligibility.hasIssuedSupply(material,products,actions);
                 if(retainOriginal) {
                     if(members.stream().noneMatch(value->value.materialLineId().equals(id)))members.add(material);
                     originalScope.computeIfAbsent(id,ignored->new java.util.LinkedHashSet<>()).add(id);
@@ -106,15 +107,15 @@ public class AggregateMaterialOrderPreviewService {
                     if(target==null)throw conflict("合并来源目标已变化，请刷新后重新核对");
                     targetMembers.add(target);
                 }
-                boolean hasCurrentResponsibility=retainOriginal&&AggregateMaterialSourceEligibility.hasResponsibility(material,products)
+                boolean hasCurrentResponsibility=retainOriginal&&AggregateMaterialSourceEligibility.hasOrderingContext(material,products,actions)
                         || targetMembers.stream()
-                        .anyMatch(target->AggregateMaterialSourceEligibility.hasResponsibility(target,products));
+                        .anyMatch(target->AggregateMaterialSourceEligibility.hasOrderingContext(target,products,actions));
                 for(MaterialView target:targetMembers) {
                     // Keep immutable aliases in the read model. A zero-responsibility retired target
                     // cannot block its origin's remaining demand or another live target, or receive new allocation.
                     // With no live responsibility, the original admission guard still rejects;
                     // unknown/missing targets never disappear from validation.
-                    if(hasCurrentResponsibility&&AggregateMaterialSourceEligibility.isRetiredContext(target,products))continue;
+                    if(hasCurrentResponsibility&&AggregateMaterialSourceEligibility.isRetiredContext(target,products,actions))continue;
                     UUID targetId=target.materialLineId();
                     if(members.stream().noneMatch(value->value.materialLineId().equals(targetId)))members.add(target);
                     originalScope.computeIfAbsent(targetId,ignored->new java.util.LinkedHashSet<>()).add(id);
@@ -169,7 +170,7 @@ public class AggregateMaterialOrderPreviewService {
             if(!Objects.equals(first.goodsId(),member.goodsId())||!Objects.equals(first.colorId(),member.colorId())||!Objects.equals(first.unitId(),member.unitId()))throw invalid("不同货品、颜色或单位不能合并为一行下单");
             if(!member.routeConfirmed()||!input.route().equals(member.sourceConfirmed()))reason="来源供应方式不一致或尚未确认，请先核对供应方式";
             if(!recipe.equals(recipe(member,children)))reason="相同物料的冻结组件规则不同，请按生产规则分别办理";
-            if(!AggregateMaterialSourceEligibility.hasResponsibility(member,products))
+            if(!AggregateMaterialSourceEligibility.hasOrderingContext(member,products,actions))
                 reason="部分来源已转交其他任务或本批无需办理，请按当前有效来源重新选择";
         }
         // ADR-143：委外汇总永远建外部批次(委外申请)，只有自制才是制造批次。
@@ -281,7 +282,8 @@ public class AggregateMaterialOrderPreviewService {
         List<ChildPreview> childRows=sharedChildren(first,prior.add(actualNewOutput),prior,children);
         return new GroupPreview(input.clientGroupKey(),compatibility,input.route(),
                 first.goodsId(),first.goodsCode(),first.goodsName(),first.colorId(),first.colorName(),first.unitId(),first.unitName(),
-                sourceRows.stream().map(SourcePreview::sourceRequiredQty).reduce(BigDecimal.ZERO,BigDecimal::add),
+                input.materialLineIds().stream().map(originalMaterials::get).map(MaterialView::sourceRequiredQty)
+                        .map(AggregateMaterialOrderPreviewService::number).reduce(BigDecimal.ZERO,BigDecimal::add),
                 MoneyPolicy.quantity(ordered.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add).add(publicOrdered(members,products,actions))),
                 capacities.stream().map(AggregateQuantityAllocator.SourceCapacity::remainingQty).reduce(BigDecimal.ZERO,BigDecimal::add),
                 number(input.qty()),allocation.publicExtraQty(),number(input.safetyQty()),input.departmentId(),input.workerId(),

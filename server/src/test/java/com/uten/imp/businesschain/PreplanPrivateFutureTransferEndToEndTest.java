@@ -247,9 +247,27 @@ class PreplanPrivateFutureTransferEndToEndTest {
         assertTrue(after.notifiedTargets().contains("MAKE"));
         assertFalse(after.notifiedTargets().contains("BUY"));
 
+        UUID edge=db.queryForObject("SELECT id FROM goods_bom_items WHERE goods_id=? AND component_goods_id=? AND NOT is_deleted",
+                UUID.class,c.product(),c.material());
+        var edit=new com.uten.imp.features.master.goods.dto.BomItemSaveRequest();
+        edit.setComponentGoodsId(c.material());edit.setControlStage("ASSEMBLY");
+        beans.getBean(com.uten.imp.features.master.goods.GoodsBomService.class).update(c.product(),edge,edit);
+        MaterialView donor=material(refreshCurrentSources(c,a.analysisId()),c.material());
+        MaterialView recipient=material(refreshCurrentSources(c,b.analysisId()),c.material());
+        assertEquals("BUY",donor.sourceConfirmed());assertTrue(donor.routeConfirmed());
+        assertEquals("MAKE",recipient.sourceConfirmed());assertTrue(recipient.routeConfirmed());
+        assertEquals("ASSEMBLY",donor.controlStage());assertEquals("ASSEMBLY",recipient.controlStage());
+        qty("40",recipient.externalFutureCoverageQty());qty("60",recipient.additionalSupplyRecommendedQty());
+        qty("100",recipient.demandSupplyGapQty());qty("0",recipient.exactPeggedQty());
+        qty("40",donor.additionalSupplyRecommendedQty());
+        assertEquals("BUY",db.queryForObject("SELECT route FROM preplan_supply_actions WHERE id=?",String.class,original.action()));
+        assertTrue(recipient.notifiedTargets().contains("MAKE"));assertFalse(recipient.notifiedTargets().contains("BUY"));
+
         // 合格入库后才变成实物供给。
         receive(c,original.item(),"100","cross-route");
-        qty("40",material(analyses.detail(b.analysisId()),c.material()).exactPeggedQty());
+        MaterialView received=material(analyses.detail(b.analysisId()),c.material());
+        qty("40",received.exactPeggedQty());qty("0",received.externalFutureCoverageQty());
+        qty("60",received.additionalSupplyRecommendedQty());assertEquals("MAKE",received.sourceConfirmed());
     }
 
     @Test void crossRoutePublicInTransitClaimFollowsAdr080BothSides() {
@@ -291,6 +309,15 @@ class PreplanPrivateFutureTransferEndToEndTest {
         qty("0",after.additionalSupplyRecommendedQty());
         qty("0",after.exactPeggedQty());
         qty("300",after.externalFutureCoverageQty());
+    }
+
+    private AnalysisView refreshCurrentSources(Scenario c,UUID analysisId){
+        AnalysisView current=analyses.detail(analysisId);
+        List<PreviewItem> sources=current.products().stream().filter(row->"OTHER".equals(row.sourceType()))
+                .map(row->new PreviewItem("OTHER",null,row.goodsId(),row.colorId(),row.unitId(),row.sourceRef(),
+                        row.sourceReason(),row.deliveryDate(),row.requestedQty())).toList();
+        return analyses.preview(new PreviewRequest(analysisId,current.version(),current.fingerprint(),c.world().warehouseId(),
+                "future-refresh-"+UUID.randomUUID(),sources));
     }
 
     private Scenario scenario(String label){var w=fixture.seedWorld(label);fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID(),material=UUID.randomUUID();fixture.insertGoods(product,"FUT-P-"+product,"在途归属产品","自制",w.unitId(),w.unitLegacy());fixture.insertGoods(material,"FUT-M-"+material,"在途归属材料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(product,material,"1");db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);return new Scenario(w,product,material);}

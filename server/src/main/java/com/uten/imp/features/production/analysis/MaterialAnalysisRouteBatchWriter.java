@@ -25,8 +25,8 @@ final class MaterialAnalysisRouteBatchWriter {
     MaterialAnalysisRouteBatchWriter(EntityManager em) { this.em = em; }
 
     /** 人工确认 (PUT /routes): 先按货品 UUID 顺序锁住本批涉及的全部货品行, 再写. */
-    Result apply(UUID analysisId, UUID actorId, List<Change> changes) {
-        return apply(analysisId, actorId, changes, true);
+    Result apply(UUID analysisId, UUID actorId, List<Change> changes, List<Change> supplyScope) {
+        return apply(analysisId, actorId, changes, supplyScope, true);
     }
 
     /**
@@ -35,10 +35,10 @@ final class MaterialAnalysisRouteBatchWriter {
      * 重算发生在各种命令里, 没必要为一次不改主档的确认去锁一批货品行、拉长锁等待.
      */
     Result applyAutomatic(UUID analysisId, UUID actorId, List<Change> changes) {
-        return apply(analysisId, actorId, changes, false);
+        return apply(analysisId, actorId, changes, changes, false);
     }
 
-    private Result apply(UUID analysisId, UUID actorId, List<Change> changes, boolean lockEveryGoods) {
+    private Result apply(UUID analysisId, UUID actorId, List<Change> changes, List<Change> supplyScope, boolean lockEveryGoods) {
         if (changes.isEmpty()) return new Result(0, 0);
         Map<UUID, String> goodsRoutes = new HashMap<>();
         var mixedGoods = new HashSet<UUID>();
@@ -65,22 +65,54 @@ final class MaterialAnalysisRouteBatchWriter {
         String routeInput = ROUTES.json(changes.stream().sorted(Comparator.comparing(Change::materialId, PostgresUuidOrder.INSTANCE)).toList(),
                 change -> new Object[] {change.materialId(), change.groupKey(), change.route(), change.reason(),
                         mixedGoods.contains(change.goodsId()) ? retainedSuggestions.get(change.goodsId()) : change.route()});
+        String supplyInput = ROUTES.json(supplyScope,
+                change -> new Object[] {change.materialId(), change.groupKey(), change.route(), null, null});
         Object[] checked = (Object[]) em.createNativeQuery("""
-                WITH input AS MATERIALIZED (SELECT * FROM %s), conflicts AS (
-                    SELECT input.material_id FROM input JOIN preplan_supply_actions action
+                WITH input AS MATERIALIZED (SELECT * FROM %s),
+                supply_scope AS MATERIALIZED (SELECT * FROM %s), issued_sources AS MATERIALIZED (
+                    SELECT source.id, source.parent_analysis_material_id
+                    FROM production_material_analysis_plan_links link
+                    JOIN production_material_analysis_items source ON source.id=link.analysis_item_id
+                        AND source.analysis_id=:analysisId AND NOT source.is_deleted
+                    WHERE link.analysis_id=:analysisId AND link.allocation_status IN('SUBMITTED','APPROVED')
+                        AND link.submitted_qty+link.public_surplus_qty>0
+                ), issued_materials AS MATERIALIZED (
+                    SELECT material.id FROM issued_sources source
+                    JOIN production_material_analysis_materials material ON material.id=source.parent_analysis_material_id
+                        AND material.analysis_id=:analysisId
+                    UNION ALL
+                    SELECT material.id FROM issued_sources source
+                    JOIN production_material_analysis_materials material ON material.analysis_item_id=source.id
+                        AND material.analysis_id=:analysisId AND material.node_role='ROOT_SUPPLY'
+                ), conflicts AS (
+                    SELECT input.material_id FROM supply_scope input JOIN preplan_supply_actions action
                       ON action.analysis_id=:analysisId AND action.action_group_key=input.group_key
                     WHERE action.status<>'CANCELLED' AND action.route IS DISTINCT FROM input.route
                     UNION ALL
-                    SELECT input.material_id FROM input JOIN preplan_supply_action_allocations allocation
+                    SELECT input.material_id FROM supply_scope input JOIN preplan_supply_action_allocations allocation
                       ON allocation.analysis_id=:analysisId AND allocation.analysis_material_id=input.material_id
                     JOIN preplan_supply_actions action ON action.id=allocation.action_id AND action.analysis_id=:analysisId
                     WHERE action.status<>'CANCELLED' AND action.route IS DISTINCT FROM input.route
+                    UNION ALL
+                    SELECT input.material_id FROM supply_scope input
+                    JOIN preplan_aggregate_batches batch ON batch.analysis_id=:analysisId
+                    JOIN preplan_supply_actions action ON action.id=batch.action_id AND action.status<>'CANCELLED'
+                    JOIN preplan_aggregate_batch_events event ON event.batch_id=batch.id
+                        AND event.event_type IN('CREATE','APPEND')
+                    WHERE action.route IS DISTINCT FROM input.route AND jsonb_exists(COALESCE(
+                        event.intent_snapshot->'originalMaterialLineIds',batch.configuration_snapshot->'originalMaterialLineIds',
+                        event.intent_snapshot->'materialLineIds','[]'::jsonb),input.material_id::text)
+                    UNION ALL
+                    SELECT input.material_id FROM supply_scope input
+                    JOIN issued_materials issued ON issued.id=input.material_id
+                    WHERE input.route<>'MAKE'
                 )
                 SELECT (SELECT count(*) FROM input JOIN production_material_analysis_materials material
                         ON material.id=input.material_id AND material.analysis_id=:analysisId AND material.active),
                        EXISTS(SELECT 1 FROM conflicts)
-                """.formatted(ROUTES.recordset("selected")))
-                .setParameter("analysisId", analysisId).setParameter("snapshots", routeInput).getSingleResult();
+                """.formatted(ROUTES.recordset("selected"), ROUTES.recordset("guarded").replace(":snapshots", ":supplySnapshots")))
+                .setParameter("analysisId", analysisId).setParameter("snapshots", routeInput)
+                .setParameter("supplySnapshots", supplyInput).getSingleResult();
         if (((Number) checked[0]).intValue() != changes.size()) throw MaterialAnalysisService.conflict("物料节点已变化，请刷新后重试");
         if (Boolean.TRUE.equals(checked[1])) throw MaterialAnalysisService.conflict("物料操作组已有不同路线的下游任务，请先撤回后再改路线");
 

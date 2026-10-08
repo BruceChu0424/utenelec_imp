@@ -28,11 +28,14 @@ import 'package:uten_imp/features/production/widgets/production_overproduction_r
 import 'package:uten_imp/features/production/widgets/material_preparation_status_style.dart';
 import 'package:uten_imp/features/production/widgets/material_preparation_route_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 part 'material_analysis_policy_cases.dart';
 part 'material_analysis_quantity_presentation_cases.dart';
 part 'material_analysis_shared_source_cases.dart';
+part 'material_analysis_order_authority_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -223,6 +226,7 @@ bool _framedRed(WidgetTester tester, Finder field) {
 
 void main() {
   materialSharedSourceCases();
+  materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();
   Map<String, dynamic> withCoveredAppendPool(Map<String, dynamic> data) {
@@ -6321,6 +6325,7 @@ requests = [];
 Future<void> _pump(
   WidgetTester tester, {
   Set<String> permissions = _permissions,
+  _OrderAuthoritySession? session,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
   // 排在后面的行(以及别的用例 mutate 追加的行)的输入框会找不到。
   Size size = const Size(1800, 1800),
@@ -6598,6 +6603,7 @@ Future<void> _pump(
           _WarehousePrefs.new,
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
+        if (session != null) sessionProvider.overrideWith(() => session),
         if (departmentTree != null)
           departmentRepositoryProvider.overrideWithValue(
             DioDepartmentRepository(api),

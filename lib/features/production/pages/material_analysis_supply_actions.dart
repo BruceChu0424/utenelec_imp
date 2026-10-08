@@ -28,6 +28,9 @@ abstract class _MaterialAnalysisSupplyActionsState
   Future<void> _saveRoutes({Set<String>? onlyGroupKeys}) async {
     final analysis = _analysis;
     if (analysis == null || !_canRoute || _savingRoutes) return;
+    final sessionScope = _sessionScopeKey();
+    bool currentScope() =>
+        mounted && _sameAnalysisSnapshot(analysis, sessionScope) && _canRoute;
     final groups = {
       for (final group in _materialGroups(analysis)) group.key: group,
     };
@@ -93,6 +96,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     bucketActionBusyMessage.value = '正在确认物料路线';
     try {
       for (final batch in batches) {
+        if (!mounted || !currentScope()) return;
         final key = businessIdempotencyKey(
           'material-analysis-routes-chunk',
           [
@@ -114,10 +118,10 @@ abstract class _MaterialAnalysisSupplyActionsState
             );
         completed += batch.length;
         autoConfirmed += current.autoConfirmedRouteCount;
-        if (!mounted) return;
+        if (!mounted || !currentScope()) return;
         setState(() => _bulkOperationCompleted = completed);
       }
-      if (!mounted) return;
+      if (!mounted || !currentScope()) return;
       setState(() {
         _savingRoutes = false;
         _clearBulkOperation();
@@ -137,19 +141,19 @@ abstract class _MaterialAnalysisSupplyActionsState
             : saved,
       );
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !currentScope()) return;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '批量保存物料路线',
       )) {
-        if (!mounted) return;
+        if (!mounted || !currentScope()) return;
         setState(() {
           _savingRoutes = false;
           _clearBulkOperation();
         });
         return;
       }
-      if (!mounted) return;
+      if (!mounted || !currentScope()) return;
       final remainingGroupKeys = changes
           .skip(completed)
           .map((change) => change.groupKey)
@@ -183,6 +187,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       // 与 _notifyRoute 同款兜底：success/conflict/error 各分支漏清任何一条，
       // 这份消息驱动的全屏遮罩就会一直盖住整页吃掉点击。
       bucketActionBusyMessage.value = null;
+      if (mounted && _savingRoutes) {
+        setState(() {
+          _savingRoutes = false;
+          _clearBulkOperation();
+        });
+      }
     }
   }
 
@@ -719,9 +729,18 @@ abstract class _MaterialAnalysisSupplyActionsState
     bool skipAutoClaim = false,
   }) async {
     final analysis = _analysis;
-    if (analysis == null || !_canNotify || _notifyingRoute != null) {
+    if (analysis == null ||
+        !_canNotify ||
+        _notifyingRoute != null ||
+        !_preparationSubmissionStillCurrent) {
       return null;
     }
+    final sessionScope = _sessionScopeKey();
+    bool currentScope() =>
+        mounted &&
+        _sameAnalysisSnapshot(analysis, sessionScope) &&
+        _preparationSubmissionStillCurrent &&
+        _canNotify;
     final groups = _executableSupplyGroups(route, allowExtra: allowExtra)
         .where(
           (group) => onlyGroupKeys == null || onlyGroupKeys.contains(group.key),
@@ -758,7 +777,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         silent: silent,
       );
     }
-    if (quantities == null || !mounted) return null;
+    if (quantities == null || !mounted || !currentScope()) return null;
     // 单独入口（行菜单 / 分桶页直接提交）在这里问一次「是否扣可用数量」；编排
     // 入口一律 silent=true，由 _submitMaterialTableRowsInScope 统一问过再把标志
     // 传进来，不会连问两层。
@@ -779,7 +798,7 @@ abstract class _MaterialAnalysisSupplyActionsState
       if (claimUsage == null) return null;
       skipAutoClaim = !claimUsage;
     }
-    if (!mounted) return null;
+    if (!mounted || !currentScope()) return null;
     final quantityByIdentity = {
       for (final input in quantities)
         input.actionGroupKey != null
@@ -819,6 +838,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     });
     try {
       for (final batch in batches) {
+        if (!mounted || !currentScope()) return null;
         final actionGroupKeys = batch
             .map((target) => target.actionGroupKey)
             .whereType<String>()
@@ -858,10 +878,10 @@ abstract class _MaterialAnalysisSupplyActionsState
               skipAutoClaim: skipAutoClaim,
             );
         completed += batch.length;
-        if (!mounted) return null;
+        if (!mounted || !currentScope()) return null;
         setState(() => _bulkOperationCompleted = completed);
       }
-      if (!mounted) return null;
+      if (!mounted || !currentScope()) return null;
       bucketActionBusyMessage.value = null;
       // 服务端**只有真的写了东西才会重建快照**（refreshLocked 换 version/
       // fingerprint）。版本与指纹都没动 = 这次提交一条下达都没产生：可能是别人
@@ -913,12 +933,12 @@ abstract class _MaterialAnalysisSupplyActionsState
       refreshBadges(ref);
       return current;
     } catch (error) {
-      if (!mounted) return null;
+      if (!mounted || !currentScope()) return null;
       if (await _recoverLatestAnalysisAfterConflict(
         error,
         operation: '提交${route.label}需求',
       )) {
-        if (!mounted) return null;
+        if (!mounted || !currentScope()) return null;
         bucketActionBusyMessage.value = null;
         setState(() {
           _notifyingRoute = null;
@@ -926,7 +946,7 @@ abstract class _MaterialAnalysisSupplyActionsState
         });
         return null;
       }
-      if (!mounted) return null;
+      if (!mounted || !currentScope()) return null;
       bucketActionBusyMessage.value = null;
       setState(() {
         _notifyingRoute = null;

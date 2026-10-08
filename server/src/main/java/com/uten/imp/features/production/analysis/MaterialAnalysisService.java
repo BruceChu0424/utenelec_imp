@@ -485,7 +485,20 @@ public class MaterialAnalysisService {
         }
         // All request/source validation precedes writes. Mixed per-node routes
         // remain legitimate, but cannot choose a last-wins default for the goods.
-        new MaterialAnalysisRouteBatchWriter(em).apply(analysisId, currentUser.requireId(), changes);
+        var routeLinks=issuedRouteSourceLinks(analysisId,hasAggregateSources(routeSources));
+        var identities=currentMaterials.stream().filter(row->row.depth()>0)
+                .map(row->new MaterialAnalysisIssuedRoutePreservation.Identity(row.id(),row.analysisItemId(),row.nodeKey(),row.goodsId(),row.colorId(),row.unitId(),row.confirmedRoute())).toList();
+        Map<String,MaterialAnalysisIssuedRoutePreservation.Identity> currentIdentities=new HashMap<>();
+        identities.forEach(row->currentIdentities.put(row.key(),row));
+        Map<String,String> issuedRoutes=issuedRoutePins(analysisId,currentIdentities,routeSources,identities,routeLinks);
+        for(var change:changes) {
+            var material=materialGroups.byId().get(change.materialId());
+            String issuedRoute=issuedRoutes.get(nodeRef(material.analysisItemId(),material.nodeKey()));
+            if(issuedRoute!=null&&!issuedRoute.equals(change.route()))
+                throw conflict("物料已有直接或继承的有效供给单据，请先撤回相关供给后再修改供应方式");
+        }
+        var supplyScope = MaterialAnalysisRouteSupplyScope.expand(changes,routeLinks.delegations(),materialGroups.byId());
+        new MaterialAnalysisRouteBatchWriter(em).apply(analysisId, currentUser.requireId(), changes, supplyScope);
         // 人工改了父件路线后, 下层可能刚出现独立需求: 同一次重算里按货品档案把它们一并确认.
         RefreshOutcome refreshed = refreshLockedOutcome(analysisId, Map.of(), true);
         recordSimpleCommand(analysisId, "ROUTE", request.idempotencyKey(), requestHash);
@@ -1354,6 +1367,11 @@ public class MaterialAnalysisService {
                 MaterialAnalysisIssuePreviewOverlay.NONE);
         List<BomNode> nodes = tree.nodes();
         List<SourceLine> sources = tree.sources();
+        MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
+        Set<String> incomingNodeKeys=nodes.stream().map(MaterialAnalysisService::nodeAllocationKey).collect(Collectors.toSet());
+        boolean removesNodes=baseline.identities().stream().anyMatch(row->!incomingNodeKeys.contains(row.key()));
+        MaterialAnalysisIssuedRoutePreservation.SourceLinks previousRouteLinks=removesNodes&&hasAggregateSources(sources)
+                ?issuedRouteSourceLinks(analysisId,true):null;
         // Reconcile identity membership, not every row's active flag. Existing
         // exact/borrow endpoints remain active when the same BOM node survives.
         em.createNativeQuery("""
@@ -1377,10 +1395,9 @@ public class MaterialAnalysisService {
         // 以单个明确字段类型的行数组分块提交；SQL和绑定数量不随节点数膨胀。
         // 冲突键、完整字段和「BOM 事实变更即清人工确认」条件保持原语义。
         // 写入前后各取一次已确认节点键，统计本次被清空的人工确认数（返回给刷新响应）。
-        MaterialAnalysisSnapshotBaseline baseline = MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS);
         Set<String> confirmedBefore = baseline.confirmedNodes();
         List<NodeSnapshotRow> snapshotRows = nodeSnapshotRows(tree, availability);
-        boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline);
+        boolean structureChanged = upsertNodeSnapshots(analysisId, snapshotRows, baseline, sources,previousRouteLinks);
         int routeResets = structureChanged && !confirmedBefore.isEmpty()
                 ? clearedConfirmations(analysisId, nodes, confirmedBefore) : 0;
         // 分配读写入后的路线；选用量用的路线若已被这次写入改掉，按写入后的路线再选一次用量，
@@ -1391,7 +1408,7 @@ public class MaterialAnalysisService {
             sources = tree.sources();
             snapshotRows = nodeSnapshotRows(tree, availability);
             upsertNodeSnapshots(analysisId, snapshotRows,
-                    MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS));
+                    MaterialAnalysisSnapshotBaseline.load(em, analysisId, NODE_STRUCTURE_COLUMNS), sources,previousRouteLinks);
         }
         validateActiveBorrowEndpointsAfterRefresh(analysisId);
         AllocationSnapshot allocation = computeAllocationSnapshot(
@@ -1760,7 +1777,8 @@ public class MaterialAnalysisService {
                             "allocated_available_qty numeric", "safety_stock_qty numeric", "inbound_qty numeric",
                             "allocated_start_qty numeric", "allocated_finish_qty numeric", "allocated_ship_qty numeric",
                             "shortage_qty numeric", "expected_ready_date date", "lower_level_pending boolean",
-                            "created_by uuid", "updated_by uuid"))
+                            "created_by uuid", "updated_by uuid", "confirmed_route varchar", "route_reason varchar",
+                            "route_confirmed_by uuid", "route_confirmed_at timestamptz"))
             .flatMap(columns -> columns).toArray(String[]::new));
     private static final List<String> NODE_INPUT_COLUMNS = NODE_INPUT.columns();
 
@@ -1798,7 +1816,9 @@ public class MaterialAnalysisService {
      * 父节点改路线换用设计值，都只是用量变化，不是配方变了，不能作废人工确认的路线。
      *
      * <p>结构性事实(货品 / 颜色 / 单位 / 父节点 / 路径 / 控制段 / 计量规则)一条没删，
-     * 真改了照旧清确认并计入 {@code routeResetCount}。
+     * 未下达节点真改了照旧清确认并计入 {@code routeResetCount}；已有真实供给的相同物料身份
+     * 按唯一单据证明保留路线。已有确认元数据原样保留；缺失或错误路线的恢复记录本次刷新人和时间，
+     * 明确注明是依据既有供给恢复，不伪造早先的人工确认。
      */
     private static final String NODE_FACT_CHANGED_CONDITION = """
             production_material_analysis_materials.goods_id
@@ -1824,7 +1844,10 @@ public class MaterialAnalysisService {
             """;
 
     private static String resetUnlessFactsUnchanged(String column) {
-        return "CASE WHEN " + NODE_FACT_CHANGED_CONDITION
+        String preserved="confirmed_route".equals(column)?"EXCLUDED.confirmed_route"
+                :"CASE WHEN production_material_analysis_materials.confirmed_route=EXCLUDED.confirmed_route THEN production_material_analysis_materials."+column
+                    +" ELSE EXCLUDED."+column+" END";
+        return "CASE WHEN EXCLUDED.confirmed_route IS NOT NULL THEN "+preserved+" WHEN " + NODE_FACT_CHANGED_CONDITION
                 + " THEN NULL ELSE production_material_analysis_materials." + column + " END";
     }
 
@@ -1837,7 +1860,8 @@ public class MaterialAnalysisService {
             + "    route_confirmed_by = " + resetUnlessFactsUnchanged("route_confirmed_by") + ",\n"
             + "    route_confirmed_at = " + resetUnlessFactsUnchanged("route_confirmed_at") + ",\n"
             + "    updated_at = now(), updated_by = EXCLUDED.updated_by"
-            + "\nWHERE " + nodeStructureComparison("production_material_analysis_materials", "EXCLUDED", true);
+            + "\nWHERE " + nodeStructureComparison("production_material_analysis_materials", "EXCLUDED", true)
+            + " OR (EXCLUDED.confirmed_route IS NOT NULL AND production_material_analysis_materials.confirmed_route IS DISTINCT FROM EXCLUDED.confirmed_route)";
 
     private static final String NODE_UPSERT_SQL =
             "WITH incoming AS MATERIALIZED (SELECT * FROM " + NODE_INPUT.recordset("source") + ")\n"
@@ -1845,20 +1869,23 @@ public class MaterialAnalysisService {
             + "SELECT " + NODE_INPUT.selection("incoming") + " FROM incoming WHERE NOT EXISTS (\n"
             + "SELECT 1 FROM production_material_analysis_materials existing\n"
             + "WHERE existing.analysis_item_id=incoming.analysis_item_id AND existing.node_key=incoming.node_key\n"
-            + "AND " + nodeStructureComparison("existing", "incoming", false) + ")\n"
+            + "AND " + nodeStructureComparison("existing", "incoming", false)
+            + " AND (incoming.confirmed_route IS NULL OR existing.confirmed_route IS NOT DISTINCT FROM incoming.confirmed_route))\n"
             + "ORDER BY incoming._position\n" + NODE_UPSERT_ON_CONFLICT;
 
     private static String nodeUpsertSql() { return NODE_UPSERT_SQL; }
 
     /** Same complete input row as the former VALUES form; exact numeric values never pass through double. */
-    private static Object[] nodeSnapshotValues(UUID analysisId, UUID actorId, NodeSnapshotRow row) {
+    private static Object[] nodeSnapshotValues(UUID analysisId, UUID actorId, NodeSnapshotRow row,String preservedRoute) {
         BomNode node = row.node();
         return java.util.stream.Stream.of(
                 new Object[] {UUID.randomUUID(), analysisId, node.analysisItemId(), node.nodeKey()},
                 nodeStructure(node),
                 new Object[] {row.required(), row.available(), row.reserved(), BigDecimal.ZERO,
                         node.safetyStock(), row.inbound(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        row.shortage(), row.expectedReadyDate(), row.lowerPending(), actorId, actorId})
+                        row.shortage(), row.expectedReadyDate(), row.lowerPending(), actorId, actorId,preservedRoute,
+                        preservedRoute==null?null:"依据已下达供给恢复，未重新选择供应方式",
+                        preservedRoute==null?null:actorId,preservedRoute==null?null:OffsetDateTime.now().toString()})
                 .flatMap(java.util.Arrays::stream).toArray();
     }
 
@@ -1867,22 +1894,49 @@ public class MaterialAnalysisService {
         return nodeValues(node, NODE_COLUMNS);
     }
 
-    private boolean upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows, MaterialAnalysisSnapshotBaseline baseline) {
+    private boolean upsertNodeSnapshots(UUID analysisId, List<NodeSnapshotRow> rows, MaterialAnalysisSnapshotBaseline baseline,List<SourceLine> sources,
+            MaterialAnalysisIssuedRoutePreservation.SourceLinks previousRouteLinks) {
         Map<String, NodeSnapshotRow> distinct = new LinkedHashMap<>();
         for (NodeSnapshotRow row : rows) {
             distinct.put(nodeRef(row.node().analysisItemId(), row.node().nodeKey()), row);
         }
-        List<NodeSnapshotRow> ordered = distinct.values().stream().filter(row -> {
-            BomNode node = row.node();
-            return !baseline.unchangedStructure(node.analysisItemId(), node.nodeKey(), nodeStructure(node));
-        }).toList();
+        Map<String,String> preserved=issuedRoutePreservation(analysisId,rows,sources,baseline.identities(),previousRouteLinks);
+        List<NodeSnapshotRow> ordered=distinct.values().stream().filter(row->!baseline.unchangedStructure(row.node().analysisItemId(),row.node().nodeKey(),nodeStructure(row.node()))
+                ||preserved.containsKey(nodeAllocationKey(row.node()))&&!Objects.equals(preserved.get(nodeAllocationKey(row.node())),baseline.confirmedRoute(row.node().analysisItemId(),row.node().nodeKey()))).toList();
         UUID actorId = currentUser.requireId();
         for (int from = 0; from < ordered.size(); from += NODE_WRITE_CHUNK) {
             List<NodeSnapshotRow> chunk = ordered.subList(from, Math.min(ordered.size(), from + NODE_WRITE_CHUNK));
-            String snapshots = NODE_INPUT.json(chunk, row -> nodeSnapshotValues(analysisId, actorId, row));
+            String snapshots = NODE_INPUT.json(chunk, row -> nodeSnapshotValues(analysisId, actorId, row,preserved.get(nodeAllocationKey(row.node()))));
             em.createNativeQuery(NODE_UPSERT_SQL).setParameter("snapshots", snapshots).executeUpdate();
         }
         return !ordered.isEmpty();
+    }
+
+    private Map<String,String> issuedRoutePreservation(UUID analysisId,List<NodeSnapshotRow> rows,List<SourceLine> sources,
+            List<MaterialAnalysisIssuedRoutePreservation.Identity> previous,MaterialAnalysisIssuedRoutePreservation.SourceLinks previousRouteLinks) {
+        Map<String,MaterialAnalysisIssuedRoutePreservation.Identity> incoming=new HashMap<>();
+        for(var snapshot:rows) {
+            var node=snapshot.node();var identity=new MaterialAnalysisIssuedRoutePreservation.Identity(null,node.analysisItemId(),node.nodeKey(),node.goodsId(),node.colorId(),node.unitId(),null);
+            incoming.put(identity.key(),identity);
+        }
+        return issuedRoutePins(analysisId,incoming,sources,previous,previousRouteLinks);
+    }
+
+    private Map<String,String> issuedRoutePins(UUID analysisId,Map<String,MaterialAnalysisIssuedRoutePreservation.Identity> incoming,List<SourceLine> sources,
+            List<MaterialAnalysisIssuedRoutePreservation.Identity> previous,MaterialAnalysisIssuedRoutePreservation.SourceLinks previousRouteLinks) {
+        List<SupplyActionView> actions=supplyActions(analysisId);
+        if(actions.isEmpty()&&sources.stream().noneMatch(source->source.issuedPlanQty().signum()>0))return Map.of();
+        boolean aggregate=hasAggregateSources(sources);
+        var direct=MaterialAnalysisIssuedRoutePreservation.directRoutes(previous,downstreamReferences(analysisId),actions,
+                planAnchorByMaterial(analysisId,aggregate?aggregateMembers(analysisId):List.of()),sources);
+        var links=previousRouteLinks!=null?previousRouteLinks:issuedRouteSourceLinks(analysisId,aggregate);
+        var inherited=MaterialAnalysisIssuedRoutePreservation.inherit(direct,previous,links.inheritedByTarget());
+        return MaterialAnalysisIssuedRoutePreservation.project(previous,incoming,inherited,links.delegations());
+    }
+
+    private MaterialAnalysisIssuedRoutePreservation.SourceLinks issuedRouteSourceLinks(UUID analysisId,boolean aggregate) {
+        return aggregate?new MaterialAnalysisIssuedRoutePreservation.SourceLinks(aggregateDelegationProjection(analysisId),aggregateAliasCoverage(analysisId).attributedCoverage())
+                :MaterialAnalysisIssuedRoutePreservation.SourceLinks.EMPTY;
     }
 
     /**
@@ -8275,7 +8329,7 @@ public class MaterialAnalysisService {
                             string(row[4]), uuid(row[5]), string(row[6]), decimal(row[7]),
                             row.length>8 && row[8]!=null ? decimal(row[8]) : null));
         }
-        // A pure-public shared append has no private allocation row. Its explicit
+        // A pure-public or safety-only order has no private allocation row. Its explicit
         // source context remains navigable, with zero private quantity, through the immutable intent.
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT DISTINCT material.id,action.id,action.route,action.status,action.external_document_type,
@@ -8284,7 +8338,7 @@ public class MaterialAnalysisService {
                 JOIN preplan_aggregate_batch_events event ON event.batch_id=batch.id AND event.event_type IN('CREATE','APPEND')
                 CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(event.intent_snapshot->'materialLineIds','[]'::jsonb)) scope(id)
                 JOIN production_material_analysis_materials material ON material.id=CAST(scope.id AS uuid) AND material.analysis_id=batch.analysis_id
-                WHERE batch.analysis_id=:id AND action.public_surplus_qty>0
+                WHERE batch.analysis_id=:id AND (action.public_surplus_qty>0 OR action.safety_replenishment_qty>0)
                   AND NOT EXISTS(SELECT 1 FROM preplan_supply_action_allocations allocation
                     WHERE allocation.action_id=action.id AND allocation.analysis_material_id=material.id)
                 """).setParameter("id",analysisId))) {

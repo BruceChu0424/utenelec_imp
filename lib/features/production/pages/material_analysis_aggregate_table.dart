@@ -21,8 +21,25 @@ final class _MaterialAggregateTableController {
   MaterialAggregateOrderRequest? _previewRequest, _submittedRequest;
   MaterialAggregateOrderPreview? _preview;
   String? _submittedFingerprint;
+  String? _submittedSessionScope;
   String? _previewSignature;
   MaterialAggregateOrderResult? lastStageResult;
+  void _clearSubmittedIntent() {
+    _submittedRequest = null;
+    _submittedFingerprint = null;
+    _submittedSessionScope = null;
+  }
+
+  void _retainDetachedSubmission({required bool received}) {
+    if (!owner.mounted) return;
+    owner._mutateAggregateTable(() {
+      uncertain = true;
+      error = received
+          ? '原下单已返回回执，登录身份或分析状态已变化；请重新打开分析核对，勿重复下单'
+          : '登录身份或分析状态已变化，原下单结果尚未确认；请重新打开分析核对';
+    });
+  }
+
   bool get hasDrafts => drafts.isNotEmpty;
   bool ownsLine(String lineId) => _draftByLine.containsKey(lineId);
   bool isProductFlow(String lineId) =>
@@ -44,173 +61,6 @@ final class _MaterialAggregateTableController {
 
   Widget lockedText(String value) =>
       Tooltip(message: '本次数量已保留，可继续下单核对结果；需要改数时先撤销未提交草稿。', child: Text(value));
-
-  Widget actionCell(_MaterialAggregate aggregate) {
-    final actionIds = <String>{
-      for (final path in aggregate.paths)
-        for (final target in path.notifiedTargets)
-          if (target.actionId != null &&
-              target.status != 'CANCELLED' &&
-              owner._supplyOperationType(target.actionId) == 'AGGREGATE_SUPPLY')
-            target.actionId!,
-    };
-    // 来源车间 / 负责人 / 比例不同时，这一行下单会自动分成几张工单
-    // (ADR-120 §8)：在办理列直接写明，悬浮逐张列出参数和数量。
-    final split = splitNote(aggregate);
-    final note = split == null
-        ? null
-        : Tooltip(
-            message: split.detail,
-            child: Text(
-              split.headline,
-              key: ValueKey('material-aggregate-split-${aggregate.key}'),
-            ),
-          );
-    if (actionIds.isEmpty) {
-      // 单一来源的量会并入既有车间计划 / 订货单而不另开汇总批次
-      // (AggregateMaterialOrderWriteService.issueExistingSingleSource)：这类行
-      // 名下没有可整批撤回的批次，但数量格已锁、确实下过单——如实标注去向，
-      // 不再误显「勾选后下单」让人以为这行没下成。
-      if (orderedQty(aggregate) > 0.000000001) {
-        final merged = Tooltip(
-          message:
-              '本行的量已并入来源既有的车间计划或订货单，未另开汇总批次。'
-              '撤回请在「按产品办理」视图的供给任务与撤回，或直接处理那张单据。',
-          child: Text(
-            '已并入既有单据',
-            key: ValueKey('material-aggregate-merged-${aggregate.key}'),
-          ),
-        );
-        return note == null
-            ? merged
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [merged, note],
-              );
-      }
-      return note ?? const Text('勾选后下单');
-    }
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final id in actionIds)
-          TextButton(
-            key: ValueKey('material-aggregate-cancel-$id'),
-            onPressed: owner._busy || !owner._canCancelSpecificAction(id)
-                ? null
-                : () => unawaited(cancelAction(id)),
-            child: Text('整批撤回 ${owner._supplyActionOf(id)?.documentNo ?? ''}'),
-          ),
-        ?note,
-      ],
-    );
-  }
-
-  Future<bool> cancelAction(String actionId) async {
-    final analysis = owner._analysis;
-    if (analysis == null ||
-        owner._busy ||
-        !owner._canCancelSpecificAction(actionId)) {
-      return false;
-    }
-    final affected = <ProductionMaterialAnalysisMaterial, double>{};
-    for (final material in analysis.materials) {
-      for (final target in material.notifiedTargets) {
-        if (target.actionId == actionId && target.status != 'CANCELLED') {
-          final allocated = target.allocatedQty;
-          if (allocated == null) {
-            owner.context.appWarning('此批次缺少完整来源份额，请刷新核对后再整批撤回');
-            return false;
-          }
-          affected.update(
-            material,
-            (value) => value + allocated,
-            ifAbsent: () => allocated,
-          );
-        }
-      }
-    }
-    if (affected.keys.any((material) => ownsLine(material.materialLineId))) {
-      owner.context.appWarning('此批次来源仍有汇总草稿，请先下达或撤销草稿再整批撤回');
-      return false;
-    }
-    final action = owner._supplyActionOf(actionId)!;
-    final allocated = affected.values.fold<double>(
-      0,
-      (sum, value) => sum + value,
-    );
-    if ((allocated - action.requestedQty).abs() > 0.00005) {
-      owner.context.appWarning('此批次来源资料不完整，请刷新核对后再整批撤回');
-      return false;
-    }
-    final public = action.publicSurplusQty;
-    final total = allocated + public;
-    var reason = '';
-    final confirmed = await UtenDialog.show(
-      owner.context,
-      title: '整批撤回供给任务？',
-      confirmLabel: '确认整批撤回',
-      content: SizedBox(
-        width: 560,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '将撤回本批全部来源，总量 ${owner._qty(total)}，其中公共备货 ${owner._qty(public)}。',
-              ),
-              for (final entry in affected.entries)
-                Text(
-                  '${sourceLabel(entry.key)}：${owner._qty(entry.value)} ${entry.key.unitName ?? ''}',
-                ),
-              const Text('已实际领用、报工或有后续单据的批次会由系统核对后阻止撤回。'),
-              TextField(
-                key: const Key('material-aggregate-cancel-reason'),
-                onChanged: (value) => reason = value,
-                maxLength: 1000,
-                decoration: const InputDecoration(labelText: '撤回原因（选填）'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    reason = reason.trim();
-    if (confirmed != true || !owner.mounted) return false;
-    final key = businessIdempotencyKey(
-      'material-aggregate-cancel',
-      '$actionId|${analysis.analysisId}|${analysis.version}|${analysis.fingerprint}|$reason',
-    );
-    owner._mutateAggregateTable(() => owner._cancellingAction = true);
-    try {
-      final current = await owner.ref
-          .read(productionPlanRepositoryProvider)
-          .cancelAggregateMaterialOrder(
-            analysis: analysis,
-            actionId: actionId,
-            idempotencyKey: key,
-            reason: reason,
-          );
-      if (!owner.mounted) return false;
-      owner._mutateAggregateTable(() => owner._applyAnalysis(current));
-      owner.context.appSuccess('整批任务已撤回，来源需求已按最新事实更新');
-      return true;
-    } catch (failure) {
-      if (owner.mounted) {
-        owner.context.appWarning(
-          productionErrorMessage(failure, fallback: '整批撤回失败，请核对后重试'),
-        );
-      }
-      return false;
-    } finally {
-      if (owner.mounted) {
-        owner._mutateAggregateTable(() => owner._cancellingAction = false);
-      }
-    }
-  }
 
   Widget? toolbarAction() => drafts.isEmpty
       ? null
@@ -1002,6 +852,7 @@ final class _MaterialAggregateTableController {
     if (saving || uncertain || drafts.isEmpty) return;
     if (!forSubmission && owner._preparationSubmissionActive) return;
     if (!owner.mounted || saving || uncertain || drafts.isEmpty) return;
+    final sessionScope = owner._sessionScopeKey();
     final requestRevision = _revision;
     final Set<String> effectiveKeys;
     try {
@@ -1015,7 +866,7 @@ final class _MaterialAggregateTableController {
     // 「足额下单(不扣可用数量)」要换一份带 skipAutoClaim 的提交请求：签名带上
     // 该标记，让编辑期不带标记的在途预览在提交时被取代而不是被复用。
     final signature =
-        '$requestRevision|${scope.join('|')}|${owner._analysis?.version}|${owner._analysis?.fingerprint}|'
+        '$sessionScope|${owner._analysis?.analysisId}|$requestRevision|${scope.join('|')}|${owner._analysis?.version}|${owner._analysis?.fingerprint}|'
         '${owner._warehouseId}|${owner._dateText(owner._billDate)}|${owner._dateText(owner._deliveryDate)}|'
         '${owner._preparationApproveNow}'
         '${skipAutoClaim ? '|skipAutoClaim' : ''}';
@@ -1032,6 +883,7 @@ final class _MaterialAggregateTableController {
       } else {
         await flight;
         if (!owner.mounted ||
+            owner._sessionScopeKey() != sessionScope ||
             (!forSubmission && owner._preparationSubmissionActive)) {
           return;
         }
@@ -1055,6 +907,7 @@ final class _MaterialAggregateTableController {
           effectiveKeys,
           signature,
           generation,
+          sessionScope,
           skipAutoClaim: skipAutoClaim,
         ).whenComplete(() {
           if (identical(_flight, work)) {
@@ -1067,6 +920,7 @@ final class _MaterialAggregateTableController {
     await work;
     if (_revision != requestRevision &&
         owner.mounted &&
+        owner._sessionScopeKey() == sessionScope &&
         !saving &&
         !uncertain &&
         (forSubmission || !owner._preparationSubmissionActive)) {
@@ -1082,7 +936,8 @@ final class _MaterialAggregateTableController {
     int revision,
     Set<String>? keys,
     String signature,
-    int generation, {
+    int generation,
+    String sessionScope, {
     bool skipAutoClaim = false,
   }) async {
     try {
@@ -1097,6 +952,7 @@ final class _MaterialAggregateTableController {
           .read(productionPlanRepositoryProvider)
           .previewAggregateOrders(request, cancelToken: token);
       if (!owner.mounted ||
+          owner._sessionScopeKey() != sessionScope ||
           revision != _revision ||
           generation != _previewGeneration) {
         return;
@@ -1301,6 +1157,7 @@ final class _MaterialAggregateTableController {
       });
     } catch (failure) {
       if (!owner.mounted ||
+          owner._sessionScopeKey() != sessionScope ||
           revision != _revision ||
           generation != _previewGeneration) {
         return;
@@ -1349,11 +1206,27 @@ final class _MaterialAggregateTableController {
     List<_MaterialGroup> selectedGroups, {
     bool skipAutoClaim = false,
   }) async {
-    if (saving || selectedGroups.isEmpty) return false;
+    if (saving ||
+        selectedGroups.isEmpty ||
+        !owner._preparationSubmissionStillCurrent) {
+      return false;
+    }
+    final sessionScope = owner._sessionScopeKey();
+    final analysis = owner._analysis;
+    if (analysis == null) return false;
+    if (_submittedSessionScope != null &&
+        _submittedSessionScope != sessionScope) {
+      owner.context.appWarning('登录身份或权限已变化，请重新打开分析核对上次下单结果');
+      return false;
+    }
+    bool stillCurrent() =>
+        owner.mounted &&
+        owner._sameAnalysisSnapshot(analysis, sessionScope) &&
+        owner._preparationSubmissionStillCurrent;
     if (!uncertain) {
       await owner._ensureTableMandatoryAssignments(selectedGroups);
     }
-    if (!owner.mounted) return false;
+    if (!owner.mounted || !stillCurrent()) return false;
     final keys = selectedGroups
         .map((group) => owner._aggregateKeyOf(group.representative))
         .toSet();
@@ -1387,7 +1260,7 @@ final class _MaterialAggregateTableController {
       } finally {
         owner.bucketActionBusyMessage.value = null;
       }
-      if (!owner.mounted) return false;
+      if (!owner.mounted || !stillCurrent()) return false;
       if (_preview == null || _previewRequest == null) {
         owner.context.appWarning(error ?? '请先核对汇总预览');
         return false;
@@ -1416,6 +1289,7 @@ final class _MaterialAggregateTableController {
       // 在等待期被替换，提交会带着过时指纹出去(旧逐轮确认框时代的竞态面)。
       _submittedRequest = _previewRequest!;
       _submittedFingerprint = _preview!.previewFingerprint;
+      _submittedSessionScope = sessionScope;
     }
     final request = _submittedRequest!;
     final makesPlans = request.groups.any(
@@ -1440,8 +1314,11 @@ final class _MaterialAggregateTableController {
             request,
             previewFingerprint: _submittedFingerprint!,
           );
-      if (!owner.mounted) return false;
       lastStageResult = result;
+      if (!owner.mounted || !stillCurrent()) {
+        _retainDetachedSubmission(received: true);
+        return false;
+      }
       for (final batch in result.batches) {
         final plan = batch.generatedPlan;
         if (plan != null && plan.planId.isNotEmpty) {
@@ -1470,6 +1347,7 @@ final class _MaterialAggregateTableController {
           }
         }
         uncertain = false;
+        _clearSubmittedIntent();
         _preview = null;
         _previewRequest = null;
         _revision++;
@@ -1496,7 +1374,10 @@ final class _MaterialAggregateTableController {
       );
       return true;
     } catch (failure) {
-      if (!owner.mounted) return false;
+      if (!owner.mounted || !stillCurrent()) {
+        _retainDetachedSubmission(received: false);
+        return false;
+      }
       final rejected =
           failure is ApiException &&
           failure.httpStatus != null &&
@@ -1509,6 +1390,7 @@ final class _MaterialAggregateTableController {
             : '${productionErrorMessage(failure, fallback: '服务器没有返回确定的结果')}；'
                   '提交结果尚未确认，请保留本次总量并使用相同内容重试核对';
         if (rejected) {
+          _clearSubmittedIntent();
           _revision++;
           _preview = null;
           _previewRequest = null;
@@ -1519,14 +1401,16 @@ final class _MaterialAggregateTableController {
           final current = await owner._readMaterialAnalysisDetail(
             request.analysisId,
           );
-          if (owner.mounted) {
+          if (stillCurrent()) {
             owner._mutateAggregateTable(() => owner._applyAnalysis(current));
           }
         } catch (_) {
           /* Keep the exact draft when the refresh is unavailable. */
         }
       }
-      if (owner.mounted) owner.context.appWarning(error!);
+      if (owner.mounted && owner._sessionScopeKey() == sessionScope) {
+        owner.context.appWarning(error!);
+      }
       return false;
     } finally {
       // 遮罩随本段收口(2026-09-14 教训：忙标志/遮罩漏一条 return 分支没清，
@@ -1548,6 +1432,8 @@ final class _MaterialAggregateTableController {
       owner.context.appWarning('提交回执尚未确认，请先重试核对结果');
       return;
     }
+    final sessionScope = owner._sessionScopeKey();
+    final revision = _revision;
     final confirmed = await UtenDialog.show(
       owner.context,
       title: '撤销未提交的汇总草稿？',
@@ -1555,7 +1441,15 @@ final class _MaterialAggregateTableController {
       confirmLabel: '撤销草稿',
     );
     if (confirmed != true || !owner.mounted) return;
+    if (saving ||
+        uncertain ||
+        revision != _revision ||
+        owner._sessionScopeKey() != sessionScope) {
+      owner.context.appWarning('草稿或登录状态已变化，请重新核对后再撤销');
+      return;
+    }
     owner._mutateAggregateTable(() {
+      _clearSubmittedIntent();
       _revision++;
       _debounce?.cancel();
       _cancelToken?.cancel('aggregate draft cancelled');

@@ -586,9 +586,13 @@ class AggregateMaterialOrderEndToEndTest {
         assertPhysicalSupply(c,sibling,"400");
     }
 
-    private record ThreeProductCase(Case data,UUID bag,UUID tape,Map<UUID,String> laterRoutes,Set<UUID> delegatedGoods) {}
+    record ThreeProductCase(Case data,UUID bag,UUID tape,Map<UUID,String> laterRoutes,Set<UUID> delegatedGoods) {}
 
     private ThreeProductCase createThreeProductScreenshotCase() {
+        return createThreeProductScreenshotCase("1000");
+    }
+
+    ThreeProductCase createThreeProductScreenshotCase(String quantity) {
         String tag="three-products-"+UUID.randomUUID();
         var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);
@@ -622,9 +626,9 @@ class AggregateMaterialOrderEndToEndTest {
             fixture.insertGoods(root,"TEST-"+root,n==0?"测试产品":"测试产品("+n+")","自制",world.unitId(),world.unitLegacy());
             for(String child:List.of("V50041","UT3018","UT3015","V51032","V5G001","V50001"))
                 fixture.insertBom(root,goods.get(child),child.equals("UT3015")?"0.0005":"1");
-            UUID order=fixture.createApprovedOrder(world,root,"1000","100");
+            UUID order=fixture.createApprovedOrder(world,root,quantity,"100");
             UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
-            sources.add(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal("1000")));
+            sources.add(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal(quantity)));
         }
         var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"screenshot-analysis-"+UUID.randomUUID(),sources));
         Map<UUID,String> byId=new LinkedHashMap<>();routes.forEach((code,route)->byId.put(goods.get(code),route));
@@ -766,8 +770,8 @@ class AggregateMaterialOrderEndToEndTest {
         GroupInput remainingGroup=input(c,c.material(),route,"0",false);
         if ("MAKE".equals(route)) {
             // Original MAKE members retain their plan identity and START stage after responsibility moves.
-            // The UI excludes these contexts through aggregatePreparation.actionable; it must never
-            // revive them merely because a second parent batch exposes the same goods.
+            // A live exact shared-order reference preserves the original append entry even
+            // after its physical requirement has moved; START alone is not the proof.
             for (MaterialView original:afterMerge.flatMaterials().stream()
                     .filter(row->leafs.contains(row.materialLineId())).toList()) {
                 assertEquals("START",original.controlStage());
@@ -776,18 +780,10 @@ class AggregateMaterialOrderEndToEndTest {
                 amount("0",original.requiredQty());
                 amount("0",original.planningUncoveredQty());
                 assertNotNull(original.aggregatePreparation());
-                assertFalse(original.aggregatePreparation().actionable());
+                assertTrue(original.aggregatePreparation().actionable());
                 assertTrue(original.aggregatePreparation().targetMaterialLineIds().isEmpty());
+                assertFalse(original.downstreamReferences().isEmpty());
             }
-            var invalidScope=preview.preview(c.analysis(),request(c,List.of(remainingGroup)));
-            assertNotNull(invalidScope.groups().getFirst().blockedReason(),"失活原制造来源仍应被拒绝");
-            List<UUID> currentScope=afterMerge.flatMaterials().stream()
-                    .filter(row->row.goodsId().equals(c.material())&&"BOM_COMPONENT".equals(row.nodeRole()))
-                    .filter(row->row.aggregatePreparation()==null||row.aggregatePreparation().actionable())
-                    .map(MaterialView::materialLineId).toList();
-            assertEquals(List.of(anchorLeaf.materialLineId()),currentScope);
-            remainingGroup=new GroupInput("current-leaf",currentScope,route,BigDecimal.ZERO,false,
-                    c.workshop(),c.worker(),null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO);
         }
         var recheck=preview.preview(c.analysis(),request(c,List.of(remainingGroup)));
         assertNull(recheck.groups().getFirst().blockedReason(),"当前有效的叶组必须还能正常核对");
@@ -1065,7 +1061,7 @@ class AggregateMaterialOrderEndToEndTest {
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount) {
         return create(manufacture,fixed,quantity,nested,sourceCount,"2");
     }
-    private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty) {
+    Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty) {
         return create(manufacture,fixed,quantity,nested,sourceCount,leafBomQty,null);
     }
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty,UUID sibling) {

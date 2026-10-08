@@ -420,6 +420,11 @@ void materialBoundaryCases() {
         final worker = find.byKey(
           ValueKey('material-analysis-worker-${_groupKey(line)}'),
         );
+        expect(
+          find.byKey(ValueKey('material-route-dropdown-$line')),
+          findsNothing,
+          reason: '最低有效下单量0.0001也必须锁住供应方式，原行没有采购或委外引用',
+        );
         expect(tester.widget(workshop), isA<Tooltip>());
         expect(
           find.descendant(of: workshop, matching: find.byType(InkWell)),

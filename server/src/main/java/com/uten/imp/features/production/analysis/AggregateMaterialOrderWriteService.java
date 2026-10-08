@@ -52,16 +52,16 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 ||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("整批撤回缺少版本或防重复提交标识");
         tx.bind();var guard=commands.lockAnalysisWithClaimableShared(analysisId);var header=analysis.headerAfterPrelock(analysisId);
         access.requireWritable(header.makerId(),"只能撤回本人负责的共享批次",analysis.scopeForAnalysis(header));
-        String hash=CanonicalFingerprint.sha256(List.of("AGGREGATE-CANCEL-V1",analysisId.toString(),actionId.toString(),request.version().toString(),request.fingerprint(),request.effectiveReason()));
-        List<?> replay=em.createNativeQuery("SELECT request_hash FROM production_material_analysis_commands WHERE analysis_id=:analysis AND operation='AGGREGATE_CANCEL' AND idempotency_key=:key")
-                .setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey()).getResultList();
-        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("同一防重复提交标识已用于另一项操作，请刷新后重试");return analysis.detailInternal(analysisId,false);}
-        guard.verifyUnchanged();analysis.requireCurrent(header,request.version(),request.fingerprint());
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT batch.id,batch.plan_id,batch.route,action.status,batch.row_version FROM preplan_aggregate_batches batch JOIN preplan_supply_actions action ON action.id=batch.action_id WHERE batch.analysis_id=:analysis AND batch.action_id=:action FOR UPDATE OF batch,action")
                 .setParameter("analysis",analysisId).setParameter("action",actionId));
         if(rows.isEmpty())throw conflict("共享批次不存在或不属于当前分析");Object[] row=rows.getFirst();UUID plan=(UUID)row[1];
         String permission=plan==null?"production_material_analysis:notify":"production_material_analysis:generate";
         if(!access.hasAuthority(permission))throw forbidden("缺少该共享批次的撤回权限");
+        String hash=CanonicalFingerprint.sha256(List.of("AGGREGATE-CANCEL-V1",analysisId.toString(),actionId.toString(),request.version().toString(),request.fingerprint(),request.effectiveReason()));
+        List<?> replay=em.createNativeQuery("SELECT request_hash FROM production_material_analysis_commands WHERE analysis_id=:analysis AND operation='AGGREGATE_CANCEL' AND idempotency_key=:key")
+                .setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey()).getResultList();
+        if(!replay.isEmpty()){if(!hash.equals(replay.getFirst()))throw conflict("同一防重复提交标识已用于另一项操作，请刷新后重试");return analysis.detailInternal(analysisId,false);}
+        guard.verifyUnchanged();analysis.requireCurrent(header,request.version(),request.fingerprint());
         if(!"CANCELLED".equals(row[3])) {
             if(plan!=null) {
                 Object[] state=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT status,is_deleted FROM production_plans WHERE id=:id FOR UPDATE").setParameter("id",plan)).getFirst();
@@ -95,6 +95,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         var guard=commands.lockAnalysisWithClaimableShared(analysisId);
         var header=analysis.headerAfterPrelock(analysisId);
         access.requireWritable(header.makerId(),"只能下达本人负责的物料分析",analysis.scopeForAnalysis(header));
+        requireSubmitAuthority(request);
         String hash=hashRequest(analysisId,request);
         List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT request_hash,result_payload::text FROM production_material_analysis_commands
@@ -906,6 +907,17 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private static String stepKey(String key,String group,String stage){return "AGG-"+CanonicalFingerprint.sha256(List.of(key,group,stage));}
     private static BigDecimal decimal(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static void validateRequest(SubmitRequest request){if(request==null||request.groups().isEmpty()||request.idempotencyKey()==null||!request.idempotencyKey().matches("[A-Za-z0-9._:-]{8,128}"))throw invalid("汇总下单缺少有效内容或防重复提交标识");AggregateMaterialOrderPreviewService.requireSourceScope(request.groups());}
+    private void requireSubmitAuthority(SubmitRequest request) {
+        for(GroupInput group:request.groups()) {
+            if(group==null)throw invalid("汇总下单行不能为空");
+            if(decimal(group.qty()).signum()<=0&&decimal(group.safetyQty()).signum()<=0)continue;
+            boolean make="MAKE".equals(group.route());
+            if(!access.hasAuthority(make?"production_material_analysis:generate":"production_material_analysis:notify"))
+                throw forbidden(make?"缺少下达车间权限":"缺少下达采购或委外权限");
+            if(make&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))
+                throw forbidden("生成并审核需要生产计划审核权限");
+        }
+    }
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException forbidden(String message){return new ApiException(ErrorCode.FORBIDDEN,message);}

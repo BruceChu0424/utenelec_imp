@@ -59,6 +59,7 @@ import '../../employee/repositories/employee_repository.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
 import '../models/material_cascade_math.dart';
 import '../models/production_material_analysis.dart';
+import '../models/material_analysis_source_graph.dart';
 import '../models/material_quantity_apportionment.dart';
 import '../models/material_quantity_presentation.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -101,6 +102,7 @@ part 'material_analysis_plan_actions.dart';
 part 'material_analysis_product_tasks.dart';
 part 'material_analysis_material_table.dart';
 part 'material_analysis_aggregate_table.dart';
+part 'material_analysis_aggregate_actions.dart';
 part 'material_analysis_aggregate_submission.dart';
 part 'material_analysis_draft_budget.dart';
 part 'material_analysis_order_page.dart';
@@ -157,6 +159,17 @@ abstract class _MaterialAnalysisPageBase
   bool _ownerRefreshQueued = false;
   final Set<BuildContext> _preparationReadContexts = {};
   int _preparationSubmissionScopes = 0;
+  String? _preparationScopeSession;
+  String? _preparationScopeAnalysis;
+  bool get _preparationSubmissionStillCurrent =>
+      !_preparationSubmissionActive ||
+      (_sessionScopeKey() == _preparationScopeSession &&
+          _analysis?.analysisId == _preparationScopeAnalysis);
+
+  bool _sameAnalysisSnapshot(
+    ProductionMaterialAnalysisView expected,
+    String sessionScope,
+  ) => identical(_analysis, expected) && _sessionScopeKey() == sessionScope;
   bool _deferredFutureTransferRead = false;
   bool get _preparationSubmissionActive => _preparationSubmissionScopes > 0;
   void _cancelPreparationEditorPreview();
@@ -169,12 +182,18 @@ abstract class _MaterialAnalysisPageBase
     final releaseBadges = outermost
         ? ref.read(badgeSummaryProvider.notifier).holdRefreshes()
         : null;
-    if (outermost) _cancelPreparationEditorPreview();
+    if (outermost) {
+      _preparationScopeSession = _sessionScopeKey();
+      _preparationScopeAnalysis = _analysis?.analysisId;
+      _cancelPreparationEditorPreview();
+    }
     try {
       return await command();
     } finally {
       _preparationSubmissionScopes--;
       if (outermost) {
+        _preparationScopeSession = null;
+        _preparationScopeAnalysis = null;
         releaseBadges?.call();
         if (mounted) {
           _flushDeferredAssignmentRead();
@@ -693,21 +712,21 @@ abstract class _MaterialAnalysisPageBase
       _canReallocate &&
       (_analysis?.allowedActions.contains('REALLOCATE') ?? false);
 
-  /// Selection is stored by authoritative task identity across table pages.
-  bool _canEditMaterialRoute(_MaterialGroup group) =>
-      group.actionable &&
-      _planningBlockForGroup(group) == null &&
-      group.paths.every(_hasResolvedMaterialSource) &&
-      !group.paths.any(
-        (path) => path.notifiedTargets.any(
-          (target) =>
-              target.status != 'CANCELLED' && !target.isReversedRootOutput,
-        ),
-      ) &&
-      // 自制路线下过生产计划的行同样已有未撤销的下游任务：计划在那儿，路线不能再改。
-      // 原来只认 notifiedTargets(采购 / 委外的申请)，自制计划不在里面——顶层与自制子件
-      // 下达之后「供应方式」下拉照旧可改(2026-09-23 用户实机)。
-      !group.paths.any((path) => _issuedMakePlanOf(path) != null);
+  bool _canEditMaterialRoute(_MaterialGroup group) {
+    final analysis = _analysis;
+    if (analysis == null ||
+        !group.actionable ||
+        _planningBlockForGroup(group) != null ||
+        !group.paths.every(_hasResolvedMaterialSource)) {
+      return false;
+    }
+    final sources = _analysisIndexes(
+      analysis,
+    ).sourceGraph.resolve(group.paths.map((path) => path.materialLineId));
+    return sources.complete &&
+        !sources.hasIssuedSupply &&
+        !sources.materials.any((path) => _issuedMakePlanOf(path) != null);
+  }
 
   /// 这一行已下达的生产计划挂在哪个产品行上：顶层是产品行自己(它本身就是排产对象)，
   /// 其余是锚点子件行；没下过、或计划已全部撤销，返回 null。
@@ -721,7 +740,7 @@ abstract class _MaterialAnalysisPageBase
         : material.planAnchorAnalysisLineId;
     if (anchorId == null) return null;
     final product = _analysisIndexes(analysis).productsById[anchorId];
-    return product != null && product.issuedPlanQty > 0.0001 ? product : null;
+    return product != null && product.issuedPlanQty > 0 ? product : null;
   }
 
   String? _planningBlockForGroup(_MaterialGroup group) {
@@ -1102,11 +1121,12 @@ abstract class _MaterialAnalysisPageBase
     }
     // 产品优先级正在拖动时不替换产品顺序；路线草稿则可以按 action group
     // 安全地映射到新快照，既加载最新库存，又不吞掉计划员的未保存决定。
+    final sessionScope = _sessionScopeKey();
     _silentAnalysisReloadInFlight = true;
     _ownerRefreshQueued = false;
     try {
       final view = await _readMaterialAnalysisDetail(analysis.analysisId);
-      if (!mounted) return;
+      if (!mounted || _sessionScopeKey() != sessionScope) return;
       final current = _analysis;
       // 写命令、切换分析或更高版本已经到达时不接收此旧读。
       // 新开始的本地编辑由下方保留输入的事实刷新处理。
@@ -1712,6 +1732,7 @@ abstract class _MaterialAnalysisPageBase
       }
     }
     final indexes = _MaterialAnalysisIndexes(
+      sourceGraph: MaterialAnalysisSourceGraph(analysis.materials),
       productsById: productsById,
       materialsByProduct: materialsByProduct,
       groups: groups,

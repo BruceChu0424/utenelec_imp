@@ -32,8 +32,6 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
  * 组上还有未撤销的供给行动时整组不动 (人工确认在这里会被「已有不同路线的下游任务」拦下).
  */
 final class MaterialAnalysisRouteAutoConfirm {
-    /** 与页面「已下达计划量 > 0.0001」同一阈值: 小于这个的尾差不算真的下达过. */
-    static final BigDecimal ISSUED_EPSILON = new BigDecimal("0.0001");
     private static final Set<String> ROUTES = Set.of("BUY", "MAKE", "SUBCONTRACT");
     private static final Set<String> ROOT_OUTPUT_DOCUMENTS = Set.of("ROOT_STOCK_ALLOCATION", "ROOT_OUTPUT_FULFILLMENT");
 
@@ -44,7 +42,7 @@ final class MaterialAnalysisRouteAutoConfirm {
      * 下游引用、供给行动) 推出, 重算写入与详情计数用的是同一份.
      *
      * @param itemsWithRootPlan 有历史生产计划 (提交/审核量或有效计划关联) 的产品行
-     * @param itemsWithIssuedPlan 已下达过计划 (已下达计划量超过尾差) 的产品行
+     * @param itemsWithIssuedPlan 已下达过正量计划的产品行 (0.0001 也是合法数量)
      * @param anchorByMaterial 物料行 → 它的自制锚点产品行 (自制子件任务, 含合单批次成员)
      * @param materialsWithLiveDownstream 挂着仍有效下游单据的物料行
      * @param groupKeysWithLiveAction 还有未撤销供给行动的操作组
@@ -145,7 +143,7 @@ final class MaterialAnalysisRouteAutoConfirm {
 
     /** 已下达计划量是否算「下达过」. */
     static boolean issued(BigDecimal issuedPlanQty) {
-        return issuedPlanQty != null && issuedPlanQty.compareTo(ISSUED_EPSILON) > 0;
+        return issuedPlanQty != null && issuedPlanQty.signum() > 0;
     }
 
     /** 下游引用是否仍然有效: 已撤销的行动、已红冲的顶层产出交接不算. */

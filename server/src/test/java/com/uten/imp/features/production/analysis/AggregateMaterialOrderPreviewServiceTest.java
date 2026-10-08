@@ -270,6 +270,85 @@ class AggregateMaterialOrderPreviewServiceTest {
         assertThat(shown.sources().getFirst().allocatedQty()).isZero();
     }
 
+    @Test void fullyDelegatedIssuedMemberCanExplicitlyAppendPublicOutputWithoutRestoringPrivateCapacity() {
+        SupplyActionView action=sharedAction("300","100");
+        MaterialView member=retiredMaterial("DELEGATED_TO_MAKE_CHILD");
+        doReturn(List.of(reference(action,"300"))).when(member).downstreamReferences();
+        var snapshot=view(List.of(),List.of(member),List.of(action));
+        GroupPreview append=service().resolve(ANALYSIS,request(List.of(group(List.of(member),"25",true))),snapshot).groups().getFirst();
+        assertThat(append.blockedReason()).isNull();
+        assertThat(append.remainingQty()).isZero();
+        assertThat(append.orderedQty()).isEqualByComparingTo("400");
+        assertThat(append.publicExtraQty()).isEqualByComparingTo("25");
+        assertThat(append.sources()).singleElement().satisfies(source->assertThat(source.allocatedQty()).isZero());
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(List.of(member),"25",false))),snapshot)
+                .groups().getFirst().blockedReason()).contains("公共备货");
+        when(action.status()).thenReturn("CANCELLED");
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(List.of(member),"0",false))),snapshot)
+                .groups().getFirst().blockedReason()).contains("已转交");
+    }
+
+    @Test void issuedOriginalWithRetiredAliasRemainsExactAndPurePublicInsteadOfBeingDropped() {
+        SupplyActionView action=sharedAction("300","100");
+        MaterialView member=retiredMaterial("DELEGATED_TO_MAKE_CHILD");
+        MaterialView retired=retiredMaterial("INACTIVE_PARENT_COVERED");
+        doReturn(List.of(reference(action,"300"))).when(member).downstreamReferences();
+        doReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                BigDecimal.ZERO,qty("400"),qty("300"),qty("400"),true,BigDecimal.ZERO,BigDecimal.ZERO,List.of(retired.materialLineId()),true)).when(member).aggregatePreparation();
+        GroupPreview append=service().resolve(ANALYSIS,request(List.of(group(List.of(member),"10",true))),
+                view(List.of(),List.of(member,retired),List.of(action))).groups().getFirst();
+        assertThat(append.blockedReason()).isNull();
+        assertThat(append.publicExtraQty()).isEqualByComparingTo("10");
+        assertThat(append.sources()).singleElement().satisfies(source->{
+            assertThat(source.materialLineId()).isEqualTo(member.materialLineId());
+            assertThat(source.originalMaterialLineIds()).containsExactly(member.materialLineId());
+            assertThat(source.allocatedQty()).isZero();
+        });
+    }
+
+    @Test void zeroDemandCanonicalIssuedTargetAdmitsItsOriginalAndRejectsCancelledSupply() {
+        SupplyActionView action=sharedAction("0","100");
+        MaterialView member=retiredMaterial("DELEGATED_TO_MAKE_CHILD");
+        MaterialView canonical=retiredMaterial("DELEGATED_TO_MAKE_CHILD");
+        MaterialView retired=retiredMaterial("INACTIVE_PARENT_COVERED");
+        doReturn(List.of(reference(action,"0"))).when(canonical).downstreamReferences();
+        doReturn(new MaterialAnalysisContracts.AggregatePreparationView(
+                BigDecimal.ZERO,qty("100"),BigDecimal.ZERO,qty("100"),true,BigDecimal.ZERO,BigDecimal.ZERO,
+                List.of(canonical.materialLineId(),retired.materialLineId()),true)).when(member).aggregatePreparation();
+        var snapshot=view(List.of(),List.of(member,canonical,retired),List.of(action));
+        GroupPreview append=service().resolve(ANALYSIS,request(List.of(group(List.of(member),"0.0001",true))),snapshot).groups().getFirst();
+        assertThat(append.blockedReason()).isNull();
+        assertThat(append.publicExtraQty()).isEqualByComparingTo("0.0001");
+        assertThat(append.sources()).singleElement().satisfies(source->{
+            assertThat(source.materialLineId()).isEqualTo(canonical.materialLineId());
+            assertThat(source.originalMaterialLineIds()).containsExactly(member.materialLineId());
+            assertThat(source.allocatedQty()).isZero();
+        });
+        when(action.status()).thenReturn("CANCELLED");
+        assertThat(service().resolve(ANALYSIS,request(List.of(group(List.of(member),"0",false))),snapshot)
+                .groups().getFirst().blockedReason()).contains("已转交");
+    }
+
+    private static MaterialView retiredMaterial(String state) {
+        MaterialView member=material(UUID.randomUUID(),"retired-"+UUID.randomUUID(),"0");
+        when(member.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(member.actionable()).thenReturn(false);
+        when(member.requirementState()).thenReturn(state);
+        return member;
+    }
+
+    @Test void shippingAndReferenceContextsCannotOrderEvenWhenTheyRetainActiveDemandOrOldSupply() {
+        SupplyActionView action=sharedAction("300","100");
+        for(String stage:List.of("SHIP","REFERENCE")) {
+            MaterialView member=material(UUID.randomUUID(),stage,"100");
+            when(member.controlStage()).thenReturn(stage);
+            doReturn(List.of(reference(action,"300"))).when(member).downstreamReferences();
+            GroupPreview result=service().resolve(ANALYSIS,request(List.of(group(List.of(member),"1",false))),
+                    view(List.of(),List.of(member),List.of(action))).groups().getFirst();
+            assertThat(result.blockedReason()).isNotNull();
+        }
+    }
+
     @Test void legacyPublicQuantityIsRoundedAfterTheSelectedSourceSharesAreCombined() {
         SupplyActionView action=sharedAction("3","1");when(action.operationType()).thenReturn("SUPPLY");
         List<MaterialView> members=new ArrayList<>();
@@ -307,6 +386,7 @@ class AggregateMaterialOrderPreviewServiceTest {
     private static SupplyActionView sharedAction(String privateQty,String publicQty) {
         SupplyActionView action=mock(SupplyActionView.class);
         when(action.actionId()).thenReturn(UUID.randomUUID());when(action.operationType()).thenReturn("AGGREGATE_SUPPLY");
+        when(action.route()).thenReturn("MAKE");when(action.status()).thenReturn("CREATED");
         when(action.requestedQty()).thenReturn(qty(privateQty));when(action.publicSurplusQty()).thenReturn(qty(publicQty));
         return action;
     }
@@ -331,6 +411,27 @@ class AggregateMaterialOrderPreviewServiceTest {
         assertThat(result.sources()).hasSize(2);
         assertThat(result.sources()).extracting(SourcePreview::materialLineId).containsExactlyInAnyOrder(first.materialLineId(),second.materialLineId());
         assertThat(result.sources().stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("5");
+    }
+
+    @Test void originalDemandTotalSurvivesSplitAndSharedCanonicalTargetsWithoutCountingThemAgain() {
+        MaterialView first=material(UUID.randomUUID(),"original/one","0"),second=material(UUID.randomUUID(),"original/two","0");
+        MaterialView shared=material(UUID.randomUUID(),"canonical/shared","2"),split=material(UUID.randomUUID(),"canonical/split","1");
+        when(first.requiredQty()).thenReturn(BigDecimal.ZERO);when(second.requiredQty()).thenReturn(BigDecimal.ZERO);
+        when(first.sourceRequiredQty()).thenReturn(qty("100"));when(second.sourceRequiredQty()).thenReturn(qty("200"));
+        when(shared.sourceRequiredQty()).thenReturn(BigDecimal.ZERO);when(split.sourceRequiredQty()).thenReturn(BigDecimal.ZERO);
+        doReturn(new MaterialAnalysisContracts.AggregatePreparationView(qty("2"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,
+                qty("2"),qty("2"),List.of(shared.materialLineId(),split.materialLineId()),true)).when(first).aggregatePreparation();
+        doReturn(new MaterialAnalysisContracts.AggregatePreparationView(qty("1"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false,
+                qty("1"),qty("1"),List.of(shared.materialLineId()),true)).when(second).aggregatePreparation();
+        var snapshot=view(List.of(),List.of(first,second,shared,split));
+        var result=service().resolve(ANALYSIS,request(List.of(group(List.of(first,second),"3",false))),snapshot).groups().getFirst();
+        assertThat(result.sourceRequiredQty()).isEqualByComparingTo("300");
+        assertThat(result.sources()).hasSize(2);
+        assertThat(result.sources().stream().map(SourcePreview::allocatedQty).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("3");
+        var subset=service().resolve(ANALYSIS,request(List.of(group(List.of(first),"2",false))),snapshot).groups().getFirst();
+        assertThat(subset.sourceRequiredQty()).isEqualByComparingTo("100");
+        var canonicalOnly=service().resolve(ANALYSIS,request(List.of(group(List.of(shared),"1",false))),snapshot).groups().getFirst();
+        assertThat(canonicalOnly.sourceRequiredQty()).isZero();
     }
 
     @Test void anOriginalSourceBlockCannotBeBypassedByItsHealthyCanonicalTarget() {

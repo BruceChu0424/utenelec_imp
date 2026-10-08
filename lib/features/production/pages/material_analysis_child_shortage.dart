@@ -61,8 +61,9 @@ abstract class _MaterialAnalysisChildShortageState
   }) async {
     final analysis = _analysis;
     if (analysis == null || _busy || groups.isEmpty) return;
+    final sessionScope = _sessionScopeKey();
     await _loadTableAssignmentDefaults(analysis, mandatory: true);
-    if (!mounted) return;
+    if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) return;
     final ids = <String>{};
     setState(() {
       for (final group in groups) {

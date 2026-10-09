@@ -2,6 +2,7 @@
 
 > 路径：`lib/components/data_display/doc_status_badge.dart`（函数 `docStatusBadgeType`）· 渲染组件：[`UtenStatusBadge`](../../lib/components/data_display/uten_status_badge.dart)
 > 已接入（2026-09-10）：生产计划列表、生产日报列表、财务单据列表、销售单据列表、委外单据列表（含订货单「财务 / 执行状态」）、采购单据列表（含订货单财务态）。
+> 配色（2026-10-08, [ADR-169](../99-决策记录-ADR/ADR-169-状态色深色实底与逐页独立配色.md)）：各档一律深色实底白字（琥珀档亮底深棕字），明暗两主题同色；档位语义锚定见 [08-主题与配色 §2.5](../00-项目准则/08-主题与配色.md)。
 
 ## 一、解决什么
 

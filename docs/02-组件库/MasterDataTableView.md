@@ -429,18 +429,18 @@ return MasterDataTableView<Map<String, dynamic>>(
 
 实现集中在 `master_data_table_view_ai.dart`(part 文件), 主文件只多了两个列参数、登记/注销两行和一个 `_aiRebuild`。
 
-## 行高统一口径(2026-10-06)
+## 行高统一口径(2026-10-06; 2026-10-08 修订输入格为紧凑口径)
 
 用户拍板: 全站表格行高统一, 基准 = 生产调度与进度「进行中」段的表 —— **全部单行文本格, 行高 ≈37 逻辑像素**(身份格 bodyMedium 单行 ≈21 + 格子纵向留白 8×2)。行高是内容驱动的(无固定行高), 所以这个口径的执行方式是约束**格子里面的组件**, 不是改表格:
 
 - **读表**(所有列都没有输入控件)里, 任何格子的内容不得超过「单行文本」高度:
   - 动作用 [`UtenTableCellAction`](UtenTableCellAction.md)(文字动作, 高度=文本行), 不用 TextButton(主题最小高 40)/UtenButton(最小高 44) —— 按钮主题的最小触控高会把读行撑到 52-60。
-  - 内联下拉用 `UtenDropdownField(flat: true)`(文本+小箭头, 无边框), 不用 dense(描边框 39 高)。弹层行为与描边形态完全同一个。
+  - 内联下拉用 `UtenDropdownField(flat: true)`(文本+小箭头, 无边框), 不用 dense(描边形态自带框高)。弹层行为与描边形态完全同一个。
   - 文本一律 `maxLines: 1` + 省略号, 完整信息挂 Tooltip; 不用两行/softWrap。
   - 状态格的可点分支(InkWell)不垫垂直 Padding —— 格子的 8×2 留白已是点击区, 再叠 16px 会把行撑高(委外领料/车间任务状态格曾因此高 14px)。
   - 进度条用 `ProductionFlowProgress` 的单层 Row 形态, 不用「文字一行+进度条一行」的 Column。
-- **编辑表**(任一列有 TextField/Checkbox/下拉编辑)行高标准 = 39 的输入控件 + 16 留白 ≈55:
-  - TextField 统一 `InputDecoration(isDense: true)` 吃主题装饰, 删各页自拟的 contentPadding 压缩值(29-33 的控件高矮不一)。
-  - 下拉统一 `dense: true`(编辑语境保留描边, 可点性可见); 表内按钮超过 39 的换 UtenTableCellAction, Checkbox 包 `materialTapTargetSize: shrinkWrap`。
+- **表格内输入框**(2026-10-08 紧凑口径, [ADR-161 修订](../99-决策记录-ADR/ADR-161-表格行高统一读表单行基准与格内组件规范.md)): 统一为「车间内料仓 → 库存盘点 → 实盘数量」常驻输入格的紧凑尺寸(上下边距收窄), 由共享注入组件 `UtenTableCellInputTheme` 给出 **isDense + contentPadding 10·6**(单一事实源 `UtenEditableGridCellSpec`, `lib/components/inputs/uten_table_cell_spec.dart`)。三个宿主共用: 编辑表(`UtenEditableGrid`)行级、读表 `MasterDataTableView` 数据格、读表卡片格(`master_data_card_list.dart`); 读表内联输入格(原约 42 处裸 isDense TextField)由此一并紧凑, 不再吃全局主题 14·12。
+  - TextField 一律吃注入的紧凑装饰, 删各页自拟的 contentPadding 压缩值; 下拉统一 `dense: true`(编辑语境保留描边, 可点性可见); 表内超高按钮换 UtenTableCellAction, Checkbox 包 `materialTapTargetSize: shrinkWrap`。
+  - 2026-10-06 的「输入控件 39 / 编辑表行 ≈55」数字已失真(输入格 ~48 高变 ~38 高, 含输入格的行随内容下移约 8-12 逻辑像素), 以紧凑口径为准; 全局 inputDecorationTheme(表单/弹窗 14·12)不变——本口径只管表格格内。
 - **例外**: 树形列 `UtenTreeTableCell` 的 48dp 展开按钮是成文设计(触控目标), 树表行高不受本口径约束。
 - 行为锁: [`test/components/layout/master_table_row_height_uniformity_test.dart`](../../test/components/layout/master_table_row_height_uniformity_test.dart) 量各类读格内容高度, 超过单行基准即红。

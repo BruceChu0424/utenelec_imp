@@ -2590,9 +2590,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String billNo = str(document.get("bill_no"));
             String noun = purchase ? "采购" : "委外";
             String title = noun + "需求追加：" + billNo + "（追加 " + qty(addedQty) + "）";
-            // ADR-099 就地改大与 ADR-065 修订三滚动并入（新增明细行）共用本提醒。
             String content = "计划部在" + noun + "申请 " + billNo + " 上追加了 " + qty(addedQty)
-                    + "（改大未订货明细或并入新明细行），该申请尚未被订货引用。请到" + noun
+                    + "，该申请尚未订货，明细数量已直接改大。请到" + noun
                     + "申请详情核对，并从" + noun + "任务中心按新数量分解订货。";
             String actionRoute = (purchase ? "/purchase/requests/"
                     : "/subcontract/applications/") + documentId;

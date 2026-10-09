@@ -37,23 +37,6 @@ public interface ProductionSubcontractRequestPort {
      */
     void increaseProductionDraftLine(UUID applicationId, UUID applicationItemId, BigDecimal addedQty);
 
-    /**
-     * ADR-065 修订三（滚动合单）：找本物料分析最近一张「尚未被下游动过」的委外申请
-     * （全部明细未订货、无订货单来源行引用）。没有可并入的返回 null，调用方新开一张。
-     * [incomingLines] 为本次准备并入的行数，并入后超过单据规模上限的候选不算可并入。
-     */
-    MergeableDraft findMergeableProductionDraft(UUID materialAnalysisId, int incomingLines);
-
-    /**
-     * ADR-065 修订三：把明细行并入既有委外申请。行号接既有最大行号续排；
-     * 任一明细已被下游动过即拒绝。
-     */
-    DraftResult appendProductionDraftLines(
-            UUID applicationId,
-            String productionPlanNo,
-            UUID materialAnalysisId,
-            List<DraftLine> lines);
-
     enum LifecycleAction {
         CANCEL,
         REVERSE
@@ -80,11 +63,5 @@ public interface ProductionSubcontractRequestPort {
             UUID applicationId,
             String billNo,
             List<DraftLineResult> lines) {
-    }
-
-    /** {@link #findMergeableProductionDraft} 的命中结果：可继续并入明细的既有申请。 */
-    record MergeableDraft(
-            UUID applicationId,
-            String billNo) {
     }
 }

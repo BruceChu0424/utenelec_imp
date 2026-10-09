@@ -57,9 +57,20 @@ public class ProductionPurchaseRequestFacade {
             List<DraftLine> requestedLines,
             UUID applicantEmployeeId,
             UUID makerEmployeeId) {
-        List<DraftLine> lines = sortedLines(requestedLines);
+        List<DraftLine> lines = requestedLines == null
+                ? List.of()
+                : requestedLines.stream()
+                .filter(Objects::nonNull)
+                .sorted(Comparator
+                        .comparing((DraftLine line) ->
+                                new MaterialDimension(line.goodsId(), line.colorId()))
+                        .thenComparing(DraftLine::demandId))
+                .toList();
         if (lines.isEmpty()) {
             return null;
+        }
+        for (DraftLine line : lines) {
+            requireValid(line);
         }
 
         PurchaseRequest request = new PurchaseRequest();
@@ -82,36 +93,14 @@ public class ProductionPurchaseRequestFacade {
         mutationLocks.expectCreatedSource(createdSource);
         requestRepo.save(request);
 
-        List<DraftLineResult> created = insertDemandItems(
-                request, lines, productionPlanNo, materialAnalysisId, 0);
-        request.setTotalOriginal(BigDecimal.ZERO);
-        request.setTotalLocal(BigDecimal.ZERO);
-        requestRepo.save(request);
-        itemRepo.flush();
-        requestRepo.flush();
-        mutationLocks.registerCreatedSource(createdSource);
-        return new DraftResult(
-                request.getId(), request.getBillNo(), List.copyOf(created));
-    }
-
-    /**
-     * create 与 append 共用的明细写入：逐行货品快照、谱系（来源计划/销售订单号）
-     * 与锚定回执一致，保证并入行与新开行的数据形态完全相同。
-     */
-    private List<DraftLineResult> insertDemandItems(
-            PurchaseRequest request,
-            List<DraftLine> lines,
-            String productionPlanNo,
-            UUID materialAnalysisId,
-            int startLineNo) {
+        List<DraftLineResult> created = new ArrayList<>(lines.size());
         Map<UUID, PurchaseGoodsSnapshot> goodsSnapshots =
                 PurchaseGoodsSnapshot.fromMaster(
                         em,
                         lines.stream().map(DraftLine::goodsId).toList(),
                         PurchaseGoodsSnapshot.MASTER_AT_APPROVAL);
         OffsetDateTime snapshotLockedAt = OffsetDateTime.now();
-        List<DraftLineResult> created = new ArrayList<>(lines.size());
-        int lineNo = startLineNo;
+        int lineNo = 0;
         for (DraftLine line : lines) {
             lineNo++;
             PurchaseRequestItem item = new PurchaseRequestItem();
@@ -135,7 +124,7 @@ public class ProductionPurchaseRequestFacade {
             item.setAmountLocal(BigDecimal.ZERO);
             item.setOrderedQty(BigDecimal.ZERO);
             item.setGiftQty(BigDecimal.ZERO);
-            item.setDeliverDate(line.needDate() == null ? request.getNeedDate() : line.needDate());
+            item.setDeliverDate(line.needDate() == null ? needDate : line.needDate());
             item.setProductionPlanNo(productionPlanNo);
             item.setSourceDocNo(productionPlanNo);
             // 谱系打通：让采购员在申请/订货上直接看到「为哪些销售订单备料」（SOP 溯源要求）。
@@ -149,163 +138,14 @@ public class ProductionPurchaseRequestFacade {
                     item.getDeliverDate(),
                     item.getQty()));
         }
-        return created;
-    }
-
-    /**
-     * ADR-065 修订三（滚动合单）：找本物料分析最近一张「尚未被下游动过」的采购申请——
-     * 候选经 {@code preplan_supply_actions.external_document_id} 谱系限定同一分析、
-     * 且只认 {@code operation_type='SUPPLY'}（跨分析的公共在途认领/转拨行动引用别人的
-     * 单据，不算本分析自己的）。判定口径与 {@link #increaseProductionDraftLine} 一致：
-     * 申请开着、全部明细未订货、无任何订货单来源行引用（含待财务审核的草稿订货单）。
-     *
-     * @param incomingLines 本次准备并入的明细行数；并入后超过
-     *                      {@link com.uten.imp.common.validation.RequestLimits#DOCUMENT_LINES}
-     *                      的候选直接视为不可并入（落回新开一张，保持既有单据规模上限）
-     * @return 可并入的申请；没有则 null（调用方新开一张）
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public MergeableDraft findMergeableProductionDraft(UUID materialAnalysisId, int incomingLines) {
-        if (materialAnalysisId == null) return null;
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                        SELECT request.id, request.bill_no
-                        FROM purchase_requests request
-                        WHERE request.id IN (
-                                SELECT action.external_document_id
-                                FROM preplan_supply_actions action
-                                WHERE action.analysis_id = :analysisId
-                                  AND action.route = 'BUY'
-                                  AND action.operation_type = 'SUPPLY'
-                                  AND action.status <> 'CANCELLED'
-                                  AND action.external_document_type = 'PURCHASE_REQUEST'
-                                  AND action.external_document_id IS NOT NULL)
-                          AND COALESCE(request.is_deleted, FALSE) = FALSE
-                          AND request.status IN (0, 1)
-                          AND COALESCE(request.is_closed, FALSE) = FALSE
-                          AND COALESCE(request.is_stopped, FALSE) = FALSE
-                          AND NOT EXISTS (
-                                SELECT 1 FROM purchase_request_items item
-                                WHERE item.request_id = request.id
-                                  AND COALESCE(item.is_deleted, FALSE) = FALSE
-                                  AND COALESCE(item.ordered_qty, 0) > 0)
-                          AND NOT EXISTS (
-                                SELECT 1 FROM purchase_order_item_sources source
-                                JOIN purchase_order_items order_item
-                                  ON order_item.id = source.order_item_id
-                                 AND COALESCE(order_item.is_deleted, FALSE) = FALSE
-                                JOIN purchase_orders header
-                                  ON header.id = order_item.order_id
-                                 AND COALESCE(header.is_deleted, FALSE) = FALSE
-                                JOIN purchase_request_items item ON item.id = source.request_item_id
-                                WHERE item.request_id = request.id)
-                          AND (SELECT COUNT(*) FROM purchase_request_items item
-                               WHERE item.request_id = request.id
-                                 AND COALESCE(item.is_deleted, FALSE) = FALSE)
-                              + :incomingLines
-                              <= :maxLines
-                        ORDER BY request.created_at DESC, request.id DESC
-                        LIMIT 1
-                        """)
-                .setParameter("analysisId", materialAnalysisId)
-                .setParameter("incomingLines", incomingLines)
-                .setParameter("maxLines",
-                        com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES));
-        if (rows.isEmpty()) return null;
-        return new MergeableDraft((UUID) rows.getFirst()[0], (String) rows.getFirst()[1]);
-    }
-
-    /**
-     * ADR-065 修订三：把明细行并入既有采购申请（滚动合单）。与
-     * {@link #createProductionDraft} 共用明细写入；锁定与可并入校验同
-     * {@link #increaseProductionDraftLine} 的门槛，任一明细已被下游动过即拒绝。
-     * 表头需求日期压到新行最早交期；行号接既有最大行号续排。
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public DraftResult appendProductionDraftLines(
-            UUID requestId,
-            String productionPlanNo,
-            UUID materialAnalysisId,
-            List<DraftLine> requestedLines) {
-        List<DraftLine> lines = sortedLines(requestedLines);
-        if (lines.isEmpty()) {
-            return null;
-        }
-        PurchaseRequest request = em.find(
-                PurchaseRequest.class, requestId, LockModeType.PESSIMISTIC_WRITE);
-        if (request == null || request.isDeleted() || request.getStatus() == null
-                || (request.getStatus() != STATUS_DRAFT && request.getStatus() != STATUS_APPROVED)
-                || request.isClosed() || Boolean.TRUE.equals(request.getIsStopped())) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "采购申请已结案、中止、红冲或删除，不能并入明细");
-        }
-        requireAppendable(request.getId());
-        int startLineNo = ((Number) em.createNativeQuery("""
-                        SELECT COALESCE(MAX(line_no), 0) FROM purchase_request_items
-                        WHERE request_id = :requestId
-                        """)
-                .setParameter("requestId", requestId).getSingleResult()).intValue();
-        LocalDate earliest = lines.stream()
-                .map(DraftLine::needDate).filter(Objects::nonNull)
-                .reduce(ProductionPurchaseRequestFacade::earliest).orElse(null);
-        if (earliest != null
-                && (request.getNeedDate() == null || earliest.isBefore(request.getNeedDate()))) {
-            request.setNeedDate(earliest);
-            requestRepo.save(request);
-        }
-        List<DraftLineResult> created = insertDemandItems(
-                request, lines, productionPlanNo, materialAnalysisId, startLineNo);
+        request.setTotalOriginal(BigDecimal.ZERO);
+        request.setTotalLocal(BigDecimal.ZERO);
+        requestRepo.save(request);
         itemRepo.flush();
         requestRepo.flush();
-        return new DraftResult(request.getId(), request.getBillNo(), List.copyOf(created));
-    }
-
-    /** 排序 + 过滤 + 校验，create 与 append 共用的入口形态。 */
-    private static List<DraftLine> sortedLines(List<DraftLine> requestedLines) {
-        List<DraftLine> lines = requestedLines == null
-                ? List.of()
-                : requestedLines.stream()
-                        .filter(Objects::nonNull)
-                        .sorted(Comparator
-                                .comparing((DraftLine line) ->
-                                        new MaterialDimension(line.goodsId(), line.colorId()))
-                                .thenComparing(DraftLine::demandId))
-                        .toList();
-        lines.forEach(ProductionPurchaseRequestFacade::requireValid);
-        return lines;
-    }
-
-    private void requireAppendable(UUID requestId) {
-        Number ordered = (Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM purchase_request_items
-                WHERE request_id = :requestId AND is_deleted = FALSE
-                  AND COALESCE(ordered_qty, 0) > 0
-                """).setParameter("requestId", requestId).getSingleResult();
-        if (ordered.longValue() > 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "采购申请已有明细订货，不能并入明细，请另立申请");
-        }
-        Number referenced = (Number) em.createNativeQuery("""
-                SELECT COUNT(*)
-                FROM purchase_order_item_sources source
-                JOIN purchase_order_items order_item
-                  ON order_item.id = source.order_item_id
-                 AND COALESCE(order_item.is_deleted, FALSE) = FALSE
-                JOIN purchase_orders header
-                  ON header.id = order_item.order_id
-                 AND COALESCE(header.is_deleted, FALSE) = FALSE
-                JOIN purchase_request_items item ON item.id = source.request_item_id
-                 AND item.request_id = :requestId AND item.is_deleted = FALSE
-                """).setParameter("requestId", requestId).getSingleResult();
-        if (referenced.longValue() > 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "采购申请明细已被订货单引用，不能并入明细，请另立申请");
-        }
-    }
-
-    private static LocalDate earliest(LocalDate left, LocalDate right) {
-        if (left == null) return right;
-        if (right == null) return left;
-        return left.isBefore(right) ? left : right;
+        mutationLocks.registerCreatedSource(createdSource);
+        return new DraftResult(
+                request.getId(), request.getBillNo(), List.copyOf(created));
     }
 
     /**
@@ -519,11 +359,5 @@ public class ProductionPurchaseRequestFacade {
             UUID requestId,
             String billNo,
             List<DraftLineResult> lines) {
-    }
-
-    /** {@link #findMergeableProductionDraft} 的命中结果：可继续并入明细的既有申请。 */
-    public record MergeableDraft(
-            UUID requestId,
-            String billNo) {
     }
 }

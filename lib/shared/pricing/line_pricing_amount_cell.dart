@@ -41,9 +41,12 @@ class LinePricingAmountCell extends StatelessWidget {
               child: TextButton(
                 onPressed: enabled ? () => _openMenu(buttonContext) : null,
                 style: TextButton.styleFrom(
-                  minimumSize: const Size(52, 40),
+                  // 紧凑格内按钮：高度上限交给输入格（UtenEditableGridCellSpec），
+                  // 最小高 24 只保住可点面积；旧值 40 会把整行撑回旧行高。
+                  minimumSize: const Size(52, 24),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

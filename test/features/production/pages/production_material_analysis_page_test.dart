@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -1926,7 +1927,10 @@ void main() {
       expect(find.text('生产中 · 可报工 50%'), findsOneWidget);
       // 已转生产行双击进入生产计划跟踪（旧卡片的整高计划入口动作迁移；
       // MasterDataTableView 列表页交互 = 单击选中、双击打开）。
-      final transferredRow = find.textContaining('测试产品');
+      // 2026-10-08 状态列前置后窄屏(375)行内首列是「进度 / 待办」，名称列在
+      // 首列右侧被横向滚出屏外——双击锚点改用首列状态文字（同一行，行级
+      // 双击同样触发打开）。
+      final transferredRow = find.text('生产中 · 可报工 50%');
       expect(transferredRow, findsOneWidget);
       await tester.tap(transferredRow);
       await tester.tap(transferredRow);
@@ -8984,27 +8988,19 @@ Future<void> _openMaterialTableDetails(
   String materialLineId,
 ) async {
   final row = await _materialTableRowVisible(tester, materialLineId);
-  final name = find
-      .descendant(
-        of: row,
-        matching: find.byWidgetPredicate(
-          (widget) =>
-              widget is Text &&
-              (widget.data?.runes.length ??
-                      widget.textSpan?.toPlainText().runes.length ??
-                      0) >
-                  2 &&
-              !RegExp(
-                r'^P\d+(?:\.\d+)*$',
-              ).hasMatch(widget.data ?? widget.textSpan?.toPlainText() ?? ''),
-        ),
-      )
-      .first;
-  await tester.ensureVisible(name);
+  // 2026-10-08 状态列前置：行内第一个长文本不再是物料名（首列是「进度 /
+  // 待办」，双击到它会打开供给进度弹窗而不是行详情）。改锚定身份格
+  // （UtenTreeTableCell，标题即物料名）的中心双击，与列序解耦。
+  final identity = find.descendant(
+    of: row,
+    matching: find.byType(UtenTreeTableCell),
+  );
+  expect(identity, findsOneWidget, reason: '行内应有一个身份格（物料名）');
+  await tester.ensureVisible(identity);
   await tester.pumpAndSettle();
-  await tester.tapAt(tester.getCenter(name));
+  await tester.tapAt(tester.getCenter(identity));
   await tester.pump(const Duration(milliseconds: 80));
-  await tester.tapAt(tester.getCenter(name));
+  await tester.tapAt(tester.getCenter(identity));
   await tester.pumpAndSettle();
   expect(
     find.byKey(ValueKey('material-node-details-$materialLineId')),

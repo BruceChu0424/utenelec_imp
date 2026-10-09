@@ -963,8 +963,10 @@ void main() {
     final mainLabel = find.byKey(
       const ValueKey('material-preparation-status-MATERIAL|m-2'),
     );
+    // 2026-10-08 状态色改版：主表/桶的格内容换成本页族的继承版
+    // MaterialAnalysisPreparationCell（文字继承表格对比度前景），相位样式不变。
     final style = tester
-        .widget<MaterialPreparationStatusLabel>(mainLabel)
+        .widget<MaterialAnalysisPreparationCell>(mainLabel)
         .style;
     expect(style.phase, MaterialPreparationStatusPhase.awaitingReceipt);
     final background = find.ancestor(
@@ -989,7 +991,7 @@ void main() {
       ValueKey('material-preparation-progress-${_groupKey('m-2')}'),
     );
     final bucketStyle = tester
-        .widget<MaterialPreparationStatusLabel>(bucketLabel)
+        .widget<MaterialAnalysisPreparationCell>(bucketLabel)
         .style;
     expect(bucketStyle.background, style.background);
     expect(bucketStyle.foreground, style.foreground);

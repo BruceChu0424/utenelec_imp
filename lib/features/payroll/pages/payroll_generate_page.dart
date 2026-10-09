@@ -491,9 +491,11 @@ class _ServerBatchPreview extends StatelessWidget {
               UtenInfoRow(
                 label: '批次状态',
                 value: null,
+                // 与审核页批次徽章同源（ADR-169：PayrollBatchStatus.badgeType），
+                // 不再一律中性灰——待审核/已通过/已发布各归各档。
                 valueWidget: UtenStatusBadge(
                   label: batch.status.label,
-                  type: UtenStatusBadgeType.neutral,
+                  type: batch.status.badgeType,
                 ),
               ),
               UtenInfoRow(label: '员工人数', value: '${batch.headcount} 人'),

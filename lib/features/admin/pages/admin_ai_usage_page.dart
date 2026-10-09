@@ -227,11 +227,14 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
         _ => l10n.aiUsageStatusNormal,
       };
 
+  /// 状态徽章档位（ADR-169 锚定）：正常=绿 / 超限=橙（用量越过个人配额的
+  /// 风险注意态，未锁死也不是等待外部——原黄档语义不符）/ 已禁用=灰
+  /// （停用归中性终态，原红档与「正常」拉不开语义——正常才是绿）。
   static UtenStatusBadgeType _statusBadgeType(AiUsagePerson person) =>
       switch (_statusKey(person)) {
-        'disabled' => UtenStatusBadgeType.danger,
-        'over' => UtenStatusBadgeType.warning,
-        _ => UtenStatusBadgeType.neutral,
+        'disabled' => UtenStatusBadgeType.neutral,
+        'over' => UtenStatusBadgeType.orange,
+        _ => UtenStatusBadgeType.success,
       };
 
   List<AiUsagePerson> get _visiblePeople {
@@ -470,6 +473,28 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
 
   List<MasterColumnDef<AiUsagePerson>> _columns(AppLocalizations l10n) {
     return [
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：状态列（正常 / 超限 /
+      // 已禁用，ADR-169 档位徽章）前置。
+      MasterColumnDef(
+        key: 'status',
+        label: l10n.aiUsageColStatus,
+        width: 110,
+        value: (row) => _statusLabel(l10n, row),
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, row) => Semantics(
+          excludeSemantics: true,
+          label: '${l10n.aiUsageColStatus} ${_statusLabel(l10n, row)}',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: UtenStatusBadge(
+              key: ValueKey('ai-usage-status-${row.userId}'),
+              label: _statusLabel(l10n, row),
+              type: _statusBadgeType(row),
+              size: UtenStatusBadgeSize.small,
+            ),
+          ),
+        ),
+      ),
       MasterColumnDef(
         key: 'person',
         label: l10n.aiUsageColPerson,
@@ -558,26 +583,6 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
         value: (row) => row.dailyTokenLimit == null
             ? l10n.aiUsageLimitFollowGlobal
             : formatAiUsageNumber(row.dailyTokenLimit!),
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: l10n.aiUsageColStatus,
-        width: 110,
-        value: (row) => _statusLabel(l10n, row),
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (context, row) => Semantics(
-          excludeSemantics: true,
-          label: '${l10n.aiUsageColStatus} ${_statusLabel(l10n, row)}',
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: UtenStatusBadge(
-              key: ValueKey('ai-usage-status-${row.userId}'),
-              label: _statusLabel(l10n, row),
-              type: _statusBadgeType(row),
-              size: UtenStatusBadgeSize.small,
-            ),
-          ),
-        ),
       ),
       MasterColumnDef(
         key: 'lastUsed',

@@ -283,9 +283,10 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
             label: '状态',
             width: 72,
             value: (r) => wmRequisitionStatusLabel(r.status),
-            cellColor: (context, r) => udenStatusBadgeCellColor(
-              context,
-              wmRequisitionStatusBadgeType(r.status),
+            // 任务分段（待发料/待收退回）里 PENDING=轮到仓库动手 → 绿；
+            // 记录分段混排 PENDING/DONE/CANCELLED，沿用黄/绿/灰互区分。
+            cellColor: (context, r) => utenStatusBadgeCellColor(
+              wmRequisitionStatusBadgeType(r.status, taskView: pending),
             ),
           ),
           MasterColumnDef(
@@ -537,8 +538,7 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             // 已盘点待结算琥珀 / 已结算灰。
             cellColor: (context, r) => r.period == null
                 ? null
-                : udenStatusBadgeCellColor(
-                    context,
+                : utenStatusBadgeCellColor(
                     wmPeriodStatusBadgeType(r.period!.status),
                   ),
           ),
@@ -549,14 +549,13 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             value: (r) => r.period == null
                 ? null
                 : wmCloseStateLabel(r.period!.closeState),
-            // 自动结算中蓝 / 差资料琥珀 / 结算没成功红 / 已撤销灰；开着不上色。
+            // 自动结算中蓝 / 差资料红（硬阻断）/ 结算没成功红 / 已撤销灰；
+            // 开着不上色。
             cellColor: (context, r) {
               final type = r.period == null
                   ? null
                   : wmCloseStateBadgeType(r.period!.closeState);
-              return type == null
-                  ? null
-                  : udenStatusBadgeCellColor(context, type);
+              return type == null ? null : utenStatusBadgeCellColor(type);
             },
           ),
           MasterColumnDef(

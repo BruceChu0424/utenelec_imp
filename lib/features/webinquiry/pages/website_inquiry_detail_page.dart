@@ -127,12 +127,7 @@ class _HeaderCard extends StatelessWidget {
               ),
               UtenStatusBadge(
                 label: inquiry.status.label,
-                type: switch (inquiry.status) {
-                  WebsiteInquiryStatus.newOne => UtenStatusBadgeType.info,
-                  WebsiteInquiryStatus.following => UtenStatusBadgeType.warning,
-                  WebsiteInquiryStatus.converted => UtenStatusBadgeType.success,
-                  WebsiteInquiryStatus.closed => UtenStatusBadgeType.neutral,
-                },
+                type: websiteInquiryStatusBadgeType(inquiry.status),
               ),
             ],
           ),

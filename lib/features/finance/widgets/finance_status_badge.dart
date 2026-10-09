@@ -1,8 +1,11 @@
-// 钱流单据状态徽章（草稿/已审/红冲）。渲染走共享 UtenDocStatusPill
-//（2026-08-16 起统一带描边/labelSmall 的共享口径）。
+// 钱流单据状态徽章（草稿/已审/红冲）。渲染走共享 UtenStatusBadge
+//（ADR-169：状态一律走十档深色实底，草稿=灰 / 已审=绿 / 红冲=红，
+// 与列表状态列 docStatusBadgeType 同一档位映射；旧的 xStatusColor
+// 裸色映射已随之删除）。
 import 'package:flutter/material.dart';
 
-import '../../../components/data_display/uten_doc_status_pill.dart';
+import '../../../components/data_display/doc_status_badge.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../models/finance_doc.dart';
 
 class FinanceStatusBadge extends StatelessWidget {
@@ -16,11 +19,11 @@ class FinanceStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return UtenDocStatusPill(
+    return UtenStatusBadge(
       label: closed && status == kFinanceStatusApproved
           ? '已结'
           : financeStatusLabel(status),
-      color: financeStatusColor(status, Theme.of(context)),
+      type: docStatusBadgeType(status),
     );
   }
 }

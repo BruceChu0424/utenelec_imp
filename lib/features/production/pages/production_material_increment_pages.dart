@@ -8,6 +8,8 @@ import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -127,6 +129,21 @@ class _IncrementListState
                       label: '状态',
                       width: 72,
                       value: (row) => materialIncrementStatus(row.status),
+                      // 状态整格底色（ADR-169 逐页显式映射）：待计划部审批=黄
+                      // （等外部审批，无异常）/ 已批准=绿 / 已退回=红（驳回）/
+                      // 授权已撤销=灰（中性终态）；待核对保持无色纯文本。
+                      cellColor: (context, row) {
+                        final type = switch (row.status) {
+                          'PENDING' => UtenStatusBadgeType.warning,
+                          'APPROVED' => UtenStatusBadgeType.success,
+                          'RETURNED' => UtenStatusBadgeType.danger,
+                          'CANCELLED' => UtenStatusBadgeType.neutral,
+                          _ => null,
+                        };
+                        return type == null
+                            ? null
+                            : utenStatusBadgeCellColor(type);
+                      },
                     ),
                     for (final field in const [
                       ('planNo', '计划号', 150.0),

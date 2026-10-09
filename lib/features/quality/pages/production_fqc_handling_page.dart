@@ -26,6 +26,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -1125,9 +1126,11 @@ class _ProductionFqcSheetHandlingPageState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 UtenStatusBadge(
+                  // ADR-169：待检=绿——本页是品质部自己的办理页，待检即
+                  // 「轮到品质动手」的就绪档；已办结=灰。
                   label: sheet.active ? '待检' : '已办结',
                   type: sheet.active
-                      ? UtenStatusBadgeType.info
+                      ? UtenStatusBadgeType.success
                       : UtenStatusBadgeType.neutral,
                 ),
                 const SizedBox(width: UtenSpacing.s8),
@@ -1237,6 +1240,19 @@ class _ProductionFqcSheetHandlingPageState
       label: '提交状态',
       width: 72,
       value: (row) => row.submissionLabel,
+      // 提交状态整格底色（ADR-169 逐页显式映射）：明确拒绝=红（服务端驳回）/
+      // 待核对=橙（结果未确认、需人工核对原报告——风险中间态）/ 已确认=绿
+      // （提交成功办结）/ 未提交=灰（锚定：未提交属中性态）。
+      cellColor: (context, row) => utenStatusBadgeCellColor(
+        row.completed || row.submissionState == FqcSubmissionState.confirmed
+            ? UtenStatusBadgeType.success
+            : switch (row.submissionState) {
+                FqcSubmissionState.rejected => UtenStatusBadgeType.danger,
+                FqcSubmissionState.unknown => UtenStatusBadgeType.orange,
+                FqcSubmissionState.notSent => UtenStatusBadgeType.neutral,
+                FqcSubmissionState.confirmed => UtenStatusBadgeType.success,
+              },
+      ),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'reportNo',
@@ -1856,9 +1872,10 @@ class _ProductionFqcInspectionPageState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 UtenStatusBadge(
+                  // 同上：待检=绿（轮到品质动手），已办结=灰。
                   label: fqcStatusLabel(inspection),
                   type: inspection.active
-                      ? UtenStatusBadgeType.info
+                      ? UtenStatusBadgeType.success
                       : UtenStatusBadgeType.neutral,
                 ),
                 const SizedBox(width: UtenSpacing.s8),

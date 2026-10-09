@@ -449,10 +449,13 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       _ensureScopeLoaded(definition);
     }
     final count = _grants[scope]?.length ?? 0;
+    // 档位（ADR-169 锚定）：仅本人=绿（最小权限常态）/ 额外查看=蓝（信息性
+    // 扩展）/ 查看全部=橙（数据面最大的常驻注意点——不是等待外部，原黄档
+    // 语义不符）/ 功能未启用=灰。
     final (statusLabel, statusType) = !definition.enabled
         ? ('功能未启用', UtenStatusBadgeType.neutral)
         : viewAll
-        ? ('查看全部覆盖', UtenStatusBadgeType.warning)
+        ? ('查看全部覆盖', UtenStatusBadgeType.orange)
         : count > 0
         ? ('额外查看 $count 人', UtenStatusBadgeType.info)
         : ('仅本人', UtenStatusBadgeType.success);

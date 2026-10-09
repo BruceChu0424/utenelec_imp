@@ -387,13 +387,17 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         ? l10n.bomLearnedEdge
         : null;
 
+    // 档位（ADR-169 锚定）：已删除不再自动加入=灰（中性终态）/ BOM 外实际
+    // 用过的料=橙（实际耗用未被 BOM 覆盖的注意态，待计划员判定收编——不是
+    // 等待外部，原黄档语义不符）/ 系统学习=品红（来源分类强调，非语义状态，
+    // 与组装信息表「学习来源」列同色）。
     UtenStatusBadgeType? learnStateType(GoodsBomLearningComponent row) =>
         row.released
         ? UtenStatusBadgeType.neutral
         : !row.inBom
-        ? UtenStatusBadgeType.warning
+        ? UtenStatusBadgeType.orange
         : row.systemLearned
-        ? UtenStatusBadgeType.info
+        ? UtenStatusBadgeType.fuchsia
         : null;
 
     return [
@@ -404,7 +408,7 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         value: (row) => learnStateText(row) ?? '—',
         cellColor: (context, row) {
           final type = learnStateType(row);
-          return type == null ? null : udenStatusBadgeCellColor(context, type);
+          return type == null ? null : utenStatusBadgeCellColor(type);
         },
       ),
       MasterColumnDef(

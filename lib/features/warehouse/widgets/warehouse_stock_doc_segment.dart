@@ -18,7 +18,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -406,7 +408,25 @@ class _WarehouseStockDocSegmentState
                 _ => stockStatusLabel(it.status),
               }
             : stockStatusLabel(it.status),
+        // 状态分类色铺整格底色（ADR-169）：0/1/-1 与列表页/采购单据列表同款
+        // docStatusBadgeType——wdraw 的「待仓库收料」也是 status=0 的未办结单
+        // （灰），「仓库已收料」=绿、「已红冲」=红；该段的行动性由分段上的
+        // 可办徽章计数表达，状态列只讲单据状态机。
+        cellColor: (context, it) =>
+            utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
       ),
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：出库进度（未出库 /
+      // 部分出库 / 已出完）是领料单的第二条进度列，紧跟状态列前置。
+      if (isDraw)
+        MasterColumnDef(
+          key: 'issueStatus',
+          label: '出库进度',
+          width: 110,
+          value: (it) => drawIssueStatusLabel(it.issueStatus),
+          // 出库进度整格底色（ADR-169，与列表页共用 stock_doc.dart 的同一映射）：
+          // 未出库=黄 / 部分出库=橙 / 已出完=绿。
+          cellColor: (context, it) => drawIssueStatusCellColor(it.issueStatus),
+        ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
@@ -449,13 +469,6 @@ class _WarehouseStockDocSegmentState
           width: 160,
           value: (it) =>
               ref.read(masterNameServiceProvider).warehouse(it.toWarehouseId),
-        ),
-      if (isDraw)
-        MasterColumnDef(
-          key: 'issueStatus',
-          label: '出库进度',
-          width: 110,
-          value: (it) => drawIssueStatusLabel(it.issueStatus),
         ),
     ];
   }

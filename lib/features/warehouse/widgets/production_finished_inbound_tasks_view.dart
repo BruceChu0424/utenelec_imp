@@ -15,6 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -613,11 +615,19 @@ class _ProductionFinishedInboundTasksViewState
   }
 
   List<MasterColumnDef<ProductionFinishedInboundTask>> get _columns => [
-    const MasterColumnDef(
+    MasterColumnDef(
       key: 'taskStage',
       label: '任务步骤',
       width: 190,
       value: _taskStageLabel,
+      // ADR-169 逐页显式映射（两个分段各自独立）：待登记入库 / 品质通过·待最终
+      // 点收=绿（轮到仓库动手的绿灯）；短收余量待点收=紫（部分点收后剩余——
+      // 部分就绪档，与本分段内「品质通过待点收」的绿拉开）。
+      cellColor: (context, task) => task.isArrivalRegistration
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.success)
+          : task.residualTask
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.violet)
+          : utenStatusBadgeCellColor(UtenStatusBadgeType.success),
     ),
     const MasterColumnDef(
       key: 'taskNo',

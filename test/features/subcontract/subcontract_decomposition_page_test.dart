@@ -431,7 +431,7 @@ void main() {
   }
 
   group('ADR-143 缺 BOM 的委外申请行', () {
-    testWidgets('yellow status with the R&D task number, no selection, '
+    testWidgets('red status with the R&D task number, no selection, '
         'clicking the status reminds R&D and reloads', (tester) async {
       _desktop(tester, const Size(1600, 1000));
       final gateway = _Gateway(_bomMissingData());
@@ -457,14 +457,15 @@ void main() {
       final missing = table.items.firstWhere(
         (task) => task.taskId == 'task-bom',
       );
-      // 不能勾选下单；等研发不是本部门的错，状态格黄色（行底色已退役）。
+      // 不能勾选下单；锁死不能往下=深红（ADR-169「不能执行不是等待」，
+      // 行底色已退役）。
       expect(table.idOf!(missing), isNull);
       expect(table.rowColor, isNull);
       final status = table.columns.firstWhere((c) => c.key == 'status');
       final context = tester.element(find.byType(SubcontractDecompositionPage));
       expect(
         status.cellColor!(context, missing),
-        udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+        utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
       );
       expect(find.text('缺 BOM·已通知研发(RD0007)'), findsWidgets);
       // 勾选位锁图标悬浮说明为什么不能下单。
@@ -623,7 +624,8 @@ void main() {
         final ready = row('task-ready');
         expect(locked.isWaitingKit, isTrue);
         expect(partial.isKitPartial, isTrue);
-        // 锁行：不能勾选，黄色状态格；整行红底已退役（2026-10-08 用户口径）。
+        // 锁行：不能勾选，深红状态格（锁死不能下单=红，ADR-169；
+        // 整行红底已退役）；可下单=绿（就绪可动手）；可部分下单=紫。
         expect(table.idOf!(locked), isNull);
         expect(table.rowColor, isNull);
         expect(table.idOf!(partial), 'task-partial');
@@ -634,11 +636,15 @@ void main() {
         );
         expect(
           status.cellColor!(context, locked),
-          udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
         );
         expect(
           status.cellColor!(context, partial),
-          udenStatusBadgeCellColor(context, UtenStatusBadgeType.violet),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
+        );
+        expect(
+          status.cellColor!(context, ready),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.success),
         );
         expect(find.text('等物料齐套'), findsOneWidget);
         expect(find.text('可部分下单'), findsOneWidget);
@@ -1094,7 +1100,8 @@ void main() {
         // 由谁动手；状态格悬浮同句(两处都在)。
         expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(3));
         expect(find.byTooltip('已提交 30 个 的领料，等仓库发出'), findsNWidgets(2));
-        // 状态列文案 + 车间同款整格底色(蓝 / 紫 / 青 / 品红 / 灰蓝)。
+        // 状态列文案 + ADR-169 十档整格底色(绿 / 紫 / 青 / 红 / 红——
+        // 等计划安排与等待物料都是「不能领」，同红靠文案区分)。
         expect(find.text('可领 60 个·去领料'), findsOneWidget);
         expect(find.text('可领 20 个·去领料'), findsOneWidget);
         expect(find.text('已提交领料·待仓库发料'), findsOneWidget);
@@ -1107,7 +1114,15 @@ void main() {
         final colors = [
           for (final row in table.items) status.cellColor!(context, row),
         ];
-        expect(colors.toSet(), hasLength(5));
+        expect(colors, [
+          // 可领=绿(就绪可动手) / 部分可领=紫 / 待仓库发料=青(等仓库)。
+          utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.sky),
+          // 等计划安排(没有在途供应)与等待物料(料没到)都不能领=红。
+          utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+          utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+        ]);
         // 可领与待仓库发同时存在时悬浮提示两者。
         expect(
           find.byTooltip('可领 20 个；另有 10 个已提交领料，等仓库发料；其余还缺物料，到货后可继续领'),

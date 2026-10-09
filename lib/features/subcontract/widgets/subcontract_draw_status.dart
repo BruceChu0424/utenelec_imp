@@ -1,10 +1,11 @@
 // ADR-143 委外「领料」分段的状态词表与整格底色。
 //
-// 版式照「我的车间任务」：状态列整格铺实底，色相与车间等待物料段一致——
-// 蓝 = 可领(剩余全部)·去领料 / 紫 = 部分可领·去领料 / 青 = 已提交领料·待仓库发料 /
-// 品红 = 等计划安排(还缺的物料没有在途供应) / 灰蓝 = 等待物料。红色只留给分段红数。
-// 车间的色调助手在生产模块里，跨模块不能引用(test/architecture_boundaries_test.dart)，
-// 这里按同一套色值保留一份委外自己的小词表。
+// 档位按 ADR-169 锚定（色值用共享 UtenColors.status* 十档，不再自留一份）：
+// 绿 = 可领(剩余全部)·去领料（就绪可动手）/ 紫 = 部分可领（部分就绪）/
+// 青 = 已提交领料·待仓库发料（等仓库，与等财务的黄档拉开）/
+// 红 = 等计划安排（还缺的物料没有在途供应，锁死要计划先安排）、
+// 等待物料（料没到不能领）——「不能执行」不是等待（2026-10-08 用户口径），
+// 两档同红靠文案区分（缺 N 种 / 已备 X/Y 种）。
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_colors.dart';
@@ -29,13 +30,14 @@ SubcontractDrawTone subcontractDrawToneOf(SubcontractDrawStatus status) =>
       SubcontractDrawStatus.unknown => SubcontractDrawTone.waiting,
     };
 
-/// 状态列整格底色(深浅两主题同色，文字黑白由表格 cellColor 约定自适应)。
+/// 状态列整格底色（共享十档实底，深浅两主题同色，文字黑白由表格 cellColor
+/// 约定自适应）。
 Color subcontractDrawCellColor(SubcontractDrawTone tone) => switch (tone) {
-  SubcontractDrawTone.toDraw => UtenColors.info,
-  SubcontractDrawTone.toDrawPartial => UtenColors.violet,
-  SubcontractDrawTone.pending => UtenColors.teal400,
-  SubcontractDrawTone.waitPlanning => UtenColors.fuchsia,
-  SubcontractDrawTone.waiting => UtenColors.slate500,
+  SubcontractDrawTone.toDraw => UtenColors.statusSuccess,
+  SubcontractDrawTone.toDrawPartial => UtenColors.statusViolet,
+  SubcontractDrawTone.pending => UtenColors.statusSky,
+  SubcontractDrawTone.waitPlanning => UtenColors.statusDanger,
+  SubcontractDrawTone.waiting => UtenColors.statusDanger,
 };
 
 IconData subcontractDrawToneIcon(SubcontractDrawTone tone) => switch (tone) {
@@ -103,6 +105,24 @@ String subcontractDrawMaterialStateLabel(SubcontractDrawMaterial material) =>
       'SHORT' => '缺料',
       'CLOSED' => '已结束领料',
       _ => '—',
+    };
+
+/// 物料行「状态」列整格底色（任务详情与订货单进度共用，档位对齐
+/// [subcontractDrawCellColor] 的任务行口径）：可领=绿（就绪可动手）/
+/// 已备=紫（本物料已齐、被同批其它物料卡住——部分齐套，同任务行「部分可领
+/// =紫」）/ 待仓库发料=青（等仓库发料，与等财务的黄档拉开）/ 缺料=红
+/// （料没到或在途未到都不能领——「不能执行」不是等待，不区分有无在途，
+/// 文案与供应来源列区分）/ 已发齐·已结束领料=灰（办结终态）；未知无色。
+Color? subcontractDrawMaterialCellColor(SubcontractDrawMaterial material) =>
+    switch (material.state.toUpperCase()) {
+      'SENT_FULL' || 'CLOSED' => UtenColors.statusNeutral,
+      'PENDING' => UtenColors.statusSky,
+      'DRAWABLE' =>
+        material.drawableQty > 0
+            ? UtenColors.statusSuccess
+            : UtenColors.statusViolet,
+      'SHORT' => UtenColors.statusDanger,
+      _ => null,
     };
 
 /// 物料行「供应来源」列(领料任务详情与订货单进度共用)：服务端只给还缺的开放行带在途来源；

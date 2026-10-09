@@ -12,6 +12,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
 import '../../support/audit_screenshot_support.dart';
 
 class _MemoryLayout extends PlatformTableLayoutNotifier {
@@ -33,17 +34,6 @@ class _Row extends EditableGridRow {
 }
 
 void main() {
-  test(
-    'negative and partial status text takes precedence over successful substrings',
-    () {
-      expect(utenStatusLabelType('未完成'), UtenStatusBadgeType.warning);
-      expect(utenStatusLabelType('未通过'), UtenStatusBadgeType.danger);
-      expect(utenStatusLabelType('部分已付款'), UtenStatusBadgeType.warning);
-      expect(utenStatusLabelType('待验收（已确认）'), UtenStatusBadgeType.warning);
-      expect(utenStatusLabelType('已通过'), UtenStatusBadgeType.success);
-      expect(utenStatusLabelType('已完成'), UtenStatusBadgeType.success);
-    },
-  );
   test(
     'layout keeps filters and sort with the original order/visibility and no session credentials',
     () {
@@ -262,9 +252,17 @@ void main() {
                       label: '原业务状态',
                       width: 180,
                       value: (row) => row == 'B' ? '已审' : '草稿',
+                      // ADR-169：状态底色只认列定义的显式映射，不再按文案猜色。
+                      cellColor: (_, row) => utenStatusBadgeCellColor(
+                        row == 'B'
+                            ? UtenStatusBadgeType.success
+                            : UtenStatusBadgeType.neutral,
+                      ),
                       cellBuilder: (_, row) => UtenStatusBadge(
                         label: row == 'B' ? '已审' : '草稿',
-                        type: utenStatusLabelType(row == 'B' ? '已审' : '草稿'),
+                        type: row == 'B'
+                            ? UtenStatusBadgeType.success
+                            : UtenStatusBadgeType.neutral,
                       ),
                     ),
                     MasterColumnDef(
@@ -272,6 +270,13 @@ void main() {
                       label: '处理状态',
                       width: 180,
                       value: (row) => _workflowStates[row],
+                      // ADR-169：卡片视图底色同样只认显式映射。
+                      cellColor: (_, row) => switch (row) {
+                        'B' => UtenColors.statusSuccess,
+                        'C' => UtenColors.statusOrange,
+                        'D' => UtenColors.statusNeutral,
+                        _ => UtenColors.statusInfo,
+                      },
                       cellBuilder: (_, row) => UtenDocStatusPill(
                         label: _workflowStates[row]!,
                         color: Colors.green,
@@ -295,7 +300,7 @@ void main() {
             expect(
               text.style?.color ?? DefaultTextStyle.of(element).style.color,
               Colors.white,
-              reason: '半透明暗色状态格必须按实际主题合成后选字色',
+              reason: '深色实底状态格文字必须按对比度约定取白',
             );
           }
           for (final label in ['已审', '待核对', '已删除']) {
@@ -313,7 +318,6 @@ void main() {
             find.descendant(of: badge, matching: find.byType(Container)),
             findsNothing,
           );
-          final context = tester.element(badge);
           final colors = find
               .ancestor(of: badge, matching: find.byType(Container))
               .evaluate()
@@ -324,9 +328,7 @@ void main() {
               .map((decoration) => decoration.color);
           expect(
             colors,
-            contains(
-              udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
-            ),
+            contains(utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)),
           );
         }
         expect(tester.takeException(), isNull);

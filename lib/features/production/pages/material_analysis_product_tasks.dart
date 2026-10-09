@@ -390,16 +390,15 @@ abstract class _MaterialAnalysisProductTasksState
   bool _productExecutionCompleted(ProductionMaterialAnalysisProduct product) =>
       _productExecutionStage(product)?.tone == ProductionFlowTone.done;
 
-  /// 与流程徽章共用同一份色表（2026-09-11 起 6 档一色一步）。
-  Color _productExecutionColor(ThemeData theme, ProductionFlowStage stage) =>
-      productionFlowToneColor(theme, stage.tone);
+  // 2026-10-08 状态色改版：物料进度的颜色不再逐分支自带（原 _StatusView 的
+  // icon/color 与 _productExecutionColor 死字段已删），统一由
+  // MaterialPreparationStatusStyle 按 facetKey/flowStage 相位解析 ADR-169 实底。
 
   MaterialPreparationStatusStyle _preparationStatusStyle(
     ThemeData theme,
     _StatusView status, {
     String? actualState,
   }) => MaterialPreparationStatusStyle.resolve(
-    theme,
     stage: status.flowStage,
     facetKey: status.facetKey,
     actualState: actualState,
@@ -1351,7 +1350,7 @@ abstract class _MaterialAnalysisProductTasksState
     final exactPeggedQty = material.exactPeggedQty;
     final coverage = _coverageOf(material);
     final requirementView = coverage == null
-        ? _requirementStateView(theme, material)
+        ? _requirementStateView(material)
         : null;
     final delegated =
         material.effectiveRequirementState ==
@@ -1469,7 +1468,7 @@ abstract class _MaterialAnalysisProductTasksState
   ) {
     final label = material.requiredQty <= 0
         ? (() {
-            final view = _requirementStateView(theme, material);
+            final view = _requirementStateView(material);
             return '${view.title}；${view.detail}';
           })()
         : material.shortageQty <= 0
@@ -1535,19 +1534,12 @@ abstract class _MaterialAnalysisProductTasksState
   _StatusView _materialStatus(ThemeData theme, _MaterialGroup group) {
     final planningBlock = _planningBlockForGroup(group);
     if (planningBlock != null) {
-      return _StatusView(
-        planningBlock,
-        Icons.info_outline_rounded,
-        theme.colorScheme.tertiary,
-        facetKey: 'blocked',
-      );
+      return _StatusView(planningBlock, facetKey: 'blocked');
     }
     final material = group.representative;
     if (material.hasPriorityMakeSupplement) {
       return _StatusView(
         '让料后待补自制 ${_qty(material.priorityMakeSupplementQty)}',
-        Icons.factory_outlined,
-        theme.colorScheme.tertiary,
         facetKey: 'pendingIssue',
       );
     }
@@ -1557,8 +1549,6 @@ abstract class _MaterialAnalysisProductTasksState
     if (_hasUnlinkedIssuedPlan(material)) {
       return _StatusView(
         _l10n.materialIssuedPlanSyncPending,
-        Icons.sync_rounded,
-        theme.colorScheme.tertiary,
         facetKey: 'inTransit',
       );
     }
@@ -1566,8 +1556,6 @@ abstract class _MaterialAnalysisProductTasksState
     if (serverStage != null) {
       return _StatusView(
         serverStage.displayLabel,
-        serverStage.icon,
-        _productExecutionColor(theme, serverStage),
         facetKey: serverStage.key,
         facetLabel: serverStage.label,
         flowStage: serverStage,
@@ -1585,8 +1573,6 @@ abstract class _MaterialAnalysisProductTasksState
             : anchorStage.displayLabel;
         return _StatusView(
           label,
-          anchorStage.icon,
-          _productExecutionColor(theme, anchorStage),
           facetKey: anchorStage.key,
           facetLabel: anchorStage.label,
           flowStage: anchorStage,
@@ -1596,35 +1582,20 @@ abstract class _MaterialAnalysisProductTasksState
     if ((material.sharedFuturePendingQty ?? 0) > 0) {
       return _StatusView(
         '公共已认领未实收 ${_qty(material.sharedFuturePendingQty)} · 尚需下达 ${_qty(material.additionalSupplyRecommendedQty)}',
-        Icons.schedule_outlined,
-        theme.colorScheme.secondary,
         facetKey: 'inTransit',
       );
     }
     if (material.requiredQty <= 0) {
-      final view = _requirementStateView(theme, material);
       return _StatusView(
-        view.title,
-        view.icon,
-        view.color,
+        _requirementStateView(material).title,
         facetKey: 'inactive',
       );
     }
     if (!group.actionable) {
       if (material.shortageQty <= 0) {
-        return _StatusView(
-          '本层库存已齐',
-          Icons.check_circle_outline_rounded,
-          theme.colorScheme.primary,
-          facetKey: 'covered',
-        );
+        return const _StatusView('本层库存已齐', facetKey: 'covered');
       }
-      return _StatusView(
-        '当前节点只读',
-        Icons.lock_outline_rounded,
-        theme.colorScheme.tertiary,
-        facetKey: 'blocked',
-      );
+      return const _StatusView('当前节点只读', facetKey: 'blocked');
     }
     final notified = _notifiedTargetOf(material);
     final covered = material.shortageQty <= 0;
@@ -1639,8 +1610,6 @@ abstract class _MaterialAnalysisProductTasksState
         return _StatusView(
           '本批需求 ${demandGap <= 0 ? '已覆盖' : '还差 ${_qty(demandGap)}'}'
           ' · 本版本仅采购路线支持公共安全补库',
-          Icons.policy_outlined,
-          theme.colorScheme.error,
           facetKey: 'blocked',
         );
       }
@@ -1659,37 +1628,23 @@ abstract class _MaterialAnalysisProductTasksState
               : executionStage.displayLabel;
           return _StatusView(
             label,
-            executionStage.icon,
-            _productExecutionColor(theme, executionStage),
             facetKey: executionStage.key,
             facetLabel: executionStage.label,
             flowStage: executionStage,
           );
         }
         if (covered) {
-          return _StatusView(
-            '本批库存已覆盖 · 自制任务状态待回传',
-            Icons.inventory_2_outlined,
-            theme.colorScheme.primary,
-            facetKey: 'covered',
-          );
+          return const _StatusView('本批库存已覆盖 · 自制任务状态待回传', facetKey: 'covered');
         }
         // 2026-09-05 状态统一：未下达的自制任务一律「未下达」+ 同款颜色/
         // 图标（齐不齐料由车间侧执行段判断，这里不再按齐套分叉文案）。
         return _StatusView(
           _pendingIssueLabelOf(material),
-          Icons.hourglass_bottom_rounded,
-          theme.colorScheme.tertiary,
           facetKey: 'pendingIssue',
         );
       }
       if (covered) {
-        return _StatusView(
-          '已齐套(库存已覆盖)',
-          Icons.check_circle_outline_rounded,
-          theme.colorScheme.primary,
-          facetKey: 'covered',
-        );
+        return const _StatusView('已齐套(库存已覆盖)', facetKey: 'covered');
       }
       // 分批提交：上一批仍在途且剩余缺口未闭合时，明说「当前在途 / 还差」，
       // DONE 只代表历史任务已经完成，不能被「已提交 0」误读为从未下达；
@@ -1705,10 +1660,6 @@ abstract class _MaterialAnalysisProductTasksState
         return _StatusView(
           '需求在途 ${_qty(_openSubmittedQty(group, route))} · '
           '本批还差 ${_qty(residual)}$safetySuffix',
-          Icons.timelapse_rounded,
-          route == MaterialSupplyRoute.subcontract
-              ? theme.colorScheme.secondary
-              : theme.colorScheme.tertiary,
           facetKey: 'inTransit',
         );
       }
@@ -1716,79 +1667,47 @@ abstract class _MaterialAnalysisProductTasksState
         return _StatusView(
           '本批需求已覆盖 · 公共补库在途 ${_qty(openSafety)} · '
           '待补 ${_qty(safetyGap)}',
-          Icons.shield_outlined,
-          theme.colorScheme.tertiary,
           facetKey: 'inTransit',
         );
       }
       return _StatusView(
         route == MaterialSupplyRoute.subcontract ? '委外处理中' : '等待采购入库',
-        Icons.local_shipping_outlined,
-        route == MaterialSupplyRoute.subcontract
-            ? theme.colorScheme.secondary
-            : theme.colorScheme.tertiary,
         facetKey: 'inTransit',
       );
     }
     // 未通知：先看路线是否确认（ADR-029 §6.1 硬门槛）。
     if (material.confirmedRoute == null) {
-      return _StatusView(
-        '路线待确认',
-        Icons.help_outline_rounded,
-        theme.colorScheme.error,
-        facetKey: 'routePending',
-      );
+      return const _StatusView('路线待确认', facetKey: 'routePending');
     }
     if (material.lowerLevelPending) {
       // 2026-09-05 下达车间做减法：下层齐不齐不影响下达（计划只管下发，
       // 齐套由执行段 WAITING/READY 自动判断），状态统一「未下达」。
       return _StatusView(
         _pendingIssueLabelOf(material),
-        Icons.hourglass_bottom_rounded,
-        theme.colorScheme.tertiary,
         facetKey: 'pendingIssue',
       );
     }
     final confirmedRoute = material.confirmedRoute;
     if (confirmedRoute != null &&
         _routeBlockedBySafetyGap(group, confirmedRoute)) {
-      return _StatusView(
-        '本版本仅采购路线支持公共安全补库',
-        Icons.policy_outlined,
-        theme.colorScheme.error,
-        facetKey: 'blocked',
-      );
+      return const _StatusView('本版本仅采购路线支持公共安全补库', facetKey: 'blocked');
     }
     if (demandGap > 0) {
       return _StatusView(
         '本批需求待通知 ${_qty(demandGap)}',
-        Icons.notifications_active_outlined,
-        theme.colorScheme.tertiary,
         facetKey: 'pendingIssue',
       );
     }
     if (confirmedRoute == MaterialSupplyRoute.buy && safetyGap > 0) {
       return _StatusView(
         '本批需求已覆盖 · 待提交公共安全补库 ${_qty(safetyGap)}',
-        Icons.shield_outlined,
-        theme.colorScheme.tertiary,
         facetKey: 'pendingIssue',
       );
     }
     if (material.shortageQty > 0) {
-      return _StatusView(
-        '本批需求已覆盖 · 安全保护处理中',
-        Icons.shield_outlined,
-        theme.colorScheme.tertiary,
-        facetKey: 'inTransit',
-      );
+      return const _StatusView('本批需求已覆盖 · 安全保护处理中', facetKey: 'inTransit');
     }
-    return _StatusView(
-      '已齐套',
-      Icons.check_circle_outline_rounded,
-      theme.colorScheme.primary,
-      facetKey: 'covered',
-    );
+    return const _StatusView('已齐套', facetKey: 'covered');
   }
 
   /// 服务端行级流程阶段（MaterialAnalysisFlowStageService 批量推导）；

@@ -733,19 +733,19 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
                   _tierCountChip(
                     context,
                     l10n.hrReconcileStatTierHigh(pendingHigh),
-                    UtenColors.success,
+                    UtenColors.statusSuccess,
                   ),
                 if (pendingMedium > 0)
                   _tierCountChip(
                     context,
                     l10n.hrReconcileStatTierMedium(pendingMedium),
-                    UtenColors.warning,
+                    UtenColors.statusOrange,
                   ),
                 if (pendingManual > 0)
                   _tierCountChip(
                     context,
                     l10n.hrReconcileStatTierManual(pendingManual),
-                    theme.colorScheme.error,
+                    UtenColors.statusDanger,
                   ),
               ],
             ),

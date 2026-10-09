@@ -24,6 +24,8 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -961,6 +963,43 @@ class _QualityBatchApprovalPageState
     stickyHeaderPinned: _pinOf('unified'),
     showSelectionSummary: false,
     columns: [
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：本次报告列（待提交 /
+      // 已确认提交 / 整批合格）是本审批表的行级提交状态列，推翻 2026-10-06
+      // 批次「无状态字样不动」的豁免，前置。
+      MasterColumnDef(
+        key: 'status',
+        label: '本次报告',
+        width: 190,
+        value: (row) => row.isFqc
+            ? (row.wholeLot
+                  ? AppLocalizations.of(context).qualityBatchWholeLotPass
+                  : '勾选即全部合格')
+            : row.iqc!.completed
+            ? '本次报告已确认提交'
+            : '待提交',
+        // 本次报告整格底色（ADR-169 逐页显式映射）：FQC 行=绿（勾选即整批/
+        // 全部合格的判定，执行即通过）/ IQC 行填了不合格数量=红（报告含
+        // 不合格量，需处置与复核）/ 待提交且全合格=黄（本次报告未提交，
+        // 等品质提交判定）/ 已确认提交且全合格=蓝（已提交、报告流转中，
+        // 与整批合格的绿拉开）。
+        cellColor: (context, row) {
+          if (row.isFqc) {
+            return utenStatusBadgeCellColor(UtenStatusBadgeType.success);
+          }
+          final iqc = row.iqc!;
+          final fail = double.tryParse(iqc.fail.text.trim()) ?? 0;
+          if (fail > 0) {
+            return utenStatusBadgeCellColor(UtenStatusBadgeType.danger);
+          }
+          return utenStatusBadgeCellColor(
+            iqc.completed
+                ? UtenStatusBadgeType.info
+                : UtenStatusBadgeType.warning,
+          );
+        },
+        // 不合格数量是行内可编辑源：含不合格=红的整格底色随输入实时重算。
+        cellColorListenableOf: (row) => row.iqc?.fail,
+      ),
       MasterColumnDef(
         key: 'kind',
         label: '类型',
@@ -1085,18 +1124,6 @@ class _QualityBatchApprovalPageState
             ),
           );
         },
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: '本次报告',
-        width: 190,
-        value: (row) => row.isFqc
-            ? (row.wholeLot
-                  ? AppLocalizations.of(context).qualityBatchWholeLotPass
-                  : '勾选即全部合格')
-            : row.iqc!.completed
-            ? '本次报告已确认提交'
-            : '待提交',
       ),
     ],
     items: rows,

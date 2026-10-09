@@ -243,19 +243,15 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
       width: 80,
       textOf: (r) => wmPrepStatusLabel(r.source.status),
       filterValueOf: (r) => wmPrepStatusLabel(r.source.status),
-      // 2026-09-27 用户口径「表格状态列整格底色」：已填单重=绿 / 待填=琥珀 /
+      // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 重定：
+      // 已填单重=绿（完成）/ 已选料待填单重=紫（部分就绪——料已选、单重未填，
+      // 等操作人自己动手而非等外部，琥珀留给「等别人」，2026-10-08 口径）/
       // 待准备=中性灰；不用内料仓的行不铺色。
       cellColor: (context, r) => switch (r.source.status) {
-        'WEIGHED' => udenStatusBadgeCellColor(
-          context,
-          UtenStatusBadgeType.success,
-        ),
-        'CHOSEN' => udenStatusBadgeCellColor(
-          context,
-          UtenStatusBadgeType.warning,
-        ),
+        'WEIGHED' => utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+        'CHOSEN' => utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
         'NOT_FROM_STORE' => null,
-        _ => udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
+        _ => utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
       },
       cellBuilder: (_, r) => Text(wmPrepStatusLabel(r.source.status)),
     ),

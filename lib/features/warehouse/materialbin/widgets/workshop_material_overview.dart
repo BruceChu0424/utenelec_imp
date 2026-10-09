@@ -414,12 +414,11 @@ class _WorkshopMaterialOverviewState
       width: 72,
       value: (s) => wmBinStatusLabel(l10n, s.status),
       // 三态三色: 未开通灰 / 已开通蓝 / 整批领料中绿。
-      cellColor: (context, s) =>
-          udenStatusBadgeCellColor(context, switch (s.status) {
-            WmBinStatus.periodic => UtenStatusBadgeType.success,
-            WmBinStatus.open => UtenStatusBadgeType.info,
-            _ => UtenStatusBadgeType.neutral,
-          }),
+      cellColor: (context, s) => utenStatusBadgeCellColor(switch (s.status) {
+        WmBinStatus.periodic => UtenStatusBadgeType.success,
+        WmBinStatus.open => UtenStatusBadgeType.info,
+        _ => UtenStatusBadgeType.neutral,
+      }),
     ),
     MasterColumnDef(
       key: 'workshop',

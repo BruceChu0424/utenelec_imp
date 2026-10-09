@@ -706,8 +706,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
           width: 72,
           value: (job) => _statusLabel(_effective(job.status)),
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：健康色铺整格。
-          cellColor: (context, job) => udenStatusBadgeCellColor(
-            context,
+          cellColor: (context, job) => utenStatusBadgeCellColor(
             _serverStatusBadgeType(_effective(job.status)),
           ),
         ),

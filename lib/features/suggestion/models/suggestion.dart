@@ -19,17 +19,15 @@ enum SuggestionCategory {
   Color get color => Color(colorHex);
 }
 
-/// 建议状态
+/// 建议状态（档位色由各页映射函数显式决定，见 ADR-169；枚举不再携带色值）。
 enum SuggestionStatus {
-  submitted('已提交', 0xFF3B82F6),
-  reviewing('处理中', 0xFFF59E0B),
-  resolved('已采纳', 0xFF22C55E),
-  rejected('未采纳', 0xFFEF4444);
+  submitted('已提交'),
+  reviewing('处理中'),
+  resolved('已采纳'),
+  rejected('未采纳');
 
-  const SuggestionStatus(this.label, this.colorHex);
+  const SuggestionStatus(this.label);
   final String label;
-  final int colorHex;
-  Color get color => Color(colorHex);
 }
 
 /// 建议

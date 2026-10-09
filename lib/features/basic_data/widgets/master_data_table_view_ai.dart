@@ -24,13 +24,7 @@ extension _MasterDataTableAi<T> on _MasterDataTableViewState<T> {
 
   /// Same final colour as [_buildDataCell] (unselected).
   Color? _aiCellColor(MasterColumnDef<T> column, T item) =>
-      column.cellColor?.call(context, item) ??
-      (utenIsStatusColumn(column.key, column.label)
-          ? udenStatusBadgeCellColor(
-              context,
-              utenStatusLabelType(column.value(item)),
-            )
-          : null);
+      column.cellColor?.call(context, item);
 
   AiTableSnapshot? _aiCapture(AiCaptureContext ctx) {
     if (!mounted || widget.listItemBuilder != null) return null;

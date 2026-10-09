@@ -272,8 +272,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         width: 72,
         value: _statusLabel,
         // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-        cellColor: (context, r) => udenStatusBadgeCellColor(
-          context,
+        cellColor: (context, r) => utenStatusBadgeCellColor(
           r.disabled
               ? UtenStatusBadgeType.neutral
               : UtenStatusBadgeType.success,

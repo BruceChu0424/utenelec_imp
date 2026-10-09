@@ -882,9 +882,11 @@ class _InspectorHeader extends StatelessWidget {
             else if (!disabled && hasActiveDescendant)
               const Tooltip(
                 message: '请先停用或迁移使用中的子类别',
+                // 橙档（ADR-169）：停用被前置条件卡住的注意态——等的是自己
+                // 处理子类，不是等待外部，原黄档语义不符。
                 child: UtenStatusBadge(
                   label: '子类仍在使用',
-                  type: UtenStatusBadgeType.warning,
+                  type: UtenStatusBadgeType.orange,
                   icon: Icons.account_tree_outlined,
                 ),
               )

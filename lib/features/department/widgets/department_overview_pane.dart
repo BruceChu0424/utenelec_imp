@@ -590,7 +590,7 @@ class _DepartmentOverviewPaneState
       value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
       // 员工状态色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
       cellColor: (context, e) =>
-          udenStatusBadgeCellColor(context, employeeStatusBadgeType(e.status)),
+          utenStatusBadgeCellColor(employeeStatusBadgeType(e.status)),
     ),
     MasterColumnDef(
       key: 'code',

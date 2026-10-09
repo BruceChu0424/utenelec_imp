@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/uten_colors.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 
 enum StockDocType {
@@ -441,12 +442,23 @@ class FinishedInLot {
   );
 }
 
-// 状态标签/色（与采购同：0草稿/1已审/-1红冲）
+// 状态标签/色：0草稿/1已审/-1红冲，取色与采购单据列表同款（docStatusBadgeType：
+// 草稿灰/已审绿/红冲红，ADR-169），在两个列表/任务中心分段的状态列 cellColor 落地。
 String stockStatusLabel(int? s) => const {0: '草稿', 1: '已审', -1: '红冲'}[s] ?? '—';
 
 /// DRAW 出库进度标签（部分出库）
 String drawIssueStatusLabel(int? s) =>
     const {0: '未出库', 1: '部分出库', 2: '已出完'}[s] ?? '—';
+
+/// 出库进度列整格底色（ADR-169 逐页显式映射，列表页与任务中心分段共用）：
+/// 未出库=黄（等仓库出库，无异常）/ 部分出库=橙（部分完成、余量待出——风险
+/// 中间态，与未出库的黄靠色相+明度区分）/ 已出完=绿（出库完成）；未知码无色。
+Color? drawIssueStatusCellColor(int? s) => switch (s) {
+  0 => UtenColors.warningStrong,
+  1 => UtenColors.statusOrange,
+  2 => UtenColors.statusSuccess,
+  _ => null,
+};
 
 /// 各单据类型图标。
 IconData iconFor(StockDocType t) => {

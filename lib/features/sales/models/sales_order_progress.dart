@@ -194,9 +194,12 @@ String? salesProgressShipmentInFlightText(SalesOrderProgressRow row) {
 ///
 /// 现在六个在途阶段各占一个色相，刻意拉到最开：
 /// 红=要销售动手改单 · 琥珀=等计划排产 · 青=在机台上 · 紫=可以开发货单了 ·
-/// 蓝=球在财务 · 品红=球在仓库。终态不抢色：已发/已结案绿，已中止中性灰。
+/// 蓝=球在财务 · 青(sky)=球在仓库。终态不抢色：已发/已结案绿，已中止中性灰。
 /// 「等待财务审核」(订单级财务闸门，不是 stage)与「出货待财审」同为蓝——
 /// 同样是球在财务手上，共用一色是有意的，不是撞色。
+/// 「等仓库出货」2026-10-08(ADR-169)由品红改为 sky 青：品红锚定是「分类强调
+/// 非语义」，等仓库出货是等待外部档，与等计划(琥珀)、等财务(蓝)并列正好落
+/// 锚定示例「等财务 vs 等仓库出货可拆 warning/sky」的第二等待档。
 UtenStatusBadgeType salesProgressStageBadgeType(String stage) =>
     switch (stage) {
       'DRAFT' => UtenStatusBadgeType.neutral,
@@ -205,7 +208,7 @@ UtenStatusBadgeType salesProgressStageBadgeType(String stage) =>
       'PRODUCING' => UtenStatusBadgeType.accent,
       'SHIPPABLE' => UtenStatusBadgeType.violet,
       'SHIPMENT_PENDING' => UtenStatusBadgeType.info,
-      'WAREHOUSE_PENDING' => UtenStatusBadgeType.fuchsia,
+      'WAREHOUSE_PENDING' => UtenStatusBadgeType.sky,
       'SHIPPED' || 'CLOSED' => UtenStatusBadgeType.success,
       'CANCELED' => UtenStatusBadgeType.neutral,
       _ => UtenStatusBadgeType.neutral,

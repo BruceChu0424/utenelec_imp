@@ -41,8 +41,6 @@ String financeAssetStatusLabel(String status) {
     'SUBMITTED' || 'PENDING_APPROVAL' => '待审批',
     'APPROVED' => '已审批',
     'ACTIVE' => '使用中',
-    'IDLE' => '闲置',
-    'SUSPENDED' => '暂停',
     'DISPOSED' => '已处置',
     'DISPOSAL_PENDING' => '待处置',
     'TERMINATED' => '已终止',
@@ -59,24 +57,23 @@ String financeAssetStatusLabel(String status) {
   };
 }
 
+/// 资产/待摊与过账批次状态 → 档位（ADR-169 锚定，台账/工作台共用一份）：
+/// - 绿 = 审批通过、在役、过账完成、摊完、期间开放（健康/就绪态）；
+/// - 蓝 = 已提交待审批（流转中，锚定 info=已提交）；
+/// - 黄 = 待处置/待终止（等待退出处理，无异常）；
+/// - 红 = 驳回、已冲销（红冲=负向财务事件保留红）；
+/// - 灰 = 草稿、已预览未提交、已处置/已终止/已关闭（中性终态，处置与终止是
+///   计划内离场不是错误，沿用「取消/中止终态归灰」口径）。
 UtenStatusBadgeType financeAssetStatusType(String status) {
   return switch (status.trim().toUpperCase()) {
-    'ACTIVE' ||
     'APPROVED' ||
+    'ACTIVE' ||
     'POSTED' ||
-    'COMPLETED' => UtenStatusBadgeType.success,
-    'SUBMITTED' ||
-    'PENDING_APPROVAL' ||
-    'DISPOSAL_PENDING' ||
-    'TERMINATION_PENDING' ||
-    'PREVIEWED' ||
-    'IDLE' => UtenStatusBadgeType.warning,
-    'REJECTED' ||
-    'DISPOSED' ||
-    'TERMINATED' ||
-    'REVERSED' => UtenStatusBadgeType.danger,
-    'SUSPENDED' => UtenStatusBadgeType.info,
-    'OPEN' => UtenStatusBadgeType.accent,
+    'COMPLETED' ||
+    'OPEN' => UtenStatusBadgeType.success,
+    'SUBMITTED' || 'PENDING_APPROVAL' => UtenStatusBadgeType.info,
+    'DISPOSAL_PENDING' || 'TERMINATION_PENDING' => UtenStatusBadgeType.warning,
+    'REJECTED' || 'REVERSED' => UtenStatusBadgeType.danger,
     _ => UtenStatusBadgeType.neutral,
   };
 }
@@ -98,10 +95,7 @@ Widget financeAssetStatusCell(String status, {Key? key}) {
     key: key,
     builder: (context) {
       final theme = Theme.of(context);
-      final (bg, fg) = resolveStatusBadgeColors(
-        financeAssetStatusType(status),
-        theme.brightness == Brightness.dark,
-      );
+      final (bg, fg) = resolveStatusBadgeColors(financeAssetStatusType(status));
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(

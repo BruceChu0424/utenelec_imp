@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_toast.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
@@ -136,6 +137,7 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
     this.selectablePredicate,
     this.allowClear = false,
     this.clearLabel = '清除部门',
+    this.dense = false,
   });
 
   /// 单选 / 多选。
@@ -179,6 +181,10 @@ class UtenDepartmentPicker extends ConsumerStatefulWidget {
 
   /// 清除按钮的辅助说明；页面可按筛选语义改成“显示全部可管理范围”。
   final String clearLabel;
+
+  /// 紧凑形态（表格单元格里）：选择格统一规格（UtenEditableGridCellSpec，
+  /// 2026-10-08 起与实盘格/编辑表同源），与同行输入格等高；非 dense 走表单装饰。
+  final bool dense;
 
   @override
   ConsumerState<UtenDepartmentPicker> createState() =>
@@ -387,27 +393,78 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
               borderRadius: BorderRadius.circular(10),
               child: InputDecorator(
                 isEmpty: display == null,
-                decoration: utenPickerFieldDecoration(
-                  context,
-                  labelText: widget.label,
-                  hintText: widget.hint,
-                  enabled: widget.enabled,
-                  errorMessage: field.errorText,
-                  suffixIcon: display != null && widget.allowClear
-                      ? IconButton(
-                          key: const ValueKey('uten-department-picker-clear'),
-                          tooltip: widget.clearLabel,
-                          onPressed: widget.enabled ? _clearSelection : null,
-                          icon: const Icon(Icons.clear_rounded),
-                        )
-                      : Icon(
-                          Icons.unfold_more_rounded,
-                          color: theme.colorScheme.onSurfaceVariant,
+                decoration: widget.dense
+                    ? UtenInputDecoration(
+                        // 紧凑形态（表格格）：选择格统一规格，正文 bodyLarge 与
+                        // 同行输入格同字号同行高（2026-10-08 表格输入格统一口径）。
+                        InputDecoration(
+                          isDense: true,
+                          contentPadding:
+                              UtenEditableGridCellSpec.pickerCellPadding,
+                          hintText: widget.hint,
+                          enabled: widget.enabled,
+                          hintMaxLines: 1,
+                          error: utenFieldError(field.errorText),
+                          suffixIcon: display != null && widget.allowClear
+                              ? IconButton(
+                                  key: const ValueKey(
+                                    'uten-department-picker-clear',
+                                  ),
+                                  tooltip: widget.clearLabel,
+                                  onPressed: widget.enabled
+                                      ? _clearSelection
+                                      : null,
+                                  style: IconButton.styleFrom(
+                                    minimumSize: Size.zero,
+                                    padding: EdgeInsets.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  iconSize: 16,
+                                  icon: const Icon(Icons.clear_rounded),
+                                )
+                              : Icon(
+                                  Icons.unfold_more_rounded,
+                                  size: 20,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 20,
+                            minHeight: 20,
+                          ),
                         ),
-                ),
+                      )
+                    : utenPickerFieldDecoration(
+                        context,
+                        labelText: widget.label,
+                        hintText: widget.hint,
+                        enabled: widget.enabled,
+                        errorMessage: field.errorText,
+                        suffixIcon: display != null && widget.allowClear
+                            ? IconButton(
+                                key: const ValueKey(
+                                  'uten-department-picker-clear',
+                                ),
+                                tooltip: widget.clearLabel,
+                                onPressed: widget.enabled
+                                    ? _clearSelection
+                                    : null,
+                                icon: const Icon(Icons.clear_rounded),
+                              )
+                            : Icon(
+                                Icons.unfold_more_rounded,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                      ),
                 child: display == null
                     ? null
-                    : Text(display, overflow: TextOverflow.ellipsis),
+                    : Text(
+                        display,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: widget.dense ? theme.textTheme.bodyLarge : null,
+                      ),
               ),
             ),
             if (_isMulti && _selection.isNotEmpty)

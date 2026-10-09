@@ -21,7 +21,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -159,15 +158,10 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     width: 72,
     info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
     value: (s) => s.status.label,
-    // 2026-09-27 用户口径「表格状态列整格底色」：待发布=灰 / 已发布=品牌青 /
-    // 已查看=蓝 / 已下载=绿。
-    cellColor: (context, s) =>
-        udenStatusBadgeCellColor(context, switch (s.status) {
-          PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
-          PayrollSlipStatus.published => UtenStatusBadgeType.accent,
-          PayrollSlipStatus.viewed => UtenStatusBadgeType.info,
-          PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
-        }),
+    // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定
+    // （与 PayrollSlipStatus.badgeType 同源）：待发布=灰 / 已发布=蓝（分发
+    // 流转中）/ 已查看=青绿品牌档（员工已看过）/ 已下载=绿（领取完成）。
+    cellColor: (context, s) => utenStatusBadgeCellColor(s.status.badgeType),
   ),
   MasterColumnDef(
     key: 'period',

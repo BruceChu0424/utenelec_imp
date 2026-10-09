@@ -221,6 +221,44 @@ abstract final class UtenColors {
   /// red-500 -> red-600 白字对比度同时从 3.8:1 升到 4.8:1。
   static const Color dangerStrong = Color(0xFFDC2626);
 
+  // ===== 状态列实底色板（2026-10-08 全站状态色改版, ADR-169）=====
+  // 状态列/状态徽章统一「深色实底 + 成套前景字」: 明暗两主题同一实底, 自带
+  // 对比度不吃表面色(与计数徽章的 dangerStrong/warningStrong 同一路数)。
+  // 除琥珀档为亮底深棕字外, 其余全部白字, 对比度均 ≥4.5:1(WCAG AA)。
+  // 底色与字色**成套**出现——改一处必须同步另一处。语义锚定与逐页独立口径见
+  // docs/00-项目准则/08-主题与配色.md §2.5 与 ADR-169。
+  //
+  // 色相刻拉开 + 明度分层(红绿是色盲最易混对: 红取 800 暗档、绿取 700 亮档;
+  // 红橙相邻靠明度区分, 别给仅语义微差的两档用):
+  // 红4°/橙24°/黄45°/绿146°/青绿174°/青201°/蓝225°/紫269°/品红301°/灰(无彩)。
+
+  /// 深红 · 硬阻断/锁定/驳回/失败/异常/逾期/红冲(白字 8.3:1, red-800)
+  static const Color statusDanger = Color(0xFF991B1B);
+
+  /// 深橙 · 风险中间态: 部分异常/短交待判定/临期, 未死锁但需注意(白字 5.2:1)
+  static const Color statusOrange = Color(0xFFC2410C);
+
+  /// 深绿 · 完成/通过/已审/就绪可动手(可开工/可领/可下单)(白字 5.0:1, green-700)
+  static const Color statusSuccess = Color(0xFF15803D);
+
+  /// 深青绿 · 他方执行中(委外商加工)/品牌特殊档(白字 5.5:1)
+  static const Color statusTeal = Color(0xFF0F766E);
+
+  /// 深蓝 · 正在执行/加工中/已提交流转中(白字 6.7:1, blue-700)
+  static const Color statusInfo = Color(0xFF1D4ED8);
+
+  /// 青 · 第二等待档: 同一页要区分两种「等别人」时用(如等财务 vs 等仓库)(白字 5.9:1)
+  static const Color statusSky = Color(0xFF0369A1);
+
+  /// 深紫 · 部分就绪: 可部分下单/部分可领/部分齐套(白字 7.1:1)
+  static const Color statusViolet = Color(0xFF6D28D9);
+
+  /// 品红 · 分类强调(非语义状态: 分批等待/持续生产路线)(白字 6.3:1)
+  static const Color statusFuchsia = Color(0xFFA21CAF);
+
+  /// 深灰 · 草稿/未提交/已取消/已中止等中性终态(白字 7.6:1)
+  static const Color statusNeutral = Color(0xFF475569);
+
   // ===== 生产单据纸面色板（A4 工卡 / 计划单等"纸质复刻"视图专用）=====
   // 这组颜色模拟纸张与墨色，不随 app 明暗主题切换（纸永远是白底墨字）。
   // 只允许生产单据复刻视图使用；普通业务 UI 仍走 colorScheme / 上述语义色。

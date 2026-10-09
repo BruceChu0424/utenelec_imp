@@ -828,10 +828,12 @@ class _Hero extends StatelessWidget {
   }
 }
 
+// 与报销列表状态列同口径（ADR-169 档位锚定）：草稿=灰 / 待审批·审批中=蓝
+// （已提交流转）/ 已通过待打款=琥珀（等待登记付款）/ 驳回=红 / 已付款=绿。
 UtenStatusBadgeType _badge(ExpenseClaimStatus s) => switch (s) {
   ExpenseClaimStatus.submitted => UtenStatusBadgeType.info,
-  ExpenseClaimStatus.reviewing => UtenStatusBadgeType.warning,
-  ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+  ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
+  ExpenseClaimStatus.approved => UtenStatusBadgeType.warning,
   ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
   ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
   ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,

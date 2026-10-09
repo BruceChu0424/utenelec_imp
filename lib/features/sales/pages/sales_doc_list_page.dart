@@ -666,17 +666,26 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     return it.writable ? withGate : '$withGate · 只读';
   }
 
-  /// 状态徽章语义（与 [_statusText] 同一分支）：审核驳回/财务驳回=危险红，
-  /// 待财务确认=警告黄，其余按单据 0/1/-1（草稿中性/已审绿/红冲红）。
+  /// 状态徽章语义（与 [_statusText] 同一分支，ADR-169 档位锚定）：
+  /// 报价按分桶（见 [salesQuoteStageBadgeType]，退回红/待核价琥珀/待客户青/
+  /// 待转订货绿/已核价绿）；仓库驳回/财务退回/红冲=红，等待财务审核=琥珀，
+  /// 已审·待出库=青 sky（等仓库出货——第二等待档，与等财务拆 warning/sky），
+  /// 已出库=绿，草稿=灰；订货财务闸门驳回=红/待确认=琥珀，其余 0/1/-1。
   UtenStatusBadgeType _statusBadgeType(SalesDocListItem it) {
-    if (_quoteStaged) return salesQuoteStageBadgeType(salesQuoteStageOf(it));
+    if (_quoteStaged) {
+      return salesQuoteStageBadgeType(
+        salesQuoteStageOf(it),
+        converted: it.quoteWorkflow.isConverted,
+        customerAccepted: it.quoteWorkflow.customerAccepted,
+      );
+    }
     if (it.rejected) return UtenStatusBadgeType.danger;
     if (_shipmentStaged) {
       return switch (salesShipmentStageOf(it)) {
         SalesShipmentStage.financeRejected ||
         SalesShipmentStage.reversed => UtenStatusBadgeType.danger,
         SalesShipmentStage.pendingFinance => UtenStatusBadgeType.warning,
-        SalesShipmentStage.financeApproved => UtenStatusBadgeType.info,
+        SalesShipmentStage.financeApproved => UtenStatusBadgeType.sky,
         SalesShipmentStage.shipped => UtenStatusBadgeType.success,
         _ => UtenStatusBadgeType.neutral,
       };
@@ -700,8 +709,43 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
         // value 仍是纯文本供列宽/排序/筛选。
         cellColor: (context, it) =>
-            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
+            utenStatusBadgeCellColor(_statusBadgeType(it)),
       ),
+      if (_cfg.type == SalesDocType.shipment)
+        MasterColumnDef(
+          // 2026-10-08 用户口径「状态或进度列默认放最前」：财务审核 / 仓库作业
+          // 是出货单的两条行级结论列（审核结论 + 作业状态，推翻 2026-10-06
+          // 批次「无状态字样不动」的豁免），与状态列一起前置。
+          key: 'financeAudit',
+          label: '财务审核',
+          width: 120,
+          // V578：被退回单显示「已退回销售」并标红，销售侧列表也能一眼定位。
+          value: (it) => it.shipmentWorkflow.financeRejected
+              ? '已退回销售'
+              : salesShipmentFinanceAuditLabel(it.financeAudit),
+          // 退回格底色走 danger 档（ADR-169 状态列口径），与状态列同款实底。
+          cellColor: (context, it) => it.shipmentWorkflow.financeRejected
+              ? utenStatusBadgeCellColor(UtenStatusBadgeType.danger)
+              : null,
+        ),
+      if (_cfg.type == SalesDocType.shipment)
+        MasterColumnDef(
+          key: 'warehouseWorkStatus',
+          label: '仓库作业',
+          width: 150,
+          value: (it) => salesWarehouseWorkStatusLabel(it.warehouseWorkStatus),
+          // 仓库作业整格底色（ADR-169，销售列表视角，映射见
+          // salesWarehouseWorkStatusBadgeType）：历史迁移异常/已红冲=红、
+          // 待出库=青（等仓库出货，与状态列「已审·待出库=青」同口径）、
+          // 已出库=绿、已取消=灰；未返回保持无色。
+          cellColor: (context, it) {
+            final type = salesWarehouseWorkStatusBadgeType(
+              it.warehouseWorkStatus,
+              warehouseAction: false,
+            );
+            return type == null ? null : utenStatusBadgeCellColor(type);
+          },
+        ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
@@ -737,26 +781,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           label: '仓库',
           width: 160,
           value: (it) => names.warehouse(it.warehouseId),
-        ),
-      if (_cfg.type == SalesDocType.shipment)
-        MasterColumnDef(
-          key: 'financeAudit',
-          label: '财务审核',
-          width: 120,
-          // V578：被退回单显示「已退回销售」并标红，销售侧列表也能一眼定位。
-          value: (it) => it.shipmentWorkflow.financeRejected
-              ? '已退回销售'
-              : salesShipmentFinanceAuditLabel(it.financeAudit),
-          cellColor: (context, it) => it.shipmentWorkflow.financeRejected
-              ? Theme.of(context).colorScheme.errorContainer
-              : null,
-        ),
-      if (_cfg.type == SalesDocType.shipment)
-        MasterColumnDef(
-          key: 'warehouseWorkStatus',
-          label: '仓库作业',
-          width: 150,
-          value: (it) => salesWarehouseWorkStatusLabel(it.warehouseWorkStatus),
         ),
       if (_cfg.hasOutType)
         MasterColumnDef(

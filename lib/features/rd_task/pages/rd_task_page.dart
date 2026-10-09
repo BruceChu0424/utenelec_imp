@@ -634,12 +634,15 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '状态',
           width: 72,
           value: (item) => rdTaskStatusLabel(item.status),
-          // 2026-09-27 用户口径「表格状态列整格底色」：待处理=品牌青(沿用指标卡
-          // 主色口径) / 进行中=琥珀 / 已完成=绿 / 已取消=中性灰。
+          // 状态列整格底色（2026-09-27「整格底色」口径；档位按 ADR-169 锚定重定）：
+          // 待处理=绿（就绪可动手——轮到研发动手；旧「品牌青沿用指标卡主色」的
+          // 理由已随指标卡删除失效，accent 档也让给「他方执行中」）/ 进行中=蓝
+          // （正在执行，不是等待外部）/ 已完成=绿 / 已取消=灰。绿在「待处理」与
+          // 「已完成」两段各自独立出现（ADR-169 逐段独立），同段内互不撞色。
           cellColor: (context, item) =>
-              udenStatusBadgeCellColor(context, switch (item.status) {
-                'OPEN' => UtenStatusBadgeType.accent,
-                'IN_PROGRESS' => UtenStatusBadgeType.warning,
+              utenStatusBadgeCellColor(switch (item.status) {
+                'OPEN' => UtenStatusBadgeType.success,
+                'IN_PROGRESS' => UtenStatusBadgeType.info,
                 'DONE' => UtenStatusBadgeType.success,
                 _ => UtenStatusBadgeType.neutral,
               }),

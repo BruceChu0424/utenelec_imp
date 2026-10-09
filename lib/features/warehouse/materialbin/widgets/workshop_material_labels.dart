@@ -31,6 +31,10 @@ String wmPeriodStatusLabel(String status) => switch (status) {
   _ => '',
 };
 
+/// 期间状态 → 档位（ADR-169）：开着=绿（正常运转、可发料可盘点，本页的
+/// 「就绪」档）/ 盘点中=蓝（正在执行）/ 已盘点待结算=黄（等自动结算，无异常）/
+/// 已结算=灰——结算是封存的历史终态而非「成功办结的工作项」，且开着已占绿档，
+/// 同页撞色会让两种最常见的期间状态分不清（2026-10-08 口径）。
 UtenStatusBadgeType wmPeriodStatusBadgeType(String status) => switch (status) {
   WmPeriodStatus.open => UtenStatusBadgeType.success,
   WmPeriodStatus.counting => UtenStatusBadgeType.info,
@@ -56,21 +60,29 @@ String wmRequisitionStatusLabel(String status) => switch (status) {
   _ => '',
 };
 
-// 状态 → 整格底色语义 (2026-10-01 口径「不同状态不同颜色」)。表格 cellColor
-// 显式映射, 不走按文案猜色的兜底: 开着=正常绿、盘点中/自动结算中=蓝、
-// 已盘点待结算/差资料=琥珀、结算没成功=红、已结算/已撤销=灰。
-UtenStatusBadgeType wmRequisitionStatusBadgeType(String status) =>
-    switch (status) {
-      'PENDING' => UtenStatusBadgeType.warning,
-      'DONE' => UtenStatusBadgeType.success,
-      _ => UtenStatusBadgeType.neutral,
-    };
+/// 领料/退回单状态 → 档位（ADR-169 逐页独立口径）。
+///
+/// [taskView] = 任务视角（待发料 / 待收退回分段）：PENDING 是「轮到仓库动手」
+/// 的就绪单 → 绿灯；记录 / 历史视角里 PENDING 与 DONE 同现，取琥珀（挂起等
+/// 仓库处理）与绿（已完成）、灰（已取消）区分——同一状态在不同视角可取不同档。
+UtenStatusBadgeType wmRequisitionStatusBadgeType(
+  String status, {
+  bool taskView = false,
+}) => switch (status) {
+  'PENDING' =>
+    taskView ? UtenStatusBadgeType.success : UtenStatusBadgeType.warning,
+  'DONE' => UtenStatusBadgeType.success,
+  _ => UtenStatusBadgeType.neutral,
+};
 
+/// 结算状态 → 档位（ADR-169）：自动结算中=蓝（正在执行）/ 差资料暂时结不了账
+/// =红（硬阻断——资料不齐锁住不能结算，2026-10-08 用户口径「不能执行/锁住=深红」，
+/// 同 ADR-169 委外等物料齐套案例）/ 结算没成功=红（失败）/ 已撤销暂停=灰。
 /// null = 期间开着没有结算状态, 不上色。
 UtenStatusBadgeType? wmCloseStateBadgeType(String closeState) =>
     switch (closeState) {
       WmCloseState.queued => UtenStatusBadgeType.info,
-      WmCloseState.blocked => UtenStatusBadgeType.warning,
+      WmCloseState.blocked => UtenStatusBadgeType.danger,
       WmCloseState.failed => UtenStatusBadgeType.danger,
       WmCloseState.held => UtenStatusBadgeType.neutral,
       _ => null,

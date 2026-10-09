@@ -6,8 +6,6 @@ import '../../../shared/widgets/warehouse_selection.dart';
 // 退货明细有 receiptItemId+orderItemId；等）。一个超集模型 ×4 配置，避免 4 套重复。
 // UUID=String；金额/数量=(json as num?)；日期=ISO 字符串直存（后端 LocalDate）。
 
-import 'package:flutter/material.dart';
-
 import '../../../shared/models/procurement_finance_approval.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 
@@ -58,22 +56,6 @@ String purchaseStatusLabel(int? code) {
   }
 }
 
-/// 状态对应的主题色（徽章用）。
-Color purchaseStatusColor(int? code, ThemeData theme) {
-  switch (code) {
-    case kPurchaseStatusDraft:
-      return theme.colorScheme.onSurfaceVariant;
-    case kPurchaseStatusApproved:
-      return Colors.green;
-    case kPurchaseStatusReversed:
-      return theme.colorScheme.error;
-    case kPurchaseStatusCanceled:
-      return theme.colorScheme.outline;
-    default:
-      return theme.colorScheme.onSurfaceVariant;
-  }
-}
-
 /// 订货单展示状态文案（列表状态列与详情「状态」徽章共用口径）：财务通过前
 /// 单据 status 保持 0，在审/退回期间以 financeApproval 投影为准——
 /// PENDING=等待财务审核 / REJECTED=财务退回 / APPROVED=财务已通过 /
@@ -91,25 +73,6 @@ String purchaseOrderDisplayLabel(
     'APPROVED' => '财务已通过',
     'DRAFT' => '待提交财务',
     _ => purchaseStatusLabel(status),
-  };
-}
-
-/// [purchaseOrderDisplayLabel] 对应的徽章主题色：在审=警告橙、退回=危险红、
-/// 通过=绿（对齐已审）、待提交=中性；终态与未知态回落单据状态色。
-Color purchaseOrderDisplayColor(
-  int? status,
-  ProcurementFinanceApproval? financeApproval,
-  ThemeData theme,
-) {
-  if (status == kPurchaseStatusReversed || status == kPurchaseStatusCanceled) {
-    return purchaseStatusColor(status, theme);
-  }
-  return switch (financeApproval?.status) {
-    'PENDING' => Colors.orange,
-    'REJECTED' => theme.colorScheme.error,
-    'APPROVED' => Colors.green,
-    'DRAFT' => theme.colorScheme.onSurfaceVariant,
-    _ => purchaseStatusColor(status, theme),
   };
 }
 

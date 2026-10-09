@@ -143,18 +143,18 @@ class _SupplierSettlementPanelState
       label: '状态',
       width: 72,
       value: (item) => item.statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：供应商确认=蓝 / 公司确认=青 /
-      // 双方确认=绿 / 争议中=红 / 冻结关闭反转=中性灰。
-      cellColor: (context, item) => udenStatusBadgeCellColor(
-        context,
-        switch (item.status?.toUpperCase()) {
-          'SUPPLIER_CONFIRMED' => UtenStatusBadgeType.info,
-          'INTERNAL_CONFIRMED' => UtenStatusBadgeType.accent,
-          'BOTH_CONFIRMED' => UtenStatusBadgeType.success,
-          'DISPUTED' => UtenStatusBadgeType.danger,
-          _ => UtenStatusBadgeType.neutral,
-        },
-      ),
+      // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定：
+      // 供应商已确认=紫（部分就绪：对方确认了、轮到公司这边确认）/
+      // 公司已确认=琥珀（等待外部：等供应商确认，无异常）/ 双方确认=绿 /
+      // 争议中=红 / 冻结·关闭·反转=中性灰。
+      cellColor: (context, item) =>
+          utenStatusBadgeCellColor(switch (item.status?.toUpperCase()) {
+            'SUPPLIER_CONFIRMED' => UtenStatusBadgeType.violet,
+            'INTERNAL_CONFIRMED' => UtenStatusBadgeType.warning,
+            'BOTH_CONFIRMED' => UtenStatusBadgeType.success,
+            'DISPUTED' => UtenStatusBadgeType.danger,
+            _ => UtenStatusBadgeType.neutral,
+          }),
     ),
     MasterColumnDef(
       key: 'batchNo',

@@ -3,6 +3,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_table_cell_hints.dart';
+import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_tokens.dart';
 import 'master_data_table_view.dart';
@@ -249,7 +250,13 @@ class _Card<T> extends StatelessWidget {
               child:
                   columns[effectiveTitle].cardRendersBuilder &&
                       columns[effectiveTitle].cellBuilder != null
-                  ? columns[effectiveTitle].cellBuilder!(context, item)
+                  ? UtenTableCellInputTheme(
+                      // 卡片格与表格数据格同源紧凑输入规格（2026-10-08）。
+                      child: columns[effectiveTitle].cellBuilder!(
+                        context,
+                        item,
+                      ),
+                    )
                   : Text(
                       title,
                       maxLines: 2,
@@ -358,21 +365,18 @@ class _Card<T> extends StatelessWidget {
         child: MasterDataTableCellScope(
           selected: isSelected,
           foregroundColor: theme.colorScheme.onSurface,
-          child: UtenTableCellHints(
-            child: Builder(builder: (ctx) => c.cellBuilder!(ctx, item)),
+          child: UtenTableCellInputTheme(
+            // 卡片富格与表格数据格同源紧凑输入规格（2026-10-08）。
+            child: UtenTableCellHints(
+              child: Builder(builder: (ctx) => c.cellBuilder!(ctx, item)),
+            ),
           ),
         ),
       );
     }
-    final cellColor = isSelected
-        ? null
-        : c.cellColor?.call(context, item) ??
-              (utenIsStatusColumn(c.key, c.label)
-                  ? udenStatusBadgeCellColor(
-                      context,
-                      utenStatusLabelType(value),
-                    )
-                  : null);
+    // 状态底色只认列定义的显式 cellColor(ADR-169 逐页独立口径);
+    // 未显式映射的状态列保持无色纯文本, 不再按文案关键字猜色。
+    final cellColor = isSelected ? null : c.cellColor?.call(context, item);
     if (cellColor == null) {
       return Text.rich(
         TextSpan(
@@ -406,7 +410,8 @@ class _Card<T> extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: theme.textTheme.bodySmall?.copyWith(
           color: onCell,
-          fontWeight: FontWeight.w600,
+          // 72b660015b577edf4e0052a07c97(2026-10-08 7528623753e35f84)3002
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

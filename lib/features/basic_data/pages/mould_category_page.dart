@@ -388,7 +388,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       ),
       // 制造年月：日期选择窗（UtenDateField）；存 yyyy-MM-dd，兼容老库「2018年7月」初值。
       MasterFieldDef(
-        key: 'mstatus',
+        key: 'mfgMonth',
         label: '制造年月',
         type: MasterFieldType.custom,
         group: '制造',
@@ -539,7 +539,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       'mnumber': d.mnumber ?? '',
       'qty': d.qty ?? '',
       'tqty': d.tqty?.toString() ?? '',
-      'mstatus': d.mstatus ?? '',
+      'mfgMonth': d.mstatus ?? '',
       'status': d.status ?? '',
       'departmentId': d.departmentId ?? '',
       'departmentName': d.departmentName ?? '',
@@ -714,7 +714,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       value: (_) => null,
     ),
     MasterColumnDef(
-      key: 'mstatus',
+      key: 'mfgMonth',
       label: '制造日期',
       width: 110,
       value: (m) => m.mstatus,

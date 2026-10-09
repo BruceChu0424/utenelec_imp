@@ -286,7 +286,8 @@ class _QualityPendingDisposalPageState
     }
     final receipt = row.receipt!;
     return (receipt.billNo ?? '').toLowerCase().contains(keyword) ||
-        (receipt.supplierName ?? '').toLowerCase().contains(keyword);
+        (receipt.supplierName ?? '').toLowerCase().contains(keyword) ||
+        (receipt.goodsSummary ?? '').toLowerCase().contains(keyword);
   }
 
   List<_DisposalRow> get _rows => [
@@ -801,7 +802,7 @@ class _QualityPendingDisposalPageState
       // 2026-09-27 用户口径「表格状态列整格底色」：待检=琥珀 / 部分已决定=蓝 /
       // 已全部决定=绿 / 已取消=中性灰。
       cellColor: (context, row) =>
-          udenStatusBadgeCellColor(context, _statusBadgeType(row)),
+          utenStatusBadgeCellColor(_statusBadgeType(row)),
     ),
     MasterColumnDef(
       key: 'docType',
@@ -843,9 +844,9 @@ class _QualityPendingDisposalPageState
           ? '无检查单 · 计划 ${row.inspection!.planNo ?? '—'}'
           : (row.receipt!.supplierName ?? '—'),
     ),
-    // 无检查单的 FQC 行此前只有名称 + 颜色，补上编号：队列里同名的自制件与
-    // 委外件排在一起，认错货就会把判定登到别的批次上。本表没有独立编号/颜色列，
-    // 三属性都进身份格；检查单行是服务端拼好的多货品摘要，无法拆分故原样显示。
+    // 队列行的货品身份：无检查单 FQC 行是单一货品走身份格；检查单行与 IQC 收货单行
+    // 是服务端拼好的多货品摘要「名称 (编号 · 颜色)、…」（2026-10-08 根治收货单行
+    // 整列「—」：一单常含同名不同色的来料，列表看不到货品只能逐单点进去核对）。
     MasterColumnDef(
       key: 'goods',
       label: '货品名称',
@@ -854,12 +855,14 @@ class _QualityPendingDisposalPageState
           ? (row.sheet!.goodsSummary ?? '—')
           : row.isFqc
           ? (row.inspection!.goodsName ?? '—')
-          : '—',
+          : (row.receipt!.goodsSummary ?? '—'),
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => row.isFqc
           ? UtenGoodsIdentityCell(name: row.inspection!.goodsName)
           : Text(
-              row.isSheet ? (row.sheet!.goodsSummary ?? '—') : '—',
+              row.isSheet
+                  ? (row.sheet!.goodsSummary ?? '—')
+                  : (row.receipt!.goodsSummary ?? '—'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -938,7 +941,7 @@ class _QualityPendingDisposalPageState
           : row.isFqc
           ? '${fqcQtyText(row.inspection!.remainingQty)}'
                 '${row.inspection!.unitName ?? ''}'
-          : '—',
+          : (row.receipt!.pendingQtyText ?? '—'),
     ),
     MasterColumnDef(
       key: 'enteredAt',

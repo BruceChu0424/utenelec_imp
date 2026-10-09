@@ -332,7 +332,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
         action == 'approve'
             ? '审核通过，库存已按盘点更新'
             : action == 'reject'
-            ? '已退回，库存未改变'
+            ? '已驳回，库存未改变'
             : '已撤回，库存未改变',
       );
       if (action == 'approve') await _load();
@@ -444,7 +444,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           segments: const [
             UtenFilterSegment(value: 'PENDING', label: '待审核'),
             UtenFilterSegment(value: 'APPROVED', label: '已通过'),
-            UtenFilterSegment(value: 'REJECTED', label: '已退回'),
+            UtenFilterSegment(value: 'REJECTED', label: '已驳回'),
             UtenFilterSegment(value: 'CANCELLED', label: '已撤回'),
             UtenFilterSegment(value: '', label: '全部'),
           ],
@@ -567,7 +567,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               if (stale && detail.status == 'PENDING')
                 const UtenInlineNotice(
                   level: UtenInlineNoticeLevel.warning,
-                  message: '提交后库存已变化，请退回重新盘点；本次不能直接覆盖当前库存。',
+                  message: '提交后库存已变化，请驳回重新盘点；本次不能直接覆盖当前库存。',
                 ),
               if (reviewingSetup && !_canConfigureMaterials)
                 const UtenInlineNotice(
@@ -774,8 +774,10 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
 
   Widget _floatingActions(StockCountRequest detail) {
     final stale = detail.lines.any((line) => line.stale);
-    // 2026-10-02 用户口径：审核视图（仓库/财务队列）只有「退回 + 审批通过」，审批通过
+    // 2026-10-02 用户口径：审核视图（仓库/财务队列）只有「驳回 + 通过」，通过
     // 摆最右；「撤回申请」是提交人动作，只出现在盘点历史（/stock/count-requests）视图。
+    // 2026-10-08 用户口径：驳回红 / 通过绿，尺寸与图标对齐全站审核页
+    // （finance_procurement_approval_review_page）的右下悬浮组。
     final reviewerView = widget.reviewRoute != null;
     return UtenFloatingActionGroup(
       children: [
@@ -783,24 +785,30 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           UtenButton(
             key: const Key('stock-count-cancel'),
             type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
             onPressed: _working || _loading ? null : () => _decide('cancel'),
             child: const Text('撤回申请'),
           ),
         if (detail.canReject)
           UtenButton(
             key: const Key('stock-count-reject'),
-            type: UtenButtonType.secondary,
+            type: UtenButtonType.danger,
+            size: UtenButtonSize.large,
+            icon: Icons.undo_rounded,
             onPressed: _working || _loading ? null : () => _decide('reject'),
-            child: const Text('退回'),
+            child: const Text('驳回'),
           ),
         if (detail.canApprove)
           UtenButton(
             key: const Key('stock-count-approve'),
+            type: UtenButtonType.success,
+            size: UtenButtonSize.large,
+            icon: Icons.check_circle_outline_rounded,
             isLoading: _working,
             onPressed: _working || _loading || stale || !_setupReady(detail)
                 ? null
                 : () => _decide('approve'),
-            child: const Text('审核通过'),
+            child: const Text('通过'),
           ),
       ],
     );
@@ -869,7 +877,7 @@ Future<String?> _confirmDecision(
             action == 'approve'
                 ? '审核通过并更新库存'
                 : action == 'reject'
-                ? '退回盘点'
+                ? '驳回盘点'
                 : '撤回盘点',
           ),
           content: Column(
@@ -888,7 +896,7 @@ Future<String?> _confirmDecision(
                 controller: input,
                 maxLength: 500,
                 decoration: InputDecoration(
-                  labelText: action == 'reject' ? '退回原因（必填）' : '说明（选填）',
+                  labelText: action == 'reject' ? '驳回原因（必填）' : '说明（选填）',
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -920,7 +928,7 @@ String _message(Object error) =>
 String _statusText(String status) => switch (status) {
   'PENDING' => '待审核',
   'APPROVED' => '已通过',
-  'REJECTED' => '已退回',
+  'REJECTED' => '已驳回',
   'CANCELLED' => '已撤回',
   _ => status,
 };

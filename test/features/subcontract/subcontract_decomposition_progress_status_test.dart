@@ -5,8 +5,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart'
+    show UtenStatusBadgeType;
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart'
+    show utenStatusBadgeCellColor;
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_decomposition_page.dart';
@@ -188,6 +193,39 @@ void main() {
     expect(find.text('已回厂待入库'), findsWidgets);
     expect(find.text('财务已退回'), findsWidgets);
     expect(find.text('等待物料'), findsWidgets);
+    // 状态列档位（ADR-169 基准表）：短交待判定=红、委外加工中=青绿、
+    // 等待物料=红（料没到不能领）、已回厂待入库=黄（等仓库入库）、财务驳回=红。
+    final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+      find.byKey(const Key('subcontract-decomposition-table')),
+    );
+    final statusColumn = table.columns.firstWhere((c) => c.key == 'status');
+    final cellContext = tester.element(
+      find.byType(SubcontractDecompositionPage),
+    );
+    Color? cellOf(String id) => statusColumn.cellColor!(
+      cellContext,
+      table.items.firstWhere((task) => task.taskId == id),
+    );
+    expect(
+      cellOf('o-short'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+    );
+    expect(
+      cellOf('o-supplier'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.accent),
+    );
+    expect(
+      cellOf('o-waiting-material'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+    );
+    expect(
+      cellOf('o-received'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.warning),
+    );
+    expect(
+      cellOf('o-rejected'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+    );
     // 异常小类行：短交与退回都在（红徽章形态由 UtenFilterSegment 决定）。
     expect(
       find.byKey(const Key('subcontract-decomposition-exceptions')),

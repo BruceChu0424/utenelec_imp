@@ -24,8 +24,10 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -397,6 +399,41 @@ class _ProgressList extends ConsumerWidget {
     key: const Key('sales-product-progress-table'),
     embedded: true,
     columns: [
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：生产入库进度（条 +
+      // 「已产 / 订货」）是本表的进度列（推翻 2026-10-06 批次「纯数值进度列
+      // 不动」的判定），前置。
+      MasterColumnDef(
+        key: 'progress',
+        label: '生产入库进度',
+        width: 160,
+        value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
+        cellBuilder: (context, line) => Row(
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: (line.qty ?? 0) > 0
+                      ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
+                      : 0,
+                  // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
+                  minHeight: 8,
+                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // 2026-10-06 全站表格行高统一：进度格改单层 Row（条 + 数量同排），
+            // 不再上下两层撑高读行。
+            Text(
+              '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
       MasterColumnDef(
         key: 'product',
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
@@ -484,38 +521,6 @@ class _ProgressList extends ConsumerWidget {
         value: (line) => _fmt(line.pendingShipmentQty),
       ),
       MasterColumnDef(
-        key: 'progress',
-        label: '生产入库进度',
-        width: 160,
-        value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
-        cellBuilder: (context, line) => Row(
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: (line.qty ?? 0) > 0
-                      ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
-                      : 0,
-                  // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
-                  minHeight: 8,
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // 2026-10-06 全站表格行高统一：进度格改单层 Row（条 + 数量同排），
-            // 不再上下两层撑高读行。
-            Text(
-              '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-      MasterColumnDef(
         key: 'detail',
         label: '进度来源',
         width: 110,
@@ -580,7 +585,6 @@ class _ProgressList extends ConsumerWidget {
     bool canViewPlan, {
     bool showSelection = true,
   }) {
-    final chainColor = chainStatusColor(l.chainStatus, theme);
     return Card(
       margin: const EdgeInsets.only(bottom: UtenSpacing.s8),
       child: Padding(
@@ -614,26 +618,16 @@ class _ProgressList extends ConsumerWidget {
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
+                // 链路状态徽章走 ADR-169 十档实底（chainStatusBadgeType 逐档语义），
+                // 原 12% 浅底手搓胶囊已收编。
+                UtenStatusBadge(
+                  label: chainStatusLabel(
+                    l.chainStatus,
+                    plannedQty: l.plannedQty,
+                    qty: l.qty,
                   ),
-                  decoration: BoxDecoration(
-                    color: chainColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    chainStatusLabel(
-                      l.chainStatus,
-                      plannedQty: l.plannedQty,
-                      qty: l.qty,
-                    ),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: chainColor,
-                    ),
-                  ),
+                  type: chainStatusBadgeType(l.chainStatus),
+                  size: UtenStatusBadgeSize.small,
                 ),
               ],
             ),
@@ -825,11 +819,12 @@ class _ProgressList extends ConsumerWidget {
         : p.planStatus == 1
         ? (p.planClosed ? '已审·已结案' : '已审核')
         : '红冲';
+    // 计划状态文字色走 ADR-169 状态色板（原裸 Colors.green 已收编）。
     final statusColor = p.planStatus == 0
-        ? theme.colorScheme.onSurfaceVariant
+        ? UtenColors.statusNeutral
         : p.planStatus == 1
-        ? Colors.green
-        : theme.colorScheme.error;
+        ? UtenColors.statusSuccess
+        : UtenColors.statusDanger;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Column(

@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -389,6 +390,11 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       width: 72,
       info: l10n.myVisitorsStatusColInfo,
       value: (app) => visitorStatusLabel(app.status, l10n),
+      // ADR-169：与访客端/审批端同一份档位映射（visitorBadgeType）。
+      // 本页默认段「待接待人确认=蓝（正在我这一环处理）」，分段红数回答
+      // 「轮到我动手的有几条」；「申请中=黄」为已转 HR 的等待，两种等待不同色。
+      cellColor: (context, app) =>
+          utenStatusBadgeCellColor(visitorBadgeType(app.status)),
     ),
     MasterColumnDef(
       key: 'visitorName',

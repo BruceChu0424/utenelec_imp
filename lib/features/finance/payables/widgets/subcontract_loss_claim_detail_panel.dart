@@ -664,7 +664,9 @@ class _SubcontractLossClaimDetailPanelState
 
 /// 估值状态格：服务端只出 VALUED / MISSING_COST 两档码（此前格内直显英文码）。
 /// 2026-09-27 用户口径「格内胶囊改单元格背景色」：旧原生表无 cellColor 通道，
-/// 用带 0.5 描边的实色块铺满格内容区（边框保留），已估值=绿 / 缺成本待估=琥珀；
+/// 用带 0.5 描边的实色块铺满格内容区（边框保留）；
+/// ADR-169 档位：已估值=绿（估值数据就绪）/ 缺成本待估=橙（风险中间态：
+/// 缺成本数据估不了、未死锁但需先补数，不是安静的等待外部）；
 /// 未知码原样显示不铺色。
 String _valuationStatusText(String? status) =>
     switch (status?.trim().toUpperCase()) {
@@ -684,17 +686,14 @@ class _ValuationStatusCell extends StatelessWidget {
     final code = status?.trim().toUpperCase();
     final type = switch (code) {
       'VALUED' => UtenStatusBadgeType.success,
-      'MISSING_COST' => UtenStatusBadgeType.warning,
+      'MISSING_COST' => UtenStatusBadgeType.orange,
       _ => null,
     };
     if (type == null) {
       final text = status?.trim();
       return Text(text == null || text.isEmpty ? '—' : text);
     }
-    final (bg, fg) = resolveStatusBadgeColors(
-      type,
-      theme.brightness == Brightness.dark,
-    );
+    final (bg, fg) = resolveStatusBadgeColors(type);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

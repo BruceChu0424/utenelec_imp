@@ -24,6 +24,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
@@ -481,10 +482,12 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,
                     onFilterChanged: _onFilterChanged,
-                    // 行底色按状态：使用=浅蓝、禁用=浅红（同 color_page）。
+                    // 行底色按状态（ADR-169 收编，同 color_page）：使用=蓝档
+                    // 淡底（裸色收编）/ 禁用=灰档淡底（停用归中性终态，
+                    // 原浅红把「停用」当异常——停用不是错误）。
                     rowColor: (m) => switch (m.status) {
-                      '使用' => Colors.lightBlue.withValues(alpha: 0.13),
-                      '禁用' => Colors.red.withValues(alpha: 0.10),
+                      '使用' => UtenColors.info.withValues(alpha: 0.13),
+                      '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
                       _ => null,
                     },
                     // 点行 = 维护账期/查看口径（系统角色锁定时仅提示）。

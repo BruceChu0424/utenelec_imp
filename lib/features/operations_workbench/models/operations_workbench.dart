@@ -82,14 +82,15 @@ class OperationsWorkbenchSummary {
     switch (department) {
       case OperationsWorkbenchDepartment.purchase:
       case OperationsWorkbenchDepartment.subcontract:
-        // 采购/委外任务台设计对齐：待完成(全部未完成,黄) + 申请待分解(黄) +
-        // 等待财务审核(蓝) + 财务已通过(青) + 已完成(绿)。
+        // 采购/委外任务台设计对齐（ADR-169 基准表）：待完成(全部未完成,黄) +
+        // 申请待分解(绿,可生成订货单=就绪可动手) + 等待财务审核(黄,等外部) +
+        // 财务已通过(蓝,已批流转中) + 已完成(绿)。
         // 财务驳回(红)不单独成卡——在状态下拉里可见。
         return [
           pending,
-          _statusMetric('WAITING_ORDER', '申请待分解', 'warning'),
-          _statusMetric('ORDER_PENDING_APPROVAL', '等待财务审核', 'info'),
-          _statusMetric('FINANCE_APPROVED', '财务已通过', 'neutral'),
+          _statusMetric('WAITING_ORDER', '申请待分解', 'success'),
+          _statusMetric('ORDER_PENDING_APPROVAL', '等待财务审核', 'warning'),
+          _statusMetric('FINANCE_APPROVED', '财务已通过', 'info'),
           _statusMetric('COMPLETED', '已完成', 'success'),
           overdue,
         ];

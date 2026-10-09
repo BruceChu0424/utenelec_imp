@@ -180,7 +180,7 @@ String weightCheckTooltip(
 }
 
 /// 可靠度档位 → 徽章类型（可靠=绿 / 可参考=琥珀 / 未学准=红）。
-/// 表格列铺整格底色时经 udenStatusBadgeCellColor 取同源色（2026-09-27 口径）。
+/// 表格列铺整格底色时经 utenStatusBadgeCellColor 取同源色（2026-09-27 口径）。
 UtenStatusBadgeType weightTierBadgeType(WeightTier tier) => switch (tier) {
   WeightTier.green => UtenStatusBadgeType.success,
   WeightTier.yellow => UtenStatusBadgeType.warning,

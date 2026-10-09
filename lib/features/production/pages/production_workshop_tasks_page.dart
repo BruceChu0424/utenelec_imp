@@ -579,13 +579,14 @@ class _ProductionWorkshopTasksPageState
   };
 
   /// 「重新确认生产路线」纠偏弹窗的选项图标用色（与徽章同一套路线分类色）：
-  /// 浅色模式用分类色本体，深色模式用亮档。
+  /// 浅色模式用档位实底色（与路线列整格底同源，ADR-169 收编），深色模式用亮档。
   static Color _routeDotColor(BuildContext context, String? route) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return switch (route) {
-      'BATCH' => isDark ? UtenColors.infoOnDark : UtenColors.info,
-      'CONTINUOUS' => isDark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsia,
-      _ => isDark ? UtenColors.successOnDark : UtenColors.success,
+      'BATCH' => isDark ? UtenColors.infoOnDark : UtenColors.statusInfo,
+      'CONTINUOUS' =>
+        isDark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
+      _ => isDark ? UtenColors.successOnDark : UtenColors.statusSuccess,
     };
   }
 
@@ -2162,8 +2163,10 @@ class _ProductionWorkshopTasksPageState
   }) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
-    final accent = dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsia;
-    final text = dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsiaText;
+    // 品红档收编（ADR-169）：浅色取状态实底档 statusFuchsia（=原 fuchsiaText），
+    // 深色取同族亮档，明暗都可读。
+    final accent = dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia;
+    final text = dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia;
     final cooling = task.urgeCoolingDown(DateTime.now());
     final urgedAt = task.planningUrgedAt;
     final info = Column(
@@ -2200,7 +2203,7 @@ class _ProductionWorkshopTasksPageState
             style: FilledButton.styleFrom(
               backgroundColor: dark
                   ? UtenColors.fuchsiaOnDark
-                  : UtenColors.fuchsiaText,
+                  : UtenColors.statusFuchsia,
               foregroundColor: dark ? const Color(0xFF1F0A24) : Colors.white,
             ),
             onPressed: cooling ? null : onUrge,
@@ -3102,18 +3105,22 @@ class _ProductionWorkshopTasksPageState
       label: '状态',
       width: 72,
       value: (task) => _flowStageOf(task).displayLabel,
-      // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」：等待物料的
-      // 状态列整格铺实底（绿=物料齐可开工 / 琥珀=部分齐 / 蓝=去领料 / 紫=部分
-      // 可领 / 青=待仓库发料 / 灰=缺料 / 品红=等计划下单 / 红=待选路线）。
+      // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」＋2026-10-08
+      // ADR-169 档位锚定：等待物料段整格铺实底（绿=可开工 / 紫=部分已投可开工 /
+      // 蓝=去领料 / 琥珀=部分可领 / 青绿=待仓库发料 / 红=缺料等待不能开工 /
+      // 品红=等计划下单 / 橙=待选路线——待选是车间自己一选即解锁的阻断，真红
+      // 留给等外部到货的缺料）。
       // 2026-09-27 用户口径「胶囊背景去掉、改成单元格背景色、字号与其他列一致」：
-      // 生产中/历史段不再画胶囊，改铺徽章同款浅底；文字色与字号交给表格
+      // 生产中/历史段不再画胶囊，改铺徽章同款实底；文字色与字号交给表格
       // cellColor 双向对比度约定（黑/白自适应 + 正文字号），选中行统一青绿
-      // 高亮也不再被胶囊底盖住。
+      // 高亮也不再被胶囊底盖住。历史段红冲按单据事实取红（词表把已取消/已红冲
+      // 同归 pending 灰，页面级显式覆盖：红冲是负向财务事件，取消才是中性终态）。
       cellColor: (context, task) => _isPreparing
           ? productionReadinessCellColor(_flowStageOf(task).tone)
-          : udenStatusBadgeCellColor(
-              context,
-              productionFlowBadgeType(_flowStageOf(task)),
+          : utenStatusBadgeCellColor(
+              task.segmentStatus == 'REVERSED'
+                  ? UtenStatusBadgeType.danger
+                  : productionFlowBadgeType(_flowStageOf(task)),
             ),
       // ADR-150: what each readiness colour means, read by the AI assistant
       // when someone asks about the status colours (same tones as above).
@@ -3188,7 +3195,7 @@ class _ProductionWorkshopTasksPageState
         value: (task) => task.startRouteLabel,
         // 路线分类色（齐套=绿 / 分批=蓝 / 持续=品红）铺整格，替代原格内胶囊。
         cellColor: (context, task) =>
-            udenStatusBadgeCellColor(context, _routeBadgeType(task.startRoute)),
+            utenStatusBadgeCellColor(_routeBadgeType(task.startRoute)),
         cellBuilder: (_, task) => _routeCell(task),
       ),
     // 「下一步」列只在「等待物料」出现（2026-09-20 用户口径：生产中不显示）：
@@ -3230,7 +3237,7 @@ class _ProductionWorkshopTasksPageState
         info:
             '每种物料只落一个桶：已领到车间 / 缺(等采购委外到货或等自制子件完成)/ '
             '可领(已备好待提交领料)/ 待发(已提交待仓库发料)。自制子件做完可能直送'
-            '本车间也可能入库后领料，只有真正交到本任务后才算「已领」。缺=红、可领=绿。'
+            '本车间也可能入库后领料，只有真正交到本任务后才算「已领」。缺=红、可领=蓝。'
             '双击行查看每种物料的数量。',
         value: _materialSummaryText,
         cellBuilder: (context, task) {
@@ -3238,12 +3245,15 @@ class _ProductionWorkshopTasksPageState
           final dark = theme.brightness == Brightness.dark;
           final base = theme.textTheme.bodySmall;
           Color? toneColor(_MaterialSummaryTone tone) => switch (tone) {
+            // ADR-169 档位收编：浅色取状态实底档色（深档可读），深色取同族亮档；
+            // 缺=红（不能齐套开工）、可领=蓝（与逐料表/词表「去领料=蓝」一致）、
+            // 等计划下单=品红（分类强调）。
             _MaterialSummaryTone.short =>
-              dark ? UtenColors.errorOnDark : UtenColors.errorText,
+              dark ? UtenColors.errorOnDark : UtenColors.statusDanger,
             _MaterialSummaryTone.drawable =>
-              dark ? UtenColors.successOnDark : UtenColors.successText,
+              dark ? UtenColors.infoOnDark : UtenColors.statusInfo,
             _MaterialSummaryTone.planning =>
-              dark ? UtenColors.fuchsiaOnDark : UtenColors.fuchsiaText,
+              dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
             _MaterialSummaryTone.muted => theme.colorScheme.onSurfaceVariant,
             _MaterialSummaryTone.plain => null,
           };

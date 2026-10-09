@@ -38,6 +38,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/ui/app_notification.dart';
@@ -424,8 +425,10 @@ class _SalesOrderProgressDetailPageState
               runSpacing: UtenSpacing.s4,
               children: [
                 _financeChip(theme, d),
-                if (d.closed) _flagChip(theme, '已结案', Colors.green),
-                if (d.stopped) _flagChip(theme, '已中止', theme.colorScheme.error),
+                if (d.closed) _flagChip(theme, '已结案', UtenColors.statusSuccess),
+                // 已中止=中性终态（ADR-169：终态不抢红，与进度列表「已中止」灰档一致）。
+                if (d.stopped)
+                  _flagChip(theme, '已中止', theme.colorScheme.onSurfaceVariant),
               ],
             ),
           ],
@@ -436,8 +439,8 @@ class _SalesOrderProgressDetailPageState
 
   Widget _docStatusChip(ThemeData theme, SalesDocDetail d) {
     final (label, color) = switch (d.status) {
-      1 => ('已审核', Colors.green),
-      -1 => ('已红冲', theme.colorScheme.error),
+      1 => ('已审核', UtenColors.statusSuccess),
+      -1 => ('已红冲', UtenColors.statusDanger),
       _ => ('草稿', theme.colorScheme.onSurfaceVariant),
     };
     return _flagChip(theme, label, color);
@@ -448,13 +451,14 @@ class _SalesOrderProgressDetailPageState
       return _flagChip(
         theme,
         '财务已确认${d.financeConfirmedByName != null ? ' · ${d.financeConfirmedByName}' : ''}',
-        Colors.green,
+        UtenColors.statusSuccess,
       );
     }
     if (d.financeRejected) {
-      return _flagChip(theme, '财务已驳回', theme.colorScheme.error);
+      return _flagChip(theme, '财务已驳回', UtenColors.statusDanger);
     }
-    return _flagChip(theme, '待财务确认', theme.colorScheme.tertiary);
+    // 等财务确认=等待外部（ADR-169 琥珀档语义；tint 药丸取控件级琥珀 token）。
+    return _flagChip(theme, '待财务确认', UtenColors.warning);
   }
 
   Widget _flagChip(ThemeData theme, String label, Color color) {

@@ -274,13 +274,16 @@ class _ExpenseApprovalListPageState
       label: '状态',
       width: 72,
       value: (claim) => claim.status.label,
-      // 2026-09-27 用户口径「表格状态列整格底色」（口径同报销列表）。
+      // 2026-09-27 用户口径「表格状态列整格底色」（口径同报销列表；ADR-169
+      // 档位锚定）：草稿=灰 / 待审批·审批中=蓝（已提交流转；「轮到我审/我付」
+      // 由待审批·待付款分段的红徽章表达）/ 已通过待打款=琥珀（本页待付款段
+      // 里=等待登记付款，无异常）/ 驳回=红 / 已付款=绿。
       cellColor: (context, claim) =>
-          udenStatusBadgeCellColor(context, switch (claim.status) {
+          utenStatusBadgeCellColor(switch (claim.status) {
             ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
             ExpenseClaimStatus.submitted ||
             ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
-            ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+            ExpenseClaimStatus.approved => UtenStatusBadgeType.warning,
             ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
             ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
           }),

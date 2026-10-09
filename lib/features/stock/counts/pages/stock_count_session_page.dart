@@ -249,9 +249,12 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     _stashCurrentWarehouse();
     _count.begin(next);
     _extraRows.clear();
+    // 搜索词是上一仓的查询条件，跨仓残留会把新仓过滤成空表。
+    _search.clear();
     setState(() {
       _warehouse = next;
       _page = null;
+      _keyword = '';
       _categoryId = null;
       _categoryTree = const [];
       _error = null;
@@ -317,7 +320,10 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
         );
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      // 快速切仓时旧仓的收尾不能熄掉新仓的加载指示。
+      if (mounted && _warehouse?.id == warehouse.id) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -763,6 +769,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       onRetry: () => _load(_pageNum),
       emptyMessage: _stockedOnly
           ? '本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'
+          : _keyword.isEmpty && _categoryId == null
+          ? '本仓没有归属物料，也没有账面库存；如需盘盈请用「添加物料」加入'
           : '没有符合条件的物料',
       currentPage: _page?.page ?? 1,
       totalPages: _page?.totalPages ?? 1,

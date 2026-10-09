@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart' show mapEquals;
+
+import '../../../components/data_display/uten_status_badge.dart';
 import 'warehouse_iqc_stock_in.dart'
     show
         WarehouseInboundAllocation,
@@ -13,13 +15,15 @@ enum WarehouseQualityLineVerdict {
   /// 合格：已有合格结论且无不合格、无待检余量 → 绿色对勾。
   passed('合格'),
 
-  /// 部分合格：既有合格又有不合格，或合格之外仍有待检余量 → 黄色警告。
+  /// 部分合格：既有合格又有不合格，或合格之外仍有待检余量 → 橙色警告
+  /// （ADR-169：部分合格=风险中间态取橙，与作业状态「部分合格」同档）。
   partial('部分合格'),
 
   /// 不合格：整行只有不合格结论 → 红色禁止。
   rejected('不合格'),
 
-  /// 待检：尚无任何结论 → 蓝色沙漏。
+  /// 待检：尚无任何结论 → 琥珀沙漏（等品质结论=等别人，与作业状态
+  /// 「等待检查结果」同取黄档）。
   waiting('待检'),
 
   /// 已撤销：收货单红冲，冻结行的结论量已清零 → 灰色撤销。
@@ -60,6 +64,21 @@ enum WarehouseQualityWorkStatus {
     return completed;
   }
 }
+
+/// 作业状态 → 徽章档位（ADR-169，列表状态列与详情页头部徽章同一份）：
+/// 等待检查结果=黄（结论在品质部手上，等别人且无异常）/ 全部合格·待入库=绿
+/// （轮到仓库动手入库的绿灯）/ 部分合格=橙（部分合格是风险中间态，2026-10-08
+/// 用户锚定「部分合格=橙」）/ 全部不合格·需退回=红（不合格）/ 已完结=灰（终态）。
+/// 同页五档互区分（黄/绿/橙/红/灰）。
+UtenStatusBadgeType warehouseQualityWorkStatusBadgeType(
+  WarehouseQualityWorkStatus status,
+) => switch (status) {
+  WarehouseQualityWorkStatus.waitingInspection => UtenStatusBadgeType.warning,
+  WarehouseQualityWorkStatus.allPassed => UtenStatusBadgeType.success,
+  WarehouseQualityWorkStatus.partialPassed => UtenStatusBadgeType.orange,
+  WarehouseQualityWorkStatus.returnRequired => UtenStatusBadgeType.danger,
+  WarehouseQualityWorkStatus.completed => UtenStatusBadgeType.neutral,
+};
 
 /// 来源类型(大类)分段的两枚计数: 红色「轮到仓库动手」与黄色「等待检查结果」。
 ///

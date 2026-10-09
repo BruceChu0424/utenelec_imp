@@ -419,14 +419,16 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     label: '状态',
     width: 72,
     value: (claim) => claim.status.label,
-    // 2026-09-27 用户口径「表格状态列整格底色」：草稿=灰 / 在审=蓝 /
-    // 待打款=青 / 驳回=红 / 已打款=绿。
+    // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定
+    // （14-徽章口径 §四：驳回需修订=红、处理中=warning/info、已完成=绿、
+    // 草稿=灰）：草稿=灰 / 待审批·审批中=蓝（已提交流转）/
+    // 已通过待打款=琥珀（等待外部付款，无异常）/ 驳回=红 / 已付款=绿。
     cellColor: (context, claim) =>
-        udenStatusBadgeCellColor(context, switch (claim.status) {
+        utenStatusBadgeCellColor(switch (claim.status) {
           ExpenseClaimStatus.draft => UtenStatusBadgeType.neutral,
           ExpenseClaimStatus.submitted ||
           ExpenseClaimStatus.reviewing => UtenStatusBadgeType.info,
-          ExpenseClaimStatus.approved => UtenStatusBadgeType.accent,
+          ExpenseClaimStatus.approved => UtenStatusBadgeType.warning,
           ExpenseClaimStatus.rejected => UtenStatusBadgeType.danger,
           ExpenseClaimStatus.paid => UtenStatusBadgeType.success,
         }),
@@ -467,7 +469,7 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
     value: (claim) => _formatTime(claim.submittedAt ?? claim.createdAt),
   ),
   MasterColumnDef(
-    key: 'progress',
+    key: 'auditTrail',
     label: '审批/付款记录',
     width: 230,
     info:

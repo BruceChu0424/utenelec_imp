@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -1019,6 +1021,39 @@ class _SalesShipmentTaskWorkbenchState
   List<MasterColumnDef<SalesDocListItem>> _columns(
     SalesMasterNameService names,
   ) => [
+    // 2026-10-08 用户口径「状态或进度列默认放最前」：财务审核 / 仓库作业是
+    // 出货任务的两条行级结论列（审核结论 + 作业状态，推翻 2026-10-06 批次
+    // 「无状态字样不动」的豁免），一起前置。窄屏卡片是独立的
+    // _CompactShipmentTaskCard，不读列清单，无需给原首列钉 cardRole。
+    MasterColumnDef(
+      key: 'financeAudit',
+      label: '财务审核',
+      width: 120,
+      value: (item) => item.shipmentWorkflow.financeRejected
+          ? '已退回销售'
+          : salesShipmentFinanceAuditLabel(item.financeAudit),
+      // 退回格底色走 danger 档（ADR-169 状态列口径），与销售列表同款实底。
+      cellColor: (context, item) => item.shipmentWorkflow.financeRejected
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.danger)
+          : null,
+    ),
+    MasterColumnDef(
+      key: 'warehouseWorkStatus',
+      label: '仓库作业',
+      width: 160,
+      value: (item) => salesWarehouseWorkStatusLabel(item.warehouseWorkStatus),
+      // 仓库作业整格底色（ADR-169，按模式取视角，映射见
+      // salesWarehouseWorkStatusBadgeType）：仓库模式待出库=绿（就绪可动手，
+      // 轮到仓库出库）、已出库=灰（办结）；财务模式待出库=青（等仓库出货）；
+      // 两模式历史迁移异常/已红冲均=红、已取消=灰。
+      cellColor: (context, item) {
+        final type = salesWarehouseWorkStatusBadgeType(
+          item.warehouseWorkStatus,
+          warehouseAction: !_isFinance,
+        );
+        return type == null ? null : utenStatusBadgeCellColor(type);
+      },
+    ),
     MasterColumnDef(
       // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
       key: 'billNo',
@@ -1060,23 +1095,6 @@ class _SalesShipmentTaskWorkbenchState
       width: 150,
       type: 'money',
       value: (item) => _amount(item, names.currency(item.currencyId)),
-    ),
-    MasterColumnDef(
-      key: 'financeAudit',
-      label: '财务审核',
-      width: 120,
-      value: (item) => item.shipmentWorkflow.financeRejected
-          ? '已退回销售'
-          : salesShipmentFinanceAuditLabel(item.financeAudit),
-      cellColor: (context, item) => item.shipmentWorkflow.financeRejected
-          ? Theme.of(context).colorScheme.errorContainer
-          : null,
-    ),
-    MasterColumnDef(
-      key: 'warehouseWorkStatus',
-      label: '仓库作业',
-      width: 160,
-      value: (item) => salesWarehouseWorkStatusLabel(item.warehouseWorkStatus),
     ),
   ];
 }

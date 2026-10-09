@@ -161,7 +161,7 @@ class _InquiryCard extends StatelessWidget {
               const Spacer(),
               UtenStatusBadge(
                 label: inquiry.status.label,
-                type: _statusBadgeType(inquiry.status),
+                type: websiteInquiryStatusBadgeType(inquiry.status),
                 size: UtenStatusBadgeSize.small,
               ),
             ],
@@ -245,14 +245,6 @@ class _InquiryCard extends StatelessWidget {
     );
   }
 }
-
-UtenStatusBadgeType _statusBadgeType(WebsiteInquiryStatus status) =>
-    switch (status) {
-      WebsiteInquiryStatus.newOne => UtenStatusBadgeType.info,
-      WebsiteInquiryStatus.following => UtenStatusBadgeType.warning,
-      WebsiteInquiryStatus.converted => UtenStatusBadgeType.success,
-      WebsiteInquiryStatus.closed => UtenStatusBadgeType.neutral,
-    };
 
 String _fmt(DateTime value) =>
     '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';

@@ -25,6 +25,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/models/paged_result.dart';
@@ -1032,10 +1033,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 nullCounts: _columnNullCounts,
                 filters: _columnFilters,
                 onFilterChanged: _onFilterChanged,
-                // 行底色按状态：使用=浅蓝、禁用=浅红；单击选中自动加深加亮。
+                // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸 Colors.lightBlue
+                // 收编进语义档）/ 禁用=灰档淡底（停用归中性终态，原浅红把「停用」
+                // 当异常——基础资料主档停用不是错误，文本仍按 DocStatusBadge 不上色）。
                 rowColor: (row) => switch (_c.statusOf(row)) {
-                  '使用' => Colors.lightBlue.withValues(alpha: 0.13),
-                  '禁用' => Colors.red.withValues(alpha: 0.10),
+                  '使用' => UtenColors.info.withValues(alpha: 0.13),
+                  '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
                   _ => null,
                 },
                 onRowTap: _c.onOpen == null

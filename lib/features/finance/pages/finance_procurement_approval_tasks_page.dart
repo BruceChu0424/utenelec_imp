@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -20,7 +22,6 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
@@ -846,7 +847,7 @@ class _FinanceProcurementApprovalTasksPageState
   List<MasterColumnDef<FinanceProcurementApprovalTask>> _columns(
     BuildContext context,
   ) => [
-    // 批准后改量（2026-09-05）：改过数量的任务显示浅黄底徽标，
+    // 批准后改量（2026-09-05）：改过数量的任务显示橙色档，
     // 改量与退回重提都提示财务查看审核详情中的整行前后对比。
     MasterColumnDef(
       key: 'status',
@@ -859,12 +860,14 @@ class _FinanceProcurementApprovalTasksPageState
           : (task.attempt ?? 1) > 1
           ? '重新提交待审核'
           : AppLocalizations.of(context).procurementApprovalStatusPending,
-      cellColor: (context, task) =>
-          task.changeCount > 0 || (task.attempt ?? 1) > 1
-          ? (Theme.of(context).brightness == Brightness.dark
-                ? UtenColors.warning.withValues(alpha: 0.18)
-                : UtenColors.warningBg)
-          : null,
+      // 状态列档位（ADR-169）：本页整条就是财务的待审队列——普通待审核=绿
+      // （「就绪可动手」，轮到我审=绿灯）；改量/重新提交=橙（未死锁但需注意，
+      // 要先看审核详情的前后对比再批）。
+      cellColor: (context, task) => utenStatusBadgeCellColor(
+        task.changeCount > 0 || (task.attempt ?? 1) > 1
+            ? UtenStatusBadgeType.orange
+            : UtenStatusBadgeType.success,
+      ),
     ),
     MasterColumnDef(
       key: 'orderType',

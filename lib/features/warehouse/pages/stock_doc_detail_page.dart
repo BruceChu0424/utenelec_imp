@@ -33,6 +33,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
@@ -1019,7 +1020,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              backgroundColor: UtenColors.error,
+            ), // 与全站删除确认对话框同款语义色。
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),

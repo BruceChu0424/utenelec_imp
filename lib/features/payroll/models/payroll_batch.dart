@@ -1,3 +1,4 @@
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/utils/china_datetime.dart';
 import 'payroll_slip.dart';
 
@@ -13,6 +14,18 @@ extension PayrollBatchStatusValue on PayrollBatchStatus {
   };
 
   String get apiValue => name.toUpperCase();
+
+  /// 批次状态徽章档位（ADR-169 锚定，审核页批次栏与生成页批次卡同源）：
+  /// 草稿=灰（未提交）/ 待审核=蓝（已提交流转；「轮到我审」由队列入口
+  /// 表达）/ 已通过=琥珀（审核通过、等待发布）/ 已驳回=红 / 已发布=绿。
+  /// 批次栏各态同现，五档互可区分。
+  UtenStatusBadgeType get badgeType => switch (this) {
+    PayrollBatchStatus.draft => UtenStatusBadgeType.neutral,
+    PayrollBatchStatus.submitted => UtenStatusBadgeType.info,
+    PayrollBatchStatus.approved => UtenStatusBadgeType.warning,
+    PayrollBatchStatus.rejected => UtenStatusBadgeType.danger,
+    PayrollBatchStatus.published => UtenStatusBadgeType.success,
+  };
 
   static PayrollBatchStatus fromApi(Object? value) {
     final normalized = value?.toString().trim().toUpperCase();

@@ -1153,6 +1153,12 @@ abstract class _MaterialAnalysisCandidatesState
       label: '分析状态',
       width: 72,
       value: (line) => _analysisStatusText(line.analysisStatus),
+      // ADR-169 显式档位（此前这列靠文案猜色兜底）：待分析=灰 / 已分析=绿 /
+      // 部分已下达=紫 / 需刷新=橙；未知服务端值无色纯文本。
+      cellColor: (context, line) {
+        final type = _analysisStatusBadgeType(line.analysisStatus);
+        return type == null ? null : utenStatusBadgeCellColor(type);
+      },
     ),
     MasterColumnDef(
       key: 'orderNo',

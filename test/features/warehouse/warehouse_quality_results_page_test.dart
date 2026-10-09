@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
@@ -126,13 +128,21 @@ void main() {
         columnKeys.intersection(warehouseIqcStockInForbiddenKeys),
         isEmpty,
       );
-      // 多选 + 行色接线：全绿行 tint 非空，选集由页面持有。
+      // 多选 + 状态列底色接线：全部合格=绿档实底（ADR-169 作业状态列整格底色，
+      // 替换原整行浅 tint），选集由页面持有。
       expect(table.selectable, isTrue);
+      final workStatusColumn = table.columns.firstWhere(
+        (column) => column.key == 'workStatus',
+      );
+      final tableContext = tester.element(
+        find.byKey(const Key('warehouse-quality-result-table')),
+      );
       expect(
-        table.rowColor!(
+        workStatusColumn.cellColor!(
+          tableContext,
           WarehouseQualityResultTask.fromJson(_summaryJson('ALL_PASSED')),
         ),
-        isNotNull,
+        utenStatusBadgeCellColor(UtenStatusBadgeType.success),
       );
       expect(find.text('全部合格 · 待入库'), findsWidgets);
       expect(find.text('等待结果'), findsWidgets);

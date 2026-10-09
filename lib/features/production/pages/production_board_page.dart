@@ -53,6 +53,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/network/api_exception.dart';
@@ -1014,8 +1015,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       // 2026-09-27 用户口径「表格状态列整格底色」：已排/已分析=绿(在途有进展)、
       // 待审批=蓝(球在审核方)、紧急=红、待分析=中性灰。
       value: _statusText,
-      cellColor: (context, r) =>
-          udenStatusBadgeCellColor(context, _statusType(r)),
+      cellColor: (context, r) => utenStatusBadgeCellColor(_statusType(r)),
     ),
     MasterColumnDef(
       key: 'orderBillNo',
@@ -1847,7 +1847,9 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                                 child: Icon(
                                   Icons.star_rounded,
                                   size: 16,
-                                  color: Colors.amber,
+                                  // 重要标星：亮琥珀档（收编自裸 Colors.amber，
+                                  // 明暗主题都是亮档、无需前景配对）。
+                                  color: UtenColors.warningStrong,
                                 ),
                               ),
                             Flexible(
@@ -1918,7 +1920,10 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                                 theme,
                                 Icons.today_rounded,
                                 '今日入库 +${_fmt(r.todayQty)}',
-                                color: Colors.green.shade700,
+                                color: _tierText(
+                                  theme,
+                                  UtenStatusBadgeType.success,
+                                ),
                                 bold: true,
                               ),
                           ],
@@ -2195,25 +2200,49 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     bool done, {
     bool overdue = false,
   }) {
+    // ADR-169 收编（原裸 Colors.green/Colors.orange）：已完成=success 绿、
+    // 进行中=info 蓝（正在执行）；逾期/紧急保持主题 error（危险语义随主题）。
     final (label, color) = done
-        ? ('已完成 ✓', Colors.green)
+        ? ('已完成 ✓', _tierText(theme, UtenStatusBadgeType.success))
         : overdue
         ? ('已逾期', theme.colorScheme.error)
         : r.urgent
         ? ('紧急', theme.colorScheme.error)
-        : ('进行中', Colors.orange);
+        : ('进行中', _tierText(theme, UtenStatusBadgeType.info));
     return _chip(theme, label, color);
   }
 
   Widget _miniStatus(ThemeData theme, SubPlanProgress s, bool done) {
+    // 子计划 0/1/-1 与 docStatusBadgeType 同口径：草稿灰 / 已审（未完=进行中）
+    // 蓝 / 红冲红（负向财务事件，原误用中性灰，ADR-169 锚定改正）。
     final (label, color) = s.status == -1
-        ? ('红冲', theme.colorScheme.onSurfaceVariant)
+        ? ('红冲', _tierText(theme, UtenStatusBadgeType.danger))
         : s.status == 0
-        ? ('草稿', Colors.orange)
+        ? ('草稿', _tierText(theme, UtenStatusBadgeType.neutral))
         : done
-        ? ('已完成 ✓', Colors.green)
-        : ('进行中', Colors.orange);
+        ? ('已完成 ✓', _tierText(theme, UtenStatusBadgeType.success))
+        : ('进行中', _tierText(theme, UtenStatusBadgeType.info));
     return _chip(theme, label, color);
+  }
+
+  /// 档位 → 本页胶囊/文字用色（浅色取状态实底深档、深色取同族亮档，ADR-169）。
+  Color _tierText(ThemeData theme, UtenStatusBadgeType type) {
+    final dark = theme.brightness == Brightness.dark;
+    return switch (type) {
+      UtenStatusBadgeType.success =>
+        dark ? UtenColors.successOnDark : UtenColors.statusSuccess,
+      UtenStatusBadgeType.info =>
+        dark ? UtenColors.infoOnDark : UtenColors.statusInfo,
+      UtenStatusBadgeType.violet =>
+        dark ? UtenColors.violetOnDark : UtenColors.statusViolet,
+      UtenStatusBadgeType.fuchsia =>
+        dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
+      UtenStatusBadgeType.warning =>
+        dark ? UtenColors.warningOnDark : UtenColors.warningText,
+      UtenStatusBadgeType.danger =>
+        dark ? UtenColors.errorOnDark : UtenColors.statusDanger,
+      _ => theme.colorScheme.onSurfaceVariant,
+    };
   }
 
   Widget _chip(ThemeData theme, String label, Color color) {
@@ -2272,10 +2301,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final String text;
     final Color color;
     final IconData icon;
+    // ADR-169 收编（原裸 Colors.green.shade700 / Colors.orange.shade800）：
+    // 已齐套=绿（就绪）；部分齐套=紫（部分就绪，调度台与车间任务页词表同锚）；
+    // 待齐套(0/N)=琥珀（等到货·在途，等待外部且无异常）；数据异常=红。
     switch (state) {
       case 'READY':
         text = canStartNow ? '物料已齐套 · 仓库备料中' : '物料已齐套';
-        color = Colors.green.shade700;
+        color = _tierText(theme, UtenStatusBadgeType.success);
         icon = Icons.check_circle_outline_rounded;
         break;
       case 'PARTIAL':
@@ -2283,12 +2315,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
             '物料已齐 ${_fmt(readyQty)} / ${_fmt(totalQty)}'
             '($readySegments/$totalSegments 段)'
             '${canStartNow ? ' · 部分段进入仓库备料' : ''}';
-        color = Colors.orange.shade800;
+        color = _tierText(theme, UtenStatusBadgeType.violet);
         icon = Icons.inventory_2_outlined;
         break;
       case 'WAITING':
         text = '物料待齐套(0/$totalSegments 段)';
-        color = Colors.orange.shade800;
+        color = _tierText(theme, UtenStatusBadgeType.warning);
         icon = Icons.hourglass_bottom_rounded;
         break;
       case 'LEGACY_UNSUPPORTED':

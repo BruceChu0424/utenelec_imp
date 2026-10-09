@@ -21,6 +21,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_list_create_action.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -180,6 +182,16 @@ Future<void> _toggleLike(BuildContext context, WidgetRef ref, String id) async {
   }
 }
 
+/// 建议状态 → 档位（ADR-169）：已提交=黄（等管理员处理的排队）· 处理中=蓝
+/// （正在办）· 已采纳=绿 · 未采纳=红（驳回族）。与详情页徽章同口径。
+UtenStatusBadgeType suggestionStatusBadgeType(SuggestionStatus s) =>
+    switch (s) {
+      SuggestionStatus.submitted => UtenStatusBadgeType.warning,
+      SuggestionStatus.reviewing => UtenStatusBadgeType.info,
+      SuggestionStatus.resolved => UtenStatusBadgeType.success,
+      SuggestionStatus.rejected => UtenStatusBadgeType.danger,
+    };
+
 final List<MasterColumnDef<Suggestion>> _columns = [
   MasterColumnDef(
     key: 'status',
@@ -187,6 +199,8 @@ final List<MasterColumnDef<Suggestion>> _columns = [
     width: 72,
     info: '按状态筛选（与「建议广场/我的建议」分段各自独立），选中后回到第 1 页。',
     value: (s) => s.status.label,
+    cellColor: (context, s) =>
+        utenStatusBadgeCellColor(suggestionStatusBadgeType(s.status)),
   ),
   MasterColumnDef(key: 'title', label: '标题', width: 260, value: (s) => s.title),
   MasterColumnDef(

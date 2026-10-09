@@ -445,9 +445,11 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                         ),
                         UtenStatusBadge(
                           label: status ?? '—',
+                          // 停用=灰（ADR-169：基础资料主档停用归中性终态，
+                          // 原红档把「停用」当异常）。
                           type: active
                               ? UtenStatusBadgeType.success
-                              : UtenStatusBadgeType.danger,
+                              : UtenStatusBadgeType.neutral,
                         ),
                         if (rank?.isNotEmpty == true)
                           UtenStatusBadge(

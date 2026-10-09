@@ -675,7 +675,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
       textOf: textOf,
       cellColor: (context, line) => textOf(line).isEmpty
           ? null
-          : udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+          : utenStatusBadgeCellColor(UtenStatusBadgeType.warning),
       cellColorListenableOf: (line) => Listenable.merge([
         line.weight,
         paramsListenable,

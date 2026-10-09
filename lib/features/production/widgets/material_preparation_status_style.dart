@@ -71,8 +71,7 @@ class MaterialPreparationStatusStyle {
   final Color foreground;
   final IconData icon;
 
-  factory MaterialPreparationStatusStyle.resolve(
-    ThemeData theme, {
+  factory MaterialPreparationStatusStyle.resolve({
     ProductionFlowStage? stage,
     String? facetKey,
     String? actualState,
@@ -85,116 +84,56 @@ class MaterialPreparationStatusStyle {
           facetKey: facetKey,
           actualState: actualState,
         );
-    final dark = theme.brightness == Brightness.dark;
-    final (
-      lightBackground,
-      lightForeground,
-      semantic,
-      darkForeground,
-      icon,
-    ) = switch (resolved) {
+    // ADR-169 状态实底色板：深色实底 + 成套前景，明暗两主题同一对色。
+    // 未下达=灰(等自己动手)、执行中=青绿(他方在干)、在途=琥珀(等外部到货)、
+    // 完成=绿、阻断=红、取消/未知=灰(靠图标区分)。
+    final (background, foreground, icon) = switch (resolved) {
       MaterialPreparationStatusPhase.pending => (
-        UtenColors.warningBg,
-        UtenColors.warningText,
-        UtenColors.warning,
-        UtenColors.warningOnDark,
+        UtenColors.statusNeutral,
+        Colors.white,
         Icons.schedule_rounded,
       ),
       MaterialPreparationStatusPhase.processing => (
-        UtenColors.tealSurface,
-        UtenColors.teal700,
-        UtenColors.teal500,
-        UtenColors.teal300,
+        UtenColors.statusTeal,
+        Colors.white,
         Icons.play_circle_outline_rounded,
       ),
       MaterialPreparationStatusPhase.awaitingReceipt => (
-        UtenColors.infoBg,
-        UtenColors.infoText,
-        UtenColors.info,
-        UtenColors.infoOnDark,
+        UtenColors.warningStrong,
+        UtenColors.onWarningStrong,
         Icons.move_to_inbox_outlined,
       ),
       MaterialPreparationStatusPhase.completed => (
-        UtenColors.successBg,
-        UtenColors.successText,
-        UtenColors.success,
-        UtenColors.successOnDark,
+        UtenColors.statusSuccess,
+        Colors.white,
         Icons.task_alt_rounded,
       ),
       MaterialPreparationStatusPhase.blocked => (
-        UtenColors.errorBg,
-        UtenColors.errorText,
-        UtenColors.error,
-        UtenColors.errorOnDark,
+        UtenColors.statusDanger,
+        Colors.white,
         Icons.error_outline_rounded,
       ),
       MaterialPreparationStatusPhase.cancelled => (
-        UtenColors.surfaceMid,
-        UtenColors.textSecondary,
-        UtenColors.slate400,
-        UtenColors.slate300,
+        UtenColors.statusNeutral,
+        Colors.white,
         Icons.cancel_outlined,
       ),
       MaterialPreparationStatusPhase.unknown => (
-        UtenColors.surfaceMid,
-        UtenColors.textSecondary,
-        UtenColors.slate400,
-        UtenColors.slate300,
+        UtenColors.statusNeutral,
+        Colors.white,
         Icons.help_outline_rounded,
       ),
     };
     return MaterialPreparationStatusStyle(
       phase: resolved,
-      background: dark
-          ? Color.alphaBlend(
-              semantic.withValues(alpha: 0.18),
-              theme.colorScheme.surface,
-            )
-          : lightBackground,
-      foreground: dark ? darkForeground : lightForeground,
+      background: background,
+      foreground: foreground,
       icon: icon,
     );
   }
 }
 
-/// The table column owns the full-cell background; this shared content keeps
-/// icon and text identical in the preparation table and all three issue pages.
-class MaterialPreparationStatusLabel extends StatelessWidget {
-  const MaterialPreparationStatusLabel({
-    super.key,
-    required this.label,
-    required this.style,
-  });
-
-  final String label;
-  final MaterialPreparationStatusStyle style;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    label: label,
-    child: ExcludeSemantics(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(style.icon, size: 18, color: style.foreground),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              label,
-              // 2026-10-06 行高统一口径：状态文字单行省略号，全量文字由本组件
-              // 的 Semantics(container) 播报，行高不随状态文案折行变化。
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: style.foreground,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
+/// 相位样式的消费方：表格列 cellColor 铺 [MaterialPreparationStatusStyle.background]，
+/// 格内文字/图标继承表格注入的对比度前景与加粗（格内容不许写死颜色），
+/// 图标可取 [MaterialPreparationStatusStyle.icon]。格内已不再用独立 Label 组件
+/// （其成套前景在选中行 cellColor 让位后会留白字，2026-10-08 已删）。

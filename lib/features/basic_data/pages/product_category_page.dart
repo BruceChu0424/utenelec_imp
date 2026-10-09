@@ -612,7 +612,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           title: '禁用货品(${disabled.total})',
           subtitle: '当前分类子树内已停用的货品',
           icon: Icons.block_rounded,
-          tint: Colors.red.withValues(alpha: 0.12),
+          // 停用分组=灰档淡底（ADR-169：停用归中性终态，原浅红当异常色）。
+          tint: UtenColors.statusNeutral.withValues(alpha: 0.12),
           items: disabled.items,
           total: disabled.total,
         ),
@@ -622,7 +623,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           title: '不明货品(${stubs.total})',
           subtitle: '迁移兜底占位(auto_created)，无分类归属',
           icon: Icons.help_outline_rounded,
-          tint: Colors.amber.withValues(alpha: 0.16),
+          // 不明货品=橙档淡底（ADR-169：数据质量风险注意态，非等待外部，
+          // 原裸 Colors.amber 收编）。
+          tint: UtenColors.statusOrange.withValues(alpha: 0.16),
           items: stubs.items,
           total: stubs.total,
         ),

@@ -1153,7 +1153,8 @@ void main() {
               widget is Container &&
               widget.decoration is BoxDecoration &&
               (widget.decoration as BoxDecoration).color ==
-                  UtenColors.warningBg,
+                  // ADR-169：明暗两主题同用亮琥珀实底(成套深棕字)。
+                  UtenColors.warningStrong,
         ),
       ),
       findsOneWidget,
@@ -1191,7 +1192,7 @@ void main() {
               widget is Container &&
               widget.decoration is BoxDecoration &&
               (widget.decoration as BoxDecoration).color ==
-                  UtenColors.warning.withValues(alpha: 0.18),
+                  UtenColors.warningStrong,
         ),
       ),
       findsOneWidget,

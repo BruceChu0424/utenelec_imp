@@ -254,7 +254,7 @@ List<QualityInspectionRecordMetric> _parseMetrics(Object? raw) {
         (
           key: 'PARTIAL',
           label: '部分合格',
-          tone: 'warning',
+          tone: 'orange',
           decisionFilter: 'PARTIAL',
         ),
         (key: 'FAIL', label: '不合格记录', tone: 'danger', decisionFilter: 'FAIL'),

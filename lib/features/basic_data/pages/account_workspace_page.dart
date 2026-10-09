@@ -639,7 +639,9 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         title: total == null ? '禁用账户' : '禁用账户($total)',
         subtitle: '已停用账户，保留历史流水与财务引用',
         icon: Icons.block_rounded,
-        tint: Colors.red.withValues(alpha: 0.12),
+        // 停用分组=灰档淡底（ADR-169：停用归中性终态，原浅红把「已停用」
+        // 当异常——保留历史引用是正常业务形态）。
+        tint: UtenColors.statusNeutral.withValues(alpha: 0.12),
         items: disabled?.items ?? const <AccountListItem>[],
         total: total,
         detailLabel: disabled == null ? '点击加载' : '下拉查看详情',
@@ -814,9 +816,13 @@ class _AccountPageState extends ConsumerState<AccountPage> {
                       nullCounts: _facets?.nullCounts ?? const {},
                       filters: _filters,
                       onFilterChanged: _onFilterChanged,
+                      // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
+                      // 禁用=灰档淡底（停用归中性终态，原浅红当异常色）。
                       rowColor: (account) => switch (account.status) {
-                        '使用' => Colors.lightBlue.withValues(alpha: 0.11),
-                        '禁用' => Colors.red.withValues(alpha: 0.09),
+                        '使用' => UtenColors.info.withValues(alpha: 0.11),
+                        '禁用' => UtenColors.statusNeutral.withValues(
+                          alpha: 0.09,
+                        ),
                         _ => null,
                       },
                       rowMenuBuilder: _rowMenu,

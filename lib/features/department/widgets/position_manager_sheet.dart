@@ -265,7 +265,10 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(
+              // 删除确认的危险按钮走主题 error（收编裸 Colors.red，08 准则 §3.1）。
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),

@@ -7,11 +7,14 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 
 /// 员工状态 → 徽章配色类型（表格 cellColor 铺整格时复用同一映射，
-/// 与 [EmployeeStatusBadge] 保持同色）。
+/// 与 [EmployeeStatusBadge] 保持同色）。ADR-169 档位锚定：
+/// 在职=绿（正常） · 试用=橙（未转正的中间态，转正节点需留意；黄档留给
+/// 员工详情页同现的「证件缺失」提醒，避免同页撞色） · 休假=青（等待返岗的
+/// 第二等待档；蓝是"正在执行"，不合休假语义） · 离职=灰（历史终态）。
 UtenStatusBadgeType employeeStatusBadgeType(String? status) => switch (status) {
   'active' => UtenStatusBadgeType.success,
-  'probation' => UtenStatusBadgeType.warning,
-  'onLeave' => UtenStatusBadgeType.info,
+  'probation' => UtenStatusBadgeType.orange,
+  'onLeave' => UtenStatusBadgeType.sky,
   'resigned' => UtenStatusBadgeType.neutral,
   _ => UtenStatusBadgeType.neutral,
 };

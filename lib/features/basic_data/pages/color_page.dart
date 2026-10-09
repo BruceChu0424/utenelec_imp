@@ -662,10 +662,11 @@ class _ColorPageState extends ConsumerState<ColorPage> {
                     nullCounts: _facets?.nullCounts ?? const {},
                     filters: _filters,
                     onFilterChanged: _onFilterChanged,
-                    // 行底色按状态：使用=浅蓝、禁用=浅红；单击选中自动加深加亮。
+                    // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
+                    // 禁用=灰档淡底（停用归中性终态，原浅红把「停用」当异常）。
                     rowColor: (c) => switch (c.status) {
-                      '使用' => Colors.lightBlue.withValues(alpha: 0.13),
-                      '禁用' => Colors.red.withValues(alpha: 0.10),
+                      '使用' => UtenColors.info.withValues(alpha: 0.13),
+                      '禁用' => UtenColors.statusNeutral.withValues(alpha: 0.10),
                       _ => null,
                     },
                     onRowTap: (c) => _showDetail(c.id),

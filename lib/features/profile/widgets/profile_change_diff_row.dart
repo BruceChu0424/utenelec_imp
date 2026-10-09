@@ -3,8 +3,21 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../models/profile_change_request.dart';
+
+/// 修改申请状态 → 徽章档位（ADR-169 锚定）：待审核=黄（等 HR 处理，无异常）·
+/// 已生效/已通过=绿（通过并写入档案）· 已驳回=红 · 已撤销=灰（中性终态）。
+/// 我的申请页、HR 审核队列、批次详情徽章共用同一份，保证两端同状态同色。
+UtenStatusBadgeType profileChangeStatusBadgeType(ProfileChangeStatus s) =>
+    switch (s) {
+      ProfileChangeStatus.pending => UtenStatusBadgeType.warning,
+      ProfileChangeStatus.applied => UtenStatusBadgeType.success,
+      ProfileChangeStatus.approved => UtenStatusBadgeType.success,
+      ProfileChangeStatus.rejected => UtenStatusBadgeType.danger,
+      ProfileChangeStatus.cancelled => UtenStatusBadgeType.neutral,
+    };
 
 class ProfileChangeDiffRow extends StatelessWidget {
   const ProfileChangeDiffRow({
@@ -18,7 +31,6 @@ class ProfileChangeDiffRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -26,10 +38,7 @@ class ProfileChangeDiffRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (showStatusBadge)
-            Align(
-              alignment: Alignment.centerRight,
-              child: _statusBadge(theme, l10n),
-            ),
+            Align(alignment: Alignment.centerRight, child: _statusBadge(l10n)),
           UtenRevisionFields(
             changes: [
               UtenRevisionField(
@@ -44,42 +53,18 @@ class ProfileChangeDiffRow extends StatelessWidget {
     );
   }
 
-  Widget _statusBadge(ThemeData theme, AppLocalizations l10n) {
-    final (text, color) = switch (item.status) {
-      ProfileChangeStatus.pending => (
-        l10n.profileChangeStatusPending,
-        theme.colorScheme.tertiary,
-      ),
-      ProfileChangeStatus.applied => (
-        l10n.profileChangeStatusApplied,
-        theme.colorScheme.primary,
-      ),
-      ProfileChangeStatus.approved => (
-        l10n.profileChangeStatusApproved,
-        theme.colorScheme.primary,
-      ),
-      ProfileChangeStatus.rejected => (
-        l10n.profileChangeStatusRejected,
-        theme.colorScheme.error,
-      ),
-      ProfileChangeStatus.cancelled => (
-        l10n.profileChangeStatusCancelled,
-        theme.colorScheme.onSurfaceVariant,
-      ),
+  Widget _statusBadge(AppLocalizations l10n) {
+    final text = switch (item.status) {
+      ProfileChangeStatus.pending => l10n.profileChangeStatusPending,
+      ProfileChangeStatus.applied => l10n.profileChangeStatusApplied,
+      ProfileChangeStatus.approved => l10n.profileChangeStatusApproved,
+      ProfileChangeStatus.rejected => l10n.profileChangeStatusRejected,
+      ProfileChangeStatus.cancelled => l10n.profileChangeStatusCancelled,
     };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: color,
-        ),
-      ),
+    return UtenStatusBadge(
+      label: text,
+      type: profileChangeStatusBadgeType(item.status),
+      size: UtenStatusBadgeSize.small,
     );
   }
 }

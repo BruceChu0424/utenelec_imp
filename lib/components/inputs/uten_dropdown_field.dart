@@ -19,6 +19,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
+import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// 单选项：[value]（null=清空/不选）+ [label]（展示文本）。
@@ -340,10 +341,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               UtenInputDecoration(
                 InputDecoration(
                   // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
-                  // 收窄内边距，收起时与同行文本格等高；非 dense 走主题默认。
+                  // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
+                  // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
+                  // 走主题默认。
                   isDense: widget.dense,
                   contentPadding: widget.dense
-                      ? const EdgeInsets.symmetric(horizontal: 10, vertical: 12)
+                      ? UtenEditableGridCellSpec.contentPadding
                       : null,
                   // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
                   // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填

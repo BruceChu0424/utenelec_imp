@@ -221,7 +221,7 @@ class _ProductionExecutionGroupPanelState
       // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格底，
       // 替代原格内 _GroupStatusBadge 胶囊。
       cellColor: (context, row) =>
-          udenStatusBadgeCellColor(context, _groupStatusType(row.status)),
+          utenStatusBadgeCellColor(_groupStatusType(row.status)),
     ),
     MasterColumnDef(
       key: 'root',
@@ -325,13 +325,17 @@ String? _blankToNull(String? value) {
   return text == null || text.isEmpty ? null : text;
 }
 
-/// 分组状态 → 徽章类型（状态列 cellColor 的色源，与旧胶囊同分支）。
+/// 分组状态 → 徽章类型（状态列 cellColor 的色源，ADR-169 档位锚定）：
+/// 分析处理中=蓝（正在执行）；备料中/不齐套=琥珀（等仓库/在途，无异常）；
+/// 部分已排=紫（部分就绪）；备料完毕=绿（就绪可动手）；生产中=蓝（正在执行）；
+/// 车间信息待补录=红（没补录不能往下，硬阻断）；其余（计划待审核/下达等
+/// 词表 pending 族与未知态）=灰。同页同现各档互可区分。
 UtenStatusBadgeType _groupStatusType(String status) => switch (status) {
-  'PREPARED' => UtenStatusBadgeType.success,
+  'ANALYZING' => UtenStatusBadgeType.info,
   'IN_PROGRESS' => UtenStatusBadgeType.info,
-  'KIT_SHORT' ||
-  'PREPARING' ||
-  'PARTIALLY_SCHEDULED' => UtenStatusBadgeType.warning,
+  'PARTIALLY_SCHEDULED' => UtenStatusBadgeType.violet,
+  'KIT_SHORT' || 'PREPARING' => UtenStatusBadgeType.warning,
+  'PREPARED' => UtenStatusBadgeType.success,
   'ASSIGNMENT_REQUIRED' => UtenStatusBadgeType.danger,
   _ => UtenStatusBadgeType.neutral,
 };

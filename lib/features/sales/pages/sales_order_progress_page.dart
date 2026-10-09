@@ -769,8 +769,17 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         // 映射不变（2026-09-21 ADR-100「不同状态不同颜色，色差要大」），只是
         // 从格内 UtenStatusBadge 胶囊换成整格铺底色；边框由 MasterDataTableView
         // 的 cellColor 通道自动保留（用户口径「背景变色但边框要还在」）。
-        cellColor: (context, r) =>
-            udenStatusBadgeCellColor(context, _stageBadgeType(r)),
+        cellColor: (context, r) => utenStatusBadgeCellColor(_stageBadgeType(r)),
+      ),
+      MasterColumnDef(
+        // 2026-10-08 用户口径「状态或进度列默认放最前」：生产进度是本表的
+        // 纯数值进度列（推翻 2026-10-06 批次「纯数值进度列不动」的判定），
+        // 紧跟状态列前置。
+        key: 'productionPct',
+        label: '生产进度',
+        width: 90,
+        // 财务确认前不展示排产进度（V300 口径），数量区同卡版本保持 0。
+        value: (r) => '${(r.productionPct * 100).round()}%',
       ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
@@ -835,13 +844,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         value: (r) => _fmt(r.reservedQty),
       ),
       MasterColumnDef(
-        key: 'productionPct',
-        label: '生产进度',
-        width: 90,
-        // 财务确认前不展示排产进度（V300 口径），数量区同卡版本保持 0。
-        value: (r) => '${(r.productionPct * 100).round()}%',
-      ),
-      MasterColumnDef(
         key: 'financeRejectedReason',
         label: '驳回原因',
         width: 260,
@@ -873,12 +875,18 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 「等待财务审核」是订单级财务闸门、不是 stage，取 info 蓝——与「出货待财审」
   /// 同色是有意的：两者都是「球在财务手上」。已中止走中性灰，终态不抢红色警示。
   /// 草稿也是中性灰（与单据列表草稿状态徽章同形）；红提醒在分段徽章上。
+  /// SHIPMENT_PENDING 段里被财务退回的出货（文案「出货被财务退回 N」）取
+  /// danger 红——退回=驳回档（ADR-169 锚定），不能停在「流转中」的蓝上。
   UtenStatusBadgeType _stageBadgeType(SalesOrderProgressRow r) {
     if (r.stopped || r.stage == 'CANCELED') return UtenStatusBadgeType.neutral;
     if (r.closed || r.stage == 'CLOSED') return UtenStatusBadgeType.success;
     if (r.financeRejected) return UtenStatusBadgeType.danger;
     if (r.stage == _kDraftStage) return UtenStatusBadgeType.neutral;
     if (!r.financeConfirmed) return UtenStatusBadgeType.info;
+    if (r.stage == 'SHIPMENT_PENDING' &&
+        r.shipmentFinanceRejectedQty > 0.0001) {
+      return UtenStatusBadgeType.danger;
+    }
     return salesProgressStageBadgeType(r.stage);
   }
 

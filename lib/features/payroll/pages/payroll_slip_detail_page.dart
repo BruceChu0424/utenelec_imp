@@ -340,11 +340,10 @@ class _DetailContent extends ConsumerWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              // 状态徽章与列表状态列同源（ADR-169：PayrollSlipStatus.badgeType）。
               UtenStatusBadge(
                 label: slip.status.label,
-                type: slip.status == PayrollSlipStatus.downloaded
-                    ? UtenStatusBadgeType.success
-                    : UtenStatusBadgeType.neutral,
+                type: slip.status.badgeType,
                 icon: slip.status == PayrollSlipStatus.downloaded
                     ? Icons.check_circle_rounded
                     : null,

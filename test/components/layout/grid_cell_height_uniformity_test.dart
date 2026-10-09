@@ -1,8 +1,13 @@
-// 可编辑表格内不同控件（输入框/下拉/选择格）必须同高（2026-10-06 用户口径：
-// 新建委外订货单里下拉框比普通输入框高，行内高低不齐）。
+// 可编辑表格内不同控件（输入框/下拉/选择格）必须同高。
 //
-// 基线 = 数量/单价等 TextField 格（isDense + 主题装饰）。所有格型在其四种
-// 业务态（空/有值/必填空红/预填黄标/AI 填入）下高度都不得超过基线 ±0.5px。
+// 2026-10-06 用户口径：新建委外订货单里下拉框比普通输入框高，行内高低不齐。
+// 2026-10-08 修订：全站表格输入格统一为库存盘点「实盘数量」常驻输入格的紧凑
+// 尺寸（isDense + UtenEditableGridCellSpec.contentPadding，上下边距 6），
+// 本测试改为在真实表格行的注入环境（UtenTableCellInputTheme）下量高。
+//
+// 基线 = 数量/单价等裸 TextField 格（吃注入主题）。所有格型在其四种业务态
+// （空/有值/必填空红/预填黄标/AI 填入）下高度都不得超过基线 ±0.5px；
+// 「显式引用规格常量的实盘格同款」必须与注入主题的裸格等高（单一事实源锁）。
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,8 +15,7 @@ import 'package:uten_imp/components/inputs/required_field_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_hints.dart';
-import 'package:uten_imp/components/layout/uten_editable_grid.dart'
-    show UtenEditableGridCellSpec;
+import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/shared/widgets/procurement_commercial_grid.dart';
 import 'package:uten_imp/shared/widgets/procurement_supplier_cell.dart';
@@ -28,13 +32,15 @@ void main() {
             child: Padding(
               // UtenEditableGrid 单元格外层同款包裹（h8/v4）。
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: UtenTableCellHints(
-                child: Builder(
-                  builder: (cellContext) => SizedBox(
-                    width: 160,
-                    child: KeyedSubtree(
-                      key: key,
-                      child: Builder(builder: builder),
+              child: UtenTableCellInputTheme(
+                child: UtenTableCellHints(
+                  child: Builder(
+                    builder: (cellContext) => SizedBox(
+                      width: 160,
+                      child: KeyedSubtree(
+                        key: key,
+                        child: Builder(builder: builder),
+                      ),
                     ),
                   ),
                 ),
@@ -61,11 +67,26 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     final heights = <String, double>{};
 
-    heights['TextField 数量'] = await measureCell(tester, (ctx) {
+    heights['TextField 数量（注入主题基线）'] = await measureCell(tester, (ctx) {
       return TextField(
         controller: TextEditingController(text: '10'),
         decoration: const UtenInputDecoration(
           InputDecoration(isDense: true, hintText: '0'),
+        ),
+      );
+    });
+
+    heights['实盘格同款（显式规格常量）'] = await measureCell(tester, (ctx) {
+      return TextField(
+        controller: TextEditingController(text: '10'),
+        textAlign: TextAlign.end,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            contentPadding: UtenEditableGridCellSpec.contentPadding,
+            hintText: '0',
+          ),
         ),
       );
     });
@@ -195,7 +216,7 @@ void main() {
       );
     });
 
-    final baseline = heights['TextField 数量']!;
+    final baseline = heights['TextField 数量（注入主题基线）']!;
     final offenders = <String>[
       for (final entry in heights.entries)
         if ((entry.value - baseline).abs() > 0.5)

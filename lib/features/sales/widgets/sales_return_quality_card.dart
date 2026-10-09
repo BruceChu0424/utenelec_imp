@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -278,12 +279,14 @@ class _SalesReturnQualityCardState
                   ),
                 ],
               ),
-              Chip(
+              // 质检状态徽章走 ADR-169 十档实底（待质检=琥珀等外部、部分处置=橙
+              // 风险中间态、已全部处置=绿、收货已撤销=红），原 M3 容器色已收编。
+              UtenStatusBadge(
                 key: ValueKey('quality-status-${item.returnItemId}'),
-                avatar: Icon(_statusIcon(item.status), size: 18),
-                label: Text('$statusLabel(${item.status})'),
-                backgroundColor: _statusBackground(theme, item.status),
-                side: BorderSide.none,
+                label: '$statusLabel(${item.status})',
+                type: _statusBadgeType(item.status),
+                icon: _statusIcon(item.status),
+                size: UtenStatusBadgeSize.small,
               ),
             ],
           ),
@@ -757,12 +760,15 @@ IconData _statusIcon(String status) => switch (status) {
   _ => Icons.help_outline,
 };
 
-Color _statusBackground(ThemeData theme, String status) => switch (status) {
-  'PENDING' => theme.colorScheme.tertiaryContainer,
-  'PARTIAL' => theme.colorScheme.secondaryContainer,
-  'DISPOSED' => theme.colorScheme.primaryContainer,
-  'REVERSED' => theme.colorScheme.errorContainer,
-  _ => theme.colorScheme.surfaceContainerHighest,
+/// 质检状态 → 徽章档位（ADR-169 锚定）：待质检=琥珀（等待外部、球在品质）、
+/// 部分处置=橙（风险中间态：处置了一部分）、已全部处置=绿（完成）、
+/// 收货已撤销=红（撤销是负向事件，与红冲同族）。
+UtenStatusBadgeType _statusBadgeType(String status) => switch (status) {
+  'PENDING' => UtenStatusBadgeType.warning,
+  'PARTIAL' => UtenStatusBadgeType.orange,
+  'DISPOSED' => UtenStatusBadgeType.success,
+  'REVERSED' => UtenStatusBadgeType.danger,
+  _ => UtenStatusBadgeType.neutral,
 };
 
 String _actionHint(SalesReturnQualityAction action) => switch (action) {

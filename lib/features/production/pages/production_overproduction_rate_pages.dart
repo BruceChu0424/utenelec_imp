@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -150,6 +152,20 @@ class _RateListState
                       label: '状态',
                       width: 72,
                       value: (row) => productionRateStatus(row.status),
+                      // 状态整格底色（ADR-169 逐页显式映射）：待计划部审批=黄
+                      // （等外部审批，无异常）/ 已通过=绿 / 已退回=红（驳回）；
+                      // 状态待核对保持无色纯文本。
+                      cellColor: (context, row) {
+                        final type = switch (row.status) {
+                          'PENDING' => UtenStatusBadgeType.warning,
+                          'APPROVED' => UtenStatusBadgeType.success,
+                          'RETURNED' => UtenStatusBadgeType.danger,
+                          _ => null,
+                        };
+                        return type == null
+                            ? null
+                            : utenStatusBadgeCellColor(type);
+                      },
                     ),
                     MasterColumnDef(
                       key: 'plan',

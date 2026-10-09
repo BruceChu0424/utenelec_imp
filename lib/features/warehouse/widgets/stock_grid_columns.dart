@@ -356,6 +356,8 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
             use: warehouse.use,
             value: row.warehouseId,
             labelText: null,
+            // dense：与同行库位/数量输入格等高（2026-10-08 表格输入格统一口径）。
+            dense: true,
             onChanged: (v) {
               row.warehouseId = v;
               warehouse.onWarehouseChanged?.call(row);

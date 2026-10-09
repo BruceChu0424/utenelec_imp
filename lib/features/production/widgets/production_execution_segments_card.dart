@@ -11,6 +11,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
@@ -21,8 +22,49 @@ import '../models/production_flow_stage.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../repositories/production_repository.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import 'production_flow_stage_cell.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
+
+/// 执行段状态 → 徽章档位（ADR-169 收编：原先裸 Colors.green.shade700 画
+/// READY/COMPLETED）：READY=success 绿（齐套·可开工/去领料，就绪可动手）、
+/// COMPLETED=success 绿（完工）；WAITING=danger 红（缺料等待，不能开工），
+/// 但「人工暂缓」是主动暂停取中性灰；DISPATCHED/IN_PROGRESS=accent 青绿
+/// （已派工/生产中——本卡是计划统筹视角，车间=他方执行中）；红冲=红（负向
+/// 财务事件）、取消=灰；同页各档互可区分。
+UtenStatusBadgeType _segmentStatusTier(ProductionExecutionSegmentView segment) {
+  if (segment.status == 'WAITING' && !segment.autoPromoteWhenReady) {
+    return UtenStatusBadgeType.neutral;
+  }
+  return switch (segment.status) {
+    'WAITING' => UtenStatusBadgeType.danger,
+    'READY' || 'COMPLETED' => UtenStatusBadgeType.success,
+    'DISPATCHED' || 'IN_PROGRESS' => UtenStatusBadgeType.accent,
+    'REVERSED' => UtenStatusBadgeType.danger,
+    _ => UtenStatusBadgeType.neutral,
+  };
+}
+
+/// 档位实底色作为文字/图标色时的明暗成对取值（浅色取实底深档、深色取同族亮档）。
+Color _tierTextColor(ThemeData theme, UtenStatusBadgeType type) {
+  final dark = theme.brightness == Brightness.dark;
+  return switch (type) {
+    UtenStatusBadgeType.success =>
+      dark ? UtenColors.successOnDark : UtenColors.statusSuccess,
+    UtenStatusBadgeType.info =>
+      dark ? UtenColors.infoOnDark : UtenColors.statusInfo,
+    UtenStatusBadgeType.violet =>
+      dark ? UtenColors.violetOnDark : UtenColors.statusViolet,
+    UtenStatusBadgeType.fuchsia =>
+      dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
+    UtenStatusBadgeType.warning =>
+      dark ? UtenColors.warningOnDark : UtenColors.warningText,
+    UtenStatusBadgeType.danger =>
+      dark ? UtenColors.errorOnDark : UtenColors.statusDanger,
+    _ => theme.colorScheme.onSurfaceVariant,
+  };
+}
 
 String _segmentRateText(ProductionExecutionSegmentView segment) =>
     !segment.overproductionPolicyApplies
@@ -1065,22 +1107,17 @@ class _ProductionExecutionSegmentsCardState
     ThemeData theme,
     ProductionExecutionSegmentView segment,
   ) {
-    final color = switch (segment.status) {
-      'WAITING' => theme.colorScheme.error,
-      'READY' || 'COMPLETED' => Colors.green.shade700,
-      'DISPATCHED' || 'IN_PROGRESS' => theme.colorScheme.primary,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
+    // ADR-169：状态徽章改深色实底+成套前景（明暗同色，自带对比度）。
+    final (color, foreground) = resolveStatusBadgeColors(
+      _segmentStatusTier(segment),
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: UtenRadius.smAll,
-      ),
+      decoration: BoxDecoration(color: color, borderRadius: UtenRadius.smAll),
       child: Text(
         _segmentStatusText(segment),
         style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
+          color: foreground,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1126,9 +1163,10 @@ class _ProductionExecutionSegmentsCardState
               width: width,
               label: '待补',
               value: _number(segment.remainingQty),
+              // 待补=0 即已报完：完工语义取档位绿（明暗成对，ADR-169 收编）。
               valueColor: segment.remainingQty > 0
                   ? theme.colorScheme.tertiary
-                  : Colors.green.shade700,
+                  : _tierTextColor(theme, UtenStatusBadgeType.success),
             ),
           ],
         );
@@ -1465,7 +1503,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       valueColor: segment.finishedInboundPendingQty > 0
                           ? theme.colorScheme.tertiary
                           : segment.inboundQty > 0
-                          ? Colors.green.shade700
+                          ? _tierTextColor(theme, UtenStatusBadgeType.success)
                           : null,
                     ),
                     _detailRow(
@@ -1475,7 +1513,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                           ? '已齐套 · ${segment.materialKindCount} 种物料'
                           : '待料 · 缺 ${segment.shortageKindCount} 种物料',
                       valueColor: segment.materialReady
-                          ? Colors.green.shade700
+                          ? _tierTextColor(theme, UtenStatusBadgeType.success)
                           : theme.colorScheme.error,
                     ),
                     _detailRow(
@@ -1489,7 +1527,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                           : '待发料 · ${segment.fullyIssuedDemandCount}/'
                                 '${segment.materialDemandCount} 项',
                       valueColor: segment.materialIssued
-                          ? Colors.green.shade700
+                          ? _tierTextColor(theme, UtenStatusBadgeType.success)
                           : theme.colorScheme.tertiary,
                     ),
                     _detailRow(
@@ -1578,7 +1616,7 @@ class _ExecutionSegmentDetail extends StatelessWidget {
                       _notice(
                         theme,
                         '合格品已足额入库，且该执行段材料已结清。',
-                        Colors.green.shade700,
+                        _tierTextColor(theme, UtenStatusBadgeType.success),
                       )
                     else if (!hasAction)
                       _notice(
@@ -1713,23 +1751,17 @@ class _ExecutionSegmentDetail extends StatelessWidget {
   }
 
   Widget _statusBadge(ThemeData theme, ProductionExecutionSegmentView segment) {
-    final status = segment.status;
-    final color = switch (status) {
-      'WAITING' => theme.colorScheme.error,
-      'READY' || 'COMPLETED' => Colors.green.shade700,
-      'DISPATCHED' || 'IN_PROGRESS' => theme.colorScheme.primary,
-      _ => theme.colorScheme.onSurfaceVariant,
-    };
+    // ADR-169：状态徽章改深色实底+成套前景（明暗同色，自带对比度）。
+    final (color, foreground) = resolveStatusBadgeColors(
+      _segmentStatusTier(segment),
+    );
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: UtenRadius.smAll,
-      ),
+      decoration: BoxDecoration(color: color, borderRadius: UtenRadius.smAll),
       child: Text(
         _segmentStatusText(segment),
         style: theme.textTheme.labelSmall?.copyWith(
-          color: color,
+          color: foreground,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1920,10 +1952,12 @@ String _statusText(String status) => switch (status) {
 Color? _rowColor(ThemeData theme, ProductionExecutionSegmentView segment) =>
     switch (segment.status) {
       'WAITING' => theme.colorScheme.errorContainer.withValues(alpha: 0.22),
-      'READY' => Colors.green.withValues(alpha: 0.06),
+      // 裸 Colors.green 收编为档位实底（ADR-169）：行级浅底的既有语义不动，
+      // 只把色源换成 success 档。
+      'READY' => UtenColors.statusSuccess.withValues(alpha: 0.06),
       'DISPATCHED' || 'IN_PROGRESS' =>
         theme.colorScheme.primaryContainer.withValues(alpha: 0.18),
-      'COMPLETED' => Colors.green.withValues(alpha: 0.11),
+      'COMPLETED' => UtenColors.statusSuccess.withValues(alpha: 0.11),
       _ => null,
     };
 

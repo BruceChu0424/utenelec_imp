@@ -17,8 +17,7 @@ export 'production_plan.dart'
         kProductionStatusDraft,
         kProductionStatusApproved,
         kProductionStatusReversed,
-        productionStatusLabel,
-        productionStatusColor;
+        productionStatusLabel;
 
 int? _asInt(dynamic v) {
   if (v == null) return null;

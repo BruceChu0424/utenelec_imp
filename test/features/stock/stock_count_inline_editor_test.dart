@@ -410,8 +410,6 @@ void main() {
       expect(table.items.single.goodsId, 'pp');
       final qty = find.byKey(const ValueKey('stock-count-qty-pp|'));
       await tester.ensureVisible(qty);
-      await tester.tap(qty);
-      await tester.pump();
       await tester.enterText(qty, '5000');
       await tester.pumpAndSettle();
       // 2026-10-04 用户原路径: 盘点说明选填, 不填直接「保存并送审」。

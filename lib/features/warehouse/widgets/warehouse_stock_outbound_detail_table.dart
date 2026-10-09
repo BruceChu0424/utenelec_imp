@@ -67,6 +67,16 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
       batchActionsBuilder: batchActionsBuilder,
       emptyMessage: l10n.commonNoData,
       columns: [
+        // 2026-10-08 用户口径「状态或进度列默认放最前」：处理结果列（已出库 /
+        // 待出库 / 不可出库）是本批量出库表的行级结果列，推翻 2026-10-06 批次
+        // 「无状态字样不动」的豁免，前置；仅在调用方给 resultOf 时出现。
+        if (resultOf != null)
+          MasterColumnDef(
+            key: 'result',
+            label: l10n.warehouseOutboundBatchResult,
+            width: 250,
+            value: (r) => resultOf!(r.document),
+          ),
         MasterColumnDef(
           key: 'billNo',
           label: l10n.warehouseStockOutboundBillNo,
@@ -159,13 +169,6 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           width: 200,
           value: (r) => r.document.remark ?? '—',
         ),
-        if (resultOf != null)
-          MasterColumnDef(
-            key: 'result',
-            label: l10n.warehouseOutboundBatchResult,
-            width: 250,
-            value: (r) => resultOf!(r.document),
-          ),
       ],
     );
   }

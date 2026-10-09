@@ -1259,7 +1259,10 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               child: const Text('取消'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+                foregroundColor: Theme.of(ctx).colorScheme.onError,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(isShipment ? '确认取消' : '删除'),
             ),
@@ -1595,6 +1598,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         UtenColors.warning,
         AiTone.warning(theme),
         l10n.salesQuoteStatusBannerPending,
+      ),
+      // AWAITING_* 分桶与「已核价未转单」是同一批状态（ADR-134），横幅口径
+      // 跟 approved 未转单分支走，不再落进草稿横幅。
+      SalesQuoteStage.awaitingCustomer => (
+        UtenColors.success,
+        AiTone.success(theme),
+        l10n.salesQuoteAwaitingCustomerBody,
+      ),
+      SalesQuoteStage.awaitingConversion => (
+        UtenColors.success,
+        AiTone.success(theme),
+        l10n.salesQuoteCustomerConfirmed,
       ),
       SalesQuoteStage.approved when converted => (
         UtenColors.success,

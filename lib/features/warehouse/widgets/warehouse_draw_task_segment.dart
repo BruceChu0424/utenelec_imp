@@ -23,6 +23,8 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -548,6 +550,19 @@ class _WarehouseDrawTaskSegmentState
       label: '状态',
       width: 72,
       value: (task) => task.statusLabel,
+      // ADR-169 逐页显式映射（待领任务=履约备料队列，以仓库动作为准）：
+      // 待备料/待领取、待完成、待核对领料/需要填写=绿（轮到仓库动手出库或补录，
+      // 同一动作家族）/ 部分领取=紫（部分就绪：部分已出库、仍有余量）/
+      // 已阻塞=红（硬阻断）/ 已完成=灰（办结，不再是本队列动作对象）。
+      cellColor: (context, task) => switch (task.taskStatus.toUpperCase()) {
+        'READY_TO_PICK' || 'OPEN_ANY' || 'MATERIALS_TO_DEFINE' =>
+          utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+        'PARTIAL' => utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
+        'BLOCKED' => utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+        'DONE' ||
+        'COMPLETED' => utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
+        _ => null,
+      },
     ),
     MasterColumnDef(
       key: 'drawBillNo',
@@ -706,6 +721,11 @@ class _WarehouseDrawTaskSegmentState
       label: '异常',
       width: 110,
       value: (task) => task.exceptionLabel,
+      // ADR-169：逾期=红（异常档）；「正常」不铺色，避免整列皆红/皆绿的噪音。
+      cellColor: (context, task) =>
+          task.exceptionCode == null || task.exceptionCode!.isEmpty
+          ? null
+          : utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
     ),
   ];
 }

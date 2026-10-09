@@ -32,6 +32,7 @@ import '../../measurement/weight_prefs.dart';
 import '../../measurement/weight_unit.dart';
 import '../../measurement/widgets/weight_sample_dialog.dart';
 import '../../measurement/widgets/weight_text.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../models/paged_result.dart';
 import '../stock_ledger_models.dart';
@@ -580,11 +581,21 @@ class _GoodsWeightLearningViewState
         label: '状态',
         width: 72,
         value: weightObservationStatusLabel,
+        // ADR-169 逐页显式映射：已红冲=红（红冲锚定红档）/ 离群=橙（数据异常
+        // 待注意的风险中间态）/ 已排除=灰（不参与学习的终态）/ 正常不铺色。
+        cellColor: (context, o) => switch (o.status.toUpperCase()) {
+          'REVERSED' => utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+          'OUTLIER' => utenStatusBadgeCellColor(UtenStatusBadgeType.orange),
+          'EXCLUDED' => utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
+          _ => null,
+        },
         cellBuilder: (_, o) {
-          final label = weightObservationStatusLabel(o);
           final reason = weightObservationExcludedReasonLabel(o.excludedReason);
-          final text = Text(label, style: label == '正常' ? null : muted);
-          return reason.isEmpty ? text : Tooltip(message: reason, child: text);
+          if (reason.isEmpty) return Text(weightObservationStatusLabel(o));
+          return Tooltip(
+            message: reason,
+            child: Text(weightObservationStatusLabel(o)),
+          );
         },
       ),
       MasterColumnDef(
@@ -732,7 +743,7 @@ class _GoodsWeightLearningViewState
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
           cellColor: (context, r) => r.tier == null
               ? null
-              : udenStatusBadgeCellColor(context, weightTierBadgeType(r.tier!)),
+              : utenStatusBadgeCellColor(weightTierBadgeType(r.tier!)),
         ),
       ],
       items: rows,

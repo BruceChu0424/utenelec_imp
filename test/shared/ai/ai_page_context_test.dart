@@ -165,6 +165,19 @@ void main() {
     expect(utenColorName(Colors.transparent), isNull);
     expect(UtenStatusBadgeType.violet.colorName, '紫');
     expect(UtenStatusBadgeType.accent.colorName, '青绿');
+    // ADR-169 状态实底色板：每个档位反查回自己的颜色名与色调。
+    expect(utenNamedColor(UtenColors.statusDanger)!.name, '红');
+    expect(utenNamedColor(UtenColors.statusOrange)!.name, '橙');
+    expect(utenNamedColor(UtenColors.warningStrong)!.name, '琥珀');
+    expect(utenNamedColor(UtenColors.statusSuccess)!.name, '绿');
+    expect(utenNamedColor(UtenColors.statusTeal)!.name, '青绿');
+    expect(utenNamedColor(UtenColors.statusInfo)!.name, '蓝');
+    expect(utenNamedColor(UtenColors.statusSky)!.name, '青');
+    expect(utenNamedColor(UtenColors.statusViolet)!.name, '紫');
+    expect(utenNamedColor(UtenColors.statusFuchsia)!.name, '品红');
+    expect(utenNamedColor(UtenColors.statusNeutral)!.name, '灰');
+    expect(UtenStatusBadgeType.orange.colorName, '橙');
+    expect(UtenStatusBadgeType.sky.colorName, '青');
   });
 
   test('values are single-line, bounded and never carry identifiers', () {

@@ -28,7 +28,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -51,6 +50,7 @@ import '../../profile/field_policy.dart';
 import '../../profile/models/profile_change_request.dart';
 import '../../profile/providers/profile_change_providers.dart';
 import '../../profile/repositories/profile_change_repository.dart';
+import '../../profile/widgets/profile_change_diff_row.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 /// 单次批量上限：逐批循环单审 API，超过则提示分批（无后端批量端点）。
@@ -401,16 +401,11 @@ class _HrProfileChangesListPageState
       label: '状态',
       width: 72,
       value: (m) => _statusLabel(l10n, m.status),
-      // 2026-09-27 用户口径「表格状态列整格底色」：待生效=灰 / 待审核=蓝 /
-      // 已生效=绿 / 已驳回=红 / 已取消=中性灰。
+      // ADR-169 档位锚定：待审核=黄（排队等本页 HR 处理，无异常；「轮到我」
+      // 由分段红数表达） / 已生效·已通过=绿（通过并写入档案） / 已驳回=红 /
+      // 已撤销=灰（中性终态）。
       cellColor: (context, m) =>
-          udenStatusBadgeCellColor(context, switch (m.status) {
-            ProfileChangeStatus.pending => UtenStatusBadgeType.neutral,
-            ProfileChangeStatus.applied => UtenStatusBadgeType.info,
-            ProfileChangeStatus.approved => UtenStatusBadgeType.success,
-            ProfileChangeStatus.rejected => UtenStatusBadgeType.danger,
-            ProfileChangeStatus.cancelled => UtenStatusBadgeType.neutral,
-          }),
+          utenStatusBadgeCellColor(profileChangeStatusBadgeType(m.status)),
     ),
     MasterColumnDef(
       key: 'employeeName',

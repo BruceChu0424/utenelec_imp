@@ -392,11 +392,15 @@ class _SubcontractOrderProgressSectionState
         filters: const {},
         onFilterChanged: (_, _) {},
         columns: [
-          const MasterColumnDef(
+          MasterColumnDef(
             key: 'state',
             label: '状态',
             width: 72,
             value: subcontractDrawMaterialStateLabel,
+            // 状态整格底色（ADR-169）：共用 subcontractDrawMaterialCellColor，
+            // 与领料任务详情物料表同口径（可领绿/已备紫/待仓库发料青/缺料红/
+            // 已发齐·已结束领料灰）。
+            cellColor: (context, row) => subcontractDrawMaterialCellColor(row),
           ),
           MasterColumnDef(
             key: 'goodsName',

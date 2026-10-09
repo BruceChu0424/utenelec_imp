@@ -49,7 +49,7 @@ class WorkshopDraftSegment extends StatelessWidget {
       width: 72,
       value: (it) => productionStatusLabel(it.status),
       cellColor: (context, it) =>
-          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
+          utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
     ),
     MasterColumnDef(
       key: 'draftCategory',

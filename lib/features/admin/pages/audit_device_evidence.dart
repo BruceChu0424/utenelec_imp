@@ -412,31 +412,38 @@ class _DeviceEvidenceBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    // 横幅 tint/图标与徽章档位同色相（ADR-169：同一状态在同一横幅内不得出现
+    // 两种色相；matched 原品牌青配绿徽章、partial 原青绿配琥珀徽章）。图标与
+    // 容器属控件级语义，走明暗自适应的 *Text/*OnDark，不用状态实底。
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    Color tone(Color light, Color onDark) => dark ? onDark : light;
     final (color, icon, badgeType) = switch (assessment.state) {
       _DeviceEvidenceState.matched => (
-        colors.primary,
+        tone(UtenColors.successText, UtenColors.successOnDark),
         Icons.verified_user_outlined,
         UtenStatusBadgeType.success,
       ),
       _DeviceEvidenceState.partial => (
-        colors.tertiary,
+        tone(UtenColors.warningText, UtenColors.warningOnDark),
         Icons.fact_check_outlined,
         UtenStatusBadgeType.warning,
       ),
       _DeviceEvidenceState.mismatch || _DeviceEvidenceState.invalid => (
-        colors.error,
+        tone(UtenColors.errorText, UtenColors.errorOnDark),
         Icons.gpp_bad_outlined,
         UtenStatusBadgeType.danger,
       ),
       _DeviceEvidenceState.loading => (
-        colors.primary,
+        tone(UtenColors.infoText, UtenColors.infoOnDark),
         Icons.sync_rounded,
         UtenStatusBadgeType.info,
       ),
+      // 无快照/非原操作设备/本机回执缺失：证据「无法核对」的中性说明，
+      // 不是异常也不是进行中——灰，别用蓝冒充执行态。
       _ => (
         colors.onSurfaceVariant,
         Icons.devices_other_outlined,
-        UtenStatusBadgeType.info,
+        UtenStatusBadgeType.neutral,
       ),
     };
     return Semantics(

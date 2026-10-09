@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -415,11 +417,25 @@ class _ProductionFqcInspectionsPageState
   }
 
   List<MasterColumnDef<ProductionFqcInspection>> get _columns => [
-    const MasterColumnDef(
+    MasterColumnDef(
       key: 'status',
       label: '状态',
       width: 72,
       value: fqcStatusLabel,
+      // 状态整格底色（ADR-169 逐页显式映射）：待检=黄——实物已送检、等品质
+      // 检验，属「等检查」锚定家族（「待处理」段的行动性已由分段红计数徽章
+      // 表达；且待检取绿会与已全部决定撞色）/ 部分已决定=橙（部分完成、
+      // 余量待判——风险中间态）/ 已全部决定=绿（完成）/ 已取消=灰（中性终态）。
+      cellColor: (context, inspection) {
+        final type = switch (inspection.status) {
+          'PENDING' => UtenStatusBadgeType.warning,
+          'PARTIAL' => UtenStatusBadgeType.orange,
+          'RESOLVED' => UtenStatusBadgeType.success,
+          'CANCELLED' => UtenStatusBadgeType.neutral,
+          _ => null,
+        };
+        return type == null ? null : utenStatusBadgeCellColor(type);
+      },
     ),
     MasterColumnDef(
       key: 'reportNo',

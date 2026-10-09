@@ -472,8 +472,7 @@ class _SubcontractShortDeliveryPageState
           width: 72,
           value: (c) => c.severityLabel,
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-          cellColor: (context, c) =>
-              udenStatusBadgeCellColor(context, _severityType(c)),
+          cellColor: (context, c) => utenStatusBadgeCellColor(_severityType(c)),
         ),
         MasterColumnDef(
           key: 'status',
@@ -482,8 +481,7 @@ class _SubcontractShortDeliveryPageState
           value: (c) =>
               c.status == 'ACCEPTED_LOSS' ? '已结清（接受损耗）' : c.statusLabel,
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-          cellColor: (context, c) =>
-              udenStatusBadgeCellColor(context, _statusType(c)),
+          cellColor: (context, c) => utenStatusBadgeCellColor(_statusType(c)),
         ),
         MasterColumnDef(
           key: 'orderBillNo',
@@ -716,20 +714,31 @@ class _SubcontractShortDeliveryPageState
     );
   }
 
+  /// 程度列（ADR-169 档位：风险按 灰→橙→红 分层）：
+  /// 容差内=中性灰（在允许损耗内，质检入库后自动结清）、
+  /// 低于允许下限=橙（超出容差的风险中间态，未到严重）、严重短交=红（异常）。
   static UtenStatusBadgeType _severityType(SubcontractShortDeliveryCase c) =>
       switch (c.severity) {
         'SEVERE' => UtenStatusBadgeType.danger,
-        'BELOW_FLOOR' => UtenStatusBadgeType.warning,
-        'WITHIN_TOLERANCE' => UtenStatusBadgeType.info,
+        'BELOW_FLOOR' => UtenStatusBadgeType.orange,
+        'WITHIN_TOLERANCE' => UtenStatusBadgeType.neutral,
         _ => UtenStatusBadgeType.neutral,
       };
 
+  /// 状态列（ADR-169 档位）：待判定=橙（短交待判定的风险中间态；过了预计
+  /// 到齐日仍没到齐/没判=红，逾期升级）；容差内待结案=灰（中性，自动结清）；
+  /// 分批等待=品红（分类强调）；接受损耗结案=灰（中性终态，与自然到齐的绿区分）；
+  /// 已到齐=绿。
   static UtenStatusBadgeType _statusType(SubcontractShortDeliveryCase c) =>
       switch (c.effectiveStatus) {
         'PENDING_OWNER' =>
-          c.overdue ? UtenStatusBadgeType.danger : UtenStatusBadgeType.warning,
+          c.overdue
+              ? UtenStatusBadgeType.danger
+              : c.isBelowFloor
+              ? UtenStatusBadgeType.orange
+              : UtenStatusBadgeType.neutral,
         'WAITING_MORE' => UtenStatusBadgeType.fuchsia,
-        'ACCEPTED_LOSS' => UtenStatusBadgeType.violet,
+        'ACCEPTED_LOSS' => UtenStatusBadgeType.neutral,
         'COMPLETED' => UtenStatusBadgeType.success,
         _ => UtenStatusBadgeType.neutral,
       };

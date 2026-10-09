@@ -13,7 +13,8 @@ import '../../../shared/widgets/warehouse_selection.dart';
 //    senderId 出货/其它出货；contractInfo 订货；shipInfo 出货类；validUntil 报价；deliverDate 订货）。
 //  - ItemDto：超集含全字段（orderItemId 出货/退货；outItemId 退货专属；shipped/returned 订货回写；
 //    costAmount 出/退；parcel/carton 出货类；solution/responsible 退货专属）。
-import 'package:flutter/material.dart';
+import '../../../components/data_display/doc_status_badge.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../shared/models/decimal_text.dart';
 import '../../../shared/models/party_open_balance.dart';
 import 'sales_quote_workflow.dart';
@@ -70,21 +71,14 @@ String salesStatusLabel(int? code) {
   }
 }
 
-/// 状态对应的主题色（徽章用）。
-Color salesStatusColor(int? code, ThemeData theme) {
-  switch (code) {
-    case kSalesStatusDraft:
-      return theme.colorScheme.onSurfaceVariant;
-    case kSalesStatusApproved:
-      return Colors.green;
-    case kSalesStatusReversed:
-      return theme.colorScheme.error;
-    case kSalesStatusPendingFinance:
-      return Colors.orange;
-    default:
-      return theme.colorScheme.onSurfaceVariant;
-  }
-}
+/// 状态对应的徽章档位（ADR-169：状态徽章走十档深色实底，不再手搓浅底胶囊；
+/// 原浅底配色已收编）。
+/// 待财务核价(2, 报价专属)=等外部、球在财务手上 → warning 亮琥珀；
+/// 其余 0/1/-1 与全站 docStatusBadgeType 同口径（草稿灰/已审绿/红冲红）。
+UtenStatusBadgeType salesStatusBadgeType(int? code) => switch (code) {
+  kSalesStatusPendingFinance => UtenStatusBadgeType.warning,
+  _ => docStatusBadgeType(code),
+};
 
 /// 报价单分桶(ADR-134): 与服务端 DocumentStatusCountQueryService 的 salesQuote 分桶键、
 /// 报价列表 `bucket` 查询参数逐字一致。
@@ -196,25 +190,25 @@ String chainStatusLabel(int? code, {double? plannedQty, double? qty}) {
   return base;
 }
 
-/// 链路状态色（绿=可发货/完成，橙=进行中，红=缺料，灰=未上链）。
-Color chainStatusColor(int? code, ThemeData theme) {
-  switch (code) {
-    case 7:
-    case 9:
-      return Colors.green;
-    case 3:
-      return theme.colorScheme.error;
-    case 1:
-    case 2:
-    case 4:
-    case 5:
-    case 6:
-    case 8:
-      return Colors.orange;
-    default:
-      return theme.colorScheme.onSurfaceVariant;
-  }
-}
+/// 链路状态档位（ADR-169 锚定，2026-10-08 由「绿/橙/红/灰」四色收编为逐档语义；
+/// 原绿=Colors.green、橙=Colors.orange 裸色已收编进共享色板）：
+/// - 1 部分预留 → 紫（部分就绪：只预留了一部分）
+/// - 2 待排产 / 4 已排产 → 琥珀（生产前等待：等计划排产/等车间开工，
+///   与订单级「待排产」阶段档同色）
+/// - 3 待物料 → 红（硬阻断：缺料锁死不能干，ADR-156 口径「不能执行≠等待」）
+/// - 5 生产中 / 6 部分完工 → 青绿（他方执行中：车间在干，部分完工仍在产）
+/// - 7 可发货 / 9 已发货 → 绿（就绪可动手绿灯 / 完成）
+/// - 8 部分发货 → 橙（风险中间态：发了一部分，锚定明示）
+/// - -1 已取消 / 未上链 → 灰
+UtenStatusBadgeType chainStatusBadgeType(int? code) => switch (code) {
+  1 => UtenStatusBadgeType.violet,
+  2 || 4 => UtenStatusBadgeType.warning,
+  3 => UtenStatusBadgeType.danger,
+  5 || 6 => UtenStatusBadgeType.accent,
+  7 || 9 => UtenStatusBadgeType.success,
+  8 => UtenStatusBadgeType.orange,
+  _ => UtenStatusBadgeType.neutral,
+};
 
 /// 仓库出货作业状态。
 /// V582 起仓库只有一步：财务放行后 PENDING_PICK 直接确认出库到 SHIPPED。
@@ -246,6 +240,28 @@ String salesWarehouseWorkStatusHint(String? code) => switch (code) {
   SalesWarehouseWorkStatus.cancelled => '该仓库任务已取消。',
   SalesWarehouseWorkStatus.reversed => '该出货已红冲。',
   _ => '当前没有可执行的仓库作业。',
+};
+
+/// 仓库作业列的档位（ADR-169 逐页显式映射；[warehouseAction] = 仓库视角，
+/// 即仓库「销售出库」任务中心，否则为销售列表 / 财务审单视角）：
+/// 历史迁移异常 / 已红冲=红（异常待人工重建 / 红冲负向事件）；
+/// 待出库=仓库视角绿（就绪可动手，轮到仓库出库）、其余视角青 sky
+/// （等仓库出货——与销售列表状态列「已审·待出库=青」同口径）；
+/// 已出库=绿（出库完成）、仓库视角灰（办结，不再是本队列动作对象，
+/// 同领料任务「已完成=灰」口径）；已取消=灰（中性终态）。
+/// 未返回 / 未知状态保持无色纯文本。
+UtenStatusBadgeType? salesWarehouseWorkStatusBadgeType(
+  String? code, {
+  required bool warehouseAction,
+}) => switch (code) {
+  SalesWarehouseWorkStatus.legacyPending ||
+  SalesWarehouseWorkStatus.reversed => UtenStatusBadgeType.danger,
+  SalesWarehouseWorkStatus.pendingPick =>
+    warehouseAction ? UtenStatusBadgeType.success : UtenStatusBadgeType.sky,
+  SalesWarehouseWorkStatus.shipped =>
+    warehouseAction ? UtenStatusBadgeType.neutral : UtenStatusBadgeType.success,
+  SalesWarehouseWorkStatus.cancelled => UtenStatusBadgeType.neutral,
+  _ => null,
 };
 
 bool salesShipmentAllowsFinanceAudit(String? warehouseWorkStatus) =>

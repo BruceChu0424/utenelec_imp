@@ -242,6 +242,10 @@ class _WarehouseDocumentHistoryDetailPageState
           label: '质量状态',
           width: 72,
           value: (item) => item.inspectionStatusLabel,
+          // 质量状态整格底色（ADR-169）：不合格=红 / 检验完成=绿 / 待检=黄 /
+          // 部分完成=橙 / 已撤销=灰；未关联/无需质检保持无色，判定共用 config。
+          cellColor: (context, item) =>
+              warehouseInspectionCellColor(item.inspectionStatus),
         ),
       MasterColumnDef(
         key: 'lineNumber',

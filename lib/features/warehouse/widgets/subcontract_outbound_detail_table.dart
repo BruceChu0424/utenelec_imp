@@ -365,6 +365,8 @@ class _SubcontractOutboundDetailTableState
       // 委外发料最容易错的就是同名不同色——名称/编号/颜色在前几列同屏可见;
       // 「领料数量」紧跟数量组, 仓库一眼看出只能改少到多少。
       initialColumnOrder: const [
+        // 处理结果列随 2026-10-08 口径前置（见 columns 首列注释）。
+        'status',
         'document',
         'goodsName',
         'goodsCode',
@@ -384,7 +386,6 @@ class _SubcontractOutboundDetailTableState
         'documentRemark',
         'order',
         'supplier',
-        'status',
       ],
       selectable: widget.editable && widget.selectable,
       selectionEnabled: widget.editable,
@@ -396,6 +397,16 @@ class _SubcontractOutboundDetailTableState
       },
       emptyMessage: l10n.warehouseSubcontractOutboundNoLines,
       columns: [
+        // 2026-10-08 用户口径「状态或进度列默认放最前」：处理结果列（待出库/
+        // 已出库的行级结论，推翻 2026-10-06 批次「无状态字样不动」的豁免）
+        // 前置；仅在行数据带 status 时出现。
+        if (widget.rows.any((row) => row.status != null))
+          textColumn(
+            'status',
+            l10n.warehouseSubcontractOutboundStatus,
+            150,
+            (row) => row.status ?? '—',
+          ),
         if (widget.showOrder)
           textColumn(
             'document',
@@ -547,6 +558,8 @@ class _SubcontractOutboundDetailTableState
                       widget.editable && row.editable && row.draft.selected,
                   // 格内浮动标签与列头「发出仓」重复，已删（2026-09-27 表格小字清理）。
                   labelText: null,
+                  // dense：与同行数量/备注输入格等高（2026-10-08 表格输入格统一口径）。
+                  dense: true,
                   onChanged: row.onWarehouseChanged!,
                 ),
         ),
@@ -576,13 +589,6 @@ class _SubcontractOutboundDetailTableState
             cellBuilder: (_, row) => row.documentRemark == null
                 ? const Text('—')
                 : _remarkField(row, row.documentRemark!, 'document-remark'),
-          ),
-        if (widget.rows.any((row) => row.status != null))
-          textColumn(
-            'status',
-            l10n.warehouseSubcontractOutboundStatus,
-            150,
-            (row) => row.status ?? '—',
           ),
       ],
     );

@@ -202,10 +202,10 @@ class _BusinessColumnInput extends StatelessWidget {
             // truncating a numeric operand or a customer's reference code.
             maxLengthEnforcement: MaxLengthEnforcement.none,
             decoration: UtenInputDecoration(
+              // 统一规格（2026-10-08）：不自带边框/内边距，与同行输入格同源
+              // （行级 UtenTableCellInputTheme 注入，UtenEditableGridCellSpec）。
               InputDecoration(
-                border: InputBorder.none,
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 hintText: column.name,
                 counterText: '',
                 error: utenFieldError(error),

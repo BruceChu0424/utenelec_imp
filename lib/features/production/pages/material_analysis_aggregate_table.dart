@@ -162,22 +162,21 @@ final class _MaterialAggregateTableController {
         return materialQuantityUnits(text) < materialQuantityUnits(floor);
       },
     );
-    return SizedBox(
-      height: 40 * MediaQuery.textScalerOf(owner.context).scale(1),
-      child: append
-          ? field
-          : Tooltip(
-              message: floor == 'NaN'
-                  ? '来源缺少可核对的精确数量，请刷新后重试。'
-                  : materialQuantityUnits(floor) > BigInt.zero
-                  ? '本次合计不能低于各来源「还需安排」的合计 $floor，'
-                        '边输入边核对，低于它这格会标红并拦下下达。'
-                        '超出需求的部分单独作为公共备货，实际归属以提交前预览为准。'
-                  : '填多少下多少。超出需求的部分单独作为公共备货，'
-                        '实际归属以提交前预览为准。',
-              child: field,
-            ),
-    );
+    // 高度跟随输入格自然高度（2026-10-08 紧凑规格统一后不再钉 40，避免格内
+    // 留白与主表数量格行高不一致）。
+    return append
+        ? field
+        : Tooltip(
+            message: floor == 'NaN'
+                ? '来源缺少可核对的精确数量，请刷新后重试。'
+                : materialQuantityUnits(floor) > BigInt.zero
+                ? '本次合计不能低于各来源「还需安排」的合计 $floor，'
+                      '边输入边核对，低于它这格会标红并拦下下达。'
+                      '超出需求的部分单独作为公共备货，实际归属以提交前预览为准。'
+                : '填多少下多少。超出需求的部分单独作为公共备货，'
+                      '实际归属以提交前预览为准。',
+            child: field,
+          );
   }
 
   void dispose() {
@@ -1371,7 +1370,18 @@ final class _MaterialAggregateTableController {
                   )
                   ? '已采用现有供给，数量和进度已更新'
                   : '办理完成，数量和进度已更新'
-            : '已下达 ${result.batches.length} 笔：${result.batches.map((batch) => batch.documentNo).where((value) => value.isNotEmpty).join('、')}',
+            : () {
+                // 采购/委外的外部批次滚动并入同一张申请（ADR-065 修订三），
+                // 提示按「去重后的单据」报数，避免同一单号重复罗列。
+                final documents = result.batches
+                    .map((batch) => batch.documentNo)
+                    .where((value) => value.isNotEmpty)
+                    .toSet()
+                    .toList();
+                return documents.length == result.batches.length
+                    ? '已下达 ${result.batches.length} 笔：${documents.join('、')}'
+                    : '已下达 ${result.batches.length} 笔，合并为 ${documents.length} 张单：${documents.join('、')}';
+              }(),
       );
       return true;
     } catch (failure) {

@@ -527,7 +527,9 @@ class _SubcontractDocDetailPageState
               child: const Text('取消'),
             ),
             FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
               child: const Text('删除'),
             ),

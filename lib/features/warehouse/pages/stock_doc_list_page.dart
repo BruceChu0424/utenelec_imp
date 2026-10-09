@@ -19,7 +19,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -339,7 +341,23 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         label: '状态',
         width: 72,
         value: (it) => stockStatusLabel(it.status),
+        // 状态分类色铺整格底色（ADR-169）：0/1/-1 与采购单据列表同款
+        // docStatusBadgeType（草稿灰/已审绿/红冲红）。
+        cellColor: (context, it) =>
+            utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
       ),
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：出库进度（未出库 /
+      // 部分出库 / 已出完）是领料单的第二条进度列，紧跟状态列前置。
+      if (isDraw)
+        MasterColumnDef(
+          key: 'issueStatus',
+          label: '出库进度',
+          width: 110,
+          value: (it) => drawIssueStatusLabel(it.issueStatus),
+          // 出库进度整格底色（ADR-169，与任务中心分段共用同一映射）：
+          // 未出库=黄 / 部分出库=橙 / 已出完=绿。
+          cellColor: (context, it) => drawIssueStatusCellColor(it.issueStatus),
+        ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
@@ -382,13 +400,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
           width: 160,
           value: (it) =>
               ref.read(masterNameServiceProvider).warehouse(it.toWarehouseId),
-        ),
-      if (isDraw)
-        MasterColumnDef(
-          key: 'issueStatus',
-          label: '出库进度',
-          width: 110,
-          value: (it) => drawIssueStatusLabel(it.issueStatus),
         ),
     ];
   }

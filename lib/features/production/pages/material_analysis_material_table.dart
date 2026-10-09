@@ -1498,10 +1498,11 @@ abstract class _MaterialAnalysisMaterialTableState
 
   /// 主表列定稿(ADR-102 一张表)。
   ///
-  /// 列顺序按用户口径：先「这一行我能干什么」(物料办理)，再是身份四列、
-  /// 供应方式，然后四个数量(需要 / 还缺 / 下单 / 追加)，再是落点与指派
-  /// (所属仓库 / 生产车间 / 负责人)，最后进度。原「归属车间」列 2026-09-29
-  /// 起并入「生产车间」(同一事实源，默认带出)。
+  /// 列顺序按用户口径：进度 / 待办 最前（2026-10-08「状态或进度列默认放
+  /// 最前」，推翻此前「工序长文本进度列不动」的判定），再「这一行我能干
+  /// 什么」(物料办理)、身份四列、供应方式，然后四个数量(需要 / 还缺 / 下单 /
+  /// 追加)，再是落点与指派(所属仓库 / 生产车间 / 负责人)。原「归属车间」列
+  /// 2026-09-29 起并入「生产车间」(同一事实源，默认带出)。
   ///
   /// 退役的四列及去向：
   /// - 「可用数量」「在途未到」「公共认领未实收」——三者都是「还缺多少」的
@@ -1523,6 +1524,31 @@ abstract class _MaterialAnalysisMaterialTableState
     ThemeData theme, {
     bool revealAssignmentKeys = true,
   }) => [
+    // 2026-10-08 用户口径「状态或进度列默认放最前」：进度 / 待办 列移到首位
+    //（推翻 2026-10-06 批次「工序长文本进度列不动」的判定）。本表无 compactCards
+    // 卡片形态，不需要给原首列钉 cardRole。
+    MasterColumnDef(
+      key: 'status',
+      label: _l10n.materialProgress,
+      width: 230,
+      info:
+          '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
+          '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待选供应方式」。',
+      value: _materialTableStatusText,
+      cellBuilderHandlesSemantics: true,
+      cellColor: (context, row) {
+        if (row.contextOnly) return null;
+        // 按物料汇总行的「合格库存保障」走显式三档（绿/紫/琥珀），与
+        // completed/pending 两相相位脱钩——部分覆盖原与未覆盖同色，分不出。
+        final aggregate = row.aggregate;
+        if (aggregate != null) {
+          final type = _materialAggregateCoverageBadgeType(aggregate);
+          return type == null ? null : utenStatusBadgeCellColor(type);
+        }
+        return _materialTableStatusStyle(Theme.of(context), row).background;
+      },
+      cellBuilder: (_, row) => _materialTableStatusCell(theme, row),
+    ),
     MasterColumnDef(
       key: 'handle',
       label: _l10n.materialHandle,
@@ -1802,20 +1828,6 @@ abstract class _MaterialAnalysisMaterialTableState
         row,
         revealKey: revealAssignmentKeys,
       ),
-    ),
-    MasterColumnDef(
-      key: 'status',
-      label: _l10n.materialProgress,
-      width: 230,
-      info:
-          '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
-          '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待选供应方式」。',
-      value: _materialTableStatusText,
-      cellBuilderHandlesSemantics: true,
-      cellColor: (context, row) => row.contextOnly
-          ? null
-          : _materialTableStatusStyle(Theme.of(context), row).background,
-      cellBuilder: (_, row) => _materialTableStatusCell(theme, row),
     ),
   ];
 
@@ -6214,6 +6226,26 @@ abstract class _MaterialAnalysisMaterialTableState
         : _materialStatus(Theme.of(context), group).label;
   }
 
+  /// 按物料汇总行的「合格库存保障」显式档位（ADR-169，与进度列头筛选的
+  /// aggregateCovered/Partial/Uncovered 三桶同一判据）：已覆盖=绿（齐套）、
+  /// 部分覆盖=紫（部分就绪）、未覆盖=琥珀（等自己下单，与「未下达」同族）；
+  /// 保障待核对不映射，保持无色纯文本。
+  UtenStatusBadgeType? _materialAggregateCoverageBadgeType(
+    _MaterialAggregate aggregate,
+  ) {
+    if (aggregate.coverage.requiredText == null ||
+        aggregate.coverage.coveredText == null) {
+      return null;
+    }
+    if (aggregate.totalDemandSupplyGap <= 0) {
+      return UtenStatusBadgeType.success;
+    }
+    if (aggregate.coverageRatio <= 0) {
+      return UtenStatusBadgeType.warning;
+    }
+    return UtenStatusBadgeType.violet;
+  }
+
   MaterialPreparationStatusStyle _materialTableStatusStyle(
     ThemeData theme,
     _MaterialTableRow row,
@@ -6225,13 +6257,11 @@ abstract class _MaterialAnalysisMaterialTableState
         : _planningBlockForGroup(row.group!);
     if (block != null || _tableRowBomMissingLabel(row) != null) {
       return MaterialPreparationStatusStyle.resolve(
-        theme,
         phase: MaterialPreparationStatusPhase.blocked,
       );
     }
     if (_rootExternalSupplyRow(row) && (row.product?.remainingQty ?? 1) <= 0) {
       return MaterialPreparationStatusStyle.resolve(
-        theme,
         phase: MaterialPreparationStatusPhase.completed,
       );
     }
@@ -6239,7 +6269,6 @@ abstract class _MaterialAnalysisMaterialTableState
       final product = row.product!;
       final stage = _productExecutionStage(product);
       return MaterialPreparationStatusStyle.resolve(
-        theme,
         stage: stage,
         actualState: product.planExecutionStatus,
         facetKey: stage == null
@@ -6247,22 +6276,20 @@ abstract class _MaterialAnalysisMaterialTableState
             : null,
       );
     }
-    if (row.aggregate != null) {
-      return MaterialPreparationStatusStyle.resolve(
-        theme,
-        phase: row.aggregate!.totalDemandSupplyGap <= 0
-            ? MaterialPreparationStatusPhase.completed
-            : MaterialPreparationStatusPhase.pending,
-      );
-    }
+    // 按物料汇总行不走相位解析：底色由列 cellColor 的
+    // [_materialAggregateCoverageBadgeType] 显式定档（绿/紫/琥珀），
+    // 文字前景同取该档的成套前景。
     return row.group == null
-        ? MaterialPreparationStatusStyle.resolve(theme)
+        ? MaterialPreparationStatusStyle.resolve()
         : _preparationMaterialStatusStyle(theme, row.group!);
   }
 
   Widget _materialTableStatusCell(ThemeData theme, _MaterialTableRow row) {
     final colors = _materialTableStatusStyle(theme, row);
-    Widget label(_StatusView status) => MaterialPreparationStatusLabel(
+    // 2026-10-08 状态色改版：格内文字/图标一律继承表格注入的
+    // DefaultTextStyle（深底切白、亮琥珀底切深字、选中行回落常态字色），
+    // 相位图标取同一份样式——不在 builder 里写死颜色。
+    Widget label(_StatusView status) => MaterialAnalysisPreparationCell(
       key: ValueKey('material-preparation-status-${row.key}'),
       label: status.label,
       style: colors,
@@ -6273,13 +6300,7 @@ abstract class _MaterialAnalysisMaterialTableState
           )
         : _planningBlockForGroup(row.group!);
     if (!row.contextOnly && planningBlock != null) {
-      return label(
-        _StatusView(
-          planningBlock,
-          Icons.info_outline_rounded,
-          theme.colorScheme.tertiary,
-        ),
-      );
+      return label(_StatusView(planningBlock));
     }
     final bomMissing = _tableRowBomMissingLabel(row);
     if (bomMissing != null) {
@@ -6287,13 +6308,7 @@ abstract class _MaterialAnalysisMaterialTableState
         message:
             '这个委外件还没有维护直属物料，系统已通知研发完善 BOM；'
             '研发保存后物料分析会自动更新，再下达委外',
-        child: label(
-          _StatusView(
-            bomMissing,
-            Icons.engineering_outlined,
-            theme.colorScheme.tertiary,
-          ),
-        ),
+        child: label(_StatusView(bomMissing)),
       );
     }
     if (row.contextOnly) {
@@ -6305,32 +6320,14 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
     if (_rootExternalSupplyRow(row) && (row.product?.remainingQty ?? 1) <= 0) {
-      return label(
-        _StatusView(
-          _l10n.materialRootSupplyCompleted,
-          Icons.check_circle_outline_rounded,
-          theme.colorScheme.primary,
-        ),
-      );
+      return label(_StatusView(_l10n.materialRootSupplyCompleted));
     }
     if (row.product != null && !_rootExternalSupplyRow(row)) {
       final stage = _productExecutionStage(row.product!);
       return label(
-        stage == null
-            ? _StatusView(
-                _materialProductStatus(row.product!),
-                _canSelectProduct(row.product!)
-                    ? Icons.play_circle_outline_rounded
-                    : Icons.do_not_disturb_on_outlined,
-                _canSelectProduct(row.product!)
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.error,
-              )
-            : _StatusView(
-                stage.label,
-                stage.icon,
-                _productExecutionColor(theme, stage),
-              ),
+        _StatusView(
+          stage == null ? _materialProductStatus(row.product!) : stage.label,
+        ),
       );
     }
     if (row.aggregate != null) {
@@ -6343,7 +6340,9 @@ abstract class _MaterialAnalysisMaterialTableState
         );
       }
       final ratio = aggregate.coverageRatio;
-      final color = colors.foreground;
+      // 2026-10-08 状态色改版收尾：底色在列 cellColor（同一档），文字不写死
+      // 成套前景——继承表格 DefaultTextStyle 的双向对比度（深底切白/琥珀底
+      // 切深字），选中行 cellColor 让位时回落常态字色。
       return Semantics(
         container: true,
         label:
@@ -6371,8 +6370,8 @@ abstract class _MaterialAnalysisMaterialTableState
                   '(${(ratio * 100).toStringAsFixed(0)}%)',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
+                  // 字号随进度条收小、字重保持加粗；颜色继承（见上方注释）。
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: color,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -6387,13 +6386,7 @@ abstract class _MaterialAnalysisMaterialTableState
       // 产品行（顶层）：路线待确认与物料行同款红色徽章，其余保持纯文本。
       final product = row.product;
       if (product != null && _rootRoutePending(product)) {
-        return label(
-          _StatusView(
-            _l10n.materialRootRoutePending,
-            Icons.help_outline_rounded,
-            theme.colorScheme.error,
-          ),
-        );
+        return label(_StatusView(_l10n.materialRootRoutePending));
       }
       return Text(_materialTableStatusText(row) ?? '—');
     }

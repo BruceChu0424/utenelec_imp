@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -130,42 +131,39 @@ bool hrTaskIsToday(HrTaskSummary s, HrTaskType type, HrTaskItem item) {
 }
 
 /// 条目状态 chip（逾期 / 今日 / N 天后 / 已满 N 年…）。
-(String, Color, Color) hrTaskChipOf(
-  BuildContext context,
-  HrTaskType type,
-  HrTaskItem it,
-) {
-  final cs = Theme.of(context).colorScheme;
-  final danger = (cs.errorContainer, cs.onErrorContainer);
-  final warning = (cs.tertiaryContainer, cs.onTertiaryContainer);
-  final normal = (cs.surfaceContainerHighest, cs.onSurfaceVariant);
-  final (label, colors) = switch (type) {
+/// ADR-169 档位：逾期=红（逾期族）、今日到期=橙（到期临期、未逾期的风险
+/// 中间态）、未来/常态=灰（还不用动手）；「证件待核对」轮到人事办，维持红
+/// （2026-10-05 用户口径）。与子页表格「区间」列同一档位口径。
+(String, UtenStatusBadgeType) hrTaskChipOf(HrTaskType type, HrTaskItem it) {
+  final (label, tier) = switch (type) {
     HrTaskType.confirm =>
       it.date != null &&
               DateTime.tryParse(it.date!)?.isBefore(
                     DateTime.now().subtract(const Duration(days: 1)),
                   ) ==
                   true
-          ? ('逾期 ${it.days} 天', danger)
+          ? ('逾期 ${it.days} 天', UtenStatusBadgeType.danger)
           : it.days == 0
-          ? ('今日转正', warning)
-          : ('${it.days} 天后', normal),
+          ? ('今日转正', UtenStatusBadgeType.orange)
+          : ('${it.days} 天后', UtenStatusBadgeType.neutral),
     HrTaskType.birthday =>
       it.days == 0 || (it.note != null && it.note!.contains('今日'))
-          ? ('今日生日', warning)
-          : ('${it.days} 天后', normal),
-    HrTaskType.anniversary => ('满 ${it.days} 年', warning),
+          ? ('今日生日', UtenStatusBadgeType.orange)
+          : ('${it.days} 天后', UtenStatusBadgeType.neutral),
+    HrTaskType.anniversary => ('满 ${it.days} 年', UtenStatusBadgeType.orange),
     HrTaskType.newhire =>
-      it.days == 0
-          ? ('今日入职', warning)
-          : it.days <= 7
-          ? ('入职 ${it.days} 天', warning)
-          : ('入职 ${it.days} 天', normal),
+      // 7 天内高亮（适应期跟进口径），今日入职也落在 ≤7 天内。
+      it.days <= 7
+          ? (
+              it.days == 0 ? '今日入职' : '入职 ${it.days} 天',
+              UtenStatusBadgeType.orange,
+            )
+          : ('入职 ${it.days} 天', UtenStatusBadgeType.neutral),
     // 「轮到人事办」一律红。具体原因(note，服务端原话)可能很长，在副标题下
     // 单独一行红字完整显示，徽标只放短标签，避免窄屏横向溢出。
-    HrTaskType.identity => ('证件待核对', danger),
+    HrTaskType.identity => ('证件待核对', UtenStatusBadgeType.danger),
   };
-  return (label, colors.$1, colors.$2);
+  return (label, tier);
 }
 
 /// 任务行可用宽度低于此值(手机竖屏)时，快捷操作按钮另起一行靠右，
@@ -196,7 +194,7 @@ class HrTaskTile extends ConsumerWidget {
     final perms = ref.watch(currentPermissionsProvider);
     final canTakeover = perms.contains(Perm.employeeTaskTakeover);
     final canConfirm = perms.contains(Perm.employeeConfirm);
-    final (chipLabel, chipBg, chipFg) = hrTaskChipOf(context, type, item);
+    final (chipLabel, chipTier) = hrTaskChipOf(type, item);
     // 证件核对的具体原因(服务端原话)单独成行、红字、不截断：它就是人事要据此
     // 去改的依据，拼进灰色副标题会在窄屏被省略号截掉。其他类型的 note 照旧进副标题。
     final identityReason = type == HrTaskType.identity
@@ -225,8 +223,7 @@ class HrTaskTile extends ConsumerWidget {
       context,
       theme: theme,
       chipLabel: chipLabel,
-      chipBg: chipBg,
-      chipFg: chipFg,
+      chipTier: chipTier,
       subtitle: subtitle,
     );
     final actions = _actions(context, ref, canTakeover, canConfirm, perms);
@@ -281,8 +278,7 @@ class HrTaskTile extends ConsumerWidget {
     BuildContext context, {
     required ThemeData theme,
     required String chipLabel,
-    required Color chipBg,
-    required Color chipFg,
+    required UtenStatusBadgeType chipTier,
     required String subtitle,
   }) {
     return InkWell(
@@ -307,7 +303,11 @@ class HrTaskTile extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              _Chip(label: chipLabel, bg: chipBg, fg: chipFg),
+              UtenStatusBadge(
+                label: chipLabel,
+                type: chipTier,
+                size: UtenStatusBadgeSize.small,
+              ),
               if (item.claimedByName != null)
                 _Chip(
                   label: '${item.claimedByName} 处理中',

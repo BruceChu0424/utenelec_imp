@@ -170,35 +170,9 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     BuildContext context,
   ) {
     return [
-      if (showReceipt)
-        EditableGridColumn(
-          key: 'receipt',
-          label: '来源收货单',
-          width: 150,
-          filterValueOf: (row) => row.receiptNo,
-          // 单行「单号 · 类型」（2026-09-16 全站口径）：不再两行拼格，textOf
-          // 与格内同源，列宽随整段文本自动加宽。
-          textOf: (row) => [
-            row.receiptNo ?? '—',
-            row.receiptTypeLabel ?? '',
-          ].where((s) => s.isNotEmpty).join(' · '),
-          cellBuilder: (context, row) => Text(
-            [
-              row.receiptNo ?? '—',
-              row.receiptTypeLabel ?? '',
-            ].where((s) => s.isNotEmpty).join(' · '),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      EditableGridColumn(
-        key: 'supplier',
-        label: '供应商 / 委外商',
-        width: 140,
-        filterValueOf: (row) => row.supplierName,
-        textOf: (row) => row.supplierName ?? '—',
-        cellBuilder: (context, row) => Text(row.supplierName ?? '—'),
-      ),
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：判定结果是本表每行的
+      // 质检结论列（图标 + 结论色 + 行底色都由它驱动，推翻 2026-10-06 批次
+      // 「无状态字样不动」的豁免），前置。
       EditableGridColumn(
         key: 'verdict',
         label: '判定结果',
@@ -227,6 +201,35 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             ),
           );
         },
+      ),
+      if (showReceipt)
+        EditableGridColumn(
+          key: 'receipt',
+          label: '来源收货单',
+          width: 150,
+          filterValueOf: (row) => row.receiptNo,
+          // 单行「单号 · 类型」（2026-09-16 全站口径）：不再两行拼格，textOf
+          // 与格内同源，列宽随整段文本自动加宽。
+          textOf: (row) => [
+            row.receiptNo ?? '—',
+            row.receiptTypeLabel ?? '',
+          ].where((s) => s.isNotEmpty).join(' · '),
+          cellBuilder: (context, row) => Text(
+            [
+              row.receiptNo ?? '—',
+              row.receiptTypeLabel ?? '',
+            ].where((s) => s.isNotEmpty).join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      EditableGridColumn(
+        key: 'supplier',
+        label: '供应商 / 委外商',
+        width: 140,
+        filterValueOf: (row) => row.supplierName,
+        textOf: (row) => row.supplierName ?? '—',
+        cellBuilder: (context, row) => Text(row.supplierName ?? '—'),
       ),
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
       // 同名不同色的检查行经常上下挨着排（自制白色与委外香槟金是两条不同的
@@ -659,7 +662,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
 
 // ———————————————————— 判定口径（图标 / 颜色 / 行底色） ————————————————————
 
-/// 判定 → 前导图标：合格绿对勾、不合格红禁止、部分合格黄警告、待检蓝沙漏、
+/// 判定 → 前导图标：合格绿对勾、不合格红禁止、部分合格橙警告、待检琥珀沙漏、
 /// 已撤销灰 undo。
 IconData _verdictIcon(WarehouseQualityLineVerdict verdict) => switch (verdict) {
   WarehouseQualityLineVerdict.passed => Icons.check_circle,
@@ -669,37 +672,37 @@ IconData _verdictIcon(WarehouseQualityLineVerdict verdict) => switch (verdict) {
   WarehouseQualityLineVerdict.revoked => Icons.undo,
 };
 
+/// 判定 → 图标/文字色（ADR-169 状态色板；编辑网格内是图标+加粗文字，
+/// 取深档实底色系保证文字对比度）：
+/// 合格=深绿 / 部分合格=深橙 / 不合格=深红 / 待检=琥珀 / 已撤销=中性轮廓色。
 Color _verdictColor(
   BuildContext context,
   WarehouseQualityLineVerdict verdict,
 ) => switch (verdict) {
-  WarehouseQualityLineVerdict.passed => UtenColors.success,
-  WarehouseQualityLineVerdict.partial => UtenColors.warning,
-  WarehouseQualityLineVerdict.rejected => UtenColors.error,
-  WarehouseQualityLineVerdict.waiting => UtenColors.info,
+  WarehouseQualityLineVerdict.passed => UtenColors.statusSuccess,
+  WarehouseQualityLineVerdict.partial => UtenColors.statusOrange,
+  WarehouseQualityLineVerdict.rejected => UtenColors.statusDanger,
+  WarehouseQualityLineVerdict.waiting => UtenColors.warning,
   // 已撤销用中性轮廓色（浅深色主题各自适配，不用语义红绿）。
   WarehouseQualityLineVerdict.revoked => Theme.of(context).colorScheme.outline,
 };
 
-/// 判定 → 整行浅底色（与列表页作业状态行色同语义、更轻；选中行由表格统一高亮覆盖）。
+/// 判定 → 整行浅底色（与作业状态档位同语义、更轻；选中行由表格统一高亮覆盖）。
+/// 底色一律由 ADR-169 状态实底色降透明度派生，不再散落手写浅色 hex。
 Color? _verdictRowColor(
   BuildContext context,
   WarehouseQualityLineVerdict verdict,
 ) {
   final dark = Theme.of(context).brightness == Brightness.dark;
+  Color tint(Color base) => base.withValues(alpha: dark ? 0.14 : 0.10);
   return switch (verdict) {
-    WarehouseQualityLineVerdict.passed =>
-      dark
-          ? UtenColors.success.withValues(alpha: 0.12)
-          : const Color(0xFFEDFAF4),
-    WarehouseQualityLineVerdict.partial =>
-      dark
-          ? UtenColors.warning.withValues(alpha: 0.12)
-          : const Color(0xFFFEF7E8),
-    WarehouseQualityLineVerdict.rejected =>
-      dark ? UtenColors.error.withValues(alpha: 0.10) : const Color(0xFFFDEEEC),
+    WarehouseQualityLineVerdict.passed => tint(UtenColors.statusSuccess),
+    WarehouseQualityLineVerdict.partial => tint(UtenColors.statusOrange),
+    WarehouseQualityLineVerdict.rejected => tint(UtenColors.statusDanger),
     WarehouseQualityLineVerdict.waiting =>
-      dark ? UtenColors.info.withValues(alpha: 0.10) : const Color(0xFFEDF4FE),
+      dark
+          ? UtenColors.warningStrong.withValues(alpha: 0.16)
+          : UtenColors.warningStrong.withValues(alpha: 0.12),
     WarehouseQualityLineVerdict.revoked =>
       dark ? Colors.white.withValues(alpha: 0.06) : const Color(0xFFF2F3F5),
   };

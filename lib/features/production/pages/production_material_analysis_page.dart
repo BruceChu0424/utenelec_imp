@@ -30,6 +30,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../core/network/api_exception.dart';
@@ -82,7 +83,6 @@ import '../widgets/material_priority_replenishment_dialog.dart';
 import '../widgets/material_shared_future_claim_dialog.dart';
 import '../widgets/material_future_transfer_history.dart';
 import '../widgets/production_execution_card_print_preview.dart';
-import '../widgets/production_flow_stage_cell.dart';
 import '../widgets/material_preparation_status_style.dart';
 import '../widgets/material_borrow_dialog.dart';
 import '../widgets/material_required_reason_dialog.dart';
@@ -1778,13 +1778,29 @@ abstract class _MaterialAnalysisPageBase
     r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
   ).hasMatch(value.trim());
 
+  /// 候选行分析状态（服务端 sales-candidates 只回 ACTIVE / PARTIALLY_PLANNED /
+  /// null，其余键沿用销售时间线的词表防御旧服务端载荷）。
   String _analysisStatusText(String? status) => switch (status) {
     null || '' => '待分析',
     'READY' || 'CONFIRMED' || 'ANALYZED' => '已分析',
     'PARTIAL' => '部分齐套',
+    'PARTIALLY_PLANNED' => '部分已下达',
     'STALE' => '需刷新',
     _ => status,
   };
+
+  /// 分析状态列的显式档位映射（ADR-169：删掉按文案猜色的兜底后状态列只认
+  /// 这张表）：待分析=灰（未提交）、已分析=绿（完成）、部分（齐套/已下达）=
+  /// 紫（部分就绪）、需刷新=橙（分析版本过期的风险中间态）；未知服务端值
+  /// 返回 null，保持无色纯文本。
+  UtenStatusBadgeType? _analysisStatusBadgeType(String? status) =>
+      switch (status) {
+        null || '' => UtenStatusBadgeType.neutral,
+        'READY' || 'CONFIRMED' || 'ANALYZED' => UtenStatusBadgeType.success,
+        'PARTIAL' || 'PARTIALLY_PLANNED' => UtenStatusBadgeType.violet,
+        'STALE' => UtenStatusBadgeType.orange,
+        _ => null,
+      };
 
   String _qty(double? value) {
     if (value == null) return '—';

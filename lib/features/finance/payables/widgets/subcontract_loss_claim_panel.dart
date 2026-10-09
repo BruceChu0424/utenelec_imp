@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../core/network/api_exception.dart';
@@ -164,6 +166,19 @@ class _SubcontractLossClaimPanelState
       label: '责任状态',
       width: 72,
       value: (item) => item.statusLabel,
+      // 状态列档位（ADR-169 锚定）：待处理=蓝（案件已生成、待财务定责流转中，
+      // 「轮到我定责」由待处理分段的红徽章表达）/ 争议中=红 /
+      // 待履约·已接受=琥珀（方案定了、等补偿履约，等待外部无异常）/
+      // 已解决=绿 / 已豁免·已取消·已反转=中性灰（反转的红冲记在实物单上，
+      // 责任记录本身没有负向财务事实）。
+      cellColor: (context, item) =>
+          utenStatusBadgeCellColor(switch (item.status?.toUpperCase()) {
+            'OPEN' => UtenStatusBadgeType.info,
+            'DISPUTED' => UtenStatusBadgeType.danger,
+            'AWAITING_FULFILLMENT' || 'ACCEPTED' => UtenStatusBadgeType.warning,
+            'RESOLVED' => UtenStatusBadgeType.success,
+            _ => UtenStatusBadgeType.neutral,
+          }),
     ),
     MasterColumnDef(
       key: 'wasteBillNo',

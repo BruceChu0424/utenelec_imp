@@ -390,19 +390,19 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       label: '状态',
       width: 72,
       value: (item) => item.statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：未付=琥珀 / 部分付款=蓝 /
-      // 已结清=绿 / 已逾期=红 / 预付款=品牌青 / 其余贷项冻结类=中性灰。
-      cellColor: (context, item) => udenStatusBadgeCellColor(
-        context,
-        switch (item.status?.toUpperCase()) {
-          'OPEN' => UtenStatusBadgeType.warning,
-          'PARTIAL' => UtenStatusBadgeType.info,
-          'SETTLED' => UtenStatusBadgeType.success,
-          'OVERDUE' => UtenStatusBadgeType.danger,
-          'PREPAYMENT' => UtenStatusBadgeType.accent,
-          _ => UtenStatusBadgeType.neutral,
-        },
-      ),
+      // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定：
+      // 未付=琥珀（等待付款无异常）/ 部分付款=橙（风险中间态：付了一部分、
+      // 余额仍悬）/ 已结清=绿 / 已逾期=红 / 预付款=品牌青（分类档，预付余额
+      // 不是常规应付流转态）/ 其余贷项冻结类=中性灰。
+      cellColor: (context, item) =>
+          utenStatusBadgeCellColor(switch (item.status?.toUpperCase()) {
+            'OPEN' => UtenStatusBadgeType.warning,
+            'PARTIAL' => UtenStatusBadgeType.orange,
+            'SETTLED' => UtenStatusBadgeType.success,
+            'OVERDUE' => UtenStatusBadgeType.danger,
+            'PREPAYMENT' => UtenStatusBadgeType.accent,
+            _ => UtenStatusBadgeType.neutral,
+          }),
     ),
     MasterColumnDef(
       key: 'businessType',

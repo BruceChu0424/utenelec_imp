@@ -11,6 +11,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -27,7 +29,6 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -856,12 +857,16 @@ class _FinanceSalesOrderConfirmationPageState
           : item.sourceQuote != null && item.matchesQuote == true
           ? '待财务确认 · ${AppLocalizations.of(context).quoteFinanceOrderAllMatch}'
           : '待财务确认',
-      cellColor: (context, item) =>
-          item.changeCount > 0 && !item.financeRejected
-          ? (Theme.of(context).brightness == Brightness.dark
-                ? UtenColors.warning.withValues(alpha: 0.18)
-                : UtenColors.warningBg)
-          : null,
+      // 状态列档位（ADR-169）：本页是财务的确认队列——待财务确认=绿
+      // （「就绪可动手」，轮到我审=绿灯，与报价一致只是文案差异）；
+      // 修改后待确认=橙（改过 N 次需注意前后对比）；已驳回=红（驳回需销售修订）。
+      cellColor: (context, item) => utenStatusBadgeCellColor(
+        item.financeRejected
+            ? UtenStatusBadgeType.danger
+            : item.changeCount > 0
+            ? UtenStatusBadgeType.orange
+            : UtenStatusBadgeType.success,
+      ),
     ),
     MasterColumnDef(
       key: 'billNo',

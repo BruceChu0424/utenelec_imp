@@ -435,8 +435,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   }
 
   /// 状态徽章语义（与 [_statusLabel] 同一分支）：订货单走财务审批投影
-  /// （等待财务审核=警告 / 退回=危险 / 已通过=成功 / 待提交=中性），
-  /// 其余按单据 0/1/-1/2。映射与详情页共用 purchase_status_badge.dart。
+  /// （等待财务审核=warning 等财务 / 退回=danger 驳回 / 已通过=info 流转中
+  /// 等收货 / 待提交=neutral），其余按单据 0/1/-1/2（已审=success、红冲=danger、
+  /// 草稿/已取消=neutral；申请「计划已下达」=success 就绪可分解）。
+  /// 映射与详情页共用 purchase_status_badge.dart。
   UtenStatusBadgeType _statusBadgeType(PurchaseDocListItem item) {
     if (widget.docType == PurchaseDocType.order) {
       return purchaseOrderDisplayBadgeType(item.status, item.financeApproval);
@@ -457,7 +459,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）；
         // value 仍是纯文本供列宽/排序/筛选。
         cellColor: (context, it) =>
-            udenStatusBadgeCellColor(context, _statusBadgeType(it)),
+            utenStatusBadgeCellColor(_statusBadgeType(it)),
       ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。

@@ -652,10 +652,10 @@ class _MaterialAnalysisBucketPageState
   }
 
   /// 三个桶共用的只读清单(2026-09-22 用户口径「外面的不填数值，得进到详情页
-  /// 才能填；表格只显示对应重要的信息」)：身份四列 + 供应方式 / 需求量 / 缺口 /
-  /// 进度；已下达段把缺口换成下达数量并多一列已下达单据。勾选行点底部按钮、
-  /// 或双击一行，都进「父件 + 下层一起下单」页；其余信息(所属仓库、生产车间、
-  /// BOM 路径、仓库余量、公共认领未实收)搬进那一页。
+  /// 才能填；表格只显示对应重要的信息」)：进度最前(2026-10-08 口径)，其后身份
+  /// 四列 + 供应方式 / 需求量 / 缺口；已下达段把缺口换成下达数量并多一列已下达
+  /// 单据。勾选行点底部按钮、或双击一行，都进「父件 + 下层一起下单」页；其余
+  /// 信息(所属仓库、生产车间、BOM 路径、仓库余量、公共认领未实收)搬进那一页。
   Widget _bucketTable(List<_BucketRow> rows) {
     final theme = Theme.of(context);
     // 进度 / 缺口两列表头可点筛选(视图级过滤不动选择)，三个桶都给。
@@ -989,7 +989,6 @@ class _MaterialAnalysisBucketPageState
         return (
           label: stage.displayLabel,
           style: MaterialPreparationStatusStyle.resolve(
-            theme,
             stage: stage,
             actualState: product.planExecutionStatus,
           ),
@@ -999,7 +998,6 @@ class _MaterialAnalysisBucketPageState
         return (
           label: '等待下达车间',
           style: MaterialPreparationStatusStyle.resolve(
-            theme,
             phase: MaterialPreparationStatusPhase.pending,
           ),
         );
@@ -1011,24 +1009,19 @@ class _MaterialAnalysisBucketPageState
             product.scheduleBlockedReason ??
             _host._l10n.materialTaskBlocked,
         style: MaterialPreparationStatusStyle.resolve(
-          theme,
           phase: MaterialPreparationStatusPhase.blocked,
         ),
       );
     }
     final candidate = row.candidate;
     if (candidate == null) {
-      return (
-        label: null,
-        style: MaterialPreparationStatusStyle.resolve(theme),
-      );
+      return (label: null, style: MaterialPreparationStatusStyle.resolve());
     }
     return (
       label: _host._canArrangePendingMakeCandidate(candidate)
           ? '等待下达车间'
           : '当前状态不可创建',
       style: MaterialPreparationStatusStyle.resolve(
-        theme,
         phase: _host._canArrangePendingMakeCandidate(candidate)
             ? MaterialPreparationStatusPhase.pending
             : MaterialPreparationStatusPhase.blocked,
@@ -1072,13 +1065,33 @@ class _MaterialAnalysisBucketPageState
     );
   }
 
-  /// 三个桶同一组列(2026-09-22)：身份四列 / 供应方式 / 需求量 / 缺口(未下达段) /
-  /// 下达数量(已下达段) / 已下达单据(采购、委外的已下达段) / 进度。
+  /// 三个桶同一组列(2026-09-22)：进度最前(2026-10-08 用户口径「状态或进度列
+  /// 默认放最前」)，其后身份四列 / 供应方式 / 需求量 / 缺口(未下达段) / 下单数量
+  /// (已下达段) / 已下达单据(采购、委外的已下达段)。本表无 compactCards 卡片
+  /// 形态，不需要给原首列钉 cardRole。
   List<MasterColumnDef<_BucketRow>> _bucketColumns(ThemeData theme) {
     final host = _host;
     final issued = _appendMode;
     final route = _bucket.supplyRoute;
     return [
+      MasterColumnDef<_BucketRow>(
+        key: 'taskState',
+        label: host._l10n.materialProgress,
+        width: 260,
+        info: host._l10n.materialSupplyProgressHint,
+        value: (row) => _rowProgress(theme, row).label,
+        cellColor: (context, row) =>
+            _rowProgress(Theme.of(context), row).style.background,
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, row) {
+          final progress = _rowProgress(Theme.of(context), row);
+          return MaterialAnalysisPreparationCell(
+            key: ValueKey('material-preparation-progress-${row.id}'),
+            label: progress.label ?? '—',
+            style: progress.style,
+          );
+        },
+      ),
       ..._identityColumns(),
       _routeColumn(),
       MasterColumnDef<_BucketRow>(
@@ -1157,24 +1170,6 @@ class _MaterialAnalysisBucketPageState
               .toSet()
               .join(' / '),
         ),
-      MasterColumnDef<_BucketRow>(
-        key: 'taskState',
-        label: host._l10n.materialProgress,
-        width: 260,
-        info: host._l10n.materialSupplyProgressHint,
-        value: (row) => _rowProgress(theme, row).label,
-        cellColor: (context, row) =>
-            _rowProgress(Theme.of(context), row).style.background,
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (context, row) {
-          final progress = _rowProgress(Theme.of(context), row);
-          return MaterialPreparationStatusLabel(
-            key: ValueKey('material-preparation-progress-${row.id}'),
-            label: progress.label ?? '—',
-            style: progress.style,
-          );
-        },
-      ),
     ];
   }
 }
@@ -1203,6 +1198,58 @@ class MaterialTopLevelBadge extends StatelessWidget {
         style: theme.textTheme.labelSmall?.copyWith(
           color: color,
           fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+/// 物料分析页族（主表 / 三个下达桶）状态·进度格的内容：图标 + 单行文字，
+/// **一律继承表格注入的 DefaultTextStyle**（深底自动切白、亮琥珀底切深字、
+/// 选中行 cellColor 让位给青绿高亮时回落常态字色），图标色同取继承字色。
+///
+/// 2026-10-08 状态色改版口径：格内 builder 不许写死颜色——共用
+/// [MaterialPreparationStatusLabel] 的成套前景在选中行上会留下白字
+/// （浅绿高亮底 + 白字看不清），本页族因此自持这一枚继承版；相位图标仍取
+/// [MaterialPreparationStatusStyle.icon]，底色由列 cellColor 铺同一相位。
+/// 公开仅为测试读取 [style]（与 [MaterialAnalysisBorrowBadgeContent] 同款
+/// @visibleForTesting 先例）。
+@visibleForTesting
+class MaterialAnalysisPreparationCell extends StatelessWidget {
+  const MaterialAnalysisPreparationCell({
+    super.key,
+    required this.label,
+    required this.style,
+  });
+
+  final String label;
+
+  /// 相位样式：本格只用 [MaterialPreparationStatusStyle.icon]，
+  /// 颜色不取它（交给表格双向对比度约定）。
+  final MaterialPreparationStatusStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final inherited = DefaultTextStyle.of(context).style;
+    return Semantics(
+      container: true,
+      label: label,
+      child: ExcludeSemantics(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(style.icon, size: 18, color: inherited.color),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                // 状态/进度列由表格统一 w700 加粗；颜色/字重都继承，不写死。
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

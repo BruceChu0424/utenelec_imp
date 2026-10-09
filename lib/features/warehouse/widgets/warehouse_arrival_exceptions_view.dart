@@ -708,14 +708,18 @@ class _WarehouseArrivalExceptionsViewState
       label: '当前状态',
       width: 72,
       value: (task) => task.statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：等审批=琥珀 / 等仓库重审=蓝 /
-      // 待退供应商=紫 / 已完成=绿 / 已取消=中性灰。
+      // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 重定（待处理段
+      // 四态互区分）：等财务审批超量=橙（超量异常待判定，风险中间态，非「无异常
+      // 的等待」）/ 等仓库重新审核=绿（财务已定案，轮到仓库按批准量动手的绿灯）/
+      // 余量待退供应商=黄（定案后等采购/供应商退回，等外部且无异常）/ 已按批准量
+      // 入库=灰（仓库侧已办结、只剩退回归档，对仓库无动作）/ 已完成=绿 / 已取消=灰。
       cellColor: (context, task) =>
-          udenStatusBadgeCellColor(context, switch (task.status) {
-            'PENDING_FINANCE' => UtenStatusBadgeType.warning,
-            'RECEIPT_ADJUSTED' => UtenStatusBadgeType.info,
-            'RETURN_REQUIRED' => UtenStatusBadgeType.violet,
-            'RECEIPT_POSTED' || 'CLOSED' => UtenStatusBadgeType.success,
+          utenStatusBadgeCellColor(switch (task.status) {
+            'PENDING_FINANCE' => UtenStatusBadgeType.orange,
+            'RECEIPT_ADJUSTED' => UtenStatusBadgeType.success,
+            'RETURN_REQUIRED' => UtenStatusBadgeType.warning,
+            'RECEIPT_POSTED' => UtenStatusBadgeType.neutral,
+            'CLOSED' => UtenStatusBadgeType.success,
             _ => UtenStatusBadgeType.neutral,
           }),
     ),

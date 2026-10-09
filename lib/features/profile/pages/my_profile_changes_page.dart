@@ -21,6 +21,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
@@ -249,6 +250,10 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       width: 72,
       info: '表头筛选与顶部分段同一口径：选中状态即切到对应分段并回第 1 页。',
       value: (item) => _statusLabel(l10n, item.status),
+      // ADR-169：与 HR 审核队列同一份映射（profileChangeStatusBadgeType），
+      // 员工端与 HR 端同状态同色——待审核=黄 / 已生效·已通过=绿 / 已驳回=红 / 已撤销=灰。
+      cellColor: (context, item) =>
+          utenStatusBadgeCellColor(profileChangeStatusBadgeType(item.status)),
     ),
     MasterColumnDef(
       key: 'fields',

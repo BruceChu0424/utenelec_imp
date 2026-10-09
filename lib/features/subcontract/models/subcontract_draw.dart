@@ -6,21 +6,22 @@
 // 数量单位：任务行 = 委外件的订货单位；物料行 = 各物料自己的单位。
 import '../../../shared/models/paged_result.dart';
 
-/// 「领料」分段任务行状态(服务端 status)。
+/// 「领料」分段任务行状态(服务端 status)。档位注释为 ADR-169 十档
+/// （实际取色见 widgets/subcontract_draw_status.dart 的 subcontractDrawCellColor）。
 enum SubcontractDrawStatus {
-  /// 可领 = 剩余全部(蓝)。
+  /// 可领 = 剩余全部(绿，就绪可动手)。
   drawable('DRAWABLE'),
 
-  /// 部分可领(紫)。
+  /// 部分可领(紫，部分就绪)。
   drawablePartial('DRAWABLE_PARTIAL'),
 
-  /// 已提交领料·待仓库发料(青)。
+  /// 已提交领料·待仓库发料(青，等仓库)。
   drawSubmitted('DRAW_SUBMITTED'),
 
-  /// 还缺的物料没有在途供应，等计划安排(品红)。
+  /// 还缺的物料没有在途供应，等计划安排(红，锁死不能领)。
   waitingPlanning('WAITING_PLANNING'),
 
-  /// 等待物料到货(灰蓝)。
+  /// 等待物料到货(红，料没到不能领；在途无异常但本行不能执行)。
   waitingMaterial('WAITING_MATERIAL'),
 
   /// 服务端新增而本端不认识的状态：按等待物料展示，不放行任何动作。

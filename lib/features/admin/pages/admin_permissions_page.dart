@@ -619,7 +619,8 @@ String accountStatusLabel(String status) => switch (status) {
   _ => status,
 };
 
-/// 账号状态徽章（active=绿 / locked=黄 / disabled=灰）。
+/// 账号状态徽章（active=绿正常 / locked=红锁定——登录被硬阻断，ADR-169
+/// 「锁定不能往下」归红档，非等待；disabled=灰停用）。
 class AccountStatusBadge extends StatelessWidget {
   const AccountStatusBadge({super.key, required this.status});
 
@@ -629,7 +630,7 @@ class AccountStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final type = switch (status) {
       'active' => UtenStatusBadgeType.success,
-      'locked' => UtenStatusBadgeType.warning,
+      'locked' => UtenStatusBadgeType.danger,
       'disabled' => UtenStatusBadgeType.neutral,
       _ => UtenStatusBadgeType.neutral,
     };

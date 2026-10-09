@@ -105,6 +105,9 @@ List<int> hrReconcileDiffPositions(String? before, String after) {
 }
 
 /// 把握徽标：高=success 实底 / 中=warning / 需人工=error 描边 / 无候选=灰。
+/// 色值走 ADR-169 状态实底色板：高=statusSuccess / 中=statusOrange（把握
+/// 中间档的风险色，橙比亮琥珀作浅底文字更可读）/ 需人工=statusDanger 描边 /
+/// 无候选随正文灰。
 /// [basisLabel] 非空时悬停/长按出 Tooltip 解释建议依据(生日锚点/校验位求解…，
 /// 2026-10-06 原「依据」列退役并入此处)。
 class HrReconcileTierBadge extends StatelessWidget {
@@ -135,19 +138,19 @@ class HrReconcileTierBadge extends StatelessWidget {
         l10n.hrReconcileTierHigh,
         true,
         false,
-        UtenColors.success,
+        UtenColors.statusSuccess,
       ),
       HrReconcileTier.medium => (
         l10n.hrReconcileTierMedium,
         false,
         false,
-        UtenColors.warning,
+        UtenColors.statusOrange,
       ),
       HrReconcileTier.manual => (
         l10n.hrReconcileTierManual,
         false,
         true,
-        theme.colorScheme.error,
+        UtenColors.statusDanger,
       ),
       HrReconcileTier.none => (
         l10n.hrReconcileTierNone,
@@ -366,7 +369,7 @@ class HrReconcileIdNumberCell extends StatelessWidget {
           child: const Icon(
             Icons.check_circle_rounded,
             size: 18,
-            color: UtenColors.success,
+            color: UtenColors.statusSuccess,
           ),
         ),
       );
@@ -416,7 +419,8 @@ class HrReconcileIdNumberCell extends StatelessWidget {
   }
 }
 
-/// 说明/结果列：notes 逐条 + 执行结果上色（已更正 success / 跳过·部分 warning / 失败 error）。
+/// 说明/结果列：notes 逐条 + 执行结果上色。ADR-169 档位：已更正=绿 /
+/// 部分=紫（部分完成族）/ 跳过=灰（未处理的中性态）/ 失败=红。
 class HrReconcileNotesCell extends StatelessWidget {
   const HrReconcileNotesCell({super.key, required this.row});
 
@@ -454,7 +458,6 @@ class HrReconcileNotesCell extends StatelessWidget {
             key: ValueKey('hr-reconcile-outcome-${row.rowNo}'),
             style: theme.textTheme.bodySmall?.copyWith(
               color: _statusColor(
-                context,
                 o.status == HrReconcileOutcomeStatus.applied
                     ? HrReconcileRowResultStatus.applied
                     : o.status == HrReconcileOutcomeStatus.skipped
@@ -472,7 +475,7 @@ class HrReconcileNotesCell extends StatelessWidget {
                 : '${_rowResultLabel(l10n, result.status)}：${result.message}',
             key: ValueKey('hr-reconcile-row-result-${row.rowNo}'),
             style: theme.textTheme.bodySmall?.copyWith(
-              color: _statusColor(context, result.status),
+              color: _statusColor(result.status),
               fontWeight: FontWeight.w700,
             ),
             softWrap: true,
@@ -501,10 +504,9 @@ String _rowResultLabel(
   HrReconcileRowResultStatus.failed => l10n.hrReconcileResultFailed,
 };
 
-Color _statusColor(BuildContext context, HrReconcileRowResultStatus status) =>
-    switch (status) {
-      HrReconcileRowResultStatus.applied => UtenColors.success,
-      HrReconcileRowResultStatus.partial ||
-      HrReconcileRowResultStatus.skipped => UtenColors.warning,
-      HrReconcileRowResultStatus.failed => Theme.of(context).colorScheme.error,
-    };
+Color _statusColor(HrReconcileRowResultStatus status) => switch (status) {
+  HrReconcileRowResultStatus.applied => UtenColors.statusSuccess,
+  HrReconcileRowResultStatus.partial => UtenColors.statusViolet,
+  HrReconcileRowResultStatus.skipped => UtenColors.statusNeutral,
+  HrReconcileRowResultStatus.failed => UtenColors.statusDanger,
+};

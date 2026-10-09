@@ -550,8 +550,7 @@ class _ProcurementIqcRejectionListPageState
       width: 72,
       value: (item) => item.status.label,
       // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
-      cellColor: (context, item) => udenStatusBadgeCellColor(
-        context,
+      cellColor: (context, item) => utenStatusBadgeCellColor(
         procurementIqcRejectionBadgeType(item.status),
       ),
     ),

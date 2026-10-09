@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
@@ -297,6 +299,28 @@ class _ReportablePlanLineSheetState
               'IN_PROGRESS' when item.isFqcRecovery => '恢复报工',
               'IN_PROGRESS' => '普通报工',
               _ => item.executionSegmentStatus ?? '历史计划',
+            },
+            // 任务状态整格底色（ADR-169 逐页显式映射，按报工动作语义）：
+            // 待补料/待发料=红——补产物料未齐套发料前 canReport=false，报工被
+            // 硬阻断，「不能执行/被锁死不是等待」（同委外任务「等物料齐套=红」
+            // 口径，轮到仓库/计划动手而非等待中的异常）/ 恢复报工=蓝——FQC
+            // 恢复授权已生效、恢复产出报工流程进行中 / 普通报工=绿——就绪
+            // 可动手，轮到车间报工 / 历史计划（无执行子任务）=灰；其余原始
+            // 状态码保持无色纯文本。
+            cellColor: (context, item) {
+              if (item.executionSegmentStatus != 'IN_PROGRESS') {
+                return item.executionSegmentStatus == null
+                    ? utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)
+                    : null;
+              }
+              if (item.fqcRecoveryRequiresMaterial) {
+                return utenStatusBadgeCellColor(UtenStatusBadgeType.danger);
+              }
+              return utenStatusBadgeCellColor(
+                item.isFqcRecovery
+                    ? UtenStatusBadgeType.info
+                    : UtenStatusBadgeType.success,
+              );
             },
           ),
           MasterColumnDef(

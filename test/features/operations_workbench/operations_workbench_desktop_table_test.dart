@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart'
+    show UtenStatusBadgeType;
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart'
+    show utenStatusBadgeCellColor;
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
@@ -223,6 +227,93 @@ void main() {
     expect(refreshed.filters['goodsName'], 'goods-1');
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('merged status column tiers follow the ADR-169 baseline', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: OperationsWorkbenchPage(
+            department: OperationsWorkbenchDepartment.purchase,
+            repository: _FakeGateway(
+              OperationsWorkbenchData(
+                department: OperationsWorkbenchDepartment.purchase,
+                summary: const OperationsWorkbenchSummary(
+                  totalTasks: 5,
+                  overdueTasks: 0,
+                  openTasks: 5,
+                  openQty: 40,
+                  statusCounts: {
+                    'WAITING_ORDER': 1,
+                    'ORDER_PENDING_APPROVAL': 1,
+                    'FINANCE_APPROVED': 1,
+                    'FINANCE_REJECTED': 1,
+                    'COMPLETED': 1,
+                    'IN_PROGRESS': 4,
+                  },
+                ),
+                items: [
+                  _task(id: 'w', goodsName: '申请待分解行'),
+                  _task(
+                    id: 'p',
+                    goodsName: '等待财务审核行',
+                    taskStatus: 'ORDER_PENDING_APPROVAL',
+                  ),
+                  _task(
+                    id: 'a',
+                    goodsName: '财务已通过行',
+                    taskStatus: 'FINANCE_APPROVED',
+                  ),
+                  _task(
+                    id: 'r',
+                    goodsName: '财务驳回行',
+                    taskStatus: 'FINANCE_REJECTED',
+                  ),
+                  _task(id: 'c', goodsName: '已完成行', taskStatus: 'COMPLETED'),
+                ],
+                page: 1,
+                size: 20,
+                total: 5,
+                totalPages: 1,
+                capabilities: const OperationsWorkbenchCapabilities(
+                  canCreatePurchaseOrder: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('进行中'));
+    await tester.pumpAndSettle();
+
+    final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+      find.descendant(
+        of: find.byKey(const Key('operations-workbench-desktop-table')),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<OperationsWorkbenchTask>,
+        ),
+      ),
+    );
+    final statusColumn = table.columns.firstWhere((c) => c.key == 'status');
+    final context = tester.element(find.byType(OperationsWorkbenchPage));
+    Color? cellOf(String id) => statusColumn.cellColor!(
+      context,
+      table.items.firstWhere((task) => task.taskId == id),
+    );
+    // ADR-169 基准表：申请待分解(可生成订货单)=绿、等财务=黄、财务已通过=蓝、
+    // 财务驳回=红、已完成=绿。
+    expect(cellOf('w'), utenStatusBadgeCellColor(UtenStatusBadgeType.success));
+    expect(cellOf('p'), utenStatusBadgeCellColor(UtenStatusBadgeType.warning));
+    expect(cellOf('a'), utenStatusBadgeCellColor(UtenStatusBadgeType.info));
+    expect(cellOf('r'), utenStatusBadgeCellColor(UtenStatusBadgeType.danger));
+    expect(cellOf('c'), utenStatusBadgeCellColor(UtenStatusBadgeType.success));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _RecordingGateway implements OperationsWorkbenchGateway {
@@ -283,6 +374,7 @@ OperationsWorkbenchTask _task({
   required String id,
   required String goodsName,
   String? actionDocItemId,
+  String taskStatus = 'WAITING_ORDER',
 }) {
   return OperationsWorkbenchTask(
     taskId: id,
@@ -301,7 +393,7 @@ OperationsWorkbenchTask _task({
     fulfilledQty: 2,
     supplyPeggedQty: 4,
     openQty: 8,
-    taskStatus: 'WAITING_ORDER',
+    taskStatus: taskStatus,
     needDate: '2026-08-01',
     expectedDate: null,
     exceptionCode: null,

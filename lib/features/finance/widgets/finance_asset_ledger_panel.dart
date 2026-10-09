@@ -549,10 +549,8 @@ class _FinanceAssetLedgerPanelState
             width: 72,
             value: (item) => financeAssetStatusLabel(item.status),
             // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
-            cellColor: (context, item) => udenStatusBadgeCellColor(
-              context,
-              financeAssetStatusType(item.status),
-            ),
+            cellColor: (context, item) =>
+                utenStatusBadgeCellColor(financeAssetStatusType(item.status)),
           ),
           MasterColumnDef(
             key: 'code',

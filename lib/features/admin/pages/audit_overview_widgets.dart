@@ -892,8 +892,9 @@ class _AuditSessionListHeader extends StatelessWidget {
         ),
         if (currentPage != null && totalPages != null)
           UtenStatusBadge(
+            // 翻页位置是中性信息，不是「正在执行」——蓝档留给执行态（ADR-169）。
             label: '第 $currentPage / ${math.max(totalPages!, 1)} 页',
-            type: UtenStatusBadgeType.info,
+            type: UtenStatusBadgeType.neutral,
           ),
       ],
     );
@@ -1118,8 +1119,7 @@ class _AuditEventTable extends StatelessWidget {
               _auditOutcomeLabel(row.result, row.resultLabel, row.statusCode),
           // 2026-09-27 用户口径「表格状态列整格底色」：失败=红 / 成功=绿 /
           // 未知结果=中性灰。
-          cellColor: (context, row) => udenStatusBadgeCellColor(
-            context,
+          cellColor: (context, row) => utenStatusBadgeCellColor(
             _isAuditFailure(row.result, row.statusCode)
                 ? UtenStatusBadgeType.danger
                 : (row.statusCode != null &&
@@ -1137,7 +1137,7 @@ class _AuditEventTable extends StatelessWidget {
           value: (row) => _riskLabel(row.riskLevel),
           // 风险分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
           cellColor: (context, row) =>
-              udenStatusBadgeCellColor(context, switch (row.riskLevel) {
+              utenStatusBadgeCellColor(switch (row.riskLevel) {
                 'critical' || 'high' => UtenStatusBadgeType.danger,
                 'medium' => UtenStatusBadgeType.warning,
                 _ => UtenStatusBadgeType.success,
@@ -1499,11 +1499,13 @@ class _AuditResultBadge extends StatelessWidget {
         !failed && (_isAuditSuccess(result, statusCode) || label == '成功');
     return UtenStatusBadge(
       label: label,
+      // 失败=红 / 成功=绿 / 未知结果=灰——与事件表「结果」列 cellColor 同档
+      // （原 info 蓝会让同一「未知结果」在列表灰、详情蓝，两视图撞不出一致语义）。
       type: failed
           ? UtenStatusBadgeType.danger
           : succeeded
           ? UtenStatusBadgeType.success
-          : UtenStatusBadgeType.info,
+          : UtenStatusBadgeType.neutral,
       size: UtenStatusBadgeSize.small,
     );
   }
@@ -1516,12 +1518,17 @@ String _riskLabel(String level) => switch (level) {
   _ => '低风险',
 };
 
+/// 风险等级的图标/卡片 tint 用色：与 [_AuditRiskBadge] 的档位（红/黄/绿）
+/// 同色相（ADR-169：同一风险等级在同卡内不得出现两种色相；medium 原用
+/// 品牌青、low 原用品牌青绿，与琥珀/绿徽章同卡撞色）。图标/容器属控件级
+/// 语义，走明暗自适应的 *Text/*OnDark，不用状态实底。
 Color _riskColor(BuildContext context, String level) {
-  final colors = Theme.of(context).colorScheme;
+  final dark = Theme.of(context).brightness == Brightness.dark;
   return switch (level) {
-    'critical' || 'high' => colors.error,
-    'medium' => colors.tertiary,
-    _ => colors.primary,
+    'critical' ||
+    'high' => dark ? UtenColors.errorOnDark : UtenColors.errorText,
+    'medium' => dark ? UtenColors.warningOnDark : UtenColors.warningText,
+    _ => dark ? UtenColors.successOnDark : UtenColors.successText,
   };
 }
 

@@ -126,7 +126,9 @@ void main() {
         'meaning': zh.productionReadinessMeaningReady,
         'count': 1,
       });
-      expect(legend['部分物料已投 · 可开工']!['color'], '琥珀');
+      // ADR-169（2026-10-08）档位锚定：部分已投可开工=紫（部分就绪）、
+      // 缺料等待=红（料没到齐被锁死不能开工，用户口径「不能往下=红」）。
+      expect(legend['部分物料已投 · 可开工']!['color'], '紫');
       expect(
         legend['部分物料已投 · 可开工']!['meaning'],
         zh.productionReadinessMeaningReadyPartial,
@@ -135,7 +137,7 @@ void main() {
           .where((entry) => (entry.key! as String).startsWith('等待物料到齐'))
           .single
           .value;
-      expect(waiting['color'], '灰');
+      expect(waiting['color'], '红');
       expect(waiting['count'], 2);
       expect(waiting['meaning'], zh.productionReadinessMeaningWaiting);
       expect(tester.takeException(), isNull);

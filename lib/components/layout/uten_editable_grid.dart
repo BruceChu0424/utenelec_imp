@@ -46,6 +46,7 @@ import '../data_display/uten_status_cell_color.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_table_cell_hints.dart';
+import '../inputs/uten_table_cell_spec.dart';
 import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_dialog.dart';
 import 'uten_grid_header_filter_cell.dart';
@@ -54,6 +55,10 @@ import 'uten_sticky_header.dart';
 import 'uten_table_column_kit.dart';
 import '../data_display/uten_color_name.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
+
+// 单元格统一规格已抽到共享文件（2026-10-08）：读表 cellBuilder / 下拉 dense /
+// 盘点实盘格与编辑表同源，此处 re-export 维持既有 import 路径不变。
+export '../inputs/uten_table_cell_spec.dart';
 
 part 'uten_editable_grid_ai.dart';
 
@@ -221,39 +226,6 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 单元内部业务装饰占宽，如下拉箭头（20）。自动量宽时叠加到文本宽度；
   /// 说明统一放在表头，单元格提示不再占用图标位。
   final double chromeWidth;
-}
-
-/// UtenEditableGrid 单元格统一规格（2026-09-10，一处定义全表生效）：
-/// 圆角 = [UtenRadius.control]、内边距与全局 inputDecorationTheme 一致、
-/// 单行；各列 cellBuilder **不得**自带 OutlineInputBorder/contentPadding/
-/// bodySmall/maxLines:2——此前币种/供应商/仓库/车间格各画各的（6 圆角、
-/// (10,8) 内边距、小字、双行）导致同一行格高、圆角、字号三种口径并存。
-abstract final class UtenEditableGridCellSpec {
-  /// 单元内输入框圆角（与全站控件圆角同源）。
-  static const double radius = UtenRadius.control;
-
-  /// 单元内输入框内边距（与 light/dark 主题 inputDecorationTheme 同值）。
-  static const EdgeInsets contentPadding = EdgeInsets.symmetric(
-    horizontal: 14,
-    vertical: 12,
-  );
-
-  /// 选择格（InkWell + InputDecorator 结构）内边距：水平同 [contentPadding]，
-  /// 垂直 13——选择格正文是 bodyMedium（行高 21），比 TextField 输入文本
-  /// bodyLarge（行高 22.5）矮，垂直 +1 才与同行输入格等高（2026-10-06
-  /// 表格控件统一口径：格高一律 39 逻辑像素，见 grid_cell_height_uniformity_test）。
-  static const EdgeInsets pickerCellPadding = EdgeInsets.fromLTRB(
-    14,
-    13,
-    14,
-    13,
-  );
-
-  /// 兼容既有列宽定义。单元格说明/预填/错误提示已无图标，不再额外占宽。
-  static const double hintIconWidth = 0;
-
-  /// 下拉/选择格的右侧展开箭头占宽。
-  static const double dropdownChevronWidth = 20;
 }
 
 /// 必填单元的**实时**红框：订阅 [listenable]，当 [isEmpty] 为真时给 [child] 描红边，
@@ -1505,10 +1477,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// MasterDataTableView 自动适配同款取舍；更靠后的行靠"边输入边加宽"兜底）。
   static const int _autoGrowSampleSize = 200;
 
-  /// 单元横向装饰总宽：格 Padding(8×2) + 输入框 contentPadding(14×2，全局
-  /// inputDecorationTheme)。只读 Text 单元实为 40（12+8×2），按 44 量略偏宽——
-  /// 只增不减语义下偏宽无害。
-  static const double _cellChromeX = 44;
+  /// 单元横向装饰总宽：格 Padding(8×2) + 输入框 contentPadding(10×2，
+  /// UtenEditableGridCellSpec.contentPadding)。只读 Text 单元实为 32（8+8×2），
+  /// 按 36 量略偏宽——只增不减语义下偏宽无害。
+  static const double _cellChromeX = 36;
 
   // —— 表头最小可读宽（2026-09-11）——
   // 此前只按单元内容量宽，表头标签从不参与：声明宽偏窄的列（如「缺口 ⓘ」）
@@ -3379,14 +3351,6 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     // 只要有一列要求吃满行高（层级树列），整行改 stretch + IntrinsicHeight。
     // 没有这类列时一字不变，大表零额外布局开销。
     final stretchCells = columns.any((column) => column.fillsCellHeight);
-    // 单元格统一规格（UtenEditableGridCellSpec）：一行只包一层 Theme，让不自带
-    // 装饰的输入格/下拉格/选择格自动等高、同圆角、同内边距。
-    final cellTheme = theme.copyWith(
-      inputDecorationTheme: theme.inputDecorationTheme.copyWith(
-        isDense: true,
-        contentPadding: UtenEditableGridCellSpec.contentPadding,
-      ),
-    );
     // 选中行青绿实底（utenTableSelectedRowColor，与 MasterDataTableView 同款；
     // 2026-09-22 从几乎看不见的 primaryContainer 35% 加深），字色 / 网格线不变。
     final rowBg = isSelected
@@ -3551,8 +3515,9 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
         color: rowBg,
         border: Border(bottom: divider),
       ),
-      child: Theme(
-        data: cellTheme,
+      // 单元格统一规格（UtenEditableGridCellSpec）：一行只包一层共享紧凑输入主题，
+      // 让不自带装饰的输入格/下拉格/选择格自动等高、同圆角、同内边距。
+      child: UtenTableCellInputTheme(
         child: wrapFrozen(
           _boundStretchRow(
             stretch: stretchCells,
@@ -3597,19 +3562,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   Widget _dataCell(BuildContext context, ThemeData theme, int i) {
     final column = columns[i];
     Widget build() {
+      // 状态底色只认列定义的显式 cellColor(ADR-169 逐页独立口径);
+      // 未显式映射的状态列保持无色纯文本, 不再按文案关键字猜色。
       final cellColor = isSelected
           ? null
-          : column.cellColor?.call(context, row) ??
-                (utenIsStatusColumn(column.key, column.label)
-                    ? udenStatusBadgeCellColor(
-                        context,
-                        utenStatusLabelType(
-                          column.textOf?.call(row) ??
-                              column.frozenTextOf?.call(row) ??
-                              column.filterValueOf?.call(row),
-                        ),
-                      )
-                    : null);
+          : column.cellColor?.call(context, row);
       final Color? onCellColor = cellColor == null
           ? null
           : utenSemanticCellForeground(context, cellColor);
@@ -3632,6 +3589,11 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                 color: onCellColor ?? theme.colorScheme.onSurface,
                 fontFeatures: column.numeric
                     ? const [FontFeature.tabularFigures()]
+                    : null,
+                // 72b66001/8fdb5ea6521765875b577edf4e0052a07c97(2026-10-08 7528623753e35f84)3002
+                fontWeight:
+                    utenIsStatusOrProgressColumn(column.key, column.label)
+                    ? FontWeight.w700
                     : null,
               ),
               child: UtenTableCellHints(

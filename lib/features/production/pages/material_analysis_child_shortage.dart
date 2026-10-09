@@ -866,8 +866,9 @@ class _ChildShortageRootSummary extends StatelessWidget {
   }
 }
 
-/// 供应方式小标签：采购蓝、委外紫、自制青，一眼分得开；没解析出路线的行
-/// 显示待选（2026-09-25 确认路线退役后红框行补选前的形态）。
+/// 供应方式小标签（ADR-169 分类强调、非语义类别档）：采购蓝 / 委外品红 /
+/// 自制青绿——三个类别互可区分，也不与同页语义色（已下单绿 / 追加琥珀 /
+/// 待选红）撞色；没解析出路线的行显示待选（红=阻断：选不了路线下不了单）。
 class _RouteChip extends StatelessWidget {
   const _RouteChip({required this.route});
 
@@ -889,8 +890,8 @@ class _RouteChip extends StatelessWidget {
       size: UtenStatusBadgeSize.small,
       type: switch (resolved) {
         MaterialSupplyRoute.buy => UtenStatusBadgeType.info,
-        MaterialSupplyRoute.subcontract => UtenStatusBadgeType.violet,
-        MaterialSupplyRoute.make => UtenStatusBadgeType.success,
+        MaterialSupplyRoute.subcontract => UtenStatusBadgeType.fuchsia,
+        MaterialSupplyRoute.make => UtenStatusBadgeType.accent,
       },
       icon: switch (resolved) {
         MaterialSupplyRoute.buy => Icons.shopping_cart_outlined,

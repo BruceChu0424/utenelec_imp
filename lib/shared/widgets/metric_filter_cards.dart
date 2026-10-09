@@ -14,6 +14,7 @@ Color metricToneColor(String tone, ThemeData theme) {
   return switch (tone.toLowerCase()) {
     'error' || 'danger' || 'critical' => theme.colorScheme.error,
     'warning' || 'attention' => UtenColors.warning,
+    'orange' || 'partial' => UtenColors.statusOrange,
     'success' || 'ready' => UtenColors.success,
     'info' => UtenColors.info,
     _ => theme.colorScheme.primary,

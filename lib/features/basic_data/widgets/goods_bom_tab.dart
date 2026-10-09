@@ -925,14 +925,16 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         },
       ),
       // 系统学习来源列（2026-09-29）：系统学出的组件标「系统学习」(ADR-129)，
-      // 整格铺品牌青底色（2026-09-27 状态列口径）；人工维护行不铺色留空。
+      // 整格铺品红分类底色（ADR-169：来源分类强调非语义状态，原品牌青/info
+      // 让给「他方执行中/正在执行」语义档）；人工维护行不铺色留空。
+      // 与「BOM 学习记录」状态列同色。
       MasterColumnDef(
         key: 'learned',
         label: '学习来源',
         width: 110,
         value: (r) => r.node.item.systemLearned ? l10n.bomLearnedEdge : null,
         cellColor: (context, r) => r.node.item.systemLearned
-            ? udenStatusBadgeCellColor(context, UtenStatusBadgeType.info)
+            ? utenStatusBadgeCellColor(UtenStatusBadgeType.fuchsia)
             : null,
         // key 是既有用例锚点（goods_bom_columns_test：按行定位学习标记）。
         cellBuilder: (context, r) => r.node.item.systemLearned
@@ -984,8 +986,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                         r.node.item.audited
                             ? Icons.check_circle
                             : Icons.radio_button_unchecked,
+                        // 已核对=绿（ADR-169 绿档同色相；原裸 green.shade700 收编
+                        // 进控件级 *Text/*OnDark，明暗各自保对比度）。
                         color: r.node.item.audited
-                            ? Colors.green.shade700
+                            ? (Theme.of(context).brightness == Brightness.dark
+                                  ? UtenColors.successOnDark
+                                  : UtenColors.successText)
                             : Theme.of(context).colorScheme.onSurfaceVariant
                                   .withValues(alpha: 0.45),
                       ),
@@ -1068,8 +1074,11 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     ? r.node.item.periodicUnitWeightGrams ?? r.node.item.qty
                     : r.node.item.qty)
                 ?.toString(),
-        cellColor: (context, r) =>
-            _weightNeedsReview(r) ? Colors.amber.withValues(alpha: 0.28) : null,
+        // 「黄框待核对」既有语义（ADR-169 §2.5 不动）；裸 Colors.amber 收编进
+        // 语义 warning 档（同色相）。
+        cellColor: (context, r) => _weightNeedsReview(r)
+            ? UtenColors.warning.withValues(alpha: 0.28)
+            : null,
       ),
       // 真实使用数量(只读，ADR-129)：与设计使用数量同一计量口径；没有数据或
       // 不适用显示「—」，悬停说明计算按哪个数、依据几批、累计多少。
@@ -1190,11 +1199,12 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                   rowMenuBuilder: _rowMenuItems,
                   // 已审行浅绿底也只在审计模式出现（与「已审」列同进退）——审计标记是
                   // 核对工作态，普通视图不该有无从解释的绿色行；单击选中时表格组件
-                  // 自动加深加亮。
+                  // 自动加深加亮。绿/黄为「已核对/待核对」既有语义（ADR-169 §2.5），
+                  // 裸色收编进语义档。
                   rowColor: (r) => _auditMode && r.node.item.audited
-                      ? Colors.green.withValues(alpha: 0.15)
+                      ? UtenColors.success.withValues(alpha: 0.15)
                       : (_weightNeedsReview(r)
-                            ? Colors.amber.withValues(alpha: 0.12)
+                            ? UtenColors.warning.withValues(alpha: 0.12)
                             : null),
                   // 工具条驻左：表头设置/全屏为内建按钮，其余业务按钮走
                   // toolbarLeadingActions 紧随其后（2026-09-25 口径：顶部按钮全部靠左、
@@ -2168,7 +2178,8 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
                             margin: const EdgeInsets.only(top: UtenSpacing.s8),
                             padding: const EdgeInsets.all(UtenSpacing.s8),
                             decoration: BoxDecoration(
-                              color: Colors.amber.withValues(alpha: 0.25),
+                              // 「标黄提醒待核对」既有语义；裸 Colors.amber 收编进 warning 档。
+                              color: UtenColors.warning.withValues(alpha: 0.25),
                               borderRadius: BorderRadius.circular(
                                 UtenRadius.control,
                               ),

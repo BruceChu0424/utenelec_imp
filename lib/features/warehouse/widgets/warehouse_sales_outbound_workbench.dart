@@ -18,6 +18,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -562,6 +564,17 @@ class _WarehouseSalesOutboundWorkbenchState
       label: '仓库作业',
       width: 72,
       value: (item) => item.statusLabel,
+      // ADR-169 逐页显式映射：待出库=绿（财务已放行，轮到仓库核对确认出库的
+      // 绿灯）/ 已出库=灰（办结历史，本段即历史）/ 退役旧码不伪装，保持无色。
+      cellColor: (context, item) =>
+          switch (item.warehouseWorkStatus?.trim().toUpperCase()) {
+            WarehouseSalesOutboundStatus.pendingPick =>
+              utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+            WarehouseSalesOutboundStatus.shipped => utenStatusBadgeCellColor(
+              UtenStatusBadgeType.neutral,
+            ),
+            _ => null,
+          },
     ),
     MasterColumnDef(
       // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。

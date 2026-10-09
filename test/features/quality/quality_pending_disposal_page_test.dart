@@ -131,6 +131,12 @@ void main() {
     expect(find.text(_reportNo), findsOneWidget);
     expect(_segmentText('自制产成品'), findsOneWidget);
 
+    // 2026-10-08 根治：IQC 收货单行的「货品名称/待检数量」显示服务端货品摘要
+    // 与按单位分组的数量文本，不再整列「—」。
+    expect(find.text('PVC粒料 (WL001 · 蓝色)'), findsOneWidget);
+    expect(find.text('5 个'), findsOneWidget);
+    expect(find.text('支架 (WL002)'), findsOneWidget);
+
     // 分段红色圆数字徽章只挂可办的类型分段（各 1）；「全部待检单」不挂徽章。
     expect(_segmentBadge('1'), findsNWidgets(3));
     expect(_segmentBadge('3'), findsNothing);
@@ -161,6 +167,20 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    // 搜索也认货品摘要（2026-10-08 起收货单行带 goodsSummary）：按来料名称
+    // 收窄到 IQC 行。
+    await tester.enterText(find.byType(TextField), 'PVC粒料');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('iqc-receipt-table')),
+        matching: find.text('CJ20260822000001'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text(_reportNo), findsNothing);
   });
 
   testWidgets('FQC row detail leads to decision and local removal', (
@@ -380,6 +400,8 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
       supplierName: '采购供应商',
       itemCount: 1,
       pendingBaseQty: 5,
+      goodsSummary: 'PVC粒料 (WL001 · 蓝色)',
+      pendingQtyText: '5 个',
     ),
     PendingInspectionReceipt(
       receiptType: 'SUBCONTRACT',
@@ -388,6 +410,8 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
       supplierName: '委外加工商',
       itemCount: 1,
       pendingBaseQty: 3,
+      goodsSummary: '支架 (WL002)',
+      pendingQtyText: '3 个',
     ),
   ];
 

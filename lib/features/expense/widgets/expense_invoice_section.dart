@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -305,6 +307,26 @@ class ExpenseInvoiceSection extends ConsumerWidget {
 }
 
 final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
+  // 2026-10-08 用户口径「状态或进度列默认放最前」：人工查验是发票行的查验
+  // 结论列（未查验 / 已人工查验 / 勾稽不符，推翻 2026-10-06 批次「无状态
+  // 字样不动」的豁免），前置到序号列之前。
+  MasterColumnDef(
+    key: 'checkState',
+    label: '人工查验',
+    width: 90,
+    value: (invoice) => invoice.checkState.label,
+    // 人工查验整格底色（ADR-169 逐页显式映射）：勾稽不符=橙（票面勾稽不符
+    // 待审批人复核——风险中间态）/ 已人工查验=绿（查验通过，审批前置条件已
+    // 满足）/ 未查验·金额勾稽相符=黄（等人工查验，无异常；金额勾稽相符只是
+    // 机器预检，人工查验未做仍等查验，文案区分预检结果）。
+    cellColor: (context, invoice) =>
+        utenStatusBadgeCellColor(switch (invoice.checkState) {
+          ExpenseInvoiceCheckState.mismatch => UtenStatusBadgeType.orange,
+          ExpenseInvoiceCheckState.verified => UtenStatusBadgeType.success,
+          ExpenseInvoiceCheckState.unchecked ||
+          ExpenseInvoiceCheckState.amountsMatch => UtenStatusBadgeType.warning,
+        }),
+  ),
   MasterColumnDef(
     key: 'lineNo',
     label: '#',
@@ -378,12 +400,6 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     width: 110,
     type: 'money',
     value: (invoice) => invoice.totalAmount.toStringAsFixed(2),
-  ),
-  MasterColumnDef(
-    key: 'checkState',
-    label: '人工查验',
-    width: 90,
-    value: (invoice) => invoice.checkState.label,
   ),
   MasterColumnDef(
     key: 'verificationRemark',

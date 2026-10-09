@@ -221,19 +221,21 @@ class _IntroCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: UtenSpacing.s12),
+          // 两条都是页面行为的静态说明（非进行中），按 ADR-169 灰档；
+          // 蓝档保留给「正在执行/已提交」。
           const Wrap(
             spacing: UtenSpacing.s8,
             runSpacing: UtenSpacing.s8,
             children: [
               UtenStatusBadge(
                 label: '只读核查',
-                type: UtenStatusBadgeType.info,
+                type: UtenStatusBadgeType.neutral,
                 icon: Icons.visibility_outlined,
                 size: UtenStatusBadgeSize.small,
               ),
               UtenStatusBadge(
                 label: '不保存请求体 / 查询参数 / 令牌',
-                type: UtenStatusBadgeType.info,
+                type: UtenStatusBadgeType.neutral,
                 icon: Icons.shield_outlined,
                 size: UtenStatusBadgeSize.small,
               ),

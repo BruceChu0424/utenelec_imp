@@ -92,7 +92,7 @@ void main() {
     final context = tester.element(tooltip);
     expect(
       column.cellColor!(context, line),
-      udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.warning),
     );
     line.weight.setKg(20);
     await tester.pumpAndSettle();
@@ -118,7 +118,7 @@ void main() {
     final context = tester.element(tooltip);
     expect(
       column.cellColor!(context, line),
-      udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.warning),
     );
   });
 }

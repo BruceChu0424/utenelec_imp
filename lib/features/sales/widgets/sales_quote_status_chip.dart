@@ -1,7 +1,8 @@
 // 报价单状态展示(ADR-134)：分桶 → 文案 / 徽章语义色，核价记录时间线。
 //
-// 颜色口径(适老化基线 13 §状态可见)：草稿中性灰、待财务核价黄(在财务手上)、财务退回红
-// (要本人改)、已核价绿、作废灰。文字全部走 arb，列表、详情、财务核价页共用这一份。
+// 颜色口径(ADR-169 十档锚定)：草稿/作废中性灰、待财务核价琥珀(在财务手上)、
+// 财务退回红(要本人改)、待客户同意青 sky(第二等待档：等客户)、待转订货绿
+// (就绪可动手)、已核价绿。文字全部走 arb，列表、详情、财务核价页共用这一份。
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
@@ -25,13 +26,32 @@ String salesQuoteStageLabel(AppLocalizations l10n, String? stage) =>
       _ => '—',
     };
 
-/// 分桶徽章语义色。
-UtenStatusBadgeType salesQuoteStageBadgeType(String? stage) => switch (stage) {
-  SalesQuoteStage.financeRejected => UtenStatusBadgeType.danger,
-  SalesQuoteStage.pendingFinance => UtenStatusBadgeType.warning,
-  SalesQuoteStage.approved => UtenStatusBadgeType.success,
-  _ => UtenStatusBadgeType.neutral,
-};
+/// 分桶徽章语义色（ADR-169 锚定）。与 [salesQuoteStatusText] 同一输入派生，
+/// 保证文案与颜色不脱节（同一「待客户同意」不再一半绿一半灰）：
+/// 草稿/作废=中性灰 · 财务退回=红（驳回）· 待财务核价=琥珀（等外部、球在财务）·
+/// 待客户同意=青 sky（第二等待档：等客户 vs 等财务同页拆 warning/sky）·
+/// 待转订货=绿（就绪可动手：可转单开单=绿灯）· 已核价/已转订货单=绿（通过/完成）。
+UtenStatusBadgeType salesQuoteStageBadgeType(
+  String? stage, {
+  bool converted = false,
+  bool customerAccepted = false,
+}) {
+  // bucket=APPROVED 但未转单（旧载荷无分桶时的兜底路径）：按旗标落待客户/待转订货
+  // 档，与 AWAITING_* 分桶同色。
+  if (stage == SalesQuoteStage.approved && !converted) {
+    return customerAccepted
+        ? UtenStatusBadgeType.success
+        : UtenStatusBadgeType.sky;
+  }
+  return switch (stage) {
+    SalesQuoteStage.financeRejected => UtenStatusBadgeType.danger,
+    SalesQuoteStage.pendingFinance => UtenStatusBadgeType.warning,
+    SalesQuoteStage.awaitingCustomer => UtenStatusBadgeType.sky,
+    SalesQuoteStage.awaitingConversion => UtenStatusBadgeType.success,
+    SalesQuoteStage.approved => UtenStatusBadgeType.success,
+    _ => UtenStatusBadgeType.neutral,
+  };
+}
 
 /// 分桶图标(颜色之外的第二重区分，色弱也能读)。
 IconData salesQuoteStageIcon(String? stage) => switch (stage) {
@@ -81,7 +101,11 @@ class SalesQuoteStatusChip extends StatelessWidget {
         converted: converted,
         customerAccepted: customerAccepted,
       ),
-      type: salesQuoteStageBadgeType(stage),
+      type: salesQuoteStageBadgeType(
+        stage,
+        converted: converted,
+        customerAccepted: customerAccepted,
+      ),
       icon: salesQuoteStageIcon(stage),
       size: size,
     );

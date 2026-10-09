@@ -548,9 +548,9 @@ abstract class _MaterialAnalysisSupplyActionsState
   /// useful recovery path so staff do not have to infer it from a row of zeroes.
   ///
   /// 合单不增加员工操作步骤，原产品行继续办理和查看进度。
-  ({String title, String detail, IconData icon, Color color})
-  _requirementStateView(
-    ThemeData theme,
+  ///（2026-10-08 状态色改版：本视图只出文案/图标线索，颜色由进度列的
+  /// MaterialPreparationStatusStyle 统一解析，record 不再带逐分支裸色。）
+  ({String title, String detail}) _requirementStateView(
     ProductionMaterialAnalysisMaterial material,
   ) {
     if (material.effectiveRequirementState ==
@@ -571,62 +571,41 @@ abstract class _MaterialAnalysisSupplyActionsState
         material.flowStage ?? fallback,
         route: route,
       );
-      return (
-        title: stage.displayLabel,
-        detail: '数量和进度按实际单据显示，本行可以继续下单或追加',
-        icon: stage.icon,
-        color: theme.colorScheme.primary,
-      );
+      return (title: stage.displayLabel, detail: '数量和进度按实际单据显示，本行可以继续下单或追加');
     }
-    return _requirementStateBranches(theme, material);
+    return _requirementStateBranches(material);
   }
 
-  ({String title, String detail, IconData icon, Color color})
-  _requirementStateBranches(
-    ThemeData theme,
+  ({String title, String detail}) _requirementStateBranches(
     ProductionMaterialAnalysisMaterial material,
   ) => switch (material.effectiveRequirementState) {
     MaterialRequirementState.delegatedToMakeChild => (
       title: '需求已转交自制子任务',
       detail: '本节点不再重复备料',
-      icon: Icons.account_tree_outlined,
-      color: theme.colorScheme.primary,
     ),
     MaterialRequirementState.inactiveParentCovered => (
       title: '上级件已由合格库存覆盖',
       detail: '本节点本批不激活；上级出现新缺口后会自动重算',
-      icon: Icons.inventory_2_outlined,
-      color: theme.colorScheme.primary,
     ),
     MaterialRequirementState.inactiveParentRoute => (
       title: '上级路线不展开本节点',
       detail: '若上级改为自制或供料委外，刷新后会重新计算',
-      icon: Icons.route_outlined,
-      color: theme.colorScheme.onSurfaceVariant,
     ),
     MaterialRequirementState.inactiveReference => (
       title: '参考节点，不形成本批备料需求',
       detail: '如需参与生产备料，请核对 BOM 控制阶段',
-      icon: Icons.visibility_outlined,
-      color: theme.colorScheme.onSurfaceVariant,
     ),
     MaterialRequirementState.transferredToPlan => (
       title: '本批需求已转入生产计划',
       detail: '请从关联生产计划继续跟踪领料与执行',
-      icon: Icons.assignment_turned_in_outlined,
-      color: theme.colorScheme.secondary,
     ),
     MaterialRequirementState.inactive => (
       title: '本批需求未激活',
       detail: '刷新后仍无需求时，请核对上级路线和 BOM',
-      icon: Icons.pause_circle_outline_rounded,
-      color: theme.colorScheme.onSurfaceVariant,
     ),
     MaterialRequirementState.active => (
       title: '需求状态已变化',
       detail: '当前数量与状态不一致，请刷新物料分析',
-      icon: Icons.sync_problem_outlined,
-      color: theme.colorScheme.error,
     ),
   };
 

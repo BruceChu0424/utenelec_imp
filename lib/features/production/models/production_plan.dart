@@ -8,7 +8,6 @@
 // JSON 注意：Jackson 把 boolean isClosed/isStopped/isCanceled 序列化为 closed/stopped/canceled
 //   （去掉 is 前缀）；日期为 yyyy-MM-dd 字符串；数量/金额 NUMERIC(18,4) 按 num? 容错。
 // 容错助手 _asInt/_asDouble 同时处理 int/double/String（记忆 flutter-int-cast-fromjson）。
-import 'package:flutter/material.dart';
 
 /// 生产单据状态常量（plan/daily 共用；与后端 status SMALLINT 0/1/-1 对齐）。
 const int kProductionStatusDraft = 0;
@@ -33,17 +32,6 @@ String productionStatusLabel(int? code) {
 String productionDateOnly(String? s) {
   if (s == null) return '';
   return s.length >= 10 ? s.substring(0, 10) : s;
-}
-
-Color productionStatusColor(int? code, ThemeData theme) {
-  switch (code) {
-    case kProductionStatusApproved:
-      return Colors.green;
-    case kProductionStatusReversed:
-      return theme.colorScheme.error;
-    default:
-      return theme.colorScheme.onSurfaceVariant;
-  }
 }
 
 int? _asInt(dynamic v) {

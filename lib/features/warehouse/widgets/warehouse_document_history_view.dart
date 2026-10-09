@@ -333,6 +333,10 @@ class _WarehouseDocumentHistoryViewState
       label: '状态',
       width: 72,
       value: (item) => item.statusLabel,
+      // 状态整格底色（ADR-169）：已红冲=红 / 已审核=绿 / 草稿·已完成=灰，
+      // 与文案判定共用 config 里的同一分支。
+      cellColor: (context, item) =>
+          warehouseHistoryStatusCellColor(item.status, closed: item.closed),
     ),
     MasterColumnDef(
       key: 'billNo',

@@ -483,6 +483,27 @@ class _AdminAiUsageRecordsPageState
     AppLocalizations l10n,
   ) {
     return [
+      // 2026-10-08 用户口径「状态或进度列默认放最前」：状态列（成功 / 失败 /
+      // 已取消 / 排队 / 运行中，ADR-169 档位徽章）前置。
+      MasterColumnDef(
+        key: 'status',
+        label: l10n.aiRecordsColStatus,
+        width: 96,
+        value: (row) => _statusLabel(l10n, row.status),
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, row) => Semantics(
+          excludeSemantics: true,
+          label: '${l10n.aiRecordsColStatus} ${_statusLabel(l10n, row.status)}',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: UtenStatusBadge(
+              label: _statusLabel(l10n, row.status),
+              type: _statusBadgeType(row.status),
+              size: UtenStatusBadgeSize.small,
+            ),
+          ),
+        ),
+      ),
       MasterColumnDef(
         key: 'time',
         label: l10n.aiRecordsColTime,
@@ -583,25 +604,6 @@ class _AdminAiUsageRecordsPageState
         width: 190,
         value: (row) => _costCellValue(l10n, row.metrics),
         cellBuilder: (context, row) => _CostCell(metrics: row.metrics),
-      ),
-      MasterColumnDef(
-        key: 'status',
-        label: l10n.aiRecordsColStatus,
-        width: 96,
-        value: (row) => _statusLabel(l10n, row.status),
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (context, row) => Semantics(
-          excludeSemantics: true,
-          label: '${l10n.aiRecordsColStatus} ${_statusLabel(l10n, row.status)}',
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: UtenStatusBadge(
-              label: _statusLabel(l10n, row.status),
-              type: _statusBadgeType(row.status),
-              size: UtenStatusBadgeSize.small,
-            ),
-          ),
-        ),
       ),
     ];
   }
@@ -1124,10 +1126,12 @@ String _statusLabel(AppLocalizations l10n, String status) => switch (status) {
   _ => status.isEmpty ? '—' : status,
 };
 
+/// 调用状态徽章档位（ADR-169 锚定）：成功=绿 / 失败=红 / 运行中=蓝
+/// （正在执行，非等待外部；原黄档语义不符）/ 取消·排队·未知=灰。
 UtenStatusBadgeType _statusBadgeType(String status) => switch (status) {
   'SUCCEEDED' => UtenStatusBadgeType.success,
   'FAILED' => UtenStatusBadgeType.danger,
-  'RUNNING' => UtenStatusBadgeType.warning,
+  'RUNNING' => UtenStatusBadgeType.info,
   _ => UtenStatusBadgeType.neutral,
 };
 

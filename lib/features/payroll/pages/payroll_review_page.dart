@@ -431,7 +431,7 @@ class _BatchDetail extends StatelessWidget {
                     alignment: Alignment.centerRight,
                     child: UtenStatusBadge(
                       label: batch.status.label,
-                      type: _batchBadge(batch.status),
+                      type: batch.status.badgeType,
                     ),
                   ),
                 ),
@@ -550,11 +550,3 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     value: (s) => s.netIncome.toStringAsFixed(2),
   ),
 ];
-
-UtenStatusBadgeType _batchBadge(PayrollBatchStatus status) => switch (status) {
-  PayrollBatchStatus.draft => UtenStatusBadgeType.neutral,
-  PayrollBatchStatus.submitted => UtenStatusBadgeType.warning,
-  PayrollBatchStatus.approved => UtenStatusBadgeType.accent,
-  PayrollBatchStatus.rejected => UtenStatusBadgeType.danger,
-  PayrollBatchStatus.published => UtenStatusBadgeType.success,
-};

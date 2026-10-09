@@ -567,6 +567,9 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
             Expanded(
               child: UtenDepartmentPicker(
                 mode: UtenDepartmentPickerMode.single,
+                // dense：选择格统一规格，与同行数量/单价等输入格同高（2026-10-08
+                // 表格输入格统一口径）。
+                dense: true,
                 hint: '请选择部门(可空)',
                 enabled: names.departmentTree != null,
                 treeOverride: names.departmentTree ?? const [],
@@ -593,8 +596,8 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
             if (names.departmentLoadError != null)
               IconButton(
                 tooltip: '${names.departmentLoadError} 点击重试',
-                // 2026-10-06 表格控件统一口径：默认 40 最小点击区会撑高编辑行
-                //（行高标准=39 输入格），收紧到图标本身。
+                // 表格控件统一口径：默认 40 最小点击区会撑高编辑行（行高标准=
+                // 紧凑输入格，UtenEditableGridCellSpec），收紧到图标本身。
                 style: IconButton.styleFrom(
                   minimumSize: Size.zero,
                   padding: EdgeInsets.zero,

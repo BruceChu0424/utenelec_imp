@@ -249,16 +249,20 @@ void main() {
         'delta',
       ]),
     );
-    // 行距=读表密度(36~38)，与任务中心一致；就地编辑：点格→变输入框→输入。
+    // 实盘格默认就是输入框（2026-10-08 用户口径：不再点按切换），行距=编辑表
+    // 口径(~52, ADR-161)。
     final screwCell = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
     final nutCell = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
     expect(
-      tester.getTopLeft(nutCell).dy - tester.getTopLeft(screwCell).dy,
-      lessThan(42),
-      reason: '未编辑行保持读表行距（约 36）',
+      tester.widget<TextField>(screwCell).controller,
+      isNotNull,
+      reason: '实盘数量格常驻输入框',
     );
-    await tester.tap(screwCell);
-    await tester.pump();
+    expect(
+      tester.getTopLeft(nutCell).dy - tester.getTopLeft(screwCell).dy,
+      lessThan(60),
+      reason: '常驻输入框行距=编辑表口径（约 52）',
+    );
     await tester.enterText(screwCell, '12');
     await tester.pump();
     await _confirmSubmit(tester, reason: '例行盘点');
@@ -286,8 +290,6 @@ void main() {
     );
     expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsNothing);
     final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
-    await tester.tap(qty);
-    await tester.pump();
     await tester.enterText(qty, '9');
     await tester.pump();
     await _confirmSubmit(tester);
@@ -303,8 +305,6 @@ void main() {
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
     final aCell = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
-    await tester.tap(aCell);
-    await tester.pump();
     await tester.enterText(aCell, '11');
     await tester.pump();
     await tester.tap(find.byKey(const Key('stock-count-warehouse')));
@@ -319,8 +319,6 @@ void main() {
     expect(repo.candidateQueries.last.warehouse, 'leaf-b', reason: '切仓后按新仓查询');
     final bQty = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
     expect(bQty, findsOneWidget);
-    await tester.tap(bQty);
-    await tester.pump();
     await tester.enterText(bQty, '8');
     await tester.pump();
     // 切回 A：之前填的 11 必须还在（按仓暂存）。
@@ -328,10 +326,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('原料仓 A'));
     await tester.pumpAndSettle();
-    final aText = tester.widget<Text>(
+    final aField = tester.widget<TextField>(
       find.byKey(const ValueKey('stock-count-qty-$_screw|')),
     );
-    expect(aText.data, '11', reason: '切仓回来显示已填的实盘值');
+    expect(aField.controller?.text, '11', reason: '切仓回来显示已填的实盘值');
     // 送审只提交当前仓 A 的行。
     await _confirmSubmit(tester);
     expect(repo.submissions.single.warehouse, 'leaf-a');
@@ -356,6 +354,51 @@ void main() {
     expect(find.text('本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'), findsOneWidget);
     await tester.tap(find.text('全部物料'));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('空仓的空态说明口径：无归属无账面库存，引导用添加物料盘盈', (tester) async {
+    final repo = _SessionRepo({
+      'leaf-a': [_row(_screw, qty: '10')],
+      'leaf-b': const <CountStockRow>[],
+    });
+    await _mount(tester, repo, warehouseId: 'leaf-b');
+    expect(find.text('共 0 项'), findsOneWidget);
+    expect(
+      find.text('本仓没有归属物料，也没有账面库存；如需盘盈请用「添加物料」加入'),
+      findsOneWidget,
+      reason: '全部物料段 0 行=该仓盘点单口径为空，不能像筛选未命中那样含糊',
+    );
+    // 搜索词是用户加的筛选条件：0 行时应回到「条件未命中」文案。
+    await tester.enterText(find.byType(TextField).first, '不存在的词');
+    await tester.pumpAndSettle();
+    expect(find.text('没有符合条件的物料'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('切仓清空上一仓的搜索词，不带残留条件查询新仓', (tester) async {
+    final repo = _SessionRepo({
+      'leaf-a': [_row(_screw, qty: '10')],
+      'leaf-b': [_row(_nut, qty: '7')],
+    });
+    await _mount(tester, repo, warehouseId: 'leaf-a');
+    await tester.enterText(find.byType(TextField).first, '螺钉');
+    await tester.pumpAndSettle();
+    expect(repo.candidateQueries.last.keyword, '螺钉');
+    await tester.tap(find.byKey(const Key('stock-count-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('原料仓 B'));
+    await tester.pumpAndSettle();
+    expect(repo.candidateQueries.last.warehouse, 'leaf-b', reason: '切仓后按新仓查询');
+    expect(
+      repo.candidateQueries.last.keyword,
+      isNull,
+      reason: '搜索词是上一仓的条件，残留会把新仓过滤成空表',
+    );
     expect(
       find.byKey(const ValueKey('stock-count-qty-$_nut|')),
       findsOneWidget,

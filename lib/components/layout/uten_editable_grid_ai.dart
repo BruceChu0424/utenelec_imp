@@ -29,13 +29,7 @@ extension _UtenEditableGridAi<T extends EditableGridRow>
 
   /// Same final colour as the data cell (unselected).
   Color? _aiCellColor(EditableGridColumn<T> column, T row) =>
-      column.cellColor?.call(context, row) ??
-      (utenIsStatusColumn(column.key, column.label)
-          ? udenStatusBadgeCellColor(
-              context,
-              utenStatusLabelType(_aiText(column, row)),
-            )
-          : null);
+      column.cellColor?.call(context, row);
 
   AiTableSnapshot? _aiCapture(AiCaptureContext ctx) {
     if (!mounted) return null;

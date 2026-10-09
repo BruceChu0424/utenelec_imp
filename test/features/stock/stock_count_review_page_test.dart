@@ -237,7 +237,7 @@ void main() {
       status: 'PENDING',
       page: 1,
     ));
-    await tester.tap(find.descendant(of: toolbar, matching: find.text('已退回')));
+    await tester.tap(find.descendant(of: toolbar, matching: find.text('已驳回')));
     await tester.pumpAndSettle();
     expect(repo.queries.last, (
       reviewRoute: 'FINANCE',
@@ -284,7 +284,21 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('审核通过'), findsOneWidget);
+    // 2026-10-08 用户口径：驳回红 / 通过绿，样式对齐全站审核页右下悬浮组。
+    expect(
+      tester
+          .widget<UtenButton>(find.byKey(const Key('stock-count-reject')))
+          .type,
+      UtenButtonType.danger,
+    );
+    expect(
+      tester
+          .widget<UtenButton>(find.byKey(const Key('stock-count-approve')))
+          .type,
+      UtenButtonType.success,
+    );
+    expect(find.text('驳回'), findsOneWidget);
+    expect(find.text('通过'), findsOneWidget);
     expect(find.text('仅变更的旧数值显示红色删除线；审核通过后才更新库存。'), findsNothing);
     expect(find.textContaining('本次盘点批准成功时会把该货品统一改为整批领料'), findsNothing);
     expect(find.textContaining('用途影响所有车间和后续任务'), findsNothing);
@@ -380,7 +394,7 @@ void main() {
     expect(table.items, isEmpty, reason: '通过后的申请不继续留在待审核列表');
   });
 
-  testWidgets('提交后库存变化不能通过，但允许退回', (tester) async {
+  testWidgets('提交后库存变化不能通过，但允许驳回', (tester) async {
     final repo = _Repo(stale: true);
     await _pump(tester, repo);
     expect(find.textContaining('提交后库存已变化'), findsOneWidget);
@@ -535,7 +549,7 @@ void main() {
       ],
     ),
   }.entries) {
-    testWidgets('自动核对保留安全校验：${invalidPreview.key}不能批准但可以退回', (tester) async {
+    testWidgets('自动核对保留安全校验：${invalidPreview.key}不能批准但可以驳回', (tester) async {
       final repo = _Repo(setupBasis: 'OWN');
       await _pump(
         tester,

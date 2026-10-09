@@ -425,7 +425,7 @@ List<MasterColumnDef<InsightWeightAlertRow>> insightWeightAlertColumns({
     // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
     cellColor: (context, r) => r.tierUsed == null
         ? null
-        : udenStatusBadgeCellColor(context, weightTierBadgeType(r.tierUsed!)),
+        : utenStatusBadgeCellColor(weightTierBadgeType(r.tierUsed!)),
   ),
 ];
 
@@ -550,10 +550,8 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
     width: 90,
     value: (r) => r.tier?.label ?? WeightTier.red.label,
     // 2026-09-27 用户口径「格内胶囊改单元格背景色」：档位色铺整格。
-    cellColor: (context, r) => udenStatusBadgeCellColor(
-      context,
-      weightTierBadgeType(r.tier ?? WeightTier.red),
-    ),
+    cellColor: (context, r) =>
+        utenStatusBadgeCellColor(weightTierBadgeType(r.tier ?? WeightTier.red)),
   ),
   MasterColumnDef(
     key: 'basis',

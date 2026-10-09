@@ -1121,10 +1121,9 @@ class _WorkshopMaterialBinPageState
           width: 72,
           value: (r) => wmRequisitionStatusLabel(r.status),
           // 2026-10-01 口径「不同状态不同颜色」：待处理琥珀 / 已完成绿 / 已取消灰。
-          cellColor: (context, r) => udenStatusBadgeCellColor(
-            context,
-            wmRequisitionStatusBadgeType(r.status),
-          ),
+          // 历史表混排各状态，取默认（非任务）视角，与记录分段同口径。
+          cellColor: (context, r) =>
+              utenStatusBadgeCellColor(wmRequisitionStatusBadgeType(r.status)),
         ),
         MasterColumnDef(
           key: 'requestNo',

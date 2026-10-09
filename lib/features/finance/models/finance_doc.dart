@@ -12,8 +12,6 @@
 //
 // 端点路径常量化在 finance_repository.dart 顶部（暂不进 api_endpoints.dart）。
 
-import 'package:flutter/material.dart';
-
 /// 钱流单据类型。pathSegment 对齐后端 /api/finance/{receipts|payments|expenses|incomes|bank-transfers}。
 enum FinanceDocType {
   receipt('receipts'),
@@ -109,20 +107,6 @@ String financeArApOpenItemKindLabel(String? value) =>
       'PREPAYMENT' => '供应商预付款',
       _ => value?.trim().isNotEmpty == true ? value! : '—',
     };
-
-/// 状态对应的主题色（徽章用）。
-Color financeStatusColor(int? code, ThemeData theme) {
-  switch (code) {
-    case kFinanceStatusDraft:
-      return theme.colorScheme.onSurfaceVariant;
-    case kFinanceStatusApproved:
-      return Colors.green;
-    case kFinanceStatusReversed:
-      return theme.colorScheme.error;
-    default:
-      return theme.colorScheme.onSurfaceVariant;
-  }
-}
 
 // ===== 5 单据列表项（超集：partyId 在 receipt 取 clientId、payment 取 supplierId）=====
 

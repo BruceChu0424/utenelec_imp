@@ -237,9 +237,12 @@ class _Content extends ConsumerWidget {
     );
   }
 
+  /// ADR-169 档位：已提交=黄（等管理员处理的排队，无异常）· 处理中=蓝
+  /// （管理员正在办）· 已采纳=绿 · 未采纳=红（驳回族）。两级中间态同页并现，
+  /// 黄蓝各占一档；此前黄蓝对调与锚定不符。
   UtenStatusBadgeType _statusBadge(SuggestionStatus s) => switch (s) {
-    SuggestionStatus.submitted => UtenStatusBadgeType.info,
-    SuggestionStatus.reviewing => UtenStatusBadgeType.warning,
+    SuggestionStatus.submitted => UtenStatusBadgeType.warning,
+    SuggestionStatus.reviewing => UtenStatusBadgeType.info,
     SuggestionStatus.resolved => UtenStatusBadgeType.success,
     SuggestionStatus.rejected => UtenStatusBadgeType.danger,
   };

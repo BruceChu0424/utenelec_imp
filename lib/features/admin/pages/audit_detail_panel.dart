@@ -992,8 +992,10 @@ class _AuditChangeTabState extends ConsumerState<_AuditChangeTab> {
               ),
             ),
             const UtenStatusBadge(
+              // 已完成的中性说明（剥离是既有事实，非进行中）——ADR-169 灰档，
+              // 蓝 Reserved 给「正在执行」。
               label: '敏感字段已剔除',
-              type: UtenStatusBadgeType.info,
+              type: UtenStatusBadgeType.neutral,
               size: UtenStatusBadgeSize.small,
             ),
           ],

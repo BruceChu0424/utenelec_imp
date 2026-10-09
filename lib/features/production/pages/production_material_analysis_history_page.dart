@@ -334,10 +334,11 @@ class _ProductionMaterialAnalysisHistoryPageState
       label: '状态',
       width: 72,
       value: (item) => _statusLabel(item.status),
-      // 2026-09-27 用户口径「表格状态列整格底色」：进行中=青 / 部分下达=蓝 /
-      // 全部下达=绿 / 取消=中性灰。
+      // ADR-169 显式档位：进行中=青绿（延用 2026-09-27 用户口径「进行中=青」，
+      // 与全站「生产中=品牌青」同族）/ 部分已下达=紫（部分就绪，原蓝档与
+      // 执行蓝同义且和紫同现时色盲难分）/ 全部下达=绿 / 取消与其余=中性灰。
       cellColor: (context, item) =>
-          udenStatusBadgeCellColor(context, _statusType(item.status)),
+          utenStatusBadgeCellColor(_statusType(item.status)),
     ),
     MasterColumnDef(
       key: 'analysisNo',
@@ -461,7 +462,13 @@ class _ProductionMaterialAnalysisHistoryPageState
                   ),
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                _statusChip(theme, item.status),
+                // 与表格状态列同一份档位映射（ADR-169 深色实底成套前景）；
+                // 取消不再用红——中性终态归灰档。
+                UtenStatusBadge(
+                  label: _statusLabel(item.status),
+                  type: _statusType(item.status),
+                  icon: _statusIcon(item.status),
+                ),
               ],
             ),
             const SizedBox(height: UtenSpacing.s8),
@@ -521,41 +528,6 @@ class _ProductionMaterialAnalysisHistoryPageState
     ),
   );
 
-  Widget _statusChip(ThemeData theme, String status) {
-    final active = status == 'ACTIVE' || status == 'PARTIALLY_PLANNED';
-    final cancelled = status == 'CANCELLED';
-    final color = cancelled
-        ? theme.colorScheme.error
-        : active
-        ? theme.colorScheme.primary
-        : theme.colorScheme.tertiary;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s8,
-        vertical: UtenSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: UtenRadius.pillAll,
-        border: Border.all(color: color.withValues(alpha: 0.55)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(_statusIcon(status), size: 16, color: color),
-          const SizedBox(width: UtenSpacing.s4),
-          Text(
-            _statusLabel(status),
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _infoLine(IconData icon, String text) => Padding(
     padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
     child: Row(
@@ -598,8 +570,9 @@ class _ProductionMaterialAnalysisHistoryPageState
 
   static UtenStatusBadgeType _statusType(String status) => switch (status) {
     'ACTIVE' => UtenStatusBadgeType.accent,
-    'PARTIALLY_PLANNED' => UtenStatusBadgeType.info,
+    'PARTIALLY_PLANNED' => UtenStatusBadgeType.violet,
     'COMPLETED' => UtenStatusBadgeType.success,
+    'CANCELLED' => UtenStatusBadgeType.neutral,
     _ => UtenStatusBadgeType.neutral,
   };
 

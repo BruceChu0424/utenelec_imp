@@ -353,13 +353,16 @@ class _AdminAiUsagePersonPageState
           : '${formatAiUsageNumber(today)} / ${formatAiUsageNumber(gaugeMax)}',
       caption: limit == null ? l10n.aiUsageNoPersonalLimit : null,
     );
+    // 档位（ADR-169）：正常=绿 / 超限=橙（用量越限的风险注意态，非等待
+    // 外部）/ 已禁用=灰（停用归中性，原红档语义不符；与人员列表页
+    // _statusBadgeType 同口径）。detail 未加载=灰。
     final badgeType = detail == null
         ? UtenStatusBadgeType.neutral
         : detail.limits.disabled
-        ? UtenStatusBadgeType.danger
+        ? UtenStatusBadgeType.neutral
         : (limit != null && limit > 0 && today >= limit)
-        ? UtenStatusBadgeType.warning
-        : UtenStatusBadgeType.neutral;
+        ? UtenStatusBadgeType.orange
+        : UtenStatusBadgeType.success;
     final badgeLabel = detail == null
         ? l10n.aiUsageStatusNormal
         : detail.limits.disabled

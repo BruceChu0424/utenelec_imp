@@ -35,7 +35,7 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
     this.includeAll = false,
     this.sameClassAs,
     this.enabled = true,
-    this.contentPadding,
+    this.dense = false,
   });
 
   /// 层级有序仓库列表（names.warehouseHierarchy）。
@@ -55,9 +55,9 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   final String? sameClassAs;
   final bool enabled;
 
-  /// 历史参数（Material 形态时用于与 UtenSearchBar 等高）：UtenDropdownField
-  /// 统一形态下不再生效，仅为 API 兼容保留，调用方已不再传。
-  final EdgeInsetsGeometry? contentPadding;
+  /// 紧凑形态（表格单元格）：与同行输入格等高（UtenEditableGridCellSpec，
+  /// 2026-10-08 表格输入格统一口径）；表单里保持默认高度。
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +75,7 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
     );
     return UtenDropdownField(
       label: labelText,
+      dense: dense,
       value: includeAll && value == null ? '' : value,
       allowClear: false,
       enabled: enabled,

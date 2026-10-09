@@ -5,7 +5,8 @@
 //   数量归属；锁行顶部红框说明为什么不能下单，2026-10-08 起流程时间线退役)；
 //   多选 + 右下角悬浮组(已选胶囊 + 生成委外订货单)批量带入订货单编辑页——勾选与
 //   悬浮按钮只在「待处理」段提供，进行中/历史段没有可下单的行，不摆死按钮。
-//   委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(黄，ADR-143 §二.3)、
+//   委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(红，ADR-143 §二.3、ADR-169
+//   锁死不能下单=深红)、
 //   不能勾选下单，勾选位显示锁图标与原因；点状态「通知研发完善」可再提醒研发。
 //   ADR-156(委外价格每天不同，物料齐了才下单)：直属物料一套都不够的申请行显示
 //   「等物料齐套」并锁住(不能勾选，照样留在「待处理」计红数)；够做一部分显示
@@ -190,23 +191,32 @@ class _SubcontractDecompositionPageState
   /// 制造永远点不动的批量按钮。
   bool get _orderingSeg => _seg?.code == _waitingOrderStage;
 
-  /// 状态列颜色(刻意拉开，不用相近色)：蓝=等财务 / 等仓库发料，红=退回 / 短交，
-  /// 紫=可领料 / 可部分下单(轮到委外动手，但只够一部分)，青=委外商在加工，
-  /// 黄=部分回厂 / 缺 BOM 等研发 / 等物料齐套，品红=分批等待，
-  /// 绿=已回厂待入库 / 已完成，灰=等待物料 / 容差内待结案。
+  /// 状态列颜色（ADR-169 逐页档位锚定，刻意拉开不用相近色）：
+  /// 绿=待处理可下单 / 可领料 / 已完成（「就绪可动手」与终态各自分段独立取绿），
+  /// 紫=可部分下单（部分就绪），
+  /// 红=等物料齐套 / 缺 BOM（锁死不能下单）、财务驳回、回厂短交待判定、
+  /// 等待物料（料没到不能领）——不能执行不是等待，
+  /// 黄=等财务审核 / 已回厂待入库（等仓库入库，回厂域内无其它黄档），
+  /// 青=待仓库发料（第二种「等别人」，与等财务的黄拉开），
+  /// 蓝=财务已通过（已批流转中），青绿=委外商加工中（他方执行中），
+  /// 橙=部分回厂（风险中间态），品红=分批等待（分类强调），灰=容差内待结案。
   static UtenStatusBadgeType _progressType(String code) => switch (code) {
-    'ORDER_PENDING_APPROVAL' || 'DRAW_SUBMITTED' => UtenStatusBadgeType.info,
-    'FINANCE_REJECTED' || 'SHORT_DELIVERY' => UtenStatusBadgeType.danger,
-    'DRAWABLE' || 'KIT_PARTIAL' => UtenStatusBadgeType.violet,
-    'AT_SUPPLIER' => UtenStatusBadgeType.accent,
-    'PARTIAL_RECEIVED' ||
+    'WAITING_ORDER' || 'DRAWABLE' || 'COMPLETED' => UtenStatusBadgeType.success,
+    'KIT_PARTIAL' => UtenStatusBadgeType.violet,
+    'WAITING_KIT' ||
     'BOM_MISSING' ||
-    'WAITING_KIT' => UtenStatusBadgeType.warning,
-    'RECEIVED_PENDING_STOCK' => UtenStatusBadgeType.success,
+    'FINANCE_REJECTED' ||
+    'SHORT_DELIVERY' ||
+    'WAITING_MATERIAL' => UtenStatusBadgeType.danger,
+    'ORDER_PENDING_APPROVAL' ||
+    'RECEIVED_PENDING_STOCK' => UtenStatusBadgeType.warning,
+    'DRAW_SUBMITTED' => UtenStatusBadgeType.sky,
+    'FINANCE_APPROVED' => UtenStatusBadgeType.info,
+    'AT_SUPPLIER' => UtenStatusBadgeType.accent,
+    'PARTIAL_RECEIVED' => UtenStatusBadgeType.orange,
     'WAITING_MORE_BATCH' => UtenStatusBadgeType.fuchsia,
     // 容差内待结案：不急，灰色中性；点状态同样可去判定页。
-    'TOLERANT_SHORT' || 'WAITING_MATERIAL' => UtenStatusBadgeType.neutral,
-    'COMPLETED' => UtenStatusBadgeType.success,
+    'TOLERANT_SHORT' => UtenStatusBadgeType.neutral,
     _ => UtenStatusBadgeType.neutral,
   };
 
@@ -1204,10 +1214,8 @@ class _SubcontractDecompositionPageState
           cellBuilderHandlesSemantics: true,
           // 2026-09-27 用户口径「格内胶囊改单元格背景色」：状态分类色铺整格，
           // 格内只剩文字与「紧急」前缀（_ProgressStatusCell 保留点击/悬浮行为）。
-          cellColor: (context, t) => udenStatusBadgeCellColor(
-            context,
-            _progressType(t.progressStatus),
-          ),
+          cellColor: (context, t) =>
+              utenStatusBadgeCellColor(_progressType(t.progressStatus)),
           cellBuilder: (context, t) => _ProgressStatusCell(
             label: _progressLabelOf(t),
             urgent: _shortDelivery(t),
@@ -1855,7 +1863,6 @@ class _ProgressStatusCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final Widget content;
     if (type != null) {
       content = Row(
@@ -1878,20 +1885,20 @@ class _ProgressStatusCell extends StatelessWidget {
         ],
       );
     } else {
+      // 表格列形态：底色在列 cellColor，文字必须继承表格注入的对比度前景
+      // （深底白字）——不许在这里写死颜色，否则红底黑字看不清（2026-10-08
+      // 用户反馈的根因）。状态列文字加粗由表格统一处理，这里只继承。
+      final inherited = DefaultTextStyle.of(context).style;
       content = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (urgent) ...[
-            Icon(
-              Icons.priority_high_rounded,
-              size: 14,
-              color: theme.colorScheme.error,
-            ),
+            const Icon(Icons.priority_high_rounded, size: 14),
             const SizedBox(width: 2),
             Text(
               '紧急',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.error,
+              style: inherited.copyWith(
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1902,9 +1909,7 @@ class _ProgressStatusCell extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: inherited,
             ),
           ),
         ],

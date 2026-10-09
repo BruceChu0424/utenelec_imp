@@ -364,8 +364,7 @@ class _FinanceQuoteReviewListPageState
       width: 72,
       value: (item) => _statusText(l10n, item),
       // 2026-09-27 用户口径「格内胶囊改单元格背景色」：分类色铺整格。
-      cellColor: (context, item) =>
-          udenStatusBadgeCellColor(context, _statusType(item)),
+      cellColor: (context, item) => utenStatusBadgeCellColor(_statusType(item)),
     ),
     MasterColumnDef(
       key: 'billNo',
@@ -448,14 +447,19 @@ class _FinanceQuoteReviewListPageState
     }
   }
 
+  /// 状态列档位（ADR-169 锚定，逐段独立）：
+  /// - 待核价段：本页就是财务的核价队列——普通待核价=绿（「就绪可动手」，
+  ///   轮到我审=绿灯）；有待定价货品或退回后重新提交=橙（未死锁但需注意，
+  ///   确认前必须先补定价/核对上次退回原因）。
+  /// - 已核价段=绿（通过）；已退回段=红（驳回）。
   UtenStatusBadgeType _statusType(SalesQuoteFinanceListItem item) =>
       switch (_state) {
         SalesQuoteFinanceState.returned => UtenStatusBadgeType.danger,
         SalesQuoteFinanceState.confirmed => UtenStatusBadgeType.success,
         SalesQuoteFinanceState.pending =>
           item.pricePendingCount > 0 || item.resubmitted
-              ? UtenStatusBadgeType.warning
-              : UtenStatusBadgeType.info,
+              ? UtenStatusBadgeType.orange
+              : UtenStatusBadgeType.success,
       };
 
   Color? _rowColor(ThemeData theme, SalesQuoteFinanceListItem item) {

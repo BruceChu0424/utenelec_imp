@@ -24,6 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -487,6 +488,10 @@ class _VisitorApprovalListPageState
       label: l10n.visitorColStatus,
       width: 72,
       value: (app) => visitorStatusLabel(app.status, l10n),
+      // ADR-169：与访客端列表同一份档位映射（visitorBadgeType），两端同状态
+      // 同色。待审批段内 申请中=黄 / 待接待人确认=蓝 同现，互可区分。
+      cellColor: (context, app) =>
+          utenStatusBadgeCellColor(visitorBadgeType(app.status)),
     ),
     MasterColumnDef(
       key: 'visitorName',

@@ -201,7 +201,7 @@ class _ProductionDailyReportListPageState
       // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
       // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
       cellColor: (context, it) =>
-          udenStatusBadgeCellColor(context, docStatusBadgeType(it.status)),
+          utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
     ),
     MasterColumnDef(
       key: 'billNo',

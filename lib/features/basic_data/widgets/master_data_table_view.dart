@@ -32,6 +32,7 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_table_cell_hints.dart';
+import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -2743,6 +2744,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       measure.headerMeasured = true;
     }
     final bodyStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    // 状态/进度列渲染带加粗，量宽同步用加粗样式，防止首帧量窄截字。
+    final measureStyle = utenIsStatusOrProgressColumn(def.key, def.label)
+        ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
+        : bodyStyle;
     final sampleCount = pool.length < _autoFitSampleSize
         ? pool.length
         : _autoFitSampleSize;
@@ -2751,7 +2756,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     for (var r = 0; r < sampleCount; r++) {
       final text = def.value(pool[r]) ?? '';
       if (text.isEmpty || !measure.seen.add(text)) continue;
-      final width = _measureText(text, bodyStyle, textScaler);
+      final width = _measureText(text, measureStyle, textScaler);
       if (width > measure.body) measure.body = width;
     }
     return measure;
@@ -3131,15 +3136,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final custom = MasterDataTableCellScope(
       selected: selected,
       foregroundColor: textStyle.color,
-      child: DefaultTextStyle.merge(
-        style: textStyle,
-        child: IconTheme.merge(
-          data: IconThemeData(color: textStyle.color),
-          child: UtenStatusCellScope(
-            enabled: utenIsStatusColumn(column.key, column.label),
-            child: UtenTableCellHints(
-              child: Builder(
-                builder: (cellContext) => builder(cellContext, item),
+      child: UtenTableCellInputTheme(
+        // 读表内联输入格与编辑表同源紧凑规格（2026-10-08 用户口径：全站表格
+        // 输入格统一为盘点实盘格尺寸，UtenEditableGridCellSpec）。
+        child: DefaultTextStyle.merge(
+          style: textStyle,
+          child: IconTheme.merge(
+            data: IconThemeData(color: textStyle.color),
+            child: UtenStatusCellScope(
+              enabled: utenIsStatusColumn(column.key, column.label),
+              child: UtenTableCellHints(
+                child: Builder(
+                  builder: (cellContext) => builder(cellContext, item),
+                ),
               ),
             ),
           ),
@@ -4597,6 +4606,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 底色与文字始终双向保证对比度：深底（如缺口列的 error 实底）切白字，
   /// 浅底（暗色主题下 error/primary/tertiary 等浅色作为底色时）切深字——
   /// 只处理深底会在暗色主题里留下「浅底白字」的不可读组合。
+  /// 状态/进度列文字加粗（2026-10-08 用户口径「状态里面得字体统一加粗」）。
+  static TextStyle _cellTextStyle(
+    TextStyle base,
+    Color? onCellColor, {
+    required bool bold,
+  }) {
+    var style = base;
+    if (onCellColor != null) style = style.copyWith(color: onCellColor);
+    if (bold) style = style.copyWith(fontWeight: FontWeight.w700);
+    return style;
+  }
+
   Widget _buildDataCell(
     ThemeData theme,
     int columnIndex,
@@ -4609,21 +4630,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 全站统一口径、2026-09-22 加深），文字保持常态深色——语义底色（cellColor）在
     // 选中行上让位给统一选中色，保证选中行读作一个整体。
     Widget buildCell() {
-      final cellColor = selected
-          ? null
-          : column.cellColor?.call(context, item) ??
-                (utenIsStatusColumn(column.key, column.label)
-                    ? udenStatusBadgeCellColor(
-                        context,
-                        utenStatusLabelType(column.value(item)),
-                      )
-                    : null);
+      // 状态底色只认列定义的显式 cellColor(ADR-169 逐页独立口径);
+      // 未显式映射的状态列保持无色纯文本, 不再按文案关键字猜色。
+      final cellColor = selected ? null : column.cellColor?.call(context, item);
       final Color? onCellColor = cellColor == null
           ? null
           : utenSemanticCellForeground(context, cellColor);
-      final cellStyle = onCellColor != null
-          ? textStyle.copyWith(color: onCellColor)
-          : textStyle;
+      // 状态/进度列文字统一加粗(2026-10-08 用户口径); 格内自定义 builder 经
+      // DefaultTextStyle.merge 继承本样式, 自带 color 的 builder 会压掉继承——
+      // 状态列 builder 里不许再写死颜色。
+      final cellStyle = _cellTextStyle(
+        textStyle,
+        onCellColor,
+        bold: utenIsStatusOrProgressColumn(column.key, column.label),
+      );
       return Container(
         width: _widths[columnIndex],
         // 列间竖线：逐格勾勒单元格右边界。

@@ -40,8 +40,8 @@ import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 /// 品质检查结果详情（完整页面，非弹窗）：上方单据信息卡，随后**合并明细表**——
-/// 每个货品行一列到底：判定结果（合格绿对勾 / 不合格红禁止 / 部分合格黄警告 /
-/// 待检蓝沙漏，整行浅底色随判定）+ 收货/合格/不合格数量 + 待入库余量（有待入库
+/// 每个货品行一列到底：判定结果（合格绿对勾 / 不合格红禁止 / 部分合格橙警告 /
+/// 待检琥珀沙漏，整行浅底色随判定）+ 收货/合格/不合格数量 + 待入库余量（有待入库
 /// 放行切片的行可勾选，就地输入本次实收与实际库位）+ 检验状态 + 放行信息；
 /// 再往下是不合格退回案件（就地登记）与只读入库历史。
 class WarehouseQualityResultDetailPage extends ConsumerStatefulWidget {
@@ -480,7 +480,7 @@ class _WarehouseQualityResultDetailPageState
               children: [
                 UtenStatusBadge(
                   label: detail.workStatus.label,
-                  type: _workStatusBadgeType(detail.workStatus),
+                  type: warehouseQualityWorkStatusBadgeType(detail.workStatus),
                   icon: _workStatusIcon(detail.workStatus),
                 ),
                 UtenStatusBadge(
@@ -669,8 +669,10 @@ class _WarehouseQualityResultDetailPageState
                   const SizedBox(width: UtenSpacing.s8),
                   UtenStatusBadge(
                     label: rejection.statusLabel,
+                    // 待登记退回=绿（轮到仓库动手登记退回的绿灯）；退回已登记/
+                    // 来源已撤销=灰（办结/撤销终态）。
                     type: rejection.canRecordReturn
-                        ? UtenStatusBadgeType.warning
+                        ? UtenStatusBadgeType.success
                         : UtenStatusBadgeType.neutral,
                   ),
                   if (rejection.canRecordReturn && _canRecordReturn) ...[
@@ -828,15 +830,6 @@ class _WarehouseQualityResultDetailPageState
 }
 
 // ———————————————————— 判定口径（图标 / 颜色 / 徽章） ————————————————————
-
-UtenStatusBadgeType _workStatusBadgeType(WarehouseQualityWorkStatus status) =>
-    switch (status) {
-      WarehouseQualityWorkStatus.waitingInspection => UtenStatusBadgeType.info,
-      WarehouseQualityWorkStatus.allPassed => UtenStatusBadgeType.success,
-      WarehouseQualityWorkStatus.partialPassed => UtenStatusBadgeType.warning,
-      WarehouseQualityWorkStatus.returnRequired => UtenStatusBadgeType.danger,
-      WarehouseQualityWorkStatus.completed => UtenStatusBadgeType.neutral,
-    };
 
 IconData _workStatusIcon(WarehouseQualityWorkStatus status) => switch (status) {
   WarehouseQualityWorkStatus.waitingInspection => Icons.hourglass_top_outlined,

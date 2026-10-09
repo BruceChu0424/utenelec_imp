@@ -1,6 +1,7 @@
 // 工资条模型
 // 文档：docs/04-数据模型/实体字典.md#PayrollSlip
 
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../core/utils/china_datetime.dart';
 import 'payroll_item.dart';
 
@@ -32,6 +33,17 @@ extension PayrollSlipStatusValue on PayrollSlipStatus {
     PayrollSlipStatus.published => 'Published',
     PayrollSlipStatus.viewed => 'Viewed',
     PayrollSlipStatus.downloaded => 'Downloaded',
+  };
+
+  /// 状态徽章档位（ADR-169 锚定，列表状态列与详情徽章同源）：
+  /// 待发布=灰（未发布，中性）/ 已发布=蓝（发布流转中，分发进行时）/
+  /// 已查看=青绿 accent（品牌档——员工已看过，按口径定档）/
+  /// 已下载=绿（领取完成终态）。四态同页同现，四个色相互可区分。
+  UtenStatusBadgeType get badgeType => switch (this) {
+    PayrollSlipStatus.pending => UtenStatusBadgeType.neutral,
+    PayrollSlipStatus.published => UtenStatusBadgeType.info,
+    PayrollSlipStatus.viewed => UtenStatusBadgeType.accent,
+    PayrollSlipStatus.downloaded => UtenStatusBadgeType.success,
   };
 
   /// 工资条的服务端状态只表示发布可见性；查看/下载由时间字段派生。

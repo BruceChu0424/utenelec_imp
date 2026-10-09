@@ -16,6 +16,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -25,6 +26,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
@@ -167,7 +169,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                           employeeId: widget.employeeId,
                         ),
                         ?_identityIssueBanner(),
-                        ..._expiryBanners(theme, l10n),
+                        ..._expiryBanners(l10n),
                         const SizedBox(height: UtenSpacing.s12),
                       ],
                     ),
@@ -716,10 +718,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       final Color badgeColor;
       final String badgeText;
       if (c.ended) {
-        badgeColor = theme.colorScheme.error;
+        // ADR-169 档位：已到期=逾期红、临期=橙（风险中间态），收编裸 Colors.orange。
+        badgeColor = UtenColors.statusDanger;
         badgeText = '已到期';
       } else if (c.expiring) {
-        badgeColor = Colors.orange.shade700;
+        badgeColor = UtenColors.statusOrange;
         badgeText = '${c.daysToExpiry} 天后到期';
       } else if (c.daysToExpiry != null) {
         badgeColor = theme.colorScheme.primary;
@@ -1492,11 +1495,13 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   /// 登录账号状态徽章：active=正常 / locked=锁定 / disabled=停用 / null=未开通。
+  /// ADR-169 档位：锁定=红（硬阻断，2026-10-08 用户口径「锁住就是红色」）、
+  /// 正常=绿、停用=灰（中性终态，非错误，与锁定红区分）、未开通随正文灰。
   Widget _accountStatusBadge(ThemeData theme, AppLocalizations l10n) {
     final (label, color) = switch (_p.accountStatus) {
-      'active' => (l10n.accountStatusActive, Colors.green.shade700),
-      'locked' => (l10n.accountStatusLocked, Colors.orange.shade800),
-      'disabled' => (l10n.accountStatusDisabled, theme.colorScheme.error),
+      'active' => (l10n.accountStatusActive, UtenColors.statusSuccess),
+      'locked' => (l10n.accountStatusLocked, UtenColors.statusDanger),
+      'disabled' => (l10n.accountStatusDisabled, UtenColors.statusNeutral),
       _ => (l10n.accountStatusNone, theme.colorScheme.onSurfaceVariant),
     };
     return Row(
@@ -1510,12 +1515,13 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   /// 到期预警横幅：试用期/合同 30 天内到期或已过期时醒目提示（离职员工不再提示）。
-  List<Widget> _expiryBanners(ThemeData theme, AppLocalizations l10n) {
+  /// ADR-169：已过期=error 红（逾期）、30 天内到期=warning 黄（临期，无异常）。
+  List<Widget> _expiryBanners(AppLocalizations l10n) {
     if (_p.status == 'resigned') return const [];
     final banners = <Widget>[];
     final today = ChinaDateTime.today();
 
-    String? check(
+    ({String msg, bool expired})? check(
       String? dateStr,
       String Function(String date, int days) expiring,
       String Function(String date) expired,
@@ -1524,12 +1530,12 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       final d = ChinaDateTime.tryParse(dateStr);
       if (d == null) return null;
       final days = ChinaDateTime.dateOnly(d).difference(today).inDays;
-      if (days < 0) return expired(dateStr);
-      if (days <= 30) return expiring(dateStr, days);
+      if (days < 0) return (msg: expired(dateStr), expired: true);
+      if (days <= 30) return (msg: expiring(dateStr, days), expired: false);
       return null;
     }
 
-    final msgs = <String>[
+    final msgs = <({String msg, bool expired})>[
       if (_p.status == 'probation')
         ?check(
           _p.probationEndDate,
@@ -1543,36 +1549,15 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       ),
     ];
 
-    for (final msg in msgs) {
+    for (final m in msgs) {
       banners.add(
         Padding(
           padding: const EdgeInsets.only(top: UtenSpacing.s12),
-          child: Container(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            decoration: BoxDecoration(
-              color: Colors.orange.withValues(alpha: 0.12),
-              borderRadius: UtenRadius.mdAll,
-              border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.event_busy_rounded,
-                  size: 18,
-                  color: Colors.orange.shade800,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    msg,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: Colors.orange.shade900,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          child: UtenInlineNotice(
+            level: m.expired
+                ? UtenInlineNoticeLevel.error
+                : UtenInlineNoticeLevel.warning,
+            message: m.msg,
           ),
         ),
       );

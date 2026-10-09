@@ -20,13 +20,14 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -901,13 +902,26 @@ class _WarehouseInboundExpectationsViewState
       label: '到货步骤',
       width: 170,
       value: (expectation) => _stepColumnLabel(expectation),
-      cellColor: (context, expectation) {
-        if (expectation.arrivalStep != InboundArrivalStep.awaitingQuality) {
-          return null;
-        }
-        return Theme.of(context).brightness == Brightness.dark
-            ? UtenColors.warning.withValues(alpha: 0.18)
-            : UtenColors.warningBg;
+      // 到货步骤 → 档位（ADR-169 逐页显式，替换原「已送检」一档浅底裸色）：
+      // 待登记=绿（轮到仓库动手登记）/ 已登记·待送检=蓝（断点续办，草稿已提交
+      // 未流转）/ 超量待财务=橙（超量异常待判定，风险中间态）/ 已送检=黄
+      // （等品质部结论，等别人且无异常）/ 暂不能登记=红（数据或授权不完整，阻断）。
+      cellColor: (context, expectation) => switch (expectation.arrivalStep) {
+        InboundArrivalStep.readyToRegister => utenStatusBadgeCellColor(
+          UtenStatusBadgeType.success,
+        ),
+        InboundArrivalStep.draftPendingInspection => utenStatusBadgeCellColor(
+          UtenStatusBadgeType.info,
+        ),
+        InboundArrivalStep.excessPendingFinance => utenStatusBadgeCellColor(
+          UtenStatusBadgeType.orange,
+        ),
+        InboundArrivalStep.awaitingQuality => utenStatusBadgeCellColor(
+          UtenStatusBadgeType.warning,
+        ),
+        InboundArrivalStep.blocked => utenStatusBadgeCellColor(
+          UtenStatusBadgeType.danger,
+        ),
       },
     ),
     MasterColumnDef(

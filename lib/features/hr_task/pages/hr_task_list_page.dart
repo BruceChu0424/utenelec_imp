@@ -43,6 +43,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -412,6 +413,14 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         width: 90,
         info: '逾期 / 今日 / 即将——与服务端分组一致，用于表头快速筛选。',
         value: (item) => hrTaskWindowOf(s, _type, item).label,
+        // ADR-169 档位，与窄屏卡片状态徽章（hrTaskChipOf）同口径：
+        // 逾期=红 / 今日=橙（到期临期，未逾期）/ 即将=灰（还不用动手）。
+        cellColor: (context, item) =>
+            utenStatusBadgeCellColor(switch (hrTaskWindowOf(s, _type, item)) {
+              HrTaskWindow.overdue => UtenStatusBadgeType.danger,
+              HrTaskWindow.today => UtenStatusBadgeType.orange,
+              HrTaskWindow.upcoming => UtenStatusBadgeType.neutral,
+            }),
       ),
     MasterColumnDef(
       key: 'claim',

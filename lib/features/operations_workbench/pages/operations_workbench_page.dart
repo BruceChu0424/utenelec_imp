@@ -166,13 +166,14 @@ class _OperationsWorkbenchPageState
     _ => null,
   };
 
-  /// 状态列配色(与委外任务中心同构, ADR-098/100: 刻意拉开, 不用相近色):
-  /// 蓝=球在财务、青=财务已放行正在执行、红=被驳回要本人改单重报。
+  /// 状态列配色(与委外任务中心同构, ADR-169 基准表: 刻意拉开, 不用相近色):
+  /// 黄=球在财务手上(等外部)、蓝=财务已放行待执行(已批流转中)、
+  /// 红=被驳回要本人改单重报、绿=申请待分解(可生成订货单, 就绪可动手)与已完成。
   static UtenStatusBadgeType _stageBadgeType(String code) => switch (code) {
-    'ORDER_PENDING_APPROVAL' => UtenStatusBadgeType.info,
-    'FINANCE_APPROVED' => UtenStatusBadgeType.accent,
+    'ORDER_PENDING_APPROVAL' => UtenStatusBadgeType.warning,
+    'FINANCE_APPROVED' => UtenStatusBadgeType.info,
     'FINANCE_REJECTED' => UtenStatusBadgeType.danger,
-    'WAITING_ORDER' => UtenStatusBadgeType.warning,
+    'WAITING_ORDER' => UtenStatusBadgeType.success,
     'COMPLETED' => UtenStatusBadgeType.success,
     _ => UtenStatusBadgeType.neutral,
   };
@@ -848,24 +849,16 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) =>
               mergedStageColumn ? stageLabelOf(item) : item.statusLabel,
           // 状态分类色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
-          // 合并段（采购）按阶段档；仓库段沿用窄屏卡同款 _statusTone 语义上色，
+          // 合并段（采购/委外）按阶段档；仓库段按仓库自己的状态档上色，
           // 不再是纯文本。
           cellColor: mergedStageColumn
-              ? (context, item) => udenStatusBadgeCellColor(
-                  context,
+              ? (context, item) => utenStatusBadgeCellColor(
                   _OperationsWorkbenchPageState._stageBadgeType(
                     item.progressStatus,
                   ),
                 )
-              : (context, item) => udenStatusBadgeCellColor(
-                  context,
-                  switch (_statusTone(item.taskStatus)) {
-                    'warning' => UtenStatusBadgeType.warning,
-                    'info' => UtenStatusBadgeType.info,
-                    'success' => UtenStatusBadgeType.success,
-                    'danger' => UtenStatusBadgeType.danger,
-                    _ => UtenStatusBadgeType.neutral,
-                  },
+              : (context, item) => utenStatusBadgeCellColor(
+                  _warehouseStatusType(item.taskStatus),
                 ),
         ),
         MasterColumnDef(
@@ -1059,21 +1052,14 @@ String _departmentHome(OperationsWorkbenchDepartment department) {
   };
 }
 
-/// 任务状态 → 色调（与概览计数卡同色系）：申请待分解=警示黄、等待财务审核=信息蓝、
-/// 财务已通过/执行中=主色青、已完成=成功绿、驳回/阻塞=红。用于状态列整格底色。
-String _statusTone(String taskStatus) {
+/// 仓库段（mergedStageColumn=false）状态列档位：已领取/已覆盖=绿、阻塞=红、
+/// 其余未映射状态保持中性灰（ADR-169：未显式映射不猜色）。
+/// 采购/委外段不走来路（见 [_OperationsWorkbenchPageState._stageBadgeType]）。
+UtenStatusBadgeType _warehouseStatusType(String taskStatus) {
   return switch (taskStatus.toUpperCase()) {
-    'WAITING_ORDER' ||
-    'APPLICATION_PENDING_APPROVAL' ||
-    'UNPEGGED' => 'warning',
-    'ORDER_PENDING_APPROVAL' => 'info',
-    'FINANCE_APPROVED' ||
-    'WAITING_SUPPLY' ||
-    'IN_PROGRESS' ||
-    'PARTIAL' => 'neutral',
-    'COMPLETED' || 'DONE' || 'COVERED' => 'success',
-    'BLOCKED' || 'FINANCE_REJECTED' => 'danger',
-    _ => 'neutral',
+    'COMPLETED' || 'DONE' || 'COVERED' => UtenStatusBadgeType.success,
+    'BLOCKED' => UtenStatusBadgeType.danger,
+    _ => UtenStatusBadgeType.neutral,
   };
 }
 

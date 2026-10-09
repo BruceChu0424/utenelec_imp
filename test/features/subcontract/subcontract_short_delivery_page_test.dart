@@ -1,12 +1,17 @@
 // ADR-098 委外回厂短交判定页：待判定段渲染、两种判定弹窗与请求体、通知深链打开详情。
 import 'package:dio/dio.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart'
+    show UtenStatusBadgeType;
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart'
+    show utenStatusBadgeCellColor;
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/subcontract_short_delivery.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_short_delivery_page.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_short_delivery_repository.dart';
@@ -140,6 +145,7 @@ SubcontractShortDeliveryCase _case({
   String status = 'PENDING_OWNER',
   String? expectedCompleteBy,
   bool canDecide = true,
+  bool overdue = false,
 }) => SubcontractShortDeliveryCase(
   id: id,
   orderId: 'order-$id',
@@ -163,6 +169,7 @@ SubcontractShortDeliveryCase _case({
   severity: severity,
   status: status,
   effectiveStatus: status,
+  overdue: overdue,
   expectedCompleteBy: expectedCompleteBy,
   ownerName: '委外小李',
   detectedAt: '2026-09-20T08:00:00Z',
@@ -318,5 +325,72 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('无判定权限'), findsOneWidget);
     expect(find.text('容差内未到齐'), findsOneWidget);
+  });
+
+  testWidgets('状态/程度列档位（ADR-169）：待判定=橙、逾期=红、容差内=灰、分批等待=品红', (tester) async {
+    await _pump(
+      tester,
+      rows: [
+        _case(id: 'sev', severity: 'SEVERE'),
+        _case(id: 'below', severity: 'BELOW_FLOOR'),
+        _case(id: 'late', severity: 'BELOW_FLOOR', overdue: true),
+        _case(id: 'tol', severity: 'WITHIN_TOLERANCE'),
+        _case(
+          id: 'wait',
+          severity: 'BELOW_FLOOR',
+          status: 'WAITING_MORE',
+          expectedCompleteBy: '2026-11-01',
+        ),
+      ],
+    );
+
+    MasterDataTableView<SubcontractShortDeliveryCase> table() => tester.widget(
+      find.byKey(const Key('subcontract-short-delivery-table')),
+    );
+    Color? cellOf(String columnKey, String id) {
+      final current = table();
+      return current.columns.firstWhere((c) => c.key == columnKey).cellColor!(
+        tester.element(find.byType(SubcontractShortDeliveryPage)),
+        current.items.firstWhere((c) => c.id == id),
+      );
+    }
+
+    // 待判定段（默认选中）：程度 橙→红 分层；状态 待判定=橙、逾期=红。
+    expect(
+      cellOf('severity', 'sev'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+    );
+    expect(
+      cellOf('severity', 'below'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.orange),
+    );
+    expect(
+      cellOf('status', 'below'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.orange),
+    );
+    expect(
+      cellOf('status', 'late'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+    );
+
+    // 容差内待结案段：程度=灰、状态=灰（中性，质检入库后自动结清）。
+    await tester.tap(find.text('容差内待结案'));
+    await tester.pumpAndSettle();
+    expect(
+      cellOf('severity', 'tol'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
+    );
+    expect(
+      cellOf('status', 'tol'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
+    );
+
+    // 分批等待中段：状态=品红（分类强调）。
+    await tester.tap(find.text('分批等待中'));
+    await tester.pumpAndSettle();
+    expect(
+      cellOf('status', 'wait'),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.fuchsia),
+    );
   });
 }

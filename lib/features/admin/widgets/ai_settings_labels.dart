@@ -12,9 +12,12 @@ extension AiRegionLabel on AiRegion {
     AiRegion.local => l10n.aiSettingsRegionLocal,
   };
 
+  /// 区域是分类强调（非语义状态）：大陆=青绿 / 海外=品红 / 本地=蓝。
+  /// 海外原 violet——蓝紫是色盲易混对（ADR-169 调研），且紫档留给
+  /// 「部分就绪」语义，分类档用品红。
   UtenStatusBadgeType get badgeType => switch (this) {
     AiRegion.mainland => UtenStatusBadgeType.accent,
-    AiRegion.overseas => UtenStatusBadgeType.violet,
+    AiRegion.overseas => UtenStatusBadgeType.fuchsia,
     AiRegion.local => UtenStatusBadgeType.info,
   };
 }

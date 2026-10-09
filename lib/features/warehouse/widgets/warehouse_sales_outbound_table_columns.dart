@@ -202,6 +202,11 @@ warehouseSalesOutboundTableColumns({
   );
 
   return [
+    // 2026-10-08 用户口径「状态或进度列默认放最前」：处理结果列（已出库 /
+    // 待出库 / 不可出库）是批量出库表的行级结果列，推翻 2026-10-06 批次
+    // 「无状态字样不动」的豁免，前置（出货形态里紧跟出货状态列）。
+    if (!includeShipment && resultOf != null)
+      column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),
     if (includeShipment)
       column(
         'warehouseWorkStatus',
@@ -210,6 +215,8 @@ warehouseSalesOutboundTableColumns({
         (r) => r.detail.header.statusLabel,
       ),
     if (includeShipment) ...[
+      if (resultOf != null)
+        column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),
       column(
         'billNo',
         l10n.warehouseOutboundBillNo,
@@ -217,8 +224,6 @@ warehouseSalesOutboundTableColumns({
         (r) => r.detail.header.billNo,
         info: l10n.warehouseOutboundBatchHint,
       ),
-      if (resultOf != null)
-        column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),
       column(
         'client',
         l10n.warehouseOutboundClient,
@@ -393,7 +398,5 @@ warehouseSalesOutboundTableColumns({
         170,
         (r) => r.line.sourceDocumentNo,
       ),
-    if (!includeShipment && resultOf != null)
-      column('result', l10n.warehouseOutboundBatchResult, 210, resultOf),
   ];
 }

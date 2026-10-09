@@ -214,19 +214,18 @@ class _MaterialAggregate {
   }
 }
 
+/// 一条物料进度的文案 + 稳定桶键：颜色与图标由 ADR-169 的
+/// [MaterialPreparationStatusStyle]（或列 cellColor 的显式档位）按相位解析，
+/// 这里不再携带逐分支的图标/裸色（2026-10-08 状态色改版删除死字段）。
 class _StatusView {
   const _StatusView(
-    this.label,
-    this.icon,
-    this.color, {
+    this.label, {
     this.facetKey,
     this.facetLabel,
     this.flowStage,
   });
 
   final String label;
-  final IconData icon;
-  final Color color;
 
   /// 进度列头筛选的稳定桶键（见 [_materialStatusFacetLabels]；流程阶段用
   /// [ProductionFlowStage.key]）。文案带数量/百分比时桶仍只按键聚合。

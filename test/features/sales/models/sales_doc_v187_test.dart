@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 
 void main() {
@@ -241,6 +242,65 @@ void main() {
           warehouseWorkStatus: SalesWarehouseWorkStatus.pendingPick,
         ),
         isFalse,
+      );
+    });
+
+    // ADR-169 仓库作业列整格底色的档位（销售列表/财务视角 vs 仓库任务中心视角）。
+    test('warehouse work status badge tier follows the viewer role', () {
+      // 历史迁移异常与红冲在两个视角都是红；已取消灰；未返回/未知无色。
+      for (final code in const [
+        SalesWarehouseWorkStatus.legacyPending,
+        SalesWarehouseWorkStatus.reversed,
+      ]) {
+        expect(
+          salesWarehouseWorkStatusBadgeType(code, warehouseAction: false),
+          UtenStatusBadgeType.danger,
+        );
+        expect(
+          salesWarehouseWorkStatusBadgeType(code, warehouseAction: true),
+          UtenStatusBadgeType.danger,
+        );
+      }
+      expect(
+        salesWarehouseWorkStatusBadgeType(
+          SalesWarehouseWorkStatus.cancelled,
+          warehouseAction: false,
+        ),
+        UtenStatusBadgeType.neutral,
+      );
+      expect(
+        salesWarehouseWorkStatusBadgeType(null, warehouseAction: false),
+        isNull,
+      );
+      // 待出库：仓库视角=绿（轮到仓库出库），销售/财务视角=青（等仓库出货）。
+      expect(
+        salesWarehouseWorkStatusBadgeType(
+          SalesWarehouseWorkStatus.pendingPick,
+          warehouseAction: true,
+        ),
+        UtenStatusBadgeType.success,
+      );
+      expect(
+        salesWarehouseWorkStatusBadgeType(
+          SalesWarehouseWorkStatus.pendingPick,
+          warehouseAction: false,
+        ),
+        UtenStatusBadgeType.sky,
+      );
+      // 已出库：仓库任务中心=灰（办结不再是动作对象），销售列表=绿（完成）。
+      expect(
+        salesWarehouseWorkStatusBadgeType(
+          SalesWarehouseWorkStatus.shipped,
+          warehouseAction: true,
+        ),
+        UtenStatusBadgeType.neutral,
+      );
+      expect(
+        salesWarehouseWorkStatusBadgeType(
+          SalesWarehouseWorkStatus.shipped,
+          warehouseAction: false,
+        ),
+        UtenStatusBadgeType.success,
       );
     });
 

@@ -241,12 +241,18 @@ class _WorkshopTaskMaterialTableState
     );
   }
 
+  /// 逐种物料状态 → 档位（ADR-169 锚定，与流程词表/物料摘要同口径）：
+  /// 已领到车间=绿（就绪）；已备好可领=蓝（去领料动作）；已申请待仓库发料=
+  /// 青绿（仓库处理中·他方执行）；备料中=灰（无动作无异常的中性等待）；
+  /// 缺（等到货/等委外回厂/等自制子件）=红——料没到齐，本任务不能齐套开工
+  /// （用户口径「不能往下=红」）；等计划下单由调用方另行盖品红（分类强调）。
   static UtenStatusBadgeType _badgeType(String state) => switch (state) {
     'ISSUED' => UtenStatusBadgeType.success,
     'DRAWABLE' => UtenStatusBadgeType.info,
-    'AWAITING_WAREHOUSE' || 'PREPARING' => UtenStatusBadgeType.neutral,
-    'SHORT' || 'SHORT_MAKE' => UtenStatusBadgeType.warning,
-    _ => UtenStatusBadgeType.accent,
+    'AWAITING_WAREHOUSE' => UtenStatusBadgeType.accent,
+    'PREPARING' => UtenStatusBadgeType.neutral,
+    'SHORT' || 'SHORT_MAKE' => UtenStatusBadgeType.danger,
+    _ => UtenStatusBadgeType.neutral,
   };
 
   String _qty(double value, String? unit) {
@@ -275,10 +281,7 @@ class WorkshopMaterialStateCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final (bg, fg) = resolveStatusBadgeColors(
-      type,
-      theme.brightness == Brightness.dark,
-    );
+    final (bg, fg) = resolveStatusBadgeColors(type);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

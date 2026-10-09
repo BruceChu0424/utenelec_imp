@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -17,7 +18,6 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -35,7 +35,8 @@ import '../../../shared/warehouse/warehouse_task_scope.dart';
 
 /// 品质部检查结果：原「IQC 合格待入库」+「IQC 不合格实物退回」的合并任务中心。
 /// 与预计到货任务中心同款表格工作台——列表按收货单聚合作业状态（等待检查结果 /
-/// 全部合格待入库 / 部分合格 / 全部不合格需退回 / 已完结），行按状态着色；
+/// 全部合格待入库 / 部分合格 / 全部不合格需退回 / 已完结），作业状态列整格底色
+/// （ADR-169：黄/绿/橙/红/灰五档互区分，与详情页头部徽章同一份映射）；
 /// 可多选批量入库（整批同事务），双击行进入完整详情页办理入库或登记退回。
 ///
 /// 2026-09-03 分类范式收口：来源大类行不再有「全部来源」段，状态小类行不再有
@@ -509,7 +510,6 @@ class _WarehouseQualityResultsPageState
                 onSelectedIdsChanged: (next) =>
                     setState(() => _selectedIds = next),
                 batchActionsBuilder: _batchActions,
-                rowColor: (task) => _statusRowColor(context, task.workStatus),
                 onRowTap: _openDetail,
                 rowMenuBuilder: _rowMenu,
                 isLoading: _loading && _result == null,
@@ -710,6 +710,20 @@ class _WarehouseQualityResultsPageState
       width: 72,
       // 先入库后检(V596)：等待结果时补「已上架 n 行」，仓库一眼看出实物已在库位。
       value: (task) => task.workStatusLabel,
+      // 2026-09-27 用户口径「表格状态列整格底色」（ADR-169 重定档位）：
+      // 等待结果=黄 / 全部合格=绿 / 部分合格=橙 / 不合格退回=红 / 已完结=灰，
+      // 与详情页头部徽章同一份映射（见模型 warehouseQualityWorkStatusBadgeType）。
+      cellColor: (context, task) => utenStatusBadgeCellColor(
+        warehouseQualityWorkStatusBadgeType(task.workStatus),
+      ),
+    ),
+    // 2026-10-08 用户口径「状态或进度列默认放最前」：品质结论是本表的第二条
+    // 行级结果列（合格/部分/退回汇总），紧跟作业状态前置。
+    MasterColumnDef(
+      key: 'verdict',
+      label: '品质结论',
+      width: 200,
+      value: (task) => task.verdictLabel,
     ),
     MasterColumnDef(
       key: 'receiptType',
@@ -744,12 +758,6 @@ class _WarehouseQualityResultsPageState
       value: (task) => task.warehouseName ?? '—',
     ),
     MasterColumnDef(
-      key: 'verdict',
-      label: '品质结论',
-      width: 200,
-      value: (task) => task.verdictLabel,
-    ),
-    MasterColumnDef(
       key: 'pendingSliceCount',
       label: '待入库切片',
       width: 110,
@@ -772,24 +780,4 @@ class _WarehouseQualityResultsPageState
       value: (task) => warehouseQualityDateTime(task.lastActivityAt),
     ),
   ];
-}
-
-/// 作业状态 → 整行填充色（状态不能只靠颜色：列文案始终同时在场）。
-Color? _statusRowColor(
-  BuildContext context,
-  WarehouseQualityWorkStatus status,
-) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return switch (status) {
-    WarehouseQualityWorkStatus.waitingInspection =>
-      dark ? Colors.lightBlue.withValues(alpha: 0.14) : const Color(0xFFE8F4FD),
-    WarehouseQualityWorkStatus.allPassed =>
-      dark ? UtenColors.success.withValues(alpha: 0.16) : UtenColors.successBg,
-    WarehouseQualityWorkStatus.partialPassed =>
-      dark ? UtenColors.warning.withValues(alpha: 0.16) : UtenColors.warningBg,
-    WarehouseQualityWorkStatus.returnRequired =>
-      dark ? UtenColors.error.withValues(alpha: 0.14) : UtenColors.errorBg,
-    WarehouseQualityWorkStatus.completed =>
-      dark ? Colors.grey.withValues(alpha: 0.12) : UtenColors.slate100,
-  };
 }

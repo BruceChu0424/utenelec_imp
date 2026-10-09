@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/uten_colors.dart';
+
 /// Warehouse-owned, quantity-only history projections.
 ///
 /// These routes deliberately do not reuse purchase/subcontract document pages:
@@ -109,6 +111,46 @@ String warehouseHistoryStatusLabel(String? raw, {required bool closed}) {
     'CLOSED' || 'COMPLETED' => '已完成',
     _ => raw!,
   };
+}
+
+/// 历史单据状态列整格底色（ADR-169 逐页显式映射；分支与
+/// [warehouseHistoryStatusLabel] 同一判定）：已红冲=红（红冲负向事件）/
+/// 已审核=绿（已审）/ 草稿=灰、已完成(closed)=灰（草稿未办、办结皆中性，
+/// 办结不再是本队列动作对象，同领料任务「已完成=灰」口径）；状态未知与
+/// 未识别文案保持无色纯文本。
+Color? warehouseHistoryStatusCellColor(String? raw, {required bool closed}) {
+  if (closed) return UtenColors.statusNeutral;
+  switch (raw?.trim().toUpperCase()) {
+    case '-1' || 'REVERSED' || 'VOIDED':
+      return UtenColors.statusDanger;
+    case '1' || 'APPROVED' || 'POSTED':
+      return UtenColors.statusSuccess;
+    case '0' || 'DRAFT' || 'PENDING':
+      return UtenColors.statusNeutral;
+    default:
+      return null;
+  }
+}
+
+/// 历史明细「质量状态」列整格底色（ADR-169，分支与
+/// [warehouseInspectionStatusLabel] 对齐）：不合格=红 / 检验完成(PASSED 族)=绿 /
+/// 待检=黄（等检查，无异常）/ 部分完成=橙（部分完成待判定，同质检记录页
+/// PARTIAL=橙）/ 已撤销=灰；未关联质检与无需质检不是流程状态，保持无色。
+Color? warehouseInspectionCellColor(String? raw) {
+  switch (raw?.trim().toUpperCase()) {
+    case 'FAILED' || 'FAIL':
+      return UtenColors.statusDanger;
+    case 'PASSED' || 'PASS' || 'COMPLETED' || 'RESOLVED':
+      return UtenColors.statusSuccess;
+    case 'PENDING':
+      return UtenColors.warningStrong;
+    case 'PARTIAL':
+      return UtenColors.statusOrange;
+    case 'REVERSED':
+      return UtenColors.statusNeutral;
+    default:
+      return null;
+  }
 }
 
 String warehouseInspectionStatusLabel(String? raw) {

@@ -565,12 +565,13 @@ class _QualityInspectionRecordsPageState
       label: '检验结果',
       width: 72,
       value: (record) => record.decisionLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：合格=绿 / 部分合格=琥珀 /
+      // 2026-09-27 用户口径「表格状态列整格底色」；ADR-169 重定：合格=绿 /
+      // 部分合格=橙（风险中间态，2026-10-08 用户锚定「部分合格=橙」）/
       // 不合格=红 / 已撤销=中性灰。
       cellColor: (context, record) =>
-          udenStatusBadgeCellColor(context, switch (record.decision) {
+          utenStatusBadgeCellColor(switch (record.decision) {
             'PASS' => UtenStatusBadgeType.success,
-            'PARTIAL' => UtenStatusBadgeType.warning,
+            'PARTIAL' => UtenStatusBadgeType.orange,
             'FAIL' => UtenStatusBadgeType.danger,
             _ => UtenStatusBadgeType.neutral,
           }),
@@ -1121,7 +1122,7 @@ IconData _decisionIcon(String decision) => switch (decision) {
 
 UtenStatusBadgeType _decisionBadgeType(String decision) => switch (decision) {
   'PASS' => UtenStatusBadgeType.success,
-  'PARTIAL' => UtenStatusBadgeType.warning,
+  'PARTIAL' => UtenStatusBadgeType.orange,
   'FAIL' => UtenStatusBadgeType.danger,
   'CANCELLED' => UtenStatusBadgeType.neutral,
   _ => UtenStatusBadgeType.info,

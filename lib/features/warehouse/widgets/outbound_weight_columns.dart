@@ -142,7 +142,7 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
       final entry = entryOf(row);
       if (entry == null) return null;
       if (entry.hasWeightDeviation(params, mode: mode)) {
-        return udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning);
+        return utenStatusBadgeCellColor(UtenStatusBadgeType.warning);
       }
       final check = entry.check(params, mode: mode);
       final resolved = entry.paramsIn(params);
@@ -151,18 +151,16 @@ MasterColumnDef<R> outboundWeightCheckColumn<R>({
         return null;
       }
       return switch (check.level) {
-        WeightAlertLevel.alert => udenStatusBadgeCellColor(
-          context,
+        WeightAlertLevel.alert => utenStatusBadgeCellColor(
           UtenStatusBadgeType.warning,
         ),
-        WeightAlertLevel.warn => udenStatusBadgeCellColor(
-          context,
+        WeightAlertLevel.warn => utenStatusBadgeCellColor(
           UtenStatusBadgeType.warning,
         ),
         WeightAlertLevel.none =>
           textOf == null
               ? null
-              : udenStatusBadgeCellColor(context, UtenStatusBadgeType.neutral),
+              : utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
       };
     },
     cellColorListenableOf: (row) {

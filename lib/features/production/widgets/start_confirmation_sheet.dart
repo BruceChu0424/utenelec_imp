@@ -915,12 +915,12 @@ class _StartConfirmationSheetState
                 decoration: applyRequiredEmpty(
                   applyAutofillHint(
                     const UtenInputDecoration(
+                      // 选择格统一规格（UtenEditableGridCellSpec，2026-10-08）：
+                      // 与同行输入格等高；单行省略号防选料文案折行撑高行。
                       InputDecoration(
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
+                        contentPadding:
+                            UtenEditableGridCellSpec.pickerCellPadding,
                         hintText: '选择用料',
                         hintMaxLines: 1,
                         suffixIcon: Icon(
@@ -937,7 +937,7 @@ class _StartConfirmationSheetState
                 ),
                 child: Text(
                   empty ? '' : _selectionText(row),
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),

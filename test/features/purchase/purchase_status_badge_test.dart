@@ -79,9 +79,10 @@ void main() {
       purchaseOrderDisplayBadgeType(0, approval('REJECTED')),
       UtenStatusBadgeType.danger,
     );
+    // ADR-169：财务已通过=已批流转、等收货（单据在流转中而非完成态）→ info。
     expect(
       purchaseOrderDisplayBadgeType(1, approval('APPROVED')),
-      UtenStatusBadgeType.success,
+      UtenStatusBadgeType.info,
     );
     expect(
       purchaseOrderDisplayBadgeType(0, approval('DRAFT')),
@@ -96,6 +97,10 @@ void main() {
     expect(
       purchaseOrderDisplayBadgeType(1, approval('LEGACY_EFFECTIVE')),
       UtenStatusBadgeType.success,
+    );
+    expect(
+      purchaseOrderDisplayBadgeType(2, approval('CANCELED')),
+      UtenStatusBadgeType.neutral,
     );
   });
 }

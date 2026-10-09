@@ -3,14 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 class _Harness extends StatefulWidget {
-  const _Harness({
-    super.key,
-    this.primary = false,
-    this.cards = false,
-    this.virtualized = false,
-  });
+  const _Harness({super.key, this.primary = false, this.virtualized = false});
   final bool primary;
-  final bool cards;
   final bool virtualized;
 
   @override
@@ -48,8 +42,6 @@ class _HarnessState extends State<_Harness> {
       ],
       items: List.generate(count, (i) => i),
       primary: widget.primary,
-      compactCards: widget.cards,
-      cardBelowWidth: 1000,
       virtualized: widget.virtualized,
       enableTextSelection: false,
       facets: const {},
@@ -75,21 +67,15 @@ class _HarnessState extends State<_Harness> {
 Widget _app(
   GlobalKey<_HarnessState> key, {
   bool primary = false,
-  bool cards = false,
   bool virtualized = false,
 }) => MaterialApp(
   home: Scaffold(
-    body: _Harness(
-      key: key,
-      primary: primary,
-      cards: cards,
-      virtualized: virtualized,
-    ),
+    body: _Harness(key: key, primary: primary, virtualized: virtualized),
   ),
 );
 
 void main() {
-  for (final mode in ['normal', 'virtualized', 'cards', 'primary']) {
+  for (final mode in ['normal', 'virtualized', 'primary']) {
     testWidgets('$mode: empty to populated request reveals final row once', (
       tester,
     ) async {
@@ -98,7 +84,6 @@ void main() {
         _app(
           key,
           primary: mode == 'primary',
-          cards: mode == 'cards',
           virtualized: mode == 'virtualized',
         ),
       );

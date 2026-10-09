@@ -1171,15 +1171,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get employeeOnboardTitle => 'New Employee Onboarding';
 
   @override
-  String get employeeOnboardGroupProfile => 'Profile';
-
-  @override
-  String get employeeOnboardGroupOrg => 'Organization';
-
-  @override
-  String get employeeOnboardGroupPay => 'Pay & Bank (optional, HR/admin only)';
-
-  @override
   String get employeeOnboardSubmit => 'Submit Onboarding';
 
   @override
@@ -1196,6 +1187,164 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get employeeOnboardCodeAutoNote =>
       'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
+
+  @override
+  String get employeeOnboardStepBasic => 'Basic Info';
+
+  @override
+  String get employeeOnboardStepWork => 'Job Info';
+
+  @override
+  String get employeeOnboardStepEducation => 'Education';
+
+  @override
+  String get employeeOnboardStepEmergency => 'Emergency Contacts';
+
+  @override
+  String get employeeOnboardStepOther => 'Other Info';
+
+  @override
+  String get employeeOnboardPrevious => 'Back';
+
+  @override
+  String get employeeOnboardNext => 'Next';
+
+  @override
+  String get employeeOnboardNoPermission =>
+      'You do not have permission to onboard employees (requires both employee create and sensitive-info write permissions)';
+
+  @override
+  String get employeeOnboardNoPermissionEmpty =>
+      'No permission to onboard employees or write sensitive info';
+
+  @override
+  String get employeeOnboardConfirmDateRequired =>
+      'Confirmation date is required for active employees';
+
+  @override
+  String get employeeOnboardConfirmDateBeforeHire =>
+      'Confirmation date cannot be earlier than the hire date';
+
+  @override
+  String get employeeOnboardConfirmDateInfo =>
+      'Required for active status; defaults to the hire date and can be adjusted';
+
+  @override
+  String get employeeOnboardSubmitting =>
+      'Creating the employee record and initial account. Do not resubmit or leave this page.';
+
+  @override
+  String get employeeOnboardIdentityDerived =>
+      'Derived from the ID number; the ID document prevails after submission';
+
+  @override
+  String get employeeOnboardSupervisorHint => 'Select a supervisor';
+
+  @override
+  String get employeeOnboardSupervisorSheet => 'Choose Supervisor';
+
+  @override
+  String get employeeOnboardEduHint =>
+      'Optional: record education history here; there is no other entry point after submission yet.';
+
+  @override
+  String get employeeOnboardAddEducation => 'Add Education';
+
+  @override
+  String employeeOnboardEducationEntry(int index) {
+    return 'Education $index';
+  }
+
+  @override
+  String get employeeOnboardSchool => 'School';
+
+  @override
+  String get employeeOnboardMajor => 'Major';
+
+  @override
+  String get employeeOnboardDegree => 'Degree';
+
+  @override
+  String get employeeOnboardDegreeDoctor => 'Doctorate';
+
+  @override
+  String get employeeOnboardDegreeMaster => 'Master\'s';
+
+  @override
+  String get employeeOnboardDegreeBachelor => 'Bachelor\'s';
+
+  @override
+  String get employeeOnboardDegreeCollege => 'Associate';
+
+  @override
+  String get employeeOnboardDegreeSecondary => 'Vocational';
+
+  @override
+  String get employeeOnboardDegreeHighSchool => 'High School';
+
+  @override
+  String get employeeOnboardDegreeMiddleSchool => 'Middle School';
+
+  @override
+  String get employeeOnboardDegreeOther => 'Other';
+
+  @override
+  String get employeeOnboardEduStart => 'Start Date';
+
+  @override
+  String get employeeOnboardEduEnd => 'End Date';
+
+  @override
+  String get employeeOnboardEduDateOrder =>
+      'End date cannot be earlier than start date';
+
+  @override
+  String get employeeOnboardPickDegree => 'Please select a degree';
+
+  @override
+  String get employeeOnboardContactHint =>
+      'Optional: we recommend at least one emergency contact for urgent situations.';
+
+  @override
+  String get employeeOnboardAddContact => 'Add Contact';
+
+  @override
+  String employeeOnboardContactEntry(int index) {
+    return 'Contact $index';
+  }
+
+  @override
+  String get employeeOnboardRelationship => 'Relationship';
+
+  @override
+  String get employeeOnboardRelSpouse => 'Spouse';
+
+  @override
+  String get employeeOnboardRelParent => 'Parent';
+
+  @override
+  String get employeeOnboardRelChild => 'Child';
+
+  @override
+  String get employeeOnboardRelSibling => 'Sibling';
+
+  @override
+  String get employeeOnboardRelRelative => 'Relative';
+
+  @override
+  String get employeeOnboardRelFriend => 'Friend';
+
+  @override
+  String get employeeOnboardRelColleague => 'Colleague';
+
+  @override
+  String get employeeOnboardRelOther => 'Other';
+
+  @override
+  String get employeeOnboardDeleteEntry => 'Delete';
+
+  @override
+  String get employeeOnboardAttendanceGroup => 'Attendance Group';
 
   @override
   String get positionPickerTitle => 'Select or enter a position';
@@ -10418,10 +10567,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release258StatusColors =>
       'Status colors now follow one consistent palette: status columns use solid cell backgrounds, and warehouse outbound progress is readable at a glance (pending yellow, partial orange, complete green).';
-
-  @override
-  String get release258RollingMerge =>
-      'Purchase and subcontract requests now roll into one open request per analysis and route; un-ordered, unreferenced lines merge in automatically instead of creating new requests.';
 
   @override
   String get release258IqcPending =>

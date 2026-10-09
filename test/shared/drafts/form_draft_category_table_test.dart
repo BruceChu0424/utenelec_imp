@@ -184,7 +184,6 @@ void main() {
                 body: FormDraftCategoryTable<_Record>(
                   scope: _scope,
                   table: MasterDataTableView<_Record>(
-                    scrollingHeader: const Text('宿主标题'),
                     columns: [
                       MasterColumnDef(
                         key: 'billNo',
@@ -209,9 +208,10 @@ void main() {
         );
         // Loading keeps the progress animation alive; this check must not wait
         // for that animation to settle before inspecting the local entry.
+        // 2026-10-09 统一骨架：历史按钮常驻工具条（不再借 scrollingHeader
+        // 在加载/离线态换位），任何状态都可达。
         await tester.pump();
         expect(find.text('本机草稿历史'), findsOneWidget);
-        expect(find.text('宿主标题'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

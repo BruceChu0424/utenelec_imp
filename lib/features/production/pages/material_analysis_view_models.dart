@@ -125,6 +125,8 @@ final class _BomFilterProjection {
 
 /// 进度列头筛选的稳定桶键 → 中文标签（表头筛选按键比较，不按格内文案）。
 /// 服务端/词表阶段键（如 BUY_ORDERED）不在此表，其标签取 [ProductionFlowStage.label]。
+/// 按物料汇总行 2026-10-09 起与物料行同一口径（页面契约 §6「同一进度」），
+/// 不再有覆盖三档专用桶。
 const Map<String, String> _materialStatusFacetLabels = {
   'routePending': '路线待确认',
   'pendingIssue': '未下达',
@@ -132,9 +134,6 @@ const Map<String, String> _materialStatusFacetLabels = {
   'covered': '已齐套',
   'blocked': '不可执行',
   'inactive': '本批无需求',
-  'aggregateCovered': '已覆盖',
-  'aggregatePartial': '部分覆盖',
-  'aggregateUncovered': '未覆盖',
 };
 
 enum _BomViewMode {

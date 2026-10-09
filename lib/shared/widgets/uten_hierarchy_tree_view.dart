@@ -151,7 +151,12 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   void initState() {
     super.initState();
     _expanded = _defaultExpanded();
-    _searchCtl.addListener(() => setState(() => _query = _searchCtl.text));
+    // 拼音组合中（composing 非空）不过滤：半截拼音把树闪成「未找到」、也打断
+    // 组合节奏；组合结束会再通知一次，届时按完整词过滤（2026-10-09 根因修复）。
+    _searchCtl.addListener(() {
+      if (_searchCtl.value.composing != TextRange.empty) return;
+      setState(() => _query = _searchCtl.text);
+    });
   }
 
   @override

@@ -25,7 +25,6 @@ import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
-import '../../../core/responsive/breakpoint.dart';
 
 class ProcurementIqcRejectionListPage extends ConsumerStatefulWidget {
   const ProcurementIqcRejectionListPage({
@@ -295,8 +294,7 @@ class _ProcurementIqcRejectionListPageState
           body: _buildTable(result),
         );
       }
-      // 2026-09-29「大小屏共用一张表」：窄屏不再自绘卡片列表，与宽屏同走
-      // 折叠头 + 表格；<840（原卡片阈值）由表格内建卡片形态接管。
+      // 大小屏共用一张表：与宽屏同走折叠头 + 表格，窄屏横向滚动（卡片形态已退役）。
       return UtenCollapsingHeaderScrollView(
         collapsingHeader: header,
         body: _buildTable(result),
@@ -483,8 +481,6 @@ class _ProcurementIqcRejectionListPageState
       key: const Key('iqc-rejection-task-table'),
       // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
       primary: true,
-      compactCards: true,
-      cardBelowWidth: UtenBreakpoints.expandedStart,
       bottomContentPadding: widget.embedded
           ? 0
           : UtenCapsuleNavScope.occlusionOf(context),
@@ -565,8 +561,6 @@ class _ProcurementIqcRejectionListPageState
       label: '收货 / 回厂单',
       width: 170,
       value: (item) => item.receiptBillNo,
-      // 卡片形态：单号进标题下副行。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'orderBillNo',
@@ -586,16 +580,12 @@ class _ProcurementIqcRejectionListPageState
       label: '不合格货品名称',
       width: 200,
       value: (item) => item.goodsName ?? '—',
-      // 卡片形态标题列。
-      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
       width: 130,
       value: (item) => item.goodsCode ?? '—',
-      // 卡片副行已带编号，明细区不重复出。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'colorName',

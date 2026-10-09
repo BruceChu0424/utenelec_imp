@@ -22,6 +22,9 @@ abstract interface class EmployeeRepository {
     String? sort,
     String? order,
   });
+
+  /// 「类似人员」：精确搜索 0 命中时前端追加调用，逐字符评分返回最接近的员工。
+  Future<List<EmployeeSummary>> similar(String search, {int limit = 20});
   Future<EmployeeProfile> getById(String id);
   Future<EmployeeOnboardingResult> create(EmployeeOnboardingInput input);
   Future<EmployeeOnboardingResult> provisionAccount(String id);
@@ -104,6 +107,18 @@ class DioEmployeeRepository
     };
     final json = await api.get(ApiEndpoints.employees, query: query);
     return PagedResult.fromJson(json, EmployeeSummary.fromJson);
+  }
+
+  @override
+  Future<List<EmployeeSummary>> similar(String search, {int limit = 20}) async {
+    final json = await api.get(
+      ApiEndpoints.employeesSimilar,
+      query: {'search': search, 'limit': limit},
+    );
+    return [
+      for (final item in (json as List).cast<Map<String, dynamic>>())
+        EmployeeSummary.fromJson(item),
+    ];
   }
 
   @override

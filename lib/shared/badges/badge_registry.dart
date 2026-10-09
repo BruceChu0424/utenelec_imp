@@ -116,7 +116,8 @@ enum BadgeEntry {
   purchaseDrafts(BadgeModule.purchase),
 
   // —— 委外 ——
-  /// 委外任务中心: 红 = 待处理 + 财务驳回 + 「领料」分段可领任务; 黄 = 进行中。
+  /// 委外任务中心: 红 = 待处理(申请待下单 + 领料可领, ADR-171 修订二) + 财务驳回;
+  /// 黄 = 进行中(领完料才算, V834) + 领料中。
   subcontractTaskCenter(BadgeModule.subcontract),
 
   /// 委外「待退回供应商」任务。
@@ -212,9 +213,13 @@ abstract final class BadgeFact {
   static const subcontractTaskPending = 'subcontractTask.pending';
   static const subcontractTaskInProgress = 'subcontractTask.inProgress';
 
-  /// 委外任务中心「领料」分段的可领任务数(ADR-143 §4.1, 来源键 subcontractDraw);
-  /// 服务端 subcontractTaskCenter 入口红数 = subcontractTask.pending + 本数。
+  /// 委外任务中心「待处理」领料行的可领任务数(ADR-143 §4.1 / ADR-171 修订二, 来源键
+  /// subcontractDraw);服务端 subcontractTaskCenter 入口红数 = subcontractTask.pending + 本数。
   static const subcontractDrawDrawable = 'subcontractDraw.drawable';
+
+  /// 「领料中」行数(已提交领料、等仓库发, ADR-171 修订二);服务端 subcontractTaskCenter
+  /// 入口黄数 = subcontractTask.inProgress(V834 起领完料才算) + 本数。
+  static const subcontractDrawSubmitted = 'subcontractDraw.submitted';
   static const purchaseSupplierReturn = 'purchaseSupplierReturn.count';
   static const subcontractSupplierReturn = 'subcontractSupplierReturn.count';
   static const subcontractShortDeliveryPending =

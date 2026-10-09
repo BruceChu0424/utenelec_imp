@@ -228,14 +228,12 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
           Expanded(
             child: MasterDataTableView<GoodsQuoteHistoryRow>(
               tableKey: 'goods.quote-history',
-              compactCards: true,
               columns: [
                 MasterColumnDef(
                   key: 'billNo',
                   label: '报价单号',
                   width: 155,
                   value: (r) => r.text('billNo'),
-                  cardRole: MasterColumnCardRole.title,
                 ),
                 MasterColumnDef(
                   key: 'occurredAt',
@@ -248,7 +246,6 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
                   label: '客户',
                   width: 180,
                   value: (r) => r.text('clientName'),
-                  cardRole: MasterColumnCardRole.subtitle,
                 ),
                 MasterColumnDef(
                   key: 'sellerName',

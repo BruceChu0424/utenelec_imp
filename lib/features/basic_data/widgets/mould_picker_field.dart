@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../models/mould_node.dart';
 import '../repositories/mould_repository.dart';
 
@@ -154,21 +155,11 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
           children: [
             Text('选择模具', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
-            TextField(
+            UtenSearchBar(
               controller: _searchCtl,
               autofocus: true,
-              decoration: InputDecoration(
-                labelText: '模具编号 / 名称 / 位置 / 备注',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                  tooltip: '清空',
-                  onPressed: () {
-                    _searchCtl.clear();
-                    _search('');
-                  },
-                ),
-              ),
+              hint: '模具编号 / 名称 / 位置 / 备注',
+              onChanged: _search,
               onSubmitted: _search,
             ),
             const SizedBox(height: 12),

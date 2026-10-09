@@ -418,7 +418,6 @@ class _SubcontractLossClaimDetailPanelState
       MasterDataTableView<SubcontractLossClaimLine>(
         tableKey: 'finance.subcontractLoss.valuation',
         embedded: true,
-        compactCards: true,
         platformBinding: PlatformTableBinding(
           tableKey: 'finance.subcontractLoss.valuation',
           scope: 'view_finance',
@@ -446,8 +445,6 @@ class _SubcontractLossClaimDetailPanelState
             label: '材料名称',
             width: 180,
             value: (row) => row.goodsName,
-            // 状态列前置后，卡片形态标题显式落在材料名称列。
-            cardRole: MasterColumnCardRole.title,
           ),
           MasterColumnDef(
             key: 'goodsCode',

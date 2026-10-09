@@ -1,9 +1,13 @@
-// 通知列表页（卡片瀑布流版，支持多选删除）
+// 通知列表页（卡片瀑布流版，支持多选删除 + 按业务对象分组叠放）
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 // 文档：docs/03-页面/通知列表页.md
 //
 // 多选删除：右上角「管理」进入选择模式（或长按卡片直接进入），
 // 勾选多张卡片后底部操作条「删除」——从自己列表移除（他人不受影响）。
+// 分组：同一业务对象（订单/报价/领料单…）的多条通知叠成一组——组卡 = 最新
+// 一条完整展示 + 背后 1-2 层露边 + 「N 条相关」计数胶囊；点组卡弹窗看全部
+// （未读在前，可逐条打开详情或一键已读）。单条组渲染为普通卡片。
+// 筛选默认「未读」（2026-10-09 用户口径）：进通知页先看没处理过的。
 
 import 'dart:math' as math;
 
@@ -27,16 +31,19 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../models/notice.dart';
+import '../models/notice_group.dart';
 import '../providers/notice_providers.dart';
 import '../widgets/celebration_subjects.dart';
 import '../widgets/notice_detail_dialog.dart';
+import '../widgets/notice_group_dialog.dart';
 import '../widgets/notice_interaction_footer.dart';
+import '../widgets/notice_popup_settings_dialog.dart';
 
 class NoticeListPage extends ConsumerStatefulWidget {
   const NoticeListPage({super.key, this.initialFilter});
 
   /// 深链初始筛选（如 /notice?filter=important 工作台「重要通知」直达）；
-  /// null 走 provider 现值（默认全部）。只消费一次，不与段内切换互斥。
+  /// null 走 provider 现值（默认未读）。只消费一次，不与段内切换互斥。
   final NoticeFilter? initialFilter;
 
   @override
@@ -68,6 +75,15 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
       _selecting = true;
       _selected.clear();
       if (initialId != null) _selected.add(initialId);
+    });
+  }
+
+  /// 长按分组卡进入选择模式：整组默认勾选（选择按组粒度操作）。
+  void _enterSelectionWithIds(Set<String> ids) {
+    setState(() {
+      _selecting = true;
+      _selected.clear();
+      _selected.addAll(ids);
     });
   }
 
@@ -137,6 +153,16 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
             child: Stack(
               alignment: Alignment.center,
               children: [
+                // 个人通知弹窗开关（V833/ADR-172）：设置全部弹窗类别的开与关。
+                Positioned(
+                  left: UtenSpacing.s4,
+                  child: IconButton(
+                    tooltip: '通知设置',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => showNoticePopupSettingsDialog(context),
+                    icon: const Icon(Icons.tune_rounded, size: 20),
+                  ),
+                ),
                 Center(
                   child: UtenSegmentedFilter<NoticeFilter>(
                     selected: filter,
@@ -217,20 +243,28 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
               data: (notices) {
                 if (notices.isEmpty) {
                   return ListView(
-                    children: const [
-                      SizedBox(height: UtenSpacing.s48),
+                    children: [
+                      const SizedBox(height: UtenSpacing.s48),
                       UtenEmpty(
                         icon: Icons.notifications_none_rounded,
-                        message: '暂无通知',
+                        message: switch (filter) {
+                          // 默认段是「未读」：空了说明都处理完了，指引去「全部」翻历史。
+                          NoticeFilter.unread => '没有未读通知，切换「全部」可查看历史',
+                          NoticeFilter.important => '暂无重要通知',
+                          NoticeFilter.all => '暂无通知',
+                        },
                       ),
                     ],
                   );
                 }
+                // 同一业务对象（订单/报价/领料单…）的相关通知叠成一组；
+                // 组的位置沿用服务端序（置顶优先、发布时间倒序）。
+                final groups = groupNotices(notices);
                 return UtenPagedGrid(
                   // 通知是公司广播型累积数据（无时间窗/上限），客户端按页切片：
                   // 恒只构建当页 ~20 张卡片，避免一次性铺全部致卡顿。
                   // 数据真正海量时改服务端 page/size 真分页。
-                  items: notices,
+                  items: groups,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.only(
                     top: UtenSpacing.s16,
@@ -244,30 +278,57 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                           ),
                   ),
                   itemBuilder: (context, i, _) {
-                    final notice = notices[i];
-                    final checked = _selected.contains(notice.id);
-                    return _NoticeCard(
-                      notice: notice,
+                    final group = groups[i];
+                    if (group.isSingle) {
+                      final notice = group.notices.first;
+                      return _NoticeCard(
+                        notice: notice,
+                        selecting: _selecting,
+                        checked: _selected.contains(notice.id),
+                        onLongPress: () {
+                          if (!_selecting) _enterSelection(notice.id);
+                        },
+                        onAcknowledge: () => acknowledgeNotice(ref, notice.id),
+                        onTap: () async {
+                          if (_selecting) {
+                            _toggle(notice.id);
+                            return;
+                          }
+                          if (!notice.isRead) {
+                            markNoticeRead(ref, notice.id);
+                          }
+                          await showNoticeDetailDialog(
+                            context,
+                            noticeId: notice.id,
+                          );
+                          // 详情弹窗关闭后刷新列表：用户可能在详情里标记完成/已读，
+                          // 列表与未读角标需同步，避免停留在旧状态。
+                          ref.invalidate(noticeListProvider);
+                        },
+                      );
+                    }
+                    return _NoticeGroupCard(
+                      group: group,
                       selecting: _selecting,
-                      checked: checked,
+                      checked: group.ids.every(_selected.contains),
                       onLongPress: () {
-                        if (!_selecting) _enterSelection(notice.id);
+                        if (!_selecting) _enterSelectionWithIds(group.ids);
                       },
-                      onAcknowledge: () => acknowledgeNotice(ref, notice.id),
                       onTap: () async {
                         if (_selecting) {
-                          _toggle(notice.id);
+                          // 组粒度切换：全选过则整组取消，否则整组勾上。
+                          setState(() {
+                            final allSelected = group.ids.every(
+                              _selected.contains,
+                            );
+                            allSelected
+                                ? _selected.removeAll(group.ids)
+                                : _selected.addAll(group.ids);
+                          });
                           return;
                         }
-                        if (!notice.isRead) {
-                          markNoticeRead(ref, notice.id);
-                        }
-                        await showNoticeDetailDialog(
-                          context,
-                          noticeId: notice.id,
-                        );
-                        // 详情弹窗关闭后刷新列表：用户可能在详情里标记完成/已读，
-                        // 列表与未读角标需同步，避免停留在旧状态。
+                        await showNoticeGroupDialog(context, group: group);
+                        // 组弹窗内可能已置读/全部已读，回到列表同步刷新。
                         ref.invalidate(noticeListProvider);
                       },
                     );
@@ -317,7 +378,10 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
   }
 }
 
-/// 通知卡片（竖版；选择模式下显示勾选框）
+/// 通知卡片（竖版；选择模式下显示勾选框）。
+///
+/// 作为组卡面时（[groupCount] > 1）：未读红点按整组口径（[unreadDot] 由
+/// 调用方传入），底部行尾追加「N 条相关 · M 未读」计数胶囊。
 class _NoticeCard extends StatelessWidget {
   const _NoticeCard({
     required this.notice,
@@ -326,6 +390,9 @@ class _NoticeCard extends StatelessWidget {
     this.checked = false,
     this.onLongPress,
     this.onAcknowledge,
+    this.unreadDot,
+    this.groupCount,
+    this.groupUnread = 0,
   });
 
   final Notice notice;
@@ -342,6 +409,15 @@ class _NoticeCard extends StatelessWidget {
 
   /// 回执模式「点击收到」（列表内一键）。
   final VoidCallback? onAcknowledge;
+
+  /// 覆盖未读红点判定（组卡面：组内有任一未读即显示）；null = 按本条 isRead。
+  final bool? unreadDot;
+
+  /// 组内通知总数（null = 单条卡，不渲染组胶囊）。
+  final int? groupCount;
+
+  /// 组内未读数（与 [groupCount] 配套）。
+  final int groupUnread;
 
   @override
   Widget build(BuildContext context) {
@@ -445,7 +521,7 @@ class _NoticeCard extends StatelessWidget {
                                     color: UtenColors.warning,
                                   ),
                                 ),
-                              if (!notice.isRead)
+                              if ((unreadDot ?? !notice.isRead))
                                 Container(
                                   width: 8,
                                   height: 8,
@@ -490,7 +566,7 @@ class _NoticeCard extends StatelessWidget {
                           const SizedBox(height: UtenSpacing.s12),
                           const Divider(),
                           const SizedBox(height: UtenSpacing.s12),
-                          // 底部：发布人 + 时间
+                          // 底部：发布人 + 时间（+ 组计数胶囊）
                           Row(
                             children: [
                               Icon(
@@ -518,6 +594,13 @@ class _NoticeCard extends StatelessWidget {
                                   color: theme.colorScheme.onSurfaceVariant,
                                 ),
                               ),
+                              if (groupCount != null && groupCount! > 1) ...[
+                                const Spacer(),
+                                _GroupCountPill(
+                                  count: groupCount!,
+                                  groupUnread: groupUnread,
+                                ),
+                              ],
                             ],
                           ),
                           if (notice.interactionMode !=
@@ -726,6 +809,134 @@ class _PriorityChip extends StatelessWidget {
               fontWeight: FontWeight.w700,
               color: priority.color,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 「共 N 条 · M 未读」组计数胶囊：有未读用错误色淡底提示待处理，否则中性。
+class _GroupCountPill extends StatelessWidget {
+  const _GroupCountPill({required this.count, required this.groupUnread});
+
+  /// 组内通知总数
+  final int count;
+
+  /// 组内未读数
+  final int groupUnread;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final unread = groupUnread > 0;
+    final color = unread
+        ? UtenColors.error
+        : theme.colorScheme.onSurfaceVariant;
+    return Tooltip(
+      message: unread
+          ? '共 $count 条相关通知，其中 $groupUnread 条未读，点击查看全部'
+          : '共 $count 条相关通知，点击查看全部',
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s6,
+          vertical: 3,
+        ),
+        decoration: BoxDecoration(
+          color: unread
+              ? UtenColors.error.withValues(alpha: 0.12)
+              : theme.colorScheme.surfaceContainerHighest,
+          borderRadius: UtenRadius.smAll,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.layers_rounded, size: 12, color: color),
+            const SizedBox(width: 2),
+            Text(
+              '共 $count 条${unread ? ' · $groupUnread 未读' : ''}',
+              style: theme.textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 分组叠放卡：组内最新一条完整展示为卡面，背后 1-2 层 6px 露边示意「还有
+/// 更多」，点按打开组详情弹窗；选择模式下按组粒度整组勾选/取消。
+class _NoticeGroupCard extends StatelessWidget {
+  const _NoticeGroupCard({
+    required this.group,
+    required this.checked,
+    required this.onTap,
+    this.selecting = false,
+    this.onLongPress,
+  });
+
+  final NoticeGroup group;
+
+  /// 是否处于多选管理模式
+  final bool selecting;
+
+  /// 整组是否已全部勾选
+  final bool checked;
+
+  final VoidCallback onTap;
+
+  /// 长按进入选择模式（整组默认勾选）
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final peekCount = math.min(2, group.notices.length - 1);
+    return Padding(
+      padding: EdgeInsets.only(bottom: peekCount * 6.0),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          // 「后面还有通知」的深度提示：卡片下缘露出的 6px 细边条（画在卡片
+          // 足迹之外），与顶部到达叠放层 UtenNotificationStack 同一视觉语言。
+          for (var depth = 1; depth <= peekCount; depth++)
+            Positioned(
+              left: depth * 8.0,
+              right: depth * 8.0,
+              bottom: -depth * 6.0,
+              height: 6.0,
+              child: ExcludeSemantics(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        side: BorderSide(
+                          color: theme.colorScheme.outlineVariant.withValues(
+                            alpha: 0.72,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          _NoticeCard(
+            notice: group.face,
+            selecting: selecting,
+            checked: checked,
+            onLongPress: onLongPress,
+            onTap: onTap,
+            // 组卡面红点 = 组内有任一未读；胶囊同步给出未读数。
+            unreadDot: group.unreadCount > 0,
+            groupCount: group.notices.length,
+            groupUnread: group.unreadCount,
           ),
         ],
       ),

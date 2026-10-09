@@ -111,64 +111,59 @@ void main() {
     },
   );
 
-  for (final compact in [false, true]) {
-    testWidgets(
-      'master table suppresses hints while dropdown actions remain usable (compact=$compact)',
-      (tester) async {
-        String? selected = 'usd';
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: StatefulBuilder(
-                builder: (context, setState) => MasterDataTableView<String>(
-                  compactCards: compact,
-                  cardBelowWidth: 1000,
-                  columns: [
-                    MasterColumnDef<String>(
-                      key: 'title',
-                      label: '单据',
-                      width: 100,
-                      value: (item) => item,
+  testWidgets(
+    'master table suppresses hints while dropdown actions remain usable',
+    (tester) async {
+      String? selected = 'usd';
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StatefulBuilder(
+              builder: (context, setState) => MasterDataTableView<String>(
+                columns: [
+                  MasterColumnDef<String>(
+                    key: 'title',
+                    label: '单据',
+                    width: 100,
+                    value: (item) => item,
+                  ),
+                  MasterColumnDef<String>(
+                    key: 'currency',
+                    label: '币种',
+                    width: 250,
+                    value: (_) => selected,
+                    cellBuilder: (_, _) => UtenDropdownField(
+                      value: selected,
+                      autofilled: true,
+                      items: const [
+                        UtenDropdownItem(value: 'usd', label: 'USD'),
+                        UtenDropdownItem(value: 'cny', label: 'CNY'),
+                      ],
+                      onChanged: (value) => setState(() => selected = value),
                     ),
-                    MasterColumnDef<String>(
-                      key: 'currency',
-                      label: '币种',
-                      width: 250,
-                      cardRendersBuilder: true,
-                      value: (_) => selected,
-                      cellBuilder: (_, _) => UtenDropdownField(
-                        value: selected,
-                        autofilled: true,
-                        items: const [
-                          UtenDropdownItem(value: 'usd', label: 'USD'),
-                          UtenDropdownItem(value: 'cny', label: 'CNY'),
-                        ],
-                        onChanged: (value) => setState(() => selected = value),
-                      ),
-                    ),
-                  ],
-                  items: const ['row'],
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  showFullscreenToggle: false,
-                ),
+                  ),
+                ],
+                items: const ['row'],
+                facets: const {},
+                nullCounts: const {},
+                filters: const {},
+                onFilterChanged: (_, _) {},
+                showFullscreenToggle: false,
               ),
             ),
           ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
-        expect(find.byIcon(Icons.arrow_drop_down_rounded), findsOneWidget);
-        expect(find.byTooltip('已按上次记录预填，请核对'), findsOneWidget);
-        await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('CNY'));
-        await tester.pumpAndSettle();
-        expect(selected, 'cny');
-        expect(tester.takeException(), isNull);
-      },
-    );
-  }
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+      expect(find.byIcon(Icons.arrow_drop_down_rounded), findsOneWidget);
+      expect(find.byTooltip('已按上次记录预填，请核对'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.arrow_drop_down_rounded));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('CNY'));
+      await tester.pumpAndSettle();
+      expect(selected, 'cny');
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

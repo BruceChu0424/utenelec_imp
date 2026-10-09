@@ -119,11 +119,6 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
     _reload();
   }
 
-  void _clearKeyword() {
-    _keywordController.clear();
-    _onInputChanged('');
-  }
-
   Future<void> _reload() async {
     if (_keyword.trim().isEmpty) {
       _resetToSearchPrompt();
@@ -261,127 +256,26 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
   }
 
   Widget _buildContent(ThemeData theme) {
-    if (_loading && _result == null) {
-      return Center(
-        child: Semantics(
-          liveRegion: true,
-          label: '正在加载可反查物料',
-          child: const CircularProgressIndicator(strokeWidth: 2.5),
-        ),
-      );
-    }
-    if (_error != null && _result == null) {
-      return _scrollableState(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: Semantics(
-              liveRegion: true,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.error_outline_rounded,
-                    color: theme.colorScheme.error,
-                    size: 36,
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: UtenSpacing.s12),
-                  FilledButton.tonalIcon(
-                    key: const Key('where-used-material-retry'),
-                    onPressed: _reload,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('重试'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    if (_keyword.trim().isEmpty && _result == null) {
-      return _scrollableState(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.manage_search_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 40,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                const Text('输入编号/名称开始搜索'),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '支持物料编号、名称、型号或规格，输入后将自动搜索。',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     final result = _result;
-    if (result == null || (result.items.isEmpty && !_hasPageWindow)) {
-      return _scrollableState(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.search_off_rounded,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  size: 40,
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                const Text('没有匹配的物料'),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '请尝试更短的编号或名称，也可改用型号或规格。',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                if (_keyword.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextButton.icon(
-                    onPressed: _clearKeyword,
-                    icon: const Icon(Icons.clear_all_rounded),
-                    label: const Text('清除搜索'),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
+    final hasRows =
+        result != null && (result.items.isNotEmpty || _hasPageWindow);
+    // 列表骨架恒在（2026-10-09 用户口径「无结果/加载/错误不许整块换占位」）：
+    // loading/错误/无关键词引导/空结果都渲染在同一张 picker 列表的行区提示里，
+    // 页面不再来回切换；「清除搜索」按钮由搜索框自带的清除钮承担。
     return UtenPagedPickerList<_WhereUsedMaterial>(
       key: const Key('where-used-material-paged-list'),
-      items: result.items,
+      items: hasRows ? result.items : const [],
       idOf: (item) => item.id,
-      currentPage: result.page,
-      totalPages: result.totalPages,
+      currentPage: result?.page ?? 1,
+      totalPages: result?.totalPages ?? 1,
       paginationScope: _keyword.trim(),
       onPageChange: _goToPage,
       loading: _loading,
-      error: _error,
+      error: hasRows ? null : _error,
       onRetry: _reload,
-      emptyMessage: '没有匹配的物料',
+      emptyMessage: _keyword.trim().isEmpty
+          ? '输入编号/名称开始搜索，支持物料编号、名称、型号或规格，输入后将自动搜索'
+          : '没有匹配的物料，请尝试更短的编号或名称，也可改用型号或规格',
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, item) {
         return _MaterialTile(
@@ -390,19 +284,6 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
           onTap: () => Navigator.of(context).pop(item.toGoodsListItem()),
         );
       },
-    );
-  }
-
-  Widget _scrollableState({required Widget child}) {
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight: constraints.hasBoundedHeight ? constraints.maxHeight : 0,
-          ),
-          child: child,
-        ),
-      ),
     );
   }
 }

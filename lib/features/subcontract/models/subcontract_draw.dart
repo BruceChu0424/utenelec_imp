@@ -1,4 +1,5 @@
-// ADR-143 委外按工序领直属物料：委外任务中心「领料」分段、任务详情与领料页的数据模型。
+// ADR-143 委外按工序领直属物料：委外任务中心「待处理」拍平表的领料行(ADR-171 修订二)、
+// 任务详情与领料页的数据模型。
 //
 // 一行 = 一条已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
 // 所有数量(已领 / 待仓库发 / 可领 / 还缺 / 本批可领)都由服务端在一处算好
@@ -6,7 +7,7 @@
 // 数量单位：任务行 = 委外件的订货单位；物料行 = 各物料自己的单位。
 import '../../../shared/models/paged_result.dart';
 
-/// 「领料」分段任务行状态(服务端 status)。档位注释为 ADR-169 十档
+/// 「待处理」领料行状态(服务端 status)。档位注释为 ADR-169 十档
 /// （实际取色见 widgets/subcontract_draw_status.dart 的 subcontractDrawCellColor）。
 enum SubcontractDrawStatus {
   /// 可领 = 剩余全部(绿，就绪可动手)。
@@ -42,7 +43,7 @@ enum SubcontractDrawStatus {
   }
 }
 
-/// 「领料」分段的一行(GET /subcontract/draw-tasks 的 page.items[])。
+/// 「待处理」领料行的一行(GET /subcontract/draw-tasks 的 page.items[])。
 class SubcontractDrawTaskRow {
   const SubcontractDrawTaskRow({
     required this.orderItemId,

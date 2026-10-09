@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/goods_issue_method.dart';
@@ -16,7 +17,13 @@ import 'package:uten_imp/features/stock/counts/pages/stock_count_review_page.dar
 import 'package:uten_imp/features/stock/counts/repositories/stock_count_request_repository.dart';
 import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_material_first_use_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+
+import '../../helpers/badge_summary_fixture.dart';
 
 class _Repo implements StockCountRequestRepository {
   _Repo({this.stale = false, this.setupBasis, this.lineCount = 1});
@@ -177,22 +184,30 @@ Future<void> _pump(
   Set<String> permissions = const {Perm.stockCountFinanceReview},
   _Preview? preview,
   String? requestId = 'count-1',
+  String? reviewRoute = 'FINANCE',
   Size size = const Size(2000, 1000),
   double textScale = 1,
   VoidCallback? onChanged,
   bool settle = true,
+  List<Override> extraOverrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  // 页内「待审核」段订阅徽章汇总链（读偏好存储），测试统一给空偏好与空汇总。
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        fixedBadgeSummaryOverride(),
         stockCountRequestRepositoryProvider.overrideWithValue(repo),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         goodsIssueMethodRepositoryProvider.overrideWithValue(
           preview ?? _Preview(),
         ),
+        ...extraOverrides,
       ],
       child: MaterialApp(
         locale: const Locale('zh'),
@@ -205,7 +220,7 @@ Future<void> _pump(
           child: child!,
         ),
         home: StockCountReviewPage(
-          reviewRoute: 'FINANCE',
+          reviewRoute: reviewRoute,
           requestId: requestId,
           onChanged: onChanged,
         ),
@@ -250,6 +265,80 @@ void main() {
     await tester.tap(find.descendant(of: toolbar, matching: find.text('全部')));
     await tester.pumpAndSettle();
     expect(repo.queries.last, (reviewRoute: 'FINANCE', status: null, page: 1));
+  });
+
+  // 2026-10-09 口径：审核队列「待审核」段挂红色通知徽章（与 HR 信息变更审核页、
+  // 分类 chip 同源）；盘点历史（本人提交）的待审核是等别人动手，不挂数。
+  Finder segmentLabel(String text) => find.byWidgetPredicate(
+    (w) => w is UtenSegmentBadgeLabel && w.label == text,
+  );
+
+  List<int> redCounts(WidgetTester tester, String label) => tester
+      .widgetList<UtenNotificationBadge>(
+        find.descendant(
+          of: segmentLabel(label),
+          matching: find.byType(UtenNotificationBadge),
+        ),
+      )
+      .map((badge) => badge.count)
+      .toList();
+
+  testWidgets('财务队列待审核段挂红色通知徽章，历史视图不挂', (tester) async {
+    final repo = _Repo();
+    await _pump(
+      tester,
+      repo,
+      requestId: null,
+      extraOverrides: [
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: {BadgeEntry.financeStockCountReview: (3, 0)},
+          ),
+        ),
+      ],
+    );
+    expect(redCounts(tester, '待审核'), [3]);
+    expect(redCounts(tester, '已通过'), isEmpty);
+    // 切到浏览段：选中段给列表全量中性括号数，红徽章仍在待审核段。
+    await tester.tap(segmentLabel('已通过'));
+    await tester.pumpAndSettle();
+    expect(redCounts(tester, '待审核'), [3]);
+    expect(find.text('(1)'), findsOneWidget);
+
+    // 盘点历史（reviewRoute 为空，本人提交的等待审核 = 等别人动手）不挂数。
+    await _pump(
+      tester,
+      _Repo(),
+      requestId: null,
+      reviewRoute: null,
+      permissions: const {Perm.stockCountSubmit},
+      extraOverrides: [
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: {BadgeEntry.financeStockCountReview: (3, 0)},
+          ),
+        ),
+      ],
+    );
+    expect(find.byType(UtenNotificationBadge), findsNothing);
+  });
+
+  testWidgets('仓库队列待审核段红数随任务中心同一份汇总', (tester) async {
+    await _pump(
+      tester,
+      _Repo(),
+      requestId: null,
+      reviewRoute: 'WAREHOUSE',
+      permissions: const {Perm.stockCountWarehouseReview},
+      extraOverrides: [
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: {BadgeEntry.warehouseStockCountReview: (1, 0)},
+          ),
+        ),
+      ],
+    );
+    expect(redCounts(tester, '待审核'), [1]);
   });
 
   testWidgets('审核操作悬浮在右下角，详情不重复长说明或撑满空白表格', (tester) async {

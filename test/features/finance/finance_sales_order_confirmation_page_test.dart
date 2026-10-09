@@ -688,8 +688,8 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(375, 812));
 
-    // 2026-09-29「大小屏共用一张表」：卡片复用表格客户应收格（cardRendersBuilder），
-    // 标题两行完整显示；「另有 X 币种」从卡片明行改为 ⓘ 悬停说明（与桌面同源）。
+    // 2026-10-09 卡片形态退役：窄屏同一张表格，客户应收格与桌面同款单行 +
+    // 省略号，「另有 X 币种」在 ⓘ 悬停说明里。
     expect(find.textContaining('美金 200.00'), findsOneWidget);
     expect(find.textContaining('美金 144000.00'), findsWidgets);
   });

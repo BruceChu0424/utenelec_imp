@@ -7,6 +7,7 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
     List<SubcontractDrawTaskRow>? rows,
     this.canSubmitDraw = true,
     this.count = 0,
+    this.submittedCount = 0,
     Map<String, int>? statusCounts,
   }) : rows = rows ?? [],
        statusCounts = statusCounts ?? const {};
@@ -14,9 +15,10 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
   List<SubcontractDrawTaskRow> rows;
   bool canSubmitDraw;
   int count;
+  int submittedCount;
   Map<String, int> statusCounts;
 
-  /// 非空时 drawableCount 抛出它(模拟无订货查看权限等)。
+  /// 非空时 drawCounts 抛出它(模拟无订货查看权限等)。
   Object? countError;
 
   final listQueries = <Map<String, Object?>>[];
@@ -67,11 +69,11 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
   }
 
   @override
-  Future<int> drawableCount() async {
+  Future<({int drawable, int submitted})> drawCounts() async {
     countCalls++;
     final error = countError;
     if (error != null) throw error;
-    return count;
+    return (drawable: count, submitted: submittedCount);
   }
 
   @override

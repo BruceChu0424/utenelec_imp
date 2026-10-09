@@ -200,10 +200,6 @@ class _FormDraftCategoryTableState<T>
     final paginated = table.onPageChange != null;
     final formalItems = table.error == null ? table.items : <T>[];
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
-    // Keep the adapter and its history entry when the last active draft is
-    // completed/deleted or a filter hides it. History remains independently
-    // readable even when the formal list is empty, loading or unavailable.
-    final historyInHeader = table.isLoading || table.error != null;
     final recovering = <String, FormDraft>{
       for (final draft in drafts)
         for (final id in formDraftConfirmedIds(draft)) id: draft,
@@ -302,18 +298,6 @@ class _FormDraftCategoryTableState<T>
               defaultColumnOrder: binding.defaultColumnOrder,
               revealPopulatedColumnKeys: binding.revealPopulatedColumnKeys,
             ),
-      scrollingHeader: historyInHeader
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (table.scrollingHeader != null) table.scrollingHeader!,
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FormDraftHistoryButton(scope: widget.scope),
-                ),
-              ],
-            )
-          : table.scrollingHeader,
       platformCellDecorator: table.platformCellDecorator == null
           ? null
           : (context, row, key, value, child) => row.record == null
@@ -326,8 +310,6 @@ class _FormDraftCategoryTableState<T>
                     child,
                   ),
       errorKey: table.errorKey,
-      compactCards: table.compactCards,
-      cardBelowWidth: table.cardBelowWidth,
       key: table.key,
       columns: [
         for (final column in table.columns)
@@ -341,8 +323,6 @@ class _FormDraftCategoryTableState<T>
             info: column.info,
             defaultVisible: column.defaultVisible,
             exportDefinition: column.exportDefinition,
-            cardRole: column.cardRole,
-            cardRendersBuilder: column.cardRendersBuilder,
             exactValueOf: column.exactValueOf == null
                 ? null
                 : (row) => row.isLocal
@@ -652,7 +632,7 @@ class _FormDraftCategoryTableState<T>
       summaryBarInline: table.summaryBarInline,
       toolbarActions: [
         ...?table.toolbarActions,
-        if (!historyInHeader) FormDraftHistoryButton(scope: widget.scope),
+        FormDraftHistoryButton(scope: widget.scope),
       ],
       toolbarLeadingActions: table.toolbarLeadingActions,
       embedded: table.embedded,

@@ -78,26 +78,48 @@ class _BucketPlanDraft {
 }
 
 /// 详情页表格的一行：产品 / 自制候选 / 物料操作组 三种形态共用一张表。
+/// [mergedGroups]/[mergedAction] 是「同料合并批次」形态（2026-10-09 用户口径
+/// 「合并下单的显示要合并，跟下达车间一样」）：同一货品经汇总通道合并下单后，
+/// 相关操作组归并成一行——单据号/批次总量取自批次 action，进度/需求量跨成员
+/// 聚合；追加下单仍逐成员办理。产品行/候选行不参与合并。
 class _BucketRow {
   _BucketRow.product(ProductionMaterialAnalysisProduct value)
     : id = value.analysisLineId,
       product = value,
       candidate = null,
-      group = null;
+      group = null,
+      mergedGroups = null,
+      mergedAction = null;
   _BucketRow.candidate(_PendingMakeCandidate value)
     : id = value.material.materialLineId,
       product = null,
       candidate = value,
-      group = null;
+      group = null,
+      mergedGroups = null,
+      mergedAction = null;
   _BucketRow.group(_MaterialGroup value)
     : id = value.key,
       product = null,
       candidate = null,
-      group = value;
+      group = value,
+      mergedGroups = null,
+      mergedAction = null;
+  _BucketRow.merged(
+    List<_MaterialGroup> members,
+    MaterialAnalysisSupplyAction action,
+  ) : id = 'MERGED|${action.actionId}',
+      product = null,
+      candidate = null,
+      group = members.first,
+      mergedGroups = List.unmodifiable(members),
+      mergedAction = action;
   final String id;
   final ProductionMaterialAnalysisProduct? product;
   final _PendingMakeCandidate? candidate;
   final _MaterialGroup? group;
+  final List<_MaterialGroup>? mergedGroups;
+  final MaterialAnalysisSupplyAction? mergedAction;
+  bool get isMergedBatch => mergedGroups != null;
 }
 
 class _MaterialAnalysisBucketPage extends StatefulWidget {
@@ -196,6 +218,7 @@ class _MaterialAnalysisBucketPageState
   bool _running = false;
 
   List<_MaterialGroup> _supplyGroupsForRow(_BucketRow row) {
+    if (row.mergedGroups case final members?) return members;
     if (row.group != null) return [row.group!];
     if (row.candidate?.group != null) return [row.candidate!.group!];
     final product = row.product;
@@ -309,7 +332,18 @@ class _MaterialAnalysisBucketPageState
     final product = row.product;
     if (product != null) return product.goodsName ?? product.goodsCode;
     final material = _rowMaterial(row);
-    return material?.goodsName ?? material?.goodsCode;
+    final name = material?.goodsName ?? material?.goodsCode;
+    if (name == null) return null;
+    // 合并批次行：名称后标注来源条数——「跟下达车间一样」的合并身份。
+    if (row.mergedGroups case final members?) {
+      final sources = members
+          .expand((group) => group.paths)
+          .map((path) => path.analysisLineId)
+          .toSet()
+          .length;
+      return '$name（$sources 来源 · 合并下单）';
+    }
+    return name;
   }
 
   String? _rowGoodsCode(_BucketRow row) =>
@@ -380,6 +414,13 @@ class _MaterialAnalysisBucketPageState
         '自制 = 自己车间生产。在这里改并确认后，本行会立刻移到对应的入口，'
         '同时记为该货品下次的默认供料方式。',
     value: (row) {
+      // 与单元格同一口径：合并行/锚点行锁定批次路线，避免筛选/排序按错边。
+      if (row.mergedAction case final MaterialAnalysisSupplyAction action) {
+        return action.route?.label;
+      }
+      if (row.product?.sourceType == 'AGGREGATE_MAKE') {
+        return MaterialSupplyRoute.make.label;
+      }
       final group = _rowRouteGroup(row);
       return group == null ? null : _host._draftRoute(group)?.label;
     },
@@ -389,6 +430,25 @@ class _MaterialAnalysisBucketPageState
 
   Widget _routeCell(BuildContext context, _BucketRow row) {
     final theme = Theme.of(context);
+    // 合并批次行的供应方式锁定为批次路线（批次已成立，不能在桶里改路线）。
+    // 共享制造锚点产品行（AGGREGATE_MAKE）同样是已成立的自制批次：显示
+    // 「自制」只读——锚点没有根供给行，旧口径在这里显示「—」。
+    if (row.mergedAction case final MaterialAnalysisSupplyAction action) {
+      return Text(
+        action.route?.label ?? '—',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    if (row.product?.sourceType == 'AGGREGATE_MAKE') {
+      return Text(
+        MaterialSupplyRoute.make.label,
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
     final group = _rowRouteGroup(row);
     if (group == null) return const Text('—');
     final current = _host._draftRoute(group);
@@ -457,10 +517,20 @@ class _MaterialAnalysisBucketPageState
   // 三个桶只负责选择范围，核对和提交复用主表。
   Future<void> _submitMaterialBucket(Set<String> selectedIds) async {
     if (!_canAct || _actionsLocked) return;
+    final route = _bucket.supplyRoute;
     final groups = <String, _MaterialGroup>{};
     for (final row in _filterRows(_host._bucketRows(_bucket))) {
       if (!selectedIds.contains(row.id) || !_canSelectTask(row)) continue;
       for (final group in _host._preparationGroupsOf(row)) {
+        // 合并行只把「还有事可办」的成员带进核对页：无剩余待办、也没有已下
+        // 达量可追加的成员不该预选（缺车间/负责人的成员会阻断整批提交）。
+        if (row.isMergedBatch &&
+            route != null &&
+            _host._preparationUncoveredQty(group) <= 0 &&
+            _host._preparationOrderedQty(group) <= 0 &&
+            !_host._hasSupplySubmitQty(group, route)) {
+          continue;
+        }
         groups[group.key] = group;
       }
     }
@@ -658,16 +728,44 @@ class _MaterialAnalysisBucketPageState
   /// 信息(所属仓库、生产车间、BOM 路径、仓库余量、公共认领未实收)搬进那一页。
   Widget _bucketTable(List<_BucketRow> rows) {
     final theme = Theme.of(context);
+    // 进度视图一次算好（2026-10-09）：表头筛选计数、筛选匹配与下面的默认
+    // 排序共用同一份——排序键在比较器里现算会把同一分支乘上 n·log n。
+    final progressViews = {
+      for (final row in rows) row.id: _rowProgressView(theme, row),
+    };
     // 进度 / 缺口两列表头可点筛选(视图级过滤不动选择)，三个桶都给。
     final progressCounts = <String, int>{};
     var gapCount = 0;
     for (final row in rows) {
-      final label = _rowProgress(theme, row).label;
+      final label = progressViews[row.id]?.label;
       if (label != null) {
         progressCounts[label] = (progressCounts[label] ?? 0) + 1;
       }
       if ((_rowShortageQty(row) ?? 0) > 0) gapCount++;
     }
+    // 默认排序（2026-10-09 用户口径「按进度排序，最接近完成的在上面」）：
+    // 有单据链阶段的行按「本链还差几步」升序（stepCount − stepIndex，已入库/
+    // 已完工＝0 最前），同一步里生产中完成比高的在前；没有阶段事实的行
+    // （等待下达/阻塞/只读/状态待回传）不冒充进度，排在有阶段事实的行之后，
+    // 彼此保持投影原序。下标兜底保证稳定（List.sort 本身不稳定）。
+    final sorted =
+        [for (var i = 0; i < rows.length; i++) (index: i, row: rows[i])]
+          ..sort((a, b) {
+            final aStage = progressViews[a.row.id]?.stage;
+            final bStage = progressViews[b.row.id]?.stage;
+            if (aStage != null && bStage != null) {
+              final byRemaining = (aStage.stepCount - aStage.stepIndex)
+                  .compareTo(bStage.stepCount - bStage.stepIndex);
+              if (byRemaining != 0) return byRemaining;
+              final byProgress = (bStage.progress ?? 0).compareTo(
+                aStage.progress ?? 0,
+              );
+              if (byProgress != 0) return byProgress;
+            } else if ((aStage == null) != (bStage == null)) {
+              return aStage == null ? 1 : -1;
+            }
+            return a.index.compareTo(b.index);
+          });
     final progressFacets = [
       for (final entry in progressCounts.entries)
         MasterFacetBucket(
@@ -716,23 +814,25 @@ class _MaterialAnalysisBucketPageState
     };
     final filtered =
         progressFilter == null && gapFilter == null && textFilters.isEmpty
-        ? rows
-        : rows
-              .where((row) {
+        ? sorted.map((entry) => entry.row).toList(growable: false)
+        : sorted
+              .where((entry) {
+                final row = entry.row;
                 if (progressFilter != null &&
-                    _rowProgress(theme, row).label != progressFilter) {
+                    progressViews[row.id]?.label != progressFilter) {
                   return false;
                 }
                 if (gapFilter != null && (_rowShortageQty(row) ?? 0) <= 0) {
                   return false;
                 }
-                for (final entry in textFilters.entries) {
-                  if (textColumns[entry.key]!(row)?.trim() != entry.value) {
+                for (final entry2 in textFilters.entries) {
+                  if (textColumns[entry2.key]!(row)?.trim() != entry2.value) {
                     return false;
                   }
                 }
                 return true;
               })
+              .map((entry) => entry.row)
               .toList(growable: false);
     final filteredTotalPages = _pageTotal(filtered);
     final filteredPage = _pageNo.clamp(1, filteredTotalPages);
@@ -906,8 +1006,44 @@ class _MaterialAnalysisBucketPageState
   // ===== 三种行形态(物料组 / 产品 / 自制候选)的同名取值 =====
 
   double? _rowRequiredQty(_BucketRow row) {
+    // 共享制造锚点行（AGGREGATE_MAKE）：需要数量以锚点/批次事实优先——锚点
+    // 挂着成员操作组（`_preparationGroupsOf` 走锚点索引），成员行的需求多数已
+    // 转交为 0，直接求和会把 3000 显示成 0（2026-10-09 用户反馈）。
+    // 「需要数量」是原始来源需求口径，只取批次需求份，不含公共备货/安全补库。
+    final product = row.product;
+    if (product?.sourceType == 'AGGREGATE_MAKE') {
+      if ((product!.requestedQty) > 0) return product.requestedQty;
+      final action = _host._aggregateBatchActionOfGoods(
+        product.goodsId,
+        MaterialSupplyRoute.make,
+      );
+      if (action != null && action.requestedQty > 0) return action.requestedQty;
+    }
     final groups = _host._preparationGroupsOf(row);
-    if (groups.isEmpty) return row.product?.requestedQty;
+    if (groups.isEmpty) {
+      return product?.requestedQty;
+    }
+    if (row.isMergedBatch) {
+      // 合并行需求＝各成员行 ∪ 其转交目标行（去重）的真实需求：自制共享批次的
+      // 原行需求已转挂到目标行（本行显示 0），只加成员会把 2000 显示成 0。
+      final analysis = _host._analysis;
+      final visited = <String>{};
+      var total = 0.0;
+      for (final material in groups.expand((group) => group.paths)) {
+        if (!visited.add(material.materialLineId)) continue;
+        total += material.sourceRequiredQty ?? material.requiredQty;
+        final targets = material.aggregatePreparation?.targetMaterialLineIds;
+        if (targets == null || analysis == null) continue;
+        for (final targetId in targets) {
+          if (!visited.add(targetId)) continue;
+          final target = _host._materialOfLine(targetId);
+          if (target != null) {
+            total += target.sourceRequiredQty ?? target.requiredQty;
+          }
+        }
+      }
+      return total;
+    }
     return groups.fold<double>(
       0,
       (sum, group) =>
@@ -932,6 +1068,22 @@ class _MaterialAnalysisBucketPageState
   }
 
   double? _rowIssuedQty(_BucketRow row) {
+    if (row.mergedAction case final MaterialAnalysisSupplyAction action) {
+      // 合并行下单量优先批次真实总量（需求份+公共备货+安全补库）。逐成员求和会
+      // 漏掉没有 allocation 锚点的同料路径；批次取消重建后的历史累计（成员行
+      // 服务端总量）比新批总量大时取较大者，避免历史下单量凭空消失。
+      final actionTotal =
+          action.requestedQty +
+          action.publicSurplusQty +
+          action.safetyReplenishmentQty;
+      final membersTotal = _host
+          ._preparationGroupsOf(row)
+          .fold<double>(
+            0,
+            (sum, group) => sum + _host._preparationOrderedQty(group),
+          );
+      return actionTotal > membersTotal ? actionTotal : membersTotal;
+    }
     final groups = _host._preparationGroupsOf(row);
     if (groups.isEmpty) return row.product?.planExecutionPlannedQty;
     return groups.fold<double>(
@@ -955,11 +1107,18 @@ class _MaterialAnalysisBucketPageState
   }
 
   /// 进度：物料行走供给进度词表；产品行走执行阶段(未下达统一「等待下达车间」，
-  /// 路线待确认给红字原因)；候选看还能不能创建。
-  ({String? label, MaterialPreparationStatusStyle style}) _rowProgress(
-    ThemeData theme,
-    _BucketRow row,
-  ) {
+  /// 路线待确认给红字原因)；候选看还能不能创建。合并行取批次内首个有真实
+  /// 单据阶段的成员（同批各来源共享同一张单据，阶段天然一致；无锚点成员
+  /// 自己推不出阶段，不能拿它顶替）。
+  /// 行进度完整视图：文案 + 配色 + 单据链阶段（有真实阶段事实才非空）。
+  /// 进度格、表头筛选与默认排序（见 [_bucketTable] 的进度排序）共用这一份
+  /// 分支，不另写一套判据。
+  ({
+    String? label,
+    MaterialPreparationStatusStyle style,
+    ProductionFlowStage? stage,
+  })
+  _rowProgressView(ThemeData theme, _BucketRow row) {
     final adopted = _host
         ._preparationGroupsOf(row)
         .where(
@@ -972,6 +1131,24 @@ class _MaterialAnalysisBucketPageState
       return (
         label: status.label,
         style: _host._preparationMaterialStatusStyle(theme, adopted.first),
+        stage: status.flowStage,
+      );
+    }
+    if (row.mergedGroups case final members?) {
+      for (final member in members) {
+        if (_host._serverFlowStageOf(member) case final stage?) {
+          return (
+            label: stage.displayLabel,
+            style: MaterialPreparationStatusStyle.resolve(stage: stage),
+            stage: stage,
+          );
+        }
+      }
+      final status = _host._materialStatus(theme, members.first);
+      return (
+        label: status.label,
+        style: _host._preparationMaterialStatusStyle(theme, members.first),
+        stage: status.flowStage,
       );
     }
     final group = row.group;
@@ -980,6 +1157,7 @@ class _MaterialAnalysisBucketPageState
       return (
         label: status.label,
         style: _host._preparationMaterialStatusStyle(theme, group),
+        stage: status.flowStage,
       );
     }
     final product = row.product;
@@ -992,6 +1170,7 @@ class _MaterialAnalysisBucketPageState
             stage: stage,
             actualState: product.planExecutionStatus,
           ),
+          stage: stage,
         );
       }
       if (product.canSchedule) {
@@ -1000,6 +1179,7 @@ class _MaterialAnalysisBucketPageState
           style: MaterialPreparationStatusStyle.resolve(
             phase: MaterialPreparationStatusPhase.pending,
           ),
+          stage: null,
         );
       }
       // 阻塞与主表共用整格底色及配对前景，不按供应路线分色。
@@ -1011,11 +1191,16 @@ class _MaterialAnalysisBucketPageState
         style: MaterialPreparationStatusStyle.resolve(
           phase: MaterialPreparationStatusPhase.blocked,
         ),
+        stage: null,
       );
     }
     final candidate = row.candidate;
     if (candidate == null) {
-      return (label: null, style: MaterialPreparationStatusStyle.resolve());
+      return (
+        label: null,
+        style: MaterialPreparationStatusStyle.resolve(),
+        stage: null,
+      );
     }
     return (
       label: _host._canArrangePendingMakeCandidate(candidate)
@@ -1026,7 +1211,16 @@ class _MaterialAnalysisBucketPageState
             ? MaterialPreparationStatusPhase.pending
             : MaterialPreparationStatusPhase.blocked,
       ),
+      stage: null,
     );
+  }
+
+  ({String? label, MaterialPreparationStatusStyle style}) _rowProgress(
+    ThemeData theme,
+    _BucketRow row,
+  ) {
+    final view = _rowProgressView(theme, row);
+    return (label: view.label, style: view.style);
   }
 
   /// 这条产品行是不是**顶层**成品(销售 / 手工来源),而不是自制子件。
@@ -1067,8 +1261,7 @@ class _MaterialAnalysisBucketPageState
 
   /// 三个桶同一组列(2026-09-22)：进度最前(2026-10-08 用户口径「状态或进度列
   /// 默认放最前」)，其后身份四列 / 供应方式 / 需求量 / 缺口(未下达段) / 下单数量
-  /// (已下达段) / 已下达单据(采购、委外的已下达段)。本表无 compactCards 卡片
-  /// 形态，不需要给原首列钉 cardRole。
+  /// (已下达段) / 已下达单据(采购、委外的已下达段)。
   List<MasterColumnDef<_BucketRow>> _bucketColumns(ThemeData theme) {
     final host = _host;
     final issued = _appendMode;
@@ -1160,15 +1353,18 @@ class _MaterialAnalysisBucketPageState
           key: 'supplyProgress',
           label: '${host._l10n.materialTaskIssued}单据',
           width: 240,
-          // 只展示单号：状态与全链路进度走行菜单「全链路进度」。
-          value: (row) => row.group?.paths
-              .expand((path) => path.notifiedTargets)
-              .where((target) => target.target == route)
-              .map((target) => target.documentNo)
-              .whereType<String>()
-              .where((value) => value.isNotEmpty)
-              .toSet()
-              .join(' / '),
+          // 只展示单号：状态与全链路进度走行菜单「全链路进度」。合并批次行
+          // 直接给批次单据号（部分同料路径没有 allocation 锚点，逐行引用会空）。
+          value: (row) =>
+              row.mergedAction?.documentNo ??
+              row.group?.paths
+                  .expand((path) => path.notifiedTargets)
+                  .where((target) => target.target == route)
+                  .map((target) => target.documentNo)
+                  .whereType<String>()
+                  .where((value) => value.isNotEmpty)
+                  .toSet()
+                  .join(' / '),
         ),
     ];
   }

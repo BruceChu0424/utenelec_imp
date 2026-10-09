@@ -124,6 +124,7 @@ class AdminPermission {
     this.description,
     this.grantPolicy = PermissionGrantPolicy.normalOnly,
     this.baseline = false,
+    this.baselinePinned = false,
     this.sensitivity = 'NORMAL',
   });
 
@@ -149,6 +150,9 @@ class AdminPermission {
   /// 是否在全员基础包里(每个在职员工都隐式持有)。
   final bool baseline;
 
+  /// 基础包钉死(V832/ADR-170)：体系准入码锁定在基础包，管理页不可移出。
+  final bool baselinePinned;
+
   /// 只作展示标签(商业敏感数据)，不参与任何授权判断。
   final String sensitivity;
 
@@ -163,6 +167,7 @@ class AdminPermission {
         description: _nullableTrimmed(json['description']),
         grantPolicy: PermissionGrantPolicy.fromJson(json['grantPolicy']),
         baseline: json['baseline'] as bool? ?? false,
+        baselinePinned: json['baselinePinned'] as bool? ?? false,
         sensitivity: json['sensitivity'] as String? ?? 'NORMAL',
       );
 }
@@ -283,6 +288,7 @@ class PermissionCatalogGroup {
           description: _nullableTrimmed(p['description']),
           grantPolicy: PermissionGrantPolicy.fromJson(p['grantPolicy']),
           baseline: p['baseline'] as bool? ?? false,
+          baselinePinned: p['baselinePinned'] as bool? ?? false,
           sensitivity: p['sensitivity'] as String? ?? 'NORMAL',
         );
       }).toList(),

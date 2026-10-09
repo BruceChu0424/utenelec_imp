@@ -199,13 +199,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Dialog), findsOneWidget);
-    expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
+    expect(find.textContaining('输入编号/名称开始搜索'), findsOneWidget);
     expect(api.queries, isEmpty);
 
     final search = find.byKey(const Key('where-used-material-search'));
     await tester.enterText(search, '   ');
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
+    expect(find.textContaining('输入编号/名称开始搜索'), findsOneWidget);
     expect(api.queries, isEmpty);
 
     await tester.enterText(search, 'MAT-001');
@@ -231,22 +231,22 @@ void main() {
       find.descendant(of: search, matching: find.byIcon(Icons.close_rounded)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
+    expect(find.textContaining('输入编号/名称开始搜索'), findsOneWidget);
     expect(find.text('历史螺丝(MAT-001)'), findsNothing);
     expect(api.queries, hasLength(1));
 
     await tester.enterText(search, 'NONE');
     await tester.pump(const Duration(milliseconds: 301));
     await tester.pumpAndSettle();
-    expect(find.text('没有匹配的物料'), findsOneWidget);
-    expect(find.text('请尝试更短的编号或名称，也可改用型号或规格。'), findsOneWidget);
+    expect(find.textContaining('没有匹配的物料'), findsOneWidget);
+    expect(find.textContaining('请尝试更短的编号或名称'), findsOneWidget);
     expect(find.textContaining('查看全部'), findsNothing);
     expect(api.queries, hasLength(2));
     await tester.tap(
       find.descendant(of: search, matching: find.byIcon(Icons.close_rounded)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
+    expect(find.textContaining('输入编号/名称开始搜索'), findsOneWidget);
     expect(api.queries, hasLength(2));
 
     await tester.enterText(search, 'MAT-001');
@@ -405,14 +405,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Dialog), findsNothing);
-    expect(find.text('输入编号/名称开始搜索'), findsOneWidget);
+    expect(find.textContaining('输入编号/名称开始搜索'), findsOneWidget);
     expect(api.queries, isEmpty);
     await tester.enterText(
       find.byKey(const Key('where-used-material-search')),
       'MAT',
     );
     await tester.pump(const Duration(milliseconds: 301));
-    await tester.tap(find.byKey(const Key('where-used-material-retry')));
+    await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
     expect(find.text('第 1 页物料(MAT-1)'), findsOneWidget);
     expect(find.text('/ 2'), findsOneWidget);

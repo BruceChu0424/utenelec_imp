@@ -88,7 +88,6 @@ class _SalesShipmentTaskWorkbenchState
   String? _error;
   int _page = 1;
   String _keyword = '';
-  Timer? _searchDebounce;
   int _requestGeneration = 0;
 
   int? _financeAudit;
@@ -166,7 +165,6 @@ class _SalesShipmentTaskWorkbenchState
 
   @override
   void dispose() {
-    _searchDebounce?.cancel();
     _batchClaim?.releaseAll().ignore();
     super.dispose();
   }
@@ -260,13 +258,8 @@ class _SalesShipmentTaskWorkbenchState
     _load(1);
   }
 
-  void _onSearchChanged(String value) {
-    _keyword = value;
-    _searchDebounce?.cancel();
-    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      if (mounted) _load(1);
-    });
-  }
+  // 搜索防抖由 UtenSearchBar 自带（2026-10-09 删掉页内二次 Timer：
+  // 双层防抖叠加约 600ms，输入明显迟滞）。
 
   /// 财务：双击/行菜单 → 财务专用审核详情页（右下角放行/退回，不必回本列表即可决策）；
   /// 决策完成 pop(true) → 回列表刷新并清空勾选。仓库：共享出货详情做仓库作业。
@@ -688,27 +681,18 @@ class _SalesShipmentTaskWorkbenchState
           totalPages: 1,
         );
     final names = ref.watch(salesMasterNameServiceProvider);
-    Widget buildContent(BoxConstraints constraints) {
-      // 财务模式大小屏统一走响应式表格（多选/批量/双击与窄屏同款）；
-      // 仓库模式保持 桌面表格 / 窄屏卡片 的既有形态。
-      final desktop = breakpointForWidth(constraints.maxWidth).isExpanded;
-      return _isFinance || desktop
-          ? _table(result, names)
-          : _compact(result, names);
-    }
+    // 2026-10-09 用户口径：大小屏同一张表（窄屏横向滚动），仓库模式自绘
+    // 窄屏卡片列表退役，不再维护两套渲染。
+    final table = _table(result, names);
 
     if (widget.embedded) {
       // 嵌入形态不复套容器与内边距（业务审核中心已提供），避免双重 gutter。
-      return LayoutBuilder(
-        builder: (context, constraints) => buildContent(constraints),
-      );
+      return table;
     }
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
-        child: LayoutBuilder(
-          builder: (context, constraints) => buildContent(constraints),
-        ),
+        child: table,
       ),
     );
   }
@@ -817,73 +801,6 @@ class _SalesShipmentTaskWorkbenchState
     );
   }
 
-  Widget _compact(
-    PagedResult<SalesDocListItem> result,
-    SalesMasterNameService names,
-  ) {
-    return RefreshIndicator(
-      onRefresh: () => _load(),
-      child: ListView(
-        key: Key(
-          _isFinance
-              ? 'finance-shipment-audit-compact-list'
-              : 'warehouse-sales-outbound-compact-list',
-        ),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: UtenSpacing.s24),
-        children: [
-          // 宿主大类行随页滚走（与 _table 同款；窄屏卡片形态对齐大屏口径）。
-          if (widget.externalHeader != null) ...[
-            widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
-          ],
-          // 2026-10-02 用户口径：「共 N 笔」说明卡退役（与 _table 同款）。
-          _filters(),
-          if (_error != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            _InlineTaskError(message: _error!, onRetry: _load),
-          ],
-          if (_loading && _result != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            const LinearProgressIndicator(),
-          ],
-          const SizedBox(height: UtenSpacing.s12),
-          if (result.items.isEmpty)
-            SizedBox(
-              height: 300,
-              child: UtenEmpty(
-                icon: _isFinance
-                    ? Icons.fact_check_outlined
-                    : Icons.inventory_2_outlined,
-                message: _emptyMessage,
-                description: _isFinance
-                    ? '新的出货草稿会在这里等待财务逐张人工放行。'
-                    : '财务放行后，销售出货会进入这里等待仓库作业。',
-              ),
-            )
-          else
-            for (final item in result.items) ...[
-              _CompactShipmentTaskCard(
-                item: item,
-                clientName: names.client(item.clientId),
-                warehouseName: names.warehouse(item.warehouseId),
-                currencyName: names.currency(item.currencyId),
-                onOpen: () => _open(item),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-          if (result.totalPages > 1)
-            _TaskPager(
-              page: result.page,
-              totalPages: result.totalPages,
-              loading: _loading,
-              onPage: _load,
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _filters() {
     // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
     final search = SizedBox(
@@ -892,9 +809,12 @@ class _SalesShipmentTaskWorkbenchState
         key: const Key('sales-shipment-task-search'),
         hint: '搜索出货单号 / 客户',
         initialValue: _keyword,
-        onChanged: _onSearchChanged,
-        onSubmitted: (_) {
-          _searchDebounce?.cancel();
+        onChanged: (value) {
+          _keyword = value;
+          _load(1);
+        },
+        onSubmitted: (value) {
+          _keyword = value;
           _load(1);
         },
       ),
@@ -1023,8 +943,7 @@ class _SalesShipmentTaskWorkbenchState
   ) => [
     // 2026-10-08 用户口径「状态或进度列默认放最前」：财务审核 / 仓库作业是
     // 出货任务的两条行级结论列（审核结论 + 作业状态，推翻 2026-10-06 批次
-    // 「无状态字样不动」的豁免），一起前置。窄屏卡片是独立的
-    // _CompactShipmentTaskCard，不读列清单，无需给原首列钉 cardRole。
+    // 「无状态字样不动」的豁免），一起前置。
     MasterColumnDef(
       key: 'financeAudit',
       label: '财务审核',
@@ -1099,97 +1018,6 @@ class _SalesShipmentTaskWorkbenchState
   ];
 }
 
-class _CompactShipmentTaskCard extends StatelessWidget {
-  const _CompactShipmentTaskCard({
-    required this.item,
-    required this.clientName,
-    required this.warehouseName,
-    required this.currencyName,
-    required this.onOpen,
-  });
-
-  final SalesDocListItem item;
-  final String clientName;
-  final String warehouseName;
-  final String currencyName;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final finance = salesShipmentFinanceAuditLabel(item.financeAudit);
-    final warehouse = salesWarehouseWorkStatusLabel(item.warehouseWorkStatus);
-    final amount = _amount(item, currencyName);
-    return Semantics(
-      container: true,
-      button: true,
-      label:
-          '${item.billNo ?? '未编号出货'}，客户 $clientName，财务 $finance，仓库 $warehouse',
-      child: Material(
-        color: theme.colorScheme.surface,
-        borderRadius: UtenRadius.mdAll,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onOpen,
-          child: Container(
-            padding: const EdgeInsets.all(UtenSpacing.s12),
-            decoration: BoxDecoration(
-              borderRadius: UtenRadius.mdAll,
-              border: Border.all(color: theme.colorScheme.outlineVariant),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.billNo ?? '未编号出货',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      amount,
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '$clientName · $warehouseName · ${_shortDate(item.billDate)}',
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  '财务：$finance · 仓库：$warehouse',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: UtenButton(
-                    size: UtenButtonSize.small,
-                    type: UtenButtonType.secondary,
-                    icon: Icons.open_in_new_rounded,
-                    onPressed: onOpen,
-                    child: const Text('查看详情'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _InlineTaskError extends StatelessWidget {
   const _InlineTaskError({required this.message, required this.onRetry});
 
@@ -1220,40 +1048,6 @@ class _InlineTaskError extends StatelessWidget {
       ),
     );
   }
-}
-
-class _TaskPager extends StatelessWidget {
-  const _TaskPager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPage,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPage;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      IconButton(
-        tooltip: '上一页',
-        onPressed: loading || page <= 1 ? null : () => onPage(page - 1),
-        icon: const Icon(Icons.chevron_left_rounded),
-      ),
-      Text('$page / $totalPages'),
-      IconButton(
-        tooltip: '下一页',
-        onPressed: loading || page >= totalPages
-            ? null
-            : () => onPage(page + 1),
-        icon: const Icon(Icons.chevron_right_rounded),
-      ),
-    ],
-  );
 }
 
 String _shortDate(String? value) {

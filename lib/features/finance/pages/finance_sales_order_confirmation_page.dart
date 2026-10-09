@@ -49,8 +49,8 @@ import '../../../core/router/page_resume_provider.dart';
 
 /// 销售订货单财务确认工作台（V294 闸门，V300 驳回，批量确认）。
 ///
-/// 桌面端使用系统自研表格：单击选择、双击进入审核详情、复选多选和批量确认；
-/// 紧凑端使用可勾选的密集列表，并保留显式详情按钮，不把双击作为唯一入口。
+/// 大小屏同一张表（窄屏横向滚动）：单击选择、双击进入审核详情、复选多选和
+/// 批量确认；右键/长按行菜单保留显式「查看详情」入口，不把双击作为唯一入口。
 ///
 /// [embedded]：嵌入「业务审核中心」分段时为 true——去掉本页 AppBar 与内容
 /// 容器（外层提供标题/刷新/容器），保留右下角批量确认 FAB；[refreshTick] 由
@@ -593,7 +593,7 @@ class _FinanceSalesOrderConfirmationPageState
         children: [
           main,
           // 批量确认提交期间的全屏居中遮罩（2026-09-25 统一口径：点按钮跑
-          // 网络一律 UtenBusyOverlay，弃折叠头/紧凑列表里的加载条）。
+          // 网络一律 UtenBusyOverlay，弃折叠头里的加载条）。
           if (_batchBusy)
             const Positioned.fill(
               child: UtenBusyOverlay(title: '正在确认所选订单，请稍候'),
@@ -648,8 +648,7 @@ class _FinanceSalesOrderConfirmationPageState
     const disabledReason = '请先选择至少一笔待确认订单';
     return UtenFloatingActionGroup(
       children: [
-        // 已选胶囊随悬浮组首位（2026-10-04 全站口径：已选恒右下悬浮）；
-        // 紧凑端选择条与本组同用 UtenSelectionSummaryPill，口径一致。
+        // 已选胶囊随悬浮组首位（2026-10-04 全站口径：已选恒右下悬浮）。
         UtenSelectionSummaryPill(
           count: selectedCount,
           onClear: selectedCount == 0 || _loading || _batchBusy
@@ -713,8 +712,7 @@ class _FinanceSalesOrderConfirmationPageState
         );
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 2026-09-29「大小屏共用一张表」：统一走表格；<840（原卡片阈值）由
-        // 表格内建卡片形态接管（勾选=多选、点卡=打开，选择摘要走右下悬浮组）。
+        // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
         final workbench = _desktopWorkbench(
           context,
           result,
@@ -765,8 +763,6 @@ class _FinanceSalesOrderConfirmationPageState
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('sales-order-finance-desktop-table'),
-        compactCards: true,
-        cardBelowWidth: UtenBreakpoints.expandedStart,
         bottomContentPadding: !_showRejected && canConfirm
             ? UtenFloatingActionGroup.scrollClearance
             : widget.embedded
@@ -874,16 +870,12 @@ class _FinanceSalesOrderConfirmationPageState
       width: 172,
       sortable: true, // 2026-09-25 单号列统一：表头排序 + 值筛选。
       value: (item) => item.billNo,
-      // 卡片形态标题列。
-      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'clientName',
       label: '客户',
       width: 180,
       value: (item) => item.clientName ?? '—',
-      // 卡片形态：客户进标题下副行。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'sellerName',
@@ -910,8 +902,6 @@ class _FinanceSalesOrderConfirmationPageState
           '不换算、不相加，悬停金额可查看；红字表示全部币种应收(折本币)已超信用额度。',
       value: _clientBalanceText,
       cellBuilder: (_, item) => _ClientBalanceCell(item: item),
-      // 卡片形态直接复用格渲染器：两行余额说明（另有 X 币种）不丢。
-      cardRendersBuilder: true,
     ),
     MasterColumnDef(
       key: 'deliverDate',
@@ -997,9 +987,6 @@ class _FinanceSalesOrderConfirmationPageState
       ),
     );
   }
-
-  /// 紧凑端选择条：已选计数只由 [UtenSelectionSummaryPill] 呈现（与桌面表格
-  /// 悬浮批量组同一口径，✕ 即清空），旁边只保留「全选本页」。
 
   Color? _rowColor(ThemeData theme, SalesOrderFinancePendingItem item) {
     if (item.financeRejected) {

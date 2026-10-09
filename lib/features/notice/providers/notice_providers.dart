@@ -25,8 +25,10 @@ extension NoticeFilterValue on NoticeFilter {
   };
 }
 
+/// 通知页默认落在「未读」段（2026-10-09 用户口径：进通知页先看没处理过的；
+/// 处理完想翻历史再手动切「全部」，深链 ?filter= 仍可直达指定段）。
 final noticeFilterProvider = StateProvider<NoticeFilter>((ref) {
-  return NoticeFilter.all;
+  return NoticeFilter.unread;
 });
 
 final noticeListProvider =

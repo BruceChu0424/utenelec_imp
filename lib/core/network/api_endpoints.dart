@@ -629,6 +629,9 @@ abstract final class ApiEndpoints {
 
   // 员工
   static const employees = '/org/employees';
+
+  /// 精确搜索 0 命中时的「类似人员」（逐字符评分，见后端 EmployeeListQuery#similar）。
+  static const employeesSimilar = '/org/employees/similar';
   static String employee(String id) => '/org/employees/$id';
   static String employeeSecondaryDepartments(String id) =>
       '/org/employees/$id/secondary-departments';
@@ -847,6 +850,11 @@ abstract final class ApiEndpoints {
   /// 人工通知登录弹窗（2026-09-10，ADR-063 §8）：人事手动发布、对我可见且仍待
   /// 打卡（acknowledge）/ 未读未确认（none，14 天内）的通知。
   static const noticesPendingPopups = '/notices/pending-popups';
+
+  /// 个人通知弹窗开关（V833/ADR-171）：我当前会收到的弹窗提醒类别 + 个人开关状态。
+  static const noticesPopupPreferences = '/notices/popup-preferences';
+  static String noticePopupPreference(String sourceEvent) =>
+      '/notices/popup-preferences/$sourceEvent';
   static const noticesBatchDelete = '/notices/batch-delete';
   static const noticesAudiencePreview = '/notices/audience/preview';
   static const noticesAudienceEmployees = '/notices/audience/employees';

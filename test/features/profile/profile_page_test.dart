@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/features/department/providers/my_department_providers.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
@@ -170,6 +171,38 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'small desktop window (840-1200) stays single-column with inline shortcuts',
+    (tester) async {
+      // 2026-10-09 复现口径：958 宽小屏窗口。旧版在断点 840 即切「左 380 固定 +
+      // 右 Tab」双列，右栏仅 ~470：Tab 横向截断、字段行触发 <480 两行堆叠。
+      await _pumpProfilePage(
+        tester,
+        () async => _completeProfile,
+        size: const Size(958, 944),
+      );
+
+      // 单列折叠布局（同员工详情页范式），不再是固定左栏双列。
+      expect(find.byType(UtenCollapsingHeaderScrollView), findsOneWidget);
+
+      // 「我的部门 / 我的修改申请」并排：两个入口图标同一水平线。
+      final deptIcon = tester
+          .getTopLeft(find.byIcon(Icons.account_tree_rounded))
+          .dy;
+      final changesIcon = tester
+          .getTopLeft(find.byIcon(Icons.assignment_outlined))
+          .dy;
+      expect(deptIcon, changesIcon);
+
+      // 字段行保持单行（标签与值同一水平线）——双列挤压时值会被挤到第二行。
+      final labelDy = tester.getTopLeft(find.text('\u5de5\u53f7')).dy;
+      final valueDy = tester.getTopLeft(find.text('DTO-CODE')).dy;
+      expect(labelDy, valueDy);
+
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<void> _pumpProfilePage(

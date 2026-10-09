@@ -46,6 +46,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -188,29 +189,35 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         // 2026-09-29「大小屏共用一张表」：列表统一走表格，compact 由其内建
         // 卡片形态接管；窄屏只额外保留庆典一键批量条（轻条件，非重复列表）。
         final isCompact = context.breakpoint.isCompact;
+        // 2026-10-09 全站表格滚动口径：庆典开关卡进折叠头——上滑先收卡（表头
+        // 随之顶到视口顶），继续滚动才滚表格内容；非庆典类没有折叠头，容器退化
+        // 为纯表格内滚。窄屏一键祝福条钉在 body 顶常驻（保持随时可点）。
         return RefreshIndicator(
           onRefresh: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
-          child: Column(
-            children: [
-              if (_isCelebration && canPublish)
-                _celebrationAutoToggle(horizontalPadding: UtenSpacing.s12),
-              if (isCompact &&
-                  _isCelebration &&
-                  canPublish &&
-                  toBless.isNotEmpty)
-                _celebrationBatchBar(context, toBless),
-              Expanded(
-                child: _desktopTable(
-                  s,
-                  items,
-                  visible,
-                  toBless,
-                  canPublish: canPublish,
-                  canBatchConfirm: canBatchConfirm,
-                  canReconcile: canReconcile,
+          child: UtenCollapsingHeaderScrollView(
+            collapsingHeader: _isCelebration && canPublish
+                ? _celebrationAutoToggle(horizontalPadding: UtenSpacing.s12)
+                : null,
+            body: Column(
+              children: [
+                if (isCompact &&
+                    _isCelebration &&
+                    canPublish &&
+                    toBless.isNotEmpty)
+                  _celebrationBatchBar(context, toBless),
+                Expanded(
+                  child: _desktopTable(
+                    s,
+                    items,
+                    visible,
+                    toBless,
+                    canPublish: canPublish,
+                    canBatchConfirm: canBatchConfirm,
+                    canReconcile: canReconcile,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -237,6 +244,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
   // ═══════════════════════ 宽屏：MasterDataTableView ═══════════════════════
 
+  /// 统一表格（宽屏表格 / 窄屏卡片形态由 MasterDataTableView 内建接管）。
   Widget _desktopTable(
     HrTaskSummary s,
     List<HrTaskItem> all,
@@ -252,57 +260,52 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       HrTaskType.identity => canReconcile,
       HrTaskType.newhire => false,
     };
-    return Column(
-      children: [
-        Expanded(
-          child: MasterDataTableView<HrTaskItem>(
-            tableKey:
-                'features.hr_task.pages.hr_task_list_page.HrTaskListPageState._desktopTable.1',
-            key: const Key('hr-task-table'),
-            compactCards: true,
-            bottomContentPadding: math.max(
-              32,
-              UtenCapsuleNavScope.occlusionOf(context),
-            ),
-            columns: _columns(s),
-            items: visible,
-            facets: _facetsOf(s, all),
-            nullCounts: const {},
-            filters: _filters,
-            onFilterChanged: _onFilterChanged,
-            selectable: showBatch,
-            // 证件核对：被他人认领的行不可勾选(勾选位换成锁)，防止进批量处理后
-            // 撞别人的处理；其余类型保持全员可勾选(批量动作各自兜底跳过)。
-            idOf: (item) => _type == HrTaskType.identity && item.claimedByOther
-                ? null
-                : item.employeeId,
-            // idOf 会返回 null 的混合队列仍要有稳定行键(否则回落下标键)。
-            rowKeyOf: (item) => item.employeeId,
-            // 该 builder 只对「selectable 且 idOf 返回 null」的行渲染，即只有
-            // 证件核对被他人认领的行会真的画出来；其余分支返回 shrink 兜底
-            // (对可勾选行表格仍画复选框，不会用到这里的返回值)。
-            unselectableLeadingBuilder: (context, item) =>
-                _type == HrTaskType.identity && item.claimedByOther
-                ? Tooltip(
-                    message: '${item.claimedByName} 处理中',
-                    child: Icon(
-                      Icons.lock_outline_rounded,
-                      size: 20,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  )
-                : const SizedBox.shrink(),
-            selectedIds: _selectedIds,
-            onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
-            batchActionsBuilder: showBatch
-                ? (context, ids) => _batchActions(ids, all, toBless)
-                : null,
-            // 点行 = 选中；行菜单（右键/长按）承载全部逐行操作。
-            rowMenuBuilder: (item) => _rowMenu(s, item, canPublish: canPublish),
-            emptyMessage: _type.emptyText,
-          ),
-        ),
-      ],
+    return MasterDataTableView<HrTaskItem>(
+      tableKey:
+          'features.hr_task.pages.hr_task_list_page.HrTaskListPageState._desktopTable.1',
+      key: const Key('hr-task-table'),
+      // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收开关卡 → 表格内滚」。
+      primary: true,
+      bottomContentPadding: math.max(
+        32,
+        UtenCapsuleNavScope.occlusionOf(context),
+      ),
+      columns: _columns(s),
+      items: visible,
+      facets: _facetsOf(s, all),
+      nullCounts: const {},
+      filters: _filters,
+      onFilterChanged: _onFilterChanged,
+      selectable: showBatch,
+      // 证件核对：被他人认领的行不可勾选(勾选位换成锁)，防止进批量处理后
+      // 撞别人的处理；其余类型保持全员可勾选(批量动作各自兜底跳过)。
+      idOf: (item) => _type == HrTaskType.identity && item.claimedByOther
+          ? null
+          : item.employeeId,
+      // idOf 会返回 null 的混合队列仍要有稳定行键(否则回落下标键)。
+      rowKeyOf: (item) => item.employeeId,
+      // 该 builder 只对「selectable 且 idOf 返回 null」的行渲染，即只有
+      // 证件核对被他人认领的行会真的画出来；其余分支返回 shrink 兜底
+      // (对可勾选行表格仍画复选框，不会用到这里的返回值)。
+      unselectableLeadingBuilder: (context, item) =>
+          _type == HrTaskType.identity && item.claimedByOther
+          ? Tooltip(
+              message: '${item.claimedByName} 处理中',
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            )
+          : const SizedBox.shrink(),
+      selectedIds: _selectedIds,
+      onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
+      batchActionsBuilder: showBatch
+          ? (context, ids) => _batchActions(ids, all, toBless)
+          : null,
+      // 点行 = 选中；行菜单（右键/长按）承载全部逐行操作。
+      rowMenuBuilder: (item) => _rowMenu(s, item, canPublish: canPublish),
+      emptyMessage: _type.emptyText,
     );
   }
 
@@ -313,7 +316,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       width: 110,
       value: (item) => item.code,
       // 卡片形态：工号进姓名副行。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'name',
@@ -321,7 +323,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       width: 120,
       value: (item) => item.name,
       // 卡片形态标题列。
-      cardRole: MasterColumnCardRole.title,
     ),
     if (_type == HrTaskType.identity)
       MasterColumnDef(
@@ -331,12 +332,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         info: '证件号码具体哪里有问题(服务端判定，不含号码本身)。',
         value: (item) => item.note,
         // 紧跟姓名：原因是人事要办的事，普通宽度下不用横向滚动就能看到。
-        // 窄屏卡片也用这份红字(而不是灰色「原因 …」明细)。
-        // 2026-10-06 全站表格行高统一：表格格里单行 + 省略号，完整原因悬停查看；
-        // 卡片形态（cardRendersBuilder 复用本格）不受行高约束，红字原样折行——
-        // 表格格才挂在 UtenStatusCellScope 作用域下（见 MDTV._dataCell），
-        // 卡片明细没有该作用域（见 MasterDataCardList._detail），据此区分形态。
-        cardRendersBuilder: true,
+        // 2026-10-06 全站表格行高统一：单行 + 省略号，完整原因悬停查看。
         cellBuilder: (context, item) {
           final scope = MasterDataTableCellScope.maybeOf(context);
           final note = item.note ?? '证件待核对';
@@ -347,11 +343,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                 : Theme.of(context).colorScheme.error,
             fontWeight: FontWeight.w600,
           );
-          if (context
-                  .dependOnInheritedWidgetOfExactType<UtenStatusCellScope>() ==
-              null) {
-            return Text(note, style: style);
-          }
           return Tooltip(
             message: note,
             child: Text(

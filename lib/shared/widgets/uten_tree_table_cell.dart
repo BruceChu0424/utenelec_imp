@@ -40,7 +40,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.showLeafMarker = true,
     this.guideBleed = 0,
     this.subtreeRail = false,
-    this.compactLeading = false,
+    this.mutedToggleWhenChildless = false,
   });
 
   /// 视觉缩进的深度上限（全站一个数，2026-09-15）：与业务侧的 BOM 展开上限
@@ -65,11 +65,12 @@ class UtenTreeTableCell extends StatelessWidget {
   /// 而不是父子连线。depth = 0 的行不画；默认关闭，不影响既有宿主。
   final bool subtreeRail;
 
-  /// 无下级的行不保留展开槽（2026-10-08 物料分析汇总视图口径）：该视图的
-  /// 顶层产品行永远没有下级，48px 展开位空着，标题（徽章+名称）顶到左缘。
-  /// 有下级的行照常占位（展开按钮还得放）。默认 false：叶子行的占位宽度
-  /// 仍保留，名称列在各层级对齐不变（见 [showLeafMarker]）。
-  final bool compactLeading;
+  /// 无下级的行画灰色不可点的展开占位图标（2026-10-09 物料分析口径「没有
+  /// 子层级的也在前面加个可以展开的 icon，但是灰色不能点击，统一好看」）：
+  /// 展开位不再空着，与有下级行同一位置一枚灰底粗箭头——非按钮、无语义、
+  /// 不吃指针，只做对齐。仅在 [showLeafMarker] 关闭时生效（叶子行已有圆点
+  /// 标记，再叠占位图标是重复）。默认 false：既有宿主空位保持空位。
+  final bool mutedToggleWhenChildless;
 
   /// 叶子行（无下级）是否画那枚小圆点。2026-09-14 用户口径：物料分析主表与
   /// 三个分桶详情的最底层不要圆点——层级已由缩进 + 连接线表达，一列密密麻麻
@@ -218,71 +219,84 @@ class UtenTreeTableCell extends StatelessWidget {
           Row(
             children: [
               SizedBox(width: guideWidth),
-              // compactLeading：永远没有下级的行把展开槽连同间距一起让出来，
-              // 标题顶到左缘（汇总视图顶层产品行）；有下级的行照常占位。
-              if (!compactLeading || hasChildren) ...[
-                SizedBox(
-                  width: _treeToggleExtent,
-                  height: _treeToggleExtent,
-                  child: hasChildren
-                      ? Semantics(
-                          button: true,
-                          expanded: expanded,
-                          excludeSemantics: true,
-                          label: childCount != null && !expanded
-                              ? '展开 $title 的 $childCount 个下级'
-                              : '${expanded ? '收起' : '展开'} $title 的下级',
-                          child: IconButton(
-                            key: toggleKey,
-                            constraints: const BoxConstraints.tightFor(
-                              width: _treeToggleExtent,
-                              height: _treeToggleExtent,
+              SizedBox(
+                width: _treeToggleExtent,
+                height: _treeToggleExtent,
+                child: hasChildren
+                    ? Semantics(
+                        button: true,
+                        expanded: expanded,
+                        excludeSemantics: true,
+                        label: childCount != null && !expanded
+                            ? '展开 $title 的 $childCount 个下级'
+                            : '${expanded ? '收起' : '展开'} $title 的下级',
+                        child: IconButton(
+                          key: toggleKey,
+                          constraints: const BoxConstraints.tightFor(
+                            width: _treeToggleExtent,
+                            height: _treeToggleExtent,
+                          ),
+                          padding: EdgeInsets.zero,
+                          tooltip: expanded
+                              ? '收起下级'
+                              : (childCount != null
+                                    ? '展开 $childCount 个下级'
+                                    : '展开下级'),
+                          onPressed: onToggle,
+                          // 2026-09-10 用户口径「展开箭头要一眼看到」：由淡色线性图标
+                          // 改为 28px 层级色实心圆底 + 反相箭头；2026-09-12 再加强
+                          //（用户口径「箭头粗一点、浅色模式亮一点」）：箭头改自绘粗描边
+                          //（3px 圆头，比线性图标明显更粗），且圆底偏深时箭头一律反白——
+                          // 浅色模式黑底上的箭头从暗青色改白色更亮；选中行（白底）仍主色箭头。
+                          // 未展开且已知子件数时叠「N」徽章。
+                          icon: _ToggleGlyph(
+                            expanded: expanded,
+                            background: foregroundColor ?? levelColor,
+                            foreground: _toggleForeground(
+                              circleColor: foregroundColor ?? levelColor,
+                              colors: colors,
+                              explicitForeground: foregroundColor,
                             ),
-                            padding: EdgeInsets.zero,
-                            tooltip: expanded
-                                ? '收起下级'
-                                : (childCount != null
-                                      ? '展开 $childCount 个下级'
-                                      : '展开下级'),
-                            onPressed: onToggle,
-                            // 2026-09-10 用户口径「展开箭头要一眼看到」：由淡色线性图标
-                            // 改为 28px 层级色实心圆底 + 反相箭头；2026-09-12 再加强
-                            //（用户口径「箭头粗一点、浅色模式亮一点」）：箭头改自绘粗描边
-                            //（3px 圆头，比线性图标明显更粗），且圆底偏深时箭头一律反白——
-                            // 浅色模式黑底上的箭头从暗青色改白色更亮；选中行（白底）仍主色箭头。
-                            // 未展开且已知子件数时叠「N」徽章。
-                            icon: _ToggleGlyph(
-                              expanded: expanded,
-                              background: foregroundColor ?? levelColor,
-                              foreground: _toggleForeground(
-                                circleColor: foregroundColor ?? levelColor,
-                                colors: colors,
-                                explicitForeground: foregroundColor,
-                              ),
-                              badge: !expanded && (childCount ?? 0) > 0
-                                  ? childCount
-                                  : null,
+                            badge: !expanded && (childCount ?? 0) > 0
+                                ? childCount
+                                : null,
+                          ),
+                        ),
+                      )
+                    : showLeafMarker
+                    ? ExcludeSemantics(
+                        child: Center(
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              // 叶子圆点降为 0.45，与实心圆底的展开按钮拉开对比。
+                              color: levelColor.withValues(alpha: 0.45),
+                              shape: BoxShape.circle,
                             ),
                           ),
-                        )
-                      : showLeafMarker
-                      ? ExcludeSemantics(
-                          child: Center(
-                            child: Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                // 叶子圆点降为 0.45，与实心圆底的展开按钮拉开对比。
-                                color: levelColor.withValues(alpha: 0.45),
-                                shape: BoxShape.circle,
-                              ),
+                        ),
+                      )
+                    : mutedToggleWhenChildless
+                    ? ExcludeSemantics(
+                        // 灰色占位展开图标（见字段注释）：同位置同尺寸，只是
+                        // 灰底灰箭头、不可点也不进语义——一眼区分「能展开」
+                        // 与「没有下级」，整列仍然对齐。
+                        child: Center(
+                          child: _ToggleGlyph(
+                            expanded: false,
+                            background: colors.onSurfaceVariant.withValues(
+                              alpha: 0.16,
+                            ),
+                            foreground: colors.onSurfaceVariant.withValues(
+                              alpha: 0.45,
                             ),
                           ),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-              ],
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(width: UtenSpacing.s4),
               Expanded(
                 child: Semantics(
                   container: true,

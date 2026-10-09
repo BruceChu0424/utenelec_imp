@@ -448,13 +448,15 @@ void main() {
     expect(guideOf(childKey), findsNothing);
   });
 
-  // 2026-10-08 物料分析汇总视图：顶层产品行永远无下级，compactLeading 把
-  // 48px 展开槽让出来、标题顶到左缘；默认（false）占位不变。
-  testWidgets('compactLeading drops the empty toggle slot on childless rows', (
+  // 2026-10-09 物料分析口径「没有子层级的行也加个展开 icon，灰色不能点击，
+  // 统一好看」：无下级行的展开位画灰底粗箭头占位（圆底是一个 Container），
+  // 占位宽度不变、不吃指针、不进语义；默认关闭时保持空位。
+  testWidgets('mutedToggleWhenChildless renders a disabled glyph placeholder', (
     tester,
   ) async {
-    const titleKey = Key('compact-title');
-    Widget cell({required bool compact}) => MaterialApp(
+    final semantics = tester.ensureSemantics();
+    const titleKey = Key('muted-title');
+    Widget cell(bool muted) => MaterialApp(
       home: Scaffold(
         body: SizedBox(
           width: 420,
@@ -462,23 +464,53 @@ void main() {
             depth: 0,
             sequence: '',
             sequenceInline: true,
-            title: '汇总顶层',
+            title: '没有下级的行',
             showLeafMarker: false,
-            compactLeading: compact,
+            mutedToggleWhenChildless: muted,
             titleBadge: const Text('顶层', key: titleKey),
           ),
         ),
       ),
     );
 
-    await tester.pumpWidget(cell(compact: false));
+    await tester.pumpWidget(cell(false));
+    expect(
+      find.descendant(
+        of: find.byType(UtenTreeTableCell),
+        matching: find.byType(Container),
+      ),
+      findsNothing,
+    );
     final cellLeft = tester.getTopLeft(find.byType(UtenTreeTableCell)).dx;
-    final reserved = tester.getTopLeft(find.byKey(titleKey)).dx - cellLeft;
-    // 默认：徽章在展开槽之后（48 槽 + 4 间距）。
-    expect(reserved, greaterThanOrEqualTo(48));
+    // 占位宽度不变：标题（徽章）仍在 48px 展开槽之后。
+    expect(
+      tester.getTopLeft(find.byKey(titleKey)).dx - cellLeft,
+      greaterThanOrEqualTo(48),
+    );
 
-    await tester.pumpWidget(cell(compact: true));
+    await tester.pumpWidget(cell(true));
+    expect(
+      find.descendant(
+        of: find.byType(UtenTreeTableCell),
+        matching: find.byType(Container),
+      ),
+      findsOneWidget,
+    );
     final cellLeft2 = tester.getTopLeft(find.byType(UtenTreeTableCell)).dx;
-    expect(tester.getTopLeft(find.byKey(titleKey)).dx - cellLeft2, 0);
+    expect(
+      tester.getTopLeft(find.byKey(titleKey)).dx - cellLeft2,
+      greaterThanOrEqualTo(48),
+    );
+    // 占位不是按钮：无按钮语义、无悬浮说明，点击整格也不产生任何语义动作。
+    expect(
+      tester
+          .widgetList<Semantics>(find.byType(Semantics))
+          .any((widget) => widget.properties.button ?? false),
+      isFalse,
+    );
+    expect(find.byType(Tooltip), findsNothing);
+    await tester.tap(find.byType(UtenTreeTableCell));
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
   });
 }

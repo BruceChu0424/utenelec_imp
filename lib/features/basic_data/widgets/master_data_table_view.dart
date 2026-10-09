@@ -39,9 +39,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_colors.dart';
-import 'master_data_card_list.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
@@ -52,18 +50,6 @@ import '../../../shared/ai/page_context/ai_page_context.dart';
 export '../../../components/data_display/master_data_table_rows_controller.dart';
 
 part 'master_data_table_view_ai.dart';
-
-class MasterDataTableHeaderAddition extends InheritedWidget {
-  const MasterDataTableHeaderAddition({
-    super.key,
-    required this.header,
-    required super.child,
-  });
-  final Widget header;
-  @override
-  bool updateShouldNotify(MasterDataTableHeaderAddition oldWidget) =>
-      header != oldWidget.header;
-}
 
 /// Actual table selection and foreground for custom cell builders.
 /// Single-row focus and checkbox selection share this visual contract.
@@ -100,8 +86,6 @@ class MasterColumnDef<T> {
     this.filterFromRows = false,
     this.cellColor,
     this.cellColorListenableOf,
-    this.cardRole,
-    this.cardRendersBuilder = false,
     this.cellBuilder,
     this.cellBuilderHandlesSemantics = false,
     this.fillsCellHeight = false,
@@ -182,28 +166,6 @@ class MasterColumnDef<T> {
   /// 非空时整格包一层 ListenableBuilder，源变化即重算底色——否则只有
   /// cellBuilder 内部自重建，整格 Container 的底色不会跟着刷新。
   final Listenable? Function(T item)? cellColorListenableOf;
-
-  /// 卡片形态下直接复用本列 [cellBuilder] 渲染（默认 false 用「标签 值」）。
-  /// 给信息量大的富格用（如客户应收的两行余额说明）；控制器类格（输入框）
-  /// 不要开。
-  final bool cardRendersBuilder;
-
-  /// 卡片形态（[MasterDataTableView.compactCards]）下本列的角色；null=自动
-  /// （第一可见列当标题，其余列进 `标签 值` 明细）。显式 hidden 的列只在
-  /// 表格里出现——副行/明细已承载同信息的列（如标题列本身）用它防重复。
-  final MasterColumnCardRole? cardRole;
-}
-
-/// compact 卡片形态下列的呈现角色（2026-09-29「大小屏共用一张表」）。
-enum MasterColumnCardRole {
-  /// 卡片标题（默认第一可见列自动担任；同名不同货的表请把名称列标成 title）。
-  title,
-
-  /// 标题下的小字副行（多列用 · 连接，如 单号/编号）。
-  subtitle,
-
-  /// 不进卡片（表格里照常显示）。
-  hidden,
 }
 
 /// 按数值排序的列类型 (与后端 ReportColumn.type 同名; weight 另按千克换算)。
@@ -228,6 +190,7 @@ class MasterDataGroup<T> {
     this.icon,
     this.total,
     this.detailLabel = '下拉查看详情', // TODO(l10n): 补 arb
+    this.initiallyExpanded = false,
     this.loading = false,
     this.error,
     this.onExpand,
@@ -257,6 +220,10 @@ class MasterDataGroup<T> {
 
   /// 标题行右侧的展开提示文案（默认「下拉查看详情」）。渲染为加粗深红，老人易看清。
   final String detailLabel;
+
+  /// 首次出现即展开（默认折叠）。给「类似人员」这类结果提示型分组用——
+  /// 它们生来就该被看见，不需要用户再点一下（2026-10-09）。
+  final bool initiallyExpanded;
 
   /// 首次展开或手动刷新时的加载态。既有 [items] 保留展示，避免刷新跳动。
   final bool loading;
@@ -348,13 +315,10 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.preserveSelectionOnContextMenu = false,
     this.stickyHeaderPinned,
     this.onFullscreenChanged,
-    this.compactCards = false,
-    this.cardBelowWidth,
     this.tableKey,
     this.platformBinding,
     this.columnEditingEnabled = false,
     this.platformCellDecorator,
-    this.scrollingHeader,
     this.errorKey,
     this.listItemBuilder,
     this.listSeparatorBuilder,
@@ -386,13 +350,6 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// opting into an unbounded embedded layout.
   final bool singleTapRows;
 
-  /// 「大小屏共用一张表」（2026-09-29 用户口径）：true 时屏宽进入 compact
-  /// 断点（<600）表体自动换成卡片列表——同一份 [columns] 驱动（见
-  /// [MasterColumnDef.cardRole]），页面不再各自维护窄屏卡片。默认 false：
-  /// 未迁移的页面维持原表格横滚表现，逐页开启。
-  /// embedded（滑窗/picker 内明细表）与全屏路由恒用表格。
-  final bool compactCards;
-
   /// 目标页加载后递增此令牌，请求在布局完成后滚到末行。0 不触发；同一令牌
   /// 的普通重建不重复滚动。和翻页同时变化时优先定位末尾，其余翻页仍回顶。
   final int scrollToEndRequest;
@@ -402,11 +359,6 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// business rows are held separately and never discarded with a cache page.
   final int maxRetainedPages;
   final int maxRetainedRows;
-
-  /// 卡片形态的宽度阈值：**表格可用宽度**低于该值切卡片（与各页旧
-  /// LayoutBuilder 口径一致，分栏/容器内宽 ≠ 屏宽）。默认 compact 断点（600）；
-  /// 原以 840（expanded）为界的页面传 [UtenBreakpoints.expandedStart]。
-  final double? cardBelowWidth;
 
   final String? tableKey;
   final PlatformTableBinding<T>? platformBinding;
@@ -422,7 +374,6 @@ class MasterDataTableView<T> extends StatefulWidget {
     Widget child,
   )?
   platformCellDecorator;
-  final Widget? scrollingHeader;
   final Key? errorKey;
   final List<MasterColumnDef<T>> columns;
   final List<T> items;
@@ -434,8 +385,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   ///
   /// 两类：① 被页面钉死、表里根本改不动的（分段子页的 fixedOrderType）；
   /// ② 表外分段条上一直看得见、用户随时能切回去的（待检处置的类型分段）。
-  /// （空态「清除筛选」按钮已按 2026-09-28 用户口径全站退役，见
-  /// [_emptyStateWithToolbarActions]。）
+  /// （空态「清除筛选」按钮已按 2026-09-28 用户口径全站退役；空态说明里的
+  /// 筛选生效数描述见 _buildProjectedTable 的行区提示。）
   final Set<String> externalFilterKeys;
   final void Function(String key, String? value) onFilterChanged;
 
@@ -573,6 +524,11 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 按钮之后（吃 Wrap 的 s8 间距），适合视图切换类 chip——避免塞进右侧贴边
   /// 动作区后与全屏按钮相距过远、且多按钮间无间距（2026-09-06 物料分析 BOM
   /// 视图切换按钮移位需求）。
+  ///
+  /// 前缀按钮经 GlobalKey 稳定挂载（见 _stableLeadingActions）：loading/错误/
+  /// 空态与数据态的工具条是不同分支，稳定槽保证其中的搜索框等控件跨状态切换
+  /// 不重建、焦点与输入法组合不丢；loading/错误态也保留前缀按钮（业务写动作
+  /// 仍只在数据态/空态出现）。
   final List<Widget>? toolbarLeadingActions;
 
   /// 嵌入模式：用于详情页 ListView 等无界高度场景（单据明细只读表）。
@@ -690,18 +646,6 @@ class MasterDataTableView<T> extends StatefulWidget {
 
 class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     with UtenColumnHeaderDragHost<MasterDataTableView<T>> {
-  Widget? get _scrollingHeader {
-    final extra = context
-        .dependOnInheritedWidgetOfExactType<MasterDataTableHeaderAddition>()
-        ?.header;
-    if (extra == null) return widget.scrollingHeader;
-    if (widget.scrollingHeader == null) return extra;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [widget.scrollingHeader!, extra],
-    );
-  }
-
   final _pages = SplayTreeMap<int, List<T>>();
   final _selectedRows = <String, T>{};
   late List<T> _items;
@@ -3226,7 +3170,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _buildBodyStage(
     BuildContext context,
     ThemeData theme,
-    List<({bool header, MasterDataGroup<T>? group, T? item})> plan,
+    List<({bool header, MasterDataGroup<T>? group, T? item, Widget? notice})>
+    plan,
     double total,
     double viewportWidth,
   ) {
@@ -3237,6 +3182,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final summaryIndex = plan.length + (hasFooter ? 1 : 0);
     Object planId(int index) {
       final row = plan[index];
+      if (row.notice != null) return const ('notice',);
       return row.header
           ? ('group', row.group!.id)
           : ('data', _paginationRowId(row.item as T));
@@ -3308,6 +3254,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           );
         }
         final row = plan[i];
+        // 行区提示（空结果/加载/错误/「无符合」条）：跨满宽钉在视口横滚位，
+        // 不随表格内容横向滚动。
+        if (row.notice != null) {
+          return _ViewportPinnedRow(
+            controller: _bodyH,
+            contentWidth: total,
+            fallbackViewportWidth: viewportWidth,
+            child: row.notice!,
+          );
+        }
         if (row.header) {
           return _trackPaginationRow(
             planId(i),
@@ -3492,40 +3448,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  /// 空态/错误/加载占位壳。
-  /// primary（联动折叠）模式下包一层拾取 PrimaryScrollController 的竖向 ListView：
-  /// 空表/错误区域仍可上滑收起外层 header（页面任意位置触发滚动），
-  /// 矮视口下占位内容可滚不溢出；非 primary 保持原 Center 语义不变。
-  Widget _stateShell(Widget child) {
-    if (_scrollingHeader != null) {
-      return ListView(
-        controller: _usesPrimaryScroll ? null : _bodyV,
-        primary: _usesPrimaryScroll,
-        shrinkWrap: !widget.primary,
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          _scrollingHeader!,
-          Padding(padding: const EdgeInsets.all(UtenSpacing.s16), child: child),
-        ],
-      );
-    }
-    if (!_usesPrimaryScroll) {
-      return Center(child: child);
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) => ListView(
-        primary: true,
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: Center(child: child),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 当前有值的表头筛选列（含「筛空值」哨兵；含 filterFromRows 列的本地筛选）。
   List<String> get _activeFilterKeys => [
     for (final entry in widget.filters.entries)
@@ -3543,10 +3465,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (!widget.externalFilterKeys.contains(key)) key,
   ];
 
-  /// 全屏切换按钮：工具条与空态共用一份（全屏里 0 行时也必须能退出，否则
-  /// 表头筛选把表过滤成空后会被困在全屏路由——2026-09-10 物料分析反馈）。
-  /// 高度对齐工具条统一口径 48；纯文字无图标（2026-10-08 用户口径）。
-  /// 按钮态靠 `_fsTick` 重建时读 `_fullscreen`。
+  /// 全屏切换按钮（2026-10-09 统一骨架起，工具条任何状态同构渲染，空表也有
+  /// 全屏入口——例如放大看「类似人员」分组；全屏里 0 行时的退出口保障不变，
+  /// 2026-09-10 物料分析被困全屏的反馈仍成立）。高度对齐工具条统一口径 48；
+  /// 纯文字无图标（2026-10-08 用户口径）。按钮态靠 `_fsTick` 重建时读 `_fullscreen`。
   Widget _fullscreenToggleButton() => UtenButton(
     key: const ValueKey('master-table-fullscreen-toggle'),
     size: UtenButtonSize.large,
@@ -3555,163 +3477,66 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     child: Text(_fullscreen ? '退出全屏' : '全屏'),
   );
 
-  /// 成功空态仍保留调用方业务工具条(例如 BOM 的“添加组件”)；表头不渲染时
-  /// 不提供“添加列”。加载中/错误态不走本壳，避免基础数据尚未确认时开放写动作。
-  Widget _emptyStateWithToolbarActions(Widget child) {
-    final actions = <Widget>[
-      if (_platform.error != null)
-        PlatformTableStatus(error: _platform.error, retry: _platform.reload),
-      // 空表不给「进全屏」：一张没有行的表放大到整屏毫无意义，用户反而会以为
-      // 数据被按钮挡住了（2026-09-11 销售订单财务确认「待确认」空态反馈）。
-      // 已在全屏中时保留按钮——那是唯一的退出口。
-      if (_fullscreen) _fullscreenToggleButton(),
-      // 空态「清除筛选」按钮已退役（2026-09-28 用户口径：分类分段条等筛选入口
-      // 常驻表外，按钮是重复入口；空态仅保留「当前有 N 个表头筛选生效」描述）。
-      if (widget.selectable &&
-          widget.showSelectionSummary &&
-          !_hasFloatingBatchActions)
-        _buildBatchBar(Theme.of(context)),
-      // 空态也保留左簇前缀按钮（视图切换 chips 等）：筛选出 0 行时用户才有得
-      // 切回其他视图——否则整个工具条随表格一起消失，页面“不知道点哪里”
-      // （2026-09-09 物料分析「待确认路线=0」反馈的根因）。
-      ...?widget.toolbarLeadingActions,
-      ...?widget.toolbarActions,
+  /// 工具条前缀/动作区的稳定挂载槽（2026-10-09「拼音打一半丢输入法」根因修复）：
+  /// loading/错误/空态与数据态的工具条是不同分支的树，直接展开会把调用方控件
+  ///（搜索框等）随状态切换销毁重建，焦点与 IME 组合被打断。同一 index 的控件
+  /// 经 GlobalKey 重挂载（reparent）保留 Element——文本、焦点、组合全不丢。
+  /// key 生命周期随本 State；进入全屏是同帧卸旧挂新，同样走重挂载保命。
+  final List<GlobalKey> _leadingActionKeys = [];
+  final List<GlobalKey> _toolbarActionKeys = [];
+
+  List<Widget> _stableLeadingActions() {
+    final leading = widget.toolbarLeadingActions;
+    if (leading == null) return const [];
+    while (_leadingActionKeys.length < leading.length) {
+      _leadingActionKeys.add(GlobalKey());
+    }
+    return [
+      for (var i = 0; i < leading.length; i++)
+        KeyedSubtree(key: _leadingActionKeys[i], child: leading[i]),
     ];
-    if (actions.isEmpty) return _stateShell(child);
-    final toolbar = Padding(
-      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: actions,
-      ),
-    );
-    if (_scrollingHeader != null) {
-      return _stateShell(
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [toolbar, child],
-        ),
-      );
-    }
-    if (widget.embedded) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [toolbar, _stateShell(child)],
-      );
-    }
-    // A two-pane page can temporarily leave only one row-height for its empty
-    // table while banners or filters are visible.  A fixed Column needs the
-    // 44dp action plus its 8dp gap and overflows before the empty state can
-    // shrink.  Slivers keep the action reachable and let the empty state scroll
-    // naturally in that bounded viewport; primary mode still participates in
-    // the ancestor NestedScrollView.
-    return CustomScrollView(
-      controller: _usesPrimaryScroll ? null : _bodyV,
-      primary: _usesPrimaryScroll,
-      physics: widget.primary
-          ? const AlwaysScrollableScrollPhysics()
-          : const ClampingScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(child: toolbar),
-        SliverFillRemaining(hasScrollBody: false, child: Center(child: child)),
-      ],
-    );
   }
 
-  /// compact 卡片形态表体：行交互与表格同语义（勾选=多选、点卡=打开、
-  /// 长按/右击=行菜单且弹前选中、动作完成清理选中），见 _Card。
-  Widget _buildCompactCards(BuildContext context) {
-    final visibleColumns = [for (final i in _visibleIndices) _columns[i]];
-    return MasterDataCardList<T>(
-      columns: visibleColumns,
-      header: _scrollingHeader,
-      items: _displayItems,
-      primary: _usesPrimaryScroll,
-      loadingMore: _loadingMore,
-      unselectableLeadingBuilder: widget.unselectableLeadingBuilder,
-      footer: _prepending || _appendError == null ? null : _appendFailure(),
-      overlay: _prependFeedback,
-      physics: _prependAnchor.wrap(
-        widget.primary
-            ? const AlwaysScrollableScrollPhysics()
-            : const ClampingScrollPhysics(),
-      ),
-      itemKey: (row) =>
-          ValueKey(('pagination-row', ('data', _paginationRowId(row)))),
-      rowDecorator: (row, child) => _trackPaginationRow(
-        ('data', _paginationRowId(row)),
-        !widget.unpagedItems.any(
-          (local) => _paginationRowId(local) == _paginationRowId(row),
-        ),
-        child,
-      ),
-      layoutWrapper: (child, buildRow) => _measurePrepend(
-        child,
-        (row) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-          child: buildRow(row),
-        ),
-      ),
-      controller: _usesPrimaryScroll ? null : _bodyV,
-      bottomPadding:
-          math.max(UtenSpacing.s8, widget.bottomContentPadding) +
-          _prependBottomSpace,
-      isSelected: (item) {
-        if (widget.selectable) {
-          final id = widget.idOf?.call(item);
-          return id != null && id.isNotEmpty && widget.selectedIds.contains(id);
-        }
-        return widget.isSelected?.call(item) ?? identical(item, _selectedItem);
-      },
-      canSelect: (item) {
-        final id = widget.idOf?.call(item);
-        return id != null && id.isNotEmpty;
-      },
-      onCheckboxChanged: widget.selectable ? _toggleRow : null,
-      onOpen: (item) {
-        if (!(widget.canOpenRow?.call(item) ?? true)) return;
-        widget.onRowTap?.call(item);
-      },
-      rowMenuBuilder: widget.rowMenuBuilder == null
-          ? null
-          : (item) => (widget.canShowRowMenu?.call(item) ?? true)
-                ? widget.rowMenuBuilder!(item)
-                : const <UtenContextMenuEntry>[],
-      onMenuOpening: (item) {
-        if (widget.selectable) {
-          if (widget.preserveSelectionOnContextMenu) return;
-          final id = widget.idOf?.call(item);
-          if (id == null || id.isEmpty) return;
-          if (!widget.selectedIds.contains(id)) {
-            widget.onSelectedIdsChanged?.call(<String>{id});
-            _fsTick.value++;
-          }
-          return;
-        }
-        setState(() => _selectedItem = item);
-        _fsTick.value++;
-        widget.onSelectionChanged?.call(item);
-      },
-      onActionCompleted: () async {
-        // 菜单动作完成后清理上下文选中（与表格行 clearSelectionAfterMenuAction
-        // 同语义；仅取消菜单时保留原选择）。
-        if (!mounted) return;
-        if (widget.selectable) {
-          if (widget.preserveSelectionOnContextMenu) return;
-          widget.onSelectedIdsChanged?.call(const <String>{});
-          _fsTick.value++;
-          return;
-        }
-        setState(() => _selectedItem = null);
-        _fsTick.value++;
-        widget.onSelectionCleared?.call();
-      },
-    );
+  List<Widget> _stableToolbarActions() {
+    final actions = widget.toolbarActions;
+    if (actions == null) return const [];
+    while (_toolbarActionKeys.length < actions.length) {
+      _toolbarActionKeys.add(GlobalKey());
+    }
+    return [
+      for (var i = 0; i < actions.length; i++)
+        KeyedSubtree(key: _toolbarActionKeys[i], child: actions[i]),
+    ];
   }
+
+  /// 主行为空但仍有前导分组（如「类似人员」）时的紧凑提示行：
+  /// 「无符合…」一行小字 + 可选的表头筛选生效数说明，排在分组标题行之前。
+  Widget _compactEmptyNotice(ThemeData theme, String? filterNote) => Padding(
+    padding: const EdgeInsets.symmetric(
+      horizontal: UtenSpacing.s16,
+      vertical: UtenSpacing.s12,
+    ),
+    child: Row(
+      children: [
+        Icon(
+          Icons.search_off_rounded,
+          size: 18,
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+        const SizedBox(width: UtenSpacing.s8),
+        Expanded(
+          child: Text(
+            filterNote == null
+                ? widget.emptyMessage
+                : '${widget.emptyMessage}（$filterNote）',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _buildTable(BuildContext context) {
     _scheduleScrollToEnd();
@@ -3730,7 +3555,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
   }
 
-  Widget _buildPickerList(BuildContext context, List<T> rows) {
+  Widget _buildPickerList(BuildContext context, List<T> rows, Widget? notice) {
     final padding = widget.listPadding.resolve(Directionality.of(context));
     Widget row(T item, int index, {required bool separator}) => Column(
       mainAxisSize: MainAxisSize.min,
@@ -3755,15 +3580,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         _paginationRowId(proposed[i]): i,
     };
     final hasFooter = _loadingMore || (!_prepending && _appendError != null);
+    // 空结果/加载/错误提示插在列表首位（列表骨架常驻，与表格同口径）。
+    final hasNotice = notice != null;
     final list = ListView.builder(
       controller: _bodyV,
       primary: false,
       physics: _prependAnchor.wrap(const ClampingScrollPhysics()),
       padding: padding.copyWith(bottom: padding.bottom + _prependBottomSpace),
-      itemCount: rows.length + (hasFooter ? 1 : 0),
+      itemCount: (hasNotice ? 1 : 0) + rows.length + (hasFooter ? 1 : 0),
       findChildIndexCallback: (key) => indexes[key],
       itemBuilder: (context, index) {
-        if (index == rows.length) {
+        if (hasNotice && index == 0) {
+          return KeyedSubtree(
+            key: const ValueKey('picker-list-notice'),
+            child: notice,
+          );
+        }
+        final itemIndex = index - (hasNotice ? 1 : 0);
+        if (itemIndex == rows.length) {
           return _appendError != null
               ? _appendFailure()
               : const Padding(
@@ -3777,11 +3611,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   ),
                 );
         }
-        final item = rows[index];
+        final item = rows[itemIndex];
         return _trackPaginationRow(
           ('data', _paginationRowId(item)),
           true,
-          row(item, index, separator: index < rows.length - 1),
+          row(item, itemIndex, separator: itemIndex < rows.length - 1),
         );
       },
     );
@@ -3811,21 +3645,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 嵌入场景（滑窗/picker/弹窗内明细表）默认不显示全屏按钮：整屏路由在受限容器里会铺满
     // 屏幕（详细排产滑窗 bug）。显式 showFullscreenToggle 可覆盖。
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
-    if (widget.isLoading && _items.isEmpty) {
-      return _stateShell(const CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (widget.error != null &&
-        _appendError == null &&
-        widget.unpagedItems.isEmpty) {
-      return _stateShell(
-        UtenEmpty.error(
-          key: widget.errorKey,
-          message: widget.error,
-          actionLabel: '重试', // TODO(l10n): 补 arb
-          onAction: widget.onRetry,
-        ),
-      );
-    }
     final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
     final hasGroupRows = groups.any(
       (g) =>
@@ -3835,34 +3654,60 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           g.error != null ||
           g.onExpand != null,
     );
-    // 主数据为空且无任何前导分组 → 空态占位（有分组时仍渲染表头 + 分组行）。
-    // 本地取值筛选把行全部滤空时同样走空态（描述行会报筛选生效数，可一键清除）。
     final displayItems = _displayItems;
-    if (displayItems.isEmpty && !hasGroupRows) {
-      final activeFilters = _clearableFilterKeys.length;
-      return _emptyStateWithToolbarActions(
-        UtenEmpty(
-          icon: Icons.table_rows_outlined,
-          message: widget.emptyMessage,
-          // 空态说明补一行筛选生效数，提示表格为何为空（清除入口在表外分段条/
-          // 重新出现行后的列头筛选控件）。
-          description: activeFilters > 0
-              ? '当前有 $activeFilters 个表头筛选生效' // TODO(l10n): 补 arb
-              : null,
-        ),
+
+    // 行区提示（2026-10-09 用户口径「搜索无结果/加载/错误时表格骨架也要在，页面不许跳」）：
+    // 不再整块换空态/错误/加载占位壳——统一渲染同一张表（工具条+表头+列），只有行区
+    // 内容随状态变，提示作为一条跨满宽行插在行计划首位。
+    // 主行为空但仍有前导分组（如搜索 0 命中时的「类似人员」分组）时提示走紧凑条，
+    // 分组跟在提示之后——即「无符合人员 / 类似人员」两段式。
+    Widget? bodyNotice;
+    if (widget.isLoading && _items.isEmpty) {
+      bodyNotice = const Padding(
+        padding: EdgeInsets.all(UtenSpacing.s24),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
       );
+    } else if (widget.error != null &&
+        _appendError == null &&
+        widget.unpagedItems.isEmpty) {
+      bodyNotice = UtenEmpty.error(
+        key: widget.errorKey,
+        message: widget.error,
+        actionLabel: '重试', // TODO(l10n): 补 arb
+        onAction: widget.onRetry,
+      );
+    } else if (displayItems.isEmpty) {
+      // 空态说明补一行筛选生效数，提示表格为何为空（清除入口在表外分段条/
+      // 重新出现行后的列头筛选控件）。
+      final activeFilters = _clearableFilterKeys.length;
+      final filterNote = activeFilters > 0
+          ? '当前有 $activeFilters 个表头筛选生效' // TODO(l10n): 补 arb
+          : null;
+      bodyNotice = hasGroupRows
+          ? _compactEmptyNotice(theme, filterNote)
+          : Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s24),
+              child: UtenEmpty(
+                icon: Icons.table_rows_outlined,
+                message: widget.emptyMessage,
+                description: filterNote,
+              ),
+            );
     }
     if (widget.listItemBuilder != null) {
-      return _buildPickerList(context, displayItems);
+      return _buildPickerList(context, displayItems, bodyNotice);
     }
-    // 卡片只呈现主列表，不能让仍可展开/重试的分组落成没有表体的工具条。
-    final useCompactCards = widget.compactCards && !hasGroupRows;
     _ensureWidths(context);
     final total = _totalWidth;
     // 行计划：前导分组（表头下第一区）+ 主数据行。分组折叠=仅一条跨满宽标题行；
     // 展开=其 items 按主表同款列逐行渲染（与主行共用 _widths / _visibleIndices / 横滚）。
-    final plan = <({bool header, MasterDataGroup<T>? group, T? item})>[];
+    final plan =
+        <({bool header, MasterDataGroup<T>? group, T? item, Widget? notice})>[];
+    if (bodyNotice != null) {
+      plan.add((header: false, group: null, item: null, notice: bodyNotice));
+    }
     for (final g in groups) {
+      if (g.initiallyExpanded) _expandedGroups.add(g.id);
       if (g.items.isEmpty &&
           (g.total ?? 0) == 0 &&
           !g.loading &&
@@ -3870,15 +3715,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           g.onExpand == null) {
         continue; // 明确 N=0 且不可加载的分组不渲染
       }
-      plan.add((header: true, group: g, item: null));
+      plan.add((header: true, group: g, item: null, notice: null));
       if (_expandedGroups.contains(g.id)) {
         for (final it in g.items) {
-          plan.add((header: false, group: g, item: it));
+          plan.add((header: false, group: g, item: it, notice: null));
         }
       }
     }
     for (final it in displayItems) {
-      plan.add((header: false, group: null, item: it));
+      plan.add((header: false, group: null, item: it, notice: null));
     }
     // stretch：列总宽 < 视口宽时（颜色/单位等列少主档）表头与表体撑满视口宽、
     // 内容靠左，而非整体水平居中（Column 默认 crossAxisAlignment.center 会把窄于
@@ -3896,11 +3741,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final toolbarChildren = [
-            if (widget.showColumnChooser &&
-                useCompactCards &&
-                constraints.maxWidth <
-                    (widget.cardBelowWidth ?? UtenBreakpoints.mediumStart))
-              _platformAddButton(),
             if (_platform.error != null)
               PlatformTableStatus(
                 error: _platform.error,
@@ -3924,7 +3764,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             // 再点退出（与空态共用 _fullscreenToggleButton）。
             if (showFullscreen) _fullscreenToggleButton(),
             // 前缀按钮：视图切换类 chip 紧挨全屏按钮（左簇内，Wrap s8 间距）。
-            ...?widget.toolbarLeadingActions,
+            // 走稳定挂载槽：loading/空态/错误态切换时搜索框等控件不重建不失焦。
+            ..._stableLeadingActions(),
             // 选择摘要：有悬浮批量动作时随动作进右下悬浮组（见
             // [_buildFloatingBatchActions]）；无悬浮动作的表格仍驻表头上方；
             // 页面自管选择摘要（showSelectionSummary=false）时不驻留。
@@ -3933,13 +3774,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 !_hasFloatingBatchActions)
               _buildBatchBar(theme),
           ];
-          final actions = widget.toolbarActions;
-          if (actions == null || constraints.maxWidth < 720) {
+          final hasActions = widget.toolbarActions != null;
+          final actions = _stableToolbarActions();
+          if (!hasActions || constraints.maxWidth < 720) {
             return Wrap(
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s8,
               crossAxisAlignment: WrapCrossAlignment.center,
-              children: [...toolbarChildren, ...?actions],
+              children: [...toolbarChildren, ...actions],
             );
           }
           return Row(
@@ -4130,29 +3972,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
     }
 
-    // compact 卡片形态（2026-09-29「大小屏共用一张表」）：按**表格可用宽度**
-    // 判定（与各页旧 LayoutBuilder 口径一致，而非屏幕宽度——分栏/容器内宽 ≠
-    // 屏宽），低于阈值表体换卡片列表；工具条/空态/错误/加载/翻页/合计条壳
-    // 不变，列定义同一份（cardRole 分派）。
-    if (useCompactCards) {
-      final threshold = widget.cardBelowWidth ?? UtenBreakpoints.mediumStart;
-      return LayoutBuilder(
-        builder: (context, constraints) => constraints.maxWidth < threshold
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  toolbar,
-                  if (constraints.hasBoundedHeight)
-                    Expanded(
-                      child: _maybeSelectionArea(_buildCompactCards(context)),
-                    )
-                  else
-                    _maybeSelectionArea(_buildCompactCards(context)),
-                ],
-              )
-            : buildStandardTable(),
-      );
-    }
     return buildStandardTable();
   }
 

@@ -308,8 +308,17 @@ class _FinanceAssetLedgerPanelState
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < UtenBreakpoints.mediumStart) {
-          // 大小屏复用同一份列、可见字段、行菜单与分页。
-          return _compactList();
+          // 大小屏复用同一份列、可见字段、行菜单与分页。compact 筛选区由面板
+          // 自持在表格外的稳定槽：不随表格 loading/空态/错误态分支装卸——
+          // 搜索中的焦点与输入法组合不因状态切换被打断（2026-10-09 根因修复；
+          // 原先塞 scrollingHeader 只在状态占位壳里渲染，有数据行时反而不可见）。
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _compactFilters(),
+              Expanded(child: _table()),
+            ],
+          );
         }
         return UtenListTwoPane(
           filterPaneTitle: '${widget.ledger.label}筛选',
@@ -328,7 +337,7 @@ class _FinanceAssetLedgerPanelState
   }
 
   Widget _compactFilters() {
-    // 紧凑筛选区与共享卡片表配合，横向留白由宿主提供。
+    // 紧凑筛选区挂在表格外的固定槽（build 的 compact 分支），横向留白由宿主提供。
     return Padding(
       padding: const EdgeInsets.only(
         top: UtenSpacing.s4,
@@ -533,13 +542,11 @@ class _FinanceAssetLedgerPanelState
     _load();
   }
 
-  Widget _table({bool compact = false}) {
+  Widget _table() {
     final result = _result;
     return _withFormDraftRows(
       MasterDataTableView<FinanceAssetSummary>(
         tableKey: 'finance.asset.${widget.ledger.name}.ledger',
-        compactCards: true,
-        scrollingHeader: compact ? _compactFilters() : null,
         errorKey: Key('finance-asset-retry-${widget.ledger.apiValue}'),
         key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
         columns: [
@@ -554,14 +561,12 @@ class _FinanceAssetLedgerPanelState
           ),
           MasterColumnDef(
             key: 'code',
-            cardRole: MasterColumnCardRole.subtitle,
             label: '编号',
             width: 128,
             value: (item) => item.code,
           ),
           MasterColumnDef(
             key: 'name',
-            cardRole: MasterColumnCardRole.title,
             label: '名称',
             width: 180,
             value: (item) => item.name,
@@ -667,6 +672,4 @@ class _FinanceAssetLedgerPanelState
       ),
     );
   }
-
-  Widget _compactList() => _table(compact: true);
 }

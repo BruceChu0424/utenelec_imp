@@ -78,8 +78,8 @@ void main() {
     );
 
     expect(find.text('检测记录'), findsOneWidget);
-    // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管，
-    // mobile-list 键退役；同一张表（含卡片形态）挂 quality-inspection-record-table。
+    // 2026-09-29「大小屏共用一张表」；2026-10-09 卡片形态退役，窄屏同一张
+    // 表格（横向滚动），mobile-list 键早已退役。
     expect(
       find.byKey(const Key('quality-inspection-record-table')),
       findsOneWidget,
@@ -115,7 +115,12 @@ void main() {
     expect(api.listQueries.last.containsKey('decision'), isFalse);
     expect(find.textContaining('RB20260831001'), findsOneWidget);
 
-    // 卡片形态点卡片任意处（副行文本）打开详情。
+    // 2026-10-09 卡片形态退役：窄屏同一张表格，双击行打开详情（与桌面同款）；
+    // 先横向滚动把单号列带进视口。
+    await tester.ensureVisible(find.textContaining('RB20260831001'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('RB20260831001'));
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.textContaining('RB20260831001'));
     await tester.pumpAndSettle();
     expect(

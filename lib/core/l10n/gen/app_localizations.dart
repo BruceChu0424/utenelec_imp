@@ -2182,24 +2182,6 @@ abstract class AppLocalizations {
   /// **'新员工入职'**
   String get employeeOnboardTitle;
 
-  /// No description provided for @employeeOnboardGroupProfile.
-  ///
-  /// In zh, this message translates to:
-  /// **'档案'**
-  String get employeeOnboardGroupProfile;
-
-  /// No description provided for @employeeOnboardGroupOrg.
-  ///
-  /// In zh, this message translates to:
-  /// **'组织'**
-  String get employeeOnboardGroupOrg;
-
-  /// No description provided for @employeeOnboardGroupPay.
-  ///
-  /// In zh, this message translates to:
-  /// **'薪资 / 银行(可选，仅 HR/管理员可见)'**
-  String get employeeOnboardGroupPay;
-
   /// No description provided for @employeeOnboardSubmit.
   ///
   /// In zh, this message translates to:
@@ -2229,6 +2211,294 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'工号提交后自动生成(UT 前缀，唯一递增)'**
   String get employeeOnboardCodeAutoNote;
+
+  /// No description provided for @employeeOnboardStepBasic.
+  ///
+  /// In zh, this message translates to:
+  /// **'基本信息'**
+  String get employeeOnboardStepBasic;
+
+  /// No description provided for @employeeOnboardStepWork.
+  ///
+  /// In zh, this message translates to:
+  /// **'工作信息'**
+  String get employeeOnboardStepWork;
+
+  /// No description provided for @employeeOnboardStepEducation.
+  ///
+  /// In zh, this message translates to:
+  /// **'教育背景'**
+  String get employeeOnboardStepEducation;
+
+  /// No description provided for @employeeOnboardStepEmergency.
+  ///
+  /// In zh, this message translates to:
+  /// **'紧急联系人'**
+  String get employeeOnboardStepEmergency;
+
+  /// No description provided for @employeeOnboardStepOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他信息'**
+  String get employeeOnboardStepOther;
+
+  /// No description provided for @employeeOnboardPrevious.
+  ///
+  /// In zh, this message translates to:
+  /// **'上一步'**
+  String get employeeOnboardPrevious;
+
+  /// No description provided for @employeeOnboardNext.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get employeeOnboardNext;
+
+  /// No description provided for @employeeOnboardNoPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'您没有办理员工入职的权限(需要员工新建和敏感信息写入两项权限)'**
+  String get employeeOnboardNoPermission;
+
+  /// No description provided for @employeeOnboardNoPermissionEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'无员工入职或敏感信息写入权限'**
+  String get employeeOnboardNoPermissionEmpty;
+
+  /// No description provided for @employeeOnboardConfirmDateRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'正式入职的员工必须填写转正日期'**
+  String get employeeOnboardConfirmDateRequired;
+
+  /// No description provided for @employeeOnboardConfirmDateBeforeHire.
+  ///
+  /// In zh, this message translates to:
+  /// **'转正日期不能早于入职日期'**
+  String get employeeOnboardConfirmDateBeforeHire;
+
+  /// No description provided for @employeeOnboardConfirmDateInfo.
+  ///
+  /// In zh, this message translates to:
+  /// **'正式入职必填，默认=入职日期，可按实际修改'**
+  String get employeeOnboardConfirmDateInfo;
+
+  /// No description provided for @employeeOnboardSubmitting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在创建员工档案与初始账号，请勿重复提交或离开本页。'**
+  String get employeeOnboardSubmitting;
+
+  /// No description provided for @employeeOnboardIdentityDerived.
+  ///
+  /// In zh, this message translates to:
+  /// **'按证件号码自动带出，提交后以证件为准'**
+  String get employeeOnboardIdentityDerived;
+
+  /// No description provided for @employeeOnboardSupervisorHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择直属上级'**
+  String get employeeOnboardSupervisorHint;
+
+  /// No description provided for @employeeOnboardSupervisorSheet.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择直属上级'**
+  String get employeeOnboardSupervisorSheet;
+
+  /// No description provided for @employeeOnboardEduHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选填：登记教育经历，提交后暂无其他补录入口。'**
+  String get employeeOnboardEduHint;
+
+  /// No description provided for @employeeOnboardAddEducation.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加教育经历'**
+  String get employeeOnboardAddEducation;
+
+  /// No description provided for @employeeOnboardEducationEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'教育经历 {index}'**
+  String employeeOnboardEducationEntry(int index);
+
+  /// No description provided for @employeeOnboardSchool.
+  ///
+  /// In zh, this message translates to:
+  /// **'学校'**
+  String get employeeOnboardSchool;
+
+  /// No description provided for @employeeOnboardMajor.
+  ///
+  /// In zh, this message translates to:
+  /// **'专业'**
+  String get employeeOnboardMajor;
+
+  /// No description provided for @employeeOnboardDegree.
+  ///
+  /// In zh, this message translates to:
+  /// **'学历'**
+  String get employeeOnboardDegree;
+
+  /// No description provided for @employeeOnboardDegreeDoctor.
+  ///
+  /// In zh, this message translates to:
+  /// **'博士'**
+  String get employeeOnboardDegreeDoctor;
+
+  /// No description provided for @employeeOnboardDegreeMaster.
+  ///
+  /// In zh, this message translates to:
+  /// **'硕士'**
+  String get employeeOnboardDegreeMaster;
+
+  /// No description provided for @employeeOnboardDegreeBachelor.
+  ///
+  /// In zh, this message translates to:
+  /// **'本科'**
+  String get employeeOnboardDegreeBachelor;
+
+  /// No description provided for @employeeOnboardDegreeCollege.
+  ///
+  /// In zh, this message translates to:
+  /// **'大专'**
+  String get employeeOnboardDegreeCollege;
+
+  /// No description provided for @employeeOnboardDegreeSecondary.
+  ///
+  /// In zh, this message translates to:
+  /// **'中专'**
+  String get employeeOnboardDegreeSecondary;
+
+  /// No description provided for @employeeOnboardDegreeHighSchool.
+  ///
+  /// In zh, this message translates to:
+  /// **'高中'**
+  String get employeeOnboardDegreeHighSchool;
+
+  /// No description provided for @employeeOnboardDegreeMiddleSchool.
+  ///
+  /// In zh, this message translates to:
+  /// **'初中'**
+  String get employeeOnboardDegreeMiddleSchool;
+
+  /// No description provided for @employeeOnboardDegreeOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他'**
+  String get employeeOnboardDegreeOther;
+
+  /// No description provided for @employeeOnboardEduStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'入学时间'**
+  String get employeeOnboardEduStart;
+
+  /// No description provided for @employeeOnboardEduEnd.
+  ///
+  /// In zh, this message translates to:
+  /// **'毕业时间'**
+  String get employeeOnboardEduEnd;
+
+  /// No description provided for @employeeOnboardEduDateOrder.
+  ///
+  /// In zh, this message translates to:
+  /// **'毕业时间不能早于入学时间'**
+  String get employeeOnboardEduDateOrder;
+
+  /// No description provided for @employeeOnboardPickDegree.
+  ///
+  /// In zh, this message translates to:
+  /// **'请选择学历'**
+  String get employeeOnboardPickDegree;
+
+  /// No description provided for @employeeOnboardContactHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'选填：建议至少登记一位紧急联系人，便于紧急情况联系。'**
+  String get employeeOnboardContactHint;
+
+  /// No description provided for @employeeOnboardAddContact.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加紧急联系人'**
+  String get employeeOnboardAddContact;
+
+  /// No description provided for @employeeOnboardContactEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'联系人 {index}'**
+  String employeeOnboardContactEntry(int index);
+
+  /// No description provided for @employeeOnboardRelationship.
+  ///
+  /// In zh, this message translates to:
+  /// **'关系'**
+  String get employeeOnboardRelationship;
+
+  /// No description provided for @employeeOnboardRelSpouse.
+  ///
+  /// In zh, this message translates to:
+  /// **'配偶'**
+  String get employeeOnboardRelSpouse;
+
+  /// No description provided for @employeeOnboardRelParent.
+  ///
+  /// In zh, this message translates to:
+  /// **'父母'**
+  String get employeeOnboardRelParent;
+
+  /// No description provided for @employeeOnboardRelChild.
+  ///
+  /// In zh, this message translates to:
+  /// **'子女'**
+  String get employeeOnboardRelChild;
+
+  /// No description provided for @employeeOnboardRelSibling.
+  ///
+  /// In zh, this message translates to:
+  /// **'兄弟姐妹'**
+  String get employeeOnboardRelSibling;
+
+  /// No description provided for @employeeOnboardRelRelative.
+  ///
+  /// In zh, this message translates to:
+  /// **'亲属'**
+  String get employeeOnboardRelRelative;
+
+  /// No description provided for @employeeOnboardRelFriend.
+  ///
+  /// In zh, this message translates to:
+  /// **'朋友'**
+  String get employeeOnboardRelFriend;
+
+  /// No description provided for @employeeOnboardRelColleague.
+  ///
+  /// In zh, this message translates to:
+  /// **'同事'**
+  String get employeeOnboardRelColleague;
+
+  /// No description provided for @employeeOnboardRelOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'其他'**
+  String get employeeOnboardRelOther;
+
+  /// No description provided for @employeeOnboardDeleteEntry.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除'**
+  String get employeeOnboardDeleteEntry;
+
+  /// No description provided for @employeeOnboardAttendanceGroup.
+  ///
+  /// In zh, this message translates to:
+  /// **'考勤组'**
+  String get employeeOnboardAttendanceGroup;
 
   /// No description provided for @positionPickerTitle.
   ///
@@ -18021,12 +18291,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'全站状态颜色统一口径：状态列用稳定的整格底色标示，仓库单据出库进度一眼可辨（未出库黄、部分出库橙、已出完绿）。'**
   String get release258StatusColors;
-
-  /// No description provided for @release258RollingMerge.
-  ///
-  /// In zh, this message translates to:
-  /// **'采购与委外申请滚动合单：同一分析同一路线只保留一张开口申请，未订货且未被引用的行自动并入，无需反复新建。'**
-  String get release258RollingMerge;
 
   /// No description provided for @release258IqcPending.
   ///

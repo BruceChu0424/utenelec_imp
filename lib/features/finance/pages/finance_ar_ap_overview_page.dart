@@ -39,6 +39,7 @@ import '../../basic_data/repositories/supplier_category_repository.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
+import '../../report/shared/report_column.dart';
 import '../../report/shared/report_data.dart';
 import '../../report/shared/report_date_range.dart';
 import '../../report/shared/report_filter_prefs.dart';
@@ -93,6 +94,12 @@ class _FinanceArApOverviewPageState
   bool _sortAsc = true;
 
   ReportData? _data;
+
+  /// 上一次成功加载的列集：搜索 0 命中/重查/报错时 `_data` 为空，但表格骨架
+  ///（工具条打印导出按钮 + 表头列）沿用这列集继续渲染，行区显示提示——
+  /// 页面不整块切换（2026-10-09 用户口径）。
+  List<ReportColumn> _lastColumns = const [];
+
   bool _loading = false;
 
   /// 用户是否已动手改过筛选（服务端偏好同步晚到时，已动手则不回灌，避免覆盖在输状态）。
@@ -271,6 +278,10 @@ class _FinanceArApOverviewPageState
     TextEditingController peer,
   ) {
     if (_syncingSearchControllers) return;
+    // 拼音组合中（composing 非空）：不同步对端、不过滤不搜索——半截拼音不触发
+    //（组合结束会再通知一次，届时按完整词走；UtenSearchBar 防抖同款守卫，
+    // 这里是页面自持 listener，须自己判）。
+    if (source.value.composing != TextRange.empty) return;
     if (peer.text != source.text) {
       _syncingSearchControllers = true;
       peer.value = TextEditingValue(
@@ -469,6 +480,7 @@ class _FinanceArApOverviewPageState
       if (!mounted || requestGeneration != _reportRequestGeneration) return;
       setState(() {
         _data = parseReportResponse(json, requestedPage);
+        _lastColumns = _data!.columns;
         _loading = false;
         _reportError = null;
       });
@@ -777,44 +789,43 @@ class _FinanceArApOverviewPageState
   }
 
   Widget _buildTable() {
-    if (_noUnifiedSearchMatches) {
-      return Center(
-        child: Text(
-          '未找到匹配「$_searchQuery」的分类或往来单位',
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+    final data = _data;
+    // 首次加载前还没有列集，骨架无从谈起：仅这一阶段允许整块占位；此后
+    //（搜索 0 命中/重查/报错）沿用上一次列集渲染同一张表，行区显示提示。
+    if (data == null && _lastColumns.isEmpty) {
+      if (_noUnifiedSearchMatches) {
+        return Center(
+          child: Text(
+            '未找到匹配「$_searchQuery」的分类或往来单位',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
           ),
-          textAlign: TextAlign.center,
-        ),
-      );
-    }
-    if (_loading && _data == null) {
+        );
+      }
+      if (_reportError != null) {
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _reportError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('重试'),
+              ),
+            ],
+          ),
+        );
+      }
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
     }
-    if (_reportError != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _reportError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    }
-    final data = _data;
-    if (data == null) {
-      return const Center(child: Text('点击「查询」加载'));
-    }
-    final columns = data.columns
+    final columns = (data?.columns ?? _lastColumns)
         .map(
           (c) => MasterColumnDef<Map<String, dynamic>>(
             key: c.key,
@@ -830,7 +841,7 @@ class _FinanceArApOverviewPageState
       tableKey:
           'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1',
       columns: columns,
-      items: data.rows,
+      items: data?.rows ?? const [],
       toolbarActions: [
         UtenPrintPreviewButton(
           title: '应收应付',
@@ -861,10 +872,14 @@ class _FinanceArApOverviewPageState
       sortColumn: _sortKey,
       sortAscending: _sortAsc,
       onSortChange: _onSortChange,
-      isLoading: _loading,
-      emptyMessage: '暂无应收应付数据',
-      currentPage: data.page,
-      totalPages: data.totalPages,
+      isLoading: _loading && data == null,
+      error: data == null ? _reportError : null,
+      onRetry: _load,
+      emptyMessage: _noUnifiedSearchMatches
+          ? '未找到匹配「$_searchQuery」的分类或往来单位'
+          : '暂无应收应付数据',
+      currentPage: data?.page ?? 1,
+      totalPages: data?.totalPages ?? 1,
       paginationScope: (
         _categoryType,
         _categoryId,

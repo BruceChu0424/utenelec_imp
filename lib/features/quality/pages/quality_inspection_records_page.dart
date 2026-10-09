@@ -5,7 +5,6 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -369,9 +368,7 @@ class _QualityInspectionRecordsPageState
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        // 2026-09-29「大小屏共用一张表」：统一走 MasterDataTableView，窄屏
-        //（<840，原卡片阈值）由表格内建卡片形态接管（_buildTable 的
-        // compactCards），本页自绘记录卡与移动分页条已退役。
+        // 大小屏共用一张表：统一走 MasterDataTableView，窄屏横向滚动（卡片形态已退役）。
         child: Builder(
           builder: (context) {
             // 2026-10-01 用户口径（对齐待检处置/研发任务中心）：删除顶部指标卡
@@ -479,8 +476,6 @@ class _QualityInspectionRecordsPageState
         'features.quality.pages.quality_inspection_records_page.QualityInspectionRecordsPageState._buildTable.1',
     key: const Key('quality-inspection-record-table'),
     // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）切内建卡片形态。
-    compactCards: true,
-    cardBelowWidth: UtenBreakpoints.expandedStart,
     columns: _columns,
     items: data.items,
     // 表头筛选固定枚举桶（2026-09-16，count=0 表示不强调计数）：
@@ -595,7 +590,6 @@ class _QualityInspectionRecordsPageState
       // 2026-09-25 单号列统一：可排序（服务端白名单）+ 值筛选（facets）。
       sortable: true,
       value: (record) => _text(record.sourceNo),
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'referenceNo',
@@ -625,7 +619,6 @@ class _QualityInspectionRecordsPageState
       width: 240,
       value: (record) => _text(record.goodsName),
       // 卡片形态标题列。
-      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'goodsCode',
@@ -633,7 +626,6 @@ class _QualityInspectionRecordsPageState
       width: 140,
       value: (record) => _text(record.goodsCode),
       // 卡片副行已带编号，明细区不重复出。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'colorName',

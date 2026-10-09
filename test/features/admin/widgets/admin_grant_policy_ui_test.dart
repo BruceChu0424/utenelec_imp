@@ -2,7 +2,8 @@
 //   · 能否配给部门只看服务端下发的 grantPolicy：只能逐人授予的码不在部门页出现；
 //   · 「全部配置」只把范围交给服务端(一次请求，服务端按策略补齐)，不在本地拼清单；
 //   · 有未保存的逐项修改时先让管理员保存或撤销，不发批量请求；
-//   · 全员基础包只显示能放进基础包的码，保存时交出期望的完整集合。
+//   · 全员基础包只显示能放进基础包的码，保存时交出期望的完整集合；
+//   · 基础包钉死码(V832/ADR-170)开关锁定、批量移出跳过、恒在提交集合里。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,8 +22,8 @@ const _normal = 'stock:view';
 const _bulkExcluded = 'finance:view:all';
 const _individualOnly = 'audit_log:view';
 
-final _catalog = [
-  const PermissionCatalogGroup(
+const _catalog = [
+  PermissionCatalogGroup(
     module: '仓库管理',
     category: '库存',
     permissions: [
@@ -58,6 +59,9 @@ final _catalog = [
 ];
 
 class _Repo implements AdminRepository {
+  _Repo([this.catalog = _catalog]);
+
+  final List<PermissionCatalogGroup> catalog;
   Set<String> department = {};
   Set<String> baseline = {};
   final grantAllScopes = <PermissionBulkScope>[];
@@ -75,7 +79,7 @@ class _Repo implements AdminRepository {
   ];
 
   @override
-  Future<List<PermissionCatalogGroup>> permissionCatalog() async => _catalog;
+  Future<List<PermissionCatalogGroup>> permissionCatalog() async => catalog;
 
   @override
   Future<List<String>> departmentPermissions(String departmentId) async =>
@@ -250,5 +254,61 @@ void main() {
     expect(repo.baselineUpdates, [
       [_normal],
     ]);
+  });
+
+  testWidgets('baseline page locks pinned codes against single and bulk '
+      'removal', (tester) async {
+    const pinned = 'notice:read';
+    final repo = _Repo(const [
+      PermissionCatalogGroup(
+        module: '系统管理',
+        category: '通知',
+        permissions: [
+          AdminPermission(
+            id: 'p-notice-read',
+            code: pinned,
+            name: '阅读通知',
+            module: '系统管理',
+            category: '通知',
+            baselinePinned: true,
+          ),
+          AdminPermission(
+            id: 'p-notice-manage',
+            code: 'notice:manage',
+            name: '发布通知',
+            module: '系统管理',
+            category: '通知',
+          ),
+        ],
+      ),
+    ])..baseline = {pinned, 'notice:manage'};
+    await tester.binding.setSurfaceSize(const Size(1200, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(subject(repo, const AdminBaselinePermView()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('系统管理'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('通知'));
+    await tester.pumpAndSettle();
+
+    final pinnedSwitch = tester.widget<Switch>(
+      find.byKey(const ValueKey('baseline-switch-$pinned')),
+    );
+    expect(pinnedSwitch.onChanged, isNull, reason: '钉死码开关必须禁用');
+    expect(pinnedSwitch.value, isTrue, reason: '钉死码按不变式恒显示已包含');
+    expect(
+      find.byKey(const ValueKey('baseline-pinned-$pinned')),
+      findsOneWidget,
+    );
+
+    // 「本模块全部移出」批量移出会跳过钉死码，只移掉同模块的普通码。
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('本模块全部移出'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存更改'));
+    await tester.pumpAndSettle();
+
+    expect(repo.baselineUpdates.last, [pinned]);
   });
 }

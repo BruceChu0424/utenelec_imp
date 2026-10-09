@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -446,14 +447,11 @@ class _TargetPickerDialogState extends State<_TargetPickerDialog> {
               ),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            TextField(
+            UtenSearchBar(
               key: const ValueKey('gl-line-target-search'),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search, size: 18),
-                hintText: '搜索名称或编码',
-                isDense: true,
-              ),
-              onChanged: (value) => setState(() => _keyword = value),
+              hint: '搜索名称或编码',
+              // 纯本地过滤：输入即筛（onInputChanged 无防抖，组合期由组件挂起）。
+              onInputChanged: (value) => setState(() => _keyword = value),
             ),
             const SizedBox(height: UtenSpacing.s8),
             Expanded(

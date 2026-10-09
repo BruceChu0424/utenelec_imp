@@ -35,6 +35,7 @@ import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -272,43 +273,54 @@ class _HrProfileChangesListPageState
       badgeEntryTodoProvider(BadgeEntry.hrProfileReview),
     );
 
-    Widget body = Column(
-      children: [
-        Padding(
-          // 分段行间距与访客审批/报销审批队列同款（top 12 / bottom 8）。
-          padding: const EdgeInsets.only(
-            top: UtenSpacing.s12,
-            bottom: UtenSpacing.s8,
+    // 2026-10-09 全站表格滚动口径：分段工具条进折叠头——上滑先收工具条（表头
+    // 随之顶到视口顶），继续滚动才滚表格内容（对齐报销审批队列）；刷新手势包住
+    // 折叠容器，全域有效。
+    Widget body = RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(hrProfileChangeQueueProvider);
+        ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
+        refreshBadges(ref);
+        await ref.read(hrProfileChangeQueueProvider(_query).future);
+      },
+      child: Padding(
+        // 分段行间距与访客审批/报销审批队列同款（top 12 / bottom 8）。
+        padding: const EdgeInsets.only(top: UtenSpacing.s12),
+        child: UtenCollapsingHeaderScrollView(
+          collapsingHeader: Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: UtenFilterToolbar<String?>(
+              segmentsKey: const Key('hr-profile-changes-segments'),
+              segments: [
+                // 待审段是「等本页 HR 动手」的队列 → 红色通知徽章（0 不渲染）。
+                UtenFilterSegment<String?>(
+                  value: null,
+                  label: l10n.profileChangeFilterPending,
+                  count: pendingTodo,
+                  countForm: UtenSegmentCountForm.actionable,
+                ),
+                // 已生效/已驳回为浏览型 → 中性括号；仅当前段显示（取列表全量
+                // total，与报销审批历史段同款口径），不为此另发计数请求。
+                UtenFilterSegment<String?>(
+                  value: 'applied',
+                  label: l10n.profileChangeFilterApplied,
+                  count: _status == 'applied' ? async.valueOrNull?.total : null,
+                ),
+                UtenFilterSegment<String?>(
+                  value: 'rejected',
+                  label: l10n.profileChangeFilterRejected,
+                  count: _status == 'rejected'
+                      ? async.valueOrNull?.total
+                      : null,
+                ),
+              ],
+              selected: {_status},
+              onSelectionChanged: _onSegmentChanged,
+            ),
           ),
-          child: UtenFilterToolbar<String?>(
-            segmentsKey: const Key('hr-profile-changes-segments'),
-            segments: [
-              // 待审段是「等本页 HR 动手」的队列 → 红色通知徽章（0 不渲染）。
-              UtenFilterSegment<String?>(
-                value: null,
-                label: l10n.profileChangeFilterPending,
-                count: pendingTodo,
-                countForm: UtenSegmentCountForm.actionable,
-              ),
-              // 已生效/已驳回为浏览型 → 中性括号；仅当前段显示（取列表全量
-              // total，与报销审批历史段同款口径），不为此另发计数请求。
-              UtenFilterSegment<String?>(
-                value: 'applied',
-                label: l10n.profileChangeFilterApplied,
-                count: _status == 'applied' ? async.valueOrNull?.total : null,
-              ),
-              UtenFilterSegment<String?>(
-                value: 'rejected',
-                label: l10n.profileChangeFilterRejected,
-                count: _status == 'rejected' ? async.valueOrNull?.total : null,
-              ),
-            ],
-            selected: {_status},
-            onSelectionChanged: _onSegmentChanged,
-          ),
+          body: _buildBody(l10n, async),
         ),
-        Expanded(child: _buildBody(l10n, async)),
-      ],
+      ),
     );
     // compact 下页面自带宽度收敛；medium+ 由 MainShell 的容器统一处理
     if (context.breakpoint.isCompact) {
@@ -332,57 +344,48 @@ class _HrProfileChangesListPageState
     return async.when(
       skipLoadingOnReload: true,
       skipError: true,
-      data: (page) => RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(hrProfileChangeQueueProvider);
-          ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
-          refreshBadges(ref);
-          await ref.read(hrProfileChangeQueueProvider(_query).future);
+      data: (page) => MasterDataTableView<HrProfileChangeListItem>(
+        tableKey:
+            'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1',
+        key: const Key('hr-profile-changes-table'),
+        // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收分段条 → 表格内滚」。
+        primary: true,
+        paginationScope: _paginationScope,
+        loadingMore: async.isLoading,
+        error: async.hasError ? '${async.error}' : null,
+        onRetry: () => ref.invalidate(hrProfileChangeQueueProvider(_query)),
+        columns: _columns(l10n),
+        items: page.items,
+        // 部门桶来自后端全量聚合；状态桶即三个队列分段。
+        facets: {
+          'departmentName':
+              facets.valueOrNull?['departmentName'] ??
+              const <MasterFacetBucket>[],
+          'status': _statusFacets(l10n),
         },
-        child: MasterDataTableView<HrProfileChangeListItem>(
-          tableKey:
-              'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1',
-          key: const Key('hr-profile-changes-table'),
-          paginationScope: _paginationScope,
-          loadingMore: async.isLoading,
-          error: async.hasError ? '${async.error}' : null,
-          onRetry: () => ref.invalidate(hrProfileChangeQueueProvider(_query)),
-          columns: _columns(l10n),
-          items: page.items,
-          // 部门桶来自后端全量聚合；状态桶即三个队列分段。
-          facets: {
-            'departmentName':
-                facets.valueOrNull?['departmentName'] ??
-                const <MasterFacetBucket>[],
-            'status': _statusFacets(l10n),
-          },
-          nullCounts: const {},
-          filters: {
-            'departmentName': _departmentId,
-            'status': _effectiveStatus,
-          },
-          onFilterChanged: _onFilterChanged,
-          // 待审段开多选 + 悬浮批量通过/驳回；已生效/已驳回段只读浏览。
-          selectable: _isPendingSegment,
-          idOf: (item) => item.batchId,
-          selectedIds: _selectedIds,
-          onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
-          batchActionsBuilder: _isPendingSegment ? _batchActions : null,
-          // 双击行进入批次详情审阅（goFrom 写 returnTo，详情返回键回本队列）。
-          onRowTap: (item) =>
-              goFrom(context, RoutePath.hrProfileChangeDetail(item.batchId)),
-          emptyMessage: l10n.profileChangeHrQueueEmpty,
-          currentPage: page.page,
-          totalPages: page.totalPages,
-          onPageChange: (p) async {
-            setState(() => _page = p);
-            await _retainedPage.waitFor(
-              ref,
-              hrProfileChangeQueueProvider(_query),
-              () => ref.read(hrProfileChangeQueueProvider(_query).future),
-            );
-          },
-        ),
+        nullCounts: const {},
+        filters: {'departmentName': _departmentId, 'status': _effectiveStatus},
+        onFilterChanged: _onFilterChanged,
+        // 待审段开多选 + 悬浮批量通过/驳回；已生效/已驳回段只读浏览。
+        selectable: _isPendingSegment,
+        idOf: (item) => item.batchId,
+        selectedIds: _selectedIds,
+        onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
+        batchActionsBuilder: _isPendingSegment ? _batchActions : null,
+        // 双击行进入批次详情审阅（goFrom 写 returnTo，详情返回键回本队列）。
+        onRowTap: (item) =>
+            goFrom(context, RoutePath.hrProfileChangeDetail(item.batchId)),
+        emptyMessage: l10n.profileChangeHrQueueEmpty,
+        currentPage: page.page,
+        totalPages: page.totalPages,
+        onPageChange: (p) async {
+          setState(() => _page = p);
+          await _retainedPage.waitFor(
+            ref,
+            hrProfileChangeQueueProvider(_query),
+            () => ref.read(hrProfileChangeQueueProvider(_query).future),
+          );
+        },
       ),
       loading: () => const UtenSkeletonList(itemCount: 6),
       error: (e, _) => UtenEmpty.error(

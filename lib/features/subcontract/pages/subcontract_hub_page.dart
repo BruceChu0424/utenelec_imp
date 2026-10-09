@@ -66,8 +66,9 @@ class SubcontractHubPage extends ConsumerWidget {
         label: l10n.subcontractHubTaskCenter,
         description: l10n.subcontractHubTaskCenterSub,
         location: RouteName.operationsSubcontractWorkbench,
-        // 黄=任务中心「进行中」段(已下单、发料在外加工、等财务/等回厂);
-        // 红=待处理与要本部门动手的两类异常 + 「领料」分段可领任务(ADR-143)。
+        // 黄=任务中心「进行中」(领完料才算, V834 投影剔除了领料未结束的单) +
+        // 领料中(已提交、等仓库发); 红=待处理拍平表里可动手的行(申请待下单 +
+        // 领料可领, ADR-171 修订二)与要本部门动手的两类异常。
         // 同一张单两枚都算得上不是双计。
         // 草稿已并入任务中心分类；供应商退货仍由独立入口办理。
         // 本地委外草稿由 effective 汇总按 ID 去重并入 subcontractDrafts 入口后在

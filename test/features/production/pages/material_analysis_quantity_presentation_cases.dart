@@ -26,12 +26,15 @@ void materialQuantityPresentationCases() {
         find.byKey(const ValueKey('material-bom-layout-material')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
+      // 2026-10-09 合并口径：已全部并入同料合并批次且无剩余待办的来源路径
+      // 折叠（与下达车间同款），聚合行自身携带已下单分解与合并单据号。
+      expect(
         find.byKey(
           const ValueKey('material-table-toggle-AGGREGATE|g-m-2|本色|unit-1'),
         ),
+        findsNothing,
+        reason: '已合并下单的来源不再逐条展开',
       );
-      await tester.pumpAndSettle();
       expect(
         find.textContaining('已下单 4000 = 需求份 3000 + 公共备货 1000'),
         findsWidgets,
@@ -46,19 +49,6 @@ void materialQuantityPresentationCases() {
             .data,
         '4000',
       );
-      for (var i = 0; i < 3; i++) {
-        final available = find.byKey(
-          ValueKey('material-analysis-public-available-shared-$i'),
-        );
-        expect(
-          find.descendant(of: available, matching: find.text('1000')),
-          findsNothing,
-        );
-        expect(
-          find.descendant(of: available, matching: find.text('—')),
-          findsOneWidget,
-        );
-      }
       final table = tester.widget<MasterDataTableView<dynamic>>(
         find.byWidgetPredicate(
           (widget) =>

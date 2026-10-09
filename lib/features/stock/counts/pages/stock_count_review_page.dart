@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
+import '../../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../../components/inputs/uten_table_cell_action.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
@@ -20,6 +21,7 @@ import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../basic_data/models/goods_issue_method.dart';
 import '../../../basic_data/repositories/goods_issue_method_repository.dart';
@@ -433,110 +435,149 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     _load();
   }
 
-  Widget _list() => Column(
-    children: [
-      Padding(
-        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-        child: UtenFilterToolbar<String>(
-          segmentsKey: const Key('stock-count-status-segments'),
-          selected: {_status},
-          enabled: !_working,
-          segments: const [
-            UtenFilterSegment(value: 'PENDING', label: '待审核'),
-            UtenFilterSegment(value: 'APPROVED', label: '已通过'),
-            UtenFilterSegment(value: 'REJECTED', label: '已驳回'),
-            UtenFilterSegment(value: 'CANCELLED', label: '已撤回'),
-            UtenFilterSegment(value: '', label: '全部'),
-          ],
-          onSelectionChanged: (value) {
-            setState(() {
-              _status = value;
-              _page = null;
-            });
-            _load();
-          },
-        ),
+  Widget _list() {
+    // 2026-10-09 口径（对齐 HR 信息变更审核页）：审核队列「待审核」段挂红色通知徽章，
+    // 计数与分类 chip / 导航徽章同一入口——仓库队列走任务中心范围汇总（ADR-149，
+    // 任务中心选了仓时随所选仓），财务队列用全站汇总；盘点历史（本人提交）的
+    // 待审核是等别人动手，不挂数。其余浏览段仅当前选中时带列表全量中性括号数。
+    final int? reviewTodo = switch (widget.reviewRoute) {
+      'WAREHOUSE' => ref.watch(
+        warehouseTaskEntryTodoProvider(BadgeEntry.warehouseStockCountReview),
       ),
-      Expanded(
-        child: MasterDataTableView<StockCountRequest>(
-          tableKey: 'stock.count-requests',
-          columns: [
-            MasterColumnDef(
-              key: 'status',
-              label: '状态',
-              width: 72,
-              value: (r) => _statusText(r.status),
-            ),
-            MasterColumnDef(
-              key: 'requestNo',
-              label: '盘点单号',
-              width: 190,
-              value: (r) => r.requestNo,
-            ),
-            MasterColumnDef(
-              key: 'warehouse',
-              label: '仓库',
-              width: 180,
-              value: (r) => r.warehouseName,
-            ),
-            MasterColumnDef(
-              key: 'reviewRoute',
-              label: '审核方',
-              width: 90,
-              value: (r) => r.reviewRoute == 'WAREHOUSE' ? '仓库' : '财务',
-            ),
-            MasterColumnDef(
-              key: 'submittedBy',
-              label: '提交人',
-              width: 110,
-              value: (r) => r.submittedByName,
-            ),
-            MasterColumnDef(
-              key: 'submittedAt',
-              label: '提交时间',
-              width: 180,
-              value: (r) => DisplayDateTime.format(r.submittedAt),
-            ),
-            MasterColumnDef(
-              key: 'reason',
-              label: '盘点说明',
-              width: 240,
-              value: (r) => r.reason,
-            ),
-            MasterColumnDef(
-              key: 'open',
-              label: '查看',
-              width: 90,
-              value: (_) => '查看明细',
-              // 2026-10-06 行高统一口径：单行文字动作，不用 min40 的 TextButton。
-              cellBuilder: (_, r) => UtenTableCellAction(
-                onPressed: () => _open(r.id),
-                label: '查看明细',
+      'FINANCE' => ref.watch(
+        badgeEntryTodoProvider(BadgeEntry.financeStockCountReview),
+      ),
+      _ => null,
+    };
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+          child: UtenFilterToolbar<String>(
+            segmentsKey: const Key('stock-count-status-segments'),
+            selected: {_status},
+            enabled: !_working,
+            segments: [
+              UtenFilterSegment<String>(
+                value: 'PENDING',
+                label: '待审核',
+                count:
+                    reviewTodo ?? (_status == 'PENDING' ? _page?.total : null),
+                countForm: reviewTodo == null
+                    ? UtenSegmentCountForm.browsing
+                    : UtenSegmentCountForm.actionable,
               ),
-            ),
-          ],
-          items: _page?.items ?? const [],
-          facets: const {},
-          nullCounts: const {},
-          filters: const {},
-          onFilterChanged: (_, _) {},
-          onRowTap: (r) => _open(r.id),
-          isLoading: _loading && _page == null,
-          emptyMessage: '暂无盘点申请',
-          currentPage: _page?.page ?? 1,
-          totalPages: _page?.totalPages ?? 1,
-          onPageChange: _load,
-          paginationScope: (
-            widget.reviewRoute,
-            _status,
-            widget.warehouseScope,
-            widget.keyword,
+              UtenFilterSegment<String>(
+                value: 'APPROVED',
+                label: '已通过',
+                count: _status == 'APPROVED' ? _page?.total : null,
+              ),
+              UtenFilterSegment<String>(
+                value: 'REJECTED',
+                label: '已驳回',
+                count: _status == 'REJECTED' ? _page?.total : null,
+              ),
+              UtenFilterSegment<String>(
+                value: 'CANCELLED',
+                label: '已撤回',
+                count: _status == 'CANCELLED' ? _page?.total : null,
+              ),
+              UtenFilterSegment<String>(
+                value: '',
+                label: '全部',
+                count: _status.isEmpty ? _page?.total : null,
+              ),
+            ],
+            onSelectionChanged: (value) {
+              setState(() {
+                _status = value;
+                _page = null;
+              });
+              _load();
+            },
           ),
-          onRetry: _load,
         ),
-      ),
-    ],
-  );
+        Expanded(
+          child: MasterDataTableView<StockCountRequest>(
+            tableKey: 'stock.count-requests',
+            columns: [
+              MasterColumnDef(
+                key: 'status',
+                label: '状态',
+                width: 72,
+                value: (r) => _statusText(r.status),
+              ),
+              MasterColumnDef(
+                key: 'requestNo',
+                label: '盘点单号',
+                width: 190,
+                value: (r) => r.requestNo,
+              ),
+              MasterColumnDef(
+                key: 'warehouse',
+                label: '仓库',
+                width: 180,
+                value: (r) => r.warehouseName,
+              ),
+              MasterColumnDef(
+                key: 'reviewRoute',
+                label: '审核方',
+                width: 90,
+                value: (r) => r.reviewRoute == 'WAREHOUSE' ? '仓库' : '财务',
+              ),
+              MasterColumnDef(
+                key: 'submittedBy',
+                label: '提交人',
+                width: 110,
+                value: (r) => r.submittedByName,
+              ),
+              MasterColumnDef(
+                key: 'submittedAt',
+                label: '提交时间',
+                width: 180,
+                value: (r) => DisplayDateTime.format(r.submittedAt),
+              ),
+              MasterColumnDef(
+                key: 'reason',
+                label: '盘点说明',
+                width: 240,
+                value: (r) => r.reason,
+              ),
+              MasterColumnDef(
+                key: 'open',
+                label: '查看',
+                width: 90,
+                value: (_) => '查看明细',
+                // 2026-10-06 行高统一口径：单行文字动作，不用 min40 的 TextButton。
+                cellBuilder: (_, r) => UtenTableCellAction(
+                  onPressed: () => _open(r.id),
+                  label: '查看明细',
+                ),
+              ),
+            ],
+            items: _page?.items ?? const [],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            onRowTap: (r) => _open(r.id),
+            isLoading: _loading && _page == null,
+            emptyMessage: '暂无盘点申请',
+            currentPage: _page?.page ?? 1,
+            totalPages: _page?.totalPages ?? 1,
+            onPageChange: _load,
+            paginationScope: (
+              widget.reviewRoute,
+              _status,
+              widget.warehouseScope,
+              widget.keyword,
+            ),
+            onRetry: _load,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _detailBody(StockCountRequest detail) {
     final stale = detail.lines.any((line) => line.stale);

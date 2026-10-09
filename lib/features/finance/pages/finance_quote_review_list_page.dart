@@ -7,7 +7,7 @@
 //   · 待核价 —— 等财务动手 → 红徽章(徽章入口 financeQuoteReview，与 hub 卡同源)；
 //   · 已核价 —— 已结束 → 不挂数；
 //   · 已退回 —— 球在销售手上、还会回来 → 黄色进行中(ADR-100，页内分段不进入口)。
-// 服务端搜索/分页；桌面用统一表格(单击选中、双击核价)，紧凑端用卡片列表 + 显式按钮。
+// 服务端搜索/分页；大小屏同一张表格(单击选中、双击核价，窄屏横向滚动)。
 // 本页不在前端拼权限：进入由路由守卫(sales_quote_finance:view)把关，能不能改价、退回、
 // 确认由详情里服务端下发的 financeActions 决定。待核价行说明里带「谁正在核价」(服务端认领)。
 import 'dart:async';
@@ -219,8 +219,7 @@ class _FinanceQuoteReviewListPageState
                     padding: const EdgeInsets.symmetric(
                       vertical: UtenSpacing.s16,
                     ),
-                    // 2026-09-29「大小屏共用一张表」：统一走表格；<840（原
-                    // 卡片阈值）由表格内建卡片形态接管。
+                    // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
                     child: _desktop(context, l10n, result),
                   ),
                 );
@@ -315,10 +314,7 @@ class _FinanceQuoteReviewListPageState
             'features.finance.pages.finance_quote_review_list_page.FinanceQuoteReviewListPageState._desktop.1',
         key: const Key('quote-finance-desktop-table'),
         primary: true,
-        // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）由表格内建
-        // 卡片形态接管，本页自绘紧凑行已退役。
-        compactCards: true,
-        cardBelowWidth: UtenBreakpoints.expandedStart,
+        // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
         columns: _columns(l10n),
         items: result.items,
         facets: const {},
@@ -371,16 +367,12 @@ class _FinanceQuoteReviewListPageState
       label: l10n.quoteFinanceColBillNo,
       width: 160,
       value: (item) => item.billNo,
-      // 卡片形态标题列（报价按单号识别）。
-      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'clientName',
       label: l10n.quoteFinanceColClient,
       width: 200,
       value: (item) => item.clientName ?? l10n.quoteFinanceUnnamed,
-      // 卡片形态：客户进标题下副行。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'sellerName',

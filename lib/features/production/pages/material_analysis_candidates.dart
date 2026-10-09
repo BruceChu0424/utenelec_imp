@@ -413,9 +413,9 @@ abstract class _MaterialAnalysisCandidatesState
 
   Widget _candidateBody(ThemeData theme) {
     if (widget.planCreateEntry) return _planEntryBody(theme);
-    if (_error != null && _candidatePage == null) {
-      return _errorState(_error!, _loadCandidates);
-    }
+    // 首次加载失败不再整页换错误态：保留分段 + 搜索框（与 compact 形态一致），
+    // 错误走下方内联条——否则加载失败期间搜索中的焦点与输入法组合被打断
+    //（2026-10-09 根因修复口径）。
     final page = _candidatePage;
     final lines = (page?.lines ?? const <MaterialAnalysisSalesCandidateLine>[])
         .where((line) => line.remainingQty == null || line.remainingQty! > 0)

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
@@ -98,14 +99,10 @@ class _FinanceAccountPickerPanelState
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-          child: TextField(
-            onChanged: (value) => setState(() => _keyword = value),
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search_rounded, size: 20),
-              hintText: '搜索账户编号 / 名称 / 币种',
-              isDense: true,
-              border: OutlineInputBorder(),
-            ),
+          child: UtenSearchBar(
+            hint: '搜索账户编号 / 名称 / 币种',
+            // 纯本地过滤：输入即筛（onInputChanged 无防抖，组合期由组件挂起）。
+            onInputChanged: (value) => setState(() => _keyword = value),
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),

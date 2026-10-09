@@ -1144,15 +1144,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get employeeOnboardTitle => '신규 입사 처리';
 
   @override
-  String get employeeOnboardGroupProfile => '프로필';
-
-  @override
-  String get employeeOnboardGroupOrg => '조직';
-
-  @override
-  String get employeeOnboardGroupPay => '급여 및 계좌 (선택, 인사/관리자 전용)';
-
-  @override
   String get employeeOnboardSubmit => '입사 제출';
 
   @override
@@ -1167,6 +1158,159 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOnboardCodeAutoNote => '사번은 제출 시 자동 생성됩니다(UT 접두사, 고유 증가)';
+
+  @override
+  String get employeeOnboardStepBasic => '기본 정보';
+
+  @override
+  String get employeeOnboardStepWork => '근무 정보';
+
+  @override
+  String get employeeOnboardStepEducation => '학력';
+
+  @override
+  String get employeeOnboardStepEmergency => '비상 연락처';
+
+  @override
+  String get employeeOnboardStepOther => '기타 정보';
+
+  @override
+  String get employeeOnboardPrevious => '이전 단계';
+
+  @override
+  String get employeeOnboardNext => '다음 단계';
+
+  @override
+  String get employeeOnboardNoPermission =>
+      '입사 처리 권한이 없습니다(직원 생성 및 민감 정보 쓰기 권한 필요)';
+
+  @override
+  String get employeeOnboardNoPermissionEmpty => '입사 처리 또는 민감 정보 쓰기 권한이 없습니다';
+
+  @override
+  String get employeeOnboardConfirmDateRequired => '정식 입사 직원은 전환일을 입력해야 합니다';
+
+  @override
+  String get employeeOnboardConfirmDateBeforeHire => '전환일은 입사일보다 빠를 수 없습니다';
+
+  @override
+  String get employeeOnboardConfirmDateInfo =>
+      '정식 입사 시 필수이며 기본값은 입사일입니다. 실제에 맞게 수정할 수 있습니다';
+
+  @override
+  String get employeeOnboardSubmitting =>
+      '직원 서류와 초기 계정을 생성 중입니다. 중복 제출하거나 페이지를 벗어나지 마세요.';
+
+  @override
+  String get employeeOnboardIdentityDerived => '증번에서 자동 반영되며 제출 후 증명서 기준입니다';
+
+  @override
+  String get employeeOnboardSupervisorHint => '직속 상사를 선택해 주세요';
+
+  @override
+  String get employeeOnboardSupervisorSheet => '직속 상사 선택';
+
+  @override
+  String get employeeOnboardEduHint =>
+      '선택: 학력 사항을 여기에 기록하세요. 제출 후 별도 입력 방법은 아직 없습니다.';
+
+  @override
+  String get employeeOnboardAddEducation => '학력 추가';
+
+  @override
+  String employeeOnboardEducationEntry(int index) {
+    return '학력 $index';
+  }
+
+  @override
+  String get employeeOnboardSchool => '학교';
+
+  @override
+  String get employeeOnboardMajor => '전공';
+
+  @override
+  String get employeeOnboardDegree => '학위';
+
+  @override
+  String get employeeOnboardDegreeDoctor => '박사';
+
+  @override
+  String get employeeOnboardDegreeMaster => '석사';
+
+  @override
+  String get employeeOnboardDegreeBachelor => '학사';
+
+  @override
+  String get employeeOnboardDegreeCollege => '전문대';
+
+  @override
+  String get employeeOnboardDegreeSecondary => '전문학교';
+
+  @override
+  String get employeeOnboardDegreeHighSchool => '고등학교';
+
+  @override
+  String get employeeOnboardDegreeMiddleSchool => '중학교';
+
+  @override
+  String get employeeOnboardDegreeOther => '기타';
+
+  @override
+  String get employeeOnboardEduStart => '입학 시기';
+
+  @override
+  String get employeeOnboardEduEnd => '졸업 시기';
+
+  @override
+  String get employeeOnboardEduDateOrder => '졸업 시기는 입학 시기보다 빠를 수 없습니다';
+
+  @override
+  String get employeeOnboardPickDegree => '학력을 선택해 주세요';
+
+  @override
+  String get employeeOnboardContactHint =>
+      '선택: 긴급 상황에 대비해 비상 연락처를 1명 이상 등록하는 것을 권장합니다.';
+
+  @override
+  String get employeeOnboardAddContact => '비상 연락처 추가';
+
+  @override
+  String employeeOnboardContactEntry(int index) {
+    return '연락처 $index';
+  }
+
+  @override
+  String get employeeOnboardRelationship => '관계';
+
+  @override
+  String get employeeOnboardRelSpouse => '배우자';
+
+  @override
+  String get employeeOnboardRelParent => '부모';
+
+  @override
+  String get employeeOnboardRelChild => '자녀';
+
+  @override
+  String get employeeOnboardRelSibling => '형제자매';
+
+  @override
+  String get employeeOnboardRelRelative => '친척';
+
+  @override
+  String get employeeOnboardRelFriend => '친구';
+
+  @override
+  String get employeeOnboardRelColleague => '동료';
+
+  @override
+  String get employeeOnboardRelOther => '기타';
+
+  @override
+  String get employeeOnboardDeleteEntry => '삭제';
+
+  @override
+  String get employeeOnboardAttendanceGroup => '근태 그룹';
 
   @override
   String get positionPickerTitle => '직책 선택 또는 입력';
@@ -10048,10 +10192,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release258StatusColors =>
       '상태 색상이 전체 앱에서 하나의 기준으로 통합되었습니다. 상태 열은 단색 배경으로 표시되며, 창고 출고 진행 상태(미출고 노랑, 일부 출고 주황, 출고 완료 초록)도 한눈에 보입니다.';
-
-  @override
-  String get release258RollingMerge =>
-      '구매·외주 신청이 하나의 열린 신청서로 통합 관리됩니다. 같은 분석과 경로는 최대 한 장만 유지되고, 발주 전 참조 없는 행은 자동으로 병합됩니다.';
 
   @override
   String get release258IqcPending =>

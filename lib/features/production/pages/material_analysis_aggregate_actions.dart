@@ -2,13 +2,50 @@ part of 'production_material_analysis_page.dart';
 
 extension _MaterialAggregateActions on _MaterialAggregateTableController {
   Widget actionCell(_MaterialAggregate aggregate) {
+    // 来源车间 / 负责人 / 比例不同时，这一行下单会自动分成几张工单
+    // (ADR-120 §8)：在办理列直接写明，悬浮逐张列出参数和数量。
+    final split = splitNote(aggregate);
+    final note = split == null
+        ? null
+        : Tooltip(
+            message: split.detail,
+            child: Text(
+              split.headline,
+              key: ValueKey('material-aggregate-split-${aggregate.key}'),
+            ),
+          );
+    return withdrawCell(
+          materialLineIds: aggregate.paths.map((path) => path.materialLineId),
+          hasOrdered: orderedQty(aggregate) > 0.000000001,
+          note: note,
+        ) ??
+        (note ?? const Text('勾选后下单'));
+  }
+
+  /// 按物料汇总视图顶层产品行的办理格（2026-10-09 用户口径「明明已下单，
+  /// 顶层的物料办理不该还是调拨」）：已下单后与聚合行同一撤回口径——有可
+  /// 撤回任务给撤回按钮、下满无可撤回给「已下单，暂无可撤回任务」；一张单
+  /// 都没下时返回 null，调用方保持原调拨入口。
+  Widget? topLevelWithdrawCell(_MaterialGroup group) => withdrawCell(
+    materialLineIds: group.paths.map((path) => path.materialLineId),
+    hasOrdered: owner._tableGroupIssuedQty(group) > 0.000000001,
+    keyPrefix: 'material-top-level',
+  );
+
+  /// 可撤回供给任务按钮列 + 「已下单，暂无可撤回任务」空态。沿同一精确来源图
+  /// 解析 [materialLineIds] 的真实单据（聚合行与汇总视图顶层产品行共用，2026-10-09
+  /// 抽出）；既没有可撤回任务也没有下单记录时返回 null，空态交还调用方。
+  /// [keyPrefix] 只是测试锚点前缀，两个入口各自稳定。
+  Widget? withdrawCell({
+    required Iterable<String> materialLineIds,
+    required bool hasOrdered,
+    Widget? note,
+    String keyPrefix = 'material-aggregate',
+  }) {
     final analysis = owner._analysis;
     final sources = analysis == null
         ? null
-        : owner
-              ._analysisIndexes(analysis)
-              .sourceGraph
-              .resolve(aggregate.paths.map((path) => path.materialLineId));
+        : owner._analysisIndexes(analysis).sourceGraph.resolve(materialLineIds);
     final pendingReversals =
         sources?.pendingReversalActionIds ?? const <String>{};
     final actionIds =
@@ -26,38 +63,21 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
             })
             .toList(growable: false) ??
         const <String>[];
-    // 来源车间 / 负责人 / 比例不同时，这一行下单会自动分成几张工单
-    // (ADR-120 §8)：在办理列直接写明，悬浮逐张列出参数和数量。
-    final split = splitNote(aggregate);
-    final note = split == null
-        ? null
-        : Tooltip(
-            message: split.detail,
-            child: Text(
-              split.headline,
-              key: ValueKey('material-aggregate-split-${aggregate.key}'),
-            ),
-          );
     if (actionIds.isEmpty) {
-      if (orderedQty(aggregate) > 0) {
-        final issued = Tooltip(
-          message: sources?.complete == false
-              ? '来源单据关联尚未完整返回，请刷新后核对。'
-              : '已有下单记录，当前没有可撤回的供给任务；请在单据详情核对处理状态。',
-          child: Text(
-            '已下单，暂无可撤回任务',
-            key: ValueKey('material-aggregate-issued-${aggregate.key}'),
-          ),
-        );
-        return note == null
-            ? issued
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [issued, note],
-              );
-      }
-      return note ?? const Text('勾选后下单');
+      if (!hasOrdered) return null;
+      final issued = Tooltip(
+        message: sources?.complete == false
+            ? '来源单据关联尚未完整返回，请刷新后核对。'
+            : '已有下单记录，当前没有可撤回的供给任务；请在单据详情核对处理状态。',
+        child: Text('已下单，暂无可撤回任务', key: ValueKey('$keyPrefix-issued')),
+      );
+      return note == null
+          ? issued
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [issued, note],
+            );
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -65,7 +85,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
       children: [
         for (final id in actionIds)
           TextButton(
-            key: ValueKey('material-aggregate-cancel-$id'),
+            key: ValueKey('$keyPrefix-cancel-$id'),
             onPressed:
                 owner._busy ||
                     sources?.complete != true ||

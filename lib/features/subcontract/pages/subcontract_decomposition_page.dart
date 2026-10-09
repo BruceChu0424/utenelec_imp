@@ -1,31 +1,37 @@
 // 委外任务中心（/operations/workbench/subcontract）。
 //
-// 分段：草稿 / 待处理 / 领料 / 进行中 / 历史记录（ADR-143 §4.1）。
-// · 待处理 = 已下达、仍有未下单量的委外申请行。双击看申请摘要弹窗(关键数量 +
-//   数量归属；锁行顶部红框说明为什么不能下单，2026-10-08 起流程时间线退役)；
-//   多选 + 右下角悬浮组(已选胶囊 + 生成委外订货单)批量带入订货单编辑页——勾选与
-//   悬浮按钮只在「待处理」段提供，进行中/历史段没有可下单的行，不摆死按钮。
-//   委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(红，ADR-143 §二.3、ADR-169
-//   锁死不能下单=深红)、
-//   不能勾选下单，勾选位显示锁图标与原因；点状态「通知研发完善」可再提醒研发。
-//   ADR-156(委外价格每天不同，物料齐了才下单)：直属物料一套都不够的申请行显示
-//   「等物料齐套」并锁住(不能勾选，照样留在「待处理」计红数)；够做一部分显示
-//   「可部分下单」，「可下单」列给出服务端算好的这次可下单数量(订货单预填它，超出由
-//   服务端拒绝)。点申请行状态看「齐套情况」弹窗(逐种直属物料的库存与占用)。
-// · 领料 =已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
-//   自有数据源 GET /subcontract/draw-tasks 与表格；分段只挂红数 = 可领行数
-//   (GET /subcontract/draw-tasks/count，与模块红数同源；等待物料 / 待仓库发的单已计入
-//   「进行中」黄数，这里不再挂黄)。行只有服务端标 canDraw 且账号 canSubmitDraw 时可勾选，
-//   「批量领料(n)」进入领料页；点状态「可领」直达领料页(只带这一行)；点行看任务详情
-//   (物料表 + 撤回未发领料 / 结束领料，动作由服务端 allowedActions 决定)。
-// · 进行中 = 已下单的委外订货单，状态列按各明细聚合(服务端 display_stage)；
-//   「可领料」点击跳到「领料」分段并按该订货单筛选，短交三态点击去判定页。
+// 分类：草稿 / 待处理 / 进行中 / 历史记录（ADR-171 修订二，2026-10-09）。
+// · 待处理 = 拍平的一张表，不再分「委外申请 / 领料」子分类行，直接显示所有
+//   等本部门动手的行：
+//   - 委外申请行：已下达、仍有未下单量的委外申请行(工作台投影分页)；双击看申请
+//     摘要弹窗(关键数量 + 数量归属；锁行顶部红框说明为什么不能下单)；多选 +
+//     右下角悬浮组「生成委外订货单」批量带入订货单编辑页。
+//     委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(红，ADR-143 §二.3、ADR-169
+//     锁死不能下单=深红)、不能勾选下单，勾选位显示锁图标与原因；点状态「通知研发
+//     完善」可再提醒研发。ADR-156(委外价格每天不同，物料齐了才下单)：直属物料一套
+//     都不够的申请行显示「等物料齐套」并锁住；够做一部分显示「可部分下单」，
+//     「可下单」列给出服务端算好的这次可下单数量。点申请行状态看「齐套情况」弹窗。
+//   - 领料行(钉在表格顶部，随页常驻)：已获财务批准、领料计划未结束、仍未领满的
+//     委外订货明细(委外任务，自有数据源 GET /subcontract/draw-tasks)。「领料」在
+//     这里只是一个状态，不是子分类：可领(红，等本部门动手) / 已提交·待仓库发
+//     (黄，在跑不用动手) / 等计划安排 / 等待物料。行只有服务端标 canDraw 且账号
+//     canSubmitDraw 时可勾选，多选后右下角「批量领料(n)」进入领料页；点状态
+//     「可领」直达领料页(只带这一行)；点行看任务详情(物料表 + 撤回未发领料 /
+//     结束领料，动作由服务端 allowedActions 决定)。
+//   「待处理」分类红数 = 申请待下单行数 + 可领行数(两类不同对象相加，与模块入口
+//   角标同数)；黄数 = 已提交领料、等仓库发的行数(领料中)。
+// · 进行中 = 领完料(或本就无需领料)的委外订货单——V834 投影里领料未结束的整单
+//   是 DRAW_OPEN 档，不在进行中三档里，只以「待处理」领料行的形态可见；状态列按
+//   各明细聚合(服务端 display_stage)；「可领料」点击跳到「待处理」并按订货单定位，
+//   短交三态点击去判定页。
 // · 历史记录 = 终态，按时间门控查看。
 //
 // 统一「分类分段」范式：UtenFilterToolbar 阶段行 + 异常小类行，默认都不选，
-// 内容区显示引导占位不发请求；进页面只拉一次 size=1 概览取阶段/异常计数徽章。
-// 深链 ?segment=draw(&orderItemId= / &orderId=) 直落「领料」分段并定位；
-// ?segment=pending(&keyword=申请号) 直落「待处理」并按申请号搜索(可下单通知)。
+// 内容区显示引导占位不发请求；进页面只拉一次 size=1 概览取阶段/异常计数徽章，
+// 另拉一次领料计数(红/黄)。
+// 深链 ?segment=draw(&orderItemId= / &orderId=) 直落「待处理」并按通知里的
+// 委外任务 / 订货单定位；?segment=pending(&keyword=申请号) 直落「待处理」并按
+// 申请号搜索(可下单通知)。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -35,7 +41,6 @@ import '../widgets/subcontract_draft_task_category.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -44,7 +49,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
-import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -103,7 +107,8 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
 
   final OperationsWorkbenchGateway? repository;
 
-  /// 「领料」分段数据源；测试注入，默认取 [subcontractDrawRepositoryProvider]。
+  /// 「待处理」拍平表的领料行数据源；测试注入，默认取
+  /// [subcontractDrawRepositoryProvider]。
   final SubcontractDrawGateway? drawRepository;
 
   /// 缺 BOM 申请行「通知研发完善」；测试注入，默认取
@@ -113,8 +118,8 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
   /// 申请行「齐套情况」弹窗(ADR-156)；测试注入，默认取 [subcontractKitRepositoryProvider]。
   final SubcontractKitGateway? kitGateway;
 
-  /// 深链分段：'draw' = 直落「领料」分段，'pending' = 直落「待处理」分段
-  /// (其余值忽略，保持默认不选)。
+  /// 深链分段：'draw' = 直落「待处理」并按领料任务定位，'pending' = 直落
+  /// 「待处理」(其余值忽略，保持默认不选)。
   final String? initialSegment;
 
   /// 深链定位：只看这一条委外任务(可领料通知)。
@@ -143,10 +148,9 @@ class _SubcontractDecompositionPageState
   bool _sortAscending = true;
   final Map<String, String?> _columnFilters = {};
 
-  /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
+  /// 当前选中阶段分类；null = 未选择引导态（内容不加载）。
   _DecompositionSeg? _seg;
   static const _draftStage = '__DRAFTS__';
-  static const _drawStage = '__DRAW__';
   static const _waitingOrderStage = 'WAITING_ORDER';
   static const _inProgressStage = 'IN_PROGRESS';
   static const _financeRejectedStatus = 'FINANCE_REJECTED';
@@ -159,22 +163,21 @@ class _SubcontractDecompositionPageState
 
   final Set<String> _selectedIds = <String>{};
 
-  // —— 「领料」分段(ADR-143 §4.1)：独立数据源、独立选择集 ——
+  // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表)：独立数据源、独立选择集 ——
   SubcontractDrawTaskList? _drawData;
   bool _drawLoading = false;
   String? _drawError;
-  int _drawPage = 1;
   int _drawRequestId = 0;
   int _drawCountRequestId = 0;
 
-  /// 「领料」分段红数(可领行数)；null = 未知(加载中/失败，不伪装成 0)。
+  /// 领料红数(可领行数)；null = 未知(加载中/失败，不伪装成 0)。
   int? _drawCount;
 
-  /// 服务端拒绝读取委外订货(无订货查看权限)时隐藏「领料」分段。
+  /// 领料黄数(已提交、等仓库发的行数)；null = 未知。服务端拒绝读取委外订货
+  /// (无订货查看权限)时红黄一起隐藏，拍平表只剩申请行。
+  int? _submittedCount;
   bool _drawVisible = true;
 
-  /// 状态列表头筛选(DRAWABLE / DRAW_SUBMITTED / WAITING_PLANNING / WAITING_MATERIAL)。
-  String? _drawStatus;
   String? _drawOrderId;
   String? _drawOrderLabel;
   String? _drawOrderItemId;
@@ -184,11 +187,11 @@ class _SubcontractDecompositionPageState
   /// 正在「通知研发完善」的申请行(防连点)；null = 没有在途请求。
   String? _forwardingBomTaskId;
 
-  bool get _isDrawSeg => _seg?.code == _drawStage;
+  /// 当前是否「待处理」视图——领料行、批量领料只在这一视图提供。
+  bool get _pendingSeg => _seg?.code == _waitingOrderStage;
 
-  /// 当前是否「待处理」段——勾选与「生成委外订货单」只属于这一段(2026-10-08
-  /// 口径，与采购任务中心同款收口)：进行中/历史段的行都已下单，提供勾选只会
-  /// 制造永远点不动的批量按钮。
+  /// 勾选与「生成委外订货单」只属于「待处理」段(2026-10-08 口径，与采购任务中心
+  /// 同款收口)：进行中/历史段的行都已下单，提供勾选只会制造永远点不动的批量按钮。
   bool get _orderingSeg => _seg?.code == _waitingOrderStage;
 
   /// 状态列颜色（ADR-169 逐页档位锚定，刻意拉开不用相近色）：
@@ -235,7 +238,7 @@ class _SubcontractDecompositionPageState
   }
 
   /// 回厂短交待判定 / 分批等待中 / 容差内待结案：点状态直达判定页（只看这张单）；
-  /// 可领料：点状态跳到「领料」分段并按这张订货单筛选；
+  /// 可领料：点状态跳到「待处理」并按这张订货单定位领料行；
   /// 缺 BOM：点状态「通知研发完善」(研发任务被取消而 BOM 仍缺时重新提醒)；
   /// 待处理的委外申请行(含等物料齐套的锁行)：点状态看「齐套情况」(ADR-156)。
   _StatusAction? _statusActionOf(OperationsWorkbenchTask task) {
@@ -347,10 +350,11 @@ class _SubcontractDecompositionPageState
     }
   }
 
-  /// 委外工作台列表(待处理 / 进行中 / 历史)是否要拉正文；草稿与领料分段各有数据源。
+  /// 委外工作台列表(「待处理」申请行 / 进行中 / 历史)是否要拉正文；草稿分段与
+  /// 领料行各有数据源(领料行钉在「待处理」表顶部，不占工作台分页)。
   bool get _shouldLoad {
     final seg = _seg;
-    if (seg == null || seg.code == _drawStage) return false;
+    if (seg == null) return false;
     if (seg.history && _historyTime.isNone) return false;
     return true;
   }
@@ -358,19 +362,18 @@ class _SubcontractDecompositionPageState
   @override
   void initState() {
     super.initState();
-    _applyRoute(
+    final deepLinked = _applyRoute(
       widget.initialSegment,
       widget.initialOrderItemId,
       widget.initialOrderId,
       widget.initialKeyword,
     );
-    // 默认不选阶段：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章，
-    // 另拉一次「领料」红数。深链直落「领料」时同时拉领料列表；直落「待处理」时
-    // 这一次就按申请号拉列表。
+    // 默认不选分类：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章，
+    // 另拉一次领料计数(红/黄)。深链直落「待处理」时同时拉申请列表与领料行。
     Future<void>.microtask(() {
       _load(page: 1);
       _loadDrawCount();
-      if (_isDrawSeg) _loadDraw(page: 1);
+      if (deepLinked) _loadDraw();
     });
   }
 
@@ -383,22 +386,23 @@ class _SubcontractDecompositionPageState
         oldWidget.initialKeyword == widget.initialKeyword) {
       return;
     }
-    final pending = _applyRoute(
+    final deepLinked = _applyRoute(
       widget.initialSegment,
       widget.initialOrderItemId,
       widget.initialOrderId,
       widget.initialKeyword,
     );
-    if (_isDrawSeg) {
-      Future<void>.microtask(() => _loadDraw(page: 1));
-    } else if (pending) {
-      Future<void>.microtask(() => _load(page: 1));
+    if (deepLinked) {
+      Future<void>.microtask(() {
+        _load(page: 1);
+        _loadDraw();
+      });
     }
   }
 
-  /// 深链 ?segment=draw 直落「领料」并按通知里的委外任务 / 订货单定位；
-  /// ?segment=pending 直落「待处理」，带 keyword(委外申请号)时预填搜索(ADR-156
-  /// 可下单通知)。返回 true = 落到了「待处理」(调用方负责重拉列表)。
+  /// 深链 ?segment=draw 直落「待处理」并按通知里的委外任务 / 订货单定位；
+  /// ?segment=pending 直落「待处理」，带 keyword(委外申请号)时预填搜索
+  /// (ADR-156 可下单通知)。返回 true = 需要重拉申请列表(调用方负责)。
   bool _applyRoute(
     String? segment,
     String? orderItemId,
@@ -406,26 +410,24 @@ class _SubcontractDecompositionPageState
     String? keyword,
   ) {
     final target = segment?.trim().toLowerCase();
-    if (target == 'pending') {
-      _seg = const _DecompositionSeg.stage(_waitingOrderStage);
-      _exception = null;
-      _page = 1;
-      _columnFilters.clear();
-      _selectedIds.clear();
-      final normalized = keyword?.trim() ?? '';
-      if (normalized.isNotEmpty) _keyword = normalized;
-      return true;
-    }
-    if (target != 'draw') return false;
-    _seg = const _DecompositionSeg.stage(_drawStage);
-    _drawOrderItemId = orderItemId?.trim().isNotEmpty == true
+    if (target != 'pending' && target != 'draw') return false;
+    _seg = const _DecompositionSeg.stage(_waitingOrderStage);
+    _exception = null;
+    _page = 1;
+    _columnFilters.clear();
+    _selectedIds.clear();
+    final normalized = keyword?.trim() ?? '';
+    if (normalized.isNotEmpty) _keyword = normalized;
+    // 两种深链都从确定的状态看起：定位筛选清空，不带上一段会话的残留。
+    _drawOrderItemId =
+        target == 'draw' && orderItemId?.trim().isNotEmpty == true
         ? orderItemId!.trim()
         : null;
-    _drawOrderId = orderId?.trim().isNotEmpty == true ? orderId!.trim() : null;
+    _drawOrderId = target == 'draw' && orderId?.trim().isNotEmpty == true
+        ? orderId!.trim()
+        : null;
     _drawOrderLabel = null;
-    _drawStatus = null;
-    _drawPage = 1;
-    return false;
+    return true;
   }
 
   Future<void> _load({int? page, int size = 50}) async {
@@ -443,7 +445,7 @@ class _SubcontractDecompositionPageState
       final next = await _repository.load(
         department: OperationsWorkbenchDepartment.subcontract,
         page: page ?? _page,
-        // 未选阶段 / 在「领料」分段时只拉 1 条：仅为取 summary 阶段/异常计数。
+        // 未选分类时只拉 1 条：仅为取 summary 阶段/异常计数。
         size: listing ? size : 1,
         keyword: _keyword,
         status: listing && seg != null && !seg.history ? seg.code : null,
@@ -474,15 +476,17 @@ class _SubcontractDecompositionPageState
     }
   }
 
-  /// 「领料」分段红数。无订货查看权限时服务端拒绝 → 隐藏该分段。
+  /// 领料计数(红=可领、黄=已提交待仓库发)。无订货查看权限时服务端拒绝 →
+  /// 红黄一起隐藏，拍平表只剩申请行。
   Future<void> _loadDrawCount() async {
     if (!mounted) return;
     final requestId = ++_drawCountRequestId;
     try {
-      final count = await _drawRepository.drawableCount();
+      final counts = await _drawRepository.drawCounts();
       if (!mounted || requestId != _drawCountRequestId) return;
       setState(() {
-        _drawCount = count;
+        _drawCount = counts.drawable;
+        _submittedCount = counts.submitted;
         _drawVisible = true;
       });
     } on ApiException catch (error) {
@@ -490,18 +494,23 @@ class _SubcontractDecompositionPageState
       final forbidden = error.httpStatus == 403 || error.code == 'FORBIDDEN';
       setState(() {
         _drawCount = null;
+        _submittedCount = null;
         if (forbidden) {
           _drawVisible = false;
-          if (_isDrawSeg) _seg = null;
+          _selectedDrawIds.clear();
         }
       });
     } catch (_) {
       if (!mounted || requestId != _drawCountRequestId) return;
-      setState(() => _drawCount = null);
+      setState(() {
+        _drawCount = null;
+        _submittedCount = null;
+      });
     }
   }
 
-  Future<void> _loadDraw({int? page}) async {
+  /// 领料行(「待处理」拍平表顶部)：一次拉全(服务端上限 200)，不走表格分页。
+  Future<void> _loadDraw() async {
     if (!mounted) return;
     final requestId = ++_drawRequestId;
     setState(() {
@@ -510,9 +519,8 @@ class _SubcontractDecompositionPageState
     });
     try {
       final next = await _drawRepository.list(
-        page: page ?? _drawPage,
+        size: SubcontractDrawRepository.listLimit,
         keyword: _keyword,
-        status: _drawStatus,
         orderId: _drawOrderId,
         orderItemIds: _drawOrderItemId == null ? const [] : [_drawOrderItemId!],
       );
@@ -525,15 +533,27 @@ class _SubcontractDecompositionPageState
           : const <String>{};
       setState(() {
         _drawData = next;
-        _drawPage = next.page.page;
         _selectedDrawIds.removeWhere((id) => !selectable.contains(id));
         _drawLoading = false;
       });
     } catch (error) {
       if (!mounted || requestId != _drawRequestId) return;
+      // 无订货查看权限(403)与计数口径一致：领料行整体静默隐藏，不向用户报错——
+      // 拍平表照常显示申请行。
+      final forbidden =
+          error is ApiException &&
+          (error.httpStatus == 403 || error.code == 'FORBIDDEN');
       setState(() {
         _drawLoading = false;
-        _drawError = error is ApiException ? error.message : '委外领料任务加载失败，请稍后重试';
+        if (forbidden) {
+          _drawVisible = false;
+          _selectedDrawIds.clear();
+          _drawError = null;
+        } else {
+          _drawError = error is ApiException
+              ? error.message
+              : '委外领料任务加载失败，请稍后重试';
+        }
       });
     }
   }
@@ -546,7 +566,7 @@ class _SubcontractDecompositionPageState
   void _refreshAll() {
     _load(page: 1);
     _loadDrawCount();
-    if (_isDrawSeg) _loadDraw(page: 1);
+    if (_pendingSeg) _loadDraw();
   }
 
   void _selectSeg(_DecompositionSeg seg) {
@@ -558,18 +578,11 @@ class _SubcontractDecompositionPageState
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       _columnFilters.clear();
-      if (seg.code == _drawStage) {
-        // 手动点「领料」= 看全部任务；通知 / 进行中跳转的定位筛选随之清除。
-        _drawOrderId = null;
-        _drawOrderItemId = null;
-        _drawOrderLabel = null;
-        _drawStatus = null;
-        _drawPage = 1;
-      }
     });
-    if (seg.code == _drawStage) {
-      _loadDraw(page: 1);
-      _loadDrawCount();
+    // 「待处理」= 申请行 + 领料行两个数据源一起拉。
+    if (seg.code == _waitingOrderStage) {
+      _load(page: 1);
+      _loadDraw();
       return;
     }
     if (!seg.history || !_historyTime.isNone) {
@@ -601,19 +614,17 @@ class _SubcontractDecompositionPageState
     final normalized = value.trim();
     if (normalized == _keyword) return;
     setState(() => _keyword = normalized);
-    if (_isDrawSeg) {
-      _loadDraw(page: 1);
-    } else {
-      _load(page: 1);
-    }
+    _load(page: 1);
+    // 领料行有自己的关键字匹配面(订货单号/委外商/委外件)，在「待处理」里一起搜。
+    if (_pendingSeg) _loadDraw();
   }
 
-  /// 进行中「可领料」：跳到「领料」分段，只看这张订货单的委外任务。
+  /// 进行中「可领料」：跳到「待处理」，领料行只看这张订货单的委外任务。
   void _openDrawSegmentForOrder(OperationsWorkbenchTask task) {
     final orderId = task.actionDocument?.id;
     if (orderId == null || orderId.isEmpty) return;
     setState(() {
-      _seg = const _DecompositionSeg.stage(_drawStage);
+      _seg = const _DecompositionSeg.stage(_waitingOrderStage);
       _exception = null;
       _selectedIds.clear();
       _columnFilters.clear();
@@ -621,10 +632,9 @@ class _SubcontractDecompositionPageState
       _drawOrderItemId = null;
       final number = task.actionDocument?.number.trim() ?? '';
       _drawOrderLabel = number.isEmpty ? null : number;
-      _drawStatus = null;
-      _drawPage = 1;
     });
-    _loadDraw(page: 1);
+    _load(page: 1);
+    _loadDraw();
     _loadDrawCount();
   }
 
@@ -633,9 +643,8 @@ class _SubcontractDecompositionPageState
       _drawOrderId = null;
       _drawOrderItemId = null;
       _drawOrderLabel = null;
-      _drawPage = 1;
     });
-    _loadDraw(page: 1);
+    _loadDraw();
   }
 
   /// 进入领料页(一次最多 50 个委外任务)；提交成功返回后清掉已领的勾选并重拉。
@@ -755,13 +764,6 @@ class _SubcontractDecompositionPageState
     goFrom(context, _orderRoute());
   }
 
-  void _toggle(OperationsWorkbenchTask task) {
-    if (!_canOrderTask(task)) return;
-    setState(() {
-      if (!_selectedIds.add(task.id)) _selectedIds.remove(task.id);
-    });
-  }
-
   /// 服务端 canCreateOrder 优先；未下发时按申请事实判断。缺 BOM、等物料齐套
   /// (ADR-156 锁住)的申请行一律不可下单。
   bool _canOrderTask(OperationsWorkbenchTask task) =>
@@ -835,7 +837,7 @@ class _SubcontractDecompositionPageState
     );
   }
 
-  /// 「领料」分段的批量领料：按表格当前顺序带入已勾选的委外任务。
+  /// 「待处理·领料」子视图的批量领料：按表格当前顺序带入已勾选的委外任务。
   Widget _drawBatchButton() {
     final rows = _drawData?.page.items ?? const <SubcontractDrawTaskRow>[];
     final ids = [
@@ -864,7 +866,7 @@ class _SubcontractDecompositionPageState
     ref.onPageResume(RouteName.operationsSubcontractWorkbench, () {
       _load();
       _loadDrawCount();
-      if (_isDrawSeg) _loadDraw();
+      if (_pendingSeg) _loadDraw();
     });
     return Scaffold(
       appBar: UtenAppBar(
@@ -875,7 +877,7 @@ class _SubcontractDecompositionPageState
         actions: [
           IconButton(
             tooltip: '刷新委外任务',
-            onPressed: (_isDrawSeg ? _drawLoading : _loading)
+            onPressed: (_pendingSeg && (_drawLoading || _loading)) || _loading
                 ? null
                 : _refreshAll,
             icon: const Icon(Icons.refresh_rounded),
@@ -895,38 +897,13 @@ class _SubcontractDecompositionPageState
     );
   }
 
-  /// Cards own one floating group; desktop and fullscreen tables own theirs.
-  /// Keep ownership inside the same content-width branch that selects cards.
-  /// 2026-10-08 口径：悬浮组只随「待处理」段出现（其余段的行不可下单）。
-  Widget _withCardActions(Widget child) {
-    if (!_orderingSeg || !_hasDecomposePermissions) {
-      return child;
-    }
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        child,
-        PositionedDirectional(
-          start: UtenSpacing.s16,
-          end: UtenSpacing.s16,
-          bottom: UtenSpacing.s16,
-          child: Align(
-            alignment: AlignmentDirectional.bottomEnd,
-            child: UtenFloatingActionGroup(
-              children: [
-                UtenSelectionSummaryPill(
-                  count: _selectedIds.length,
-                  onClear: _selectedIds.isEmpty
-                      ? null
-                      : () => setState(_selectedIds.clear),
-                ),
-                _createOrderButton(),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+  /// 「待处理」红数 = 申请待下单行数 + 可领行数(两类都等本部门动手，与模块入口
+  /// 角标同数)；两者都未知才算未知(加载中)。
+  int? _pendingCount(Map<String, int> statusCounts) {
+    final applications = statusCounts[_waitingOrderStage];
+    final drawable = _drawVisible ? _drawCount : null;
+    if (applications == null && drawable == null) return null;
+    return (applications ?? 0) + (drawable ?? 0);
   }
 
   Widget _buildStageToolbar(Map<String, int> statusCounts) {
@@ -959,22 +936,16 @@ class _SubcontractDecompositionPageState
               ),
           countForm: UtenSegmentCountForm.actionable,
         ),
-        // 「待处理」只挂一枚红 = 已下达、待生成订货单的申请行。
+        // 「待处理」两枚(准则 §四之七 第 1 条，ADR-171 修订二拍平)：红 = 申请待下单
+        // 行数 + 可领行数(两类不同对象相加不算双计，都在这张表里)；黄 = 已提交领料、
+        // 等仓库发的行数(领料中，球在仓库手上但活还在跑)。
         UtenFilterSegment(
           value: const _DecompositionSeg.stage(_waitingOrderStage),
           label: '待处理',
-          count: statusCounts[_waitingOrderStage],
+          count: _pendingCount(statusCounts),
           countForm: UtenSegmentCountForm.actionable,
+          inProgressCount: _drawVisible ? _submittedCount : null,
         ),
-        // 「领料」只挂红 = 可领行数(轮到委外动手)；等待物料 / 待仓库发的单已计入
-        // 「进行中」黄数，这里不挂黄，避免同一张单两处数两遍。
-        if (_drawVisible)
-          UtenFilterSegment(
-            value: const _DecompositionSeg.stage(_drawStage),
-            label: '领料',
-            count: _drawCount,
-            countForm: UtenSegmentCountForm.actionable,
-          ),
         // 「进行中」大类挂两枚(准则 §四之七 第 1 条)：黄 = 本类在跑的全量(与列表行数
         // 相等)，红 = 其中等委外动手的财务已退回单。两枚刻意重叠(退回件本来就在跑)，
         // 跨色不算双计，别改成相减。回厂短交待判定是案件数、不是任务行数，量纲不同，
@@ -995,8 +966,8 @@ class _SubcontractDecompositionPageState
       onSelectionChanged: _selectSeg,
       searchHint: seg?.code == _draftStage
           ? '搜索草稿类别、单据号、往来单位或备注'
-          : seg?.code == _drawStage
-          ? '搜索委外订货单号、委外商、委外件编号或名称'
+          : _pendingSeg
+          ? '搜索计划号、申请号、订货单号、委外商或货品'
           : '搜索计划号、申请号、货品编码或名称',
       initialSearchValue: _keyword,
       onSearchInputChanged: (_) {
@@ -1016,7 +987,6 @@ class _SubcontractDecompositionPageState
         ),
       );
     }
-    if (_isDrawSeg) return _buildDrawBody();
     if (_data == null && _loading) {
       return _withInitialStages(
         Center(
@@ -1044,142 +1014,89 @@ class _SubcontractDecompositionPageState
       );
     }
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final desktop = constraints.maxWidth >= 840;
-        final seg = _seg;
-        final statusCounts = data.summary.statusCounts;
-        final exceptionCounts = data.summary.exceptionCounts;
-        final exceptionOptions = data.exceptionOptions;
-        final header = Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 阶段行：真实阶段（无「全部阶段」；终态归历史记录）+ 末尾历史记录。
-            _buildStageToolbar(statusCounts),
-            // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
-            // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
-            if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenFilterToolbar<String>(
-                segmentsKey: const Key('subcontract-decomposition-exceptions'),
-                segments: [
-                  for (final option in exceptionOptions)
-                    UtenFilterSegment(
-                      value: option.value,
-                      label: option.label,
-                      count: exceptionCounts[option.value],
-                      countForm: UtenSegmentCountForm.actionable,
-                    ),
-                ],
-                selected: _exception == null ? const {} : {_exception!},
-                onSelectionChanged: _selectException,
+    // 大小屏同一张表（2026-10-09 用户口径：窄屏横向滚动，窄屏卡片列表退役，
+    // 不再单独维护两套渲染）。
+    final seg = _seg;
+    final statusCounts = data.summary.statusCounts;
+    final exceptionCounts = data.summary.exceptionCounts;
+    final exceptionOptions = data.exceptionOptions;
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 分类行：真实阶段（无「全部阶段」；终态归历史记录）+ 末尾历史记录。
+        _buildStageToolbar(statusCounts),
+        // 「待处理」的领料定位芯片(可领料通知 / 进行中「去领料」深链)；
+        // 领料计数被 403 隐藏时不出现。
+        if (seg?.code == _waitingOrderStage && _drawVisible && _drawScoped) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: InputChip(
+              key: const Key('subcontract-draw-scope'),
+              avatar: const Icon(Icons.filter_alt_outlined, size: 18),
+              label: Text(
+                _drawOrderItemId != null
+                    ? '领料行只看通知里的这条委外任务'
+                    : _drawOrderLabel != null
+                    ? '领料行只看订货单 $_drawOrderLabel 的委外任务'
+                    : '领料行只看所选订货单的委外任务',
               ),
-            ],
-            if (seg?.history == true) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenHistoryTimeFilter(
-                key: const Key('subcontract-decomposition-history-time'),
-                value: _historyTime,
-                onChanged: _onHistoryTime,
-              ),
-            ],
-          ],
-        );
-
-        if (desktop) {
-          // 2026-09-22 全站表格滚动口径：上滑先收阶段/筛选行（表头随之顶到
-          // 视口顶），继续滚动才滚表格内容；竖向滚动条由联动门控（外滚阶段隐藏）。
-          return UtenCollapsingHeaderScrollView(
-            collapsingHeader: Padding(
-              padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-              child: header,
+              deleteButtonTooltipMessage: '看全部委外任务',
+              onDeleted: _clearDrawScope,
             ),
-            body: Builder(
-              builder: (context) {
-                if (seg == null) {
-                  return const UtenFilterPlaceholder(
-                    message: '在上方选择阶段后开始办理',
-                    description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
-                  );
-                }
-                if (seg.history && _historyTime.isNone) {
-                  return const UtenHistoryTimePlaceholder();
-                }
-                return _buildTable(data);
-              },
-            ),
-          );
-        }
-        // 窄屏卡的勾选/锁位与悬浮组同一门控：只有「待处理」段且账号可分解时
-        // 才区分「可勾选 / 锁住」两种行，其余段不占勾选位。
-        final cardSelectable =
-            _orderingSeg &&
-            _hasDecomposePermissions &&
-            data.capabilities.canCreateSubcontractOrder;
-        return _withCardActions(
-          ListView(
-            key: const Key('subcontract-decomposition-compact-list'),
-            padding: const EdgeInsets.only(
-              bottom: UtenFloatingActionGroup.scrollClearance,
-            ),
-            children: [
-              header,
-              const SizedBox(height: UtenSpacing.s12),
-              if (seg == null)
-                const SizedBox(
-                  height: 280,
-                  child: UtenFilterPlaceholder(
-                    message: '在上方选择阶段后开始办理',
-                    description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
-                  ),
-                )
-              else if (seg.history && _historyTime.isNone)
-                const SizedBox(height: 280, child: UtenHistoryTimePlaceholder())
-              else if (_displayItems.isEmpty)
-                SizedBox(
-                  height: 280,
-                  child: UtenEmpty(
-                    icon: Icons.task_alt_rounded,
-                    message: seg.history ? '该时间段内暂无委外任务' : '当前阶段没有委外任务',
-                    description: seg.history
-                        ? '可调整时间段后重试。'
-                        : '可切换其它阶段或调整异常筛选后重试。',
-                  ),
-                )
-              else
-                for (final task in _displayItems) ...[
-                  _SubcontractDemandCard(
-                    task: task,
-                    stageLabel: _progressLabelOf(task),
-                    stageType: _progressType(task.progressStatus),
-                    urgent: _shortDelivery(task),
-                    statusAction: _statusActionOf(task),
-                    selected: _selectedIds.contains(task.id),
-                    selectable: cardSelectable && _canOrderTask(task),
-                    lockReason: cardSelectable && !_canOrderTask(task)
-                        ? subcontractTaskLockReason(task)
-                        : null,
-                    onSelected: () => _toggle(task),
-                    onTap: () => _openTask(task),
-                    onOpenSource: task.actionDocument?.canView == true
-                        ? () => _openSource(task)
-                        : null,
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                ],
-              _Pager(
-                page: data.page,
-                totalPages: data.totalPages,
-                loading: _loading,
-                onPageChanged: (page) {
-                  setState(() => _page = page);
-                  _load(page: page);
-                },
-              ),
-            ],
           ),
-        );
-      },
+        ],
+        // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
+        // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
+        if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          UtenFilterToolbar<String>(
+            segmentsKey: const Key('subcontract-decomposition-exceptions'),
+            segments: [
+              for (final option in exceptionOptions)
+                UtenFilterSegment(
+                  value: option.value,
+                  label: option.label,
+                  count: exceptionCounts[option.value],
+                  countForm: UtenSegmentCountForm.actionable,
+                ),
+            ],
+            selected: _exception == null ? const {} : {_exception!},
+            onSelectionChanged: _selectException,
+          ),
+        ],
+        if (seg?.history == true) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          UtenHistoryTimeFilter(
+            key: const Key('subcontract-decomposition-history-time'),
+            value: _historyTime,
+            onChanged: _onHistoryTime,
+          ),
+        ],
+      ],
+    );
+
+    // 2026-09-22 全站表格滚动口径：上滑先收阶段/筛选行（表头随之顶到
+    // 视口顶），继续滚动才滚表格内容；竖向滚动条由联动门控（外滚阶段隐藏）。
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: Padding(
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+        child: header,
+      ),
+      body: Builder(
+        builder: (context) {
+          if (seg == null) {
+            return const UtenFilterPlaceholder(
+              message: '在上方选择阶段后开始办理',
+              description: '阶段默认不选中；终态任务请用末尾「历史记录」按时间查阅',
+            );
+          }
+          if (seg.history && _historyTime.isNone) {
+            return const UtenHistoryTimePlaceholder();
+          }
+          return _buildTable(data);
+        },
+      ),
     );
   }
 
@@ -1192,6 +1109,9 @@ class _SubcontractDecompositionPageState
   );
 
   Widget _buildTable(OperationsWorkbenchData data) {
+    // 「待处理」= 拍平的一张表(ADR-171 修订二)：领料行钉顶(自有数据源一次拉全) +
+    // 委外申请行(工作台投影服务端分页)，不再分「委外申请 / 领料」子分类。
+    if (_pendingSeg) return _buildPendingTable(data);
     // 勾选列只属于「待处理」段(2026-10-08 口径)：进行中/历史的行都已下单，
     // 摆一列点不动的勾选框只会让人以为按钮坏了。
     final canOrder =
@@ -1378,9 +1298,14 @@ class _SubcontractDecompositionPageState
           ..addAll(next);
       }),
       // 批量按钮随段门控；服务端能力缺失时保留灰按钮兜底解释(能力面问题要能被发现)。
+      // 悬浮组只在 selectable 时挂载：行不可选(能力缺失)时灰按钮改驻表头上方
+      // 工具条，大小屏同一张表后两态都有入口（2026-10-09）。
       batchActionsBuilder: !_orderingSeg || !_hasDecomposePermissions
           ? null
           : (_, _) => [_createOrderButton()],
+      toolbarActions: !_orderingSeg || !_hasDecomposePermissions || canOrder
+          ? null
+          : [_createOrderButton()],
       isLoading: _loading,
       error: _error,
       onRetry: () => _load(),
@@ -1395,191 +1320,340 @@ class _SubcontractDecompositionPageState
     );
   }
 
-  // —— 「领料」分段 ——
+  // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表) ——
 
   bool get _drawScoped => _drawOrderId != null || _drawOrderItemId != null;
 
-  Widget _buildDrawBody() {
-    final header = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
-        if (_drawScoped) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: InputChip(
-              key: const Key('subcontract-draw-scope'),
-              avatar: const Icon(Icons.filter_alt_outlined, size: 18),
-              label: Text(
-                _drawOrderItemId != null
-                    ? '只看通知里的这条委外任务'
-                    : _drawOrderLabel != null
-                    ? '只看订货单 $_drawOrderLabel 的委外任务'
-                    : '只看所选订货单的委外任务',
-              ),
-              deleteButtonTooltipMessage: '看全部委外任务',
-              onDeleted: _clearDrawScope,
+  /// 领料行是否允许勾选(批量领料)：领料行可见且账号有提交权、服务端标了可领。
+  bool get _canSubmitDraw =>
+      _drawVisible && (_drawData?.canSubmitDraw ?? false);
+
+  bool _actionableDraw(SubcontractDrawTaskRow row) =>
+      _canSubmitDraw && row.canDraw && row.status.isDrawable;
+
+  /// 「待处理」拍平表：领料行(钉顶，一次拉全) + 委外申请行(工作台投影服务端分页)。
+  Widget _buildPendingTable(OperationsWorkbenchData data) {
+    final canOrder =
+        _hasDecomposePermissions && data.capabilities.canCreateSubcontractOrder;
+    final selectable = canOrder || _canSubmitDraw;
+    final drawRows = [
+      if (_drawVisible)
+        for (final row
+            in _drawData?.page.items ?? const <SubcontractDrawTaskRow>[])
+          SubcontractPendingDrawRow(row),
+    ];
+    final applicationRows = [
+      for (final task in data.items) SubcontractApplicationRow(task),
+    ];
+    String rowId(SubcontractPendingRow row) => switch (row) {
+      SubcontractApplicationRow(:final task) =>
+        _canOrderTask(task) ? task.id : '',
+      SubcontractPendingDrawRow(:final row) =>
+        _actionableDraw(row) ? 'draw-${row.orderItemId}' : '',
+    };
+    Widget lockLeading(BuildContext context, SubcontractPendingRow row) =>
+        Tooltip(
+          message: switch (row) {
+            SubcontractApplicationRow(:final task) => subcontractTaskLockReason(
+              task,
             ),
+            SubcontractPendingDrawRow(:final row) =>
+              subcontractDrawStatusTooltip(row) ?? '当前状态不能领料',
+          },
+          child: Icon(
+            Icons.lock_outline_rounded,
+            size: 20,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-        ],
-      ],
-    );
-    return UtenCollapsingHeaderScrollView(
-      collapsingHeader: Padding(
-        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-        child: header,
-      ),
-      body: _buildDrawTable(),
-    );
-  }
-
-  static const _drawStatusFilters = <({String value, String label})>[
-    (value: 'DRAWABLE', label: '可领'),
-    (value: 'DRAW_SUBMITTED', label: '已提交领料·待仓库发料'),
-    (value: 'WAITING_PLANNING', label: '等计划安排'),
-    (value: 'WAITING_MATERIAL', label: '等待物料'),
-  ];
-
-  Widget _buildDrawTable() {
-    final data = _drawData;
-    final canSubmit = data?.canSubmitDraw ?? false;
-    final counts = data?.statusCounts ?? const <String, int>{};
-    bool actionable(SubcontractDrawTaskRow row) =>
-        canSubmit && row.canDraw && row.status.isDrawable;
-    return MasterDataTableView<SubcontractDrawTaskRow>(
+        );
+    return MasterDataTableView<SubcontractPendingRow>(
       tableKey:
-          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildDrawTable.1',
-      key: const Key('subcontract-draw-table'),
+          'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildPendingTable.1',
+      key: const Key('subcontract-decomposition-pending-table'),
+      // primary:true → 表体参与「筛选行折叠 → 表格内滚」联动。
       primary: true,
-      rowKeyOf: (row) => row.orderItemId,
+      // 领料行钉在已加载页之前(与草稿表钉本地草稿同一范式)：翻页常驻、即改即换。
+      unpagedItems: drawRows,
       columns: [
         MasterColumnDef(
           key: 'status',
           label: '状态',
           width: 72,
-          value: (row) =>
-              subcontractDrawStatusLabel(row, actionable: actionable(row)),
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) => _progressLabelOf(task),
+            SubcontractPendingDrawRow(:final row) => subcontractDrawStatusLabel(
+              row,
+              actionable: _actionableDraw(row),
+            ),
+          },
           cellBuilderHandlesSemantics: true,
-          cellColor: (context, row) =>
-              subcontractDrawCellColor(subcontractDrawToneOf(row.status)),
-          cellBuilder: (context, row) => _DrawStatusCell(
-            row: row,
-            actionable: actionable(row),
-            onDraw: _drawNavigating
-                ? null
-                : () => _openDrawRequest([row.orderItemId]),
-          ),
+          // 状态分类色铺整格(2026-09-27 用户口径)：红=等本部门动手(可领/待下单/
+          // 锁行)，黄=已提交领料等仓库发(在跑不用动手)，其余沿用各域既有配色。
+          cellColor: (context, row) => switch (row) {
+            SubcontractApplicationRow(:final task) => utenStatusBadgeCellColor(
+              _progressType(task.progressStatus),
+            ),
+            SubcontractPendingDrawRow(:final row) => subcontractDrawCellColor(
+              subcontractDrawToneOf(row.status),
+            ),
+          },
+          cellBuilder: (context, row) => switch (row) {
+            SubcontractApplicationRow(:final task) => _ProgressStatusCell(
+              label: _progressLabelOf(task),
+              urgent: _shortDelivery(task),
+              action: _statusActionOf(task),
+            ),
+            SubcontractPendingDrawRow(:final row) => _DrawStatusCell(
+              row: row,
+              actionable: _actionableDraw(row),
+              onDraw: _drawNavigating
+                  ? null
+                  : () => _openDrawRequest([row.orderItemId]),
+            ),
+          },
         ),
         MasterColumnDef(
-          key: 'orderBillNo',
-          label: '委外订货单号',
-          width: 150,
-          value: (row) => _label(row.orderBillNo),
+          key: 'planNo',
+          sortable: true,
+          label: '来源计划',
+          width: 140,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) => task.planNo,
+            SubcontractPendingDrawRow() => '—',
+          },
+        ),
+        MasterColumnDef(
+          // 申请行=委外申请号；领料行=委外订货单号(行=当前执行单据)。
+          key: 'docNo',
+          sortable: true,
+          label: '单据号',
+          width: 160,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.actionDocumentRestricted
+                  ? '—'
+                  : (task.actionDocument?.number ?? '—'),
+            SubcontractPendingDrawRow(:final row) => _label(row.orderBillNo),
+          },
         ),
         MasterColumnDef(
           key: 'supplierName',
           label: '委外商',
           width: 150,
-          value: (row) => _label(row.supplierName),
+          value: (row) => switch (row) {
+            SubcontractApplicationRow() => '—',
+            SubcontractPendingDrawRow(:final row) => _label(row.supplierName),
+          },
         ),
+        // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
         MasterColumnDef(
-          key: 'goodsName',
+          key: 'goods',
+          sortable: true,
           label: '委外件名称',
-          width: 180,
-          value: (row) => _label(row.goodsName),
+          width: 200,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.isDocumentGrouped ? task.goodsSummaryLabel : task.goodsName,
+            SubcontractPendingDrawRow(:final row) => _label(row.goodsName),
+          },
         ),
         MasterColumnDef(
           key: 'goodsCode',
+          sortable: true,
           label: '编号',
           width: 130,
-          value: (row) => _label(row.goodsCode),
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.isDocumentGrouped ? '—' : task.goodsCode,
+            SubcontractPendingDrawRow(:final row) => _label(row.goodsCode),
+          },
         ),
         MasterColumnDef(
           key: 'colorName',
           label: '颜色',
-          width: 90,
-          value: (row) => _label(row.colorName),
+          width: 96,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.isDocumentGrouped ? '—' : task.colorName,
+            SubcontractPendingDrawRow(:final row) => _label(row.colorName),
+          },
         ),
-        _drawQtyColumn('orderQty', '订货数量', (row) => row.orderQty),
+        MasterColumnDef(
+          key: 'spec',
+          sortable: true,
+          label: '规格',
+          width: 150,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.isDocumentGrouped ? '—' : task.spec,
+            SubcontractPendingDrawRow() => '—',
+          },
+        ),
+        MasterColumnDef(
+          key: 'requiredQty',
+          label: '需求量',
+          width: 110,
+          type: 'number',
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.isDocumentGrouped
+                  ? '—'
+                  : '${formatWorkbenchQuantity(task.requiredQty)} ${task.unitName}'
+                        .trim(),
+            SubcontractPendingDrawRow() => '—',
+          },
+        ),
+        MasterColumnDef(
+          key: 'openQty',
+          label: '待下单量',
+          width: 120,
+          type: 'number',
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.isDocumentGrouped
+                  ? '${task.openLineCount} 行'
+                  : '${formatWorkbenchQuantity(task.openQty)} ${task.unitName}'
+                        .trim(),
+            SubcontractPendingDrawRow() => '—',
+          },
+        ),
+        // ADR-156：紧挨数量列，「可部分下单 | 4 / 剩余 6 件」一眼读完。
+        MasterColumnDef(
+          key: 'orderableQty',
+          label: '可下单',
+          info:
+              '这次能生成订货单的数量：剩余未下单与现有直属物料够做的套数取小，'
+              '由服务端实时算好；订货数量超出会被拒绝。点状态列可看每种物料的齐套情况。',
+          width: 130,
+          type: 'number',
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) =>
+              task.orderableQtyText ?? '—',
+            SubcontractPendingDrawRow() => '—',
+          },
+        ),
+        _pendingDrawQtyColumn('orderQty', '订货数量', (row) => row.orderQty),
+        _pendingDrawQtyColumn('drawnQty', '已领', (row) => row.drawnQty),
+        _pendingDrawQtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
+        _pendingDrawQtyColumn('drawableQty', '可领', (row) => row.drawableQty),
+        _pendingDrawQtyColumn('shortQty', '还缺', (row) => row.shortQty),
         MasterColumnDef(
           key: 'unitName',
           label: '单位',
           width: 70,
-          value: (row) => _label(row.unitName),
+          value: (row) => switch (row) {
+            SubcontractApplicationRow() => '—',
+            SubcontractPendingDrawRow(:final row) => _label(row.unitName),
+          },
         ),
-        _drawQtyColumn('drawnQty', '已领', (row) => row.drawnQty),
-        _drawQtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
-        _drawQtyColumn('drawableQty', '可领', (row) => row.drawableQty),
-        _drawQtyColumn('shortQty', '还缺', (row) => row.shortQty),
         MasterColumnDef(
-          key: 'deliverDate',
-          label: '交期',
-          width: 110,
+          key: 'needDate',
+          sortable: true,
+          label: '需求日期',
+          width: 120,
           type: 'date',
-          value: (row) => row.deliverDate,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) => task.needDate,
+            SubcontractPendingDrawRow(:final row) => row.deliverDate,
+          },
+        ),
+        MasterColumnDef(
+          key: 'issuedAt',
+          label: workflowFieldText(context).subcontractPlanIssuedDate,
+          info: workflowFieldText(context).subcontractPlanIssuedDateHint,
+          width: 160,
+          type: 'date',
+          sortable: true,
+          value: (row) => switch (row) {
+            SubcontractApplicationRow(:final task) => _issuedDate(
+              task.issuedAt,
+            ),
+            SubcontractPendingDrawRow() => null,
+          },
         ),
       ],
-      items: data?.page.items ?? const [],
-      facets: {
-        if (data != null)
-          'status': [
-            for (final filter in _drawStatusFilters)
-              MasterFacetBucket(
-                value: filter.value,
-                label: filter.label,
-                count: counts[filter.value] ?? 0,
-              ),
-          ],
-      },
+      items: applicationRows,
+      // 拍平表不做列头筛选：两类行的状态/单据语义不同，服务端 facets 只覆盖申请行；
+      // 筛选用阶段搜索框与领料定位芯片。
+      facets: const {},
       nullCounts: const {},
-      filters: {'status': _drawStatus},
-      onFilterChanged: (column, value) {
-        if (column != 'status') return;
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      sortColumn: _sortColumn,
+      sortAscending: _sortAscending,
+      // 排序/翻页走申请行的服务端链路；领料行钉顶不参与(顺序由服务端按
+      // 状态优先级排好)。
+      onSortChange: (column, ascending) {
         setState(() {
-          _drawStatus = value;
-          _drawPage = 1;
+          _sortColumn = column;
+          _sortAscending = ascending;
+          _selectedIds.clear();
         });
-        _loadDraw(page: 1);
+        _load(page: 1);
       },
-      onRowTap: _openDrawTask,
-      canOpenRow: (_) => true,
-      selectable: canSubmit,
-      idOf: (row) => canSubmit && row.canDraw ? row.orderItemId : null,
-      // 不可领的行(已提交待仓库发 / 等计划 / 等物料)勾选位换锁图标，悬浮说明
-      // 下一步由谁动手。
-      unselectableLeadingBuilder: (context, row) => Tooltip(
-        message: subcontractDrawStatusTooltip(row) ?? '当前状态不能领料',
-        child: Icon(
-          Icons.lock_outline_rounded,
-          size: 20,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      ),
-      selectedIds: _selectedDrawIds,
+      onRowTap: (row) => switch (row) {
+        SubcontractApplicationRow(:final task) => _openTask(task),
+        SubcontractPendingDrawRow(:final row) => _openDrawTask(row),
+      },
+      canOpenRow: (row) => switch (row) {
+        SubcontractApplicationRow(:final task) =>
+          task.taskStatus == _waitingOrderStage ||
+              task.actionDocument?.canView == true,
+        SubcontractPendingDrawRow() => true,
+      },
+      selectable: selectable,
+      idOf: (row) {
+        final id = rowId(row);
+        return id.isEmpty ? null : id;
+      },
+      rowKeyOf: (row) => row.rowKey,
+      unselectableLeadingBuilder: lockLeading,
+      selectedIds: {
+        ..._selectedIds,
+        for (final id in _selectedDrawIds) 'draw-$id',
+      },
       onSelectedIdsChanged: (next) => setState(() {
+        _selectedIds
+          ..clear()
+          ..addAll(next.where((id) => !id.startsWith('draw-')));
         _selectedDrawIds
           ..clear()
-          ..addAll(next);
+          ..addAll(
+            next
+                .where((id) => id.startsWith('draw-'))
+                .map((id) => id.substring('draw-'.length)),
+          );
       }),
-      batchActionsBuilder: canSubmit ? (_, _) => [_drawBatchButton()] : null,
-      isLoading: _drawLoading,
-      error: _drawError,
-      onRetry: () => _loadDraw(),
-      emptyMessage: _drawScoped || _drawStatus != null || _keyword.isNotEmpty
-          ? '当前筛选下没有待领料的委外任务'
-          : '暂无待领料的委外任务；财务批准后的委外订货单会出现在这里',
-      currentPage: data?.page.page ?? 1,
-      totalPages: data?.page.totalPages ?? 1,
-      paginationScope: (_keyword, _drawStatus, _drawOrderId, _drawOrderItemId),
+      // 悬浮组双按钮：勾了申请行 → 生成委外订货单；勾了领料行 → 批量领料。
+      // 各自按自己的选择数算启用，互不拦截(两类行同时勾选时两个都在)。
+      batchActionsBuilder: !selectable
+          ? null
+          : (_, _) => [
+              if (canOrder) _createOrderButton(),
+              if (_canSubmitDraw) _drawBatchButton(),
+            ],
+      // 有下单权限但服务端能力缺失时保留灰按钮兜底解释(能力面问题要能被发现)；
+      // 连权限都没有的账号不摆死按钮。大小屏同一张表后两态都有入口(2026-10-09)。
+      toolbarActions: _orderingSeg && _hasDecomposePermissions && !canOrder
+          ? [_createOrderButton()]
+          : null,
+      isLoading: _loading || _drawLoading,
+      error: _error ?? _drawError,
+      onRetry: _refreshAll,
+      emptyMessage: _drawScoped || _keyword.isNotEmpty
+          ? '当前筛选下没有待处理的委外任务'
+          : '暂无待处理的委外任务；计划下达的申请与财务批准后的领料任务会出现在这里',
+      currentPage: data.page,
+      totalPages: data.totalPages,
+      paginationScope: (_keyword, _seg, _exception),
       onPageChange: (page) {
-        setState(() => _drawPage = page);
-        _loadDraw(page: page);
+        setState(() => _page = page);
+        _load(page: page);
       },
     );
   }
 
-  MasterColumnDef<SubcontractDrawTaskRow> _drawQtyColumn(
+  MasterColumnDef<SubcontractPendingRow> _pendingDrawQtyColumn(
     String key,
     String label,
     double Function(SubcontractDrawTaskRow row) qty,
@@ -1588,7 +1662,10 @@ class _SubcontractDecompositionPageState
     label: label,
     width: 96,
     type: 'number',
-    value: (row) => subcontractDrawQty(qty(row)),
+    value: (row) => switch (row) {
+      SubcontractApplicationRow() => '—',
+      SubcontractPendingDrawRow(:final row) => subcontractDrawQty(qty(row)),
+    },
   );
 
   static String _label(String? value) =>
@@ -1600,7 +1677,33 @@ class _SubcontractDecompositionPageState
   }
 }
 
-/// 「领料」分段状态格：图标 + 文案；可领且可提交时点击直达领料页(只带这一行)。
+/// 「待处理」拍平表的一行：委外申请(工作台投影分页行)或领料任务(钉顶行)。
+/// 公开给测试做表格字段的类型化访问(页面自身只有这一处使用)。
+sealed class SubcontractPendingRow {
+  const SubcontractPendingRow();
+
+  String get rowKey;
+}
+
+class SubcontractApplicationRow extends SubcontractPendingRow {
+  const SubcontractApplicationRow(this.task);
+
+  final OperationsWorkbenchTask task;
+
+  @override
+  String get rowKey => 'app-${task.taskId}';
+}
+
+class SubcontractPendingDrawRow extends SubcontractPendingRow {
+  const SubcontractPendingDrawRow(this.row);
+
+  final SubcontractDrawTaskRow row;
+
+  @override
+  String get rowKey => 'draw-${row.orderItemId}';
+}
+
+/// 「待处理·领料」状态格：图标 + 文案；可领且可提交时点击直达领料页(只带这一行)。
 /// 文字色由表格 cellColor 通道黑白自适应注入，勿写死。
 class _DrawStatusCell extends StatelessWidget {
   const _DrawStatusCell({
@@ -1653,207 +1756,14 @@ class _DrawStatusCell extends StatelessWidget {
   }
 }
 
-class _SubcontractDemandCard extends StatelessWidget {
-  const _SubcontractDemandCard({
-    required this.task,
-    required this.stageLabel,
-    required this.stageType,
-    required this.urgent,
-    required this.statusAction,
-    required this.selected,
-    required this.selectable,
-    required this.onSelected,
-    required this.onTap,
-    required this.onOpenSource,
-    this.lockReason,
-  });
-
-  final OperationsWorkbenchTask task;
-  final String stageLabel;
-  final UtenStatusBadgeType stageType;
-  final bool urgent;
-  final _StatusAction? statusAction;
-  final bool selected;
-  final bool selectable;
-  final VoidCallback onSelected;
-  final VoidCallback onTap;
-  final VoidCallback? onOpenSource;
-
-  /// 锁行(不能勾选下单)的勾选位换成锁图标，悬浮说明原因；null = 不占锁位
-  /// (无分解权限或非「待处理」段，整卡没有勾选语义)。
-  final String? lockReason;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final action = statusAction;
-    return Semantics(
-      container: true,
-      selected: selected,
-      label: '${task.title}，$stageLabel',
-      child: Card(
-        margin: EdgeInsets.zero,
-        color: selected ? theme.colorScheme.primaryContainer : null,
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (selectable)
-                    SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Checkbox(
-                        value: selected,
-                        onChanged: (_) => onSelected(),
-                      ),
-                    )
-                  else if (lockReason != null)
-                    SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: Tooltip(
-                        message: lockReason,
-                        child: Icon(
-                          Icons.lock_outline_rounded,
-                          size: 20,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          task.isDocumentGrouped
-                              ? task.goodsSummaryLabel
-                              : '${task.goodsCode} ${task.goodsName}'.trim(),
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (!task.isDocumentGrouped &&
-                            (task.spec.isNotEmpty || task.colorName.isNotEmpty))
-                          Text(
-                            [
-                              task.spec,
-                              task.colorName,
-                            ].where((v) => v.isNotEmpty).join(' · '),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        if (!task.isDocumentGrouped &&
-                            (task.actionDocument?.number.isNotEmpty == true))
-                          Text(
-                            task.actionDocument!.number,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  _ProgressStatusCell(
-                    label: stageLabel,
-                    type: task.hasException && !urgent
-                        ? UtenStatusBadgeType.danger
-                        : stageType,
-                    urgent: urgent,
-                    action: action,
-                  ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Wrap(
-                spacing: UtenSpacing.s16,
-                runSpacing: UtenSpacing.s4,
-                children: [
-                  Text('来源计划 ${task.planNo}'),
-                  if (!task.isDocumentGrouped)
-                    Text(
-                      '需求 ${formatWorkbenchQuantity(task.requiredQty)} ${task.unitName}',
-                    ),
-                  Text('待下单 ${task.quantityText}'),
-                  if (task.orderableQtyText case final orderable?)
-                    Text('可下单 $orderable'),
-                  if ((task.needDate ?? '').isNotEmpty)
-                    Text('需求日 ${task.needDate}'),
-                  Text(
-                    '${workflowFieldText(context).subcontractPlanIssuedDate} '
-                    '${_SubcontractDecompositionPageState._issuedDate(task.issuedAt) ?? '—'}',
-                  ),
-                ],
-              ),
-              // ADR-156 锁行：等物料齐套不依赖悬浮，直接写明红字(老人友好)。
-              if (task.isWaitingKit) ...[
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  subcontractWaitingKitHint,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                ),
-              ],
-              const SizedBox(height: UtenSpacing.s8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      task.actionDocumentRestricted
-                          ? '关联申请受权限保护'
-                          : task.actionDocument?.label ?? '缺少委外申请来源',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  if (action != null)
-                    TextButton.icon(
-                      onPressed: action.onTap,
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-                      label: Text(action.buttonLabel),
-                    ),
-                  if (onOpenSource != null)
-                    TextButton.icon(
-                      onPressed: onOpenSource,
-                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                      label: const Text('查看只读申请'),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 状态格（ADR-098）。两种形态：
-/// · 表格列（type = null）：2026-09-27 用户口径「格内胶囊改单元格背景色」——
-///   底色由状态列 cellColor 铺整格，格内只剩文字与红色「紧急」前缀；
-/// · 窄屏卡片（type 非 null）：卡片没有 cellColor 通道（卡片也非表格格），
-///   照旧渲染胶囊。
-/// 回厂短交待判定标紧急；有动作时可点(去判定短交 / 去领料，悬浮提示动作)。
-/// 表格形态的文字色由 cellColor 通道黑白自适应注入（DefaultTextStyle），勿写死。
 class _ProgressStatusCell extends StatelessWidget {
   const _ProgressStatusCell({
     required this.label,
-    this.type,
     this.urgent = false,
     this.action,
   });
 
   final String label;
-
-  /// 窄屏卡片形态的胶囊配色；null = 表格列形态（底色在列 cellColor）。
-  final UtenStatusBadgeType? type;
 
   /// 回厂短交待判定（红色前缀「紧急」）。
   final bool urgent;
@@ -1863,58 +1773,35 @@ class _ProgressStatusCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Widget content;
-    if (type != null) {
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (urgent) ...[
-            const UtenStatusBadge(
-              label: '紧急',
-              type: UtenStatusBadgeType.danger,
-              icon: Icons.priority_high_rounded,
-              size: UtenStatusBadgeSize.small,
-            ),
-            const SizedBox(width: UtenSpacing.s4),
-          ],
-          UtenStatusBadge(
-            label: label,
-            type: type!,
-            size: UtenStatusBadgeSize.small,
-          ),
-        ],
-      );
-    } else {
-      // 表格列形态：底色在列 cellColor，文字必须继承表格注入的对比度前景
-      // （深底白字）——不许在这里写死颜色，否则红底黑字看不清（2026-10-08
-      // 用户反馈的根因）。状态列文字加粗由表格统一处理，这里只继承。
-      final inherited = DefaultTextStyle.of(context).style;
-      content = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (urgent) ...[
-            const Icon(Icons.priority_high_rounded, size: 14),
-            const SizedBox(width: 2),
-            Text(
-              '紧急',
-              style: inherited.copyWith(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s4),
-          ],
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: inherited,
+    // 表格列形态：底色在列 cellColor，文字必须继承表格注入的对比度前景
+    // （深底白字）——不许在这里写死颜色，否则红底黑字看不清（2026-10-08
+    // 用户反馈的根因）。状态列文字加粗由表格统一处理，这里只继承。
+    final inherited = DefaultTextStyle.of(context).style;
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (urgent) ...[
+          const Icon(Icons.priority_high_rounded, size: 14),
+          const SizedBox(width: 2),
+          Text(
+            '紧急',
+            style: inherited.copyWith(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
+          const SizedBox(width: UtenSpacing.s4),
         ],
-      );
-    }
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: inherited,
+          ),
+        ),
+      ],
+    );
     final action = this.action;
     if (action == null) return Semantics(label: label, child: content);
     return Tooltip(
@@ -1928,45 +1815,6 @@ class _ProgressStatusCell extends StatelessWidget {
           child: content,
         ),
       ),
-    );
-  }
-}
-
-class _Pager extends StatelessWidget {
-  const _Pager({
-    required this.page,
-    required this.totalPages,
-    required this.loading,
-    required this.onPageChanged,
-  });
-
-  final int page;
-  final int totalPages;
-  final bool loading;
-  final ValueChanged<int> onPageChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    if (totalPages <= 1) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          tooltip: '上一页',
-          onPressed: loading || page <= 1
-              ? null
-              : () => onPageChanged(page - 1),
-          icon: const Icon(Icons.chevron_left_rounded),
-        ),
-        Text('$page / $totalPages'),
-        IconButton(
-          tooltip: '下一页',
-          onPressed: loading || page >= totalPages
-              ? null
-              : () => onPageChanged(page + 1),
-          icon: const Icon(Icons.chevron_right_rounded),
-        ),
-      ],
     );
   }
 }

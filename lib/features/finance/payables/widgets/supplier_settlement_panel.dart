@@ -559,7 +559,6 @@ class _SupplierSettlementDetailPanelState
           MasterDataTableView<SupplierSettlementLine>(
             tableKey: 'finance.supplierSettlement.snapshot',
             embedded: true,
-            compactCards: true,
             platformBinding: PlatformTableBinding(
               tableKey: 'finance.supplierSettlement.snapshot',
               scope: 'view_finance',

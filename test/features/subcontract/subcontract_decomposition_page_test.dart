@@ -63,8 +63,8 @@ void main() {
       final resume = container.read(pageResumeProvider.notifier);
       bumpPageResumeState(resume, RouteName.operationsSubcontractWorkbench);
       await tester.pumpAndSettle();
-      // 2026-10-04 起红数「待处理」段进页面自动选中：概览 + WAITING_ORDER 两次；
-      // 「领料」分段的红数单独按 /draw-tasks/count 取一次。
+      // 2026-10-04 起红数「待处理」分类进页面自动选中：概览 + WAITING_ORDER 两次；
+      // 领料红数单独按 /draw-tasks/count 取一次(ADR-171 起挂在待处理子分类行)。
       expect(gateway.queries, hasLength(2));
       expect(draw.countCalls, 1);
       // 再点已选中的「待处理」不重复发请求。
@@ -111,6 +111,21 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // 先做「进行中」的表头筛选(ADR-171 修订二拍平：领料行与申请行的列语义不同，
+      // 「待处理」拍平表不做列头筛选——筛选在纯订货单表验证)——必须在任何表格
+      // 滚动之前，滚动会折叠顶部阶段行。
+      await tester.tap(find.text('进行中'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('委外件名称'));
+      await tester.pumpAndSettle();
+      expect(find.text('完整范围物料 (125)'), findsOneWidget);
+      await tester.tap(find.text('完整范围物料 (125)'));
+      await tester.pumpAndSettle();
+      expect(gateway.queries.last['filters'], {'goods': 'goods-source-uuid'});
+      expect(gateway.queries.last['status'], 'IN_PROGRESS');
+      expect(gateway.queries.last['page'], 1);
+      expect(find.byType(PopupMenuButton<dynamic>), findsNothing);
+
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
       expect(find.text('计划下达日期'), findsOneWidget);
@@ -127,18 +142,6 @@ void main() {
       expect(gateway.queries.last['sort'], 'issuedAt');
       expect(gateway.queries.last['order'], 'desc');
       expect(gateway.queries.last['page'], 1);
-      // 滚回来：上面的 ensureVisible 把表滚到了最右，委外件名称被甩出左缘。
-      await tester.ensureVisible(find.text('委外件名称'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('委外件名称'));
-      await tester.pumpAndSettle();
-      expect(find.text('完整范围物料 (125)'), findsOneWidget);
-      await tester.tap(find.text('完整范围物料 (125)'));
-      await tester.pumpAndSettle();
-      expect(gateway.queries.last['filters'], {'goods': 'goods-source-uuid'});
-      expect(gateway.queries.last['status'], 'WAITING_ORDER');
-      expect(gateway.queries.last['page'], 1);
-      expect(find.byType(PopupMenuButton<dynamic>), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -202,10 +205,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(action, findsOneWidget);
       expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
+      // 2026-10-09 ADR-171 修订二：「待处理」是申请行 + 领料行的拍平表。
       expect(
         find.ancestor(
           of: action,
-          matching: find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+          matching: find.byKey(
+            const Key('subcontract-decomposition-pending-table'),
+          ),
         ),
         findsOneWidget,
       );
@@ -260,7 +266,7 @@ void main() {
   );
 
   testWidgets(
-    'compact task center selects issued application lines and enables one primary action',
+    'narrow-width task table selects issued application lines and enables one primary action',
     (tester) async {
       final gateway = _Gateway(_data(capability: true));
       _desktop(tester, const Size(375, 1400));
@@ -276,8 +282,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // 2026-10-09 卡片形态退役：窄屏同一张表格（横向滚动）；
+      // ADR-171 修订二：「待处理」是申请行 + 领料行的拍平表。
       expect(
-        find.byKey(const Key('subcontract-decomposition-compact-list')),
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
         findsOneWidget,
       );
       // 进页面只拉一次 size=1 概览（阶段计数徽章），不带 status 过滤。
@@ -308,8 +316,11 @@ void main() {
       expect(gateway.statuses, [null, 'WAITING_ORDER']);
       expect(find.text('计划申请已下达 / 待分解'), findsNWidgets(2));
 
-      await tester.tap(find.byType(Checkbox).at(0));
+      // 表头三态全选格在前：行勾选框从 at(1) 起。两击之间必须 pump——
+      // 第二击的增量勾选读的是重建后的 selectedIds，连点会把第一击顶掉。
       await tester.tap(find.byType(Checkbox).at(1));
+      await tester.pump();
+      await tester.tap(find.byType(Checkbox).at(2));
       await tester.pump();
       await tester.pumpAndSettle();
 
@@ -339,18 +350,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
-      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
-        find.byKey(const Key('subcontract-decomposition-table')),
+      // 拍平表(ADR-171 修订二)：items 是申请行，领料行走 unpagedItems 渠道。
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
       );
-      final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
+      final ready = table.items
+          .whereType<SubcontractApplicationRow>()
+          .firstWhere((row) => table.idOf!(row) != null);
       expect(table.idOf!(ready), 'task-1');
-      final denied = _task(
-        'denied',
-        'application-denied',
-        'item-denied',
-        canCreateOrder: false,
-      );
-      expect(table.idOf!(denied), isNull);
       // 整行底色已退役（2026-10-08 用户口径）：任何行都不再铺行底色。
       expect(table.rowColor, isNull);
 
@@ -409,7 +416,9 @@ void main() {
           child: MaterialApp(
             home: SubcontractDecompositionPage(
               repository: _Gateway(_data(capability: scenario.capability)),
-              drawRepository: FakeSubcontractDrawGateway(),
+              // 领料提交权单独授权(ADR-171 修订二)：这两个场景只验证下单侧的
+              // 权限门，领料能力由专门的领料用例覆盖。
+              drawRepository: FakeSubcontractDrawGateway(canSubmitDraw: false),
             ),
           ),
         ),
@@ -451,12 +460,13 @@ void main() {
       await tester.tap(find.text('待处理'));
       await tester.pumpAndSettle();
 
-      final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
-        find.byKey(const Key('subcontract-decomposition-table')),
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
       );
-      final missing = table.items.firstWhere(
-        (task) => task.taskId == 'task-bom',
-      );
+      SubcontractApplicationRow applicationRow(String id) => table.items
+          .whereType<SubcontractApplicationRow>()
+          .firstWhere((row) => row.task.taskId == id);
+      final missing = applicationRow('task-bom');
       // 不能勾选下单；锁死不能往下=深红（ADR-169「不能执行不是等待」，
       // 行底色已退役）。
       expect(table.idOf!(missing), isNull);
@@ -475,8 +485,7 @@ void main() {
         findsOneWidget,
       );
       // 普通申请行不受影响。
-      final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
-      expect(table.idOf!(ready), 'task-1');
+      expect(table.idOf!(applicationRow('task-1')), 'task-1');
 
       final queries = gateway.queries.length;
       await tester.ensureVisible(find.byTooltip('点击通知研发完善 BOM'));
@@ -613,17 +622,15 @@ void main() {
           findsNothing,
         );
 
-        final table = tester
-            .widget<MasterDataTableView<OperationsWorkbenchTask>>(
-              find.byKey(const Key('subcontract-decomposition-table')),
-            );
-        OperationsWorkbenchTask row(String id) =>
-            table.items.firstWhere((task) => task.taskId == id);
-        final locked = row('task-locked');
-        final partial = row('task-partial');
-        final ready = row('task-ready');
-        expect(locked.isWaitingKit, isTrue);
-        expect(partial.isKitPartial, isTrue);
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        SubcontractApplicationRow applicationRow(String id) => table.items
+            .whereType<SubcontractApplicationRow>()
+            .firstWhere((row) => row.task.taskId == id);
+        final locked = applicationRow('task-locked');
+        final partial = applicationRow('task-partial');
+        final ready = applicationRow('task-ready');
         // 锁行：不能勾选，深红状态格（锁死不能下单=红，ADR-169；
         // 整行红底已退役）；可下单=绿（就绪可动手）；可部分下单=紫。
         expect(table.idOf!(locked), isNull);
@@ -660,14 +667,8 @@ void main() {
         // 锁行状态格悬浮说明为什么锁、点它看齐套情况。
         expect(find.byTooltip('$lockedHint；点击看齐套情况'), findsOneWidget);
         expect(find.byTooltip('点击看齐套情况'), findsNWidgets(2));
-        // 状态列表头筛选按展示阶段给中文。
-        final facets = table.facets['status']!;
-        expect({
-          for (final bucket in facets) bucket.value: bucket.label,
-        }, containsPair('WAITING_KIT', '等物料齐套'));
-        expect({
-          for (final bucket in facets) bucket.value: bucket.label,
-        }, containsPair('KIT_PARTIAL', '可部分下单'));
+        // 拍平表(ADR-171 修订二)不做列头筛选：两类行的状态/单据语义不同，
+        // 筛选交给阶段搜索框与领料定位芯片。
 
         // 可下单的两行能一起生成订货单。
         final action = find.byKey(
@@ -856,9 +857,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('compact cards explain the lock and offer the kit action', (
-      tester,
-    ) async {
+    testWidgets('375 宽同一张表格：锁行图标与说明保留', (tester) async {
       _desktop(tester, const Size(375, 1400));
       await tester.pumpWidget(
         _scope(
@@ -872,19 +871,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('subcontract-decomposition-compact-list')),
-        findsOneWidget,
-      );
-      expect(find.text(lockedHint), findsOneWidget);
-      expect(find.text('可下单 4 / 剩余 6 件'), findsOneWidget);
-      expect(find.text('可下单 6 件'), findsOneWidget);
-      expect(find.text('可下单 0 件'), findsOneWidget);
-      // 锁行卡片没有勾选框，勾选位换锁图标；三张卡都有「齐套情况」。
-      expect(find.byType(Checkbox), findsNWidgets(2));
+      expect(tester.takeException(), isNull, reason: '375 宽不溢出');
+      // 2026-10-09 卡片形态退役：窄屏同一张表格。齐套判定改看桌面孪生用例，
+      // 这里锁窄屏不丢的 affordance——表头三态全选 + 两条可下单行勾选框；
+      // 锁行勾选位换锁图标，悬浮说明为什么不能下单（ADR-156）。
+      expect(find.byType(Checkbox), findsNWidgets(3));
       expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
       expect(find.byTooltip(lockedHint), findsOneWidget);
-      expect(find.text('齐套情况'), findsNWidgets(3));
       expect(tester.takeException(), isNull);
     });
 
@@ -925,7 +918,7 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('subcontract-decomposition-table')),
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
           findsOneWidget,
         );
 
@@ -991,13 +984,14 @@ void main() {
     });
   });
 
-  group('ADR-143 领料分段', () {
+  group('ADR-143/ADR-171 领料(待处理拍平表)', () {
     testWidgets(
-      'red-only count, workshop-like status cells, gated selection and batch draw',
+      'red+yellow counts, status cells, gated selection and batch draw',
       (tester) async {
         _desktop(tester, const Size(1700, 1000));
         final draw = FakeSubcontractDrawGateway(
           count: 7,
+          submittedCount: 1,
           statusCounts: const {
             'DRAWABLE': 2,
             'DRAW_SUBMITTED': 1,
@@ -1042,9 +1036,10 @@ void main() {
           ],
         );
         final opened = <List<String>>[];
+        final gateway = _Gateway(_data(capability: true));
         final router = _router(
           page: SubcontractDecompositionPage(
-            repository: _Gateway(_data(capability: true)),
+            repository: gateway,
             drawRepository: draw,
           ),
           opened: opened,
@@ -1055,13 +1050,13 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 「领料」只挂一枚红 = 可领行数(服务端 /count = 7)；不挂黄——
-        // 阶段行的红枚只有「待处理」(2)与「领料」(7)，黄枚只有「进行中」(3)。
+        // ADR-171 修订二拍平：「待处理」红 = 申请(2)+可领(7)=9，黄 = 领料中(1)；
+        // 「进行中」黄 = 3。两段各自挂红黄，同一张表里红行=可动手、黄行=在跑。
         final stages = find.byKey(
           const Key('subcontract-decomposition-stages'),
         );
         expect(
-          find.descendant(of: stages, matching: find.text('7')),
+          find.descendant(of: stages, matching: find.text('9')),
           findsOneWidget,
         );
         expect(
@@ -1069,29 +1064,33 @@ void main() {
             of: stages,
             matching: find.byType(UtenNotificationBadge),
           ),
-          findsNWidgets(2),
+          findsOneWidget,
         );
         expect(
           find.descendant(
             of: stages,
             matching: find.byType(UtenInProgressBadge),
           ),
-          findsOneWidget,
+          findsNWidgets(2),
+        );
+        // 子分类行已退役：领料只是「待处理」拍平表里的一种状态。
+        expect(
+          find.byKey(const Key('subcontract-decomposition-pending-categories')),
+          findsNothing,
         );
 
-        await tester.tap(find.text('领料'));
-        await tester.pumpAndSettle();
+        // 进页面自动选中「待处理」：领料行随申请列表一起拉(不分页、无状态过滤)。
         expect(draw.listQueries, hasLength(1));
         expect(draw.listQueries.single['status'], isNull);
 
-        final table = tester
-            .widget<MasterDataTableView<SubcontractDrawTaskRow>>(
-              find.byKey(const Key('subcontract-draw-table')),
-            );
-        // 服务端 canDraw 且账号 canSubmitDraw 的行才可勾选。
-        expect(table.items.map(table.idOf!).toList(), [
-          'item-full',
-          'item-partial',
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        // 领料行钉在表格顶部(unpagedItems)；服务端 canDraw 且账号 canSubmitDraw
+        // 的行才可勾选，id 带领料前缀与申请行命名空间分开。
+        expect(table.unpagedItems.map((row) => table.idOf!(row)).toList(), [
+          'draw-item-full',
+          'draw-item-partial',
           null,
           null,
           null,
@@ -1112,7 +1111,7 @@ void main() {
           find.byType(SubcontractDecompositionPage),
         );
         final colors = [
-          for (final row in table.items) status.cellColor!(context, row),
+          for (final row in table.unpagedItems) status.cellColor!(context, row),
         ];
         expect(colors, [
           // 可领=绿(就绪可动手) / 部分可领=紫 / 待仓库发料=青(等仓库)。
@@ -1128,8 +1127,19 @@ void main() {
           find.byTooltip('可领 20 个；另有 10 个已提交领料，等仓库发料；其余还缺物料，到货后可继续领'),
           findsOneWidget,
         );
-        // 已领 / 待仓库发 / 可领 / 还缺 与货品身份三列。
-        for (final label in ['已领', '待仓库发', '可领', '还缺', '委外件名称', '编号', '颜色']) {
+        // 已领 / 待仓库发 / 可领 / 还缺 与货品身份三列(与申请行的数量列并存)。
+        for (final label in [
+          '已领',
+          '待仓库发',
+          '可领',
+          '还缺',
+          '委外件名称',
+          '编号',
+          '颜色',
+          '需求量',
+          '待下单量',
+          '可下单',
+        ]) {
           expect(
             table.columns.where((column) => column.label == label),
             hasLength(1),
@@ -1151,6 +1161,15 @@ void main() {
         expect(opened, [
           ['item-full', 'item-partial'],
         ]);
+        // 领料页带 true 返回：仍在「待处理」拍平表，清掉已领勾选并重拉。
+        router.pop(true);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+          findsOneWidget,
+        );
+        expect(find.text('批量领料(0)'), findsOneWidget);
+        expect(gateway.queries.last['status'], 'WAITING_ORDER');
         expect(tester.takeException(), isNull);
       },
     );
@@ -1219,12 +1238,13 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        final table = tester
-            .widget<MasterDataTableView<SubcontractDrawTaskRow>>(
-              find.byKey(const Key('subcontract-draw-table')),
-            );
+        final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+        );
+        // 账号没有提交领料权限：领料行可见但不可勾选(申请行勾选由下单能力
+        // 另行门控)，悬浮批量按钮只剩「生成委外订货单」。
         expect(table.selectable, isFalse);
-        expect(table.idOf!(table.items.single), isNull);
+        expect(table.idOf!(table.unpagedItems.single), isNull);
         expect(find.byKey(const Key('subcontract-draw-batch')), findsNothing);
         // 只显示可领量，不出现「去领料」入口。
         expect(find.text('可领 40 个'), findsOneWidget);
@@ -1413,7 +1433,7 @@ void main() {
     });
 
     testWidgets(
-      'in-progress drawable status jumps to the draw segment for that order',
+      'in-progress drawable status jumps to pending with the order scope',
       (tester) async {
         _desktop(tester, const Size(1700, 1000));
         final draw = FakeSubcontractDrawGateway(rows: [drawRow('item-1')]);
@@ -1439,8 +1459,11 @@ void main() {
         await tester.tap(find.byTooltip('点击去领料'));
         await tester.pumpAndSettle();
         expect(draw.listQueries.last['orderId'], 'order-drawable');
-        expect(find.byKey(const Key('subcontract-draw-table')), findsOneWidget);
-        expect(find.text('只看订货单 EO-order-drawable 的委外任务'), findsOneWidget);
+        expect(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+          findsOneWidget,
+        );
+        expect(find.text('领料行只看订货单 EO-order-drawable 的委外任务'), findsOneWidget);
         // 清除定位 → 看全部委外任务。
         await tester.tap(find.byTooltip('看全部委外任务'));
         await tester.pumpAndSettle();
@@ -1449,7 +1472,7 @@ void main() {
       },
     );
 
-    testWidgets('notice deep link lands on the draw segment for one task', (
+    testWidgets('notice deep link lands on pending with the task scope', (
       tester,
     ) async {
       _desktop(tester, const Size(1700, 1000));
@@ -1468,11 +1491,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(draw.listQueries.single['orderItemIds'], ['item-9']);
-      expect(find.text('只看通知里的这条委外任务'), findsOneWidget);
+      expect(find.text('领料行只看通知里的这条委外任务'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('server refusal of the draw count hides the draw segment', (
+    testWidgets('server refusal of the draw count hides the draw rows', (
       tester,
     ) async {
       _desktop(tester, const Size(1600, 1000));
@@ -1491,9 +1514,47 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('待处理'), findsOneWidget);
-      expect(find.text('领料'), findsNothing);
+      // 领料行整体静默隐藏：拍平表只剩申请行，待处理段不挂黄数，不向用户报错。
+      expect(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+        findsOneWidget,
+      );
+      expect(find.text('委外订货单号'), findsNothing);
+      expect(find.text('委外任务加载失败'), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'draw count refusal while deep-linked to draw falls back to applications',
+      (tester) async {
+        _desktop(tester, const Size(1600, 1000));
+        final draw = FakeSubcontractDrawGateway(rows: [drawRow('item-1')])
+          ..countError = ApiException('FORBIDDEN', '无权限访问', httpStatus: 403);
+        final gateway = _Gateway(_data(capability: true));
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: gateway,
+                drawRepository: draw,
+                initialSegment: 'draw',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // 深链落「待处理」后计数被 403：领料行整体静默隐藏，申请行照常，
+        // 定位芯片也不出现。
+        expect(
+          find.byKey(const Key('subcontract-decomposition-pending-table')),
+          findsOneWidget,
+        );
+        expect(find.text('委外订货单号'), findsNothing);
+        expect(find.text('领料行只看'), findsNothing);
+        expect(gateway.statuses, contains('WAITING_ORDER'));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }
 

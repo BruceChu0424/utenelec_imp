@@ -124,13 +124,8 @@ void main() {
       );
       expect(find.text('已选 0 项'), findsOneWidget);
 
-      await tester.tap(find.byType(Checkbox).at(0));
-      await tester.pump();
-      batchButton = tester.widget<UtenButton>(
-        find.byKey(const Key('operations-workbench-purchase-batch')),
-      );
-      expect(batchButton.onPressed, isNotNull);
-
+      // 2026-10-09 卡片形态退役：窄屏同一张表格，Checkbox.at(0) 是表头三态
+      // 全选格，行勾选框从 at(1) 起。
       await tester.tap(find.byType(Checkbox).at(1));
       await tester.pump();
       batchButton = tester.widget<UtenButton>(
@@ -145,8 +140,15 @@ void main() {
       );
       expect(batchButton.onPressed, isNotNull);
 
-      await tester.tap(find.byType(Checkbox).at(2));
       await tester.tap(find.byType(Checkbox).at(3));
+      await tester.pump();
+      batchButton = tester.widget<UtenButton>(
+        find.byKey(const Key('operations-workbench-purchase-batch')),
+      );
+      expect(batchButton.onPressed, isNotNull);
+
+      await tester.tap(find.byType(Checkbox).at(3));
+      await tester.tap(find.byType(Checkbox).at(4));
       await tester.pump();
       // 选中不可执行任务：按钮置灰，原因在 Tooltip/点击提示里（不再占选中条）。
       batchButton = tester.widget<UtenButton>(
@@ -154,8 +156,8 @@ void main() {
       );
       expect(batchButton.onPressed, isNull);
 
-      await tester.tap(find.byType(Checkbox).at(3));
       await tester.tap(find.byType(Checkbox).at(4));
+      await tester.tap(find.byType(Checkbox).at(5));
       await tester.pump();
       batchButton = tester.widget<UtenButton>(
         find.byKey(const Key('operations-workbench-purchase-batch')),
@@ -536,9 +538,9 @@ void main() {
       await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
 
-      // 2026-09-29 统一表格后单据号列脱敏显示「—」，不再出权限提示文案；
-      // 断言不泄漏真实单据号即可。
-      expect(find.text('无权查看关联单据'), findsNothing);
+      // 2026-10-09 卡片形态退役后与桌面同款：单据号列脱敏「—」，执行入口列
+      // 显示「无权查看关联单据」占位；断言不泄漏真实单据号即可。
+      expect(find.text('无权查看关联单据'), findsOneWidget);
       expect(
         find.byKey(const Key('operations-workbench-purchase-batch')),
         findsNothing,

@@ -212,8 +212,9 @@ abstract final class RouteName {
     queryParameters: {'orderItemIds': orderItemIds.join(',')},
   ).toString();
 
-  /// 委外任务中心「领料」分段深链(可领料通知、进行中「可领料」跳转)：
-  /// ?segment=draw，可按委外订货明细 [orderItemId] 或订货单 [orderId] 定位。
+  /// 委外任务中心「待处理」领料定位深链(可领料通知、进行中「可领料」跳转，
+  /// ADR-171 起领料并入「待处理」)：?segment=draw，可按委外订货明细 [orderItemId]
+  /// 或订货单 [orderId] 定位。
   static String operationsSubcontractDrawSegment({
     String? orderItemId,
     String? orderId,
@@ -227,7 +228,7 @@ abstract final class RouteName {
     },
   ).toString();
 
-  /// 委外任务中心「待处理」分段深链(ADR-156 可下单通知)：?segment=pending，
+  /// 委外任务中心「待处理·委外申请」深链(ADR-156 可下单通知)：?segment=pending，
   /// 可带委外申请号 [keyword] 进页即按它搜索。
   static String operationsSubcontractPendingSegment({String? keyword}) => Uri(
     path: operationsSubcontractWorkbench,

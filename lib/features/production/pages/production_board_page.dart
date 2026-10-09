@@ -944,8 +944,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   Widget _list(ThemeData theme) {
     final rows = _rows;
     // 空态/错误/加载三态交给 MasterDataTableView 渲染。
-    // 2026-09-29「大小屏共用一张表」：compact 断点表体自动切卡片列表（同一份
-    // _pendingColumns 驱动，见 cardRole 注记），本页自绘窄屏卡片列表已退役。
+    // 大小屏共用一张表：同一份 _pendingColumns 驱动，窄屏横向滚动（卡片形态已退役）。
     return Column(
       children: [
         Expanded(
@@ -955,7 +954,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
             paginationScope: (widget.keyword, _pageSize),
             tableKey:
                 'features.production.pages.production_board_page.PendingPanelState._list.1',
-            compactCards: true,
             columns: _pendingColumns,
             items: rows,
             selectable: _canUseAnalysis,
@@ -1023,8 +1021,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       width: 140,
       sortable: true,
       value: (r) => r.orderBillNo,
-      // 卡片形态（compactCards）：单号与编号一起进标题下副行。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
     // 同名不同色/不同编号的成品在本系统极其普遍（同一款插面有「自制·白色」和
@@ -1037,7 +1033,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       value: (r) => r.goodsName ?? r.goodsCode ?? '—',
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, r) => UtenGoodsIdentityCell(name: r.goodsName),
-      cardRole: MasterColumnCardRole.title,
     ),
     MasterColumnDef(
       key: 'goodsCode',
@@ -1046,7 +1041,6 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       value: (r) => UtenGoodsAttributeCell.text(r.goodsCode),
       cellBuilder: (_, r) => UtenGoodsAttributeCell(r.goodsCode),
       // 卡片副行已带编号，明细区不重复出。
-      cardRole: MasterColumnCardRole.subtitle,
     ),
     MasterColumnDef(
       key: 'colorName',

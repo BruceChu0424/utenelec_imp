@@ -12,7 +12,6 @@ import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
-import 'package:uten_imp/features/basic_data/widgets/master_data_card_list.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/hr_task/models/hr_reconcile_plan.dart';
 import 'package:uten_imp/features/hr_task/pages/hr_reconcile_page.dart';
@@ -848,7 +847,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('375 宽窄屏：卡片形态渲染不炸', (tester) async {
+  testWidgets('375 宽窄屏：同一张表格渲染不炸', (tester) async {
     tester.view.physicalSize = const Size(375, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -883,23 +882,13 @@ void main() {
 
     expect(tester.takeException(), isNull, reason: '375 宽不溢出');
     expect(
-      find.byType(MasterDataCardList<HrReconcileRow>),
-      findsOneWidget,
-      reason: '窄屏走卡片形态',
-    );
-    expect(
       find.byKey(const ValueKey('hr-reconcile-manual-1')),
       findsOneWidget,
-      reason: '卡片里手输区可用',
+      reason: '窄屏表格里手输区可用',
     );
-    // 卡片标题位 = 员工合并列的 cellBuilder(姓名主行 + 工号·部门副行)，
-    // 不是缺省第一列「类型」的「需人工」。
-    expect(find.text('王五'), findsOneWidget, reason: '卡片标题是员工姓名');
-    expect(
-      find.text('UT0050 · 装配第一车间'),
-      findsOneWidget,
-      reason: '卡片标题带工号·部门副行',
-    );
+    // 员工合并列的 cellBuilder(姓名主行 + 工号·部门副行)在表格格内照常渲染。
+    expect(find.text('王五'), findsOneWidget);
+    expect(find.text('UT0050 · 装配第一车间'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });

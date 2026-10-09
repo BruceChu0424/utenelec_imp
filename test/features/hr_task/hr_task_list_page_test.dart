@@ -1,6 +1,5 @@
 // HR 任务中心（2026-09-10 表格化 + 表头筛选 + 批量登记转正/批量送祝福）。
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +9,6 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
-import 'package:uten_imp/features/basic_data/widgets/master_data_card_list.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
@@ -301,7 +299,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('375 宽窄屏卡片：校验码原因红字完整显示，不截断', (tester) async {
+  testWidgets('375 宽窄屏表格：校验码原因红字单行省略，悬停可看全文', (tester) async {
     const reason = '身份证号第18位校验码与前17位不符，通常是某一位数字录错或相邻两位颠倒，请对照证件逐位核对';
     const viewSize = Size(375, 1200);
     tester.view.physicalSize = viewSize;
@@ -323,30 +321,20 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull, reason: '375 宽不溢出');
-    expect(
-      find.byType(MasterDataCardList<HrTaskItem>),
-      findsOneWidget,
-      reason: '窄屏走卡片形态',
-    );
 
+    // 2026-10-09 卡片形态退役：窄屏同一张表格，原因格走全站表格口径——
+    // 单行红字 + 省略号，完整文本挂 Tooltip 悬停查看。
     final reasonFinder = find.text(reason);
     expect(reasonFinder, findsOneWidget, reason: '原因原样完整，不拼「原因」前缀');
     final text = tester.widget<Text>(reasonFinder);
-    expect(text.maxLines, isNull);
-    expect(text.overflow, isNot(TextOverflow.ellipsis));
+    expect(text.maxLines, 1);
+    expect(text.overflow, TextOverflow.ellipsis);
     expect(
       text.style?.color,
       Theme.of(tester.element(reasonFinder)).colorScheme.error,
-      reason: '卡片里也是红字',
+      reason: '表格里也是红字',
     );
-    final paragraph = tester.renderObject<RenderParagraph>(
-      find.descendant(of: reasonFinder, matching: find.byType(RichText)),
-    );
-    expect(paragraph.didExceedMaxLines, isFalse);
-    final rect = tester.getRect(reasonFinder);
-    expect(rect.left, greaterThanOrEqualTo(0));
-    expect(rect.right, lessThanOrEqualTo(viewSize.width));
-    expect(rect.bottom, lessThanOrEqualTo(viewSize.height));
+    expect(find.byTooltip(reason), findsOneWidget, reason: '悬停可看完整原因');
 
     await tester.pumpWidget(const SizedBox());
   });

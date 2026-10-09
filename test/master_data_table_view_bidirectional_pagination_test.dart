@@ -34,7 +34,6 @@ class _Harness extends StatefulWidget {
   const _Harness({
     super.key,
     this.primary = false,
-    this.cards = false,
     this.variableHeight = false,
     this.eagerPage = false,
     this.initialRowCount = 20,
@@ -45,7 +44,6 @@ class _Harness extends StatefulWidget {
   });
 
   final bool primary;
-  final bool cards;
   final bool variableHeight;
   final bool eagerPage;
   final int initialRowCount;
@@ -135,14 +133,12 @@ class _HarnessState extends State<_Harness> {
           width: 210,
           value: _rowId,
           sortable: widget.localSort,
-          cardRole: MasterColumnCardRole.title,
         ),
         MasterColumnDef<_Row>(
           key: 'detail',
           label: '内容',
           width: 240,
           value: (row) => '明细 ${row.index} · v${row.version}',
-          cardRendersBuilder: true,
           cellBuilder: (_, row) => SizedBox(
             key: ValueKey('anchor-${row.id}'),
             height: heightOf(row),
@@ -184,8 +180,6 @@ class _HarnessState extends State<_Harness> {
       error: error,
       onRetry: () => load(page),
       primary: widget.primary,
-      compactCards: widget.cards,
-      cardBelowWidth: widget.cards ? 1000 : null,
     );
     return MaterialApp(
       home: Scaffold(
@@ -241,7 +235,7 @@ List<String> _idsForPages(Iterable<int> pages, {String scope = 'A'}) => [
 ];
 
 void main() {
-  for (final mode in ['table', 'primary', 'cards']) {
+  for (final mode in ['table', 'primary']) {
     for (final variableHeight in [false, true]) {
       testWidgets(
         '$mode prepends pages 2 and 1 while preserving the visible row '
@@ -252,7 +246,6 @@ void main() {
             _Harness(
               key: key,
               primary: mode == 'primary',
-              cards: mode == 'cards',
               variableHeight: variableHeight,
             ),
           );

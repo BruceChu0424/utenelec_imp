@@ -947,7 +947,6 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 ),
               )
             : const SizedBox.shrink(),
-        cardRole: MasterColumnCardRole.hidden,
       ),
       // 已审列（V256）：审计标记持久在服务端，但只在做核对的人眼前出现——
       // 进「审计模式」才显示 ✓ 列（改标记要 goods:bom:audit），关闭即正常清单。

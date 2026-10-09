@@ -159,7 +159,12 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
       use: widget.use,
       sameClassAs: widget.sameClassAs,
     );
-    _searchCtl.addListener(() => setState(() => _query = _searchCtl.text));
+    // 拼音组合中（composing 非空）不过滤：半截拼音把仓列表闪成「未找到」；
+    // 组合结束会再通知一次，届时按完整词过滤（2026-10-09 根因修复）。
+    _searchCtl.addListener(() {
+      if (_searchCtl.value.composing != TextRange.empty) return;
+      setState(() => _query = _searchCtl.text);
+    });
     if (widget.allowParent) return; // 查询口径不钻层，无需定位父层。
     // 带初始值时直接展开其父仓层，当前仓高亮，便于对照改选。
     final initial = widget.initialWarehouseId;

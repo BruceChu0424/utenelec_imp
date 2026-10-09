@@ -292,16 +292,18 @@ void main() {
     expect(repo.calls.length, greaterThan(callsBefore));
   });
 
-  testWidgets('compact layout shows cards with an explicit price button', (
-    tester,
-  ) async {
+  testWidgets('compact layout opens rows from the same table', (tester) async {
     await _pump(tester, size: const Size(420, 900));
-    // 2026-09-29「大小屏共用一张表」：窄屏由表格内建卡片形态接管（统一挂
-    // 表格 key）；点卡片即打开（原卡片上的显式按钮退役）。
+    // 2026-10-09 卡片形态退役：窄屏同一张表格，双击打开与桌面同款。
     expect(
       find.byKey(const Key('quote-finance-desktop-table')),
       findsOneWidget,
     );
+    // 窄屏横向滚动：先把单号列滚进视口再双击打开。
+    await tester.ensureVisible(find.text('XB-p2'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('XB-p2'));
+    await tester.pump(const Duration(milliseconds: 50));
     await tester.tap(find.text('XB-p2'));
     await tester.pumpAndSettle();
     expect(find.text('detail-p2'), findsOneWidget);

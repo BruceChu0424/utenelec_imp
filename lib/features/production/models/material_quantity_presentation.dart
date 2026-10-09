@@ -108,10 +108,20 @@ class MaterialIssuedQuantitySummary {
     total = conflicting
         ? null
         : materialPresentationSum([demand, public, safety]);
+    // 合并身份（2026-10-09 用户口径「合并下单的显示要合并」）：参与合计的
+    // 真实单据号去重保序，供已下单格悬浮指认「N 行合并 → 哪张单」。
+    documents = List.unmodifiable(
+      actions.values
+          .map((action) => action.documentNo)
+          .whereType<String>()
+          .where((value) => value.isNotEmpty)
+          .toSet(),
+    );
   }
 
   late final Set<String> actionIds;
   late final String? demand, public, safety, total;
+  late final List<String> documents;
   bool get known => actionIds.isNotEmpty && total != null;
 }
 

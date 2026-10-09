@@ -1111,15 +1111,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get employeeOnboardTitle => '新员工入职';
 
   @override
-  String get employeeOnboardGroupProfile => '档案';
-
-  @override
-  String get employeeOnboardGroupOrg => '组织';
-
-  @override
-  String get employeeOnboardGroupPay => '薪资 / 银行(可选，仅 HR/管理员可见)';
-
-  @override
   String get employeeOnboardSubmit => '提交入职';
 
   @override
@@ -1134,6 +1125,154 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
+
+  @override
+  String get employeeOnboardStepBasic => '基本信息';
+
+  @override
+  String get employeeOnboardStepWork => '工作信息';
+
+  @override
+  String get employeeOnboardStepEducation => '教育背景';
+
+  @override
+  String get employeeOnboardStepEmergency => '紧急联系人';
+
+  @override
+  String get employeeOnboardStepOther => '其他信息';
+
+  @override
+  String get employeeOnboardPrevious => '上一步';
+
+  @override
+  String get employeeOnboardNext => '下一步';
+
+  @override
+  String get employeeOnboardNoPermission => '您没有办理员工入职的权限(需要员工新建和敏感信息写入两项权限)';
+
+  @override
+  String get employeeOnboardNoPermissionEmpty => '无员工入职或敏感信息写入权限';
+
+  @override
+  String get employeeOnboardConfirmDateRequired => '正式入职的员工必须填写转正日期';
+
+  @override
+  String get employeeOnboardConfirmDateBeforeHire => '转正日期不能早于入职日期';
+
+  @override
+  String get employeeOnboardConfirmDateInfo => '正式入职必填，默认=入职日期，可按实际修改';
+
+  @override
+  String get employeeOnboardSubmitting => '正在创建员工档案与初始账号，请勿重复提交或离开本页。';
+
+  @override
+  String get employeeOnboardIdentityDerived => '按证件号码自动带出，提交后以证件为准';
+
+  @override
+  String get employeeOnboardSupervisorHint => '请选择直属上级';
+
+  @override
+  String get employeeOnboardSupervisorSheet => '选择直属上级';
+
+  @override
+  String get employeeOnboardEduHint => '选填：登记教育经历，提交后暂无其他补录入口。';
+
+  @override
+  String get employeeOnboardAddEducation => '添加教育经历';
+
+  @override
+  String employeeOnboardEducationEntry(int index) {
+    return '教育经历 $index';
+  }
+
+  @override
+  String get employeeOnboardSchool => '学校';
+
+  @override
+  String get employeeOnboardMajor => '专业';
+
+  @override
+  String get employeeOnboardDegree => '学历';
+
+  @override
+  String get employeeOnboardDegreeDoctor => '博士';
+
+  @override
+  String get employeeOnboardDegreeMaster => '硕士';
+
+  @override
+  String get employeeOnboardDegreeBachelor => '本科';
+
+  @override
+  String get employeeOnboardDegreeCollege => '大专';
+
+  @override
+  String get employeeOnboardDegreeSecondary => '中专';
+
+  @override
+  String get employeeOnboardDegreeHighSchool => '高中';
+
+  @override
+  String get employeeOnboardDegreeMiddleSchool => '初中';
+
+  @override
+  String get employeeOnboardDegreeOther => '其他';
+
+  @override
+  String get employeeOnboardEduStart => '入学时间';
+
+  @override
+  String get employeeOnboardEduEnd => '毕业时间';
+
+  @override
+  String get employeeOnboardEduDateOrder => '毕业时间不能早于入学时间';
+
+  @override
+  String get employeeOnboardPickDegree => '请选择学历';
+
+  @override
+  String get employeeOnboardContactHint => '选填：建议至少登记一位紧急联系人，便于紧急情况联系。';
+
+  @override
+  String get employeeOnboardAddContact => '添加紧急联系人';
+
+  @override
+  String employeeOnboardContactEntry(int index) {
+    return '联系人 $index';
+  }
+
+  @override
+  String get employeeOnboardRelationship => '关系';
+
+  @override
+  String get employeeOnboardRelSpouse => '配偶';
+
+  @override
+  String get employeeOnboardRelParent => '父母';
+
+  @override
+  String get employeeOnboardRelChild => '子女';
+
+  @override
+  String get employeeOnboardRelSibling => '兄弟姐妹';
+
+  @override
+  String get employeeOnboardRelRelative => '亲属';
+
+  @override
+  String get employeeOnboardRelFriend => '朋友';
+
+  @override
+  String get employeeOnboardRelColleague => '同事';
+
+  @override
+  String get employeeOnboardRelOther => '其他';
+
+  @override
+  String get employeeOnboardDeleteEntry => '删除';
+
+  @override
+  String get employeeOnboardAttendanceGroup => '考勤组';
 
   @override
   String get positionPickerTitle => '选择或填写岗位';
@@ -9825,10 +9964,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get release258StatusColors =>
       '全站状态颜色统一口径：状态列用稳定的整格底色标示，仓库单据出库进度一眼可辨（未出库黄、部分出库橙、已出完绿）。';
-
-  @override
-  String get release258RollingMerge =>
-      '采购与委外申请滚动合单：同一分析同一路线只保留一张开口申请，未订货且未被引用的行自动并入，无需反复新建。';
 
   @override
   String get release258IqcPending => '待检处置队列的货品名称与待检数量恢复显示，并按基本单位分组汇总，不再显示「—」。';

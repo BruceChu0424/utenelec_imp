@@ -283,7 +283,6 @@ void main() {
                       ),
                     ),
                   ],
-                  compactCards: true,
                   facets: const {},
                   nullCounts: const {},
                   filters: const {},

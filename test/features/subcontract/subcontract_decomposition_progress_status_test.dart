@@ -1,6 +1,7 @@
-// ADR-098 / ADR-143 委外任务中心：分段（待处理/领料/进行中/历史记录）、进行中查询
-// status=IN_PROGRESS、状态列按 displayStage 上色并给回厂短交待判定加「紧急」标签、
-// 异常小类行挂短交/退回；进行中状态码按 ADR-143 §4.1 的领料制词表。
+// ADR-098 / ADR-143 委外任务中心：分类（草稿/待处理/进行中/历史记录，ADR-171 起
+// 领料并入「待处理」子分类）、进行中查询 status=IN_PROGRESS、状态列按 displayStage
+// 上色并给回厂短交待判定加「紧急」标签、异常小类行挂短交/退回；进行中状态码按
+// ADR-143 §4.1 的领料制词表。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -175,9 +176,25 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('待处理'), findsOneWidget);
-    expect(find.text('领料'), findsOneWidget);
     expect(find.text('进行中'), findsOneWidget);
     expect(find.text('历史记录'), findsOneWidget);
+    // ADR-171 修订二：领料连子分类行也不是了——拍平进「待处理」表，只是
+    // 领料行的一种状态(进页面红数自动选中「待处理」后同一张表可见)。
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('subcontract-decomposition-stages')),
+        matching: find.text('领料'),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('subcontract-decomposition-pending-categories')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('subcontract-decomposition-pending-table')),
+      findsOneWidget,
+    );
     expect(find.text('等待财务审核'), findsNothing);
     expect(find.text('财务已通过'), findsNothing);
     expect(find.text('财务驳回'), findsNothing);

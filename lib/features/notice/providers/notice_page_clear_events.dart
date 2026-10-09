@@ -8,8 +8,9 @@
 // 本表是「页面 ↔ 事件」的权威映射：NoticeRouteReadBridge 在用户落定到某个
 // 页面（或其子路径）时，按该页对应的事件集调 read-by-source 批量置已读——
 // 与 ChainNoticeService 各 notify* 方法写入的 source_event 常量一一对应。
-// 新增业务通知时：若 action_route 是详情页，则把事件登记到接收人的自然
-// 工作台路由下；若 action_route 已是列表页则无需登记（精确匹配已覆盖）。
+// 新增业务通知时：若 action_route 是详情页或带查询参数的页面（?caseId= 等，
+// read-by-route 精确匹配命中不了），把事件登记到接收人的自然工作台路由下；
+// 若 action_route 已是不带参数的列表/队列页则无需登记（精确匹配已覆盖）。
 //
 // 语义边界（与既有产品口径一致）：
 // - 只置已读，不代办结/待办完成（task_completed_at / resolved_at 独立）；
@@ -45,7 +46,7 @@ const Map<String, List<String>> noticePageClearEvents = {
   ],
   // 仓库履约任务台：领料/备料域（一行=一张 DRAW 领料单）。
   '/operations/workbench/warehouse': ['PRODUCTION_DRAW_PENDING'],
-  // —— 销售：订单进度工作台（排产/报工/入库/完工可发货/取消/交期/预留/驳回）——
+  // —— 销售：订单进度工作台（排产/报工/入库/完工可发货/取消/交期/预留/驳回/确认回执）——
   '/sales/progress': [
     'PRODUCTION_PLAN_SCHEDULED',
     'PRODUCTION_REPORTED',
@@ -55,6 +56,9 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PRODUCTION_SEGMENT_STARTED',
     'SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP',
     'SALES_ORDER_CANCELED',
+    // 财务确认结果回执（2026-10-09 后端补发；action_route 是 /sales/orders/{id}
+    // 详情页，销售在订单进度页看结果，进页即清）。
+    'SALES_ORDER_FINANCE_CONFIRMED',
     'SALES_ORDER_FINANCE_REJECTED',
     'SALES_DELIVERY_DUE',
     'SALES_RESERVATION_HOLD_OVERDUE',
@@ -81,16 +85,9 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PROCUREMENT_FINANCE_CHANGE_SUBMITTED',
   ],
   // —— 计划/生产：物料分析工作台（新订单待分析 / 交货预警计划侧）——
-  '/production/material-analysis': [
-    'SALES_ORDER_APPROVED',
-    'SALES_DELIVERY_DUE',
-    // ADR-117 车间催计划下单(卡片本身在计划下够单后由服务端撤回)。
-    'PRODUCTION_PLANNING_URGED',
-  ],
   // 物料分析历史与分析摘要详情（/production/material-analyses/{id}/summary）
   '/production/material-analyses': ['PROCUREMENT_IQC_RESOLVED'],
-  // 计划单列表（缺料提醒的 buyer/planner 副本指向 /production/plans/{id} 详情）
-  '/production/plans': ['PRODUCTION_PLAN_SCHEDULED'],
+  // 报工单列表（成品入库拒收/红冲指向 /production/daily-reports/{id} 详情）
   '/production/overproduction-rate-requests': [
     'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED',
     'PRODUCTION_OVERPRODUCTION_RATE_APPROVED',
@@ -122,15 +119,6 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PREPLAN_SUPPLY_ACTION_CREATED',
     'PREPLAN_SUPPLY_DOCUMENT_CREATED',
   ],
-  // 订货单列表（委外全链路状态 + IQC 结案 + 财务回执的详情路由落点）
-  '/subcontract/orders': [
-    'SUBCONTRACT_OUTBOUND_COMPLETED',
-    'SUBCONTRACT_OUTBOUND_REVERSED',
-    'SUBCONTRACT_RETURN_DUE',
-    'PROCUREMENT_IQC_RESOLVED',
-    'PROCUREMENT_FINANCE_APPROVED',
-    'PROCUREMENT_FINANCE_REJECTED',
-  ],
   // —— 仓库：领料 / 拣货任务队列（通知详情路由在 /sales、/warehouse/DRAW 下）——
   '/warehouse/tasks/draw': ['PRODUCTION_DRAW_PENDING'],
   '/warehouse/tasks/outbound': [
@@ -160,6 +148,51 @@ const Map<String, List<String>> noticePageClearEvents = {
     'PROCUREMENT_IQC_REJECTION_NO_CREDIT',
     'PROCUREMENT_IQC_REJECTION_REVERSED',
     'PROCUREMENT_IQC_REJECTION_FINANCE_EXCEPTION',
+  ],
+  // —— 报价核价结果回执（发给负责销售；action_route 是 /sales/quotes/{id} 详情，
+  // 销售在报价列表处理核价结果，2026-10-09 补齐"操作了还挂着未读"缺口）——
+  '/sales/quotes': [
+    'SALES_QUOTE_FINANCE_RETURNED',
+    'SALES_QUOTE_FINANCE_CONFIRMED',
+    'SALES_QUOTE_FINANCE_REOPENED',
+  ],
+  // —— 委外短交判定页（action_route 带 ?caseId= 查询参数，read-by-route
+  // 精确匹配命中不了；判定/到齐/作废虽会办结撤卡，但打开判定页即应视为已读）——
+  '/subcontract/short-deliveries': [
+    'SUBCONTRACT_SHORT_DELIVERY_DETECTED',
+    'SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE',
+  ],
+  // —— BOM 完善回执 / 研发任务完成回执（等 BOM 的人散布在计划/委外；
+  // 落点是 ?analysisId= 查询路由或 /production/plans/{id}、/subcontract/orders/{id}
+  // 详情页，靠这些自然工作台页清理）——
+  '/production/material-analysis': [
+    'SALES_ORDER_APPROVED',
+    'SALES_DELIVERY_DUE',
+    // ADR-117 车间催计划下单(卡片本身在计划下够单后由服务端撤回)。
+    'PRODUCTION_PLANNING_URGED',
+    'GOODS_BOM_UPDATED',
+    'RD_TASK_RESOLVED',
+  ],
+  '/production/plans': [
+    'PRODUCTION_PLAN_SCHEDULED',
+    'GOODS_BOM_UPDATED',
+    'RD_TASK_RESOLVED',
+  ],
+  '/subcontract/orders': [
+    'SUBCONTRACT_OUTBOUND_COMPLETED',
+    'SUBCONTRACT_OUTBOUND_REVERSED',
+    'SUBCONTRACT_RETURN_DUE',
+    'PROCUREMENT_IQC_RESOLVED',
+    'PROCUREMENT_FINANCE_APPROVED',
+    'PROCUREMENT_FINANCE_REJECTED',
+    'GOODS_BOM_UPDATED',
+    'RD_TASK_RESOLVED',
+  ],
+  // —— 盘点结果回执（发给提交人；action_route 带 ?requestId= 查询参数）——
+  '/stock/count-requests': [
+    'STOCK_COUNT_APPROVED',
+    'STOCK_COUNT_REJECTED',
+    'STOCK_COUNT_CANCELLED',
   ],
 };
 

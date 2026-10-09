@@ -1913,28 +1913,6 @@ abstract class _MaterialAnalysisPageBase
         .withValues(alpha: 0.14);
   }
 
-  Widget _errorState(String message, Future<void> Function() retry) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          Icons.error_outline_rounded,
-          size: 40,
-          color: Theme.of(context).colorScheme.error,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenButton(
-          type: UtenButtonType.tonal,
-          icon: Icons.refresh_rounded,
-          onPressed: retry,
-          child: const Text('重试'),
-        ),
-      ],
-    ),
-  );
-
   Widget _inlineError(ThemeData theme, String message, VoidCallback retry) =>
       Container(
         padding: const EdgeInsets.all(UtenSpacing.s8),

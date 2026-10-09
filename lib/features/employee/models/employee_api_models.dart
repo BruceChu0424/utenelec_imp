@@ -416,6 +416,7 @@ class EmployeeOnboardingInput {
     this.compensation,
     this.contract,
     this.emergencyContacts = const [],
+    this.educations = const [],
     this.account = const AccountInput(),
   });
 
@@ -424,6 +425,7 @@ class EmployeeOnboardingInput {
   final Map<String, dynamic>? compensation;
   final Map<String, dynamic>? contract;
   final List<Map<String, dynamic>> emergencyContacts;
+  final List<Map<String, dynamic>> educations;
   final AccountInput account;
 
   Map<String, dynamic> toJson() => {
@@ -432,6 +434,7 @@ class EmployeeOnboardingInput {
     if (compensation != null) 'compensation': compensation,
     if (contract != null) 'contract': contract,
     'emergencyContacts': emergencyContacts,
+    'educations': educations,
     'account': account.toJson(),
   };
 }

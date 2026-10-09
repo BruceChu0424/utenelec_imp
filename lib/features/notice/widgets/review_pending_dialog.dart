@@ -67,7 +67,7 @@ String workbenchRouteFor(
   'PRODUCTION_MATERIAL_INCREMENT_SUBMITTED' =>
     RouteName.productionMaterialIncrementRequests,
   'SALES_ORDER_APPROVED' => RouteName.productionMaterialAnalysis,
-  // ADR-143 委外可领料：落委外任务中心「领料」分段(通知自带定位时沿用)。
+  // ADR-143 委外可领料：落委外任务中心「待处理」并定位领料行(ADR-171 修订二；通知自带定位时沿用)。
   'SUBCONTRACT_DRAW_AVAILABLE' =>
     actionRoute != null &&
             actionRoute.startsWith(RouteName.operationsSubcontractWorkbench)

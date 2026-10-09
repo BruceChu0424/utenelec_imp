@@ -1370,18 +1370,7 @@ final class _MaterialAggregateTableController {
                   )
                   ? '已采用现有供给，数量和进度已更新'
                   : '办理完成，数量和进度已更新'
-            : () {
-                // 采购/委外的外部批次滚动并入同一张申请（ADR-065 修订三），
-                // 提示按「去重后的单据」报数，避免同一单号重复罗列。
-                final documents = result.batches
-                    .map((batch) => batch.documentNo)
-                    .where((value) => value.isNotEmpty)
-                    .toSet()
-                    .toList();
-                return documents.length == result.batches.length
-                    ? '已下达 ${result.batches.length} 笔：${documents.join('、')}'
-                    : '已下达 ${result.batches.length} 笔，合并为 ${documents.length} 张单：${documents.join('、')}';
-              }(),
+            : '已下达 ${result.batches.length} 笔：${result.batches.map((batch) => batch.documentNo).where((value) => value.isNotEmpty).join('、')}',
       );
       return true;
     } catch (failure) {
@@ -1987,8 +1976,14 @@ final class _MaterialAggregateTableController {
   String? issuedBreakdown(_MaterialAggregate aggregate) {
     final summary = issuedSummary(aggregate);
     if (summary == null || !summary.known || summary.total == '0') return null;
+    // 合并身份（2026-10-09）：同料合并批次一张申请承载 N 个来源，悬浮里
+    // 直接给出真实单据号，与「已下单 X = 需求份 + 公共份」同处一行。
+    final documents = summary.documents.isEmpty
+        ? ''
+        : '（${summary.documents.take(3).join('、')}'
+              '${summary.documents.length > 3 ? ' 等 ${summary.documents.length} 张' : ''}）';
     return '已下单 ${summary.total} = 需求份 ${summary.demand} + 公共备货 ${summary.public}'
-        '${summary.safety == '0' ? '' : ' + 安全补库 ${summary.safety}'}';
+        '${summary.safety == '0' ? '' : ' + 安全补库 ${summary.safety}'}$documents';
   }
 
   double orderedQty(_MaterialAggregate aggregate) {

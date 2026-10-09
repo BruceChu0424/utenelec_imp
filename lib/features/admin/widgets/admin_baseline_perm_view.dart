@@ -37,6 +37,15 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
   Set<String>? get _serverChecked =>
       ref.read(adminPermissionBaselineProvider).valueOrNull?.toSet();
 
+  /// 基础包钉死码(V832/ADR-170)：体系准入权限，任何移出操作都跳过。
+  Set<String> get _pinnedCodes => {
+    for (final group
+        in ref.read(permissionCatalogProvider).valueOrNull ??
+            const <PermissionCatalogGroup>[])
+      for (final permission in group.permissions)
+        if (permission.baselinePinned) permission.code,
+  };
+
   Set<String> get _checked =>
       _localChecked ?? _serverChecked ?? const <String>{};
 
@@ -59,7 +68,12 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
   void _setPermissions(Iterable<String> codes, bool value) {
     setState(() {
       final next = {..._checked};
-      value ? next.addAll(codes) : next.removeAll(codes);
+      if (value) {
+        next.addAll(codes);
+      } else {
+        // 「本组/本模块全部移出」也会走到这里：钉死码必须留下，否则保存会被服务端整单拒绝。
+        next.removeAll(codes.where((code) => !_pinnedCodes.contains(code)));
+      }
       _localChecked = next;
     });
   }
@@ -68,9 +82,11 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
     if (_saving || !_isDirty) return;
     setState(() => _saving = true);
     try {
+      // 钉死码恒在提交集合里：即使库被手工改坏，从这里保存也会把它们带回基础包。
+      final desired = <String>{..._checked, ..._pinnedCodes};
       final change = await ref
           .read(adminRepositoryProvider)
-          .updatePermissionBaseline(_checked.toList());
+          .updatePermissionBaseline(desired.toList());
       ref
         ..invalidate(adminPermissionBaselineProvider)
         ..invalidate(permissionCatalogProvider);
@@ -121,7 +137,9 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
                 ),
                 child: Text(
                   '基础包里的权限每个在职员工都默认拥有，不用再按部门或个人配置。'
-                  '只放大家都该有的自助类权限；需要逐项授予的敏感权限不能放进来。',
+                  '只放大家都该有的自助类权限；需要逐项授予的敏感权限不能放进来。'
+                  '标有锁定图标的项是通知与员工自助服务的体系准入权限，已锁定不可移出'
+                  '（V832/ADR-170），个别人员如需收回请用个人收回。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     height: 1.5,
@@ -267,13 +285,31 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
               ),
             ),
             const SizedBox(width: UtenSpacing.s8),
+            if (permission.baselinePinned)
+              Tooltip(
+                message: '体系准入权限，已锁定在全员基础包，不能移出',
+                child: Icon(
+                  Icons.lock_outline_rounded,
+                  key: ValueKey('baseline-pinned-${permission.code}'),
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            if (permission.baselinePinned)
+              const SizedBox(width: UtenSpacing.s8),
             Semantics(
               label:
-                  '${permission.name}${checked.contains(permission.code) ? '已包含' : '未包含'}',
+                  '${permission.name}${checked.contains(permission.code) ? '已包含' : '未包含'}'
+                  '${permission.baselinePinned ? '，已锁定不可移出' : ''}',
               child: Switch(
                 key: ValueKey('baseline-switch-${permission.code}'),
-                value: checked.contains(permission.code),
-                onChanged: (value) => _setPermissions([permission.code], value),
+                // 钉死码按不变式恒显示为已包含(数据库 CHECK 保证 pinned ⇒ baseline)。
+                value:
+                    permission.baselinePinned ||
+                    checked.contains(permission.code),
+                onChanged: permission.baselinePinned
+                    ? null
+                    : (value) => _setPermissions([permission.code], value),
               ),
             ),
           ],

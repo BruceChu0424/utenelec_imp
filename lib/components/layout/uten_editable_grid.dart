@@ -716,6 +716,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.addRowLabel = '添加行',
     this.addRowsLabel = '添加多行',
     this.emptyMessage = '暂无明细，点击下方按钮添加',
+    this.emptyPlaceholder,
     this.confirmDelete = true,
     this.deleteConfirmLabel = '确认删除该行明细？',
     this.cloneRow,
@@ -803,6 +804,10 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final String addRowLabel;
   final String addRowsLabel;
   final String emptyMessage;
+
+  /// 行区空态占位（2026-10-09）：非 null 时替代 [emptyMessage] 文案渲染在表体内
+  /// ——转圈、错误+重试、引导块等状态都留在行区，表头骨架不撤（页面不跳）。
+  final Widget? emptyPlaceholder;
 
   /// 删除行前是否弹确认框（默认开）。
   final bool confirmDelete;
@@ -2432,7 +2437,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
                     builder: (context, _) {
                       final all = _allRows();
                       if (all.isEmpty) {
-                        return _EmptyRows(message: widget.emptyMessage);
+                        return _EmptyRows(
+                          message: widget.emptyMessage,
+                          child: widget.emptyPlaceholder,
+                        );
                       }
                       // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
                       final rows = _visibleRows();
@@ -3652,18 +3660,23 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
 }
 
 class _EmptyRows extends StatelessWidget {
-  const _EmptyRows({required this.message});
+  const _EmptyRows({required this.message, this.child});
   final String message;
+
+  /// 非 null 时替代 [message] 文案（loading 转圈、错误重试、引导块等）。
+  final Widget? child;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s16),
       child: Center(
-        child: Text(
-          message,
-          style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-        ),
+        child:
+            child ??
+            Text(
+              message,
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+            ),
       ),
     );
   }

@@ -9,8 +9,8 @@
 // 审核入口唯一：右下 UtenFloatingActionGroup 悬浮组的整批「审核通过 / 驳回」
 //（均带 UtenReviewerResponsibilityNotice）；明细表退回只读浏览。
 //
-// 响应式：compact 由页面自套 UtenContentContainer；明细表为定高内滚（沿用旧版
-// 高度钳制），窄屏横向滚动即可。
+// 响应式：compact 由页面自套 UtenContentContainer；明细表随折叠容器内滚
+//（摘要/驳回卡进折叠头，2026-09-22 全站表格滚动口径），窄屏横向滚动即可。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

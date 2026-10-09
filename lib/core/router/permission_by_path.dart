@@ -245,9 +245,9 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     ];
   }
   if (location == RouteName.operationsSubcontractWorkbench) {
-    // 委外任务中心(ADR-143 §4.1)：看申请(待处理)或看订货(领料/进行中)任一即可进入，
-    // 各分段的数据与按钮由服务端按权限与能力下发；create/decompose/draw 只是页内动作，
-    // 不能反向授予阅读。
+    // 委外任务中心(ADR-143 §4.1)：看申请或看订货任一即可进入，「待处理」分类下
+    // 委外申请/领料两个子分类与「进行中」的数据、按钮由服务端按权限与能力下发；
+    // create/decompose/draw 只是页内动作，不能反向授予阅读。
     return const [Perm.subcontractApplicationView, Perm.subcontractOrderView];
   }
   if (location == RouteName.operationsSubcontractDrawRequest) {

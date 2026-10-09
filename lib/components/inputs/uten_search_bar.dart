@@ -1,10 +1,18 @@
-// UtenSearchBar - 搜索栏（带清除 + 防抖）——全平台唯一搜索框组件。
+// UtenSearchBar - 搜索栏（带清除 + 防抖 + 输入法组合保护）——全平台唯一搜索框组件。
 // 文档：docs/02-组件库/UtenSearchBar.md
 //
 // 2026-09-01 全平台统一：搜索框只保留本组件一种形态——胶囊圆角
 //（半径远大于高度，RRect 自动收敛为高度一半，与 M3 SegmentedButton
 // StadiumBorder 分段导航条同形）。业务代码不得再手写搜索 TextField；
 // 圆角与高度也不另设参数，保证所有页面外观一致。
+//
+// 输入法组合保护（2026-10-09，中文输入「打一半拼音就被搜索/丢输入法」的根因）：
+// 框架的 TextField.onChanged 对 IME 组合中的每次拼音按键都会回调，直接防抖触发
+// 会让半截拼音（"li"）发起检索，检索又常命中 0 条导致页面切空态、搜索框被重建、
+// 焦点丢失，组合中的拼音被原样顶上屏。因此本组件在 TextEditingValue.composing
+// 非空（拼音未上屏）期间挂起 onInputChanged/onChanged；组合结束后统一补发一次
+//（选字上屏走 onChanged，原样上屏/失焦提交等文本不变的结束方式走 controller
+// 监听补发）。
 //
 // 高度机制（2026-10-07 根因结论，SDK input_decorator.dart 源码实证）：
 // InputDecorator 的药丸**描边**按 layout.containerHeight = clamp(内容高, 文本行高,
@@ -25,7 +33,8 @@ import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// Uten 搜索栏
 ///
-/// 内置防抖（默认 300ms）+ 清除按钮 + 自动聚焦控制。
+/// 内置防抖（默认 300ms）+ 清除按钮 + 自动聚焦控制 + 输入法组合保护
+///（拼音组合期间不派发回调，见文件头说明）。
 class UtenSearchBar extends StatefulWidget {
   const UtenSearchBar({
     super.key,
@@ -43,11 +52,13 @@ class UtenSearchBar extends StatefulWidget {
   final String hint;
   final String? initialValue;
 
-  /// Fires synchronously for every text edit, before [debounce].
+  /// Fires synchronously for every committed text edit, before [debounce].
   ///
   /// Pages with asynchronous search can use this to invalidate an older
   /// request during the debounce window. [onChanged] remains the debounced
-  /// callback that should start the replacement request.
+  /// callback that should start the replacement request. IME composition
+  /// (pinyin not yet committed) holds both callbacks until the composition
+  /// ends — half-typed pinyin never dispatches.
   final ValueChanged<String>? onInputChanged;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
@@ -72,6 +83,11 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   late final TextEditingController _controller;
   Timer? _debounce;
   bool _ownsController = false;
+
+  /// 非 null = 有一段 IME 组合（拼音未上屏）被挂起，等组合结束后补发回调。
+  /// 其值是挂起期间的最新文本；组合结束若文本已变（选字上屏会走
+  /// TextField.onChanged），由 onChanged 路径清掉，避免双发。
+  String? _heldByComposition;
 
   // ADR-150: the page search box is a generic AI view action ("search for").
   final _aiSlot = AiPageSlot();
@@ -105,6 +121,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
         if (!mounted) throw AiActionFailure(ctx.l10n.aiChatCardHandlerMissing);
         final text = (call.args['text'] as String? ?? '').trim();
         _debounce?.cancel();
+        _heldByComposition = null;
         _controller.value = TextEditingValue(
           text: text,
           selection: TextSelection.collapsed(offset: text.length),
@@ -127,6 +144,9 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     _ownsController = widget.controller == null;
     _controller =
         widget.controller ?? TextEditingController(text: widget.initialValue);
+    // 组合结束时文本可能不变（原样上屏/失焦提交），onChanged 不会触发，
+    // 靠监听 controller 捕捉「composing 区间清空」这一刻补发挂起的回调。
+    _controller.addListener(_onControllerValueChanged);
   }
 
   @override
@@ -138,6 +158,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     if (_ownsController && oldWidget.initialValue != widget.initialValue) {
       final next = widget.initialValue ?? '';
       if (_controller.text != next) {
+        _heldByComposition = null;
+        _debounce?.cancel();
         _controller.value = TextEditingValue(
           text: next,
           selection: TextSelection.collapsed(offset: next.length),
@@ -148,13 +170,38 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerValueChanged);
     _aiSlot.detach();
     _debounce?.cancel();
     if (_ownsController) _controller.dispose();
     super.dispose();
   }
 
+  /// controller 值变化：只负责「组合结束但文本没变」的补发（TextField.onChanged
+  /// 只在文本变化时触发，覆盖不了这种结束方式）。程序赋值不会走到这里需要补发
+  /// 的路径——它们发生时 [_heldByComposition] 已被调用方清空。
+  void _onControllerValueChanged() {
+    final held = _heldByComposition;
+    if (held == null) return;
+    if (_controller.value.composing != TextRange.empty) return;
+    if (_controller.text != held) return;
+    _heldByComposition = null;
+    _dispatch(held);
+  }
+
   void _onChanged(String value) {
+    if (_controller.value.composing != TextRange.empty) {
+      // 拼音组合中：挂起回调（不清文本），等组合结束统一派发。
+      _debounce?.cancel();
+      _heldByComposition = value;
+      setState(() {});
+      return;
+    }
+    _heldByComposition = null;
+    _dispatch(value);
+  }
+
+  void _dispatch(String value) {
     _debounce?.cancel();
     widget.onInputChanged?.call(value);
     _debounce = Timer(widget.debounce, () {
@@ -165,6 +212,7 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   void _clear() {
     _debounce?.cancel();
+    _heldByComposition = null;
     _controller.clear();
     widget.onInputChanged?.call('');
     widget.onChanged?.call('');
@@ -179,7 +227,13 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       controller: _controller,
       autofocus: widget.autofocus,
       onChanged: _onChanged,
-      onSubmitted: widget.onSubmitted,
+      // 回车即查：先取消挂起的防抖回调，避免回车查完 ~300ms 后防抖又重查一次。
+      onSubmitted: widget.onSubmitted == null
+          ? null
+          : (value) {
+              _debounce?.cancel();
+              widget.onSubmitted!(value);
+            },
       textInputAction: TextInputAction.search,
       decoration: _decoration(theme),
       style: widget.dense

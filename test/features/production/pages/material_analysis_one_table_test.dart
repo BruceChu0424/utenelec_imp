@@ -4478,6 +4478,62 @@ void main() {
     expect(field.controller!.text, '600');
   });
 
+  testWidgets('按物料汇总顶层已下单：办理列给撤回不再是调拨，未下单照旧调拨(2026-10-09)', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        (data['allowedActions'] as List).add('CANCEL_ACTION');
+        // 顶层根供给行下了采购(改走 BUY + 一条供给行动)：汇总视图里它的办理
+        // 列必须与聚合行同一口径——给「撤回 单号」，而不是照旧一枚调拨按钮。
+        _fixtureMaterial(data, 'm-root')
+          ..['sourceConfirmed'] = 'BUY'
+          ..['sourceSuggestion'] = 'BUY'
+          ..['netShortageQty'] = 0
+          ..['downstreamReferences'] = [
+            {
+              'actionId': 'act-root',
+              'route': 'BUY',
+              'status': 'REQUESTED',
+              'documentNo': 'PR-0100',
+              'allocatedQty': 600,
+            },
+          ];
+        (data['supplyActions'] as List).add({
+          'actionId': 'act-root',
+          'route': 'BUY',
+          'operationType': 'SUPPLY',
+          'requestedQty': 600,
+          'status': 'REQUESTED',
+          'documentNo': 'PR-0100',
+        });
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    final withdraw = find.byKey(
+      const ValueKey('material-top-level-cancel-act-root'),
+    );
+    expect(withdraw, findsOneWidget, reason: '已下单的顶层行办理列必须给撤回按钮');
+    expect(
+      tester.widget<TextButton>(withdraw).onPressed,
+      isNotNull,
+      reason: '有 CANCEL_ACTION 权限且来源完整时顶层撤回必须可点',
+    );
+    expect(_transferButton('m-root'), findsNothing);
+    // 与聚合行/进度弹窗同一确认编排：先弹原因确认框再发请求。
+    await tester.tap(withdraw);
+    await tester.pumpAndSettle();
+    expect(find.text('撤回供给任务'), findsOneWidget);
+    expect(
+      requests.where((r) => r.path.endsWith('/cancel')),
+      isEmpty,
+      reason: '没确认前不许发撤回请求',
+    );
+  });
+
   testWidgets('有公共在途可认领时：还缺数量显示净数，下单数量预填毛量', (tester) async {
     await _pump(tester);
     // 这一行需求覆盖 1000，其中 300 下达时服务端会自动从公共在途认领。

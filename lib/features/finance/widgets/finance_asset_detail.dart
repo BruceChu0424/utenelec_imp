@@ -653,7 +653,6 @@ class _FinanceAssetDetailSurfaceState
           MasterDataTableView<FinanceAssetScheduleLine>(
             tableKey: 'finance.asset.schedule',
             embedded: true,
-            compactCards: true,
             platformBinding: PlatformTableBinding(
               tableKey: 'finance.asset.schedule',
               scope: 'view_finance',
@@ -677,7 +676,6 @@ class _FinanceAssetDetailSurfaceState
                 key: 'period',
                 label: '期间',
                 width: 110,
-                cardRole: MasterColumnCardRole.title,
                 value: (row) => row.period,
               ),
               MasterColumnDef(

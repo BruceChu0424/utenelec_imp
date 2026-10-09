@@ -12,6 +12,8 @@
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）；
 // 窄屏表格横向滚动即可。
 // 文档：docs/03-页面/员工列表页.md
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
@@ -58,6 +60,10 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   String? _error;
   int _request = 0;
 
+  /// 搜索 0 命中时的「类似人员」（服务端逐字符评分，见 EmployeeListQuery#similar）；
+  /// 随下一次重查清空。非搜索态恒为空。
+  List<EmployeeSummary> _similar = const [];
+
   /// 表头筛选（部门/状态/岗位）：bucket 从已加载 items 前端聚合，前端裁剪显示行
   ///（搜索与排序仍走服务端；表头筛选属展示层能力）。
   Map<String, String?> _filters = {};
@@ -88,6 +94,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       _error = null;
       _loadingMore = false;
       _page = 1;
+      _similar = const [];
     });
     try {
       final r = await ref
@@ -106,6 +113,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         _totalPages = r.totalPages;
         _loading = false;
       });
+      unawaited(_refreshSimilar(search, request));
     } on ApiException catch (e) {
       if (!mounted || request != _request) return;
       _failReload(e.message);
@@ -113,6 +121,19 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       if (!mounted || request != _request) return;
       _failReload(AppLocalizations.of(context).employeeOnboardLoadFailed);
     }
+  }
+
+  /// 搜索 0 命中时补拉「类似人员」：主列表出现行（或换词重查）即作废。
+  /// 属补充提示，失败静默——空态本身已由主列表交代。
+  Future<void> _refreshSimilar(String search, int request) async {
+    if (search.isEmpty || _items.isNotEmpty) return;
+    try {
+      final similar = await ref
+          .read(employeeRepositoryProvider)
+          .similar(search);
+      if (!mounted || request != _request || _items.isNotEmpty) return;
+      setState(() => _similar = similar);
+    } catch (_) {}
   }
 
   /// 刷新失败：已无数据 → 错误态占位；仍持旧数据 → 就地提示、保留旧表可继续操作。
@@ -294,11 +315,24 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         key: const Key('employee-list-table'),
         columns: _columns(l10n),
         items: _visibleItems,
+        // 搜索 0 命中时的「类似人员」分区：行区先报「无符合」，下面按相似度列人。
+        leadingGroups: _similar.isEmpty
+            ? null
+            : [
+                MasterDataGroup<EmployeeSummary>(
+                  id: 'employee-similar',
+                  title: '类似人员（${_similar.length}）',
+                  subtitle: '没有精确匹配，按相似度推荐',
+                  icon: Icons.group_work_rounded,
+                  items: _similar,
+                  initiallyExpanded: true,
+                ),
+              ],
         facets: _facetsOf(l10n),
         nullCounts: const {},
         filters: _filters,
         onFilterChanged: _onFilterChanged,
-        // 双击行进入员工详情；右键/长按菜单同入口。
+        // 双击行进入员工详情；右键/长按菜单同入口（类似人员行同语义）。
         onRowTap: _openDetail,
         rowMenuBuilder: (e) => [
           UtenMenuItem(
@@ -310,17 +344,18 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         sortColumn: _sortColumn,
         sortAscending: _sortAsc,
         onSortChange: _onSortChange,
-        // 加载/错误/空态交给表格自身：刷新时若仍持旧数据则表格原地保留
-        //（工具条里的搜索框不卸载、焦点不丢），仅无数据时才显示占位。
+        // 加载/错误/空结果都保留表格骨架（组件统一口径），行区显示提示。
         isLoading: _loading,
         error: _error,
         onRetry: _reload,
-        emptyMessage: l10n.employeeEmpty,
+        emptyMessage: _search.isEmpty
+            ? l10n.employeeEmpty
+            : '无符合「$_search」的员工', // TODO(l10n): 补 arb
         // 滚动临近底部自动追加下一页（末尾转圈行）；是否还有更多由 _loadMore 守卫。
         loadingMore: _loadingMore,
         onLoadMore: _loadMore,
         // 搜索框：紧跟「全屏」按钮右侧（toolbarLeadingActions 左簇），限宽 260；
-        // UtenSearchBar 自带 300ms 防抖 + 清除按钮，全屏路由里同款渲染。
+        // UtenSearchBar 自带 300ms 防抖 + 清除按钮 + 输入法组合保护，全屏路由里同款渲染。
         toolbarLeadingActions: [
           SizedBox(
             width: 260,

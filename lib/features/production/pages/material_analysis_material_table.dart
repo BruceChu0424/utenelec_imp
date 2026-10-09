@@ -642,7 +642,11 @@ abstract class _MaterialAnalysisMaterialTableState
     return aggregate.paths
         .where((path) {
           if (products?[path.analysisLineId]?.sourceType != 'AGGREGATE_MAKE') {
-            return true;
+            // 2026-10-09 用户口径「合并下单的显示要合并，跟下达车间一样」：
+            // 已并入同料合并批次（采购/委外部批次，ADR-120 §4）且还需安排为 0
+            // 的来源路径，由本聚合物料行统一承载合并后的数量/进度/单据悬浮，
+            // 不再逐条展开；有剩余待补或走普通逐行下达的路径照常显示。
+            return !_pathFullyIssuedIntoAggregateBatch(path);
           }
           final source = materialPresentationFact(
             path.quantityFactsExact,
@@ -996,8 +1000,12 @@ abstract class _MaterialAnalysisMaterialTableState
     return KeyedSubtree(
       key: const Key('material-analysis-material-table-region'),
       child: MasterDataTableView<_MaterialTableRow>(
+        // 表头列序按 tableKey 记在每用户偏好里；2026-10-08「进度列放最前」
+        // 只改了默认序，老账号保存过的旧列序（物料办理在前）会一直压住它
+        // （2026-10-09 用户实机仍见物料办理居首）。尾号 .1→.2 一次性重置
+        // 保存布局，让所有人拿到新默认序；固定列/拖拽换位此后照常自存。
         tableKey:
-            'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.1',
+            'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.2',
         key: const Key('material-analysis-material-table'),
         columns: _materialTableColumns(theme),
         // 视图与结果入口位于表头，批量下单位于悬浮操作区。
@@ -1142,8 +1150,8 @@ abstract class _MaterialAnalysisMaterialTableState
   //
   // 桶键：路线 = BUY/SUBCONTRACT/MAKE/MIXED（当前显示路线：草稿优先，其次已确认、
   // 已下达目标、学习/主档默认）；进度 = routePending/pendingIssue/inTransit/
-  // covered/blocked/inactive 或流程阶段键（[ProductionFlowStage.key]），汇总行
-  // aggregateCovered/aggregatePartial/aggregateUncovered。文案带数量/百分比的
+  // covered/blocked/inactive 或流程阶段键（[ProductionFlowStage.key]）——汇总行
+  // 2026-10-09 起与物料行同一口径（合并阶段键/同一组桶键）。文案带数量/百分比的
   // 行只按键进桶，桶标签是中文短标签（[MasterFacetBucket.label]）。
   //
   // 所属仓库(V587)的桶键直接就是仓库名, 没登记归属的行落「未登记」一桶; 取值走
@@ -1285,9 +1293,16 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     final aggregate = row.aggregate;
     if (aggregate != null) {
-      if (aggregate.totalDemandSupplyGap <= 0) return fixed('aggregateCovered');
-      if (aggregate.coverageRatio <= 0) return fixed('aggregateUncovered');
-      return fixed('aggregatePartial');
+      final status = _materialAggregateStatus(aggregate);
+      final key = status.facetKey;
+      if (key == null) return null;
+      return (
+        key: key,
+        label:
+            status.facetLabel ??
+            _materialStatusFacetLabels[key] ??
+            status.label,
+      );
     }
     final group = row.group;
     if (group == null) return null;
@@ -1525,8 +1540,7 @@ abstract class _MaterialAnalysisMaterialTableState
     bool revealAssignmentKeys = true,
   }) => [
     // 2026-10-08 用户口径「状态或进度列默认放最前」：进度 / 待办 列移到首位
-    //（推翻 2026-10-06 批次「工序长文本进度列不动」的判定）。本表无 compactCards
-    // 卡片形态，不需要给原首列钉 cardRole。
+    //（推翻 2026-10-06 批次「工序长文本进度列不动」的判定）。
     MasterColumnDef(
       key: 'status',
       label: _l10n.materialProgress,
@@ -1538,13 +1552,8 @@ abstract class _MaterialAnalysisMaterialTableState
       cellBuilderHandlesSemantics: true,
       cellColor: (context, row) {
         if (row.contextOnly) return null;
-        // 按物料汇总行的「合格库存保障」走显式三档（绿/紫/琥珀），与
-        // completed/pending 两相相位脱钩——部分覆盖原与未覆盖同色，分不出。
-        final aggregate = row.aggregate;
-        if (aggregate != null) {
-          final type = _materialAggregateCoverageBadgeType(aggregate);
-          return type == null ? null : utenStatusBadgeCellColor(type);
-        }
+        // 按物料汇总行（2026-10-09 起）与物料行走同一相位底色，不再有
+        // 「合格库存保障」覆盖三档专用配色。
         return _materialTableStatusStyle(Theme.of(context), row).background;
       },
       cellBuilder: (_, row) => _materialTableStatusCell(theme, row),
@@ -2001,9 +2010,11 @@ abstract class _MaterialAnalysisMaterialTableState
       // 部分」：子件行（depth>0）左缘画贯穿竖线；汇总视图不画（聚合行另带
       // 来源展开，左缘线没有「同一棵子树」的语义）。
       subtreeRail: !_bomAggregateByMaterial,
-      // 2026-10-08 用户口径：汇总视图顶层产品行永远无下级，48px 展开位空着，
-      // 标题（「顶层」徽章+名称）顶到左缘；产品视图产品行可能有下级，不收。
-      compactLeading: _bomAggregateByMaterial && product != null,
+      // 2026-10-09 用户口径「没有子层级的行也在前面加个展开 icon，灰色不可
+      // 点，统一好看」：无下级行（含汇总视图顶层产品行——2026-10-08「展开位
+      // 让出来顶到左缘」随之退役）与有下级行同一位置画灰底粗箭头占位，两个
+      // 视图一致；点击无反应、不进语义。
+      mutedToggleWhenChildless: true,
       // 连线要跨过宿主给每个数据格的纵向内边距，否则行与行之间空出 2×8px，
       // 整列看着像虚线（2026-09-15：这里原来没传，默认 0，与级联页观感不同的
       // 一大来源）。数值取自表格组件自己公开的常量，不在调用点抄魔数。
@@ -4569,6 +4580,14 @@ abstract class _MaterialAnalysisMaterialTableState
       return _aggregateTable.lockedText('汇总草稿中');
     }
     if (group == null) return const Text('—');
+    // 2026-10-09 用户口径「明明已下单，按物料汇总看顶层的物料办理不该还是
+    // 调拨」：汇总视图顶层产品行已下单后与聚合行同一撤回口径（沿同一精确
+    // 来源图找真实单据）；一张单没下过时返回 null，照旧走下方调拨入口。
+    // 按产品视图不动——该视图所有行办理列本就统一只给调拨，撤回走进度弹窗。
+    if (_bomAggregateByMaterial && row.product != null) {
+      final withdrawCell = _aggregateTable.topLevelWithdrawCell(group);
+      if (withdrawCell != null) return withdrawCell;
+    }
     final transferReason = _tableTransferBlockedReason(group);
     final transferable = _tableTransferableInQty(group);
     return _materialTableHandleButton(
@@ -6176,6 +6195,38 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
+  /// 该来源路径是否已全部并入同料合并批次（AGGREGATE_SUPPLY 外部批次）且无
+  /// 剩余待办：notified 目标解析到聚合批次 action，且「还需安排」精确为 0。
+  /// 仅用于汇总视图的来源折叠判定，事实仍完整保留在 paths/命令与覆盖投影里。
+  bool _pathFullyIssuedIntoAggregateBatch(
+    ProductionMaterialAnalysisMaterial path,
+  ) {
+    final merged = path.notifiedTargets.any(
+      (target) =>
+          target.status != 'CANCELLED' &&
+          !target.isRootOutput &&
+          _supplyOperationType(target.actionId) == 'AGGREGATE_SUPPLY',
+    );
+    if (!merged) return false;
+    return _pathPlanningUncoveredFact(path) == '0';
+  }
+
+  /// 路径「还需安排」的精确文本事实（'0'=确无待办，null=不可知）。
+  String? _pathPlanningUncoveredFact(ProductionMaterialAnalysisMaterial path) {
+    final preparation = path.aggregatePreparation;
+    return preparation == null
+        ? materialPresentationFact(
+            path.quantityFactsExact,
+            'planningUncoveredQty',
+            path.planningUncoveredQty,
+          )
+        : materialPresentationFact(
+            preparation.quantityFactsExact,
+            'planningUncoveredQty',
+            preparation.planningUncoveredQty,
+          );
+  }
+
   double? _materialTableShortageQty(_MaterialTableRow row) => row.contextOnly
       ? null
       : row.aggregate?.totalShortage ?? row.material?.shortageQty;
@@ -6215,10 +6266,7 @@ abstract class _MaterialAnalysisMaterialTableState
           _materialProductStatus(row.product!);
     }
     if (row.aggregate != null) {
-      final coverage = row.aggregate!.coverage;
-      return coverage.requiredText == null
-          ? '合格库存保障待核对'
-          : '合格库存保障 ${coverage.coveredText}/${coverage.requiredText}';
+      return _materialAggregateStatus(row.aggregate!).label;
     }
     final group = row.group;
     return group == null
@@ -6226,24 +6274,52 @@ abstract class _MaterialAnalysisMaterialTableState
         : _materialStatus(Theme.of(context), group).label;
   }
 
-  /// 按物料汇总行的「合格库存保障」显式档位（ADR-169，与进度列头筛选的
-  /// aggregateCovered/Partial/Uncovered 三桶同一判据）：已覆盖=绿（齐套）、
-  /// 部分覆盖=紫（部分就绪）、未覆盖=琥珀（等自己下单，与「未下达」同族）；
-  /// 保障待核对不映射，保持无色纯文本。
-  UtenStatusBadgeType? _materialAggregateCoverageBadgeType(
-    _MaterialAggregate aggregate,
-  ) {
-    if (aggregate.coverage.requiredText == null ||
-        aggregate.coverage.coveredText == null) {
-      return null;
+  /// 按物料汇总行的进度（2026-10-09 用户口径「应该和顶层那里的显示一样」）：
+  /// 与产品视图/分桶页同一 flowStage 词表（页面契约 §6、ADR-102「同一进度」）。
+  /// 合并口径取各来源路径里**最落后的一步**：有真实单据阶段的路径按其链内
+  /// 步序比较；仍有待下达需求的路径（阶段 null 或 *_PENDING_ISSUE）视为最前
+  /// 一步，优先于任何已下达阶段——与服务端转交行投影同为「取最落后」的语义，
+  /// 不会把「一条已入库 + 一条未下达」误显示成已入库。
+  /// 没有任何路径有待办时退回有限枚举桶（已齐套），「合格库存保障」覆盖率
+  /// 不再顶替进度，移入单元格悬浮。
+  _StatusView _materialAggregateStatus(_MaterialAggregate aggregate) {
+    final indexes = _analysis == null ? null : _analysisIndexes(_analysis!);
+    ProductionFlowStage? slowest;
+    var pendingDemand = false;
+    for (final path in aggregate.paths) {
+      final group = indexes?.groupsByLine[path.materialLineId];
+      if (group == null) continue;
+      final stage = _serverFlowStageOf(group);
+      if (stage != null) {
+        if (slowest == null || stage.stepIndex < slowest.stepIndex) {
+          slowest = stage;
+        }
+      } else {
+        final pending = _pathPlanningUncoveredFact(path);
+        if (pending != null && pending != '0') pendingDemand = true;
+      }
     }
-    if (aggregate.totalDemandSupplyGap <= 0) {
-      return UtenStatusBadgeType.success;
+    if (pendingDemand) {
+      return _StatusView(
+        _pendingIssueLabelOfRoute(aggregate.uniformSuggestion),
+        facetKey: 'pendingIssue',
+      );
     }
-    if (aggregate.coverageRatio <= 0) {
-      return UtenStatusBadgeType.warning;
+    if (slowest != null) {
+      return _StatusView(
+        slowest.displayLabel,
+        facetKey: slowest.key,
+        facetLabel: slowest.label,
+        flowStage: slowest,
+      );
     }
-    return UtenStatusBadgeType.violet;
+    if (aggregate.totalShortage <= 0) {
+      return const _StatusView('已齐套', facetKey: 'covered');
+    }
+    return _StatusView(
+      _pendingIssueLabelOfRoute(aggregate.uniformSuggestion),
+      facetKey: 'pendingIssue',
+    );
   }
 
   MaterialPreparationStatusStyle _materialTableStatusStyle(
@@ -6276,9 +6352,15 @@ abstract class _MaterialAnalysisMaterialTableState
             : null,
       );
     }
-    // 按物料汇总行不走相位解析：底色由列 cellColor 的
-    // [_materialAggregateCoverageBadgeType] 显式定档（绿/紫/琥珀），
-    // 文字前景同取该档的成套前景。
+    if (row.aggregate != null) {
+      // 按物料汇总行与物料行同口径：合并阶段/桶键走同一相位解析
+      // （2026-10-09 起废弃「合格库存保障」覆盖三档配色）。
+      final status = _materialAggregateStatus(row.aggregate!);
+      return MaterialPreparationStatusStyle.resolve(
+        stage: status.flowStage,
+        facetKey: status.flowStage == null ? status.facetKey : null,
+      );
+    }
     return row.group == null
         ? MaterialPreparationStatusStyle.resolve()
         : _preparationMaterialStatusStyle(theme, row.group!);
@@ -6331,54 +6413,20 @@ abstract class _MaterialAnalysisMaterialTableState
       );
     }
     if (row.aggregate != null) {
+      // 2026-10-09 用户口径「按物料汇总后，进度应该和顶层显示一样」：聚合行
+      // 显示与产品视图/分桶页同一词表的合并阶段（各来源最落后一步），不再用
+      // 「保障 N/N」覆盖率顶替进度；覆盖率降级为悬浮里的补充事实。
       final aggregate = row.aggregate!;
+      final status = _materialAggregateStatus(aggregate);
       final coverage = aggregate.coverage;
-      if (coverage.requiredText == null || coverage.coveredText == null) {
-        return const Tooltip(
-          message: '来源或合格库存数量缺少可核实的精确事实，请刷新后核对；在途供给不计作合格库存。',
-          child: Text('保障待核对'),
-        );
-      }
-      final ratio = aggregate.coverageRatio;
-      // 2026-10-08 状态色改版收尾：底色在列 cellColor（同一档），文字不写死
-      // 成套前景——继承表格 DefaultTextStyle 的双向对比度（深底切白/琥珀底
-      // 切深字），选中行 cellColor 让位时回落常态字色。
-      return Semantics(
-        container: true,
-        label:
-            '合格库存保障 ${coverage.coveredText}/${coverage.requiredText}，百分之 ${(ratio * 100).toStringAsFixed(0)}',
-        child: ExcludeSemantics(
-          // 2026-10-06 行高统一口径：进度形态改单层 Row（参考
-          // ProductionFlowProgress 的「进度条 + 文字」横排），不再上下两层。
-          child: Row(
-            children: [
-              Expanded(
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 8,
-                  // 2026-09-27 用户口径：进度条颜色全站统一主题主色，不随状态色变。
-                  backgroundColor: theme.colorScheme.surfaceContainerHighest,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              // 文字与进度条分剩余宽度：窄列/放大字号时省略号截断，全量数字由
-              // 上面 Semantics 的 label 播报。
-              Flexible(
-                child: Text(
-                  '保障 ${coverage.coveredText}/'
-                  '${coverage.requiredText} '
-                  '(${(ratio * 100).toStringAsFixed(0)}%)',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  // 字号随进度条收小、字重保持加粗；颜色继承（见上方注释）。
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+      final coverageDetail =
+          coverage.requiredText == null || coverage.coveredText == null
+          ? null
+          : '合格库存保障 ${coverage.coveredText}/${coverage.requiredText}'
+                '（${(aggregate.coverageRatio * 100).toStringAsFixed(0)}%），在途供给不计作合格库存。';
+      return Tooltip(
+        message: ['进度＝各来源最落后单据阶段，与顶层/分桶页同一口径。', ?coverageDetail].join('\n'),
+        child: label(status),
       );
     }
     final group = row.group;

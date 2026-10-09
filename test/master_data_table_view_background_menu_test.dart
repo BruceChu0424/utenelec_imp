@@ -19,7 +19,6 @@ void main() {
 
   Widget host({
     List<String> items = const [],
-    bool compactCards = false,
     bool isLoading = false,
     String? error,
   }) => MaterialApp(
@@ -43,8 +42,6 @@ void main() {
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
-            compactCards: compactCards,
-            cardBelowWidth: 800,
             isLoading: isLoading,
             error: error,
             selectable: true,
@@ -79,43 +76,37 @@ void main() {
       tester.getBottomLeft(find.byKey(const Key('table-bounds'))) +
       const Offset(120, -70);
 
-  for (final compact in [false, true]) {
-    testWidgets('empty list blank space can paste, compact=$compact', (
-      tester,
-    ) async {
-      await tester.pumpWidget(host(compactCards: compact));
-      await tester.pumpAndSettle();
-      await rightClick(tester, blankArea(tester));
-      expect(find.text('粘贴记录'), findsOneWidget);
-      expect(backgroundMenuBuilds, 1);
-      expect(rowMenuBuilds, 0);
-      expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
-      await tester.tap(find.text('粘贴记录'));
-      await tester.pumpAndSettle();
-      expect(pasted, 1);
-      expect(selected, isEmpty);
-      expect(tester.takeException(), isNull);
-    });
+  testWidgets('empty list blank space can paste', (tester) async {
+    await tester.pumpWidget(host());
+    await tester.pumpAndSettle();
+    await rightClick(tester, blankArea(tester));
+    expect(find.text('粘贴记录'), findsOneWidget);
+    expect(backgroundMenuBuilds, 1);
+    expect(rowMenuBuilds, 0);
+    expect(find.byType(AdaptiveTextSelectionToolbar), findsNothing);
+    await tester.tap(find.text('粘贴记录'));
+    await tester.pumpAndSettle();
+    expect(pasted, 1);
+    expect(selected, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
 
-    testWidgets('row menu wins over background menu, compact=$compact', (
-      tester,
-    ) async {
-      await tester.pumpWidget(host(items: ['记录甲'], compactCards: compact));
-      await tester.pumpAndSettle();
-      await rightClick(tester, tester.getCenter(find.text('记录甲')));
-      expect(find.text('复制 记录甲'), findsOneWidget);
-      expect(find.text('粘贴记录'), findsNothing);
-      expect(backgroundMenuBuilds, 0);
-      expect(rowMenuBuilds, 1);
-      expect(selected, {'记录甲'});
-      await tester.tapAt(const Offset(780, 580));
-      await tester.pumpAndSettle();
-      await rightClick(tester, blankArea(tester));
-      expect(find.text('粘贴记录'), findsOneWidget);
-      expect(find.text('复制 记录甲'), findsNothing);
-      expect(selected, {'记录甲'});
-    });
-  }
+  testWidgets('row menu wins over background menu', (tester) async {
+    await tester.pumpWidget(host(items: ['记录甲']));
+    await tester.pumpAndSettle();
+    await rightClick(tester, tester.getCenter(find.text('记录甲')));
+    expect(find.text('复制 记录甲'), findsOneWidget);
+    expect(find.text('粘贴记录'), findsNothing);
+    expect(backgroundMenuBuilds, 0);
+    expect(rowMenuBuilds, 1);
+    expect(selected, {'记录甲'});
+    await tester.tapAt(const Offset(780, 580));
+    await tester.pumpAndSettle();
+    await rightClick(tester, blankArea(tester));
+    expect(find.text('粘贴记录'), findsOneWidget);
+    expect(find.text('复制 记录甲'), findsNothing);
+    expect(selected, {'记录甲'});
+  });
 
   testWidgets('header menu wins and fullscreen keeps background paste', (
     tester,

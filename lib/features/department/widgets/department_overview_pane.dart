@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -93,6 +94,10 @@ class _DepartmentOverviewPaneState
   String? _employeesError;
   String _keyword = '';
 
+  /// 搜索框控制器：树搜索写入外部过滤词时只改文本，不换 key 重建——重建会把
+  /// 正在输入的搜索框连根拔掉，焦点与输入法组合被打断（2026-10-09 根因修复）。
+  late final TextEditingController _searchCtrl;
+
   /// 表头筛选（部门/岗位/状态）：桶从已加载 items 前端聚合、前端裁剪显示行
   ///（与员工档案列表页同款；搜索与排序仍走服务端）。
   Map<String, String?> _filters = {};
@@ -101,16 +106,20 @@ class _DepartmentOverviewPaneState
   String? _sortColumn;
   bool _sortAsc = true;
 
-  // 搜索框重建种子：外部过滤词（树搜索）变化时自增，驱动 UtenSearchBar 用新 initialValue 重建。
-  int _kwSeed = 0;
-
   int _scopeVersion = 0;
   int _employeeRequest = 0;
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl = TextEditingController(text: widget.employeeFilter ?? '');
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -127,11 +136,17 @@ class _DepartmentOverviewPaneState
       return;
     }
     // 同一部门下外部过滤词变化（树搜索命中/解除）：采纳为本地关键词并重查员工列表。
+    // 只写控制器文本，不重建搜索框——用户此刻可能正在框内输入。
     if (oldWidget.employeeFilter != widget.employeeFilter) {
       setState(() {
-        _kwSeed++;
         _keyword = widget.employeeFilter ?? '';
       });
+      if (_searchCtrl.text != _keyword) {
+        _searchCtrl.value = TextEditingValue(
+          text: _keyword,
+          selection: TextSelection.collapsed(offset: _keyword.length),
+        );
+      }
       _reloadEmployees();
       return;
     }
@@ -158,7 +173,12 @@ class _DepartmentOverviewPaneState
       _error = null;
       // 外部过滤词（树搜索命中）随部门切换一并带入：搜索定位时右侧只显示搜索结果。
       _keyword = widget.employeeFilter ?? '';
-      _kwSeed++;
+      if (_searchCtrl.text != _keyword) {
+        _searchCtrl.value = TextEditingValue(
+          text: _keyword,
+          selection: TextSelection.collapsed(offset: _keyword.length),
+        );
+      }
       _info = null;
       _overview = null;
       _overviewError = null;
@@ -364,101 +384,117 @@ class _DepartmentOverviewPaneState
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
 
     // 2026-09-17：在册员工由 UtenPersonCard 卡片列表改为员工档案同款
-    // MasterDataTableView 表格（列/表头筛选/排序/滚动自动翻页全对齐），
-    // 上方详情卡+人员总览保持固定，表格独立滚动。
-    return Column(
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                child: MasterDetailCard(
-                  title: info.name,
-                  icon: Icons.account_tree_outlined,
-                  subtitle: l10n.departmentLevelAndCode(info.level, info.code),
-                  // 详情卡精简（与分类卡统一）：不再展示统计行与路径行——部门树已是
-                  // 主视觉，在册人数等在下方员工列表/人员总览卡查看，卡片只留标题+操作。
-                  stats: const [],
-                  canEdit: widget.canEdit,
-                  canAddChild: widget.canAddChild,
-                  canDelete: widget.canDelete,
-                  addChildLabel: '新增子部门',
-                  onAddChild: widget.onAddChild,
-                  onEdit: () => widget.onEdit(info),
-                  onDelete: widget.onDelete,
-                  extraActions: [
-                    // 打印花名册就是查看员工名册(permissions-06)：与员工列表同一门槛，
-                    // 旧的「打印导出」码只在前端生效，已随 V677 删除。
-                    if (widget.canViewEmployees)
-                      MasterDetailCardAction(
-                        icon: Icons.print_outlined,
-                        label: '打印花名册',
-                        onPressed: () => showDepartmentRosterPrint(
-                          context: context,
-                          ref: ref,
-                          node: widget.node,
-                        ),
-                      ),
-                    if (widget.canViewEmployees)
-                      MasterDetailCardAction(
-                        icon: Icons.account_tree_outlined,
-                        label: '部门架构图',
-                        onPressed: () => showDepartmentOrgChart(
-                          context: context,
-                          node: widget.node,
-                        ),
-                      ),
-                    if (selectable)
-                      MasterDetailCardAction(
-                        icon: Icons.badge_outlined,
-                        label: '岗位管理',
-                        // 岗位改名/增删会影响下方员工列表的 positionName 展示，
-                        // 抽屉关闭后静默重拉人员数据，避免停留在旧岗位名。
-                        onPressed: () async {
-                          await showPositionManagerSheet(context, widget.node);
-                          if (!mounted) return;
-                          _refreshPeopleData();
-                        },
-                      ),
-                  ],
-                ),
+    // MasterDataTableView 表格（列/表头筛选/排序/滚动自动翻页全对齐）。
+    // 2026-10-09 全站表格滚动口径：详情卡+人员总览进折叠头——上滑先收卡（工具条
+    // 与表头随之顶到视口顶），之后表格内部滚动；「在册N/搜索/添加」工具条钉在
+    // body 顶常驻（对齐货品/客户等主档分类页的折叠范式）。
+    if (!widget.canViewEmployees) {
+      // 无员工查看权限：没有表格可联动，保持「详情卡 + 无权限空态」的静态布局。
+      return Column(
+        children: [
+          _detailCards(info, hPad),
+          const Expanded(
+            child: Center(
+              child: UtenEmpty(
+                icon: Icons.lock_outline_rounded,
+                message: '无员工档案查看权限',
               ),
-              if (widget.canViewEmployees)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                  child: OrganizationWorkforceOverviewCard(
-                    organizationName: info.name,
-                    organizationLevel: info.level,
-                    loading: _overviewLoading,
-                    overview: _overview,
-                    error: _overviewError,
-                    onRetry: _loadOverview,
-                  ),
-                ),
-              if (widget.canViewEmployees) ...[
-                _employeeToolbar(info, selectable),
-                const SizedBox(height: UtenSpacing.s8),
-              ],
-            ],
+            ),
           ),
+        ],
+      );
+    }
+    return UtenCollapsingHeaderScrollView(
+      collapsingHeader: _detailCards(info, hPad),
+      body: Padding(
+        padding: EdgeInsets.fromLTRB(hPad, 0, hPad, UtenSpacing.s12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _employeeToolbar(info, selectable),
+            const SizedBox(height: UtenSpacing.s8),
+            Expanded(child: _employeeTable(l10n)),
+          ],
         ),
-        Expanded(
-          child: widget.canViewEmployees
-              ? Padding(
-                  padding: EdgeInsets.fromLTRB(hPad, 0, hPad, UtenSpacing.s12),
-                  child: _employeeTable(l10n),
-                )
-              : const Center(
-                  child: UtenEmpty(
-                    icon: Icons.lock_outline_rounded,
-                    message: '无员工档案查看权限',
+      ),
+    );
+  }
+
+  /// 折叠头内容：部门详情卡 + 人员总览卡（随上滚收起、下滚拉回）。
+  Widget _detailCards(DepartmentInfo info, double hPad) {
+    final l10n = AppLocalizations.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(hPad, UtenSpacing.s16, hPad, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+            child: MasterDetailCard(
+              title: info.name,
+              icon: Icons.account_tree_outlined,
+              subtitle: l10n.departmentLevelAndCode(info.level, info.code),
+              // 详情卡精简（与分类卡统一）：不再展示统计行与路径行——部门树已是
+              // 主视觉，在册人数等在下方员工列表/人员总览卡查看，卡片只留标题+操作。
+              stats: const [],
+              canEdit: widget.canEdit,
+              canAddChild: widget.canAddChild,
+              canDelete: widget.canDelete,
+              addChildLabel: '新增子部门',
+              onAddChild: widget.onAddChild,
+              onEdit: () => widget.onEdit(info),
+              onDelete: widget.onDelete,
+              extraActions: [
+                // 打印花名册就是查看员工名册(permissions-06)：与员工列表同一门槛，
+                // 旧的「打印导出」码只在前端生效，已随 V677 删除。
+                if (widget.canViewEmployees)
+                  MasterDetailCardAction(
+                    icon: Icons.print_outlined,
+                    label: '打印花名册',
+                    onPressed: () => showDepartmentRosterPrint(
+                      context: context,
+                      ref: ref,
+                      node: widget.node,
+                    ),
                   ),
-                ),
-        ),
-      ],
+                if (widget.canViewEmployees)
+                  MasterDetailCardAction(
+                    icon: Icons.account_tree_outlined,
+                    label: '部门架构图',
+                    onPressed: () => showDepartmentOrgChart(
+                      context: context,
+                      node: widget.node,
+                    ),
+                  ),
+                if (kOperationalDepartmentLevels.contains(info.level))
+                  MasterDetailCardAction(
+                    icon: Icons.badge_outlined,
+                    label: '岗位管理',
+                    // 岗位改名/增删会影响下方员工列表的 positionName 展示，
+                    // 抽屉关闭后静默重拉人员数据，避免停留在旧岗位名。
+                    onPressed: () async {
+                      await showPositionManagerSheet(context, widget.node);
+                      if (!mounted) return;
+                      _refreshPeopleData();
+                    },
+                  ),
+              ],
+            ),
+          ),
+          if (widget.canViewEmployees)
+            Padding(
+              padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+              child: OrganizationWorkforceOverviewCard(
+                organizationName: info.name,
+                organizationLevel: info.level,
+                loading: _overviewLoading,
+                overview: _overview,
+                error: _overviewError,
+                onRetry: _loadOverview,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -489,10 +525,11 @@ class _DepartmentOverviewPaneState
       ],
     );
     final search = UtenSearchBar(
-      // key 含 node.id + _kwSeed：切部门 / 树搜索写入过滤词时重建搜索框同步显示。
-      key: ValueKey('department-employee-search-${widget.node.id}-$_kwSeed'),
+      // key 只含 node.id：切部门时整 pane 本就重载；树搜索写入过滤词只改
+      // controller 文本，不再用种子 key 强制重建（保焦点、保输入法组合）。
+      key: ValueKey('department-employee-search-${widget.node.id}'),
+      controller: _searchCtrl,
       hint: '搜索员工(姓名/工号)',
-      initialValue: _keyword,
       onChanged: _onSearchChanged,
     );
     final addButton = selectable && widget.canCreateEmployee
@@ -549,6 +586,8 @@ class _DepartmentOverviewPaneState
       tableKey:
           'features.department.widgets.department_overview_pane.DepartmentOverviewPaneState._employeeTable.1',
       key: const Key('department-employee-table'),
+      // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收卡 → 表格内滚」。
+      primary: true,
       columns: _employeeColumns(l10n),
       items: _visibleEmployees(l10n),
       facets: _employeeFacets(l10n),

@@ -13,6 +13,11 @@
 //     快捷入口用 goFrom 带 returnTo，返回恒回「我的」而非工作台兜底
 //   * 字段维护策略徽章（直接修改 / 需审核 / 人事维护）原样保留；
 //     薪酬与银行不因本人对象范围自动展示
+//
+// v8 小屏重设计（2026-10-09）：双列门槛从断点 840 提到「内容区实际宽度 ≥1200」。
+// 840–1200 的小屏窗口（958 宽复现）双列右栏仅 ~470：五个 Tab 横向截断、字段行
+// 被迫两行堆叠；该档改走单列折叠布局（同员工详情页范式），档案区恢复整幅宽度，
+// 「我的部门 / 我的修改申请」两卡并排省一屏纵向空间（<600 仍竖排）。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -152,86 +157,27 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
           body: SelectionArea(
             child: SafeArea(
               bottom: false,
-              child: switch (bp) {
-                // 单列：身份区随上滑折叠，Tab 栏吸顶后正文内滚（同员工详情页）。
-                UtenBreakpoint.compact || UtenBreakpoint.medium => Padding(
-                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                  child: _centerIfMedium(
-                    bp,
-                    child: UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
-                        padding: const EdgeInsets.only(top: UtenSpacing.s16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            identityGroup.hero,
-                            const SizedBox(height: UtenSpacing.s12),
-                            identityGroup.department,
-                            const SizedBox(height: UtenSpacing.s12),
-                            identityGroup.shortcut,
-                            const SizedBox(height: UtenSpacing.s4),
-                          ],
-                        ),
+              // 布局分支按内容区实际宽度（LayoutBuilder）而非屏宽断点：桌面侧栏
+              // 收窄内容时以实测为准，见 _twoColumnMinWidth 注释。
+              child: LayoutBuilder(
+                builder: (context, constraints) =>
+                    constraints.maxWidth >= _twoColumnMinWidth
+                    ? _twoColumnLayout(
+                        horizontalPadding: horizontalPadding,
+                        theme: theme,
+                        identityGroup: identityGroup,
+                        tabBar: tabBar,
+                        tabViews: tabViews,
+                      )
+                    : _singleColumnLayout(
+                        availableWidth: constraints.maxWidth,
+                        horizontalPadding: horizontalPadding,
+                        theme: theme,
+                        identityGroup: identityGroup,
+                        tabBar: tabBar,
+                        tabViews: tabViews,
                       ),
-                      pinnedHeader: _pinnedTabBar(theme, tabBar),
-                      pinnedHeaderExtent: tabBar.preferredSize.height,
-                      body: TabBarView(controller: _tab, children: tabViews),
-                    ),
-                  ),
-                ),
-                // 双列：左身份组固定自滚 | 右 TabBar 常驻 + Tab 内滚。
-                UtenBreakpoint.expanded => Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    horizontalPadding,
-                    UtenSpacing.s24,
-                    horizontalPadding,
-                    0,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 380,
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              identityGroup.hero,
-                              const SizedBox(height: UtenSpacing.s16),
-                              identityGroup.department,
-                              const SizedBox(height: UtenSpacing.s12),
-                              identityGroup.shortcut,
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: UtenSpacing.s32),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints.tightFor(
-                              width: double.infinity,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _pinnedTabBar(theme, tabBar),
-                                Expanded(
-                                  child: TabBarView(
-                                    controller: _tab,
-                                    children: tabViews,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              },
+              ),
             ),
           ),
         );
@@ -243,16 +189,125 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     body: SafeArea(child: Center(child: child)),
   );
 
-  /// medium 保持居中布局并铺满可用宽度；compact 顶满。
-  Widget _centerIfMedium(UtenBreakpoint bp, {required Widget child}) =>
-      bp == UtenBreakpoint.medium
-      ? Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints.tightFor(width: double.infinity),
-            child: child,
+  /// 双列布局的内容区最小宽度：左 380 + 间距 32 后右栏仍 ≥700，五个 Tab 与
+  /// 单行字段才不被挤压。840–1200 的小屏窗口（2026-10-09 958 宽复现）双列右栏
+  /// 仅 ~470——Tab 横向截断、字段行被迫两行堆叠，该档走单列折叠布局。
+  static const double _twoColumnMinWidth = 1200;
+
+  // ─────────────────────────────────────────────────────────────
+  // 单列（<1200）：身份区随上滑折叠，Tab 栏吸顶后正文内滚（同员工详情页）。
+  // ─────────────────────────────────────────────────────────────
+  Widget _singleColumnLayout({
+    required double availableWidth,
+    required double horizontalPadding,
+    required ThemeData theme,
+    required _IdentityGroup identityGroup,
+    required TabBar tabBar,
+    required List<Widget> tabViews,
+  }) {
+    // ≥600 时「我的部门 / 我的修改申请」并排省一屏纵向空间；窄屏竖排，防
+    // 副标题换行把卡挤成三行。IntrinsicHeight 拉齐两卡高度。
+    final shortcutsInline = availableWidth >= UtenBreakpoints.mediumStart;
+    final shortcuts = shortcutsInline
+        ? IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: identityGroup.department),
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(child: identityGroup.shortcut),
+              ],
+            ),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              identityGroup.department,
+              const SizedBox(height: UtenSpacing.s12),
+              identityGroup.shortcut,
+            ],
+          );
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: Padding(
+          padding: const EdgeInsets.only(top: UtenSpacing.s16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              identityGroup.hero,
+              const SizedBox(height: UtenSpacing.s12),
+              shortcuts,
+              const SizedBox(height: UtenSpacing.s4),
+            ],
           ),
-        )
-      : child;
+        ),
+        pinnedHeader: _pinnedTabBar(theme, tabBar),
+        pinnedHeaderExtent: tabBar.preferredSize.height,
+        body: TabBarView(controller: _tab, children: tabViews),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // 双列（≥1200）：左身份组固定自滚 | 右 TabBar 常驻 + Tab 内滚。
+  // ─────────────────────────────────────────────────────────────
+  Widget _twoColumnLayout({
+    required double horizontalPadding,
+    required ThemeData theme,
+    required _IdentityGroup identityGroup,
+    required TabBar tabBar,
+    required List<Widget> tabViews,
+  }) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        UtenSpacing.s24,
+        horizontalPadding,
+        0,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 380,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  identityGroup.hero,
+                  const SizedBox(height: UtenSpacing.s16),
+                  identityGroup.department,
+                  const SizedBox(height: UtenSpacing.s12),
+                  identityGroup.shortcut,
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: UtenSpacing.s32),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints.tightFor(
+                  width: double.infinity,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _pinnedTabBar(theme, tabBar),
+                    Expanded(
+                      child: TabBarView(controller: _tab, children: tabViews),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// 吸顶/常驻 Tab 栏：补不透明底色，避免正文滚动时从 Tab 间隙透出。
   Widget _pinnedTabBar(ThemeData theme, TabBar tabBar) =>

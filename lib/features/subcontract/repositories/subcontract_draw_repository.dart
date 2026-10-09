@@ -7,7 +7,7 @@ import '../../../core/network/api_client.dart';
 import '../models/subcontract_draw.dart';
 
 abstract interface class SubcontractDrawGateway {
-  /// 「领料」分段列表。[status] 为空 = 全部；[orderId] / [orderItemIds] 为定位筛选
+  /// 「待处理·领料」列表。[status] 为空 = 全部；[orderId] / [orderItemIds] 为定位筛选
   /// (进行中「可领料」跳转、可领料通知深链)。
   Future<SubcontractDrawTaskList> list({
     int page = 1,
@@ -18,8 +18,9 @@ abstract interface class SubcontractDrawGateway {
     List<String> orderItemIds = const [],
   });
 
-  /// 「领料」分段红数 = 调用者可动手的可领行数(无领料权限恒为 0)。
-  Future<int> drawableCount();
+  /// 领料计数(ADR-171 修订二): 红 = 调用者可动手的可领行数; 黄 = 已提交领料、
+  /// 等仓库发出的行数。无领料权限两者恒为 0。
+  Future<({int drawable, int submitted})> drawCounts();
 
   Future<SubcontractDrawTaskDetail> detail(String orderItemId);
 
@@ -45,6 +46,10 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
 
   /// 一次批量领料最多带入的委外任务数(与服务端预览/提交上限一致)。
   static const batchLimit = 50;
+
+  /// 「待处理」拍平表的领料行一次拉全的上限(与服务端 MAX_PAGE_SIZE 一致)；
+  /// 领料行钉在表格顶部不走分页，超过上限属于数据异常，服务端计数口径可对账。
+  static const listLimit = 200;
   static const base = '/subcontract/draw-tasks';
 
   final ApiClient api;
@@ -78,10 +83,14 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
   }
 
   @override
-  Future<int> drawableCount() async {
+  Future<({int drawable, int submitted})> drawCounts() async {
     final json = await api.get('$base/count');
-    final value = json['drawable'];
-    return value is num ? value.toInt() : 0;
+    int of(String key) {
+      final value = json[key];
+      return value is num ? value.toInt() : 0;
+    }
+
+    return (drawable: of('drawable'), submitted: of('submitted'));
   }
 
   @override

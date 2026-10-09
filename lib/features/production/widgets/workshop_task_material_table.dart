@@ -92,7 +92,6 @@ class _WorkshopTaskMaterialTableState
           key: const Key('workshop-task-material-table'),
           tableKey: 'production.workshopTask.materials',
           embedded: true,
-          compactCards: true,
           rowKeyOf: (row) => row.demandId,
           platformBinding: PlatformTableBinding(
             tableKey: 'production.workshopTask.materials',
@@ -134,8 +133,6 @@ class _WorkshopTaskMaterialTableState
               key: 'goodsName',
               label: '物料',
               width: 180,
-              // compactCards 卡片标题：状态列前置后名称列不再默认担任标题。
-              cardRole: MasterColumnCardRole.title,
               value: (row) => row.goodsName,
             ),
             MasterColumnDef(

@@ -24,6 +24,8 @@
 //    本期只有 idNumber；未来花名册/AI 来源扩展新字段时页面零改动)；
 //  - 批量条新增「只选把握高的」快捷勾选(全部 HIGH 档未执行行)；
 //  - 勾选计数/提交组装泛化为逐 item(本期每行≤1 项，行为不变，多字段自动成立)。
+// 2026-10-09 全站表格滚动口径：摘要区进 UtenCollapsingHeaderScrollView 折叠头——
+//  上滑先收摘要(表头随之顶到视口顶)，继续滚动才滚表格内容；竖向滚动条联动门控。
 //
 // 错误口径：404=计划不存在或无权看(错误态)；409 且 fieldErrors.errorCode ∈
 // {RECONCILE_PLAN_CHANGED(自动重取,尽量保留草稿), RECONCILE_PLAN_BUSY(稍候),
@@ -43,6 +45,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/data_display/uten_revision_cell.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -616,13 +619,13 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
     AppLocalizations l10n,
     HrReconcilePlan plan,
   ) {
+    // 2026-10-09 全站表格滚动口径：摘要区进折叠头——上滑先收摘要（表头随之
+    // 顶到视口顶），继续滚动才滚表格内容；竖向滚动条由联动门控（外滚阶段隐藏）。
     return RefreshIndicator(
       onRefresh: () => _loadPlan(plan.id),
-      child: Column(
-        children: [
-          _summaryHeader(context, l10n, plan),
-          Expanded(child: _table(context, l10n, plan)),
-        ],
+      child: UtenCollapsingHeaderScrollView(
+        collapsingHeader: _summaryHeader(context, l10n, plan),
+        body: _table(context, l10n, plan),
       ),
     );
   }
@@ -794,7 +797,8 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
       tableKey:
           'features.hr_task.pages.hr_reconcile_page.HrReconcilePageState._table.1',
       key: const Key('hr-reconcile-table'),
-      compactCards: true,
+      // 折叠容器联动：拾取注入的 PrimaryScrollController，参与「收摘要 → 表格内滚」。
+      primary: true,
       bottomContentPadding: math.max(
         32,
         UtenCapsuleNavScope.occlusionOf(context),
@@ -848,17 +852,13 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
         value: (row) => _kindLabel(l10n, row.kind),
         cellBuilder: (context, row) =>
             HrReconcileKindTag(rowNo: row.rowNo, kind: row.kind),
-        cardRendersBuilder: true,
       ),
       // 员工合并列：姓名主行 + 工号·部门副行(2026-10-06 重做，三列并一)。
-      // cardRole=title：compact 卡片形态的标题位渲染本列 cellBuilder(姓名+
-      // 工号·部门)，否则缺省会拿第一列「类型」当标题。
       MasterColumnDef(
         key: 'employee',
         label: l10n.hrReconcileColEmployee,
         width: 200,
         value: (row) => row.employee.name,
-        cardRole: MasterColumnCardRole.title,
         cellBuilder: (context, row) {
           final theme = Theme.of(context);
           final sub = [
@@ -887,7 +887,6 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
             ],
           );
         },
-        cardRendersBuilder: true,
       ),
       MasterColumnDef(
         key: 'reason',
@@ -895,7 +894,6 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
         width: 300,
         value: (row) => _reasonOf(row),
         // 照列表页原因列：红字折行不截断（选中行换统一前景色）。
-        cardRendersBuilder: true,
         cellBuilder: (context, row) {
           final scope = MasterDataTableCellScope.maybeOf(context);
           final reason = _reasonOf(row);
@@ -930,7 +928,6 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
             basisLabel: item.basis?.label,
           );
         },
-        cardRendersBuilder: true,
       ),
       MasterColumnDef(
         key: 'notes',
@@ -939,7 +936,6 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
         value: (row) =>
             row.items.isEmpty ? null : row.items.first.notes.join('；'),
         cellBuilder: (context, row) => HrReconcileNotesCell(row: row),
-        cardRendersBuilder: true,
       ),
     ];
   }
@@ -1031,7 +1027,6 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage> {
               masked: masked,
             );
           },
-          cardRendersBuilder: true,
         ),
     ];
   }

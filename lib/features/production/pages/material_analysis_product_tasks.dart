@@ -177,7 +177,49 @@ abstract class _MaterialAnalysisProductTasksState
   ProductionMaterialAnalysisView? _preparationGroupsAnalysis;
   Map<String, List<_MaterialGroup>> _preparationGroupsByAnchor = const {};
 
+  ProductionMaterialAnalysisView? _materialsByLineAnalysis;
+  Map<String, ProductionMaterialAnalysisMaterial> _materialsByLine = const {};
+
+  /// 按分析行 id 取物料行（每份快照建一次索引；合并批次行的需求聚合用）。
+  ProductionMaterialAnalysisMaterial? _materialOfLine(String materialLineId) {
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    if (!identical(_materialsByLineAnalysis, analysis)) {
+      _materialsByLine = {
+        for (final material in analysis.materials)
+          material.materialLineId: material,
+      };
+      _materialsByLineAnalysis = analysis;
+    }
+    return _materialsByLine[materialLineId];
+  }
+
+  /// 该货品同路线唯一的存活同料合并批次（多于一个＝分单形态，返回 null）。
+  MaterialAnalysisSupplyAction? _aggregateBatchActionOfGoods(
+    String? goodsId,
+    MaterialSupplyRoute route,
+  ) {
+    if (goodsId == null) return null;
+    final analysis = _analysis;
+    if (analysis == null) return null;
+    final matches = analysis.supplyActions
+        .where(
+          (action) =>
+              action.operationType == 'AGGREGATE_SUPPLY' &&
+              action.route == route &&
+              action.goodsId == goodsId &&
+              !const [
+                'CANCELLED',
+                'WITHDRAWN',
+                'REVERSED',
+              ].contains(action.status),
+        )
+        .toList();
+    return matches.length == 1 ? matches.single : null;
+  }
+
   List<_MaterialGroup> _preparationGroupsOf(_BucketRow row) {
+    if (row.mergedGroups case final members?) return members;
     if (row.group case final group?) return [group];
     if (row.candidate?.group case final group?) return [group];
     final product = row.product;
@@ -802,6 +844,24 @@ abstract class _MaterialAnalysisProductTasksState
         for (final candidate in candidates)
           if (candidate.group != null) candidate.group!.key,
       };
+      // 已采纳的共享制造组件组按同料合并批次归并成一行（2026-10-09 用户口径：
+      // 车间桶合并显示，需求量并入转交目标行，供应方式锁定批次路线）。
+      // 有锚点产品在桶里的批次由锚点行代表（一物一行）——但仅当该组已无剩余
+      // 待办时才吸收：部分转交（uncovered>0）的原组仍要独立显示可办理，不能
+      // 因「同货品有锚点」就从桶里整行消失。
+      final anchoredGoods = {
+        for (final product in analysis.products)
+          if (product.sourceType == 'AGGREGATE_MAKE') product.goodsId,
+      };
+      final adoptedMakeGroups = [
+        for (final group in _materialGroups(analysis))
+          if (group.representative.confirmedRoute == MaterialSupplyRoute.make &&
+              group.representative.preparationAdoptedQty > 0 &&
+              !representedGroups.contains(group.key) &&
+              (!anchoredGoods.contains(group.representative.goodsId) ||
+                  _preparationUncoveredQty(group) <= 0))
+            group,
+      ];
       return [
         for (final product in products) _BucketRow.product(product),
         // Completed products remain available in issued history.
@@ -810,11 +870,7 @@ abstract class _MaterialAnalysisProductTasksState
               presentIds.add(product.analysisLineId))
             _BucketRow.product(product),
         for (final candidate in candidates) _BucketRow.candidate(candidate),
-        for (final group in _materialGroups(analysis))
-          if (group.representative.confirmedRoute == MaterialSupplyRoute.make &&
-              group.representative.preparationAdoptedQty > 0 &&
-              !representedGroups.contains(group.key))
-            _BucketRow.group(group),
+        ..._mergeGroupRowsByBatch(adoptedMakeGroups, MaterialSupplyRoute.make),
       ];
     }
     final route = bucket.supplyRoute!;
@@ -823,7 +879,7 @@ abstract class _MaterialAnalysisProductTasksState
         ...?material.aggregatePreparation?.targetMaterialLineIds,
     };
     final products = _analysisIndexes(analysis).productsById;
-    return [
+    final groupRows = [
       for (final group in _materialGroups(analysis))
         if (!(products[group.representative.analysisLineId]?.sourceType ==
                     'AGGREGATE_MAKE' &&
@@ -839,11 +895,63 @@ abstract class _MaterialAnalysisProductTasksState
                     (target) => target.target == route,
                   ),
                 )))
-          _BucketRow.group(group),
+          group,
     ];
+    // 2026-10-09 用户口径：合并下单的显示要合并（跟下达车间一样）。同一货品
+    // 同路线存在同料合并批次（AGGREGATE_SUPPLY）时，相关操作组归并成一行；
+    // 单据号/批次总量取自批次 action——部分同料路径没有 allocation 锚点，
+    // 逐行引用会显示不出单据号。未成批的行保持逐行。
+    return _mergeGroupRowsByBatch(groupRows, route);
+  }
+
+  /// 把已归集的操作组行按同料合并批次归并；同货品同路线只有一个存活批次时
+  /// 才并（多批次=按车间/负责人分单的形态，保持逐行）。产品行/候选行不进本表。
+  List<_BucketRow> _mergeGroupRowsByBatch(
+    List<_MaterialGroup> groups,
+    MaterialSupplyRoute route,
+  ) {
+    final analysis = _analysis;
+    if (analysis == null) {
+      return [for (final group in groups) _BucketRow.group(group)];
+    }
+    final actionById = {
+      for (final action in analysis.supplyActions) action.actionId: action,
+    };
+    final byAction = <String, List<_MaterialGroup>>{};
+    final plain = <_BucketRow>[];
+    for (final group in groups) {
+      final representative = group.representative;
+      final effectiveRoute =
+          representative.confirmedRoute ?? representative.sourceSuggestion;
+      final action = _aggregateBatchActionOfGoods(
+        representative.goodsId,
+        route,
+      );
+      // 恰好一个存活批次才并；组内生效路线缺失或与批次一致时并入，避免把
+      // 历史路线不同的组错锁到批次路线显示上。
+      if (action != null &&
+          (effectiveRoute == null || action.route == effectiveRoute)) {
+        byAction.putIfAbsent(action.actionId, () => []).add(group);
+      } else {
+        plain.add(_BucketRow.group(group));
+      }
+    }
+    final merged = <_BucketRow>[];
+    byAction.forEach((actionId, members) {
+      final action = actionById[actionId];
+      if (action == null) {
+        merged.addAll(members.map(_BucketRow.group));
+        return;
+      }
+      merged.add(_BucketRow.merged(members, action));
+    });
+    return [...plain, ...merged];
   }
 
   bool _bucketRowHasIssued(_BucketRow row, _AnalysisBucket bucket) {
+    // 合并批次行：批次 action 存在即已下达（部分成员行没有 allocation 锚点，
+    // 不能按首成员回落判定）。
+    if (row.mergedAction != null) return true;
     final groups = _preparationGroupsOf(row);
     if (groups.any(
       (group) =>
@@ -864,6 +972,9 @@ abstract class _MaterialAnalysisProductTasksState
   }
 
   bool _bucketRowInProgress(_BucketRow row, _AnalysisBucket bucket) {
+    // 合并批次行：批次成立即在「进行中」清单（与已下达单据/锁定口径一致；
+    // 完成历史也留在本清单可查）。
+    if (row.mergedAction != null) return true;
     final adopted = _preparationGroupsOf(row).where(
       (group) => group.paths.any(
         (material) => material.preparationAdoptedQty > 0.0001,
@@ -1732,15 +1843,19 @@ abstract class _MaterialAnalysisProductTasksState
   }
 
   /// 未下达的第一步文案：按路线显示「等待下发采购 / 等待下发委外 /
-  /// 等待下达车间」，与流程词表第一步同名。
-  String _pendingIssueLabelOf(ProductionMaterialAnalysisMaterial material) {
-    final route = material.confirmedRoute ?? material.sourceSuggestion;
-    return switch (route) {
-      MaterialSupplyRoute.make => '等待下达车间',
-      MaterialSupplyRoute.subcontract => '等待下发委外',
-      _ => '等待下发采购',
-    };
-  }
+  /// 等待下达车间」，与流程词表第一步同名。路线不明确（null）显示「未下达」。
+  String _pendingIssueLabelOf(ProductionMaterialAnalysisMaterial material) =>
+      _pendingIssueLabelOfRoute(
+        material.confirmedRoute ?? material.sourceSuggestion,
+      );
+
+  String _pendingIssueLabelOfRoute(MaterialSupplyRoute? route) =>
+      switch (route) {
+        MaterialSupplyRoute.make => '等待下达车间',
+        MaterialSupplyRoute.subcontract => '等待下发委外',
+        MaterialSupplyRoute.buy => '等待下发采购',
+        null => '未下达',
+      };
 
   /// 该物料组当前有效的「已下达通知」目标（跳过已撤销 CANCELLED）。
 

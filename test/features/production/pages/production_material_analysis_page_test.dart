@@ -6180,10 +6180,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(
-          of: sharedRow,
-          matching: find.bySemanticsLabel('合格库存保障 4/15，百分之 27'),
-        ),
+        find.descendant(of: sharedRow, matching: find.text('等待下发采购')),
         findsOneWidget,
       );
       expect(
@@ -7402,11 +7399,10 @@ void main() {
       expect(aggregate, findsOneWidget);
       await tester.ensureVisible(aggregate);
       await tester.pumpAndSettle();
+      // 2026-10-09 口径：聚合物料行进度与顶层同一词表（真实单据阶段/未下达
+      // 第一步），覆盖率「0/10」降级到悬浮与路径详情，不再顶替进度。
       expect(
-        find.descendant(
-          of: aggregate,
-          matching: find.bySemanticsLabel('合格库存保障 0/10，百分之 0'),
-        ),
+        find.descendant(of: aggregate, matching: find.text('等待下发采购')),
         findsOneWidget,
       );
       await tester.tap(

@@ -58,6 +58,35 @@ class NoticeUnreadItem {
   final bool pendingArrival;
 }
 
+/// 个人通知弹窗开关项（V833/ADR-171）：全目录类别 + 对本人是否适用 + 是否已被本人关闭。
+class NoticePopupPreference {
+  const NoticePopupPreference({
+    required this.sourceEvent,
+    required this.label,
+    required this.applicable,
+    required this.popupDisabled,
+  });
+
+  factory NoticePopupPreference.fromJson(Map<String, dynamic> json) =>
+      NoticePopupPreference(
+        sourceEvent: json['sourceEvent'] as String? ?? '',
+        label: json['label'] as String? ?? '',
+        applicable: json['applicable'] as bool? ?? false,
+        popupDisabled: json['popupDisabled'] as bool? ?? false,
+      );
+
+  final String sourceEvent;
+
+  /// 类别中文名（服务端 ReviewNoticeCatalog 单一来源下发）。
+  final String label;
+
+  /// 当前弹卡资格（真实授出权限 ∩ 部门/对象归属）内——「我会收到的弹窗」。
+  final bool applicable;
+
+  /// true = 已关闭该类弹窗提醒。
+  final bool popupDisabled;
+}
+
 /// 当前用户全部可见未读通知的索引 + 服务端摘要(ADR-108)。
 ///
 /// 摘要随工作台徽章汇总每分钟带回; 与这里的 [digest] 对不上才重拉本索引。
@@ -164,6 +193,13 @@ abstract interface class NoticeRepository {
   /// 通知——打卡类型（acknowledge）未打卡恒弹；只提醒类型（none）14 天内未读未确认。
   /// 与 [pendingReviews] 并行拉取，在同一居中弹窗内分组展示。
   Future<List<Notice>> pendingPopups();
+
+  /// 个人通知弹窗开关（V833/ADR-171）：我当前会收到的弹窗提醒类别
+  /// （中文名 + 是否已被本人关闭）。工作台「通知设置」的数据源。
+  Future<List<NoticePopupPreference>> popupPreferences();
+
+  /// 开/关某一类弹窗提醒。只抑制弹窗层：通知仍落库并在通知中心可见。
+  Future<void> setPopupPreference(String sourceEvent, {required bool disabled});
 
   /// 发布新通知（需 notice:publish 权限），返回入库后的实体
   Future<Notice> publish({
@@ -359,6 +395,28 @@ class DioNoticeRepository implements NoticeRepository {
     final rows = json['items'];
     if (rows is! List) return const [];
     return rows.whereType<Map<String, dynamic>>().map(_fromJson).toList();
+  }
+
+  @override
+  Future<List<NoticePopupPreference>> popupPreferences() async {
+    final json = await _api.get(ApiEndpoints.noticesPopupPreferences);
+    final rows = json['items'];
+    if (rows is! List) return const [];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(NoticePopupPreference.fromJson)
+        .toList();
+  }
+
+  @override
+  Future<void> setPopupPreference(
+    String sourceEvent, {
+    required bool disabled,
+  }) async {
+    await _api.post(
+      ApiEndpoints.noticePopupPreference(sourceEvent),
+      body: {'disabled': disabled},
+    );
   }
 
   @override

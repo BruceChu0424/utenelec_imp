@@ -521,156 +521,156 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         ),
       );
     }
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
-    }
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    // 搜索行恒挂载，loading/错误/空态只切换下方内容区：搜索中焦点与输入法
+    // 组合不因状态切换被打断（2026-10-09「拼音打一半丢输入法」根因修复）。
+    final searchRow = Padding(
+      padding: const EdgeInsets.fromLTRB(
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s12,
+        UtenSpacing.s4,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final search = UtenSearchBar(
+            controller: _keywordCtl,
+            hint: _isAr ? '搜索应收单号、发运单号、销售订单号或客户' : '搜索应付单号、关联单号或供应商',
+            onInputChanged: _onKeywordInput,
+            onChanged: (_) => _load(),
+          );
+          final actions = Wrap(
+            spacing: UtenSpacing.s4,
             children: [
-              Text(
-                _error!,
-                style: TextStyle(color: theme.colorScheme.error),
-                textAlign: TextAlign.center,
+              TextButton(
+                onPressed: () => _setSelectedAllVisible(true),
+                child: const Text('全选'),
               ),
-              const SizedBox(height: UtenSpacing.s8),
-              TextButton(onPressed: _load, child: const Text('重试')),
+              TextButton(onPressed: _invertSelection, child: const Text('反选')),
+              TextButton(
+                onPressed: () => _setSelectedAllVisible(false),
+                child: const Text('取消全选'),
+              ),
             ],
-          ),
+          );
+          if (constraints.maxWidth < 600) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                search,
+                const SizedBox(height: UtenSpacing.s4),
+                Align(alignment: Alignment.centerRight, child: actions),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: search),
+              const SizedBox(width: UtenSpacing.s12),
+              actions,
+            ],
+          );
+        },
+      ),
+    );
+    // 行区空态占位（2026-10-09 用户口径「无结果/加载/错误表格骨架也要在」）：
+    // 网格（含表头）恒挂载，loading/错误/初始引导都渲染在行区，页面不整块切换。
+    Widget? emptyPlaceholder;
+    if (_loading) {
+      emptyPlaceholder = const Padding(
+        padding: EdgeInsets.all(UtenSpacing.s24),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.5)),
+      );
+    } else if (_error != null) {
+      emptyPlaceholder = Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _error!,
+              style: TextStyle(color: theme.colorScheme.error),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            TextButton(onPressed: _load, child: const Text('重试')),
+          ],
         ),
       );
-    }
-    if (_items.isEmpty && _keyword.trim().isEmpty) {
+    } else if (_items.isEmpty && _keyword.trim().isEmpty) {
       // 2026-09-14：应收在仓库「确认出库」后才立账——客户没走过完整出货时
       // 选择器必然为空。明说生成时机，避免误以为丢数据（用户实测困惑点）。
       final switchToPrepayment = _isAr ? widget.onSwitchToPrepayment : null;
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _isAr
-                    ? '暂无未清$_ledgerNoun。应收在仓库确认出货单出库后自动生成；客户尚未发货时这里没有内容，收到的是订单定金/预付款请改用「登记订单预收」。'
-                    : '暂无未清$_ledgerNoun', // TODO(l10n): 补 arb
-                style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center,
+      emptyPlaceholder = Padding(
+        padding: const EdgeInsets.all(UtenSpacing.s16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _isAr
+                  ? '暂无未清$_ledgerNoun。应收在仓库确认出货单出库后自动生成；客户尚未发货时这里没有内容，收到的是订单定金/预付款请改用「登记订单预收」。'
+                  : '暂无未清$_ledgerNoun', // TODO(l10n): 补 arb
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
+            if (switchToPrepayment != null) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              // V632：用户实测「明明下了销售单却找不到」——订单没出货就没有应收，
+              // 这里直接切到登记订单预收并打开订单选择，不用回头找收款类型下拉。
+              FilledButton.tonalIcon(
+                key: const ValueKey('ar-picker-switch-to-prepayment'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  switchToPrepayment();
+                },
+                icon: const Icon(Icons.savings_outlined),
+                label: const Text('改为登记订单预收并选择订单'),
               ),
-              if (switchToPrepayment != null) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                // V632：用户实测「明明下了销售单却找不到」——订单没出货就没有应收，
-                // 这里直接切到登记订单预收并打开订单选择，不用回头找收款类型下拉。
-                FilledButton.tonalIcon(
-                  key: const ValueKey('ar-picker-switch-to-prepayment'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    switchToPrepayment();
-                  },
-                  icon: const Icon(Icons.savings_outlined),
-                  label: const Text('改为登记订单预收并选择订单'),
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       );
     }
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s12,
-            UtenSpacing.s12,
-            UtenSpacing.s12,
-            UtenSpacing.s4,
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final search = UtenSearchBar(
-                controller: _keywordCtl,
-                hint: _isAr ? '搜索应收单号、发运单号、销售订单号或客户' : '搜索应付单号、关联单号或供应商',
-                onInputChanged: _onKeywordInput,
-                onChanged: (_) => _load(),
-              );
-              final actions = Wrap(
-                spacing: UtenSpacing.s4,
-                children: [
-                  TextButton(
-                    onPressed: () => _setSelectedAllVisible(true),
-                    child: const Text('全选'),
-                  ),
-                  TextButton(
-                    onPressed: _invertSelection,
-                    child: const Text('反选'),
-                  ),
-                  TextButton(
-                    onPressed: () => _setSelectedAllVisible(false),
-                    child: const Text('取消全选'),
-                  ),
-                ],
-              );
-              if (constraints.maxWidth < 600) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    search,
-                    const SizedBox(height: UtenSpacing.s4),
-                    Align(alignment: Alignment.centerRight, child: actions),
-                  ],
-                );
-              }
-              return Row(
-                children: [
-                  Expanded(child: search),
-                  const SizedBox(width: UtenSpacing.s12),
-                  actions,
-                ],
-              );
+    final content = UtenLoadMoreBoundary(
+      enabled:
+          !_loading &&
+          !_loadingMore &&
+          _moreError == null &&
+          _page < _totalPages,
+      scope: (widget.partyId, widget.direction, _keyword),
+      onLoadMore: () => _load(reset: false),
+      child: SingleChildScrollView(
+        child: UtenEditableGrid<_LedgerRow>(
+          tableKey:
+              'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
+          platformBinding: PlatformTableBinding<_LedgerRow>(
+            tableKey:
+                'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
+            scope: 'view_ar_ap_ledger',
+            recordIdOf: (_) => null,
+            columnAliases: const {
+              'amount': 'amountOriginal',
+              'settled': 'amountReceivedOriginal',
+              'writtenOff': 'amountWriteOffOriginal',
+              'prepaymentApplied': 'prepaymentAppliedOriginal',
+              'balance': 'amountBalanceOriginal',
+              'thisAmt': 'appliedAmountOriginal',
             },
           ),
+          controller: _grid,
+          columns: _columns(),
+          showAddRow: false,
+          showRowDelete: false,
+          createBlankRow: () =>
+              _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
+          emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
+          emptyPlaceholder: emptyPlaceholder,
         ),
-        Expanded(
-          child: UtenLoadMoreBoundary(
-            enabled:
-                !_loading &&
-                !_loadingMore &&
-                _moreError == null &&
-                _page < _totalPages,
-            scope: (widget.partyId, widget.direction, _keyword),
-            onLoadMore: () => _load(reset: false),
-            child: SingleChildScrollView(
-              child: UtenEditableGrid<_LedgerRow>(
-                tableKey:
-                    'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
-                platformBinding: PlatformTableBinding<_LedgerRow>(
-                  tableKey:
-                      'features.finance.widgets.ar_ap_picker_dialog.ArApPickerSheetState._buildBody.1',
-                  scope: 'view_ar_ap_ledger',
-                  recordIdOf: (_) => null,
-                  columnAliases: const {
-                    'amount': 'amountOriginal',
-                    'settled': 'amountReceivedOriginal',
-                    'writtenOff': 'amountWriteOffOriginal',
-                    'prepaymentApplied': 'prepaymentAppliedOriginal',
-                    'balance': 'amountBalanceOriginal',
-                    'thisAmt': 'appliedAmountOriginal',
-                  },
-                ),
-                controller: _grid,
-                columns: _columns(),
-                showAddRow: false,
-                showRowDelete: false,
-                createBlankRow: () =>
-                    _LedgerRow(const ArApLedgerItem(id: ''), false), // 不会被调用
-                emptyMessage: '没有匹配的台账行', // TODO(l10n): 补 arb
-              ),
-            ),
-          ),
-        ),
+      ),
+    );
+    return Column(
+      children: [
+        searchRow,
+        Expanded(child: content),
         if (_moreError != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),

@@ -385,7 +385,6 @@ class _SubcontractOrderProgressSectionState
         key: ValueKey('subcontract-progress-materials-${item.orderItemId}'),
         tableKey: 'subcontract.order.progress.materials',
         embedded: true,
-        compactCards: true,
         showFullscreenToggle: false,
         facets: const {},
         nullCounts: const {},
@@ -406,9 +405,6 @@ class _SubcontractOrderProgressSectionState
             key: 'goodsName',
             label: '物料名称',
             width: 180,
-            // 状态列已排首位，窄屏卡片标题显式钉在物料名称（compactCards 默认取
-            // 第一可见列，即状态列；状态列不当标题）。
-            cardRole: MasterColumnCardRole.title,
             value: (row) => _label(row.goodsName),
           ),
           MasterColumnDef(
@@ -555,7 +551,6 @@ class _SubcontractOrderProgressSectionState
           MasterDataTableView<SubcontractSupplierLedgerLine>(
             tableKey: 'subcontract.order.supplierLedger',
             embedded: true,
-            compactCards: true,
             platformBinding: PlatformTableBinding(
               tableKey: 'subcontract.order.supplierLedger',
               scope: 'view_subcontract',

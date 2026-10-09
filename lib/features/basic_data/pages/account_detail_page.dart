@@ -848,13 +848,15 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
             dense: true,
             hint: '搜索单号、对方单位或摘要',
             initialValue: _flowKeyword,
+            // 不做「加载中就丢弃」：_loadFlow 有请求代际作废，新词重查即可
+            // 覆盖旧请求；丢弃会让输入的关键词静默不生效。
             onChanged: (value) {
               _flowKeyword = value;
-              if (!_flowLoading) _loadFlow(1);
+              _loadFlow(1);
             },
             onSubmitted: (value) {
               _flowKeyword = value;
-              if (!_flowLoading) _loadFlow(1);
+              _loadFlow(1);
             },
           );
           final datesAndActions = Wrap(

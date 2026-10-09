@@ -273,6 +273,9 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
   }
 
   void _onQueryChanged() {
+    // 拼音组合中（composing 非空）不过滤不清选中：半截拼音把列表闪成「未找到」
+    // 还会误清已选岗位；组合结束会再通知一次（2026-10-09 根因修复）。
+    if (_controller.value.composing != TextRange.empty) return;
     final selected = _selected;
     if (selected != null) {
       final normalized = _query.toLowerCase();

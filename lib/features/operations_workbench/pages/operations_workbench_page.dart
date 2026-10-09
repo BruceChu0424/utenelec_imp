@@ -30,7 +30,6 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/connection_recovery.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -661,8 +660,7 @@ class _OperationsWorkbenchPageState
           ],
         );
 
-        // 2026-09-29「大小屏共用一张表」：统一走折叠头+表格，窄屏由表格
-        // 内建卡片形态接管（原窄屏自绘任务卡列表退役）。
+        // 大小屏共用一张表：统一走折叠头+表格，窄屏横向滚动（卡片形态已退役）。
         final tableSelectable = selectionAction != null;
         {
           // 「顶部折叠 + 表格吸顶内滚」：任意位置上滑先把分类工具条收完，
@@ -829,10 +827,7 @@ class _DesktopTaskTable extends StatelessWidget {
       tableKey:
           'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1',
       primary: true,
-      // 2026-09-29「大小屏共用一张表」：<840（原卡片阈值）由内建卡片形态接管
-      //（仓库此前窄屏横滚表格，现在同样卡片，交互统一）。
-      compactCards: true,
-      cardBelowWidth: UtenBreakpoints.expandedStart,
+      // 大小屏共用一张表：窄屏同样横向滚动（2026-10-09 卡片形态退役）。
       selectable: selectable,
       idOf: (item) => item.id,
       selectedIds: selectable ? selectedIds : const <String>{},
@@ -879,8 +874,6 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '单据号',
           width: 160,
           value: (item) => item.actionDocument?.number ?? '—',
-          // 卡片形态：单号进标题下副行。
-          cardRole: MasterColumnCardRole.subtitle,
         ),
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
         // 规格再单独一列（原来「规格 / 颜色」挤在一格，两个属性都没法单独筛）。
@@ -891,15 +884,11 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 200,
           value: (item) =>
               item.isDocumentGrouped ? item.goodsSummaryLabel : item.goodsName,
-          // 卡片形态标题列（归组行显示 N 种物料摘要）。
-          cardRole: MasterColumnCardRole.title,
         ),
         MasterColumnDef(
           key: 'goodsCode',
           label: '编号',
           width: 130,
-          // 卡片副行已带编号，明细区不重复出。
-          cardRole: MasterColumnCardRole.subtitle,
           value: (item) => item.isDocumentGrouped ? '—' : item.goodsCode,
         ),
         MasterColumnDef(

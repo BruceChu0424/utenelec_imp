@@ -7,17 +7,16 @@
 // 2026-09-21 把裸 TabBar「待完成 / 已完成」换成 UtenFilterToolbar 三分段: 原来
 // OPEN 与 IN_PROGRESS 混在「待完成」一段里, 黄色数字点进去没有落脚的地方, 用户
 // 也分不清「没人接」和「有人在做」。分段拆开后两个数字各自可点开核对。
-// 行/卡片可「标记完成」——需 rd_task:resolve 权限且 allowedActions 含 RESOLVE。
+// 行可「标记完成」——需 rd_task:resolve 权限且 allowedActions 含 RESOLVE。
 //
 // 2026-09-09 表格化收尾：宽屏 MasterDataTableView 的「状态」「类别」两列接入
 // 真实 autofilter——bucket 从当前页行前端聚合（参照 material_analysis_material_table），
 // 行集在前端裁剪（服务端仍按 keyword/category/页码分页）；关键词/类别下拉等
-// 服务端口径变化时列筛选随之清空。窄屏卡片布局不动。
+// 服务端口径变化时列筛选随之清空。
 //
 // 结构克隆：
-//  - operations_workbench_page.dart —— race-guard _load / LayoutBuilder 宽窄分栏
-//    （expanded → MasterDataTableView，否则卡片列表）/ connectionRecovery 重载 /
-//    _Filters（关键词 + 类别）/ _MobilePager。原克隆自它的 _Overview 指标卡
+//  - operations_workbench_page.dart —— race-guard _load / connectionRecovery 重载 /
+//    _Filters（关键词 + 类别）。原克隆自它的 _Overview 指标卡
 //    已按 2026-10-01 用户口径删除（分段徽章计数已给同口径数字）。
 //
 // 路由：/rd/tasks → RouteName.rdTaskCenter。
@@ -301,10 +300,19 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       });
     } catch (error) {
       if (!mounted || requestId != _requestId) return;
-      setState(() {
-        _loading = false;
-        _error = error is ApiException ? error.message : '研发任务加载失败，请稍后重试';
-      });
+      final message = error is ApiException ? error.message : '研发任务加载失败，请稍后重试';
+      if (_data == null) {
+        // 首次加载失败：整页错误占位。
+        setState(() {
+          _loading = false;
+          _error = message;
+        });
+      } else {
+        // 仍有旧数据：就地提示、保留筛选行与表格可继续操作——不整页替换，
+        // 否则搜索中的焦点与输入法组合会被打断（2026-10-09 根因修复口径）。
+        setState(() => _loading = false);
+        context.appError(message);
+      }
     }
   }
 
@@ -410,8 +418,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       return UtenEmpty.error(actionLabel: '重试', onAction: _load);
     }
 
-    // 2026-09-29「大小屏共用一张表」：统一用 MasterDataTableView，窄屏
-    // （<840，原卡片阈值）由表格内建卡片形态接管，同一份列定义驱动。
+    // 大小屏共用一张表：统一用 MasterDataTableView，窄屏横向滚动（卡片形态已退役）。
     // 2026-10-01 用户口径：删除列表上方的「待处理/进行中/已完成任务」总数
     // 指标卡——分段工具条上的计数徽章已给出同口径数字，指标卡重复展示。
     final sel = _selectedRow;
@@ -623,10 +630,7 @@ class _DesktopTaskTable extends StatelessWidget {
     final theme = Theme.of(context);
     return MasterDataTableView<RdTaskRow>(
       tableKey: 'features.rd_task.pages.rd_task_page.DesktopTaskTable.build.1',
-      // 2026-09-29「大小屏共用一张表」：屏宽 <840（原卡片阈值）自动切卡片
-      // 列表，同一份列定义驱动；本页自绘 _TaskCard 已退役。
-      compactCards: true,
-      cardBelowWidth: UtenBreakpoints.expandedStart,
+      // 大小屏共用一张表：同一份列定义驱动，窄屏横向滚动（卡片形态已退役）。
       bottomContentPadding: UtenCapsuleNavScope.occlusionOf(context),
       columns: [
         MasterColumnDef(
@@ -652,8 +656,6 @@ class _DesktopTaskTable extends StatelessWidget {
           label: '任务号',
           width: 148,
           value: (item) => item.taskNo,
-          // 卡片形态：任务号与编号一起进标题下副行。
-          cardRole: MasterColumnCardRole.subtitle,
         ),
         MasterColumnDef(
           key: 'category',
@@ -673,7 +675,6 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) => item.goodsName ?? item.goodsCode,
           cellBuilderHandlesSemantics: true,
           cellBuilder: (_, item) => UtenGoodsIdentityCell(name: item.goodsName),
-          cardRole: MasterColumnCardRole.title,
         ),
         MasterColumnDef(
           key: 'goodsCode',
@@ -681,8 +682,6 @@ class _DesktopTaskTable extends StatelessWidget {
           width: 130,
           value: (item) => UtenGoodsAttributeCell.text(item.goodsCode),
           cellBuilder: (_, item) => UtenGoodsAttributeCell(item.goodsCode),
-          // 卡片副行已带编号，明细区不重复出。
-          cardRole: MasterColumnCardRole.subtitle,
         ),
         MasterColumnDef(
           key: 'colorName',
@@ -734,8 +733,7 @@ class _DesktopTaskTable extends StatelessWidget {
       // 行点击 = 打开关联货品的 BOM 维护弹窗；同时回调选中（驱动上方「标记完成」上下文条）。
       onRowTap: onOpenGoods,
       onSelectionChanged: onSelectionChanged,
-      // 行菜单（右键/长按，窄屏卡片同款）：打开 BOM 之外承载「标记完成」——
-      // 卡片形态没有选中态上下文条，完成动作全走这里。
+      // 行菜单（右键/长按）：打开 BOM 之外承载「标记完成」。
       rowMenuBuilder: onResolve == null
           ? null
           : (item) => [

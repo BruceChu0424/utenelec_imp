@@ -9,14 +9,8 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 String _value(String row) => row;
 
 class _Harness extends StatefulWidget {
-  const _Harness({
-    super.key,
-    this.primary = false,
-    this.cards = false,
-    this.eagerPage = false,
-  });
+  const _Harness({super.key, this.primary = false, this.eagerPage = false});
   final bool primary;
-  final bool cards;
   final bool eagerPage;
 
   @override
@@ -116,8 +110,6 @@ class _HarnessState extends State<_Harness> {
       error: error,
       onRetry: () => load(page),
       primary: widget.primary,
-      compactCards: widget.cards,
-      cardBelowWidth: widget.cards ? 1000 : null,
     );
     return MaterialApp(
       home: Scaffold(
@@ -227,18 +219,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  for (final mode in ['table', 'primary', 'cards']) {
+  for (final mode in ['table', 'primary']) {
     testWidgets(
       '$mode appends once and shows the page actually reached by scrolling',
       (tester) async {
         final key = GlobalKey<_HarnessState>();
-        await tester.pumpWidget(
-          _Harness(
-            key: key,
-            primary: mode == 'primary',
-            cards: mode == 'cards',
-          ),
-        );
+        await tester.pumpWidget(_Harness(key: key, primary: mode == 'primary'));
         await tester.pumpAndSettle();
         final host = key.currentState!;
         await _bottom(tester);

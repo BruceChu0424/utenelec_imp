@@ -630,7 +630,6 @@ class _FinanceAssetPostingPanelState
     return MasterDataTableView<AssetPostingLine>(
       tableKey: 'finance.asset.postingPreview',
       embedded: true,
-      compactCards: true,
       platformBinding: PlatformTableBinding(
         tableKey: 'finance.asset.postingPreview',
         scope: 'view_finance',
@@ -656,7 +655,6 @@ class _FinanceAssetPostingPanelState
           label: '名称',
           width: 180,
           value: (row) => row.name,
-          cardRole: MasterColumnCardRole.title,
         ),
         MasterColumnDef(
           key: 'amount',

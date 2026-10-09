@@ -133,6 +133,9 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
   // 基线 204≠203 即此)：any=[employee:edit, employee:pii:edit]，
   // 组合门槛要求还要能看员工档案。
   '/hr/tasks/reconcile': [Perm.employeeView],
+  // 2026-10-08 盘点独立会话页(盘点三轮改版): any=[stock:count:submit] 单一守卫,
+  // 无组合门槛; 草稿与提交沿用盘点录入权限链。
+  '/stock/count-session': [],
 };
 
 /// 2026-09-28 ADR-135 新增的 any-of 守卫页面：逐条核对精确路径与权限码。

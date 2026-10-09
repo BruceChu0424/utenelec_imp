@@ -389,14 +389,27 @@ public class MaterialAnalysisCommandService {
         // ADR-065 修订（2026-09-03）：通知按单据聚合——每张申请只提醒一次
         // （N 种物料、单号、直达详情），不再逐 action 给同一批人重复发条。
         // 必须在全部 action 的 markCreated 完成之后发布，保证投递时单据链接已存在。
+        // 修订三（滚动合单）：并入既有单的批次改发「追加」提醒（单号 + 本次并入量）。
         if (prepared.purchaseRequest() != null) {
-            chainNotice.notifyPreplanSupplyDocumentCreated(
-                    prepared.purchaseRequest().requestId(), "PURCHASE_REQUEST");
+            if (prepared.purchaseAppended()) {
+                chainNotice.notifyPreplanSupplyDocumentIncreased(
+                        prepared.purchaseRequest().requestId(), "PURCHASE_REQUEST",
+                        prepared.purchaseAppendedQty());
+            } else {
+                chainNotice.notifyPreplanSupplyDocumentCreated(
+                        prepared.purchaseRequest().requestId(), "PURCHASE_REQUEST");
+            }
         }
         if (prepared.subcontractApplication() != null) {
-            chainNotice.notifyPreplanSupplyDocumentCreated(
-                    prepared.subcontractApplication().applicationId(),
-                    "SUBCONTRACT_APPLICATION");
+            if (prepared.subcontractAppended()) {
+                chainNotice.notifyPreplanSupplyDocumentIncreased(
+                        prepared.subcontractApplication().applicationId(), "SUBCONTRACT_APPLICATION",
+                        prepared.subcontractAppendedQty());
+            } else {
+                chainNotice.notifyPreplanSupplyDocumentCreated(
+                        prepared.subcontractApplication().applicationId(),
+                        "SUBCONTRACT_APPLICATION");
+            }
         }
         // 就地追加的申请按单据各提醒一次（同一张申请多行追加合成一条）。
         Map<UUID, BigDecimal> grownByDocument = new LinkedHashMap<>();
@@ -2304,15 +2317,30 @@ public class MaterialAnalysisCommandService {
             }
         }
         UUID warehouseId = selectedWarehouse(analysisId);
+        // ADR-065 修订三（滚动合单）：本分析已有一张「尚未被下游动过」的同路线申请时，
+        // 本次明细直接并入那张单（与汇总通道同一套 Facade 判定），否则才新开一张。
+        ProductionPurchaseRequestFacade.MergeableDraft mergeablePurchase =
+                purchaseRequests.findMergeableProductionDraft(analysisId, buyLines.size());
         ProductionPurchaseRequestFacade.DraftResult purchase = buyLines.isEmpty() ? null
-                : purchaseRequests.createProductionDraft(
-                        sourceLabel, analysisId, purchaseNeedDate, warehouseId,
-                        List.copyOf(buyLines), employeeId, employeeId);
+                : mergeablePurchase != null
+                        ? purchaseRequests.appendProductionDraftLines(
+                                mergeablePurchase.requestId(), sourceLabel, analysisId,
+                                List.copyOf(buyLines))
+                        : purchaseRequests.createProductionDraft(
+                                sourceLabel, analysisId, purchaseNeedDate, warehouseId,
+                                List.copyOf(buyLines), employeeId, employeeId);
+        ProductionSubcontractRequestPort.MergeableDraft mergeableSubcontract =
+                subcontractRequests.findMergeableProductionDraft(analysisId, subcontractLines.size());
         ProductionSubcontractRequestPort.DraftResult subcontract = subcontractLines.isEmpty() ? null
-                : subcontractRequests.createProductionDraft(
-                        sourceLabel, analysisId, subcontractNeedDate, warehouseId,
-                        List.copyOf(subcontractLines), employeeId, employeeId);
-        return new PreparedExternalDocuments(purchase, subcontract);
+                : mergeableSubcontract != null
+                        ? subcontractRequests.appendProductionDraftLines(
+                                mergeableSubcontract.applicationId(), sourceLabel, analysisId,
+                                List.copyOf(subcontractLines))
+                        : subcontractRequests.createProductionDraft(
+                                sourceLabel, analysisId, subcontractNeedDate, warehouseId,
+                                List.copyOf(subcontractLines), employeeId, employeeId);
+        return new PreparedExternalDocuments(
+                purchase, subcontract, mergeablePurchase != null, mergeableSubcontract != null);
     }
 
     private static LocalDate earliest(LocalDate current, LocalDate candidate) {
@@ -3181,10 +3209,31 @@ public class MaterialAnalysisCommandService {
             UUID safetySliceId) {
     }
 
-    /** ADR-065 同批合并的外部单据结果：整批一张采购申请 + 整批委外一张申请。 */
+    /**
+     * ADR-065 同批合并的外部单据结果：整批一张采购申请 + 整批委外一张申请。
+     * 修订三起并入既有单时 {@code appended} 为真（单据是旧的，本次只加了明细行）。
+     */
     private record PreparedExternalDocuments(
             ProductionPurchaseRequestFacade.DraftResult purchaseRequest,
-            ProductionSubcontractRequestPort.DraftResult subcontractApplication) {
+            ProductionSubcontractRequestPort.DraftResult subcontractApplication,
+            boolean purchaseAppended,
+            boolean subcontractAppended) {
+
+        BigDecimal purchaseAppendedQty() {
+            return purchaseRequest == null
+                    ? BigDecimal.ZERO
+                    : purchaseRequest.lines().stream()
+                            .map(ProductionPurchaseRequestFacade.DraftLineResult::qty)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        BigDecimal subcontractAppendedQty() {
+            return subcontractApplication == null
+                    ? BigDecimal.ZERO
+                    : subcontractApplication.lines().stream()
+                            .map(ProductionSubcontractRequestPort.DraftLineResult::qty)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
     }
 
     private record ActionSequence(int generation, UUID predecessorId) {

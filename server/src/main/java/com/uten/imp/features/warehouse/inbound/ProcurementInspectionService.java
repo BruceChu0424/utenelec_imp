@@ -739,9 +739,23 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                    string_agg(DISTINCT COALESCE(NULLIF(w.name, ''), i.pre_stocked_warehouse_id::text), '、')
                                        FILTER (WHERE i.pre_stocked_at IS NOT NULL) AS pre_stocked_warehouse_names,
                                    string_agg(DISTINCT i.pre_stocked_place, '、')
-                                       FILTER (WHERE i.pre_stocked_at IS NOT NULL) AS pre_stocked_places
+                                       FILTER (WHERE i.pre_stocked_at IS NOT NULL) AS pre_stocked_places,
+                                   -- 待检队列「货品名称」列（2026-10-08 根治「整行都是—」）：与 FQC 检查单
+                                   -- 同一摘要口径「名称 (编号 · 颜色)」——一张收货单常含同名不同色的多行，
+                                   -- 只给名称必然认错货。
+                                   string_agg(DISTINCT COALESCE(
+                                       NULLIF(g.name, ''),
+                                       NULLIF(g.code, ''),
+                                       '未命名货品')
+                                       || COALESCE(' (' || NULLIF(concat_ws(' · ',
+                                           CASE WHEN NULLIF(g.name, '') IS NULL
+                                                THEN NULL ELSE NULLIF(g.code, '') END,
+                                           NULLIF(col.name, '')), '') || ')', ''),
+                                       '、') AS goods_summary
                             FROM procurement_inspection_items i
                             LEFT JOIN warehouses w ON w.id = i.pre_stocked_warehouse_id
+                            LEFT JOIN goods g ON g.id = i.goods_id
+                            LEFT JOIN colors col ON col.id = i.color_id
                             WHERE i.status IN ('PENDING', 'PARTIAL')
                             GROUP BY i.receipt_type, i.receipt_id
                         )
@@ -749,7 +763,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                a.first_received_at, a.last_received_at, a.warehouse_id,
                                x.bill_no, x.bill_date, x.supplier_id, s.name,
                                a.pre_stocked_item_count,
-                               a.pre_stocked_warehouse_names, a.pre_stocked_places
+                               a.pre_stocked_warehouse_names, a.pre_stocked_places,
+                               a.goods_summary,
+                               -- 待检队列「待检数量」列：与明细页 inspectionQuantityTotalText 同口径，
+                               -- 按货品基本单位分组拼「qty 单位 · qty 单位」（跨单位不相加）。
+                               pending.text AS pending_qty_text
                         FROM agg a
                         JOIN (
                             SELECT 'PURCHASE'::text AS t, id, bill_no, bill_date, supplier_id
@@ -759,6 +777,26 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                             FROM subcontract_receipts WHERE COALESCE(is_deleted, false) = false AND legacy_id IS NULL
                         ) x ON x.t = a.receipt_type AND x.id = a.receipt_id
                         LEFT JOIN suppliers s ON s.id = x.supplier_id
+                        LEFT JOIN LATERAL (
+                            SELECT string_agg(
+                                       unit_total.qty_text || ' ' || unit_total.unit_name,
+                                       ' · ' ORDER BY unit_total.unit_name) AS text
+                            FROM (
+                                SELECT COALESCE(base_unit.name, '') AS unit_name,
+                                       rtrim(rtrim(SUM(
+                                           item.received_base_qty
+                                           - item.passed_base_qty
+                                           - item.failed_base_qty)::text,
+                                           '0'), '.') AS qty_text
+                                FROM procurement_inspection_items item
+                                LEFT JOIN goods item_goods ON item_goods.id = item.goods_id
+                                LEFT JOIN units base_unit ON base_unit.id = item_goods.unit_id
+                                WHERE item.receipt_type = a.receipt_type
+                                  AND item.receipt_id = a.receipt_id
+                                  AND item.status IN ('PENDING', 'PARTIAL')
+                                GROUP BY COALESCE(base_unit.name, '')
+                            ) unit_total
+                        ) pending ON TRUE
                         ORDER BY a.first_received_at
                         LIMIT 200
                         """)

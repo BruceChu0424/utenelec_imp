@@ -133,6 +133,8 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         AnalysisView nextSnapshot=analysis.detailInternal(analysisId,false);
         List<BatchResult> results=new ArrayList<>();List<SourceAdoptionIntent> sourceAdoptions=new ArrayList<>();
         Set<String> safetyDimensions=new HashSet<>();
+        // ADR-065 修订三：并入同一张申请的多个组按单据合并成一条「追加」提醒，循环结束统一发布。
+        Map<UUID,AppendedNotice> appendedNotices=new LinkedHashMap<>();
         int cursor=0;
         while(cursor<ordered.size()) {
             AnalysisView current=nextSnapshot==null?analysis.detailInternal(analysisId,false):nextSnapshot;
@@ -243,11 +245,13 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
             } else {
                 External external=append?growExternal(batch,group):createExternal(batch,group,request.warehouseId());
-                notices.notifyPreplanSupplyDocumentCreated(external.id(),external.type());
+                if(external.appended())appendedNotices.merge(external.id(),new AppendedNotice(external.type(),group.requestedQty().add(group.safetyQty())),(left,right)->new AppendedNotice(left.type(),left.qty().add(right.qty())));
+                else notices.notifyPreplanSupplyDocumentCreated(external.id(),external.type());
                 analysis.refreshLocked(analysisId);
                 results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),external.type(),external.id(),external.no(),null,null,group.requestedQty().add(group.safetyQty()),group.publicExtraQty(),group.sources()));
             }
         }
+        appendedNotices.forEach((document,notice)->notices.notifyPreplanSupplyDocumentIncreased(document,notice.type(),notice.qty()));
         List<MaterialIdentityBridge> bridges=materialBridges(results.stream().filter(result->result.batchId()!=null&&result.anchorAnalysisItemId()!=null).map(BatchResult::batchId).distinct().toList());
         ObjectNode payload=mapper.createObjectNode();payload.set("batches",mapper.valueToTree(results));payload.set("materialIdentityBridges",mapper.valueToTree(bridges));
         payload.set("sourceOrderIntent",mapper.valueToTree(request.groups()));
@@ -566,16 +570,27 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         String source=noRow==null||noRow.toString().isBlank()
                 ?"物料分析汇总 "+BusinessTime.today():noRow.toString();
         UUID item=null,safetyItem=null;External result;
+        // ADR-065 修订三（滚动合单）：同一分析的采购/委外申请只要还没被下游动过
+        // （全部明细未订货、无订货单来源引用），本组明细直接并入那张单——同一批量
+        // 下达的多个组、多个依赖轮次乃至与经典通道（notify）开的单都收敛到同一张；
+        // 单据一旦被采购/委外部门动过，这里自然查不到可并入的，落回新开一张。
         if("BUY".equals(group.route())) {
             List<ProductionPurchaseRequestFacade.DraftLine> lines=new ArrayList<>();
             if(regular.signum()>0)lines.add(new ProductionPurchaseRequestFacade.DraftLine(batch.action(),group.goodsId(),group.colorId(),group.unitId(),regular,group.deliveryDate(),"同料多来源汇总备料"));
             if(group.safetyQty().signum()>0)lines.add(new ProductionPurchaseRequestFacade.DraftLine(safetySlice,group.goodsId(),group.colorId(),group.unitId(),group.safetyQty(),group.deliveryDate(),"公共安全库存补库"));
-            var made=purchases.createProductionDraft(source,batch.analysis(),group.deliveryDate(),warehouse,lines,user.requireEmployeeId(),user.requireEmployeeId());
+            ProductionPurchaseRequestFacade.MergeableDraft mergeable=purchases.findMergeableProductionDraft(batch.analysis(),lines.size());
+            var made=mergeable==null
+                    ?purchases.createProductionDraft(source,batch.analysis(),group.deliveryDate(),warehouse,lines,user.requireEmployeeId(),user.requireEmployeeId())
+                    :purchases.appendProductionDraftLines(mergeable.requestId(),source,batch.analysis(),lines);
             for(var line:made.lines())if(line.demandId().equals(batch.action()))item=line.requestItemId();else if(line.demandId().equals(safetySlice))safetyItem=line.requestItemId();
-            result=new External("PURCHASE_REQUEST",made.requestId(),made.billNo(),item);
+            result=new External("PURCHASE_REQUEST",made.requestId(),made.billNo(),item,mergeable!=null);
         } else {
-            var made=subcontract.createProductionDraft(source,batch.analysis(),group.deliveryDate(),warehouse,List.of(new ProductionSubcontractRequestPort.DraftLine(batch.action(),group.goodsId(),group.colorId(),group.unitId(),regular,group.deliveryDate(),"同料多来源汇总委外")),user.requireEmployeeId(),user.requireEmployeeId());
-            item=made.lines().getFirst().applicationItemId();result=new External("SUBCONTRACT_APPLICATION",made.applicationId(),made.billNo(),item);
+            List<ProductionSubcontractRequestPort.DraftLine> lines=List.of(new ProductionSubcontractRequestPort.DraftLine(batch.action(),group.goodsId(),group.colorId(),group.unitId(),regular,group.deliveryDate(),"同料多来源汇总委外"));
+            ProductionSubcontractRequestPort.MergeableDraft mergeable=subcontract.findMergeableProductionDraft(batch.analysis(),lines.size());
+            var made=mergeable==null
+                    ?subcontract.createProductionDraft(source,batch.analysis(),group.deliveryDate(),warehouse,lines,user.requireEmployeeId(),user.requireEmployeeId())
+                    :subcontract.appendProductionDraftLines(mergeable.applicationId(),source,batch.analysis(),lines);
+            item=made.lines().getFirst().applicationItemId();result=new External("SUBCONTRACT_APPLICATION",made.applicationId(),made.billNo(),item,mergeable!=null);
         }
         markExternal(batch,result.type(),result.id(),result.no(),sum(group.sources()).signum()>0?item:null,safetyItem,group.publicExtraQty().signum()>0?item:null);return result;
     }
@@ -583,7 +598,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         Object[] row=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT external_document_type,external_document_id,external_document_no FROM preplan_supply_actions WHERE id=:id").setParameter("id",batch.action())).getFirst();UUID item=externalItem(batch);
         if("BUY".equals(group.route()))purchases.increaseProductionDraftLine((UUID)row[1],item,group.requestedQty());else subcontract.increaseProductionDraftLine((UUID)row[1],item,group.requestedQty());
         if(group.publicExtraQty().signum()>0)em.createNativeQuery("UPDATE preplan_supply_actions SET public_surplus_external_item_id=COALESCE(public_surplus_external_item_id,:item) WHERE id=:id").setParameter("item",item).setParameter("id",batch.action()).executeUpdate();
-        return new External((String)row[0],(UUID)row[1],(String)row[2],item);
+        return new External((String)row[0],(UUID)row[1],(String)row[2],item,true);
     }
     private void markExternal(Batch batch,String type,UUID document,String no,UUID item,UUID safety,UUID surplus) {
         em.createNativeQuery("UPDATE preplan_supply_actions SET status='CREATED',external_document_type=:type,external_document_id=:doc,external_document_no=:no,safety_external_item_id=:safety,public_surplus_external_item_id=:public WHERE id=:id")
@@ -922,7 +937,10 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
     private static ApiException forbidden(String message){return new ApiException(ErrorCode.FORBIDDEN,message);}
     private record Batch(UUID id,UUID analysis,UUID action,UUID anchor,UUID plan,String route,long version){}
-    private record External(String type,UUID id,String no,UUID item){}
+    /** [appended]：本次是并入/追加既有单据（提醒走「追加」口径），false 才是新开单。 */
+    private record External(String type,UUID id,String no,UUID item,boolean appended){}
+    /** 同一张申请上多个组的追加量合并成一条提醒。 */
+    private record AppendedNotice(String type,java.math.BigDecimal qty){}
     static BigDecimal releasedChildQuantity(BigDecimal before,BigDecimal after,BigDecimal bomQty,String basis,BigDecimal basisOutput,boolean partial) {
         return childQuantity(before,bomQty,basis,basisOutput,partial).subtract(childQuantity(after,bomQty,basis,basisOutput,partial)).max(BigDecimal.ZERO);
     }

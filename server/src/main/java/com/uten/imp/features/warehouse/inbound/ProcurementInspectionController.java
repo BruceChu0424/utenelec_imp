@@ -60,7 +60,11 @@ public class ProcurementInspectionController {
             /** 已上架行的去重仓名清单（2026-09-17）：待检队列「仓库」列直接给出到哪验货。 */
             String preStockedWarehouseNames,
             /** 已上架行的去重库位清单（2026-09-17）：待检队列「库位号」列。 */
-            String preStockedPlaces) {
+            String preStockedPlaces,
+            /** 待检货品摘要「名称 (编号 · 颜色)、…」（2026-10-08）：与 FQC 检查单 goodsSummary 同口径。 */
+            String goodsSummary,
+            /** 待检数量文本「qty 单位 · qty 单位」（2026-10-08）：按货品基本单位分组，跨单位不相加。 */
+            String pendingQtyText) {
     }
 
     @GetMapping("/pending-receipts")
@@ -81,7 +85,9 @@ public class ProcurementInspectionController {
                         toOffsetDateTime(row[5]),
                         ((Number) row[11]).longValue(),
                         (String) row[12],
-                        (String) row[13]))
+                        (String) row[13],
+                        (String) row[14],
+                        (String) row[15]))
                 .toList();
     }
 

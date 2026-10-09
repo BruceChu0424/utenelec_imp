@@ -55,20 +55,10 @@ public class ProductionSubcontractRequestFacade
             List<DraftLine> requestedLines,
             UUID applicantEmployeeId,
             UUID makerEmployeeId) {
-        List<DraftLine> lines = requestedLines == null
-                ? List.of()
-                : requestedLines.stream()
-                .filter(Objects::nonNull)
-                .sorted(Comparator
-                        .comparing(DraftLine::goodsId)
-                        .thenComparing(line ->
-                                Objects.toString(line.colorId(), ""))
-                        .thenComparing(DraftLine::demandId))
-                .toList();
+        List<DraftLine> lines = sortedLines(requestedLines);
         if (lines.isEmpty()) {
             return null;
         }
-        lines.forEach(ProductionSubcontractRequestFacade::validate);
 
         SubcontractApplication application =
                 new SubcontractApplication();
@@ -94,15 +84,174 @@ public class ProductionSubcontractRequestFacade
         mutationLocks.expectCreatedSource(createdSource);
         applicationRepo.save(application);
 
+        List<DraftLineResult> created = insertDemandItems(
+                application, lines, productionPlanNo, needDate, 0);
+        itemRepo.flush();
+        applicationRepo.flush();
+        mutationLocks.registerCreatedSource(createdSource);
+        return new DraftResult(
+                application.getId(),
+                application.getBillNo(),
+                List.copyOf(created));
+    }
+
+    /** ADR-065 修订三（滚动合单）：与本分析挂钩、全部明细未被下游动过的最近一张申请。 */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public MergeableDraft findMergeableProductionDraft(UUID materialAnalysisId, int incomingLines) {
+        if (materialAnalysisId == null) return null;
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                        SELECT application.id, application.bill_no
+                        FROM subcontract_applications application
+                        WHERE application.id IN (
+                                SELECT action.external_document_id
+                                FROM preplan_supply_actions action
+                                WHERE action.analysis_id = :analysisId
+                                  AND action.route = 'SUBCONTRACT'
+                                  AND action.operation_type = 'SUPPLY'
+                                  AND action.status <> 'CANCELLED'
+                                  AND action.external_document_type = 'SUBCONTRACT_APPLICATION'
+                                  AND action.external_document_id IS NOT NULL)
+                          AND COALESCE(application.is_deleted, FALSE) = FALSE
+                          AND application.status IN (0, 1)
+                          AND COALESCE(application.is_closed, FALSE) = FALSE
+                          AND NOT EXISTS (
+                                SELECT 1 FROM subcontract_application_items item
+                                WHERE item.application_id = application.id
+                                  AND COALESCE(item.is_deleted, FALSE) = FALSE
+                                  AND COALESCE(item.ordered_qty, 0) > 0)
+                          AND NOT EXISTS (
+                                SELECT 1 FROM subcontract_order_item_sources source
+                                JOIN subcontract_order_items order_item
+                                  ON order_item.id = source.order_item_id
+                                 AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                                JOIN subcontract_orders header
+                                  ON header.id = order_item.order_id
+                                 AND COALESCE(header.is_deleted, FALSE) = FALSE
+                                JOIN subcontract_application_items item
+                                  ON item.id = source.application_item_id
+                                WHERE item.application_id = application.id)
+                          AND (SELECT COUNT(*) FROM subcontract_application_items item
+                               WHERE item.application_id = application.id
+                                 AND COALESCE(item.is_deleted, FALSE) = FALSE)
+                              + :incomingLines
+                              <= :maxLines
+                        ORDER BY application.created_at DESC, application.id DESC
+                        LIMIT 1
+                        """)
+                .setParameter("analysisId", materialAnalysisId)
+                .setParameter("incomingLines", incomingLines)
+                .setParameter("maxLines",
+                        com.uten.imp.common.validation.RequestLimits.DOCUMENT_LINES));
+        if (rows.isEmpty()) return null;
+        return new MergeableDraft((UUID) rows.getFirst()[0], (String) rows.getFirst()[1]);
+    }
+
+    /** ADR-065 修订三：把明细行并入既有委外申请；任一明细已被下游动过即拒绝。 */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public DraftResult appendProductionDraftLines(
+            UUID applicationId,
+            String productionPlanNo,
+            UUID materialAnalysisId,
+            List<DraftLine> requestedLines) {
+        List<DraftLine> lines = sortedLines(requestedLines);
+        if (lines.isEmpty()) {
+            return null;
+        }
+        SubcontractApplication application = em.find(
+                SubcontractApplication.class, applicationId, LockModeType.PESSIMISTIC_WRITE);
+        if (application == null || application.isDeleted()
+                || application.getStatus() == null
+                || (application.getStatus() != STATUS_DRAFT && application.getStatus() != STATUS_APPROVED)
+                || application.isClosed()) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外申请已结案、红冲或删除，不能并入明细");
+        }
+        Number ordered = (Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM subcontract_application_items
+                WHERE application_id = :applicationId AND is_deleted = FALSE
+                  AND COALESCE(ordered_qty, 0) > 0
+                """).setParameter("applicationId", applicationId).getSingleResult();
+        if (ordered.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外申请已有明细订货，不能并入明细，请另立申请");
+        }
+        Number referenced = (Number) em.createNativeQuery("""
+                SELECT COUNT(*)
+                FROM subcontract_order_item_sources source
+                JOIN subcontract_order_items order_item
+                  ON order_item.id = source.order_item_id
+                 AND COALESCE(order_item.is_deleted, FALSE) = FALSE
+                JOIN subcontract_orders header
+                  ON header.id = order_item.order_id
+                 AND COALESCE(header.is_deleted, FALSE) = FALSE
+                JOIN subcontract_application_items item
+                  ON item.id = source.application_item_id
+                 AND item.application_id = :applicationId AND item.is_deleted = FALSE
+                """).setParameter("applicationId", applicationId).getSingleResult();
+        if (referenced.longValue() > 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "委外申请明细已被订货单引用，不能并入明细，请另立申请");
+        }
+        int startLineNo = ((Number) em.createNativeQuery("""
+                        SELECT COALESCE(MAX(line_no), 0) FROM subcontract_application_items
+                        WHERE application_id = :applicationId
+                        """)
+                .setParameter("applicationId", applicationId).getSingleResult()).intValue();
+        LocalDate earliest = lines.stream()
+                .map(DraftLine::needDate).filter(Objects::nonNull)
+                .reduce(ProductionSubcontractRequestFacade::earliest).orElse(null);
+        if (earliest != null
+                && (application.getNeedDate() == null || earliest.isBefore(application.getNeedDate()))) {
+            application.setNeedDate(earliest);
+            applicationRepo.save(application);
+        }
+        List<DraftLineResult> created = insertDemandItems(
+                application, lines, productionPlanNo, application.getNeedDate(), startLineNo);
+        itemRepo.flush();
+        applicationRepo.flush();
+        return new DraftResult(
+                application.getId(), application.getBillNo(), List.copyOf(created));
+    }
+
+    /** 排序 + 过滤 + 校验，create 与 append 共用的入口形态。 */
+    private static List<DraftLine> sortedLines(List<DraftLine> requestedLines) {
+        List<DraftLine> lines = requestedLines == null
+                ? List.of()
+                : requestedLines.stream()
+                        .filter(Objects::nonNull)
+                        .sorted(Comparator
+                                .comparing(DraftLine::goodsId)
+                                .thenComparing(line ->
+                                        Objects.toString(line.colorId(), ""))
+                                .thenComparing(DraftLine::demandId))
+                        .toList();
+        lines.forEach(ProductionSubcontractRequestFacade::validate);
+        return lines;
+    }
+
+    private static LocalDate earliest(LocalDate left, LocalDate right) {
+        if (left == null) return right;
+        if (right == null) return left;
+        return left.isBefore(right) ? left : right;
+    }
+
+    /** create 与 append 共用的明细写入：逐行货品快照、来源标签与锚定回执保持同一形态。 */
+    private List<DraftLineResult> insertDemandItems(
+            SubcontractApplication application,
+            List<DraftLine> lines,
+            String productionPlanNo,
+            LocalDate headerNeedDate,
+            int startLineNo) {
         OffsetDateTime snapshotLockedAt = OffsetDateTime.now();
         Map<UUID, SubcontractGoodsSnapshot> goodsSnapshots =
                 SubcontractGoodsSnapshot.fromMaster(
                         em,
                         lines.stream().map(DraftLine::goodsId).toList(),
                         SubcontractGoodsSnapshot.MASTER_AT_APPROVAL);
-
         List<DraftLineResult> created = new ArrayList<>();
-        int lineNo = 0;
+        int lineNo = startLineNo;
         for (DraftLine line : lines) {
             SubcontractApplicationItem item =
                     new SubcontractApplicationItem();
@@ -131,16 +280,10 @@ public class ProductionSubcontractRequestFacade
             created.add(new DraftLineResult(
                     line.demandId(),
                     item.getId(),
-                    line.needDate() == null ? needDate : line.needDate(),
+                    line.needDate() == null ? headerNeedDate : line.needDate(),
                     line.qty()));
         }
-        itemRepo.flush();
-        applicationRepo.flush();
-        mutationLocks.registerCreatedSource(createdSource);
-        return new DraftResult(
-                application.getId(),
-                application.getBillNo(),
-                List.copyOf(created));
+        return created;
     }
 
     @Override

@@ -47,7 +47,8 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release253Reset,
         l10n.release253Maintenance,
       ],
-      '2.5.6' => [
+      // v2.5.7 与 v2.5.6 同批发布(含并行收尾), 说明共用; 下一个版本再另立条目。
+      '2.5.6' || '2.5.7' => [
         l10n.release253Hr,
         l10n.release253Permissions,
         l10n.release253Materials,

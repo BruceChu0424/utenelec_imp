@@ -5,6 +5,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.finance.reconciliation.dto.FinanceReconciliationListItem;
 import com.uten.imp.features.finance.reconciliation.dto.FinanceReconciliationQueryFilter;
+import com.uten.imp.common.util.NameRefKeyword;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
@@ -72,7 +73,16 @@ public class FinanceReconciliationService {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 引用主档名称
+                //（经 NameRefKeyword 转外键 IN 子查询，count 同谓词派生）。
+                String kw = NameRefKeyword.like(f.keyword());
+                var kws = NameRefKeyword.keywords();
+                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                NameRefKeyword.byName(kws, q, cb, root.get("accountId"),
+                        com.uten.imp.features.master.account.Account.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("accountId"),
+                        com.uten.imp.features.master.account.Account.class, "code", kw);
+                ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));
             if (f.sourceDocType() != null && !f.sourceDocType().isBlank())

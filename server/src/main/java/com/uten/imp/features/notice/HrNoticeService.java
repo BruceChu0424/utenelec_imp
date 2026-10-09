@@ -340,7 +340,7 @@ public class HrNoticeService implements HrNoticePort {
 
     // ========================= 接收人解析（与供应链链同口径） =========================
 
-    /** 活跃账号 × notice:read × 任一职能权限（含超管权限快照展开）。 */
+    /** 活跃账号 × notice:read × 任一职能权限（超管按真实授出解析，全量镜像不算任务归属）。 */
     private Set<UUID> userIdsWithNoticeAndAnyPermission(String... anyPermission) {
         Set<String> alternatives = Set.of(anyPermission);
         List<UserAccount> candidates = permissionCandidates == null
@@ -349,7 +349,8 @@ public class HrNoticeService implements HrNoticePort {
                         .map(userRepo::findAllById)
                         .orElseGet(userRepo::findAll);
         Set<UUID> result = new LinkedHashSet<>();
-        Set<String> adminPermissions = null;
+        // 2026-10-09(ADR-063 追加修订): 任务卡池按「真实授出权限」解析，超管全量镜像不算任务归属。
+        Set<String> adminGrantedPermissions = null;
         for (UserAccount user : candidates) {
             if (user == null || user.isDeleted() || !"active".equals(user.getStatus())
                     || user.getEmployeeId() == null) {
@@ -357,10 +358,12 @@ public class HrNoticeService implements HrNoticePort {
             }
             Set<String> permissions;
             if (user.isSuperAdmin()) {
-                if (adminPermissions == null) adminPermissions = permissionResolver.permsOf(user);
-                permissions = adminPermissions;
+                if (adminGrantedPermissions == null) {
+                    adminGrantedPermissions = permissionResolver.grantedPermsOf(user);
+                }
+                permissions = adminGrantedPermissions;
             } else {
-                permissions = permissionResolver.permsOf(user);
+                permissions = permissionResolver.grantedPermsOf(user);
             }
             if (!permissions.contains(NOTICE_READ_AUTHORITY)) continue;
             if (alternatives.stream().anyMatch(permissions::contains)) {

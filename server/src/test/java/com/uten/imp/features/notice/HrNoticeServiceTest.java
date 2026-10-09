@@ -268,7 +268,7 @@ class HrNoticeServiceTest {
         when(account.getStatus()).thenReturn(status);
         when(account.isSuperAdmin()).thenReturn(superAdmin);
         when(users.findById(id)).thenReturn(Optional.of(account));
-        when(permissions.permsOf(account)).thenReturn(Set.of(perms));
+        when(permissions.grantedPermsOf(account)).thenReturn(Set.of(perms));
         return account;
     }
 }

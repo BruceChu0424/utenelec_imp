@@ -6,6 +6,7 @@ import com.uten.imp.application.port.OrganizationReferencePort;
 
 import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -131,7 +132,14 @@ public class PurchaseRequestService {
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 供应商名称
+                // + 仓库名称（名称经 NameRefKeyword 转成外键 IN 子查询，count 同谓词派生）。
+                String kw = NameRefKeyword.like(f.keyword());
+                var kws = NameRefKeyword.keywords();
+                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                NameRefKeyword.byName(kws, q, cb, root.get("warehouseId"),
+                        com.uten.imp.features.master.warehouse.Warehouse.class, "name", kw);
+                ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));

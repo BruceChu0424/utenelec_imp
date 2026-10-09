@@ -40,6 +40,12 @@ public class FulfillmentWorkbenchQueryService {
      * 「进行中」= 订货单提交财务到结案之间的三档：ADR-098 先在委外任务中心落地，
      * ADR-100 把同一范式铺到采购任务工作台——分段栏只留「申请待分解」(红) 与
      * 「进行中」(黄) 两段，三档降级为表格里可筛的状态列。
+     *
+     * <p>ADR-171 修订二(2026-10-09, V834): 委外侧「领完料才算进行中」——投影里领料
+     * 未结束的订货单是 {@code DRAW_OPEN} 档，刻意不在这三档里，进行中列表 / 分段合计 /
+     * 黄徽章 {@code subcontractTask.inProgress} 三处自动同口径剔除；它们以领料任务的
+     * 形态出现在「待处理」拍平表格(draw-tasks 数据源)，已提交等仓库发的行挂黄
+     * ({@code subcontractDraw.submitted})。
      */
     static final List<String> IN_PROGRESS_STATUSES =
             List.of("ORDER_PENDING_APPROVAL", "FINANCE_APPROVED", "FINANCE_REJECTED");

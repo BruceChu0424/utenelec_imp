@@ -50,10 +50,14 @@ public class SubcontractDrawController {
         return queries.tasks(page, size, keyword, status, orderId, orderItemIds);
     }
 
-    /** 「领料」红数: 可领且调用者能动手的委外任务数(无委外领料权限恒为 0)。 */
+    /**
+     * 领料计数: {@code drawable} = 可领且调用者能动手的行数(红, 无委外领料权限恒为 0);
+     * {@code submitted} = 已提交领料、等仓库发出的行数(黄, ADR-171 修订二)。
+     */
     @GetMapping("/count")
     public Map<String, Long> count() {
-        return Map.of("drawable", queries.countDrawable());
+        return Map.of("drawable", queries.countDrawable(),
+                "submitted", queries.countSubmitted());
     }
 
     /** 任务详情: 物料表、待仓库发的领料草稿、服务端允许的动作。 */

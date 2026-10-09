@@ -57,12 +57,13 @@ public class StockCountNoticeHandler implements BusinessOutboxDomainHandler {
             if (!"PENDING".equals(status)) return; // Approval/cancellation won before the worker delivered submission.
             String authority = warehouse ? "stock:count:warehouse_review" : "stock:count:finance_review";
             List<UserAccount> possible = candidates.possibleUsers(Set.of(authority)).map(users::findAllById).orElseGet(users::findAll);
-            // 池 = 在职、持通知与审核权限(仓库路由另须能看这个仓)的人。仓库路由的盘点审核卡再经 ADR-149
+            // 池 = 在职、真实持有通知与审核权限(超管全量镜像不算任务归属, 2026-10-09 ADR-063 追加修订;
+            // 仓库路由另须能看这个仓)的人。仓库路由的盘点审核卡再经 ADR-149
             // 唯一分发规则: 该仓子仓负责人 ∩ 池; 没有则主管 ∩ 池; 再没有才发整个池。财务路由仍按权限全员。
             java.util.LinkedHashSet<UUID> pool = new java.util.LinkedHashSet<>();
             for (UserAccount user : possible) {
                 if (!active(user)) continue;
-                Set<String> current = permissions.permsOf(user);
+                Set<String> current = permissions.grantedPermsOf(user);
                 if (!current.contains("notice:read") || !current.contains(authority)) continue;
                 if (warehouse && !workshop.canAccessWarehouseForUser((UUID) request.get("warehouse_id"), user.getId())) continue;
                 pool.add(user.getId());
@@ -84,7 +85,7 @@ public class StockCountNoticeHandler implements BusinessOutboxDomainHandler {
         String expected = eventType.substring("STOCK_COUNT_".length());
         if (!expected.equals(status)) return;
         users.findById((UUID) request.get("submitted_by")).filter(StockCountNoticeHandler::active).ifPresent(user -> {
-            Set<String> current = permissions.permsOf(user);
+            Set<String> current = permissions.grantedPermsOf(user);
             if (!current.containsAll(Set.of("notice:read", "stock:count:submit"))) return;
             String outcome = switch (status) { case "APPROVED" -> "已通过"; case "REJECTED" -> "已退回"; default -> "已撤回"; };
             notices.publishForUser(user.getId(), "盘点" + outcome + "：" + label,

@@ -54,6 +54,10 @@ public class Permission extends BaseEntity {
     @Column(nullable = false)
     private boolean baseline;
 
+    /** 基础包钉死(V832/ADR-170)：体系准入码锁定在基础包，管理页不可移出，只有迁移能解除。 */
+    @Column(name = "baseline_pinned", nullable = false)
+    private boolean baselinePinned;
+
     /** 既有目录高危标记：页面权限变更用它决定是否再认证，不改变 grant_policy 的授权资格。 */
     @Column(name = "high_risk", nullable = false)
     private boolean highRisk;

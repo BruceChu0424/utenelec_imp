@@ -227,6 +227,29 @@ public class NoticeController {
         return java.util.Map.of("items", service.pendingPopups());
     }
 
+    /**
+     * 个人通知弹窗开关（V833/ADR-171）：我当前会收到的弹窗提醒类别（中文名 +
+     * 是否已关闭）。工作台「通知设置」入口的数据源。
+     */
+    @GetMapping("/popup-preferences")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public java.util.Map<String, Object> popupPreferences() {
+        return java.util.Map.of("items", service.popupPreferences());
+    }
+
+    /** 开/关某一类弹窗提醒（只抑制弹窗层；通知仍落库并在通知中心可见）。 */
+    @PostMapping("/popup-preferences/{sourceEvent}")
+    @PreAuthorize("hasAuthority('notice:read')")
+    public void setPopupPreference(
+            @PathVariable String sourceEvent,
+            @org.springframework.web.bind.annotation.RequestBody PopupPreferenceSetRequest request) {
+        service.setPopupPreference(sourceEvent, request == null || request.disabled());
+    }
+
+    /** {@link #setPopupPreference} 的请求体。 */
+    public record PopupPreferenceSetRequest(boolean disabled) {
+    }
+
     @PostMapping("/read-all")
     @PreAuthorize("hasAuthority('notice:read')")
     public void markAllRead() {

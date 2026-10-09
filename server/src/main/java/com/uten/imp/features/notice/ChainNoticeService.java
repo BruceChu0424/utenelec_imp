@@ -418,7 +418,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         Set<String> required = Set.of(authorities);
         return new WarehouseNoticePool(department, userId -> userRepo.findById(userId)
                 .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
-                .map(permissionResolver::permsOf)
+                .map(permissionResolver::grantedPermsOf)
                 .map(permissions -> permissions.containsAll(required))
                 .orElse(false));
     }
@@ -555,9 +555,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     // without recreating a planner task or sending a notice.
                 }
                 case EVENT_ORDER_CANCELED -> notifyOrderCanceled(aggregateId);
-                case EVENT_ORDER_APPROVED, EVENT_ORDER_FINANCE_CONFIRMED, EVENT_SALES_PLANNING_CATCH_UP ->
-                        deliverSalesPlanningHandoff(aggregateId,
-                                payload.hasNonNull("reviewRevision") ? payload.path("reviewRevision").asLong() : null);
+                case EVENT_ORDER_APPROVED, EVENT_ORDER_FINANCE_CONFIRMED, EVENT_SALES_PLANNING_CATCH_UP -> {
+                    // 2026-10-09 补齐：财务确认结果回执只挂在真实确认事件上；
+                    // SALES_PLANNING_CATCH_UP（V825 补发复核）与 SALES_ORDER_APPROVED
+                    // 不重发，避免补偿投递给销售刷重复回执。
+                    if (EVENT_ORDER_FINANCE_CONFIRMED.equals(eventType)) {
+                        notifyOrderFinanceConfirmedToOwner(aggregateId);
+                    }
+                    deliverSalesPlanningHandoff(aggregateId,
+                            payload.hasNonNull("reviewRevision") ? payload.path("reviewRevision").asLong() : null);
+                }
                 case EVENT_ORDER_PENDING_FINANCE ->
                         notifyOrderPendingFinanceConfirmation(
                                 aggregateId,
@@ -811,6 +818,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      */
     private boolean canReadOwnedDocument(UUID userId, String scope, UUID ownerEmployeeId) {
         // 交接给别人的单，现负责人照样能看(OwnerVisibility 同一条交接链)。
+        // 2026-10-09(ADR-063 追加修订): 摘除超管直通——「能看所有单」是操作授权面，
+        // 不代表这张单的任务卡归超管；超管要进收件人须与常人一样真实配置数据范围。
         UUID responsible = handoverVisibility == null || ownerEmployeeId == null ? null
                 : handoverVisibility.currentResponsible(scope, ownerEmployeeId);
         Boolean readable = jdbc.queryForObject("""
@@ -818,8 +827,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     SELECT 1 FROM users account
                     WHERE account.id = ? AND account.is_deleted = FALSE AND account.status = 'active'
                       AND (
-                        account.is_super_admin
-                        OR account.employee_id = CAST(? AS uuid)
+                        account.employee_id = CAST(? AS uuid)
                         OR account.employee_id = CAST(? AS uuid)
                         OR EXISTS (
                             SELECT 1 FROM user_data_scopes data_scope
@@ -839,7 +847,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         Set<String> required = Set.of(authorities);
         return userRepo.findById(userId)
                 .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
-                .map(permissionResolver::permsOf)
+                .map(permissionResolver::grantedPermsOf)
                 .map(permissions -> permissions.containsAll(required))
                 .orElse(false);
     }
@@ -4402,7 +4410,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
-                        .map(permissionResolver::permsOf)
+                        .map(permissionResolver::grantedPermsOf)
                         .map(ReviewNoticeAudience::canHandleWorkshop)
                         .orElse(false))
                 .toList();
@@ -4724,6 +4732,27 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         notifyOrderApproved(orderId);
+    }
+
+    /**
+     * ⑦.7 补充 财务确认结果回执（2026-10-09）：订单通过财务确认后给归属销售发一条
+     * 普通回执——驳回侧早有 {@link #notifyOrderFinanceRejected}，确认侧此前只触发
+     * 计划部接手卡，销售收不到任何结果。只在 EVENT_ORDER_FINANCE_CONFIRMED 的
+     * 投递事务里发：计划补发（EVENT_SALES_PLANNING_CATCH_UP）不会重发本回执；
+     * 每次真实确认（驳回修正重提、重新报价后再确认）各有独立 outbox 事件，各发一条。
+     */
+    private void notifyOrderFinanceConfirmedToOwner(UUID orderId) {
+        deliverAtomically(() -> {
+            // 与计划接手卡同口径串行：投递晚于取消/重报价/再驳回时订单已失活，跳过。
+            if (!lockActiveOrderForNotice(orderId, true)) return;
+            OrderRef o = orderRef(orderId);
+            if (o == null || o.ownerUserId() == null) return;
+            sendToUser(o.ownerUserId(), TYPE_WORKFLOW,
+                    "订单财务已确认：" + o.billNo(),
+                    "销售订货单 " + o.billNo() + " 已通过财务确认并正式生效，计划部将接手物料分析与排产；"
+                            + "排产、报工、完工进度会随后在订单进度页更新。",
+                    o.route(), EVENT_ORDER_FINANCE_CONFIRMED);
+        });
     }
 
     /** ⑦.8 财务驳回（V300）：通知归属销售修正——驳回原因直达，点通知跳订单详情处理。 */
@@ -5394,7 +5423,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 : permissionCandidates.possibleUsers(possibleActions)
                         .map(userRepo::findAllById).orElseGet(userRepo::findAll);
         Set<UUID> result = new LinkedHashSet<>();
-        Set<String> administratorPermissions = null;
+        // 2026-10-09(ADR-063 追加修订): 任务卡池一律按「真实授出权限」解析——超管的全量
+        // 目录码是操作授权面，不是任务归属；超管真实拿到码(基础包/部门/个人/委派)才进池。
+        Set<String> administratorGrantedPermissions = null;
         for (UserAccount user : candidates) {
             if (user == null
                     || user.isDeleted()
@@ -5403,10 +5434,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             }
             Set<String> permissions;
             if (user.isSuperAdmin()) {
-                if (administratorPermissions == null) administratorPermissions = permissionResolver.permsOf(user);
-                permissions = administratorPermissions;
+                if (administratorGrantedPermissions == null) {
+                    administratorGrantedPermissions = permissionResolver.grantedPermsOf(user);
+                }
+                permissions = administratorGrantedPermissions;
             } else {
-                permissions = permissionResolver.permsOf(user);
+                permissions = permissionResolver.grantedPermsOf(user);
             }
             if (!permissions.containsAll(required)) continue;
             if (alternatives.isEmpty() || alternatives.stream().anyMatch(permissions::contains)) {
@@ -5430,7 +5463,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return userRepo.findById(userId)
                 .filter(user -> !user.isDeleted()
                         && "active".equals(user.getStatus()))
-                .map(permissionResolver::permsOf)
+                .map(permissionResolver::grantedPermsOf)
                 .map(authorities -> authorities.containsAll(permissions))
                 .orElse(false);
     }
@@ -5799,7 +5832,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     || !"active".equals(account.getStatus())) {
                 continue;
             }
-            Set<String> authorities = permissionResolver.permsOf(account);
+            Set<String> authorities = permissionResolver.grantedPermsOf(account);
             if (authorities.contains(NOTICE_READ_AUTHORITY)
                     && authorities.contains(requiredAuthority)) {
                 result.add(account.getId());
@@ -5828,7 +5861,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     || !"active".equals(account.getStatus())) {
                 continue;
             }
-            Set<String> authorities = permissionResolver.permsOf(account);
+            Set<String> authorities = permissionResolver.grantedPermsOf(account);
             if (!authorities.contains(NOTICE_READ_AUTHORITY)
                     || !authorities.contains(requiredViewAuthority)) {
                 continue;
@@ -5906,7 +5939,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
-                        .map(permissionResolver::permsOf)
+                        .map(permissionResolver::grantedPermsOf)
                         .map(permissions -> permissions.containsAll(Set.of(
                                 NOTICE_READ_AUTHORITY, IQC_VIEW_AUTHORITY,
                                 "procurement_inspection:handle")))
@@ -5938,7 +5971,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
-                        .map(permissionResolver::permsOf)
+                        .map(permissionResolver::grantedPermsOf)
                         .map(permissions -> permissions.containsAll(required))
                         .orElse(false))
                 .toList();
@@ -5986,7 +6019,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
-                        .map(permissionResolver::permsOf)
+                        .map(permissionResolver::grantedPermsOf)
                         .map(permissions -> permissions.containsAll(required))
                         .orElse(false))
                 .toList();

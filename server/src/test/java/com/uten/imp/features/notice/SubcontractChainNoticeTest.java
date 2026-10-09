@@ -132,11 +132,11 @@ class SubcontractChainNoticeTest {
             when(users.findById(account.getId())).thenReturn(Optional.of(account));
         }
         Set<String> draw = Set.of("notice:read", "subcontract_order:view", "subcontract_order:draw");
-        when(permissions.permsOf(drawer)).thenReturn(draw);
-        when(permissions.permsOf(outsider)).thenReturn(draw);
-        when(permissions.permsOf(viewAll)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(drawer)).thenReturn(draw);
+        when(permissions.grantedPermsOf(outsider)).thenReturn(draw);
+        when(permissions.grantedPermsOf(viewAll)).thenReturn(Set.of(
                 "notice:read", "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all"));
-        when(permissions.permsOf(viewOnly)).thenReturn(Set.of("notice:read", "subcontract_order:view"));
+        when(permissions.grantedPermsOf(viewOnly)).thenReturn(Set.of("notice:read", "subcontract_order:view"));
         // 订货单归属可见范围: 只有 drawer 是经手人(或被授权); outsider 看不到这张单。
         when(jdbc.queryForObject(contains("FROM user_data_scopes data_scope"), eq(Boolean.class),
                 eq(drawerId), any(), any(), eq("subcontract"), any())).thenReturn(Boolean.TRUE);
@@ -259,11 +259,11 @@ class SubcontractChainNoticeTest {
         when(users.findById(allowedId)).thenReturn(Optional.of(allowed));
         when(users.findById(legacyHandleId)).thenReturn(Optional.of(legacy));
         when(users.findById(noticeRevokedId)).thenReturn(Optional.of(noticeRevoked));
-        when(permissions.permsOf(allowed)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(allowed)).thenReturn(Set.of(
                 "notice:read", "subcontract_outbound:view", "subcontract_outbound:execute"));
-        when(permissions.permsOf(legacy)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(legacy)).thenReturn(Set.of(
                 "notice:read", "subcontract_outbound:view", "subcontract_outbound:handle"));
-        when(permissions.permsOf(noticeRevoked)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(noticeRevoked)).thenReturn(Set.of(
                 "subcontract_outbound:view", "subcontract_outbound:execute"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -315,7 +315,7 @@ class SubcontractChainNoticeTest {
                 eq("SUB_WH"))).thenReturn(List.of(warehouseUserId));
         UserAccount warehouseUser = activeUser(warehouseUserId);
         when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouseUser));
-        when(permissions.permsOf(warehouseUser)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(warehouseUser)).thenReturn(Set.of(
                 "notice:read", "subcontract_outbound:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -433,7 +433,7 @@ class SubcontractChainNoticeTest {
         when(users.findByEmployeeId(analysisMakerEmployeeId)).thenReturn(Optional.of(analysisMaker));
         when(users.findById(analysisMakerUserId)).thenReturn(Optional.of(analysisMaker));
         when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouseUser));
-        when(permissions.permsOf(warehouseUser))
+        when(permissions.grantedPermsOf(warehouseUser))
                 .thenReturn(Set.of("notice:read", "warehouse_inbound:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -556,7 +556,7 @@ class SubcontractChainNoticeTest {
         when(users.findByEmployeeId(makerEmployeeId)).thenReturn(Optional.of(maker));
         when(users.findById(makerUserId)).thenReturn(Optional.of(maker));
         when(users.findById(warehouseUserId)).thenReturn(Optional.of(warehouse));
-        when(permissions.permsOf(warehouse))
+        when(permissions.grantedPermsOf(warehouse))
                 .thenReturn(Set.of("notice:read", "warehouse_inbound:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -646,7 +646,7 @@ class SubcontractChainNoticeTest {
                 .thenReturn(Optional.of(analysisMaker));
         when(users.findById(analysisMakerUserId))
                 .thenReturn(Optional.of(analysisMaker));
-        when(permissions.permsOf(warehouse)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(warehouse)).thenReturn(Set.of(
                 "notice:read", "warehouse_iqc_stock_in:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc,

@@ -5,6 +5,7 @@ import com.uten.imp.application.port.SalesQuoteNoticePort;
 import com.uten.imp.application.port.TaskClaimMutationGuardPort;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -203,8 +204,13 @@ public class SalesQuoteService {
                         cs.from(com.uten.imp.features.master.client.Client.class);
                 cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
                         cb.like(cb.lower(cr.get("name")), kw));
-                ps.add(cb.or(cb.like(cb.lower(root.get("billNo")), kw),
-                        root.get("clientId").in(cs)));
+                var kws = NameRefKeyword.keywords();
+                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(root.get("clientId").in(cs)); NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "code", kw);
+                ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));

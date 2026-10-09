@@ -165,7 +165,8 @@ class WorkshopNoticeScopePostgresTest {
         jdbc.update("UPDATE users SET status='disabled' WHERE id=?",ACTORS.get(9).user());
         em=factory.createEntityManager();
         notices=new JpaRepositoryFactory(em).getRepository(NoticeRepository.class);
-        audience=new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class));
+        audience=new ReviewNoticeAudience(jdbc, mock(com.uten.imp.security.OwnerVisibility.class),
+                mock(com.uten.imp.features.auth.PermissionResolver.class));
     }
     @AfterEach void close() { if(em!=null)em.close(); }
     @AfterAll static void stop() { if(factory!=null)factory.close(); DB.stop(); }
@@ -212,7 +213,8 @@ class WorkshopNoticeScopePostgresTest {
             UserAccount account=mock(UserAccount.class);
             when(account.getStatus()).thenReturn("active");
             when(users.findById(actor.user())).thenReturn(Optional.of(account));
-            when(permissions.permsOf(account)).thenReturn(actor.permissions());
+            // 发卡池 2026-10-09 起按 grantedPermsOf 真实授权口径过闸(超管镜像不算归属)。
+            when(permissions.grantedPermsOf(account)).thenReturn(actor.permissions());
         }
         var chain=chain(mock(NoticeService.class),users,permissions);
         assertThat(chain.workshopRecipientUserIds(A,ACTORS.get(3).employee()))
@@ -327,6 +329,7 @@ class WorkshopNoticeScopePostgresTest {
         SecurityContextCurrentUser current=mock(SecurityContextCurrentUser.class);
         when(current.get()).thenReturn(Optional.of(auth));
         return new NoticeService(notices,new JpaRepositoryFactory(em).getRepository(NoticeUserStateRepository.class),
+                mock(NoticePopupPreferenceRepository.class),
                 mock(NoticeAcknowledgmentRepository.class),mock(NoticeBlessingRepository.class),mock(NoticeCelebrationSubjectRepository.class),
                 mock(com.uten.imp.features.org.employee.EmployeeRepository.class),current,new ObjectMapper(),mock(NoticeAudienceService.class),
                 mock(com.uten.imp.security.TxSessionVars.class),mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class),

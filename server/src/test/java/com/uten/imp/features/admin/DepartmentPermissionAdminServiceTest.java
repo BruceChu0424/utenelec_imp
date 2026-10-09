@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -231,6 +232,7 @@ class DepartmentPermissionAdminServiceTest {
         Permission all = permission("goods:view:all", GrantPolicy.BULK_EXCLUDED, GrantPolicy.NON_DELEGABLE);
         Permission notice = permission("notice:read", GrantPolicy.NORMAL);
         notice.setBaseline(true);
+        notice.setBaselinePinned(true);
         when(permissionRepo.findAll()).thenReturn(List.of(view, all, notice));
 
         var items = service.catalog().stream().flatMap(group -> group.permissions().stream()).toList();
@@ -242,6 +244,7 @@ class DepartmentPermissionAdminServiceTest {
         assertThat(items).anySatisfy(item -> {
             assertEquals("notice:read", item.code());
             assertThat(item.baseline()).isTrue();
+            assertThat(item.baselinePinned()).isTrue();
         });
     }
 
@@ -279,6 +282,22 @@ class DepartmentPermissionAdminServiceTest {
         verify(permissionRepo).updateBaseline(eq(Set.of("visitor:host_confirm")), eq(false), any());
         verify(changeAudit).record(eq("permission_baseline_change"), anyString(), anyString(),
                 eq(Set.of()), eq(Set.of("visitor:host_confirm")), any());
+    }
+
+    @Test
+    void baselineRejectsPinnedCodeRemovalWithoutAnyWrite() {
+        // V832/ADR-170：notice:read 等体系准入码一旦离开基础包，全体非超管同时失去
+        // 通知轮询挂载、/api/notices/** 访问与全部发卡池资格，必须整单拒绝。
+        when(permissionRepo.findBaselineCodes()).thenReturn(List.of("notice:read", "stock:view"));
+        when(permissionRepo.findBaselinePinnedCodes()).thenReturn(List.of("notice:read"));
+
+        ApiException exception = assertThrows(ApiException.class,
+                () -> service.setBaseline(List.of("stock:view")));
+
+        assertEquals(ErrorCode.BUSINESS, exception.getCode());
+        assertThat(exception.getMessage()).contains("notice:read");
+        verify(permissionRepo, never()).updateBaseline(anyCollection(), anyBoolean(), any());
+        verifyNoInteractions(changeAudit);
     }
 
     private void givenDepartment() {

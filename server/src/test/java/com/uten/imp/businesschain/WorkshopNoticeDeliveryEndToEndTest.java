@@ -98,7 +98,7 @@ class WorkshopNoticeDeliveryEndToEndTest {
             UserAccount account = mock(UserAccount.class);
             when(account.getStatus()).thenReturn("active");
             when(users.findById(user)).thenReturn(Optional.of(account));
-            when(permissions.permsOf(account)).thenReturn(ACTION);
+            when(permissions.grantedPermsOf(account)).thenReturn(ACTION);
         }
         NoticeService notices = mock(NoticeService.class);
         assertThat(startReady(scenario.segment())).isTrue();

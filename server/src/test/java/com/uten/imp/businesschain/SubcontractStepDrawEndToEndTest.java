@@ -182,6 +182,18 @@ class SubcontractStepDrawEndToEndTest {
         SecurityContextHolder.clearContext();
     }
 
+    /**
+     * 真实授出权限码(个人加授): 发卡池按 grantedPermsOf 解析(ADR-063 追加修订),
+     * 超管的全量镜像不算任务归属——本测试的超管操作员需要真实拿到领料链的码。
+     */
+    private void grantAuthorities(UUID userId, String... codes) {
+        db.update("""
+                INSERT INTO user_permission_overrides(user_id, permission_id, effect)
+                SELECT ?, p.id, 'grant' FROM permissions p
+                WHERE p.code = ANY(string_to_array(?, ','))
+                """, userId, String.join(",", codes));
+    }
+
     // =====================================================================================
     // 主链
     // =====================================================================================
@@ -190,6 +202,10 @@ class SubcontractStepDrawEndToEndTest {
     void twoMaterialsDrawInBatchesWarehouseShortIssueTopsUpAndBatchReturnsCloseWithFinalCost() {
         String tag = "scstep-main";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -501,6 +517,10 @@ class SubcontractStepDrawEndToEndTest {
     void withdrawRestoresDrawableAndCloseDrawWithdrawsPendingClosesLinesAndSettlesTolerableShortDelivery() {
         String tag = "scstep-close";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -625,6 +645,10 @@ class SubcontractStepDrawEndToEndTest {
     void materialReturnReopensTheDrawAndAReturnBeyondReturnableGoesToFinanceAsSupplierOwnMaterial() {
         String tag = "scstep-return";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -732,6 +756,10 @@ class SubcontractStepDrawEndToEndTest {
     void approvedQuantityChangeRecomputesFrozenPlanLinesAndShrinkingNeedsPendingDrawsWithdrawnFirst() {
         String tag = "scstep-qty";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -795,6 +823,10 @@ class SubcontractStepDrawEndToEndTest {
     void twoTasksCompetingForTheSameMaterialInOneBatchSubmitTheJointlyAllocatedDefaults() {
         String tag = "scstep-joint";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -859,6 +891,10 @@ class SubcontractStepDrawEndToEndTest {
     void anEdgeWithoutColourFreezesTheComponentDefaultColourAndOnlyThatColourIsDrawable() {
         String tag = "scstep-colour";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID m = goods(w, tag, "M", "采购");
@@ -903,6 +939,10 @@ class SubcontractStepDrawEndToEndTest {
     void aNestedSubcontractMaterialBecomesDrawableForItsParentOnceItsOwnReturnIsStocked() {
         String tag = "scstep-nested";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID c = goods(w, tag, "C", "委外");
@@ -964,6 +1004,10 @@ class SubcontractStepDrawEndToEndTest {
     void materialUsedUpBetweenTheRecheckAndTheCardLeavesTheMarkAtWhatTheCardShows() throws Exception {
         String tag = "scstep-mark-race";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "采购");
@@ -1019,6 +1063,10 @@ class SubcontractStepDrawEndToEndTest {
     void aWholeLineTheWarehouseDropsKeepsItsRequestForTheShortIssueReceiptAndTheNextDrawTopsItUp() {
         String tag = "scstep-drop";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -1097,6 +1145,10 @@ class SubcontractStepDrawEndToEndTest {
     void aWarehouseEditedDraftIsReturnedByTheWarehouseAndCloseDrawWithdrawsEvenAnEditedDraft() {
         String tag = "scstep-return-draw";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID a = goods(w, tag, "A", "自制");
@@ -1193,6 +1245,10 @@ class SubcontractStepDrawEndToEndTest {
     void twoAnalysesMergedIntoOneOrderItemAttributeConsumedMaterialFifoSoTheLaterAnalysisStillNeedsItsMaterial() {
         String tag = "scstep-merge";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID fa = goods(w, tag, "FA", "自制");
         UUID fb = goods(w, tag, "FB", "自制");
@@ -1272,6 +1328,10 @@ class SubcontractStepDrawEndToEndTest {
     void aDisabledLeafStillHoldingStockIsDrawableAndItsDraftCanBeEditedAndIssuedInPlace() {
         String tag = "scstep-disabled";
         var w = fixture.seedWorld(tag);
+        // 2026-10-09 真实授权口径(ADR-063 追加修订): 超管镜像不算任务归属——发卡池按
+        // grantedPermsOf 解析, 操作员必须真实拿到领料链的码才收得到可领料卡。
+        grantAuthorities(w.superAdminUserId(),
+                "subcontract_order:view", "subcontract_order:draw", "subcontract:view:all");
         fixture.loginAs(w.superAdminUserId());
         UUID p = goods(w, tag, "P", "委外");
         UUID m = goods(w, tag, "M", "采购");

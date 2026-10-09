@@ -146,6 +146,39 @@ public class SubcontractDrawQueryService {
         return number(query.getSingleResult());
     }
 
+    /**
+     * 「领料中」黄数(ADR-171 修订二, 2026-10-09): 已提交领料、等仓库发出的行数——
+     * 球不在本部门手上但活还在跑, 挂黄色在办徽章(与 {@link #countDrawable()} 的红色
+     * 「可以动手」相对)。与列表 {@code STATUS_CASE} 同判据: 不可领(可领量为 0)且挂着
+     * 仓库未发出的领料草稿行; 没有委外领料权限恒为 0。
+     */
+    @Transactional(readOnly = true)
+    public long countSubmitted() {
+        if (!access.hasAuthority(DRAW_AUTHORITY)) {
+            return 0;
+        }
+        DocumentAccessPolicy.NativeReadScope scope = access.nativeReadScope("o.maker_id", "readOwners");
+        Query query = em.createNativeQuery("""
+                WITH candidate AS MATERIALIZED (
+                    SELECT oi.id AS order_item_id, {PENDING_DRAFT} AS has_pending
+                    {ITEM_FROM}
+                    WHERE {OPEN_ITEM}
+                      AND o.maker_id IS NOT NULL
+                      AND {SCOPE}
+                )
+                SELECT COUNT(*)
+                FROM candidate
+                CROSS JOIN LATERAL fn_subcontract_draw_summary(candidate.order_item_id) summary
+                WHERE COALESCE(summary.drawable_qty, 0) <= 0
+                  AND candidate.has_pending
+                """.replace("{ITEM_FROM}", SubcontractDrawSql.ITEM_FROM)
+                .replace("{OPEN_ITEM}", SubcontractDrawSql.OPEN_ITEM_PREDICATE)
+                .replace("{PENDING_DRAFT}", SubcontractDrawSql.PENDING_DRAFT_EXISTS)
+                .replace("{SCOPE}", scope.predicate()));
+        scope.bind(query);
+        return number(query.getSingleResult());
+    }
+
     // ==================== 任务详情 ====================
 
     @Transactional(readOnly = true)

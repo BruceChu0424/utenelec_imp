@@ -86,10 +86,10 @@ class ProcurementIqcStockInNoticeTest {
         when(users.findById(eligibleId)).thenReturn(Optional.of(eligible));
         when(users.findById(noticeOnlyId)).thenReturn(Optional.of(noticeOnly));
         when(users.findById(viewOnlyId)).thenReturn(Optional.of(viewOnly));
-        when(permissions.permsOf(eligible)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(eligible)).thenReturn(Set.of(
                 "notice:read", "warehouse_iqc_stock_in:view"));
-        when(permissions.permsOf(noticeOnly)).thenReturn(Set.of("notice:read"));
-        when(permissions.permsOf(viewOnly)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(noticeOnly)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(viewOnly)).thenReturn(Set.of(
                 "warehouse_iqc_stock_in:view"));
 
         ChainNoticeService service = service(notice, users, permissions, jdbc);

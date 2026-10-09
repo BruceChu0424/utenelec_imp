@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 public class ReviewNoticeAudience {
     private final JdbcTemplate jdbc;
     private final OwnerVisibility ownerVisibility;
+    private final com.uten.imp.features.auth.PermissionResolver permissionResolver;
 
     static final String WORKSHOP_EVENT = "PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED";
     static final String OVER_LIMIT_EVENT = "PRODUCTION_OVER_LIMIT_PENDING";
@@ -94,6 +95,12 @@ public class ReviewNoticeAudience {
     public Set<String> eligibleEvents(AuthUser user) {
         if (user == null || user.isVisitor() || user.getEmployeeId() == null
                 || !user.getPermissions().contains("notice:read")) return Set.of();
+        // 2026-10-09(ADR-063 追加修订)：弹卡资格按「真实授出权限」判定——超管的全量目录码
+        // 是操作授权面，不是任务归属（否则「通知设置」列表与到达流资格面会把超管放大成
+        // 全事件）。非超管会话权限即真实合成结果，不重复解析。
+        Set<String> permissions = user.isSuperAdmin()
+                ? permissionResolver.grantedPermsOf(user.getId())
+                : user.getPermissions();
         Set<String> departments = Set.copyOf(jdbc.queryForList("""
                 WITH RECURSIVE memberships(id) AS (
                     SELECT employee.department_id FROM employees employee
@@ -117,11 +124,11 @@ public class ReviewNoticeAudience {
         // 弹卡资格同口径(否则发给部门外负责人的待办只在通知列表里, 不弹卡)。只有部门外、又持有仓库待办动手权限的人
         // 才需要多问这一次。
         boolean warehouseParticipant = !departments.contains("SUB_WH")
-                && any(user.getPermissions(), WAREHOUSE_ACTION_PERMISSIONS)
+                && any(permissions, WAREHOUSE_ACTION_PERMISSIONS)
                 && Boolean.TRUE.equals(jdbc.queryForObject(
                         "SELECT CAST(? AS uuid) = ANY(fn_warehouse_responsible_user_ids())", Boolean.class, user.getId()));
         return ReviewNoticeCatalog.events().stream()
-                .filter(event -> eligible(event, user.getPermissions(), departments, warehouseParticipant))
+                .filter(event -> eligible(event, permissions, departments, warehouseParticipant))
                 .collect(Collectors.toUnmodifiableSet());
     }
 

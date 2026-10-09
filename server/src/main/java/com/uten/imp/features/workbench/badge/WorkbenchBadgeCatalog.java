@@ -113,12 +113,13 @@ enum WorkbenchBadgeCatalog {
 
     // —— 委外 ——
     /**
-     * 委外任务中心: 红 = 待处理(含财务驳回、回厂短交待判定; 缺 BOM 等研发的申请不计, ADR-143 §二.3)
-     * + 可领料的委外任务(ADR-143 「领料」分段,
-     * 无领料权限的人恒为 0); 黄 = 进行中三档(等待物料 / 待仓库发料的单已在其中, 「领料」分段不再挂黄)。
+     * 委外任务中心(ADR-171 修订二, 2026-10-09): 红 = 待处理拍平表里可以动手的行
+     * (申请待下单 + 财务驳回 + 回厂短交待判定; 缺 BOM 等研发的申请不计, ADR-143 §二.3
+     * + 可领料的委外任务, 无领料权限的人恒为 0); 黄 = 进行中(领完料才算, DRAW_OPEN
+     * 档被 V834 投影剔除) + 已提交领料、等仓库发出的行(领料中)——都是「在跑不用动手」。
      */
     subcontractTaskCenter(Module.subcontract, facts("subcontractTask.pending", "subcontractDraw.drawable"),
-            facts("subcontractTask.inProgress")),
+            facts("subcontractTask.inProgress", "subcontractDraw.submitted")),
     /** 委外「待退回供应商」任务。 */
     subcontractSupplierReturn(Module.subcontract, facts("subcontractSupplierReturn.count"), none()),
     /** 委外草稿: 订货/退货/退料/废品。 */

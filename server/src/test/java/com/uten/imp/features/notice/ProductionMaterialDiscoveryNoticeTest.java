@@ -57,6 +57,6 @@ class ProductionMaterialDiscoveryNoticeTest {
     }
     private void pool(){
         when(jdbc.queryForList(contains("FROM users user_account"),eq(UUID.class),eq("SUB_WH"))).thenReturn(List.of(keeper,other));
-        for(UUID id:List.of(keeper,other)){UserAccount user=mock(UserAccount.class);when(user.getStatus()).thenReturn("active");when(accounts.findById(id)).thenReturn(Optional.of(user));when(permissions.permsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue","notice:read"));}
+        for(UUID id:List.of(keeper,other)){UserAccount user=mock(UserAccount.class);when(user.getStatus()).thenReturn("active");when(accounts.findById(id)).thenReturn(Optional.of(user));when(permissions.grantedPermsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue","notice:read"));}
     }
 }

@@ -61,6 +61,7 @@ class NoticeServiceTest {
 
     private NoticeRepository noticeRepository;
     private NoticeUserStateRepository stateRepository;
+    private NoticePopupPreferenceRepository popupPrefRepo;
     private NoticeAcknowledgmentRepository ackRepository;
     private NoticeBlessingRepository blessRepo;
     private NoticeCelebrationSubjectRepository subjectRepo;
@@ -80,6 +81,7 @@ class NoticeServiceTest {
     void setUp() {
         noticeRepository = mock(NoticeRepository.class);
         stateRepository = mock(NoticeUserStateRepository.class);
+        popupPrefRepo = mock(NoticePopupPreferenceRepository.class);
         ackRepository = mock(NoticeAcknowledgmentRepository.class);
         blessRepo = mock(NoticeBlessingRepository.class);
         subjectRepo = mock(NoticeCelebrationSubjectRepository.class);
@@ -108,6 +110,7 @@ class NoticeServiceTest {
         service = new NoticeService(
                 noticeRepository,
                 stateRepository,
+                popupPrefRepo,
                 ackRepository,
                 blessRepo,
                 subjectRepo,
@@ -555,6 +558,58 @@ class NoticeServiceTest {
         org.junit.jupiter.api.Assertions.assertTrue(items.getFirst().interactive());
         org.junit.jupiter.api.Assertions.assertEquals(
                 "SALES_ORDER_PENDING_FINANCE_CONFIRM", items.getFirst().sourceEvent());
+    }
+
+    @Test
+    void popupDisabledEventsAreExcludedFromLoginCheckAndPrefsListCoversFullCatalog() {
+        // V833/ADR-171：个人关闭的弹窗类别不再进入登录检查；「通知设置」= 全目录类别 +
+        // 对我适用（当前资格）+ 个人开关（2026-10-09 用户口径：通知页设置全部类型，
+        // 我该收什么由资格决定）。
+        when(popupPrefRepo.findDisabledEvents(userId))
+                .thenReturn(List.of("SALES_ORDER_PENDING_FINANCE_CONFIRM"));
+        when(reviewAudience.eligibleEvents(any())).thenReturn(java.util.Set.of(
+                "SALES_ORDER_PENDING_FINANCE_CONFIRM", "SALES_ORDER_APPROVED"));
+
+        service.pendingReviews();
+
+        verify(noticeRepository).findVisiblePendingReviews(
+                eq(userId), argThat(events -> events.contains("SALES_ORDER_APPROVED")
+                        && !events.contains("SALES_ORDER_PENDING_FINANCE_CONFIRM")), any(), any());
+
+        var prefs = service.popupPreferences();
+        org.junit.jupiter.api.Assertions.assertEquals(ReviewNoticeCatalog.events().size(), prefs.size());
+        var disabled = prefs.stream()
+                .filter(item -> item.sourceEvent().equals("SALES_ORDER_PENDING_FINANCE_CONFIRM"))
+                .findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertTrue(disabled.applicable());
+        org.junit.jupiter.api.Assertions.assertTrue(disabled.popupDisabled());
+        org.junit.jupiter.api.Assertions.assertEquals("销售订单待财务确认", disabled.label());
+        var applicableOther = prefs.stream()
+                .filter(item -> item.sourceEvent().equals("SALES_ORDER_APPROVED"))
+                .findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertTrue(applicableOther.applicable());
+        org.junit.jupiter.api.Assertions.assertFalse(applicableOther.popupDisabled());
+        var notMine = prefs.stream()
+                .filter(item -> item.sourceEvent().equals("PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED"))
+                .findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertFalse(notMine.applicable());
+    }
+
+    @Test
+    void setPopupPreferenceOnlyAcceptsCatalogEventsAndTogglesByIdempotentRows() {
+        // 未知事件拒绝；关闭=存在行（幂等），开启=删行。
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> service.setPopupPreference("NOT_A_CATALOG_EVENT", true))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+
+        when(popupPrefRepo.existsById(any())).thenReturn(false);
+        service.setPopupPreference("SALES_ORDER_APPROVED", true);
+        verify(popupPrefRepo).save(org.mockito.ArgumentMatchers.argThat(row ->
+                row.getUserId().equals(userId)
+                        && "SALES_ORDER_APPROVED".equals(row.getSourceEvent())));
+
+        service.setPopupPreference("SALES_ORDER_APPROVED", false);
+        verify(popupPrefRepo).deleteById(new NoticePopupPreferenceId(userId, "SALES_ORDER_APPROVED"));
     }
 
     @Test

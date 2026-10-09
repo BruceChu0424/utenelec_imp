@@ -73,6 +73,6 @@ class ProductionOverLimitNoticeTest {
     }
     private void account(UUID id,Set<String> grants){
         UserAccount account=mock(UserAccount.class);when(account.isDeleted()).thenReturn(false);when(account.getStatus()).thenReturn("active");
-        when(accounts.findById(id)).thenReturn(Optional.of(account));when(permissions.permsOf(account)).thenReturn(grants);
+        when(accounts.findById(id)).thenReturn(Optional.of(account));when(permissions.grantedPermsOf(account)).thenReturn(grants);
     }
 }

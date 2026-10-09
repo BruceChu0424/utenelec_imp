@@ -3,6 +3,7 @@ package com.uten.imp.features.sales.order;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.audit.AuditService;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.saleschain.SalesChainStatus;
@@ -172,14 +173,19 @@ public class SalesOrderService {
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 String kw = "%" + f.keyword().toLowerCase() + "%";
-                // 关键字同时匹配 单据号 / 客户名称（生产计划选单、日常检索都按客户找单）
+                // 关键字匹配行内文本（2026-10-09 全行可搜）：单据号 / 客户名称（生产计划选单、日常检索都按客户找单） / 币种
                 jakarta.persistence.criteria.Subquery<UUID> cs = q.subquery(UUID.class);
                 Root<com.uten.imp.features.master.client.Client> cr =
                         cs.from(com.uten.imp.features.master.client.Client.class);
                 cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
                         cb.like(cb.lower(cr.get("name")), kw));
-                ps.add(cb.or(cb.like(cb.lower(root.get("billNo")), kw),
-                        root.get("clientId").in(cs)));
+                var kws = NameRefKeyword.keywords();
+                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(root.get("clientId").in(cs)); NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "code", kw);
+                ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.sellerId() != null) ps.add(cb.equal(root.get("sellerId"), f.sellerId()));

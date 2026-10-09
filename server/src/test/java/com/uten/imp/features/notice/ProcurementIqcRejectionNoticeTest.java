@@ -57,7 +57,7 @@ class ProcurementIqcRejectionNoticeTest {
             var account = activeUser(UUID.randomUUID());
             accounts.add(account);
             when(users.findById(account.getId())).thenReturn(Optional.of(account));
-            when(permissions.permsOf(account)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+            when(permissions.grantedPermsOf(account)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
         }
         when(users.findAll()).thenReturn(accounts);
         var service = service(mock(NoticeService.class), users, permissions, mock(JdbcTemplate.class));
@@ -72,16 +72,16 @@ class ProcurementIqcRejectionNoticeTest {
         // even if their stale account object still carries the super-admin flag.
         accounts.get(0).setSuperAdmin(true); accounts.get(0).setStatus("disabled");
         accounts.get(1).setSuperAdmin(true); accounts.get(1).setDeleted(true);
-        when(permissions.permsOf(accounts.get(2))).thenReturn(Set.of(NOTICE_READ, VIEW));
-        when(permissions.permsOf(accounts.get(3))).thenReturn(Set.of(NOTICE_READ, CONFIRM));
+        when(permissions.grantedPermsOf(accounts.get(2))).thenReturn(Set.of(NOTICE_READ, VIEW));
+        when(permissions.grantedPermsOf(accounts.get(3))).thenReturn(Set.of(NOTICE_READ, CONFIRM));
         clearInvocations(users, permissions);
         Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
         assertEquals(996, next.size());
         for (int index = 0; index < 4; index++) assertFalse(next.contains(accounts.get(index).getId()));
-        verify(permissions, never()).permsOf(accounts.get(0));
-        verify(permissions, never()).permsOf(accounts.get(1));
-        verify(permissions, times(1)).permsOf(accounts.get(2));
+        verify(permissions, never()).grantedPermsOf(accounts.get(0));
+        verify(permissions, never()).grantedPermsOf(accounts.get(1));
+        verify(permissions, times(1)).grantedPermsOf(accounts.get(2));
         assertEquals(998, mockingDetails(permissions).getInvocations().size());
     }
 
@@ -94,17 +94,19 @@ class ProcurementIqcRejectionNoticeTest {
             var account = activeUser(UUID.randomUUID()); account.setSuperAdmin(true); accounts.add(account);
         }
         when(users.findAll()).thenReturn(accounts);
-        when(permissions.permsOf(any())).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        when(permissions.grantedPermsOf(any(UserAccount.class)))
+                .thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
         var service = service(mock(NoticeService.class), users, permissions, mock(JdbcTemplate.class));
         Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
         assertEquals(164, first.size());
-        verify(permissions, times(1)).permsOf(any());
-        when(permissions.permsOf(any())).thenReturn(Set.of(NOTICE_READ, VIEW));
+        verify(permissions, times(1)).grantedPermsOf(any(UserAccount.class));
+        when(permissions.grantedPermsOf(any(UserAccount.class)))
+                .thenReturn(Set.of(NOTICE_READ, VIEW));
         Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
         assertEquals(Set.of(), next);
-        verify(permissions, times(2)).permsOf(any());
+        verify(permissions, times(2)).grantedPermsOf(any(UserAccount.class));
     }
 
     @Test
@@ -119,8 +121,8 @@ class ProcurementIqcRejectionNoticeTest {
         var initialIds = Set.of(eligible.getId(), revoked.getId(), disabled.getId());
         when(query.possibleUsers(Set.of(CONFIRM))).thenReturn(Optional.of(initialIds));
         when(users.findAllById(initialIds)).thenReturn(List.of(eligible, revoked, disabled));
-        when(permissions.permsOf(eligible)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
-        when(permissions.permsOf(revoked)).thenReturn(Set.of(NOTICE_READ, VIEW));
+        when(permissions.grantedPermsOf(eligible)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        when(permissions.grantedPermsOf(revoked)).thenReturn(Set.of(NOTICE_READ, VIEW));
         var service = new ChainNoticeService(mock(NoticeService.class), users, permissions,
                 mock(JdbcTemplate.class), mock(BusinessEventPublisher.class),
                 mock(RdTaskService.class), mock(FinanceReviewerEligibilityPort.class),
@@ -129,10 +131,10 @@ class ProcurementIqcRejectionNoticeTest {
                 service, "userIdsWithIqcViewAndAnyPermission", (Object)new String[]{CONFIRM});
         assertEquals(Set.of(eligible.getId()), first);
         verify(users, never()).findAll();
-        verify(permissions, never()).permsOf(disabled);
+        verify(permissions, never()).grantedPermsOf(disabled);
         when(query.possibleUsers(Set.of(CONFIRM))).thenReturn(Optional.of(Set.of(lateGrant.getId())));
         when(users.findAllById(Set.of(lateGrant.getId()))).thenReturn(List.of(lateGrant));
-        when(permissions.permsOf(lateGrant)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        when(permissions.grantedPermsOf(lateGrant)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
         Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object)new String[]{CONFIRM});
         assertEquals(Set.of(lateGrant.getId()), next, "each dispatch must re-read newly granted candidates");
@@ -291,7 +293,7 @@ class ProcurementIqcRejectionNoticeTest {
             UserAccount account = activeUser(entry.getKey());
             accounts.add(account);
             when(users.findById(entry.getKey())).thenReturn(Optional.of(account));
-            when(permissions.permsOf(account)).thenReturn(entry.getValue());
+            when(permissions.grantedPermsOf(account)).thenReturn(entry.getValue());
         }
         when(users.findAll()).thenReturn(accounts);
         return new Fixture(

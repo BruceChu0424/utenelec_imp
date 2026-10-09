@@ -91,7 +91,7 @@ class ProductionDrawNoticeTest {
         when(jdbc.queryForObject(contains("FROM notices WHERE aggregate_kind='STOCK_DOCUMENT'"),eq(Boolean.class),eq(drawId),eq(warehouseUser),
                 eq(ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING))).thenReturn(existingPending);
         when(users.findById(warehouseUser)).thenReturn(Optional.of(user));
-        when(permissions.permsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue"));
+        when(permissions.grantedPermsOf(user)).thenReturn(Set.of("stock_doc:view","stock_doc:approve","stock_doc:issue"));
         ChainNoticeService service=service(notices,users,permissions,jdbc,outbox);
         service.deliverOutboxEvent(ChainNoticeService.EVENT_PRODUCTION_DRAW_ISSUE_REVERSED,drawId,new ObjectMapper().createObjectNode());
         verify(notices,org.mockito.Mockito.times(existingPending?0:1)).publishForUser(eq(warehouseUser),eq("待处理生产领料：SL-PARTIAL"),
@@ -199,9 +199,9 @@ class ProductionDrawNoticeTest {
         when(users.findById(allowedId)).thenReturn(Optional.of(allowed));
         when(users.findById(revokedId)).thenReturn(Optional.of(revoked));
         when(users.findById(inactiveId)).thenReturn(Optional.of(inactive));
-        when(permissions.permsOf(allowed)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(allowed)).thenReturn(Set.of(
                 "stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
-        when(permissions.permsOf(revoked)).thenReturn(Set.of());
+        when(permissions.grantedPermsOf(revoked)).thenReturn(Set.of());
 
         ChainNoticeService service = service(
                 notices, users, permissions, jdbc,
@@ -287,7 +287,7 @@ class ProductionDrawNoticeTest {
                 eq(responsibleEmployeeId))).thenReturn(List.of(workshopUserId));
         when(users.findById(workshopUserId))
                 .thenReturn(Optional.of(workshopUser));
-        when(permissions.permsOf(workshopUser)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(workshopUser)).thenReturn(Set.of(
                 "notice:read", "production_execution:view", "production_execution:start"));
 
         ChainNoticeService service = service(
@@ -344,9 +344,9 @@ class ProductionDrawNoticeTest {
         when(users.findById(makerId)).thenReturn(Optional.of(maker));
         when(users.findById(supervisorId)).thenReturn(Optional.of(supervisor));
         when(users.findById(readOnlyId)).thenReturn(Optional.of(readOnly));
-        when(permissions.permsOf(supervisor)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(supervisor)).thenReturn(Set.of(
                 "production_daily_report:approve"));
-        when(permissions.permsOf(readOnly)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(readOnly)).thenReturn(Set.of(
                 "production_daily_report:view"));
 
         ChainNoticeService service = service(

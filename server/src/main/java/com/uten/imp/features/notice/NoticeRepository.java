@@ -230,7 +230,8 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
      * 审核目录注册事件、未撤回、未删除、稍后提醒已到期（或从未稍后）。
      * 2026-09-10 生效口径（ADR-063 修订）：弹 = 未办结 且（未确认弹窗 或 稍后已到期）。
      *  - 车间任务 normal（等料/等待中）也进弹窗——「收到几个车间任务」按全部未办结计；
-     *  - 「处理过不再重复弹」：popup_acknowledged 过的静默（markRead / 去工作台处理即置）；
+     *  - 「处理过不再重复弹」：popup_acknowledged 过的静默（markRead / 去工作台处理即置；
+     *    UI 的 X 关闭不置——未读未办结每次登录都弹，2026-10-09 用户确认口径）；
      *  - 「稍后再看」(snooze) 到期后恒弹（snoozedUntil 非空且已到期），即使已读/已确认——
      *    markRead 不再清 snooze，用户明确要求的再提醒不被已读吞掉。
      */

@@ -200,6 +200,61 @@ public final class ReviewNoticeCatalog {
         return Optional.ofNullable(sourceEvent).map(ENTRIES::get);
     }
 
+    /**
+     * 事件的中文显示名（V833/ADR-171「通知设置」列表用；单一事实源，
+     * 与 ENTRIES 键集一致性由 {@code ReviewNoticeCatalogLabelContractTest} 锁定）。
+     */
+    public static String labelOf(String sourceEvent) {
+        return sourceEvent == null ? "" : EVENT_LABELS.getOrDefault(sourceEvent, sourceEvent);
+    }
+
+    /** sourceEvent → 面向用户的类别名（与 ENTRIES 同键集；新增事件必须两处同步）。 */
+    private static final java.util.Map<String, String> EVENT_LABELS = java.util.Map.ofEntries(
+            java.util.Map.entry("PRODUCTION_OVER_LIMIT_PENDING", "超限产出待处置"),
+            java.util.Map.entry("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "超产率待审核"),
+            java.util.Map.entry("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED", "追加物料待审核"),
+            java.util.Map.entry("PRODUCTION_MATERIAL_DISCOVERY_PENDING", "领料发现待处理"),
+            java.util.Map.entry("PRODUCTION_PLANNING_URGED", "车间催计划下单"),
+            java.util.Map.entry("SUBCONTRACT_SHORT_DELIVERY_DETECTED", "委外短交待判定"),
+            java.util.Map.entry("SUBCONTRACT_SHORT_DELIVERY_WAIT_OVERDUE", "委外补货逾期提醒"),
+            java.util.Map.entry("SALES_SHIPMENT_PENDING_FINANCE_AUDIT", "发货单待财务审核"),
+            java.util.Map.entry("SALES_SHIPMENT_PENDING_PICK", "发货单待拣货"),
+            java.util.Map.entry("SALES_SHIPMENT_FINANCE_REJECTED", "发货单财务驳回待更正"),
+            java.util.Map.entry("DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED", "直发单财务驳回待更正"),
+            java.util.Map.entry("SALES_ORDER_PENDING_FINANCE_CONFIRM", "销售订单待财务确认"),
+            java.util.Map.entry("SALES_QUOTE_PENDING_FINANCE_REVIEW", "报价单待核价"),
+            java.util.Map.entry("PROCUREMENT_FINANCE_SUBMITTED", "采购/委外订货待财务审批"),
+            java.util.Map.entry("PROCUREMENT_IQC_PENDING", "到货待检处置"),
+            java.util.Map.entry("SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP", "订单完工可发货"),
+            java.util.Map.entry("SALES_ORDER_APPROVED", "新订单待物料分析"),
+            java.util.Map.entry("PRODUCTION_WORKSHOP_TASK_ACTION_REQUIRED", "车间任务待办理"),
+            java.util.Map.entry("PROCUREMENT_IQC_STOCK_IN_PENDING", "品质放行待入库"),
+            java.util.Map.entry("PRODUCTION_DRAW_PENDING", "领料单待出库"),
+            java.util.Map.entry("PROCUREMENT_FINANCE_APPROVED", "财务已批预计到货"),
+            java.util.Map.entry("SUBCONTRACT_DRAW_AVAILABLE", "委外可领料"),
+            java.util.Map.entry("SUBCONTRACT_ORDER_KIT_READY", "委外可下单"),
+            java.util.Map.entry("SUBCONTRACT_OUTBOUND_READY", "委外领料待发料"),
+            java.util.Map.entry("PROCUREMENT_IQC_REJECTION_OPENED", "来料不良待登记退回"),
+            java.util.Map.entry("PROCUREMENT_IQC_REJECTION_RETURNED", "来料退回待财务结案"),
+            java.util.Map.entry("PROCUREMENT_FINANCE_CHANGE_SUBMITTED", "改量待财务复核"),
+            java.util.Map.entry("PROFILE_CHANGE_SUBMITTED", "员工信息变更待审核"),
+            java.util.Map.entry("VISITOR_APPLY_SUBMITTED", "访客申请待审批"),
+            java.util.Map.entry("VISITOR_HOST_CONFIRM_REQUIRED", "接待访客待确认"),
+            java.util.Map.entry("EXPENSE_CLAIM_SUBMITTED", "报销待审批"),
+            java.util.Map.entry("EXPENSE_CLAIM_PENDING_PAYMENT", "报销待打款"),
+            java.util.Map.entry("EXPENSE_CLAIM_REJECTED", "报销已驳回"),
+            java.util.Map.entry("PAYROLL_BATCH_SUBMITTED", "工资批次待审核"),
+            java.util.Map.entry("PAYROLL_BATCH_PENDING_PUBLISH", "工资批次待发布"),
+            java.util.Map.entry("SUGGESTION_SUBMITTED", "建议待回复"),
+            java.util.Map.entry("STOCK_COUNT_PENDING_FINANCE_REVIEW", "普通仓盘点待审核"),
+            java.util.Map.entry("STOCK_COUNT_PENDING_WAREHOUSE_REVIEW", "内料仓盘点待审核"),
+            java.util.Map.entry("WORKSHOP_MATERIAL_REQUISITION_PENDING", "车间请领待发料"),
+            java.util.Map.entry("WORKSHOP_MATERIAL_RETURN_PENDING", "车间退料待点收"),
+            java.util.Map.entry("WORKSHOP_MATERIAL_CLOSE_BLOCKED_REPORT", "结算被报工拦截"),
+            java.util.Map.entry("WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT", "结算被重量拦截"),
+            java.util.Map.entry("WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK", "结算被库存拦截"),
+            java.util.Map.entry("WORKSHOP_MATERIAL_CLOSE_FAILING", "结算连续失败待处理"));
+
     /** aggregateKind：办结撤回与收件台按 (kind,id) 定位；claimType：null=归属人线无认领。 */
     public record Entry(String aggregateKind, String claimTargetType) {
     }

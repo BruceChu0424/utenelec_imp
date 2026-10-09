@@ -21,6 +21,7 @@ public record PermissionCatalogDto(String module, String category, List<Item> pe
             String description,
             List<String> grantPolicy,
             boolean baseline,
+            boolean baselinePinned,
             String sensitivity) {
     }
 }

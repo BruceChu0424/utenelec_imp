@@ -76,6 +76,15 @@ public class EmployeeQueryService {
                 result.totalPages());
     }
 
+    /**
+     * 「类似人员」（2026-10-09）：精确搜索 0 命中时前端追加调用，按搜索词
+     * 逐字符评分返回最接近的若干员工（评分口径见 EmployeeListQuery#similar）。
+     */
+    @Transactional(readOnly = true)
+    public List<EmployeeListItem> similar(String search, int limit) {
+        return employeeListQuery.similar(search, limit);
+    }
+
     // ===== 详情（按权限点与查看对象脱敏，ADR-011 后不再按角色） =====
     /**
      * 管理端员工详情：字段级按权限点脱敏。保持既有契约不变——身份证、银行、手机明文需

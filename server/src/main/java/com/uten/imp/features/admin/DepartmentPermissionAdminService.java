@@ -103,6 +103,7 @@ public class DepartmentPermissionAdminService {
                             p.getDescription(),
                             p.grantPolicies().stream().map(Enum::name).toList(),
                             p.isBaseline(),
+                            p.isBaselinePinned(),
                             p.getSensitivity())).toList()));
         }
         groups.sort(Comparator
@@ -195,8 +196,10 @@ public class DepartmentPermissionAdminService {
 
     /**
      * 保存全员基础包(期望的完整集合，服务端按差量落库)。只校验本次新增的码能否进基础包
-     * (不可批量 / 个人专属 / 超管专属的码不行)；移出一律允许。改动经 permissions 表的
-     * 授权纪元触发器让全员旧令牌失效，下次续期即按新基础包合成。
+     * (不可批量 / 个人专属 / 超管专属的码不行)；移出钉死码一律拒绝(V832/ADR-170：
+     * 员工基础包的体系准入码一旦移出，通知轮询/接口访问/发卡资格对全体非超管同时熄火)，
+     * 其余移出允许。改动经 permissions 表的授权纪元触发器让全员旧令牌失效，下次续期即按
+     * 新基础包合成。
      */
     @Transactional
     public PermissionChangeDto setBaseline(List<String> permissionCodes) {
@@ -212,6 +215,14 @@ public class DepartmentPermissionAdminService {
         removed.removeAll(desired);
         if (added.isEmpty() && removed.isEmpty()) {
             return PermissionChangeDto.unchanged();
+        }
+        Set<String> pinnedRemoval = new LinkedHashSet<>(permissionRepo.findBaselinePinnedCodes());
+        pinnedRemoval.retainAll(removed);
+        if (!pinnedRemoval.isEmpty()) {
+            throw new ApiException(ErrorCode.BUSINESS,
+                    "这几项是通知与员工自助服务的体系准入权限，已锁定在全员基础包，不能在管理页移出："
+                            + String.join("、", pinnedRemoval)
+                            + "。个别人员如需收回请用个人收回；调整钉死名单须走数据库迁移");
         }
         Map<String, Permission> byCode = byCode(added);
         for (String code : added) {

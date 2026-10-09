@@ -210,7 +210,7 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
     private boolean canReadNotices(UUID userId) {
         return userRepo.findById(userId)
                 .filter(user -> !user.isDeleted() && "active".equals(user.getStatus()) && user.getEmployeeId() != null)
-                .map(user -> permissionResolver.permsOf(user).contains(NOTICE_READ))
+                .map(user -> permissionResolver.grantedPermsOf(user).contains(NOTICE_READ))
                 .orElse(false);
     }
 
@@ -220,17 +220,20 @@ public class WorkshopMaterialNoticeService implements WorkshopMaterialNoticePort
                 ? userRepo.findAll()
                 : permissionCandidates.possibleUsers(anyPermission).map(userRepo::findAllById).orElseGet(userRepo::findAll);
         Set<UUID> out = new LinkedHashSet<>();
-        Set<String> adminPermissions = null;
+        // 2026-10-09(ADR-063 追加修订): 任务卡池按「真实授出权限」解析，超管全量镜像不算任务归属。
+        Set<String> adminGrantedPermissions = null;
         for (UserAccount user : candidates) {
             if (user == null || user.isDeleted() || !"active".equals(user.getStatus()) || user.getEmployeeId() == null) {
                 continue;
             }
             Set<String> permissions;
             if (user.isSuperAdmin()) {
-                if (adminPermissions == null) adminPermissions = permissionResolver.permsOf(user);
-                permissions = adminPermissions;
+                if (adminGrantedPermissions == null) {
+                    adminGrantedPermissions = permissionResolver.grantedPermsOf(user);
+                }
+                permissions = adminGrantedPermissions;
             } else {
-                permissions = permissionResolver.permsOf(user);
+                permissions = permissionResolver.grantedPermsOf(user);
             }
             if (!permissions.contains(NOTICE_READ)) continue;
             if (anyPermission.stream().anyMatch(permissions::contains)) out.add(user.getId());

@@ -42,8 +42,13 @@ public class SalesOrderFinanceConfirmerEligibility
     /** 全部合格确认人的用户账号 id（通知接收池）。 */
     @Transactional(readOnly = true)
     public List<UUID> eligibleUserIds() {
+        // 2026-10-09(ADR-063 追加修订): 通知接收池按「真实授出权限」解析——超管的全量目录码
+        // 是操作授权面, 不是任务归属; isEligible 是操作资格门, 超管仍按 permsOf 全量可操作。
         return eligibleRows(null).stream()
-                .filter(this::hasReviewAccess)
+                .filter(userId -> userRepo.findById(userId)
+                        .map(account -> permissionResolver.grantedPermsOf(account)
+                                .containsAll(java.util.Set.of(VIEW_PERMISSION, CONFIRM_PERMISSION)))
+                        .orElse(false))
                 .toList();
     }
 

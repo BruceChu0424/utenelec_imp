@@ -55,6 +55,15 @@ public class EmployeeController {
         return queryService.list(page, size, search, statuses, departmentId, includeSubtree, sort, order);
     }
 
+    /** 「类似人员」：精确搜索 0 命中时前端追加调用（同 list 读权限）。 */
+    @GetMapping("/similar")
+    @PreAuthorize("hasAuthority('employee:view')")
+    public List<EmployeeListItem> similar(
+            @RequestParam String search,
+            @RequestParam(defaultValue = "20") int limit) {
+        return queryService.similar(search, limit);
+    }
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('employee:view')")
     public EmployeeDetail detail(@PathVariable UUID id) {

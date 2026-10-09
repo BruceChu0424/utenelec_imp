@@ -51,7 +51,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>加一个码：只插一行，只记一条带 added/removed 的业务事件；收回同理；</li>
  *   <li>对象全量范围等「不随批量」的码原样保留可保存；只能逐人授予的码加不进部门；</li>
  *   <li>「全部授权」由服务端按授权策略补齐，第二次再点什么都不写；</li>
- *   <li>全员基础包只收能放进基础包的码。</li>
+ *   <li>全员基础包只收能放进基础包的码；钉死的体系准入码(含 notice:read)移出被整单拒绝。</li>
  *   <li>个人「全部授权」：撤掉已有收回、部门已给的不重复加授、不随批量的码不带上，第二次 0 审计；</li>
  *   <li>两个超管同时保存同一部门：部门行串行化，只记一条真实改动的业务事件；</li>
  *   <li>访客搜接待人只列持接待访客权限的员工(白名单即权限目录，security-08)。</li>
@@ -284,6 +284,25 @@ class PermissionAdministrationPostgresTest {
         assertEquals(eventsBefore + 1, (long) jdbc.queryForObject(
                 "SELECT count(*) FROM audit_log WHERE action = 'permission_baseline_change'", Long.class));
         assertTrue(departments.setBaseline(baseline).removed().contains(normal));
+    }
+
+    @Test
+    void baselineRejectsPinnedEmployeeCodesAndKeepsThemInPlace() {
+        // V832/ADR-170：员工基础包 5 码钉死在基础包，管理页整单拒绝移出；
+        // notice:read 离开基础包会让全体非超管同时失去通知轮询、接口访问与发卡资格。
+        List<String> pinned = jdbc.queryForList(
+                "SELECT code FROM permissions WHERE baseline_pinned ORDER BY code", String.class);
+        assertEquals(List.of("expense:apply", "notice:read", "payroll:view:self",
+                "profile:edit:self", "suggestion:submit"), pinned, "V832 钉死名单");
+        List<String> baseline = departments.baseline().permissions();
+        assertTrue(baseline.containsAll(pinned), "钉死码必须始终在基础包里");
+
+        List<String> desired = new java.util.ArrayList<>(baseline);
+        desired.removeAll(pinned);
+        ApiException exception = assertThrows(ApiException.class,
+                () -> departments.setBaseline(desired));
+        assertTrue(exception.getMessage().contains("notice:read"), exception.getMessage());
+        assertEquals(baseline, departments.baseline().permissions(), "移出被拒后基础包原样");
     }
 
     @Test

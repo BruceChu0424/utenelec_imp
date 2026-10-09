@@ -154,6 +154,7 @@ public class NoticeService {
 
     private final NoticeRepository noticeRepo;
     private final NoticeUserStateRepository stateRepo;
+    private final NoticePopupPreferenceRepository popupPrefRepo;
     private final NoticeAcknowledgmentRepository ackRepo;
     private final NoticeBlessingRepository blessRepo;
     private final NoticeCelebrationSubjectRepository subjectRepo;
@@ -269,7 +270,12 @@ public class NoticeService {
                 page.stream().map(Notice::getId).toList());
         Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(page);
         Set<String> reviewEvents = reviewEventsFor(page);
+        // V833/ADR-171：个人关闭的弹窗类别不再出现在到达流——顶部条与居中弹卡都不再出现。
+        Set<String> popupDisabled = Set.copyOf(popupPrefRepo.findDisabledEvents(userId));
         List<NoticeDto> items = page.stream()
+                .filter(notice -> popupDisabled.isEmpty()
+                        || notice.getSourceEvent() == null
+                        || !popupDisabled.contains(notice.getSourceEvent()))
                 .filter(notice -> !isActionableReview(notice)
                         || reviewEvents.contains(notice.getSourceEvent()))
                 .map(notice -> toDto(
@@ -1397,11 +1403,18 @@ public class NoticeService {
      * V459 居中审核弹窗（登录检查）：当前用户名下未办结的待审通知，按
      * 重要度+时间倒序，上限 20 条。口径=审核目录注册事件、未撤回、稍后已到期；
      * 2026-09-09 起 popup_acknowledged（处理过）即静默，仅「稍后再看」到期重弹。
+     * popup_acknowledged 只由 markRead 系列（读通知 / 去工作台处理落点置读 / 办结置读 /
+     * 稍后）写入——弹窗右上 X 仅本地关闭不写它，所以**未读且未办结的任务每次登录
+     * 都会重新弹出**（2026-10-09 用户确认口径；SQL 级证明见
+     * ReviewPendingLoginPopupPostgresTest）。
+     * 2026-10-09 起(V833/ADR-171) 个人关闭的弹窗类别不再进入登录检查。
      */
     @Transactional(readOnly = true)
     public List<NoticeDto> pendingReviews() {
         UUID userId = requireStaffId();
-        Set<String> reviewEvents = reviewAudience.eligibleEvents(requireStaff());
+        Set<String> eligible = reviewAudience.eligibleEvents(requireStaff());
+        if (eligible.isEmpty()) return List.of();
+        Set<String> reviewEvents = excludePopupDisabled(userId, eligible);
         if (reviewEvents.isEmpty()) return List.of();
         List<Notice> notices = noticeRepo.findVisiblePendingReviews(
                 userId,
@@ -1443,6 +1456,63 @@ public class NoticeService {
         return notices.stream()
                 .map(n -> toDto(n, states.get(n.getId()), userId, true, List.of(), Set.of()))
                 .toList();
+    }
+
+    // =========================== 个人通知弹窗开关（V833/ADR-171） ===========================
+
+    /** 「通知设置」列表项：全目录类别 + 是否对我适用（当前弹卡资格）+ 是否已被本人关闭。 */
+    public record PopupPreferenceDto(
+            String sourceEvent, String label, boolean applicable, boolean popupDisabled) {
+    }
+
+    /**
+     * 全部弹窗类别（审核目录全集），带中文名、对本人是否适用（= 当前弹卡资格：
+     * 真实授出权限 ∩ 部门/对象归属——资格变化自动收窄）与个人开关状态。通知页
+     * 「通知设置」据此分「我会收到的弹窗」与「其它类别」两组展示（2026-10-09
+     * 用户口径：通知页设置全部通知类型；我该收什么由资格决定，不由列表决定）。
+     */
+    @Transactional(readOnly = true)
+    public List<PopupPreferenceDto> popupPreferences() {
+        UUID userId = requireStaffId();
+        Set<String> eligible = reviewAudience.eligibleEvents(requireStaff());
+        Set<String> disabled = Set.copyOf(popupPrefRepo.findDisabledEvents(userId));
+        return ReviewNoticeCatalog.events().stream()
+                .map(event -> new PopupPreferenceDto(
+                        event, ReviewNoticeCatalog.labelOf(event),
+                        eligible.contains(event), disabled.contains(event)))
+                .sorted(java.util.Comparator.comparing(PopupPreferenceDto::applicable).reversed()
+                        .thenComparing(PopupPreferenceDto::label))
+                .toList();
+    }
+
+    /**
+     * 开/关某一类弹窗提醒。只接受审核目录注册事件；关闭=存在行，开启=删行（幂等）。
+     * 只抑制弹窗层：通知仍落库、通知中心仍可见、办结撤回与补发口径不变。
+     */
+    @Transactional
+    public void setPopupPreference(String sourceEvent, boolean disabled) {
+        UUID userId = requireStaffId();
+        if (!ReviewNoticeCatalog.isReviewEvent(sourceEvent)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知或不可关闭的弹窗类别: " + sourceEvent);
+        }
+        tx.bind();
+        NoticePopupPreferenceId id = new NoticePopupPreferenceId(userId, sourceEvent);
+        if (disabled) {
+            if (!popupPrefRepo.existsById(id)) {
+                popupPrefRepo.save(new NoticePopupPreference(userId, sourceEvent, Instant.now()));
+            }
+            auditExplicit("notice_popup_preference_disabled", sourceEvent);
+        } else {
+            popupPrefRepo.deleteById(id);
+        }
+    }
+
+    private Set<String> excludePopupDisabled(UUID userId, Set<String> events) {
+        Set<String> disabled = Set.copyOf(popupPrefRepo.findDisabledEvents(userId));
+        if (disabled.isEmpty()) return events;
+        Set<String> remaining = new java.util.LinkedHashSet<>(events);
+        remaining.removeAll(disabled);
+        return remaining;
     }
 
     private Map<UUID,NoticeRepository.ShipmentReviewStateRow> shipmentReviewStates(List<Notice> notices) {

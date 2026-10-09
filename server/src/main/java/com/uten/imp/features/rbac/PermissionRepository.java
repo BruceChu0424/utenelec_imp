@@ -25,6 +25,10 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
     @Query(value = "SELECT code FROM permissions WHERE baseline", nativeQuery = true)
     List<String> findBaselineCodes();
 
+    /** 基础包钉死码(V832/ADR-170)：体系准入权限，管理页不可移出。 */
+    @Query(value = "SELECT code FROM permissions WHERE baseline_pinned", nativeQuery = true)
+    List<String> findBaselinePinnedCodes();
+
     /** 事务级互斥：同一时刻只有一次基础包保存在读-算差量-写。 */
     @Query(value = "SELECT CAST(pg_advisory_xact_lock(hashtextextended('PERMISSION_BASELINE', 0)) AS text)",
             nativeQuery = true)

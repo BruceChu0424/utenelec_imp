@@ -157,6 +157,28 @@ public class PermissionResolver {
     }
 
     /**
+     * 真实授出的有效权限（不含超管全量镜像）。
+     *
+     * <p>超管的「全部目录码」是<b>操作授权面</b>（什么都能做），不是<b>任务归属</b>（这些活归他）。
+     * 业务任务卡（审核待办 / 部门定向提醒）的发卡池与收件人解析一律用这份口径（2026-10-09，
+     * ADR-063 追加修订）：超管只有从 全员基础包 / 部门矩阵 / 个人加授 / 负责人委派 里真实拿到
+     * 该码时才进池，个人收回仍优先。面向超管本身的运维告警（ServerAlertAudience）等继续用
+     * {@link #permsOf}。
+     */
+    public Set<String> grantedPermsOf(UserAccount user) {
+        if (!user.isSuperAdmin()) return permsOf(user);
+        return breakdownsOf(user.getId(), user.getEmployeeId(), false).full().effective();
+    }
+
+    /** 按账号 id 解析真实授出权限（账号不存在/已删/停用返回空集）；供只持有 AuthUser 的读侧使用。 */
+    public Set<String> grantedPermsOf(UUID userId) {
+        return userAccountRepo.findById(userId)
+                .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
+                .map(this::grantedPermsOf)
+                .orElse(Set.of());
+    }
+
+    /**
      * 计算某用户的有效权限分解。超管的各来源分量照常计算（便于管理端展示），
      * 但 effective 恒为全量 permissions。
      */

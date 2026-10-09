@@ -42,15 +42,34 @@ class StockCountNoticeHandlerTest {
         header("WAREHOUSE", "PENDING");
         UserAccount allowed = user(), otherWorkshop = user(), revoked = user(), noNotices = user();
         pool(allowed, otherWorkshop, revoked, noNotices);
-        when(permissions.permsOf(allowed)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
-        when(permissions.permsOf(otherWorkshop)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
-        when(permissions.permsOf(revoked)).thenReturn(Set.of("notice:read"));
-        when(permissions.permsOf(noNotices)).thenReturn(Set.of("stock:count:warehouse_review"));
+        when(permissions.grantedPermsOf(allowed)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        when(permissions.grantedPermsOf(otherWorkshop)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        when(permissions.grantedPermsOf(revoked)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(noNotices)).thenReturn(Set.of("stock:count:warehouse_review"));
         when(workshop.canAccessWarehouseForUser(warehouse, allowed.getId())).thenReturn(true);
         deliver("STOCK_COUNT_SUBMITTED");
         verify(notices).publishForUser(eq(allowed.getId()), anyString(), anyString(), eq("approval"), eq("库存盘点"),
                 eq("/warehouse/stock-count-review?requestId=" + request), eq(StockCountNoticeHandler.WAREHOUSE_EVENT), eq("important"), eq(request));
         verifyNoMoreInteractions(notices);
+    }
+
+    @Test void superAdminWithoutRealGrantIsNotAStockCountReviewer() {
+        // 2026-10-09(ADR-063 追加修订): 超管的全量目录码是操作授权面，不是任务归属——
+        // 没被真实授予盘点审核码的超管不进池，宁可无人接收也不兜底发给超管。
+        header("WAREHOUSE", "PENDING");
+        UserAccount superAdmin = user();
+        superAdmin.setSuperAdmin(true);
+        pool(superAdmin);
+        when(permissions.grantedPermsOf(superAdmin)).thenReturn(Set.of("notice:read"));
+        when(workshop.canAccessWarehouseForUser(warehouse, superAdmin.getId())).thenReturn(true);
+        deliver("STOCK_COUNT_SUBMITTED");
+        verifyNoInteractions(notices);
+
+        // 真实授出(如超管逐人加授)后照常进池。
+        when(permissions.grantedPermsOf(superAdmin)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        deliver("STOCK_COUNT_SUBMITTED");
+        verify(notices).publishForUser(eq(superAdmin.getId()), anyString(), anyString(), eq("approval"), eq("库存盘点"),
+                eq("/warehouse/stock-count-review?requestId=" + request), eq(StockCountNoticeHandler.WAREHOUSE_EVENT), eq("important"), eq(request));
     }
 
     @Test void registeredKeepersNarrowWarehouseReviewToResponsiblePermissionHolders() {
@@ -59,9 +78,9 @@ class StockCountNoticeHandlerTest {
         header("WAREHOUSE", "PENDING");
         UserAccount keeper = user(), keeperWithoutPerm = user(), outsiderWithPerm = user();
         pool(keeper, keeperWithoutPerm, outsiderWithPerm);
-        when(permissions.permsOf(keeper)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
-        when(permissions.permsOf(keeperWithoutPerm)).thenReturn(Set.of("notice:read"));
-        when(permissions.permsOf(outsiderWithPerm)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        when(permissions.grantedPermsOf(keeper)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
+        when(permissions.grantedPermsOf(keeperWithoutPerm)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(outsiderWithPerm)).thenReturn(Set.of("notice:read", "stock:count:warehouse_review"));
         when(workshop.canAccessWarehouseForUser(warehouse, keeper.getId())).thenReturn(true);
         when(workshop.canAccessWarehouseForUser(warehouse, outsiderWithPerm.getId())).thenReturn(true);
         when(warehouseScopes.noticeRecipients(anyCollection(), eq(List.of(warehouse)))).thenAnswer(call ->
@@ -79,7 +98,7 @@ class StockCountNoticeHandlerTest {
     @Test void financeQueueUsesFinancePermissionAndDoesNotCallWorkshopScope() {
         header("FINANCE", "PENDING");
         var finance = user(); pool(finance);
-        when(permissions.permsOf(finance)).thenReturn(Set.of("notice:read", "stock:count:finance_review"));
+        when(permissions.grantedPermsOf(finance)).thenReturn(Set.of("notice:read", "stock:count:finance_review"));
         deliver("STOCK_COUNT_SUBMITTED");
         verify(notices).publishForUser(eq(finance.getId()), anyString(), anyString(), eq("approval"), eq("库存盘点"),
                 eq("/finance/stock-count-review?requestId=" + request), eq(StockCountNoticeHandler.FINANCE_EVENT), eq("important"), eq(request));
@@ -95,7 +114,7 @@ class StockCountNoticeHandlerTest {
         header("WAREHOUSE", "REJECTED");
         var maker = user(); maker.setId(submitter);
         when(users.findById(submitter)).thenReturn(Optional.of(maker));
-        when(permissions.permsOf(maker)).thenReturn(Set.of("notice:read", "stock:count:submit"));
+        when(permissions.grantedPermsOf(maker)).thenReturn(Set.of("notice:read", "stock:count:submit"));
         deliver("STOCK_COUNT_REJECTED");
         verify(notices).resolveReviewNotices("STOCK_COUNT_REQUEST", request, "REJECTED");
         verify(notices).publishForUser(eq(submitter), contains("已退回"), contains("库存未"), eq("workflow"), eq("库存盘点"),

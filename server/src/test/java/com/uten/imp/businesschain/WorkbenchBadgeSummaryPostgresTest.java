@@ -215,8 +215,10 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("purchaseSupplierReturn", List.of("purchaseSupplierReturn.count"), List.of());
         legacy("purchaseDrafts", List.of("drafts.purchaseOrder", "drafts.purchaseReceipt", "drafts.purchaseReturn"), List.of());
         // ADR-143 §4.1: 委外任务中心入口红数 = 待处理 + 可领(新增事实 subcontractDraw.drawable)。
+        // ADR-171 修订二(2026-10-09): 黄数再加「领料中」——已提交领料、等仓库发出的行
+        // (subcontractDraw.submitted); 领料未结束的订货单已不进 subcontractTask.inProgress(V834)。
         legacy("subcontractTaskCenter", List.of("subcontractTask.pending", "subcontractDraw.drawable"),
-                List.of("subcontractTask.inProgress"));
+                List.of("subcontractTask.inProgress", "subcontractDraw.submitted"));
         legacy("subcontractSupplierReturn", List.of("subcontractSupplierReturn.count"), List.of());
         legacy("subcontractDrafts", List.of("drafts.subcontractOrder", "drafts.subcontractReturn",
                 "drafts.subcontractMaterialReturn", "drafts.subcontractWaste"), List.of());

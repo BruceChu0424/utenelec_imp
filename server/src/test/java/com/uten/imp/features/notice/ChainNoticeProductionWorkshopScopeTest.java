@@ -57,11 +57,11 @@ class ChainNoticeProductionWorkshopScopeTest {
         when(users.findById(eligibleId)).thenReturn(Optional.of(eligible));
         when(users.findById(noNoticeId)).thenReturn(Optional.of(noNotice));
         when(users.findById(noTaskId)).thenReturn(Optional.of(noTask));
-        when(permissions.permsOf(eligible)).thenReturn(
+        when(permissions.grantedPermsOf(eligible)).thenReturn(
                 Set.of("notice:read", "production_execution:view", "production_execution:start"));
-        when(permissions.permsOf(noNotice)).thenReturn(
+        when(permissions.grantedPermsOf(noNotice)).thenReturn(
                 Set.of("production_execution:view"));
-        when(permissions.permsOf(noTask)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(noTask)).thenReturn(Set.of("notice:read"));
 
         assertThat(service.workshopRecipientUserIds(
                 workshopId, responsibleId)).containsExactly(eligibleId);
@@ -97,7 +97,7 @@ class ChainNoticeProductionWorkshopScopeTest {
                 contains("SELECT department.manager_id AS employee_id"), eq(UUID.class), any(), any());
         UserAccount leader = activeAccount();
         when(users.findById(leaderId)).thenReturn(Optional.of(leader));
-        when(permissions.permsOf(leader)).thenReturn(Set.of("notice:read", "production_execution:view"));
+        when(permissions.grantedPermsOf(leader)).thenReturn(Set.of("notice:read", "production_execution:view"));
         assertThat(service.workshopRecipientUserIds(workshopId, null)).isEmpty();
         verify(jdbc, never()).queryForList(
                 contains("employee_secondary_departments"), eq(UUID.class), any(), any());

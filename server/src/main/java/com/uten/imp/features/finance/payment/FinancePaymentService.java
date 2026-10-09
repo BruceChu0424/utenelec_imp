@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance.payment;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -128,7 +129,20 @@ public class FinancePaymentService {
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 引用主档名称
+                //（经 NameRefKeyword 转外键 IN 子查询，count 同谓词派生）。
+                String kw = NameRefKeyword.like(f.keyword());
+                var kws = NameRefKeyword.keywords();
+                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                NameRefKeyword.byName(kws, q, cb, root.get("accountId"),
+                        com.uten.imp.features.master.account.Account.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("accountId"),
+                        com.uten.imp.features.master.account.Account.class, "code", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("supplierId"),
+                        com.uten.imp.features.master.supplier.Supplier.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("supplierId"),
+                        com.uten.imp.features.master.supplier.Supplier.class, "code", kw);
+                ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));

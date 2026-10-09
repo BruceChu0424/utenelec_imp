@@ -90,9 +90,9 @@ class ChainNoticeOutboxEventTest {
                 .thenReturn(Optional.of(roleBuyer));
         when(users.findById(departmentBuyerId))
                 .thenReturn(Optional.of(departmentBuyer));
-        when(permissions.permsOf(roleBuyer)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(roleBuyer)).thenReturn(Set.of(
                 "notice:read", "purchase_request:view"));
-        when(permissions.permsOf(departmentBuyer)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(departmentBuyer)).thenReturn(Set.of(
                 "notice:read", "purchase_request:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, outbox);
@@ -162,7 +162,7 @@ class ChainNoticeOutboxEventTest {
                 eq("SUB_PURCHASE"))).thenReturn(List.of(buyerId));
         when(users.findById(buyerId))
                 .thenReturn(Optional.of(buyer));
-        when(permissions.permsOf(buyer)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(buyer)).thenReturn(Set.of(
                 "notice:read", "subcontract_application:view"));
         ChainNoticeService service = service(
                 notice,
@@ -228,8 +228,8 @@ class ChainNoticeOutboxEventTest {
                 .thenReturn(List.of(noticeOnlyId, requestOnlyId));
         when(users.findById(noticeOnlyId)).thenReturn(Optional.of(noticeOnly));
         when(users.findById(requestOnlyId)).thenReturn(Optional.of(requestOnly));
-        when(permissions.permsOf(noticeOnly)).thenReturn(Set.of("notice:read"));
-        when(permissions.permsOf(requestOnly))
+        when(permissions.grantedPermsOf(noticeOnly)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(requestOnly))
                 .thenReturn(Set.of("purchase_request:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -338,7 +338,7 @@ class ChainNoticeOutboxEventTest {
                 eq(UUID.class),
                 eq("SUB_PLAN"))).thenReturn(List.of(plannerUserId));
         when(users.findAllById(any())).thenReturn(List.of(planner));
-        when(permissions.permsOf(planner)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(planner)).thenReturn(Set.of(
                 "notice:read", "production_plan:view", "production_material_analysis:view"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -441,9 +441,9 @@ class ChainNoticeOutboxEventTest {
                 .thenReturn(Optional.of(warehouseUser));
         when(users.findById(revokedWarehouseUserId))
                 .thenReturn(Optional.of(revokedWarehouseUser));
-        when(permissions.permsOf(warehouseUser))
+        when(permissions.grantedPermsOf(warehouseUser))
                 .thenReturn(Set.of("notice:read", "warehouse_sales_outbound:execute"));
-        when(permissions.permsOf(revokedWarehouseUser))
+        when(permissions.grantedPermsOf(revokedWarehouseUser))
                 .thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
@@ -486,9 +486,9 @@ class ChainNoticeOutboxEventTest {
         UserAccount revokedUser = activeUser(revoked);
         when(users.findById(allowed)).thenReturn(Optional.of(allowedUser));
         when(users.findById(revoked)).thenReturn(Optional.of(revokedUser));
-        when(permissions.permsOf(allowedUser)).thenReturn(
+        when(permissions.grantedPermsOf(allowedUser)).thenReturn(
                 Set.of("notice:read", "warehouse_sales_outbound:execute"));
-        when(permissions.permsOf(revokedUser)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(revokedUser)).thenReturn(Set.of("notice:read"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class));
 
@@ -531,7 +531,7 @@ class ChainNoticeOutboxEventTest {
                 eq("SUB_WH"))).thenReturn(List.of(warehouseUserId));
         when(users.findById(warehouseUserId))
                 .thenReturn(Optional.of(warehouseUser));
-        when(permissions.permsOf(warehouseUser))
+        when(permissions.grantedPermsOf(warehouseUser))
                 .thenReturn(Set.of("stock_doc:approve"));
         ChainNoticeService service = new ChainNoticeService(
                 notice,
@@ -608,11 +608,11 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(approveOnly))
                 .thenReturn(Optional.of(approveOnlyUser));
         when(users.findById(viewOnly)).thenReturn(Optional.of(viewOnlyUser));
-        when(permissions.permsOf(allowedUser))
+        when(permissions.grantedPermsOf(allowedUser))
                 .thenReturn(Set.of("stock_doc:view", "stock_doc:approve"));
-        when(permissions.permsOf(approveOnlyUser))
+        when(permissions.grantedPermsOf(approveOnlyUser))
                 .thenReturn(Set.of("stock_doc:approve"));
-        when(permissions.permsOf(viewOnlyUser))
+        when(permissions.grantedPermsOf(viewOnlyUser))
                 .thenReturn(Set.of("stock_doc:view"));
         ChainNoticeService service = new ChainNoticeService(
                 notice, users, permissions, jdbc, mock(BusinessEventPublisher.class),
@@ -699,10 +699,10 @@ class ChainNoticeOutboxEventTest {
         when(users.findById(qualityViewerId)).thenReturn(Optional.of(qualityViewer));
         when(users.findById(revokedViewerId)).thenReturn(Optional.of(revokedViewer));
         when(users.findById(inactiveViewerId)).thenReturn(Optional.of(inactiveViewer));
-        when(permissionResolver.permsOf(qualityViewer))
+        when(permissionResolver.grantedPermsOf(qualityViewer))
                 .thenReturn(Set.of("notice:read", "procurement_inspection:view",
                         "procurement_inspection:handle"));
-        when(permissionResolver.permsOf(revokedViewer))
+        when(permissionResolver.grantedPermsOf(revokedViewer))
                 .thenReturn(Set.of("notice:read", "procurement_inspection:view"));
         ChainNoticeService service = new ChainNoticeService(
                 notice,
@@ -767,10 +767,10 @@ class ChainNoticeOutboxEventTest {
                 mock(com.uten.imp.features.auth.PermissionResolver.class);
         UserAccount planner = activeUser(plannerUserId);
         UserAccount viewer = activeUser(viewerUserId);
-        when(permissions.permsOf(planner)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(planner)).thenReturn(Set.of(
                 "notice:read", "production_material_analysis:view",
                 "production_material_analysis:create"));
-        when(permissions.permsOf(viewer)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(viewer)).thenReturn(Set.of(
                 "notice:read", "production_material_analysis:view"));
         when(jdbc.queryForList(
                 contains("WITH RECURSIVE subtree(id)"),
@@ -943,11 +943,11 @@ class ChainNoticeOutboxEventTest {
         when(users.findAll()).thenReturn(List.of(owner, follower, denied));
         when(users.findById(ownerUserId)).thenReturn(Optional.of(owner));
         when(users.findById(followerUserId)).thenReturn(Optional.of(follower));
-        when(permissions.permsOf(owner)).thenReturn(
+        when(permissions.grantedPermsOf(owner)).thenReturn(
                 Set.of("supplier_return_task:view", "notice:read"));
-        when(permissions.permsOf(follower)).thenReturn(
+        when(permissions.grantedPermsOf(follower)).thenReturn(
                 Set.of("supplier_return_task:view", "notice:read"));
-        when(permissions.permsOf(denied)).thenReturn(Set.of("notice:read"));
+        when(permissions.grantedPermsOf(denied)).thenReturn(Set.of("notice:read"));
         when(jdbc.queryForList(
                 contains("FROM procurement_arrival_exceptions exception"),
                 eq(exceptionId))).thenReturn(List.of(Map.of(
@@ -989,7 +989,7 @@ class ChainNoticeOutboxEventTest {
         UserAccount reviewer = activeUser(reviewerId);
         when(users.findAll()).thenReturn(List.of(reviewer));
         when(users.findById(reviewerId)).thenReturn(Optional.of(reviewer));
-        when(permissions.permsOf(reviewer)).thenReturn(
+        when(permissions.grantedPermsOf(reviewer)).thenReturn(
                 Set.of("subcontract_loss_claim:review", "notice:read"));
         when(jdbc.queryForList(
                 contains("FROM subcontract_loss_cases loss"),
@@ -1038,7 +1038,7 @@ class ChainNoticeOutboxEventTest {
                 eq(UUID.class),
                 eq("SUB_PLAN"))).thenReturn(List.of(plannerUserId));
         when(users.findAllById(any())).thenReturn(List.of(planner));
-        when(permissions.permsOf(planner)).thenReturn(Set.of(
+        when(permissions.grantedPermsOf(planner)).thenReturn(Set.of(
                 "notice:read", "production_plan:view", "production_material_analysis:view"));
         when(users.findById(ownerUserId))
                 .thenReturn(Optional.of(activeUser(ownerUserId)));

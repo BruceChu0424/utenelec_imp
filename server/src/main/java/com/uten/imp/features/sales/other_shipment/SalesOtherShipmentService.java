@@ -1,5 +1,6 @@
 package com.uten.imp.features.sales.other_shipment;
 
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -107,8 +108,14 @@ public class SalesOtherShipmentService {
                         cs.from(com.uten.imp.features.master.client.Client.class);
                 cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
                         cb.like(cb.lower(cr.get("name")), kw));
-                ps.add(cb.or(cb.like(cb.lower(root.get("billNo")), kw),
-                        root.get("clientId").in(cs)));
+                var kws = NameRefKeyword.keywords();
+                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(root.get("clientId").in(cs)); NameRefKeyword.byName(kws, q, cb, root.get("warehouseId"),
+                        com.uten.imp.features.master.warehouse.Warehouse.class, "name", kw); NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "name", kw);
+                NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
+                        com.uten.imp.features.master.currency.Currency.class, "code", kw);
+                ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));

@@ -312,7 +312,10 @@ class StockCountInlineController extends ChangeNotifier {
   }
 }
 
-class StockCountInlineCell extends StatelessWidget {
+/// 实盘格 = 就地编辑：平时是纯文本（读表 37 行距，与任务中心同款密度），
+/// 点一下换成输入框（autofocus），填完显示青色数值、校验失败红色。
+/// 「—」= 还没盘；「（自动）」= 质量单位按换算自动得重量，不收输入。
+class StockCountInlineCell extends StatefulWidget {
   const StockCountInlineCell({
     super.key,
     required this.controller,
@@ -323,31 +326,87 @@ class StockCountInlineCell extends StatelessWidget {
   final String rowKey;
   final bool weight;
   @override
+  State<StockCountInlineCell> createState() => _StockCountInlineCellState();
+}
+
+class _StockCountInlineCellState extends State<StockCountInlineCell> {
+  final _focus = FocusNode();
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _editing && mounted) {
+        setState(() => _editing = false);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
+    listenable: widget.controller,
     builder: (context, _) {
-      final row = controller.rows[rowKey];
-      if (row == null) return Text(controller.busy ? '读取中…' : '不可编辑');
-      if (weight && row.snapshot.weightExact) {
+      final row = widget.controller.rows[widget.rowKey];
+      if (row == null) return Text(widget.controller.busy ? '读取中…' : '不可编辑');
+      if (widget.weight && row.snapshot.weightExact) {
         return Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）');
       }
-      return TextField(
-        key: ValueKey('stock-count-${weight ? 'weight' : 'qty'}-$rowKey'),
-        controller: weight ? row.weight : row.qty,
-        enabled: !controller.busy,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        // 紧凑格（读表 37 口径，与任务中心等读表同行距）：isDense 默认垂直 12 会把
-        // 行撑到 ~55；这里压到 6，输入格 ~37，与纯文本行等高。
-        decoration: UtenInputDecoration(
-          InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-            hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
-            error: row.validation == null
-                ? null
-                : const UtenFieldMessage.error('请核对'),
+      final text = widget.weight ? row.weight : row.qty;
+      final hasValue = text.text.trim().isNotEmpty;
+      if (_editing) {
+        return TextField(
+          key: ValueKey('stock-count-${widget.weight ? 'weight' : 'qty'}-${widget.rowKey}'),
+          controller: text,
+          focusNode: _focus,
+          autofocus: true,
+          enabled: !widget.controller.busy,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onSubmitted: (_) => setState(() => _editing = false),
+          // 紧凑格：编辑中这一行临时放宽到 ~52，未编辑行保持读表 37。
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+              hintText: widget.weight
+                  ? row.snapshot.weightKg ?? '未称'
+                  : row.snapshot.qty,
+              error: row.validation == null
+                  ? null
+                  : const UtenFieldMessage.error('请核对'),
+            ),
           ),
-        ),
+        );
+      }
+      // 纯文本形态：不加垂直内边距——表格自身每格已有 s8 上下（读表 37 的来源），
+      // 再叠一层行距就回到 52。点按区 = 居中文本本身（行内中央，够用）。
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.controller.busy
+            ? null
+            : () => setState(() => _editing = true),
+        child: Text(
+            key: ValueKey(
+              'stock-count-${widget.weight ? 'weight' : 'qty'}-${widget.rowKey}',
+            ),
+            hasValue ? text.text.trim() : '—',
+            textAlign: TextAlign.end,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: !hasValue
+                  ? Theme.of(context).colorScheme.onSurfaceVariant
+                  : row.validation != null
+                  ? Theme.of(context).colorScheme.error
+                  : Theme.of(context).colorScheme.primary,
+            ),
+          ),
       );
     },
   );

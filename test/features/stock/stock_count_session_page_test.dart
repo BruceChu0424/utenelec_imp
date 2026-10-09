@@ -262,8 +262,17 @@ void main() {
       table.columns.map((c) => c.key),
       containsAll(['stockPlace', 'countTargetQty', 'countTargetWeight', 'delta']),
     );
-    final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
-    await tester.enterText(qty, '12');
+    // 行距=读表密度(36~38)，与任务中心一致；就地编辑：点格→变输入框→输入。
+    final screwCell = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+    final nutCell = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
+    expect(
+      tester.getTopLeft(nutCell).dy - tester.getTopLeft(screwCell).dy,
+      lessThan(42),
+      reason: '未编辑行保持读表行距（约 36）',
+    );
+    await tester.tap(screwCell);
+    await tester.pump();
+    await tester.enterText(screwCell, '12');
     await tester.pump();
     await _confirmSubmit(tester, reason: '例行盘点');
     expect(repo.submissions.single.warehouse, 'leaf-a');
@@ -290,6 +299,8 @@ void main() {
     );
     expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsNothing);
     final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+    await tester.tap(qty);
+    await tester.pump();
     await tester.enterText(qty, '9');
     await tester.pump();
     await _confirmSubmit(tester);
@@ -304,10 +315,10 @@ void main() {
       'leaf-b': [_row(_nut, qty: '7')],
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
-    await tester.enterText(
-      find.byKey(const ValueKey('stock-count-qty-$_screw|')),
-      '11',
-    );
+    final aCell = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+    await tester.tap(aCell);
+    await tester.pump();
+    await tester.enterText(aCell, '11');
     await tester.pump();
     await tester.tap(find.byKey(const Key('stock-count-warehouse')));
     await tester.pumpAndSettle();
@@ -325,6 +336,8 @@ void main() {
     );
     final bQty = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
     expect(bQty, findsOneWidget);
+    await tester.tap(bQty);
+    await tester.pump();
     await tester.enterText(bQty, '8');
     await tester.pump();
     // 切回 A：之前填的 11 必须还在（按仓暂存）。
@@ -332,10 +345,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('原料仓 A'));
     await tester.pumpAndSettle();
-    final aField = tester.widget<TextField>(
+    final aText = tester.widget<Text>(
       find.byKey(const ValueKey('stock-count-qty-$_screw|')),
     );
-    expect(aField.controller?.text, '11');
+    expect(aText.data, '11', reason: '切仓回来显示已填的实盘值');
     // 送审只提交当前仓 A 的行。
     await _confirmSubmit(tester);
     expect(repo.submissions.single.warehouse, 'leaf-a');

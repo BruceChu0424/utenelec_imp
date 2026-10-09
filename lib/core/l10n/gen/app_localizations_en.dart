@@ -10414,4 +10414,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aiRecordsBillingOpen => 'Billing';
+
+  @override
+  String get release258StatusColors =>
+      'Status colors now follow one consistent palette: status columns use solid cell backgrounds, and warehouse outbound progress is readable at a glance (pending yellow, partial orange, complete green).';
+
+  @override
+  String get release258RollingMerge =>
+      'Purchase and subcontract requests now roll into one open request per analysis and route; un-ordered, unreferenced lines merge in automatically instead of creating new requests.';
+
+  @override
+  String get release258IqcPending =>
+      'The pending-inspection queue shows goods names and pending quantities again, grouped by base unit instead of dashes.';
+
+  @override
+  String get release258StockCount =>
+      'Stock counting now runs in a dedicated session page: quantities are entered in place, drafts are saved locally, and you can resume later.';
+
+  @override
+  String get release258CompactCells =>
+      'Table input cells across the app use one compact specification (10,6) for a tighter, consistent editing experience.';
+
+  @override
+  String get release258LockReason =>
+      'Locked rows in the subcontract task center are redesigned: a lock icon marks each row, and tapping it shows the lock reason.';
 }

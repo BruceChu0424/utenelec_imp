@@ -9821,4 +9821,24 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get aiRecordsBillingOpen => '计费设置';
+
+  @override
+  String get release258StatusColors =>
+      '全站状态颜色统一口径：状态列用稳定的整格底色标示，仓库单据出库进度一眼可辨（未出库黄、部分出库橙、已出完绿）。';
+
+  @override
+  String get release258RollingMerge =>
+      '采购与委外申请滚动合单：同一分析同一路线只保留一张开口申请，未订货且未被引用的行自动并入，无需反复新建。';
+
+  @override
+  String get release258IqcPending => '待检处置队列的货品名称与待检数量恢复显示，并按基本单位分组汇总，不再显示「—」。';
+
+  @override
+  String get release258StockCount => '盘点改为独立清点会话页：实盘数量就地填写，本机自动存草稿，中途离开可下次继续。';
+
+  @override
+  String get release258CompactCells => '全站表格输入格统一为紧凑规格（10,6），编辑表格更省空间、口径一致。';
+
+  @override
+  String get release258LockReason => '委外任务中心锁定行改版：行首锁图标标注，点击弹窗查看锁定原因。';
 }

@@ -4391,5 +4391,11 @@
   "aiRecordsPersonEmpty": "이 기간에는 AI를 사용한 직원이 없습니다",
   "aiRecordsPersonViewRecords": "기록 보기",
   "aiRecordsDetailTitle": "사용 상세",
-  "aiRecordsBillingOpen": "과금 설정"
+  "aiRecordsBillingOpen": "과금 설정",
+  "release258StatusColors": "상태 색상이 전체 앱에서 하나의 기준으로 통합되었습니다. 상태 열은 단색 배경으로 표시되며, 창고 출고 진행 상태(미출고 노랑, 일부 출고 주황, 출고 완료 초록)도 한눈에 보입니다.",
+  "release258RollingMerge": "구매·외주 신청이 하나의 열린 신청서로 통합 관리됩니다. 같은 분석과 경로는 최대 한 장만 유지되고, 발주 전 참조 없는 행은 자동으로 병합됩니다.",
+  "release258IqcPending": "검수 대기 목록의 품목명과 대기 수량이 다시 표시되고, 기본 단위별로 묶어 보여 줍니다.",
+  "release258StockCount": "재고 실사가 전용 세션 페이지에서 진행됩니다. 실수량을 그 자리에서 입력하고, 초안이 로컬에 저장되어 나중에 이어서 할 수 있습니다.",
+  "release258CompactCells": "전체 표 입력 칸이 동일한 컴팩트 규격(10,6)으로 통일되어 더욱 일관된 편집 환경을 제공합니다.",
+  "release258LockReason": "외주 업무 센터의 잠금 행이 개편되었습니다. 자물쇠 아이콘으로 표시되고 탭하면 잠금 사유를 확인할 수 있습니다."
 }

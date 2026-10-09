@@ -139,7 +139,10 @@ publish_release_permissions() {
 }
 
 health_ok() {
-  curl -fsS --max-time 5 "$UTEN_HEALTH_URL" 2>/dev/null \
+  # 生产后端启用 redirectToHttps：直连 8080 的本机探针必须像同机反向代理一样
+  # 声明 X-Forwarded-Proto，否则会被 302 到不存在的 8443 健康门误判失败。
+  # RemoteIpValve 只信任回环来源的该头，远端伪造无效，无安全降级。
+  curl -fsS --max-time 5 -H 'X-Forwarded-Proto: https' "$UTEN_HEALTH_URL" 2>/dev/null \
     | grep -q '"status"[: ]*"UP"'
 }
 

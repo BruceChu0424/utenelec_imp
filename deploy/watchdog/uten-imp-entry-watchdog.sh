@@ -141,7 +141,10 @@ acquire_operation_gate() {
 }
 
 application_is_ready() {
-  curl --fail --silent --show-error --max-time 5 "${READINESS_URL}" \
+  # 生产后端启用 redirectToHttps：本机直连探针须声明 X-Forwarded-Proto（同机
+  # 反向代理身份），否则 302 到无监听的 8443，readiness 被误判 DOWN。
+  curl --fail --silent --show-error --max-time 5 \
+    -H 'X-Forwarded-Proto: https' "${READINESS_URL}" \
     | jq -e '.status == "UP"' >/dev/null
 }
 

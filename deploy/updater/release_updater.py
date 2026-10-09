@@ -4836,7 +4836,13 @@ def validate_health(base_url: str, attempts: int = 100, delay_seconds: float = 3
             for endpoint in endpoints:
                 request = urllib.request.Request(
                     base_url + endpoint,
-                    headers={"Accept": "application/json"},
+                    # Loopback probes must present the same-host reverse-proxy
+                    # identity: production enforces redirectToHttps and would
+                    # otherwise 302 to the (nonexistent) TLS port.
+                    headers={
+                        "Accept": "application/json",
+                        "X-Forwarded-Proto": "https",
+                    },
                     method="GET",
                 )
                 with opener.open(request, timeout=5) as response:

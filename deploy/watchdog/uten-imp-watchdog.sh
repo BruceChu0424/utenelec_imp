@@ -209,7 +209,10 @@ recheck_recovery_authorization() {
   transaction_is_clear && recovery_enablement_is_clear
 }
 
-if curl --fail --silent --show-error --max-time 5 "${HEALTH_URL}" \
+# 生产后端启用 redirectToHttps：本机直连探针须声明 X-Forwarded-Proto（同机
+# 反向代理身份），否则 302 到无监听的 8443，liveness 被误判 DOWN。
+if curl --fail --silent --show-error --max-time 5 \
+  -H 'X-Forwarded-Proto: https' "${HEALTH_URL}" \
   | jq -e '.status == "UP"' >/dev/null; then
   write_counter 0
   write_recovery_state 0 0

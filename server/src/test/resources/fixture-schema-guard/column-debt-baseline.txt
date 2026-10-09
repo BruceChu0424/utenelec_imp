@@ -4102,7 +4102,6 @@ com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.order_multiple_qty
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.owner_employee_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.owning_responsible_employee_id
-com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.owning_warehouse_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.owning_workshop_department_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.pack
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.paper

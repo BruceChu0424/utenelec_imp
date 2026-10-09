@@ -5,6 +5,7 @@ import com.uten.imp.features.notice.ChainNoticeService;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -27,10 +28,15 @@ import static org.mockito.Mockito.mock;
  * 待检单聚合投影（pending-receipts）的真库回归：2026-10-08 起 DTO 携带
  * goodsSummary「名称 (编号 · 颜色)、…」与 pendingQtyText「qty 单位 · qty 单位」，
  * 供待检处置队列「货品名称/待检数量」两列——此前 IQC 收货单行整列显示「—」。
+ *
+ * <p>2026-10-09 起从真实迁移目录克隆 schema（{@link MigratedSchemaBaseline}），
+ * 不再手写最小 DDL：迁移加列零维护，满足 fixture 漂移守卫的根治口径。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
 class ProcurementInspectionPendingSummaryPostgresTest {
-    private static final PostgreSQLContainer<?> DB = new PostgreSQLContainer<>("postgres:16-alpine");
+    /** 本类独享的全量迁移容器；兼容 API 由本类负责停止。 */
+    private static final PostgreSQLContainer<?> DB =
+            MigratedSchemaBaseline.startMigratedContainer("iqc_pending_summary");
     private static EntityManagerFactory emf;
     private static ProcurementInspectionController controller;
     private static JdbcTemplate jdbc;
@@ -41,36 +47,24 @@ class ProcurementInspectionPendingSummaryPostgresTest {
     private static final UUID BOX_GOODS = UUID.randomUUID();
     private static final UUID BAG_GOODS = UUID.randomUUID();
     private static final UUID BLUE = UUID.randomUUID();
+    private static UUID warehouse;
 
     @BeforeAll
     static void setup() {
-        DB.start();
         var ds = new DriverManagerDataSource(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         jdbc = new JdbcTemplate(ds);
-        jdbc.execute("CREATE TABLE units(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("CREATE TABLE colors(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("CREATE TABLE warehouses(id uuid PRIMARY KEY, name text)");
-        jdbc.execute("""
-                CREATE TABLE goods(id uuid PRIMARY KEY, code text, name text, unit_id uuid)
-                """);
-        jdbc.execute("""
-                CREATE TABLE procurement_inspection_items(id uuid, receipt_type text, receipt_id uuid,
-                    goods_id uuid, color_id uuid, status text,
-                    received_base_qty numeric(18,4), passed_base_qty numeric(18,4),
-                    failed_base_qty numeric(18,4), warehouse_id uuid, received_at timestamptz,
-                    pre_stocked_warehouse_id uuid, pre_stocked_place text, pre_stocked_at timestamptz)
-                """);
-        jdbc.execute("CREATE TABLE suppliers(id uuid PRIMARY KEY, name text)");
-        for (String prefix : new String[]{"purchase", "subcontract"}) {
-            jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid PRIMARY KEY, legacy_id integer,"
-                    + " is_deleted boolean, bill_no text, bill_date date, supplier_id uuid)");
-        }
-        jdbc.update("INSERT INTO units VALUES (?, '个'), (?, '只')", PIECE_UNIT, BAG_UNIT);
-        jdbc.update("INSERT INTO colors VALUES (?, '蓝色')", BLUE);
-        jdbc.update("INSERT INTO goods VALUES (?, 'WL001', '盒装零件', ?)", BOX_GOODS, PIECE_UNIT);
-        jdbc.update("INSERT INTO goods VALUES (?, 'WL002', '编织袋', ?)", BAG_GOODS, BAG_UNIT);
-        jdbc.update("INSERT INTO suppliers VALUES (?, '华东供应商')", SUPPLIER);
-        jdbc.update("INSERT INTO purchase_receipts VALUES (?, NULL, FALSE, 'CJ20261008000001', ?::date, ?)",
+        // 真实 schema 的必填列与外键都要如实满足：供应商要分类，待检明细要仓库。
+        UUID category = UUID.randomUUID();
+        warehouse = UUID.randomUUID();
+        jdbc.update("INSERT INTO supplier_categories(id, code, name) VALUES (?, 'IQC-PENDING-CAT', '待检汇总测试分类')", category);
+        jdbc.update("INSERT INTO units(id, code, name) VALUES (?, 'IQC-U-PIECE', '个')", PIECE_UNIT);
+        jdbc.update("INSERT INTO units(id, code, name) VALUES (?, 'IQC-U-BAG', '只')", BAG_UNIT);
+        jdbc.update("INSERT INTO colors(id, code, name) VALUES (?, 'IQC-C-BLUE', '蓝色')", BLUE);
+        jdbc.update("INSERT INTO warehouses(id, code, name, parent_id, status) VALUES (?, 'IQC-W-PENDING', '待检测试仓', NULL, '使用')", warehouse);
+        jdbc.update("INSERT INTO goods(id, code, name, unit_id, code_sequence) VALUES (?, 'WL001', '盒装零件', ?, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))", BOX_GOODS, PIECE_UNIT);
+        jdbc.update("INSERT INTO goods(id, code, name, unit_id, code_sequence) VALUES (?, 'WL002', '编织袋', ?, (SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM goods))", BAG_GOODS, BAG_UNIT);
+        jdbc.update("INSERT INTO suppliers(id, code, name, status, category_id, code_sequence) VALUES (?, 'IQC-S-1', '华东供应商', '使用', ?, 1)", SUPPLIER, category);
+        jdbc.update("INSERT INTO purchase_receipts(id, is_deleted, bill_no, bill_date, supplier_id) VALUES (?, FALSE, 'CJ20261008000001', ?::date, ?)",
                 RECEIPT, LocalDate.of(2026, 10, 8), SUPPLIER);
         var factory = new LocalContainerEntityManagerFactoryBean();
         factory.setDataSource(ds);
@@ -101,12 +95,13 @@ class ProcurementInspectionPendingSummaryPostgresTest {
 
     @Test
     void pendingSummaryCarriesGoodsSummaryAndUnitGroupedQtyText() {
-        // 两条待检明细：盒装零件(个)剩 30、编织袋(只)剩 10；一条已结案明细必须被排除。
-        insertPendingItem(UUID.randomUUID(), BOX_GOODS, BLUE, "PENDING",
-                new BigDecimal("48"), new BigDecimal("12"), new BigDecimal("6"));
-        insertPendingItem(UUID.randomUUID(), BAG_GOODS, null, "PARTIAL",
-                new BigDecimal("10"), BigDecimal.ZERO, BigDecimal.ZERO);
-        insertPendingItem(UUID.randomUUID(), BOX_GOODS, BLUE, "RESOLVED",
+        // 两条待检明细：盒装零件(个)剩 30、编织袋(只)已检 2 剩 10；一条已结案明细必须被排除。
+        // 数量组合受 procurement_inspection_items_status_projection_chk 约束（PENDING 未检、PARTIAL 部分检）。
+        insertPendingItem(UUID.randomUUID(), BOX_GOODS, PIECE_UNIT, BLUE, "PENDING",
+                new BigDecimal("30"), BigDecimal.ZERO, BigDecimal.ZERO);
+        insertPendingItem(UUID.randomUUID(), BAG_GOODS, BAG_UNIT, null, "PARTIAL",
+                new BigDecimal("12"), new BigDecimal("2"), BigDecimal.ZERO);
+        insertPendingItem(UUID.randomUUID(), BOX_GOODS, PIECE_UNIT, BLUE, "RESOLVED",
                 new BigDecimal("100"), new BigDecimal("100"), BigDecimal.ZERO);
 
         var summaries = controller.pendingReceipts();
@@ -126,12 +121,14 @@ class ProcurementInspectionPendingSummaryPostgresTest {
     }
 
     private static void insertPendingItem(
-            UUID id, UUID goods, UUID color, String status,
+            UUID id, UUID goods, UUID unit, UUID color, String status,
             BigDecimal received, BigDecimal passed, BigDecimal failed) {
+        // receipt_item_id 无外键（投影只按 receipt 头聚合），仓库来自上面建好的真实仓库行。
         jdbc.update("""
-                INSERT INTO procurement_inspection_items(id, receipt_type, receipt_id, goods_id, color_id,
-                    status, received_base_qty, passed_base_qty, failed_base_qty, received_at)
-                VALUES (?, 'PURCHASE', ?, ?, ?, ?, ?, ?, ?, now())
-                """, id, RECEIPT, goods, color, status, received, passed, failed);
+                INSERT INTO procurement_inspection_items(id, receipt_type, receipt_id, receipt_item_id, warehouse_id,
+                    goods_id, color_id, unit_id, unit_rate, status, received_base_qty, passed_base_qty,
+                    failed_base_qty, received_at)
+                VALUES (?, 'PURCHASE', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, now())
+                """, id, RECEIPT, UUID.randomUUID(), warehouse, goods, color, unit, status, received, passed, failed);
     }
 }

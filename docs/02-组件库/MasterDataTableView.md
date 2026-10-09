@@ -23,8 +23,10 @@
 
 ## 二、Excel 风格特性（开箱即用）
 
-- **添加列跟随表格显示（2026-09-30）**：仅在表格/数据卡片实际呈现时显示“添加列”。没有数据、筛选后无结果、初次加载及加载失败的占位页面不显示孤立的加号；恢复数据后自动恢复入口。空态仍保留调用方的新建、视图切换、筛选与重试，以及已经进入全屏时的退出入口。由共用组件统一处理，业务页面不各自判断。
-  有可展开/加载/重试的前导分组时保留真实分组表，不切到无法显示分组的空卡片列表。嵌入式小屏卡片按内容收缩，避免空态恢复数据后出现无界高度错误。可编辑网格仍显示真实表头时，其表头内添加入口随表头显示。
+- **添加列常驻工具条（2026-10-09 统一骨架起）**：空结果/初次加载/加载失败都渲染同一张
+  表骨架（表头常在），「添加列」与全屏、业务动作一样在任何状态都显示——占位切换期间
+  入口不再忽隐忽现。由共用组件统一处理，业务页面不各自判断。
+  有可展开/加载/重试的前导分组时保留真实分组表。可编辑网格仍显示真实表头时，其表头内添加入口随表头显示。
 
 - **横排 autofilter 列头**：每列表头一个「标签 ▼」单元格，点开下拉筛选项（facet 桶 + 末尾兜底档），选中高亮。
 - **表头文字统一**：与 `UtenEditableGrid` 共用 `UtenTableHeader.textStyle`，普通列、可筛选列、可排序列均使用 `labelLarge`（当前主题 14px）、w600 和 `onSurfaceVariant`；筛选/排序生效时仅切换主色与背景，字号、字重保持一致。自动列宽测量也使用同一样式。
@@ -99,17 +101,13 @@
   **测试注意**：横滚后同一行有两个 `Checkbox`（行内原位 + 冻结副本），按行定位要用 `.first`。
   多选表体整体 `SelectionContainer.disabled`——勾选场景不需要文本复制，也挡住页面级
   SelectionArea（UtenContentContainer 默认包裹）渗入（2026-09-03，准则 §3.4）。
-- **成功空态保留业务工具条**：主数据与前导分组都为空时仍渲染调用方的 `toolbarActions`
-  (例如空 BOM 的“添加组件”)与 `toolbarLeadingActions`（视图切换 chip），再显示空态说明；初始加载
-  和错误态不开放这组写动作，先完成数据确认或重试。**2026-09-11 起空态不再提供「进全屏」**
-  ——放大一张没有行的表毫无意义，用户反而以为数据被按钮挡住了（销售订单财务确认「待确认」
-  空态反馈）；**已在全屏中时按钮保留**（`退出全屏`，与工具条共用 `_fullscreenToggleButton`，
-  key `master-table-fullscreen-toggle`）——0 行时不能被困在全屏路由。且当 `filters` 里有任何激活值
-  （非 null/非空串，含「筛空值」哨兵）时在动作首位追加 **「清除筛选」**（key
-  `master-table-clear-filters`，逐列回调 `onFilterChanged(key, null)`），空态说明补一行
-  「当前有 N 个表头筛选生效」——列头筛选控件随表头一起不渲染，这是撤掉「看不见的筛选」的唯一出口
-  （物料分析「路线待确认」筛选后确认路线 → 0 行 → 表头消失的死锁根因）。测试：
-  `test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`。
+- **空态文案与筛选生效数**（骨架口径见下方「空/错/加载态 = 同一张表的行区提示」）：
+  空结果行区显示 `emptyMessage`，当 `filters` 里有任何激活值（非 null/非空串，含「筛空值」
+  哨兵）时补一行「当前有 N 个表头筛选生效」——这是「看不见的筛选」的唯一线索
+  （物料分析「路线待确认」筛选后确认路线 → 0 行的死锁根由；空态「清除筛选」按钮已按
+  2026-09-28 用户口径退役——分类分段条等筛选入口常驻表外，按钮是重复入口）。
+  测试：`test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`、
+  `test/master_data_table_view_stable_toolbar_test.dart`。
 - **文字框选(2026-09-03 全站口径，准则 §3.4)**：只读表体默认自带局部
   `SelectionArea`(跨格框选 + 复制，页面 region 嵌套时各管各的)；**表头整体
   `SelectionContainer.disabled`**——表头有「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，
@@ -141,8 +139,29 @@
   「滑到底自动加载下一页」。组件不判断是否还有更多页——增量加载式页面不传
   `currentPage/totalPages`（传了会渲染翻页条），由调用方在回调里守卫（`page >= totalPages`
   即 no-op）；典型接入见员工列表页。
-- **空/错/加载态**：内置 `UtenEmpty` / loading / 重试。`isLoading` 仅在 `items` 为空时显示
-  整表转圈——刷新时仍持旧数据的页面表格原地保留（工具条/搜索框不卸载、焦点不丢）。
+- **空/错/加载态 = 同一张表的行区提示（2026-10-09 用户口径「搜索无结果表格骨架也要在，
+  页面不许跳」）**：loading（含首屏 `isLoading` 且无数据）、错误（重试）、空结果（`emptyMessage`，
+  附「当前有 N 个表头筛选生效」说明）**不再整块换占位壳**——统一渲染同一张表
+  （工具条 + 表头 + 列），提示作为一条跨满宽行插在行计划首位（`_ViewportPinnedRow` 钉横滚），
+  只有行区内容随状态变。刷新时仍持旧数据的表格原地保留。工具条因此任何状态同构：
+  业务写动作（`toolbarActions`）与「添加列」「全屏」按钮在空表也渲染（骨架稳定优先，
+  2026-09-11「空表不给进全屏」口径随之作废——放大看「类似人员」分组正需要它）。
+  `scrollingHeader` 参数与状态占位壳（`_stateShell`/`_stateActionsFrame`）已随本口径删除。
+  测试：`test/features/basic_data/widgets/master_data_table_view_empty_state_test.dart`、
+  `test/master_data_table_view_stable_toolbar_test.dart`。
+- **「无符合… / 类似结果」两段式（2026-10-09）**：主行（`items`）为空但传了
+  `leadingGroups`（如搜索 0 命中时的「类似人员」分组）时，行区先渲染紧凑
+  「无符合…」提示条（`emptyMessage` + 筛选生效数），后跟分组标题行与分组行。
+  `MasterDataGroup.initiallyExpanded: true` 让分组生来展开（结果提示型分组不需要再点一下）。
+  数据源由页面在精确搜索 0 命中时自行补拉（员工档案页 + 后端
+  `GET /org/employees/similar` 逐字符评分是参考实现）。
+- **前缀/动作区稳定挂载（2026-10-09，「拼音打一半丢输入法」根因修复）**：
+  `toolbarLeadingActions` / `toolbarActions` 的控件经 GlobalKey 稳定槽
+  （`_stableLeadingActions` / `_stableToolbarActions`）渲染，跨工具条结构变化
+  （Wrap↔Row 分流、进出全屏换树）走 Element 重挂载（reparent）而非销毁重建——
+  文本、焦点、输入法组合全不丢；首屏加载期间也能直接输入搜索。
+  全屏进入是同帧卸旧挂新，同样走重挂载保命。测试：
+  `test/master_data_table_view_stable_toolbar_test.dart`。
 - **`toolbarActions`、`toolbarLeadingActions`、批量悬浮动作与全屏**：`toolbarActions` 的按钮排在工具条
   **右侧贴边**（全站口径：刷新等页面动作放表格右上角，多个动作间 s8 间距、宽度不足自动换行——
   2026-09-06 起），**全屏路由里同位置同样渲染**（全屏由 `showGeneralDialog` 整屏路由 +

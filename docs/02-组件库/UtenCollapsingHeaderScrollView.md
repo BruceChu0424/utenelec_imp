@@ -24,6 +24,13 @@
   - 销售 / 委外 / 钱流 / 仓库单据详情、生产日报详情、仓库实物单据历史详情、仓库销售出库作业详情（2026-09-11）。
   - 口径：底部操作栏留在 `Scaffold.bottomNavigationBar`（不进滚动区）；附件等「备注类小卡」并入折叠头尾部随头部一起收起；明细下的合计条（`UtenTotalsSummaryBar`）留在表格下方常驻可见——**合计条从此一直可见，页面若原先靠「滚不到就看不见」隐藏某项，必须改成显式门控**（2026-09-11 销售订单「合计(本币)」按单据类型显式隐藏即此类）。
   - 无明细表的详情（如钱流客户预收）**不接**：没有可内滚的表格，保持整页 `ListView`。
+- **人事域（2026-10-09）**：员工详情页（顶部折叠 + Tab 吸顶 + Tab 内滚）与工资条审核页
+  （摘要/驳回卡折叠 + 明细表内滚）此前已接；本批补齐——人事花名册核对更正页（摘要区折叠 +
+  表格内滚）、部门管理右详情面板（详情卡/人员总览折叠 + 在册员工工具条吸顶 + 表格内滚；无
+  `employee:view` 时无表格可联动、不接）、HR 任务子页（生日/周年的「自动发送祝福」开关卡折叠，
+  其余类型无折叠头即纯表内滚）、HR 信息变更审核队列（分段工具条折叠 + 表格内滚，对齐报销审批
+  队列）。员工列表页 / 工资条列表页顶部无固定区（表格即整页 body）、表单与向导页无表格，按
+  「何时不用」不接。
 
 **何时不用**：
 - 顶部只有一行搜索条、没有可收起的大块（如颜色 / 单位等扁平主档页）——本来就已「搜索条吸顶 + 表格内滚」，套本组件是空操作，不必包。
@@ -180,7 +187,8 @@ return Padding(
 
 ---
 
-**最后更新**：2026-09-25（二）· 停顿窗加**距离放行线**（`wheelHoldDistance` 默认 250）：滚不停的用户同方向累计推够距离即放行，不卡死在置顶点——与时间放行线（350ms 停顿）先到先放；此前同日：§八新增停顿窗（`wheelHoldWindow`），截停后同一滚势的连续快滚整格吞掉，「滚一下没停就置顶了 → 停住，重新开始滚才继续」；同批在 `uten_sticky_header.dart` 落地单滚动页（embedded 表/编辑网格）共用的 `UtenStickyWheelGate`（截停 + 停顿窗双放行线 + 短表按需撑高）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart` + `test/uten_sticky_wheel_gate_test.dart`。
+**最后更新**：2026-10-09 · 人事域批量接入（§一「人事域」）：花名册核对更正页 / 部门管理右详情面板 / HR 任务子页 / HR 信息变更审核队列四页补齐「折叠头 + 表格吸顶内滚」，文档同步修正工资条审核页与员工详情页两处陈旧滚动描述（定高钳制 / 无吸顶描述已退役）。回归：四页既有测试（hr_reconcile / hr_task_list / hr_profile_changes / department_overview_pane）在 HEAD 基线全绿。
+此前：2026-09-25（二）· 停顿窗加**距离放行线**（`wheelHoldDistance` 默认 250）：滚不停的用户同方向累计推够距离即放行，不卡死在置顶点——与时间放行线（350ms 停顿）先到先放；此前同日：§八新增停顿窗（`wheelHoldWindow`），截停后同一滚势的连续快滚整格吞掉，「滚一下没停就置顶了 → 停住，重新开始滚才继续」；同批在 `uten_sticky_header.dart` 落地单滚动页（embedded 表/编辑网格）共用的 `UtenStickyWheelGate`（截停 + 停顿窗双放行线 + 短表按需撑高）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart` + `test/uten_sticky_wheel_gate_test.dart`。
 此前：2026-09-22 · 新增 §八：滚轮交接门（`wheelGateDistance`，到点即止 + 空行程 + 掉头撤门 + 先置顶再表内 + 不抢独立滚动件）；卡顿根因定位到 body 每格变高 + 表格整树重建，表格侧只按宽度重建；`floatHeaderSlivers` 参数删除（无调用方，且门依赖非 floating 顺序）。回归：`test/uten_collapsing_header_scroll_relayout_test.dart`（6 例）。
 此前：2026-09-14 · 新增滚动条口径（§五）：外层收头部阶段不显示上下滚动条，进入表体内滚后再显示表内滚动条（`UtenInnerScrollActiveScope` 注入 + `MasterDataTableView` 门控）。
 此前：2026-09-11 · 接入范围扩大到单据详情页（销售 / 委外 / 钱流 / 仓库单据、生产日报、仓库实物历史、仓库销售出库作业）；组件新增「矮视口」与「被头部挤扁」两条紧凑回退触发线 + body 挤扁哨兵（`compactHeightBreakpoint`）。回归测试夹具见 `test/support/collapsing_header_harness.dart`（折叠断言 + 1280x900 / 390x844 / 844x390 三视口 × textScale 1.5 不溢出）。

@@ -57,7 +57,7 @@ class StockCountCandidateCategoriesPostgresTest {
                 CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,category_id uuid,color_id uuid,unit_id uuid,
                   version bigint DEFAULT 2,issue_method text DEFAULT 'ORDER',status text DEFAULT '使用',
                   is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false,
-                  stock_place text,model text,spec text);
+                  stock_place text,model text,spec text,owning_warehouse_id uuid);
                 CREATE TABLE stock_balances(warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric(18,4),
                   weight numeric(18,4),weight_estimated boolean DEFAULT false);
                 CREATE FUNCTION fn_weight_unit_kg_factor(text) RETURNS numeric LANGUAGE sql IMMUTABLE
@@ -108,14 +108,38 @@ class StockCountCandidateCategoriesPostgresTest {
         assertThat(service.candidates(leaf,"",List.of(disabled),1,50).getItems())
                 .extracting(r->r.get("colorId")).containsOnlyNulls();
         // 盘点页「有库存」段: stockedOnly 把零余额行滤掉, 只留本仓有账面数量的行。
-        assertThat(service.candidates(leaf,"",null,null,true,1,50).getItems())
+        assertThat(service.candidates(leaf,"",null,null,true,false,1,50).getItems())
                 .extracting(r->r.get("goodsId")).doesNotContain(disabled);
         db.update("INSERT INTO stock_balances VALUES (?,?,NULL,3,NULL,false)",leaf,disabled);
-        assertThat(service.candidates(leaf,"",null,null,true,1,50).getItems())
+        assertThat(service.candidates(leaf,"",null,null,true,false,1,50).getItems())
                 .extracting(r->r.get("goodsId")).contains(disabled);
         assertThat(service.candidateCategoryIds(bin,"螺丝")).isEmpty();
         assertThat(service.candidateCategoryIds(leaf,"螺丝")).containsExactly(fasteners);
         assertThat(flatten(ordinary).keySet()).doesNotContain(empty,stubCategory);
+    }
+
+    @Test void sheetScopesRowsToWarehouseOwnershipPlusBalancesWhilePickerSeesAll() {
+        UUID root=category("ROOT","物料",null);
+        // 「别仓」用测试内自建普通仓：不碰 foreignBin(它承担"不可访问仓 403"的既有断言)。
+        UUID other=UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,code,name) VALUES (?,'OTHER','别仓')",other);
+        UUID owned=goods("OWN","本仓管辖料",root,kg,null);
+        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?",leaf,owned);
+        UUID foreign=goods("FOREIGN","别仓管辖料",root,kg,null);
+        db.update("UPDATE goods SET owning_warehouse_id=? WHERE id=?",other,foreign);
+        UUID stocked=goods("STOCKED","在库有余额料",root,kg,null);
+        db.update("INSERT INTO stock_balances VALUES (?,?,NULL,2,2,false)",leaf,stocked);
+        // 盘点单口径(2026-10-08): 换仓行数不同——只列 主档归属本仓 ∪ 本仓有余额。
+        assertThat(service.candidates(leaf,"",null,null,false,true,1,50).getItems())
+                .extracting(r->r.get("goodsId")).containsExactlyInAnyOrder(owned,stocked);
+        assertThat(service.candidates(other,"",null,null,false,true,1,50).getItems())
+                .extracting(r->r.get("goodsId")).containsExactly(foreign);
+        // 全库候选(添加物料选择器)不受 sheet 影响, 任何货品都能盘盈加入。
+        assertThat(service.candidates(leaf,"",null,1,50).getItems())
+                .extracting(r->r.get("goodsId")).containsExactlyInAnyOrder(owned,foreign,stocked);
+        // 分类树同样支持 sheet 口径(该仓有行的分类才出现)。
+        assertThat(flatten(service.candidateCategories(leaf,true)).keySet()).containsExactly(root);
+        assertThat(service.candidateCategories(other,true)).hasSize(1);
     }
 
     @Test void parentSubtreeIntersectsIdsAndSearchWithoutCollapsingColorsAndPages() {
@@ -212,7 +236,7 @@ class StockCountCandidateCategoriesPostgresTest {
         db.update("INSERT INTO warehouses(id,code,name,parent_id) VALUES (?,'C','子仓',?)",child,parent);
         assertForbidden(()->service.candidateCategories(parent));
         assertForbidden(()->service.candidateCategoryIds(parent,"PP"));
-        assertThat(StockCountRequestController.class.getMethod("candidateCategories",UUID.class).getAnnotation(PreAuthorize.class).value())
+        assertThat(StockCountRequestController.class.getMethod("candidateCategories",UUID.class,boolean.class).getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('stock:count:submit')");
         assertThat(StockCountRequestController.class.getMethod("candidateCategoryIds",UUID.class,String.class).getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('stock:count:submit')");

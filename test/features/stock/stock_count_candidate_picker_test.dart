@@ -42,8 +42,9 @@ class _Repo extends StockCountRequestRepository {
 
   @override
   Future<List<ProductCategoryNode>> candidateCategories(
-    String warehouseId,
-  ) async => [
+    String warehouseId, {
+    bool sheet = false,
+  }) async => [
     ProductCategoryNode(
       id: 'raw',
       code: '',
@@ -73,6 +74,7 @@ class _Repo extends StockCountRequestRepository {
     String? categoryId,
     List<String> goodsIds = const [],
     bool stockedOnly = false,
+    bool sheet = false,
     int page = 1,
     int size = 50,
   }) async {

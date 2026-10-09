@@ -414,6 +414,21 @@ class OperationsWorkbenchTask {
       : '${_displayNumber(openQty)} $unitName'.trim();
   bool get hasException => exceptionCode != null;
 
+  /// 「可下单」列/弹窗文案(ADR-156)：可部分下单 = 「N / 剩余 M 单位」，其余 =
+  /// 「N 单位」(锁行为 0)；非申请行 / 缺 BOM(没有物料可算)为 null。归组行各明细
+  /// 单位可能不同，不带单位、不拼剩余。
+  String? get orderableQtyText {
+    final orderable = orderableQty;
+    if (orderable == null || isBomMissing) return null;
+    final unit = isDocumentGrouped ? '' : unitName.trim();
+    if (isKitPartial && !isDocumentGrouped) {
+      return '${formatWorkbenchQuantity(orderable)} / 剩余 '
+          '${formatWorkbenchQuantity(openQty)}${unit.isEmpty ? '' : ' $unit'}';
+    }
+    return '${formatWorkbenchQuantity(orderable)}'
+        '${unit.isEmpty ? '' : ' $unit'}';
+  }
+
   factory OperationsWorkbenchTask.fromJson(
     Map<String, dynamic> json,
     OperationsWorkbenchDepartment department,
@@ -736,3 +751,11 @@ int _requiredInt(Map<String, dynamic> json, String key) {
 String _displayNumber(num value) => value == value.roundToDouble()
     ? value.toInt().toString()
     : value.toString();
+
+/// 任务数量通用格式：整数不带小数点，小数最多 3 位并去掉末尾 0。
+String formatWorkbenchQuantity(num value) => value == value.roundToDouble()
+    ? value.toInt().toString()
+    : value
+          .toStringAsFixed(3)
+          .replaceFirst(RegExp(r'0+$'), '')
+          .replaceFirst(RegExp(r'\.$'), '');

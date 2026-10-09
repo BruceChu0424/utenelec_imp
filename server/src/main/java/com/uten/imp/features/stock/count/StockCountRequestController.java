@@ -25,16 +25,18 @@ public class StockCountRequestController {
     @GetMapping("/candidates") public PageResponse<Map<String,Object>> candidates(@RequestParam UUID warehouseId,
             @RequestParam(defaultValue="") String keyword, @RequestParam(required=false) List<UUID> goodsIds,
             @RequestParam(required=false) UUID categoryId, @RequestParam(defaultValue="false") boolean stockedOnly,
+            @RequestParam(defaultValue="false") boolean sheet,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
-        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,page,size);
+        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,sheet,page,size);
     }
     /** Existing Java callers keep the unfiltered candidate contract. */
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> goodsIds,int page,int size) {
         return service.candidates(warehouseId,keyword,goodsIds,page,size);
     }
     @GetMapping("/candidate-categories") @PreAuthorize("hasAuthority('stock:count:submit')")
-    public List<Map<String,Object>> candidateCategories(@RequestParam UUID warehouseId) {
-        return service.candidateCategories(warehouseId);
+    public List<Map<String,Object>> candidateCategories(@RequestParam UUID warehouseId,
+            @RequestParam(defaultValue="false") boolean sheet) {
+        return service.candidateCategories(warehouseId,sheet);
     }
     @GetMapping("/candidate-category-ids") @PreAuthorize("hasAuthority('stock:count:submit')")
     public List<UUID> candidateCategoryIds(@RequestParam UUID warehouseId,@RequestParam(defaultValue="") String keyword) {

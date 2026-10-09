@@ -144,7 +144,7 @@ void main() {
   );
 
   testWidgets(
-    'each operations category and fullscreen have one table-owned selection action',
+    'only the pending segment owns one table selection action across widths',
     (tester) async {
       _desktop(tester, const Size(1400, 1100));
       await tester.pumpWidget(
@@ -180,31 +180,35 @@ void main() {
         Function.apply(select, [segment.value]);
       }
 
-      for (final category in ['待处理', '进行中', '历史记录']) {
+      // 2026-10-08 口径：勾选列与「生成委外订货单」只属于「待处理」段——
+      // 进行中/历史的行都已下单，没有可勾选的行，不摆永远灰着的批量按钮。
+      for (final category in ['进行中', '历史记录']) {
         selectStage(category);
         await tester.pumpAndSettle();
         if (category == '历史记录') {
-          // 2026-10-04 起历史门默认「全部」：动作与选中胶囊随挂载即在，
-          // 不再有「未选时间」占位态；再点已选中的「全部」不重复发请求。
+          // 2026-10-04 起历史门默认「全部」：直接进列表。
           await selectFilterSegment(tester, '全部');
           await tester.pumpAndSettle();
         }
-        expect(action, findsOneWidget, reason: category);
+        expect(action, findsNothing, reason: category);
         expect(
           find.byType(UtenSelectionSummaryPill),
-          findsOneWidget,
+          findsNothing,
           reason: category,
         );
-        expect(
-          find.ancestor(
-            of: action,
-            matching: find.byType(MasterDataTableView<OperationsWorkbenchTask>),
-          ),
-          findsOneWidget,
-        );
+        expect(find.byType(Checkbox), findsNothing, reason: category);
       }
       selectStage('待处理');
       await tester.pumpAndSettle();
+      expect(action, findsOneWidget);
+      expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: action,
+          matching: find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.text('FG-task-1'));
       await tester.pumpAndSettle();
       expect(find.text('已选 1 项'), findsOneWidget);
@@ -245,12 +249,12 @@ void main() {
       // 375px 下分类栏收成「分类」下拉（2026-09-14），统一走共用助手选段。
       await selectFilterSegment(tester, '历史记录');
       await tester.pumpAndSettle();
-      // 2026-10-04 起历史门默认「全部」：动作与选中胶囊随挂载即在；再点
-      // 已选中的「全部」不重复发请求。
+      // 2026-10-04 起历史门默认「全部」；2026-10-08 起历史段不再提供勾选与
+      // 批量按钮。
       await selectFilterSegment(tester, '全部');
       await tester.pumpAndSettle();
-      expect(action, findsOneWidget);
-      expect(find.byType(UtenSelectionSummaryPill), findsOneWidget);
+      expect(action, findsNothing);
+      expect(find.byType(UtenSelectionSummaryPill), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -319,7 +323,7 @@ void main() {
   );
 
   testWidgets(
-    'application row opens one linear progress timeline without make-first steps',
+    'application row opens the summary dialog: big quantities, ownership and link; timeline retired',
     (tester) async {
       _desktop(tester, const Size(1600, 1200));
       await tester.pumpWidget(
@@ -352,21 +356,26 @@ void main() {
 
       await _doubleTapRow(tester, find.text('FG-task-1'));
       await tester.pumpAndSettle();
-      expect(find.text('生成委外订货单（当前）'), findsOneWidget);
-      for (final step in [
-        '计划已下达申请',
-        '财务审批',
-        '领料发外',
-        '加工回厂',
-        '品质检验',
-        '仓库确认入仓',
-        '结案核销',
-      ]) {
-        expect(find.text(step), findsOneWidget, reason: step);
-      }
-      expect(find.text('前置生产完成'), findsNothing);
-      expect(find.textContaining('目标件'), findsNothing);
-      expect(find.textContaining('子件'), findsNothing);
+      // 2026-10-08 改版：8 步流程时间线退役，弹窗只保留申请摘要。
+      expect(find.text('生成委外订货单（当前）'), findsNothing);
+      expect(find.text('计划已下达申请'), findsNothing);
+      expect(find.text('结案核销'), findsNothing);
+      // 可下单行没有锁定红框。
+      expect(find.text('暂时不能下单'), findsNothing);
+      // 关键数量与身份摘要（「待下单量」与表头同名，断言限定在弹窗内）。
+      final dialog = find.byType(Dialog);
+      expect(dialog, findsOneWidget);
+      expect(
+        find.descendant(of: dialog, matching: find.text('待下单量')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: dialog, matching: find.text('这次可下单')),
+        findsOneWidget,
+      );
+      expect(find.text('委外申请号 EA-application-1'), findsOneWidget);
+      expect(find.text('需求日期 2026-09-10'), findsOneWidget);
+      // 数量归属保留。
       expect(find.text('数量归属'), findsOneWidget);
       expect(find.text('ROOT-1 原产品一'), findsOneWidget);
       expect(find.text('销售订单 SO-1 · 第2行'), findsOneWidget);
@@ -458,6 +467,12 @@ void main() {
         udenStatusBadgeCellColor(context, UtenStatusBadgeType.warning),
       );
       expect(find.text('缺 BOM·已通知研发(RD0007)'), findsWidgets);
+      // 勾选位锁图标悬浮说明为什么不能下单。
+      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      expect(
+        find.byTooltip('委外件还没有 BOM，已通知研发完善(RD0007)；研发保存 BOM 后自动恢复可下单'),
+        findsOneWidget,
+      );
       // 普通申请行不受影响。
       final ready = table.items.firstWhere((task) => task.taskId == 'task-1');
       expect(table.idOf!(ready), 'task-1');
@@ -664,6 +679,49 @@ void main() {
       },
     );
 
+    testWidgets(
+      'locked rows show a lock in the leading cell and the dialog explains why in red',
+      (tester) async {
+        _desktop(tester, const Size(1700, 1000));
+        await tester.pumpWidget(
+          _scope(
+            child: MaterialApp(
+              home: SubcontractDecompositionPage(
+                repository: _Gateway(_kitData()),
+                drawRepository: FakeSubcontractDrawGateway(),
+                kitGateway: _KitGateway(),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // 勾选位：锁行换成锁图标(悬浮说明原因)，可下单两行仍是勾选框
+        // (2 个行勾选 + 1 个表头全选)。
+        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+        expect(find.byTooltip(lockedHint), findsOneWidget);
+        expect(find.byType(Checkbox), findsNWidgets(3));
+
+        await _doubleTapRow(tester, find.text('FG-task-locked'));
+        await tester.pumpAndSettle();
+        // 锁行弹窗：顶部红框写明为什么锁住；流程时间线已退役。
+        expect(find.text('暂时不能下单'), findsOneWidget);
+        expect(find.text(lockedHint), findsOneWidget);
+        expect(find.text('生成委外订货单（当前）'), findsNothing);
+        final dialog = find.byType(Dialog);
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.byIcon(Icons.lock_outline_rounded),
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(find.text('关闭'));
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets('clicking a status opens the kit dialog with every material', (
       tester,
     ) async {
@@ -816,8 +874,10 @@ void main() {
       expect(find.text('可下单 4 / 剩余 6 件'), findsOneWidget);
       expect(find.text('可下单 6 件'), findsOneWidget);
       expect(find.text('可下单 0 件'), findsOneWidget);
-      // 锁行卡片没有勾选框；三张卡都有「齐套情况」。
+      // 锁行卡片没有勾选框，勾选位换锁图标；三张卡都有「齐套情况」。
       expect(find.byType(Checkbox), findsNWidgets(2));
+      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      expect(find.byTooltip(lockedHint), findsOneWidget);
       expect(find.text('齐套情况'), findsNWidgets(3));
       expect(tester.takeException(), isNull);
     });
@@ -1030,6 +1090,10 @@ void main() {
           null,
           null,
         ]);
+        // 不可领的三行(已提交/等计划/等物料)勾选位换锁图标，悬浮说明下一步
+        // 由谁动手；状态格悬浮同句(两处都在)。
+        expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(3));
+        expect(find.byTooltip('已提交 30 个 的领料，等仓库发出'), findsNWidgets(2));
         // 状态列文案 + 车间同款整格底色(蓝 / 紫 / 青 / 品红 / 灰蓝)。
         expect(find.text('可领 60 个·去领料'), findsOneWidget);
         expect(find.text('可领 20 个·去领料'), findsOneWidget);

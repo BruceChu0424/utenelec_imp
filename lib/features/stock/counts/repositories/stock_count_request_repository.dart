@@ -20,6 +20,7 @@ class StockCountRequestRepository {
     String? categoryId,
     List<String> goodsIds = const [],
     bool stockedOnly = false,
+    bool sheet = false,
     int page = 1,
     int size = 50,
   }) async => PagedResult.fromJson(
@@ -30,6 +31,8 @@ class StockCountRequestRepository {
         'keyword': ?keyword,
         'categoryId': ?categoryId,
         'stockedOnly': stockedOnly,
+        // 盘点单口径：只列 主档归属本仓 ∪ 本仓有余额（false=全库候选，添加物料用）。
+        'sheet': sheet,
         if (goodsIds.isNotEmpty) 'goodsIds': goodsIds.join(','),
         'page': page,
         'size': size,
@@ -38,10 +41,11 @@ class StockCountRequestRepository {
     CountStockRow.fromJson,
   );
   Future<List<ProductCategoryNode>> candidateCategories(
-    String warehouseId,
-  ) async => (await api.getList(
+    String warehouseId, {
+    bool sheet = false,
+  }) async => (await api.getList(
     '$base/candidate-categories',
-    query: {'warehouseId': warehouseId},
+    query: {'warehouseId': warehouseId, 'sheet': sheet},
   )).map(ProductCategoryNode.fromJson).toList();
 
   Future<Set<String>> candidateCategoryIds(

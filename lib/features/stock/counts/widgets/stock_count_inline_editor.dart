@@ -336,9 +336,12 @@ class StockCountInlineCell extends StatelessWidget {
         controller: weight ? row.weight : row.qty,
         enabled: !controller.busy,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        // 紧凑格（读表 37 口径，与任务中心等读表同行距）：isDense 默认垂直 12 会把
+        // 行撑到 ~55；这里压到 6，输入格 ~37，与纯文本行等高。
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
+            contentPadding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
             hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
             error: row.validation == null
                 ? null

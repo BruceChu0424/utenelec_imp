@@ -1,20 +1,26 @@
 // 盘点模式独立页（/stock/count-session，2026-10-08）。
 //
 // 从即时库存「盘点模式」直达（带当前已选的具体仓库，不再弹选仓窗），本页自成会话：
-// - 只针对一个具体仓库；顶部「仓库」字段随时切换去盘其他仓，各仓未送审的实盘
-//   输入分别保留（内存内即保留，整页随本机草稿落盘）；
-// - 默认「有库存」段=只列本仓有账面数量的行；「全部物料」含零库存（盘盈场景），
-//   也可用「添加物料」把零库存物料加进来；
-// - 分类不再占左侧树，收敛为工具条「分类」滑窗筛选（候选树本身就是按仓裁剪的）；
+// - 只针对一个具体仓库；顶部「仓库」下拉随时切换去盘其他仓（只显仓库名，审核
+//   路由是默认信息不占文案），各仓未送审的实盘输入分别保留（内存内即保留，
+//   整页随本机草稿落盘）；
+// - 列表是盘点单口径（sheet）：主档归属本仓 ∪ 在本仓有账面余额——各仓行数不同；
+//   默认「全部物料」（账面为 0 也要盘），「有库存」为可选筛段；全库候选仍在
+//   「添加物料」选择器（任何货品都可盘盈加入）；
+// - 分类不占左侧树，收敛为工具条「分类」滑窗筛选（sheet 口径的该仓分类树）；
 // - 草稿走平台统一的本机表单草稿(FormDraftMixin)：输入自动保存、退出三选弹窗、
 //   /form-drafts 可恢复，无显式「存草稿」按钮；
-// - 「保存并送审」生成待审申请(stock_count_requests)，审核通过才改正式库存。
+// - 「保存并送审」先弹确认框（盘点说明在这里选填），送审生成待审申请
+//   (stock_count_requests)，审核通过才改正式库存。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/feedback/uten_dialog.dart';
+import '../../../../components/inputs/uten_dropdown_field.dart';
 import '../../../../components/inputs/uten_filter_picker_field.dart';
+import '../../../../components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_content_container.dart';
 import '../../../../components/layout/uten_filter_toolbar.dart';
@@ -260,7 +266,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     final warehouse = _warehouse;
     if (warehouse == null) return;
     try {
-      final tree = await _repo.candidateCategories(warehouse.id);
+      // 分类树同盘点单口径：该仓有行的分类才出现。
+      final tree = await _repo.candidateCategories(warehouse.id, sheet: true);
       if (!mounted || _warehouse?.id != warehouse.id) return;
       setState(() => _categoryTree = tree);
     } on ApiException catch (error) {
@@ -279,26 +286,6 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     await _load(1);
   }
 
-  Future<void> _pickWarehouse() async {
-    final scope = _scope;
-    if (scope == null || _count.busy) return;
-    final selected = await showDialog<StockCountWarehouse>(
-      context: context,
-      builder: (dialogContext) => SimpleDialog(
-        title: const Text('盘点仓库'),
-        children: [
-          for (final warehouse in scope.warehouses)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(dialogContext, warehouse),
-              child: Text('${warehouse.name} · ${warehouse.reviewerLabel}审核'),
-            ),
-        ],
-      ),
-    );
-    if (!mounted || selected == null) return;
-    await _switchWarehouse(selected);
-  }
-
   Future<void> _load(int page) async {
     final warehouse = _warehouse;
     if (warehouse == null) return;
@@ -313,6 +300,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
         keyword: _keyword.isEmpty ? null : _keyword,
         categoryId: _categoryId,
         stockedOnly: _stockedOnly,
+        sheet: true,
         page: page,
       );
       if (!mounted || _warehouse?.id != warehouse.id) return;
@@ -431,6 +419,35 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
         return;
       }
     }
+    // 2026-10-08 用户口径：盘点说明不放工具条，在送审确认弹窗里选填(V795,
+    // 空白归一与 500 字上限由服务端判定)；说明文本仍走 controller，随草稿保留。
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '保存并送审',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('本次送审 ${_count.changedCount} 项实盘变化，审核通过后才会调整正式库存。'),
+          const SizedBox(height: UtenSpacing.s12),
+          TextField(
+            key: const Key('stock-count-reason'),
+            controller: _count.reason,
+            maxLines: 2,
+            decoration: const UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                labelText: '盘点说明(选填)',
+                hintText: '例如上线清点或例行盘点，最多 500 字',
+              ),
+            ),
+          ),
+        ],
+      ),
+      confirmLabel: '确认送审',
+      cancelLabel: '取消',
+    );
+    if (confirmed != true || !mounted) return;
     setState(() => _submitting = true);
     try {
       await saveFormDraftNow();
@@ -626,14 +643,35 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
                   runSpacing: UtenSpacing.s8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    UtenFilterPickerField(
-                      key: const Key('stock-count-warehouse'),
-                      label: '仓库',
-                      icon: Icons.warehouse_outlined,
+                    // 2026-10-08 用户口径：换仓库用平台自研下拉列表，只显仓库名
+                    // （审核路由是默认信息，不占列表文案）。
+                    SizedBox(
                       width: 220,
-                      value: _warehouse?.name,
-                      enabled: !_starting,
-                      onTap: _pickWarehouse,
+                      child: UtenDropdownField(
+                        key: const Key('stock-count-warehouse'),
+                        label: '仓库',
+                        value: _warehouse?.id,
+                        allowClear: false,
+                        enabled: !_starting && !_count.busy,
+                        items: [
+                          for (final warehouse in _scope?.warehouses ??
+                              const <StockCountWarehouse>[])
+                            UtenDropdownItem(
+                              value: warehouse.id,
+                              label: warehouse.name,
+                            ),
+                        ],
+                        onChanged: (value) {
+                          if (value == null || _count.busy) return;
+                          for (final warehouse in _scope?.warehouses ??
+                              const <StockCountWarehouse>[]) {
+                            if (warehouse.id == value) {
+                              _switchWarehouse(warehouse);
+                              return;
+                            }
+                          }
+                        },
+                      ),
                     ),
                     UtenFilterPickerField(
                       key: const Key('stock-count-category'),
@@ -711,11 +749,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       columns: _columns(),
       items: _items,
       rowKeyOf: (row) => row.key,
-      toolbarActions: [
-        // 盘点说明选填(V795)；无改动时说明也随草稿保留。
-        StockCountReasonField(controller: _count, maxWidth: 240),
-      ],
-      // 本页筛选在工具条（仓库/分类/分段/搜索），表头不带筛选列。
+      // 本页筛选在工具条（仓库/分类/分段/搜索），表头不带筛选列；
+      // 盘点说明不在工具条，送审确认弹窗里选填。
       facets: const {},
       nullCounts: const {},
       filters: const {},

@@ -122,17 +122,17 @@ public class StockCountRequestService {
     }
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,int page,int size) {
-        return candidates(warehouseId,keyword,ids,categoryId,false,page,size);
+        return candidates(warehouseId,keyword,ids,categoryId,false,false,page,size);
     }
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,
-            boolean stockedOnly,int page,int size) {
+            boolean stockedOnly,boolean sheet,int page,int size) {
         require(SUBMIT);var w=warehouse(warehouseId);
         if(ids!=null&&ids.size()>500)throw invalid("一次最多查询500种物料");
         var paging=Pageables.of(page,size);
         var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword==null?"":keyword.strip())
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
-        String eligible=candidateSnapshots(w,ids,categoryId,stockedOnly,params);
+        String eligible=candidateSnapshots(w,ids,categoryId,stockedOnly,sheet,params);
         long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*) FROM snapshot",params,Long.class));
         var rows=db.queryForList(eligible+"SELECT * FROM snapshot ORDER BY goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST LIMIT :limit OFFSET :offset",params)
                 .stream().map(this::snapshotView).toList();
@@ -141,9 +141,9 @@ public class StockCountRequestService {
 
     /** One eligibility/colour/search projection for candidate pages, the tree, and search relocation. */
     private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,MapSqlParameterSource params) {
-        return candidateSnapshots(warehouse,ids,categoryId,false,params);
+        return candidateSnapshots(warehouse,ids,categoryId,false,false,params);
     }
-    private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,boolean stockedOnly,MapSqlParameterSource params) {
+    private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,boolean stockedOnly,boolean sheet,MapSqlParameterSource params) {
         String idFilter=ids==null||ids.isEmpty()?"":" AND g.id IN (:ids)";
         if(!idFilter.isEmpty())params.addValue("ids",ids);
         String categoryCte="";
@@ -162,12 +162,18 @@ public class StockCountRequestService {
                     """;
             categoryFilter=" AND g.category_id IN (SELECT id FROM category_scope)";
         }
+        // 盘点单口径(2026-10-08 用户口径: 换仓行数必须不同、账面为 0 也要盘)：
+        // sheet=true 时 eligible 限定「主档归属本仓 ∪ 在本仓有账面余额」；false=全库候选
+        // (添加物料选择器, 任何货品都可盘盈加入)。两口径共用同一快照/键对齐投影。
+        String sheetFilter=sheet
+                ? " AND (g.owning_warehouse_id=:warehouse OR EXISTS(SELECT 1 FROM stock_balances b0 WHERE b0.warehouse_id=:warehouse AND b0.goods_id=g.id))"
+                : "";
         // 候选行必须与即时库存表行同键(货品×该仓余额色)：有余额的货品只出余额色行；
         // 该仓无余额的货品出一行无色(数量 0)——不能用货品主档默认色造行, 否则零余额行
         // 在前端按「无色」键寻不到候选, 表现为一整片「不可编辑」。
         return "WITH RECURSIVE "+categoryCte+"""
                 eligible AS (SELECT g.id FROM goods g WHERE NOT g.is_deleted
-                """+idFilter+categoryFilter+("WORKSHOP".equals(warehouse.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+"""
+                """+idFilter+categoryFilter+("WORKSHOP".equals(warehouse.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+sheetFilter+"""
                 ), candidate AS (SELECT g.id AS goods_id,NULL::uuid AS color_id FROM eligible g
                     WHERE NOT EXISTS(SELECT 1 FROM stock_balances b WHERE b.warehouse_id=:warehouse AND b.goods_id=g.id)
                   UNION
@@ -178,10 +184,14 @@ public class StockCountRequestService {
 
     @Transactional(readOnly=true)
     public List<Map<String,Object>> candidateCategories(UUID warehouseId) {
+        return candidateCategories(warehouseId,false);
+    }
+    @Transactional(readOnly=true)
+    public List<Map<String,Object>> candidateCategories(UUID warehouseId,boolean sheet) {
         require(SUBMIT);var w=warehouse(warehouseId);
         var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword","")
                 .addValue("uncategorized",UNCATEGORIZED_CATEGORY);
-        String cte=candidateSnapshots(w,null,null,params);
+        String cte=candidateSnapshots(w,null,null,false,sheet,params);
         var categories=db.queryForList(cte+"""
                 , visible_categories AS (
                     SELECT category.id,category.parent_id FROM material_categories category

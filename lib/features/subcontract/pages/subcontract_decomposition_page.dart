@@ -1,12 +1,14 @@
 // 委外任务中心（/operations/workbench/subcontract）。
 //
 // 分段：草稿 / 待处理 / 领料 / 进行中 / 历史记录（ADR-143 §4.1）。
-// · 待处理 = 已下达、仍有未下单量的委外申请行。双击看「产品进度」弹窗(一条线性
-//   时间线，可再深链只读申请详情)；多选 + 右下角悬浮组(已选胶囊 + 生成委外订货单)
-//   批量带入订货单编辑页。委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(黄，
-//   ADR-143 §二.3)、不能勾选下单；点状态「通知研发完善」可再提醒研发。
+// · 待处理 = 已下达、仍有未下单量的委外申请行。双击看申请摘要弹窗(关键数量 +
+//   数量归属；锁行顶部红框说明为什么不能下单，2026-10-08 起流程时间线退役)；
+//   多选 + 右下角悬浮组(已选胶囊 + 生成委外订货单)批量带入订货单编辑页——勾选与
+//   悬浮按钮只在「待处理」段提供，进行中/历史段没有可下单的行，不摆死按钮。
+//   委外件缺 BOM 的申请行显示「缺 BOM·已通知研发」(黄，ADR-143 §二.3)、
+//   不能勾选下单，勾选位显示锁图标与原因；点状态「通知研发完善」可再提醒研发。
 //   ADR-156(委外价格每天不同，物料齐了才下单)：直属物料一套都不够的申请行显示
-//   「等物料齐套」并锁住(整行红底、不能勾选，照样留在「待处理」计红数)；够做一部分显示
+//   「等物料齐套」并锁住(不能勾选，照样留在「待处理」计红数)；够做一部分显示
 //   「可部分下单」，「可下单」列给出服务端算好的这次可下单数量(订货单预填它，超出由
 //   服务端拒绝)。点申请行状态看「齐套情况」弹窗(逐种直属物料的库存与占用)。
 // · 领料 =已获财务批准、领料计划未结束、仍未领满的委外订货明细(委外任务)。
@@ -62,7 +64,7 @@ import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
 import '../repositories/subcontract_kit_repository.dart';
 import '../widgets/subcontract_application_kit_dialog.dart';
-import '../widgets/subcontract_application_progress_dialog.dart';
+import '../widgets/subcontract_application_detail_dialog.dart';
 import '../widgets/subcontract_draw_status.dart';
 import '../widgets/subcontract_draw_task_detail_dialog.dart';
 
@@ -183,6 +185,11 @@ class _SubcontractDecompositionPageState
 
   bool get _isDrawSeg => _seg?.code == _drawStage;
 
+  /// 当前是否「待处理」段——勾选与「生成委外订货单」只属于这一段(2026-10-08
+  /// 口径，与采购任务中心同款收口)：进行中/历史段的行都已下单，提供勾选只会
+  /// 制造永远点不动的批量按钮。
+  bool get _orderingSeg => _seg?.code == _waitingOrderStage;
+
   /// 状态列颜色(刻意拉开，不用相近色)：蓝=等财务 / 等仓库发料，红=退回 / 短交，
   /// 紫=可领料 / 可部分下单(轮到委外动手，但只够一部分)，青=委外商在加工，
   /// 黄=部分回厂 / 缺 BOM 等研发 / 等物料齐套，品红=分批等待，
@@ -232,7 +239,9 @@ class _SubcontractDecompositionPageState
     }
     if (_canViewKit(task)) {
       return (
-        hint: task.isWaitingKit ? '$_waitingKitHint；点击看齐套情况' : '点击看齐套情况',
+        hint: task.isWaitingKit
+            ? '$subcontractWaitingKitHint；点击看齐套情况'
+            : '点击看齐套情况',
         buttonLabel: '齐套情况',
         onTap: () => _openKit(task),
       );
@@ -274,9 +283,6 @@ class _SubcontractDecompositionPageState
 
   SubcontractKitGateway get _kitGateway =>
       widget.kitGateway ?? ref.read(subcontractKitRepositoryProvider);
-
-  /// 等物料齐套的锁行说明(状态悬浮提示 / 窄屏卡片行内提示同一句)。
-  static const _waitingKitHint = '直属物料还没齐，委外价格每天不同，物料齐了才解锁下单';
 
   /// 「齐套情况」只给待处理的委外申请行(含锁行)；缺 BOM 的行没有物料可算，
   /// 走「通知研发完善」。申请受权限保护(服务端不下发 actionDocument)时不给入口。
@@ -759,7 +765,11 @@ class _SubcontractDecompositionPageState
 
   void _openTask(OperationsWorkbenchTask task) {
     if (task.taskStatus == _waitingOrderStage) {
-      showSubcontractApplicationProgressDialog(context, task: task);
+      showSubcontractApplicationDetailDialog(
+        context,
+        task: task,
+        locked: !_canOrderTask(task),
+      );
       return;
     }
     _openSource(task);
@@ -877,9 +887,9 @@ class _SubcontractDecompositionPageState
 
   /// Cards own one floating group; desktop and fullscreen tables own theirs.
   /// Keep ownership inside the same content-width branch that selects cards.
+  /// 2026-10-08 口径：悬浮组只随「待处理」段出现（其余段的行不可下单）。
   Widget _withCardActions(Widget child) {
-    if (!_hasDecomposePermissions ||
-        (_seg?.history == true && _historyTime.isNone)) {
+    if (!_orderingSeg || !_hasDecomposePermissions) {
       return child;
     }
     return Stack(
@@ -1090,6 +1100,12 @@ class _SubcontractDecompositionPageState
             ),
           );
         }
+        // 窄屏卡的勾选/锁位与悬浮组同一门控：只有「待处理」段且账号可分解时
+        // 才区分「可勾选 / 锁住」两种行，其余段不占勾选位。
+        final cardSelectable =
+            _orderingSeg &&
+            _hasDecomposePermissions &&
+            data.capabilities.canCreateSubcontractOrder;
         return _withCardActions(
           ListView(
             key: const Key('subcontract-decomposition-compact-list'),
@@ -1129,10 +1145,10 @@ class _SubcontractDecompositionPageState
                     urgent: _shortDelivery(task),
                     statusAction: _statusActionOf(task),
                     selected: _selectedIds.contains(task.id),
-                    selectable:
-                        _canOrderTask(task) &&
-                        _hasDecomposePermissions &&
-                        data.capabilities.canCreateSubcontractOrder,
+                    selectable: cardSelectable && _canOrderTask(task),
+                    lockReason: cardSelectable && !_canOrderTask(task)
+                        ? subcontractTaskLockReason(task)
+                        : null,
                     onSelected: () => _toggle(task),
                     onTap: () => _openTask(task),
                     onOpenSource: task.actionDocument?.canView == true
@@ -1166,6 +1182,12 @@ class _SubcontractDecompositionPageState
   );
 
   Widget _buildTable(OperationsWorkbenchData data) {
+    // 勾选列只属于「待处理」段(2026-10-08 口径)：进行中/历史的行都已下单，
+    // 摆一列点不动的勾选框只会让人以为按钮坏了。
+    final canOrder =
+        _orderingSeg &&
+        _hasDecomposePermissions &&
+        data.capabilities.canCreateSubcontractOrder;
     return MasterDataTableView<OperationsWorkbenchTask>(
       tableKey:
           'features.subcontract.pages.subcontract_decomposition_page.SubcontractDecompositionPageState._buildTable.1',
@@ -1245,7 +1267,8 @@ class _SubcontractDecompositionPageState
           type: 'number',
           value: (t) => t.isDocumentGrouped
               ? '—'
-              : '${_number(t.requiredQty)} ${t.unitName}'.trim(),
+              : '${formatWorkbenchQuantity(t.requiredQty)} ${t.unitName}'
+                    .trim(),
         ),
         MasterColumnDef(
           key: 'openQty',
@@ -1254,7 +1277,7 @@ class _SubcontractDecompositionPageState
           type: 'number',
           value: (t) => t.isDocumentGrouped
               ? '${t.openLineCount} 行'
-              : '${_number(t.openQty)} ${t.unitName}'.trim(),
+              : '${formatWorkbenchQuantity(t.openQty)} ${t.unitName}'.trim(),
         ),
         MasterColumnDef(
           key: 'issuedAt',
@@ -1282,7 +1305,7 @@ class _SubcontractDecompositionPageState
               '由服务端实时算好；订货数量超出会被拒绝。点状态列可看每种物料的齐套情况。',
           width: 130,
           type: 'number',
-          value: (t) => _orderableText(t) ?? '—',
+          value: (t) => t.orderableQtyText ?? '—',
         ),
         MasterColumnDef(
           key: 'source',
@@ -1323,21 +1346,31 @@ class _SubcontractDecompositionPageState
       onRowTap: _openTask,
       // 整行底色已退役（2026-10-08 用户口径）：状态色只在状态列整格底色，
       // 不能下单的锁行/回厂短交待判定行不再铺红。
-      // 待处理行双击 = 产品进度弹窗；其余行 = 关联申请 / 订货详情。
+      // 待处理行双击 = 申请摘要弹窗；其余行 = 关联申请 / 订货详情。
       canOpenRow: (task) =>
           task.taskStatus == _waitingOrderStage ||
           task.actionDocument?.canView == true,
-      selectable:
-          _hasDecomposePermissions &&
-          data.capabilities.canCreateSubcontractOrder,
+      selectable: canOrder,
       idOf: (task) => _canOrderTask(task) ? task.id : null,
+      // idOf 会返回 null 的锁行仍要有稳定行键(否则回落下标键)。
+      rowKeyOf: (task) => task.taskId,
+      // 锁行的勾选位换锁图标，悬浮说明为什么不能下单(缺 BOM / 等物料齐套)。
+      unselectableLeadingBuilder: (context, task) => Tooltip(
+        message: subcontractTaskLockReason(task),
+        child: Icon(
+          Icons.lock_outline_rounded,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
       selectedIds: _selectedIds,
       onSelectedIdsChanged: (next) => setState(() {
         _selectedIds
           ..clear()
           ..addAll(next);
       }),
-      batchActionsBuilder: _data == null || !_hasDecomposePermissions
+      // 批量按钮随段门控；服务端能力缺失时保留灰按钮兜底解释(能力面问题要能被发现)。
+      batchActionsBuilder: !_orderingSeg || !_hasDecomposePermissions
           ? null
           : (_, _) => [_createOrderButton()],
       isLoading: _loading,
@@ -1505,6 +1538,16 @@ class _SubcontractDecompositionPageState
       canOpenRow: (_) => true,
       selectable: canSubmit,
       idOf: (row) => canSubmit && row.canDraw ? row.orderItemId : null,
+      // 不可领的行(已提交待仓库发 / 等计划 / 等物料)勾选位换锁图标，悬浮说明
+      // 下一步由谁动手。
+      unselectableLeadingBuilder: (context, row) => Tooltip(
+        message: subcontractDrawStatusTooltip(row) ?? '当前状态不能领料',
+        child: Icon(
+          Icons.lock_outline_rounded,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
       selectedIds: _selectedDrawIds,
       onSelectedIdsChanged: (next) => setState(() {
         _selectedDrawIds
@@ -1542,27 +1585,6 @@ class _SubcontractDecompositionPageState
 
   static String _label(String? value) =>
       value?.trim().isNotEmpty == true ? value!.trim() : '—';
-
-  /// 「可下单」文案(ADR-156，数量由服务端算好)：可部分下单 = 「N / 剩余 M 单位」，
-  /// 其余 = 「N 单位」(锁行为 0)。非申请行 / 缺 BOM(没有物料可算)为 null。
-  /// 归组行各明细单位可能不同，不带单位、不拼剩余。
-  static String? _orderableText(OperationsWorkbenchTask task) {
-    final orderable = task.orderableQty;
-    if (orderable == null || task.isBomMissing) return null;
-    final unit = task.isDocumentGrouped ? '' : task.unitName.trim();
-    String qty(num value) => '${_number(value)}${unit.isEmpty ? '' : ' $unit'}';
-    if (task.isKitPartial && !task.isDocumentGrouped) {
-      return '${_number(orderable)} / 剩余 ${qty(task.openQty)}';
-    }
-    return qty(orderable);
-  }
-
-  static String _number(num value) => value == value.roundToDouble()
-      ? value.toInt().toString()
-      : value
-            .toStringAsFixed(3)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
 
   static String? _issuedDate(String? value) {
     final date = ChinaDateTime.tryParse(value);
@@ -1635,6 +1657,7 @@ class _SubcontractDemandCard extends StatelessWidget {
     required this.onSelected,
     required this.onTap,
     required this.onOpenSource,
+    this.lockReason,
   });
 
   final OperationsWorkbenchTask task;
@@ -1647,6 +1670,10 @@ class _SubcontractDemandCard extends StatelessWidget {
   final VoidCallback onSelected;
   final VoidCallback onTap;
   final VoidCallback? onOpenSource;
+
+  /// 锁行(不能勾选下单)的勾选位换成锁图标，悬浮说明原因；null = 不占锁位
+  /// (无分解权限或非「待处理」段，整卡没有勾选语义)。
+  final String? lockReason;
 
   @override
   Widget build(BuildContext context) {
@@ -1674,6 +1701,19 @@ class _SubcontractDemandCard extends StatelessWidget {
                       child: Checkbox(
                         value: selected,
                         onChanged: (_) => onSelected(),
+                      ),
+                    )
+                  else if (lockReason != null)
+                    SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Tooltip(
+                        message: lockReason,
+                        child: Icon(
+                          Icons.lock_outline_rounded,
+                          size: 20,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   Expanded(
@@ -1729,11 +1769,10 @@ class _SubcontractDemandCard extends StatelessWidget {
                   Text('来源计划 ${task.planNo}'),
                   if (!task.isDocumentGrouped)
                     Text(
-                      '需求 ${_SubcontractDecompositionPageState._number(task.requiredQty)} ${task.unitName}',
+                      '需求 ${formatWorkbenchQuantity(task.requiredQty)} ${task.unitName}',
                     ),
                   Text('待下单 ${task.quantityText}'),
-                  if (_SubcontractDecompositionPageState._orderableText(task)
-                      case final orderable?)
+                  if (task.orderableQtyText case final orderable?)
                     Text('可下单 $orderable'),
                   if ((task.needDate ?? '').isNotEmpty)
                     Text('需求日 ${task.needDate}'),
@@ -1743,11 +1782,11 @@ class _SubcontractDemandCard extends StatelessWidget {
                   ),
                 ],
               ),
-              // ADR-156 锁行：卡片没有悬浮提示，直接写明为什么不能勾选下单。
+              // ADR-156 锁行：等物料齐套不依赖悬浮，直接写明红字(老人友好)。
               if (task.isWaitingKit) ...[
                 const SizedBox(height: UtenSpacing.s4),
                 Text(
-                  _SubcontractDecompositionPageState._waitingKitHint,
+                  subcontractWaitingKitHint,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.error,
                   ),

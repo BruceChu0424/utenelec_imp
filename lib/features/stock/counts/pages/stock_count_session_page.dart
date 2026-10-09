@@ -654,8 +654,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
                         allowClear: false,
                         enabled: !_starting && !_count.busy,
                         items: [
-                          for (final warehouse in _scope?.warehouses ??
-                              const <StockCountWarehouse>[])
+                          for (final warehouse
+                              in _scope?.warehouses ??
+                                  const <StockCountWarehouse>[])
                             UtenDropdownItem(
                               value: warehouse.id,
                               label: warehouse.name,
@@ -663,8 +664,9 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
                         ],
                         onChanged: (value) {
                           if (value == null || _count.busy) return;
-                          for (final warehouse in _scope?.warehouses ??
-                              const <StockCountWarehouse>[]) {
+                          for (final warehouse
+                              in _scope?.warehouses ??
+                                  const <StockCountWarehouse>[]) {
                             if (warehouse.id == value) {
                               _switchWarehouse(warehouse);
                               return;

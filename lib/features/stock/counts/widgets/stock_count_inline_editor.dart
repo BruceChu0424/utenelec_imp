@@ -362,7 +362,9 @@ class _StockCountInlineCellState extends State<StockCountInlineCell> {
       final hasValue = text.text.trim().isNotEmpty;
       if (_editing) {
         return TextField(
-          key: ValueKey('stock-count-${widget.weight ? 'weight' : 'qty'}-${widget.rowKey}'),
+          key: ValueKey(
+            'stock-count-${widget.weight ? 'weight' : 'qty'}-${widget.rowKey}',
+          ),
           controller: text,
           focusNode: _focus,
           autofocus: true,
@@ -392,21 +394,21 @@ class _StockCountInlineCellState extends State<StockCountInlineCell> {
             ? null
             : () => setState(() => _editing = true),
         child: Text(
-            key: ValueKey(
-              'stock-count-${widget.weight ? 'weight' : 'qty'}-${widget.rowKey}',
-            ),
-            hasValue ? text.text.trim() : '—',
-            textAlign: TextAlign.end,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: !hasValue
-                  ? Theme.of(context).colorScheme.onSurfaceVariant
-                  : row.validation != null
-                  ? Theme.of(context).colorScheme.error
-                  : Theme.of(context).colorScheme.primary,
-            ),
+          key: ValueKey(
+            'stock-count-${widget.weight ? 'weight' : 'qty'}-${widget.rowKey}',
           ),
+          hasValue ? text.text.trim() : '—',
+          textAlign: TextAlign.end,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: !hasValue
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : row.validation != null
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.primary,
+          ),
+        ),
       );
     },
   );

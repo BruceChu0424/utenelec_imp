@@ -65,22 +65,16 @@ class _SessionRepo extends StockCountRequestRepository {
   final candidateQueries =
       <({String warehouse, bool stockedOnly, bool sheet, String? keyword})>[];
   final categoryQueries = <({String warehouse, bool sheet})>[];
-  final submissions = <
-    ({
-      String warehouse,
-      List<Map<String, dynamic>> lines,
-      String reason,
-    })
-  >[];
+  final submissions =
+      <({String warehouse, List<Map<String, dynamic>> lines, String reason})>[];
 
   @override
-  Future<StockCountScope> scope({String? warehouseId}) async =>
-      StockCountScope(
-        warehouses: warehouses
-            .where((w) => warehouseId == null || w.id == warehouseId)
-            .toList(),
-        allowedActions: canSubmit ? const ['SUBMIT'] : const [],
-      );
+  Future<StockCountScope> scope({String? warehouseId}) async => StockCountScope(
+    warehouses: warehouses
+        .where((w) => warehouseId == null || w.id == warehouseId)
+        .toList(),
+    allowedActions: canSubmit ? const ['SUBMIT'] : const [],
+  );
 
   @override
   Future<PagedResult<CountStockRow>> candidates({
@@ -139,11 +133,7 @@ class _SessionRepo extends StockCountRequestRepository {
     required String idempotencyKey,
     required List<Map<String, dynamic>> lines,
   }) async {
-    submissions.add((
-      warehouse: warehouseId,
-      lines: lines,
-      reason: reason,
-    ));
+    submissions.add((warehouse: warehouseId, lines: lines, reason: reason));
     return StockCountRequest(
       id: 'request-1',
       requestNo: 'PD-1',
@@ -228,28 +218,20 @@ Future<void> _confirmSubmit(WidgetTester tester, {String? reason}) async {
 void main() {
   testWidgets('进入即选仓，盘点单口径列出全部物料(账面为 0 也要盘)', (tester) async {
     final repo = _SessionRepo({
-      'leaf-a': [
-        _row(_screw, qty: '10', weight: '1.5'),
-        _row(_nut),
-      ],
+      'leaf-a': [_row(_screw, qty: '10', weight: '1.5'), _row(_nut)],
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
     expect(find.text('盘点仓库'), findsNothing, reason: '带仓库直达不再弹选仓窗');
-    expect(
-      repo.candidateQueries.first,
-      (
-        warehouse: 'leaf-a',
-        stockedOnly: false,
-        sheet: true,
-        keyword: null,
-      ),
-      reason: '默认全部物料 + 盘点单口径',
-    );
-    expect(
-      repo.categoryQueries.first,
-      (warehouse: 'leaf-a', sheet: true),
-      reason: '分类树同盘点单口径',
-    );
+    expect(repo.candidateQueries.first, (
+      warehouse: 'leaf-a',
+      stockedOnly: false,
+      sheet: true,
+      keyword: null,
+    ), reason: '默认全部物料 + 盘点单口径');
+    expect(repo.categoryQueries.first, (
+      warehouse: 'leaf-a',
+      sheet: true,
+    ), reason: '分类树同盘点单口径');
     final table = tester.widget<MasterDataTableView<CountStockRow>>(
       find.byType(MasterDataTableView<CountStockRow>),
     );
@@ -260,7 +242,12 @@ void main() {
     );
     expect(
       table.columns.map((c) => c.key),
-      containsAll(['stockPlace', 'countTargetQty', 'countTargetWeight', 'delta']),
+      containsAll([
+        'stockPlace',
+        'countTargetQty',
+        'countTargetWeight',
+        'delta',
+      ]),
     );
     // 行距=读表密度(36~38)，与任务中心一致；就地编辑：点格→变输入框→输入。
     final screwCell = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
@@ -283,13 +270,13 @@ void main() {
 
   testWidgets('「有库存」筛段只列账面数量非零的行', (tester) async {
     final repo = _SessionRepo({
-      'leaf-a': [
-        _row(_screw, qty: '10'),
-        _row(_nut),
-      ],
+      'leaf-a': [_row(_screw, qty: '10'), _row(_nut)],
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
-    expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
     await tester.tap(find.text('有库存'));
     await tester.pumpAndSettle();
     expect(
@@ -329,11 +316,7 @@ void main() {
     );
     await tester.tap(find.text('原料仓 B'));
     await tester.pumpAndSettle();
-    expect(
-      repo.candidateQueries.last.warehouse,
-      'leaf-b',
-      reason: '切仓后按新仓查询',
-    );
+    expect(repo.candidateQueries.last.warehouse, 'leaf-b', reason: '切仓后按新仓查询');
     final bQty = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
     expect(bQty, findsOneWidget);
     await tester.tap(bQty);
@@ -362,18 +345,21 @@ void main() {
     });
     await _mount(tester, repo, warehouseId: 'leaf-a');
     // 默认全部物料：零库存行也在表里，直接可录实盘数。
-    expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
     expect(find.text('共 1 项'), findsOneWidget);
     await tester.tap(find.text('有库存'));
     await tester.pumpAndSettle();
     expect(find.text('共 0 项'), findsOneWidget);
-    expect(
-      find.text('本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'),
-      findsOneWidget,
-    );
+    expect(find.text('本仓暂无有库存的物料；可切回「全部物料」或用「添加物料」录入盘盈'), findsOneWidget);
     await tester.tap(find.text('全部物料'));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('stock-count-qty-$_nut|')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('stock-count-qty-$_nut|')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

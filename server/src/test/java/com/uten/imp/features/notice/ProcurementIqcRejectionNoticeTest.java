@@ -86,27 +86,32 @@ class ProcurementIqcRejectionNoticeTest {
     }
 
     @Test
-    void administratorCatalogIsSharedOnlyInsideCurrentAudienceResolution() {
+    void administratorsAreResolvedIndividuallyAndNotCachedAcrossResolutions() {
         var users = mock(UserAccountRepository.class);
         var permissions = mock(PermissionResolver.class);
-        var accounts = new ArrayList<UserAccount>();
-        for (int index = 0; index < 164; index++) {
-            var account = activeUser(UUID.randomUUID()); account.setSuperAdmin(true); accounts.add(account);
-        }
-        when(users.findAll()).thenReturn(accounts);
-        when(permissions.grantedPermsOf(any(UserAccount.class)))
-                .thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
+        // 2026-10-10 生产缺陷同形态：无码超管排在持码超管前面。修复前第一个超管的
+        // granted 集合被缓存共享给后面所有超管，持码者被误判出局、任务卡整池消失。
+        var adminWithoutAction = activeUser(UUID.randomUUID());
+        adminWithoutAction.setSuperAdmin(true);
+        var adminWithAction = activeUser(UUID.randomUUID());
+        adminWithAction.setSuperAdmin(true);
+        when(users.findAll()).thenReturn(new ArrayList<>(List.of(adminWithoutAction, adminWithAction)));
+        when(permissions.grantedPermsOf(adminWithoutAction)).thenReturn(Set.of(NOTICE_READ, VIEW));
+        when(permissions.grantedPermsOf(adminWithAction)).thenReturn(Set.of(NOTICE_READ, VIEW, CONFIRM));
         var service = service(mock(NoticeService.class), users, permissions, mock(JdbcTemplate.class));
         Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
-        assertEquals(164, first.size());
-        verify(permissions, times(1)).grantedPermsOf(any(UserAccount.class));
-        when(permissions.grantedPermsOf(any(UserAccount.class)))
-                .thenReturn(Set.of(NOTICE_READ, VIEW));
+        assertEquals(Set.of(adminWithAction.getId()), first,
+                "每个超管按各自真实授权判定，不共享第一个超管的集合");
+        verify(permissions, times(1)).grantedPermsOf(adminWithoutAction);
+        verify(permissions, times(1)).grantedPermsOf(adminWithAction);
+        // 跨次解析不缓存：授权变化后的下一次解析重新读每个人。
+        when(permissions.grantedPermsOf(adminWithAction)).thenReturn(Set.of(NOTICE_READ, VIEW));
         Set<UUID> next = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
         assertEquals(Set.of(), next);
-        verify(permissions, times(2)).grantedPermsOf(any(UserAccount.class));
+        verify(permissions, times(2)).grantedPermsOf(adminWithAction);
+        verify(permissions, times(2)).grantedPermsOf(adminWithoutAction);
     }
 
     @Test

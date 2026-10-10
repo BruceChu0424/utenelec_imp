@@ -256,7 +256,9 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("employee_reconcile_plan_items", 810),
             Map.entry("employee_reconcile_applies", 810),
             Map.entry("pii_key_rotation_runs", 827),
-            Map.entry("document_malware_scans", 828));
+            Map.entry("document_malware_scans", 828),
+            // V833 (ADR-172): 个人通知弹窗开关随账号保留——清库重登不丢个人偏好。
+            Map.entry("notice_popup_preferences", 833));
 
     private static final java.util.Set<String> PERMANENT_POLICY_OVERRIDES=java.util.Set.of(
         "ai_jobs","ai_call_logs","sales_document_learning_receipts","sales_quote_template_candidates","sales_quote_template_evidence",

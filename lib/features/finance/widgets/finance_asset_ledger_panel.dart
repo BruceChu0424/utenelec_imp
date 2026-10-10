@@ -308,16 +308,13 @@ class _FinanceAssetLedgerPanelState
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < UtenBreakpoints.mediumStart) {
-          // 大小屏复用同一份列、可见字段、行菜单与分页。compact 筛选区由面板
-          // 自持在表格外的稳定槽：不随表格 loading/空态/错误态分支装卸——
-          // 搜索中的焦点与输入法组合不因状态切换被打断（2026-10-09 根因修复；
-          // 原先塞 scrollingHeader 只在状态占位壳里渲染，有数据行时反而不可见）。
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _compactFilters(),
-              Expanded(child: _table()),
-            ],
+          // 大小屏复用同一份列、可见字段、行菜单与分页。compact 筛选控件挂表格
+          // 的稳定工具条槽(toolbarLeadingActions)：loading/空态/错误态切换不重建
+          // 不失焦（搜索中的输入法组合不被打断，2026-10-09 根因修复——原先塞
+          // scrollingHeader 只在状态占位壳里渲染），也不在表格外另设固定槽——
+          // 固定槽会成为滚动静区(拖它不收横幅)且挤压表体把错误态重试挤出屏幕。
+          return _table(
+            compactToolbarLeading: _compactToolbarWidgets(constraints),
           );
         }
         return UtenListTwoPane(
@@ -336,48 +333,30 @@ class _FinanceAssetLedgerPanelState
     );
   }
 
-  Widget _compactFilters() {
-    // 紧凑筛选区挂在表格外的固定槽（build 的 compact 分支），横向留白由宿主提供。
-    return Padding(
-      padding: const EdgeInsets.only(
-        top: UtenSpacing.s4,
-        bottom: UtenSpacing.s8,
+  /// compact 工具条 chip：搜索(占满首行剩余宽) + 新建 + 状态/分类下拉，
+  /// Wrap 流式换行；挂 [MasterDataTableView.toolbarLeadingActions] 稳定槽。
+  List<Widget> _compactToolbarWidgets(BoxConstraints constraints) {
+    final canEdit = widget.capabilities.canEdit;
+    return [
+      SizedBox(
+        width: constraints.maxWidth - (canEdit ? 56 : 0),
+        child: _search(),
       ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(child: _search()),
-              if (widget.capabilities.canEdit) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                Semantics(
-                  button: true,
-                  label: '新建${widget.ledger.label}',
-                  child: IconButton.filled(
-                    key: Key('finance-asset-create-${widget.ledger.apiValue}'),
-                    constraints: const BoxConstraints(
-                      minWidth: 48,
-                      minHeight: 48,
-                    ),
-                    tooltip: '新建${widget.ledger.label}',
-                    onPressed: _create,
-                    icon: const Icon(Icons.add_rounded),
-                  ),
-                ),
-              ],
-            ],
+      if (canEdit)
+        Semantics(
+          button: true,
+          label: '新建${widget.ledger.label}',
+          child: IconButton.filled(
+            key: Key('finance-asset-create-${widget.ledger.apiValue}'),
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            tooltip: '新建${widget.ledger.label}',
+            onPressed: _create,
+            icon: const Icon(Icons.add_rounded),
           ),
-          const SizedBox(height: UtenSpacing.s8),
-          Row(
-            children: [
-              Expanded(child: _statusFilter()),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(child: _categoryFilter()),
-            ],
-          ),
-        ],
-      ),
-    );
+        ),
+      SizedBox(width: 164, child: _statusFilter()),
+      SizedBox(width: 164, child: _categoryFilter()),
+    ];
   }
 
   Widget _filterFields() {
@@ -542,11 +521,12 @@ class _FinanceAssetLedgerPanelState
     _load();
   }
 
-  Widget _table() {
+  Widget _table({List<Widget>? compactToolbarLeading}) {
     final result = _result;
     return _withFormDraftRows(
       MasterDataTableView<FinanceAssetSummary>(
         tableKey: 'finance.asset.${widget.ledger.name}.ledger',
+        toolbarLeadingActions: compactToolbarLeading,
         errorKey: Key('finance-asset-retry-${widget.ledger.apiValue}'),
         key: ValueKey('finance-asset-table-${widget.ledger.apiValue}'),
         columns: [

@@ -28,7 +28,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/master_data_table_rows_controller.dart';
 import '../../../components/layout/uten_prepend_scroll_anchor.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_table_cell_hints.dart';
@@ -3658,7 +3657,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
     // 行区提示（2026-10-09 用户口径「搜索无结果/加载/错误时表格骨架也要在，页面不许跳」）：
     // 不再整块换空态/错误/加载占位壳——统一渲染同一张表（工具条+表头+列），只有行区
-    // 内容随状态变，提示作为一条跨满宽行插在行计划首位。
+    // 内容随状态变，提示作为一条跨满宽**紧凑行**插在行计划首位（图标+主文案+内联重试，
+    // 高度 ~80px；表体被外层收起横幅挤压到百来像素时重试仍在屏内）。
     // 主行为空但仍有前导分组（如搜索 0 命中时的「类似人员」分组）时提示走紧凑条，
     // 分组跟在提示之后——即「无符合人员 / 类似人员」两段式。
     Widget? bodyNotice;
@@ -3670,11 +3670,32 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     } else if (widget.error != null &&
         _appendError == null &&
         widget.unpagedItems.isEmpty) {
-      bodyNotice = UtenEmpty.error(
+      bodyNotice = Padding(
         key: widget.errorKey,
-        message: widget.error,
-        actionLabel: '重试', // TODO(l10n): 补 arb
-        onAction: widget.onRetry,
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s16,
+          vertical: UtenSpacing.s12,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                widget.error ?? '',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ),
+            const SizedBox(width: UtenSpacing.s8),
+            TextButton.icon(
+              onPressed: widget.onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('重试'), // TODO(l10n): 补 arb
+            ),
+          ],
+        ),
       );
     } else if (displayItems.isEmpty) {
       // 空态说明补一行筛选生效数，提示表格为何为空（清除入口在表外分段条/
@@ -3686,11 +3707,29 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       bodyNotice = hasGroupRows
           ? _compactEmptyNotice(theme, filterNote)
           : Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s24),
-              child: UtenEmpty(
-                icon: Icons.table_rows_outlined,
-                message: widget.emptyMessage,
-                description: filterNote,
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.emptyMessage,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                  if (filterNote != null) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    Text(
+                      filterNote,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             );
     }
@@ -5563,11 +5602,19 @@ class _ViewportPinnedRow extends StatelessWidget {
         final offset = position != null && position.hasPixels
             ? position.pixels
             : 0.0;
-        // 目标右边缘 = 可视框右缘；表宽没撑满可视框时保持贴表格右端(shift 不取正)。
-        final shift = offset + viewport - contentWidth;
+        // 左缘钉在可视框左缘：平移量随滚动同步(+offset)，滚动不改变屏幕位置。
+        // 行本体仍是跨满表宽的计划行；Align 放松紧约束让提示按「可视框宽(表更
+        // 窄时取表宽)」铺开居中——内容中心永远落在可视框内，错误/空态的重试
+        // 按钮在任何横滚位置都可点。旧实现按右缘钉把整行左移(offset+viewport-
+        // total)，宽表时行内容按表宽居中，中心被推出屏幕外(360px 下重试不可点)。
+        final double window = viewport < contentWidth ? viewport : contentWidth;
         return Transform.translate(
-          offset: Offset(shift < 0 ? shift : 0, 0),
-          child: inner,
+          offset: Offset(offset, 0),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            widthFactor: 1,
+            child: SizedBox(width: window, child: inner),
+          ),
         );
       },
     );

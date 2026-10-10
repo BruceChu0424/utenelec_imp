@@ -423,6 +423,11 @@ class _FinanceArApOverviewPageState
         _searchLoading = false;
         _searchError = null;
         _noUnifiedSearchMatches = !hasParties && !resolution.hasAnyMatches;
+        if (_noUnifiedSearchMatches) {
+          // 0 命中：丢弃旧行——行区显示「未找到匹配…」提示，表格骨架(工具条/
+          // 表头列)沿用 _lastColumns，页面不整块切换(2026-10-09 用户口径)。
+          _data = null;
+        }
         _categoryType = type;
         _categoryId = id;
         _page = 1;

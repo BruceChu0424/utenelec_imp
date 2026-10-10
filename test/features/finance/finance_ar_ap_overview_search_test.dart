@@ -203,13 +203,15 @@ void main() {
       await tester.tap(find.text('只应收≠0').last);
       await tester.pump();
       expect(api.heldReport, isNotNull);
+      // 2026-10-09「页面不跳」口径：重查时保留旧数据渲染，表格不整块转圈
+      //（isLoading 只在无旧数据的首次加载出现）；在途请求由 heldReport 证明。
       expect(
         tester
             .widget<MasterDataTableView<Map<String, dynamic>>>(
               find.byType(MasterDataTableView<Map<String, dynamic>>),
             )
             .isLoading,
-        isTrue,
+        isFalse,
       );
 
       final search = find.descendant(

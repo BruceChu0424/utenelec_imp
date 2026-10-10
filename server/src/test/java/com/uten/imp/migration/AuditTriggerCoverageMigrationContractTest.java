@@ -340,6 +340,9 @@ class AuditTriggerCoverageMigrationContractTest {
                         // V816：个人问法与服务端操作的复用记忆；实际执行已有业务审计，不复制私有问法。
                         "ai_chat_operation_memory",
                         "user_preferences", "warehouse_goods_place_preferences",
+                        // V833(ADR-172) 个人通知弹窗开关: 界面偏好, 只抑制弹窗层,
+                        // 通知投递与办结另有业务事实。
+                        "notice_popup_preferences",
                         // V742 客户货品对照与客户文件版式: 保存单据后自动学习; 用户删除对照另写显式审计事件。
                         "client_goods_aliases", "sales_intake_layouts", "platform_column_usage",
                         "sales_document_learning_receipts", "sales_intake_layout_learning_evidence",

@@ -10583,4 +10583,28 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release258LockReason =>
       'Locked rows in the subcontract task center are redesigned: a lock icon marks each row, and tapping it shows the lock reason.';
+
+  @override
+  String get release259RollbackMerge =>
+      'Purchase and subcontract requests are back to per-material ordering: the mistaken rolling merge from the previous release is fully reverted, and the task center decomposes orders line by line again.';
+
+  @override
+  String get release259SubcontractPending =>
+      'The subcontract task center \"Pending\" tab is now one flat table: application and drawing tasks are mixed in one table, drawable rows are red, submitted-awaiting-issue rows are yellow, and multiple rows can be batch-drawn.';
+
+  @override
+  String get release259InProgressGate =>
+      'The subcontract \"In progress\" bar is tightened: orders whose material drawing has not finished no longer count as in progress — only fully drawn (or draw-free) orders enter, and drawings in flight carry the yellow badge.';
+
+  @override
+  String get release259NoticeGrouping =>
+      'The notification center shows unread by default and stacks by source; receipt and detail read states are reconciled so handled items no longer appear unread.';
+
+  @override
+  String get release259PopupSettings =>
+      'A notification setting is added at the top right of the workbench: pop-up reminders can be turned off per category, leaving the notification center and completion withdrawal unaffected.';
+
+  @override
+  String get release259HrAndProfile =>
+      'Employee onboarding becomes a five-step wizard (all fields open, minimal required); the pending-review segment of stock count review gets a red badge; the profile page adapts to small screens.';
 }

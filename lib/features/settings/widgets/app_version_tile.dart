@@ -73,6 +73,14 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release258CompactCells,
         l10n.release258LockReason,
       ],
+      '2.5.9' => [
+        l10n.release259RollbackMerge,
+        l10n.release259SubcontractPending,
+        l10n.release259InProgressGate,
+        l10n.release259NoticeGrouping,
+        l10n.release259PopupSettings,
+        l10n.release259HrAndProfile,
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

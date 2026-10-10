@@ -9976,4 +9976,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get release258LockReason => '委外任务中心锁定行改版：行首锁图标标注，点击弹窗查看锁定原因。';
+
+  @override
+  String get release259RollbackMerge =>
+      '采购与委外申请恢复逐物料分开订货：上一版误并入的滚动合单已整体撤销，任务中心重新按物料逐行分解下单。';
+
+  @override
+  String get release259SubcontractPending =>
+      '委外任务中心「待处理」拍平成一张表：委外申请与领料任务同表混排，可领标红、已提交待仓库发标黄，多选后批量领料。';
+
+  @override
+  String get release259InProgressGate =>
+      '委外「进行中」门槛收紧：领料没有结束的订货单不再计入进行中，领完料（或无需领料）才进入；领料中的单挂黄色在办数。';
+
+  @override
+  String get release259NoticeGrouping =>
+      '通知中心默认只看未读并按来源分组叠放；回执与详情已读口径补齐，操作过的事项不再显示未读。';
+
+  @override
+  String get release259PopupSettings =>
+      '工作台右上角新增通知设置：可按类别逐项关闭弹窗提醒，通知中心列表与办结撤回不受影响。';
+
+  @override
+  String get release259HrAndProfile =>
+      '员工入职改为五步向导（字段全开放、必填最小化）；盘点审核待审核段补红色徽章；我的页小屏布局改版。';
 }

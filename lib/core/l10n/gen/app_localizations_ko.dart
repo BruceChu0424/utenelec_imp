@@ -10208,4 +10208,28 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release258LockReason =>
       '외주 업무 센터의 잠금 행이 개편되었습니다. 자물쇠 아이콘으로 표시되고 탭하면 잠금 사유를 확인할 수 있습니다.';
+
+  @override
+  String get release259RollbackMerge =>
+      '구매·외주 신청서가 다시 재료별 개별 발주로 복구되었습니다. 이전 버전의 잘못된 롤링 병합이 전면 철회되어 업무 센터에서 재료별로 행 단위 분해 발주합니다.';
+
+  @override
+  String get release259SubcontractPending =>
+      '외주 업무 센터의 「대기 처리」가 한 장의 표로 통합되었습니다. 외주 신청과 자재 인출 작업이 같은 표에 표시되고, 인출 가능은 빨강, 제출 후 창고 출고 대기는 노랑으로 표시되며 여러 행을 선택해 일괄 인출할 수 있습니다.';
+
+  @override
+  String get release259InProgressGate =>
+      '외주 「진행 중」 기준이 강화되었습니다. 자재 인출이 끝나지 않은 주문은 진행 중에 포함되지 않고, 인출 완료(또는 인출 불필요)시에만 진행 중으로 들어갑니다. 인출 진행 중인 건은 노란 배지로 표시됩니다.';
+
+  @override
+  String get release259NoticeGrouping =>
+      '알림 센터가 기본적으로 읽지 않음만 표시하고 출처별로 그룹화합니다. 영수증과 상세의 읽음 상태가 보완되어 처리한 항목이 읽지 않음으로 표시되지 않습니다.';
+
+  @override
+  String get release259PopupSettings =>
+      '워크벤치 오른쪽 상단에 알림 설정이 추가되었습니다. 카테고리별로 팝업 알림을 끌 수 있으며 알림 센터 목록과 완료 철회에는 영향이 없습니다.';
+
+  @override
+  String get release259HrAndProfile =>
+      '직원 온보딩이 5단계 마법사로 변경되고(모든 필드 개방, 최소 필수), 재고 조사 검토 대기 구간에 빨간 배지가 추가되었으며 내 프로필 페이지가 소형 화면에 맞게 개편되었습니다.';
 }

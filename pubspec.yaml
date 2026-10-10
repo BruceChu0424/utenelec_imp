@@ -1,7 +1,7 @@
 name: uten_imp
 description: "优腾综合管理平台 - Uten Integrated Management Platform"
 publish_to: "none"
-version: 2.5.8+258
+version: 2.5.9+259
 
 environment:
   sdk: ^3.12.2

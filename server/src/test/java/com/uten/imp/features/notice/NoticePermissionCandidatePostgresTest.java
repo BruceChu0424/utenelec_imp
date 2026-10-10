@@ -34,7 +34,7 @@ class NoticePermissionCandidatePostgresTest {
         query = new NoticePermissionCandidateQuery(jdbc);
         jdbc.execute("""
                 DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE permissions(id uuid PRIMARY KEY,code text,baseline boolean NOT NULL DEFAULT false,high_risk boolean NOT NULL DEFAULT false);
+                CREATE TABLE permissions(id uuid PRIMARY KEY,code text,baseline boolean NOT NULL DEFAULT false,high_risk boolean NOT NULL DEFAULT false,baseline_pinned boolean NOT NULL DEFAULT false);
                 CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,is_super_admin boolean,is_deleted boolean,status text);
                 CREATE TABLE employees(id uuid PRIMARY KEY,department_id uuid);
                 CREATE TABLE departments(id uuid PRIMARY KEY,parent_id uuid);
@@ -43,7 +43,7 @@ class NoticePermissionCandidatePostgresTest {
                 CREATE TABLE user_permission_overrides(user_id uuid,permission_id uuid,active boolean,effect text);
                 CREATE TABLE manager_permission_delegations(user_id uuid,permission_id uuid,enabled boolean);
                 """);
-        jdbc.update("INSERT INTO permissions VALUES (?,'procurement_iqc_rejection:confirm_credit',false)", action);
+        jdbc.update("INSERT INTO permissions(id,code,baseline) VALUES (?,'procurement_iqc_rejection:confirm_credit',false)", action);
         jdbc.update("INSERT INTO departments VALUES (?,null),(?,?)", parent, child, parent);
     }
 

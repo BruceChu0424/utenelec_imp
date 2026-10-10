@@ -170,8 +170,15 @@ void main() {
     final repo = _RecordingBomRepo(rejectFirst: false);
     await _openAddDialog(tester, repo);
 
-    // 输入框标签是「设计使用数量 *」(必填)。
-    expect(find.textContaining('设计使用数量'), findsNWidgets(2));
+    // 输入框标签是「设计使用数量 *」(必填)。只数弹窗内的两行输入标签——
+    // 背后的主表格列头也叫「设计使用数量」，不能混进这个断言。
+    expect(
+      find.descendant(
+        of: find.byType(Dialog),
+        matching: find.textContaining('设计使用数量'),
+      ),
+      findsNWidgets(2),
+    );
     await tester.enterText(
       find.descendant(
         of: find.byKey(const Key('goods-bom-add-qty-goods-x')),

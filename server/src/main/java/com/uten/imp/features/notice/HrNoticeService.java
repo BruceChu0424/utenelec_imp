@@ -350,21 +350,14 @@ public class HrNoticeService implements HrNoticePort {
                         .orElseGet(userRepo::findAll);
         Set<UUID> result = new LinkedHashSet<>();
         // 2026-10-09(ADR-063 追加修订): 任务卡池按「真实授出权限」解析，超管全量镜像不算任务归属。
-        Set<String> adminGrantedPermissions = null;
+        // 不能按「是超管」缓存同一份 granted 集合——每个超管的个人加授/回收各自不同
+        // (2026-10-10 与 ChainNoticeService 同步修复)。
         for (UserAccount user : candidates) {
             if (user == null || user.isDeleted() || !"active".equals(user.getStatus())
                     || user.getEmployeeId() == null) {
                 continue;    // 人事审批接收人必须是绑定员工档案的内部账号
             }
-            Set<String> permissions;
-            if (user.isSuperAdmin()) {
-                if (adminGrantedPermissions == null) {
-                    adminGrantedPermissions = permissionResolver.grantedPermsOf(user);
-                }
-                permissions = adminGrantedPermissions;
-            } else {
-                permissions = permissionResolver.grantedPermsOf(user);
-            }
+            Set<String> permissions = permissionResolver.grantedPermsOf(user);
             if (!permissions.contains(NOTICE_READ_AUTHORITY)) continue;
             if (alternatives.stream().anyMatch(permissions::contains)) {
                 result.add(user.getId());

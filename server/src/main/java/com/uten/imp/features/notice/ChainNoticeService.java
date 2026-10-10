@@ -5425,22 +5425,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         Set<UUID> result = new LinkedHashSet<>();
         // 2026-10-09(ADR-063 追加修订): 任务卡池一律按「真实授出权限」解析——超管的全量
         // 目录码是操作授权面，不是任务归属；超管真实拿到码(基础包/部门/个人/委派)才进池。
-        Set<String> administratorGrantedPermissions = null;
+        // 注意不能按「是超管」缓存同一份 granted 集合: 每个超管的个人加授/回收各自不同
+        // (2026-10-10 CI: 第一个超管的集合被复用给第二个, 恰好缺领料码, 可领料卡全池为空)。
         for (UserAccount user : candidates) {
             if (user == null
                     || user.isDeleted()
                     || !"active".equals(user.getStatus())) {
                 continue;
             }
-            Set<String> permissions;
-            if (user.isSuperAdmin()) {
-                if (administratorGrantedPermissions == null) {
-                    administratorGrantedPermissions = permissionResolver.grantedPermsOf(user);
-                }
-                permissions = administratorGrantedPermissions;
-            } else {
-                permissions = permissionResolver.grantedPermsOf(user);
-            }
+            Set<String> permissions = permissionResolver.grantedPermsOf(user);
             if (!permissions.containsAll(required)) continue;
             if (alternatives.isEmpty() || alternatives.stream().anyMatch(permissions::contains)) {
                 result.add(user.getId());

@@ -48,6 +48,11 @@ NOTE_STRUCTURED = {
     (55, "庞兴茂"): {"confirmed_at": "", "base_salary": "5000", "allowance_standard": ""},
 }
 
+# ---------- 单元格空缺回填（2026-10 名册：入职时间空白 → 沿用 2026-08 名册登记值） ----------
+HIRE_BACKFILL = {
+    (8, "王少春"): "2007-01-12",
+}
+
 # ---------- 组织映射（表内值 → departments.code） ----------
 CENTER_MAP = {
     "制造与研发管理中心": "MFG_CENTER",
@@ -204,8 +209,16 @@ def main() -> int:
         elif not id_checksum_ok(idc):
             warns.append(f"#{seq}: 身份证校验位不符 → 原样入库，请 HR 核实 (服务端启动后进人事任务「证件核对」)")
 
-        # --- 入职时间 ---
-        hire = parse_hire_date(r["入职时间"], warns, seq, name)
+        # --- 入职时间（2026-10 表内空白时按 HIRE_BACKFILL 回填，未登记则告警留空拦截） ---
+        raw_hire = str(r["入职时间"]).strip()
+        if raw_hire and raw_hire.lower() != "nan":
+            hire = parse_hire_date(raw_hire, warns, seq, name)
+        else:
+            hire = HIRE_BACKFILL.get((seq, name), "")
+            if hire:
+                warns.append(f"#{seq} {name}: 入职时间为空 → 按 HIRE_BACKFILL 登记值 {hire} 回填")
+            else:
+                warns.append(f"#{seq} {name}: 入职时间为空且未登记回填 → 留空，导入将被 NOT NULL 拦截，请补表后重跑")
 
         # --- 部门 ---
         center = str(r["所在管理中心"]).strip()

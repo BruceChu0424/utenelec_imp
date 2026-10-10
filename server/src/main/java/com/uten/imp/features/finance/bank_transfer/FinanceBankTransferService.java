@@ -127,10 +127,22 @@ public class FinanceBankTransferService {
                         com.uten.imp.features.master.account.Account.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("outAccountId"),
                         com.uten.imp.features.master.account.Account.class, "code", kw);
-                NameRefKeyword.byName(kws, q, cb, root.get("inAccountId"),
-                        com.uten.imp.features.master.account.Account.class, "name", kw);
-                NameRefKeyword.byName(kws, q, cb, root.get("inAccountId"),
-                        com.uten.imp.features.master.account.Account.class, "code", kw);
+                // 存款账户在行上（一单多行 FinanceBankTransferLine.inAccountId），表头没有
+                // inAccountId 列——按行 EXISTS 子查询搜，口径同 SubcontractGoodsKeyword。
+                jakarta.persistence.criteria.Subquery<UUID> inAccounts = q.subquery(UUID.class);
+                jakarta.persistence.criteria.Root<com.uten.imp.features.master.account.Account> account =
+                        inAccounts.from(com.uten.imp.features.master.account.Account.class);
+                inAccounts.select(account.get("id")).where(
+                        cb.isFalse(account.get("deleted")),
+                        cb.or(cb.like(cb.lower(account.get("name")), kw),
+                                cb.like(cb.lower(account.get("code")), kw)));
+                jakarta.persistence.criteria.Subquery<UUID> lineHit = q.subquery(UUID.class);
+                jakarta.persistence.criteria.Root<FinanceBankTransferLine> line =
+                        lineHit.from(FinanceBankTransferLine.class);
+                lineHit.select(line.get("id")).where(
+                        cb.equal(line.get("transferId"), root.get("id")),
+                        line.get("inAccountId").in(inAccounts));
+                kws.add(cb.exists(lineHit));
                 ps.add(cb.or(kws.toArray(new Predicate[0])));
             }
             if (f.outAccountId() != null) ps.add(cb.equal(root.get("outAccountId"), f.outAccountId()));

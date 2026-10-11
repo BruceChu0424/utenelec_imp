@@ -10217,4 +10217,36 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release259HrAndProfile =>
       '직원 온보딩이 5단계 마법사로 변경되고(모든 필드 개방, 최소 필수), 재고 조사 검토 대기 구간에 빨간 배지가 추가되었으며 내 프로필 페이지가 소형 화면에 맞게 개편되었습니다.';
+
+  @override
+  String get release2510TableAlignment =>
+      '전체 표의 숫자 열이 좌측 정렬로 통일되었습니다. 수량과 금액에 단위가 인라인으로 표시되고(금액은 통화 접미사 방식) 읽기 흐름이 일관됩니다.';
+
+  @override
+  String get release2510TransferOpen =>
+      '요약 뷰 조달이 개방되었습니다: 루트 공급 행을 직접 조달할 수 있고, 집계 행은 차원별 풀 최대치 기준으로 주문하며, 최상위에서 최신 계획 묶음을 일괄 회수할 수 있습니다.';
+
+  @override
+  String get release2510BatchReport =>
+      '품질 검사가 보고서 전체를 한 번에 제출합니다: 일괄 검사 의뢰와 판정이 하나의 트랜잭션과 공유 선점 잠금으로 실행되고, 한 건이라도 실패하면 전체가 롤백되며 주문번호로 안내합니다.';
+
+  @override
+  String get release2510FinanceRate =>
+      '구매/외주 재무 승인에서 당일 환율을 입력할 수 있습니다: 본화 금액이 승인과 함께 확정되며, 미입력 시 승인 환율→제출 스냅샷→1 순으로 대체됩니다.';
+
+  @override
+  String get release2510NeedDate =>
+      '업무 센터의 \'분해 대기\' 구간에서 필요 일자가 계획 발행일로 대체되어 빈칸으로 보이지 않습니다; 연체 판정은 여전히 실제 필요 일자만 봅니다.';
+
+  @override
+  String get release2510DirectTransfer =>
+      '공장 내 이동이 더 이상 창고 사전 개통을 요구하지 않습니다: 보고 직송은 승인 시 자동으로 개통되며, 입자 산포 자재 일괄 인출은 여전히 명시적 개통이 필요합니다.';
+
+  @override
+  String get release2510SessionIdentity =>
+      '세션 자동 갱신 중 잘못된 \'로그인 신원이 변경되었습니다\' 알림을 수정했습니다: 신원 비교가 의미 기준으로 바뀌어 변화가 없으면 로그인 상태를 유지합니다.';
+
+  @override
+  String get release2510Misc =>
+      '출하 심사 필터 도구 막대가 전역 패턴과 통일되었습니다; 주문 승인/IQC 책임 배너가 제거되었습니다; BOM 제품별 뷰의 연결선이 두 색으로 번갈아 표시됩니다; HR 업무 배지가 \'오늘\' 기준으로 돌아왔습니다; 외주 손실 허용 기준이 목록과 상세에서 일치합니다.';
 }

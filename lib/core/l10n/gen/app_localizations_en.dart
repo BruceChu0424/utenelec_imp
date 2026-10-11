@@ -10592,4 +10592,36 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release259HrAndProfile =>
       'Employee onboarding becomes a five-step wizard (all fields open, minimal required); the pending-review segment of stock count review gets a red badge; the profile page adapts to small screens.';
+
+  @override
+  String get release2510TableAlignment =>
+      'Numeric table columns across the app are now left-aligned; quantities and amounts carry their units inline (amounts use a plain currency suffix) for one consistent reading line.';
+
+  @override
+  String get release2510TransferOpen =>
+      'Summary-view transfers open up: root supply rows can be transferred directly, aggregated rows order against the per-dimension pool maximum, and the top level can withdraw the latest plan package in one batch.';
+
+  @override
+  String get release2510BatchReport =>
+      'Quality inspection submits a whole report at once: batch reporting and decisions run in one transaction with joint pre-locking; any single failure rolls the whole batch back and reports by order number.';
+
+  @override
+  String get release2510FinanceRate =>
+      'Purchase/subcontract finance approval accepts the day\'s exchange rate: the local-currency total is stamped with the approval, defaulting through approved rate, then submission snapshot, then 1.';
+
+  @override
+  String get release2510NeedDate =>
+      'The pending-decomposition segment of the task center falls back its need date to the plan issue date instead of blank columns; overdue judgement still looks only at real need dates.';
+
+  @override
+  String get release2510DirectTransfer =>
+      'Intra-workshop flow no longer requires pre-opening the workshop bin: direct transfers open the bin automatically on approval; granular bulk drawing still requires an explicit opening.';
+
+  @override
+  String get release2510SessionIdentity =>
+      'Fixed false \"sign-in identity changed\" errors during silent session refresh: identity comparison is now semantic, so unchanged sessions keep their signed-in state.';
+
+  @override
+  String get release2510Misc =>
+      'The shipment audit filter toolbar matches the app-wide pattern; the ordering-approval/IQC responsibility banners are retired; the BOM per-product view alternates two guide colors; HR task badges return to the today-only caliber; the subcontract loss tolerance now agrees between list and detail.';
 }

@@ -81,6 +81,16 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release259PopupSettings,
         l10n.release259HrAndProfile,
       ],
+      '2.5.10' => [
+        l10n.release2510TableAlignment,
+        l10n.release2510TransferOpen,
+        l10n.release2510BatchReport,
+        l10n.release2510FinanceRate,
+        l10n.release2510NeedDate,
+        l10n.release2510DirectTransfer,
+        l10n.release2510SessionIdentity,
+        l10n.release2510Misc,
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

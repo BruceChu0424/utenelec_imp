@@ -9985,4 +9985,36 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get release259HrAndProfile =>
       '员工入职改为五步向导（字段全开放、必填最小化）；盘点审核待审核段补红色徽章；我的页小屏布局改版。';
+
+  @override
+  String get release2510TableAlignment =>
+      '全站表格数字列统一左对齐；数量与金额就地带单位显示（金额改「元」后缀式），阅读与核对动线一致。';
+
+  @override
+  String get release2510TransferOpen =>
+      '汇总视图调拨放开：根供行可直接调拨，聚合行按维度池最大可调量下单，顶层支持整批撤回最新计划包。';
+
+  @override
+  String get release2510BatchReport =>
+      '品质检验整份报告一次提交：批量送检/判定单事务联合预锁，任一单失败整批回滚并按单号报错。';
+
+  @override
+  String get release2510FinanceRate =>
+      '采购/委外财务审批可填当日汇率：折合本币随批准落账，未填写时按已批汇率→提交快照→1 逐级兜底。';
+
+  @override
+  String get release2510NeedDate =>
+      '任务中心「申请待分解」需求日期兜底为计划下达日期，不再整列空白；逾期判定仍只看真实需求日期。';
+
+  @override
+  String get release2510DirectTransfer =>
+      '车间内流转不再要求预先开通内料仓：报工直送下道工序审核时自动开仓；颗粒散料整批领料仍需显式开通。';
+
+  @override
+  String get release2510SessionIdentity =>
+      '修复会话静默刷新时误报「登录身份已变化」：身份比较改为语义相等，无变化不再重建登录态。';
+
+  @override
+  String get release2510Misc =>
+      '出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。';
 }

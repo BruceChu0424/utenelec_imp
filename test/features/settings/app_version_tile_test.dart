@@ -56,7 +56,7 @@ void main() {
   });
 
   test('the default client version is 2.5.6', () {
-    expect(const AppVersionTile().version, '2.5.9');
+    expect(const AppVersionTile().version, '2.5.10');
   });
 
   testWidgets('2.5.3 retains its own notes without later release fixes', (

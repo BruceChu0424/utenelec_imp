@@ -128,7 +128,18 @@ void main() {
       expect(find.byKey(const Key('iqc-rejection-task-table')), findsOneWidget);
       await tester.tap(find.byKey(const Key('iqc-rejection-type-filter')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('委外').last);
+      final typeOption = find.byKey(
+        const ValueKey<(String, Key?, String?)>((
+          'uten-dropdown-option',
+          Key('iqc-rejection-type-filter'),
+          'subcontract',
+        )),
+      );
+      expect(
+        find.descendant(of: typeOption, matching: find.text('委外')),
+        findsOneWidget,
+      );
+      await tester.tap(typeOption);
       await tester.pumpAndSettle();
       expect(
         gateway.filters.last.receiptType,
@@ -137,7 +148,18 @@ void main() {
 
       await tester.tap(find.byKey(const Key('iqc-rejection-status-filter')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('财务投影异常').last);
+      final statusOption = find.byKey(
+        const ValueKey<(String, Key?, String?)>((
+          'uten-dropdown-option',
+          Key('iqc-rejection-status-filter'),
+          'FINANCE_EXCEPTION',
+        )),
+      );
+      expect(
+        find.descendant(of: statusOption, matching: find.text('财务投影异常')),
+        findsOneWidget,
+      );
+      await tester.tap(statusOption);
       await tester.pumpAndSettle();
       expect(gateway.filters.last.status, 'FINANCE_EXCEPTION');
     },

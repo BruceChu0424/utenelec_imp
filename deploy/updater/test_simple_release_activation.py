@@ -13,7 +13,8 @@ from test_simple_release_retention import SCRIPT, bash_path
 class SimpleReleaseActivationTest(unittest.TestCase):
     def activation(self, *, migration=False, first=False, start=True,
                    candidate_health=True, restart=True, old_health=True, migrate=True, final_stop=True,
-                   backup_dir_blocked=False, web_group=True, migrator_readable=True):
+                   backup_dir_blocked=False, backup_dir_symlink=False, install_noop=False,
+                   web_group=True, migrator_readable=True):
         source = SCRIPT.read_text(encoding="utf-8")
         activate = re.search(r"(?ms)^do_activate\(\) \{.*?^\}", source).group(0)
         with tempfile.TemporaryDirectory(prefix="uten-activation-") as temp:
@@ -30,6 +31,10 @@ class SimpleReleaseActivationTest(unittest.TestCase):
             if backup_dir_blocked:
                 # A regular file where the directory should be: like an unmounted, immutable mount point.
                 backup_dir.write_text("not a directory")
+            elif backup_dir_symlink:
+                real_backup_dir = root / "linked-backup-target"
+                real_backup_dir.mkdir()
+                backup_dir.symlink_to(real_backup_dir, target_is_directory=True)
             env = dict(os.environ, UTEN_BASE=str(root), RELEASES_DIR=str(releases),
                        ACTIVE_FILE=str(active), LOCK_FILE=str(root / "updater.lock"),
                        UTEN_APP_SERVICE="uten-fixture", UTEN_MIGRATOR_ENV=str(root / "migrator.env"),
@@ -75,6 +80,9 @@ require_web_group() { printf 'web-group\n' >> "$EVENTS"; [[ "$WEB_GROUP_PRESENT"
 publish_release_permissions() { printf 'perms:%s\n' "${1##*/}" >> "$EVENTS"; }
 prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
 '''
+            if install_noop:
+                # A successful helper exit does not prove that its directory postcondition exists.
+                fixture += '\ninstall() { return 0; }\n'
             result = subprocess.run([bash_path(), "-c", fixture + activate + '\ndo_activate v1.1.0 manual'],
                                     env=env, text=True, encoding="utf-8", capture_output=True, check=False)
             link = root / "current"
@@ -113,6 +121,27 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
                 self.assertNotIn("migrate", events)
         result, events, _, _ = self.activation(migration=True, backup_dir_blocked=True)
         self.assertIn("未停应用", result.stderr)
+
+    def test_successful_install_exit_cannot_bypass_the_real_backup_directory_preflight(self):
+        for blocked in (False, True):
+            with self.subTest(backup_dir_blocked=blocked):
+                result, events, active, link = self.activation(
+                    migration=True, backup_dir_blocked=blocked, install_noop=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("未停应用", result.stderr)
+                self.assertEqual((active, link), ("v1.0.0", "releases/v1.0.0"))
+                self.assertFalse(any(event.startswith(("stop:", "start:", "restart:")) for event in events))
+                self.assertNotIn("backup", events)
+                self.assertNotIn("migrate", events)
+
+    def test_symbolic_backup_directory_is_refused_before_the_application_stops(self):
+        result, events, active, link = self.activation(migration=True, backup_dir_symlink=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("未停应用", result.stderr)
+        self.assertEqual((active, link), ("v1.0.0", "releases/v1.0.0"))
+        self.assertFalse(any(event.startswith(("stop:", "start:", "restart:")) for event in events))
+        self.assertNotIn("backup", events)
+        self.assertNotIn("migrate", events)
 
     def test_start_failure_and_unhealthy_code_only_candidate_both_restore_verified_old_release(self):
         for start in (False, True):

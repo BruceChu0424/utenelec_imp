@@ -45,6 +45,9 @@ void main() {
       // 2026-10-06 证件批量核对页(ADR-160)：GoRoute 页 didChangeDependencies
       // 读路由身份/查询参数，同 B 类（声明式页路由，不发生爬升）。
       'lib/features/hr_task/pages/hr_reconcile_page.dart': 1, // B
+      // ADR-175: didChangeDependencies checks for a declarative Page and a
+      // surrounding router before reading the form-navigation registry key.
+      'lib/features/admin/pages/admin_platform_settings_page.dart': 1, // B+C
       'lib/features/warehouse/pages/stock_doc_list_page.dart': 1, // B
       'lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart':
           2, // A: 行点击回调

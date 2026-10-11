@@ -102,6 +102,22 @@
       "doc": "docs/03-页面/权限管理页.md"
     },
     {
+      "route": "/admin/platform-settings",
+      "title": "平台设置页",
+      "aliases": [],
+      "module": "系统管理",
+      "purpose": "",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/平台设置页.md"
+    },
+    {
       "route": "/admin/server-status",
       "title": "服务器状态",
       "aliases": [

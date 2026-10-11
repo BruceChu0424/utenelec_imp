@@ -13,6 +13,8 @@
 //   )
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -132,8 +134,14 @@ class UtenDropdownField extends StatefulWidget {
   State<UtenDropdownField> createState() => _UtenDropdownFieldState();
 }
 
-class _UtenDropdownFieldState extends State<UtenDropdownField> {
-  final OverlayPortalController _overlayController = OverlayPortalController();
+class _UtenDropdownFieldState extends State<UtenDropdownField>
+    with WidgetsBindingObserver {
+  final GlobalKey _anchorKey = GlobalKey();
+  final Set<ScrollPosition> _scrollPositions = {};
+  OverlayEntry? _overlay;
+  OverlayEntry? _pendingOverlayRebuild;
+  OverlayState? _overlayHost;
+  Rect? _lastAnchor;
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
 
@@ -150,12 +158,28 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _aiAttach();
+    if (_overlay != null &&
+        (!(_overlayHost?.mounted ?? false) ||
+            !identical(
+              _overlayHost,
+              Overlay.maybeOf(context, rootOverlay: true),
+            ))) {
+      _close();
+    }
+    if (_overlay != null) _watchScrollPositions();
+    _refreshOverlay();
   }
 
   @override
   void didUpdateWidget(covariant UtenDropdownField oldWidget) {
     super.didUpdateWidget(oldWidget);
     _aiAttach();
+    if (!widget.enabled) {
+      _close();
+    } else {
+      if (_overlay != null) _watchScrollPositions();
+      _refreshOverlay();
+    }
   }
 
   void _aiAttach() => _aiSlot.attach(
@@ -256,32 +280,192 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
       widget.value == null ? '' : widget.selectedLabel ?? _display;
 
   void _open() {
-    if (_overlayController.isShowing || !widget.enabled) return;
-    _searchCtl = TextEditingController();
-    _searchFocus = FocusNode();
-    _overlayController.show();
+    if (_overlay != null || !widget.enabled) return;
+    final search = _searchCtl = TextEditingController();
+    final focus = _searchFocus = FocusNode();
+    final host = _overlayHost = Overlay.of(context, rootOverlay: true);
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) =>
+          _buildHostedOverlay(overlayContext, entry, search, focus),
+    );
+    _overlay = entry;
+    host.insert(entry);
+    _watchScrollPositions();
+    WidgetsBinding.instance.addObserver(this);
+    _watchAnchor(entry);
+  }
+
+  Rect? _anchorRect() {
+    final field = _anchorKey.currentContext?.findRenderObject();
+    final overlay = _overlayHost?.context.findRenderObject();
+    if (field is! RenderBox ||
+        !field.hasSize ||
+        !field.attached ||
+        overlay is! RenderBox ||
+        !overlay.attached) {
+      return null;
+    }
+    return MatrixUtils.transformRect(
+      field.getTransformTo(overlay),
+      Offset.zero & field.size,
+    );
+  }
+
+  void _watchAnchor(OverlayEntry entry) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_overlay, entry)) return;
+      final anchor = _anchorRect();
+      if (anchor == null) {
+        _close();
+        return;
+      }
+      if (anchor != _lastAnchor) _refreshOverlay();
+      // Observe actual UI frames without requesting frames while the anchor is
+      // stationary. Ancestor layout can move a constant field without rebuilding
+      // it or changing any ScrollPosition.
+      _watchAnchor(entry);
+    });
+  }
+
+  void _watchScrollPositions() {
+    // Every ancestor can move the field, including an outer viewport when a
+    // nested viewport scrolls along the same axis.
+    final positions = <ScrollPosition>{};
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        positions.add((element.state as ScrollableState).position);
+      }
+      return true;
+    });
+    for (final position in _scrollPositions.difference(positions)) {
+      position.removeListener(_refreshOverlay);
+    }
+    for (final position in positions.difference(_scrollPositions)) {
+      position.addListener(_refreshOverlay);
+    }
+    _scrollPositions
+      ..clear()
+      ..addAll(positions);
   }
 
   void _close() {
-    if (_overlayController.isShowing) _overlayController.hide();
-    _searchCtl?.dispose();
+    final entry = _overlay;
+    final search = _searchCtl;
+    final focus = _searchFocus;
+    _overlay = null;
+    _overlayHost = null;
+    _lastAnchor = null;
+    _pendingOverlayRebuild = null;
     _searchCtl = null;
-    _searchFocus?.dispose();
     _searchFocus = null;
+    WidgetsBinding.instance.removeObserver(this);
+    for (final position in _scrollPositions) {
+      position.removeListener(_refreshOverlay);
+    }
+    _scrollPositions.clear();
+    if (entry == null) {
+      search?.dispose();
+      focus?.dispose();
+      return;
+    }
+    // remove can defer unmount to the next frame. Keep the old resources alive
+    // until its TextField unmounts, without touching a rapidly reopened menu.
+    var released = false;
+    void releaseResources() {
+      if (released || entry.mounted) return;
+      released = true;
+      entry.removeListener(releaseResources);
+      search?.dispose();
+      focus?.dispose();
+    }
+
+    entry.addListener(releaseResources);
+    entry.remove();
+    entry.dispose();
+    releaseResources();
   }
 
-  Widget _withOverlay({required Widget child}) =>
-      OverlayPortal.overlayChildLayoutBuilder(
-        controller: _overlayController,
-        overlayLocation: OverlayChildLocation.rootOverlay,
-        overlayChildBuilder: _buildOverlay,
-        child: child,
-      );
+  @override
+  void didChangeMetrics() => _refreshOverlay();
+
+  void _refreshOverlay() {
+    final entry = _overlay;
+    if (entry == null) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (identical(_pendingOverlayRebuild, entry)) return;
+      _pendingOverlayRebuild = entry;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (identical(_pendingOverlayRebuild, entry)) {
+          _pendingOverlayRebuild = null;
+        }
+        if (mounted && identical(_overlay, entry)) entry.markNeedsBuild();
+      });
+    } else {
+      entry.markNeedsBuild();
+    }
+  }
+
+  Widget _withAnchor({required Widget child}) =>
+      KeyedSubtree(key: _anchorKey, child: child);
+
+  Widget _buildHostedOverlay(
+    BuildContext overlayContext,
+    OverlayEntry entry,
+    TextEditingController search,
+    FocusNode focus,
+  ) {
+    if (!mounted || !identical(_overlay, entry)) {
+      return const SizedBox.shrink();
+    }
+    final themes = InheritedTheme.capture(
+      from: context,
+      to: _overlayHost!.context,
+    );
+    final fieldMedia = MediaQuery.of(context);
+    final overlayMedia = MediaQuery.of(overlayContext);
+    Widget menu = LayoutBuilder(
+      builder: (menuContext, constraints) =>
+          _buildOverlay(menuContext, constraints, entry, search, focus),
+    );
+    menu = MediaQuery(
+      data: fieldMedia.copyWith(
+        padding: overlayMedia.padding,
+        viewInsets: overlayMedia.viewInsets,
+        viewPadding: overlayMedia.viewPadding,
+      ),
+      child: Localizations.override(
+        context: context,
+        child: Directionality(
+          textDirection: Directionality.of(context),
+          child: menu,
+        ),
+      ),
+    );
+    final scope =
+        context
+                .getElementForInheritedWidgetOfExactType<
+                  UncontrolledProviderScope
+                >()
+                ?.widget
+            as UncontrolledProviderScope?;
+    if (scope != null) {
+      menu = UncontrolledProviderScope(container: scope.container, child: menu);
+    }
+    return themes.wrap(menu);
+  }
 
   void _select(String? v) {
+    if (!mounted || !widget.enabled) return;
+    final selectable = widget.items.any(
+      (item) => item.value == v && item.enabled && item.visible,
+    );
+    if (!selectable && !(v == null && widget.allowClear)) return;
     _aiFilled = false;
-    widget.onChanged(v);
+    final onChanged = widget.onChanged;
     _close();
+    onChanged(v);
   }
 
   @override
@@ -309,7 +493,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     if (widget.flat) {
       return _buildFlat(theme, hasValue, requiredEmpty, autofillHint);
     }
-    return _withOverlay(
+    return _withAnchor(
       child: InkWell(
         onTap: _open,
         child: InputDecorator(
@@ -404,7 +588,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   ) {
     final display = hasValue ? _selectedDisplay : (widget.hintText ?? '请选择');
     final message = widget.errorMessage ?? widget.warningMessage;
-    return _withOverlay(
+    return _withAnchor(
       child: Tooltip(
         message: message ?? (hasValue ? _display : display),
         child: InkWell(
@@ -447,16 +631,31 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   /// 弹层：锚定字段下方、限高 320、竖向滚动；点外部关闭。样式对齐 _FilterCell。
   /// 选项较多（或 searchable:true）时顶部带搜索框，输入实时过滤，回车选中第一项。
-  Widget _buildOverlay(BuildContext ctx, OverlayChildLayoutInfo layout) {
+  Widget _buildOverlay(
+    BuildContext ctx,
+    BoxConstraints constraints,
+    OverlayEntry entry,
+    TextEditingController search,
+    FocusNode focus,
+  ) {
+    bool current() => mounted && identical(_overlay, entry) && widget.enabled;
+    void close() {
+      if (current()) _close();
+    }
+
+    void select(String? value) {
+      if (current()) _select(value);
+    }
+
+    final anchor = _anchorRect();
+    if (anchor == null) return const SizedBox.shrink();
+    _lastAnchor = anchor;
+    final overlaySize = constraints.biggest;
     final theme = Theme.of(ctx);
     final searchable = widget.searchable ?? widget.items.length >= 4;
     // Resolve the anchor during layout. A paint-only follower prevents nested
     // Tooltip overlays from positioning themselves when a menu item is hovered.
-    final anchor = MatrixUtils.transformRect(
-      layout.childPaintTransform,
-      Offset.zero & layout.childSize,
-    );
-    final down = layout.overlaySize.height - anchor.bottom;
+    final down = overlaySize.height - anchor.bottom;
     final up = anchor.top;
     final openAbove = up > down;
     final maxHeight = ((openAbove ? up : down) - 8).clamp(120.0, 320.0);
@@ -466,15 +665,15 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onTap: _close,
+            onTap: close,
           ),
         ),
         Positioned(
           left: anchor.left,
           top: openAbove ? null : anchor.bottom + 2,
-          bottom: openAbove ? layout.overlaySize.height - anchor.top + 2 : null,
+          bottom: openAbove ? overlaySize.height - anchor.top + 2 : null,
           child: TapRegion(
-            onTapOutside: (_) => _close(),
+            onTapOutside: (_) => close(),
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
@@ -485,7 +684,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 constraints: BoxConstraints(maxHeight: maxHeight),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
-                    final q = _searchCtl?.text.trim().toLowerCase() ?? '';
+                    final q = search.text.trim().toLowerCase();
                     final filtered = widget.items
                         .where(
                           (it) =>
@@ -505,8 +704,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               UtenSpacing.s4,
                             ),
                             child: TextField(
-                              controller: _searchCtl,
-                              focusNode: _searchFocus,
+                              controller: search,
+                              focusNode: focus,
                               autofocus: true,
                               style: theme.textTheme.bodyMedium,
                               decoration: InputDecoration(
@@ -528,7 +727,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                           size: 16,
                                         ),
                                         onPressed: () {
-                                          _searchCtl!.clear();
+                                          if (!current()) return;
+                                          search.clear();
                                           setOverlayState(() {});
                                         },
                                       ),
@@ -543,7 +743,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               onChanged: (_) => setOverlayState(() {}),
                               onSubmitted: (_) {
                                 if (filtered.isNotEmpty) {
-                                  _select(filtered.first.value);
+                                  select(filtered.first.value);
                                 }
                               },
                             ),
@@ -558,8 +758,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                             ),
                             child: InkWell(
                               onTap: () {
+                                if (!current()) return;
+                                final onAddNew = widget.onAddNew;
+                                if (onAddNew == null) return;
                                 _close();
-                                widget.onAddNew!();
+                                onAddNew();
                               },
                               borderRadius: BorderRadius.circular(6),
                               child: Container(
@@ -608,7 +811,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   )),
                                   label: '不选',
                                   selected: widget.value == null,
-                                  onTap: () => _select(null),
+                                  onTap: () => select(null),
                                   theme: theme,
                                 ),
                               for (final it in filtered)
@@ -622,7 +825,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   label: it.label,
                                   selected: it.value == widget.value,
                                   onTap: it.enabled
-                                      ? () => _select(it.value)
+                                      ? () => select(it.value)
                                       : null,
                                   theme: theme,
                                   indent: it.indent,

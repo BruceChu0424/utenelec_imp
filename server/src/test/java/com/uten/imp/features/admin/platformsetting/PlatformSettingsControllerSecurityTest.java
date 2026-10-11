@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = {PlatformSettingsController.class, PublicPlatformBrandingController.class},
+        properties = {"uten.security.cors-allowed-origins=https://erp.test", "uten.security.require-https=true"},
         excludeAutoConfiguration = UserDetailsServiceAutoConfiguration.class,
         excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = {
                 WebMvcConfig.class, UserOperationAuditInterceptor.class, ExportRateLimitInterceptor.class,
@@ -64,7 +65,7 @@ class PlatformSettingsControllerSecurityTest {
     }
 
     @Test void anonymousBrandingHasOnlyPublicProjection() throws Exception {
-        mvc.perform(get("/api/platform/branding")).andExpect(status().isOk())
+        mvc.perform(get("https://erp.test/api/platform/branding").secure(true)).andExpect(status().isOk())
                 .andExpect(jsonPath("companyName").value("公司"))
                 .andExpect(jsonPath("companyAliases").value(""))
                 .andExpect(jsonPath("version").value(4)).andExpect(jsonPath("hasLogo").value(false))
@@ -73,34 +74,34 @@ class PlatformSettingsControllerSecurityTest {
     }
 
     @Test void anonymousWriteAdminAndSimilarPathsAreNotPublic() throws Exception {
-        mvc.perform(get("/api/admin/platform-settings")).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/admin/platform-settings/status")).andExpect(status().isUnauthorized());
-        mvc.perform(put("/api/platform/branding").contentType("application/json").content("{}"))
+        mvc.perform(get("https://erp.test/api/admin/platform-settings").secure(true)).andExpect(status().isUnauthorized());
+        mvc.perform(get("https://erp.test/api/admin/platform-settings/status").secure(true)).andExpect(status().isUnauthorized());
+        mvc.perform(put("https://erp.test/api/platform/branding").secure(true).contentType("application/json").content("{}"))
                 .andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/platform/branding/private")).andExpect(status().isUnauthorized());
+        mvc.perform(get("https://erp.test/api/platform/branding/private").secure(true)).andExpect(status().isUnauthorized());
     }
 
     @Test void ordinaryStaffWithManageAuthorityStillCannotReadAdminSettings() throws Exception {
-        mvc.perform(get("/api/admin/platform-settings").with(user(PlatformSettingsServiceTest.actor(false, null))))
+        mvc.perform(get("https://erp.test/api/admin/platform-settings").secure(true).with(user(PlatformSettingsServiceTest.actor(false, null))))
                 .andExpect(status().isForbidden());
         verify(service, never()).current();
     }
 
     @Test void adminReadWorksAndSaveRequiresConsumedStepUp() throws Exception {
         var admin = PlatformSettingsServiceTest.actor(true, null);
-        mvc.perform(get("/api/admin/platform-settings").with(user(admin))).andExpect(status().isOk());
+        mvc.perform(get("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin))).andExpect(status().isOk());
         String body = json.writeValueAsString(PlatformSettingsServiceTest.request(4, null, false));
-        mvc.perform(put("/api/admin/platform-settings").with(user(admin)).contentType("application/json").content(body))
+        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin)).contentType("application/json").content(body))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("code").value("REAUTH_REQUIRED"));
         verify(service, never()).update(any());
-        mvc.perform(put("/api/admin/platform-settings").with(user(admin)).header(StepUpInterceptor.HEADER, "valid-step-up")
+        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(admin)).header(StepUpInterceptor.HEADER, "valid-step-up")
                         .contentType("application/json").content(body))
                 .andExpect(status().isOk()).andExpect(jsonPath("version").value(5));
         verify(service).update(any());
     }
 
     @Test void unauthorizedSaveCannotConsumeStepUp() throws Exception {
-        mvc.perform(put("/api/admin/platform-settings").with(user(PlatformSettingsServiceTest.actor(false, null)))
+        mvc.perform(put("https://erp.test/api/admin/platform-settings").secure(true).with(user(PlatformSettingsServiceTest.actor(false, null)))
                         .header(StepUpInterceptor.HEADER, "valid-step-up").contentType("application/json")
                         .content(json.writeValueAsString(PlatformSettingsServiceTest.request(4, null, false))))
                 .andExpect(status().isForbidden());
@@ -109,10 +110,10 @@ class PlatformSettingsControllerSecurityTest {
 
     @Test void logoHasNoStoreAndNosniffAndOldVersionIsNotServed() throws Exception {
         when(service.logo(4)).thenReturn(Optional.of(new byte[]{1, 2, 3}));
-        mvc.perform(get("/api/platform/branding/logo?v=4")).andExpect(status().isOk())
+        mvc.perform(get("https://erp.test/api/platform/branding/logo?v=4").secure(true)).andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("image/png"))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
                 .andExpect(header().string("Cache-Control", "no-store"));
-        mvc.perform(get("/api/platform/branding/logo?v=3")).andExpect(status().isNotFound());
+        mvc.perform(get("https://erp.test/api/platform/branding/logo?v=3").secure(true)).andExpect(status().isNotFound());
     }
 }

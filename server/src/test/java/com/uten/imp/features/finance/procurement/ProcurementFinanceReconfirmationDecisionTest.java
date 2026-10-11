@@ -61,6 +61,20 @@ class ProcurementFinanceReconfirmationDecisionTest {
     }
 
     private static void invoke(Fixture fixture, String action) throws Exception {
+        // V835 后 approveOne 带 (原始汇率, 归一汇率) 两参。本测试显式传 1：
+        // 走缺省链会触发 queryDefaultFinanceRate 的 jdbc.query，被下方
+        // lockPendingCase 的宽桩误拦（List.of(null) 抛 NPE），且汇率口径
+        // 已由 ProcurementFinanceApprovalExchangeRateTest 独立钉住。
+        // rejectOne 仍为五参签名。
+        if ("approveOne".equals(action)) {
+            var approve = ProcurementFinanceApprovalService.class.getDeclaredMethod(action,
+                    String.class, UUID.class, long.class, UUID.class, String.class,
+                    BigDecimal.class, BigDecimal.class);
+            approve.setAccessible(true);
+            approve.invoke(fixture.service(), "PURCHASE", fixture.orderId(), 1L,
+                    fixture.caseId(), "核对金额", BigDecimal.ONE, BigDecimal.ONE);
+            return;
+        }
         var method = ProcurementFinanceApprovalService.class.getDeclaredMethod(action,
                 String.class, UUID.class, long.class, UUID.class, String.class);
         method.setAccessible(true);

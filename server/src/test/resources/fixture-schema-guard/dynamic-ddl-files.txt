@@ -2,6 +2,7 @@
 # 新文件出现即红；改用 MigratedSchemaBaseline 或固定表名后从本表删除。
 # 重新生成：UTEN_RUN_DB_TESTS=true UTEN_REGEN_FIXTURE_BASELINE=true
 com/uten/imp/features/finance/procurement/ProcurementApprovalDisplaySnapshotPostgresTest.java
+com/uten/imp/features/finance/procurement/ProcurementFinanceApprovalExchangeRatePostgresTest.java
 com/uten/imp/features/finance/receivables/SalesMoneyProjectionPressurePostgresTest.java
 com/uten/imp/features/master/goods/GoodsQuantityUnitLifecyclePostgresTest.java
 com/uten/imp/features/master/paymentstyle/PaymentStyleHierarchyConcurrencyPostgresTest.java

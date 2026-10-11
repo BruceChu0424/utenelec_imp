@@ -395,3 +395,7 @@ b26906b7040181b99a785fd2ca24a3a34f22fb8e:test/fixtures/material_three_1000_after
 # not generated credentials. Preserve history scanning; exempt only these two findings.
 da45c3b5af181a7f2275c88dc9a3d69298d6e4d9:deploy/setup/server.env.internal-storage.example:generic-api-key:17
 da45c3b5af181a7f2275c88dc9a3d69298d6e4d9:deploy/setup/server.env.internal-storage.example:generic-api-key:22
+
+# UI 布局缓存键（MasterDataTableView tableKey），版本号字符串不是凭据：
+# 2026-10-10 列序变更 bump v2 时 generic-api-key 误报，人工复核登记。
+a4061969d5fc9b6c17fe9469287a4ea4e2abeced:lib/features/purchase/pages/purchase_order_edit_page.dart:generic-api-key:1740

@@ -51,7 +51,7 @@
              dysmsapi20170525:4.6.0 自己直接声明的那一版, 也正是钉之前实际解析到的那一版
              (本地仓库里只有 1.4.1 有 jar, 其余版本只有为求区间而下载的 pom),
              所以这次钉版本不改变依赖图, 只把它变成确定的。 -->
-        <aliyun-tea.version>1.4.1</aliyun-tea.version>
+        <aliyun-tea.version>1.4.2</aliyun-tea.version>
     </properties>
 
     <dependencyManagement>

@@ -1561,6 +1561,8 @@ class SubcontractStepDrawEndToEndTest {
         if (rows.isEmpty()) {
             return null;
         }
+        // 本测试不经申请分解下单, source_doc_no 为空 → 来源计划列回落订货单号(V836 订货段同口径)。
+        assertEquals(billNo(orderId), rows.getFirst().planNo(), "来源计划 = 订货单号(source_doc_no 为空回落)");
         assertIdentity(rows.getFirst(), "列表行");
         return rows.getFirst();
     }

@@ -341,7 +341,7 @@ void main() {
         );
         expect(find.byType(UtenRevisionStrike), findsOneWidget);
         expect(find.text('报销单修改'), findsOneWidget);
-        expect(find.text('本次共 1 项 · 合计 ¥ 35.00'), findsOneWidget);
+        expect(find.text('本次共 1 项 · 合计 35.00 元'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

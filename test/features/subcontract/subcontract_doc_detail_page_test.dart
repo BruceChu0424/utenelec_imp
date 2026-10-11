@@ -223,7 +223,9 @@ void main() {
     expect(find.text('等待财务审核组处理'), findsOneWidget);
 
     // 明细表（2026-09-25 起纯计数「明细 (N)」标题退役）
-    expect(find.text('10.00'), findsOneWidget);
+    // 2026-10-10 数量+单位口径：数量内联单位并去尾零；本夹具字典为空（无单位名），
+    // 10.00 显示为 10。
+    expect(find.text('10'), findsOneWidget);
 
     // 即使详情投影带有 APPROVE/REJECT，委外侧也只能只读核单；财务审批
     // 唯一入口是「财务 → 订货审批任务中心」。

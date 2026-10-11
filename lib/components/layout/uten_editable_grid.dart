@@ -117,7 +117,8 @@ mixin AmountRowMixin on EditableGridRow {
 }
 
 /// 一列定义：[key]（标识）、[label]（表头）、[width]（初始列宽，可被用户拖拽覆盖）、
-/// [cellBuilder]（单元格控件，从行 model 取控制器/通知器）、[numeric]（金额/数量→数据右对齐+tabular）、
+/// [cellBuilder]（单元格控件，从行 model 取控制器/通知器）、[numeric]（金额/数量→tabular
+/// 等宽数字；2026-10-10 全站口径：单元格内容一律左对齐，不再右对齐）、
 /// [textOf]+[listenableOf]（可选，随内容自动加宽）。
 class EditableGridColumn<T extends EditableGridRow> {
   const EditableGridColumn({
@@ -2425,30 +2426,33 @@ class _UtenEditableGridState<T extends EditableGridRow>
             SizedBox(height: _headerHeight),
             // 表体：content-tall（shrinkWrap），横滚条走共用 UtenHScrollArea——
             // 内容不超高 → 末行下方紧贴的自然滚动条；超高 → 钉视口底。
+            // 空态只占可视宽，不进「列宽和」的横滚盒：列总宽超过面板/视口时，
+            // 居中于滚动内容会把空态引导块（含按钮）推出屏幕外（2026-10-10
+            // AR 选择器实测）。
             KeyedSubtree(
               key: _bodyKey,
-              child: UtenHScrollArea(
-                controller: _bodyH,
-                child: SizedBox(
-                  width: total,
-                  child: ListenableBuilder(
-                    // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
-                    listenable: widget.controller.rowsListenable,
-                    builder: (context, _) {
-                      final all = _allRows();
-                      if (all.isEmpty) {
-                        return _EmptyRows(
-                          message: widget.emptyMessage,
-                          child: widget.emptyPlaceholder,
-                        );
-                      }
-                      // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
-                      final rows = _visibleRows();
-                      _publishHiddenByFilter(all, rows);
-                      if (rows.isEmpty) {
-                        return const _EmptyRows(message: '没有符合表头筛选条件的行');
-                      }
-                      return ListView.builder(
+              child: ListenableBuilder(
+                // 只随行集变化重建；勾选由各行自己订阅(见 _RowSelectionListener)。
+                listenable: widget.controller.rowsListenable,
+                builder: (context, _) {
+                  final all = _allRows();
+                  if (all.isEmpty) {
+                    return _EmptyRows(
+                      message: widget.emptyMessage,
+                      child: widget.emptyPlaceholder,
+                    );
+                  }
+                  // 表头筛选为视图级过滤：只影响可见行集，不动数据与选中。
+                  final rows = _visibleRows();
+                  _publishHiddenByFilter(all, rows);
+                  if (rows.isEmpty) {
+                    return const _EmptyRows(message: '没有符合表头筛选条件的行');
+                  }
+                  return UtenHScrollArea(
+                    controller: _bodyH,
+                    child: SizedBox(
+                      width: total,
+                      child: ListView.builder(
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
@@ -2462,10 +2466,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             visibleColumnIndices,
                           ),
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
             // 表尾一条线：左「添加行/添加多行」、右合计。此前两者各占一行，
@@ -3428,9 +3432,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                               vertical: UtenEditableGrid.cellVerticalPadding,
                             ),
                             child: Align(
-                              alignment: columns[i].numeric
-                                  ? Alignment.centerRight
-                                  : Alignment.centerLeft,
+                              alignment: Alignment.centerLeft,
                               child: Text(
                                 columns[i].textOf?.call(row) ??
                                     columns[i].frozenTextOf?.call(row) ??
@@ -3644,19 +3646,15 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
     required Widget row,
   }) => stretch ? IntrinsicHeight(child: row) : row;
 
-  /// 非拉伸列沿用原来的居中对齐；拉伸列（层级树列）直接返回子级，让它自己
-  /// 吃满整格高度。
+  /// 非拉伸列统一左对齐（2026-10-10 全站表格口径：单元格内容一律靠左，
+  /// numeric 列只保留 tabular 等宽数字，不再右对齐）；拉伸列（层级树列）
+  /// 直接返回子级，让它自己吃满整格高度。
   static Widget _maybeAlign({
     required EditableGridColumn column,
     required Widget child,
   }) => column.fillsCellHeight
       ? child
-      : Align(
-          alignment: column.numeric
-              ? Alignment.centerRight
-              : Alignment.centerLeft,
-          child: child,
-        );
+      : Align(alignment: Alignment.centerLeft, child: child);
 }
 
 class _EmptyRows extends StatelessWidget {

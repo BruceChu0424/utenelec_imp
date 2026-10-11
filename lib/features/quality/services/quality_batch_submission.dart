@@ -4,8 +4,10 @@ import '../../../core/network/authenticated_request_scope.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../repositories/production_fqc_repository.dart';
 
-/// One receipt stays atomic on the server. Across receipts, each command keeps the
-/// exact accepted report and only its own acknowledgement advances that receipt.
+/// One receipt stays atomic on the server. Across receipts, the whole report is
+/// one server-side transaction (2026-10-10 decide-report): any conflicting
+/// receipt rolls back everything, and the exact accepted report replays
+/// silently on retry.
 class QualityReceiptSubmission {
   QualityReceiptSubmission({
     required this.receiptType,
@@ -20,8 +22,9 @@ class QualityReceiptSubmission {
   final List<ProcurementInspectionDecideItem> items;
 }
 
-/// A timeout leaves the current command unacknowledged, including its body and
-/// keys. Retry sends that same command; completed receipts are never sent again.
+/// A timeout leaves the report unacknowledged, including its body and keys.
+/// Retry sends that same whole report; committed receipts replay silently and
+/// rolled-back ones execute fresh — no half-committed state exists.
 /// This object is owned by the approval page, not a cross-session stock cache.
 class QualityBatchSubmission {
   QualityBatchSubmission({
@@ -118,14 +121,6 @@ class QualityBatchSubmission {
         ...receipts[i].items.map((item) => item.inspectionItemId),
   ];
 
-  /// 报错口径：最靠前的未确认收货单；全部确认后才轮到自制产成品。
-  String get currentLabel {
-    for (var i = 0; i < receipts.length; i++) {
-      if (!_acknowledged.contains(i)) return receipts[i].label;
-    }
-    return '自制产成品检验';
-  }
-
   Future<void> send({
     required ProcurementInspectionRepository iqc,
     required ProductionFqcRepository fqc,
@@ -137,34 +132,36 @@ class QualityBatchSubmission {
     _running = true;
     try {
       await scope.run(() async {
-        final pending = [
-          for (var i = 0; i < receipts.length; i++)
-            if (!_acknowledged.contains(i)) i,
-        ];
-        // 共用主仓锁的收货单按报告顺序提交。失败不取消其它单，重试保留原命令身份。
-        Object? firstFailure;
-        for (final index in pending) {
+        // 2026-10-10 整份检验报告一次提交：服务端 decide-report 单事务原子执行全部
+        // 收货单（联合预锁 + 按报告顺序逐单），任一单冲突整批回滚并按单号报错。
+        // 此前逐单串行发 decide-batch——N 张单 N 次 HTTP 往返，长批次既慢又容易在
+        // 中途撞会话边界。响应丢失后重试同一体：已提交的单静默重放，回滚过的重新
+        // 执行，不存在半提交状态；旧版草稿恢复出的部分确认集合并入重试同一处理。
+        if (_acknowledged.length < receipts.length) {
           await scope.verify();
-          final receipt = receipts[index];
           try {
-            await iqc.decideBatch(
-              receiptType: receipt.receiptType,
-              receiptId: receipt.receiptId,
-              items: receipt.items,
+            await iqc.decideReport(
+              receipts: [
+                for (final receipt in receipts)
+                  ProcurementInspectionReportReceipt(
+                    receiptType: receipt.receiptType,
+                    receiptId: receipt.receiptId,
+                    items: receipt.items,
+                  ),
+              ],
               reason: reason,
             );
-            _acknowledged.add(index);
-            onProgress?.call();
           } catch (error) {
+            // 业务驳回与响应期换身份是两回事：先核对身份，身份已换按会话边界报，
+            // 旧报告不得再被新身份重试；否则原样抛业务错误。
             if (isSessionBoundaryError(error)) rethrow;
-            // A business rejection and a concurrent identity change are distinct:
-            // stop the old operation before another command can adopt new tokens.
             await scope.verify();
-            firstFailure ??= error;
+            rethrow;
           }
+          _acknowledged.addAll([for (var i = 0; i < receipts.length; i++) i]);
+          onProgress?.call();
         }
         await scope.verify();
-        if (firstFailure != null) throw firstFailure;
         if (fqcInspectionIds.isNotEmpty && !_fqcAcknowledged) {
           final result = await fqc.passAll(
             inspectionIds: fqcInspectionIds,

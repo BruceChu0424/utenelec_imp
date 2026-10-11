@@ -10,8 +10,12 @@ TaskClaimSession financeReviewClaim(ProviderContainer container) {
   return TaskClaimSession(
     container.read(taskClaimRepositoryProvider),
     strict: true,
+    // 语义身份（ADR-014：refresh 保持 lineage/intent，服务端租约按人走）：
+    // token 静默刷新 / 权限滑动更新 / 档案字段变化不失效认领；换号、登出、
+    // 模拟切换才失效。此前用对象同一性，token 每 ~15 分钟刷新一次就误杀
+    // 一次有效租约（服务端租约其实一直活着）。
     isCurrentSession: () =>
-        identical(container.read(sessionProvider), identity),
+        container.read(sessionProvider).isSameIdentity(identity),
   );
 }
 

@@ -134,7 +134,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text(quantity), findsWidgets);
+      // 2026-10-10 数量内联口径：数量列直接带单位（本批实际/本次超限两列都出现）。
+      expect(find.text('$quantity 件'), findsWidgets);
       expect(tester.takeException(), isNull);
     });
   }

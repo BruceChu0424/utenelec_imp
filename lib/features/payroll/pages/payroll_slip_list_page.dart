@@ -30,6 +30,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/human_error_message.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_slip.dart';
@@ -169,29 +170,31 @@ final List<MasterColumnDef<PayrollSlip>> _columns = [
     width: 110,
     value: (s) => s.periodLabelZh,
   ),
+  // 工资恒人民币（2026-10-10 金额带单位口径：数值后自动带「元」）。
   MasterColumnDef(
     key: 'grossIncome',
     label: '应发合计',
-    width: 110,
+    width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) => s.grossIncome.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'totalDeduction',
     label: '扣除合计',
-    width: 110,
+    width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) => s.totalDeduction.toStringAsFixed(2),
+    value: (s) =>
+        financeLocalMoneyWithUnitSuffix(s.totalDeduction.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'netIncome',
     label: '实发合计',
-    width: 120,
+    width: 150,
     type: 'money',
     aiSensitive: true,
-    value: (s) => s.netIncome.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'publishedAt',

@@ -351,7 +351,16 @@ public class ProductionExecutionWorkbenchService {
                     + " AND NOT fn_material_discovery_pending(task.segment_id)"
                     + " AND (" + effectiveIssuedPredicate() + " OR task.zero_material)"
                     + " AND NOT (" + unresolvedBinMaterialPredicate() + ")";
-                case "IN_PROGRESS" -> " AND task.segment_status = 'IN_PROGRESS'";
+                // 2026-10-10「报工送检」分类：IN_PROGRESS 按 remaining_qty 拆两段——
+                // 还有可报量的才是「生产中」，已报完(remaining<=0)未完工的等检验/点收/
+                // 结清，归「报工送检」；品质 FAIL 恢复授权会抬高 remaining_qty，任务自动
+                // 回「生产中」。两段互斥且并集=原 IN_PROGRESS。
+                case "IN_PROGRESS" ->
+                    " AND task.segment_status = 'IN_PROGRESS'"
+                    + " AND COALESCE(task.remaining_qty, 0) > 0";
+                case "REPORT_INSPECTION" ->
+                    " AND task.segment_status = 'IN_PROGRESS'"
+                    + " AND COALESCE(task.remaining_qty, 0) <= 0";
                 default -> "";
             };
         }
@@ -631,15 +640,22 @@ public class ProductionExecutionWorkbenchService {
         UUID employeeId = currentUser.employeeId().orElse(null);
         boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         if (employeeId == null && !seeAll) {
-            return new WorkshopTaskCountBreakdown(0, 0, 0);
+            return new WorkshopTaskCountBreakdown(0, 0, 0, 0);
         }
         String predicate = seeAll ? "TRUE" : assignmentPredicate("task");
+        // 2026-10-10「报工送检」桶：IN_PROGRESS 且 remaining_qty<=0(与列表谓词同一口径)；
+        // 「生产中」改为 remaining_qty>0——preparing + inProgress + reportInspection 互斥
+        // 恒等式保持 total 不变，hub 卡黄数(两黄事实数相加)与拆分前一致。
         Query query = em.createNativeQuery("""
                         SELECT COUNT(*),
                                COUNT(*) FILTER (
                                    WHERE task.segment_status <> 'IN_PROGRESS'),
                                COUNT(*) FILTER (
-                                   WHERE task.segment_status = 'IN_PROGRESS')
+                                   WHERE task.segment_status = 'IN_PROGRESS'
+                                   AND COALESCE(task.remaining_qty, 0) > 0),
+                               COUNT(*) FILTER (
+                                   WHERE task.segment_status = 'IN_PROGRESS'
+                                   AND COALESCE(task.remaining_qty, 0) <= 0)
                         FROM v_production_execution_workbench_segments task
                         WHERE task.segment_status IN (
                             'WAITING','READY','DISPATCHED','IN_PROGRESS')
@@ -652,12 +668,13 @@ public class ProductionExecutionWorkbenchService {
         return new WorkshopTaskCountBreakdown(
                 ((Number) row[0]).longValue(),
                 ((Number) row[1]).longValue(),
-                ((Number) row[2]).longValue());
+                ((Number) row[2]).longValue(),
+                ((Number) row[3]).longValue());
     }
 
-    /** 车间任务分段计数（与列表筛选口径一一对应：等待物料 + 生产中 = 总数）。 */
+    /** 车间任务分段计数（与列表筛选口径一一对应：等待物料 + 生产中 + 报工送检 = 总数）。 */
     public record WorkshopTaskCountBreakdown(
-            long total, long preparing, long inProgress) {
+            long total, long preparing, long inProgress, long reportInspection) {
     }
 
     /** 段列表默认排序：计划完工日期 → 计划号 → 段序 → UUID 稳定收尾。 */
@@ -1516,8 +1533,10 @@ public class ProductionExecutionWorkbenchService {
     private static String normalizeTaskStatus(String value) {
         if (value == null || value.isBlank()) return null;
         String normalized = value.strip().toUpperCase(Locale.ROOT);
+        // REPORT_INSPECTION(2026-10-10 用户口径「报工送检」)：已报完未完工的执行段
+        // (IN_PROGRESS 且 remaining_qty<=0，见 workshopTaskPredicate)，与生产中互斥。
         if (!Set.of(
-                        "PREPARING", "READY_TO_START", "IN_PROGRESS", "COMPLETED")
+                        "PREPARING", "READY_TO_START", "IN_PROGRESS", "REPORT_INSPECTION", "COMPLETED")
                 .contains(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知车间任务状态");
         }

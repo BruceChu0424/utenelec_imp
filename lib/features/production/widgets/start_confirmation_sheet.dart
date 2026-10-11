@@ -798,7 +798,7 @@ class _StartConfirmationSheetState
       numeric: true,
       frozenTextOf: (row) => '${row.tasks.length}',
       cellBuilder: (context, row) =>
-          Text('${row.tasks.length}', textAlign: TextAlign.right),
+          Text('${row.tasks.length}'),
     ),
     EditableGridColumn(
       key: 'material',

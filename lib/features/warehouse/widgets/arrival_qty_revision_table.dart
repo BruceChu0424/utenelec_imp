@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_revision_table.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 
@@ -113,18 +114,18 @@ class ArrivalQtyRevisionTable extends StatelessWidget {
             width: 90,
             value: (line) => line.task.colorName,
           ),
-          MasterColumnDef(
-            key: 'unit',
-            label: '单位',
-            width: 80,
-            value: (line) => line.task.unitName,
-          ),
+          // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量直接带单位；
+          // 到货数量最多 4 位小数，maxDecimals 放宽到 4 不截断财务精确值。
           MasterColumnDef(
             key: 'qty',
             label: '数量',
-            width: 110,
+            width: 145,
             type: 'number',
-            value: (line) => financeExactTrimmed(line.qty.toString()),
+            value: (line) => formatQtyWithUnit(
+              line.qty,
+              line.task.unitName,
+              maxDecimals: 4,
+            ),
           ),
           if (!task.priceMasked && task.unitPrice != null)
             MasterColumnDef(

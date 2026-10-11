@@ -1,6 +1,7 @@
 // 「统一设置条款」批量面板（commercial_terms_batch_sheet，2026-09 行级条款）：
-// 一次写供应商+结账方式+币种+汇率+税率；留空的项保持原值（返回体对应字段为 null）；
-// 全部留空时应用被拦截（面板不关闭）。
+// 一次写供应商+结账方式+币种+税率；留空的项保持原值（返回体对应字段为 null）；
+// 全部留空时应用被拦截（面板不关闭）。汇率输入已撤（2026-10-10 口径：
+// 采购/委外不填汇率，财务审批时填，前端提交恒 1）。
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -29,7 +30,7 @@ ApiClient _stubApi() {
 }
 
 void main() {
-  testWidgets('填汇率税率后应用，留空项返回 null（保持各行原值）', (tester) async {
+  testWidgets('填税率后应用，留空项返回 null（保持各行原值）', (tester) async {
     final portal = GlobalKey<_SheetHostState>();
     final api = _stubApi();
     await tester.pumpWidget(
@@ -44,8 +45,9 @@ void main() {
 
     expect(find.text('统一设置 2 行商业条款'), findsOneWidget);
     expect(find.textContaining('留空的项保持各行原值'), findsOneWidget);
+    // 汇率输入已撤（2026-10-10 口径），面板不再出现汇率字段。
+    expect(find.text('汇率'), findsNothing);
 
-    await tester.enterText(find.widgetWithText(TextField, '汇率'), '7.2');
     await tester.enterText(find.widgetWithText(TextField, '税率(%)'), '13');
     await tester.tap(find.text('应用到选中行'));
     await tester.pumpAndSettle();
@@ -55,7 +57,7 @@ void main() {
     expect(terms!.supplierId, isNull);
     expect(terms.settlementMethodId, isNull);
     expect(terms.currencyId, isNull);
-    expect(terms.exchangeRate, 7.2);
+    expect(terms.exchangeRate, isNull);
     expect(terms.taxRate, 13);
   });
 
@@ -80,7 +82,7 @@ void main() {
     expect(portal.currentState!.hasResult, isFalse);
   });
 
-  testWidgets('汇率非法时应用被拦截', (tester) async {
+  testWidgets('税率非法时应用被拦截', (tester) async {
     final portal = GlobalKey<_SheetHostState>();
     final api = _stubApi();
     await tester.pumpWidget(
@@ -93,8 +95,7 @@ void main() {
     );
     await portal.currentState!.openPanel(tester);
 
-    await tester.enterText(find.widgetWithText(TextField, '税率(%)'), '0');
-    await tester.enterText(find.widgetWithText(TextField, '汇率'), '0');
+    await tester.enterText(find.widgetWithText(TextField, '税率(%)'), '101');
     await tester.tap(find.text('应用到选中行'));
     await tester.pump();
 

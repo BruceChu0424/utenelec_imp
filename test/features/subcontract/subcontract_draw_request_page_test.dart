@@ -1,5 +1,6 @@
-// ADR-143 §4.2 委外领料页：联合分配默认值、去抖预览、校验、幂等提交、409 回填、
-// 结果未确认时同键重试；有了确定结果 / 重新进页换新键(撤回后再领同样数量不算重放)；
+// ADR-143 §4.2 委外领料页(2026-10-10 口径：只显示「本次出仓物料」表，数量按服务端
+// 默认全量提交，不再逐任务编辑)：默认联合分配、幂等提交、409 回填、结果未确认时
+// 同键重试；有了确定结果 / 重新进页换新键(撤回后再领同样数量不算重放)；
 // 预览整批 409 只给「返回委外任务中心」。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -146,11 +147,6 @@ Future<List<Object?>> _pump(
   return results;
 }
 
-Finder _qty(String id) => find.byKey(ValueKey('subcontract-draw-qty-$id'));
-
-String _text(WidgetTester tester, String id) =>
-    tester.widget<TextField>(_qty(id)).controller!.text;
-
 UtenButton _submit(WidgetTester tester) =>
     tester.widget<UtenButton>(find.byKey(_submitKey));
 
@@ -175,81 +171,20 @@ void main() {
         [('item-1', null), ('item-2', null)],
       );
       // 共 100 套物料A：item-1 先占 40，item-2 只剩 60。
-      expect(_text(tester, 'item-1'), '40');
-      expect(_text(tester, 'item-2'), '60');
+      // 2026-10-10 口径：页面只有「本次出仓物料」表，数量按默认全量提交、
+      // 单位内联在数量后(无任务表、无独立单位列)。
+      expect(find.byKey(const Key('subcontract-draw-request-tasks')), findsNothing);
       expect(find.text('2 个委外任务 · 2 种物料 · 预计 2 张出仓单'), findsOneWidget);
-      expect(find.text('本批可领'), findsOneWidget);
       expect(find.text('领料仓库'), findsOneWidget);
+      expect(find.text('本次领料数量'), findsOneWidget);
+      expect(find.text('80 kg'), findsOneWidget, reason: 'item-1 的物料A按数量+单位内联');
+      expect(find.text('单位'), findsNothing);
+      expect(find.text('本次出仓物料'), findsNothing);
       expect(_submit(tester).onPressed, isNotNull);
       expect(find.text('提交领料(2)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
-
-  testWidgets(
-    'editing a quantity re-previews after 300ms; untouched tasks follow the default',
-    (tester) async {
-      final (gateway, _) = _gateway();
-      await _pump(tester, gateway);
-      await tester.enterText(_qty('item-1'), '10');
-      await tester.pump();
-      // 去抖期间不预览，提交被拦住。
-      await tester.pump(const Duration(milliseconds: 299));
-      expect(gateway.previews, hasLength(1));
-      expect(_submit(tester).onPressed, isNull);
-      await tester.pump(const Duration(milliseconds: 2));
-      await tester.pumpAndSettle();
-      expect(gateway.previews, hasLength(2));
-      expect(
-        gateway.previews.last.map((item) => (item.orderItemId, item.qty)),
-        [('item-1', 10), ('item-2', null)],
-      );
-      // item-1 少领后，item-2 的本批可领与默认数量跟着变大(没被用户改过)。
-      expect(_text(tester, 'item-1'), '10');
-      expect(_text(tester, 'item-2'), '80');
-      expect(_submit(tester).onPressed, isNotNull);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets(
-    'over batch drawable or more than 4 decimals blocks submit without preview',
-    (tester) async {
-      final (gateway, _) = _gateway();
-      await _pump(tester, gateway);
-      await tester.enterText(_qty('item-1'), '41');
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip('不能超过本批可领 40'), findsOneWidget);
-      expect(gateway.previews, hasLength(1));
-      expect(_submit(tester).onPressed, isNull);
-      await tester.enterText(_qty('item-1'), '1.23456');
-      await tester.pump(const Duration(milliseconds: 400));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip('数量最多支持 4 位小数'), findsOneWidget);
-      expect(gateway.previews, hasLength(1));
-      expect(_submit(tester).onPressed, isNull);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('zero leaves a task out of the batch and of the submission', (
-    tester,
-  ) async {
-    final (gateway, _) = _gateway();
-    await _pump(tester, gateway);
-    await tester.enterText(_qty('item-2'), '0');
-    await tester.pump(SubcontractDrawRequestPage.previewDebounce);
-    await tester.pumpAndSettle();
-    expect(gateway.previews.last.map((item) => item.orderItemId), ['item-1']);
-    expect(find.text('1 个委外任务 · 2 种物料 · 预计 1 张出仓单'), findsOneWidget);
-    await _tapSubmitAndConfirm(tester);
-    expect(
-      gateway.submits.single.$1.map((item) => (item.orderItemId, item.qty)),
-      [('item-1', 40)],
-    );
-    expect(tester.takeException(), isNull);
-  });
 
   testWidgets(
     'submit sends quantities with an idempotency key and returns to the task center',
@@ -283,8 +218,6 @@ void main() {
     expect(gateway.submits, hasLength(1));
     expect(gateway.previews, hasLength(2));
     expect(gateway.previews.last.map((item) => item.qty), everyElement(isNull));
-    expect(_text(tester, 'item-1'), '40');
-    expect(_text(tester, 'item-2'), '50');
     expect(
       find.byKey(const Key('subcontract-draw-request-notice')),
       findsOneWidget,
@@ -406,7 +339,6 @@ void main() {
       final results = await _pump(tester, gateway);
       await _tapSubmitAndConfirm(tester);
       expect(find.text('重试领料'), findsOneWidget);
-      expect(tester.widget<TextField>(_qty('item-1')).enabled, isFalse);
       await tester.tap(find.byKey(_submitKey));
       await tester.pumpAndSettle();
       expect(gateway.submits, hasLength(2));
@@ -431,7 +363,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.submits, isEmpty);
     expect(find.text('提交领料(2)'), findsOneWidget);
-    expect(tester.widget<TextField>(_qty('item-1')).enabled, isTrue);
     expect(tester.takeException(), isNull);
   });
 }

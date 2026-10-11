@@ -1,13 +1,11 @@
 // ADR-143 §4.2 委外领料页(/operations/workbench/subcontract/draw-request?orderItemIds=...)。
 //
-// 照车间「领料汇总」页：头部「N 个委外任务 · M 种物料 · 预计 K 张出仓单」；
-// 任务表逐行填写本次领料数量(默认 = 本批可领，即同一批量领料按「交期、订货单号、
-// 行号」先后联合分配共享物料后的可领量)；物料表是服务端预览出的「领料仓库 × 物料」
-// 出仓明细，改数量后 300ms 去抖重新预览。数量只在服务端算，页面不推算。
-// 提交带幂等键(每次进页/每次有了确定结果都换一个新的随机串，只在结果未确认时
-// 沿用同一键重试)；服务端在锁内按同一顺序重算，实时可领低于提交量时 409，
-// 页面重新预览并按实时本批可领回填，用户核对后再提交。
-// 填 0 = 本次不领该任务(不参与预览分配，也不提交)。
+// 2026-10-10 用户口径：页面不再放逐任务的领料数量输入表，只显示服务端预览出的
+// 「领料仓库 × 物料」出仓明细；数量一律按服务端默认全量(同一批量领料按「交期、
+// 订货单号、行号」先后联合分配共享物料后的本批可领)提交，要少领 / 不领某个任务
+// 就回委外任务中心少勾选。提交带幂等键(每次进页/每次有了确定结果都换一个新的
+// 随机串，只在结果未确认时沿用同一键重试)；服务端在锁内按同一顺序重算，实时
+// 可领低于提交量时 409，页面重新预览并按实时本批可领回填，用户核对后再提交。
 // 所选任务已领满 / 已结束领料时预览整批 409：只给「返回委外任务中心」，回去重新勾选。
 import 'dart:async';
 
@@ -21,8 +19,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -34,6 +30,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
@@ -51,9 +48,6 @@ class SubcontractDrawRequestPage extends ConsumerStatefulWidget {
   /// 测试注入；默认取 [subcontractDrawRepositoryProvider]。
   final SubcontractDrawGateway? repository;
 
-  /// 改数量后重新预览的去抖时长。
-  static const previewDebounce = Duration(milliseconds: 300);
-
   @override
   ConsumerState<SubcontractDrawRequestPage> createState() =>
       _SubcontractDrawRequestPageState();
@@ -64,17 +58,14 @@ class _SubcontractDrawRequestPageState
   /// 任务顺序(首次预览的服务端顺序 = 联合分配顺序)。
   final _order = <String>[];
 
-  /// 每个任务最近一次参与预览时的服务端事实(填 0 移出本批后保留最后一次的值)。
+  /// 每个任务的服务端事实(提交数量取各自默认值 = 本批可领)。
   final _tasks = <String, SubcontractDrawPreviewTask>{};
-  final _quantities = <String, TextEditingController>{};
-  final _quantityErrors = <String, String>{};
 
-  /// 用户手动改过数量的任务；未改过的任务跟随服务端本批可领默认值。
-  final _touched = <String>{};
+  /// 每个任务按服务端默认值回填的数量(提交时直接读文本，页面不再编辑)。
+  final _quantities = <String, TextEditingController>{};
   SubcontractDrawPreview? _preview;
 
   bool _loading = true;
-  bool _previewing = false;
   bool _saving = false;
   bool _uncertain = false;
   String? _loadError;
@@ -82,10 +73,8 @@ class _SubcontractDrawRequestPageState
   /// 预览整批 409(所选任务里有已领满 / 已结束领料 / 不再可见的)：同一批重试永远失败，
   /// 出错页只给「返回委外任务中心」。
   bool _loadConflict = false;
-  String? _previewError;
   String? _submitError;
   String? _notice;
-  Timer? _debounce;
   int _previewRequest = 0;
 
   /// 结果未确认(断网/超时/5xx)时冻结的幂等键：重试沿用同一键，不会重复建单。
@@ -116,7 +105,6 @@ class _SubcontractDrawRequestPageState
 
   @override
   void dispose() {
-    _debounce?.cancel();
     for (final controller in _quantities.values) {
       controller.dispose();
     }
@@ -126,14 +114,11 @@ class _SubcontractDrawRequestPageState
   /// 全量重新预览：所有任务按服务端本批可领默认值回填(首次进入、409 回填、手动刷新)。
   Future<void> _load({String? notice}) async {
     if (!mounted || _saving) return;
-    _debounce?.cancel();
     final request = ++_previewRequest;
     setState(() {
       _loading = true;
-      _previewing = false;
       _loadError = null;
       _loadConflict = false;
-      _previewError = null;
       _submitError = null;
       _uncertain = false;
       _pendingKey = null;
@@ -169,8 +154,6 @@ class _SubcontractDrawRequestPageState
           ..addEntries(
             preview.tasks.map((task) => MapEntry(task.orderItemId, task)),
           );
-        _touched.clear();
-        _quantityErrors.clear();
         _quantities
           ..clear()
           ..addEntries(
@@ -208,104 +191,6 @@ class _SubcontractDrawRequestPageState
   /// 某任务输入框的数值；不可解析返回 null。
   num? _inputOf(String id) => num.tryParse(_quantities[id]?.text.trim() ?? '');
 
-  /// 用户填 0 = 本次不领(移出本批)。
-  bool _excluded(String id) => _touched.contains(id) && _inputOf(id) == 0;
-
-  String? _quantityError(String id) {
-    final task = _tasks[id];
-    if (task == null) return null;
-    final input = _quantities[id]?.text.trim() ?? '';
-    final value = num.tryParse(input);
-    if (value == null || !value.isFinite || value < 0) {
-      return '请输入不小于 0 的本次领料数量';
-    }
-    if (!RegExp(r'^\d+(\.\d{1,4})?$').hasMatch(input)) {
-      return '数量最多支持 4 位小数';
-    }
-    if (value > task.batchDrawableQty + 0.00000001) {
-      return '不能超过本批可领 ${subcontractDrawQty(task.batchDrawableQty)}';
-    }
-    return null;
-  }
-
-  void _onQuantityChanged(String id) {
-    _touched.add(id);
-    final error = _quantityError(id);
-    setState(() {
-      _submitError = null;
-      if (error == null) {
-        _quantityErrors.remove(id);
-      } else {
-        _quantityErrors[id] = error;
-      }
-    });
-    _debounce?.cancel();
-    if (_quantityErrors.isNotEmpty) return;
-    _debounce = Timer(SubcontractDrawRequestPage.previewDebounce, _repreview);
-  }
-
-  /// 去抖后的重新预览：改过的任务带本次数量，没改过的任务带 null 跟随服务端默认。
-  Future<void> _repreview() async {
-    if (!mounted || _saving || _uncertain) return;
-    final request = ++_previewRequest;
-    final items = [
-      for (final id in _order)
-        if (!_excluded(id))
-          SubcontractDrawRequestItem(
-            orderItemId: id,
-            qty: _touched.contains(id) ? _inputOf(id) : null,
-          ),
-    ];
-    if (items.isEmpty) {
-      setState(() {
-        _previewing = false;
-        _previewError = null;
-        _preview = const SubcontractDrawPreview(
-          tasks: [],
-          lines: [],
-          documentCount: 0,
-        );
-      });
-      return;
-    }
-    setState(() {
-      _previewing = true;
-      _previewError = null;
-    });
-    try {
-      final preview = await _gateway.preview(items);
-      if (!mounted || request != _previewRequest) return;
-      setState(() {
-        _preview = preview;
-        for (final task in preview.tasks) {
-          _tasks[task.orderItemId] = task;
-          if (!_touched.contains(task.orderItemId)) {
-            _quantities[task.orderItemId]?.text = subcontractDrawQty(task.qty);
-          }
-        }
-        _quantityErrors
-          ..clear()
-          ..addEntries([
-            for (final id in _order)
-              if (_quantityError(id) case final error?) MapEntry(id, error),
-          ]);
-        _previewing = false;
-      });
-    } on ApiException catch (error) {
-      if (!mounted || request != _previewRequest) return;
-      setState(() {
-        _previewing = false;
-        _previewError = _message(error);
-      });
-    } catch (_) {
-      if (!mounted || request != _previewRequest) return;
-      setState(() {
-        _previewing = false;
-        _previewError = '领料预览刷新失败，请按实时可领量重新填写';
-      });
-    }
-  }
-
   /// 本次真正提交的任务(数量 > 0)。
   List<SubcontractDrawRequestItem> get _submitItems => [
     for (final id in _order)
@@ -317,12 +202,7 @@ class _SubcontractDrawRequestPageState
     if (_loading) return '正在加载领料预览';
     if (_saving) return '正在提交领料，请稍候';
     if (_order.isEmpty) return '没有可领料的委外任务，请返回委外任务中心重新选择';
-    if (_quantityErrors.isNotEmpty) return _quantityErrors.values.first;
-    if (_debounce?.isActive == true || _previewing) {
-      return '正在按新数量重新核对物料，请稍候';
-    }
-    if (_previewError != null) return '可领量已变化，请按实时可领量重新填写后再提交';
-    if (_submitItems.isEmpty) return '请至少给一个委外任务填写大于 0 的本次领料数量';
+    if (_submitItems.isEmpty) return '本次没有可领料数量的委外任务，请返回委外任务中心重新选择';
     if (_preview?.lines.isEmpty ?? true) return '本次没有可发出的物料';
     return null;
   }
@@ -542,22 +422,22 @@ class _SubcontractDrawRequestPageState
   Widget _header() {
     final theme = Theme.of(context);
     final preview = _preview;
-    final included = _order.where((id) => !_excluded(id)).length;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '$included 个委外任务 · ${preview?.materialKindCount ?? 0} 种物料 · '
+            '${_order.length} 个委外任务 · ${preview?.materialKindCount ?? 0} 种物料 · '
             '预计 ${preview?.documentCount ?? 0} 张出仓单',
             key: const Key('subcontract-draw-request-summary'),
             style: theme.textTheme.titleMedium,
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(
-            '本次领料数量默认等于本批可领：多个任务共用同一种物料时，按交期、订货单号、行号先后分配。'
-            '可以改小，填 0 表示本次不领该任务。提交后仓库按领料仓库发出直属物料，委外商加工后分批回厂。',
+            '本次领料按各任务的本批可领全量提交：多个任务共用同一种物料时，按交期、订货单号、'
+            '行号先后分配。要少领或不领某个任务，请返回委外任务中心调整勾选。'
+            '提交后仓库按领料仓库发出直属物料，委外商加工后分批回厂。',
             style: theme.textTheme.bodySmall,
           ),
           if (_notice != null) ...[
@@ -573,149 +453,21 @@ class _SubcontractDrawRequestPageState
               ),
             ),
           ],
-          if (_previewError != null || _submitError != null) ...[
+          if (_submitError != null) ...[
             const SizedBox(height: UtenSpacing.s8),
             Semantics(
               liveRegion: true,
               child: Text(
-                _submitError ?? _previewError!,
+                _submitError!,
                 key: const Key('subcontract-draw-request-error'),
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.error,
                 ),
               ),
             ),
-            if (_previewError != null && !_saving)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: const Key('subcontract-draw-request-refill'),
-                  onPressed: _load,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('按实时可领重新填写'),
-                ),
-              ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
-          SizedBox(
-            height: (96 + 52.0 * _order.length).clamp(180.0, 420.0),
-            child: _tasksTable(),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          Row(
-            children: [
-              Text('本次出仓物料', style: theme.textTheme.titleSmall),
-              if (_previewing) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: UtenSpacing.s4),
-                Text('正在重新核对…', style: theme.textTheme.bodySmall),
-              ],
-            ],
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _tasksTable() {
-    final rows = [for (final id in _order) ?_tasks[id]];
-    final editable = !_saving && !_uncertain;
-    return MasterDataTableView<SubcontractDrawPreviewTask>(
-      tableKey:
-          'features.subcontract.pages.subcontract_draw_request_page.SubcontractDrawRequestPageState._tasksTable.1',
-      key: const Key('subcontract-draw-request-tasks'),
-      facets: const {},
-      nullCounts: const {},
-      filters: const {},
-      onFilterChanged: (_, _) {},
-      showFullscreenToggle: false,
-      rowKeyOf: (task) => task.orderItemId,
-      columns: [
-        MasterColumnDef(
-          key: 'orderBillNo',
-          label: '委外订货单号',
-          width: 150,
-          value: (task) => _label(task.orderBillNo),
-        ),
-        MasterColumnDef(
-          key: 'supplierName',
-          label: '委外商',
-          width: 150,
-          value: (task) => _label(task.supplierName),
-        ),
-        MasterColumnDef(
-          key: 'goodsName',
-          label: '委外件名称',
-          width: 180,
-          value: (task) => _label(task.goodsName),
-        ),
-        MasterColumnDef(
-          key: 'goodsCode',
-          label: '编号',
-          width: 130,
-          value: (task) => _label(task.goodsCode),
-        ),
-        MasterColumnDef(
-          key: 'colorName',
-          label: '颜色',
-          width: 90,
-          value: (task) => _label(task.colorName),
-        ),
-        MasterColumnDef(
-          key: 'unitName',
-          label: '单位',
-          width: 70,
-          value: (task) => _label(task.unitName),
-        ),
-        _qtyColumn('orderQty', '订货数量', (task) => task.orderQty),
-        _qtyColumn('drawnQty', '已领', (task) => task.drawnQty),
-        _qtyColumn('drawableQty', '可领', (task) => task.drawableQty),
-        _qtyColumn(
-          'batchDrawableQty',
-          '本批可领',
-          (task) => task.batchDrawableQty,
-          info: '同一批领料里多个任务共用同一种物料时，按交期、订货单号、行号先后分配后本任务还能领的数量。',
-        ),
-        MasterColumnDef(
-          key: 'qty',
-          label: '本次领料数量',
-          info: '大于 0 且不超过本批可领，最多 4 位小数；填 0 表示本次不领该任务。',
-          width: 170,
-          type: 'number',
-          value: (task) => _quantities[task.orderItemId]?.text,
-          exactValueOf: (task) => _quantities[task.orderItemId]?.text,
-          exactListenableOf: (task) => _quantities[task.orderItemId],
-          cellBuilder: (context, task) => TextField(
-            key: ValueKey('subcontract-draw-qty-${task.orderItemId}'),
-            controller: _quantities[task.orderItemId],
-            enabled: editable,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-                error: _quantityErrors[task.orderItemId] == null
-                    ? null
-                    : UtenFieldMessage.error(
-                        _quantityErrors[task.orderItemId]!,
-                      ),
-              ),
-            ),
-            onChanged: (_) => _onQuantityChanged(task.orderItemId),
-          ),
-        ),
-      ],
-      items: rows,
-      emptyMessage: '暂无委外任务',
     );
   }
 
@@ -755,25 +507,26 @@ class _SubcontractDrawRequestPageState
         width: 90,
         value: (line) => _label(line.colorName),
       ),
-      MasterColumnDef(
-        key: 'unitName',
-        label: '单位',
-        width: 70,
-        value: (line) => _label(line.unitName),
-      ),
+      // 2026-10-10 数量+单位口径：单位内联在数量后(如 `12 PCS`)，独立单位列删除；
+      // 领料数量支持 4 位小数，沿用 4 位去尾零。
       MasterColumnDef(
         key: 'qty',
         label: '本次领料数量',
-        width: 120,
+        width: 130,
         type: 'number',
-        value: (line) => subcontractDrawQty(line.qty),
+        value: (line) =>
+            formatQtyWithUnit(line.qty, line.unitName, maxDecimals: 4),
       ),
       MasterColumnDef(
         key: 'warehouseAvailableQty',
         label: '仓库可用',
-        width: 110,
+        width: 120,
         type: 'number',
-        value: (line) => subcontractDrawQty(line.warehouseAvailableQty),
+        value: (line) => formatQtyWithUnit(
+          line.warehouseAvailableQty,
+          line.unitName,
+          maxDecimals: 4,
+        ),
       ),
       MasterColumnDef(
         key: 'task',
@@ -788,20 +541,6 @@ class _SubcontractDrawRequestPageState
     ],
     items: _preview?.lines ?? const [],
     emptyMessage: '本次没有可发出的物料',
-  );
-
-  MasterColumnDef<SubcontractDrawPreviewTask> _qtyColumn(
-    String key,
-    String label,
-    double Function(SubcontractDrawPreviewTask task) qty, {
-    String? info,
-  }) => MasterColumnDef(
-    key: key,
-    label: label,
-    info: info,
-    width: 100,
-    type: 'number',
-    value: (task) => subcontractDrawQty(qty(task)),
   );
 
   static String _message(ApiException error) =>

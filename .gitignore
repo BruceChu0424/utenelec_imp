@@ -107,6 +107,8 @@ server/legacy_migration/users_names.txt
 .codex-tmp/
 # Local-only diagnostic exports may contain business data or recovery material.
 .local-tmp/
+# 本地库 dump 等大体积工件（含业务数据，不入库）
+.local-artifacts/
 # Local investigation scripts and transient validation receipts.
 /.tmp/
 # 根目录本地探测/清整一次性文件（.local_*，曾于 60da1a29b 误提交）

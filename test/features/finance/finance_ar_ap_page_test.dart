@@ -48,10 +48,11 @@ void main() {
       lessThan(keys.indexOf('amountBalance')),
     );
     expect(columns['currency']?.value(item), '人民币');
-    expect(columns['amountOriginal']?.value(item), '100.00');
-    expect(columns['amountReceivedOriginal']?.value(item), '40.00');
-    expect(columns['amountBalanceOriginal']?.value(item), '55.00');
-    expect(columns['amountBalance']?.value(item), '396.00');
+    // 金额「数值 币种」后缀（2026-10-10 口径）：人民币行后缀为「元」。
+    expect(columns['amountOriginal']?.value(item), '100.00 元');
+    expect(columns['amountReceivedOriginal']?.value(item), '40.00 元');
+    expect(columns['amountBalanceOriginal']?.value(item), '55.00 元');
+    expect(columns['amountBalance']?.value(item), '396.00 元');
     expect(
       table.facets.keys,
       containsAll(<String>['direction', 'sourceDocType', 'party', 'settled']),

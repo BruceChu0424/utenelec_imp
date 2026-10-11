@@ -5,6 +5,7 @@ import '../../../shared/business_columns/business_column.dart';
 // 不再单点指定负责人。后端演进期间允许常见字段别名；但关键身份字段
 // （orderId）缺失时前端保持 fail-closed，不猜测可办理对象。
 
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 
@@ -39,6 +40,10 @@ class FinanceProcurementApprovalTask {
     this.amount,
     this.totalOriginal,
     this.currencyName,
+    this.exchangeRate,
+    this.goodsSummary,
+    this.toleranceMin,
+    this.toleranceMax,
     this.submittedAt,
     this.expectedDate,
     this.attempt,
@@ -60,10 +65,22 @@ class FinanceProcurementApprovalTask {
   final String? submittedByEmployeeId;
 
   /// 金额保留服务端字符串，避免大额或小数在客户端转换时丢精度。
-  /// [amount] 是折合本币；[totalOriginal] 是订货币种([currencyName])原币金额(ADR-128)。
+  /// [amount] 是折合人民币（2026-10-10 起列名由「折合本币」改名）；[totalOriginal]
+  /// 是订货币种([currencyName])原币金额(ADR-128)。
   final String? amount;
   final String? totalOriginal;
   final String? currencyName;
+
+  /// 提交快照订单表头汇率（待审 case 批量通过缺省汇率时按它折算）。
+  final String? exchangeRate;
+
+  /// 货品摘要（首个货品名，多货品「名称 等 N 种」）；旧快照缺失为 null。
+  final String? goodsSummary;
+
+  /// 允许超收(采购)/允许损耗(委外)% 全行最小/最大值；全部未填为 null。
+  final String? toleranceMin;
+  final String? toleranceMax;
+
   final String? submittedAt;
   final String? expectedDate;
   final int? attempt;
@@ -76,6 +93,15 @@ class FinanceProcurementApprovalTask {
   /// 批准后改量次数（末字段；旧后端未推时容错为 0）：>0 表示该单在财务批准
   /// 后被改过数量，正在等待财务按修改清单复核。
   final int changeCount;
+
+  /// 允许超收/损耗% 摘要文案：单一值「5%」，多值区间「3%~5%」；未设置为 null。
+  String? get toleranceText {
+    final min = financeExactTrimmed(toleranceMin);
+    final max = financeExactTrimmed(toleranceMax);
+    if (min == null && max == null) return null;
+    if (min != null && max != null && min != max) return '$min%~$max%';
+    return '${min ?? max}%';
+  }
 
   bool get canOpen =>
       caseId.isNotEmpty &&
@@ -160,6 +186,10 @@ class FinanceProcurementApprovalTask {
         currency?['name'],
         currency?['code'],
       ]),
+      exchangeRate: _firstNullableString([json['exchangeRate']]),
+      goodsSummary: _firstNullableString([json['goodsSummary']]),
+      toleranceMin: _firstNullableString([json['toleranceMin']]),
+      toleranceMax: _firstNullableString([json['toleranceMax']]),
       submittedAt: _firstNullableString([
         json['submittedAt'],
         json['createdAt'],
@@ -237,6 +267,7 @@ class FinanceProcurementApprovalReview {
     this.warehouseName,
     this.currencyName,
     this.exchangeRate,
+    this.financeExchangeRate,
     this.settlementMethodName,
     this.taxRate,
     this.purchaserName,
@@ -270,7 +301,14 @@ class FinanceProcurementApprovalReview {
   final String? supplierCode;
   final String? warehouseName;
   final String? currencyName;
+
+  /// 订单表头汇率快照（提交时冻结，V438 迁移冻结期间订单头禁改）。
   final String? exchangeRate;
+
+  /// 财务在审批 case 上落的汇率（2026-10-10 财务订货审批口径）：已批 case =
+  /// 财务通过时填写并随事件冻结的汇率；未批 case = null（前端编辑默认值用
+  /// [exchangeRate] 快照兜底，再兜底 1）。
+  final String? financeExchangeRate;
   final String? settlementMethodName;
   final String? taxRate;
   final String? purchaserName;
@@ -341,6 +379,7 @@ class FinanceProcurementApprovalReview {
       warehouseName: _firstNullableString([json['warehouseName']]),
       currencyName: _firstNullableString([json['currencyName']]),
       exchangeRate: _firstNullableString([json['exchangeRate']]),
+      financeExchangeRate: _firstNullableString([json['financeExchangeRate']]),
       settlementMethodName: _firstNullableString([
         json['settlementMethodName'],
       ]),

@@ -18,3 +18,20 @@ double? parseQty(String text) {
   if (raw.isEmpty) return null;
   return double.tryParse(raw);
 }
+
+/// 「数量 + 单位」内联显示的统一口径 (2026-10-10 全站表格改造)。
+///
+/// 全站表格逐步把独立的「单位」列撤掉、单位直接跟在数量后面 (如 `12 PCS`、
+/// `3.5 米`)，本函数是唯一拼装点，保证空值/空单位时只显示数字、不落多余的
+/// 空格。排序侧由 MasterDataTableView 的数值容错解析兜底 (会剥掉这里的单位
+/// 后缀按数字排序)，页面不必各写一套。
+String formatQtyWithUnit(
+  num? value,
+  String? unit, {
+  int maxDecimals = 3,
+}) {
+  final number = formatQty(value, maxDecimals: maxDecimals);
+  if (number.isEmpty) return '';
+  final suffix = unit?.trim() ?? '';
+  return suffix.isEmpty ? number : '$number $suffix';
+}

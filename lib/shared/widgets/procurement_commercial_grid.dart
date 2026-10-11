@@ -2,7 +2,9 @@
 //  - [CommercialTermsRowMixin]：明细行混入的币种/汇率/税率/结账(结算)方式状态；
 //  - [RemarkRowMixin]：明细行备注（每行末尾备注列）；
 //  - [ProcurementTermDropdownCell]：grid 单元格里的紧凑下拉选择格（弹菜单）；
-//  - [procurementCommercialColumns]：币种/汇率/税率/结账方式四列（订货单明细）；
+//  - [procurementCommercialColumns]：币种/税率/结账方式三列（订货单明细；
+//    汇率列 2026-10-10 撤——采购/委外不填汇率，财务审批时填，前端提交恒 1，
+//    由各编辑页 _applyTermDefaults 回落，行模型 exchangeRate 状态保留供提交透传）；
 //  - [procurementRemarkColumn]：备注列（明细最后一列）。
 //
 // 商业字段下移明细行后，单头不再录商业条款；保存时逐行提交，
@@ -49,6 +51,9 @@ mixin CommercialTermsRowMixin on EditableGridRow
   @override
   final ValueNotifier<String?> settlementMethodIdNotifier =
       ValueNotifier<String?>(null);
+
+  /// 汇率文本控制器：汇率列已撤（2026-10-10 口径，采购/委外不填汇率），状态
+  /// 保留供草稿恢复、既有单回填与提交透传（各编辑页空值回落 1）。
   @override
   final TextEditingController exchangeRate = TextEditingController();
   @override
@@ -365,10 +370,12 @@ class ProcurementTermDropdownCell extends StatelessWidget {
   }
 }
 
-/// 订货单明细的商业条款四列：币种 / 汇率 / 税率(%) / 结账(结算)方式。
+/// 订货单明细的商业条款三列：币种 / 税率(%) / 结账(结算)方式。
 /// [onPickCurrency]/[onPickSettlement] 由页面提供（按多选范围落值联动）；
 /// [settlementLabel] 采购叫「结账方式」、委外叫「结算方式」。
-/// 币种与结账方式必填（列头红 * + 空值红字提示）；汇率>0、税率 0-100 由保存校验兜底。
+/// 币种与结账方式必填（列头红 * + 空值红字提示）；税率 0-100 由保存校验兜底。
+/// 汇率列已撤（2026-10-10 用户口径：采购不填汇率，财务审批时填，前端提交恒 1），
+/// 采购订货与委外订货编辑网格共用本组件，同步生效。
 /// 列说明统一挂表头 ⓘ（headerInfo，2026-09-09 口径）——逐格 ⓘ 既重复又挤占
 /// 单元格宽度（110px 币种列曾被 44px ⓘ 挤到看不见默认值）。
 List<EditableGridColumn<R>>
@@ -415,36 +422,6 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
       ),
     ),
     EditableGridColumn<R>(
-      key: 'exchangeRate',
-      label: '汇率',
-      width: 140,
-      numeric: true,
-      headerInfo: l10n.workflowExchangeRateHint,
-      // 预填态格内有 44px 黄标图标：随值自动加宽并把图标计入量宽。
-      textOf: (r) => r.exchangeRate.text,
-      listenableOf: (r) => r.exchangeRate,
-      cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
-        valueListenable: row.termsAutofilledNotifier,
-        builder: (context, marks, _) => RequiredCellFrame(
-          listenable: row.exchangeRate,
-          isEmpty: () =>
-              (double.tryParse(row.exchangeRate.text.trim()) ?? 0) <= 0,
-          child: TextField(
-            controller: row.exchangeRate,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: applyAutofillHint(
-              const UtenInputDecoration(
-                InputDecoration(isDense: true, hintText: '1'),
-              ),
-              Theme.of(context),
-              autofilled: marks.contains('rate'),
-            ),
-          ),
-        ),
-      ),
-    ),
-    EditableGridColumn<R>(
       key: 'taxRate',
       label: '税率(%)',
       width: 140,
@@ -456,7 +433,6 @@ procurementCommercialColumns<R extends CommercialTermsGridRow>({
         valueListenable: row.termsAutofilledNotifier,
         builder: (context, marks, _) => TextField(
           controller: row.taxRate,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: applyAutofillHint(
             const UtenInputDecoration(

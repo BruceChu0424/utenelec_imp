@@ -301,6 +301,8 @@ class OperationsWorkbenchTask {
     this.rdTaskNo,
     this.bomMissingItemIds = const [],
     this.orderableQty,
+    this.warehouseId,
+    this.supplierName,
   });
 
   final String taskId;
@@ -359,6 +361,16 @@ class OperationsWorkbenchTask {
   /// 待处理的委外申请行这次能下单的数量(ADR-156)：各明细「剩余未下单」与「现有直属
   /// 物料够做的套数」取小之和，服务端算好；0 = 等物料齐套(锁住)。其它行为 null。
   final num? orderableQty;
+
+  /// 仓库 id（服务端 warehouse_id；仓库 DRAW 段、材料发现等可为 null）。2026-10-10
+  /// 起仓库列按它到主档字典解析「主仓 - 子仓」组合名，解析不到回退 [warehouseName]
+  /// （服务端下发的叶仓名）。
+  final String? warehouseId;
+
+  /// 委外商名（2026-10-10 V836 起 SUBCONTRACT 申请行由投影经
+  /// subcontract_applications→suppliers 下发，委外任务中心「待处理」列表直接显示；
+  /// 未定商为 null——那是业务事实，不是缺数据）。其他段恒 null。
+  final String? supplierName;
 
   /// 状态列用的阶段码：优先服务端展示阶段，老响应回落 taskStatus。
   String get progressStatus => displayStage ?? taskStatus;
@@ -472,6 +484,8 @@ class OperationsWorkbenchTask {
               .toList(growable: false) ??
           const [],
       orderableQty: _optionalNumber(json, 'orderableQty'),
+      warehouseId: _optionalString(json, 'warehouseId'),
+      supplierName: _optionalString(json, 'supplierName'),
       actionDocument: OperationsActionDocument.fromTaskJson(json, department),
       actionDocItemId: _optionalString(json, 'actionDocItemId'),
       actionDocumentRestricted: json['actionDocRestricted'] == true,
@@ -646,16 +660,9 @@ String operationsWorkbenchStatusLabel(String code) =>
       _ => code,
     };
 
-/// 供给方式（supplyRoute）码 → 中文标签：BUY=采购、MAKE=自制、SUBCONTRACT=委外。
-/// 与生产侧口径一致（production_material_analysis.dart 的 SupplyRoute 枚举、
-/// production_execution_card_print_preview.dart）。
-String operationsWorkbenchSupplyRouteLabel(String code) =>
-    switch (code.toUpperCase()) {
-      'BUY' => '采购',
-      'MAKE' => '自制',
-      'SUBCONTRACT' => '委外',
-      _ => code,
-    };
+// 「供给方式」列 2026-10-10 退役（三部门各看各的任务台，路由码是常量无信息量），
+// 对应的 operationsWorkbenchSupplyRouteLabel 一并删除；supplyRoute 字段保留
+// （服务端仍下发，物料分析等口径引用同一概念）。
 
 String operationsWorkbenchExceptionLabel(String code) =>
     switch (code.toUpperCase()) {

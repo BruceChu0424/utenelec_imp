@@ -323,6 +323,10 @@ ThemeData buildLightTheme() {
         color: UtenColors.textSecondary,
         fontSize: 14,
       ),
+      // 2026-10-10 用户口径：数量输入框的单位后缀（suffixText，如「12 个」的
+      // 「个」）用正文色（浅色=近黑）而不是 Material 默认的灰 onSurfaceVariant，
+      // 与数字同权重可读；深浅两主题分别取各自的主文本色。
+      suffixStyle: const TextStyle(color: UtenColors.textPrimary, fontSize: 14),
     ),
 
     // ===== 导航 =====

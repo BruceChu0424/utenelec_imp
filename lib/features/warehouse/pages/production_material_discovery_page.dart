@@ -437,12 +437,8 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       width: 140,
       value: (row) => row.label('spec'),
     ),
-    MasterColumnDef(
-      key: 'unitName',
-      label: l10n.materialDiscoveryUnit,
-      width: 80,
-      value: (row) => row.label('unitName'),
-    ),
+    // 2026-10-10 数量内联口径：独立「单位」列撤销，领料数量输入框单位放后缀
+    //（选材料后整表重建，后缀即时刷新）。
     MasterColumnDef(
       key: 'stockPlace',
       label: '参考库位',
@@ -453,7 +449,7 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
     MasterColumnDef(
       key: 'qty',
       label: '${l10n.materialDiscoveryQuantity} *',
-      width: 180,
+      width: 214,
       type: 'number',
       value: (row) => row.qty.text,
       exactValueOf: (row) => row.qty.text,
@@ -465,13 +461,13 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
           key: ValueKey('discovery-qty-${_grid.rows.indexOf(row)}'),
           controller: row.qty,
           readOnly: !_editable,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: applyRequiredEmpty(
             UtenInputDecoration(
               InputDecoration(
                 isDense: true,
                 hintText: '需要填写',
+                suffixText: (row.values['unitName'] as String?)?.trim(),
                 error: _validationShown && row.quantityError != null
                     ? UtenFieldMessage.error(row.quantityError!)
                     : null,

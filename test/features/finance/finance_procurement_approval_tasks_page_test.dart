@@ -84,6 +84,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   Future<void> approveOrdersBatch(
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
+    double? exchangeRate,
   }) async {
     approvedBatches.add(List.of(items));
   }
@@ -289,10 +290,17 @@ void main() {
           'attempt',
         ]),
       );
-      // ADR-128：订货金额按订货币种写成「币种 金额」，折合本币另列。
-      expect(find.text('美元 169.0845'), findsOneWidget);
-      expect(find.text('人民币 800.00'), findsOneWidget);
-      expect(find.text('折合本币'), findsOneWidget);
+      // ADR-128 → 2026-10-10 后缀口径：订货金额数值后自动带币种单位，折合人民
+      // 币另列带「元」；明细行数/超收损耗%/汇率对齐详情页，仓库/货品只进详情页。
+      expect(find.text('169.0845 美元'), findsOneWidget);
+      // 委外行 totalOriginal(800)与折合人民币(800.00)同文案，两处命中。
+      expect(find.text('800.00 元'), findsWidgets);
+      expect(find.text('折合人民币'), findsOneWidget);
+      // 2026-10-10 用户口径：仓库/货品两列从中心表格退役，只进审核详情页。
+      expect(find.text('仓库'), findsNothing);
+      expect(find.text('一号仓'), findsNothing);
+      expect(find.text('货品'), findsNothing);
+      expect(find.text('汇率'), findsOneWidget);
 
       table.onSelectedIdsChanged?.call({'case-1', 'case-2'});
       await tester.pump();

@@ -25,7 +25,6 @@ import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
-import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
@@ -661,18 +660,15 @@ class _WarehouseSubcontractOutboundBatchPageState
     );
   }
 
-  Widget _headers() => UtenCollapsibleSection(
+  // 2026-10-10 用户口径：不再套「单据信息(N)」折叠标题，单据卡直接渲染(失去整段折叠)。
+  // 列数既按容器宽度算，也不超过卡片张数：只有一张单据时整张卡横铺满屏。
+  Widget _headers() => UtenResponsiveGrid(
     key: const Key('subcontract-outbound-document-cards'),
-    title: l10n.warehouseSubcontractOutboundDocuments,
-    titleTrailing: Text('(${_drafts.length})'),
-    // 列数既按容器宽度算，也不超过卡片张数：只有一张单据时整张卡横铺满屏。
-    child: UtenResponsiveGrid(
-      columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
-      maxColumns: _drafts.isEmpty ? 1 : _drafts.length,
-      spacing: UtenSpacing.s12,
-      itemCount: _drafts.length,
-      itemBuilder: (context, index, _) => _documentCard(_drafts[index]),
-    ),
+    columns: const UtenResponsiveColumns(medium: 1, expanded: 2),
+    maxColumns: _drafts.isEmpty ? 1 : _drafts.length,
+    spacing: UtenSpacing.s12,
+    itemCount: _drafts.length,
+    itemBuilder: (context, index, _) => _documentCard(_drafts[index]),
   );
 
   Widget _documentCard(_BatchDraft draft) {

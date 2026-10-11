@@ -50,6 +50,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
@@ -1268,7 +1269,7 @@ class _ProductionFqcSheetHandlingPageState
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。同名不同
     // 编号的自制成品很常见（V5 插面既有自制件也有委外件），只看名称会把检验
-    // 结果登到错的货上；颜色/单位本表本来就有独立列。
+    // 结果登到错的货上；数量列按「数量+单位」内联口径直接带单位（2026-10-10）。
     MasterColumnDef<FqcReportRow>(
       key: 'goods',
       label: '货品名称',
@@ -1292,17 +1293,15 @@ class _ProductionFqcSheetHandlingPageState
       value: (row) => row.inspection.colorName ?? '—',
     ),
     MasterColumnDef<FqcReportRow>(
-      key: 'unit',
-      label: '单位',
-      width: 80,
-      value: (row) => row.inspection.unitName ?? '—',
-    ),
-    MasterColumnDef<FqcReportRow>(
       key: 'reportedQty',
       label: '报工数量',
-      width: 100,
+      width: 135,
       type: 'number',
-      value: (row) => fqty(row.inspection.reportedQty),
+      value: (row) => formatQtyWithUnit(
+        row.inspection.reportedQty,
+        row.inspection.unitName,
+        maxDecimals: 4,
+      ),
       exactValueOf: (row) => row.inspection.reportedQty.toString(),
     ),
     // ADR-148：这批实物里需求份 / 计划公共 / 实际超产各多少(服务端算好)。
@@ -1334,31 +1333,43 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'passedQty',
       label: '已合格',
-      width: 90,
+      width: 125,
       type: 'number',
-      value: (row) => fqty(row.inspection.passedQty),
+      value: (row) => formatQtyWithUnit(
+        row.inspection.passedQty,
+        row.inspection.unitName,
+        maxDecimals: 4,
+      ),
       exactValueOf: (row) => row.inspection.passedQty.toString(),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'failedQty',
       label: '已不合格',
-      width: 95,
+      width: 130,
       type: 'number',
-      value: (row) => fqty(row.inspection.failedQty),
+      value: (row) => formatQtyWithUnit(
+        row.inspection.failedQty,
+        row.inspection.unitName,
+        maxDecimals: 4,
+      ),
       exactValueOf: (row) => row.inspection.failedQty.toString(),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'remainingQty',
       label: '待检数量',
-      width: 100,
+      width: 135,
       type: 'number',
-      value: (row) => fqty(row.inspection.remainingQty),
+      value: (row) => formatQtyWithUnit(
+        row.inspection.remainingQty,
+        row.inspection.unitName,
+        maxDecimals: 4,
+      ),
       exactValueOf: (row) => row.inspection.remainingQty.toString(),
     ),
     MasterColumnDef<FqcReportRow>(
       key: 'pass',
       label: '合格数量',
-      width: 120,
+      width: 150,
       type: 'number',
       value: (row) => row.pass.text,
       exactValueOf: (row) => row.pass.text,
@@ -1374,7 +1385,7 @@ class _ProductionFqcSheetHandlingPageState
     MasterColumnDef<FqcReportRow>(
       key: 'fail',
       label: '不合格数量',
-      width: 120,
+      width: 150,
       type: 'number',
       value: (row) => row.fail.text,
       exactValueOf: (row) => row.fail.text,
@@ -1436,10 +1447,11 @@ class _ProductionFqcSheetHandlingPageState
             !_submitting &&
             row.submission == null,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textAlign: TextAlign.right,
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
+            // 「数量+单位」内联口径（2026-10-10）：可编辑数量输入框单位放后缀。
+            suffixText: row.inspection.unitName,
             error: row.validate() == null
                 ? null
                 : UtenFieldMessage.error(row.validate()!),
@@ -2045,7 +2057,7 @@ class _ProductionFqcInspectionPageState
               columns: [
                 // 决定表原来只有名称：本表没有编号/颜色列，判定合格与不合格前
                 // 必须能分清「同名不同色」的两条（自制白色 / 委外香槟金），
-                // 故名称 + 编号 + 颜色合并进身份格（单位另有独立列）。
+                // 故名称 + 编号 + 颜色合并进身份格（数量列内联带单位）。
                 MasterColumnDef(
                   key: 'goods',
                   label: '货品名称',
@@ -2076,7 +2088,7 @@ class _ProductionFqcInspectionPageState
                 MasterColumnDef(
                   key: 'pass',
                   label: '合格数量',
-                  width: 150,
+                  width: 180,
                   type: 'number',
                   info: '本次判定合格的数量；与不合格数量合计不能超过本行待检量。',
                   value: (row) => row.pass.text,
@@ -2088,7 +2100,7 @@ class _ProductionFqcInspectionPageState
                 MasterColumnDef(
                   key: 'fail',
                   label: '不合格数量',
-                  width: 150,
+                  width: 180,
                   type: 'number',
                   info: '含不合格数量时，选择不合格处置并在提交时说明原因。',
                   value: (row) => row.fail.text,
@@ -2125,16 +2137,14 @@ class _ProductionFqcInspectionPageState
                 MasterColumnDef(
                   key: 'remaining',
                   label: '待检数量',
-                  width: 110,
+                  width: 145,
                   type: 'number',
-                  value: (row) => fqty(row.inspection.remainingQty),
+                  value: (row) => formatQtyWithUnit(
+                    row.inspection.remainingQty,
+                    row.inspection.unitName,
+                    maxDecimals: 4,
+                  ),
                   exactValueOf: (row) => row.inspection.remainingQty.toString(),
-                ),
-                MasterColumnDef(
-                  key: 'unit',
-                  label: '单位',
-                  width: 80,
-                  value: (row) => row.inspection.unitName ?? '—',
                 ),
               ],
               items: [row],
@@ -2160,10 +2170,11 @@ class _ProductionFqcInspectionPageState
       controller: passed ? row.pass : row.fail,
       enabled: !_loading && !_confirming && !_saving && row.submission == null,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      textAlign: TextAlign.right,
       decoration: UtenInputDecoration(
         InputDecoration(
           isDense: true,
+          // 「数量+单位」内联口径（2026-10-10）：可编辑数量输入框单位放后缀。
+          suffixText: row.inspection.unitName,
           error: row.validate() == null
               ? null
               : UtenFieldMessage.error(row.validate()!),

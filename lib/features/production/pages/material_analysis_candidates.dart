@@ -1232,7 +1232,6 @@ abstract class _MaterialAnalysisCandidatesState
             key: Key('source-qty-${line.salesOrderItemId}'),
             controller: controller,
             enabled: !_busy,
-            textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: Theme.of(context).textTheme.bodyMedium,
             decoration: const UtenInputDecoration(

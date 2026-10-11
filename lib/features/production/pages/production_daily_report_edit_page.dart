@@ -148,6 +148,34 @@ class _ProductionDailyReportEditPageState
   /// 上次重排去向时的勾选成品行(新建态)：勾选一变，勾选行重新先占上层工单的「还差多少」。
   Set<DailyGridRow> _allocationSelection = const {};
 
+  /// 产出去向子行手动展开的成品行（2026-10-10 用户口径）：去向多时每个子件下面
+  /// 一长串，编辑已有单据默认收起，收起态由成品行摘要(转下一道工序 N 个工单 X ·
+  /// 送入仓库 Y)+ 悬停全文承载，要编辑去向先点「产出去向」格的切换钮展开。
+  /// 键 = planItemId ?? executionSegmentId（与 OutputAllocationRowInput.sourceKey
+  /// 同源，换来源即换键，天然作废旧展开态）。
+  final Set<String> _allocationsExpanded = {};
+
+  /// 本成品行的去向子行现在要不要进表格：新建报工直接要分去向，默认展开；
+  /// 编辑已有单据默认收起，只有手动展开过的行显示。
+  bool _allocationsShown(DailyGridRow product) =>
+      showsOutputAllocations(product) &&
+      (_isCreate ||
+          _allocationsExpanded.contains(
+            product.planItemId ?? product.executionSegmentId,
+          ));
+
+  /// 展开/收起某成品行的去向分配子行：改展开集后重建扁平行序，让子行进/出表格。
+  void _onToggleAllocations(DailyGridRow product) {
+    final key = product.planItemId ?? product.executionSegmentId;
+    if (key == null) return;
+    setState(() {
+      if (!_allocationsExpanded.add(key)) {
+        _allocationsExpanded.remove(key);
+      }
+    });
+    _applyMaterialRows(const {});
+  }
+
   bool _materialLoading = false;
 
   /// 物料台账整体读不到(老计划、无权限、接口故障)：物料区降级为提示，不拦报工。
@@ -1585,7 +1613,9 @@ class _ProductionDailyReportEditPageState
     // 其余只读镜像。否则两行各自按满额填，提交必被服务端守恒守卫拒掉。
     for (final product in _productRows) {
       flat.add(product);
-      if (showsOutputAllocations(product)) {
+      // 去向子行按展开态进表（编辑已有单据默认收起）：收起时仍参与重排与提交，
+      // 只是不占行；与 _reflowOutputAllocations 的期望列表共用同一份 _allocationsShown。
+      if (_allocationsShown(product)) {
         flat.addAll(product.allocationRows.where(outputAllocationVisible));
       }
       _watchProductQty(product);
@@ -1666,8 +1696,17 @@ class _ProductionDailyReportEditPageState
             candidate.allocationParent == row)
           candidate,
     ];
+    // 收起态的去向子行不在表格里、进不了 victims（removeRows 只处置表内行）：
+    // 它们此刻没挂在任何输入框上，这里直接释放，不随行对象一起漏掉。
+    final hiddenAllocations = [
+      for (final allocation in row.allocationRows)
+        if (!victims.contains(allocation)) allocation,
+    ];
     row.allocationRows = [];
     _grid.removeRows(victims);
+    for (final allocation in hiddenAllocations) {
+      allocation.dispose();
+    }
     _reflowOutputAllocations();
   }
 
@@ -1846,9 +1885,11 @@ class _ProductionDailyReportEditPageState
         for (final row in _grid.rows)
           if (row.allocationParent == product) row,
       ];
+      // 期望可见列表必须与 _applyMaterialRows 同用 _allocationsShown：收起行的期望
+      // 是空表，若这里仍按 showsOutputAllocations 给全量，重排会把刚收起的行又加回来。
       if (!listEquals(
         shown,
-        showsOutputAllocations(product)
+        _allocationsShown(product)
             ? next.where(outputAllocationVisible).toList()
             : const <DailyGridRow>[],
       )) {
@@ -1971,6 +2012,23 @@ class _ProductionDailyReportEditPageState
     // 离开输入框：清掉零数条目、合并送入仓库、把超出的数压回可分范围。
     allocation.allocationEditing = false;
     _reflowOutputAllocations();
+  }
+
+  /// 提交被去向分配问题拦下时调用：有红框问题的成品行若处于收起态，先展开再报错——
+  /// 否则错误文案指到了行，红框却藏在收起区里，用户找不到要改的格子。
+  void _expandAllocationIssueRows() {
+    var changed = false;
+    for (final product in _productRows) {
+      final key = product.planItemId ?? product.executionSegmentId;
+      if (key == null) continue;
+      if (product.allocationRows.any(
+            (row) => row.allocationIssue.value != null,
+          ) &&
+          _allocationsExpanded.add(key)) {
+        changed = true;
+      }
+    }
+    if (changed) _applyMaterialRows(const {});
   }
 
   /// 提交前的去向问题清单(第 N 行 + 原因)；为空才能提交。
@@ -2628,6 +2686,8 @@ class _ProductionDailyReportEditPageState
     // 更强的不变量(同车间、同货品同颜色、需求份上限、同主仓)由服务端与数据库守卫兜底。
     final transferIssues = _outputAllocationIssues(rows);
     if (transferIssues.isNotEmpty) {
+      // 收起态的红框藏在收起区：先把有问题的行展开让人看见，再报错。
+      _expandAllocationIssueRows();
       context.appError(
         '以下 ${transferIssues.length} 项转送需要先改正：${_joinIssues(transferIssues)}',
       );
@@ -3734,6 +3794,8 @@ class _ProductionDailyReportEditPageState
                                   onAllocationQtyChanged:
                                       _onAllocationQtyChanged,
                                   onAllocationQtyFocus: _onAllocationQtyFocus,
+                                  allocationsExpanded: _allocationsShown,
+                                  onToggleAllocations: _onToggleAllocations,
                                 ),
                                 createBlankRow: () => DailyGridRow(),
                                 cloneRow: (r) => r.clone(),

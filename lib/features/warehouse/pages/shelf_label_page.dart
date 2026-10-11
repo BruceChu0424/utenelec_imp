@@ -32,6 +32,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -330,19 +331,14 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
         width: 90,
         value: (r) => r.colorName ?? '',
       ),
-      MasterColumnDef(
-        key: 'unitName',
-        label: '单位',
-        width: 70,
-        value: (r) => r.unitName ?? '',
-      ),
+      // 2026-10-10「数量 + 单位」内联口径：单位列删除，即时库存直接带单位。
       MasterColumnDef(
         key: 'qty',
         label: '即时库存',
-        width: 110,
+        width: 145,
         type: 'number',
         info: qtyInfo,
-        value: (r) => _num(r.qty),
+        value: (r) => formatQtyWithUnit(r.qty, r.unitName, maxDecimals: 2),
       ),
     ];
   }

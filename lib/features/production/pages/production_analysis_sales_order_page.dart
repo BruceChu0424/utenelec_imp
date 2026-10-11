@@ -26,6 +26,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/analysis_linked_sales_order.dart';
@@ -252,7 +253,17 @@ class _ProductionAnalysisSalesOrderPageState
   );
 
   /// 货品身份三列(名称 / 编号 / 颜色各占一列，全站统一口径)；规格留在名称格副行。
+  /// 2026-10-08 用户口径（列序）：状态/进度列放最前——「本次分析」置首、行号其后。
+  /// 2026-10-10 用户口径（数量口径）：独立「单位」列撤销，数量一律
+  /// formatQtyWithUnit 内联单位（如 `100 米`）。
   List<MasterColumnDef<AnalysisLinkedSalesOrderLine>> get _columns => [
+    MasterColumnDef(
+      key: 'inAnalysis',
+      label: '本次分析',
+      width: 100,
+      info: '该行是否是当前这张物料分析的来源行。',
+      value: (l) => l.inAnalysis ? '是' : '—',
+    ),
     MasterColumnDef(
       key: 'lineNo',
       label: '行号',
@@ -283,65 +294,59 @@ class _ProductionAnalysisSalesOrderPageState
       cellBuilder: (_, l) => UtenGoodsAttributeCell(l.colorName),
     ),
     MasterColumnDef(
-      key: 'unit',
-      label: '单位',
-      width: 90,
-      value: (l) => l.unitName ?? '未维护',
-    ),
-    MasterColumnDef(
       key: 'qty',
       label: '订货量',
-      width: 100,
+      width: 136,
       type: 'number',
-      value: (l) => _qty(l.qty),
+      value: (l) => formatQtyWithUnit(l.qty, l.unitName),
     ),
     MasterColumnDef(
       key: 'shippedQty',
       label: '已发',
-      width: 90,
+      width: 126,
       type: 'number',
-      value: (l) => _qty(l.shippedQty),
+      value: (l) => formatQtyWithUnit(l.shippedQty, l.unitName),
     ),
     MasterColumnDef(
       key: 'outstandingQty',
       label: '未发',
-      width: 90,
+      width: 126,
       type: 'number',
       info: '未交付量 = 订货 − 已发 + 已退 − 核销。',
-      value: (l) => _qty(l.outstandingQty),
+      value: (l) => formatQtyWithUnit(l.outstandingQty, l.unitName),
     ),
     MasterColumnDef(
       key: 'reservedQty',
       label: '已预留',
-      width: 90,
+      width: 126,
       type: 'number',
-      value: (l) => _qty(l.reservedQty),
+      value: (l) => formatQtyWithUnit(l.reservedQty, l.unitName),
     ),
     MasterColumnDef(
       key: 'plannedQty',
       label: '已排产',
-      width: 90,
+      width: 126,
       type: 'number',
-      value: (l) => _qty(l.plannedQty),
+      value: (l) => formatQtyWithUnit(l.plannedQty, l.unitName),
     ),
     MasterColumnDef(
       key: 'producedQty',
       label: '已完工',
-      width: 90,
+      width: 126,
       type: 'number',
-      value: (l) => _qty(l.producedQty),
+      value: (l) => formatQtyWithUnit(l.producedQty, l.unitName),
     ),
     MasterColumnDef(
       key: 'unplannedQty',
       label: '剩余未排',
-      width: 110,
+      width: 140,
       type: 'number',
       // 刻意不叫「待排产」：调度台那一屏的「缺口」是扣过活动分析承接量的口径
       // (ADR-088)，同名不同口径会让人拿两屏数字对账。
       info:
           '剩余未排量 = 未交付 − 已预留 − max(已排产 − 已完工, 0)；'
           '链路口径，不扣物料分析承接量，所以可能大于调度台「待排产」段看到的缺口。',
-      value: (l) => _qty(l.unplannedQty),
+      value: (l) => formatQtyWithUnit(l.unplannedQty, l.unitName),
     ),
     MasterColumnDef(
       key: 'deliverDate',
@@ -350,22 +355,7 @@ class _ProductionAnalysisSalesOrderPageState
       type: 'date',
       value: (l) => _date(l.deliverDate) ?? '—',
     ),
-    MasterColumnDef(
-      key: 'inAnalysis',
-      label: '本次分析',
-      width: 100,
-      info: '该行是否是当前这张物料分析的来源行。',
-      value: (l) => l.inAnalysis ? '是' : '—',
-    ),
   ];
-
-  static String _qty(double value) {
-    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
-    return value
-        .toStringAsFixed(4)
-        .replaceFirst(RegExp(r'0+$'), '')
-        .replaceFirst(RegExp(r'\.$'), '');
-  }
 
   static String? _date(String? value) {
     if (value == null || value.isEmpty) return null;

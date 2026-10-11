@@ -58,6 +58,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -1419,7 +1420,9 @@ class _SubcontractDecompositionPageState
           width: 140,
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) => task.planNo,
-            SubcontractPendingDrawRow() => '—',
+            // 2026-10-10：领料行的来源计划改由服务端下发(plan_no=WL 分析编号，
+            // 为空时回落订货单号)，与申请行同列；无值仍显示「—」。
+            SubcontractPendingDrawRow(:final row) => _label(row.planNo),
           },
         ),
         MasterColumnDef(
@@ -1440,8 +1443,10 @@ class _SubcontractDecompositionPageState
           key: 'supplierName',
           label: '委外商',
           width: 150,
+          // 2026-10-10：申请行的委外商改由服务端投影下发(V836，申请头上的
+          // supplier_id→suppliers.name)；空=尚未定商，是业务事实，照旧显示「—」。
           value: (row) => switch (row) {
-            SubcontractApplicationRow() => '—',
+            SubcontractApplicationRow(:final task) => _label(task.supplierName),
             SubcontractPendingDrawRow(:final row) => _label(row.supplierName),
           },
         ),
@@ -1537,15 +1542,8 @@ class _SubcontractDecompositionPageState
         _pendingDrawQtyColumn('pendingQty', '待仓库发', (row) => row.pendingQty),
         _pendingDrawQtyColumn('drawableQty', '可领', (row) => row.drawableQty),
         _pendingDrawQtyColumn('shortQty', '还缺', (row) => row.shortQty),
-        MasterColumnDef(
-          key: 'unitName',
-          label: '单位',
-          width: 70,
-          value: (row) => switch (row) {
-            SubcontractApplicationRow() => '—',
-            SubcontractPendingDrawRow(:final row) => _label(row.unitName),
-          },
-        ),
+        // 「单位」列 2026-10-10 删除（数量+单位口径）：领料行各数量列已内联订货单位
+        // （row.unitName），申请行本就没有单位。
         MasterColumnDef(
           key: 'needDate',
           sortable: true,
@@ -1662,9 +1660,12 @@ class _SubcontractDecompositionPageState
     label: label,
     width: 96,
     type: 'number',
+    // 2026-10-10 数量+单位口径：单位(订货单位=委外件单位)内联进数字，
+    // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
     value: (row) => switch (row) {
       SubcontractApplicationRow() => '—',
-      SubcontractPendingDrawRow(:final row) => subcontractDrawQty(qty(row)),
+      SubcontractPendingDrawRow(:final row) =>
+        formatQtyWithUnit(qty(row), row.unitName),
     },
   );
 

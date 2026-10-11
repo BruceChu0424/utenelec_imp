@@ -39,6 +39,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_permission_set.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
@@ -1415,6 +1416,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final byEntry = <OutboundWeightEntry, StockDocItem>{
       for (final item in detail.items) ?_returnWeights[item.id]: item,
     };
+    // 2026-10-10「数量 + 单位」内联口径：单位列删除，单位名直接拼在数量后；
+    // names.unit 未加载/未知返回「—」，拼装前滤掉，避免出现「5 —」。
+    String? unitOf(StockDocItem it) {
+      final name = names.unit(it.unitId);
+      return name == '—' ? null : name;
+    }
+
     MasterColumnDef<StockDocItem> weightDisplay(
       String key,
       String label,
@@ -1432,7 +1440,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       cellBuilder: (context, it) => WeightText(
         kg: kgOf(it),
         estimated: estimatedOf?.call(it) ?? false,
-        textAlign: TextAlign.right,
       ),
     );
 
@@ -1491,33 +1498,35 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               ? it.place!
               : names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
         ),
-        MasterColumnDef(
-          key: 'unit',
-          label: '单位',
-          width: 64,
-          value: (it) => names.unit(it.unitId),
-        ),
         if (widget.docType == StockDocType.check) ...[
           MasterColumnDef(
             key: 'bookQty',
             label: '账面数量',
-            width: 90,
+            width: 125,
             type: 'number',
-            value: (it) => _quantityInputText(it.qty ?? 0),
+            value: (it) => formatQtyWithUnit(it.qty ?? 0, unitOf(it)),
           ),
           MasterColumnDef(
             key: 'countQty',
             label: '实盘数量',
-            width: 90,
+            width: 125,
             type: 'number',
-            value: (it) => it.countQty?.toStringAsFixed(1),
+            value: (it) => formatQtyWithUnit(
+              it.countQty,
+              unitOf(it),
+              maxDecimals: 1,
+            ),
           ),
           MasterColumnDef(
             key: 'surplusQty',
             label: '盈亏',
-            width: 90,
+            width: 125,
             type: 'number',
-            value: (it) => it.surplusQty?.toStringAsFixed(1),
+            value: (it) => formatQtyWithUnit(
+              it.surplusQty,
+              unitOf(it),
+              maxDecimals: 1,
+            ),
           ),
           // 盘点重量 (ADR-135 §3.4): 账面重量 = 保存时的库存重量快照, 实盘重量选填。
           weightDisplay('bookWeight', '账面重量', (it) => it.bookWeight),
@@ -1526,25 +1535,37 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           MasterColumnDef(
             key: 'reportedQty',
             label: '待点收上限',
-            width: 100,
+            width: 135,
             type: 'number',
-            value: (it) => (it.reportedQty ?? it.qty ?? 0).toStringAsFixed(2),
+            value: (it) => formatQtyWithUnit(
+              it.reportedQty ?? it.qty ?? 0,
+              unitOf(it),
+              maxDecimals: 2,
+            ),
           ),
           MasterColumnDef(
             key: 'acceptedQty',
             label: detail.status == 1 ? '仓库实收' : '待点收',
-            width: 100,
+            width: 135,
             type: 'number',
-            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+            value: (it) => formatQtyWithUnit(
+              it.qty ?? 0,
+              unitOf(it),
+              maxDecimals: 2,
+            ),
           ),
           weightDisplay('weight', '重量', (it) => it.weight),
         ] else ...[
           MasterColumnDef(
             key: 'qty',
             label: '数量',
-            width: 90,
+            width: 125,
             type: 'number',
-            value: (it) => (it.qty ?? 0).toStringAsFixed(2),
+            value: (it) => formatQtyWithUnit(
+              it.qty ?? 0,
+              unitOf(it),
+              maxDecimals: 2,
+            ),
           ),
           if (capturing) ...[
             // 生产退料收仓 (ADR-135 §3.9): 登记数量只读, 逐行录实称重量, 随收仓确认提交。

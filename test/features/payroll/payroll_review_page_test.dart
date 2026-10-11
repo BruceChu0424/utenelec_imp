@@ -99,8 +99,15 @@ void main() {
     final table = tester.widget<MasterDataTableView<PayrollSlip>>(
       find.byWidgetPredicate((w) => w is MasterDataTableView<PayrollSlip>),
     );
-    expect(table.selectable, isFalse, reason: '工资审核无逐条语义，明细表不开多选');
-    expect(table.batchActionsBuilder, isNull);
+    // 2026-10-10 审核页防看岔行口径：勾选是纯阅读辅助（单选互斥的选中高亮，
+    // 不画勾选框列也不驻「已选」胶囊），
+    // 审计 A2 禁的红线是「勾选却整批生效」的误导按钮——批量动作恒不允许。
+    expect(table.selectable, isTrue, reason: '防看岔行的纯阅读勾选');
+    // 同日口径修订：最前列不画勾选框列、选中互斥（点其他行自动换选）。
+    expect(table.showSelectionColumn, isFalse, reason: '防看岔勾选不显示多选框列');
+    expect(table.singleSelection, isTrue, reason: '防看岔勾选单选互斥');
+    expect(table.showSelectionSummary, isFalse, reason: '单选高亮自明，不驻已选胶囊');
+    expect(table.batchActionsBuilder, isNull, reason: '工资审核只有整批语义，明细勾选永不挂批量动作');
     expect(find.byKey(const Key('payroll-review-batch-approve')), findsNothing);
     expect(find.textContaining('批量通过'), findsNothing);
     // 整批审核入口仍在（底部操作条）

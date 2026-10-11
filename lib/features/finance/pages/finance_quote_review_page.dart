@@ -61,6 +61,8 @@ import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -110,7 +112,9 @@ class _FinanceQuoteReviewPageState
   void initState() {
     super.initState();
     ref.listenManual(sessionProvider, (before, after) {
-      if (!identical(before, after)) _invalidateAccess();
+      // 只有真实换身份才隐藏内容（换号/登出/模拟切换/业务重置）；token 静默
+      // 刷新不换身份。权限增减由下方 currentPermissionsProvider 单独守卫。
+      if (!(before?.isSameIdentity(after) ?? false)) _invalidateAccess();
     });
     ref.listenManual(apiBaseUrlProvider, (before, after) {
       if (before != after) _invalidateAccess();
@@ -170,7 +174,7 @@ class _FinanceQuoteReviewPageState
         mounted &&
         generation == _loadGeneration &&
         documentId == widget.id &&
-        identical(identity, ref.read(sessionProvider)) &&
+        ref.read(sessionProvider).isSameIdentity(identity) &&
         server == ref.read(apiBaseUrlProvider) &&
         setEquals(permissions, ref.read(currentPermissionsProvider));
   }
@@ -274,7 +278,7 @@ class _FinanceQuoteReviewPageState
           if (!mounted || !isCurrent()) return;
         }
       }
-      if (!identical(container.read(sessionProvider), identity)) return;
+      if (!container.read(sessionProvider).isSameIdentity(identity)) return;
       _applyReview(review);
       setState(() => _loading = false);
       unawaited(_loadSettlementMethods(generation));
@@ -1182,7 +1186,12 @@ class _FinanceQuoteReviewPageState
       key: const Key('quote-finance-lines'),
       primary: true,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-      selectable: editable,
+      // 2026-10-10 审核页防看岔行口径：只读态开行勾选（单选互斥——点其他行
+      // 自动换选，选中态由行高亮表达，不画勾选框列也不驻「已选」胶囊）；编辑态
+      // 勾选保持多选驱动批量折扣，胶囊由本页悬浮组自摆（_floatingActions 首位）。
+      selectable: true,
+      showSelectionColumn: false,
+      singleSelection: !editable,
       idOf: (line) => line.itemId,
       selectedIds: _selected,
       onSelectedIdsChanged: (next) => setState(() {
@@ -1190,8 +1199,6 @@ class _FinanceQuoteReviewPageState
           ..clear()
           ..addAll(next);
       }),
-      // 已选胶囊由本页悬浮组自摆（_floatingActions 首位）；空 builder 压表头
-      // 胶囊的旧写法已退役（组件层动作空列表时仍渲染胶囊组，会双胶囊）。
       showSelectionSummary: false,
       toolbarActions: editable
           ? [
@@ -1249,31 +1256,31 @@ class _FinanceQuoteReviewPageState
           value: (line) => UtenGoodsAttributeCell.text(line.colorName),
           cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
         ),
+        // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），独立
+        // 「单位」列退役；可编辑时单位进输入框后缀（见 _commercialCell）。
         MasterColumnDef(
           key: 'qty',
           label: l10n.quoteFinanceColQty,
-          width: 90,
+          width: 125,
           type: 'number',
-          value: (line) =>
-              financeExactTrimmed(_drafts[line.itemId]?.qty.text ?? line.qty),
+          value: (line) => formatQtyWithUnit(
+            double.tryParse(_drafts[line.itemId]?.qty.text ?? line.qty ?? ''),
+            line.unitName,
+          ),
           cellBuilderHandlesSemantics: true,
           cellBuilder: (_, line) =>
               _commercialCell(line, quantity: true, editable: editable),
         ),
         MasterColumnDef(
-          key: 'unitName',
-          label: l10n.quoteFinanceColUnit,
-          width: 80,
-          value: (line) => UtenGoodsAttributeCell.text(line.unitName),
-          cellBuilder: (_, line) => UtenGoodsAttributeCell(line.unitName),
-        ),
-        MasterColumnDef(
           key: 'price',
           label: '报价单价',
-          width: 140,
+          width: 160,
           type: 'money',
           info: '仅修改本次报价单价，不更新货品资料。折扣另行填写。',
-          value: (line) => _drafts[line.itemId]?.price.text ?? line.storedPrice,
+          // 报价域恒本币：金额带「元」后缀（2026-10-10 口径）。
+          value: (line) => financeLocalMoneyWithUnitSuffix(
+            _drafts[line.itemId]?.price.text ?? line.storedPrice,
+          ),
           cellBuilderHandlesSemantics: true,
           cellBuilder: (_, line) =>
               _commercialCell(line, quantity: false, editable: editable),
@@ -1281,17 +1288,23 @@ class _FinanceQuoteReviewPageState
         MasterColumnDef(
           key: 'listPrice',
           label: l10n.quoteFinanceColListPrice,
-          width: 110,
+          width: 140,
           type: 'money',
           info: l10n.quoteFinanceColListPriceInfo,
           value: (line) => !line.hasListPrice
               ? l10n.quoteFinanceNoListPrice
               : line.canRefreshFromMaster
               ? l10n.quoteFinanceListPriceLatest(
-                  financeExactTrimmed(line.listPrice)!,
-                  financeExactTrimmed(line.currentMasterPrice)!,
+                  financeLocalMoneyWithUnitSuffix(
+                    financeExactTrimmed(line.listPrice),
+                  ),
+                  financeLocalMoneyWithUnitSuffix(
+                    financeExactTrimmed(line.currentMasterPrice),
+                  ),
                 )
-              : financeExactTrimmed(line.listPrice),
+              : financeLocalMoneyWithUnitSuffix(
+                  financeExactTrimmed(line.listPrice),
+                ),
           cellColor: (context, line) => line.hasListPrice
               ? null
               : theme.colorScheme.errorContainer.withValues(alpha: 0.5),
@@ -1302,25 +1315,32 @@ class _FinanceQuoteReviewPageState
             label: review.clientFileCurrency == null
                 ? l10n.quoteFinanceColFilePrice
                 : '${l10n.quoteFinanceColFilePrice} ${review.clientFileCurrency}',
-            width: 130,
+            width: 150,
             type: 'money',
-            value: (line) => financeExactTrimmed(line.clientPrice),
+            // 文件单价是客户文件原币：后缀带 review.clientFileCurrency（缺失不拼）。
+            value: (line) => financeMoneyWithUnitSuffix(
+              financeExactTrimmed(line.clientPrice),
+              currencyName: review.clientFileCurrency,
+            ),
           ),
           MasterColumnDef(
             key: 'clientPriceLocal',
             label: l10n.quoteFinanceColFilePriceLocal,
-            width: 110,
+            width: 140,
             type: 'money',
-            value: (line) => financeExactTrimmed(line.clientPriceLocal),
+            value: (line) => financeLocalMoneyWithUnitSuffix(
+              financeExactTrimmed(line.clientPriceLocal),
+            ),
           ),
         ],
         MasterColumnDef(
           key: 'dealPrice',
           label: l10n.quoteFinanceColDealPrice,
-          width: 170,
+          width: 190,
           type: 'money',
           info: l10n.quoteFinanceColDealPriceInfo,
-          value: (line) => _drafts[line.itemId]?.deal.text,
+          value: (line) =>
+              financeLocalMoneyWithUnitSuffix(_drafts[line.itemId]?.deal.text),
           cellBuilderHandlesSemantics: true,
           cellBuilder: (context, line) =>
               _dealCell(context, l10n, line, editable),
@@ -1339,20 +1359,20 @@ class _FinanceQuoteReviewPageState
         MasterColumnDef(
           key: 'amount',
           label: l10n.quoteFinanceColLineAmount,
-          width: 130,
+          width: 160,
           type: 'money',
           value: (line) {
             // 没改的行即服务端金额，改过的行为预览(填错时为空)。
             final draft = _drafts[line.itemId];
             final amount = draft == null ? line.amount : draft.amountPreview;
-            return amount == null ? '—' : _money(amount);
+            return financeLocalMoneyWithUnitSuffix(amount);
           },
         ),
         if (hasFile)
           MasterColumnDef(
             key: 'fileDiff',
             label: l10n.quoteFinanceColFileDiff,
-            width: 130,
+            width: 150,
             type: 'money',
             info: l10n.quoteFinanceColFileDiffInfo,
             value: (line) => _fileDiffText(l10n, line),
@@ -1506,15 +1526,21 @@ class _FinanceQuoteReviewPageState
     final draft = _drafts[line.itemId];
     if (draft == null) return const Text('—');
     final controller = quantity ? draft.qty : draft.price;
+    // 「数量+单位」内联口径（2026-10-10）：数量列单位随数字展示/进输入框后缀；
+    // 单价列同样带本币「元」后缀（报价域恒本币）。
+    final unit = quantity ? line.unitName : null;
     if (!editable || draft.removed || (!quantity && !draft.priceEditable)) {
-      return Text(controller.text, textAlign: TextAlign.right);
+      return Text(
+        quantity
+            ? formatQtyWithUnit(double.tryParse(controller.text), unit)
+            : financeLocalMoneyWithUnitSuffix(controller.text),
+      );
     }
     return TextField(
       key: ValueKey(
         'quote-finance-${quantity ? 'qty' : 'price'}-${line.itemId}',
       ),
       controller: controller,
-      textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [_decimalInput],
       onChanged: (text) => setState(() {
@@ -1523,6 +1549,7 @@ class _FinanceQuoteReviewPageState
       decoration: UtenInputDecoration(
         InputDecoration(
           isDense: true,
+          suffixText: quantity ? unit : '元',
           error: quantity && draft.error == QuoteFinanceLineError.quantity
               ? const UtenFieldMessage.error('数量须大于 0')
               : !quantity &&
@@ -1563,7 +1590,6 @@ class _FinanceQuoteReviewPageState
         ? TextField(
             key: ValueKey('quote-finance-deal-${line.itemId}'),
             controller: draft.deal,
-            textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [_decimalInput],
             onChanged: (text) => _onDealChanged(draft, text),
@@ -1571,6 +1597,7 @@ class _FinanceQuoteReviewPageState
               InputDecoration(
                 isDense: true,
                 hintText: draft.unpriced ? l10n.quoteFinanceNoListPrice : null,
+                suffixText: '元',
                 error: utenFieldError(
                   draft.error == QuoteFinanceLineError.discount
                       ? null
@@ -1582,8 +1609,8 @@ class _FinanceQuoteReviewPageState
         : Text(
             draft.deal.text.isEmpty
                 ? l10n.quoteFinanceNoListPrice
-                : _money(draft.deal.text),
-            textAlign: TextAlign.right,
+                // 成交单价恒本币：带「元」后缀（与输入格 suffixText 对称）。
+                : financeLocalMoneyWithUnitSuffix(draft.deal.text),
           );
     return Semantics(
       textField: editable,
@@ -1623,7 +1650,6 @@ class _FinanceQuoteReviewPageState
         draft.isMaster || draft.directPricing
             ? financeTrim(draft.discount.text)
             : '1',
-        textAlign: TextAlign.right,
       );
     }
     final batchCount = _selected.contains(line.itemId) && _selected.length > 1
@@ -1632,7 +1658,6 @@ class _FinanceQuoteReviewPageState
     final field = TextField(
       key: ValueKey('quote-finance-discount-${line.itemId}'),
       controller: draft.discount,
-      textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [_decimalInput],
       onChanged: (text) => _onDiscountChanged(draft, text),
@@ -1665,7 +1690,9 @@ class _FinanceQuoteReviewPageState
     final diff = _drafts[line.itemId]?.fileDifference;
     if (diff == null) return null;
     if (isZeroDecimal(diff)) return l10n.quoteFinanceFileMatch;
-    return diff.startsWith('-') ? _money(diff) : '+${_money(diff)}';
+    // 差额恒本币：带「元」后缀（负数原样带号）。
+    final money = financeLocalMoneyWithUnitSuffix(diff);
+    return diff.startsWith('-') ? money : '+$money';
   }
 
   Widget _summary(AppLocalizations l10n, SalesQuoteFinanceReview review) {

@@ -99,7 +99,9 @@ void main() {
       expect(columns.containsKey(retired), isFalse, reason: retired);
     }
     final order = grid.initialColumnOrder!;
-    expect(order.indexOf('weight'), order.indexOf('unit') + 1);
+    // 2026-10-10 口径：独立「单位」列删除(数量内联单位)，实称重量紧跟「本次出库」。
+    expect(order.indexOf('weight'), order.indexOf('quantity') + 1);
+    expect(order.contains('unit'), isFalse);
 
     // 表单卡进折叠头: 备注和发出仓都在, 发出仓默认 = 领料单的仓。
     expect(

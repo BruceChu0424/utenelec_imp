@@ -27,7 +27,6 @@ class LinePricingAmountCell extends StatelessWidget {
     builder: (context, _) => TextField(
       controller: controller.totalAmount,
       enabled: enabled,
-      textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: UtenInputDecoration(
         InputDecoration(

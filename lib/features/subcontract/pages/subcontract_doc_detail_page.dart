@@ -43,6 +43,8 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/subcontract_short_delivery.dart'
     show formatSubcontractQty;
 import '../../../shared/widgets/source_doc_link.dart';
@@ -928,6 +930,17 @@ class _SubcontractDocDetailPageState
     final items = d.items;
     final canViewCommercialAmounts = _canViewCommercialAmounts;
     final names = ref.watch(mn.masterNameServiceProvider);
+    // 2026-10-10 数量+单位口径：明细各数量列内联行单位(如 `12 PCS`)，独立单位列删除；
+    // 单位缺失时只显数字，空数量保持原有的 null/'—' 占位语义。
+    String? unitOf(SubcontractDocItem it) => _dictText(names.unit(it.unitId));
+    String? qtyWithUnit(SubcontractDocItem it, num? value, {int maxDecimals = 3}) =>
+        value == null
+            ? null
+            : formatQtyWithUnit(value, unitOf(it), maxDecimals: maxDecimals);
+
+    // 金额「数值 币种」后缀（2026-10-10 口径）：明细行币种随单据表头
+    // d.currencyId（names.currency 缺失返回 '—'，助手遇 '—'/「未知」不拼单位）。
+    final docCurrencyName = names.currency(d.currencyId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -941,8 +954,8 @@ class _SubcontractDocDetailPageState
                 label: '货品名称',
                 // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
                 // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
-                // 一格又不能各自排序筛选。2026-09-29 单位独立成列（数量之后，
-                // 对齐采购详情页 2026-09-19 口径），名称格不再带单位副行。
+                // 一格又不能各自排序筛选。2026-10-10 起单位内联在数量后（原独立
+                // 单位列删除），名称格仍不带单位副行。
                 width: 200,
                 value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
                 cellBuilderHandlesSemantics: true,
@@ -998,27 +1011,17 @@ class _SubcontractDocDetailPageState
                       .where((no) => no.isNotEmpty)
                       .join('、'),
                 ),
+              // 单位内联在数量后（2026-10-10 口径，原独立单位列删除）。
               MasterColumnDef(
                 key: 'qty',
                 label: widget.docType == SubcontractDocType.order
                     ? '订货量'
                     : '数量',
-                width: 90,
+                width: 100,
                 type: 'number',
                 value: (it) => _historicalReceipt
                     ? historicalReceiptAmount(it.qtyText)
-                    : it.qty?.toStringAsFixed(2),
-              ),
-              // 单位独立成列（2026-09-29）：紧跟数量之后，对齐采购详情页口径。
-              MasterColumnDef(
-                key: 'unit',
-                label: '单位',
-                width: 84,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  _dictText(names.unit(it.unitId)),
-                ),
-                cellBuilder: (context, it) =>
-                    UtenGoodsAttributeCell(_dictText(names.unit(it.unitId))),
+                    : qtyWithUnit(it, it.qty),
               ),
               if (_cfg.itemHasPrice && canViewCommercialAmounts) ...[
                 MasterColumnDef(
@@ -1029,8 +1032,8 @@ class _SubcontractDocDetailPageState
                           _detail!.items.any(
                             (it) => it.totalAmountInputText != null,
                           )
-                      ? 190
-                      : 90,
+                      ? 220
+                      : 120,
                   type: 'money',
                   info: widget.docType == SubcontractDocType.order
                       ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
@@ -1038,10 +1041,23 @@ class _SubcontractDocDetailPageState
                   value: (it) =>
                       widget.docType == SubcontractDocType.order &&
                           it.totalAmountInputText != null
-                      ? '${financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '—'}（参考）'
+                      ? '${financeMoneyWithUnitSuffix(
+                          financeExactTrimmed(
+                            it.priceText ?? it.price?.toString(),
+                          ),
+                          currencyName: docCurrencyName,
+                        )}（参考）'
                       : _historicalReceipt
-                      ? historicalReceiptAmount(it.priceText)
-                      : it.price?.toStringAsFixed(2),
+                      ? financeMoneyWithUnitSuffix(
+                          historicalReceiptAmount(it.priceText),
+                          currencyName: docCurrencyName,
+                        )
+                      : it.price == null
+                      ? null
+                      : financeMoneyWithUnitSuffix(
+                          it.price!.toStringAsFixed(2),
+                          currencyName: docCurrencyName,
+                        ),
                 ),
                 MasterColumnDef(
                   key: 'amount',
@@ -1050,30 +1066,40 @@ class _SubcontractDocDetailPageState
                       : widget.docType == SubcontractDocType.order
                       ? '总金额'
                       : '金额',
-                  width: 100,
+                  width: 130,
                   type: 'money',
                   // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
                   value: (it) =>
                       widget.docType == SubcontractDocType.order &&
                           it.totalAmountInputText != null
-                      ? financeExactMoneyDisplay(
+                      ? financeMoneyWithUnitSuffix(
                           it.amountOriginalText ?? it.amountLocalText,
+                          currencyName: docCurrencyName,
                         )
                       : _historicalReceipt
-                      ? historicalReceiptAmount(it.amountOriginalText)
-                      : (it.amountOriginal ?? it.amountLocal) != null
-                      ? (it.amountOriginal ?? it.amountLocal)!.toStringAsFixed(
-                          2,
+                      ? financeMoneyWithUnitSuffix(
+                          historicalReceiptAmount(it.amountOriginalText),
+                          currencyName: docCurrencyName,
                         )
-                      : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                      : financeMoneyWithUnitSuffix(
+                          (it.amountOriginal ?? it.amountLocal) != null
+                              ? (it.amountOriginal ?? it.amountLocal)!
+                                    .toStringAsFixed(2)
+                              : ((it.qty ?? 0) * (it.price ?? 0))
+                                    .toStringAsFixed(2),
+                          currencyName: docCurrencyName,
+                        ),
                 ),
                 if (_historicalReceipt)
                   MasterColumnDef(
                     key: 'recordedLocalAmount',
                     label: '本币成本（STotal）',
-                    width: 150,
+                    width: 180,
                     type: 'money',
-                    value: (it) => historicalReceiptAmount(it.amountLocalText),
+                    // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
+                    value: (it) => financeLocalMoneyWithUnitSuffix(
+                      historicalReceiptAmount(it.amountLocalText),
+                    ),
                   ),
               ],
               if (_historicalReceipt)
@@ -1108,9 +1134,9 @@ class _SubcontractDocDetailPageState
                 MasterColumnDef(
                   key: 'received',
                   label: '已收',
-                  width: 90,
+                  width: 100,
                   type: 'number',
-                  value: (it) => it.receivedQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it, it.receivedQty),
                 ),
               if (widget.docType == SubcontractDocType.order)
                 MasterColumnDef(
@@ -1118,9 +1144,8 @@ class _SubcontractDocDetailPageState
                   label: '结案损耗',
                   width: 110,
                   type: 'number',
-                  value: (it) => it.settledLossQty == null
-                      ? '—'
-                      : formatSubcontractQty(it.settledLossQty!),
+                  value: (it) =>
+                      qtyWithUnit(it, it.settledLossQty, maxDecimals: 4) ?? '—',
                 ),
               // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
               if (_cfg.itemHasAllowedLossPct)
@@ -1137,46 +1162,47 @@ class _SubcontractDocDetailPageState
                 MasterColumnDef(
                   key: 'returned',
                   label: '已退',
-                  width: 90,
+                  width: 100,
                   type: 'number',
-                  value: (it) => it.returnedQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it, it.returnedQty),
                 ),
               if (_cfg.showWasted)
                 MasterColumnDef(
                   key: 'wasted',
                   label: '已损耗',
-                  width: 90,
+                  width: 100,
                   type: 'number',
-                  value: (it) => it.wastedQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it, it.wastedQty),
                 ),
               if (_cfg.showSupplierLedger) ...[
                 MasterColumnDef(
                   key: 'atSupplier',
                   label: '在供应商处',
-                  width: 100,
+                  width: 110,
                   type: 'number',
-                  value: (it) => it.atSupplierQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it, it.atSupplierQty),
                 ),
                 MasterColumnDef(
                   key: 'consumed',
                   label: '已消费',
-                  width: 90,
+                  width: 100,
                   type: 'number',
-                  value: (it) => it.consumedQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it, it.consumedQty),
                 ),
                 MasterColumnDef(
                   key: 'supplierEnding',
                   label: '供应商结存',
-                  width: 100,
+                  width: 110,
                   type: 'number',
-                  value: (it) => it.supplierEnding?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it, it.supplierEnding),
                 ),
                 MasterColumnDef(
                   key: 'frozenUnitQty',
                   label: '冻结单耗',
-                  width: 90,
+                  width: 100,
                   type: 'number',
-                  value: (it) => it.frozenUnitQty?.toStringAsFixed(4),
+                  value: (it) =>
+                      qtyWithUnit(it, it.frozenUnitQty, maxDecimals: 4),
                 ),
               ],
               if (_cfg.itemHasWasteFields)

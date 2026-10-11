@@ -249,7 +249,7 @@ class _SupplierCreditApplyPanelState
                     ),
                   ),
                   Text(
-                    '可用余额 ${financeMoneyWithCurrency(source.outstandingOriginal, currencyName: source.currencyName, currencyCode: source.currencyCode)}'
+                    '可用余额 ${financeMoneyWithUnitSuffix(source.outstandingOriginal, currencyName: source.currencyName, currencyCode: source.currencyCode)}'
                     ' · 汇率 ${source.bookingRate ?? '—'}',
                   ),
                   const SizedBox(height: UtenSpacing.s8),

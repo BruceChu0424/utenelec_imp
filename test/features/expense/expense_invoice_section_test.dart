@@ -213,7 +213,7 @@ void main() {
     );
 
     expect(find.text('发票登记 (1)'), findsOneWidget);
-    expect(find.textContaining('¥ 84.80'), findsOneWidget);
+    expect(find.textContaining('84.80 元'), findsOneWidget);
     expect(find.text('24312000000012345678'), findsOneWidget);
     expect(find.text('上海某某酒店管理有限公司'), findsOneWidget);
     expect(find.text('已人工查验'), findsOneWidget);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -128,18 +129,16 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           width: 135,
           value: (r) => names.goodsInfo(r.item.goodsId)?.stockPlace ?? '—',
         ),
-        MasterColumnDef(
-          key: 'unit',
-          label: l10n.warehouseOutboundUnit,
-          width: 75,
-          value: (r) => names.unit(r.item.unitId),
-        ),
+        // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量直接带单位。
         MasterColumnDef(
           key: 'qty',
           label: l10n.warehouseStockOutboundQuantity,
-          width: 110,
+          width: 145,
           type: 'number',
-          value: (r) => _quantity(r.item.qty),
+          value: (r) => _quantityWithUnit(
+            r.item.qty,
+            names.unit(r.item.unitId),
+          ),
         ),
         // 单据行重量 (千克) 按用户显示单位带单位显示; 没称「未称」, 不显示成 0。
         MasterColumnDef(
@@ -149,7 +148,7 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           type: 'number',
           value: (r) => formatWeightValue(r.item.weight),
           cellBuilder: (context, r) =>
-              WeightText(kg: r.item.weight, textAlign: TextAlign.right),
+              WeightText(kg: r.item.weight),
         ),
         MasterColumnDef(
           key: 'source',
@@ -173,10 +172,15 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
     );
   }
 
-  static String _quantity(double? value) => value == null
+  /// 数量 + 单位 (2026-10-10 内联口径)：单位列删除，单位直接跟数字；
+  /// names.unit 未加载/未知返回「—」，拼装前滤掉，避免出现「5 —」；
+  /// 数量保留 4 位小数、去尾零。
+  static String _quantityWithUnit(double? value, String unitLabel) =>
+      value == null
       ? '—'
-      : value
-            .toStringAsFixed(4)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
+      : formatQtyWithUnit(
+          value,
+          unitLabel == '—' ? null : unitLabel,
+          maxDecimals: 4,
+        );
 }

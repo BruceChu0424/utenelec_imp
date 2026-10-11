@@ -260,16 +260,15 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView> {
       MasterColumnDef(
         key: 'qty',
         label: '库存数量',
-        width: 130,
+        width: 160,
         type: 'number',
         sortable: true,
-        value: (row) => _formatQty(row.qty) ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 70,
-        value: (_) => unitName,
+        // 2026-10-10 数量+单位口径：单位内联在数量后，独立「单位」列删除。
+        value: (row) {
+          final text = _formatQty(row.qty);
+          if (text == null) return '—';
+          return unitName.isEmpty ? text : '$text $unitName';
+        },
       ),
       MasterColumnDef(
         key: 'weight',

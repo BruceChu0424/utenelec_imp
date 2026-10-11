@@ -37,6 +37,8 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
@@ -65,6 +67,9 @@ class _FinanceSalesShipmentAuditReviewPageState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+
+  /// 明细行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助）。
+  final Set<String> _selectedItemIds = <String>{};
 
   /// V632：放行时确认的记账汇率(本位币/1 原币)。预填服务端建议值(已冻结的 > 本位币 1 >
   /// 币种主档参考汇率)，财务可按放行当日汇率修改；放行即冻结到本单，仓库确认出库按它立应收。
@@ -566,7 +571,9 @@ class _FinanceSalesShipmentAuditReviewPageState
   @override
   Widget build(BuildContext context) {
     ref.listen(sessionProvider, (previous, next) {
-      if (identical(previous, next)) return;
+      // 只有真实换身份才清空（换号/登出/模拟切换/业务重置）；token 静默刷新、
+      // 权限滑动更新保持页面与认领（服务端在决策时点重校验权限）。
+      if (previous?.isSameIdentity(next) ?? false) return;
       ++_loadGeneration;
       _claim?.removeListener(_claimChanged);
       _claim?.releaseAll().ignore();
@@ -1134,6 +1141,20 @@ class _FinanceSalesShipmentAuditReviewPageState
                 'features.finance.pages.finance_sales_shipment_audit_review_page.FinanceSalesShipmentAuditReviewPageState._itemsCard.1',
             primary: true,
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+            // 行勾选（2026-10-10 审核页防看岔行口径）：纯阅读辅助，单选互斥
+            // （点其他行自动换选、再点取消），无行级批量动作，整单决策仍走底部
+            // 退回/放行；选中态由行高亮表达，不画勾选框列也不驻「已选」胶囊。
+            selectable: true,
+            showSelectionColumn: false,
+            singleSelection: true,
+            showSelectionSummary: false,
+            idOf: (it) => (it.id == null || it.id!.isEmpty) ? null : it.id,
+            selectedIds: _selectedItemIds,
+            onSelectedIdsChanged: (next) => setState(() {
+              _selectedItemIds
+                ..clear()
+                ..addAll(next);
+            }),
             columns: [
               MasterColumnDef(
                 key: 'goods',
@@ -1166,39 +1187,44 @@ class _FinanceSalesShipmentAuditReviewPageState
                 value: (it) => names.color(it.colorId),
               ),
               MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 80,
-                value: (it) => names.unit(it.unitId),
-              ),
-              MasterColumnDef(
                 key: 'stockPlace',
                 label: '库位号',
                 width: 90,
                 value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
               ),
+              // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
+              // 独立「单位」列退役。
               MasterColumnDef(
                 key: 'qty',
                 label: '数量',
-                width: 90,
+                width: 125,
                 type: 'number',
-                value: (it) => it.qty?.toStringAsFixed(2),
+                value: (it) => formatQtyWithUnit(it.qty, names.unit(it.unitId)),
               ),
+              // 金额自动带订单币种后缀（2026-10-10 口径）；价格脱敏时金额打码。
               MasterColumnDef(
                 key: 'price',
                 label: '单价',
-                width: 120,
+                width: 140,
                 type: 'money',
-                value: (it) => masked ? '***' : it.price?.toStringAsFixed(2),
+                value: (it) => masked
+                    ? '***'
+                    : financeMoneyWithUnitSuffix(
+                        it.price?.toStringAsFixed(2),
+                        currencyName: names.currency(d.currencyId),
+                      ),
               ),
               MasterColumnDef(
                 key: 'amount',
                 label: '金额',
-                width: 100,
+                width: 140,
                 type: 'money',
                 value: (it) => masked
                     ? '***'
-                    : ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                    : financeMoneyWithUnitSuffix(
+                        ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                        currencyName: names.currency(d.currencyId),
+                      ),
               ),
               MasterColumnDef(
                 key: 'remark',

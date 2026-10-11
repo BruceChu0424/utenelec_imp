@@ -1,5 +1,5 @@
 // 到货登记「实称重量」契约 (ADR-135 §3.1):
-//  1. 重量列跟在数量组(本次实收 + 单位)之后, 表头随录入单位「实称重量(kg)」;
+//  1. 重量列跟在数量组(本次实收, 单位内联 2026-10-10 T9)之后, 表头随录入单位「实称重量(kg)」;
 //  2. 带单位后缀输入(20g) 以千克 4 位提交, 幂等键带上重量: 改了重量是另一个请求;
 //  3. 按本单供应商学到的单重核对, 偏差超出容差出「称重核对」标签, 表尾「实称 / 称重偏差」;
 //  4. 行单位本身是重量单位时只读「=5 kg」, 提交不带重量;
@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -146,7 +147,10 @@ void main() {
   testWidgets('历史单重实际预填，但未经实称的建议不提交为重量', (tester) async {
     final (:api, :weights) = await _open(tester, prefill: _prefill());
     expect(tester.widget<TextField>(_weightInput()).controller!.text, '0.01');
-    expect(find.text('预估 · 请填实称'), findsOneWidget);
+    // 预填建议 = 全站黄框待核对口径（不再有「≈」前缀与格下小字）。
+    final decoration = tester.widget<TextField>(_weightInput()).decoration!;
+    expect(decoration, isA<UtenInputDecoration>());
+    expect((decoration as UtenInputDecoration).autofilled, isTrue);
     expect(weights.requests.single.single.warehouseId, 'warehouse-1');
     expect(weights.requests.single.single.colorId, isNull);
     await _submit(tester);
@@ -165,14 +169,26 @@ void main() {
       failFirstArrival: true,
     );
 
-    // 列序: 本次实收 → 单位 → 实称重量(kg) → 称重核对 → 入库仓库。
+    // 列序: 本次实收 → 实称重量(kg) → 称重核对 → 入库仓库(独立「单位」列已删, 2026-10-10
+    // T9: 行单位内联在数量后)。
     final grid = tester.widget<UtenEditableGrid<EditableGridRow>>(_grid());
     final labels = grid.columns.map((column) => column.label).toList();
-    final unit = labels.indexOf('单位');
-    expect(labels.indexOf('本次实收'), unit - 1);
-    expect(labels[unit + 1], '实称重量(kg)');
-    expect(labels[unit + 2], '称重核对');
-    expect(labels[unit + 3], '入库仓库');
+    final qty = labels.indexOf('本次实收');
+    expect(labels[qty + 1], '实称重量(kg)');
+    expect(labels[qty + 2], '称重核对');
+    expect(labels[qty + 3], '入库仓库');
+    expect(labels.contains('单位'), isFalse);
+    // 只读数量列单位内联；录入列单位挂输入框尾部。
+    expect(find.text('5 个'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('warehouse-arrival-qty-$_itemId')),
+          )
+          .decoration!
+          .suffixText,
+      '个',
+    );
     // 单重参数按「货品 × 本单供应商」取。
     expect(weights.requests.first.single.goodsId, _goodsId);
     expect(weights.requests.first.single.supplierId, 'supplier-1');
@@ -309,8 +325,17 @@ void main() {
     final grid = tester.widget<UtenEditableGrid<EditableGridRow>>(_grid());
     final labels = grid.columns.map((column) => column.label).toList();
     expect(labels.indexOf('最多可收'), labels.indexOf('批准剩余') + 1);
-    expect(find.text('5.25(含允许超收 5%)'), findsOneWidget);
-    expect(find.textContaining('超过最多可收的部分才转财务'), findsWidgets);
+    // 单位内联(2026-10-10 T9)。「超过最多可收的部分才转财务」的常驻提示行已删，
+    // 口径钉在列头说明(ADR-144)。
+    expect(find.text('5.25 个(含允许超收 5%)'), findsOneWidget);
+    expect(
+      grid
+          .columns
+          .where((column) => column.key == 'maxReceivableQty')
+          .single
+          .headerInfo,
+      contains('超过最多可收的部分才转财务'),
+    );
   });
 
   testWidgets('ADR-144 委外登记不显示「最多可收」列', (tester) async {

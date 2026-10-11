@@ -28,6 +28,14 @@ import '../widgets/production_review_reason_dialog.dart';
 
 String _quantity(String? value) => value ?? '—';
 
+/// 表格数量列「数字 + 单位」内联（2026-10-10 数量内联口径）：服务端精确原文
+/// 原样保留，只拼单位后缀；空值显示 —。
+String _quantityWithUnit(String? value, String? unit) {
+  if (value == null || value.isEmpty) return '—';
+  final suffix = unit?.trim() ?? '';
+  return suffix.isEmpty ? value : '$value $suffix';
+}
+
 String _decisionTime(String? value) {
   final parsed = ChinaDateTime.tryParse(value);
   return parsed == null ? '—' : ChinaDateTime.formatDateTime(parsed);
@@ -206,32 +214,33 @@ class _OverLimitListState extends ConsumerState<ProductionOverLimitListPage> {
                       width: 90,
                       value: (row) => row.colorName,
                     ),
-                    MasterColumnDef(
-                      key: 'unitName',
-                      label: '单位',
-                      width: 75,
-                      value: (row) => row.unitName,
-                    ),
+                    // 2026-10-10 数量内联口径：独立「单位」列撤销，单位跟在数字后
+                    //（服务端给的是精确原文，不再二次截位，仅拼后缀）。
                     MasterColumnDef(
                       key: 'actual',
                       label: '本批实际',
-                      width: 115,
+                      width: 150,
                       type: 'number',
-                      value: (row) => _quantity(row.actualBatchQty),
+                      value: (row) =>
+                          _quantityWithUnit(row.actualBatchQty, row.unitName),
                     ),
                     MasterColumnDef(
                       key: 'within',
                       label: '额度内',
-                      width: 110,
+                      width: 144,
                       type: 'number',
-                      value: (row) => _quantity(row.withinAuthorizationQty),
+                      value: (row) => _quantityWithUnit(
+                        row.withinAuthorizationQty,
+                        row.unitName,
+                      ),
                     ),
                     MasterColumnDef(
                       key: 'over',
                       label: '本次超限',
-                      width: 110,
+                      width: 144,
                       type: 'number',
-                      value: (row) => _quantity(row.overLimitQty),
+                      value: (row) =>
+                          _quantityWithUnit(row.overLimitQty, row.unitName),
                     ),
                     MasterColumnDef(
                       key: 'reason',

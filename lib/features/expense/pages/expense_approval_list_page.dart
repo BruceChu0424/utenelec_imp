@@ -149,14 +149,15 @@ class _ExpenseApprovalListPageState
                     const SizedBox(width: UtenSpacing.s8),
                     Expanded(
                       child: Text(
-                        '待审批 ${summary.pendingCount} 单 · ¥ '
-                        '${summary.pendingAmount.toStringAsFixed(2)}　|　'
-                        '待付款 ${summary.payableCount} 单 · ¥ '
-                        '${summary.payableAmount.toStringAsFixed(2)}　|　'
-                        '本月提交 ${summary.monthSubmittedCount} 单 · ¥ '
-                        '${summary.monthSubmittedAmount.toStringAsFixed(2)}　|　'
-                        '本月已付款 ${summary.monthPaidCount} 单 · ¥ '
-                        '${summary.monthPaidAmount.toStringAsFixed(2)}',
+                        // 报销恒人民币（2026-10-10 金额带单位口径：数值后带「元」）。
+                        '待审批 ${summary.pendingCount} 单 · '
+                        '${summary.pendingAmount.toStringAsFixed(2)} 元　|　'
+                        '待付款 ${summary.payableCount} 单 · '
+                        '${summary.payableAmount.toStringAsFixed(2)} 元　|　'
+                        '本月提交 ${summary.monthSubmittedCount} 单 · '
+                        '${summary.monthSubmittedAmount.toStringAsFixed(2)} 元　|　'
+                        '本月已付款 ${summary.monthPaidCount} 单 · '
+                        '${summary.monthPaidAmount.toStringAsFixed(2)} 元',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontFeatures: const [FontFeature.tabularFigures()],

@@ -3129,10 +3129,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get warehouseArrivalSourceReplacement => '先补退货';
 
   @override
-  String get warehouseArrivalSourceHint =>
-      '只有一种待收来源时，系统自动识别。同时有正常待到货和已退未补数量时，请按这批实物选择。选“先补退货”会先补回已退数量，超出的部分按正常到货处理；免费补回或重新计款由原退货处理结果决定。';
-
-  @override
   String get materialIssuedPlanSyncPending => '已下达，计划进度待同步';
 
   @override
@@ -3538,9 +3534,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundColor => '颜色';
-
-  @override
-  String get warehouseSubcontractOutboundUnit => '单位';
 
   @override
   String get warehouseSubcontractOutboundStockAvailable => '仓内可动用';
@@ -8731,10 +8724,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wmBinNotOpenAskWarehouse => '请找仓库在「车间内料仓」里开通。';
 
   @override
-  String get wmBinDirectOnlyNotice =>
-      '这个内料仓只收车间直送, 还没开启整批领料: 下面是现在放在内料仓里的料, 由上层工单直接领用。';
-
-  @override
   String get wmBinPanelTitleOpen => '开通车间内料仓';
 
   @override
@@ -8871,10 +8860,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get handoffLotRegistrationTitle => '登记实际入库';
-
-  @override
-  String get handoffLotRegistrationFooter =>
-      '一行一批实物(同一报工、同一次录入、送入仓库的需求份 / 计划公共 / 实际超产)：库位、实点、称重都是整批一个。入库仓库、库位号必填(仓库按货品归属仓或上次所选仓预填，库位按该仓记住的库位或货品资料带出，黄框请核对)；同一张报工的不同批可以登记到不同仓库。明细默认全选，提交只含勾选行。';
 
   @override
   String handoffLotBatchesTitle(int count) {

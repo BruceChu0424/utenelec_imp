@@ -84,7 +84,7 @@ void main() {
     expect(c.sourceLocked, isFalse);
   });
 
-  testWidgets('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', (tester) async {
+  testWidgets('列序契约：单位列已删(数量内联单位)，实际重量列已下线', (tester) async {
     late final List<String> keys;
     await tester.pumpWidget(
       MaterialApp(
@@ -101,6 +101,35 @@ void main() {
       ),
     );
     expect(keys, isNot(contains('weight')));
-    expect(keys.indexOf('unit'), keys.indexOf('qty') + 1);
+    // 2026-10-10 数量+单位口径：独立「单位」列删除，单位内联在数量输入框 suffixText。
+    expect(keys, isNot(contains('unit')));
+  });
+
+  testWidgets('订货列序契约：允许损耗% 紧跟数量（2026-10-10 与采购超收%对齐）', (tester) async {
+    late final List<String> keys;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            keys = subcontractGridColumns(
+              (_) async {},
+              SubcontractDocConfig.order,
+              context: context,
+              showCommercial: true,
+              showRemark: true,
+            ).map((column) => column.key).toList();
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    expect(keys.indexOf('allowedLossPct'), keys.indexOf('qty') + 1);
+    expect(keys.indexOf('price'), keys.indexOf('allowedLossPct') + 1);
+    // 商业条款仍按 币种→税率→结算方式 跟在总金额后。
+    expect(keys.sublist(keys.indexOf('amount') + 1, keys.indexOf('remark')), [
+      'currency',
+      'taxRate',
+      'settlement',
+    ]);
   });
 }

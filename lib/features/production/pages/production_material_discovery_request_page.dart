@@ -22,6 +22,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -497,12 +498,15 @@ class _RequestState
       width: 100,
       value: (row) => row.task.productColorName ?? '—',
     ),
+    // 2026-10-10 数量内联口径：计划产量单位内联在数字后（formatQtyWithUnit，
+    // 空单位不再落尾随空格）；材料「单位」列撤销，领料数量输入框单位放后缀。
     MasterColumnDef(
       key: 'plannedQty',
       label: '计划产量',
       width: 120,
+      type: 'number',
       value: (row) =>
-          '${row.task.plannedQty} ${row.task.productUnitName ?? ''}',
+          formatQtyWithUnit(row.task.plannedQty, row.task.productUnitName),
     ),
     MasterColumnDef(
       key: 'goodsName',
@@ -535,12 +539,6 @@ class _RequestState
       value: (row) => row.label('spec'),
     ),
     MasterColumnDef(
-      key: 'unitName',
-      label: '单位',
-      width: 80,
-      value: (row) => row.label('unitName'),
-    ),
-    MasterColumnDef(
       key: 'stockPlace',
       label: '参考库位',
       info: '货品资料中的参考库位；实际发料仓由仓库确认。',
@@ -550,7 +548,7 @@ class _RequestState
     MasterColumnDef(
       key: 'qty',
       label: '领料数量（选填）',
-      width: 170,
+      width: 204,
       type: 'number',
       value: (row) => row.qty.text,
       exactValueOf: (row) => row.qty.text,
@@ -562,8 +560,13 @@ class _RequestState
         readOnly: !_editable(row),
         enabled: row.values['goodsId'] != null,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const UtenInputDecoration(
-          InputDecoration(isDense: true, hintText: '可由仓库补充'),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: '可由仓库补充',
+            // 选材料后 setState 整表重建，后缀随选材回填的单位即时刷新。
+            suffixText: (row.values['unitName'] as String?)?.trim(),
+          ),
         ),
       ),
     ),

@@ -72,13 +72,25 @@ final class _MaterialAggregateTableController {
           child: Text('撤销汇总草稿(${drafts.length})'),
         );
 
+  /// 数量展示文本 + 单位（2026-10-10 T9：单位列退役）：原文是四位精确数量，
+  /// 只拼单位不改精度；解析不出的原文原样返回。
+  static String? _withUnit(String? text, String? unit) {
+    final raw = text?.trim() ?? '';
+    if (raw.isEmpty || raw == '—') return text;
+    final value = double.tryParse(raw);
+    if (value == null) return raw;
+    return formatQtyWithUnit(value, unit, maxDecimals: 4);
+  }
+
   Widget quantityCell(
     ThemeData theme,
     _MaterialAggregate aggregate, {
     required bool append,
   }) {
     final ordered = orderedQty(aggregate) > 0.000000001;
-    final displayedOrder = issuedText(aggregate) ?? '无法确认';
+    // 2026-10-10 T9：单位列退役，锁定的累计已下单量内联单位（与主表同口径）。
+    final unit = aggregate.unitName?.trim();
+    final displayedOrder = _withUnit(issuedText(aggregate), unit) ?? '无法确认';
     final breakdown = issuedBreakdown(aggregate);
     final cellKey = ValueKey(
       'material-aggregate-${append ? 'append' : 'order'}-${aggregate.key}',
@@ -152,6 +164,8 @@ final class _MaterialAggregateTableController {
           canEdit &&
           (owner._canNotify || owner._canGenerate),
       hintText: owner._qty(pendingQty(aggregate)),
+      // 2026-10-10 T9：单位列退役，汇总下单格的单位放输入框尾注。
+      suffixText: unit,
       onTyped: (value) => changed(aggregate, value),
       onFinished: append ? owner._finishPreparationQuantityEditing : null,
       invalid: () {

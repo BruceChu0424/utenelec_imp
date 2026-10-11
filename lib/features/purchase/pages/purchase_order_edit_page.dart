@@ -1,11 +1,13 @@
 // 采购订货单专属编辑页（2026-09 行级商业条款改造起从共享单据编辑页拆出）。
 //
-// 与共享页的差异：单头不再录币种/汇率/税率/结账方式（供应商此前已在明细行）——
+// 与共享页的差异：单头不再录币种/税率/结账方式（供应商此前已在明细行）——
 // 商业条款全部下移明细行，逐行选择/填写：
-//  - 多选行「统一设置条款」一次写全套（供应商+结账方式+币种+汇率+税率，留空保持原值）；
+//  - 多选行「统一设置条款」一次写全套（供应商+结账方式+币种+税率，留空保持原值）；
 //  - 行内点选结账方式/币种时，行处于多选选中态则联动填到所有选中行；
 //  - 主档默认值预填：选货品后读货品与供应商主档的默认条款 (/last-terms) 自动带出，
 //    每次保存订单由服务端写回主档 (主档没有默认值时回落：币种人民币、汇率 1、税率 0)；
+//  - 汇率列已撤（2026-10-10 口径：采购不填汇率，财务审批时填）——前端提交恒 1，
+//    网格/批量面板均不再展示与修改；
 //  - 保存走 createBatch 按「供应商+商业条款」组合自动拆单，每组条款归集到该张单头；
 //  - 数量允许超过申请剩余量（超采备货，2026-09 放开上限）；重量无上限。
 //  - 每行末尾「备注」列，随行提交 remark。
@@ -579,7 +581,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               (r.supplierId == null ||
                   r.settlementMethodId == null ||
                   r.currencyId == null ||
-                  r.exchangeRate.text.trim().isEmpty ||
                   r.taxRate.text.trim().isEmpty ||
                   r.price.text.trim().isEmpty ||
                   // ADR-144：其它条款已带齐的行也要补预填允许超收(每行每个货品只一次)。
@@ -604,7 +605,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final settlementEntries = await _settlementEntries();
     if (!mounted ||
         generation != _termsLoadGeneration ||
-        !identical(session, ref.read(sessionProvider))) {
+        !ref.read(sessionProvider).isSameIdentity(session)) {
       return;
     }
     final currencyEntries = names.currencyEntries;
@@ -647,16 +648,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           r.markTermsAutofilled('currency', terms.currencyId!);
           changed = true;
         }
-        if (r.supplierId == terms.supplierId &&
-            r.supplierId != null &&
-            r.currencyId == terms.currencyId &&
-            r.exchangeRate.text.trim().isEmpty &&
-            terms.exchangeRate != null) {
-          r.exchangeRate.text =
-              financeExactTrimmed(terms.exchangeRate.toString()) ?? '';
-          r.markTermsAutofilled('rate', r.exchangeRate.text);
-          changed = true;
-        }
+        // 汇率不再按主档记忆预填（2026-10-10 口径：采购不填汇率，前端恒 1 由
+        // _applyTermDefaults 回落，财务审批时再填真实汇率）。
         if (r.supplierId == terms.supplierId &&
             r.supplierId != null &&
             r.taxRate.text.trim().isEmpty &&
@@ -715,7 +708,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   }
 
   /// 主档没给时回落默认：币种人民币、汇率 1、税率 0 (结账方式无全局默认，
-  /// 由供应商主档默认 [SettlementMethodReferenceResolver] 在选商后预填）。
+  /// 由供应商主档默认 [SettlementMethodReferenceResolver] 在选商后预填)。
+  /// 汇率列已撤（2026-10-10 口径）：本回落是前端汇率恒 1 的唯一写入点。
   bool _applyTermDefaults(PurchaseGridRow r) {
     var changed = false;
     if (r.currencyId == null && _defaultCurrencyId != null) {
@@ -785,8 +779,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     return selected.contains(row) ? selected : [row];
   }
 
-  /// 多选行「统一设置条款」：打开批量面板一次写全套（供应商+结账方式+币种+汇率+
-  /// 税率；留空的项保持各行原值）。
+  /// 多选行「统一设置条款」：打开批量面板一次写全套（供应商+结账方式+币种+
+  /// 税率；留空的项保持各行原值）。批量面板已撤汇率输入（2026-10-10 口径）。
   Future<void> _batchSetTerms() async {
     final rows = _grid.selectedRows;
     if (rows.isEmpty) return;
@@ -816,10 +810,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (result.currencyId != null) {
         r.currencyId = result.currencyId;
         r.clearTermsAutofilled('currency');
-      }
-      if (result.exchangeRate != null) {
-        r.exchangeRate.text = result.exchangeRate.toString();
-        r.clearTermsAutofilled('rate');
       }
       if (result.taxRate != null) {
         r.taxRate.text = result.taxRate.toString();
@@ -1721,7 +1711,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                 Expanded(
                                   child: Text(
                                     '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
-                                    '一次写全套供应商、结账方式、币种、汇率、税率（留空的保持原值）；'
+                                    '一次写全套供应商、结账方式、币种、税率（留空的保持原值）；'
                                     '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
@@ -1744,7 +1734,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                       !_loading &&
                                       !_saving &&
                                       !_hasCreatedDocuments,
-                                  tableKey: 'purchase.order.items',
+                                  // 默认列序 2026-10-10 变更（单位列撤并进数量
+                                  // suffix、允许超收% 紧跟数量、汇率列撤）：bump
+                                  // tableKey 让旧保存布局不再压住新默认序。
+                                  tableKey: 'purchase.order.items.v2',
                                   onAddColumn: (hidden) =>
                                       addBusinessGridColumn(
                                         context,

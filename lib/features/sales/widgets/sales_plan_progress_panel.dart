@@ -31,6 +31,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
@@ -342,6 +343,12 @@ String _fmt(double? v) => v == null
     ? '—'
     : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
 
+/// 「数量 + 单位」内联口径（2026-10-10 全站表格数量口径）：独立「单位」列撤销，
+/// 单位直接跟在数量后（如 `1000 米`）；空值仍显「—」。数值排序由
+/// MasterDataTableView 的容错解析剥掉单位后缀兜底。
+String _qtyWithUnit(double? v, String? unit) =>
+    v == null ? '—' : formatQtyWithUnit(v, unit);
+
 class _ProgressList extends ConsumerWidget {
   const _ProgressList({
     required this.lines,
@@ -462,51 +469,47 @@ class _ProgressList extends ConsumerWidget {
         value: (line) => UtenGoodsAttributeCell.text(line.spec),
         cellBuilder: (_, line) => UtenGoodsAttributeCell(line.spec),
       ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 65,
-        value: (line) => line.unitName,
-      ),
+      // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位内联在
+      // 订货/已排/已生产入库/已发/本次可发/办理中的数量后（如 `1000 米`），排序由
+      // MasterDataTableView 数值容错解析剥掉单位后缀兜底。
       MasterColumnDef(
         key: 'qty',
         label: '订货',
-        width: 90,
+        width: 126,
         type: 'number',
-        value: (line) => _fmt(line.qty),
+        value: (line) => _qtyWithUnit(line.qty, line.unitName),
       ),
       MasterColumnDef(
         key: 'planned',
         label: '已排',
-        width: 90,
+        width: 126,
         type: 'number',
-        value: (line) => _fmt(line.plannedQty),
+        value: (line) => _qtyWithUnit(line.plannedQty, line.unitName),
       ),
       MasterColumnDef(
         key: 'produced',
         label: '已生产入库',
-        width: 120,
+        width: 150,
         type: 'number',
         info: '只统计已实际合格入库的产品，待品质判定和待仓库点收不算入库。',
-        value: (line) => _fmt(line.producedQty),
+        value: (line) => _qtyWithUnit(line.producedQty, line.unitName),
       ),
       MasterColumnDef(
         key: 'shipped',
         label: '已发',
-        width: 90,
+        width: 126,
         type: 'number',
-        value: (line) => _fmt(line.shippedQty),
+        value: (line) => _qtyWithUnit(line.shippedQty, line.unitName),
       ),
       MasterColumnDef(
         key: 'available',
         label: '本次可发',
-        width: 110,
+        width: 140,
         type: 'number',
         info: '可用于新建出货单的合格实物量，已扣除正在办理的出货；实际发货数量在出货单中填写。',
-        value: (line) => _fmt(line.shippableQty),
+        value: (line) => _qtyWithUnit(line.shippableQty, line.unitName),
         cellBuilder: (context, line) => Text(
-          _fmt(line.shippableQty),
-          textAlign: TextAlign.right,
+          _qtyWithUnit(line.shippableQty, line.unitName),
           style: TextStyle(
             fontWeight: FontWeight.w700,
             color: theme.colorScheme.error,
@@ -516,9 +519,9 @@ class _ProgressList extends ConsumerWidget {
       MasterColumnDef(
         key: 'pending',
         label: '办理中',
-        width: 100,
+        width: 130,
         type: 'number',
-        value: (line) => _fmt(line.pendingShipmentQty),
+        value: (line) => _qtyWithUnit(line.pendingShipmentQty, line.unitName),
       ),
       MasterColumnDef(
         key: 'detail',

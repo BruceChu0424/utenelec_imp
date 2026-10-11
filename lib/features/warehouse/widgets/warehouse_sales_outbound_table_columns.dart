@@ -178,7 +178,6 @@ warehouseSalesOutboundTableColumns({
         cellBuilder: (context, row) => WeightText(
           kg: row.line.weightKg,
           source: row.line.weightSource,
-          textAlign: TextAlign.right,
         ),
       ),
   ];

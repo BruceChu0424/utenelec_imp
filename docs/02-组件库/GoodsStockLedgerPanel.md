@@ -35,7 +35,7 @@ Expanded(当前分段)            GoodsStockBalanceView / GoodsStockLedgerView /
 
 ## 三、三个分段
 
-- **库存余额**：列 仓库 | 颜色 | 库存数量 | 单位 | 库存重量 | 最后变动 | 操作；重量「≈」/「未称」。行操作 查看流水 / 调整(`stock:balance:adjust`) /
+- **库存余额**：列 仓库 | 颜色 | 库存数量(单位内联) | 库存重量 | 最后变动 | 操作（2026-10-10 起独立「单位」列删除）；重量「≈」/「未称」。行操作 查看流水 / 调整(`stock:balance:adjust`) /
   核重(`stock:weight:manage`，按重量计的货品隐藏，按 `/stock/weight/params` 的 EXACT 判断)。调整与核重打开 `showStockBalanceDetailSheet`：
   - 返回 `Future<bool?>`(true = 有改动)；模式 `StockBalanceSheetMode.details / adjust / weigh`(`initialMode`)；
   - `onAdjust(targetQty, targetWeightKg, reason, key)`：调整后数量 + 可选调整后重量(按盘点定重)；

@@ -245,9 +245,10 @@ void main() {
     return data;
   }
 
+  // 2026-10-10 T9：数量列内联单位，调用方只传数字、这里统一拼「N 个」。
   Finder appendAvailable(String line, String quantity) => find.descendant(
     of: find.byKey(ValueKey('material-analysis-public-available-$line')),
-    matching: find.text(quantity),
+    matching: find.text('$quantity 个'),
   );
 
   Future<void> finishAppend(WidgetTester tester, String quantity) async {
@@ -883,7 +884,7 @@ void main() {
         of: find.byKey(
           const ValueKey('material-analysis-public-available-m-2'),
         ),
-        matching: find.text('7877'),
+        matching: find.text('7877 个'),
       ),
       findsOneWidget,
     );
@@ -1028,14 +1029,14 @@ void main() {
       const ValueKey('material-analysis-net-shortage-shared-0'),
     );
     expect(
-      find.descendant(of: available, matching: find.text('100')),
+      find.descendant(of: available, matching: find.text('100 个')),
       findsOneWidget,
     );
     expect(tester.widget<Tooltip>(shortage).message, contains('还缺 100'));
     await _toggle(tester, _rowCheckbox('shared-1'));
     await _settleRebuild(tester);
     expect(
-      find.descendant(of: available, matching: find.text('200')),
+      find.descendant(of: available, matching: find.text('200 个')),
       findsOneWidget,
     );
     expect(tester.widget<Tooltip>(shortage).message, contains('还缺 0'));
@@ -1075,7 +1076,7 @@ void main() {
             'material-analysis-public-available-AGGREGATE|g-m-2|本色|unit-1',
           ),
         ),
-        matching: find.text('5500'),
+        matching: find.text('5500 个'),
       ),
       findsOneWidget,
     );
@@ -1087,7 +1088,7 @@ void main() {
           of: find.byKey(
             ValueKey('material-analysis-public-available-shared-$i'),
           ),
-          matching: find.text('5500'),
+          matching: find.text('5500 个'),
         ),
         findsOneWidget,
       );
@@ -1133,20 +1134,20 @@ void main() {
               .last,
         )
         .data!;
-    expect(available('shared-0'), '10000');
+    expect(available('shared-0'), '10000 个');
     await tester.enterText(_orderQty('shared-0'), '1000');
     await _check(tester, _rowCheckbox('shared-0'));
     await _settleRebuild(tester);
-    expect(available('shared-1'), '9000');
-    expect(available('shared-2'), '9000');
+    expect(available('shared-1'), '9000 个');
+    expect(available('shared-2'), '9000 个');
     await _toggle(tester, _rowCheckbox('shared-0'));
     await _settleRebuild(tester);
     expect(_qtyText(tester, _orderQty('shared-0')), '1000');
-    expect(available('shared-1'), '10000');
+    expect(available('shared-1'), '10000 个');
     await tester.enterText(_orderQty('shared-1'), '10000');
     await _settleRebuild(tester);
-    expect(available('shared-0'), '0');
-    expect(available('shared-2'), '0');
+    expect(available('shared-0'), '0 个');
+    expect(available('shared-2'), '0 个');
     expect(
       tester
           .widget<Tooltip>(
@@ -1169,7 +1170,7 @@ void main() {
     );
     await tester.enterText(_orderQty('shared-1'), '');
     await _settleRebuild(tester);
-    expect(available('shared-0'), '10000');
+    expect(available('shared-0'), '10000 个');
     expect(previews, isEmpty);
   });
 
@@ -1202,14 +1203,14 @@ void main() {
         )
         .data!;
     expect(_orderQty('m-3'), findsNothing);
-    expect(available(), '10000');
+    expect(available(), '10000 个');
     await tester.enterText(_appendQty('m-3'), '1000');
     await _settleRebuild(tester);
-    expect(available(), '9000');
+    expect(available(), '9000 个');
     await _toggle(tester, _rowCheckbox('m-3'));
     await _settleRebuild(tester);
     expect(_qtyText(tester, _appendQty('m-3')), '1000');
-    expect(available(), '10000');
+    expect(available(), '10000 个');
   });
 
   testWidgets('取消父件选择保留手输但立即停止展开，预览也只传有效选择', (tester) async {
@@ -1248,7 +1249,7 @@ void main() {
         return data;
       },
     );
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '0');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '0 个');
     expect(_sourceRequiredText(tester, 'MATERIAL|m-3'), '—');
   });
 
@@ -1269,8 +1270,8 @@ void main() {
         return data;
       },
     );
-    expect(_sourceRequiredText(tester, 'PRODUCT|product-1'), '1000');
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-7'), '300');
+    expect(_sourceRequiredText(tester, 'PRODUCT|product-1'), '1000 件');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-7'), '300 个');
     expect(_sourceRequired('PRODUCT|anchor-7'), findsNothing);
   });
 
@@ -1296,7 +1297,7 @@ void main() {
       find.byKey(const ValueKey('material-bom-layout-material')),
     );
     await tester.pumpAndSettle();
-    expect(_sourceRequiredText(tester, 'AGGREGATE|g-m-2|本色|unit-1'), '800');
+    expect(_sourceRequiredText(tester, 'AGGREGATE|g-m-2|本色|unit-1'), '800 个');
   });
 
   testWidgets('顶层缺指派仍可显式全选子树，部分选择再次点父级补全', (tester) async {
@@ -1385,7 +1386,7 @@ void main() {
             find.byKey(const ValueKey('material-aggregate-order-$aggregate')),
           )
           .data,
-      '3000',
+      '3000 个',
     );
     expect(
       tester
@@ -1456,14 +1457,14 @@ void main() {
       find.byKey(const ValueKey('material-bom-layout-material')),
     );
     await tester.pumpAndSettle();
-    expect(_sourceRequiredText(tester, 'AGGREGATE|$aggregate'), '200');
+    expect(_sourceRequiredText(tester, 'AGGREGATE|$aggregate'), '200 个');
     expect(
       tester
           .widget<Text>(
             find.byKey(ValueKey('material-aggregate-order-$aggregate')),
           )
           .data,
-      '400',
+      '400 个',
       reason: '两个旧来源各100及公共200只计一次，新共享锚点不能把累计抬成600',
     );
     final row = find.byKey(ValueKey('material-aggregate-$aggregate'));
@@ -1531,13 +1532,13 @@ void main() {
         return data;
       },
     );
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000 个');
     await _check(tester, _rowCheckbox('m-2'));
     await _submitSelected(tester);
     expect(persisted, isNotNull);
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000 个');
     await _pump(tester, mutate: (_) => persisted!);
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-2'), '1000 个');
   });
 
   testWidgets('汇总3100公开公共100，切产品锁住参与来源，撤销恢复原数', (tester) async {
@@ -1620,7 +1621,7 @@ void main() {
       final row = find.byKey(ValueKey('material-table-row-shared-$i'));
       expect(row, findsOneWidget);
       expect(
-        find.descendant(of: row, matching: find.text('2000')),
+        find.descendant(of: row, matching: find.text('2000 个')),
         findsOneWidget,
         reason: '汇总总量 6000 必须平分回每条来源行(连通口径)',
       );
@@ -1794,7 +1795,7 @@ void main() {
             find.byKey(const ValueKey('material-aggregate-order-$aggregate')),
           )
           .data,
-      '3000',
+      '3000 个',
       reason: '已下达汇总行的下单数量锁成累计已下单',
     );
     await tester.enterText(
@@ -1810,7 +1811,7 @@ void main() {
       final row = find.byKey(ValueKey('material-table-row-shared-$i'));
       expect(row, findsOneWidget);
       expect(
-        find.descendant(of: row, matching: find.text('300')),
+        find.descendant(of: row, matching: find.text('300 个')),
         findsOneWidget,
         reason: '追加总量必须平分回每条来源行的追加格',
       );
@@ -1852,11 +1853,11 @@ void main() {
       ),
     );
     expect(
-      find.descendant(of: parentShortage, matching: find.text('1000')),
+      find.descendant(of: parentShortage, matching: find.text('1000 个')),
       findsOneWidget,
       reason: '还缺父行必须显示整分后的整数合计',
     );
-    const childShortages = ['84', '83', '833'];
+    const childShortages = ['84 个', '83 个', '833 个'];
     for (var i = 0; i < 3; i++) {
       final cell = find.byKey(
         ValueKey('material-analysis-net-shortage-shared-$i'),
@@ -1889,7 +1890,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
     await tester.pumpAndSettle();
-    const expected = ['84', '84', '834'];
+    const expected = ['84 个', '84 个', '834 个'];
     for (var i = 0; i < 3; i++) {
       final row = find.byKey(ValueKey('material-table-row-shared-$i'));
       expect(row, findsOneWidget);
@@ -2032,7 +2033,7 @@ void main() {
             ),
           )
           .data,
-      '3100',
+      '3100 个',
     );
   });
 
@@ -2167,7 +2168,7 @@ void main() {
           of: find.byKey(
             ValueKey('material-analysis-public-available-${entry.key}'),
           ),
-          matching: find.text('9000'),
+          matching: find.text('9000 个'),
         ),
         findsOneWidget,
       );
@@ -2870,7 +2871,7 @@ void main() {
             ),
           )
           .data,
-      '3100',
+      '3100 个',
     );
     expect(
       tester
@@ -2963,7 +2964,7 @@ void main() {
             ),
           )
           .data,
-      '3330',
+      '3330 个',
     );
     expect(
       _qtyText(
@@ -3112,15 +3113,14 @@ void main() {
     });
   }
 
-  testWidgets('列定稿为 17 列，可用数量回到需要数量与还缺数量之间', (tester) async {
+  testWidgets('列定稿为 15 列，可用数量回到需要数量与还缺数量之间', (tester) async {
     await _pump(tester);
-    expect(find.text('表头设置 16/16'), findsOneWidget);
+    expect(find.text('表头设置 15/15'), findsOneWidget);
     for (final label in const [
       '物料办理',
       '物料名称',
       '编号',
       '颜色',
-      '单位',
       '供应方式',
       '需要数量',
       '可用数量',
@@ -3136,8 +3136,9 @@ void main() {
       expect(find.text(label), findsWidgets, reason: '表头缺少「$label」列');
     }
     // 退役的列不能再出现（「可用数量」2026-09-25 起按公共口径回归；
-    // 「归属车间」2026-09-29 起并入「生产车间」）。
-    for (final retired in const ['在途未到', '公共认领未实收', '在途调拨', '归属车间']) {
+    // 「归属车间」2026-09-29 起并入「生产车间」；「单位」2026-10-10 T9 起
+    // 退役、内联进各数量列）。
+    for (final retired in const ['在途未到', '公共认领未实收', '在途调拨', '归属车间', '单位']) {
       expect(find.text(retired), findsNothing, reason: '「$retired」列应已退役');
     }
   });
@@ -3291,7 +3292,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('material-table-row-m-6')),
-        matching: find.text('1000'),
+        matching: find.text('1000 个'),
       ),
       findsWidgets,
       reason: '原行实际下单 1000 应显示在下单数量格里',
@@ -3343,7 +3344,7 @@ void main() {
         of: find.byKey(
           const ValueKey('material-analysis-public-available-m-6'),
         ),
-        matching: find.text('10000'),
+        matching: find.text('10000 个'),
       ),
       findsOneWidget,
     );
@@ -3474,7 +3475,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('material-table-row-m-6c')),
-        matching: find.text('500'),
+        matching: find.text('500 个'),
       ),
       findsWidgets,
       reason: '子层转交份额 500 应显示在下单数量格里',
@@ -3482,7 +3483,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey('material-table-row-m-6g')),
-        matching: find.text('100'),
+        matching: find.text('100 个'),
       ),
       findsWidgets,
       reason: '孙层转交份额 100 应显示在下单数量格里',
@@ -3550,7 +3551,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey('material-table-row-m-6g')),
-            matching: find.text('200'),
+            matching: find.text('200 个'),
           ),
           findsOneWidget,
         );
@@ -3869,7 +3870,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 原始需要量保持 1000；追加产出的实际备料仍驱动缺口和下单预填。
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000 个');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 1500'));
     expect(_qtyText(tester, _orderQty('m-pc')), '1500');
   });
@@ -3904,7 +3905,7 @@ void main() {
     expect(previews, isEmpty);
     // 估算：父件已下 1000、再追加 1500 → 产出 2500 = 2.5 倍；子件需求 1000 → 2500，
     // 已覆盖的 400 是不变量，还需安排 2100；原始需要数量仍为 1000。
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000 个');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 2100'));
     expect(_qtyText(tester, _orderQty('m-pc')), '2100');
 
@@ -3912,7 +3913,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(previews, hasLength(1));
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-pc'), '1000 个');
     expect(tester.widget<Tooltip>(shortage).message, contains('还要另外下 1500'));
     expect(_qtyText(tester, _orderQty('m-pc')), '1500');
   });
@@ -4265,7 +4266,7 @@ void main() {
     // 服务端封顶的还需安排看不出多下的那 1400，页面按不封顶的覆盖量算。
     await tester.enterText(_appendQty('m-r'), '200');
     await tester.pump();
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-rc'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-rc'), '1000 个');
     expect(_qtyText(tester, _appendQty('m-rc')), '0');
     await _settleRebuild(tester);
     expect(_rowChecked(tester, 'm-rc'), isFalse);
@@ -4534,6 +4535,534 @@ void main() {
     );
   });
 
+  testWidgets('按物料汇总：顶层/聚合行/来源路径行三层都有调拨入口(2026-10-10修订)', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        // 根供给行开放跨计划调拨（服务端按 node_role='ROOT_SUPPLY' 进池）：
+        // 顶层也必须亮起可点的调拨，不再是一枚死灰按钮或横杠。
+        data['transferableByLineId'] = {'m-2': 120, 'm-root': 80};
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      _transferButton('m-root'),
+      findsOneWidget,
+      reason: '未下单顶层行与按产品视图同一调拨入口（2026-10-10 用户口径）',
+    );
+    expect(
+      _enabled(tester, _transferButton('m-root')),
+      isTrue,
+      reason: '根供给行进了可调池，按钮必须可点',
+    );
+    // 聚合行折叠时也带池量入口——不必展开到来源路径行才能调拨（用户口径
+    // 「汇总那里没有，只有展开后里面才有」）。池量=维度供方池，取路径最大值。
+    final aggregateTransfer = find.byKey(
+      const ValueKey('material-aggregate-transfer-g-m-2|本色|unit-1'),
+    );
+    expect(aggregateTransfer, findsOneWidget);
+    expect(
+      _enabled(tester, aggregateTransfer),
+      isTrue,
+      reason: '池里有 120 可调入，聚合行按钮必须可点',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('可从别的计划调入 120'),
+      ),
+      findsOneWidget,
+      reason: '聚合行悬浮必须给池量，且不逐路径相加',
+    );
+    // 唯一合格路径（m-2）直接开调拨选择器，不多弹一层路径选择。
+    await tester.tap(aggregateTransfer);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('material-transfer-launcher')),
+      findsOneWidget,
+      reason: '单一合格路径时聚合行调拨直达「物料/调拨」选择器',
+    );
+    expect(
+      find.byKey(const Key('material-aggregate-transfer-path-picker')),
+      findsNothing,
+    );
+    await tester.tap(find.byKey(const Key('transfer-launcher-close')));
+    await tester.pumpAndSettle();
+    // 来源路径行（depth>=1）照旧是调拨入口：展开聚合后可点。
+    final toggle = find.byKey(
+      const ValueKey('material-table-toggle-AGGREGATE|g-m-2|本色|unit-1'),
+    );
+    await tester.tap(toggle, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(_transferButton('m-2'), findsOneWidget);
+    expect(_enabled(tester, _transferButton('m-2')), isTrue);
+    // 按产品视图不动：同一行照旧是调拨入口。
+    await tester.tap(find.byKey(const ValueKey('material-bom-layout-product')));
+    await tester.pumpAndSettle();
+    expect(_transferButton('m-root'), findsOneWidget);
+  });
+
+  testWidgets('聚合行调拨池：同料三路径共享同一池量不相加，多路径先选落点(2026-10-10)', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        // 服务端按货品+颜色+单位维度给**同一个池量**：三条路径各 120 是同一个
+        // 池，不是 360。shared-1 缺口最大（2000），选择器必须把它排在第一行。
+        _fixtureMaterial(data, 'shared-1')['shortageQty'] = 2000;
+        data['transferableByLineId'] = {
+          'shared-0': 120,
+          'shared-1': 120,
+          'shared-2': 120,
+          'root-0': 80,
+        };
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    // 池量显示 120：绝不把同料三路径的同一池加成 360。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('可从别的计划调入 120'),
+      ),
+      findsOneWidget,
+      reason: '聚合行按维度池显示 120；同料三路径相加成 360 是重复计数',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is Tooltip && (widget.message ?? '').contains('360'),
+      ),
+      findsNothing,
+    );
+    // 顶层根行：有池量的 root-0 可点，没池量的 root-1 置灰并说明（不是横杠）。
+    expect(_enabled(tester, _transferButton('root-0')), isTrue);
+    expect(_enabled(tester, _transferButton('root-1')), isFalse);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('没有别的计划锁着这个物料'),
+      ),
+      findsWidgets,
+      reason: '无池量的根行给置灰按钮带原因，与按产品视图同一形态',
+    );
+    // 多条合格路径：点聚合行调拨先弹来源路径选择器，缺口最大者在前。
+    await tester.tap(
+      find.byKey(const ValueKey('material-aggregate-transfer-g-m-2|本色|unit-1')),
+    );
+    await tester.pumpAndSettle();
+    final picker = find.byKey(
+      const Key('material-aggregate-transfer-path-picker'),
+    );
+    expect(picker, findsOneWidget, reason: '多条合格路径必须先选调拨落点');
+    final tiles = find.descendant(of: picker, matching: find.byType(ListTile));
+    expect(tiles, findsNWidgets(3));
+    final firstTile = tester.widget<ListTile>(tiles.first);
+    expect((firstTile.subtitle as Text).data, contains('缺口 2000'));
+    // 选中 shared-1：调拨选择器按这条路径的物料行打开，请求落点必须是它。
+    requests.clear();
+    await tester.tap(
+      find.byKey(const ValueKey('material-aggregate-transfer-path-shared-1')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('material-transfer-launcher')), findsOneWidget);
+    expect(
+      requests.any(
+        (r) => r.path.contains('shared-1/cross-reallocation-sources'),
+      ),
+      isTrue,
+      reason: '调拨请求必须按选中的落点路径（shared-1）发出',
+    );
+    expect(
+      requests.any(
+        (r) => r.path.contains('shared-0/cross-reallocation-sources'),
+      ),
+      isFalse,
+    );
+  });
+
+  testWidgets('聚合行来源锁进汇总草稿：调拨置灰说明，不再给可点入口(2026-10-10)', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        _threeSharedBuySources(data);
+        data['transferableByLineId'] = {
+          'shared-0': 120,
+          'shared-1': 120,
+          'shared-2': 120,
+        };
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    final aggregateTransfer = find.byKey(
+      const ValueKey('material-aggregate-transfer-g-m-2|本色|unit-1'),
+    );
+    expect(_enabled(tester, aggregateTransfer), isTrue);
+    // 在聚合行输入下单总量 → 汇总草稿接管全部来源路径 → 调拨落点全被锁。
+    await tester.enterText(
+      find.byKey(const ValueKey('material-aggregate-qty-g-m-2|本色|unit-1')),
+      '1000',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      _enabled(tester, aggregateTransfer),
+      isFalse,
+      reason: '全部落点锁进汇总草稿时不得再给可点调拨',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message ?? '').contains('锁进汇总草稿'),
+      ),
+      findsOneWidget,
+      reason: '置灰原因必须说明落点被草稿锁住',
+    );
+  });
+
+  testWidgets('同一操作组同料双路径：办理列池量取维度最大不逐行相加(2026-10-10)', (tester) async {
+    await _pump(
+      tester,
+      mutate: (data) {
+        // m-2b 与 m-2 同 actionGroupKey、同货品（同料不同位置共享提交单元）：
+        // 每行拿到的 120 是同一个维度供方池，逐行相加成 240 是重复计数。
+        final m2 = Map<String, dynamic>.from(_fixtureMaterial(data, 'm-2'));
+        (data['flatMaterials'] as List).add({
+          ...m2,
+          'materialLineId': 'm-2b',
+          'nodeKey': 'n-m-2b',
+          'path': ['智能多功能插座', '${m2['goodsName']}（第二处）'],
+        });
+        data['transferableByLineId'] = {'m-2': 120, 'm-2b': 120};
+        return data;
+      },
+    );
+    // 按产品视图：两行各自渲染办理列，池量都必须是 120，不是 240。
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('可从别的计划调入 120'),
+      ),
+      findsNWidgets(2),
+      reason: '同组两行各显示池量 120',
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip && (widget.message ?? '').contains('调入 240'),
+      ),
+      findsNothing,
+      reason: '同料双路径是同一个供方池，不得相加成 240',
+    );
+    // 按物料汇总视图：同一聚合（两条路径）池量同样 120。
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Tooltip &&
+            (widget.message ?? '').contains('可从别的计划调入 120'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('整批撤回守门：无权限不给按钮；锚点没计划不给；没有计划包不发取消(2026-10-10)', (tester) async {
+    Map<String, dynamic> makeIssued(Map<String, dynamic> data) {
+      (data['allowedActions'] as List).add('GENERATE_PLAN');
+      final product = (data['products'] as List).single as Map;
+      product.addAll(<String, dynamic>{
+        'issuedPlanQty': 2000,
+        'canSchedule': false,
+        'canIssueSurplus': true,
+        'remainingQty': 0,
+      });
+      return data;
+    }
+
+    // 一、没有 production_planning_package:cancel 权限：不渲染按钮。
+    await _pump(
+      tester,
+      permissions: {
+        ..._permissions,
+        Perm.productionPlanView,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      mutate: (data) {
+        makeIssued(data);
+        ((data['products'] as List).single
+                as Map<String, dynamic>)['latestPlanId'] =
+            'plan-1';
+        _fixturePlanAssignment((data['products'] as List).single as Map);
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('material-top-level-cancel-plan')),
+      findsNothing,
+      reason: '无取消计划包权限不得给整批撤回入口',
+    );
+
+    // 二、有权限但锚点没挂 latestPlanId：同样不给。
+    await _pump(
+      tester,
+      permissions: {
+        ..._permissions,
+        Perm.productionPlanView,
+        Perm.productionMaterialAnalysisGenerate,
+        Perm.productionPlanningPackageCancel,
+      },
+      mutate: (data) {
+        makeIssued(data);
+        _fixturePlanAssignment((data['products'] as List).single as Map);
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('material-top-level-cancel-plan')),
+      findsNothing,
+      reason: '锚点没挂计划号时无从取消，不给入口',
+    );
+
+    // 三、有权限有计划号，但计划没有任何已确认计划包：点按钮只警告，
+    // 不弹原因确认框、不发取消请求。
+    await _pump(
+      tester,
+      permissions: {
+        ..._permissions,
+        Perm.productionPlanView,
+        Perm.productionMaterialAnalysisGenerate,
+        Perm.productionPlanningPackageCancel,
+      },
+      mutate: (data) {
+        makeIssued(data);
+        ((data['products'] as List).single
+                as Map<String, dynamic>)['latestPlanId'] =
+            'plan-1';
+        _fixturePlanAssignment((data['products'] as List).single as Map);
+        data['planningPackageResult'] = <Object>[];
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    final cancelPlan = find.byKey(
+      const ValueKey('material-top-level-cancel-plan'),
+    );
+    expect(cancelPlan, findsOneWidget);
+    requests.clear();
+    await tester.tap(cancelPlan);
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('整批撤回生产计划'),
+      findsNothing,
+      reason: '读不到计划包时不得弹原因确认框',
+    );
+    expect(
+      requests.any(
+        (r) =>
+            r.path.contains('/planning-packages/') &&
+            r.path.endsWith('/cancel'),
+      ),
+      isFalse,
+      reason: '读不到计划包时不得发取消请求',
+    );
+  });
+
+  testWidgets('按物料汇总顶层自制已下过计划：给计划入口，不再显示已下达文字(2026-10-10修订)', (tester) async {
+    await _pump(
+      tester,
+      permissions: {
+        ..._permissions,
+        Perm.productionPlanView,
+        Perm.productionMaterialAnalysisGenerate,
+      },
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        // 顶层自制走了 issue-plans：产品行 issuedPlanQty=2000、挂着计划号，
+        // 供给行动表里没有任何单据——办理列不得再说「已下单，暂无可撤回任务」。
+        final product = (data['products'] as List).single as Map;
+        product.addAll(<String, dynamic>{
+          'issuedPlanQty': 2000,
+          'canSchedule': false,
+          'canIssueSurplus': true,
+          'remainingQty': 0,
+          'latestPlanId': 'plan-1',
+        });
+        _fixturePlanAssignment(product);
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    // 2026-10-10 二次修订（用户）：「已下达车间计划 N」文字行删除——说明进
+    // 整批撤回按钮的悬浮，办理列只留按钮。
+    expect(
+      find.byKey(const ValueKey('material-top-level-issued-plan')),
+      findsNothing,
+    );
+    expect(find.text('已下达车间计划 2000 个'), findsNothing);
+    // 只看顶层这一行：夹具里委外父件(m-p/m-q/m-r)的供给行动没配进
+    // supplyActions，聚合行空态本来就该是原文案，不在本口径内。
+    final productRow = find.byKey(
+      const ValueKey('material-bom-product-product-1'),
+    );
+    expect(
+      find.descendant(of: productRow, matching: find.text('已下单，暂无可撤回任务')),
+      findsNothing,
+      reason: '顶层自制走 issue-plans，不该套供给行动的空态文案',
+    );
+    // 锚点带计划号且有查看权限：给可点的「查看计划」入口（同按产品视图路由）。
+    // 本用例没有取消计划包权限，整批撤回不出现。
+    final viewPlan = find.byKey(const ValueKey('material-top-level-view-plan'));
+    expect(viewPlan, findsOneWidget);
+    expect(tester.widget<TextButton>(viewPlan).onPressed, isNotNull);
+    expect(
+      find.byKey(const ValueKey('material-top-level-cancel-plan')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('按物料汇总顶层自制已下计划：整批撤回取消计划包并静默重载(2026-10-10)', (tester) async {
+    await _pump(
+      tester,
+      permissions: {
+        ..._permissions,
+        Perm.productionPlanView,
+        Perm.productionMaterialAnalysisGenerate,
+        Perm.productionPlanningPackageCancel,
+      },
+      mutate: (data) {
+        (data['allowedActions'] as List).add('GENERATE_PLAN');
+        final product = (data['products'] as List).single as Map;
+        product.addAll(<String, dynamic>{
+          'issuedPlanQty': 2000,
+          'canSchedule': false,
+          'canIssueSurplus': true,
+          'remainingQty': 0,
+          'latestPlanId': 'plan-1',
+          'latestPlanNo': 'PP-2026-001',
+        });
+        _fixturePlanAssignment(product);
+        return data;
+      },
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('material-bom-layout-material')),
+    );
+    await tester.pumpAndSettle();
+    final cancelPlan = find.byKey(
+      const ValueKey('material-top-level-cancel-plan'),
+    );
+    expect(cancelPlan, findsOneWidget, reason: '有取消计划包权限时顶层必须给整批撤回');
+    expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
+    // 2026-10-10 二次修订：与子层级撤回按钮同一形态（默认色 TextButton +
+    // 计划号），且不再显示「已下达车间计划 N」文字行。
+    expect(
+      find.descendant(of: cancelPlan, matching: find.text('整批撤回 PP-2026-001')),
+      findsOneWidget,
+    );
+    expect(find.text('已下达车间计划 2000 个'), findsNothing);
+    requests.clear();
+    await tester.tap(cancelPlan);
+    await tester.pumpAndSettle();
+    // 先读计划包，再弹必填原因的确认框；没确认前不许发取消请求。
+    expect(
+      requests.any((r) => r.path.endsWith('/mrp/planning-package-result')),
+      isTrue,
+      reason: '整批撤回先取最新计划包拿 packageId',
+    );
+    expect(find.textContaining('整批撤回生产计划'), findsOneWidget);
+    expect(
+      requests.any(
+        (r) =>
+            r.path.contains('/planning-packages/') &&
+            r.path.endsWith('/cancel'),
+      ),
+      isFalse,
+      reason: '没确认前不许发取消请求',
+    );
+    // 原因必填：空原因确认要被拦下——一个取消请求都不许发。
+    await tester.enterText(
+      find.byKey(const Key('material-plan-cancel-reason')),
+      '',
+    );
+    await tester.tap(find.text('确认整批撤回'));
+    await tester.pumpAndSettle();
+    expect(
+      requests.any(
+        (r) =>
+            r.path.contains('/planning-packages/') &&
+            r.path.endsWith('/cancel'),
+      ),
+      isFalse,
+      reason: '空原因必须被拦下，不发取消请求',
+    );
+    // 重新打开，填上原因确认：取消请求带原因与幂等键发出。
+    await tester.tap(cancelPlan);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('material-plan-cancel-reason')),
+      '客户改单',
+    );
+    requests.clear();
+    await tester.tap(find.text('确认整批撤回'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.pumpAndSettle();
+    final cancelRequest = requests
+        .where(
+          (r) =>
+              r.path.contains('/planning-packages/') &&
+              r.path.endsWith('/cancel'),
+        )
+        .single;
+    expect(
+      cancelRequest.path,
+      '/production/plans/plan-1/mrp/planning-packages/pkg-1/cancel',
+    );
+    expect(cancelRequest.body?['reason'], '客户改单');
+    expect(cancelRequest.body?['idempotencyKey'], isNotNull);
+    // 取消成功后分析静默重载（GET 详情再进一次）。
+    expect(
+      requests.any((r) => r.path == '/production/material-analyses/analysis-1'),
+      isTrue,
+    );
+  });
+
   testWidgets('有公共在途可认领时：还缺数量显示净数，下单数量预填毛量', (tester) async {
     await _pump(tester);
     // 这一行需求覆盖 1000，其中 300 下达时服务端会自动从公共在途认领。
@@ -4582,7 +5111,7 @@ void main() {
     expect(_orderQty('m-5'), findsNothing);
     expect(_appendQty('m-5'), findsOneWidget);
     expect(_qtyText(tester, _appendQty('m-5')), '0');
-    expect(find.text('采用 2'), findsOneWidget);
+    expect(find.text('采用 2 个'), findsOneWidget);
     expect(_issuedTooltip('0'), findsOneWidget);
   });
 
@@ -5161,7 +5690,7 @@ void main() {
       ),
       findsNothing,
     );
-    expect(_sourceRequiredText(tester, 'MATERIAL|m-6'), '1000');
+    expect(_sourceRequiredText(tester, 'MATERIAL|m-6'), '1000 个');
     final required = tester
         .widget<MasterDataTableView<dynamic>>(
           find.byKey(const Key('material-analysis-material-table')),
@@ -6483,10 +7012,18 @@ Future<void> _pump(
             },
           ];
         } else if (request.path.endsWith('/transferable-in-summary')) {
-          // 只有 m-2 能从别的计划调进来。
+          // 默认只有 m-2 能从别的计划调进来；根供给行开放调拨后，测试可用
+          // data['transferableByLineId'] 覆写整个池（如给 m-root 配量）。
           result = {
-            'qtyByMaterialLineId': {'m-2': 120},
+            'qtyByMaterialLineId': data['transferableByLineId'] ?? {'m-2': 120},
           };
+        } else if (request.path.endsWith('/mrp/planning-package-result')) {
+          result =
+              (data['planningPackageResult'] as Object?) ??
+              {'packageId': 'pkg-1', 'status': 'CONFIRMED', 'replayed': false};
+        } else if (request.path.contains('/mrp/planning-packages/') &&
+            request.path.endsWith('/cancel')) {
+          result = <String, dynamic>{};
         } else if (request.path.endsWith('/default-workshops')) {
           result = defaultWorkshops;
         } else if (departmentTree != null &&

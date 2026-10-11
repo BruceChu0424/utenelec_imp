@@ -8,9 +8,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 
-/// 「物料 / 调拨」的简化选择器：只露出三个调入入口（带可调来源数量）和
-/// 完整详情入口，仓库与供给明细等长内容留在完整详情里。每个按钮打开的
-/// 子弹窗自带返回键，返回后这里会刷新数量。
+/// 「物料 / 调拨」的简化选择器（2026-10-10 口径收窄：调拨只针对**其他计划暂用**
+/// 的部分——别人已入库占用的现货、别人专属的在途；公共库存与公共在途不参与
+/// 调拨，它们已计入「可用数量（公共口径）」，下单时由服务端按 ADR-099 自动
+/// 认领）。这里只露出两个调入入口（带可调来源数量）和完整详情入口，仓库与
+/// 供给明细等长内容留在完整详情里。每个按钮打开的子弹窗自带返回键，返回后
+/// 这里会刷新数量。手动「采用公共在途」保留在物料行右键菜单（显式动作）。
 Future<void> showMaterialTransferLauncher({
   required BuildContext context,
   required ProductionPlanRepository repository,
@@ -19,11 +22,8 @@ Future<void> showMaterialTransferLauncher({
   required String Function(double?) qtyText,
   required bool spotEnabled,
   required bool futureEnabled,
-  required bool claimEnabled,
-  required int Function() sharedSourceCount,
   required Future<void> Function() onSpotReceive,
   required Future<void> Function() onFutureReceive,
-  required Future<void> Function() onClaimShared,
   required Future<void> Function() onOpenFullDetails,
 }) {
   return showDialog<void>(
@@ -35,11 +35,8 @@ Future<void> showMaterialTransferLauncher({
       qtyText: qtyText,
       spotEnabled: spotEnabled,
       futureEnabled: futureEnabled,
-      claimEnabled: claimEnabled,
-      sharedSourceCount: sharedSourceCount,
       onSpotReceive: onSpotReceive,
       onFutureReceive: onFutureReceive,
-      onClaimShared: onClaimShared,
       onOpenFullDetails: onOpenFullDetails,
     ),
   );
@@ -53,11 +50,8 @@ class _MaterialTransferLauncherDialog extends StatefulWidget {
     required this.qtyText,
     required this.spotEnabled,
     required this.futureEnabled,
-    required this.claimEnabled,
-    required this.sharedSourceCount,
     required this.onSpotReceive,
     required this.onFutureReceive,
-    required this.onClaimShared,
     required this.onOpenFullDetails,
   });
 
@@ -67,11 +61,8 @@ class _MaterialTransferLauncherDialog extends StatefulWidget {
   final String Function(double?) qtyText;
   final bool spotEnabled;
   final bool futureEnabled;
-  final bool claimEnabled;
-  final int Function() sharedSourceCount;
   final Future<void> Function() onSpotReceive;
   final Future<void> Function() onFutureReceive;
-  final Future<void> Function() onClaimShared;
   final Future<void> Function() onOpenFullDetails;
 
   @override
@@ -196,22 +187,6 @@ class _MaterialTransferLauncherDialogState
               ),
             ),
             const SizedBox(height: UtenSpacing.s8),
-            UtenButton(
-              key: const Key('transfer-launcher-claim'),
-              size: UtenButtonSize.large,
-              type: UtenButtonType.tonal,
-              isExpanded: true,
-              onPressed:
-                  widget.claimEnabled &&
-                      !_busy &&
-                      widget.sharedSourceCount() != 0
-                  ? () => _run(widget.onClaimShared)
-                  : null,
-              child: Text(
-                '从公共在途中调入${widget.claimEnabled ? _countLabel(widget.sharedSourceCount()) : '（0 个来源）'}',
-                textAlign: TextAlign.left,
-              ),
-            ),
             const Divider(height: UtenSpacing.s24),
             UtenButton(
               key: const Key('transfer-launcher-full-details'),

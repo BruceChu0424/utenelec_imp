@@ -73,7 +73,7 @@ void main() {
     expect(c.sourceLocked, isFalse);
   });
 
-  testWidgets('列序契约：数量之后紧跟单位，实际重量列已下线（2026-09-04）', (tester) async {
+  testWidgets('列序契约：单位列已撤（2026-10-10 T9 内联数量 suffix），数量后紧跟单价', (tester) async {
     late final List<String> keys;
     await tester.pumpWidget(
       MaterialApp(
@@ -89,6 +89,37 @@ void main() {
       ),
     );
     expect(keys, isNot(contains('weight')));
-    expect(keys.indexOf('unit'), keys.indexOf('qty') + 1);
+    expect(keys, isNot(contains('unit')));
+    expect(keys.indexOf('price'), keys.indexOf('qty') + 1);
+  });
+
+  testWidgets('订货列序契约：允许超收% 紧跟数量，商业条款撤汇率（2026-10-10）', (tester) async {
+    late final List<String> keys;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) {
+            keys = purchaseGridColumns(
+              (_) async {},
+              context: context,
+              showCommercial: true,
+              showAllowedOverReceipt: true,
+              showRemark: true,
+            ).map((column) => column.key).toList();
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    expect(keys, isNot(contains('unit')));
+    expect(keys.indexOf('allowedOverReceiptPct'), keys.indexOf('qty') + 1);
+    expect(keys.indexOf('price'), keys.indexOf('allowedOverReceiptPct') + 1);
+    // 商业条款撤汇率（采购不填汇率，财务审批时填，前端提交恒 1）。
+    expect(keys, isNot(contains('exchangeRate')));
+    expect(keys.sublist(keys.indexOf('amount') + 1, keys.indexOf('remark')), [
+      'currency',
+      'taxRate',
+      'settlement',
+    ]);
   });
 }

@@ -412,18 +412,37 @@ void main() {
       await tester.ensureVisible(qty);
       await tester.enterText(qty, '5000');
       await tester.pumpAndSettle();
-      // 2026-10-04 用户原路径: 盘点说明选填, 不填直接「保存并送审」。
-      expect(find.text('盘点说明(选填)'), findsOneWidget);
+      // 2026-10-10 用户口径: 说明输入不放页面常驻, 在「保存并送审」确认弹窗里选填;
+      // 确认后送审, 送审成功进入「待审核」展示态(行保留只读、状态列盖待审核), 退出才清空。
+      expect(find.text('盘点说明(选填)'), findsNothing);
+      expect(find.byKey(const Key('stock-count-reason')), findsNothing);
       await tester.ensureVisible(find.byKey(const Key('stock-count-save')));
       await tester.tap(find.byKey(const Key('stock-count-save')));
       await tester.pumpAndSettle();
-      expect(repo.submissions.single.reason, '');
+      expect(find.text('确认送审'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('stock-count-reason')),
+        '上线清点',
+      );
+      await tester.tap(find.text('确认送审'));
+      await tester.pumpAndSettle();
+      expect(repo.submissions.single.reason, '上线清点');
       expect(repo.submissions.single.warehouse, 'bin1');
       expect(repo.submissions.single.lines.single['expectedQty'], '0');
       expect(repo.submissions.single.lines.single['targetQty'], '5000');
       expect(repo.submissions.single.lines.single['targetWeightKg'], '5');
       expect(repo.submissions.single.lines.single['materialSetupBasis'], 'OWN');
       expect(repo.candidateWarehouses, everyElement('bin1'));
+      // 待审核展示态: 实盘格变只读文本, 状态列最前且该行盖「待审核」, 保存/添加按钮不再出现。
+      expect(find.byKey(const ValueKey('stock-count-qty-pp|')), findsNothing);
+      expect(find.text('待审核'), findsOneWidget);
+      expect(find.byKey(const Key('stock-count-save')), findsNothing);
+      expect(find.byKey(const Key('stock-count-add')), findsNothing);
+      expect(find.byKey(const Key('stock-count-exit')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('stock-count-exit')));
+      await tester.pumpAndSettle();
+      expect(find.text('待审核'), findsNothing);
+      expect(find.byKey(const ValueKey('stock-count-qty-pp|')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

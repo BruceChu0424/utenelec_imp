@@ -39,6 +39,7 @@ void materialQuantityPresentationCases() {
         find.textContaining('已下单 4000 = 需求份 3000 + 公共备货 1000'),
         findsWidgets,
       );
+      // 2026-10-10 T9：单位列退役，锁定的累计已下单量内联单位。
       expect(
         tester
             .widget<Text>(
@@ -47,7 +48,7 @@ void materialQuantityPresentationCases() {
               ),
             )
             .data,
-        '4000',
+        '4000 个',
       );
       final table = tester.widget<MasterDataTableView<dynamic>>(
         find.byWidgetPredicate(
@@ -115,7 +116,7 @@ void materialQuantityPresentationCases() {
               'material-analysis-net-shortage-AGGREGATE|g-m-2|本色|unit-1',
             ),
           ),
-          matching: find.text('1.5'),
+          matching: find.text('1.5 个'),
         ),
         findsOneWidget,
       );
@@ -125,7 +126,7 @@ void materialQuantityPresentationCases() {
             of: find.byKey(
               ValueKey('material-analysis-net-shortage-shared-$i'),
             ),
-            matching: find.text('0.5'),
+            matching: find.text('0.5 个'),
           ),
           findsOneWidget,
         );

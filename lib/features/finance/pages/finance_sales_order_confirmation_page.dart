@@ -1035,14 +1035,13 @@ String _urgencyLabel(_DeliverUrgency urgency) => switch (urgency) {
 };
 
 String _orderAmount(SalesOrderFinancePendingItem item) =>
-    financeMoneyWithCurrency(
+    financeMoneyWithUnitSuffix(
       item.totalOriginal,
       currencyName: item.currencyName,
       currencyCode: item.currencyCode,
-      fallback: '订单币种',
     );
 
-/// 客户应收(ADR-128)：本单币种下还差多少，如「美金 12000.00」「预收有余 美金 200.00」。
+/// 客户应收(ADR-128)：本单币种下还差多少，如「12000.00 美金」「预收有余 200.00 美金」。
 String _clientBalanceText(SalesOrderFinancePendingItem item) =>
     item.clientBalance?.headline(PartyBalanceSide.customer) ?? '—';
 

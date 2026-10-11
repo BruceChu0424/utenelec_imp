@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -63,7 +64,7 @@ class ProcurementFinanceApprovalReviewTest {
     void pendingCaseCarriesRealtimeReviewerActions() {
         UUID caseId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
-        JdbcTemplate jdbc = headerRow(caseId, orderId, "PENDING");
+        JdbcTemplate jdbc = headerRow(caseId, orderId, "PENDING", null);
         ProcurementFinanceApprovalService service = service(jdbc, true);
 
         ApprovalReview review = service.review(caseId);
@@ -73,6 +74,11 @@ class ProcurementFinanceApprovalReviewTest {
         assertEquals(2, review.attempt());
         assertEquals(3L, review.version());
         assertEquals("供应商甲", review.supplierName());
+        // V835 审核详情口径：未批 case 的 financeExchangeRate 返回 null（财务还没
+        // 填汇率），前端拿 null 用快照 exchangeRate（订单表头提交事实）兜底。
+        assertNull(review.financeExchangeRate(),
+                "未批 case 不回填财务汇率，前端用快照汇率兜底");
+        assertEquals(0, new BigDecimal("1.13").compareTo(review.exchangeRate()));
         // ADR-128: 应付按本单币种(人民币)精确显示, 美金另列, 不换算不相加。
         var balance = review.supplierBalance();
         assertEquals(CNY, balance.currencyId());
@@ -90,7 +96,9 @@ class ProcurementFinanceApprovalReviewTest {
     void decidedCaseIsReadOnlyWithoutActions() {
         UUID caseId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
-        JdbcTemplate jdbc = headerRow(caseId, orderId, "APPROVED");
+        // V835：已批 case 的 finance_exchange_rate 已回填财务填写的当日汇率。
+        JdbcTemplate jdbc = headerRow(caseId, orderId, "APPROVED",
+                new BigDecimal("6.850000"));
         ProcurementFinanceApprovalService service = service(jdbc, true);
 
         ApprovalReview review = service.review(caseId);
@@ -98,25 +106,32 @@ class ProcurementFinanceApprovalReviewTest {
         assertTrue(review.allowedActions().isEmpty(),
                 "已办结 case 不得再向任何账号返回审批动作");
         assertEquals("APPROVED", review.status());
+        // 两个事实并存：exchangeRate=提交快照（订单表头，创建时默认 1 的提交事实），
+        // financeExchangeRate=财务审批决定值；已批后前端以财务值为准展示折合。
+        assertEquals(0, new BigDecimal("6.85").compareTo(review.financeExchangeRate()));
+        assertEquals(0, new BigDecimal("1.13").compareTo(review.exchangeRate()));
     }
 
     @Test
     void pendingCaseWithoutReviewerEligibilityExposesNoActions() {
         UUID caseId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
-        JdbcTemplate jdbc = headerRow(caseId, orderId, "PENDING");
+        JdbcTemplate jdbc = headerRow(caseId, orderId, "REJECTED", null);
         ProcurementFinanceApprovalService service = service(jdbc, false);
 
         ApprovalReview review = service.review(caseId);
 
         assertTrue(review.allowedActions().isEmpty(),
                 "无实时审核资格的账号只能查看，不能拿到动作");
+        assertNull(review.financeExchangeRate(),
+                "驳回 case 不落财务汇率（V835：驳回不写）");
     }
 
     private static JdbcTemplate headerRow(
-            UUID caseId, UUID orderId, String status) {
+            UUID caseId, UUID orderId, String status,
+            java.math.BigDecimal financeExchangeRate) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        Object[] row = new Object[25];
+        Object[] row = new Object[26];
         row[0] = caseId;
         row[1] = "PURCHASE";
         row[2] = orderId;
@@ -142,6 +157,7 @@ class ProcurementFinanceApprovalReviewTest {
         row[22] = "制单员乙";
         row[23] = SUPPLIER_ID;
         row[24] = CNY;
+        row[25] = financeExchangeRate;
         when(jdbc.query(ArgumentMatchers.argThat(
                         (String sql) -> sql != null && sql.contains("SELECT c.id, c.order_type")),
                 ArgumentMatchers.<RowMapper<Object[]>>notNull(), eq(caseId)))

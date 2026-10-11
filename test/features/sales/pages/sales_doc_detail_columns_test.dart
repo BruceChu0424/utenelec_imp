@@ -3,7 +3,8 @@ import '../../../support/native_detail_reader_overrides.dart';
 //  - 补齐编辑页列：折扣 / 机加价 / 围数 / 进仓数量；
 //  - 退役进度列：业务链 / 已发 / 已退 / 可发 / 已排 / 已产 / 优先级
 //   （进度看「订单进度」专页）；
-//  - 列序：数量之后紧跟单位（2026-09-04 全站口径，此前详情页单位在数量前）。
+//  - 2026-10-10「数量 + 单位」内联口径：独立「单位」列撤销，单位直接跟在数量后
+//   （如 `10 箱`），进仓数量同样内联。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,10 +79,11 @@ void main() {
     expect(find.text('已产'), findsNothing);
     expect(find.text('优先级'), findsNothing);
 
-    // 列序：数量在单位之前（数量 → 单位紧邻）。
-    final qtyDx = tester.getTopLeft(find.text('数量').first).dx;
-    final unitDx = tester.getTopLeft(find.text('单位').first).dx;
-    expect(qtyDx, lessThan(unitDx));
+    // 2026-10-10「数量 + 单位」内联口径：独立「单位」列撤销，单位跟在数量后。
+    // 「10 箱」两处 = 明细格 + 合计条（单行合计同值）；进仓数量同样内联为「3 箱」。
+    expect(find.text('单位'), findsNothing);
+    expect(find.text('10 箱'), findsWidgets);
+    expect(find.text('3 箱'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
@@ -108,5 +110,12 @@ class _ColumnsApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const [];
+  }) async {
+    if (path == '/master/units/dict') {
+      return const [
+        {'id': 'unit-box', 'name': '箱'},
+      ];
+    }
+    return const [];
+  }
 }

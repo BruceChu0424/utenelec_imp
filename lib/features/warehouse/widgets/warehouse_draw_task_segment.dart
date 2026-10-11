@@ -664,25 +664,19 @@ class _WarehouseDrawTaskSegmentState
           ? '—'
           : task.workerName,
     ),
-    MasterColumnDef(
-      key: 'unitName',
-      label: '单位',
-      width: 80,
-      value: (task) => task.isDocumentGrouped || task.needsMaterialEntry
-          ? '—'
-          : task.unitName,
-    ),
+    // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量文本由模型 getter
+    // 直接带行单位（warehouse_draw_task.dart 的 *_QtyText）；列宽 +35 补单位。
     MasterColumnDef(
       key: 'requiredQty',
       label: '应领数量',
-      width: 105,
+      width: 140,
       type: 'number',
       value: (task) => task.requiredQtyText,
     ),
     MasterColumnDef(
       key: 'fulfilledQty',
       label: '已出库',
-      width: 105,
+      width: 140,
       type: 'number',
       value: (task) => task.fulfilledQtyText,
     ),
@@ -690,7 +684,7 @@ class _WarehouseDrawTaskSegmentState
       key: 'openQty',
       sortable: true,
       label: '待出库',
-      width: 130,
+      width: 165,
       type: 'number',
       value: (task) => task.remainingQtyText,
     ),

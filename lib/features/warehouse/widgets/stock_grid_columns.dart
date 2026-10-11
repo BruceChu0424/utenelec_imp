@@ -4,17 +4,22 @@
 // / 账面 + 实盘 + 账面重量 + 实盘重量(盘点)→ 盘盈亏自动(AmountRowMixin)。
 // 仓库单据无单价/金额概念；「金额」类比为盘点的"盘盈亏 = 实盘 - 账面"（仅 CHECK）。
 // 非盘点类型 amountValue 恒 0（无金额列、无表尾合计）。
-// stockGridColumns(onPickGoods, isCheck, weight)：列 = 货品/单位/数量/实称重量(非盘点)
-// 或 货品/单位/账面/实盘/账面重量/实盘重量/盘盈亏(自动)(盘点)。
+// stockGridColumns(onPickGoods, isCheck, weight)：列 = 货品/数量/实称重量(非盘点)
+// 或 货品/账面/实盘/账面重量/实盘重量/盘盈亏(自动)(盘点)。
 //
 // 重量(ADR-135)：重量格是共用的 weightGridColumn(录入单位随用户偏好、带后缀换算、
 // 永不批量、货品按重量计时只读「=25 kg」)。其它入库/产成品进仓与盘点的数量空着时，
 // 填重量按学到的单重推算数量(黄框待核对，行打上 qtyFromWeight，不参与单重学习)。
+//
+// 「数量 + 单位」内联口径 (2026-10-10 全站表格改造)：单位列已删除，只读数量
+// (账面/盘盈亏) 用 formatQtyWithUnit 内联单位，输入格 (数量/实盘) 单位放
+// decoration suffixText——控制器文本保持纯数字，解析口径不变。
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
@@ -235,11 +240,11 @@ class StockGridWeightWiring {
 
 /// 仓库明细列。
 /// - isCheck=false + warehouse 接线：货品 / 编码 / 颜色 / 系列 / 仓库(行内选) /
-///   库位号(可编辑，按建议预填) / 单位 / 数量 / 实称重量（V787 行级仓库）。
+///   库位号(可编辑，按建议预填) / 数量(单位随输入框) / 实称重量（V787 行级仓库）。
 /// - isCheck=false 无接线（盘点/调拨）：货品 / 编码 / 颜色 / 系列 / 库位(主档只读) /
-///   单位 / 数量 / 实称重量。
-/// - isCheck=true：货品 / 编码 / 颜色 / 系列 / 库位 / 单位 / 账面 / 实盘 / 账面重量 /
-///   实盘重量 / 盘盈亏(自动)。
+///   数量(单位随输入框) / 实称重量。
+/// - isCheck=true：货品 / 编码 / 颜色 / 系列 / 库位 / 账面(带单位) / 实盘(单位随
+///   输入框) / 账面重量 / 实盘重量 / 盘盈亏(自动，带单位)。
 ///
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 List<EditableGridColumn<StockGridRow>> stockGridColumns(
@@ -400,34 +405,26 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           ),
         ),
       ),
-    EditableGridColumn<StockGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 64,
-      textOf: (r) => r.unitName ?? '',
-      cellBuilder: (context, row) => Text(
-        row.unitName ?? '—',
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-      ),
-    ),
+    // 2026-10-10「数量 + 单位」内联：单位列删除，数量/实盘输入格单位显示在
+    // suffixText，账面/盘盈亏只读格直接拼在数字后；各数量列宽 +35 补单位占位。
     if (isCheck) ...[
       EditableGridColumn<StockGridRow>(
         key: 'bookQty',
         exactValueOf: (r) => r.bookQty.text,
         exactListenableOf: (r) => r.bookQty,
         label: '账面',
-        width: 96,
+        width: 130,
         numeric: true,
         cellBuilder: (context, row) => TextField(
           readOnly: true,
           controller: row.bookQty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
             filled: true,
             hintText: '选择货品后读取',
-            suffixIcon: Icon(Icons.lock_outline, size: 16),
+            suffixText: row.unitName,
+            suffixIcon: const Icon(Icons.lock_outline, size: 16),
           ),
         ),
       ),
@@ -436,7 +433,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         exactValueOf: (r) => r.checkQty.text,
         exactListenableOf: (r) => r.checkQty,
         label: '实盘',
-        width: 110,
+        width: 145,
         numeric: true,
         required: true,
         cellBuilder: (context, row) => RequiredCellFrame(
@@ -446,6 +443,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
             fieldKey: const ValueKey('stock-grid-check-qty'),
             controller: row.checkQty,
             hintText: '0',
+            suffixText: row.unitName,
             sourceOf: () => row.countWeight.qtyEstimateNote ?? '按称重推算的实盘数量，请核对',
           ),
         ),
@@ -465,7 +463,6 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           builder: (context, kg, _) => Text(
             _bookWeightText(row, weight.display),
             key: const ValueKey('stock-grid-book-weight'),
-            textAlign: TextAlign.right,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -490,11 +487,11 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
       EditableGridColumn<StockGridRow>(
         key: 'surplus',
         label: '盘盈亏',
-        width: 110,
+        width: 145,
         numeric: true,
         cellBuilder: (context, row) => ValueListenableBuilder<double>(
           valueListenable: row.amountNotifier,
-          builder: (_, v, _) => Text(v.toStringAsFixed(2)),
+          builder: (_, v, _) => Text(formatQtyWithUnit(v, row.unitName)),
         ),
       ),
     ] else ...[
@@ -503,7 +500,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         exactValueOf: (r) => r.qty.text,
         exactListenableOf: (r) => r.qty,
         label: '数量',
-        width: 110,
+        width: 145,
         numeric: true,
         required: true,
         cellBuilder: (context, row) => RequiredCellFrame(
@@ -513,6 +510,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
             fieldKey: const ValueKey('stock-grid-qty'),
             controller: row.qty,
             hintText: '0',
+            suffixText: row.unitName,
             sourceOf: () => row.weight.qtyEstimateNote ?? '按称重推算的数量，请核对',
           ),
         ),

@@ -14,6 +14,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../warehouse/models/stock_doc.dart';
 import '../../warehouse/providers/warehouse_count_refresh.dart';
@@ -957,7 +958,9 @@ class _MaterialSettlementSheetState
   List<EditableGridColumn<_SettlementGridRow>> _columns() => [
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。登记
     // 实耗时认错同名不同色的料会把消耗记到别的物料上，颜色不能只在台账里看。
-    // 单位另有独立列；2026-09-29 用户口径：子计划号不再挤在名称格副行，独立成列。
+    // 2026-09-29 用户口径：子计划号不再挤在名称格副行，独立成列。
+    // 2026-10-10 数量+单位口径：单位内联在数量后（可继续登记/输入格后缀），
+    // 独立「单位」列删除；单位未维护时输入格不带后缀、台账文案仍提示待核实。
     EditableGridColumn(
       key: 'material',
       label: '物料名称',
@@ -982,12 +985,6 @@ class _MaterialSettlementSheetState
       filterValueOf: (row) => row.source.colorName,
       cellBuilder: (context, row) =>
           UtenGoodsAttributeCell(row.source.colorName),
-    ),
-    EditableGridColumn(
-      key: 'unit',
-      label: '单位',
-      width: 76,
-      cellBuilder: (_, row) => Text(row.source.unitName ?? '待核实'),
     ),
     EditableGridColumn(
       key: 'segment',
@@ -1034,11 +1031,12 @@ class _MaterialSettlementSheetState
   ) => EditableGridColumn(
     key: key,
     label: label,
-    width: 92,
+    width: 126,
     numeric: true,
     exactValueOf: (row) => value(row).toString(),
-    cellBuilder: (_, row) =>
-        Text(_number(value(row)), textAlign: TextAlign.right),
+    cellBuilder: (_, row) => Text(
+      formatQtyWithUnit(value(row), row.source.unitName, maxDecimals: 4),
+    ),
   );
 
   /// 列级通用说明放列头 ⓘ（[hint]，2026-09-10 全站口径）；格内只保留行特有的
@@ -1051,7 +1049,7 @@ class _MaterialSettlementSheetState
   }) => EditableGridColumn(
     key: key,
     label: label,
-    width: 138,
+    width: 168,
     numeric: true,
     exactValueOf: (row) => controller(row).text,
     exactListenableOf: controller,
@@ -1062,7 +1060,6 @@ class _MaterialSettlementSheetState
       controller: controller(row),
       enabled:
           _canSettle && !_editingLocked && row.source.availableToSettleQty > 0,
-      textAlign: TextAlign.right,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       onChanged: (_) {
         if (key == 'consume' && row.consumptionSuggested) {
@@ -1070,8 +1067,12 @@ class _MaterialSettlementSheetState
         }
       },
       decoration: applyAutofillHint(
-        const UtenInputDecoration(
-          InputDecoration(isDense: true, hintText: '0'),
+        UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: '0',
+            suffixText: row.source.unitName,
+          ),
         ),
         Theme.of(context),
         autofilled: key == 'consume' && row.consumptionSuggested,

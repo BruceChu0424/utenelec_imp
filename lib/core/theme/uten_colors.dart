@@ -181,6 +181,27 @@ abstract final class UtenColors {
     };
   }
 
+  // ===== 物料分析「按产品看」层级连线轮换色（2026-10-10 用户口径）=====
+  // 最左的子树块边界竖线（原 UtenTreeTableCell.subtreeRail）退役，改由层级
+  // 连线本身按产品序号奇偶两色轮换：同一产品的整棵子树连线同色、相邻产品
+  // 换色，产品边界一眼可辨。选色约束（用户口径「找两个色差大的」）：
+  // 青绿 174° 对紫 262°，色相错开近 90° 且明度不同；避开红/黄/绿（进度列
+  // 状态扫视色）与品红（路线徽章委外色）。浅色主题用深档（1px 细线在白底
+  // 上要压得住），深色主题用亮档（深底上要跳得出）；只染连线，箭头/徽章/
+  // 行底色一概不动。
+
+  /// 偶数序产品的连线色（浅色主题，teal-600）
+  static const Color bomProductGuideEven = teal600;
+
+  /// 奇数序产品的连线色（浅色主题，紫）
+  static const Color bomProductGuideOdd = violet;
+
+  /// 偶数序产品的连线色（深色主题，亮青绿）
+  static const Color bomProductGuideEvenDark = teal300;
+
+  /// 奇数序产品的连线色（深色主题，亮紫）
+  static const Color bomProductGuideOddDark = violetOnDark;
+
   /// 语义色深档文字色（配合 *Bg 底色使用，保证对比度）
   static const Color successText = Color(0xFF047857);
   static const Color warningText = Color(0xFFB45309);

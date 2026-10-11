@@ -636,13 +636,14 @@ void main() {
         ],
       ),
     );
-    expect(find.text('100, 资料已改为 120'), findsOneWidget);
+    // 标价/最新主档价恒本币：金额带「元」后缀（2026-10-10 口径）。
+    expect(find.text('100.00 元, 资料已改为 120.00 元'), findsOneWidget);
     await _openRowMenu(tester, '货品a');
     await tester.tap(find.text('按最新标价刷新'));
     await tester.pumpAndSettle();
     // 刷新后本行单价/折扣只读，显示按新标价的成交单价。
     expect(_deal('a'), findsNothing);
-    expect(find.text('108.00'), findsOneWidget);
+    expect(find.text('108.00 元'), findsOneWidget);
     await _save(tester);
     expect(repo.saves.single['lines'], [
       {'itemId': 'a', 'useMasterPrice': true},
@@ -662,9 +663,11 @@ void main() {
         ],
       ),
     );
-    final boxes = find.byType(Checkbox);
-    // 第一个是表头全选。
-    await tester.tap(boxes.first);
+    // 2026-10-10 勾选列不再渲染（showSelectionColumn=false）：行单击即选中。
+    for (final name in const ['货品a', '货品b', '货品c']) {
+      await tester.tap(find.text(name));
+      await tester.pump();
+    }
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('quote-finance-batch-discount')));
     await tester.pumpAndSettle();
@@ -687,9 +690,9 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _review(lines: [_line('a'), _line('b'), _line('c')]));
-    final boxes = find.byType(Checkbox);
-    await tester.tap(boxes.at(1));
-    await tester.tap(boxes.at(2));
+    // 2026-10-10 勾选列不再渲染（showSelectionColumn=false）：行单击即选中。
+    await tester.tap(find.text('货品a'));
+    await tester.tap(find.text('货品b'));
     await tester.pumpAndSettle();
     await tester.enterText(_discount('a'), '0.9');
     await tester.pump();

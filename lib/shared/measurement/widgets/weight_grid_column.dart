@@ -3,9 +3,12 @@
 // - 列放在数量组之后 (单位跟在数量后面时放在单位之后); 表头「实称重量(kg)」随录入单位变化,
 //   单位由工具条「称重单位: 千克▾」([WeightEntryUnitButton]) 切换 (用户级偏好, 不做逐行下拉)。
 // - 格子接受带后缀的输入 (850g / 1.2t / 3斤 / 2lb), 失焦后规范成列单位; 0 或空 = 没称。
-// - 有可靠依据时预填建议重量；建议与实称分开，用户改字后停止自动覆盖；
+// - 有可靠依据时预填建议重量(黄框待核对, 与全站预填口径一致)；用户改字后停止自动覆盖；
 //   货品/行单位本身是重量单位时只读灰字「=25 kg」(服务端按数量精确换算)。
 // - 偏差: 琥珀框与文字提示，悬停给出依据；说明图标统一放表头。
+// - 格子外层 Tooltip 恒定包裹(空闲时给一句固定短提示): message 在 null/非null 间切换
+//   会让 Flutter 废弃重建 TextField 元素, 输入一位光标就丢(同 uten_editable_grid
+//   RequiredCellFrame 2026-10-06 的病灶), 结构恒定才能保住焦点。
 // - **重量格与数量格永不批量生效**: 勾选多行后改一行的重量只改这一行 (一次称重是一个
 //   物理事实, 绝不能复制到其它行); 页面级的只有工具条上的录入单位。
 // - 数量为空 (盘点实盘 / 其它入库) 且单重不是未学准时, 填重量自动推算数量 (黄框预填,
@@ -19,6 +22,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../weight_params.dart';
@@ -35,6 +40,12 @@ const String weightColumnHeaderInfo =
 
 /// 非法输入提示。
 const String weightInputErrorText = '看不懂这个重量, 例: 850g、1.2t、3斤、12';
+
+/// 重量格空闲(无错误/偏差/核对说明)时 Tooltip 的固定短提示。
+///
+/// 格子外层 Tooltip 必须恒定包裹才能保住输入焦点(见文件头注释)，所以没有
+/// 专属说明可展示时兜底显示这一句，而不是移除 Tooltip 导致结构切换。
+const String weightCellIdleTooltip = '可直接输 850g、1.2t、3斤；空着=没称';
 
 /// 一行的重量录入状态 (放在行 model 里, 跟行一起创建/释放, 跨重建存活)。
 ///
@@ -633,9 +644,12 @@ class _WeightCellState<T extends EditableGridRow>
           onPressed: widget.enabled
               ? () => widget.onWeighCount!(context, widget.row)
               : null,
-          constraints: const BoxConstraints.tightFor(width: 44, height: 44),
-          padding: const EdgeInsets.all(UtenSpacing.s12),
-          icon: const Icon(Icons.scale_outlined, size: 18),
+          // 2026-10-10 表格内输入框高度统一：44 触控槽会把整格撑到 44+，比同行
+          // 27 高的库位/数量格明显高一截。格内图标口径 = 16px 图标 + 24 命中槽
+          // (16 图标 + 4 边距，不超同行输入格 27 的自然高度)。
+          constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+          padding: const EdgeInsets.all(UtenSpacing.s4),
+          icon: const Icon(Icons.scale_outlined, size: 16),
         ),
     ];
 
@@ -644,19 +658,32 @@ class _WeightCellState<T extends EditableGridRow>
       controller: c.text,
       focusNode: _focus,
       enabled: widget.enabled,
-      textAlign: TextAlign.right,
       keyboardType: TextInputType.text,
       onChanged: _handleChanged,
       onSubmitted: (_) => c.normalize(),
-      decoration: InputDecoration(
-        isDense: true,
-        hintText: _placeholder(params, qtyBase),
-        prefixText: c.isSuggested ? '≈ ' : null,
-        enabledBorder: border(focused: false),
-        focusedBorder: border(focused: true),
-        suffixIcon: suffix.isEmpty
-            ? null
-            : Row(mainAxisSize: MainAxisSize.min, children: suffix),
+      decoration: applyAutofillHint(
+        UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: _placeholder(params, qtyBase),
+            enabledBorder: border(focused: false),
+            focusedBorder: border(focused: true),
+            // 格内 suffix 不吃 48×48 默认触控槽(2026-10-06 口径)；无 ⓘ 时
+            // 24 槽的称重按钮不再把框撑高，重量格与同行输入格等高。
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 24,
+              minHeight: 24,
+            ),
+            suffixIcon: suffix.isEmpty
+                ? null
+                : Row(mainAxisSize: MainAxisSize.min, children: suffix),
+          ),
+          info: c.isSuggested
+              ? '${c.suggestionSource ?? '系统预填'}；预估 ${formatWeight(c.suggestedKg!, display: WeightDisplay.of(widget.entryUnit))}，尚未实称。请输入秤上读数。'
+              : null,
+        ),
+        theme,
+        autofilled: c.isSuggested && error == null && !deviation,
       ),
     );
     final message = error ?? info;
@@ -666,7 +693,7 @@ class _WeightCellState<T extends EditableGridRow>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         field,
-        if (error != null || deviation || c.isSuggested)
+        if (error != null || deviation)
           Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s4),
             child: error != null
@@ -675,25 +702,21 @@ class _WeightCellState<T extends EditableGridRow>
                     key: const ValueKey('weight-cell-message'),
                     maxLines: 2,
                   )
-                : deviation
-                ? const UtenFieldMessage.autofill(
+                : const UtenFieldMessage.autofill(
                     '数值可能有问题',
                     key: ValueKey('weight-cell-message'),
                     maxLines: 2,
-                  )
-                : Text(
-                    '预估 · 请填实称',
-                    key: const ValueKey('weight-cell-suggestion'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
                   ),
           ),
       ],
     );
-    return message == null
-        ? content
-        : Tooltip(message: message, child: content);
+    // 结构恒定：空闲时也包一层 Tooltip(给固定短提示)。若按 message 有无切换
+    // Tooltip 包裹，首个字符击键就会让 TextField 元素被废弃重建、光标丢失
+    // (用户得再点一次才能继续输)；恒定结构下只有文本在变。
+    return Tooltip(
+      message: message ?? weightCellIdleTooltip,
+      child: content,
+    );
   }
 
   String _placeholder(WeightParams? params, double? qtyBase) {
@@ -736,7 +759,6 @@ class _ExactWeightText extends StatelessWidget {
         child: Text(
           '=${formatWeight(kg)}',
           key: const ValueKey('weight-cell-exact'),
-          textAlign: TextAlign.right,
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

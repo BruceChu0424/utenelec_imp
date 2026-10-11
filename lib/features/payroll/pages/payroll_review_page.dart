@@ -33,6 +33,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/payroll_batch.dart';
@@ -405,13 +406,24 @@ class _BatchChip extends StatelessWidget {
   }
 }
 
-class _BatchDetail extends StatelessWidget {
+class _BatchDetail extends StatefulWidget {
   const _BatchDetail({required this.batch});
 
   final PayrollBatch batch;
 
   @override
+  State<_BatchDetail> createState() => _BatchDetailState();
+}
+
+class _BatchDetailState extends State<_BatchDetail> {
+  /// 明细行勾选集（2026-10-10 审核页防看岔行口径）：**纯阅读辅助**，永不挂
+  /// 批量动作——与 2026-09-10 审计 A2 下线的「勾选+批量通过=整批生效」语义
+  /// 误导不同，这里只有勾选高亮和「已选 N」胶囊，审核入口仍是右下整批通过/驳回。
+  final Set<String> _selectedSlipIds = <String>{};
+
+  @override
   Widget build(BuildContext context) {
+    final batch = widget.batch;
     final theme = Theme.of(context);
     Widget buildHeader() {
       return Column(
@@ -438,15 +450,21 @@ class _BatchDetail extends StatelessWidget {
                 UtenInfoRow(label: '员工人数', value: '${batch.headcount} 人'),
                 UtenInfoRow(
                   label: '应发合计',
-                  value: '¥ ${batch.grossIncome.toStringAsFixed(2)}',
+                  value: financeLocalMoneyWithUnitSuffix(
+                    batch.grossIncome.toStringAsFixed(2),
+                  ),
                 ),
                 UtenInfoRow(
                   label: '扣除合计',
-                  value: '¥ ${batch.totalDeduction.toStringAsFixed(2)}',
+                  value: financeLocalMoneyWithUnitSuffix(
+                    batch.totalDeduction.toStringAsFixed(2),
+                  ),
                 ),
                 UtenInfoRow(
                   label: '实发合计',
-                  value: '¥ ${batch.netIncome.toStringAsFixed(2)}',
+                  value: financeLocalMoneyWithUnitSuffix(
+                    batch.netIncome.toStringAsFixed(2),
+                  ),
                   isImportant: true,
                   showDivider: false,
                 ),
@@ -502,8 +520,22 @@ class _BatchDetail extends StatelessWidget {
               onFilterChanged: (_, _) {},
               // 底部留出右下悬浮操作组的高度，末行可滚出按钮区。
               bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-              // 明细无独立详情页，不接 onRowTap；审核只有整批语义（底部操作条），
-              // 故明细表不开多选——勾选几条却整批生效是语义误导（2026-09-10 下线）。
+              // 行勾选（2026-10-10 防看岔行）：纯阅读辅助、永不挂批量动作（审计
+              // A2 禁的是「勾选+整批生效」的误导按钮，不是高亮本身）；单选互斥
+              // ——点其他行自动换选、再点取消，选中态由行高亮表达，不画勾选框列
+              // 也不驻「已选」胶囊。明细无独立详情页不接 onRowTap，审核入口仍是
+              // 右下整批通过/驳回。
+              selectable: true,
+              showSelectionColumn: false,
+              singleSelection: true,
+              showSelectionSummary: false,
+              idOf: (s) => s.id,
+              selectedIds: _selectedSlipIds,
+              onSelectedIdsChanged: (next) => setState(() {
+                _selectedSlipIds
+                  ..clear()
+                  ..addAll(next);
+              }),
               emptyMessage: '服务器未返回该批次的员工明细',
             ),
     );
@@ -525,28 +557,30 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     width: 120,
     value: (s) => s.employeeName,
   ),
+  // 工资恒人民币（2026-10-10 金额带单位口径：数值后自动带「元」）。
   MasterColumnDef(
     key: 'grossIncome',
     label: '应发',
-    width: 120,
+    width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) => s.grossIncome.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'totalDeduction',
     label: '扣减',
-    width: 120,
+    width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) => s.totalDeduction.toStringAsFixed(2),
+    value: (s) =>
+        financeLocalMoneyWithUnitSuffix(s.totalDeduction.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'netIncome',
     label: '实发',
-    width: 130,
+    width: 150,
     type: 'money',
     aiSensitive: true,
-    value: (s) => s.netIncome.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
   ),
 ];

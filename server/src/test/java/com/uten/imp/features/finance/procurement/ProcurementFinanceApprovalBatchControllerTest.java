@@ -48,12 +48,14 @@ class ProcurementFinanceApprovalBatchControllerTest {
         List<BatchDecisionItem> items = List.of(
                 new BatchDecisionItem(UUID.randomUUID(), 3L),
                 new BatchDecisionItem(UUID.randomUUID(), 4L));
+        java.math.BigDecimal rate = new java.math.BigDecimal("6.85");
         BatchDecisionResponse approved =
                 new BatchDecisionResponse(2, List.of());
         BatchDecisionResponse rejected =
                 new BatchDecisionResponse(2, List.of());
-        when(service.approveBatch(items, null)).thenReturn(approved);
-        when(service.approveBatch(items, "留意供应商账期")).thenReturn(approved);
+        when(service.approveBatch(items, null, null)).thenReturn(approved);
+        when(service.approveBatch(items, "留意供应商账期", null)).thenReturn(approved);
+        when(service.approveBatch(items, "按当日汇率", rate)).thenReturn(approved);
         when(service.rejectBatch(items, "统一原因")).thenReturn(rejected);
 
         assertSame(
@@ -63,13 +65,18 @@ class ProcurementFinanceApprovalBatchControllerTest {
                 approved,
                 controller.approveBatch(
                         new BatchApprovalRequest(items, "留意供应商账期")));
+        // V835：整批共用一个选填财务汇率，缺省视为 1。
+        assertSame(
+                approved,
+                controller.approveBatch(new BatchApprovalRequest(items, "按当日汇率", rate)));
         assertSame(
                 rejected,
                 controller.rejectBatch(
                         new BatchRejectionRequest(items, "统一原因")));
 
-        verify(service).approveBatch(items, null);
-        verify(service).approveBatch(items, "留意供应商账期");
+        verify(service).approveBatch(items, null, null);
+        verify(service).approveBatch(items, "留意供应商账期", null);
+        verify(service).approveBatch(items, "按当日汇率", rate);
         verify(service).rejectBatch(items, "统一原因");
     }
 
@@ -85,7 +92,7 @@ class ProcurementFinanceApprovalBatchControllerTest {
                         caseId, "PURCHASE", UUID.randomUUID(), "CG20260001",
                         "PENDING", 1, 1L, List.of("APPROVE"),
                         "提交人", null, null, "供应商A", "S001", null,
-                        "人民币", null, "月结", null, null, null, null, null,
+                        "人民币", null, null, "月结", null, null, null, null, null,
                         null, null, null, 0, List.of(), List.of(), List.of(), java.util.Map.of(), java.util.Map.of(), List.of());
 
         when(service.review(caseId)).thenReturn(review);

@@ -770,7 +770,7 @@ void main() {
         '物料名称',
         '编号',
         '颜色',
-        '单位',
+        // 2026-10-10 数量+单位口径：独立「单位」列删除，数量列内联单位。
         '每套用量',
         '需要',
         '专属库存',
@@ -783,14 +783,15 @@ void main() {
           materials.columns.firstWhere((c) => c.key == key).value(row)!;
       final shell = materials.items.first;
       expect(cell('goodsName', shell), '外壳');
-      expect(cell('bomUnitQty', shell), '2');
-      expect(cell('neededQty', shell), '12');
-      expect(cell('exactQty', shell), '3');
+      // 2026-10-10 数量+单位口径：数量列内联单位(外壳行单位 = 个)。
+      expect(cell('bomUnitQty', shell), '2 个');
+      expect(cell('neededQty', shell), '12 个');
+      expect(cell('exactQty', shell), '3 个');
       // 已被占用 = 专属被本申请已有委外单占用 + 公共被别的委外单占用。
-      expect(cell('claimedQty', shell), '2.5');
-      expect(cell('freeQty', shell), '1.5');
-      expect(cell('shortQty', shell), '10.5');
-      expect(cell('kitQty', shell), '0');
+      expect(cell('claimedQty', shell), '2.5 个');
+      expect(cell('freeQty', shell), '1.5 个');
+      expect(cell('shortQty', shell), '10.5 个');
+      expect(cell('kitQty', shell), '0 个');
       expect(find.text('外壳'), findsOneWidget);
       expect(find.text('螺丝'), findsOneWidget);
 
@@ -1000,7 +1001,12 @@ void main() {
             'ALL': 5,
           },
           rows: [
-            drawRow('item-full', drawableQty: 60, shortQty: 40),
+            drawRow(
+              'item-full',
+              drawableQty: 60,
+              shortQty: 40,
+              planNo: 'WL-001',
+            ),
             drawRow(
               'item-partial',
               status: 'DRAWABLE_PARTIAL',
@@ -1146,6 +1152,32 @@ void main() {
             reason: label,
           );
         }
+        // 2026-10-10：委外商列申请行改由服务端投影下发(V836；未定商是业务
+        // 事实仍显示「—」)；领料行数量列内联订货单位，独立「单位」列已删除。
+        final supplierColumn = table.columns.singleWhere(
+          (column) => column.key == 'supplierName',
+        );
+        expect(supplierColumn.value(table.unpagedItems.first), '华信加工');
+        // 申请行：投影下发的委外商 / 未定商落「—」。
+        expect(supplierColumn.value(table.items.first), '华信加工');
+        expect(supplierColumn.value(table.items.last), '—');
+        // 来源计划列(2026-10-10)：领料行显示服务端下发的 WL 分析编号；
+        // 没有下发(旧行/无来源)时与申请行同列落「—」。
+        final planNoColumn = table.columns.singleWhere(
+          (column) => column.key == 'planNo',
+        );
+        expect(planNoColumn.value(table.unpagedItems.first), 'WL-001');
+        expect(planNoColumn.value(table.unpagedItems.last), '—');
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'orderQty')
+              .value(table.unpagedItems.first),
+          '100 个',
+        );
+        expect(
+          table.columns.where((column) => column.key == 'unitName'),
+          isEmpty,
+        );
 
         final batch = find.byKey(const Key('subcontract-draw-batch'));
         expect(batch, findsOneWidget);
@@ -1287,13 +1319,13 @@ void main() {
             .widget<MasterDataTableView<SubcontractDrawMaterial>>(
               find.byKey(const Key('subcontract-draw-detail-materials')),
             );
-        // 2026-10-06 全站口径：状态列排最前。
+        // 2026-10-06 全站口径：状态列排最前；2026-10-10 数量+单位口径：
+        // 「单位」列删除，各数量列内联该物料自己的单位。
         expect(materials.columns.map((column) => column.label).toList(), [
           '状态',
           '物料名称',
           '编号',
           '颜色',
-          '单位',
           '每套用量',
           '需求',
           '已发外',
@@ -1694,6 +1726,9 @@ OperationsWorkbenchData _data({
       'task-1',
       'application-1',
       'application-item-1',
+      // 2026-10-10 V836：申请行的委外商由投影下发；本行有商，task-2 留空
+      // （未定商是业务事实，列显「—」）。
+      supplierName: '华信加工',
       sources: withSources
           ? SubcontractTaskSource.listFromJson([
               _sourceJson(1, 3),
@@ -1938,10 +1973,12 @@ OperationsWorkbenchTask _task(
   String? displayStage,
   String? rdTaskNo,
   num? orderableQty,
+  String? supplierName,
 }) => OperationsWorkbenchTask(
   displayStage: displayStage,
   rdTaskNo: rdTaskNo,
   orderableQty: orderableQty,
+  supplierName: supplierName,
   taskId: taskId,
   packageId: 'package-1',
   planId: 'plan-1',

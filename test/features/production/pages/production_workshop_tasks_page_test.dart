@@ -612,6 +612,66 @@ void main() {
     expect(find.byType(UtenInProgressBadge), findsOneWidget);
   });
 
+  // 2026-10-10 用户口径「报工送检」：生产中报完(remaining=0)未完工的工单单独成档，
+  // 不与还没报完的混在一起；与生产中互斥(计数口径 preparing+inProgress+reportInspection
+  // =total)、黄数(在办不归我)、不可勾选、无路线列但保留实际产出/计划实收进度。
+  testWidgets('报工送检分类: 已报完未完工单独成档且与生产中互斥', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    final badges = _CountingBadgeSummary()
+      ..next = const BadgeSummary(
+        loaded: true,
+        facts: {
+          BadgeFact.workshopTotal: 2,
+          BadgeFact.workshopPreparing: 0,
+          BadgeFact.workshopInProgress: 1,
+          BadgeFact.workshopReportInspection: 1,
+        },
+      );
+    final repo = _ReportInspectionRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.productionExecutionView,
+            Perm.productionExecutionStart,
+            Perm.productionDailyReportCreate,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(repo),
+          productionPlanRepositoryProvider.overrideWithValue(
+            _FakePlanRepository(),
+          ),
+          badgeSummaryProvider.overrideWith(() => badges),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 分类栏出现「报工送检」段(黄数=1)，排在生产中与历史任务之间。
+    expect(find.text('报工送检'), findsOneWidget);
+    await tester.tap(find.text('报工送检'));
+    await tester.pumpAndSettle();
+    expect(repo.statuses.last, 'REPORT_INSPECTION');
+
+    // 行渲染：状态列琥珀 waiting 档子标签；实际产出/计划实收进度在，路线列不在。
+    expect(find.text('已报完 · 待品质检查'), findsOneWidget);
+    expect(find.text('计划实收进度'), findsOneWidget);
+    expect(find.text('实际产出'), findsOneWidget);
+    expect(find.text('生产路线'), findsNothing);
+    // 不可勾选：分类不可选时表格没有全选框也没有行选择框。
+    expect(find.byType(Checkbox), findsNothing);
+  });
+
   testWidgets(
     'a ready kit still requires actual warehouse issue before start',
     (tester) async {
@@ -2709,6 +2769,56 @@ class _DelayedWorkshopRepository
     String? dateFrom,
     String? dateTo,
   }) async => const {};
+}
+
+/// 「报工送检」分类用例：REPORT_INSPECTION 返回一条已报完(remaining=0)、待品质
+/// 检查的工单；其它分类返回普通生产中行。记录每次请求的 status。
+class _ReportInspectionRepository
+    extends ProductionExecutionWorkbenchRepository {
+  _ReportInspectionRepository()
+    : super(ApiClient(Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'))));
+
+  final List<String?> statuses = [];
+
+  @override
+  Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
+    int page = 1,
+    int size = 50,
+    String keyword = '',
+    String? status,
+    String? preparationFilter,
+    String? routeFilter,
+    String? workshopDepartmentId,
+    String? dateFrom,
+    String? dateTo,
+    String? analysisNo,
+    String? segmentCode,
+    String? sort,
+    String? order,
+  }) async {
+    statuses.add(status);
+    final items = status == 'REPORT_INSPECTION'
+        ? [
+            ProductionExecutionWorkbenchSegment.fromJson({
+              ..._task('segment-r', '产品 R', 'IN_PROGRESS'),
+              'remainingReportQty': 0,
+              'reportedQty': 10,
+              'fqcPendingQty': 2,
+            }),
+          ]
+        : [
+            ProductionExecutionWorkbenchSegment.fromJson(
+              _task('segment-a', '产品 A', 'IN_PROGRESS'),
+            ),
+          ];
+    return PagedResult(
+      items: items,
+      page: 1,
+      size: 50,
+      total: items.length,
+      totalPages: 1,
+    );
+  }
 }
 
 /// 记录每次列表请求的分类与时间门控参数；历史段返回一条已取消 + 一条已红冲。

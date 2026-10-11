@@ -1,11 +1,15 @@
 // 订货审批审核详情页（财务专用视图）测试：
 //  - 卡片结构（状态条/供应商快照/订单信息/明细/审批历史）与底部三操作；
-//  - 通过：选填备注随单笔 batch-approve 提交，成功后 pop(true) 回列表；
+//  - 2026-10-10 财务订货审批口径：独立 tableKey、新默认列序（数量单位内联、
+//    换算率/单位列退役）、汇率编辑器默认值/编辑联动/提交体、供应商红色加粗、
+//    highlightColumnKeys（采购超收%/委外损耗%）、折合人民币实时重算；
+//  - 通过：选填备注 + 汇率随单笔 batch-approve 提交，成功后 pop(true) 回列表；
 //  - 驳回：原因必填，空原因内联报错；
 //  - 非 PENDING / 无动作 case 不渲染底栏（服务端 allowedActions 为准）。
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
+import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -33,7 +37,9 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
 
   FinanceProcurementApprovalReview reviewResult;
   String? requestedCaseId;
-  final List<({List<FinanceProcurementDecisionItem> items, String? remark})>
+  final List<
+    ({List<FinanceProcurementDecisionItem> items, String? remark, double? exchangeRate})
+  >
   approved = [];
   final List<({List<FinanceProcurementDecisionItem> items, String reason})>
   rejected = [];
@@ -68,8 +74,13 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   Future<void> approveOrdersBatch(
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
+    double? exchangeRate,
   }) async {
-    approved.add((items: List.of(items), remark: remark));
+    approved.add((
+      items: List.of(items),
+      remark: remark,
+      exchangeRate: exchangeRate,
+    ));
   }
 
   @override
@@ -272,13 +283,13 @@ void main() {
       final row = table.rows.single.value;
       expect(
         table.columns.singleWhere((column) => column.key == 'price').value(row),
-        '0.0333333333（参考）',
+        '0.0333333333 美元（参考）',
       );
       expect(
         table.columns
             .singleWhere((column) => column.key == 'amountOriginal')
             .value(row),
-        '100.000000000000000001',
+        '100.000000000000000001 美元',
       );
     });
   }
@@ -316,7 +327,7 @@ void main() {
     final column = table.columns.singleWhere(
       (column) => column.key == 'allowedLossPct',
     );
-    expect(table.rows.map((row) => column.value(row.value)), ['2.5', '3.75']);
+    expect(table.rows.map((row) => column.value(row.value)), ['2.5%', '3.75%']);
     expect(find.text('明细对比 · 修改 1 行 · 删除 0 行 · 新增 0 行'), findsOneWidget);
     expect(find.text('原审批备注'), findsOneWidget);
     expect(find.text('未填写'), findsOneWidget);
@@ -350,8 +361,8 @@ void main() {
     final column = table.columns.singleWhere(
       (column) => column.key == 'allowedOverReceiptPct',
     );
-    expect(column.label, '允许超收(%)');
-    expect(table.rows.map((row) => column.value(row.value)), ['不允许', '5']);
+    expect(column.label, '允许超收');
+    expect(table.rows.map((row) => column.value(row.value)), ['不允许', '5%']);
     expect(table.rows.last.changedKeys, contains('allowedOverReceiptPct'));
     expect(
       table.columns.where((column) => column.key == 'allowedLossPct'),
@@ -455,6 +466,55 @@ void main() {
       await tester.pumpAndSettle();
     });
   }
+
+  testWidgets('token 静默刷新（同身份新状态对象/权限滑动）不清空页面与认领', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo(
+      FinanceProcurementApprovalReview.fromJson(_pendingReviewJson()),
+    );
+    final claims = FinanceClaimFixture();
+    await _pumpReviewPage(tester, repository, claims: claims);
+    expect(
+      find.byKey(const Key('finance-order-review-approve')),
+      findsOneWidget,
+    );
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceProcurementApprovalReviewPage)),
+      listen: false,
+    );
+    final notifier =
+        container.read(sessionProvider.notifier)
+            as _FinanceReviewerSessionNotifier;
+    // 同内容新实例（token 刷新带回相同档案的历史形态）。
+    notifier.state = const SessionState(
+      user: AppUser(id: 'finance-reviewer', code: 'FIN001', name: '财务李四'),
+    );
+    // 权限滑动更新（身份不变、档案内容变化）。
+    notifier.state = const SessionState(
+      user: AppUser(
+        id: 'finance-reviewer',
+        code: 'FIN001',
+        name: '财务李四',
+        permissions: ['finance:extra'],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('登录身份已变化，请重新加载并认领审核'), findsNothing);
+    expect(
+      find.byKey(const Key('finance-order-review-approve')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<UtenButton>(
+            find.byKey(const Key('finance-order-review-approve')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(claims.released, isEmpty);
+  });
   testWidgets('renders finance-scoped cards with bottom decision bar', (
     tester,
   ) async {
@@ -467,20 +527,24 @@ void main() {
     expect(find.text('待财务审核'), findsOneWidget);
     expect(find.text('供应商财务快照 · 供应商A(S-001)'), findsOneWidget);
     expect(find.text('本单金额'), findsOneWidget);
-    expect(find.text('美元 10000.00'), findsOneWidget);
+    // 快照卡/总金额列/合计条三处同文案（金额后缀口径下字面相同）。
+    expect(find.text('10000.00 美元'), findsWidgets);
     expect(find.text('应付未付'), findsOneWidget);
-    expect(find.text('美元 13000.50'), findsOneWidget);
+    expect(find.text('13000.50 美元'), findsOneWidget);
     expect(find.text('可抵预付/贷项'), findsOneWidget);
-    expect(find.text('美元 500.00'), findsOneWidget);
-    expect(find.text('美元 12500.50'), findsOneWidget, reason: '还差多少与本单同币种');
-    expect(find.text('另有 人民币 1100.00'), findsOneWidget);
-    expect(find.text('人民币 71000.00'), findsOneWidget, reason: '折合本币带本币名');
+    expect(find.text('500.00 美元'), findsOneWidget);
+    expect(find.text('12500.50 美元'), findsOneWidget, reason: '还差多少与本单同币种');
+    expect(find.text('另有 1100.00 元'), findsOneWidget);
+    // 折合人民币：快照卡/折合列/合计条三处同文案。
+    expect(find.text('71000.00 元'), findsWidgets, reason: '折合人民币带本币单位');
     expect(find.text('美元'), findsWidgets);
-    // 2026-09-14 起名称 / 编号 / 颜色 / 单位各占一列，不再拼成一格。
+    // 2026-10-10 数量+单位内联口径：单位不再单独占列，「100 公斤」在数量格与
+    // 合计条各出现一次。
     expect(find.text('铜线'), findsOneWidget);
     expect(find.text('G001'), findsOneWidget);
     expect(find.text('裸色'), findsOneWidget);
-    expect(find.text('公斤'), findsWidgets);
+    expect(find.text('100 公斤'), findsWidgets);
+    expect(find.text('换算率'), findsNothing, reason: '换算率列退役（非货币汇率，误导财务）');
     expect(find.text('PR-2026-010'), findsOneWidget);
     expect(find.text('原因：单价待复核'), findsOneWidget);
     expect(find.byKey(const Key('finance-order-review-back')), findsOneWidget);
@@ -513,6 +577,7 @@ void main() {
 
     expect(repository.approved, hasLength(1));
     expect(repository.approved.single.remark, '已核对供应商账期');
+    expect(repository.approved.single.exchangeRate, 7.1, reason: '通过提交带当前汇率（快照兜底值）');
     expect(repository.approved.single.items.single.toJson(), {
       'caseId': 'case-1',
       'expectedVersion': 3,
@@ -646,4 +711,234 @@ void main() {
       );
     });
   }
+
+  // ———————————————— 2026-10-10 财务订货审批口径 ————————————————
+
+  Future<UtenRevisionTable<FinanceProcurementReviewLine>> revisionTableOf(
+    WidgetTester tester,
+  ) async {
+    final finder = find.byKey(const Key('procurement-approval-revision-table'));
+    await tester.scrollUntilVisible(
+      finder,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    return tester.widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+      finder,
+    );
+  }
+
+  testWidgets('采购：独立 tableKey + 新默认列序，单位/换算率列退役', (tester) async {
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
+    final table = await revisionTableOf(tester);
+    // 独立 tableKey：不再复用编辑页 purchase.order.items（保存布局按 key 合并
+    // 会把本页新键甩到列尾）。
+    expect(table.tableKey, 'finance.procurement.review.purchase.items');
+    expect(table.columns.map((column) => column.key).toList(), [
+      'sourceDocNo',
+      'sourceApplicationNos',
+      'lineNo',
+      'goods',
+      'goodsCode',
+      'colorName',
+      'qty',
+      'allowedOverReceiptPct',
+      'price',
+      'amountOriginal',
+      'exchangeRate',
+      'amountLocal',
+      'deliverDate',
+      'remark',
+    ]);
+    final row = table.rows.single.value;
+    // 数量 + 单位内联（formatQtyWithUnit 口径），单位不再单独占列。
+    expect(
+      table.columns.singleWhere((column) => column.key == 'qty').value(row),
+      '100 公斤',
+    );
+    // 汇率列 = case 级当前汇率；折合人民币 = 总金额 × 当前汇率（默认快照 7.1）。
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'exchangeRate')
+          .value(row),
+      '7.1',
+    );
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(row),
+      '71000.00 元',
+    );
+    expect(table.columns.singleWhere((c) => c.key == 'amountLocal').label,
+        '折合人民币');
+  });
+
+  testWidgets('委外：独立 tableKey + 允许损耗%占据差异列位', (tester) async {
+    final review = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'orderType': 'SUBCONTRACT',
+    });
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+    final table = await revisionTableOf(tester);
+    expect(table.tableKey, 'finance.procurement.review.subcontract.items');
+    final keys = table.columns.map((column) => column.key).toList();
+    expect(keys.indexOf('allowedLossPct'), keys.indexOf('qty') + 1);
+    expect(keys, isNot(contains('allowedOverReceiptPct')));
+    expect(table.highlightColumnKeys, contains('allowedLossPct'));
+    expect(table.highlightColumnKeys, isNot(contains('allowedOverReceiptPct')));
+  });
+
+  testWidgets('采购 highlightColumnKeys：核心核对列 + 允许超收%', (tester) async {
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
+    final table = await revisionTableOf(tester);
+    expect(table.highlightColumnKeys, {
+      'qty',
+      'price',
+      'amountOriginal',
+      'amountLocal',
+      'allowedOverReceiptPct',
+    });
+  });
+
+  testWidgets('汇率编辑器：默认快照兜底，编辑实时重算折合人民币列与合计', (tester) async {
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
+    final field = find.byKey(const Key('finance-order-review-rate-field'));
+    expect(
+      tester.widget<TextField>(field).controller?.text,
+      '7.1',
+      reason: 'financeExchangeRate 为空 → 提交快照 exchangeRate 兜底',
+    );
+
+    await tester.enterText(field, '6.5');
+    await tester.pump();
+    final table = await revisionTableOf(tester);
+    final row = table.rows.single.value;
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'exchangeRate')
+          .value(row),
+      '6.5',
+    );
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(row),
+      '65000.00 元',
+    );
+    expect(
+      find.descendant(
+        of: find.byType(UtenTotalsSummaryBar),
+        matching: find.text('65000.00 元'),
+      ),
+      findsOneWidget,
+      reason: '合计条折合人民币随汇率联动重算',
+    );
+  });
+
+  testWidgets('汇率全缺省时兜底 1', (tester) async {
+    final json = {..._pendingReviewJson()}..remove('exchangeRate');
+    await _pumpReviewPage(
+      tester,
+      _FakeWorkflowRepo(FinanceProcurementApprovalReview.fromJson(json)),
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('finance-order-review-rate-field')),
+          )
+          .controller
+          ?.text,
+      '1',
+    );
+    final table = await revisionTableOf(tester);
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(table.rows.single.value),
+      '10000.00 元',
+    );
+  });
+
+  testWidgets('已批 case：汇率只读显示 financeExchangeRate，无编辑框', (tester) async {
+    final review = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'status': 'APPROVED',
+      'allowedActions': const <String>[],
+      'financeExchangeRate': '6.8',
+    });
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(review));
+    expect(
+      find.byKey(const Key('finance-order-review-rate-field')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('finance-order-review-rate-readonly')),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<Text>(
+        find.byKey(const Key('finance-order-review-rate-readonly')),
+      ).data,
+      '6.8',
+      reason: '只读汇率行显示财务落定的 financeExchangeRate（表内汇率列同值）',
+    );
+    final table = await revisionTableOf(tester);
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(table.rows.single.value),
+      '68000.00 元',
+    );
+  });
+
+  testWidgets('汇率非法（0/空）时通过被拦截，不提交', (tester) async {
+    final repository = _FakeWorkflowRepo(_pendingReview());
+    await _pumpReviewPage(tester, repository);
+    final field = find.byKey(const Key('finance-order-review-rate-field'));
+
+    await tester.enterText(field, '0');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    expect(repository.approved, isEmpty);
+    // 2026-10-10 字段消息契约：错误文案收进格内 ⓘ（Tooltip），不再有裸 errorText。
+    expect(find.byTooltip('汇率必须是大于 0 的数字'), findsOneWidget);
+
+    await tester.enterText(field, '');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    expect(repository.approved, isEmpty);
+    expect(find.byTooltip('请填写大于 0 的汇率'), findsOneWidget);
+  });
+
+  testWidgets('通过提交带编辑后的汇率', (tester) async {
+    final repository = _FakeWorkflowRepo(_pendingReview());
+    await _pumpReviewPage(tester, repository);
+    await tester.enterText(
+      find.byKey(const Key('finance-order-review-rate-field')),
+      '6.5',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.approved.single.exchangeRate, 6.5);
+  });
+
+  testWidgets('供应商红色加粗：快照卡标题与订单信息卡供应商值', (tester) async {
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
+    final theme = Theme.of(tester.element(find.text('PO-2026-001')));
+    final title = tester.widget<Text>(
+      find.text('供应商财务快照 · 供应商A(S-001)'),
+    );
+    expect(title.style?.color, theme.colorScheme.error);
+    expect(title.style?.fontWeight, FontWeight.w800);
+    final supplier = tester.widget<Text>(find.text('供应商A'));
+    expect(supplier.style?.color, theme.colorScheme.error);
+    expect(supplier.style?.fontWeight, FontWeight.w700);
+  });
 }

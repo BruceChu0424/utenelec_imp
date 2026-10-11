@@ -24,6 +24,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/models/stock_doc.dart';
@@ -608,18 +609,14 @@ class _ProductionDrawRequestPageState
         width: 100,
         value: (row) => _label(row.colorName),
       ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 75,
-        value: (row) => _label(row.unitName),
-      ),
+      // 2026-10-10 数量内联口径：独立「单位」列撤销——待申请量数字后内联单位，
+      // 应领数量输入框单位放后缀。
       MasterColumnDef(
         key: 'qty',
         label: '待申请量',
-        width: 110,
+        width: 144,
         type: 'number',
-        value: (row) => _quantity(row.qty),
+        value: (row) => formatQtyWithUnit(row.qty, row.unitName),
       ),
       MasterColumnDef(
         key: 'requestQty',
@@ -628,7 +625,7 @@ class _ProductionDrawRequestPageState
         // 单元格输入框不带浮动标签（左上角小字）与格内 ⓘ；超限等行级
         // 反馈仍由 UtenInputDecoration 的错误披露（UtenFieldMessage）承担。
         info: '本次提交仓库的数量，可分批填写。其余数量保留待申请，不修改原任务和需求。',
-        width: 170,
+        width: 204,
         type: 'number',
         value: (row) => _quantities[row.identity]?.text,
         exactValueOf: (row) => _quantities[row.identity]?.text,
@@ -643,11 +640,11 @@ class _ProductionDrawRequestPageState
               !_uncertain &&
               !_rejected &&
               _selected.contains(row.identity),
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
+              suffixText: row.unitName,
               error: _quantityErrors[row.identity] == null
                   ? null
                   : UtenFieldMessage.error(_quantityErrors[row.identity]!),
@@ -733,18 +730,19 @@ class _ProductionDrawRequestPageState
               width: 170,
               value: (line) => _label(line.drawNo),
             ),
+            // 2026-10-10 数量内联口径：单位直接跟在待申请量/本次领料数字后。
             MasterColumnDef(
               key: 'qty',
               label: '待申请量',
-              width: 110,
+              width: 144,
               type: 'number',
-              value: (line) => _quantity(line.qty),
+              value: (line) => formatQtyWithUnit(line.qty, line.unitName),
               exactValueOf: (line) => line.qty.toString(),
             ),
             MasterColumnDef(
               key: 'requestQty',
               label: '本次领料',
-              width: 120,
+              width: 154,
               type: 'number',
               exactValueOf: (line) =>
                   (_requestLines(preview)
@@ -757,7 +755,7 @@ class _ProductionDrawRequestPageState
                           0)
                       .toString(),
               exactListenableOf: (_) => _quantities[summary.identity],
-              value: (line) => _quantity(
+              value: (line) => formatQtyWithUnit(
                 _requestLines(preview)
                         .where(
                           (selected) => selected.drawItemId == line.drawItemId,
@@ -765,13 +763,8 @@ class _ProductionDrawRequestPageState
                         .firstOrNull
                         ?.quantity ??
                     0,
+                line.unitName,
               ),
-            ),
-            MasterColumnDef(
-              key: 'unit',
-              label: '单位',
-              width: 75,
-              value: (line) => _label(line.unitName),
             ),
           ],
           items: preview.sourcesFor(summary),
@@ -793,6 +786,7 @@ class _ProductionDrawRequestPageState
   static String _label(String? value) =>
       value?.trim().isNotEmpty == true ? value! : '—';
 
+  /// 纯数字排版（输入框预填与校验文案用；表格数量列已改 formatQtyWithUnit）。
   static String _quantity(double value) => value
       .toStringAsFixed(4)
       .replaceFirst(RegExp(r'0+$'), '')

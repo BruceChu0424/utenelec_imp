@@ -290,7 +290,15 @@ void main() {
     await tester.tap(find.text('确认移出'));
     await tester.pumpAndSettle();
     expect(_placeCell(_row2), findsNothing);
-    expect(find.textContaining('已移出 1 行'), findsOneWidget);
+    // 汇总下提示行已删(2026-10-10 简洁口径)：「已移出 N 行」计数只在提交按钮 tooltip。
+    expect(find.textContaining('已移出 1 行'), findsNothing);
+    expect(
+      tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .any((tooltip) => tooltip.message?.contains('已移出 1 行') ?? false),
+      isTrue,
+      reason: '提交按钮 tooltip 应带上已移出行计数',
+    );
     expect(_toasts(tester).last, contains('已从本次登记移出 1 行'));
 
     await tester.enterText(_placeField(_row1), 'CP-A-01');
@@ -327,7 +335,11 @@ void main() {
       await _selectWarehouse(tester, '成品仓', settle: true);
       expect(api.suggestionWarehouses, ['warehouse-1']);
       await _revealGrid(tester);
-      expect(find.text('10'), findsOneWidget);
+      // 2026-10-10 T9：只读数量列单位内联在数字后(表尾合计条同文按单位分组，共 2 处)。
+      expect(
+        find.descendant(of: _grid, matching: find.text('10 只')),
+        findsNWidgets(2),
+      );
       _expectPlace(tester, _row1, '');
 
       // 2026-09-14：行级校验「整批扫完、同类一次点名全部违规行」。
@@ -397,13 +409,11 @@ void main() {
     _expectPlace(tester, _row1, 'CP-A-01');
     expect(find.byType(RequiredCellFrame), findsNothing);
     expect(api.suggestionRequests, isEmpty);
-    const footer = '当前账号只有查看权限，不能修改仓库或库位。';
-    await tester.scrollUntilVisible(
-      find.text(footer),
-      200,
-      scrollable: find.byType(Scrollable).first,
+    // 汇总下提示行已删(2026-10-10)：查看权限的说明不再常驻，合计条仍在。
+    expect(
+      find.byKey(const Key('production-finished-arrival-totals')),
+      findsOneWidget,
     );
-    expect(find.text(footer), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

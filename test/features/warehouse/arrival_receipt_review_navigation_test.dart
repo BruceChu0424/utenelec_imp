@@ -489,7 +489,13 @@ void main() {
       find.byKey(const Key('warehouse-arrival-allocation-warehouse-notice')),
       findsNothing,
     );
-    expect(find.textContaining('仍在待登记'), findsOneWidget);
+    // 汇总下提示行已删(2026-10-10)：移出计数并进提交按钮 tooltip。
+    expect(
+      tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .any((tooltip) => tooltip.message?.contains('已移出 1 行') ?? false),
+      isTrue,
+    );
     expect(api.arrivalPostBodies, isEmpty);
 
     // 移出后选中集已空（提交集=勾选集）：勾回「明细 A」才能提交。
@@ -611,7 +617,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(removedRow, findsNothing);
-    expect(find.textContaining('仍在待登记'), findsOneWidget);
+    // 汇总下提示行已删(2026-10-10)：移出计数并进提交按钮 tooltip。
+    expect(
+      tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .any((tooltip) => tooltip.message?.contains('已移出 1 行') ?? false),
+      isTrue,
+    );
     expect(api.arrivalPostBodies, isEmpty);
 
     // 移出后选中集已空（提交集=勾选集）：勾回「采购明细 A」才能提交。
@@ -783,7 +795,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final api = _FakeApi(failFirstArrival: true);
+    final api = _FakeApi(ambiguityAt: const {1, 4}, networkFailAt: const {2});
     final router = GoRouter(
       routes: [
         GoRoute(
@@ -898,39 +910,48 @@ void main() {
     expect(find.text('原料仓'), findsWidgets);
     expect(find.text('成品仓'), findsNothing);
 
-    // The selected source is kept with the same submission when a response is lost.
-    await tester.ensureVisible(
-      find.byKey(const Key('warehouse-arrival-source-order-item-1')),
-    );
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('warehouse-arrival-source-order-item-1')),
-        matching: find.text('自动识别'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('先补退货').last);
-    await tester.pumpAndSettle();
-
+    // 「到货来源」列已删(2026-10-10)：来源歧义(订单同时有正常待到货与已退未补)由服务端
+    // 409 弹「到货来源」二选一兜底。第一次提交被 409 拒 → 选「先补退货」→ 全部行 source
+    // 设为先补退货并自动重提(内容变了，幂等键换新)。
     // 登记页：数量已按批准剩余预填（5），仓库已按建议仓预填，直接登记并送检。
     await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     // 审核责任确认框 → 确认登记送检。
     expect(find.text('确认登记送检'), findsOneWidget);
     await tester.tap(find.text('确认登记送检'));
-    // 第一次模拟服务端已可能提交、但客户端丢失响应。页面必须留在原处并保留同一个 key。
     await tester.pump();
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(find.text('登记实际到货'), findsOneWidget);
-    expect(api.arrivalPostBodies, hasLength(1));
-    final firstKey = api.arrivalPostBodies.single['idempotencyKey'];
-    expect(firstKey, isA<String>());
     expect(
-      firstKey as String,
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-dialog')),
+      findsOneWidget,
+    );
+    expect(api.arrivalPostBodies, hasLength(1));
+    final automaticKey = api.arrivalPostBodies.single['idempotencyKey'];
+    expect(automaticKey, isA<String>());
+    expect(
+      automaticKey as String,
       matches(r'^warehouse-arrival-batch-[0-9a-f]{16}$'),
     );
+    await tester.tap(
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-replacement')),
+    );
+    // 自动重提这次模拟服务端已可能提交、但客户端丢失响应。页面必须留在原处并保留同一个 key。
+    await tester.pump();
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-dialog')),
+      findsNothing,
+    );
+    expect(find.text('登记实际到货'), findsOneWidget);
+    expect(api.arrivalPostBodies, hasLength(2));
+    // 来源进幂等键：换来源自动重提是另一次登记，不是同 key 重放。
+    final firstKey = api.arrivalPostBodies.last['idempotencyKey'];
+    expect(firstKey, isA<String>());
+    expect(firstKey, isNot(automaticKey));
 
     // 原页面原动作重试：服务端以 maker+key+hash 回放原结果，不再造第二张收货单。
     await tester.tap(find.text('先质检后入库'));
@@ -948,16 +969,20 @@ void main() {
     expect(api.lastPostPath, arrivalBatchPath);
     expect(api.lastPostBody?['receiverEmployeeId'], 'emp-me');
     expect(api.lastPostBody?['idempotencyKey'], firstKey);
-    expect(api.arrivalPostBodies, hasLength(2));
+    expect(api.arrivalPostBodies, hasLength(3));
+    // 丢响应的那次(先补退货)与原动作重试同 key；首次(自动来源)因内容不同是另一个 key。
     expect(
-      api.arrivalPostBodies.map((body) => body['idempotencyKey']).toSet(),
-      {firstKey},
+      api.arrivalPostBodies
+          .map((body) => body['idempotencyKey'])
+          .toSet(),
+      {automaticKey, firstKey},
     );
     final items = api.lastPostBody?['lines'] as List?;
     expect(items, hasLength(1));
     final item = items!.first as Map;
     expect(item['orderType'], 'SUBCONTRACT');
     expect(item['qty'], 5);
+    // 弹窗选定的「先补退货」随重试原样提交(source 已并入行，不再有列 UI)。
     expect(item['replacementIntent'], 'RETURN_REPLACEMENT');
     expect(item.containsKey('price'), isFalse);
     // ADR-135：实称重量可选，没称的行不带 weight / qtyFromWeight(称了才带，见
@@ -990,24 +1015,26 @@ void main() {
       find.byKey(const Key('warehouse-picker-entry-warehouse-2')),
     );
     await tester.pumpAndSettle();
-    final sourceField = find.byKey(
-      const Key('warehouse-arrival-source-order-item-1'),
-    );
-    await tester.ensureVisible(sourceField);
-    await tester.tap(
-      find.descendant(of: sourceField, matching: find.text('自动识别')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('先补退货').last);
-    await tester.pumpAndSettle();
+    // 新一次到货同样先撞来源歧义 409，弹窗选「先补退货」后自动重提成功。
     await tester.tap(find.text('先质检后入库'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确认登记送检'));
     await tester.pump();
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-replacement')),
+    );
+    await tester.pump();
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(api.arrivalPostBodies, hasLength(3));
+    expect(api.arrivalPostBodies, hasLength(5));
     expect(api.lastPostBody!['idempotencyKey'], isNot(firstKey));
     expect(
       Map<String, dynamic>.from(api.lastPostBody!)..remove('idempotencyKey'),
@@ -1247,7 +1274,8 @@ class _FakeApi extends ApiClient {
   _FakeApi({
     this.pendingDraftReceiptIds = const [],
     this.inspectionPendingReceipts = 0,
-    this.failFirstArrival = false,
+    this.ambiguityAt = const {},
+    this.networkFailAt = const {},
     this.prefills = const [],
   }) : super(Dio());
 
@@ -1260,8 +1288,12 @@ class _FakeApi extends ApiClient {
   /// 待品质场景：待品质放行的收货单张数（任务转 CLOSED 后仍留在列表）。
   final int inspectionPendingReceipts;
 
-  /// 模拟服务端可能已提交但客户端未收到响应；第二次用原 key 重试。
-  final bool failFirstArrival;
+  /// 第 N 次登记(1 起)以「到货来源歧义」409 拒绝：来源列删除(2026-10-10)后由弹窗
+  /// 二选一兜底的用例(ProcurementArrivalControlService 守卫原文)。
+  final Set<int> ambiguityAt;
+
+  /// 第 N 次登记(1 起)模拟服务端已提交但客户端丢响应(网络异常)。
+  final Set<int> networkFailAt;
 
   String? lastPostPath;
   Map<String, dynamic>? lastPostBody;
@@ -1315,7 +1347,11 @@ class _FakeApi extends ApiClient {
       lastPostPath = path;
       lastPostBody = Map<String, dynamic>.from(body! as Map);
       arrivalPostBodies.add(lastPostBody!);
-      if (failFirstArrival && arrivalPostBodies.length == 1) {
+      final count = arrivalPostBodies.length;
+      if (ambiguityAt.contains(count)) {
+        throw _ArrivalSourceAmbiguityError();
+      }
+      if (networkFailAt.contains(count)) {
         throw NetworkException('响应中断，请使用原请求重试');
       }
       return arrivalBatchAnswer(lastPostBody!);
@@ -1376,4 +1412,14 @@ class _FakeApi extends ApiClient {
       'items': [itemQty(5, awaitingQuality ? 5 : 0)],
     };
   }
+}
+
+/// 服务端「到货来源歧义」409(ProcurementArrivalControlService 数据库守卫原文)。
+class _ArrivalSourceAmbiguityError extends ApiException {
+  _ArrivalSourceAmbiguityError()
+    : super(
+        'CONFLICT',
+        '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源',
+        httpStatus: 409,
+      );
 }

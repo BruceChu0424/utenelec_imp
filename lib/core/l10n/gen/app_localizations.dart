@@ -5983,12 +5983,6 @@ abstract class AppLocalizations {
   /// **'先补退货'**
   String get warehouseArrivalSourceReplacement;
 
-  /// No description provided for @warehouseArrivalSourceHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'只有一种待收来源时，系统自动识别。同时有正常待到货和已退未补数量时，请按这批实物选择。选“先补退货”会先补回已退数量，超出的部分按正常到货处理；免费补回或重新计款由原退货处理结果决定。'**
-  String get warehouseArrivalSourceHint;
-
   /// No description provided for @materialIssuedPlanSyncPending.
   ///
   /// In zh, this message translates to:
@@ -6738,12 +6732,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'颜色'**
   String get warehouseSubcontractOutboundColor;
-
-  /// No description provided for @warehouseSubcontractOutboundUnit.
-  ///
-  /// In zh, this message translates to:
-  /// **'单位'**
-  String get warehouseSubcontractOutboundUnit;
 
   /// No description provided for @warehouseSubcontractOutboundStockAvailable.
   ///
@@ -16126,12 +16114,6 @@ abstract class AppLocalizations {
   /// **'请找仓库在「车间内料仓」里开通。'**
   String get wmBinNotOpenAskWarehouse;
 
-  /// No description provided for @wmBinDirectOnlyNotice.
-  ///
-  /// In zh, this message translates to:
-  /// **'这个内料仓只收车间直送, 还没开启整批领料: 下面是现在放在内料仓里的料, 由上层工单直接领用。'**
-  String get wmBinDirectOnlyNotice;
-
   /// No description provided for @wmBinPanelTitleOpen.
   ///
   /// In zh, this message translates to:
@@ -16377,12 +16359,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'登记实际入库'**
   String get handoffLotRegistrationTitle;
-
-  /// No description provided for @handoffLotRegistrationFooter.
-  ///
-  /// In zh, this message translates to:
-  /// **'一行一批实物(同一报工、同一次录入、送入仓库的需求份 / 计划公共 / 实际超产)：库位、实点、称重都是整批一个。入库仓库、库位号必填(仓库按货品归属仓或上次所选仓预填，库位按该仓记住的库位或货品资料带出，黄框请核对)；同一张报工的不同批可以登记到不同仓库。明细默认全选，提交只含勾选行。'**
-  String get handoffLotRegistrationFooter;
 
   /// No description provided for @handoffLotBatchesTitle.
   ///

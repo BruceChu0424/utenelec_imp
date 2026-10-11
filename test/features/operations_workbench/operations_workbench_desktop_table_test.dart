@@ -144,6 +144,34 @@ void main() {
     // 表头
     expect(find.text('计划号'), findsOneWidget);
     expect(find.text('货品名称'), findsOneWidget);
+    // 2026-10-10 列口径：「供给方式」「执行入口」列退役（执行入口与单据号/
+    // 状态两列同源同值；受限提示并入单据号列）。
+    final table = tester.widget<MasterDataTableView<OperationsWorkbenchTask>>(
+      find.descendant(
+        of: find.byKey(const Key('operations-workbench-desktop-table')),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<OperationsWorkbenchTask>,
+        ),
+      ),
+    );
+    final columnKeys = table.columns.map((column) => column.key).toSet();
+    expect(columnKeys.contains('supplyRoute'), isFalse);
+    expect(columnKeys.contains('action'), isFalse);
+    final first = table.items.first;
+    expect(
+      table.columns.singleWhere((column) => column.key == 'actionDocNo').value(
+            first,
+          ),
+      'PR-request-1',
+    );
+    // 仓库列（2026-10-10）：测试环境没有主档字典（api 未注入、预热静默失败），
+    // 回退服务端下发的叶仓名；单据号列承接受限提示的行为见 page_test。
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'warehouseName')
+          .value(first),
+      '原材料仓',
+    );
     // 表体行
     expect(find.text('桌面行一'), findsOneWidget);
     expect(find.text('桌面行二'), findsOneWidget);

@@ -10,6 +10,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_application_kit.dart';
 import '../repositories/subcontract_kit_repository.dart';
@@ -299,12 +300,8 @@ class _KitSection extends StatelessWidget {
         width: 90,
         value: (row) => _label(row.colorName),
       ),
-      MasterColumnDef(
-        key: 'unitName',
-        label: '单位',
-        width: 70,
-        value: (row) => _label(row.unitName),
-      ),
+      // 2026-10-10 数量+单位口径：单位内联在数量后(如 `12 PCS`)，独立单位列删除；
+      // 每套用量等 BOM 值可能有 4 位小数，沿用 4 位去尾零。
       _qtyColumn('bomUnitQty', '每套用量', (row) => row.bomUnitQty),
       _qtyColumn('neededQty', '需要', (row) => row.neededQty),
       _qtyColumn('exactQty', '专属库存', (row) => row.exactQty),
@@ -326,7 +323,7 @@ class _KitSection extends StatelessWidget {
     label: label,
     width: 96,
     type: 'number',
-    value: (row) => subcontractDrawQty(qty(row)),
+    value: (row) => formatQtyWithUnit(qty(row), row.unitName, maxDecimals: 4),
   );
 
   static String _label(String? value) =>

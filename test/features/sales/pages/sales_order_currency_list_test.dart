@@ -92,9 +92,10 @@ void main() {
     expect(columns['currency']?.label, '币种');
     expect(valueOf('currency'), '美元');
     expect(columns['total']?.label, '订单金额');
-    expect(valueOf('total'), '100.00');
+    // 订单金额=原币合计，金额后带行币种（2026-10-10 口径）。
+    expect(valueOf('total'), '100.00 美元');
     expect(columns['total']?.sortable, isFalse);
-    expect(valueOf('total'), isNot('720.00'));
+    expect(valueOf('total'), isNot('720.00 元'));
   });
 
   testWidgets('shipment list exposes finance audit before warehouse status', (

@@ -242,9 +242,9 @@ void main() {
         final first = row('第一条已下达物料');
         // 2026-09-15 已下达段对齐「下达车间」：缺口列退役，行的数量事实只剩
         // 需求量(10)与下达数量(4，无行动快照=分摊合计兜底)。
-        final demand = find.descendant(of: first, matching: find.text('10'));
+        final demand = find.descendant(of: first, matching: find.text('10 个'));
         // 2026-09-22 起桶表只读：已下的量在「下达数量」列里(4)，追加量进页填。
-        final issued = find.descendant(of: first, matching: find.text('4'));
+        final issued = find.descendant(of: first, matching: find.text('4 个'));
         final demandBefore = tester.widget<Text>(demand).style?.color;
         final issuedBefore = tester.widget<Text>(issued).style?.color;
 
@@ -313,7 +313,7 @@ void main() {
         // 不再在这段回看——被需求冲抵的 6 同样不该出现。
         expect(find.byKey(const Key('bucket-shortage-qty-cell')), findsNothing);
         expect(find.text('待到齐物料'), findsOneWidget);
-        expect(find.text('4'), findsOneWidget);
+        expect(find.text('4 个'), findsOneWidget);
         expect(find.text('6'), findsNothing);
         expect(tester.takeException(), isNull);
       },
@@ -335,7 +335,7 @@ void main() {
       // 已下达段不再回看下单前的库存账：缺口列整个不出现，真实下达量 15 直接
       // 显示在「下达数量」；被公共超量订单冲抵后的 6/已备 3 都不该露头。
       expect(find.byKey(const Key('bucket-shortage-qty-cell')), findsNothing);
-      expect(find.text('15'), findsOneWidget);
+      expect(find.text('15 个'), findsOneWidget);
       expect(find.text('7'), findsNothing);
       expect(find.text('3'), findsNothing);
       expect(tester.takeException(), isNull);

@@ -474,7 +474,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
           ),
         ),
         Text(
-          '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+          '${claim.totalAmount.toStringAsFixed(2)} 元',
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             fontWeight: FontWeight.w700,
             color: Theme.of(context).colorScheme.primary,
@@ -577,7 +577,7 @@ class _HeroCard extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+                  '${claim.totalAmount.toStringAsFixed(2)} 元',
                   style: theme.textTheme.displaySmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: theme.colorScheme.primary,

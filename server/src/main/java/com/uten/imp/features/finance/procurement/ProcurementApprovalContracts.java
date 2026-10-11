@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -56,10 +57,24 @@ public final class ProcurementApprovalContracts {
     /**
      * 批量通过请求。remark 为单笔详情页提供的选填审批备注（≤500 字），
      * 写入审批事件快照留痕；列表批量操作可省略。
+     *
+     * <p>V835（2026-10-10 用户口径）：采购/委外创建时不填汇率（订单表头默认 1），
+     * 财务审批时填写当日汇率。exchangeRate 为选填的整批共用财务汇率
+     * （&gt;0、≤6 位小数）；缺省视为 1。审批时填写的汇率落 case 新列
+     * {@code finance_exchange_rate}，不回写订单表头（V438 商业冻结）。
      */
     public record BatchApprovalRequest(
             @NotEmpty @Size(max = 100) List<@Valid BatchDecisionItem> items,
-            @Size(max = 500) String remark) {
+            @Size(max = 500) String remark,
+            @DecimalMin(value = "0", inclusive = false)
+            @Digits(integer = 12, fraction = 6)
+            BigDecimal exchangeRate) {
+
+        /** 兼容旧调用（无财务汇率）：视为缺省。 */
+        public BatchApprovalRequest(
+                List<@Valid BatchDecisionItem> items, String remark) {
+            this(items, remark, null);
+        }
     }
 
     public record BatchRejectionRequest(
@@ -80,9 +95,9 @@ public final class ProcurementApprovalContracts {
             String orderType,
             UUID orderId,
             String billNo,
-            /** 折合本币(提交快照 amount_snapshot)。 */
+            /** 折合本币: V835 起 COALESCE(finance_total_local, amount_snapshot)——财务已定值优先, 未定回落提交快照。 */
             BigDecimal amount,
-            /** ADR-128: 订货币种原币金额与币种名, 列表按「币种 金额」显示。 */
+            /** ADR-128: 订货货币原币金额与币种名, 列表按「金额 币种」显示。 */
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal totalOriginal,
             String currencyName,
             String supplierName,
@@ -94,6 +109,17 @@ public final class ProcurementApprovalContracts {
             String submittedByName,
             OffsetDateTime submittedAt,
             long changeCount,
+            /** 提交快照里的订单表头汇率——待审 case 批量通过缺省汇率时即按它折算(已批→快照→1 缺省链)。 */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal exchangeRate,
+            /** 明细行数(jsonb_array_length), 旧快照无 items 时为 0。 */
+            int lineCount,
+            /** 货品摘要: 首个货品名, 多货品时「名称 等 N 种」; 旧快照缺失时 null。 */
+            String goodsSummary,
+            /** 允许超收/允许损耗% 摘要(采购取超收、委外取损耗): 全部行未填时 null。
+             *  2026-10-10 口径修复：与审核详情同源读 COALESCE(display_snapshot,
+             *  submission_snapshot)——委外 allowedLossPct 只在展示快照里。 */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMin,
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMax,
             List<String> allowedActions) {
     }
 
@@ -133,6 +159,13 @@ public final class ProcurementApprovalContracts {
             String warehouseName,
             String currencyName,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal exchangeRate,
+            /**
+             * V835 财务审批汇率 = case.finance_exchange_rate（审批通过时财务填写的
+             * 当日汇率）。与 {@link #exchangeRate}（提交快照里的订单表头汇率，创建时
+             * 默认 1）分离。约定：本字段仅在审批通过后回填财务值；未批/驳回返回
+             * null，前端拿到 null 用快照 exchangeRate 兜底展示。
+             */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal financeExchangeRate,
             String settlementMethodName,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal taxRate,
             String purchaserName,

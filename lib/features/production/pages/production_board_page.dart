@@ -59,6 +59,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_pending_provider.dart';
@@ -584,8 +585,10 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
   /// 表头值筛选 facets（status 两桶 + 计数）。
   SchedulePendingFacets? _facets;
 
-  /// 表头排序：列 key（deliverDate/qty/needQty/orderBillNo），null=后端默认（交货升序）。
-  String? _sortKey = 'deliverDate';
+  /// 表头排序：列 key（deliverDate/qty/needQty/orderBillNo），null=后端默认
+  /// （2026-10-10 用户口径：同一张销售单的多行相邻，不同销售单之间早下单的在前
+  /// ——bill_date 定组序、bill_no 聚合同单，点「交货日期」列可切回交货升序）。
+  String? _sortKey;
   bool _sortAsc = true;
 
   List<SchedulePendingRow> get _rows => _page?.items ?? const [];
@@ -1049,35 +1052,37 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       value: (r) => UtenGoodsAttributeCell.text(r.colorName),
       cellBuilder: (_, r) => UtenGoodsAttributeCell(r.colorName),
     ),
-    MasterColumnDef(
-      key: 'unit',
-      label: '单位',
-      width: 90,
-      value: (r) => r.unitName ?? '未维护',
-    ),
+    // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位内联在
+    // 订货量/缺口/已排/已分析的数量后（如 `100 米`），排序由 MasterDataTableView
+    // 数值容错解析剥掉单位后缀兜底。
     MasterColumnDef(
       key: 'qty',
       label: '订货量',
-      width: 100,
+      width: 136,
       type: 'number',
       sortable: true,
-      value: (r) => r.qty?.toStringAsFixed(2) ?? '—',
+      value: (r) =>
+          r.qty == null ? '—' : formatQtyWithUnit(r.qty, r.unitName),
     ),
     MasterColumnDef(
       key: 'needQty',
       label: '缺口',
-      width: 100,
+      width: 136,
       type: 'number',
       sortable: true,
       info: '尚未被任何物料分析承接的量 = 剩余未排量 − 已分析。全部被承接的行不在本段，改看「进行中」。',
-      value: (r) => r.needQty?.toStringAsFixed(2) ?? '—',
+      value: (r) => r.needQty == null
+          ? '—'
+          : formatQtyWithUnit(r.needQty, r.unitName),
     ),
     MasterColumnDef(
       key: 'plannedQty',
       label: '已排',
-      width: 90,
+      width: 126,
       type: 'number',
-      value: (r) => r.plannedQty?.toStringAsFixed(2) ?? '—',
+      value: (r) => r.plannedQty == null
+          ? '—'
+          : formatQtyWithUnit(r.plannedQty, r.unitName),
     ),
     // 2026-09-15(ADR-088)「可生产量 / 预计可生产」两列迁出本段：齐套是分析批次
     // 的事实，本段的行只代表「还没被任何分析承接的残量」，在这里显示齐套率说的
@@ -1085,11 +1090,11 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
     MasterColumnDef(
       key: 'analysisCoveredQty',
       label: '已分析',
-      width: 110,
+      width: 140,
       type: 'number',
       info: '本行已被活动物料分析承接的量；这部分在「进行中」按分析批次跟踪，双击本行可直达那张分析。',
       value: (r) => (r.analysisCoveredQty ?? 0) > 0
-          ? _qtyText(r.analysisCoveredQty)
+          ? formatQtyWithUnit(r.analysisCoveredQty, r.unitName)
           : '—',
     ),
     MasterColumnDef(

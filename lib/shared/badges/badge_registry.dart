@@ -204,6 +204,8 @@ abstract final class BadgeFact {
   static const workshopTotal = 'workshopTask.count';
   static const workshopPreparing = 'workshopTask.preparing';
   static const workshopInProgress = 'workshopTask.inProgress';
+  /// 报工送检(2026-10-10)：已报完未完工的执行段；hub 卡黄数 = inProgress + 本项。
+  static const workshopReportInspection = 'workshopTask.reportInspection';
 
   static const rdOpen = 'rdTask.open';
   static const rdInProgress = 'rdTask.inProgress';

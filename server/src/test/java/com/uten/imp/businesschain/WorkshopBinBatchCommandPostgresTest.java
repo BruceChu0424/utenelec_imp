@@ -214,6 +214,53 @@ class WorkshopBinBatchCommandPostgresTest {
         assertThat(bins()).isEmpty();
     }
 
+    /**
+     * V837(ADR-173) 直送审核按需开通: 未开通车间 ensure 建出内料仓并写开通行
+     * (auto_created=TRUE、发料来源仓空=按货品所属仓库发), 挂靠收料需求所在仓的主仓;
+     * 再 ensure 复用同一行不开第二个。名字被占时明确拒绝(找仓库处理, 不挂错位置)。
+     */
+    @Test
+    void onDemandOpeningForDirectTransferCreatesRevivesAndRefusesCleanly() {
+        var bins = beans.getBean(com.uten.imp.features.warehouse.materialbin.WorkshopBinService.class);
+        var transactions = beans.getBean(org.springframework.transaction.PlatformTransactionManager.class);
+        var tx = new org.springframework.transaction.support.TransactionTemplate(transactions);
+
+        UUID bin = tx.execute(status -> bins.ensureOpenedBinOf(first, otherSource, setupUser));
+        assertThat(bins.openedBinOf(first)).contains(bin);
+        assertThat(db.queryForList("SELECT bin_warehouse_id, source_warehouse_id FROM workshop_bins "
+                + "WHERE workshop_department_id = ?", first)).singleElement().satisfies(row -> {
+            assertThat(row.get("bin_warehouse_id")).isEqualTo(bin);
+            assertThat(row.get("source_warehouse_id")).isNull();
+        });
+        assertThat(db.queryForMap("SELECT auto_created, is_line_side, is_deleted, parent_id FROM warehouses WHERE id = ?",
+                bin)).satisfies(row -> {
+            assertThat(row.get("auto_created")).isEqualTo(Boolean.TRUE);
+            assertThat(row.get("is_line_side")).isEqualTo(Boolean.TRUE);
+            assertThat(row.get("is_deleted")).isEqualTo(Boolean.FALSE);
+            // 挂靠收料需求所在仓的主仓(这里 otherSource 是顶层仓, 主仓即它自己), 不走全局唯一主仓。
+            assertThat(row.get("parent_id")).isEqualTo(db.queryForObject(
+                    "SELECT fn_warehouse_main_id(?)", UUID.class, otherSource));
+        });
+        // 幂等: 已开通后 ensure 原样复用, 不再建第二行。
+        UUID reused = tx.execute(status -> bins.ensureOpenedBinOf(first, null, setupUser));
+        assertThat(reused).isEqualTo(bin);
+        int openings = db.queryForObject("SELECT count(*) FROM workshop_bins WHERE workshop_department_id = ?",
+                Integer.class, first);
+        assertThat(openings).isEqualTo(1);
+
+        // 名字被别的仓占用: 拒绝并点名, 让审核人找仓库处理。
+        String name = db.queryForObject("SELECT name FROM departments WHERE id = ?", String.class, second) + "内料仓";
+        db.update("INSERT INTO warehouses(id, code, name, status, is_accountable) VALUES (?, ?, ?, '使用', TRUE)",
+                UUID.randomUUID(), "WMO-" + tag, name);
+        assertThatThrownBy(() -> tx.execute(status ->
+                bins.ensureOpenedBinOf(second, otherSource, setupUser)))
+                .isInstanceOfSatisfying(ApiException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT);
+                    assertThat(error.getMessage()).contains("占用了本车间内料仓的名字");
+                });
+        assertThat(bins.openedBinOf(second)).isEmpty();
+    }
+
     // ------------------------------------------------------------------ helpers
 
     private UUID workshop(UUID production, String suffix) {

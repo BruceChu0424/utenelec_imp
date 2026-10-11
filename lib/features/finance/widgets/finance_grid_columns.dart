@@ -341,7 +341,6 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         valueListenable: row.exchangeRate,
         builder: (_, value, _) => Text(
           value.text.trim().isEmpty ? '待填写' : value.text.trim(),
-          textAlign: TextAlign.right,
           style: TextStyle(
             color: value.text.trim().isEmpty
                 ? Theme.of(context).colorScheme.error
@@ -376,7 +375,6 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         },
         child: TextField(
           controller: row.amount,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
             InputDecoration(isDense: true, hintText: '0'),
@@ -496,7 +494,6 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
         isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
         child: TextField(
           controller: row.amount,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
@@ -619,7 +616,6 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       numeric: true,
       cellBuilder: (context, row) => TextField(
         controller: row.qty,
-        textAlign: TextAlign.right,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: const InputDecoration(isDense: true, hintText: '0'),
       ),
@@ -631,7 +627,6 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       numeric: true,
       cellBuilder: (context, row) => TextField(
         controller: row.price,
-        textAlign: TextAlign.right,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: const InputDecoration(isDense: true, hintText: '0'),
       ),
@@ -647,7 +642,6 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
         isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
         child: TextField(
           controller: row.amount,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
@@ -741,7 +735,6 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
         isEmpty: () => (double.tryParse(row.amount.text.trim()) ?? 0) <= 0,
         child: TextField(
           controller: row.amount,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),

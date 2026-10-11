@@ -18,9 +18,10 @@ import java.util.UUID;
 /**
  * 车间内料仓开通记录(ADR-147, V802 {@code workshop_bins})的唯一读写点。
  *
- * <p>内料仓这个仓库行只能由这里建出(开通命令), 一个车间一个, 挂在唯一主仓下; 数据库延迟约束保证
- * 每个未删除的内料仓恰有一条开通行。车间直送只经 {@link LineSideWarehousePort#openedBinOf} 只读取用,
- * 不再第一次直送时自动建仓。撤销开通只用来撤销设错的开通: 内料仓从来没有进出、余额、直送和单据
+ * <p>内料仓这个仓库行只能由这里建出(开通命令或 V837/ADR-173 直送审核按需开通), 一个车间一个,
+ * 挂在唯一主仓下; 数据库延迟约束保证每个未删除的内料仓恰有一条开通行。车间直送经
+ * {@link LineSideWarehousePort#openedBinOf} 读取已开通的内料仓, 没开通时审核直送走
+ * {@link LineSideWarehousePort#ensureOpenedBinOf} 按需建出(同一把车间建议锁)。撤销开通只用来撤销设错的开通: 内料仓从来没有进出、余额、直送和单据
  * 引用时才允许, 软删仓库行(同一事务先删开通行)。
  *
  * <p>所有写方法运行在调用方(批量开通/撤销命令)的事务里, 调用方已按车间 UUID 排序取得建议锁。
@@ -115,6 +116,63 @@ public class WorkshopBinService implements LineSideWarehousePort {
         if (root == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "仓库资料里没有唯一的主仓, 请先选发料来源仓再开通内料仓");
         }
+        UUID bin = insertOrReviveBin(workshopDepartmentId, (String) workshop.get("code"), name, root, actor, false);
+        db.update("""
+                INSERT INTO workshop_bins(workshop_department_id, bin_warehouse_id, source_warehouse_id,
+                                          opened_by, updated_by)
+                VALUES (:workshop, :bin, CAST(:source AS uuid), :actor, :actor)
+                """, new MapSqlParameterSource("workshop", workshopDepartmentId).addValue("bin", bin)
+                .addValue("source", sourceWarehouseId == null ? null : sourceWarehouseId.toString())
+                .addValue("actor", actor));
+        return bin;
+    }
+
+    /**
+     * 直送审核按需开通(V837/ADR-173, {@link LineSideWarehousePort#ensureOpenedBinOf}): 已开通直接复用;
+     * 没开通就建内料仓并写开通行, 发料来源仓置空(=按货品所属仓库发), auto_created 标记系统建仓。
+     * 与批量开通命令同一把车间建议锁, 锁内复查防并发审核重复建仓。挂靠主仓优先取收料需求所在
+     * 主仓(行级守卫 fn_guard_workshop_direct_transfer_item 要求内料仓与收料需求同主仓),
+     * 判断不了回落唯一主仓。名字被占/判断不出主仓属于仓库资料问题, 明确报给审核人去找仓库处理,
+     * 不静默挂错位置。
+     */
+    @Override
+    @Transactional(propagation = Propagation.SUPPORTS)
+    public UUID ensureOpenedBinOf(UUID workshopDepartmentId, UUID sameMainWarehouseId, UUID actor) {
+        Optional<UUID> existing = openedBinOf(workshopDepartmentId);
+        if (existing.isPresent()) return existing.get();
+        db.queryForObject("SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended(:key, 800))) locked",
+                Map.of("key", "WORKSHOP-BIN:" + workshopDepartmentId), Long.class);
+        existing = openedBinOf(workshopDepartmentId);
+        if (existing.isPresent()) return existing.get();
+        String conflict = nameConflict(workshopDepartmentId);
+        if (conflict != null) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "「" + conflict + "」占用了本车间内料仓的名字, 请仓库在「车间内料仓」里处理后再直送");
+        }
+        Map<String, Object> workshop = db.queryForMap("""
+                SELECT code, name FROM departments WHERE id = :workshop
+                """, Map.of("workshop", workshopDepartmentId));
+        String name = workshop.get("name") + BIN_SUFFIX;
+        UUID root = db.queryForObject("""
+                SELECT COALESCE(fn_warehouse_main_id(CAST(:hint AS uuid)), fn_warehouse_root_id())
+                """, new MapSqlParameterSource("hint",
+                        sameMainWarehouseId == null ? null : sameMainWarehouseId.toString()), UUID.class);
+        if (root == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "仓库资料里没有唯一的主仓, 请仓库在「车间内料仓」开通后再直送");
+        }
+        UUID bin = insertOrReviveBin(workshopDepartmentId, (String) workshop.get("code"), name, root, actor, true);
+        db.update("""
+                INSERT INTO workshop_bins(workshop_department_id, bin_warehouse_id, source_warehouse_id,
+                                          opened_by, updated_by)
+                VALUES (:workshop, :bin, NULL, :actor, :actor)
+                """, new MapSqlParameterSource("workshop", workshopDepartmentId)
+                .addValue("bin", bin).addValue("actor", actor));
+        return bin;
+    }
+
+    /** 建出(或复用本车间撤销时软删的)内料仓仓库行; 开通行由调用方写。 */
+    private UUID insertOrReviveBin(UUID workshopDepartmentId, String workshopCode, String name, UUID root,
+            UUID actor, boolean autoCreated) {
         // 撤销开通时软删的内料仓(从未用过)原样复用: 编号终身占用, 复用原行即保留原编号。
         List<UUID> revived = db.queryForList("""
                 UPDATE warehouses SET is_deleted = FALSE, deleted_at = NULL, status = '使用', name = :name,
@@ -127,19 +185,12 @@ public class WorkshopBinService implements LineSideWarehousePort {
                 RETURNING id
                 """, new MapSqlParameterSource("workshop", workshopDepartmentId).addValue("name", name)
                 .addValue("root", root).addValue("remark", REMARK).addValue("actor", actor), UUID.class);
-        UUID bin = revived.isEmpty() ? insertBin(workshopDepartmentId, (String) workshop.get("code"), name, root, actor)
+        return revived.isEmpty() ? insertBin(workshopDepartmentId, workshopCode, name, root, actor, autoCreated)
                 : revived.getFirst();
-        db.update("""
-                INSERT INTO workshop_bins(workshop_department_id, bin_warehouse_id, source_warehouse_id,
-                                          opened_by, updated_by)
-                VALUES (:workshop, :bin, CAST(:source AS uuid), :actor, :actor)
-                """, new MapSqlParameterSource("workshop", workshopDepartmentId).addValue("bin", bin)
-                .addValue("source", sourceWarehouseId == null ? null : sourceWarehouseId.toString())
-                .addValue("actor", actor));
-        return bin;
     }
 
-    private UUID insertBin(UUID workshopDepartmentId, String workshopCode, String name, UUID root, UUID actor) {
+    private UUID insertBin(UUID workshopDepartmentId, String workshopCode, String name, UUID root, UUID actor,
+            boolean autoCreated) {
         String base = CODE_PREFIX + (workshopCode == null || workshopCode.isBlank()
                 ? workshopDepartmentId.toString().substring(0, 8) : workshopCode.strip());
         String code = base;
@@ -147,10 +198,11 @@ public class WorkshopBinService implements LineSideWarehousePort {
         return db.queryForObject("""
                 INSERT INTO warehouses(code, name, remark, is_accountable, is_defective, is_line_side,
                                        workshop_department_id, parent_id, status, auto_created, created_by, updated_by)
-                VALUES (:code, :name, :remark, TRUE, FALSE, TRUE, :workshop, :root, '使用', FALSE, :actor, :actor)
+                VALUES (:code, :name, :remark, TRUE, FALSE, TRUE, :workshop, :root, '使用', :auto, :actor, :actor)
                 RETURNING id
                 """, new MapSqlParameterSource("code", code).addValue("name", name).addValue("remark", REMARK)
-                .addValue("workshop", workshopDepartmentId).addValue("root", root).addValue("actor", actor), UUID.class);
+                .addValue("workshop", workshopDepartmentId).addValue("root", root)
+                .addValue("auto", autoCreated).addValue("actor", actor), UUID.class);
     }
 
     /** 编号终身占用(V276): 现有仓库行或历史占号里有过这个编号都不能再用。 */

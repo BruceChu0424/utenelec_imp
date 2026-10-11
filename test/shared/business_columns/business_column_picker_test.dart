@@ -210,13 +210,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      // 2026-10-10「数量 + 单位」内联口径：销售明细独立「单位」列撤销（单位进数量格后缀）。
       expect(columns.where((c) => c.defaultVisible).map((c) => c.key), [
         'goods',
         'nameEn',
         'goodsCode',
         'color',
         'qty',
-        'unit',
         'price',
         'discount',
         'amount',

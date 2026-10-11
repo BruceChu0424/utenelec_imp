@@ -116,6 +116,68 @@ void main() {
     },
   );
 
+  test(
+    'token refresh carrying an unchanged profile keeps the same state instance',
+    () async {
+      final fixture = await _Fixture.create();
+      final before = fixture.container.read(sessionProvider);
+      var notifications = 0;
+      final subscription = fixture.container.listen(
+        sessionProvider,
+        (_, _) => notifications++,
+      );
+      final auth = await fixture.storage.getAuthTokenSnapshot();
+      // 与 /auth/me 恢复时完全相同的档案：静默刷新最常见的一类回包。
+      SessionEventBus.instance.publishProfile({
+        'id': 'admin',
+        'loginAccount': 'admin',
+        'name': 'admin',
+        'employeeId': 'employee-admin',
+        'permissions': <String>[],
+        'superAdmin': true,
+        '_utenAuthTokenGeneration': auth.generation,
+        '_utenAuthIntentGeneration': auth.intentGeneration,
+        '_utenAuthSessionLineage': auth.sessionLineage,
+      });
+      await pumpEventQueue();
+      expect(identical(fixture.container.read(sessionProvider), before), isTrue);
+      expect(notifications, 0);
+      subscription.close();
+    },
+  );
+
+  test(
+    'profile refresh that changes permissions emits a new state but keeps identity',
+    () async {
+      final fixture = await _Fixture.create();
+      final before = fixture.container.read(sessionProvider);
+      var notifications = 0;
+      final subscription = fixture.container.listen(
+        sessionProvider,
+        (_, _) => notifications++,
+      );
+      final auth = await fixture.storage.getAuthTokenSnapshot();
+      SessionEventBus.instance.publishProfile({
+        'id': 'admin',
+        'loginAccount': 'admin',
+        'name': 'admin',
+        'employeeId': 'employee-admin',
+        'permissions': <String>['finance:extra'],
+        'superAdmin': true,
+        '_utenAuthTokenGeneration': auth.generation,
+        '_utenAuthIntentGeneration': auth.intentGeneration,
+        '_utenAuthSessionLineage': auth.sessionLineage,
+      });
+      await pumpEventQueue();
+      final after = fixture.container.read(sessionProvider);
+      expect(identical(after, before), isFalse);
+      expect(notifications, 1);
+      expect(after.isSameIdentity(before), isTrue);
+      expect(after.user?.permissions, contains('finance:extra'));
+      subscription.close();
+    },
+  );
+
   test('late switch A cannot overwrite a completed switch B', () async {
     final fixture = await _Fixture.create();
     final delayed = fixture.repository.delay('A');

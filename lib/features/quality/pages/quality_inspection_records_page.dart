@@ -20,6 +20,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/quality_inspection_record.dart';
@@ -636,16 +637,24 @@ class _QualityInspectionRecordsPageState
     MasterColumnDef(
       key: 'passQty',
       label: '本次合格',
-      width: 110,
+      width: 140,
       type: 'number',
-      value: (record) => _qty(record.passQty),
+      value: (record) => formatQtyWithUnit(
+        record.passQty,
+        record.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'failQty',
       label: '本次不合格',
-      width: 120,
+      width: 150,
       type: 'number',
-      value: (record) => _qty(record.failQty),
+      value: (record) => formatQtyWithUnit(
+        record.failQty,
+        record.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'disposition',
@@ -891,6 +900,8 @@ class _QualityInspectionRecordDetailPanelState
   /// + 剩余待检），纵向求和等于把同一批货重复计数，故不做列合计。
   Widget _buildQuantityTable(QualityInspectionRecord record) {
     final unit = _text(record.unitName);
+    // 内联口径用原始单位（空则只显示数字），不要 _text 的「—」占位。
+    final inlineUnit = record.unitName?.trim() ?? '';
     final decidedQty = _qty(record.passQty + record.failQty);
     return MasterDataTableView<_DetailQuantityRow>(
       tableKey:
@@ -905,27 +916,23 @@ class _QualityInspectionRecordDetailPanelState
           width: 110,
           value: (row) => row.item,
         ),
+        // 「数量+单位」内联口径（2026-10-10）：单位直接跟在数字后，独立「单位」列撤掉。
         MasterColumnDef(
           key: 'current',
           label: '本次决定',
-          width: 110,
+          width: 145,
           type: 'number',
-          value: (row) => row.current == null ? '—' : _qty(row.current!),
+          value: (row) =>
+              row.current == null ? '—' : formatQtyWithUnit(row.current, inlineUnit, maxDecimals: 4),
           exactValueOf: (row) => row.current?.toString(),
         ),
         MasterColumnDef(
           key: 'cumulative',
           label: '当前累计',
-          width: 110,
+          width: 145,
           type: 'number',
-          value: (row) => _qty(row.cumulative),
+          value: (row) => formatQtyWithUnit(row.cumulative, inlineUnit, maxDecimals: 4),
           exactValueOf: (row) => row.cumulative.toString(),
-        ),
-        MasterColumnDef(
-          key: 'unit',
-          label: '单位',
-          width: 80,
-          value: (row) => row.unit,
         ),
       ],
       items: [
@@ -933,26 +940,22 @@ class _QualityInspectionRecordDetailPanelState
           item: '合格',
           current: record.passQty,
           cumulative: record.currentPassedQty,
-          unit: unit,
         ),
         _DetailQuantityRow(
           item: '不合格',
           current: record.failQty,
           cumulative: record.currentFailedQty,
-          unit: unit,
         ),
         // 送检量与剩余待检是批量级事实，不随单笔决定变化，故本次列留空占位。
         _DetailQuantityRow(
           item: '送检',
           current: null,
           cumulative: record.inspectedQty,
-          unit: unit,
         ),
         _DetailQuantityRow(
           item: '剩余待检',
           current: null,
           cumulative: record.currentRemainingQty,
-          unit: unit,
         ),
       ],
       facets: const {},
@@ -1058,13 +1061,11 @@ class _DetailQuantityRow {
     required this.item,
     required this.current,
     required this.cumulative,
-    required this.unit,
   });
 
   final String item;
   final double? current;
   final double cumulative;
-  final String unit;
 }
 
 class _InlineRecordError extends StatelessWidget {

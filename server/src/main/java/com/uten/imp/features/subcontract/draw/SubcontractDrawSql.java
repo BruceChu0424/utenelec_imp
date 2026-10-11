@@ -46,14 +46,18 @@ public final class SubcontractDrawSql {
                  + fn_subcontract_settled_loss_qty(oi.id) < oi.qty
             """;
 
-    /** 行身份与显示列(与 {@link #ITEM_FROM} 搭配)。 */
+    /**
+     * 行身份与显示列(与 {@link #ITEM_FROM} 搭配)。末尾 plan_no = 来源计划, 口径与 V836 视图订货段一致:
+     * source_doc_no(V719 起存 WL 分析编号) 为空时回落订货单号, 供任务中心「待处理」拍平表显示。
+     */
     static final String ROW_COLUMNS = """
             oi.id AS order_item_id, o.id AS order_id, o.bill_no AS order_bill_no, oi.line_no,
             o.supplier_id, supplier.name AS supplier_name,
             oi.goods_id, COALESCE(oi.goods_code_snapshot, goods.code) AS goods_code,
             COALESCE(oi.goods_name_snapshot, goods.name) AS goods_name,
             oi.color_id, color.name AS color_name, oi.unit_id, unit.name AS unit_name,
-            COALESCE(oi.deliver_date, o.deliver_date) AS deliver_date, o.maker_id
+            COALESCE(oi.deliver_date, o.deliver_date) AS deliver_date, o.maker_id,
+            COALESCE(NULLIF(oi.source_doc_no, ''), o.bill_no) AS plan_no
             """;
 
     /** 本订货明细是否挂着仓库还没发出的领料草稿行。 */

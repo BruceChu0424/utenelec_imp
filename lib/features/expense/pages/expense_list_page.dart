@@ -13,6 +13,7 @@
 
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import 'package:flutter/material.dart';
@@ -457,9 +458,11 @@ final List<MasterColumnDef<ExpenseClaim>> _columns = [
   MasterColumnDef(
     key: 'totalAmount',
     label: '金额',
-    width: 110,
+    width: 140,
     type: 'money',
-    value: (claim) => claim.totalAmount.toStringAsFixed(2),
+    // 报销恒人民币（2026-10-10 金额带单位口径：数值后自动带「元」）。
+    value: (claim) =>
+        financeLocalMoneyWithUnitSuffix(claim.totalAmount.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'submittedAt',

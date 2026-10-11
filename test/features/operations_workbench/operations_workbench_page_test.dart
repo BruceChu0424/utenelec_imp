@@ -538,8 +538,9 @@ void main() {
       await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
 
-      // 2026-10-09 卡片形态退役后与桌面同款：单据号列脱敏「—」，执行入口列
-      // 显示「无权查看关联单据」占位；断言不泄漏真实单据号即可。
+      // 2026-10-10：原「执行入口」列退役，受限提示并入「单据号」列——
+      // 此时本列不显示单号（单号属单据元数据不能泄漏），只显示占位；
+      // 断言不泄漏真实单据号即可。
       expect(find.text('无权查看关联单据'), findsOneWidget);
       expect(
         find.byKey(const Key('operations-workbench-purchase-batch')),

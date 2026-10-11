@@ -87,10 +87,12 @@ public class ProductionWorkshopTaskController {
         ProductionExecutionWorkbenchService.WorkshopTaskCountBreakdown breakdown =
                 service.workshopTaskCountBreakdown();
         // count 保持旧字段（总徽章消费者不变），同时给出与顶部分类一致的互斥分段计数
-        //（等待物料 + 生产中 = 总数；「可报工」分段 2026-09-06 退役，2026-09-10 删字段）。
+        //（等待物料 + 生产中 + 报工送检 = 总数；报工送检 = 已报完未完工，2026-10-10 加；
+        // 「可报工」分段 2026-09-06 退役，2026-09-10 删字段）。
         return Map.of(
                 "count", breakdown.total(),
                 "preparing", breakdown.preparing(),
-                "inProgress", breakdown.inProgress());
+                "inProgress", breakdown.inProgress(),
+                "reportInspection", breakdown.reportInspection());
     }
 }

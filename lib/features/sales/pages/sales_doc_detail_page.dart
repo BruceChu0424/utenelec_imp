@@ -60,6 +60,8 @@ import '../../../core/utils/currency_display.dart';
 import '../../../shared/ai/ai_tone.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/widgets/source_doc_link.dart';
@@ -2103,6 +2105,22 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     // 出货单/报价后端同样下发 priceMasked(无价格查看权时商业字段置 null)。
     final masked =
         _detail!.priceMasked && (pricedLikeOrder || _cfg.type.isShipment);
+    // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位内联在
+    // 数量后（如 `12 箱`）。单位名取 unitEntries 直查（查不到为 null，只显数字），
+    // 不走 resolveName 的「—」占位——那会拼出「10 —」。数值排序由
+    // MasterDataTableView 的容错解析剥掉单位后缀兜底。
+    String? qtyWithUnit(num? value, String? unitId) => value == null
+        ? null
+        : formatQtyWithUnit(value, names.unitEntries[unitId]);
+    // 2026-10-10 金额带单位口径：单价/金额数值后自动带订单币种（0.5 元 /
+    // 1500 美金），列头不再写「(订单币种)」。
+    final orderCurrency = names.currency(_detail!.currencyId);
+    String? moneyWithUnit(num? value) => value == null
+        ? null
+        : financeMoneyWithUnitSuffix(
+            value.toStringAsFixed(2),
+            currencyName: orderCurrency,
+          );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2112,8 +2130,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             primary: true,
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
-              // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。单位与链路状态各自
-              // 单独成列，列窄时不会先把编号吃掉。
+              // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。单位按 2026-10-10 口径
+              // 内联在数量后（见 qtyWithUnit），不再单独成列。
               MasterColumnDef(
                 key: 'goods',
                 label: '货品名称',
@@ -2149,21 +2167,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                 width: 96,
                 value: (it) => names.color(it.colorId),
               ),
-              // 2026-09-25 用户口径：订货单明细列与编辑页对齐（数量后紧跟单位，
-              // 补折扣/机加价/围数/进仓数量）；履约进度列（业务链/已发/已退/可发/
-              // 已排/已产/优先级）不再挤在本表，进度看「订单进度」专页。
+              // 2026-09-25 用户口径：订货单明细列与编辑页对齐（补折扣/机加价/围数/
+              // 进仓数量）；履约进度列（业务链/已发/已退/可发/已排/已产/优先级）不再
+              // 挤在本表，进度看「订单进度」专页。
               MasterColumnDef(
                 key: 'qty',
                 label: '数量',
-                width: 90,
+                width: 125,
                 type: 'number',
-                value: (it) => it.qty?.toStringAsFixed(2),
-              ),
-              MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 80,
-                value: (it) => names.unit(it.unitId),
+                value: (it) => qtyWithUnit(it.qty, it.unitId),
               ),
               // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
               // 实物出入库单据（出货/其它出货/退货）：库位号（主档带出，拣货/上架指引）。
@@ -2177,13 +2189,13 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               MasterColumnDef(
                 key: 'price',
                 label: '单价',
-                width: 120,
+                width: 140,
                 type: 'money',
                 value: (it) {
                   if (masked) return '***';
-                  final p = it.price?.toStringAsFixed(2);
+                  final p = moneyWithUnit(it.price);
                   return (isOrder && it.quotePrice != null)
-                      ? '$p(报价 ${it.quotePrice!.toStringAsFixed(2)})'
+                      ? '$p(报价 ${moneyWithUnit(it.quotePrice)})'
                       : p;
                 },
               ),
@@ -2200,15 +2212,16 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                 ),
               MasterColumnDef(
                 key: 'amount',
-                label: isOrder ? '金额(订单币种)' : '金额',
-                width: 100,
+                label: '金额',
+                width: 140,
                 type: 'money',
                 value: (it) => masked
                     ? '***'
-                    : (pricedLikeOrder
-                              ? it.amountOriginal
-                              : (it.qty ?? 0) * (it.price ?? 0))
-                          ?.toStringAsFixed(2),
+                    : moneyWithUnit(
+                        pricedLikeOrder
+                            ? it.amountOriginal
+                            : (it.qty ?? 0) * (it.price ?? 0),
+                      ),
               ),
               if (isOrder) ...[
                 MasterColumnDef(
@@ -2217,10 +2230,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                     (it) => it.machiningPrice != null && it.machiningPrice != 0,
                   ),
                   label: '机加价',
-                  width: 90,
+                  width: 110,
                   type: 'money',
-                  value: (it) =>
-                      masked ? '***' : it.machiningPrice?.toStringAsFixed(2),
+                  value: (it) => masked ? '***' : moneyWithUnit(it.machiningPrice),
                 ),
                 MasterColumnDef(
                   key: 'circumference',
@@ -2238,27 +2250,28 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                     (it) => it.inboundQty != null && it.inboundQty != 0,
                   ),
                   label: '进仓数量',
-                  width: 100,
+                  width: 130,
                   type: 'number',
-                  value: (it) => it.inboundQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it.inboundQty, it.unitId),
                 ),
               ],
               // 已发/已退只保留给实物单据（出货/退货）——订货单进度看专页。
+              // 单位随 2026-10-10 口径内联（与数量列同款 qtyWithUnit）。
               if (!isOrder && _cfg.showShipped)
                 MasterColumnDef(
                   key: 'shipped',
                   label: '已发',
-                  width: 90,
+                  width: 125,
                   type: 'number',
-                  value: (it) => it.shippedQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it.shippedQty, it.unitId),
                 ),
               if (!isOrder && _cfg.showReturned)
                 MasterColumnDef(
                   key: 'returned',
                   label: '已退',
-                  width: 90,
+                  width: 125,
                   type: 'number',
-                  value: (it) => it.returnedQty?.toStringAsFixed(2),
+                  value: (it) => qtyWithUnit(it.returnedQty, it.unitId),
                 ),
               if (_cfg.type == SalesDocType.returnDoc) ...[
                 MasterColumnDef(
@@ -2307,9 +2320,15 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   MasterColumnDef<SalesDocItem>(
                     key: 'clientPrice',
                     label: '文件单价',
-                    width: 120,
+                    width: 140,
                     type: 'money',
-                    value: (it) => masked ? '***' : it.clientPrice?.toString(),
+                    // 文件单价带客户文件币种后缀；文件币种未知时退回纯数值。
+                    value: (it) => masked
+                        ? '***'
+                        : financeMoneyWithUnitSuffix(
+                            it.clientPrice?.toString(),
+                            currencyName: _detail!.clientFileCurrency,
+                          ),
                   ),
               ],
               ...businessReadOnlyColumns<SalesDocItem>(

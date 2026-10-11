@@ -400,32 +400,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 2026-10-08 物料分析按产品视图：子件行左缘的分组竖线（块边界）——
-  // depth>0 画在 x=8、贯穿整行；末位子件照画（不参与肘线收口）；
-  // depth=0 的顶层行不画；默认关闭时一条都不多。
-  testWidgets('subtreeRail draws a full-height block rail on child rows', (
+  // 2026-10-10 用户口径「只用层级连接线」：子树块边界竖线（subtreeRail）
+  // 随「连线按产品两色轮换」退役删除；guideColor 非空时本行连线整笔用宿主
+  // 给的色（不降调、不掺明暗档），null 时维持原默认灰。
+  testWidgets('guideColor paints the whole guide with the host colour', (
     tester,
   ) async {
-    const childKey = Key('rail-child');
-    Widget cell({required bool rail, int depth = 1}) => MaterialApp(
+    const childKey = Key('guide-child');
+    const guide = Color(0xFF7C3AED);
+    Widget cell(Color? color) => MaterialApp(
       home: Scaffold(
         body: SizedBox(
           width: 420,
           child: UtenTreeTableCell(
             key: childKey,
-            depth: depth,
+            depth: 1,
             sequence: '',
             sequenceInline: true,
             title: '子组件',
             ancestorContinuations: const [false],
             isLastChild: true,
             showLeafMarker: false,
-            subtreeRail: rail,
+            guideColor: color,
           ),
         ),
       ),
     );
-    await tester.pumpWidget(cell(rail: false));
+    await tester.pumpWidget(cell(null));
+    // 默认灰：线段几何不变（竖线收口到中线 + 肘线到展开位圆心）。
     expect(
       tester.renderObject(guideOf(childKey)),
       paints
@@ -433,19 +435,97 @@ void main() {
         ..line(p1: const Offset(24, 24), p2: const Offset(40, 24)),
     );
 
-    await tester.pumpWidget(cell(rail: true));
-    final height = tester.getSize(guideOf(childKey)).height;
+    await tester.pumpWidget(cell(guide));
     expect(
       tester.renderObject(guideOf(childKey)),
       paints
-        ..line(p1: const Offset(8, 0), p2: Offset(8, height))
-        ..line(p1: const Offset(24, 0), p2: Offset(24, height / 2))
-        ..line(p1: Offset(24, height / 2), p2: Offset(40, height / 2)),
+        ..line(
+          color: guide,
+          p1: const Offset(24, 0),
+          p2: const Offset(24, 24),
+        )
+        ..line(color: guide, p1: const Offset(24, 24), p2: const Offset(40, 24)),
+    );
+  });
+
+  // 2026-10-10 物料分析口径「下面的箭头跟线挨在一起」：缩进宽度可放宽
+  //（indent 参数，默认 16 不动既有宿主）——祖先竖线仍在槽 0 圆心（24），
+  // 肘线伸到本行圆心 24+indent；indent 24 时圆底左缘（24+24−14=34）与
+  // 竖线拉开 10px（16 时只有 2px）。
+  testWidgets('indent widens the rail-to-toggle gap', (tester) async {
+    const childKey = Key('indent-child');
+    Widget cell(double indent) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: 420,
+          child: UtenTreeTableCell(
+            key: childKey,
+            depth: 1,
+            sequence: '',
+            sequenceInline: true,
+            title: '子组件',
+            ancestorContinuations: const [false],
+            isLastChild: true,
+            showLeafMarker: false,
+            indent: indent,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(cell(16));
+    expect(
+      tester.renderObject(guideOf(childKey)),
+      paints
+        ..line(p1: const Offset(24, 0), p2: const Offset(24, 24))
+        ..line(p1: const Offset(24, 24), p2: const Offset(40, 24)),
     );
 
-    // 顶层行（depth = 0）没有连线画布，分组线也无从谈起。
-    await tester.pumpWidget(cell(rail: true, depth: 0));
-    expect(guideOf(childKey), findsNothing);
+    await tester.pumpWidget(cell(24));
+    expect(
+      tester.renderObject(guideOf(childKey)),
+      paints
+        ..line(p1: const Offset(24, 0), p2: const Offset(24, 24))
+        ..line(p1: const Offset(24, 24), p2: const Offset(48, 24)),
+    );
+  });
+
+  // 2026-10-10 用户口径「箭头还有箭头的背景也统一」：有下级行的圆底用
+  // 宿主色（替代 depth%4 轮换层级色），偏深圆底箭头自动反白；无下级行的
+  // 灰色占位图标不受影响。
+  testWidgets('toggleColor overrides the toggle circle colour', (
+    tester,
+  ) async {
+    const toggleKey = Key('colored-toggle');
+    const circle = Color(0xFF7C3AED);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: UtenTreeTableCell(
+            depth: 1,
+            sequence: '',
+            sequenceInline: true,
+            title: '子组件',
+            hasChildren: true,
+            toggleKey: toggleKey,
+            toggleColor: circle,
+            onToggle: () {},
+          ),
+        ),
+      ),
+    );
+    final toggle = find.byKey(toggleKey);
+    final circleFinder = find.descendant(
+      of: toggle,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            (widget.decoration as BoxDecoration?)?.color == circle,
+      ),
+    );
+    // 28px 实心圆底换成了宿主色。
+    expect(circleFinder, findsOneWidget);
+    expect(tester.getSize(circleFinder), const Size(28, 28));
+    expect(tester.takeException(), isNull);
   });
 
   // 2026-10-09 物料分析口径「没有子层级的行也加个展开 icon，灰色不能点击，

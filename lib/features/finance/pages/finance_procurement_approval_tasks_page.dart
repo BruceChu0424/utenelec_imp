@@ -27,6 +27,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -196,14 +197,6 @@ class _FinanceProcurementApprovalTasksPageState
     setState(_clearSelectionState);
     _load(_result?.page ?? 1);
   }
-
-  /// 当前筛选口径的提示文案：卡片内不放说明文字（与资产与待摊工作台的指标卡一致），
-  /// 口径说明放卡片下方的整行提示条，点击卡片随选中态切换。
-  String get _scopeHint => switch (_orderType) {
-    FinanceProcurementOrderType.purchase => '显示财务审核组共享的采购订货待审任务。',
-    FinanceProcurementOrderType.subcontract => '显示财务审核组共享的委外订货待审任务。',
-    _ => '显示财务审核组共享的采购和委外订货待审任务。',
-  };
 
   int? _typeCount(FinanceProcurementOrderType type) {
     final counts = _typeCounts;
@@ -780,67 +773,44 @@ class _FinanceProcurementApprovalTasksPageState
     // 全平台统一筛选工具条：分段 + 胶囊搜索框，计数取后端全量口径。
     // 计数形态：本页整条工具条就是财务的待审队列，两个类型段都是「等我审」，
     // 挂红徽章（「全部待审」不传 count，故没有总量段与之重复）。
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UtenFilterToolbar<String>(
-          segmentsKey: const Key('finance-approval-type-segments'),
-          searchKey: const Key('finance-approval-search'),
-          segments: [
-            // 「全部待审」不挂徽章——徽章只挂各类型分段的待审数量。
-            const UtenFilterSegment(value: 'all', label: '全部待审'),
-            UtenFilterSegment(
-              value: 'purchase',
-              label: '采购订货',
-              count: _typeCount(FinanceProcurementOrderType.purchase),
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-            UtenFilterSegment(
-              value: 'subcontract',
-              label: '委外订货',
-              count: _typeCount(FinanceProcurementOrderType.subcontract),
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-          ],
-          selected: _typeSelected
-              ? {
-                  _orderType == null
-                      ? 'all'
-                      : _orderType == FinanceProcurementOrderType.purchase
-                      ? 'purchase'
-                      : 'subcontract',
-                }
-              : const {},
-          onSelectionChanged: (value) => _selectType(switch (value) {
-            'purchase' => FinanceProcurementOrderType.purchase,
-            'subcontract' => FinanceProcurementOrderType.subcontract,
-            _ => null,
-          }),
-          searchHint: '搜索订货单号 / 供应商 / 提交人',
-          initialSearchValue: _keyword,
-          onSearchInputChanged: (_) => _requestVersion++,
-          onSearchChanged: _applyKeyword,
-          // 2026-10-02 用户口径：「共 N 笔」/操作说明提示文字退役（全站提示卡口径）。
+    // 2026-10-10 用户口径：「显示财务审核组共享的…」提示行退役（全站提示卡口径）。
+    return UtenFilterToolbar<String>(
+      segmentsKey: const Key('finance-approval-type-segments'),
+      searchKey: const Key('finance-approval-search'),
+      segments: [
+        // 「全部待审」不挂徽章——徽章只挂各类型分段的待审数量。
+        const UtenFilterSegment(value: 'all', label: '全部待审'),
+        UtenFilterSegment(
+          value: 'purchase',
+          label: '采购订货',
+          count: _typeCount(FinanceProcurementOrderType.purchase),
+          countForm: UtenSegmentCountForm.actionable,
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.info_outline_rounded,
-              size: 18,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                _scopeHint,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
+        UtenFilterSegment(
+          value: 'subcontract',
+          label: '委外订货',
+          count: _typeCount(FinanceProcurementOrderType.subcontract),
+          countForm: UtenSegmentCountForm.actionable,
         ),
       ],
+      selected: _typeSelected
+          ? {
+              _orderType == null
+                  ? 'all'
+                  : _orderType == FinanceProcurementOrderType.purchase
+                  ? 'purchase'
+                  : 'subcontract',
+            }
+          : const {},
+      onSelectionChanged: (value) => _selectType(switch (value) {
+        'purchase' => FinanceProcurementOrderType.purchase,
+        'subcontract' => FinanceProcurementOrderType.subcontract,
+        _ => null,
+      }),
+      searchHint: '搜索订货单号 / 供应商 / 提交人',
+      initialSearchValue: _keyword,
+      onSearchInputChanged: (_) => _requestVersion++,
+      onSearchChanged: _applyKeyword,
     );
   }
 
@@ -888,23 +858,57 @@ class _FinanceProcurementApprovalTasksPageState
       width: 210,
       value: (task) => task.supplierName ?? '—',
     ),
-    // ADR-128：订货金额按订货币种写成「币种 金额」，折合本币另列。
+    // 2026-10-10 中心列对齐详情页口径：明细行数/超收损耗%/汇率直接进中心表格，
+    // 批量通过不必再逐笔进详情页核对（金额链三列红字强调）；仓库/货品只进详情页。
+    MasterColumnDef(
+      key: 'lineCount',
+      label: '明细行数',
+      width: 84,
+      type: 'count',
+      value: (task) => (task.lineCount ?? 0) > 0
+          ? task.lineCount.toString()
+          : '—',
+    ),
+    MasterColumnDef(
+      key: 'tolerance',
+      label: '允许超收 / 损耗',
+      width: 120,
+      type: 'number',
+      info: '采购=允许超收%、委外=允许损耗%（全部行未填显示「不允许」；多行不同值显示区间）。',
+      emphasized: true,
+      value: (task) => task.toleranceText ?? '不允许',
+    ),
+    // ADR-128：订货金额按订货币种金额后自动带单位（2026-10-10 后缀口径），
+    // 折合人民币另列；金额链（金额/汇率/折合）红字加粗逐行核对。
     MasterColumnDef(
       key: 'totalOriginal',
       label: '订货金额',
-      width: 150,
+      width: 160,
       type: 'money',
-      value: (task) => financeMoneyWithCurrency(
+      emphasized: true,
+      value: (task) => financeMoneyWithUnitSuffix(
         task.totalOriginal,
         currencyName: task.currencyName,
       ),
     ),
+    // 待审 case 的缺省折算汇率（已批→快照→1 缺省链的快照档）：批量通过不填
+    // 汇率时即按它折算。
+    MasterColumnDef(
+      key: 'exchangeRate',
+      label: '汇率',
+      width: 80,
+      type: 'number',
+      emphasized: true,
+      info: '提交快照里的订单表头汇率；批量通过未单独填汇率时按它折算（详情页「汇率」列可改）。',
+      value: (task) => financeExactTrimmed(task.exchangeRate) ?? '—',
+    ),
     MasterColumnDef(
       key: 'amount',
-      label: '折合本币',
-      width: 130,
+      label: '折合人民币',
+      width: 140,
       type: 'money',
-      value: (task) => financeMoneyText(task.amount),
+      emphasized: true,
+      value: (task) => financeLocalMoneyWithUnitSuffix(task.amount),
     ),
     MasterColumnDef(
       key: 'expectedDate',

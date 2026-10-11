@@ -338,7 +338,6 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                   key: Key('wm-prep-grams-${r.id}'),
                   controller: r.grams,
                   enabled: _busyTitle == null,
-                  textAlign: TextAlign.right,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),

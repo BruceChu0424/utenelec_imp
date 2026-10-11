@@ -383,7 +383,9 @@ class _SubcontractOrderEditPageState
                 supportsTotalInput: true,
               )
               ..unitRate = item.unitRate
-              ..sourceDocNo = item.sourceDocumentNo
+              // V719 起 subcontract_order_items.source_doc_no 的口径是 WL 分析编号
+              // (与申请行「来源计划」同值)；sourcePlanNo 仅理论上缺失时才回落申请单号。
+              ..sourceDocNo = item.sourcePlanNo ?? item.sourceDocumentNo
               ..upstreamItemIds = [item.sourceItemId]
               ..sourceDocs = [
                 SubcontractSourceApplicationRef(
@@ -625,7 +627,7 @@ class _SubcontractOrderEditPageState
     final settlementEntries = await _settlementEntries();
     if (!mounted ||
         generation != _termsLoadGeneration ||
-        !identical(session, ref.read(sessionProvider))) {
+        !ref.read(sessionProvider).isSameIdentity(session)) {
       return;
     }
     final currencyEntries = names.currencyEntries;
@@ -1689,7 +1691,10 @@ class _SubcontractOrderEditPageState
                                       !_loading &&
                                       !_saving &&
                                       !_hasCreatedDocuments,
-                                  tableKey: 'subcontract.order.items',
+                                  // 默认列序 2026-10-10 变更（允许损耗% 紧跟数量，
+                                  // 与采购「允许超收% 紧跟数量」对齐）：bump tableKey
+                                  // 让旧保存布局（含仅拖过列宽的）不再压住新默认序。
+                                  tableKey: 'subcontract.order.items.v2',
                                   onAddColumn: (hidden) =>
                                       addBusinessGridColumn(
                                         context,

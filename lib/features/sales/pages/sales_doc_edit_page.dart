@@ -1430,7 +1430,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         mounted &&
         generation == _clientPrefillGeneration &&
         _clientId == id &&
-        identical(ref.read(sessionProvider), session) &&
+        ref.read(sessionProvider).isSameIdentity(session) &&
         (_guidedPlan?.matches(ref) ?? true);
     setState(() {
       if (_clientId != id) {
@@ -1644,7 +1644,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     if (!mounted || picked == null) return;
     if (_clientId != cid ||
         generation != _clientPrefillGeneration ||
-        !identical(ref.read(sessionProvider), session)) {
+        !ref.read(sessionProvider).isSameIdentity(session)) {
       return;
     }
     setState(() {

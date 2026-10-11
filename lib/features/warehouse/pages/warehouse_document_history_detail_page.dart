@@ -13,12 +13,22 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/warehouse_document_history.dart';
 import '../repositories/warehouse_document_history_repository.dart';
+
+/// 「数量 + 单位」内联 (2026-10-10 口径)：单位列已删除，数量直接带单位显示。
+/// 本页数量是服务端精度原文（字符串），走 [formatQtyWithUnit] 拼单位时放宽到
+/// 6 位小数、不丢服务端精度；空/非法数量保持「—」。
+String _historyQtyWithUnit(String? text, String? unitName) {
+  final value = num.tryParse(text ?? '');
+  if (value == null) return '—';
+  return formatQtyWithUnit(value, unitName, maxDecimals: 6);
+}
 
 /// Read-only physical detail for warehouse staff.
 class WarehouseDocumentHistoryDetailPage extends ConsumerStatefulWidget {
@@ -313,19 +323,12 @@ class _WarehouseDocumentHistoryDetailPageState
           width: 126,
           value: (item) => item.stockPlace ?? '—',
         ),
-      if (has((item) => item.unitName))
-        MasterColumnDef(
-          key: 'unitName',
-          label: '单位',
-          width: 82,
-          value: (item) => item.unitName ?? '—',
-        ),
       MasterColumnDef(
         key: 'quantity',
         label: '数量',
-        width: 100,
+        width: 135,
         type: 'number',
-        value: (item) => item.qty ?? '—',
+        value: (item) => _historyQtyWithUnit(item.qty, item.unitName),
       ),
       // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算并带单位；没称显示「未称」。
       if (items.any((item) => item.weightKg != null))
@@ -336,6 +339,7 @@ class _WarehouseDocumentHistoryDetailPageState
           type: 'weight',
           value: (item) => formatWeightValue(item.weightKg, display: display),
         ),
+      // 箱数是胶箱数量，单位是「箱」而非货品单位，保持纯数字不内联（2026-10-10）。
       if (has((item) => item.boxQty))
         MasterColumnDef(
           key: 'boxQuantity',
@@ -348,57 +352,59 @@ class _WarehouseDocumentHistoryDetailPageState
         MasterColumnDef(
           key: 'returnedQuantity',
           label: '已退数量',
-          width: 108,
+          width: 143,
           type: 'number',
-          value: (item) => item.returnedQty ?? '—',
+          value: (item) => _historyQtyWithUnit(item.returnedQty, item.unitName),
         ),
       if (has((item) => item.wastedQty))
         MasterColumnDef(
           key: 'wastedQuantity',
           label: '损耗数量',
-          width: 108,
+          width: 143,
           type: 'number',
-          value: (item) => item.wastedQty ?? '—',
+          value: (item) => _historyQtyWithUnit(item.wastedQty, item.unitName),
         ),
       if (has((item) => item.atSupplierQty))
         MasterColumnDef(
           key: 'atSupplierQuantity',
           label: '委外商在手',
-          width: 118,
+          width: 153,
           type: 'number',
-          value: (item) => item.atSupplierQty ?? '—',
+          value: (item) =>
+              _historyQtyWithUnit(item.atSupplierQty, item.unitName),
         ),
       if (has((item) => item.consumedQty))
         MasterColumnDef(
           key: 'consumedQuantity',
           label: '已耗用',
-          width: 100,
+          width: 135,
           type: 'number',
-          value: (item) => item.consumedQty ?? '—',
+          value: (item) => _historyQtyWithUnit(item.consumedQty, item.unitName),
         ),
       if (has((item) => item.supplierEndingQty))
         MasterColumnDef(
           key: 'supplierEndingQuantity',
           label: '委外商结余',
-          width: 118,
+          width: 153,
           type: 'number',
-          value: (item) => item.supplierEndingQty ?? '—',
+          value: (item) =>
+              _historyQtyWithUnit(item.supplierEndingQty, item.unitName),
         ),
       if (has((item) => item.endingQty))
         MasterColumnDef(
           key: 'endingQuantity',
           label: '期末数量',
-          width: 108,
+          width: 143,
           type: 'number',
-          value: (item) => item.endingQty ?? '—',
+          value: (item) => _historyQtyWithUnit(item.endingQty, item.unitName),
         ),
       if (has((item) => item.standardQty))
         MasterColumnDef(
           key: 'standardQuantity',
           label: '标准数量',
-          width: 108,
+          width: 143,
           type: 'number',
-          value: (item) => item.standardQty ?? '—',
+          value: (item) => _historyQtyWithUnit(item.standardQty, item.unitName),
         ),
       if (has((item) => item.wasteRate))
         MasterColumnDef(
@@ -412,33 +418,37 @@ class _WarehouseDocumentHistoryDetailPageState
         MasterColumnDef(
           key: 'iqcPassedBaseQuantity',
           label: '品质合格量',
-          width: 118,
+          width: 153,
           type: 'number',
-          value: (item) => item.passedBaseQty ?? '—',
+          value: (item) =>
+              _historyQtyWithUnit(item.passedBaseQty, item.unitName),
         ),
       if (has((item) => item.stockedBaseQty))
         MasterColumnDef(
           key: 'iqcStockedBaseQuantity',
           label: '仓库已入库',
-          width: 118,
+          width: 153,
           type: 'number',
-          value: (item) => item.stockedBaseQty ?? '—',
+          value: (item) =>
+              _historyQtyWithUnit(item.stockedBaseQty, item.unitName),
         ),
       if (has((item) => item.pendingStockInBaseQty))
         MasterColumnDef(
           key: 'iqcPendingStockInBaseQuantity',
           label: '合格待入库',
-          width: 118,
+          width: 153,
           type: 'number',
-          value: (item) => item.pendingStockInBaseQty ?? '—',
+          value: (item) =>
+              _historyQtyWithUnit(item.pendingStockInBaseQty, item.unitName),
         ),
       if (has((item) => item.failedBaseQty))
         MasterColumnDef(
           key: 'iqcFailedBaseQuantity',
           label: '不合格基础量',
-          width: 126,
+          width: 161,
           type: 'number',
-          value: (item) => item.failedBaseQty ?? '—',
+          value: (item) =>
+              _historyQtyWithUnit(item.failedBaseQty, item.unitName),
         ),
       if (has((item) => item.sourceDocNo))
         MasterColumnDef(

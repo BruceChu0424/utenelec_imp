@@ -3,11 +3,15 @@
 // 用户口径：多选的内容都汇总到一个页面，可多选/单选，填合格/不合格数量后
 // 「提交报告」一次办结：
 //   - IQC 收货单区：按单分组，逐行勾选 + 行内编辑合格数量/不合格数量
-//     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-batch(每单一事务，
-//     按报告顺序逐单发送，失败不连坐、重试只补未确认的单；2026-09-21 起不再 4 通道
-//     并行，见 QualityBatchSubmission 的实测说明)；
+//     （默认合格 = 剩余待检、不合格 = 0），提交走 decide-report 整份报告一次
+//     请求（2026-10-10）：服务端单事务联合预锁全部收货单后按报告顺序逐单执行，
+//     任一单冲突整批回滚并按单号报错；同体重试静默重放，不存在半提交状态
+//     （2026-09-05~2026-10-09 曾逐单串行发 decide-batch，因「一个一个走太慢」退役）；
 //   - FQC 自制产成品区：V547 按品质检查单分组（组头三态复选，镜像 IQC 收货单组），
 //     无检查单的历史任务单列；勾选任务 = 全部合格（既有 pass-all 语义）；
+//   - 2026-10-10 合一审批表列改造（T9「数量+单位」内联）：数量三列单位内联后
+//     独立「单位」列与「实际成品仓」列撤除、换算复合文案挪进输入格 tooltip、
+//     纯 IQC 批不渲染生产计划列；合格/不合格互补自动回写（见 _EditableIqcRow）。
 //   - 右下角 UtenFloatingActionGroup：UtenSelectionSummaryPill（已选计数唯一出处，✕ 一键清空）
 //     + 说明文案 + 提交报告；总结确认弹窗（仿计划部下达采购）后执行。
 import 'package:flutter/material.dart';
@@ -33,6 +37,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
+import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -46,12 +51,12 @@ import '../../../core/ui/app_notification.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../models/production_fqc_inspection.dart';
-import '../widgets/production_fqc_dialogs.dart' show fqcQtyText;
 import 'production_fqc_handling_page.dart' show fqcStorageText;
 import '../repositories/production_fqc_repository.dart';
 import '../services/quality_batch_submission.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/formatters/quantity_display.dart';
 
 /// 列表页多选结果（extra 传入）：IQC 收货单 + FQC 检查单 + 无检查单 FQC 任务。
 class QualityBatchApprovalSelection {
@@ -82,18 +87,59 @@ class _FqcSheetGroup {
 /// 一行可编辑的 IQC 检验明细（合格默认=剩余待检，不合格默认=0）。
 class _EditableIqcRow {
   _EditableIqcRow(this.item)
-    : pass = TextEditingController(text: _fmt(item.remainingBaseQty ?? 0)),
-      fail = TextEditingController(text: '0');
+    : totalBaseQty = item.remainingBaseQty ?? 0,
+      pass = UtenAutofillTextController(
+        text: _fmt(item.remainingBaseQty ?? 0),
+      ),
+      fail = UtenAutofillTextController(text: '0') {
+    // 2026-10-10 用户口径「改合格自动算不合格」：合格/不合格互补联动——改一边，
+    // 另一边仍是程序值（autofilled）或空时回写「剩余待检 − 它」（max 0，黄框
+    // 待核对）；用户手填过的列不抢，避免两列互相踢皮球。
+    pass.addListener(() => _complement(edited: pass, other: fail));
+    fail.addListener(() => _complement(edited: fail, other: pass));
+  }
 
   final ProcurementInspectionItem item;
-  final TextEditingController pass;
-  final TextEditingController fail;
+  final UtenAutofillTextController pass;
+  final UtenAutofillTextController fail;
+
+  /// 互补联动的基数 = 初始化合格数量用的同一剩余待检量。
+  final double totalBaseQty;
 
   /// Before submission this is a draft. The accepted report freezes this key,
   /// quantities and reason together, so retries never pair it with a new body.
   String idempotencyKey = 'iqc-decide-${const Uuid().v4()}';
   bool selected = true;
   bool completed = false;
+
+  bool _complementSyncing = false;
+  void _complement({
+    required UtenAutofillTextController edited,
+    required UtenAutofillTextController other,
+  }) {
+    if (_complementSyncing) return;
+    if (!other.autofilled && other.text.trim().isNotEmpty) return;
+    final editedQty = double.tryParse(edited.text.trim());
+    if (editedQty == null || !editedQty.isFinite) return;
+    final rest = totalBaseQty - editedQty;
+    _complementSyncing = true;
+    try {
+      other.setAutomaticText(rest <= 1e-9 ? '0' : _fmt(rest));
+    } finally {
+      _complementSyncing = false;
+    }
+  }
+
+  /// 草稿恢复整行回填：恢复的是用户上次的明确输入，不触发互补联动。
+  void restoreTexts(String passText, String failText) {
+    _complementSyncing = true;
+    try {
+      pass.text = passText;
+      fail.text = failText;
+    } finally {
+      _complementSyncing = false;
+    }
+  }
 
   double get _pass => double.tryParse(pass.text.trim()) ?? 0;
   double get _fail => double.tryParse(fail.text.trim()) ?? 0;
@@ -259,8 +305,10 @@ class _QualityBatchApprovalPageState
         row.selected = false;
         continue;
       }
-      row.pass.text = saved['pass'] as String? ?? '';
-      row.fail.text = saved['fail'] as String? ?? '';
+      row.restoreTexts(
+        saved['pass'] as String? ?? '',
+        saved['fail'] as String? ?? '',
+      );
       row.idempotencyKey = saved['key'] as String;
       row.selected = saved['selected'] == true;
       row.completed = saved['completed'] == true;
@@ -560,6 +608,14 @@ class _QualityBatchApprovalPageState
       return;
     }
     final selected = iqcRows.toSet();
+    // 整份报告一次请求的服务端上限（与 decide-report 契约一致），提前给出可操作的提示。
+    final receiptCount = (_groups ?? const <_IqcReceiptGroup>[])
+        .where((group) => group.rows.any(selected.contains))
+        .length;
+    if (receiptCount > 20) {
+      context.appWarning('一次最多提交 20 张收货单的检验报告，请减少本次勾选');
+      return;
+    }
     for (final group in _groups ?? const <_IqcReceiptGroup>[]) {
       if (group.rows.where(selected.contains).length > 100) {
         context.appWarning(
@@ -678,22 +734,22 @@ class _QualityBatchApprovalPageState
     await _sendSubmission();
   }
 
-  /// 提交期间忙碌浮层的进度文案：逐单确认，已确认的单不重发。
+  /// 提交期间忙碌浮层的进度文案：整份报告一次请求原子执行。
   String _submitOverlayDescription() {
     final submission = _submission;
     if (submission == null || submission.receipts.isEmpty) {
       return submission != null && submission.fqcInspectionIds.isNotEmpty
           ? '自制产成品整批提交中，响应丢失重试不会重复判定。'
-          : '逐单提交中，已确认部分不会重复发送。';
+          : '整份报告提交中。';
     }
     final buffer = StringBuffer(
-      '已确认 ${submission.completedReceiptCount}/${submission.receipts.length} 单'
-      '(按报告顺序一单一单提交，一张失败不影响其他单)',
+      '${submission.receipts.length} 张收货单一次提交'
+      '（服务端单事务原子执行，任一单冲突整批回滚）',
     );
     if (submission.fqcInspectionIds.isNotEmpty) {
       buffer.write('，另含自制产成品 ${submission.fqcInspectionIds.length} 项');
     }
-    buffer.write('；已确认部分不会重复发送。');
+    buffer.write('；响应丢失重试会核对原报告，不会重复判定。');
     return buffer.toString();
   }
 
@@ -749,9 +805,9 @@ class _QualityBatchApprovalPageState
       }
     } on ApiException catch (error) {
       if (mounted && requestScope?.isCurrent != false) {
-        context.appError(
-          '${submission.currentLabel}：${error.message}。重试将核对原报告，已确认成功的单据不会重发',
-        );
+        // 服务端整批原子执行：错误信息已带具体收货单单号；整批未提交成功，
+        // 重试同一体（已提交的单静默重放、不会重复判定）。
+        context.appError('${error.message}。重试将核对原报告，不会重复判定');
       }
     } catch (error) {
       // 本机检查点或回执校验的原因如实给人看(ADR-151 §2); 真正未知才提示核对原报告。
@@ -759,8 +815,8 @@ class _QualityBatchApprovalPageState
       if (mounted && requestScope?.isCurrent != false) {
         context.appError(
           reason == null
-              ? '${submission.currentLabel}提交未确认，请重试原报告'
-              : '${submission.currentLabel}：$reason',
+              ? '检验报告提交未确认，请重试原报告'
+              : '检验报告：$reason',
         );
       }
     } finally {
@@ -923,239 +979,254 @@ class _QualityBatchApprovalPageState
     );
   }
 
-  Widget _iqcQuantityField(_EditableIqcRow row, {required bool passed}) =>
-      ListenableBuilder(
-        listenable: Listenable.merge([row.pass, row.fail]),
-        builder: (context, _) => Semantics(
-          textField: true,
-          label: '${row.item.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
-          child: TextField(
-            key: Key(
-              'batch-approval-${passed ? 'pass' : 'fail'}-${row.item.id}',
+  Widget _iqcQuantityField(_EditableIqcRow row, {required bool passed}) {
+    final unit = inspectionQuantityUnit(context, row.item);
+    final field = ListenableBuilder(
+      listenable: Listenable.merge([row.pass, row.fail]),
+      builder: (context, _) => Semantics(
+        textField: true,
+        label:
+            '${row.item.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
+        child: TextField(
+          key: Key(
+            'batch-approval-${passed ? 'pass' : 'fail'}-${row.item.id}',
+          ),
+          controller: passed ? row.pass : row.fail,
+          enabled: row.selected && !row.completed && _submission == null,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              // 2026-10-10 T9「数量+单位」口径：独立单位列撤除，单位内联为输入后缀。
+              suffixText: unit,
+              error: row.validate() == null
+                  ? null
+                  : UtenFieldMessage.error(row.validate()!),
             ),
-            controller: passed ? row.pass : row.fail,
-            enabled: row.selected && !row.completed && _submission == null,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.right,
-            decoration: UtenInputDecoration(
-              InputDecoration(
-                isDense: true,
-                error: row.validate() == null
-                    ? null
-                    : UtenFieldMessage.error(row.validate()!),
-              ),
-            ),
+            // 互补联动程序回写的值挂黄框待核对，用户击键自动摘标。
+            autofilled: (passed ? row.pass : row.fail).autofilled,
           ),
         ),
-      );
+      ),
+    );
+    // 单位列撤除后，原列正文里的换算复合文案（「只（原单1箱 = 24只）」）挪进
+    // 行内 tooltip（悬停/长按输入格可见），防止把原单箱数当基本单位数填进去。
+    final conversion = inspectionQuantityUnitCell(context, row.item);
+    return conversion == unit
+        ? field
+        : Tooltip(message: conversion, child: field);
+  }
 
   /// 合一后的批量审批表：IQC 收货明细与 FQC 检查任务同表逐行核对。
   /// 类型/单号列区分来源；FQC 是「勾选即全部合格」语义，合格/不合格两列只属于
   /// IQC 行（FQC 行显示 —），本次合格数量看「待检/本次合格」列。
-  Widget _unifiedTable(
-    ThemeData theme,
-    List<_ApprovalRow> rows,
-  ) => MasterDataTableView<_ApprovalRow>(
-    tableKey:
-        'features.quality.pages.quality_batch_approval_page.QualityBatchApprovalPageState._unifiedTable.1',
-    key: const Key('batch-approval-unified-table'),
-    embedded: true,
-    stickyHeaderPinned: _pinOf('unified'),
-    showSelectionSummary: false,
-    columns: [
-      // 2026-10-08 用户口径「状态或进度列默认放最前」：本次报告列（待提交 /
-      // 已确认提交 / 整批合格）是本审批表的行级提交状态列，推翻 2026-10-06
-      // 批次「无状态字样不动」的豁免，前置。
-      MasterColumnDef(
-        key: 'status',
-        label: '本次报告',
-        width: 190,
-        value: (row) => row.isFqc
-            ? (row.wholeLot
-                  ? AppLocalizations.of(context).qualityBatchWholeLotPass
-                  : '勾选即全部合格')
-            : row.iqc!.completed
-            ? '本次报告已确认提交'
-            : '待提交',
-        // 本次报告整格底色（ADR-169 逐页显式映射）：FQC 行=绿（勾选即整批/
-        // 全部合格的判定，执行即通过）/ IQC 行填了不合格数量=红（报告含
-        // 不合格量，需处置与复核）/ 待提交且全合格=黄（本次报告未提交，
-        // 等品质提交判定）/ 已确认提交且全合格=蓝（已提交、报告流转中，
-        // 与整批合格的绿拉开）。
-        cellColor: (context, row) {
-          if (row.isFqc) {
-            return utenStatusBadgeCellColor(UtenStatusBadgeType.success);
-          }
-          final iqc = row.iqc!;
-          final fail = double.tryParse(iqc.fail.text.trim()) ?? 0;
-          if (fail > 0) {
-            return utenStatusBadgeCellColor(UtenStatusBadgeType.danger);
-          }
-          return utenStatusBadgeCellColor(
-            iqc.completed
-                ? UtenStatusBadgeType.info
-                : UtenStatusBadgeType.warning,
-          );
-        },
-        // 不合格数量是行内可编辑源：含不合格=红的整格底色随输入实时重算。
-        cellColorListenableOf: (row) => row.iqc?.fail,
-      ),
-      MasterColumnDef(
-        key: 'kind',
-        label: '类型',
-        width: 96,
-        value: (row) => row.kindLabel,
-      ),
-      MasterColumnDef(
-        key: 'docNo',
-        label: '单号',
-        width: 170,
-        value: (row) => row.docNo,
-      ),
-      MasterColumnDef(
-        key: 'goods',
-        label: '货品名称',
-        width: 200,
-        value: (row) => row.goodsName ?? '—',
-        cellBuilderHandlesSemantics: true,
-        cellBuilder: (_, row) => UtenGoodsIdentityCell(name: row.goodsName),
-      ),
-      MasterColumnDef(
-        key: 'goodsCode',
-        label: '编号',
-        width: 130,
-        value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
-        cellBuilder: (_, row) => UtenGoodsAttributeCell(row.goodsCode),
-      ),
-      MasterColumnDef(
-        key: 'color',
-        label: '颜色',
-        width: 100,
-        value: (row) => row.colorName ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'pass',
-        label: '合格数量',
-        width: 150,
-        type: 'number',
-        info: inspectionQuantityColumnHint(context, passed: true),
-        value: (row) => row.iqc?.pass.text ?? '—',
-        exactValueOf: (row) => row.iqc?.pass.text,
-        exactListenableOf: (row) => row.iqc?.pass,
-        cellBuilder: (context, row) => row.iqc == null
-            ? const Text('—')
-            : _iqcQuantityField(row.iqc!, passed: true),
-      ),
-      MasterColumnDef(
-        key: 'fail',
-        label: '不合格数量',
-        width: 150,
-        type: 'number',
-        info: inspectionQuantityColumnHint(context, passed: false),
-        value: (row) => row.iqc?.fail.text ?? '—',
-        exactValueOf: (row) => row.iqc?.fail.text,
-        exactListenableOf: (row) => row.iqc?.fail,
-        cellBuilder: (context, row) => row.iqc == null
-            ? const Text('—')
-            : _iqcQuantityField(row.iqc!, passed: false),
-      ),
-      MasterColumnDef(
-        key: 'remaining',
-        label: '待检/本次合格',
-        width: 120,
-        type: 'number',
-        value: (row) => row.iqc != null
-            ? _fmt(row.iqc!.item.remainingBaseQty ?? 0)
-            : fqcQtyText(row.fqc!.remainingQty),
-        exactValueOf: (row) => row.iqc?.item.remainingBaseQty?.toString(),
-      ),
-      MasterColumnDef(
-        key: 'split',
-        label: AppLocalizations.of(context).qualityBatchColumnSplit,
-        width: 200,
-        value: (row) =>
-            row.splitText ??
-            (row.wholeLot
-                ? AppLocalizations.of(
-                    context,
-                  ).qualityBatchWholeLot(row.fqc!.lotSliceCount)
-                : '—'),
-      ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 190,
-        value: (row) => row.iqc != null
-            ? inspectionQuantityUnitCell(context, row.iqc!.item)
-            : row.fqc?.unitName ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'source',
-        label: '来源单据',
-        width: 170,
-        value: (row) => row.iqc?.item.sourceOrderNo ?? row.fqc?.reportNo ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'plan',
-        label: '生产计划',
-        width: 150,
-        value: (row) => row.fqc?.planNo ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'warehouse',
-        label: '实际成品仓',
-        width: 150,
-        value: (row) => row.fqc?.warehouseName ?? '—',
-      ),
-      MasterColumnDef(
-        key: 'preStocked',
-        label: '储放位置',
-        width: 200,
-        value: (row) => row.preStockedLabel,
-        cellBuilder: (context, row) {
-          if (!row.preStocked) return Text(row.preStockedLabel);
-          return Text(
-            row.preStockedLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: UtenColors.error,
-              fontWeight: FontWeight.w700,
-            ),
-          );
-        },
-      ),
-    ],
-    items: rows,
-    facets: const {},
-    nullCounts: const {},
-    filters: const {},
-    onFilterChanged: (_, _) {},
-    selectable: true,
-    idOf: (row) => row.selectable ? row.selectId : null,
-    selectedIds: {
-      for (final row in rows)
-        if (row.isFqc
-            ? _selectedFqcIds.contains(row.fqc!.id)
-            : row.iqc!.selected && !row.iqc!.completed)
-          row.selectId,
-    },
-    onSelectedIdsChanged: (next) => setState(() {
-      for (final row in rows) {
-        final checked = next.contains(row.selectId);
-        if (row.iqc != null) {
-          if (!row.iqc!.completed) row.iqc!.selected = checked;
-        } else if (row.fqc != null) {
-          if (checked) {
-            _selectedFqcIds.add(row.fqc!.id);
-          } else {
-            _selectedFqcIds.remove(row.fqc!.id);
+  Widget _unifiedTable(ThemeData theme, List<_ApprovalRow> rows) {
+    // 2026-10-10 用户口径「整列生产计划 -」：该列只对 FQC 行有意义（采购收货/
+    // 委外进仓没有生产计划概念）；本批没有任何 FQC 行时整列不渲染，混合批保留
+    // （IQC 行照旧「—」）。tableKey 持久化布局里的键在整列缺席时被组件忽略。
+    final hasFqcRow = rows.any((row) => row.isFqc);
+    return MasterDataTableView<_ApprovalRow>(
+      tableKey:
+          'features.quality.pages.quality_batch_approval_page.QualityBatchApprovalPageState._unifiedTable.1',
+      key: const Key('batch-approval-unified-table'),
+      embedded: true,
+      stickyHeaderPinned: _pinOf('unified'),
+      showSelectionSummary: false,
+      // 2026-10-10 列宽口径：declared 宽是下限（MasterDataTableView 内容自适应
+      // 量前 30 行、封顶 480、下限 48），纯文本列只给 60 让内容宽接管；输入列
+      // （合格/不合格）与富内容列（本次报告/货品/本批拆分）保留较大下限。
+      columns: [
+        // 2026-10-08 用户口径「状态或进度列默认放最前」：本次报告列（待提交 /
+        // 已确认提交 / 整批合格）是本审批表的行级提交状态列，推翻 2026-10-06
+        // 批次「无状态字样不动」的豁免，前置。
+        MasterColumnDef(
+          key: 'status',
+          label: '本次报告',
+          width: 190,
+          value: (row) => row.isFqc
+              ? (row.wholeLot
+                    ? AppLocalizations.of(context).qualityBatchWholeLotPass
+                    : '勾选即全部合格')
+              : row.iqc!.completed
+              ? '本次报告已确认提交'
+              : '待提交',
+          // 本次报告整格底色（ADR-169 逐页显式映射）：FQC 行=绿（勾选即整批/
+          // 全部合格的判定，执行即通过）/ IQC 行填了不合格数量=红（报告含
+          // 不合格量，需处置与复核）/ 待提交且全合格=黄（本次报告未提交，
+          // 等品质提交判定）/ 已确认提交且全合格=蓝（已提交、报告流转中，
+          // 与整批合格的绿拉开）。
+          cellColor: (context, row) {
+            if (row.isFqc) {
+              return utenStatusBadgeCellColor(UtenStatusBadgeType.success);
+            }
+            final iqc = row.iqc!;
+            final fail = double.tryParse(iqc.fail.text.trim()) ?? 0;
+            if (fail > 0) {
+              return utenStatusBadgeCellColor(UtenStatusBadgeType.danger);
+            }
+            return utenStatusBadgeCellColor(
+              iqc.completed
+                  ? UtenStatusBadgeType.info
+                  : UtenStatusBadgeType.warning,
+            );
+          },
+          // 不合格数量是行内可编辑源：含不合格=红的整格底色随输入实时重算。
+          cellColorListenableOf: (row) => row.iqc?.fail,
+        ),
+        MasterColumnDef(
+          key: 'kind',
+          label: '类型',
+          width: 60,
+          value: (row) => row.kindLabel,
+        ),
+        MasterColumnDef(
+          key: 'docNo',
+          label: '单号',
+          width: 60,
+          value: (row) => row.docNo,
+        ),
+        MasterColumnDef(
+          key: 'goods',
+          label: '货品名称',
+          width: 200,
+          value: (row) => row.goodsName ?? '—',
+          cellBuilderHandlesSemantics: true,
+          cellBuilder: (_, row) => UtenGoodsIdentityCell(name: row.goodsName),
+        ),
+        MasterColumnDef(
+          key: 'goodsCode',
+          label: '编号',
+          width: 130,
+          value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
+          cellBuilder: (_, row) => UtenGoodsAttributeCell(row.goodsCode),
+        ),
+        MasterColumnDef(
+          key: 'color',
+          label: '颜色',
+          width: 60,
+          value: (row) => row.colorName ?? '—',
+        ),
+        MasterColumnDef(
+          key: 'pass',
+          label: '合格数量',
+          width: 150,
+          type: 'number',
+          info: inspectionQuantityColumnHint(context, passed: true),
+          value: (row) => row.iqc?.pass.text ?? '—',
+          exactValueOf: (row) => row.iqc?.pass.text,
+          exactListenableOf: (row) => row.iqc?.pass,
+          cellBuilder: (context, row) => row.iqc == null
+              ? const Text('—')
+              : _iqcQuantityField(row.iqc!, passed: true),
+        ),
+        MasterColumnDef(
+          key: 'fail',
+          label: '不合格数量',
+          width: 150,
+          type: 'number',
+          info: inspectionQuantityColumnHint(context, passed: false),
+          value: (row) => row.iqc?.fail.text ?? '—',
+          exactValueOf: (row) => row.iqc?.fail.text,
+          exactListenableOf: (row) => row.iqc?.fail,
+          cellBuilder: (context, row) => row.iqc == null
+              ? const Text('—')
+              : _iqcQuantityField(row.iqc!, passed: false),
+        ),
+        MasterColumnDef(
+          key: 'remaining',
+          label: '待检/本次合格',
+          width: 120,
+          type: 'number',
+          // 2026-10-10 T9「数量+单位」口径：单位内联进数量（IQC 用基本单位名、
+          // FQC 用报工单位），独立单位列已撤除；排序按组件的数值容错解析剥后缀。
+          value: (row) => row.iqc != null
+              ? formatQtyWithUnit(
+                  row.iqc!.item.remainingBaseQty ?? 0,
+                  inspectionQuantityUnit(context, row.iqc!.item),
+                  maxDecimals: 4,
+                )
+              : formatQtyWithUnit(
+                  row.fqc!.remainingQty,
+                  row.fqc!.unitName,
+                  maxDecimals: 4,
+                ),
+          exactValueOf: (row) => row.iqc?.item.remainingBaseQty?.toString(),
+        ),
+        MasterColumnDef(
+          key: 'split',
+          label: AppLocalizations.of(context).qualityBatchColumnSplit,
+          width: 200,
+          value: (row) =>
+              row.splitText ??
+              (row.wholeLot
+                  ? AppLocalizations.of(
+                      context,
+                    ).qualityBatchWholeLot(row.fqc!.lotSliceCount)
+                  : '—'),
+        ),
+        MasterColumnDef(
+          key: 'source',
+          label: '来源单据',
+          width: 60,
+          value: (row) => row.iqc?.item.sourceOrderNo ?? row.fqc?.reportNo ?? '—',
+        ),
+        if (hasFqcRow)
+          MasterColumnDef(
+            key: 'plan',
+            label: '生产计划',
+            width: 60,
+            value: (row) => row.fqc?.planNo ?? '—',
+          ),
+        MasterColumnDef(
+          key: 'preStocked',
+          label: '储放位置',
+          width: 60,
+          value: (row) => row.preStockedLabel,
+          cellBuilder: (context, row) {
+            if (!row.preStocked) return Text(row.preStockedLabel);
+            return Text(
+              row.preStockedLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: UtenColors.error,
+                fontWeight: FontWeight.w700,
+              ),
+            );
+          },
+        ),
+      ],
+      items: rows,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      selectable: true,
+      idOf: (row) => row.selectable ? row.selectId : null,
+      selectedIds: {
+        for (final row in rows)
+          if (row.isFqc
+              ? _selectedFqcIds.contains(row.fqc!.id)
+              : row.iqc!.selected && !row.iqc!.completed)
+            row.selectId,
+      },
+      onSelectedIdsChanged: (next) => setState(() {
+        for (final row in rows) {
+          final checked = next.contains(row.selectId);
+          if (row.iqc != null) {
+            if (!row.iqc!.completed) row.iqc!.selected = checked;
+          } else if (row.fqc != null) {
+            if (checked) {
+              _selectedFqcIds.add(row.fqc!.id);
+            } else {
+              _selectedFqcIds.remove(row.fqc!.id);
+            }
           }
         }
-      }
-    }),
-    emptyMessage: '所选单据已无待检明细',
-  );
+      }),
+      emptyMessage: '所选单据已无待检明细',
+    );
+  }
 
   Widget _buildBottomBar(ThemeData theme) {
     final selectedCount = _selectedCount;

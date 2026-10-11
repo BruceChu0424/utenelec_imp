@@ -665,7 +665,7 @@ class _OffsetTargetPickerState extends ConsumerState<_OffsetTargetPicker> {
                     '${item.sourceDocNo ?? '—'} · ${item.sourceTypeLabel}',
                   ),
                   subtitle: Text(
-                    '未付 ${financeMoneyWithCurrency(item.outstandingOriginal, currencyName: item.currencyName, currencyCode: item.currencyCode)}',
+                    '未付 ${financeMoneyWithUnitSuffix(item.outstandingOriginal, currencyName: item.currencyName, currencyCode: item.currencyCode)}',
                   ),
                   secondary: SizedBox(
                     width: 150,

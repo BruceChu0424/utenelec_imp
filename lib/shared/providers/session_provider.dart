@@ -51,6 +51,41 @@ class SessionState {
       impersonationModeExpiresAt != null &&
       DateTime.now().isBefore(impersonationModeExpiresAt!);
   AppUser? get u => user;
+
+  /// 同一登录身份：状态 + 用户 + 操作人 + 业务重置代次。token 静默刷新、
+  /// 权限滑动更新、档案字段（姓名/部门等）变化都返回 true——它们不换身份；
+  /// 换号、登出、模拟切换（目标↔管理员）、业务清空重登才返回 false。
+  /// 与 authenticatedScopeProvider 的会话身份键同一口径（ADR-014：refresh
+  /// 保持 lineage/intent，服务端租约与决策校验也按人走、不跟 token 走）。
+  bool isSameIdentity(SessionState other) =>
+      status == other.status &&
+      user?.id == other.user?.id &&
+      actor?.id == other.actor?.id &&
+      (user?.businessResetGeneration ?? 0) ==
+          (other.user?.businessResetGeneration ?? 0);
+
+  @override
+  bool operator ==(Object other) =>
+      other is SessionState &&
+      other.status == status &&
+      other.user == user &&
+      other.actor == actor &&
+      other.impersonationModeExpiresAt == impersonationModeExpiresAt &&
+      other.impersonationReadOnly == impersonationReadOnly &&
+      listEquals(
+        other.recentImpersonatedEmployeeIds,
+        recentImpersonatedEmployeeIds,
+      );
+
+  @override
+  int get hashCode => Object.hash(
+    status,
+    user,
+    actor,
+    impersonationModeExpiresAt,
+    impersonationReadOnly,
+    Object.hashAll(recentImpersonatedEmployeeIds),
+  );
 }
 
 /// 改密请求已被服务端接受（密码已生效），但其后的本机会话收尾失败
@@ -138,6 +173,12 @@ class SessionNotifier extends Notifier<SessionState> {
   ImpersonationRepository get _impersonationRepo =>
       ref.read(impersonationRepositoryProvider);
 
+  /// 值相等才通知：token 静默刷新带回相同档案时状态保持同一实例、不惊动
+  /// 全站监听者（路由 refresh、认领栅栏、伴随读重拉都被它连累过）。
+  @override
+  bool updateShouldNotify(SessionState previous, SessionState next) =>
+      previous != next;
+
   Future<void> _applyRefreshedProfileIfCurrent(
     Map<String, dynamic> userJson,
   ) async {
@@ -156,21 +197,26 @@ class SessionNotifier extends Notifier<SessionState> {
         return;
       }
       _rememberVisibleRecord(current);
+      final refreshed = _toAppUser(UserProfile.fromJson(userJson));
+      // 内容未变就换状态对象是当年"登录身份已变化"误报的根因：全站栅栏
+      // 曾用对象同一性当身份指纹。相同档案（含权限集）直接跳过，保持实例。
       // 模拟中：刷新的是 admin 的 profile（管理端点用 admin 令牌）→ 更新 actor，
       // 保留目标 user 与模拟字段；否则正常更新 user。
       if (state.isImpersonating) {
+        if (state.actor == refreshed) return;
         state = SessionState(
           status: AuthStatus.authenticated,
           user: state.user,
-          actor: _toAppUser(UserProfile.fromJson(userJson)),
+          actor: refreshed,
           impersonationModeExpiresAt: state.impersonationModeExpiresAt,
           impersonationReadOnly: state.impersonationReadOnly,
           recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,
         );
       } else {
+        if (state.user == refreshed) return;
         state = SessionState(
           status: AuthStatus.authenticated,
-          user: _toAppUser(UserProfile.fromJson(userJson)),
+          user: refreshed,
           impersonationModeExpiresAt: state.impersonationModeExpiresAt,
           impersonationReadOnly: state.impersonationReadOnly,
           recentImpersonatedEmployeeIds: state.recentImpersonatedEmployeeIds,

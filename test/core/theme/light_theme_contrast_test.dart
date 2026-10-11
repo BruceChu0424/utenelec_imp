@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 
@@ -43,6 +44,15 @@ void main() {
       _contrastRatio(UtenColors.primary, UtenColors.darkBackground),
       greaterThanOrEqualTo(4.5),
     );
+  });
+
+  test('input suffix (数量单位后缀) uses primary text color in both themes', () {
+    // 2026-10-10 用户口径：数量输入框的单位后缀（suffixText）用正文色——
+    // 浅色=近黑、深色=近白，不吃 Material 默认的灰 onSurfaceVariant。
+    final light = buildLightTheme().inputDecorationTheme;
+    expect(light.suffixStyle?.color, UtenColors.textPrimary);
+    final dark = buildDarkTheme().inputDecorationTheme;
+    expect(dark.suffixStyle?.color, UtenColors.darkTextPrimary);
   });
 }
 

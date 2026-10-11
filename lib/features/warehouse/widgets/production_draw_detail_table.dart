@@ -14,6 +14,7 @@ import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/outbound_weight_entry.dart';
@@ -428,43 +429,58 @@ class ProductionDrawDetailTable extends StatelessWidget {
                         : names.goodsInfo(row.item!.goodsId)?.stockPlace ??
                               '—'),
         ),
-        MasterColumnDef(
-          key: 'unit',
-          label: '单位',
-          width: 70,
-          value: (row) => row.isMergedGroup
-              ? names.unit(row.group!.first.item!.unitId)
-              : row.discovery?.label('unitName') ??
-                    names.unit(row.item!.unitId),
-        ),
+        // 2026-10-10「数量 + 单位」内联口径：单位列删除，只读数量直接带单位、
+        // 输入格单位显示在 suffixText；各数量列宽 +35 补单位占位。
         MasterColumnDef(
           key: 'qty',
           label: discoveryRows.isEmpty ? '应领数量' : '应领数量 *',
-          width: discoveryRows.isEmpty ? 105 : 180,
+          width: discoveryRows.isEmpty ? 140 : 215,
           type: 'number',
           value: (row) => row.isMergedGroup
-              ? _mergedQty(row.group!, (item) => item.qty ?? 0)
-              : row.discovery?.quantity.text ?? _quantity(row.item!.qty ?? 0),
+              ? _mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row))
+              : row.discovery == null
+              ? formatQtyWithUnit(
+                  row.item!.qty ?? 0,
+                  _unitOf(row),
+                  maxDecimals: 4,
+                )
+              : row.discovery!.quantity.text,
           exactValueOf: (row) => row.isMergedGroup
               ? _mergedExactQty(row.group!, (item) => item.qty)
               : row.discovery?.quantity.text ?? row.item?.qty?.toString(),
           exactListenableOf: (row) => row.discovery?.quantity,
           cellBuilder: (context, row) => row.isMergedGroup
-              ? Text(_mergedQty(row.group!, (item) => item.qty ?? 0))
+              ? Text(
+                  _mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row)),
+                )
               : row.discovery == null
-              ? Text(_quantity(row.item!.qty ?? 0))
+              ? Text(
+                  formatQtyWithUnit(
+                    row.item!.qty ?? 0,
+                    _unitOf(row),
+                    maxDecimals: 4,
+                  ),
+                )
               : _discoveryQuantityCell(context, row.discovery!),
         ),
         MasterColumnDef(
           key: 'issuedQty',
           label: '已出库',
-          width: 105,
+          width: 140,
           type: 'number',
           value: (row) => row.isMergedGroup
-              ? _mergedQty(row.group!, (item) => item.issuedQty ?? 0)
+              ? _mergedQty(
+                  row.group!,
+                  (item) => item.issuedQty ?? 0,
+                  _unitOf(row),
+                )
               : row.discovery == null
-              ? _quantity(row.item!.issuedQty ?? 0)
-              : '0',
+              ? formatQtyWithUnit(
+                  row.item!.issuedQty ?? 0,
+                  _unitOf(row),
+                  maxDecimals: 4,
+                )
+              : formatQtyWithUnit(0, _unitOf(row)),
           exactValueOf: (row) => row.isMergedGroup
               ? _mergedExactQty(row.group!, (item) => item.issuedQty)
               : row.discovery == null
@@ -490,19 +506,22 @@ class ProductionDrawDetailTable extends StatelessWidget {
             return WeightText(
               kg: item.issuedWeightKg,
               estimated: item.issuedWeightEstimated,
-              textAlign: TextAlign.right,
             );
           },
         ),
         MasterColumnDef(
           key: 'remainingQty',
           label: '待出库',
-          width: 105,
+          width: 140,
           type: 'number',
           value: (row) => row.isMergedGroup
-              ? _mergedQty(row.group!, (item) => item.remainingQty)
+              ? _mergedQty(row.group!, (item) => item.remainingQty, _unitOf(row))
               : row.discovery == null
-              ? _quantity(row.item!.remainingQty)
+              ? formatQtyWithUnit(
+                  row.item!.remainingQty,
+                  _unitOf(row),
+                  maxDecimals: 4,
+                )
               : '待确认',
           exactValueOf: (row) => row.isMergedGroup
               ? _mergedExactQty(row.group!, (item) => item.remainingQty)
@@ -518,7 +537,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           MasterColumnDef(
             key: 'issueQty',
             label: '本次出库',
-            width: 120,
+            width: 155,
             type: 'number',
             value: (row) => issueQtyControllers![row.item?.id]?.text ?? '',
             exactValueOf: (row) => issueQtyControllers![row.item?.id]?.text,
@@ -535,6 +554,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
                   controller: controller,
                   weight: _weightOf(row),
                   enabled: !issueSaving && (row.item?.remainingQty ?? 0) > 0,
+                  unitName: _unitOf(row),
                 ),
               );
             },
@@ -623,7 +643,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
             exactValueOf: (row) => row.item?.weight?.toString(),
             cellBuilder: (context, row) => row.item?.weight == null
                 ? const Text('—')
-                : WeightText(kg: row.item!.weight, textAlign: TextAlign.right),
+                : WeightText(kg: row.item!.weight),
           ),
         if (discoveryRows.isNotEmpty) ...[
           MasterColumnDef(
@@ -725,7 +745,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
     );
   }
 
-  /// 可按称重推算的数量格: 推算值黄框预填, ⓘ 说明推算区间。
+  /// 可按称重推算的数量格: 推算值黄框预填, ⓘ 说明推算区间;
+  /// [unitName] 是单位后缀 (单位列删除后随输入框显示, 2026-10-10 口径)。
   Widget _autofillQuantityField(
     BuildContext context, {
     required Key key,
@@ -734,6 +755,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
     required bool enabled,
     bool readOnly = false,
     String? hintText,
+    String? unitName,
     Widget? error,
     bool requiredEmpty = false,
   }) => ValueListenableBuilder<TextEditingValue>(
@@ -747,11 +769,15 @@ class ProductionDrawDetailTable extends StatelessWidget {
         enabled: enabled,
         readOnly: readOnly,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textAlign: TextAlign.right,
         decoration: applyAutofillHint(
           applyRequiredEmpty(
             UtenInputDecoration(
-              InputDecoration(isDense: true, hintText: hintText, error: error),
+              InputDecoration(
+                isDense: true,
+                hintText: hintText,
+                error: error,
+                suffixText: unitName,
+              ),
               info: autofilled
                   ? (weight?.weight.qtyEstimateNote ?? '按称重推算')
                   : null,
@@ -777,6 +803,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
     enabled: true,
     readOnly: issueSaving,
     hintText: '需要填写',
+    unitName: (row.values['unitName'] as String?)?.trim(),
     error: showDiscoveryValidation && row.quantityError != null
         ? UtenFieldMessage.error(row.quantityError!)
         : null,
@@ -834,7 +861,22 @@ class ProductionDrawDetailTable extends StatelessWidget {
     );
   }
 
-  /// 合并行数量合计（组员逐行取数相加）。
+  /// 行单位名（2026-10-10「数量 + 单位」内联口径，单位列已删除）：合并行取组首
+  /// 行单位，发现行取申请行快照 values['unitName']；names.unit 未加载返回「—」，
+  /// 拼装前滤掉，避免出现「5 —」。
+  String? _unitOf(ProductionDrawDetailRow row) {
+    final String? name;
+    if (row.isMergedGroup) {
+      name = names.unit(row.group!.first.item!.unitId);
+    } else if (row.discovery != null) {
+      name = (row.discovery!.values['unitName'] as String?)?.trim();
+    } else {
+      name = names.unit(row.item?.unitId);
+    }
+    return name == null || name.isEmpty || name == '—' ? null : name;
+  }
+
+  /// 合并行数量合计（组员逐行取数相加），单位随数量内联 (2026-10-10 口径)。
   static String? _mergedExactQty(
     List<ProductionDrawDetailRow> group,
     double? Function(StockDocItem) pick,
@@ -846,11 +888,14 @@ class ProductionDrawDetailTable extends StatelessWidget {
   static String _mergedQty(
     List<ProductionDrawDetailRow> group,
     double Function(StockDocItem) pick,
-  ) => _quantity(
+    String? unit,
+  ) => formatQtyWithUnit(
     group.fold<double>(
       0,
       (acc, row) => acc + (row.item == null ? 0 : pick(row.item!)),
     ),
+    unit,
+    maxDecimals: 4,
   );
 
   /// 合并行多值摘要：单值原样、多值「N 个」、空「—」。
@@ -859,11 +904,6 @@ class ProductionDrawDetailTable extends StatelessWidget {
     if (list.isEmpty) return '—';
     return list.length == 1 ? list.single : '${list.length} 个';
   }
-
-  static String _quantity(double value) => value
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
 
   static String _numberLabel(String? number) =>
       number?.trim().isNotEmpty == true ? number!.trim() : '—';

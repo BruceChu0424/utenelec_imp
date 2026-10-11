@@ -302,10 +302,13 @@ void main() {
       final restoredRow =
           (state.captureFormDraft()['rows'] as List<dynamic>).single
               as Map<String, dynamic>;
-      final rejectedRow =
-          (iqc.sent.single['items'] as List<dynamic>).single
-              as Map<String, dynamic>;
-      expect(restoredRow['key'], isNot(rejectedRow['idempotencyKey']));
+      final rejectedItems =
+          ((iqc.sent.single['receipts'] as List<dynamic>).single
+              as Map<String, dynamic>)['items'] as List<dynamic>;
+      expect(
+        restoredRow['key'],
+        isNot((rejectedItems.single as Map<String, dynamic>)['idempotencyKey']),
+      );
       expect(
         env.container
             .read(formDraftsProvider)
@@ -488,18 +491,21 @@ class _Iqc extends DioProcurementInspectionRepository {
           ),
         ];
   @override
-  Future<void> decideBatch({
-    required String receiptType,
-    required String receiptId,
-    required List<ProcurementInspectionDecideItem> items,
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
     String? reason,
   }) async {
     sent.add(
       jsonDecode(
             jsonEncode({
-              'receiptType': receiptType,
-              'receiptId': receiptId,
-              'items': items.map((item) => item.toJson()).toList(),
+              'receipts': [
+                for (final receipt in receipts)
+                  {
+                    'receiptType': receipt.receiptType,
+                    'receiptId': receipt.receiptId,
+                    'items': receipt.items.map((item) => item.toJson()).toList(),
+                  },
+              ],
               'reason': reason,
             }),
           )

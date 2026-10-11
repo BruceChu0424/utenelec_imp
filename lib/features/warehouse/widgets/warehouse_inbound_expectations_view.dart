@@ -414,7 +414,7 @@ class _WarehouseInboundExpectationsViewState
     bool current() =>
         mounted &&
         version == _requestVersion &&
-        identical(session, ref.read(sessionProvider));
+        ref.read(sessionProvider).isSameIdentity(session);
     setState(() {
       _loading = true;
       _error = null;

@@ -31,6 +31,11 @@ abstract interface class FinanceProcurementWorkflowRepository {
   Future<void> approveOrdersBatch(
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
+
+    /// 财务通过时确认的记账汇率（2026-10-10 财务订货审批口径）：>0 才随请求
+    /// 提交，落在本笔审批 case 上（V438 迁移冻结期间订单头汇率禁改）；
+    /// 缺省不传，由服务端按 1 处理。
+    double? exchangeRate,
   });
 
   Future<void> rejectOrdersBatch(
@@ -115,12 +120,16 @@ class DioFinanceProcurementWorkflowRepository
   Future<void> approveOrdersBatch(
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
+    double? exchangeRate,
   }) async {
     await api.post(
       ApiEndpoints.financeProcurementApprovalBatchApprove,
       body: {
         'items': [for (final item in items) item.toJson()],
         if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
+        // 汇率只随「通过」提交（驳回不改单不落汇率）；>0 才进请求体。
+        if (exchangeRate != null && exchangeRate > 0)
+          'exchangeRate': exchangeRate,
       },
     );
   }

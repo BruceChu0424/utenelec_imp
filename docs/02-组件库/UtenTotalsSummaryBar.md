@@ -20,7 +20,7 @@
 | `compact` | 收紧纵向内边距（默认 false）。表格表尾槽位（`MasterDataTableView.summaryBar`）传 true：下方紧接翻页条（自带 8px 内边距），且 375px × 1.5 倍字号下这 8px 会把表体挤到溢出 |
 
 规则：
-- 值为空串或「—」（金额格式化的空值占位）的项**整体隐藏**，不会出现「折合本币: —」；
+- 值为空串或「—」（金额格式化的空值占位）的项**整体隐藏**，不会出现「折合人民币: —」；
 - 每一项是不可拆的 `Row`（标签 + 值），窄屏换行只发生在项与项之间；标签用半角冒号；
   值包 `Flexible`，窄屏/大字号在数值内部换行，绝不把 Row 撑溢出；
 - **合计数量不得跨单位相加**：调用方按单位分组（`groupMeasurementTotals` / `measurementTotalsText`），多单位显示「12 个 · 3 箱」。
@@ -33,7 +33,7 @@ UtenTotalsSummaryBar(
   entries: [
     UtenTotalEntry('合计数量', measurementTotalsText(...)),
     UtenTotalEntry('合计金额(人民币)', money(totalOriginal), danger: true),
-    UtenTotalEntry('折合本币', money(totalLocal)),
+    UtenTotalEntry('折合人民币', money(totalOriginal.multiply(rate))),
   ],
 )
 ```
@@ -80,8 +80,8 @@ UtenTotalsSummaryBar(
 
 | 页面 | 位置 | 合计项 | 门控 |
 |---|---|---|---|
-| 订货审批审核详情 `finance_procurement_approval_review_page.dart` | 明细表下 | 合计数量 / 合计金额(币种)🔴 / 折合本币 | — |
-| 销售订单财务审核详情 `finance_sales_order_review_page.dart` | 明细表下·随表体滚动（`summaryBarInline`，2026-09-15） | 合计数量 / 合计金额(币种)🔴 | 销售阶段无本币事实，不出折合本币 |
+| 订货审批审核详情 `finance_procurement_approval_review_page.dart` | 明细表下·钉在表内滚卡片底（2026-10-10 折叠头重构，随汇率编辑实时重算） | 合计数量 / 合计金额(币种)🔴 / 折合人民币 | — |
+| 销售订单财务审核详情 `finance_sales_order_review_page.dart` | 明细表下·随表体滚动（`summaryBarInline`，2026-09-15） | 合计数量 / 合计金额(币种)🔴 | 销售阶段无本币事实，不出折合人民币 |
 | 采购单据详情 `purchase_doc_detail_page.dart` | 明细表下（`purchase-detail-totals`） | 合计数量 / 合计金额(币种)🔴 / 合计(本币) | `canViewCommercialAmounts`（含服务端 `priceMasked`）；申请单无金额口径 |
 | 委外单据详情 `subcontract_doc_detail_page.dart` | 明细表下（`subcontract-detail-totals`） | 同上 | `canViewCommercialAmounts` + `_cfg.hasAmount` |
 | 销售单据详情 `sales_doc_detail_page.dart` | 明细表下·随表体滚动（`summaryBarInline`，2026-09-15，`sales-detail-totals`） | 合计数量 / 合计金额(币种)🔴 / 合计(本币) | `priceMasked` 时金额项整体不渲染；订单阶段不出本币项 |

@@ -177,8 +177,9 @@ void main() {
     expect(columns['offsetLocal']?.label, '抵销(本币)');
     expect(columns['outstandingOriginal']?.label, '未付(原币)');
     expect(columns['outstandingLocal']?.label, '未付(本币)');
-    expect(columns['outstandingOriginal']?.value(item), '5200.00');
-    expect(columns['outstandingLocal']?.value(item), '5200.00');
+    // 金额「数值 币种」后缀（2026-10-10 口径）：人民币行原币/本币列后缀均为「元」。
+    expect(columns['outstandingOriginal']?.value(item), '5200.00 元');
+    expect(columns['outstandingLocal']?.value(item), '5200.00 元');
     expect(
       table.facets.keys,
       containsAll(<String>[

@@ -28,6 +28,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../models/goods_bom_item.dart';
 import '../repositories/goods_bom_repository.dart';
 import 'master_data_table_view.dart';
@@ -345,14 +346,15 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
     required String? outputUnit,
     required bool canRelearn,
   }) {
-    /// 服务端没给的数(没有可用数据等)显示「—」。
-    String qtyOrDash(double? value) =>
-        value == null ? '—' : formatBomQty(value);
+    /// 服务端没给的数(没有可用数据等)显示「—」；单位内联（2026-10-10 口径）。
+    String qtyOrDash(double? value, String? unit) => value == null
+        ? '—'
+        : formatQtyWithUnit(value, unit, maxDecimals: 6);
 
     /// 服务端已按状态给好：BOM 外/已删除的料是每个父件的平均用量，
     /// 没有可用数据(含父件单位变了)为空。
     String actualText(GoodsBomLearningComponent row) =>
-        qtyOrDash(row.actual.qty);
+        qtyOrDash(row.actual.qty, row.unitName);
 
     /// 这段累计里没有产出时服务端给空。
     String defectRateText(GoodsBomLearningComponent row) {
@@ -423,23 +425,19 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         width: 90,
         value: (row) => row.componentCode,
       ),
-      MasterColumnDef(
-        key: 'unit',
-        label: l10n.materialDiscoveryUnit,
-        width: 56,
-        value: (row) => row.unitName,
-      ),
+      // 2026-10-10「数量+单位」全站口径：独立「单位」列退役，组件单位内联进
+      // 用量列；产量两列（曝光产量/不良数）是父件口径，内联父件单位 outputUnit。
       MasterColumnDef(
         key: 'designQty',
         label: l10n.bomDesignQty,
-        width: 100,
+        width: 135,
         type: 'number',
-        value: (row) => qtyOrDash(row.designQty),
+        value: (row) => qtyOrDash(row.designQty, row.unitName),
       ),
       MasterColumnDef(
         key: 'actualQty',
         label: l10n.bomActualQty,
-        width: 100,
+        width: 135,
         type: 'number',
         value: actualText,
         cellBuilder: (context, row) => withTip(row, actualText(row)),
@@ -447,31 +445,40 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
       MasterColumnDef(
         key: 'perProducedQty',
         label: l10n.bomLearningPerProduced,
-        width: 100,
+        width: 135,
         type: 'number',
         // 按实产(良品+不良)的用量，与真实使用数量同一口径；没有真实值为空。
-        value: (row) => qtyOrDash(row.actual.perProducedQty),
+        value: (row) => qtyOrDash(row.actual.perProducedQty, row.unitName),
       ),
       MasterColumnDef(
         key: 'netQty',
         label: l10n.bomLearningNet,
-        width: 100,
+        width: 135,
         type: 'number',
-        value: (row) => formatBomQty(row.actual.netQty),
+        value: (row) =>
+            formatQtyWithUnit(row.actual.netQty, row.unitName, maxDecimals: 6),
       ),
       MasterColumnDef(
         key: 'exposureOutputQty',
         label: l10n.bomLearningExposure,
-        width: 92,
+        width: 125,
         type: 'number',
-        value: (row) => formatBomQty(row.actual.outputQty),
+        value: (row) => formatQtyWithUnit(
+          row.actual.outputQty,
+          outputUnit,
+          maxDecimals: 6,
+        ),
       ),
       MasterColumnDef(
         key: 'defectQty',
         label: l10n.bomLearningDefect,
-        width: 84,
+        width: 115,
         type: 'number',
-        value: (row) => formatBomQty(row.actual.defectQty),
+        value: (row) => formatQtyWithUnit(
+          row.actual.defectQty,
+          outputUnit,
+          maxDecimals: 6,
+        ),
       ),
       MasterColumnDef(
         key: 'defectRate',

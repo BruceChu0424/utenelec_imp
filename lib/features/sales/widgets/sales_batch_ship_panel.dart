@@ -367,7 +367,6 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
           Expanded(
             child: Text(
               '可发 ${_num(l.reservedQty)}',
-              textAlign: TextAlign.right,
               style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w400,
               ),
@@ -383,7 +382,6 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall,
               decoration: const InputDecoration(
                 isDense: true,
@@ -402,7 +400,6 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              textAlign: TextAlign.right,
               style: theme.textTheme.bodySmall,
               decoration: const UtenInputDecoration(
                 InputDecoration(

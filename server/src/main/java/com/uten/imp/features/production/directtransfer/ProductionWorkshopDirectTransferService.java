@@ -50,8 +50,9 @@ import java.util.UUID;
  * 材料清账与成本产出四道既有硬闸，其中成本产出行的 movement_id 是 NOT NULL——
  * 没有库存移动就没有成本产出，子件的成本会永远停在在制。所以取向是**不绕开「仓库」
  * 这个数据概念，只绕开「仓库」这个部门角色**：线边仓是车间自己的料架，是一个真实叶仓。
- * ADR-147(V802) 起线边仓(内料仓)只能在「车间内料仓」里开通，直送只送已开通的车间，不再自动建仓；
- * 收料车间没开通时资格判定给出 WORKSHOP_BIN_NOT_OPEN，报工这部分送入仓库。
+ * ADR-147(V802) 起线边仓(内料仓)只能在「车间内料仓」里开通; V837(ADR-173) 起车间内流转
+ * 不再要求预先开通——审核直送时按需建出内料仓并写开通行(workshop_bins 单一真源保留)，
+ * 收料车间没开通不再产生 WORKSHOP_BIN_NOT_OPEN。
  *
  * <p>权限：整条链由 {@code production_direct_transfer:approve} 一个码显式授权(V585)，
  * 不借用品质部与仓库的码；范围由 {@link ProductionWorkshopMembership} 逐段判定。
@@ -69,7 +70,7 @@ public class ProductionWorkshopDirectTransferService {
     private final ProductionFqcInspectionService inspections;
     private final ProductionExecutionReadinessService readiness;
     private final StockDocService stockDocs;
-    /** 读收料车间已开通的内料仓走应用端口(ADR-017：跨 feature 只经 application.port)。 */
+    /** 收料车间内料仓的读取/按需开通走应用端口(ADR-017：跨 feature 只经 application.port)。 */
     private final LineSideWarehousePort lineSideWarehouses;
     private final ChainNoticeService chainNotices;
 
@@ -332,7 +333,8 @@ public class ProductionWorkshopDirectTransferService {
     /**
      * 逐行解析收料需求、车间与线边仓。能不能送只读 fn_workshop_direct_targets 的单条校验(V736)，
      * 与候选列表、保存拆分、数据库守卫同一把尺子；不能送时原样说出原因。
-     * 内料仓只读收料车间已开通的那一个(ADR-147)；没开通时上面的判定已经是 WORKSHOP_BIN_NOT_OPEN。
+     * 内料仓读收料车间已开通的那一个(ADR-147); 没开通时审核直送按需开通(V837/ADR-173):
+     * 建出内料仓并写开通行, 单一真源保留, 整批领料仍须显式开启。
      */
     private Resolved resolve(
             ProductionDailyReportItem item, Set<UUID> memberCheckedSegments,
@@ -383,9 +385,10 @@ public class ProductionWorkshopDirectTransferService {
             requireWorkshopMember(item.getExecutionSegmentId());
         }
         UUID workshop = (UUID) row[3];
+        // 没开通就按需开通(V837/ADR-173): 收料车间不必为了流转先走开通流程; 挂靠主仓
+        // 取收料需求所在仓, 行级守卫(与收料需求同主仓)因此恒满足。
         UUID lineSide = binByWorkshop.computeIfAbsent(workshop, receiving -> lineSideWarehouses
-                .openedBinOf(receiving)
-                .orElseThrow(() -> conflict(UNAVAILABLE_PREFIX + "收料车间还没开通内料仓，请仓库在「车间内料仓」开通后再直送，这次先送入仓库")));
+                .ensureOpenedBinOf(receiving, (UUID) row[4], currentUser.requireId()));
         return new Resolved(
                 (UUID) row[0], (UUID) row[1], (UUID) row[2],
                 (String) row[6], Boolean.TRUE.equals(row[7]),

@@ -158,7 +158,9 @@ public class FulfillmentWorkbenchQueryService {
                         'requiredQty', request.effective_qty,
                         'fulfilledQty', request.fulfilled_qty,
                         'openQty', request.open_qty
-                    ) ORDER BY v.goods_code NULLS LAST, v.color_name NULLS LAST), '[]'::jsonb) AS lines
+                    ) ORDER BY v.goods_code NULLS LAST, v.color_name NULLS LAST), '[]'::jsonb) AS lines,
+                    -- 2026-10-10 V836：仓库段没有委外商（列只服务委外申请行），占位保持列位。
+                    NULL::text AS supplier_name
              FROM v_fulfillment_workbench v
              JOIN production_planning_package_document_items mapping
                ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
@@ -190,7 +192,8 @@ public class FulfillmentWorkbenchQueryService {
                     GREATEST(material.line_count,1), ARRAY[]::text[],
                     NULL::text AS workshop_name, NULL::text AS worker_name,
                     NULL::text AS draw_batch_no,
-                    '[]'::jsonb AS lines
+                    '[]'::jsonb AS lines,
+                    NULL::text AS supplier_name
              FROM production_material_discovery_requests request
              JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
              JOIN production_plans plan ON plan.id=segment.plan_id
@@ -333,7 +336,10 @@ public class FulfillmentWorkbenchQueryService {
                               ARRAY[]::TEXT[]
                           ) AS action_item_ids,
                           NULL::text AS workshop_name, NULL::text AS worker_name,
-                          NULL::text AS draw_batch_no, '[]'::jsonb AS lines
+                          NULL::text AS draw_batch_no, '[]'::jsonb AS lines,
+                          -- 2026-10-10 V836：委外申请行的委外商（未定商为 NULL）；
+                          -- 按单归组后同单同商，MAX 取一即可。
+                          MAX(v.supplier_name) AS supplier_name
                    FROM v_procurement_decomposition_tasks v
                    GROUP BY v.department, v.action_doc_type, v.action_doc_id, v.task_status)
                   """;
@@ -389,7 +395,8 @@ public class FulfillmentWorkbenchQueryService {
                        display_stage,
                        materials_defined, production_product_code, production_product_name, material_request_no,
                        workshop_name, worker_name, draw_batch_no, lines,
-                       rd_task_no, bom_missing_item_ids, orderable_qty
+                       rd_task_no, bom_missing_item_ids, orderable_qty,
+                       supplier_name
                 FROM %s
                 WHERE %s
                 ORDER BY %s
@@ -971,7 +978,8 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS execution_segment_codes,
                         base.workshop_name, base.worker_name, base.draw_batch_no, base.lines,
                         %s AS rd_task_no, %s AS bom_missing_item_ids,
-                        %s AS orderable_qty
+                        %s AS orderable_qty,
+                        base.supplier_name
                  FROM %s base %s %s %s %s)
                 """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
@@ -1065,7 +1073,8 @@ public class FulfillmentWorkbenchQueryService {
                 row.length > 44 ? parseLines(row[44]) : List.of(),
                 row.length > 45 ? (String) row[45] : null,
                 row.length > 46 ? stringArray(row[46]) : List.of(),
-                row.length > 47 && row[47] != null ? decimal(row[47]) : null);
+                row.length > 47 && row[47] != null ? decimal(row[47]) : null,
+                row.length > 48 ? (String) row[48] : null);
     }
 
     private static final com.fasterxml.jackson.databind.ObjectMapper LINES_MAPPER =
@@ -1224,7 +1233,7 @@ public class FulfillmentWorkbenchQueryService {
                 row.productionProductCode(), row.productionProductName(), restricted ? null : row.materialRequestNo(),
                 row.workshopName(), row.workerName(), row.drawBatchNo(), row.lines(),
                 row.rdTaskNo(), restricted ? List.of() : row.bomMissingItemIds(),
-                restricted ? null : row.orderableQty());
+                restricted ? null : row.orderableQty(), row.supplierName());
     }
 
     private static BigDecimal decimal(Object value) {

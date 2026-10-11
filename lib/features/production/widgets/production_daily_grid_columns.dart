@@ -2,7 +2,8 @@
 //
 // 日报记录非金额生产计量事实：完工申报量及可选实际总重量。
 // 客户端单价/金额不是计件工资权威，已从操作界面移除。
-// DailyGridRow：货品(选择)/完工申报量/实际重量；颜色/单位选货品后自动回填（只读）；
+// DailyGridRow：货品(选择)/完工申报量/实际重量；颜色选货品后自动回填（只读）、
+// 单位回填后作数量输入框后缀（2026-10-10 数量内联口径）；
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -17,6 +18,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/daily_output_allocation.dart'
     show outputAllocationQuantityText;
@@ -44,7 +46,7 @@ class DailyMaterialInput {
 }
 
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
-/// 完工量是生产声明；颜色/单位为来源任务冻结值。
+/// 完工量是生产声明；颜色为来源任务冻结值，单位作数量输入框后缀。
 class DailyGridRow extends EditableGridRow {
   DailyGridRow({String? localRowId})
     : localRowId = localRowId ?? const Uuid().v4();
@@ -389,7 +391,7 @@ class DailyGridRow extends EditableGridRow {
     return c;
   }
 
-  /// 颜色/单位（选货品后自动回填；单元格只读显示）。
+  /// 颜色（选货品后自动回填；单元格只读显示）；单位回填后作数量输入框后缀。
   final colorIdNotifier = ValueNotifier<String?>(null);
   String? get colorId => colorIdNotifier.value;
   set colorId(String? v) => colorIdNotifier.value = v;
@@ -626,11 +628,15 @@ double? expectedMaterialUsage({
   return (capped * 10000).roundToDouble() / 10000;
 }
 
-/// 生产日报明细列：货品(点选) / 颜色(只读) / 单位(只读) / 完工申报量 / 不良数 / 实际重量 /
-/// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入。
+/// 生产日报明细列：货品(点选) / 颜色(只读) / 完工申报量 / 不良数 / 实际重量 /
+/// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入
+/// （颜色只读显示 + 数量输入框单位后缀，2026-10-10 数量内联口径）。
 /// [hasSubRows]/[isLastSubRow] 由编辑页按当前行序计算：本表把成品行与
 /// 它的物料子行扁平混排，树形缩进和连接线要知道「这行下面还有没有子行」「这是不是
 /// 最后一个子行」。[onMaterialChanged] 让编辑页在实耗输入变化时重算必填红框与提交态。
+/// [allocationsExpanded]/[onToggleAllocations] 是去向子行的展开态与切换回调
+/// （编辑已有单据默认收起，2026-10-10 用户口径）：收起时成品行只显示摘要，
+/// 「产出去向」格尾部给一个展开/收起小切换钮。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required BuildContext context,
   required Future<void> Function(DailyGridRow row) onPickGoods,
@@ -646,6 +652,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   onAllocationDestinationChanged,
   void Function(DailyGridRow allocation)? onAllocationQtyChanged,
   void Function(DailyGridRow allocation, bool focused)? onAllocationQtyFocus,
+  bool Function(DailyGridRow product)? allocationsExpanded,
+  void Function(DailyGridRow product)? onToggleAllocations,
 }) {
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
@@ -779,28 +787,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           ? UtenGoodsAttributeCell(row.material?.colorName)
           : _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
-    EditableGridColumn<DailyGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 110,
-      textOf: (r) => r.isAllocationRow
-          ? ''
-          : r.isMaterialRow
-          ? (r.material?.unitName ?? '')
-          : (unitEntries[r.unitId ?? ''] ?? ''),
-      listenableOf: (r) => r.unitIdNotifier,
-      cellBuilder: (context, row) => row.isAllocationRow
-          ? const SizedBox.shrink()
-          : row.isMaterialRow
-          ? Text(row.material?.unitName ?? '—')
-          : _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
-    ),
+    // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位跟在
+    // 完工申报量/不良数等数量输入框后缀；物料子行读材料主档单位，去向子行
+    // 与所属成品行同单位。
     EditableGridColumn<DailyGridRow>(
       key: 'qty',
       exactValueOf: (r) => r.isSubRow ? null : r.qty.text,
       exactListenableOf: (r) => r.qty,
       label: '完工申报量',
-      width: 118,
+      width: 152,
       numeric: true,
       required: true,
       headerInfo: l10n.workflowReportQuantityHint,
@@ -809,16 +804,22 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           : RequiredCellFrame(
               listenable: row.qty,
               isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
-              child: TextField(
-                controller: row.qty,
-                onChanged: (_) => row.qtyNeedsVerification = false,
-                readOnly: row.hasFixedSupplement,
-                textAlign: TextAlign.right,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const UtenInputDecoration(
-                  InputDecoration(isDense: true, hintText: '0'),
+              child: ValueListenableBuilder<String?>(
+                valueListenable: row.unitIdNotifier,
+                builder: (context, unitId, _) => TextField(
+                  controller: row.qty,
+                  onChanged: (_) => row.qtyNeedsVerification = false,
+                  readOnly: row.hasFixedSupplement,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      isDense: true,
+                      hintText: '0',
+                      suffixText: _unitSuffixText(unitId, unitEntries),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -860,7 +861,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       exactValueOf: (r) => r.isSubRow ? null : r.defectQty.text,
       exactListenableOf: (r) => r.defectQty,
       label: '不良数',
-      width: 104,
+      width: 138,
       numeric: true,
       headerInfo: productionDailyReportDefectInfo,
       textOf: (r) => r.isMaterialRow ? '' : r.defectQty.text,
@@ -880,16 +881,22 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               : RequiredCellFrame(
                   listenable: Listenable.merge([row.defectQty, row.qty]),
                   isEmpty: () => productionReportDefectIssue(row) != null,
-                  child: TextField(
-                    controller: row.defectQty,
-                    onChanged: (_) => row.defectQtyNeedsVerification = false,
-                    textAlign: TextAlign.right,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    inputFormatters: [productionQuantityInputFormatter],
-                    decoration: const UtenInputDecoration(
-                      InputDecoration(isDense: true, hintText: '0'),
+                  child: ValueListenableBuilder<String?>(
+                    valueListenable: row.unitIdNotifier,
+                    builder: (context, unitId, _) => TextField(
+                      controller: row.defectQty,
+                      onChanged: (_) => row.defectQtyNeedsVerification = false,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [productionQuantityInputFormatter],
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          isDense: true,
+                          hintText: '0',
+                          suffixText: _unitSuffixText(unitId, unitEntries),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -904,15 +911,21 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       exactValueOf: (r) =>
           r.isMaterialRow ? r.material?.issuedQty.toString() : null,
       label: '领料量',
-      width: 104,
+      width: 138,
       numeric: true,
       headerInfo:
           '仓库已实际发给本工单的数量(基本单位)。它是只读事实，'
           '要改只能走仓库的出库红冲。',
-      textOf: (r) =>
-          r.isMaterialRow ? _quantityText(r.material?.issuedQty ?? 0) : '',
+      textOf: (r) => r.isMaterialRow
+          ? formatQtyWithUnit(r.material?.issuedQty ?? 0, r.material?.unitName)
+          : '',
       cellBuilder: (context, row) => row.isMaterialRow
-          ? Text(_quantityText(row.material?.issuedQty ?? 0))
+          ? Text(
+              formatQtyWithUnit(
+                row.material?.issuedQty ?? 0,
+                row.material?.unitName,
+              ),
+            )
           : const SizedBox.shrink(),
     ),
     EditableGridColumn<DailyGridRow>(
@@ -920,7 +933,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       exactValueOf: (r) => r.isMaterialRow ? r.materialUsed.text : null,
       exactListenableOf: (r) => r.materialUsed,
       label: '本次实际用料',
-      width: 140,
+      width: 174,
       numeric: true,
       required: true,
       headerInfo:
@@ -934,7 +947,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           return Tooltip(
             message: '本工单的物料已在上面的成品行下登记，这里只作对照',
             child: Text(
-              _quantityText(row.materialUsedValue ?? 0),
+              formatQtyWithUnit(
+                row.materialUsedValue ?? 0,
+                row.material?.unitName,
+              ),
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -952,7 +968,6 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               key: ValueKey('daily-material-used-${row.material?.demandId}'),
               controller: row.materialUsed,
               enabled: !row.materialReadOnly,
-              textAlign: TextAlign.right,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -967,6 +982,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   InputDecoration(
                     isDense: true,
                     hintText: '0',
+                    // 物料子行单位取材料台账单位（行创建时已冻结，不随行内 notifier 变）。
+                    suffixText: row.material?.unitName,
                     helper: autofilled
                         ? const UtenFieldMessage.autofill(
                             '已按完工申报量 × 单耗自动算出，请核对本次实际用料；'
@@ -1014,7 +1031,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
         if (row.acceptedDestinationLabel case final accepted?) {
-          return Text(accepted, maxLines: 1, overflow: TextOverflow.ellipsis);
+          // 已审核行只读回看：截断显示，全文放恒定悬停提示（兜底与正文同文案）。
+          return Tooltip(
+            message: accepted,
+            child: Text(accepted, maxLines: 1, overflow: TextOverflow.ellipsis),
+          );
         }
         if (row.isMaterialRow) return const SizedBox.shrink();
         if (!row.isAllocationRow) {
@@ -1023,24 +1044,57 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             builder: (context, _, _) {
               final blocked = row.directTransferBlockedText;
               // 读取失败需要处理；确认不可转则显示实际去向，原因只在悬停时展示。
+              final Widget text;
               if (row.directTransferLoadFailed && blocked != null) {
-                return DirectTransferBlockedText(blocked);
-              }
-              final summary = _productDestinationText(row);
-              final cell = Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  summary.isEmpty ? '—' : summary,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                text = DirectTransferBlockedText(blocked);
+              } else {
+                final summary = _productDestinationText(row);
+                // Tooltip 恒定包裹 + 兜底文案：按内容条件切换包裹会拆掉子树重建，
+                // 悬停/焦点态丢失（docs/02-组件库/WeightGridColumn.md 同口径）。
+                // 单行省略后看不见的部分靠悬停全文；不可转原因优先于摘要。
+                text = Tooltip(
+                  message: blocked != null && blocked.isNotEmpty
+                      ? blocked
+                      : (summary.isEmpty ? '—' : summary),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      summary.isEmpty ? '—' : summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
-                ),
+                );
+              }
+              final toggle = onToggleAllocations;
+              // 有去向可分才给展开/收起钮；收起态的明细由摘要 + 悬停全文承载。
+              if (toggle == null || !showsOutputAllocations(row)) return text;
+              final expanded = allocationsExpanded?.call(row) ?? true;
+              return Row(
+                children: [
+                  Expanded(child: text),
+                  IconButton(
+                    tooltip: expanded ? '收起去向明细' : '展开去向明细',
+                    onPressed: () => toggle(row),
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 24,
+                      minHeight: 24,
+                    ),
+                    padding: EdgeInsets.zero,
+                    iconSize: 18,
+                    icon: Icon(
+                      expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
               );
-              return row.directTransferUnavailable
-                  ? Tooltip(message: blocked!, child: cell)
-                  : cell;
             },
           );
         }
@@ -1063,24 +1117,33 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                     ),
                   );
                 }
-                return UtenDropdownField(
-                  key: ValueKey(
-                    'daily-allocation-destination-${identityHashCode(row)}',
+                // 下拉收起态单行省略：恒定悬停给当前选中项全文（工单还差多少一目了然），
+                // 有问题时优先给红字问题；选不中任何项时兜底「送入仓库」。
+                final selected = _allocationOptionText(row);
+                return Tooltip(
+                  message: issue != null && issue.isNotEmpty
+                      ? issue
+                      : (selected.isEmpty ? '送入仓库' : selected),
+                  child: UtenDropdownField(
+                    key: ValueKey(
+                      'daily-allocation-destination-${identityHashCode(row)}',
+                    ),
+                    dense: true,
+                    allowClear: false,
+                    value:
+                        row.allocationDemandId ??
+                        outputAllocationWarehouseValue,
+                    autofilled: autofilled && issue == null,
+                    errorMessage: issue,
+                    items: outputAllocationOptions(row),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      onAllocationDestinationChanged?.call(
+                        row,
+                        value == outputAllocationWarehouseValue ? null : value,
+                      );
+                    },
                   ),
-                  dense: true,
-                  allowClear: false,
-                  value:
-                      row.allocationDemandId ?? outputAllocationWarehouseValue,
-                  autofilled: autofilled && issue == null,
-                  errorMessage: issue,
-                  items: outputAllocationOptions(row),
-                  onChanged: (value) {
-                    if (value == null) return;
-                    onAllocationDestinationChanged?.call(
-                      row,
-                      value == outputAllocationWarehouseValue ? null : value,
-                    );
-                  },
                 );
               },
             ),
@@ -1093,7 +1156,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       exactValueOf: (r) => r.isAllocationRow ? r.allocationQty.text : null,
       exactListenableOf: (r) => r.allocationQty,
       label: '去向数量',
-      width: 120,
+      width: 154,
       numeric: true,
       headerInfo:
           '这一条去向分多少(与完工申报量同单位)。所有去向合计始终等于本行完工申报量：'
@@ -1103,6 +1166,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       listenableOf: (r) => r.allocationQty,
       cellBuilder: (context, row) {
         if (!row.isAllocationRow) return const SizedBox.shrink();
+        // 与完工申报量同单位：取所属成品行回填的单位（换来源会整批重排去向子行，
+        // 拿创建时的快照即可，不必随 unitIdNotifier 实时跟）。
+        final unit = _unitSuffixText(row.allocationParent?.unitId, unitEntries);
         return ValueListenableBuilder<String?>(
           valueListenable: row.allocationIssue,
           builder: (context, issue, _) => ValueListenableBuilder<bool>(
@@ -1115,7 +1181,6 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 controller: row.allocationQty,
                 readOnly:
                     row.allocationParent?.directTransferUnavailable ?? false,
-                textAlign: TextAlign.right,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -1125,6 +1190,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                     InputDecoration(
                       isDense: true,
                       hintText: '0',
+                      suffixText: unit,
                       error: utenFieldError(issue),
                       helper: autofilled && issue == null
                           ? const UtenFieldMessage.autofill(
@@ -1233,6 +1299,14 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
 
 /// 数量文本：整数不带小数点，小数最多 4 位且不留尾零(与全站数量显示同口径)。
 String _quantityText(double value) => outputAllocationQuantityText(value);
+
+/// 数量输入格的单位后缀（2026-10-10 数量内联口径）：完工申报量/不良数/去向数量
+/// 的单位跟在输入框后缀，随 unitIdNotifier 换货品回填即时刷新；空单位无后缀。
+String? _unitSuffixText(String? unitId, Map<String, String> unitEntries) {
+  if (unitId == null || unitId.isEmpty) return null;
+  final name = unitEntries[unitId];
+  return (name == null || name.isEmpty) ? null : name;
+}
 
 /// 去向下拉里「送入仓库」那一项的值(下拉值不能为空，用它代表「不转给任何上层工单」)。
 const outputAllocationWarehouseValue = '__WAREHOUSE__';

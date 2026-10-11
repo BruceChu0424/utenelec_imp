@@ -88,6 +88,7 @@ class MasterColumnDef<T> {
     this.cellBuilder,
     this.cellBuilderHandlesSemantics = false,
     this.fillsCellHeight = false,
+    this.emphasized = false,
     this.info,
     this.defaultVisible = true,
     this.exportDefinition,
@@ -146,6 +147,11 @@ class MasterColumnDef<T> {
   /// 显示文本可带单位与「≈」, 「未称」排末尾)。
   final String type;
 
+  /// 重点核对列（2026-10-10 财务口径）：整列红色加粗，与 UtenRevisionTable 的
+  /// highlightColumnKeys 同色同字重，语义是「请逐行核对这些数字」（审核中心
+  /// 金额/汇率链等）。列自身带语义底色（cellColor）时底色对比色优先，不叠加。
+  final bool emphasized;
+
   /// 该列是否允许点表头排序（日期/金额/数量等可排序列置 true）。
   /// 页面传了 onSortChange 时排序走服务端；没传时组件就地排序（全量加载表）。
   final bool sortable;
@@ -174,6 +180,19 @@ const Set<String> _numericColumnTypes = {'number', 'money', 'count', 'weight'};
 double? _weightSortValue(String text) {
   final plain = text.replaceAll('≈', '').trim();
   return parseWithSuffix(plain, WeightUnit.kg)?.kg;
+}
+
+/// 数值列排序解析：容错「数字 + 单位后缀」的显示口径 (2026-10-10 起数量列
+/// 普遍把单位内联到数字后面，如「12 米」「3.5 PCS」)。直接 tryParse 失败时
+/// 取前导数字部分解析，仍解析不出才返回 null 交回字符串比较。
+double? _numericSortValue(String text) {
+  final cleaned = text.replaceAll(',', '').trim();
+  final direct = double.tryParse(cleaned);
+  if (direct != null) return direct;
+  final match = RegExp(
+    r'^-?\d+(?:\.\d+)?',
+  ).firstMatch(cleaned);
+  return match == null ? null : double.tryParse(match.group(0)!);
 }
 
 /// 一个可折叠的「前导分组」：渲染在表头之下、主数据行之上（如货品页的「禁用货品」
@@ -299,6 +318,8 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.rowDecorationBuilder,
     this.leadingGroups,
     this.selectable = false,
+    this.showSelectionColumn = true,
+    this.singleSelection = false,
     this.idOf,
     this.rowKeyOf,
     this.rowWidgetKeyOf,
@@ -333,6 +354,10 @@ class MasterDataTableView<T> extends StatefulWidget {
          stickyHeaderPinned == null || embedded,
          'MasterDataTableView: stickyHeaderPinned 仅用于 embedded（详情页等'
          '滚动流内的明细表）——非 embedded 表格表头结构上恒在其滚动盒顶部，无需吸顶。',
+       ),
+       assert(
+         !singleSelection || selectable,
+         'MasterDataTableView: singleSelection 仅在 selectable:true 下有意义。',
        );
 
   /// 全屏态变化通知（进入/退出各回调一次）。宿主页可借此把搜索框等控件
@@ -441,6 +466,18 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 列表和嵌入式业务明细共用；未启用多选的 picker 保留原单击选取。多选时单击行 = 切换勾选，
   /// 双击行 = [onRowTap] 打开详情。
   final bool selectable;
+
+  /// 多选时最前列是否渲染勾选框列（默认渲染）。审核页「防看岔行」纯阅读勾选
+  /// （无批量动作）传 false：行单击仍切选中、青绿高亮与「已选 N」胶囊照旧，
+  /// 只是最前列不再画行勾选框与表头全选格（2026-10-10 用户口径「最前面的
+  /// 多选不要显示」）。仅在 [selectable]:true 下有意义。
+  final bool showSelectionColumn;
+
+  /// 选中互斥（单选）：点击行选中该行并自动取消其他行（再点一次取消），
+  /// 选中集合恒为空或单元素。默认 false=多选累积。审核页「防看岔行」纯阅读
+  /// 勾选传 true（2026-10-10 用户口径「默认不要多选，选另一个之前的取消」）；
+  /// 带批量动作的表保持多选。仅在 [selectable]:true 下有意义。
+  final bool singleSelection;
 
   /// 行→业务 id 提取器（[selectable]:true 时必填）。用于把行键进 [selectedIds] 集合，避免依赖
   /// item 引用相等（列表每次 build 重建对象；_BomRow / InstantInventoryRow 无 id 都会踩坑）。
@@ -2179,7 +2216,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 固定区总宽（含行首多选框列）。
   double _pinnedLeadingWidth(List<int> pinnedIndices) =>
-      (widget.selectable ? _selectionColWidth : 0) +
+      (_hasSelectionColumn ? _selectionColWidth : 0) +
       pinnedIndices.fold(
         0.0,
         (sum, i) => sum + (i < _widths.length ? _widths[i] : 0),
@@ -2416,6 +2453,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 触发重测。（不能用 maxScrollExtent+viewportDimension：primary 表体被强制
   /// 填满联动区，量出来恒等于区高。）
   void _updateHBar() {
+    // 空表不定位覆盖层：post-frame 量测会把 _hBarY 拉回非 null，而 Offstage
+    // 只是显示兜底——ValueNotifier 状态也须归位，否则空表换有数据前一直挂着
+    // 悬浮条状态。提示行（加载/错误）同样不需要横滚条（见 _hasRowContent）。
+    if (!_hasRowContent) {
+      if (_hBarY.value != null) _hBarY.value = null;
+      return;
+    }
     final areaCtx = _bodyAreaKey.currentContext;
     final areaBox = areaCtx?.findRenderObject() as RenderBox?;
     if (areaCtx == null || areaBox == null || !areaBox.attached) {
@@ -2463,6 +2507,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (oldWidget.bottomContentPadding != widget.bottomContentPadding ||
         oldWidget.primary != widget.primary ||
         oldWidget.selectable != widget.selectable ||
+        oldWidget.showSelectionColumn != widget.showSelectionColumn ||
         (oldWidget.batchActionsBuilder == null) !=
             (widget.batchActionsBuilder == null)) {
       _scheduleHBarUpdate();
@@ -2797,7 +2842,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   double get _totalWidth {
-    var s = widget.selectable ? _selectionColWidth : 0.0;
+    var s = _hasSelectionColumn ? _selectionColWidth : 0.0;
     for (final i in _visibleIndices) {
       if (i < _widths.length) s += _widths[i];
     }
@@ -2864,6 +2909,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   // —— 多选（selectable 模式）——
+
+  /// 本表是否实际渲染行首勾选框列（宽 [_selectionColWidth]）。
+  /// [MasterDataTableView.showSelectionColumn]=false 的纯阅读勾选表不画列，
+  /// 选中语义（单击切勾选/高亮/已选胶囊）不受影响。
+  bool get _hasSelectionColumn => widget.selectable && widget.showSelectionColumn;
 
   /// 多选模式下表头/表体行的交叉轴对齐：stretch 让所有单元格同高、网格竖线贯通，
   /// 文字垂直居中；非多选沿用默认 center（行为不变）。
@@ -2966,8 +3016,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           if (weight) {
             base = _weightSortValue(left)!.compareTo(_weightSortValue(right)!);
           } else if (numeric) {
-            final x = double.tryParse(left.replaceAll(',', ''));
-            final y = double.tryParse(right.replaceAll(',', ''));
+            final x = _numericSortValue(left);
+            final y = _numericSortValue(right);
             base = x == null || y == null
                 ? left.compareTo(right)
                 : x.compareTo(y);
@@ -3042,6 +3092,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     final id = widget.idOf?.call(item);
     if (id == null || id.isEmpty) return;
+    // 单选互斥（行单击与勾选框同走这里）：勾选=集合只留本行，取消=清空——
+    // 点击另一行时上一行自然失选。
+    if (widget.singleSelection) {
+      widget.onSelectedIdsChanged?.call(
+        checked ? <String>{id} : const <String>{},
+      );
+      _fsTick.value++;
+      return;
+    }
     final next = Set<String>.of(widget.selectedIds);
     if (checked) {
       next.add(id);
@@ -3316,10 +3375,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       ),
     );
     // 普通无悬浮留白表使用流内横滚条；联动/悬浮表使用独立覆盖层，
-    // 避免 ListView 底部留白把横滚条推离末行。
+    // 避免 ListView 底部留白把横滚条推离末行。空表不包 Scrollbar
+    // （0 行时 extent 仍 >0，thumbVisibility:true 会让 thumb 恒显成噪音）。
     final hWrapped = _usesOverlayHBar
         ? hArea
-        : Scrollbar(controller: _bodyH, thumbVisibility: true, child: hArea);
+        : (_hasRowContent
+              ? Scrollbar(controller: _bodyH, thumbVisibility: true, child: hArea)
+              : hArea);
     // 竖向滚动条（上下）已改为表体 Stack 上的覆盖层
     // （见 body Stack children），此处只产出表体本体。
     //
@@ -3349,6 +3411,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.primary ||
       _hasFloatingBatchActions ||
       widget.bottomContentPadding > 0;
+
+  /// 空表不画横向滚动条（2026-10-10 用户口径）：没有任何数据行（含钉顶的
+  /// unpagedItems，它们已并入 _items）也没有前导分组行时，表头骨架仍在但
+  /// 内容宽=列宽和>视口会让 thumb 恒显（thumbVisibility:true 且无滚动事件
+  /// 永不隐藏），纯属噪音；加载中/错误态的提示行同理不需要横滚条（有意
+  /// 降噪）。有任意行内容时行为与原来完全一致。
+  bool get _hasRowContent =>
+      _displayItems.isNotEmpty ||
+      (widget.leadingGroups ?? const []).any(
+        (g) =>
+            g.items.isNotEmpty ||
+            (g.total ?? 0) > 0 ||
+            g.loading ||
+            g.error != null ||
+            g.onExpand != null,
+      );
 
   /// 自动加载触发距底阈值（约 4~5 行高）：滚到末尾前预取下一页，体感「到底即有」。
   static const double _loadMoreEdge = 200;
@@ -3645,14 +3723,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 屏幕（详细排产滑窗 bug）。显式 showFullscreenToggle 可覆盖。
     final showFullscreen = widget.showFullscreenToggle ?? !widget.embedded;
     final groups = widget.leadingGroups ?? <MasterDataGroup<T>>[];
-    final hasGroupRows = groups.any(
-      (g) =>
-          g.items.isNotEmpty ||
-          (g.total ?? 0) > 0 ||
-          g.loading ||
-          g.error != null ||
-          g.onExpand != null,
-    );
     final displayItems = _displayItems;
 
     // 行区提示（2026-10-09 用户口径「搜索无结果/加载/错误时表格骨架也要在，页面不许跳」）：
@@ -3704,7 +3774,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       final filterNote = activeFilters > 0
           ? '当前有 $activeFilters 个表头筛选生效' // TODO(l10n): 补 arb
           : null;
-      bodyNotice = hasGroupRows
+      // 该分支 displayItems 已空，_hasRowContent 此处即「前导分组是否有行」。
+      bodyNotice = _hasRowContent
           ? _compactEmptyNotice(theme, filterNote)
           : Padding(
               padding: const EdgeInsets.all(UtenSpacing.s16),
@@ -3931,8 +4002,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 Positioned(left: 0, right: 14, top: 0, child: feedback),
               // 横滚条覆盖层：按内容高度定位（[_hBarY] 为底边 local top）。
               // 内容少 → 贴末行下方（约 1px 空隙）；超高 → 钉表体区底。与 _bodyH 双向同步，
-              // 表头经既有 _sync 跟随，底部额外留白不参与定位。
-              if (_usesOverlayHBar)
+              // 表头经既有 _sync 跟随，底部额外留白不参与定位。空表不挂覆盖层
+              // （0 行/仅提示行时 thumb 是噪音，见 _hasRowContent）。
+              if (_usesOverlayHBar && _hasRowContent)
                 ValueListenableBuilder<double?>(
                   valueListenable: _hBarY,
                   builder: (context, y, _) => Positioned(
@@ -4246,6 +4318,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Widget _buildHeaderRowBody(ThemeData theme) {
     // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
     // 横滚时钉在视口左缘（[UtenFrozenLeadingColumn]），行内留等宽占位保持列对齐。
+    // showSelectionColumn=false 时不渲染（该格与整列一起退场，本变量不再挂载）。
     final headerSelectionCell = DecoratedBox(
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
@@ -4272,7 +4345,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         Row(
           crossAxisAlignment: _selectableCross,
           children: [
-            if (widget.selectable)
+            if (_hasSelectionColumn)
               SizedBox(width: _selectionColWidth, child: headerSelectionCell),
             for (final i in pinnedIndices)
               _headerColumnCell(theme, i, frozen: true),
@@ -4283,7 +4356,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return _boundStretchRow(
       // 换位拖动中在表头行上渲染插入位指示线（前导选择列让位）。
       columnHeaderIndicatorOverlay(
-        leadingInset: widget.selectable ? _selectionColWidth : 0,
+        leadingInset: _hasSelectionColumn ? _selectionColWidth : 0,
         child: _withFrozenLeadingRegion(
           controller: _headerH,
           width: _pinnedLeadingWidth(pinnedIndices),
@@ -4291,7 +4364,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           row: Row(
             crossAxisAlignment: _selectableCross,
             children: [
-              if (widget.selectable)
+              if (_hasSelectionColumn)
                 SizedBox(width: _selectionColWidth, child: headerSelectionCell),
               for (final i in _visibleIndices)
                 _headerColumnCell(theme, i, frozen: false),
@@ -4469,10 +4542,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     TextStyle base,
     Color? onCellColor, {
     required bool bold,
+    Color? emphasisColor,
   }) {
     var style = base;
     if (onCellColor != null) style = style.copyWith(color: onCellColor);
     if (bold) style = style.copyWith(fontWeight: FontWeight.w700);
+    // 重点核对列红字加粗（2026-10-10 财务口径）：语义底色对比色优先（不叠加，
+    // 避免红字压深底不可读），无底色列整列红。
+    if (emphasisColor != null && onCellColor == null) {
+      style = style.copyWith(color: emphasisColor, fontWeight: FontWeight.w800);
+    }
     return style;
   }
 
@@ -4501,6 +4580,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         textStyle,
         onCellColor,
         bold: utenIsStatusOrProgressColumn(column.key, column.label),
+        emphasisColor: column.emphasized
+            ? (Theme.of(context).brightness == Brightness.dark
+                  ? UtenColors.errorOnDark
+                  : UtenColors.errorText)
+            : null,
       );
       return Container(
         width: _widths[columnIndex],
@@ -4639,7 +4723,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 普通列，颜色口径与未滚动时一致。
     final pinnedIndices = _pinnedVisibleIndices;
     final Widget? frozenRowRegion =
-        (pinnedIndices.isEmpty && !widget.selectable)
+        (pinnedIndices.isEmpty && !_hasSelectionColumn)
         ? null
         : ColoredBox(
             color: rowBg == Colors.transparent
@@ -4655,7 +4739,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 Row(
                   crossAxisAlignment: _selectableCross,
                   children: [
-                    if (widget.selectable)
+                    if (_hasSelectionColumn)
                       SizedBox(width: _selectionColWidth, child: selectionCell),
                     for (final i in pinnedIndices)
                       _buildDataCell(theme, i, item, selected, textStyle),
@@ -4684,16 +4768,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             controller: _bodyH,
             width: _pinnedLeadingWidth(pinnedIndices),
             cell: frozenRowRegion ?? const SizedBox.shrink(),
-            row: Row(
-              crossAxisAlignment: _selectableCross,
-              children: [
-                if (widget.selectable)
-                  SizedBox(width: _selectionColWidth, child: selectionCell),
-                for (final i in _visibleIndices)
-                  _buildDataCell(theme, i, item, selected, textStyle),
-                if (widget.showColumnChooser) const SizedBox(width: 48),
-              ],
-            ),
+          row: Row(
+            crossAxisAlignment: _selectableCross,
+            children: [
+              if (_hasSelectionColumn)
+                SizedBox(width: _selectionColWidth, child: selectionCell),
+              for (final i in _visibleIndices)
+                _buildDataCell(theme, i, item, selected, textStyle),
+              if (widget.showColumnChooser) const SizedBox(width: 48),
+            ],
+          ),
           ),
         ),
       ),

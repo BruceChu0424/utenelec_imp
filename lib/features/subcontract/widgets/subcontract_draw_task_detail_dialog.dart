@@ -16,6 +16,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
@@ -333,12 +334,8 @@ class _SubcontractDrawTaskDetailDialogState
         width: 90,
         value: (row) => _label(row.colorName),
       ),
-      MasterColumnDef(
-        key: 'unitName',
-        label: '单位',
-        width: 70,
-        value: (row) => _label(row.unitName),
-      ),
+      // 「单位」列 2026-10-10 删除（数量+单位口径）：各数量列已内联该物料自己的
+      // 单位（物料间单位不同，逐行内联才不串）。
       _qtyColumn('perUnitQty', '每套用量', (row) => row.perUnitQty),
       _qtyColumn('requiredQty', '需求', (row) => row.requiredQty),
       _qtyColumn('sentQty', '已发外', (row) => row.sentQty),
@@ -366,7 +363,9 @@ class _SubcontractDrawTaskDetailDialogState
     label: label,
     width: 96,
     type: 'number',
-    value: (row) => subcontractDrawQty(qty(row)),
+    // 2026-10-10 数量+单位口径：单位内联（每种物料自己的单位）；排序由表格
+    // 组件剥单位后缀兜底。
+    value: (row) => formatQtyWithUnit(qty(row), row.unitName),
   );
 
   Widget _pendingDrafts(

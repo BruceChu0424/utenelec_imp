@@ -300,27 +300,22 @@ class WorkshopDirectTargetReasonPostgresTest {
     }
 
     @Test
-    void receivingWorkshopWithoutAnOpenedBinCannotReceiveAndSaysSo() {
-        // ADR-147: 不再第一次直送时自动建仓; 收料车间没开通内料仓时上层工单都不能收, 原因说清楚怎么办,
-        // 报工这部分送入仓库 (同一原因码记进送仓原因)。
+    void receivingWorkshopWithoutAnOpenedBinStaysEligibleAfterV837() {
+        // V837(ADR-173): 车间内流转不再要求收料车间预先开通内料仓——资格判定不再产生
+        // WORKSHOP_BIN_NOT_OPEN(单条断言也放行), 审核直送时服务层按需建内料仓并写开通行。
+        // 原因文案与 check 约束保留: V837 之前的历史报工行送仓原因仍能回看。
         UUID bin = jdbc.queryForObject("SELECT bin_warehouse_id FROM workshop_bins WHERE workshop_department_id=?",
                 UUID.class, W1);
         jdbc.update("DELETE FROM workshop_bins WHERE workshop_department_id=?", W1);
         try {
-            var row = single(source, earlier, null);
-            assertThat(row).containsEntry("reason_code", "WORKSHOP_BIN_NOT_OPEN").containsEntry("eligible", false)
-                    .containsEntry("receiver_open", false);
-            assertThat((String) row.get("reason_text"))
-                    .isEqualTo("一车间还没开通内料仓，请仓库在「车间内料仓」开通后再直送，这次先送入仓库");
-            var listed = jdbc.queryForList("SELECT * FROM fn_workshop_direct_targets(?)", source);
-            assertThat(listed).noneSatisfy(target -> assertThat(target.get("eligible")).isEqualTo(true));
-            assertThat(closestReason(source)).isEqualTo("WORKSHOP_BIN_NOT_OPEN");
-            // 结构原因在前: 跨车间的上层仍说跨车间。
+            assertThat(single(source, earlier, null))
+                    .containsEntry("eligible", true)
+                    .containsEntry("receiver_open", true);
+            assertThat((String) single(source, earlier, null).get("reason_code")).isNull();
+            jdbc.queryForList("SELECT fn_assert_workshop_direct_target(?,?,?)",
+                    source, earlier, new BigDecimal("10"));
+            // 结构原因不受影响: 跨车间的上层仍说跨车间。
             assertThat(single(source, otherWorkshop, null)).containsEntry("reason_code", "DIFFERENT_WORKSHOP");
-            assertThatThrownBy(() -> jdbc.queryForList("SELECT fn_assert_workshop_direct_target(?,?,?)",
-                    source, earlier, new BigDecimal("10")))
-                    .rootCause().isInstanceOfSatisfying(PSQLException.class, error ->
-                            assertThat(error.getServerErrorMessage().getHint()).isEqualTo("WORKSHOP_BIN_NOT_OPEN"));
         } finally {
             jdbc.update("INSERT INTO workshop_bins(workshop_department_id,bin_warehouse_id) VALUES (?,?)", W1, bin);
         }

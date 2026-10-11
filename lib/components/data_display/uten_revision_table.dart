@@ -106,6 +106,15 @@ class UtenRevisionTable<T> extends StatelessWidget {
     this.stickyHeaderPinned,
     this.tableKey,
     this.platformBinding,
+    this.highlightColumnKeys = const {},
+    this.cellBuilders,
+    this.selectable = false,
+    this.showSelectionColumn = true,
+    this.singleSelection = false,
+    this.idOf,
+    this.selectedIds = const <String>{},
+    this.onSelectedIdsChanged,
+    this.showSelectionSummary = true,
   });
 
   final String? tableKey;
@@ -117,6 +126,35 @@ class UtenRevisionTable<T> extends StatelessWidget {
   final Widget? summaryBar;
   final double bottomContentPadding;
   final ValueNotifier<bool>? stickyHeaderPinned;
+
+  /// 需要全程红色加粗强调的列 (2026-10-10 财务订货审批口径：数量/单价/总金额/
+  /// 折合人民币/超收损耗比等关键核对值)。与修订对比的「+修改后」高亮同色同字重，
+  /// 语义是「请逐行核对这些数字」，不参与增删行着色。
+  final Set<String> highlightColumnKeys;
+
+  /// 指定列的自定义单元格（逃生口）：本表默认把每列强制包成纯 Text（修订对比
+  /// 用可复制纯值），个别列需要交互控件（如订货审批的汇率编辑格）时经此注入。
+  /// 命中的列不再套红字/highlight 替换，样式由调用方自带；[MasterColumnDef.value]
+  /// 仍是排序/列宽/无障碍的真值。
+  final Map<String, Widget Function(BuildContext context, UtenRevisionRow<T> row)>?
+  cellBuilders;
+
+  /// 多选（2026-10-10 审核页防看岔行口径）：与 MasterDataTableView 同一套
+  /// 勾选/全选/选中行高亮；[idOf] 作用于行业务值（同一行的「修改前/修改后」
+  /// 两条快照共用同一 id，勾一条即视为勾中该行业务行）。
+  final bool selectable;
+
+  /// 多选时是否渲染最前列勾选框列（透传 MasterDataTableView 同名参数；
+  /// 纯阅读勾选的审核页传 false——行单击切选中，不画勾选框列）。
+  final bool showSelectionColumn;
+
+  /// 选中互斥（单选，透传 MasterDataTableView 同名参数）：点击行选中该行并
+  /// 取消其他；审核页防看岔纯阅读勾选传 true。
+  final bool singleSelection;
+  final String? Function(T item)? idOf;
+  final Set<String> selectedIds;
+  final void Function(Set<String> next)? onSelectedIdsChanged;
+  final bool showSelectionSummary;
 
   @override
   Widget build(BuildContext context) {
@@ -131,6 +169,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
             rows: rows.map((row) => row.value).toList(),
           ),
         );
+    final interactiveKeys = cellBuilders?.keys.toSet() ?? const <String>{};
     return MasterDataTableView<UtenRevisionRow<T>>(
       tableKey: tableKey,
       platformBinding: binding == null
@@ -155,9 +194,24 @@ class UtenRevisionTable<T> extends StatelessWidget {
             ),
       embedded: embedded,
       platformCellDecorator: (context, row, key, value, child) =>
-          row.kind == UtenRevisionKind.added && row.changedKeys.contains(key)
+          interactiveKeys.contains(key)
+          ? child
+          : row.kind == UtenRevisionKind.added && row.changedKeys.contains(key)
           ? Text(
               value?.isNotEmpty == true ? value! : '未填写',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: utenRevisionForeground(
+                  context,
+                  UtenRevisionKind.removed,
+                ),
+                fontWeight: FontWeight.w800,
+              ),
+            )
+          : highlightColumnKeys.contains(key)
+          ? Text(
+              value?.isNotEmpty == true ? value! : '—',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -172,6 +226,17 @@ class UtenRevisionTable<T> extends StatelessWidget {
       primary: primary,
       bottomContentPadding: bottomContentPadding,
       stickyHeaderPinned: stickyHeaderPinned,
+      selectable: selectable,
+      showSelectionColumn: showSelectionColumn,
+      singleSelection: singleSelection,
+      idOf: idOf == null
+          ? null
+          : (row) => row.kind == UtenRevisionKind.removed
+                ? null
+                : idOf!(row.value),
+      selectedIds: selectedIds,
+      onSelectedIdsChanged: onSelectedIdsChanged,
+      showSelectionSummary: showSelectionSummary,
       columns: [
         MasterColumnDef(
           key: '_revision',
@@ -200,28 +265,42 @@ class UtenRevisionTable<T> extends StatelessWidget {
                 ? null
                 : (row) => column.exactValueOf!(row.value),
             value: (row) => column.value(row.value),
-            cellBuilder: (cellContext, row) => Text(
-              row.kind == UtenRevisionKind.added &&
-                      row.changedKeys.contains(column.key) &&
-                      (column.value(row.value)?.isEmpty ?? true)
-                  ? '未填写'
-                  : column.value(row.value) ?? '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  row.kind == UtenRevisionKind.added &&
-                      row.changedKeys.contains(column.key)
-                  ? TextStyle(
-                      color: utenRevisionForeground(
-                        cellContext,
-                        UtenRevisionKind.removed,
-                      ),
-                      fontWeight: FontWeight.w800,
-                    )
-                  : DefaultTextStyle.of(cellContext).style,
-            ),
+            cellBuilder: cellBuilders != null && cellBuilders!.containsKey(column.key)
+                ? (cellContext, row) =>
+                      cellBuilders![column.key]!(cellContext, row)
+                : (cellContext, row) => Text(
+                    row.kind == UtenRevisionKind.added &&
+                            row.changedKeys.contains(column.key) &&
+                            (column.value(row.value)?.isEmpty ?? true)
+                        ? '未填写'
+                        : column.value(row.value) ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        row.kind == UtenRevisionKind.added &&
+                        row.changedKeys.contains(column.key)
+                        ? TextStyle(
+                            color: utenRevisionForeground(
+                              cellContext,
+                              UtenRevisionKind.removed,
+                            ),
+                            fontWeight: FontWeight.w800,
+                          )
+                        : highlightColumnKeys.contains(column.key)
+                        ? TextStyle(
+                            color: utenRevisionForeground(
+                              cellContext,
+                              UtenRevisionKind.removed,
+                            ),
+                            fontWeight: FontWeight.w800,
+                          )
+                        : DefaultTextStyle.of(cellContext).style,
+                  ),
             // Diffs deliberately use plain, copyable values. A source column may
             // have an action or its own color; neither belongs in an old snapshot.
+            // [cellBuilders] is the sanctioned escape hatch for interactive cells
+            // (e.g. the finance rate editor); highlight decoration is skipped for
+            // those keys so it cannot clobber the caller's widget.
           ),
       ],
       items: rows,

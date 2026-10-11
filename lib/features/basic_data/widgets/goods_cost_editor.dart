@@ -873,7 +873,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
                         {'amount', 'unitContribution', 'batchQty'}.contains(key)
                     ? '…'
                     : r[key],
-                align: TextAlign.right,
               ),
             ),
     );
@@ -1039,7 +1038,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           value: (r) => costText(costMap(r['extraCosts'])[column['key']]),
           cellBuilder: (_, r) => _oneLine(
             _stale ? '…' : costMap(r['extraCosts'])[column['key']],
-            align: TextAlign.right,
           ),
         ),
       ],
@@ -1152,7 +1150,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         costMap(row['priceEvidence'])['sourceType'] != 'MANUAL';
     return TextFormField(
       key: ValueKey('cost-$field-$path'),
-      textAlign: TextAlign.right,
       controller: _controller(
         '$path:$field',
         field == 'unitPrice'
@@ -1209,12 +1206,10 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     if (!_editable) {
       return _oneLine(
         cell == null ? _l.costNotApplicable : cell['value'],
-        align: TextAlign.right,
       );
     }
     return TextFormField(
       key: ValueKey('cost-fee-$key-$path'),
-      textAlign: TextAlign.right,
       controller: _controller('fee:$key:$path', costText(cell?['value'])),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       errorBuilder: utenTextFieldErrorBuilder,
@@ -1263,12 +1258,11 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         message: costFeeUsesQuantity(column['type'])
             ? _l.costFeeQuantity
             : _l.costNotApplicable,
-        child: _oneLine(cell?['quantity'], align: TextAlign.right),
+        child: _oneLine(cell?['quantity']),
       );
     }
     return TextFormField(
       key: ValueKey('cost-fee-quantity-$key-$path'),
-      textAlign: TextAlign.right,
       controller: _controller('feeQty:$key:$path', costText(cell?['quantity'])),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       errorBuilder: utenTextFieldErrorBuilder,
@@ -1581,9 +1575,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           !_editable ||
           (key == 'quantity' && !costFeeUsesQuantity(row.json['type'])) ||
           (row.generated && !{'value', 'quantity', 'reason'}.contains(key)),
-      textAlign: {'value', 'quantity'}.contains(key)
-          ? TextAlign.right
-          : TextAlign.left,
       keyboardType: {'value', 'quantity'}.contains(key)
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
@@ -1752,8 +1743,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           numeric: true,
           aiSensitive: true,
           exactValueOf: amount,
-          cellBuilder: (_, r) =>
-              _oneLine(_stale ? '…' : amount(r), align: TextAlign.right),
+          cellBuilder: (_, r) => _oneLine(_stale ? '…' : amount(r)),
         ),
         EditableGridColumn(
           key: 'reason',

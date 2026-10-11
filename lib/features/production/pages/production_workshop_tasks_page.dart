@@ -18,6 +18,8 @@
 //  - 生产中 = 正在生产·可报工：进度列只在本分类显示；勾选后「批量报工(N)」
 //    （一次报工=同一车间，服务端同口径校验）；
 //  - 「可报工」分类退役（齐套可开工归等待物料、报工归生产中）；
+//  - 2026-10-10 新增「报工送检」分类：生产中按 remaining_qty 拆档，已报完未完工的
+//    （等登记送检/等品质/待点收/待结清）单独一档，与生产中互斥、同黄数；
 //  - 历史任务 = 终态段（已完工/已取消/已红冲），ADR-066 §1.3 时间门控：选中后
 //    先选时间段/全部才加载（按计划完工日期 dateFrom/dateTo）。
 // 报工入口唯一（本页 + 计划详情），调度台不再提供报工。
@@ -2724,6 +2726,15 @@ class _ProductionWorkshopTasksPageState
                       count: inProgressCount,
                       countForm: UtenSegmentCountForm.inProgress,
                     ),
+                    // 2026-10-10 用户口径「报工送检」：生产中报完(remaining=0)未完工的
+                    // 工单单独一档，不与还没报完的混在一起。黄数=在办不归我(球在仓库/
+                    // 品质/点收手上)，与生产中同黄；状态列沿用琥珀 waiting 档子标签。
+                    UtenFilterSegment(
+                      value: 'REPORT_INSPECTION',
+                      label: '报工送检',
+                      count: counts.reportInspection,
+                      countForm: UtenSegmentCountForm.inProgress,
+                    ),
                     const UtenFilterSegment(value: 'COMPLETED', label: '历史任务'),
                   ],
                   selected: _status == null ? const {} : {_status!},
@@ -3050,6 +3061,8 @@ class _ProductionWorkshopTasksPageState
                                     // 成「没有生产中的工单」（那是不真实的事实）。
                                     : '生产中工单的待报都已由报工草稿承接；'
                                           '去「草稿」分类处理或删除草稿后恢复')
+                              : _status == 'REPORT_INSPECTION'
+                              ? '当前车间没有已报工待检验的工单'
                               : '该时间段内没有已完工 / 已取消 / 已红冲的工单',
                         ),
                 ),
@@ -3070,7 +3083,7 @@ class _ProductionWorkshopTasksPageState
     );
   }
 
-  /// 分类是否可勾选（等待物料=有开工权限；生产中=有报工三码；历史=不可选）。
+  /// 分类是否可勾选（等待物料=有开工权限；生产中=有报工三码；报工送检/历史=不可选）。
   bool get _selectable =>
       _isPreparing ? _canStart : (_status == 'IN_PROGRESS' && _canCreateReport);
 
@@ -3391,7 +3404,10 @@ class _ProductionWorkshopTasksPageState
       width: 170,
       value: (task) => task.workshopName,
     ),
-    if (status == 'IN_PROGRESS')
+    // 实际产出/计划实收进度：生产中与报工送检都显示——送检档看的正是检验/点收推进
+    // 到哪了(计划实收进度是该档最有信息量的列)；路线列只留生产中(报工送检已无关
+    // 路线，FAIL 恢复授权把量加回时任务自动回「生产中」再现)。
+    if (status == 'IN_PROGRESS' || status == 'REPORT_INSPECTION')
       MasterColumnDef(
         key: 'actualOutput',
         label: '实际产出',
@@ -3409,7 +3425,7 @@ class _ProductionWorkshopTasksPageState
               : summary;
         },
       ),
-    if (status == 'IN_PROGRESS')
+    if (status == 'IN_PROGRESS' || status == 'REPORT_INSPECTION')
       MasterColumnDef(
         key: 'progress',
         label: '计划实收进度',

@@ -1463,13 +1463,13 @@ void main() {
     final table = tester.widget<UtenEditableGrid<SalesGridRow>>(
       find.byType(UtenEditableGrid<SalesGridRow>),
     );
+    // 2026-10-10「数量 + 单位」内联口径：独立「单位」列撤销（单位进数量格后缀）。
     expect(table.columns.where((c) => c.defaultVisible).map((c) => c.key), [
       'goods',
       'nameEn',
       'goodsCode',
       'color',
       'qty',
-      'unit',
       'price',
       'discount',
       'amount',

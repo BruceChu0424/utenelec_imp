@@ -120,14 +120,10 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     type: numeric ? 'number' : 'text',
     defaultVisible: visible,
     value: (r) => costText(r[key]),
-    cellBuilder: (_, r) => Align(
-      alignment: numeric ? Alignment.centerRight : Alignment.centerLeft,
-      child: Text(
-        costText(r[key]) ?? '—',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: numeric ? TextAlign.right : null,
-      ),
+    cellBuilder: (_, r) => Text(
+      costText(r[key]) ?? '—',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     ),
   );
   String _state(Object? state) => switch (state) {

@@ -313,10 +313,17 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
 
   List<MasterColumnDef<StockLedgerRow>> _columns(WeightDisplay display) {
     final theme = Theme.of(context);
+    // 2026-10-10 数量+单位口径：行单位优先，货品级台账回落页级单位。
+    String unitOf(StockLedgerRow r) =>
+        (r.unitName ?? widget.unitName ?? '').trim();
     String? inQty(StockLedgerRow r) =>
-        r.isWeightAdjustment || !r.isInbound ? null : _qty(r.qtySigned?.abs());
+        r.isWeightAdjustment || !r.isInbound
+        ? null
+        : _qtyWithUnit(r.qtySigned?.abs(), unitOf(r));
     String? outQty(StockLedgerRow r) =>
-        r.isWeightAdjustment || r.isInbound ? null : _qty(r.qtySigned?.abs());
+        r.isWeightAdjustment || r.isInbound
+        ? null
+        : _qtyWithUnit(r.qtySigned?.abs(), unitOf(r));
     bool weightInColumn(StockLedgerRow r, {required bool inbound}) {
       if (r.isWeightAdjustment) {
         final delta = r.weightKgSigned;
@@ -414,29 +421,23 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
       MasterColumnDef(
         key: 'inQty',
         label: '收入数量',
-        width: 110,
+        width: 145,
         type: 'number',
         value: inQty,
       ),
       MasterColumnDef(
         key: 'outQty',
         label: '发出数量',
-        width: 110,
+        width: 145,
         type: 'number',
         value: outQty,
       ),
       MasterColumnDef(
         key: 'balanceQty',
         label: '结存数量',
-        width: 120,
+        width: 155,
         type: 'number',
-        value: (r) => _qty(r.balanceQtyAfter),
-      ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 70,
-        value: (r) => r.unitName ?? widget.unitName ?? '',
+        value: (r) => _qtyWithUnit(r.balanceQtyAfter, unitOf(r)),
       ),
       MasterColumnDef(
         key: 'inWeight',
@@ -546,6 +547,14 @@ List<UtenTotalEntry> stockLedgerSummaryEntries(
 String? _qty(double? v) {
   if (v == null || !v.isFinite) return null;
   return NumberFormat('#,##0.####', 'zh_CN').format(v);
+}
+
+/// 2026-10-10 数量+单位口径：台账数量列内联单位（保留千分位分组），独立
+/// 「单位」列删除；无单位时不拼后缀。
+String? _qtyWithUnit(double? v, String unit) {
+  final text = _qty(v);
+  if (text == null || unit.isEmpty) return text;
+  return '$text $unit';
 }
 
 /// 业务日期: 零点的只显示日期, 带时刻的显示到分钟。

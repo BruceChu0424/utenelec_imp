@@ -9,10 +9,9 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
-import '../../../../core/l10n/gen/app_localizations.dart';
-import '../../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
@@ -128,6 +127,18 @@ class StockCountInlineController extends ChangeNotifier {
   int _generation = 0;
   int _session = 0;
   String _nonce = '';
+
+  /// 刚送审、等审核的展示态(2026-10-10 用户口径)：送审后不立即清空——表格保留
+  /// 刚提交的内容并加「待审核」状态列，账面/现存照旧可见(审核通过前服务端不动库存，
+  /// V766 送审只写申请三表)。退出盘点才清空。
+  StockCountRequest? _lastSubmitted;
+  StockCountRequest? get lastSubmitted => _lastSubmitted;
+  bool get reviewing => _lastSubmitted != null;
+
+  /// 本次送审包含的行 key；「待审核」状态列只盖这些行。
+  Set<String> _submittedKeys = const {};
+  bool rowSubmitted(String key) => _submittedKeys.contains(key);
+
   bool get active => warehouse != null;
   int get session => _session;
   int get changedCount => rows.values.where((row) => row.changed).length;
@@ -154,6 +165,8 @@ class StockCountInlineController extends ChangeNotifier {
     warehouse = null;
     error = null;
     busy = false;
+    _lastSubmitted = null;
+    _submittedKeys = const {};
     reason.clear();
     _notify();
   }
@@ -256,12 +269,16 @@ class StockCountInlineController extends ChangeNotifier {
     error = null;
     _notify();
     try {
-      return await repository.submit(
+      final request = await repository.submit(
         warehouseId: selected.id,
         reason: explanation,
         idempotencyKey: key,
         lines: lines,
       );
+      // 送审成功进入「待审核」展示态：行保留为只读回执，直到退出盘点(见 [reviewing])。
+      _lastSubmitted = request;
+      _submittedKeys = {for (final row in changed) row.snapshot.key};
+      return request;
     } finally {
       if (!_disposed) {
         busy = false;
@@ -333,6 +350,22 @@ class StockCountInlineCell extends StatelessWidget {
     listenable: controller,
     builder: (context, _) {
       final row = controller.rows[rowKey];
+      // 待审核展示态：刚送审的行是只读回执，不再是输入框(账面照旧、审核通过前库存不动)。
+      if (controller.reviewing) {
+        if (row == null) return const SizedBox.shrink();
+        if (weight && row.snapshot.weightExact) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）'),
+          );
+        }
+        final typed = (weight ? row.weight.text : row.qty.text).trim();
+        final fallback = weight ? (row.snapshot.weightKg ?? '未称') : row.snapshot.qty;
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Text(typed.isEmpty ? fallback : typed),
+        );
+      }
       if (row == null) return Text(controller.busy ? '读取中…' : '不可编辑');
       if (weight && row.snapshot.weightExact) {
         return Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）');
@@ -342,14 +375,16 @@ class StockCountInlineCell extends StatelessWidget {
         key: ValueKey('stock-count-${weight ? 'weight' : 'qty'}-$rowKey'),
         controller: text,
         enabled: !controller.busy,
-        textAlign: TextAlign.end,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         // 紧凑格：共享规格单一事实源（2026-10-08 起全站表格输入格同源，
         // 见 UtenEditableGridCellSpec），无额外叠层。
+        // 2026-10-10「数量+单位」内联口径：实盘数量输入框单位放后缀（重量列
+        // 单位已在列头 kg）。
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
             contentPadding: UtenEditableGridCellSpec.contentPadding,
+            suffixText: weight ? null : row.snapshot.unitName,
             hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
             error: row.validation == null
                 ? null
@@ -361,46 +396,10 @@ class StockCountInlineCell extends StatelessWidget {
   );
 }
 
-/// 盘点说明输入框：内料仓页与即时库存页共用这一个(controller 自带的输入)，
-/// 标签「盘点说明(选填)」，不在前端判必填；超长由服务端回 422 说明。
-class StockCountReasonField extends StatelessWidget {
-  const StockCountReasonField({
-    super.key,
-    required this.controller,
-    this.maxWidth = 320,
-  });
-  final StockCountInlineController controller;
-  final double maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n =
-        Localizations.of<AppLocalizations>(context, AppLocalizations) ??
-        AppLocalizationsZh();
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) => ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: TextField(
-          key: const Key('stock-count-reason'),
-          controller: controller.reason,
-          enabled: !controller.busy,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              isDense: true,
-              labelText: l10n.stockCountReasonLabel,
-              hintText: l10n.stockCountReasonHint,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Right-bottom floating count actions shared by both existing inventory tables;
-/// no replacement table or separate count layout. 盘点说明输入框由宿主页自带
-/// (即时库存页放表格工具条, 内料仓页放页头), 组件只负责动作按钮。
+/// no replacement table or separate count layout. 盘点说明输入在「保存并送审」确认
+/// 弹窗里(2026-10-10 用户口径, 会话页同款), 组件负责动作按钮; 送审成功后进入
+/// 「待审核」只读展示态, 直到退出盘点。
 class StockCountModeToolbar extends ConsumerStatefulWidget {
   const StockCountModeToolbar({
     super.key,
@@ -471,7 +470,8 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
 
   Future<void> _exit() async {
     if (widget.controller.busy) return;
-    if (widget.controller.changedCount > 0) {
+    // 待审核展示态没有未保存输入，退出不再确认(内容已送审，看不看随人)。
+    if (!widget.controller.reviewing && widget.controller.changedCount > 0) {
       final leave = await UtenDialog.show(
         context,
         title: '退出盘点模式',
@@ -486,12 +486,51 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
 
   Future<void> _save() async {
     if (!widget.allowed) return;
+    final controller = widget.controller;
+    final warehouse = controller.warehouse;
+    if (warehouse == null) return;
+    for (final row in controller.rows.values.where((row) => row.changed)) {
+      if (row.validation != null) {
+        context.appError('${row.snapshot.goodsName}：${row.validation}');
+        return;
+      }
+    }
+    // 2026-10-10 用户口径：说明不放页面常驻，放「保存并送审」确认弹窗选填
+    // (V795, 空白归一与 500 字上限由服务端判定)；文本仍走 controller，
+    // 与盘点会话页同款。取消时输入与说明都原样保留。
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '保存并送审',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('本次送审 ${controller.changedCount} 项实盘变化，送审后保留在本页等待审核，'
+              '审核通过前正式库存不变。'),
+          const SizedBox(height: UtenSpacing.s12),
+          TextField(
+            key: const Key('stock-count-reason'),
+            controller: controller.reason,
+            maxLines: 2,
+            decoration: const UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                labelText: '盘点说明(选填)',
+                hintText: '例如上线清点或例行盘点，最多 500 字',
+              ),
+            ),
+          ),
+        ],
+      ),
+      confirmLabel: '确认送审',
+      cancelLabel: '取消',
+    );
+    if (confirmed != true || !mounted) return;
     try {
-      final reviewer = widget.controller.warehouse!.reviewerLabel;
-      final request = await widget.controller.submit();
+      // 送审成功后 controller 进入「待审核」展示态(行保留为只读回执)，不再清空。
+      final request = await controller.submit();
       if (!mounted) return;
-      widget.controller.clear();
-      context.appSuccess('盘点 ${request.requestNo} 已送$reviewer审核，正式库存尚未改变');
+      context.appSuccess('盘点 ${request.requestNo} 已送${warehouse.reviewerLabel}审核，正式库存尚未改变');
       refreshBadgesIn(ProviderScope.containerOf(context));
       await widget.onSubmitted();
     } catch (error) {
@@ -512,44 +551,65 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
     context.push(RouteName.stockCountRequests);
   }
 
-  List<Widget> _activeActions(StockCountInlineController controller) => [
-    UtenButton(
-      key: const Key('stock-count-exit'),
-      size: UtenButtonSize.large,
-      type: UtenButtonType.secondary,
-      onPressed: controller.busy ? null : _exit,
-      child: const Text('退出盘点'),
-    ),
-    UtenButton(
-      key: const Key('stock-count-add'),
-      size: UtenButtonSize.large,
-      type: UtenButtonType.secondary,
-      onPressed: controller.busy
-          ? null
-          : () async {
-              if (!widget.allowed || !controller.active) return;
-              final session = controller.session;
-              final rows = await showStockCountCandidatePicker(
-                context,
-                ref,
-                warehouse: controller.warehouse!,
-              );
-              if (mounted &&
-                  widget.allowed &&
-                  controller.active &&
-                  rows.isNotEmpty) {
-                controller.addAll(rows, expectedSession: session);
-              }
-            },
-      child: const Text('添加物料'),
-    ),
-    UtenButton(
-      key: const Key('stock-count-save'),
-      size: UtenButtonSize.large,
-      onPressed: controller.busy || controller.changedCount == 0 ? null : _save,
-      child: const Text('保存并送审'),
-    ),
-  ];
+  List<Widget> _activeActions(StockCountInlineController controller) {
+    // 待审核展示态：只剩退出与盘点历史，不再提供保存/添加(内容已送审)。
+    if (controller.reviewing) {
+      return [
+        UtenButton(
+          key: const Key('stock-count-exit'),
+          size: UtenButtonSize.large,
+          type: UtenButtonType.secondary,
+          onPressed: _exit,
+          child: const Text('退出盘点'),
+        ),
+        UtenButton(
+          key: const Key('stock-count-history'),
+          size: UtenButtonSize.large,
+          type: UtenButtonType.secondary,
+          onPressed: _history,
+          child: const Text('盘点历史'),
+        ),
+      ];
+    }
+    return [
+      UtenButton(
+        key: const Key('stock-count-exit'),
+        size: UtenButtonSize.large,
+        type: UtenButtonType.secondary,
+        onPressed: controller.busy ? null : _exit,
+        child: const Text('退出盘点'),
+      ),
+      UtenButton(
+        key: const Key('stock-count-add'),
+        size: UtenButtonSize.large,
+        type: UtenButtonType.secondary,
+        onPressed: controller.busy
+            ? null
+            : () async {
+                if (!widget.allowed || !controller.active) return;
+                final session = controller.session;
+                final rows = await showStockCountCandidatePicker(
+                  context,
+                  ref,
+                  warehouse: controller.warehouse!,
+                );
+                if (mounted &&
+                    widget.allowed &&
+                    controller.active &&
+                    rows.isNotEmpty) {
+                  controller.addAll(rows, expectedSession: session);
+                }
+              },
+        child: const Text('添加物料'),
+      ),
+      UtenButton(
+        key: const Key('stock-count-save'),
+        size: UtenButtonSize.large,
+        onPressed: controller.busy || controller.changedCount == 0 ? null : _save,
+        child: const Text('保存并送审'),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(

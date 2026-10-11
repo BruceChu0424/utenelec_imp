@@ -40,14 +40,13 @@ import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/production_daily_report.dart';
 import '../models/daily_report_approval_intent.dart';
-import '../models/production_execution_planning.dart'
-    show formatProductionPlanningQuantity;
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../repositories/daily_report_approval_intent_store.dart';
@@ -1133,7 +1132,7 @@ class _ProductionDailyReportDetailPageState
   }
 
   /// 明细区：统一表格样式（MasterDataTableView，与全站报表/主档同款），
-  /// 不再是卡片式拼凑行；口径保留（颜色/单位并入货品列）。
+  /// 不再是卡片式拼凑行；单位内联在数量后（2026-10-10 数量内联口径）。
   /// 2026-09-11 起是折叠容器的 body：表格 primary:true 参与联动内滚；
   /// 2026-09-25 纯计数标题「明细 (N)」随全站退役。
   Widget _itemsCard(ThemeData theme) {
@@ -1148,8 +1147,8 @@ class _ProductionDailyReportDetailPageState
             columns: [
               // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
               // 同名不同编号的货品（自制/委外两条同名成品）在日报里必须分得开，
-              // 否则审核时会认错货。2026-09-15 起单位也不再并入名称格副行，
-              // 颜色后面独立一列（用户口径）。
+              // 否则审核时会认错货。2026-10-10 数量内联口径：独立「单位」列撤销，
+              // 单位跟在完工申报量/不良数的数字后。
               MasterColumnDef(
                 key: 'goods',
                 label: '货品名称',
@@ -1176,30 +1175,23 @@ class _ProductionDailyReportDetailPageState
                     UtenGoodsAttributeCell(_dictText(it.colorName)),
               ),
               MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 72,
-                value: (it) =>
-                    UtenGoodsAttributeCell.text(_dictText(it.unitName)),
-                cellBuilder: (_, it) =>
-                    UtenGoodsAttributeCell(_dictText(it.unitName)),
-              ),
-              MasterColumnDef(
                 key: 'qty',
                 label: '完工申报量',
-                width: 112,
+                width: 146,
                 type: 'number',
-                value: (it) => it.qty?.toStringAsFixed(2),
+                value: (it) => it.qty == null
+                    ? null
+                    : formatQtyWithUnit(it.qty!, _dictText(it.unitName)),
               ),
               // ADR-129：一次报工拆成多条明细时不良数只记在第一条，其余留空。
               MasterColumnDef(
                 key: 'defectQty',
                 label: '不良数',
-                width: 96,
+                width: 130,
                 type: 'number',
                 info: productionDailyReportDefectInfo,
                 value: (it) => it.defectQty > 0
-                    ? formatProductionPlanningQuantity(it.defectQty)
+                    ? formatQtyWithUnit(it.defectQty, _dictText(it.unitName))
                     : null,
               ),
               MasterColumnDef(

@@ -147,6 +147,7 @@ SubcontractDrawTaskRow drawRow(
   int readyKindCount = 1,
   int unplannedShortKindCount = 0,
   bool canDraw = true,
+  String? planNo,
 }) => SubcontractDrawTaskRow.fromJson(<String, dynamic>{
   'orderItemId': orderItemId,
   'orderId': orderId,
@@ -173,6 +174,7 @@ SubcontractDrawTaskRow drawRow(
   'status': status,
   'deliverDate': '2026-10-20',
   'canDraw': canDraw,
+  'planNo': ?planNo,
 });
 
 Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
@@ -199,10 +201,11 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'readyKindCount': row.readyKindCount,
       'shortKindCount': row.shortKindCount,
       'unplannedShortKindCount': row.unplannedShortKindCount,
-      'status': row.status.wireName,
-      'deliverDate': row.deliverDate,
-      'canDraw': row.canDraw,
-    };
+  'status': row.status.wireName,
+  'deliverDate': row.deliverDate,
+  'canDraw': row.canDraw,
+  'planNo': ?row.planNo,
+};
 
 /// 预览任务行。
 Map<String, dynamic> previewTaskJson(

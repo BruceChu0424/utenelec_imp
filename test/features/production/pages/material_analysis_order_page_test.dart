@@ -55,9 +55,10 @@ void main() {
         of: find.byKey(
           const ValueKey('material-analysis-public-available-m-b'),
         ),
-        matching: find.text('875'),
+        matching: find.text('875 件'),
       ),
       findsOneWidget,
+      reason: '数量列 2026-10-10 起内联单位',
     );
   });
   testWidgets('统一核对页与主表共用选择预算，取消后余额恢复且输入保留', (tester) async {
@@ -90,16 +91,17 @@ void main() {
               .last,
         )
         .data!;
-    expect(available('m-b'), '950');
+    // 2026-10-10 T9：数量列内联单位。
+    expect(available('m-b'), '950 件');
     await _type(tester, 'm-b', '100');
-    expect(available('m-d'), '870');
+    expect(available('m-d'), '870 件');
     final table = _table(tester);
     table.onSelectedIdsChanged!(
       {...table.selectedIds}..remove('PREPARATION|m-b'),
     );
     await tester.pumpAndSettle();
     expect(_qty(tester, 'm-b'), '100');
-    expect(available('m-d'), '970');
+    expect(available('m-d'), '970 件');
   });
   testWidgets('车间桶打开统一核对页，原树与数量完整且零写入', (tester) async {
     final harness = await _pump(tester);

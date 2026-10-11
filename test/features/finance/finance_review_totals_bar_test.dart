@@ -2,7 +2,8 @@
 //  - 订货审批审核详情 / 销售订单财务审核详情都在明细表下渲染合计条；
 //  - 「合计数量」按 unitId 分组，不同单位的数量绝不相加（显示「100 公斤 · 3 箱」）；
 //  - 「合计金额(币种)」取服务端权威总额并标红（error 色）；
-//  - 销售订单阶段不落本币事实，故销售审核详情不出「折合本币」项。
+//  - 订货审批的折合项随汇率编辑联动（2026-10-10 改名「折合人民币」）；
+//  - 销售订单阶段不落本币事实，故销售审核详情不出「折合人民币」项。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,7 +28,7 @@ import '../../helpers/finance_claim_fixture.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
-  testWidgets('订货审批审核详情：合计数量按单位分组，合计金额标红，折合本币可见', (tester) async {
+  testWidgets('订货审批审核详情：合计数量按单位分组，合计金额标红，折合人民币可见', (tester) async {
     await _pumpProcurementReview(tester);
 
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
@@ -36,19 +37,19 @@ void main() {
     expect(find.text('3 箱 · 100 公斤'), findsOneWidget);
     expect(find.text('103'), findsNothing);
 
-    expect(find.text('合计金额(美元): '), findsOneWidget);
-    expect(_valueColor(tester, '10000.00'), _errorColor(tester));
-    expect(find.text('折合本币: '), findsOneWidget);
+    expect(find.text('合计金额: '), findsOneWidget);
+    expect(_valueColor(tester, '10000.00 美元'), _errorColor(tester));
+    expect(find.text('折合人民币: '), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(UtenTotalsSummaryBar),
-        matching: find.text('71000.00'),
+        matching: find.text('71000.00 元'),
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets('销售订单财务审核详情：合计数量按单位分组，合计金额标红，无折合本币项', (tester) async {
+  testWidgets('销售订单财务审核详情：合计数量按单位分组，合计金额标红，无折合人民币项', (tester) async {
     await _pumpSalesReview(tester);
 
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
@@ -56,10 +57,10 @@ void main() {
     expect(find.text('3 箱 · 12 个'), findsOneWidget);
     expect(find.text('15'), findsNothing);
 
-    expect(find.text('合计金额(美元): '), findsOneWidget);
-    expect(_valueColor(tester, '2400.00'), _errorColor(tester));
+    expect(find.text('合计金额: '), findsOneWidget);
+    expect(_valueColor(tester, '2400.00 美元'), _errorColor(tester));
     // 销售阶段本币事实为空，合计条整体隐藏该项。
-    expect(find.text('折合本币: '), findsNothing);
+    expect(find.text('折合人民币: '), findsNothing);
   });
 
   testWidgets('单位缺失的明细行落入「单位未维护」桶而不是并入其它单位', (tester) async {
@@ -242,6 +243,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   Future<void> approveOrdersBatch(
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
+    double? exchangeRate,
   }) async {}
 
   @override

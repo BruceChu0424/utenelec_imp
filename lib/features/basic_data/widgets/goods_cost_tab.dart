@@ -784,17 +784,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   String _money(Object? value) => financeMoneyText(costText(value));
   TextEditingController _controller(String key, String? initial) => _controllers
       .putIfAbsent(key, () => TextEditingController(text: initial ?? ''));
-  Widget _oneLine(Object? text, {TextAlign? align}) {
-    final child = Text(
-      costText(text) ?? '—',
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      textAlign: align,
-    );
-    return align == TextAlign.right
-        ? Align(alignment: Alignment.centerRight, child: child)
-        : child;
-  }
+  Widget _oneLine(Object? text) => Text(
+    costText(text) ?? '—',
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1212,7 +1206,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
               aiSensitive: key == 'knownTotal',
               value: (r) => costText(r[key]),
               exactValueOf: (r) => costText(r[key]),
-              cellBuilder: (_, r) => _oneLine(r[key], align: TextAlign.right),
+              cellBuilder: (_, r) => _oneLine(r[key]),
             ),
           _readColumn('updatedAt', _l.costUpdated, 190),
           MasterColumnDef(

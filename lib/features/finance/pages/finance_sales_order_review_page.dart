@@ -53,6 +53,7 @@ import '../../../shared/widgets/sales_order_money_summary_card.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../widgets/finance_party_snapshot_card.dart';
 
 class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
@@ -76,6 +77,10 @@ class _FinanceSalesOrderReviewPageState
   bool _loading = true;
   bool _busy = false;
   String? _error;
+
+  /// 明细行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助，无行级批量
+  /// 动作，整单决策仍走底部确认/驳回）。
+  final Set<String> _selectedLineIds = <String>{};
 
   // Decisions require confirmed live ownership, including after every dialog.
   TaskClaimSession? _reviewClaim;
@@ -126,7 +131,7 @@ class _FinanceSalesOrderReviewPageState
       await _reviewClaim?.releaseAll();
       if (!mounted ||
           generation != _loadGeneration ||
-          !identical(container.read(sessionProvider), identity)) {
+          !container.read(sessionProvider).isSameIdentity(identity)) {
         return;
       }
       _reviewClaim = null;
@@ -145,7 +150,7 @@ class _FinanceSalesOrderReviewPageState
           .review(widget.id);
       if (!mounted ||
           generation != _loadGeneration ||
-          !identical(container.read(sessionProvider), identity)) {
+          !container.read(sessionProvider).isSameIdentity(identity)) {
         return;
       }
       setState(() {
@@ -429,7 +434,9 @@ class _FinanceSalesOrderReviewPageState
   Widget build(BuildContext context) {
     ref.watch(sessionProvider);
     ref.listen(sessionProvider, (previous, next) {
-      if (identical(previous, next)) return;
+      // 只有真实换身份才清空（换号/登出/模拟切换/业务重置）；token 静默刷新、
+      // 权限滑动更新保持页面与认领（服务端在决策时点重校验权限）。
+      if (previous?.isSameIdentity(next) ?? false) return;
       ++_loadGeneration;
       _reviewClaim?.removeListener(_claimChanged);
       _reviewClaim?.releaseAll().ignore();
@@ -818,13 +825,10 @@ class _FinanceSalesOrderReviewPageState
       leading: [
         FinanceSnapshotMetric(
           '本单金额',
-          financeMoneyWithCurrency(
+          financeMoneyWithUnitSuffix(
             r.totalOriginal,
             currencyName: r.currencyName,
             currencyCode: r.currencyCode,
-            fallback: '订单币种',
-
-            /// 客户财务快照卡：应收余额 / 信用额度 / 铺底额 + 超信用告警。
           ),
           emphasis: true,
           danger: true,
@@ -936,6 +940,20 @@ class _FinanceSalesOrderReviewPageState
       tableKey: 'sales.order.items',
       primary: true,
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+      // 行勾选（防看岔行）：单击选中该行、再点取消、点其他行自动换选（单选
+      // 互斥，2026-10-10 口径「默认不要多选」）；无批量动作，「已选 N」胶囊
+      // 也不驻留——选中态由青绿行高亮表达，不画最前列勾选框列。
+      selectable: true,
+      showSelectionColumn: false,
+      singleSelection: true,
+      showSelectionSummary: false,
+      idOf: (it) => it.itemId.isEmpty ? null : it.itemId,
+      selectedIds: _selectedLineIds,
+      onSelectedIdsChanged: (next) => setState(() {
+        _selectedLineIds
+          ..clear()
+          ..addAll(next);
+      }),
       columns: [
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
         // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
@@ -965,29 +983,29 @@ class _FinanceSalesOrderReviewPageState
           value: (it) => UtenGoodsAttributeCell.text(it.colorName),
           cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
         ),
-        // 2026-09-25 用户口径：明细列与销售订货编辑页对齐——数量后紧跟单位，
-        // 客型列退役（开单不录入，审单看是空列）。
+        // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
+        // 独立「单位」列退役；客型列此前已退役（开单不录入，审单看是空列）。
         MasterColumnDef(
           key: 'qty',
           label: '数量',
-          width: 90,
+          width: 125,
           type: 'number',
-          value: (it) => _trimNum(it.qty),
-        ),
-        MasterColumnDef(
-          key: 'unitName',
-          label: '单位',
-          width: 80,
-          value: (it) => UtenGoodsAttributeCell.text(it.unitName),
-          cellBuilder: (_, it) => UtenGoodsAttributeCell(it.unitName),
+          value: (it) =>
+              formatQtyWithUnit(double.tryParse(it.qty ?? ''), it.unitName),
         ),
         // 实际重量列已下线（2026-09-04：单位已表达重量，销售订单编辑不再录入）。
+        // 2026-10-10 金额带单位口径：币种后缀进数值（0.5 元 / 1500 美金），列头
+        // 不再重复写币种。
         MasterColumnDef(
           key: 'price',
           label: '单价',
-          width: 110,
+          width: 130,
           type: 'money',
-          value: (it) => _trimNum(it.price),
+          value: (it) => financeMoneyWithUnitSuffix(
+            it.price,
+            currencyName: r.currencyName,
+            currencyCode: r.currencyCode,
+          ),
         ),
         MasterColumnDef(
           key: 'discount',
@@ -998,18 +1016,22 @@ class _FinanceSalesOrderReviewPageState
         ),
         MasterColumnDef(
           key: 'amount',
-          label: '金额(${r.currencyLabel})',
-          width: 120,
+          label: '金额',
+          width: 150,
           type: 'money',
-          value: (it) => _trimNum(it.amountOriginal),
+          value: (it) => financeMoneyWithUnitSuffix(
+            it.amountOriginal,
+            currencyName: r.currencyName,
+            currencyCode: r.currencyCode,
+          ),
         ),
         if (l10n != null && hasQuote) ...[
           MasterColumnDef(
             key: 'quotePrice',
             label: l10n.quoteFinanceOrderColQuotePrice,
-            width: 110,
+            width: 130,
             type: 'money',
-            value: (it) => _trimNum(it.quotePrice),
+            value: (it) => financeLocalMoneyWithUnitSuffix(_trimNum(it.quotePrice)),
           ),
           MasterColumnDef(
             key: 'quoteDiscount',
@@ -1035,12 +1057,18 @@ class _FinanceSalesOrderReviewPageState
         if (l10n != null && hasFile) ...[
           MasterColumnDef(
             key: 'clientPrice',
+            // 文件单价带文件币种后缀；文件币种未知时退回纯数值。
             label: l10n.quoteFinanceOrderColFilePrice(
               r.clientFileCurrency ?? l10n.quoteFinanceOrderFileCurrencyUnknown,
             ),
-            width: 120,
+            width: 140,
             type: 'money',
-            value: (it) => _trimNum(it.clientPrice),
+            value: (it) => r.clientFileCurrency == null
+                ? _trimNum(it.clientPrice)
+                : financeMoneyWithUnitSuffix(
+                    it.clientPrice,
+                    currencyName: r.clientFileCurrency,
+                  ),
           ),
           MasterColumnDef(
             key: 'clientModel',
@@ -1098,8 +1126,12 @@ class _FinanceSalesOrderReviewPageState
               ),
             ),
             UtenTotalEntry(
-              '合计金额(${r.currencyLabel})',
-              financeMoneyText(r.totalOriginal),
+              '合计金额',
+              financeMoneyWithUnitSuffix(
+                r.totalOriginal,
+                currencyName: r.currencyName,
+                currencyCode: r.currencyCode,
+              ),
               danger: true,
             ),
           ],

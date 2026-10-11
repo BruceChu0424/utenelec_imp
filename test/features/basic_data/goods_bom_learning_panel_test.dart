@@ -323,9 +323,10 @@ void main() {
     }
     expect(find.text('选择材料'), findsNothing);
     // 塑料：设计 0.1，真实 0.105，按真实使用数量计算，系统学习标记。
-    expect(find.text('0.1'), findsOneWidget);
-    expect(find.text('0.105'), findsOneWidget);
-    expect(find.text('42'), findsOneWidget);
+    // 2026-10-10「数量+单位」内联口径：用量列带组件单位。
+    expect(find.text('0.1 千克'), findsOneWidget);
+    expect(find.text('0.105 千克'), findsOneWidget);
+    expect(find.text('42 千克'), findsOneWidget);
     expect(find.text('系统学习'), findsOneWidget);
     // 纸箱：没有数据 → 按设计使用数量；BOM 外/已删除的料单独标记。
     expect(find.text('BOM 外实际用过的料'), findsOneWidget);
@@ -341,7 +342,7 @@ void main() {
     );
     // BOM 外的料按每个父件平均用量给出真实使用数量，悬停说明累计依据
     // (不说「物料分析按它计算」，BOM 外的料不参与计算)。
-    expect(find.text('0.02'), findsOneWidget);
+    expect(find.text('0.02 克'), findsOneWidget);
     expect(
       find.byTooltip(
         '按 2 批已完工生产累计：净耗 8 克 / 产量 400 个\n'
@@ -351,9 +352,9 @@ void main() {
     );
     // 不良只作说明：塑料按良品的真实使用数量 0.105 计算，另给实产单耗与不良率
     // (胶水、塑料、螺丝同批，各 16 个不良)；纸箱没有数据，不给不良率。
-    expect(find.text('0.100962'), findsOneWidget);
+    expect(find.text('0.100962 千克'), findsOneWidget);
     expect(find.text('3.85%'), findsNWidgets(3));
-    expect(find.text('16'), findsNWidgets(3));
+    expect(find.text('16 个'), findsNWidgets(3));
     expect(
       find.byTooltip(
         '按 2 批已完工生产累计：净耗 42 千克 / 产量 400 个\n'
@@ -396,7 +397,7 @@ void main() {
         _LearningRepo(_learned(glueStatus: 'OUTPUT_UNIT_CHANGED')),
       );
       // 胶水的旧平均是按旧父件单位算的，不能再摆在「真实使用数量」下。
-      expect(find.text('0.02'), findsNothing);
+      expect(find.text('0.02 克'), findsNothing);
       expect(find.byTooltip('父件单位变了，需重新学习'), findsOneWidget);
       expect(find.text('OUTPUT_UNIT_CHANGED'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -452,7 +453,7 @@ void main() {
     expect(repo.relearnCalls, [('shell', 'plastic')]);
     expect(repo.reads, 1, reason: '重学接口已返回新记录，不再多读一次');
     expect(notified, 1, reason: '通知组装信息页签重读');
-    expect(find.text('0.105'), findsNothing, reason: '重学后新数据出来前没有真实值');
+    expect(find.text('0.105 千克'), findsNothing, reason: '重学后新数据出来前没有真实值');
     // 重学(或系统升级统一从头累计，没有操作人)后说明从哪天起重新累计。
     expect(
       find.byTooltip('还没有已完工且核清余料的生产数据，计算按设计使用数量\n从 2026-09-27 起重新累计'),

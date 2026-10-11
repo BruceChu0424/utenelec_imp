@@ -764,7 +764,8 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       ),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-    // 颜色与单位本表右侧本来就有独立列，这里补出编号列。
+    // 2026-10-10 数量+单位口径：单位内联进「剩余/本次数量」两格，独立「单位」列
+    // 删除（单位筛选桶随之退役）。
     EditableGridColumn<UtenDocLinkItemRow<I>>(
       key: 'goods',
       label: '货品名称',
@@ -797,23 +798,20 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       cellBuilder: (context, row) =>
           Text(_cfg.colorName(names, _cfg.itemFields.colorId(row.item))),
     ),
-    EditableGridColumn<UtenDocLinkItemRow<I>>(
-      key: 'unit',
-      label: '单位',
-      width: 80,
-      filterValueOf: (row) =>
-          _bucketOrNull(_cfg.unitName(names, _cfg.itemFields.unitId(row.item))),
-      cellBuilder: (context, row) =>
-          Text(_cfg.unitName(names, _cfg.itemFields.unitId(row.item))),
-    ),
     ..._cfg.middleItemColumns(names),
     EditableGridColumn<UtenDocLinkItemRow<I>>(
       key: 'remainingQty',
       label: '剩余',
-      width: 90,
+      width: 120,
       numeric: true,
-      cellBuilder: (context, row) =>
-          Text(formatLinkQuantity(_cfg.remainQty(row.item))),
+      cellBuilder: (context, row) {
+        final text = formatLinkQuantity(_cfg.remainQty(row.item));
+        final unit = _cfg.unitName(
+          names,
+          _cfg.itemFields.unitId(row.item),
+        ).trim();
+        return Text(unit.isEmpty ? text : '$text $unit');
+      },
     ),
     EditableGridColumn<UtenDocLinkItemRow<I>>(
       key: 'thisQty',
@@ -824,12 +822,15 @@ class _UtenDocLinkPickerSheetState<D, I, N>
         valueListenable: row.qtyError,
         builder: (context, error, _) => TextField(
           controller: row.qty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
               hintText: '0',
+              // 2026-10-10 数量+单位口径：单位随输入框尾部显示（空 = 不显示）。
+              suffixText: _cfg
+                  .unitName(names, _cfg.itemFields.unitId(row.item))
+                  .trim(),
               error: utenFieldError(error),
             ),
           ),

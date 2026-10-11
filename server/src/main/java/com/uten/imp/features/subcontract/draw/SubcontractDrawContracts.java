@@ -28,6 +28,7 @@ public final class SubcontractDrawContracts {
     /**
      * 一个委外任务(一条已批准、未领满的委外订货明细)。materialQty = 我方供料套数 Qm
      * (订货数量扣掉财务批准的委外商自带料, 不低于已领套数; 没有自带料时等于 orderQty)。
+     * planNo = 来源计划(WL 分析编号, 为空时是订货单号), 与申请行显示同一口径。
      */
     public record DrawTaskRow(
             UUID orderItemId,
@@ -55,7 +56,8 @@ public final class SubcontractDrawContracts {
             String status,
             LocalDate deliverDate,
             boolean canDraw,
-            BigDecimal materialQty) {
+            BigDecimal materialQty,
+            String planNo) {
     }
 
     /** 列表能力位: 是否持有委外领料权限(新页面一律读它, 不在页面里判断权限常量)。 */

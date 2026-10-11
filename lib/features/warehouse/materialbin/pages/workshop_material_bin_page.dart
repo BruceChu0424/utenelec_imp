@@ -32,6 +32,7 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/china_datetime.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/formatters/quantity_display.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../stock/counts/models/stock_count_request.dart';
@@ -776,13 +777,6 @@ class _WorkshopMaterialBinPageState
           ),
           const SizedBox(height: UtenSpacing.s8),
         ],
-        if (_current?.periodic == false) ...[
-          UtenInlineNotice(
-            key: const Key('wm-bin-direct-only'),
-            message: l10n.wmBinDirectOnlyNotice,
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-        ],
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
           child: UtenFilterToolbar<String>(
@@ -955,16 +949,8 @@ class _WorkshopMaterialBinPageState
   Widget _countContext(ThemeData theme) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          // 2026-10-02 用户口径：盘点说明放最左、选填；「库存盘点 · 已改 N 项」计数退役。
-          // 与即时库存页同一个 controller 自带的说明框(ADR-151)。
-          StockCountReasonField(controller: _countEditor),
-        ],
-      ),
+      // 常驻盘点说明输入已删(2026-10-10 用户口径)：说明挪进「保存并送审」确认弹窗，
+      // 本页分类栏下只留错误重试。送审后的「待审核」状态在表格最前的状态列(见 _stockTable)。
       if (_countEditor.error != null)
         UtenInlineNotice(
           level: UtenInlineNoticeLevel.error,
@@ -989,6 +975,16 @@ class _WorkshopMaterialBinPageState
           'features.warehouse.materialbin.pages.workshop_material_bin_page.WorkshopMaterialBinPageState._stockTable.1',
       key: const Key('wm-bin-stock-table'),
       columns: [
+        // 送审后的「待审核」状态列(2026-10-10 用户口径)：刚提交的行盖待审核，
+        // 其余行显「—」；账面/现存照旧可见——审核通过前服务端不动库存(V766)。
+        if (_countEditor.reviewing)
+          MasterColumnDef<WmPositionRow>(
+            key: 'countReviewStatus',
+            label: '状态',
+            width: 90,
+            value: (r) =>
+                _countEditor.rowSubmitted(_countKey(r)) ? '待审核' : '—',
+          ),
         MasterColumnDef(
           key: 'goodsCode',
           label: '料号',
@@ -1007,30 +1003,38 @@ class _WorkshopMaterialBinPageState
           width: 90,
           value: (r) => r.colorName,
         ),
+        // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 公斤），列头不再
+        // 重复 "(公斤)"；盘点态的「单位」列随之退役——本仓各行数量都是公斤系
+        // 基准单位（盘点快照 unitName / 平时账面 kg 同源），口径核对一致。
         MasterColumnDef(
           key: 'estimatedRemainingQty',
-          label: '估计还剩 ($kg)',
-          width: 120,
+          label: '估计还剩',
+          width: 150,
           type: 'number',
-          value: (r) => qty(r.estimatedRemainingQty),
+          value: (r) => formatQtyWithUnit(
+            r.estimatedRemainingQty,
+            kg,
+            maxDecimals: 2,
+          ),
         ),
         MasterColumnDef(
           key: 'bookQty',
-          label: _countEditor.active ? '账面数量' : '账面 ($kg)',
-          width: 110,
+          label: _countEditor.active ? '账面数量' : '账面',
+          width: 145,
           type: 'number',
-          value: (r) =>
-              _countEditor.addedRows[_countKey(r)]?.qty ?? qty(r.bookQty),
+          value: (r) {
+            final snapshot = _countEditor.addedRows[_countKey(r)];
+            if (snapshot == null) {
+              return formatQtyWithUnit(r.bookQty, kg, maxDecimals: 2);
+            }
+            return formatQtyWithUnit(
+              double.tryParse(snapshot.qty),
+              snapshot.unitName.isNotEmpty ? snapshot.unitName : r.unitName,
+              maxDecimals: 4,
+            );
+          },
         ),
         if (_countEditor.active) ...[
-          MasterColumnDef<WmPositionRow>(
-            key: 'countBaseUnit',
-            label: '单位',
-            width: 75,
-            value: (row) =>
-                _countEditor.rows[_countKey(row)]?.snapshot.unitName ??
-                row.unitName,
-          ),
           MasterColumnDef<WmPositionRow>(
             key: 'countBookWeight',
             label: '账面重量 (kg)',
@@ -1050,38 +1054,42 @@ class _WorkshopMaterialBinPageState
         ),
         MasterColumnDef(
           key: 'periodInQty',
-          label: '本期领入 ($kg)',
-          width: 120,
+          label: '本期领入',
+          width: 150,
           type: 'number',
-          value: (r) => qty(r.periodInQty),
+          value: (r) => formatQtyWithUnit(r.periodInQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'periodReturnQty',
-          label: '本期退回 ($kg)',
-          width: 120,
+          label: '本期退回',
+          width: 150,
           type: 'number',
-          value: (r) => qty(r.periodReturnQty),
+          value: (r) => formatQtyWithUnit(r.periodReturnQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'periodOtherQty',
-          label: '其它耗用 ($kg)',
-          width: 120,
+          label: '其它耗用',
+          width: 150,
           type: 'number',
-          value: (r) => qty(r.periodOtherQty),
+          value: (r) => formatQtyWithUnit(r.periodOtherQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'estimatedUsedQty',
-          label: '估计已用 ($kg)',
-          width: 120,
+          label: '估计已用',
+          width: 150,
           type: 'number',
-          value: (r) => qty(r.estimatedUsedQty),
+          value: (r) => formatQtyWithUnit(r.estimatedUsedQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'warehouseAvailableQty',
-          label: '仓库还有 ($kg)',
-          width: 120,
+          label: '仓库还有',
+          width: 150,
           type: 'number',
-          value: (r) => qty(r.warehouseAvailableQty),
+          value: (r) => formatQtyWithUnit(
+            r.warehouseAvailableQty,
+            kg,
+            maxDecimals: 2,
+          ),
         ),
         MasterColumnDef(
           key: 'notes',

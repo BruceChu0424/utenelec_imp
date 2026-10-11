@@ -7,10 +7,6 @@ const double _treeIndent = 16;
 const double _treeToggleExtent = 48;
 const double _treeToggleCenter = _treeToggleExtent / 2;
 
-/// 子树分组竖线（[UtenTreeTableCell.subtreeRail]）的 x 坐标：落在第一个缩进
-/// 槽的中间，比最浅的祖先连线（x = 24）更靠左，两条平行线不会贴在一起。
-const double _treeSubtreeRailX = 8;
-
 /// Reusable tree identity cell for data tables.
 ///
 /// Hierarchy is deliberately redundant: indentation + continuous guide rails +
@@ -39,7 +35,9 @@ class UtenTreeTableCell extends StatelessWidget {
     this.childCount,
     this.showLeafMarker = true,
     this.guideBleed = 0,
-    this.subtreeRail = false,
+    this.guideColor,
+    this.toggleColor,
+    this.indent = _treeIndent,
     this.mutedToggleWhenChildless = false,
   });
 
@@ -57,13 +55,24 @@ class UtenTreeTableCell extends StatelessWidget {
   /// 0 = 独立使用（非表格宿主），不溢出。
   final double guideBleed;
 
-  /// 子树分组竖线（2026-10-08 物料分析按产品视图口径）：depth > 0 的行在
-  /// 缩进区最左（x = 8，见 [_treeSubtreeRailX]）画一条贯穿本行的竖线，同棵
-  /// 子树的行各自画自己那段、靠 [guideBleed] 接成整条——把「顶层产品行」和
-  /// 「子层级行块」分成一眼可辨的两个部分。与祖先连线（x ≥ 24）平行但更靠
-  /// 左、贯穿到最后一个子件的行底（肘线在末位行是要收口的），语义是块边界
-  /// 而不是父子连线。depth = 0 的行不画；默认关闭，不影响既有宿主。
-  final bool subtreeRail;
+  /// 层级连线的显式用色（2026-10-10 物料分析按产品视图）：非空时本行所有
+  /// 连线（祖先竖线、肘线、父行向下引出段）整笔用这一色，优先级高于
+  /// [foregroundColor] 的降调与默认明暗两档灰。宿主按「这行属于哪棵子树」
+  /// 给色（如按产品序号两色轮换），轮换逻辑由宿主管理，组件不掺和。
+  final Color? guideColor;
+
+  /// 展开箭头圆底的显式用色（2026-10-10 物料分析按产品视图）：非空且有
+  /// 下级时，圆底用这一色替代 depth%4 轮换的层级色，箭头按既有明暗自适应
+  /// （圆底偏深一律反白）；无下级行的灰色占位图标不受影响。与 [guideColor]
+  /// 配对使用时整棵子树「连线 + 箭头圆底」同色。默认 null 照旧轮换。
+  final Color? toggleColor;
+
+  /// 每级缩进宽度，默认 16。2026-10-10 物料分析口径「下面的箭头跟线挨在
+  /// 一起」：连线与圆底按子树上色后，16px 缩进里祖先竖线离箭头圆底只剩
+  /// 2px（间隙 = indent − 14），看着粘成一块；宿主可放宽（物料分析主表传
+  /// 24，间隙 10px）。只改宽度，层级深度语义仍由 [maxVisualDepth] 与
+  /// 序号/标签表达。
+  final double indent;
 
   /// 无下级的行画灰色不可点的展开占位图标（2026-10-09 物料分析口径「没有
   /// 子层级的也在前面加个可以展开的 icon，但是灰色不能点击，统一好看」）：
@@ -170,7 +179,7 @@ class UtenTreeTableCell extends StatelessWidget {
       ),
     );
 
-    final guideWidth = visualDepth * _treeIndent;
+    final guideWidth = visualDepth * indent;
     final hasExpandedChildren = hasChildren && expanded;
     // 连接线独立成一层浮在内容背后，高度跟着**整个单元格**（外加宿主的纵向
     // 内边距 [guideBleed]）——原来它被钉死在 48 高的 SizedBox 里，行一旦更高
@@ -196,14 +205,18 @@ class UtenTreeTableCell extends StatelessWidget {
                   painter: _TreeGuidePainter(
                     depth: depth,
                     maxVisualDepth: maxVisualDepth,
-                    subtreeRail: subtreeRail,
-                    // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色模式下
-                    // 浅点」：原来两种明暗都取 outlineVariant——白底上它几乎与
-                    // 表格网格线同色。改成按明暗两档对称调：浅色用
-                    // onSurfaceVariant 七成不透明（明显能看出层级走向，又不至于
-                    // 抢名称），深色用四成（深底上线条本就更跳，压下去才不刺眼）。
+                    indent: indent,
+                    // 连线用色三档：宿主显式色（2026-10-10 按产品轮换）→
+                    // 行前景降调 → 默认明暗两档灰。宿主显式色整笔直用、不再
+                    // 降调——轮换色的意义就是让整棵子树一眼同色。
                     color:
+                        guideColor ??
                         foregroundColor?.withValues(alpha: 0.35) ??
+                        // 2026-09-14 用户口径「浅色时候看不清，颜色深点；深色
+                        // 模式下浅点」：原来两种明暗都取 outlineVariant——白底上
+                        // 它几乎与表格网格线同色。改成按明暗两档对称调：浅色用
+                        // onSurfaceVariant 七成不透明（明显能看出层级走向，又不至于
+                        // 抢名称），深色用四成（深底上线条本就更跳，压下去才不刺眼）。
                         colors.onSurfaceVariant.withValues(
                           alpha: theme.brightness == Brightness.dark
                               ? 0.40
@@ -251,9 +264,11 @@ class UtenTreeTableCell extends StatelessWidget {
                           // 未展开且已知子件数时叠「N」徽章。
                           icon: _ToggleGlyph(
                             expanded: expanded,
-                            background: foregroundColor ?? levelColor,
+                            background:
+                                toggleColor ?? foregroundColor ?? levelColor,
                             foreground: _toggleForeground(
-                              circleColor: foregroundColor ?? levelColor,
+                              circleColor:
+                                  toggleColor ?? foregroundColor ?? levelColor,
                               colors: colors,
                               explicitForeground: foregroundColor,
                             ),
@@ -528,23 +543,12 @@ List<({double x1, double y1, double x2, double y2})> utenTreeGuideSegments({
   required double width,
   required double connectorY,
   bool hasExpandedChildren = false,
-  bool subtreeRail = false,
   int maxVisualDepth = UtenTreeTableCell.defaultMaxVisualDepth,
+  double indent = _treeIndent,
 }) {
   final result = <({double x1, double y1, double x2, double y2})>[];
   double centerX(int level) =>
-      level.clamp(0, maxVisualDepth) * _treeIndent + _treeToggleCenter;
-
-  // 子树分组竖线：块边界，贯穿本行上下（宿主给 guideBleed 后与邻行接成整条），
-  // 不参与肘线在末位行的收口。depth = 0（顶层行本身）不画。
-  if (subtreeRail && depth > 0) {
-    result.add((
-      x1: _treeSubtreeRailX,
-      y1: 0,
-      x2: _treeSubtreeRailX,
-      y2: height,
-    ));
-  }
+      level.clamp(0, maxVisualDepth) * indent + _treeToggleCenter;
 
   if (depth > 0) {
     // 每条竖线与对应父行的箭头圆心同轴。槽 level 承载深度 level+1
@@ -585,19 +589,17 @@ class _TreeGuidePainter extends CustomPainter {
   const _TreeGuidePainter({
     required this.depth,
     required this.maxVisualDepth,
+    required this.indent,
     required this.color,
     required this.ancestorContinuations,
     required this.isLastChild,
     required this.hasExpandedChildren,
-    this.subtreeRail = false,
   });
 
   final int depth;
   final int maxVisualDepth;
+  final double indent;
   final Color color;
-
-  /// 子树分组竖线开关（见 [UtenTreeTableCell.subtreeRail]）。
-  final bool subtreeRail;
 
   /// `[i]` = 深度 i 的祖先后面还有没有兄弟。长度 = 本行深度
   /// （见 [UtenTreeTableCell.ancestorContinuations]）。
@@ -621,8 +623,8 @@ class _TreeGuidePainter extends CustomPainter {
       // Stack 和 Row 都垂直居中，画布上下 bleed 对称，故中线即箭头圆心。
       connectorY: size.height / 2,
       hasExpandedChildren: hasExpandedChildren,
-      subtreeRail: subtreeRail,
       maxVisualDepth: maxVisualDepth,
+      indent: indent,
     )) {
       canvas.drawLine(
         Offset(line.x1, line.y1),
@@ -636,9 +638,9 @@ class _TreeGuidePainter extends CustomPainter {
   bool shouldRepaint(covariant _TreeGuidePainter oldDelegate) =>
       oldDelegate.depth != depth ||
       oldDelegate.maxVisualDepth != maxVisualDepth ||
+      oldDelegate.indent != indent ||
       oldDelegate.color != color ||
       oldDelegate.isLastChild != isLastChild ||
       oldDelegate.hasExpandedChildren != hasExpandedChildren ||
-      oldDelegate.subtreeRail != subtreeRail ||
       !listEquals(oldDelegate.ancestorContinuations, ancestorContinuations);
 }

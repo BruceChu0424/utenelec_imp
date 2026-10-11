@@ -352,7 +352,7 @@ void main() {
   });
 
   testWidgets('只开通、收车间直送的内料仓: 只列现有的料, 没有发料/盘点动作, '
-      '有设置权限可接着开启整批领料', (tester) async {
+      '有设置权限可接着开启整批领料; 分类栏下不再放说明卡片(2026-10-10 删除)', (tester) async {
     final repo = _ContextRepository()
       ..settingsResult = const [_targetDirectOnly]
       ..positionByBin = const {
@@ -369,7 +369,7 @@ void main() {
       },
     );
     expect(repo.positionReads, ['target-bin']);
-    expect(find.byKey(const Key('wm-bin-direct-only')), findsOneWidget);
+    expect(find.byKey(const Key('wm-bin-direct-only')), findsNothing);
     expect(find.text('PP 颗粒'), findsOneWidget);
     expect(find.byKey(const Key('wm-bin-request')), findsNothing);
     expect(find.byKey(const Key('stock-count-mode')), findsNothing);
@@ -535,9 +535,9 @@ void main() {
     expect(find.byKey(const Key('wm-bin-return')), findsNothing);
     expect(find.byKey(const Key('wm-bin-other-issue')), findsNothing);
     expect(find.byKey(const Key('wm-bin-count')), findsNothing);
-    // 现存表: 估计还剩与仓库还有。
+    // 现存表: 估计还剩与仓库还有（2026-10-10 数量+单位内联口径，公斤跟数字）。
     expect(find.text('PP 颗粒'), findsOneWidget);
-    expect(find.text('800'), findsOneWidget);
+    expect(find.text('800 公斤'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
     final full = _repo(status: status);

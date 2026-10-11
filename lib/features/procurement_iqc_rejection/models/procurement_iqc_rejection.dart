@@ -168,8 +168,8 @@ class ProcurementIqcRejectionCase {
     goodsName,
   ].where((value) => value?.trim().isNotEmpty == true).join(' ');
 
-  /// 原币金额「美金 125.50」：币种只用主档名称或可读代码，不显示 001 这类旧编号(ADR-128)。
-  String originalMoneyText(String amount) => financeMoneyWithCurrency(
+  /// 原币金额「125.50 美金」：币种只用主档名称或可读代码，不显示 001 这类旧编号(ADR-128)。
+  String originalMoneyText(String amount) => financeMoneyWithUnitSuffix(
     amount,
     currencyName: currencyName,
     currencyCode: currencyCode,

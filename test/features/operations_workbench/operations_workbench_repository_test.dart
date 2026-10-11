@@ -73,12 +73,14 @@ void main() {
                 'taskId': 'application-task',
                 'planNo': 'PP-1',
                 'warehouseName': '主仓 / 子仓',
+                'warehouseId': 'warehouse-uuid',
                 'goodsCode': 'G1',
                 'goodsName': '委外件',
                 'spec': '',
                 'colorName': '',
                 'unitName': '件',
                 'supplyRoute': 'SUBCONTRACT',
+                'supplierName': '华信加工',
                 'requiredQty': 10,
                 'allocatedQty': 0,
                 'fulfilledQty': 0,
@@ -157,6 +159,10 @@ void main() {
       expect(data.items.single.canCreateOrder, isTrue);
       expect(data.items.single.displayStage, 'WAITING_ORDER');
       expect(data.items.single.progressStatus, 'WAITING_ORDER');
+      // 2026-10-10 V836：委外商名与仓库 id 透传到模型（仓库列组合名 /
+      // 委外待处理列表的委外商列用）。
+      expect(data.items.single.supplierName, '华信加工');
+      expect(data.items.single.warehouseId, 'warehouse-uuid');
       expect(data.summary.statusCounts['IN_PROGRESS'], 7);
       expect(data.facets['goods']!.single.value, 'goods-source-uuid');
       expect(data.facets['goods']!.single.count, 125);

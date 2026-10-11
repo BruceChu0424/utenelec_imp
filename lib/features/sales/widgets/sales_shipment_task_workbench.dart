@@ -19,6 +19,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -802,7 +803,38 @@ class _SalesShipmentTaskWorkbenchState
   }
 
   Widget _filters() {
-    // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
+    // 2026-10-10 用户口径：出货审核的子分类行统一为全平台筛选工具条——
+    // 业务审核中心其余分段（销售订单确认/订货审批/IQC）都是 UtenFilterToolbar，
+    // 此前这里是裸 ChoiceChip 行 + 独立搜索框；「单击选择…」「已退回…」两行
+    // 操作提示随切换退役（全站提示卡口径）。
+    if (_isFinance) {
+      return UtenFilterToolbar<String>(
+        segmentsKey: const Key('finance-shipment-audit-segments'),
+        searchKey: const Key('sales-shipment-task-search'),
+        segments: const [
+          // 「待审核」= 等我放行的队列（进页面默认选中）；
+          // 「已退回」= 被我退回、销售还没改回来的单（V578 专段）。
+          UtenFilterSegment(value: 'pending', label: '待审核'),
+          UtenFilterSegment(value: 'rejected', label: '已退回'),
+          UtenFilterSegment(value: 'audited', label: '已审核'),
+          UtenFilterSegment(value: 'all', label: '全部'),
+        ],
+        selected: {_financeSegment},
+        onSelectionChanged: _changeFinanceSegment,
+        searchHint: '搜索出货单号 / 客户',
+        initialSearchValue: _keyword,
+        onSearchChanged: (value) {
+          _keyword = value;
+          _load(1);
+        },
+        onSearchSubmitted: (value) {
+          _keyword = value;
+          _load(1);
+        },
+      );
+    }
+    // 仓库模式（销售出库已由 WarehouseSalesOutboundPage 承接，本分支无调用方）：
+    // 维持原搜索框 + Chip 行形态。
     final search = SizedBox(
       width: 160,
       child: UtenSearchBar(
@@ -819,7 +851,6 @@ class _SalesShipmentTaskWorkbenchState
         },
       ),
     );
-    final chips = _isFinance ? _financeChips() : _warehouseChips();
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < UtenBreakpoints.expandedStart;
@@ -829,71 +860,44 @@ class _SalesShipmentTaskWorkbenchState
             children: [
               SizedBox(width: double.infinity, child: search),
               const SizedBox(height: UtenSpacing.s8),
-              chips,
-              if (_isFinance)
-                Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                  child: Text(
-                    '单击选择，双击或长按打开审核详情',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
+              _warehouseChips(),
             ],
           );
         }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                search,
-                const SizedBox(width: UtenSpacing.s12),
-                Expanded(child: chips),
-              ],
-            ),
-            if (_isFinance && _financeRejected)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                child: Text(
-                  '已退回销售处理；双击进入可「撤回退回」恢复审核',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
+            search,
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(child: _warehouseChips()),
           ],
         );
       },
     );
   }
 
-  Widget _financeChips() => Wrap(
-    spacing: UtenSpacing.s4,
-    runSpacing: UtenSpacing.s4,
-    children: [
-      _financeChip('待审核', 0, rejected: false),
-      _financeChip('已退回', 0, rejected: true),
-      _financeChip('已审核', 1, rejected: false),
-      _financeChip('全部', null, rejected: false),
-    ],
-  );
+  /// 财务分段值 ↔ (financeAudit, financeRejected) 的当前态推导。
+  String get _financeSegment => switch ((_financeAudit, _financeRejected)) {
+    (0, true) => 'rejected',
+    (1, false) => 'audited',
+    (null, false) => 'all',
+    _ => 'pending',
+  };
 
-  Widget _financeChip(String label, int? value, {required bool rejected}) =>
-      ChoiceChip(
-        label: Text(label),
-        selected: _financeAudit == value && _financeRejected == rejected,
-        onSelected: (_) {
-          setState(() {
-            _financeAudit = value;
-            _financeRejected = rejected;
-          });
-          _clearSelection();
-          _load(1);
-        },
-      );
+  void _changeFinanceSegment(String value) {
+    final (int? audit, bool rejected) = switch (value) {
+      'rejected' => (0, true),
+      'audited' => (1, false),
+      'all' => (null, false),
+      _ => (0, false),
+    };
+    setState(() {
+      _financeAudit = audit;
+      _financeRejected = rejected;
+    });
+    _clearSelection();
+    _load(1);
+  }
 
   Widget _warehouseChips() => Wrap(
     spacing: UtenSpacing.s4,
@@ -1055,11 +1059,11 @@ String _shortDate(String? value) {
   return value.length > 10 ? value.substring(0, 10) : value;
 }
 
-/// 出货金额(ADR-128)：本单币种写成「币种 金额」；价格遮蔽与不收费照旧。
+/// 出货金额(ADR-128)：本单币种金额后自动带单位（2026-10-10 后缀口径）；价格遮蔽与不收费照旧。
 String _amount(SalesDocListItem item, String currencyName) {
   if (item.priceMasked) return '***';
   if (item.shipmentWorkflow.isFree) return '不收费（货款 0）';
-  return financeMoneyWithCurrency(
+  return financeMoneyWithUnitSuffix(
     item.exactDecimals['totalOriginal'] ?? item.totalOriginal?.toString(),
     currencyName: currencyName,
   );

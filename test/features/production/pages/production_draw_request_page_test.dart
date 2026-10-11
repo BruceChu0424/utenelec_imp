@@ -247,7 +247,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('2 个任务 · 查看明细'));
       await tester.pumpAndSettle();
-      expect(find.text('1.5'), findsOneWidget);
+      // 2026-10-10 数量内联口径：单位撤销独立列，待申请量/本次领料数字直接带单位。
+      expect(find.text('1.5 个'), findsOneWidget);
       await tester.tap(find.text('关闭'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(_submitKey));

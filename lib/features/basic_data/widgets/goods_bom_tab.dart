@@ -68,6 +68,7 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
@@ -907,6 +908,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             key: ValueKey('goods-bom-tree-cell-${r.node.item.id}'),
             toggleKey: ValueKey('goods-bom-tree-toggle-${r.node.item.id}'),
             depth: r.depth,
+            // 2026-10-10 用户口径「组装信息也对应拉开间距」：与物料分析主表
+            // 同款缩进放宽（16→24），祖先竖线与展开箭头圆底的间隙从 2px
+            // 放到 10px；连线/圆底配色不变。
+            indent: 24,
             guideBleed: MasterDataTableView.cellVerticalPadding,
             sequence: r.seq,
             levelLabel: '组件 ${r.depth + 1} 级',
@@ -924,32 +929,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
           return cell;
         },
       ),
-      // 系统学习来源列（2026-09-29）：系统学出的组件标「系统学习」(ADR-129)，
-      // 整格铺品红分类底色（ADR-169：来源分类强调非语义状态，原品牌青/info
-      // 让给「他方执行中/正在执行」语义档）；人工维护行不铺色留空。
-      // 与「BOM 学习记录」状态列同色。
-      MasterColumnDef(
-        key: 'learned',
-        label: '学习来源',
-        width: 110,
-        value: (r) => r.node.item.systemLearned ? l10n.bomLearnedEdge : null,
-        cellColor: (context, r) => r.node.item.systemLearned
-            ? utenStatusBadgeCellColor(UtenStatusBadgeType.fuchsia)
-            : null,
-        // key 是既有用例锚点（goods_bom_columns_test：按行定位学习标记）。
-        cellBuilder: (context, r) => r.node.item.systemLearned
-            ? KeyedSubtree(
-                key: ValueKey('goods-bom-learned-${r.node.item.id}'),
-                child: Text(
-                  l10n.bomLearnedEdge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              )
-            : const SizedBox.shrink(),
-      ),
       // 已审列（V256）：审计标记持久在服务端，但只在做核对的人眼前出现——
       // 进「审计模式」才显示 ✓ 列（改标记要 goods:bom:audit），关闭即正常清单。
+      // T13（2026-10-10）：树形首列保持第一，「已审」状态列提到第 2 列，
+      // 学习来源随之后移——审计模式下核对状态比来源分类更常看。
       if (_auditMode)
         MasterColumnDef(
           key: 'audited',
@@ -1001,6 +984,30 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             );
           },
         ),
+      // 系统学习来源列（2026-09-29）：系统学出的组件标「系统学习」(ADR-129)，
+      // 整格铺品红分类底色（ADR-169：来源分类强调非语义状态，原品牌青/info
+      // 让给「他方执行中/正在执行」语义档）；人工维护行不铺色留空。
+      // 与「BOM 学习记录」状态列同色。
+      MasterColumnDef(
+        key: 'learned',
+        label: '学习来源',
+        width: 110,
+        value: (r) => r.node.item.systemLearned ? l10n.bomLearnedEdge : null,
+        cellColor: (context, r) => r.node.item.systemLearned
+            ? utenStatusBadgeCellColor(UtenStatusBadgeType.fuchsia)
+            : null,
+        // key 是既有用例锚点（goods_bom_columns_test：按行定位学习标记）。
+        cellBuilder: (context, r) => r.node.item.systemLearned
+            ? KeyedSubtree(
+                key: ValueKey('goods-bom-learned-${r.node.item.id}'),
+                child: Text(
+                  l10n.bomLearnedEdge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            : const SizedBox.shrink(),
+      ),
       MasterColumnDef(
         key: 'code',
         label: '编号',
@@ -1019,12 +1026,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
         width: 170,
         value: (r) => r.node.item.componentSpec,
       ),
-      MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 56,
-        value: (r) => r.node.item.componentUnitName,
-      ),
+      // 2026-10-10「数量+单位」全站口径：独立「单位」列退役，组件单位内联进
+      // 设计/真实使用数量（见 _bomQtyText / _bomActualQtyText）。
       MasterColumnDef(
         key: 'color',
         label: '颜色',
@@ -1062,12 +1065,10 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       MasterColumnDef(
         key: 'qty',
         label: l10n.bomDesignQty,
-        width: 112,
+        width: 150,
         type: 'number',
         info: '整批领到车间内料仓的料 (颗粒等)，这一格是单个重量，按克填写和显示。',
-        value: (r) => r.node.item.isPeriodicEdge
-            ? _qtyText(r.node.item)
-            : r.node.item.designQtyText,
+        value: (r) => _bomQtyText(r.node.item),
         exactValueOf: (r) =>
             (r.node.item.isPeriodicEdge
                     ? r.node.item.periodicUnitWeightGrams ?? r.node.item.qty
@@ -1084,9 +1085,9 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       MasterColumnDef(
         key: 'actualQty',
         label: l10n.bomActualQty,
-        width: 112,
+        width: 150,
         type: 'number',
-        value: (r) => r.node.item.actualQtyText,
+        value: (r) => _bomActualQtyText(r.node.item),
         exactValueOf: (r) => r.node.item.actual.qty?.toString(),
         cellBuilder: (context, r) => Tooltip(
           message: bomActualUsageTip(
@@ -1094,7 +1095,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
             r.node.item.actual,
             netUnit: r.node.item.componentUnitName,
           ),
-          child: Text(r.node.item.actualQtyText),
+          child: Text(_bomActualQtyText(r.node.item)),
         ),
       ),
       MasterColumnDef(
@@ -1335,16 +1336,26 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
   }
 
   /// 数量列文本：期间边显示「X 克」(基本单位千克时 = 数量 × 1000)，
-  /// 其它行照旧显示设计使用数量。
-  static String _qtyText(GoodsBomItem item) {
+  /// 其它行是设计使用数量——2026-10-10「数量+单位」内联口径，统一带组件单位。
+  static String _bomQtyText(GoodsBomItem item) {
     if (item.isPeriodicEdge) {
       final grams = item.periodicUnitWeightGrams;
       if (grams != null) return '${periodicGramsText(grams)} 克';
       // 单位不能按克换算：按基本单位显示小数 (不出现科学计数法)。
-      return _plainQty(item.qty);
+      return formatQtyWithUnit(item.qty, item.componentUnitName, maxDecimals: 6);
     }
-    return item.designQtyText;
+    return formatQtyWithUnit(item.qty, item.componentUnitName, maxDecimals: 6);
   }
+
+  /// 真实使用数量：没有数据或不适用显示「—」，有数带组件单位。
+  static String _bomActualQtyText(GoodsBomItem item) =>
+      item.actual.qty == null
+          ? '—'
+          : formatQtyWithUnit(
+              item.actual.qty,
+              item.componentUnitName,
+              maxDecimals: 6,
+            );
 }
 
 /// 可选取 l10n：个别宿主测试没挂本地化代理，取不到时回落中文。

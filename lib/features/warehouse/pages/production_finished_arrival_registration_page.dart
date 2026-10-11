@@ -46,6 +46,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_mass_units.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
@@ -808,7 +809,6 @@ class _ProductionFinishedArrivalRegistrationPageState
               sourceSummary:
                   '来自 ${reports.length} 张报工单'
                   '${registeredReports > 0 ? '(其中 $registeredReports 张已登记，只读)' : ''}',
-              submitLabel: _route?.label ?? '提交按钮',
             ),
             const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_FinishedLotLine>(
@@ -862,6 +862,8 @@ class _ProductionFinishedArrivalRegistrationPageState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // 重量逐行输入不触发整页重建：合计条自己听重量格与单重参数。
+                  // 原合计条下方的长提示行已删(2026-10-10 简洁口径)；「已移出 N 行」
+                  // 计数并进右下提交按钮 tooltip(_buildBottomBar)。
                   ListenableBuilder(
                     listenable: Listenable.merge([
                       _weightCache,
@@ -883,18 +885,6 @@ class _ProductionFinishedArrivalRegistrationPageState
                         qtyBaseOf: (row) => row.lot.reportedBaseQty,
                       ),
                       weightDisplay: weightUnits.display,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    !canRegister
-                        ? '当前账号只有查看权限，不能修改仓库或库位。'
-                        : _removedLineCount > 0
-                        ? '已移出 $_removedLineCount 行(仅本页临时选择)；这些报工行未写入，仍在待登记。'
-                              '明细默认全选，提交只含勾选行。'
-                        : l10n.handoffLotRegistrationFooter,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -1087,7 +1077,8 @@ class _ProductionFinishedArrivalRegistrationPageState
           child: Text(canRegister ? '取消' : '返回任务'),
         ),
         // 多选时任务中心选定了路线就只显示这一条；双击进来两条并排(同名同义、同一组件)。
-        // 所选报工都已登记(只剩只读批)时不出提交按钮。
+        // 所选报工都已登记(只剩只读批)时不出提交按钮。「已移出 N 行」计数在 tooltip
+        // (合计条下提示行删除后，2026-10-10)。
         if (canRegister && !_submitted && _editableRows.isNotEmpty)
           for (final route in routes)
             InboundRouteSubmitButton(
@@ -1098,6 +1089,9 @@ class _ProductionFinishedArrivalRegistrationPageState
                   ? () => context.appInfo('正在读取所选仓库的默认库位，请稍候再提交')
                   : !hasChecked
                   ? () => context.appWarning('请先勾选要登记的明细行(未勾选的行本次不登记)')
+                  : null,
+              tooltip: _removedLineCount > 0
+                  ? '已移出 $_removedLineCount 行(仅本页)；${route.hint}'
                   : null,
             ),
       ],
@@ -1142,8 +1136,7 @@ class _ProductionFinishedArrivalRegistrationPageState
       shared.quantity(
         key: 'reportedQty',
         label: '报工数量',
-        textOf: (row) => inboundQty(row.lot.reportedQty),
-        exactValueOf: (row) => row.lot.reportedQty.toString(),
+        valueOf: (row) => row.lot.reportedQty,
       ),
       // 一批实物里需求份 / 计划公共 / 实际超产各多少(服务端算好)；整批都是需求份时空着。
       EditableGridColumn(
@@ -1160,7 +1153,7 @@ class _ProductionFinishedArrivalRegistrationPageState
         ),
       ),
       // 本次实收：先入库后质检 = 登记即承诺合格按此数量自动入库，须与整批报工数量一致；
-      // 已登记行显示当时的实收(没记录显示「—」)。
+      // 已登记行显示当时的实收(没记录显示「—」，数量内联单位)。
       if (showReceived)
         shared.receivedQuantity(
           controllerOf: (row) =>
@@ -1169,12 +1162,14 @@ class _ProductionFinishedArrivalRegistrationPageState
           readOnlyExactValueOf: (row) => row.lot.countedQty?.toString(),
           readOnlyTextOf: (row) => row.lot.countedQty == null
               ? '—'
-              : inboundQty(row.lot.countedQty!),
+              : formatQtyWithUnit(
+                  row.lot.countedQty,
+                  row.lot.unitName ?? names.unit(row.lot.unitId),
+                ),
           headerInfo:
               '先入库后质检：登记即承诺品质合格按此数量自动入库，默认=整批报工数量且须一致；'
               '数量不符请改走「先质检后入库」，由仓库按实物点收。',
         ),
-      shared.unit(),
       // 实称重量(可选)：整批一个称重，只核对报工数量(折成基本单位)，不回填数量。
       shared.weight(
         entryUnit: weightEntryUnit,

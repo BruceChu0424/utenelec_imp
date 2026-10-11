@@ -36,6 +36,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -158,6 +159,33 @@ class _OperationsWorkbenchPageState
   String _stageLabelOf(OperationsWorkbenchTask task) =>
       _purchaseStageLabel(task.progressStatus) ?? task.statusLabel;
 
+  /// 主档名称服务（仓库字典）。预热成功后非空；构造/拉取失败保持 null，
+  /// 仓库列按行内叶仓名回退。列 value 回调在表格子树 build 时才执行，不能
+  /// 每次 ref.watch/read（watch 会炸、read 每格一遍也浪费），存字段读。
+  MasterNameService? _masterNames;
+
+  /// 预热仓库字典（「主仓 - 子仓」组合名）。任何失败——含测试环境没有注入
+  /// api client、离线——都就地吞掉：仓库列回退行内叶仓名，不阻断任务加载。
+  Future<void> _warmWarehouseNames() async {
+    try {
+      final names = ref.read(masterNameServiceProvider);
+      await names.ensureWarehousesLoaded();
+      _masterNames = names;
+    } catch (_) {}
+  }
+
+  /// 仓库列文案（2026-10-10）：优先主档字典的「主仓 - 子仓」组合名（names.warehouse
+  /// 与采购单据列表同源），字典未加载/未命中回退服务端下发的叶仓名；两处都缺落「—」。
+  /// 材料发现等段 warehouseId 为空，直接走叶仓名回退。
+  String _warehouseLabelOf(OperationsWorkbenchTask task) {
+    final names = _masterNames;
+    if (names != null && names.warehouseEntry(task.warehouseId) != null) {
+      return names.warehouse(task.warehouseId);
+    }
+    final leaf = task.warehouseName.trim();
+    return leaf.isEmpty ? '—' : leaf;
+  }
+
   static String? _purchaseStageLabel(String code) => switch (code) {
     'ORDER_PENDING_APPROVAL' => '等待财务审核',
     'FINANCE_APPROVED' => '财务已通过',
@@ -206,6 +234,11 @@ class _OperationsWorkbenchPageState
       _error = null;
     });
     try {
+      // 仓库列的「主仓 - 子仓」组合名来自主档字典（2026-10-10，与采购单据列表
+      // 同源）：与任务数据并行预热（字典自带缓存，重复加载不重复请求）。预热
+      // 在自己的 Future 里吞掉一切错误——拉不到（离线/测试环境未注入 api）只是
+      // 仓库列回退行内叶仓名，绝不能把任务列表拖成加载失败。
+      final warehouseNames = _warmWarehouseNames();
       final next = await _repository.load(
         department: widget.department,
         page: page ?? _page,
@@ -221,6 +254,7 @@ class _OperationsWorkbenchPageState
         order: _sortAscending ? 'asc' : 'desc',
         columnFilters: _columnFilters,
       );
+      await warehouseNames;
       if (!mounted || requestId != _requestId) return;
       setState(() {
         _data = next;
@@ -713,6 +747,7 @@ class _OperationsWorkbenchPageState
                       onColumnFilterChanged: _onColumnFilterChanged,
                       mergedStageColumn: _mergedStageColumn,
                       stageLabelOf: _stageLabelOf,
+                      warehouseLabelOf: _warehouseLabelOf,
                       sortColumn: _sortColumn,
                       sortAscending: _sortAscending,
                       onSortChange: (column, ascending) {
@@ -790,6 +825,7 @@ class _DesktopTaskTable extends StatelessWidget {
     this.sortAscending = true,
     this.onSortChange,
     this.batchActions,
+    required this.warehouseLabelOf,
   });
 
   final OperationsWorkbenchData data;
@@ -815,6 +851,10 @@ class _DesktopTaskTable extends StatelessWidget {
   final bool sortAscending;
   final void Function(String? column, bool ascending)? onSortChange;
   final List<Widget> Function(BuildContext, Set<String>)? batchActions;
+
+  /// 仓库列文案（2026-10-10）：主档字典的「主仓 - 子仓」组合名，未命中回退
+  /// 行内叶仓名。由页面侧闭包提供（要读 masterNameServiceProvider）。
+  final String Function(OperationsWorkbenchTask task) warehouseLabelOf;
 
   @override
   Widget build(BuildContext context) {
@@ -867,13 +907,17 @@ class _DesktopTaskTable extends StatelessWidget {
         ),
         MasterColumnDef(
           // ADR-065 修订：行=当前执行单据（申请/订货单），单据号是首要身份；
-          // 双击行或「执行入口」直达详情，明细在单据详情里逐货品查看。
+          // 双击行直达详情，明细在单据详情里逐货品查看。
           // 2026-09-25 单号列统一：可排序（服务端 docNo 已在排序白名单），筛选此前已有。
+          // 2026-10-10：原「执行入口」列（状态文案+单据号，与单据号同源同值）退役，
+          // 其承载的无权受限提示并入本列（此时不显示单号，单号属单据元数据不能泄漏）。
           key: 'actionDocNo',
           sortable: true,
           label: '单据号',
           width: 160,
-          value: (item) => item.actionDocument?.number ?? '—',
+          value: (item) => item.actionDocumentRestricted
+              ? '无权查看关联单据'
+              : (item.actionDocument?.number ?? '—'),
         ),
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
         // 规格再单独一列（原来「规格 / 颜色」挤在一格，两个属性都没法单独筛）。
@@ -907,14 +951,8 @@ class _DesktopTaskTable extends StatelessWidget {
               ? '—'
               : (item.spec.isEmpty ? '—' : item.spec),
         ),
-        MasterColumnDef(
-          key: 'supplyRoute',
-          label: '供给方式',
-          width: 120,
-          // 后端返回路由码（BUY/MAKE/SUBCONTRACT），界面统一显示中文标签。
-          value: (item) =>
-              operationsWorkbenchSupplyRouteLabel(item.supplyRoute),
-        ),
+        // 「供给方式」列 2026-10-10 删除：三部门各看各的任务台，路由码是服务端
+        // 视图里的常量（采购恒 BUY、委外恒 SUBCONTRACT），没有信息量。
         MasterColumnDef(
           key: 'requiredQty',
           label: '需求数量',
@@ -963,8 +1001,10 @@ class _DesktopTaskTable extends StatelessWidget {
         MasterColumnDef(
           key: 'warehouseName',
           label: '仓库',
-          width: 180,
-          value: (item) => item.warehouseName,
+          // 2026-10-10：显示「主仓 - 子仓」组合名（主档字典，与采购单据列表同源），
+          // 字典未加载/未命中回退服务端下发的叶仓名；列宽放宽给组合名留位。
+          width: 220,
+          value: warehouseLabelOf,
         ),
         MasterColumnDef(
           key: 'needDate',
@@ -980,14 +1020,8 @@ class _DesktopTaskTable extends StatelessWidget {
           type: 'date',
           value: (item) => item.expectedDate ?? '—',
         ),
-        MasterColumnDef(
-          key: 'action',
-          label: '执行入口',
-          width: 160,
-          value: (item) => item.actionDocumentRestricted
-              ? '无权查看关联单据'
-              : item.actionDocument?.label ?? '待生成/待挂接',
-        ),
+        // 「执行入口」列 2026-10-10 删除：状态文案+单据号与「单据号」「状态」两列
+        // 同源同值，纯重复；无权受限提示已并入「单据号」列。
       ],
       items: items,
       facets: facets,

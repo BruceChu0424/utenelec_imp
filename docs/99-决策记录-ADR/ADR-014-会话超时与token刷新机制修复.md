@@ -76,6 +76,11 @@ V74 曾删 `jwt_access_ttl_minutes`；V75 历史上重新插入并给出 480 分
 只有在这些字段仍匹配权威记录和可见 lineage 时才更新 `state.user`。权限快照随当前会话刷新，不接纳
 迟到旧代 profile，也不依赖历史 8 小时 TTL。
 
+2026-10-10 增补（ADR-173）："更新"收窄为**语义有变才赋值**——新档案与当前档案值相等（`AppUser`
+值相等，权限点按集合比较）时保持原 `SessionState` 实例、不通知任何监听者。此前每轮刷新（约 14 分钟）
+都产生内容相同的新对象，全站对象同一性栅栏把它误判为换号（审核页弹"登录身份已变化"并释放认领）。
+栅栏层已统一改用 `SessionState.isSameIdentity`（状态 + 用户 + 操作人 + 业务重置代次）。
+
 ### 4. 前端 idle 阈值实时刷新（症状 A 修复）
 
 `IdleTimeoutGuard` 三管齐下：① 进系统拉一次；② 每 5 分钟 `Timer.periodic` 轮询；③ 监听 `idleThresholdVersionProvider`（StateProvider<int>）信号——超管在「系统设置」保存 `session_idle_timeout_minutes` 后自增，立即重拉（当前会话即时生效，不必重登）。`_check` 改秒级判定（`inSeconds >= threshold*60`）让 1 分钟等小阈值精确。

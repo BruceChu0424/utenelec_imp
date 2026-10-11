@@ -244,11 +244,10 @@ void main() {
     for (final label in ['需求阶段', '缺料处理', '单价', '金额']) {
       expect(find.text(label), findsNothing, reason: '「$label」列应已退役');
     }
-    // 保留列还在（表头按 label 找）。
+    // 保留列还在（表头按 label 找）——「单位」列 2026-10-10 起并入数量列内联。
     for (final label in [
       '编号',
       '规格',
-      '单位',
       '颜色',
       '来源',
       '计量方式',
@@ -266,10 +265,11 @@ void main() {
     // 外壳：没有学习数据 → 「—」，悬停说明计算按设计使用数量。
     expect(find.text('—'), findsWidgets);
     expect(find.byTooltip('还没有已完工且核清余料的生产数据，计算按设计使用数量'), findsOneWidget);
-    // 塑料：设计 0.1，真实 0.105(固定 6 位去尾零，无浮点噪声)，悬停给出依据；
+    // 塑料：设计 0.1，真实 0.105(固定 6 位去尾零，无浮点噪声)，单位内联
+    // (2026-10-10「数量+单位」口径)；悬停给出依据；
     // 登记过不良时补一句按实产(良品+不良)算的用量和不良率。
-    expect(find.text('0.1'), findsOneWidget);
-    expect(find.text('0.105'), findsOneWidget);
+    expect(find.text('0.1 千克'), findsOneWidget);
+    expect(find.text('0.105 千克'), findsOneWidget);
     expect(
       find.byTooltip(
         '按 3 批已完工生产累计：净耗 42 千克 / 产量 400\n'
@@ -325,13 +325,13 @@ void main() {
   testWidgets('在学习记录里重学后，组装信息页签跟着重读真实使用数量', (tester) async {
     final repo = _FakeBomRepo(withLearned: true);
     await _pumpTab(tester, repo);
-    expect(find.text('0.105'), findsOneWidget);
+    expect(find.text('0.105 千克'), findsOneWidget);
     expect(repo.listCalls, 1);
 
     await tester.tap(find.byKey(const Key('goods-bom-learning')));
     await tester.pumpAndSettle();
     // 学习记录面板与背后的页签各显示一次。
-    expect(find.text('0.105'), findsNWidgets(2));
+    expect(find.text('0.105 千克'), findsNWidgets(2));
 
     // 操作列在学习记录表格最右侧，先横向滚到可见。
     final relearn = find.byKey(const ValueKey('goods-bom-relearn-goods-p'));
@@ -344,7 +344,7 @@ void main() {
 
     expect(repo.relearned, {'goods-p'});
     expect(repo.listCalls, 2, reason: '重学后组装信息页签重读一次');
-    expect(find.text('0.105'), findsNothing, reason: '面板与页签都换成重学后的数据');
+    expect(find.text('0.105 千克'), findsNothing, reason: '面板与页签都换成重学后的数据');
     expect(tester.takeException(), isNull);
   });
 

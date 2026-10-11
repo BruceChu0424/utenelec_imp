@@ -11,11 +11,14 @@ import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_
 
 void main() {
   test(
-    'partial acknowledgement skips completed receipt and reuses exact unknown command',
+    'response loss keeps the whole report retryable with the exact frozen body',
     () async {
-      var secondAttempts = 0;
+      // 2026-10-10 整份检验报告一次提交：decide-report 单事务原子执行全部收货单，
+      // 响应丢失后整份报告保持未确认，重试发同一个报告体（服务端重放已提交的单）。
+      var attempts = 0;
       final api = _Api((path, body) async {
-        if (path.contains('receipt-2') && secondAttempts++ == 0) {
+        if (path == '/procurement/inspection/decide-report' &&
+            attempts++ == 0) {
           throw NetworkTimeoutException();
         }
         return {'processedCount': 2};
@@ -54,34 +57,35 @@ void main() {
         ),
         throwsA(isA<NetworkTimeoutException>()),
       );
-      expect(report.completedReceiptCount, 1);
-      expect(report.remainingReceiptCount, 1);
-      expect(report.acknowledgedIqcIds, ['inspection-1']);
-      expect(report.currentLabel, 'R2');
+      expect(report.completedReceiptCount, 0);
       expect(report.complete, isFalse);
-      final unknownBody = api.requests[1].$2;
       final originalFqcKey = report.fqcIdempotencyKey;
-      // Process restart must retain acknowledgement and the frozen request keys.
+      // Process restart must retain the frozen request keys.
       report = QualityBatchSubmission.fromDraft(
         jsonDecode(jsonEncode(report.exportDraft())) as Map<String, dynamic>,
       );
-      expect(report.completedReceiptCount, 1);
+      expect(report.completedReceiptCount, 0);
       expect(report.fqcIdempotencyKey, originalFqcKey);
       await report.send(
         iqc: iqc,
         fqc: fqc,
         requestScope: await api.captureRequestScope(isCurrent: () => true),
       );
-      expect(api.requests.length, 4);
-      expect(
-        api.requests
-            .map((request) => request.$1)
-            .where((path) => path.contains('receipt-1'))
-            .length,
-        1,
-      );
-      expect(api.requests[2].$2, unknownBody);
-      expect(api.requests[2].$2['reason'], '按原报告确认少量不合格');
+      // 失败的整份报告请求 + 重试成功的整份报告请求 + 一次 FQC pass-all。
+      expect(api.requests.length, 3);
+      expect(api.requests[0].$1, '/procurement/inspection/decide-report');
+      expect(api.requests[1].$1, '/procurement/inspection/decide-report');
+      expect(api.requests[2].$1, contains('pass-all'));
+      expect(api.requests[0].$2, api.requests[1].$2,
+          reason: '重试发同一个整份报告体');
+      final body = api.requests[0].$2;
+      expect(body['reason'], '按原报告确认少量不合格');
+      final receipts = (body['receipts'] as List).cast<Map<String, dynamic>>();
+      expect(receipts, hasLength(2));
+      expect(receipts[0]['receiptType'], 'PURCHASE');
+      expect(receipts[0]['receiptId'], 'receipt-1');
+      expect(receipts[1]['receiptType'], 'SUBCONTRACT');
+      expect(receipts[1]['receiptId'], 'receipt-2');
       expect(report.complete, isTrue);
       expect(report.acknowledgedIqcIds, ['inspection-1', 'inspection-2']);
       await report.send(
@@ -91,7 +95,7 @@ void main() {
       );
       expect(
         api.requests.length,
-        4,
+        3,
         reason: 'An acknowledged report has no remaining command',
       );
     },
@@ -136,6 +140,53 @@ void main() {
     },
   );
 
+  test(
+    'a legacy partially-acknowledged draft resends the whole report atomically',
+    () async {
+      // 旧版(逐单 decide-batch)草稿可能带部分确认集：新 send 不再逐单补发，
+      // 整份报告一次重发——服务端对已提交的单静默重放（见服务端
+      // legacyPerReceiptCommitReplaysInsideTheWholeReport 契约测试）。
+      final api = _Api((path, body) async => {'receiptCount': 2});
+      final report = QualityBatchSubmission.fromDraft({
+        'receipts': [
+          {
+            'receiptType': 'PURCHASE',
+            'receiptId': 'receipt-1',
+            'label': 'R1',
+            'items': [
+              _item('inspection-1').toJson(),
+            ],
+          },
+          {
+            'receiptType': 'PURCHASE',
+            'receiptId': 'receipt-2',
+            'label': 'R2',
+            'items': [_item('inspection-2').toJson()],
+          },
+        ],
+        'fqcInspectionIds': <String>[],
+        'fqcLotCount': 0,
+        'reason': null,
+        'fqcIdempotencyKey': 'legacy-fqc-key',
+        'acknowledged': [0],
+        'fqcAcknowledged': false,
+      });
+      expect(report.completedReceiptCount, 1, reason: '旧草稿恢复出部分确认');
+      await report.send(
+        iqc: DioProcurementInspectionRepository(api),
+        fqc: ProductionFqcRepository(api),
+        requestScope: await api.captureRequestScope(isCurrent: () => true),
+      );
+      expect(api.requests, hasLength(1));
+      expect(api.requests.single.$1, '/procurement/inspection/decide-report');
+      final receipts = (api.requests.single.$2['receipts'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(receipts, hasLength(2), reason: '两张单一并重发，服务端逐单重放/执行');
+      expect(report.complete, isTrue);
+      expect(report.acknowledgedIqcIds, ['inspection-1', 'inspection-2']);
+    },
+  );
+
   test('a concurrent second click cannot dispatch the report twice', () async {
     final gate = Completer<Map<String, dynamic>>();
     final api = _Api((path, body) => gate.future);
@@ -167,7 +218,7 @@ void main() {
   });
 
   test(
-    'definite rejection still retains the exact command for every receipt',
+    'definite rejection keeps the exact report body for the retry',
     () async {
       final api = _Api(
         (path, body) async => throw ApiException('CONFLICT', '待检量已变化'),
@@ -203,34 +254,26 @@ void main() {
         );
       }
       expect(report.completedReceiptCount, 0);
-      // 2026-09-18 起失败不再连坐取消其它单，两张单各重试一次；
-      // 收货单未全部确认前 FQC 一张都不发。
-      expect(api.requests.length, 4);
-      for (final id in ['receipt-1', 'receipt-2']) {
-        final attempts = api.requests
-            .where((request) => request.$1.contains(id))
-            .toList();
-        expect(attempts.length, 2);
-        expect(attempts[0].$1, attempts[1].$1);
-        expect(attempts[0].$2, attempts[1].$2);
-      }
+      // 整批原子提交：每次尝试只发一个 decide-report；IQC 未确认前 FQC 一张都不发。
+      expect(api.requests.length, 2);
+      expect(
+        api.requests.map((request) => request.$1).toSet(),
+        {'/procurement/inspection/decide-report'},
+      );
+      expect(api.requests[0].$2, api.requests[1].$2);
+      expect((api.requests[0].$2['receipts'] as List), hasLength(2));
     },
   );
 
-  test('receipts submit one at a time in report order', () async {
-    // 2026-09-21：同一主仓/同一订货单的收货单在服务端本就串行加锁，并行通道只会互相等锁并
-    // 撞「来源集合变化」重跑，所以改为逐单提交；进度仍逐单推进、已确认的单不重发。
-    var active = 0;
-    var peak = 0;
+  test('all receipts go to the server in one atomic report request', () async {
+    // 2026-10-10：不再逐单串行发 decide-batch——整份报告一个请求，服务端原子执行。
     final gates = <Completer<Map<String, dynamic>>>[];
-    final order = <String>[];
+    final paths = <String>[];
     final api = _Api((path, body) {
-      active++;
-      if (active > peak) peak = active;
-      order.add(path);
+      paths.add(path);
       final gate = Completer<Map<String, dynamic>>();
       gates.add(gate);
-      return gate.future.whenComplete(() => active--);
+      return gate.future;
     });
     final report = QualityBatchSubmission(
       receipts: [
@@ -252,14 +295,18 @@ void main() {
       fqc: fqc,
       requestScope: await api.captureRequestScope(isCurrent: () => true),
     );
-    for (var i = 0; i < 4; i++) {
-      await Future<void>.delayed(Duration.zero);
-      expect(gates.length, i + 1, reason: '同一时刻只有一张单在飞');
-      expect(peak, 1);
-      expect(order[i], contains('receipt-${i + 1}'));
-      expect(report.completedReceiptCount, i);
-      gates[i].complete({'processedCount': 1});
-    }
+    await Future<void>.delayed(Duration.zero);
+    expect(gates, hasLength(1), reason: '四张收货单只发一个请求');
+    expect(paths.single, '/procurement/inspection/decide-report');
+    final receipts = (api.requests.single.$2['receipts'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(
+      receipts.map((receipt) => receipt['receiptId']),
+      ['receipt-1', 'receipt-2', 'receipt-3', 'receipt-4'],
+      reason: '报告顺序原样进入请求体',
+    );
+    expect(report.completedReceiptCount, 0, reason: '响应未回不确认');
+    gates.single.complete({'receiptCount': 4});
     await running;
     expect(report.completedReceiptCount, 4);
     expect(report.complete, isTrue);

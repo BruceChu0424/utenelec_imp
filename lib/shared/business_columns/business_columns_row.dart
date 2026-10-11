@@ -190,7 +190,7 @@ class _BusinessColumnInput extends StatelessWidget {
               : null;
           return TextField(
             controller: controller,
-            textAlign: column.numeric ? TextAlign.right : TextAlign.left,
+            textAlign: TextAlign.left,
             keyboardType: column.numeric
                 ? const TextInputType.numberWithOptions(
                     decimal: true,

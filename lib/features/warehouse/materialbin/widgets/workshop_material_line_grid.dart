@@ -270,34 +270,26 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
               ),
         ),
       ),
-    EditableGridColumn<WmIssueLineRow>(
-      key: 'unit',
-      label: '单位',
-      width: 75,
-      listenableOf: (row) => row.material,
-      textOf: (row) =>
-          row.material.value?.unitName ?? row.requisitionLine?.unitName ?? '',
-      cellBuilder: (_, row) => ValueListenableBuilder<WmMaterialOption?>(
-        valueListenable: row.material,
-        builder: (_, material, _) =>
-            Text(material?.unitName ?? row.requisitionLine?.unitName ?? ''),
-      ),
-    ),
+    // 2026-10-10「数量+单位」全站口径：独立「单位」列退役——数量(几袋)后缀
+    // 「袋」，重量后缀本料计量单位（公斤），随选料联动。
     EditableGridColumn<WmIssueLineRow>(
       key: 'bags',
       exactValueOf: (r) => r.bags.text,
       exactListenableOf: (r) => r.bags,
       label: '数量',
-      width: 100,
+      width: 135,
       numeric: true,
       frozenTextOf: (row) => row.bags.text,
       cellBuilder: (context, row) => TextField(
         key: ValueKey('wm-line-bags-${row.id}'),
         controller: row.bags,
         enabled: enabled,
-        textAlign: TextAlign.right,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+        decoration: const InputDecoration(
+          isDense: true,
+          hintText: '0',
+          suffixText: '袋',
+        ),
         onChanged: (text) {
           for (final target in targets(row)) {
             if (target != row) target.bags.text = text;
@@ -312,27 +304,34 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
       exactValueOf: (r) => r.qty.text,
       exactListenableOf: (r) => r.qty,
       label: qtyLabel ?? '重量',
-      width: 120,
+      width: 155,
       numeric: true,
       required: true,
       frozenTextOf: (row) => row.qty.text,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (row.qtyValue ?? 0) <= 0,
-        child: TextField(
-          key: ValueKey('wm-line-qty-${row.id}'),
-          controller: row.qty,
-          enabled: enabled,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
-          onChanged: (text) {
-            for (final target in targets(row)) {
-              if (target != row) target.qty.text = text;
-              target.qtyEdited();
-            }
-            onChanged?.call();
-          },
+        child: ValueListenableBuilder<WmMaterialOption?>(
+          valueListenable: row.material,
+          builder: (_, material, _) => TextField(
+            key: ValueKey('wm-line-qty-${row.id}'),
+            controller: row.qty,
+            enabled: enabled,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: '0',
+              suffixText:
+                  material?.unitName ?? row.requisitionLine?.unitName,
+            ),
+            onChanged: (text) {
+              for (final target in targets(row)) {
+                if (target != row) target.qty.text = text;
+                target.qtyEdited();
+              }
+              onChanged?.call();
+            },
+          ),
         ),
       ),
     ),

@@ -187,7 +187,8 @@ void main() {
       expect(find.text('合格待入量'), findsOneWidget);
       expect(find.textContaining('目标叶仓'), findsWidgets);
       expect(find.text('供应商 / 委外商'), findsOneWidget);
-      expect(find.text('单位'), findsOneWidget);
+      // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量格直接带单位（件）。
+      expect(find.text('单位'), findsNothing);
       // 逐行判定（图标旁判定文案始终在场，不只靠颜色）。
       expect(find.byIcon(Icons.check_circle), findsOneWidget);
       // 黄色警告图标出现三次：单人兼任提示横幅 + 部分合格判定随 2 个切片行出现。

@@ -257,7 +257,8 @@ void main() {
     expect(find.text('XB-p1'), findsOneWidget);
     expect(find.text('待核价 · 有 2 行没有标价 · 王会计 正在核价'), findsWidgets);
     expect(find.text('销售改后重新提交 · 你正在核价'), findsWidgets);
-    expect(find.text('1234.50'), findsWidgets);
+    // 报价金额恒本币：金额带「元」后缀（2026-10-10 口径）。
+    expect(find.text('1234.50 元'), findsWidgets);
   });
 
   testWidgets('switching tabs queries the server state and explains rows', (

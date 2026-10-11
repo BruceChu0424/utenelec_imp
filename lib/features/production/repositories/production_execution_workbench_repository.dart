@@ -209,17 +209,20 @@ class WorkshopPlanningUrgeResult {
       );
 }
 
-/// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段(等待物料/生产中，相加=总数)。
+/// 车间任务分段计数：总数 + 与顶部分类一致的互斥分段
+/// (等待物料/生产中/报工送检，相加=总数；报工送检=已报完未完工，2026-10-10 加)。
 class WorkshopTaskCountBreakdown {
   const WorkshopTaskCountBreakdown({
     this.count = 0,
     this.preparing = 0,
     this.inProgress = 0,
+    this.reportInspection = 0,
   });
 
   final int count;
   final int preparing;
   final int inProgress;
+  final int reportInspection;
 
   // 值相等：徽章汇总每分钟换一份新对象，计数没变时不把「我的车间任务」整页重建。
   // 数字随工作台徽章汇总带回(ADR-108)，见 productionWorkshopTaskCountProvider。
@@ -229,10 +232,11 @@ class WorkshopTaskCountBreakdown {
       other is WorkshopTaskCountBreakdown &&
           other.count == count &&
           other.preparing == preparing &&
-          other.inProgress == inProgress;
+          other.inProgress == inProgress &&
+          other.reportInspection == reportInspection;
 
   @override
-  int get hashCode => Object.hash(count, preparing, inProgress);
+  int get hashCode => Object.hash(count, preparing, inProgress, reportInspection);
 }
 
 final productionExecutionWorkbenchRepositoryProvider =

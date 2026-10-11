@@ -7,6 +7,13 @@
 // 「N 种物料」归组摘要；无批次的单只在单内拆行、不跨单合并。出库/详情等
 // 动作按 members 里的底层单据展开，聚合只是展示粒度。
 
+import '../../../shared/formatters/quantity_display.dart';
+
+/// 数量 + 单位内联 (2026-10-10 全站表格口径)：任务列表单位列已删除，数量直接
+/// 带行单位；领料数量最多 4 位小数，maxDecimals 放宽到 4 不截断。
+String _taskQtyWithUnit(num? value, String unitName) =>
+    value == null ? '—' : formatQtyWithUnit(value, unitName, maxDecimals: 4);
+
 class WarehouseDrawTask {
   const WarehouseDrawTask({
     required this.taskId,
@@ -331,7 +338,7 @@ class WarehouseDrawTask {
 
   String get dueDate => needDate ?? expectedDate ?? '—';
 
-  /// 单货品纯数字文本（不带单位，单位有独立列——与批量出库明细表同款口径）。
+  /// 单货品纯数字文本（不带单位；BOM 等仍有独立单位列的表沿用本口径）。
   static String plainQty(num? value) {
     if (value == null) return '—';
     return value
@@ -341,23 +348,25 @@ class WarehouseDrawTask {
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
-  /// 应领数量文本：单货品单据显示纯数字；归组/申请行「—」。
+  /// 应领数量文本：单货品单据数量内联单位（2026-10-10 口径，单位列已删除）；
+  /// 归组/申请行「—」。
   String get requiredQtyText => isBatchMerged
-      ? plainQty(requiredQty)
+      ? _taskQtyWithUnit(requiredQty, unitName)
       : isMaterialDiscovery || isDocumentGrouped
       ? '—'
-      : plainQty(requiredQty);
+      : _taskQtyWithUnit(requiredQty, unitName);
 
-  /// 已出库数量文本：单货品单据显示纯数字；归组/申请行「—」。
+  /// 已出库数量文本：单货品单据数量内联单位；归组/申请行「—」。
   String get fulfilledQtyText => isBatchMerged
-      ? plainQty(fulfilledQty)
+      ? _taskQtyWithUnit(fulfilledQty, unitName)
       : isMaterialDiscovery || isDocumentGrouped
       ? '—'
-      : plainQty(fulfilledQty);
+      : _taskQtyWithUnit(fulfilledQty, unitName);
 
-  /// 待出库数量文本：保留申请/归组行的规模口径（「N 行材料」「需要填写」）。
+  /// 待出库数量文本：保留申请/归组行的规模口径（「N 行材料」「需要填写」），
+  /// 数量行内联单位。
   String get remainingQtyText {
-    if (isBatchMerged) return plainQty(openQty);
+    if (isBatchMerged) return _taskQtyWithUnit(openQty, unitName);
     if (isMaterialDiscovery) {
       if (!materialsDefined) return '—';
       if (openLineCount > 1) return '$openLineCount 行材料';
@@ -366,7 +375,7 @@ class WarehouseDrawTask {
     if (isDocumentGrouped) {
       return openLineCount > 0 ? '$openLineCount 行' : '—';
     }
-    return plainQty(openQty);
+    return _taskQtyWithUnit(openQty, unitName);
   }
 
   String get statusLabel => switch (taskStatus.toUpperCase()) {

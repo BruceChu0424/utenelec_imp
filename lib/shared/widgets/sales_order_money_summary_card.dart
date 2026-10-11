@@ -410,11 +410,10 @@ class _SalesOrderMoneySummaryCardState
         ),
         const SizedBox(height: UtenSpacing.s4),
         Text(
-          financeMoneyWithCurrency(
+          financeMoneyWithUnitSuffix(
             value,
             currencyName: summary.currencyName,
             currencyCode: summary.currencyCode,
-            fallback: '订单币种',
           ),
           style: theme.textTheme.titleSmall?.copyWith(
             fontWeight: FontWeight.w700,

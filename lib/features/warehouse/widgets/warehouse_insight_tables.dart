@@ -1,14 +1,15 @@
 // 库存分析四个分段的表格列定义 (ADR-135 §6.4, review/product.md §1.6)。
 //
-// - 呆滞与库龄: 货品 | 编号 | 颜色 | 库存数量 | 单位 | 库存重量 | 最后入库 | 最后消耗 | 呆滞天数 |
+// - 呆滞与库龄: 货品 | 编号 | 颜色 | 库存数量(单位内联) | 库存重量 | 最后入库 | 最后消耗 | 呆滞天数 |
 //   0-30天 … >365天 | 期初(无入库记录) | 近90天消耗 | 日均消耗 | 可用天数 | ABC (+ 库存金额, 仅服务端下发时);
-// - 盘点建议: 货品 | 编号 | 颜色 | 仓库 | ABC | 上次盘点 | 距今 | 原因 | 优先级 | 库存数量 | 库存重量;
+// - 盘点建议: 货品 | 编号 | 颜色 | 仓库 | ABC | 上次盘点 | 距今 | 原因 | 优先级 | 库存数量(单位内联) | 库存重量;
 // - 称重异常: 日期 | 类型 | 货品 | 供应商或车间 | 单号 | 登记数量 | 称重折算 | 偏差 (个, %) | 依据可靠度
 //   (折算数量与偏差由服务端按记录当时的单重算好);
 //   「按往来方汇总」: 往来方 | 类别 | 次数 | 异常次数 | 平均偏差 | 差额重量;
 // - 单重学习 (批量称样上线): 货品 | 编号 | 单位 | 当前单重 | 可靠度 | 依据 | 设计单重 | 差异 |
 //   最近称重 | 抽样数量 | 抽样重量(g) | 保存。
 // 重量一律千克进来, 按用户显示单位换算 (≈ 估算, 未称显示「未称」, 绝不显示成 0)。
+// 库存数量 2026-10-10「数量 + 单位」内联口径：单位列删除、单位直接跟数字。
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
@@ -20,6 +21,7 @@ import '../../../core/formatters/china_number_format.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_predictor.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
@@ -28,6 +30,11 @@ import '../models/warehouse_insight.dart';
 
 String _qty(double? v, {bool integer = false}) =>
     v == null ? '—' : formatWeighQty(v, integer: integer);
+
+/// 库存数量 + 单位 (2026-10-10 内联口径)：空保持「—」；数量保留 4 位小数
+/// （与原 formatWeighQty 口径一致），不再做千分位分组。
+String _qtyWithUnit(double? v, String? unitName) =>
+    v == null ? '—' : formatQtyWithUnit(v, unitName, maxDecimals: 4);
 
 String _date(DateTime? d) => d == null ? '—' : ChinaDateTime.formatDate(d);
 
@@ -62,17 +69,11 @@ List<MasterColumnDef<InsightHealthRow>> insightHealthColumns({
   MasterColumnDef(
     key: 'qty',
     label: '库存数量',
-    width: 110,
+    width: 145,
     type: 'number',
     sortable: true,
-    value: (r) => _qty(r.qty),
+    value: (r) => _qtyWithUnit(r.qty, r.unitName),
     exactValueOf: (r) => r.qty?.toString(),
-  ),
-  MasterColumnDef(
-    key: 'unitName',
-    label: '单位',
-    width: 70,
-    value: (r) => r.unitName ?? '—',
   ),
   MasterColumnDef(
     key: 'weightKg',
@@ -290,10 +291,9 @@ List<MasterColumnDef<InsightCycleCountRow>> insightCycleCountColumns({
   MasterColumnDef(
     key: 'qty',
     label: '库存数量',
-    width: 110,
+    width: 145,
     type: 'number',
-    value: (r) =>
-        r.unitName == null ? _qty(r.qty) : '${_qty(r.qty)} ${r.unitName}',
+    value: (r) => _qtyWithUnit(r.qty, r.unitName),
     exactValueOf: (r) => r.qty?.toString(),
   ),
   MasterColumnDef(
@@ -603,7 +603,6 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
           controller: draft.qty,
           enabled: canSample && !draft.saving && r.learningEnabled,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          textAlign: TextAlign.right,
           onChanged: (_) => onEdited?.call(r),
           decoration: InputDecoration(
             isDense: true,
@@ -642,7 +641,6 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
           key: ValueKey('insight-sample-weight-${r.goodsId}'),
           controller: draft.weight,
           enabled: canSample && !draft.saving && r.learningEnabled,
-          textAlign: TextAlign.right,
           onChanged: (_) => onEdited?.call(r),
           onSubmitted: (_) => onSave(r),
           // 校验提示收进输入框内的提示图标 (全站输入框统一规范), 不另占一行。

@@ -629,31 +629,31 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(1440, 1000));
 
-    expect(find.text('美金 144000.00'), findsNWidgets(2));
-    expect(find.text('预收有余 美金 200.00'), findsOneWidget);
-    expect(find.text('美金 12000.00'), findsOneWidget);
-    final owes = tester.widget<Text>(find.text('美金 12000.00'));
+    expect(find.text('144000.00 美金'), findsNWidgets(2));
+    expect(find.text('预收有余 200.00 美金'), findsOneWidget);
+    expect(find.text('12000.00 美金'), findsOneWidget);
+    final owes = tester.widget<Text>(find.text('12000.00 美金'));
     expect(
       owes.style?.color,
-      Theme.of(tester.element(find.text('美金 12000.00'))).colorScheme.error,
+      Theme.of(tester.element(find.text('12000.00 美金'))).colorScheme.error,
       reason: '全部币种应收(折本币)超信用额度时该格标红',
     );
     final tooltip = tester.widget<Tooltip>(
       find
           .ancestor(
-            of: find.text('美金 12000.00'),
+            of: find.text('12000.00 美金'),
             matching: find.byType(Tooltip),
           )
           .first,
     );
     expect(
       tooltip.message,
-      '另有 人民币 30000.00；另有历史应收 人民币 1200.00 原币未核实；'
-      '全部币种应收(折本币) 人民币 116400.00 已超信用额度 人民币 50000.00',
+      '另有 30000.00 元；另有历史应收 1200.00 元 原币未核实；'
+      '全部币种应收(折本币) 116400.00 元 已超信用额度 50000.00 元',
     );
     expect(
       find.ancestor(
-        of: find.text('预收有余 美金 200.00'),
+        of: find.text('预收有余 200.00 美金'),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Tooltip && (widget.message?.isNotEmpty ?? false),
@@ -690,8 +690,8 @@ void main() {
 
     // 2026-10-09 卡片形态退役：窄屏同一张表格，客户应收格与桌面同款单行 +
     // 省略号，「另有 X 币种」在 ⓘ 悬停说明里。
-    expect(find.textContaining('美金 200.00'), findsOneWidget);
-    expect(find.textContaining('美金 144000.00'), findsWidgets);
+    expect(find.textContaining('200.00 美金'), findsOneWidget);
+    expect(find.textContaining('144000.00 美金'), findsWidgets);
   });
 
   testWidgets('审核详情客户快照：本单金额与客户应收同币种，超信用出横幅', (tester) async {
@@ -718,13 +718,13 @@ void main() {
     await _pumpReview(tester, review);
 
     expect(find.text('客户财务快照 · 远硕智能(C001)'), findsOneWidget);
-    expect(find.text('美金 144000.00'), findsWidgets);
-    expect(find.text('美金 500.00'), findsOneWidget);
-    expect(find.text('美金 100.00'), findsOneWidget);
-    expect(find.text('美金 400.00'), findsOneWidget);
-    expect(find.text('人民币 3500.00'), findsOneWidget);
-    expect(find.text('人民币 3000.00'), findsOneWidget);
-    expect(find.text('人民币 2000.00'), findsOneWidget);
+    expect(find.text('144000.00 美金'), findsWidgets);
+    expect(find.text('500.00 美金'), findsOneWidget);
+    expect(find.text('100.00 美金'), findsOneWidget);
+    expect(find.text('400.00 美金'), findsOneWidget);
+    expect(find.text('3500.00 元'), findsOneWidget);
+    expect(find.text('3000.00 元'), findsOneWidget);
+    expect(find.text('2000.00 元'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
       findsOneWidget,

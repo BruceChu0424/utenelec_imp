@@ -11,6 +11,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -40,11 +41,11 @@ void main() {
     },
   );
 
-  testWidgets('disposing an in-flight batch stops before the next receipt', (
+  testWidgets('disposing an in-flight batch stops after the single report command', (
     tester,
   ) async {
     final reply = Completer<void>();
-    final iqc = _Iqc(decide: (_) => reply.future);
+    final iqc = _Iqc(decide: () => reply.future);
     await _pump(tester, iqc, 2);
     await _confirm(tester);
     await tester.pump();
@@ -60,7 +61,7 @@ void main() {
     tester,
   ) async {
     final reply = Completer<void>();
-    final iqc = _Iqc(decide: (_) => reply.future);
+    final iqc = _Iqc(decide: () => reply.future);
     await _pump(tester, iqc, 2);
     final container = ProviderScope.containerOf(
       tester.element(find.byType(QualityBatchApprovalPage)),
@@ -153,6 +154,62 @@ void main() {
     },
   );
 
+  testWidgets('editing pass auto-fills fail until fail is hand-edited', (
+    tester,
+  ) async {
+    final iqc = _Iqc();
+    await _pump(tester, iqc, 1);
+    UtenAutofillTextController controller(Key key) =>
+        tester.widget<TextField>(find.byKey(key)).controller!
+            as UtenAutofillTextController;
+    const pass = Key('batch-approval-pass-receipt-1');
+    const fail = Key('batch-approval-fail-receipt-1');
+    expect(controller(pass).text, '5');
+    expect(controller(fail).text, '0');
+    // 2026-10-10 用户口径「改合格自动算不合格」：互补回写「剩余待检 − 合格」，
+    // 程序值带黄框待核对标记（autofilled），用户击键的列没有标记。
+    await tester.enterText(find.byKey(pass), '2');
+    await tester.pump();
+    expect(controller(fail).text, '3');
+    expect(controller(fail).autofilled, isTrue);
+    expect(controller(pass).autofilled, isFalse);
+    // 互补不低于 0（合格超过剩余时按 0 兜底，越界由行校验另行报错）。
+    await tester.enterText(find.byKey(pass), '9');
+    await tester.pump();
+    expect(controller(fail).text, '0');
+    // 手填过不合格后，合格是用户值不再被抢（避免两列互相踢皮球）。
+    await tester.enterText(find.byKey(fail), '1');
+    await tester.pump();
+    expect(controller(pass).text, '9');
+    expect(controller(fail).text, '1');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'pure IQC batch drops the plan and unit columns and inlines the unit',
+    (tester) async {
+      final iqc = _Iqc();
+      await _pump(tester, iqc, 1);
+      // 2026-10-10 T9「数量+单位」内联：独立单位列与实际成品仓列撤除，
+      // 待检列直接显示「5 件」、输入列单位进后缀；生产计划只对 FQC 行有意义，
+      // 本批全是 IQC 行时整列不渲染。
+      expect(find.text('单位'), findsNothing);
+      expect(find.text('实际成品仓'), findsNothing);
+      expect(find.text('生产计划'), findsNothing);
+      expect(find.text('5 件'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const Key('batch-approval-pass-receipt-1')),
+            )
+            .decoration!
+            .suffixText,
+        '件',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'pre-stocked lines show their storage location per row in the batch table',
     (tester) async {
@@ -238,22 +295,46 @@ void main() {
   );
 
   testWidgets(
-    'partial success stays visible and exact retry skips acknowledged receipt',
+    'more than twenty receipts is rejected before freezing its report',
     (tester) async {
-      var secondAttempts = 0;
+      // 与 decide-report 服务端契约同上限：整份报告一次请求最多 20 张收货单
+      // (40s 服务端命令截止的实测余量：全预入库 20 单 ~30s，再大会整批回滚)，提前给出可操作的
+      // 提示而不是等服务端 422。
+      final iqc = _Iqc();
+      await _pump(tester, iqc, 21);
+      await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(iqc.sent, isEmpty);
+      expect(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+        findsNothing,
+      );
+      final notifications = ProviderScope.containerOf(
+        tester.element(find.byType(QualityBatchApprovalPage)),
+        listen: false,
+      ).read(appNotificationProvider);
+      expect(notifications.single.message, contains('最多提交 20 张收货单'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'report timeout keeps the whole report retryable with the exact frozen body',
+    (tester) async {
+      // 2026-10-10 整份检验报告一次提交：响应丢失后没有任何单被确认（服务端原子），
+      // 重试发同一个报告体；成功后一并办结返回。
+      var attempts = 0;
       final iqc = _Iqc(
-        decide: (id) async {
-          if (id == 'receipt-2' && secondAttempts++ == 0) {
-            throw NetworkTimeoutException();
-          }
+        decide: () async {
+          if (attempts++ == 0) throw NetworkTimeoutException();
         },
       );
       await _pump(tester, iqc, 2);
-      await tester.tap(find.byKey(const Key('batch-approval-pass-receipt-2')));
       await _confirm(tester);
       await tester.pumpAndSettle();
-      expect(iqc.sent.map((request) => request.$1), ['receipt-1', 'receipt-2']);
-      expect(find.text('本次报告已确认提交'), findsOneWidget);
+      expect(iqc.sent.map((request) => request.$1), ['receipt-1+receipt-2']);
+      // 整批未确认：没有行进入「已确认提交」，报告体被冻结等待重试。
+      expect(find.text('本次报告已确认提交'), findsNothing);
       expect(find.text('重试原报告'), findsOneWidget);
       expect(
         tester
@@ -263,12 +344,7 @@ void main() {
             .enabled,
         isFalse,
       );
-      final editable = find.descendant(
-        of: find.byKey(const Key('batch-approval-pass-receipt-2')),
-        matching: find.byType(EditableText),
-      );
-      expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isFalse);
-      final unknown = iqc.sent.last.$2;
+      final frozen = iqc.sent.last.$2;
       await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
       await tester.pumpAndSettle();
       expect(
@@ -276,11 +352,11 @@ void main() {
         findsNothing,
       );
       expect(iqc.sent.map((request) => request.$1), [
-        'receipt-1',
-        'receipt-2',
-        'receipt-2',
+        'receipt-1+receipt-2',
+        'receipt-1+receipt-2',
       ]);
-      expect(iqc.sent.last.$2, unknown);
+      expect(iqc.sent.last.$2, frozen,
+          reason: '重试发同一个整份报告体，服务端静默重放');
       expect(
         find.byKey(const Key('open-approval')),
         findsOneWidget,
@@ -293,7 +369,7 @@ void main() {
     'in-flight report blocks toolbar and system back but permits return after failure',
     (tester) async {
       final gate = Completer<void>();
-      final iqc = _Iqc(decide: (_) => gate.future);
+      final iqc = _Iqc(decide: () => gate.future);
       await _pump(tester, iqc, 1);
       await _confirm(tester);
       await tester.pump(const Duration(milliseconds: 200));
@@ -508,7 +584,7 @@ ProcurementInspectionItem _row(
 class _Iqc extends Fake implements ProcurementInspectionRepository {
   _Iqc({this.load, this.decide});
   final Future<List<ProcurementInspectionItem>> Function(String)? load;
-  final Future<void> Function(String)? decide;
+  final Future<void> Function()? decide;
   final sent = <(String, Map<String, dynamic>)>[];
 
   @override
@@ -518,23 +594,21 @@ class _Iqc extends Fake implements ProcurementInspectionRepository {
   ) async => load == null ? [_row(receiptId)] : load!(receiptId);
 
   @override
-  Future<void> decideBatch({
-    required String receiptType,
-    required String receiptId,
-    required List<ProcurementInspectionDecideItem> items,
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
     String? reason,
   }) async {
     sent.add((
-      receiptId,
+      receipts.map((receipt) => receipt.receiptId).join('+'),
       (jsonDecode(
                 jsonEncode({
-                  'items': [for (final item in items) item.toJson()],
+                  'receipts': [for (final receipt in receipts) receipt.toJson()],
                   'reason': reason,
                 }),
               )
               as Map)
           .cast<String, dynamic>(),
     ));
-    await decide?.call(receiptId);
+    await decide?.call();
   }
 }

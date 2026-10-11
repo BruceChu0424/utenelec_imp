@@ -1084,7 +1084,7 @@ class _MaterialReallocationDialogBodyState
         icon: Icons.inventory_2_outlined,
         text: widget.futureTransfer
             ? '暂无可调入的其他计划专属在途。\n'
-                  '只有已批准、未实收且仍有份额的来源可调；公共余量请从「从公共在途中调入」采用。'
+                  '只有已批准、未实收且仍有份额的来源可调；公共余量请用物料行右键的「采用公共在途」。'
             : widget.receiveIntoCurrent
             ? '暂无可调入的其他计划现货。\n'
                   '同主仓、同货品/颜色/单位且未被正式预留的现货才会出现；已有未补齐的调入关系时须先完成或撤销。'

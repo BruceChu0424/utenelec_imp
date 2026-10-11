@@ -188,10 +188,10 @@ void main() {
       expect(vertical.pixels, offset);
       // Audit writeback must retain the rest of the server DTO, including
       // learned usage, unit/specification and the ordinary design quantity.
-      expect(find.text('2.25'), findsNWidgets(2));
-      expect(find.text('2.375'), findsNWidgets(2));
+      // 2026-10-10「数量+单位」口径：单位内联进数量列，独立「单位」列已撤除。
+      expect(find.text('2.25 千克'), findsNWidgets(2));
+      expect(find.text('2.375 千克'), findsNWidgets(2));
       expect(find.text('精密规格'), findsNWidgets(2));
-      expect(find.text('千克'), findsNWidgets(2));
       expect(
         find.byKey(const ValueKey('goods-bom-learned-row-shared')),
         findsNWidgets(2),

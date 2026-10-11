@@ -45,6 +45,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/models/paged_result.dart';
@@ -478,35 +479,30 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         value: (r) => r.spec ?? '',
       ),
       MasterColumnDef(
-        key: 'unit',
-        label: '单位',
-        width: 70,
-        value: (r) => r.unitName ?? '',
-      ),
-      MasterColumnDef(
         key: 'remark',
         label: '备注',
         width: 90,
         value: (r) => r.remark ?? '',
       ),
+      // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），独立
+      // 「单位」列退役；实盘数量输入格的后缀在共享输入格（stock_count_inline_editor）。
       MasterColumnDef(
         key: 'qty',
         label: '库存数量',
-        width: 150,
+        width: 185,
         type: 'number',
         sortable: true,
-        value: (r) => _num(r.qty),
+        value: (r) => formatQtyWithUnit(r.qty, r.unitName),
         // ADR-146: 打开「含不良品仓」时, 数量里在不良品仓的部分另标出来。
         cellBuilder: (context, r) {
-          final qty = _num(r.qty);
+          final qty = formatQtyWithUnit(r.qty, r.unitName);
           final defective = r.defectiveQty ?? 0;
-          if (defective <= 0) return Text(qty, textAlign: TextAlign.end);
+          if (defective <= 0) return Text(qty);
           return Text(
             '$qty (${AppLocalizations.of(context).instantInventoryDefectivePart(_num(defective))})',
             key: ValueKey(
               'instant-inventory-defective-${r.goodsId}-${r.colorId}',
             ),
-            textAlign: TextAlign.end,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           );
@@ -535,28 +531,28 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       MasterColumnDef(
         key: 'pendingQty',
         label: '待检量',
-        width: 100,
+        width: 135,
         type: 'number',
         sortable: true,
         // 待检量>0 = 采购/委外已收货但 IQC 未放行（货在待检隔离区，不在库存内）。
-        value: (r) => _num(r.pendingQty),
+        value: (r) => formatQtyWithUnit(r.pendingQty, r.unitName),
       ),
       MasterColumnDef(
         key: 'pendingStockInQty',
         label: '合格待入库',
-        width: 120,
+        width: 150,
         type: 'number',
         sortable: true,
         // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
-        value: (r) => _num(r.pendingStockInQty),
+        value: (r) => formatQtyWithUnit(r.pendingStockInQty, r.unitName),
       ),
       MasterColumnDef(
         key: 'moreQty',
         label: '多排数量',
-        width: 100,
+        width: 135,
         type: 'number',
         sortable: true,
-        value: (r) => _num(r.moreQty),
+        value: (r) => formatQtyWithUnit(r.moreQty, r.unitName),
       ),
     ];
   }

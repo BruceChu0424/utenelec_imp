@@ -50,27 +50,27 @@ void main() {
     expect(find.text('客户财务快照 · 远硕智能'), findsOneWidget);
     expect(find.text('美金 144000.00'), findsOneWidget);
     expect(find.text('应收未收'), findsOneWidget);
-    expect(find.text('美金 500.00'), findsOneWidget);
+    expect(find.text('500.00 美金'), findsOneWidget);
     expect(find.text('可用预收'), findsOneWidget);
-    expect(find.text('美金 100.00'), findsOneWidget);
+    expect(find.text('100.00 美金'), findsOneWidget);
     expect(find.text('还差多少'), findsOneWidget);
-    expect(find.text('美金 400.00'), findsOneWidget);
+    expect(find.text('400.00 美金'), findsOneWidget);
     expect(find.text('全部币种应收(折本币)'), findsOneWidget);
-    expect(find.text('人民币 3500.00'), findsOneWidget);
+    expect(find.text('3500.00 元'), findsOneWidget);
     expect(find.text('信用额度'), findsOneWidget);
-    expect(find.text('人民币 3000.00'), findsOneWidget);
+    expect(find.text('3000.00 元'), findsOneWidget);
     expect(find.text('超出信用额度'), findsOneWidget);
-    expect(find.text('人民币 500.00'), findsOneWidget);
+    expect(find.text('500.00 元'), findsOneWidget);
     final error = Theme.of(
-      tester.element(find.text('人民币 500.00')),
+      tester.element(find.text('500.00 元')),
     ).colorScheme.error;
-    expect(_color(tester, '人民币 3500.00'), error);
-    expect(_color(tester, '人民币 500.00'), error);
+    expect(_color(tester, '3500.00 元'), error);
+    expect(_color(tester, '500.00 元'), error);
     expect(
       find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
       findsOneWidget,
     );
-    expect(find.text('另有 人民币 30000.00'), findsOneWidget);
+    expect(find.text('另有 30000.00 元'), findsOneWidget);
   });
 
   testWidgets('供应商卡：应付文案、可抵有余，不比额度也不出横幅', (tester) async {
@@ -92,7 +92,7 @@ void main() {
 
     expect(find.text('应付未付'), findsOneWidget);
     expect(find.text('可抵预付/贷项'), findsOneWidget);
-    expect(find.text('可抵有余 人民币 200.00'), findsOneWidget);
+    expect(find.text('可抵有余 200.00 元'), findsOneWidget);
     expect(find.text('全部币种应付(折本币)'), findsNothing);
     expect(find.textContaining('额度'), findsNothing);
     expect(

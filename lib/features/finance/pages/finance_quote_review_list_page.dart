@@ -39,7 +39,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_quote_finance_review.dart';
@@ -398,17 +398,16 @@ class _FinanceQuoteReviewListPageState
     MasterColumnDef(
       key: 'totalOriginal',
       label: l10n.quoteFinanceColAmount,
-      width: 150,
+      width: 170,
       type: 'money',
       value: _amountText,
     ),
   ];
 
   /// 报价金额按本币(报价只允许本币)；服务端十进制原文，不经过 double。
-  String _amountText(SalesQuoteFinanceListItem item) {
-    final raw = item.totalOriginal;
-    return raw == null ? '—' : financeExactMoneyDisplay(raw);
-  }
+  /// 金额带「元」后缀（2026-10-10 口径）。
+  String _amountText(SalesQuoteFinanceListItem item) =>
+      financeLocalMoneyWithUnitSuffix(item.totalOriginal);
 
   String _statusText(AppLocalizations l10n, SalesQuoteFinanceListItem item) {
     switch (_state) {

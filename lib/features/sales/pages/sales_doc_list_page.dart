@@ -53,6 +53,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
@@ -792,15 +793,23 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       MasterColumnDef(
         key: 'total',
         label: _isOrder ? '订单金额' : '合计',
-        width: 140,
+        width: 170,
         type: 'money',
         // 不同币种的原币金额不可直接横向比较；订单金额列不做跨币种排序。
         sortable: !_isOrder,
         // 订单列表显示所选币种的原币合计，不把人民币换算暴露给销售端。
         // 其它销售单据仍沿用各自既有的本币列表口径。
+        // 金额带币种后缀（2026-10-10 口径）：订单=原币+行币种名，其余=本币「元」。
         value: (it) => it.priceMasked
             ? '***'
-            : (_isOrder ? it.totalOriginal : it.totalLocal)?.toStringAsFixed(2),
+            : _isOrder
+            ? financeMoneyWithUnitSuffix(
+                it.totalOriginal?.toStringAsFixed(2),
+                currencyName: names.currency(it.currencyId),
+              )
+            : it.totalLocal == null
+            ? null
+            : financeLocalMoneyWithUnitSuffix(it.totalLocal!.toStringAsFixed(2)),
       ),
       // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
       if (_cfg.hasDeliverDate)

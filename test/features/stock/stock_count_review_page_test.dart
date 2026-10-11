@@ -420,7 +420,8 @@ void main() {
     expect(preview.calls, 2);
     expect(find.byType(WorkshopMaterialFirstUseCard), findsNothing);
     expect(find.byType(CheckboxListTile), findsNothing);
-    expect(find.byType(Checkbox), findsNothing);
+    // 2026-10-10 防看岔勾选不画勾选框列（showSelectionColumn=false，行高亮表达），CheckboxListTile 不再是「无需勾选」
+    // 的判据——审核仍无需任何选择即可通过（approve 直接可点）。
     expect(tester.widget<UtenButton>(approve).onPressed, isNotNull);
     final fab = tester.getRect(find.byType(UtenFloatingActionGroup));
     expect(fab.left, greaterThanOrEqualTo(0));
@@ -443,9 +444,11 @@ void main() {
   testWidgets('只给变更旧数值删除线，未修改重量和整行不染色', (tester) async {
     final repo = _Repo();
     await _pump(tester, repo);
-    final old = tester.widget<Text>(find.text('9007199254740993.0000').first);
+    final old = tester.widget<Text>(
+      find.text('9007199254740993.0000 kg').first,
+    );
     expect(old.style?.decoration, TextDecoration.lineThrough);
-    expect(find.text('9007199254740994.0000'), findsOneWidget);
+    expect(find.text('9007199254740994.0000 kg'), findsOneWidget);
     final weight = tester.widget<Text>(find.text('8.0000').first);
     expect(weight.style?.decoration, isNot(TextDecoration.lineThrough));
     final table = tester.widget<MasterDataTableView<StockCountRequestLine>>(
@@ -518,7 +521,9 @@ void main() {
     expect(preview.basis, 'SHARED');
     expect(preview.calls, 1);
     expect(find.byType(UtenDropdownField), findsNothing);
-    expect(find.byType(Checkbox), findsNothing);
+    // 2026-10-10 防看岔勾选不画勾选框列（showSelectionColumn=false，行高亮表达），CheckboxListTile 不再是「无需勾选」
+    // 的判据——审核仍无需任何选择即可通过（approve 直接可点）。
+    expect(find.byType(CheckboxListTile), findsNothing);
     expect(find.byType(WorkshopMaterialFirstUseCard), findsNothing);
     final table = tester.widget<MasterDataTableView<StockCountRequestLine>>(
       find.byType(MasterDataTableView<StockCountRequestLine>),
@@ -558,7 +563,9 @@ void main() {
     await tester.tap(find.text('关联 BOM 1 行，其中 1 行将调整'));
     await tester.pumpAndSettle();
     expect(find.textContaining('关联注塑件'), findsOneWidget);
-    expect(find.byType(Checkbox), findsNothing);
+    // 2026-10-10 防看岔勾选不画勾选框列（showSelectionColumn=false，行高亮表达），CheckboxListTile 不再是「无需勾选」
+    // 的判据——审核仍无需任何选择即可通过（approve 直接可点）。
+    expect(find.byType(CheckboxListTile), findsNothing);
     expect(find.byType(UtenDropdownField), findsNothing);
     expect(find.text('确认用途及关联 BOM 调整'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -682,7 +689,9 @@ void main() {
     expect(tester.widget<UtenButton>(approve).onPressed, isNotNull);
     expect(repo.approvals, 0);
     expect(find.byType(WorkshopMaterialFirstUseCard), findsNothing);
-    expect(find.byType(Checkbox), findsNothing);
+    // 2026-10-10 防看岔勾选不画勾选框列（showSelectionColumn=false，行高亮表达），CheckboxListTile 不再是「无需勾选」
+    // 的判据——审核仍无需任何选择即可通过（approve 直接可点）。
+    expect(find.byType(CheckboxListTile), findsNothing);
   });
 
   testWidgets('首次读取及审核提交等待时不显示顶部加载条，重复审核被禁用', (tester) async {

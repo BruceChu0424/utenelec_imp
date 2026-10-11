@@ -71,6 +71,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   final _setupErrors = <String, String>{};
   final _setupLoading = <String>{};
 
+  /// 行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助，无行级批量动作，
+  /// 审核仍整单通过/驳回）。
+  final Set<String> _selectedRequestIds = <String>{};
+  final Set<String> _selectedLineIds = <String>{};
+
   bool get _authorized {
     final permission = switch (widget.reviewRoute) {
       'FINANCE' => Perm.stockCountFinanceReview,
@@ -560,6 +565,20 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             nullCounts: const {},
             filters: const {},
             onFilterChanged: (_, _) {},
+            // 行勾选（2026-10-10 审核页防看岔行口径）：纯阅读辅助，单选互斥
+            // （点其他行自动换选、再点取消）。选中态由行高亮表达，不画勾选框
+            // 列也不驻「已选」胶囊。
+            selectable: true,
+            showSelectionColumn: false,
+            singleSelection: true,
+            showSelectionSummary: false,
+            idOf: (r) => r.id.isEmpty ? null : r.id,
+            selectedIds: _selectedRequestIds,
+            onSelectedIdsChanged: (next) => setState(() {
+              _selectedRequestIds
+                ..clear()
+                ..addAll(next);
+            }),
             onRowTap: (r) => _open(r.id),
             isLoading: _loading && _page == null,
             emptyMessage: '暂无盘点申请',
@@ -622,6 +641,20 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
           height: (150.0 + detail.lines.length * 48).clamp(245.0, 560.0),
           child: MasterDataTableView<StockCountRequestLine>(
             tableKey: 'stock.count-request-lines',
+            // 行勾选（2026-10-10 审核页防看岔行口径）：盘点行多、逐行核对原/盘
+            // 数量，勾选防看岔；单选互斥（点其他行自动换选、再点取消），无行级
+            // 批量动作。选中态由行高亮表达，不画勾选框列也不驻「已选」胶囊。
+            selectable: true,
+            showSelectionColumn: false,
+            singleSelection: true,
+            showSelectionSummary: false,
+            idOf: (r) => r.key,
+            selectedIds: _selectedLineIds,
+            onSelectedIdsChanged: (next) => setState(() {
+              _selectedLineIds
+                ..clear()
+                ..addAll(next);
+            }),
             columns: [
               MasterColumnDef(
                 key: 'goods',
@@ -641,31 +674,32 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                 width: 85,
                 value: (r) => r.colorName,
               ),
-              MasterColumnDef(
-                key: 'unit',
-                label: '单位',
-                width: 70,
-                value: (r) => r.unitName,
-              ),
+              // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
+              // 独立「单位」列退役；重量列单位已在列头 (kg)。数量原文是精确
+              // 十进制（9007199254740993 与 ...992 必须分得清），不走 double
+              // 往返，单位直接跟在原文后。
               MasterColumnDef(
                 key: 'beforeQty',
                 label: '原数量',
-                width: 110,
-                value: (r) => r.beforeQty,
-                cellBuilder: (_, r) =>
-                    StockCountOldValue(before: r.beforeQty, after: r.targetQty),
+                width: 145,
+                value: (r) => _qtyWithUnit(r.beforeQty, r.unitName),
+                cellBuilder: (_, r) => StockCountOldValue(
+                  before: r.beforeQty,
+                  after: r.targetQty,
+                  unit: r.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'targetQty',
                 label: '盘点数量',
-                width: 115,
-                value: (r) => r.targetQty,
+                width: 145,
+                value: (r) => _qtyWithUnit(r.targetQty, r.unitName),
               ),
               MasterColumnDef(
                 key: 'deltaQty',
                 label: '数量差额',
-                width: 110,
-                value: (r) => r.deltaQty,
+                width: 140,
+                value: (r) => _qtyWithUnit(r.deltaQty, r.unitName),
               ),
               MasterColumnDef(
                 key: 'beforeWeight',
@@ -693,8 +727,8 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               MasterColumnDef(
                 key: 'currentQty',
                 label: '当前数量',
-                width: 110,
-                value: (r) => r.currentQty,
+                width: 140,
+                value: (r) => _qtyWithUnit(r.currentQty, r.unitName),
               ),
               MasterColumnDef(
                 key: 'stale',
@@ -876,22 +910,40 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
       );
 }
 
+/// 「数量+单位」内联（2026-10-10）：数量是精确十进制原文（9007199254740993
+/// 与 ...992 必须分得清，见 StockCountOldValue），不走 double 往返、不做改写，
+/// 单位非空时直接跟在原文后。
+String _qtyWithUnit(String? qty, String? unit) {
+  final text = qty?.trim() ?? '';
+  if (text.isEmpty) return '';
+  final suffix = unit?.trim() ?? '';
+  return suffix.isEmpty ? text : '$text $suffix';
+}
+
 /// Exact text comparison: 1 and 1.0000 are equal without a double round trip.
 class StockCountOldValue extends StatelessWidget {
   const StockCountOldValue({
     super.key,
     required this.before,
     required this.after,
+    this.unit,
   });
   final String? before;
   final String? after;
+
+  /// 「数量+单位」内联口径（2026-10-10）：非空时直接跟在数字后。
+  final String? unit;
   @override
   Widget build(BuildContext context) {
     final changed = before == null || after == null
         ? before != after
         : financeAmountUnits(before) != financeAmountUnits(after);
+    final suffix = unit?.trim() ?? '';
+    final text = before == null || suffix.isEmpty
+        ? before ?? '未知'
+        : '$before $suffix';
     return Text(
-      before ?? '未知',
+      text,
       style: changed
           ? TextStyle(
               color: Theme.of(context).colorScheme.error,

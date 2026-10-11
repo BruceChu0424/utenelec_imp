@@ -25,6 +25,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/models/stock_doc.dart';
@@ -823,20 +824,21 @@ class _ProductionExecutionBatchPageState
                   width: 110,
                   value: (row) => row.colorName,
                 ),
+                // 2026-10-10 数量内联口径：独立「单位」列撤销（紧凑模式原本就是
+                // 数字旁拼单位，非紧凑改同口径），单位统一 formatQtyWithUnit。
                 MasterColumnDef(
                   key: 'qty',
                   label: l10n.productionBatchMaterialQuantity,
-                  width: 165,
+                  width: 200,
                   info: l10n.productionBatchMaterialQuantityHint,
                   type: 'number',
-                  value: (row) => _number(row.qty),
+                  value: (row) => formatQtyWithUnit(row.qty, row.unitName),
                   cellColor: (context, _) => Theme.of(
                     context,
                   ).colorScheme.errorContainer.withValues(alpha: 0.25),
                   cellBuilder: (context, row) {
                     final quantity = Text(
-                      _number(row.qty),
-                      textAlign: TextAlign.right,
+                      formatQtyWithUnit(row.qty, row.unitName),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: Theme.of(context).colorScheme.error,
@@ -846,30 +848,11 @@ class _ProductionExecutionBatchPageState
                     if (!compact) return quantity;
                     return FittedBox(
                       fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          quantity,
-                          const SizedBox(width: UtenSpacing.s4),
-                          Text(
-                            row.unitName ?? '—',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                      ),
+                      alignment: Alignment.centerLeft,
+                      child: quantity,
                     );
                   },
                 ),
-                if (!compact)
-                  MasterColumnDef(
-                    key: 'unit',
-                    label: l10n.productionBatchUnit,
-                    width: 100,
-                    value: (row) => row.unitName,
-                  ),
                 MasterColumnDef(
                   key: 'warehouse',
                   label: l10n.productionBatchWarehouse,

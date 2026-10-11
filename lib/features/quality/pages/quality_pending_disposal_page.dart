@@ -54,6 +54,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../models/production_fqc_inspection.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
@@ -939,8 +940,11 @@ class _QualityPendingDisposalPageState
       value: (row) => row.isSheet
           ? (row.sheet!.pendingQtyText ?? '—')
           : row.isFqc
-          ? '${fqcQtyText(row.inspection!.remainingQty)}'
-                '${row.inspection!.unitName ?? ''}'
+          ? formatQtyWithUnit(
+              row.inspection!.remainingQty,
+              row.inspection!.unitName,
+              maxDecimals: 4,
+            )
           : (row.receipt!.pendingQtyText ?? '—'),
     ),
     MasterColumnDef(
@@ -1212,7 +1216,8 @@ class _ProcurementInspectionDetailPageState
   }
 
   /// 「提交报告」（2026-09-05 用户口径：唯一动作按钮）：所选行合格/不合格数量
-  /// 一次提交——总结确认弹窗（仿计划部下达采购）后走 decide-batch 单事务。
+  /// 一次提交——总结确认弹窗（仿计划部下达采购）后走 decide-report 整份报告单事务
+  /// （2026-10-10 与批量审批页统一入口；单张时与 decide-batch 服务端行为等价）。
   Future<void> _submitReport() async {
     if (_busyDecision || _confirmingReport) return;
     if (_submission != null) {
@@ -1745,6 +1750,8 @@ class _ProcurementInspectionDetailPageState
       width: 190,
       // 单位后直接带上本行的换算事实（原单 1 箱 = 24 个）：合格/不合格列的 ⓘ
       // 已上表头，逐行不同的倍率必须在正文里看得见，否则会有人把箱数当个数填。
+      // 2026-10-10「数量+单位」内联口径下本列刻意保留：数量列内联的是基准单位，
+      // 逐行换算倍率没有第二处可安放，删列会丢这条防错信息。
       value: (item) => inspectionQuantityUnitCell(context, item),
     ),
     MasterColumnDef(
@@ -1773,18 +1780,23 @@ class _ProcurementInspectionDetailPageState
         );
       },
     ),
+    // 「数量+单位」内联口径（2026-10-10）：数量列直接带基准单位。
     MasterColumnDef(
       key: 'receivedBaseQty',
       label: '到检量',
-      width: 100,
+      width: 135,
       type: 'number',
-      value: (item) => _fmt(item.receivedBaseQty ?? 0),
+      value: (item) => formatQtyWithUnit(
+        item.receivedBaseQty ?? 0,
+        item.baseUnitName,
+        maxDecimals: 4,
+      ),
       exactValueOf: (item) => item.receivedBaseQty?.toString(),
     ),
     MasterColumnDef(
       key: 'passQty',
       label: '合格数量',
-      width: 120,
+      width: 150,
       type: 'number',
       // 2026-09-11：提示 ⓘ 统一挂表头，行内只留报错（行内 ⓘ 把输入框挤窄）。
       info: inspectionQuantityColumnHint(context, passed: true),
@@ -1802,9 +1814,9 @@ class _ProcurementInspectionDetailPageState
             controller: row.pass,
             enabled: _canHandle && !_busyDecision && _submission == null,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.right,
-            decoration: const UtenInputDecoration(
-              InputDecoration(isDense: true),
+            // 「数量+单位」内联口径（2026-10-10）：输入框单位放后缀。
+            decoration: UtenInputDecoration(
+              InputDecoration(isDense: true, suffixText: item.baseUnitName),
             ),
           ),
         );
@@ -1813,7 +1825,7 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'failQty',
       label: '不合格数量',
-      width: 120,
+      width: 150,
       type: 'number',
       info: inspectionQuantityColumnHint(context, passed: false),
       value: (item) => _reportRows[item.id]?.fail.text ?? '0',
@@ -1830,10 +1842,10 @@ class _ProcurementInspectionDetailPageState
             controller: row.fail,
             enabled: _canHandle && !_busyDecision && _submission == null,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.right,
             decoration: UtenInputDecoration(
               InputDecoration(
                 isDense: true,
+                suffixText: item.baseUnitName,
                 error: row.validate() == null
                     ? null
                     : UtenFieldMessage.error(row.validate()!),
@@ -1846,9 +1858,13 @@ class _ProcurementInspectionDetailPageState
     MasterColumnDef(
       key: 'remainingBaseQty',
       label: '剩余待检',
-      width: 110,
+      width: 145,
       type: 'number',
-      value: (item) => _fmt(item.remainingBaseQty ?? 0),
+      value: (item) => formatQtyWithUnit(
+        item.remainingBaseQty ?? 0,
+        item.baseUnitName,
+        maxDecimals: 4,
+      ),
       exactValueOf: (item) => item.remainingBaseQty?.toString(),
     ),
   ];

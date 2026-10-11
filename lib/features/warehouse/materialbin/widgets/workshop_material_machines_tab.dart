@@ -185,7 +185,6 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     key: key,
     controller: controllerOf(row),
     enabled: _busyTitle == null,
-    textAlign: numeric ? TextAlign.right : TextAlign.start,
     keyboardType: numeric
         ? const TextInputType.numberWithOptions(decimal: true)
         : TextInputType.text,
@@ -294,7 +293,6 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
       cellBuilder: (_, r) => TextField(
         controller: r.sortOrder,
         enabled: _busyTitle == null,
-        textAlign: TextAlign.right,
         keyboardType: TextInputType.number,
         decoration: const InputDecoration(isDense: true),
       ),

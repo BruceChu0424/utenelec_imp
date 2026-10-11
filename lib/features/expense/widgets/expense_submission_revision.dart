@@ -382,7 +382,7 @@ class ExpenseSubmissionItemTable extends StatelessWidget {
     summaryBar: Align(
       alignment: Alignment.centerRight,
       child: Text(
-        '本次共 ${(revision.current['items'] as List).length} 项 · 合计 ¥ ${revision.totalAmount}',
+        '本次共 ${(revision.current['items'] as List).length} 项 · 合计 ${revision.totalAmount} 元',
       ),
     ),
   );

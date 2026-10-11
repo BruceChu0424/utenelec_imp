@@ -20,6 +20,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
@@ -870,29 +871,38 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
             '—',
       ),
     ),
+    // 金额「数值 币种」后缀（2026-10-10 口径）：随行 currencyName/Code；
+    // 行缺币种或金额非数字（—/***)时不拼单位。
     EditableGridColumn<_LedgerRow>(
       key: 'amount',
       label: _isAr ? '应收总额' : '应付金额',
-      width: 110,
+      width: 140,
       numeric: true,
       exactValueOf: (row) =>
           row.item.amountOriginalText ?? row.item.amountOriginalLocalText,
-      cellBuilder: (context, row) =>
-          Text(_fmt(row.item.amountOriginal ?? row.item.amountOriginalLocal)),
+      cellBuilder: (context, row) => Text(
+        _moneyWithRowCurrency(
+          row,
+          _fmt(row.item.amountOriginal ?? row.item.amountOriginalLocal),
+        ),
+      ),
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'settled',
       label: _isAr ? '累计已收' : '已付金额',
-      width: 110,
+      width: 140,
       numeric: true,
       exactValueOf: (row) =>
           row.item.amountReceivedOriginalText ??
           (_isAr ? null : row.item.amountSettledText),
       cellBuilder: (context, row) => Text(
-        _fmt(
-          _isAr
-              ? row.item.amountReceivedOriginal
-              : row.item.amountReceivedOriginal ?? row.item.amountSettled,
+        _moneyWithRowCurrency(
+          row,
+          _fmt(
+            _isAr
+                ? row.item.amountReceivedOriginal
+                : row.item.amountReceivedOriginal ?? row.item.amountSettled,
+          ),
         ),
       ),
     ),
@@ -900,39 +910,50 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       EditableGridColumn<_LedgerRow>(
         key: 'writtenOff',
         label: '累计冲销',
-        width: 110,
+        width: 140,
         numeric: true,
         exactValueOf: (row) => row.item.amountWriteOffOriginalText,
-        cellBuilder: (context, row) =>
-            Text(_fmt(row.item.amountWriteOffOriginal)),
+        cellBuilder: (context, row) => Text(
+          _moneyWithRowCurrency(
+            row,
+            _fmt(row.item.amountWriteOffOriginal),
+          ),
+        ),
       ),
     if (_isAr)
       EditableGridColumn<_LedgerRow>(
         key: 'prepaymentApplied',
         label: '预收已抵',
-        width: 110,
+        width: 140,
         numeric: true,
         exactValueOf: (row) => row.item.prepaymentAppliedOriginal,
-        cellBuilder: (context, row) =>
-            Text(row.item.prepaymentAppliedOriginal ?? '0.00'),
+        cellBuilder: (context, row) => Text(
+          _moneyWithRowCurrency(
+            row,
+            row.item.prepaymentAppliedOriginal ?? '0.00',
+          ),
+        ),
       ),
     EditableGridColumn<_LedgerRow>(
       key: 'balance',
       label: _isAr ? '本次可收' : '未付金额',
-      width: 110,
+      width: 140,
       numeric: true,
       exactValueOf: (row) => row.item.amountBalanceOriginalText,
       cellBuilder: (context, row) => Text(
         row.item.amountBalanceOriginal == null
             ? '待财务核验'
-            : _fmt(row.item.amountBalanceOriginal),
+            : _moneyWithRowCurrency(
+                row,
+                _fmt(row.item.amountBalanceOriginal),
+              ),
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),
     EditableGridColumn<_LedgerRow>(
       key: 'thisAmt',
       label: '本次$_actionNoun金额',
-      width: 130,
+      width: 160,
       numeric: true,
       exactValueOf: (row) => _amtCtrls[row.item.id]?.text,
       exactListenableOf: (row) => _amtCtrls[row.item.id],
@@ -940,12 +961,27 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         key: ValueKey('ar-ap-amount-${row.item.id}'),
         controller: _amtCtrls[row.item.id],
         enabled: _canSelect(row.item),
-        textAlign: TextAlign.right,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
+        // 输入格同样带币种后缀（与「数量 单位」输入格对称）；行缺币种不显示。
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: '0',
+          suffixText: financeCurrencyDisplayLabel(
+            name: row.item.currencyName,
+            code: row.item.currencyCode,
+          ),
+        ),
       ),
     ),
   ];
+
+  /// 金额文本 + 行币种单位（行缺币种或金额非数字时原文返回）。
+  String _moneyWithRowCurrency(_LedgerRow row, String amount) =>
+      financeMoneyWithUnitSuffix(
+        amount,
+        currencyName: row.item.currencyName,
+        currencyCode: row.item.currencyCode,
+      );
 
   String _fmt(double? v) => v == null ? '—' : v.toStringAsFixed(2);
 

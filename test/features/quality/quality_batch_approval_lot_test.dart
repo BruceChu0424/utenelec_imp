@@ -191,6 +191,12 @@ void main() {
     expect(find.text('UK开关滑杆'), findsOneWidget);
     expect(find.text('需求 1000 · 实际超产 100'), findsOneWidget);
     expect(find.text('勾选即整批全部合格'), findsOneWidget);
+    // 2026-10-10：含 FQC 行的批保留生产计划列（planNo 有值）；T9 单位内联后
+    // 独立单位列撤除，待检数量直接显示「1100 个」。
+    expect(find.text('生产计划'), findsOneWidget);
+    expect(find.text('SJ20261005001'), findsOneWidget);
+    expect(find.text('单位'), findsNothing);
+    expect(find.text('1100 个'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
     await tester.pumpAndSettle();

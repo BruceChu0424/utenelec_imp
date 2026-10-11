@@ -30,6 +30,7 @@ Future<List<EditableGridColumn<SalesGridRow>>> _columns(
   bool showClientPrice = false,
   String? clientFileCurrency,
   bool priceMasked = false,
+  Map<String, String> unitEntries = const {},
 }) async {
   late List<EditableGridColumn<SalesGridRow>> columns;
   await tester.pumpWidget(
@@ -41,7 +42,7 @@ Future<List<EditableGridColumn<SalesGridRow>>> _columns(
             onPickGoods: (_) async {},
             docType: docType,
             colorEntries: const {},
-            unitEntries: const {},
+            unitEntries: unitEntries,
             showClientPrice: showClientPrice,
             clientFileCurrency: clientFileCurrency,
             priceMasked: priceMasked,
@@ -126,6 +127,7 @@ void main() {
       SalesDocType.order,
       priceMasked: true,
       showClientPrice: true,
+      unitEntries: const {'unit-pcs': 'PCS'},
     );
     final sensitive = columns
         .where(
@@ -139,7 +141,9 @@ void main() {
     }
     final inbound = columns.singleWhere((c) => c.key == 'inboundQty');
     expect(inbound.label, '进仓数量(历史参考)');
-    expect(inbound.frozenTextOf!(row), '2.0000');
+    // 2026-10-10「数量 + 单位」内联口径：进仓数量只读快照按数字排版后跟行单位，
+    // 不再原样透出录入文本（行模型原始值仍由 exportDraft 逐字保留，见文末断言）。
+    expect(inbound.frozenTextOf!(row), '2 PCS');
     // 客户文件原价按既有服务端合同仍可见，不能误当成系统标价删掉。
     expect(
       columns.singleWhere((c) => c.key == 'clientPrice').frozenTextOf!(row),

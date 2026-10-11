@@ -906,7 +906,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
                   ),
                 ),
                 Text(
-                  '¥ ${_total.toStringAsFixed(2)}',
+                  '${_total.toStringAsFixed(2)} 元',
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: theme.colorScheme.primary,

@@ -237,7 +237,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('CNY 25.00'), findsWidgets);
+    // 2026-10-10 金额后缀口径：「金额 币种」后缀式。
+    expect(find.text('25.00 CNY'), findsWidgets);
     expect(
       find.byKey(const Key('iqc-detail-action-confirmCredit')),
       findsOneWidget,

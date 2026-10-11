@@ -425,6 +425,103 @@ class MaterialStockReallocationServiceTest {
                 .doesNotContain("ANDanalysis", "NULLAND", "NULLORDER BY");
     }
 
+    @Test
+    void rootSupplyEndpointAtDepthZeroIsEligibleForReallocation() {
+        // 2026-10-10 用户口径：根供给行（成品）开放跨计划调拨——depth=0 且
+        // node_role='ROOT_SUPPLY' 的端点不再被 validateSourceEndpoint 拒绝；
+        // depth=0 但不是根供行的身份照旧被拒（谓词按身份放行，不按层级放水）。
+        UUID sourceAnalysis = UUID.randomUUID();
+        UUID targetAnalysis = UUID.randomUUID();
+        UUID sourceMaterial = UUID.randomUUID();
+        UUID targetMaterial = UUID.randomUUID();
+        UUID warehouse = UUID.randomUUID();
+        UUID goods = UUID.randomUUID();
+        UUID unit = UUID.randomUUID();
+        Object[] rootEndpoint = endpointRow(
+                sourceAnalysis, warehouse, 3L, SOURCE_FP, UUID.randomUUID(),
+                sourceMaterial, UUID.randomUUID(), goods, unit,
+                new BigDecimal("10"), BigDecimal.ZERO);
+        rootEndpoint[11] = 0;
+        rootEndpoint[20] = "ROOT_SUPPLY";
+        Object[] candidate = new Object[]{
+                targetAnalysis, 7L, TARGET_FP, targetMaterial,
+                warehouse, "主仓",
+                java.sql.Date.valueOf(LocalDate.of(2026, 9, 3)),
+                new BigDecimal("4"), "计划B", "P-B", "产品B",
+                "WL-E2E-CAND"
+        };
+        EntityManager em = mock(EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("SELECT analysis.id, analysis.warehouse_id")) {
+                return parameterizedQuery(
+                        ignored -> List.<Object[]>of(rootEndpoint), null, null);
+            }
+            if (sql.contains("SELECT COUNT(*)")) {
+                return parameterizedQuery(ignored -> List.of(), 1L, null);
+            }
+            if (sql.contains("SELECT analysis.id, analysis.version")) {
+                return parameterizedQuery(
+                        ignored -> List.<Object[]>of(candidate), null, null);
+            }
+            throw new AssertionError("Unexpected candidate SQL: " + sql);
+        });
+        PreplanStockEntitlementService entitlements =
+                mock(PreplanStockEntitlementService.class);
+        when(entitlements.listAvailableOriginalLots(
+                sourceAnalysis, sourceMaterial, warehouse, goods, null, false))
+                .thenReturn(List.of(new PreplanStockEntitlementService.AvailableLot(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                        sourceAnalysis, sourceMaterial, "ORIGIN_IQC", null,
+                        UUID.randomUUID(), new BigDecimal("10"),
+                        goods, null, warehouse)));
+        ProductionDocumentAccessPolicy access =
+                mock(ProductionDocumentAccessPolicy.class);
+        when(access.scope()).thenReturn(
+                new OwnerVisibility.OwnerScope(true, Set.of()));
+        MaterialStockReallocationService service =
+                new MaterialStockReallocationService(
+                        em, mock(MaterialAnalysisService.class), entitlements,
+                        access, com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),mock(ProductionMutationFootprintPort.class),
+                        mock(SecurityContextCurrentUser.class),
+                        mock(TxSessionVars.class));
+
+        var result = service.candidates(
+                sourceAnalysis, sourceMaterial, null, 1, 20);
+
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.sourceLendableQty()).isEqualByComparingTo("10");
+        });
+
+        // depth=0 且不是 ROOT_SUPPLY：仍然拒绝。（重建 em mock：对已带抛错
+        // Answer 的桩重新 when() 会先触发旧答案，探针参数不是真 SQL。）
+        Object[] plainRow = endpointRow(
+                sourceAnalysis, warehouse, 3L, SOURCE_FP, UUID.randomUUID(),
+                sourceMaterial, UUID.randomUUID(), goods, unit,
+                new BigDecimal("10"), BigDecimal.ZERO);
+        plainRow[11] = 0;
+        plainRow[20] = "BOM_COMPONENT";
+        EntityManager strictEm = mock(EntityManager.class);
+        when(strictEm.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("SELECT analysis.id, analysis.warehouse_id")) {
+                return parameterizedQuery(
+                        ignored -> List.<Object[]>of(plainRow), null, null);
+            }
+            throw new AssertionError("Unexpected SQL: " + sql);
+        });
+        MaterialStockReallocationService strictService =
+                new MaterialStockReallocationService(
+                        strictEm, mock(MaterialAnalysisService.class), entitlements,
+                        access, com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),mock(ProductionMutationFootprintPort.class),
+                        mock(SecurityContextCurrentUser.class),
+                        mock(TxSessionVars.class));
+        assertThatThrownBy(() ->
+                strictService.candidates(sourceAnalysis, sourceMaterial, null, 1, 20))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("该物料节点当前不能跨计划让料");
+    }
+
     private static Fixture fixture() {
         UUID sourceAnalysis = UUID.randomUUID();
         UUID targetAnalysis = UUID.randomUUID();
@@ -548,7 +645,9 @@ class MaterialStockReallocationServiceTest {
                 materialId, itemId, goodsId, null, unitId,
                 1, "START", allocated, shortage, true,
                 java.sql.Date.valueOf(LocalDate.of(2026, 9, 1)),
-                "生产计划测试行", "P-001", "测试产品"
+                "生产计划测试行", "P-001", "测试产品",
+                // node_role：让料端点身份（2026-10-10 起根供给行 ROOT_SUPPLY 也合格）。
+                "BOM_COMPONENT"
         };
     }
 

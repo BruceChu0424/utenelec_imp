@@ -3205,10 +3205,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get warehouseArrivalSourceReplacement => '반품 보충 우선';
 
   @override
-  String get warehouseArrivalSourceHint =>
-      '대기 중인 출처가 하나이면 자동으로 판별합니다. 정상 입고와 반품 보충이 함께 남아 있으면 이번 물품의 출처를 선택하세요. 반품 보충 우선은 반품 수량부터 채우고 나머지는 정상 입고로 처리합니다. 무상 보충 또는 재청구 여부는 원래 반품 처리 결과를 따릅니다.';
-
-  @override
   String get materialIssuedPlanSyncPending => '지시 완료, 계획 진행 동기화 대기';
 
   @override
@@ -3624,9 +3620,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundColor => 'Colour';
-
-  @override
-  String get warehouseSubcontractOutboundUnit => 'Unit';
 
   @override
   String get warehouseSubcontractOutboundStockAvailable =>
@@ -8937,10 +8930,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '창고 담당자에게 \"작업장 자재창고\"에서 개설해 달라고 요청하세요.';
 
   @override
-  String get wmBinDirectOnlyNotice =>
-      '이 자재창고는 작업장 직송만 받고 일괄 출고는 아직 시작하지 않았습니다. 아래는 지금 자재창고에 있는 자재이며 상위 작업이 바로 가져갑니다.';
-
-  @override
   String get wmBinPanelTitleOpen => '작업장 자재창고 개설';
 
   @override
@@ -9080,10 +9069,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get handoffLotRegistrationTitle => '완제품 입고 등록';
-
-  @override
-  String get handoffLotRegistrationFooter =>
-      '한 행 = 실물 한 묶음(같은 보고, 같은 입력, 창고로 보내는 수요분 / 계획 공용 / 실제 초과 생산). 위치, 실측 수량, 무게는 묶음마다 하나입니다. 입고 창고와 위치는 필수입니다(상품 소속 창고 또는 지난번 선택으로 미리 채움, 노란 테두리는 확인 필요). 같은 보고의 다른 묶음은 다른 창고로 등록할 수 있습니다. 기본으로 모두 선택되며 선택한 행만 제출됩니다.';
 
   @override
   String handoffLotBatchesTitle(int count) {

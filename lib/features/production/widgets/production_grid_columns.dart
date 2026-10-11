@@ -1,10 +1,12 @@
 // 生产计划单明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// ProductionGridRow：产品编号/货品(选择)/排产量/订货量/颜色/单位/关联销售订单号/备注。
+// ProductionGridRow：产品编号/货品(选择)/排产量/订货量/颜色/关联销售订单号/备注。
 // 生产计划无金额（数量驱动）：qtyNotifier 作表尾合计源（重写 amountValue/listenAmount），
 // 底栏 ValueListenableBuilder 订阅 grid.totalListenable 显示「排产合计」（镜像销售金额合计范式）。
-// 颜色/单位选货品后直接回填货品主档 UUID；编号/名称只作只读显示，不做 legacy→UUID 反查。
-// productionGridColumns：与 salesGridColumns 同形（货品点选 / 颜色单位只读 / 数量 numeric）。
+// 颜色选货品后直接回填货品主档 UUID；编号/名称只作只读显示，不做 legacy→UUID 反查。
+// 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位作为排产量/
+// 订货量输入框的后缀（suffixText）随行回填的 unitId 即时刷新。
+// productionGridColumns：与 salesGridColumns 同形（货品点选 / 颜色只读 / 数量 numeric）。
 import 'package:flutter/material.dart';
 import 'production_overproduction_rate_field.dart';
 
@@ -14,7 +16,8 @@ import '../../../shared/providers/master_name_provider.dart';
 
 /// 生产计划明细行。货品用 ValueNotifier（点选后单元格自动刷新，无需 setState）；
 /// 排产量控制器变更 → 写回 qtyNotifier（表尾合计订阅它）。
-/// 颜色/单位为透传（选货品后自动回填，保存时随行写回，单元格只读显示）。
+/// 颜色/单位为透传（选货品后自动回填，保存时随行写回；颜色单元格只读显示，
+/// 单位作排产量/订货量输入框后缀）。
 class ProductionGridRow extends EditableGridRow {
   ProductionGridRow() {
     qty.addListener(_recalc);
@@ -52,7 +55,8 @@ class ProductionGridRow extends EditableGridRow {
   String? orderDate; // yyyy-MM-dd（订单日期）
   String? outboundDate; // yyyy-MM-dd（交货日）
 
-  /// 颜色/单位（选货品后自动回填；单元格只读显示）。ValueNotifier 即时刷新。
+  /// 颜色/单位（选货品后自动回填；颜色只读显示、单位作数量输入框后缀）。
+  /// ValueNotifier 即时刷新。
   final colorIdNotifier = ValueNotifier<String?>(null);
   String? get colorId => colorIdNotifier.value;
   set colorId(String? v) => colorIdNotifier.value = v;
@@ -111,9 +115,10 @@ class ProductionGridRow extends EditableGridRow {
   }
 }
 
-/// 生产明细列：产品编号 / 货品（点选）/ 颜色（只读）/ 单位（只读）/ 排产量 / 订货量 /
+/// 生产明细列：产品编号 / 货品（点选）/ 颜色（只读）/ 排产量 / 订货量 /
 /// 关联销售订单号 / 备注。[onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）；
-/// [colorEntries]/[unitEntries] 由编辑页从 masterNameServiceProvider 注入（只读单元格显示名）。
+/// [colorEntries]/[unitEntries] 由编辑页从 masterNameServiceProvider 注入（颜色单元格
+/// 显示名 + 排产量/订货量的单位后缀）。
 List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
   required Future<void> Function(ProductionGridRow row) onPickGoods,
   required Future<void> Function(ProductionGridRow row) onPickSalesOrder,
@@ -138,8 +143,8 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       width: 200,
       required: true,
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**，
-      // 不把编号拼进名称格。这里只放名称；编号见紧随其后的「编号」列，颜色和
-      // 单位本表本来就有独立列。注意「产品编号」列是计划行号（后端分配），
+      // 不把编号拼进名称格。这里只放名称；编号见紧随其后的「编号」列，颜色也有
+      // 独立列。注意「产品编号」列是计划行号（后端分配），
       // 不是货品编号，不能顶替。
       textOf: (r) => r.goods?.name ?? '',
       listenableOf: (r) => r.goodsNotifier,
@@ -200,31 +205,24 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       cellBuilder: (context, row) =>
           _readOnlyMasterCell(context, row.colorIdNotifier, colorEntries),
     ),
-    EditableGridColumn<ProductionGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 110,
-      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
-      listenableOf: (r) => r.unitIdNotifier,
-      cellBuilder: (context, row) =>
-          _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
-    ),
+    // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位跟在
+    // 排产量/订货量输入框后缀（suffixText）；换货品回填 unitId 时由
+    // ValueListenableBuilder 即时换后缀。
     EditableGridColumn<ProductionGridRow>(
       key: 'qty',
       exactValueOf: (r) => r.qty.text,
       exactListenableOf: (r) => r.qty,
       label: '排产量',
-      width: 96,
+      width: 130,
       numeric: true,
       required: true,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
-        child: TextField(
+        child: _unitSuffixField(
+          unitIdNotifier: row.unitIdNotifier,
+          unitEntries: unitEntries,
           controller: row.qty,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
       ),
     ),
@@ -245,13 +243,12 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
       exactValueOf: (r) => r.oqty.text,
       exactListenableOf: (r) => r.oqty,
       label: '订货量',
-      width: 96,
+      width: 130,
       numeric: true,
-      cellBuilder: (context, row) => TextField(
+      cellBuilder: (context, row) => _unitSuffixField(
+        unitIdNotifier: row.unitIdNotifier,
+        unitEntries: unitEntries,
         controller: row.oqty,
-        textAlign: TextAlign.right,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(isDense: true, hintText: '0'),
       ),
     ),
     EditableGridColumn<ProductionGridRow>(
@@ -304,7 +301,7 @@ List<EditableGridColumn<ProductionGridRow>> productionGridColumns({
   ];
 }
 
-/// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。
+/// 只读主档字段单元格（颜色自动回填后用）：显示 entries[id] 名，空显示「—」。
 Widget _readOnlyMasterCell(
   BuildContext context,
   ValueNotifier<String?> notifier,
@@ -320,6 +317,32 @@ Widget _readOnlyMasterCell(
         hasName ? name : '—',
         style: TextStyle(
           color: hasName ? null : theme.colorScheme.onSurfaceVariant,
+        ),
+      );
+    },
+  );
+}
+
+/// 数量输入格 + 单位后缀（2026-10-10 数量内联口径）：单位名跟在输入框
+/// suffixText，随 [unitIdNotifier] 换货品回填即时刷新；未选单位时无后缀。
+Widget _unitSuffixField({
+  required ValueNotifier<String?> unitIdNotifier,
+  required Map<String, String> unitEntries,
+  required TextEditingController controller,
+}) {
+  return ValueListenableBuilder<String?>(
+    valueListenable: unitIdNotifier,
+    builder: (context, unitId, _) {
+      final unit = (unitId != null && unitId.isNotEmpty)
+          ? unitEntries[unitId]
+          : null;
+      return TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: '0',
+          suffixText: (unit == null || unit.isEmpty) ? null : unit,
         ),
       );
     },

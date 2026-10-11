@@ -94,7 +94,8 @@ void main() {
       await tester.tap(find.text('全部').first);
       await tester.pumpAndSettle();
       expect(find.text('历史只读（草稿）'), findsOneWidget);
-      expect(find.text('原始表头值 0.00'), findsOneWidget);
+      // 合计恒本币：金额带「元」后缀（2026-10-10 口径）。
+      expect(find.text('原始表头值 0.00 元'), findsOneWidget);
     },
   );
 
@@ -129,7 +130,8 @@ void main() {
               table.columns
                   .singleWhere((c) => c.key == 'recordedLocalAmount')
                   .value(row),
-              '123.4567',
+              // 本币金额带「元」后缀（2026-10-10 口径）。
+              '123.4567 元',
             );
             expect(
               table.columns
@@ -152,7 +154,8 @@ void main() {
               table.columns
                   .singleWhere((c) => c.key == 'recordedLocalAmount')
                   .value(row),
-              '123.4567',
+              // 本币金额带「元」后缀（2026-10-10 口径）。
+              '123.4567 元',
             );
             expect(
               table.columns

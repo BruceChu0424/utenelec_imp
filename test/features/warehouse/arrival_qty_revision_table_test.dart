@@ -109,13 +109,25 @@ void main() {
           find.byKey(const Key('arrival-qty-revision-table')),
         );
         expect(table.rows, hasLength(2));
+        // 2026-10-10「数量 + 单位」内联口径：单位列删除，数量直接带单位（吨）。
         expect(table.columns.map((column) => column.key), [
           'goodsName',
           'goodsCode',
           'color',
-          'unit',
           'qty',
         ]);
+        expect(
+          table.columns
+              .firstWhere((column) => column.key == 'qty')
+              .value(table.rows.first.value),
+          '100 吨',
+        );
+        expect(
+          table.columns
+              .firstWhere((column) => column.key == 'qty')
+              .value(table.rows.last.value),
+          '15 吨',
+        );
         expect(find.byType(UtenRevisionStrike), findsWidgets);
         expect(tester.takeException(), isNull);
       },

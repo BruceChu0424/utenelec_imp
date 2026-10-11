@@ -143,6 +143,17 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                     assertThat(task.totalOriginal()).isEqualByComparingTo("24");
                     assertThat(task.currencyName()).isEqualTo("美元");
                     assertThat(task.amount()).isEqualByComparingTo(review.totalLocal());
+                    // 2026-10-10 口径修复：列表「货品/超收损耗%」摘要与审核详情同源，读
+                    // COALESCE(display_snapshot, submission_snapshot)——委外 allowedLossPct
+                    // 只在展示快照(提交快照 items 无此键)，此前列表恒 null 被前端写成「不允许」。
+                    assertThat(task.goodsSummary()).isEqualTo("提交时货品");
+                    if (type.equals("SUBCONTRACT")) {
+                        assertThat(task.toleranceMin()).isEqualByComparingTo("3.75");
+                        assertThat(task.toleranceMax()).isEqualByComparingTo("3.75");
+                    } else {
+                        assertThat(task.toleranceMin()).isNull();
+                        assertThat(task.toleranceMax()).isNull();
+                    }
                 });
                 assertThatThrownBy(() -> jdbc.update("UPDATE procurement_order_approval_cases SET display_snapshot='{}'::jsonb WHERE id=?", first))
                         .hasRootCauseInstanceOf(org.postgresql.util.PSQLException.class);
@@ -184,7 +195,8 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid,
                   attempt int,bill_no_snapshot text,amount_snapshot numeric,submission_snapshot jsonb,snapshot_hash text,
                   submitted_by_user_id uuid,submitted_by_employee_id uuid,assignee_user_id uuid,assignee_employee_id uuid,
-                  assignee_name_snapshot text,status text,version bigint,submitted_at timestamptz DEFAULT now());
+                  assignee_name_snapshot text,status text,version bigint,submitted_at timestamptz DEFAULT now(),
+                  finance_exchange_rate numeric,finance_total_local numeric);
                 CREATE TABLE procurement_order_approval_events(id uuid,case_id uuid,event_type text,actor_user_id uuid,
                   actor_employee_id uuid,from_assignee_user_id uuid,to_assignee_user_id uuid,reason text,event_snapshot jsonb,created_at timestamptz DEFAULT now());
                 CREATE TABLE procurement_order_qty_change_logs(order_type text,order_item_id uuid,old_qty numeric,new_qty numeric,changed_at timestamptz,changed_by_employee_id uuid,case_id uuid);

@@ -67,6 +67,9 @@ class _ProcurementIqcRejectionListPageState
   String? _error;
   int _requestId = 0;
 
+  /// 行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助，无批量动作）。
+  final Set<String> _selectedIds = <String>{};
+
   /// 「返回即刷新」登记用的本页路径（独立路由形态，build 首次捕获）。
   String? _myLocation;
 
@@ -258,8 +261,6 @@ class _ProcurementIqcRejectionListPageState
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
           ],
-          _buildResponsibilityBanner(),
-          const SizedBox(height: UtenSpacing.s12),
           if (_counts != null) _buildCounts(_counts!),
           if (_counts != null) const SizedBox(height: UtenSpacing.s12),
           _buildFilters(expanded: expanded),
@@ -317,54 +318,12 @@ class _ProcurementIqcRejectionListPageState
     );
   }
 
-  Widget _buildResponsibilityBanner() {
-    final theme = Theme.of(context);
-    return Semantics(
-      container: true,
-      label: 'IQC 不合格先完成真实退回，再由财务确认供应商贷项或零金额结案',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.errorContainer.withValues(alpha: 0.38),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.report_problem_outlined, color: theme.colorScheme.error),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '品质拒收、实物退回与财务贷项分步留痕',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '采购/委外订单负责人登记真实退回凭证；财务只按服务器锁定的金额确认贷项，'
-                    '金额为零时可说明原因直接结案。异常处理和反向冲销都有防重复保护，不会重复记账。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   /// 状态分段工具条：红徽章只挂在「待退回」(本页用户——采购/委外要登记退回
   /// 的动作)；「已退回待财务」「财务异常」球已经在财务手上、案子还没结,
   /// 2026-09-21 起改挂黄色在办徽章(ADR-100); 「终态」已结束, 中性括号。
   /// 原「点击已选 Chip 取消筛选」由显式「全部」分段承担。
+  /// 2026-10-10 用户口径：页首「品质拒收、实物退回与财务贷项分步留痕」责任
+  /// 横幅退役（全站提示卡口径），流程说明留在详情页。
   Widget _buildCounts(ProcurementIqcRejectionCounts counts) {
     return UtenFilterToolbar<String?>(
       segmentsKey: const Key('iqc-rejection-status-segments'),
@@ -518,6 +477,20 @@ class _ProcurementIqcRejectionListPageState
         'status': _statusSelected ? _status : null,
       },
       onFilterChanged: _onColumnFilterChanged,
+      // 行勾选（2026-10-10 审核页防看岔行口径）：纯阅读辅助——单选互斥（点
+      // 其他行自动换选、再点取消），双击进详情；办理仍逐条进入。选中态由行
+      // 高亮表达，不画勾选框列也不驻「已选」胶囊。
+      selectable: true,
+      showSelectionColumn: false,
+      singleSelection: true,
+      showSelectionSummary: false,
+      idOf: (item) => item.id.isEmpty ? null : item.id,
+      selectedIds: _selectedIds,
+      onSelectedIdsChanged: (next) => setState(() {
+        _selectedIds
+          ..clear()
+          ..addAll(next);
+      }),
       onRowTap: _open,
       rowColor: (item) =>
           item.status == ProcurementIqcRejectionStatus.financeException

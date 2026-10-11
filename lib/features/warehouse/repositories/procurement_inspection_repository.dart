@@ -207,6 +207,14 @@ abstract interface class ProcurementInspectionRepository {
     required List<ProcurementInspectionDecideItem> items,
     String? reason,
   });
+
+  /// 整份检验报告（2026-10-10）：多张收货单一次请求原子提交——服务端单事务
+  /// 联合预锁后按报告顺序逐单执行，任一单冲突整批回滚并按单号报错；同一报告体
+  /// 响应丢失后重试静默重放（已提交的单不产生新事实）。
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
+    String? reason,
+  });
 }
 
 /// 检验报告单行：合格/不合格数量（合计>0 且不超过 expectedRemaining）。
@@ -231,6 +239,25 @@ class ProcurementInspectionDecideItem {
     'passBaseQty': passBaseQty,
     'failBaseQty': failBaseQty,
     'idempotencyKey': idempotencyKey,
+  };
+}
+
+/// 整份检验报告里的一张收货单（行内容与单张 decide-batch 同构）。
+class ProcurementInspectionReportReceipt {
+  const ProcurementInspectionReportReceipt({
+    required this.receiptType,
+    required this.receiptId,
+    required this.items,
+  });
+
+  final String receiptType;
+  final String receiptId;
+  final List<ProcurementInspectionDecideItem> items;
+
+  Map<String, dynamic> toJson() => {
+    'receiptType': receiptType,
+    'receiptId': receiptId,
+    'items': [for (final item in items) item.toJson()],
   };
 }
 
@@ -311,6 +338,22 @@ class DioProcurementInspectionRepository
       ApiEndpoints.procurementInspectionDecideBatch(receiptType, receiptId),
       body: {
         'items': items.map((item) => item.toJson()).toList(growable: false),
+        if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
+      },
+    );
+  }
+
+  @override
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
+    String? reason,
+  }) async {
+    await api.post(
+      ApiEndpoints.procurementInspectionDecideReport,
+      body: {
+        'receipts': [
+          for (final receipt in receipts) receipt.toJson(),
+        ],
         if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
       },
     );

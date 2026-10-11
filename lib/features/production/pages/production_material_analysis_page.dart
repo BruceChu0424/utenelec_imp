@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:dio/dio.dart' show CancelToken;
-import 'package:flutter/foundation.dart' show mapEquals;
+import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -65,6 +65,7 @@ import '../models/material_analysis_source_graph.dart';
 import '../models/material_quantity_apportionment.dart';
 import '../models/material_quantity_presentation.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../models/material_future_transfer.dart';
 import '../models/material_aggregate_order.dart';
 import '../models/material_preparation_draft_budget.dart';
@@ -788,17 +789,18 @@ abstract class _MaterialAnalysisPageBase
     return material.sourceSuggestion;
   }
 
-  /// 会话作用域键（账号 / 模拟身份 / 权限集）：跨账号切换时用它丢弃迟到的
-  /// 异步响应，避免把上一个账号的数据显示给下一个账号。
+  /// 会话作用域键（账号 / 模拟身份 / 权限集 / 业务重置代次）：跨账号切换时
+  /// 用它丢弃迟到的异步响应，避免把上一个账号的数据显示给下一个账号。
+  /// 只含语义字段——token 静默刷新换新状态对象不改变键值。
   String _sessionScopeKey() {
     final session = ref.read(sessionProvider);
     final permissions = _permissions;
     final identity =
         '${session.status}|${session.user?.id}|${session.actor?.id}|'
-        '${session.impersonationReadOnly}|${identityHashCode(session.user)}|'
-        '${identityHashCode(session.actor)}';
+        '${session.impersonationReadOnly}|'
+        '${session.user?.businessResetGeneration ?? 0}';
     if (identity == _sessionScopeIdentity &&
-        identical(permissions, _sessionScopePermissions)) {
+        setEquals(permissions, _sessionScopePermissions)) {
       return _sessionComputedScope!;
     }
     final ordered = permissions.toList()..sort();
@@ -1008,9 +1010,18 @@ abstract class _MaterialAnalysisPageBase
   );
   bool _hasResolvedMaterialSource(ProductionMaterialAnalysisMaterial material);
 
-  /// 「物料 / 调拨」简化选择器（三个调入入口+完整详情）；
-  /// 实现见 material_analysis_material_table.dart。
+  /// 「物料 / 调拨」简化选择器（两个调入入口+完整详情；2026-10-10 口径：公共
+  /// 在途不进调拨弹窗）；实现见 material_analysis_material_table.dart。
   Future<void> _showTransferLauncher(_MaterialGroup group);
+
+  /// 手动「采用公共在途」（显式动作，与调拨分离）；实现见
+  /// material_analysis_material_table.dart。
+  Future<void> _claimSharedFuture(Set<String> groupKeys);
+
+  /// 该操作组当前是否可显式「采用公共在途」；实现见
+  /// material_analysis_material_table.dart。
+  bool _canClaimMaterialSharedFuture(_MaterialGroup group);
+
   String _analysisDynamicProjectionKey(ProductionMaterialAnalysisView view);
 
   Widget _nodeBorrowSection(

@@ -1707,6 +1707,88 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('去向分配：新建报工默认展开去向子行（新建要直接分去向）', (tester) async {
+    final grid = await _pumpAllocationPage(tester);
+    expect(
+      grid.rows
+          .where((row) => row.isAllocationRow)
+          .map((row) => row.allocationDemandId),
+      ['A', 'B', null],
+      reason: '新建态去向子行默认展开，2026-10-10 用户口径：编辑单据才默认收起',
+    );
+    expect(find.byTooltip('收起去向明细'), findsOneWidget);
+    expect(find.text('转下一道工序 2 个工单 9 · 送入仓库 1'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('去向分配：编辑已有单据默认收起，切换钮展开/收起，重排不把收起的行加回来', (tester) async {
+    final grid = await _pumpEditDraftPage(tester);
+    final product = grid.rows.firstWhere((row) => !row.isSubRow);
+    // 草稿里已分好的去向还原成固定子行：A=6 + 送入仓库 4。
+    expect(
+      product.allocationRows.map(
+        (row) => (row.allocationDemandId, row.allocationQty.text),
+      ),
+      [('A', '6'), (null, '4')],
+    );
+    // 编辑态默认收起（2026-10-10 用户口径）：去向子行不进表格，由摘要 + 悬停全文承载。
+    expect(grid.rows.where((row) => row.isAllocationRow), isEmpty);
+    expect(find.text('转下一道工序 1 个工单 6 · 送入仓库 4'), findsOneWidget);
+    expect(find.byTooltip('展开去向明细'), findsOneWidget);
+
+    // 点展开：子行进表（固定条目保留）。表格横向可滚，先把切换钮滚进视口再点。
+    await tester.ensureVisible(find.byTooltip('展开去向明细'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('展开去向明细'));
+    await tester.pumpAndSettle();
+    expect(
+      grid.rows
+          .where((row) => row.isAllocationRow)
+          .map((row) => row.allocationDemandId),
+      ['A', null],
+    );
+    expect(find.byTooltip('收起去向明细'), findsOneWidget);
+
+    // 再点收起：子行退出表格，摘要仍在。
+    await tester.ensureVisible(find.byTooltip('收起去向明细'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('收起去向明细'));
+    await tester.pumpAndSettle();
+    expect(grid.rows.where((row) => row.isAllocationRow), isEmpty);
+    expect(find.text('转下一道工序 1 个工单 6 · 送入仓库 4'), findsOneWidget);
+
+    // 收起态下改完工申报量触发重排：重排的期望可见列表与展开态同源，收起的行不会回来。
+    product.qty.text = '7';
+    await tester.pumpAndSettle();
+    expect(grid.rows.where((row) => row.isAllocationRow), isEmpty);
+    expect(product.allocationRows, isNotEmpty, reason: '模型仍在参与重排，只是不占行');
+    expect(find.byTooltip('展开去向明细'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('去向分配：提交被去向问题拦下时，收起的行先展开让红框露出来', (tester) async {
+    // 固定去向 A=6 但服务端现在只让收 1：重排在 A 上标红，行处于收起态。
+    final grid = await _pumpEditDraftPage(tester, candidateARoom: 1);
+    final product = grid.rows.firstWhere((row) => !row.isSubRow);
+    expect(grid.rows.where((row) => row.isAllocationRow), isEmpty);
+    expect(
+      product.allocationRows.any((row) => row.allocationIssue.value != null),
+      isTrue,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('项转送需要先改正'), findsOneWidget);
+    // 红框藏在收起区看不见：报错同时该行已展开。
+    expect(
+      grid.rows.where((row) => row.isAllocationRow),
+      isNotEmpty,
+      reason: '有去向问题的收起行在报错前被展开',
+    );
+    expect(find.byTooltip('收起去向明细'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('报工表明头右键菜单：弹菜单、隐藏列、移动换位、必填列锁定', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1788,17 +1870,18 @@ void main() {
     expect(find.text('编号'), findsNothing);
     expect(find.text('P-001'), findsNothing);
 
-    // 移动换位：「颜色」放到最前 → 排到「单位」之前。
-    await rightClick(find.text('颜色'));
+    // 移动换位：「超限原因」放到最前 → 排到「颜色」之前
+    //（2026-10-10 数量内联口径后表里已无「单位」列，换这两列验证）。
+    await rightClick(find.text('超限原因'));
     await tester.tap(find.text('放到最前'));
     await tester.pumpAndSettle();
-    expect(dxOf(find.text('颜色')), lessThan(dxOf(find.text('单位'))));
+    expect(dxOf(find.text('超限原因')), lessThan(dxOf(find.text('颜色'))));
 
-    // 固定：「单位」固定到左侧 → 排到「颜色」之前。
-    await rightClick(find.text('单位'));
+    // 固定：「颜色」固定到左侧 → 排到「超限原因」之前。
+    await rightClick(find.text('颜色'));
     await tester.tap(find.text('固定到左侧'));
     await tester.pumpAndSettle();
-    expect(dxOf(find.text('单位')), lessThan(dxOf(find.text('颜色'))));
+    expect(dxOf(find.text('颜色')), lessThan(dxOf(find.text('超限原因'))));
     expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
 
     // 必填列锁定：「完工申报量」的隐藏入口置灰（必填项不允许从界面消失；
@@ -2644,6 +2727,138 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
                 initialExecutionSegmentId: 'segment-1',
               ),
             ),
+          ],
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return tester
+      .widget<UtenEditableGrid<DailyGridRow>>(
+        find.byType(UtenEditableGrid<DailyGridRow>),
+      )
+      .controller;
+}
+
+/// 编辑既有草稿页面测试的共用装配：一条成品行（完工 10，固定去向 A=6 + 送入仓库 4），
+/// 可送的上层工单 A（还差 [candidateARoom]，默认 6）、B 还差 3；无物料台账行，
+/// 聚焦去向子行的「编辑态默认收起 + 切换钮展开/收起」口径。
+Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
+  WidgetTester tester, {
+  int candidateARoom = 6,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(1800, 1000));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  final items = [
+    <String, dynamic>{
+      'id': 'line-transfer',
+      'goodsId': 'goods-1',
+      'planId': 'plan-1',
+      'planItemId': 'plan-item-1',
+      'planNo': 'SJ-001',
+      'executionSegmentId': 'segment-1',
+      'unitId': 'unit-1',
+      'unitRate': 1,
+      'qty': 6,
+      'outputBatchId': 'batch-1',
+      'outputBatchQty': 10,
+      'destination': 'WORKSHOP',
+      'directTransferDemandId': 'A',
+    },
+    <String, dynamic>{
+      'id': 'line-warehouse',
+      'goodsId': 'goods-1',
+      'planId': 'plan-1',
+      'planItemId': 'plan-item-1',
+      'planNo': 'SJ-001',
+      'executionSegmentId': 'segment-1',
+      'unitId': 'unit-1',
+      'unitRate': 1,
+      'qty': 4,
+      'outputBatchId': 'batch-1',
+      'outputBatchQty': 10,
+    },
+  ];
+  final detail = <String, dynamic>{
+    'id': 'draft',
+    'status': 0,
+    'rowVersion': 1,
+    'makerId': 'employee-1',
+    'departmentId': 'workshop',
+    'workshopName': '装配第一车间',
+    'workerIds': ['employee-1'],
+    'items': items,
+    'outputBatches': _serverOutputBatches(items),
+    'materialUsages': <dynamic>[],
+  };
+  final api = _api(
+    responseOverride: (request) =>
+        request.method == 'GET' && request.path.endsWith('/daily-reports/draft')
+        ? detail
+        : request.path.endsWith('/direct-transfers/candidates')
+        ? {
+            'candidates': [
+              {
+                'demandId': 'A',
+                'executionSegmentId': 'segment-a',
+                'executionSegmentCode': 'ZX-A',
+                'receivingGoodsName': '成品甲',
+                'remainingQty': candidateARoom,
+              },
+              {
+                'demandId': 'B',
+                'executionSegmentId': 'segment-b',
+                'executionSegmentCode': 'ZX-B',
+                'receivingGoodsName': '成品乙',
+                'remainingQty': 3,
+              },
+            ],
+            'receiverLimit': 30,
+          }
+        : null,
+  );
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        departmentRepositoryProvider.overrideWithValue(
+          _FakeDepartmentRepository(),
+        ),
+        masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        productionDailyReportRepositoryProvider.overrideWithValue(
+          ProductionDailyReportRepository(api),
+        ),
+        employeeRepositoryProvider.overrideWithValue(_FakeEmployeeRepository()),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionDailyReportCreate,
+          Perm.productionDailyReportView,
+          Perm.productionDailyReportEdit,
+        }),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        sessionProvider.overrideWith(_ExactSegmentSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'report-user'),
+        ),
+        sessionSnapshotProvider.overrideWith(_ExactSegmentSnapshot.new),
+        apiBaseUrlProvider.overrideWith((ref) => 'https://test-server/api'),
+        documentScopeCapabilityProvider(
+          DocumentDataScope.productionPlan,
+        ).overrideWith(
+          (ref) async => const DocumentScopeCapability(
+            scope: 'production_plan',
+            writeAll: true,
+            writableOwnerIds: {},
+          ),
+        ),
+      ],
+      child: const MaterialApp(
+        home: Column(
+          children: [
+            AppNotificationHost(),
+            Expanded(child: ProductionDailyReportEditPage(id: 'draft')),
           ],
         ),
       ),

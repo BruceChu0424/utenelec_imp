@@ -71,7 +71,6 @@ class ProductionFlowProgress extends StatelessWidget {
                 width: 44,
                 child: Text(
                   '$percent%',
-                  textAlign: TextAlign.end,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),

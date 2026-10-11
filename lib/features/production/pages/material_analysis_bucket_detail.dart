@@ -301,7 +301,7 @@ class _MaterialAnalysisBucketPageState
       group = selected;
     }
     if (!mounted) return;
-    // 2026-09-13 起「物料 / 调拨」先进简化选择器（三个调入入口+完整详情），
+    // 2026-09-13 起「物料 / 调拨」先进简化选择器（两个调入入口+完整详情），
     // 供给明细与记录留在完整详情里。
     await _host._showTransferLauncher(group);
     if (!mounted || identical(before, _host._analysis)) return;
@@ -313,10 +313,11 @@ class _MaterialAnalysisBucketPageState
     });
   }
 
-  // ===== 与主表统一的身份四列：物料名称 / 编号 / 颜色 / 单位 =====
+  // ===== 与主表统一的身份列：物料名称 / 编号 / 颜色 =====
   // 2026-09-14 用户口径「三个入口的列表也用这样的形式，都统一，不要物料分析
   // 页面的表头一种、其他的不一样」。原先分桶详情把编号/规格/颜色塞在身份格里
   // （格式与主表副行各不相同），现在与主表同一组独立列，顺序也一致。
+  // 「单位」列 2026-10-10 起（T9 全站口径）与主表一起退役：数量列内联单位。
 
   /// 本行的物料事实来源：物料组 → 候选物料 → 产品的根供给行。
   ProductionMaterialAnalysisMaterial? _rowMaterial(_BucketRow row) {
@@ -381,12 +382,6 @@ class _MaterialAnalysisBucketPageState
       label: '颜色',
       width: 96,
       value: _rowColorName,
-    ),
-    MasterColumnDef<_BucketRow>(
-      key: 'unitName',
-      label: '单位',
-      width: 76,
-      value: _rowUnitName,
     ),
   ];
 
@@ -957,11 +952,29 @@ class _MaterialAnalysisBucketPageState
         onTap: () => _submitMaterialBucket({row.id}),
       ),
     UtenMenuItem(
-      label: '物料调拨与公共在途',
+      // 2026-10-10 调拨口径收窄：公共在途不再混进「物料调拨」（可用数量已含
+      // 它，下单自动认领）；手动采用保留为独立菜单项（与主表物料行右键一致）。
+      label: '物料调拨',
       icon: Icons.inventory_2_outlined,
       enabled: !_actionsLocked && _supplyGroupsForRow(row).isNotEmpty,
       onTap: () => _openSupplyDetails(row),
     ),
+    if (row.group != null &&
+        _host._canClaimMaterialSharedFuture(row.group!))
+      UtenMenuItem(
+        label: '采用公共在途',
+        icon: Icons.call_received_rounded,
+        enabled: !_actionsLocked,
+        onTap: () async {
+          await _host._claimSharedFuture({row.group!.key});
+          if (!mounted) return;
+          // 认领改了缺口/在途：重建行集（与调拨返回后的处理同口径）。
+          setState(() {
+            _selectedIds.clear();
+            _pageNo = 1;
+          });
+        },
+      ),
     if (row.group != null ||
         (_host._canViewPlans &&
             (row.product?.latestPlanId?.trim().isNotEmpty ?? false)))
@@ -1260,7 +1273,8 @@ class _MaterialAnalysisBucketPageState
   }
 
   /// 三个桶同一组列(2026-09-22)：进度最前(2026-10-08 用户口径「状态或进度列
-  /// 默认放最前」)，其后身份四列 / 供应方式 / 需求量 / 缺口(未下达段) / 下单数量
+  /// 默认放最前」)，其后身份三列(物料名称 / 编号 / 颜色，单位列 2026-10-10 T9
+  /// 退役并入数量) / 供应方式 / 需求量 / 缺口(未下达段) / 下单数量
   /// (已下达段) / 已下达单据(采购、委外的已下达段)。
   List<MasterColumnDef<_BucketRow>> _bucketColumns(ThemeData theme) {
     final host = _host;
@@ -1287,21 +1301,24 @@ class _MaterialAnalysisBucketPageState
       ),
       ..._identityColumns(),
       _routeColumn(),
+      // 2026-10-10 T9：单位列退役，四个数量列内联单位（宽度各 +35 容下「N 个」）。
       MasterColumnDef<_BucketRow>(
         key: 'requiredQty',
         label: host._l10n.materialRequired,
-        width: 100,
+        width: 135,
         type: 'number',
-        value: (row) => host._qty(_rowRequiredQty(row)),
+        value: (row) =>
+            formatQtyWithUnit(_rowRequiredQty(row), _rowUnitName(row)),
         exactValueOf: (row) => _rowRequiredQty(row)?.toString(),
         info: '原始来源需求；下单和追加不会改写这个数量。',
       ),
       MasterColumnDef<_BucketRow>(
         key: 'availableQty',
         label: host._l10n.materialPublicAvailable,
-        width: 110,
+        width: 145,
         type: 'number',
-        value: (row) => host._qty(_rowAvailableQty(row)),
+        value: (row) =>
+            formatQtyWithUnit(_rowAvailableQty(row), _rowUnitName(row)),
         exactValueOf: (row) => _rowAvailableQty(row)?.toString(),
         info: host._l10n.materialPreparationAvailableHint,
       ),
@@ -1311,9 +1328,10 @@ class _MaterialAnalysisBucketPageState
         MasterColumnDef<_BucketRow>(
           key: 'shortageQty',
           label: '还需安排',
-          width: 90,
+          width: 125,
           type: 'number',
-          value: (row) => host._qty(_rowShortageQty(row)),
+          value: (row) =>
+              formatQtyWithUnit(_rowShortageQty(row), _rowUnitName(row)),
           exactValueOf: (row) => _rowShortageQty(row)?.toString(),
           info: '与主表相同的待安排量；包含可采用供给时，实际提交会先核对并占用供给。',
           cellBuilder: (context, row) {
@@ -1323,7 +1341,7 @@ class _MaterialAnalysisBucketPageState
             return KeyedSubtree(
               key: const Key('bucket-shortage-qty-cell'),
               child: Text(
-                host._qty(shortage),
+                formatQtyWithUnit(shortage, _rowUnitName(row)),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: host._shortageTextColor(theme, shortage),
                   fontWeight: FontWeight.w700,
@@ -1342,9 +1360,10 @@ class _MaterialAnalysisBucketPageState
         MasterColumnDef<_BucketRow>(
           key: 'issuedQty',
           label: '下单数量',
-          width: 110,
+          width: 145,
           type: 'number',
-          value: (row) => host._qty(_rowIssuedQty(row)),
+          value: (row) =>
+              formatQtyWithUnit(_rowIssuedQty(row), _rowUnitName(row)),
           exactValueOf: (row) => _rowIssuedQty(row)?.toString(),
           info: '实际下单量，包含超量备货。勾选后可在同一核对页填写追加数量。',
         ),

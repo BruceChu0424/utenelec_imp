@@ -244,4 +244,48 @@ void main() {
     expect(natural.offset, closeTo(160, 1));
     expect(tester.takeException(), isNull);
   });
+
+  // 2026-10-10 空表口径：0 数据行且 0 前导分组行时表格骨架（工具条+表头）仍在，
+  // 但内容宽=列宽和>视口会让 thumb 恒显成噪音 → 空表不画横向滚动条；
+  // 加载/错误态的提示行同理。有数据时行为与原来完全一致（回归保护）。
+  testWidgets('空表（覆盖层路径）：不渲染横向滚动条', (tester) async {
+    await tester.pumpWidget(_wrap(_table(const [], bottomContentPadding: 200)));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(Scrollbar),
+      findsNothing,
+      reason: '空表（0 行、无前导分组）不应有框架横滚条（覆盖层分支不挂）',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('空表补一行数据后覆盖层横滚条恢复（回归保护）', (tester) async {
+    await tester.pumpWidget(_wrap(_table(const [], bottomContentPadding: 200)));
+    await tester.pumpAndSettle();
+    expect(find.byType(Scrollbar), findsNothing);
+
+    await tester.pumpWidget(
+      _wrap(_table(const [_Row('a')], bottomContentPadding: 200)),
+    );
+    await tester.pumpAndSettle();
+    // _hBarBox 已断言「树里唯一框架 Scrollbar」：恢复后恰好一个横滚条。
+    expect(_hBarBox(tester).size.height, 11);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('空表（流内路径）：不渲染横向滚动条，来数据后恢复', (tester) async {
+    await tester.pumpWidget(_wrap(_table(const [])));
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(Scrollbar),
+      findsNothing,
+      reason: '空表不包流内 Scrollbar',
+    );
+
+    await tester.pumpWidget(_wrap(_table(const [_Row('a')])));
+    await tester.pumpAndSettle();
+    expect(_hBarBox(tester).size.height, greaterThanOrEqualTo(11));
+    expect(tester.takeException(), isNull);
+  });
 }

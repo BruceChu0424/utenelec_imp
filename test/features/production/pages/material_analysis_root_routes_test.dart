@@ -388,8 +388,9 @@ void main() {
     );
     expect(shortageTooltip.message, contains('已安排但还没合格入库 10'));
     expect(
-      find.descendant(of: _root(1), matching: find.text('10')),
+      find.descendant(of: _root(1), matching: find.text('10 件')),
       findsWidgets,
+      reason: '数量列 2026-10-10 起内联单位',
     );
     expect(tester.takeException(), isNull);
   });
@@ -406,8 +407,9 @@ void main() {
       final harness = await _pump(tester, data, generate: true);
       final root = _root(1);
       expect(
-        find.descendant(of: root, matching: find.text('200')),
+        find.descendant(of: root, matching: find.text('200 件')),
         findsWidgets,
+        reason: '数量列 2026-10-10 起内联单位',
       );
       expect(
         find.descendant(of: root, matching: find.textContaining('件')),

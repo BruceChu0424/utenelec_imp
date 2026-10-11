@@ -1,7 +1,8 @@
 // 订货单明细「统一设置商业条款」批量面板（采购/委外共用，2026-09 行级条款改造）。
 //
-// 勾选多行后一次写全套条款：供应商 + 结账(结算)方式 + 币种 + 汇率 + 税率；
+// 勾选多行后一次写全套条款：供应商 + 结账(结算)方式 + 币种 + 税率；
 // 留空的项保持各行原值不变。供应商行内嵌供应商滑入面板（分类树+搜索+可内联新建）。
+// 汇率输入已撤（2026-10-10 口径：采购/委外不填汇率，财务审批时填，前端恒 1）。
 import 'package:flutter/material.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../presentation/workflow_field_guidance.dart';
@@ -20,14 +21,17 @@ class CommercialTermsBatchResult {
     this.supplierId,
     this.settlementMethodId,
     this.currencyId,
-    this.exchangeRate,
     this.taxRate,
   });
 
   final String? supplierId;
   final String? settlementMethodId;
   final String? currencyId;
-  final double? exchangeRate;
+
+  /// 汇率输入已撤（2026-10-10 口径）：面板不再产出汇率，恒为 null。
+  /// 字段保留是为兼容仍读取它的委外订货编辑页（其分支不再触发）。
+  final double? exchangeRate = null;
+
   final double? taxRate;
 
   bool get isEmpty =>
@@ -88,12 +92,10 @@ class _CommercialTermsBatchSheetState
   String? _supplierId;
   String? _settlementMethodId;
   String? _currencyId;
-  final _rate = TextEditingController();
   final _taxRate = TextEditingController();
 
   @override
   void dispose() {
-    _rate.dispose();
     _taxRate.dispose();
     super.dispose();
   }
@@ -109,14 +111,8 @@ class _CommercialTermsBatchSheetState
   }
 
   CommercialTermsBatchResult? _assemble() {
-    final rateText = _rate.text.trim();
     final taxText = _taxRate.text.trim();
-    final rate = rateText.isEmpty ? null : double.tryParse(rateText);
     final tax = taxText.isEmpty ? null : double.tryParse(taxText);
-    if (rateText.isNotEmpty && (rate == null || rate <= 0)) {
-      context.appError('汇率必须大于 0');
-      return null;
-    }
     if (taxText.isNotEmpty && (tax == null || tax < 0 || tax > 100)) {
       context.appError('税率必须填写 0 至 100 之间的百分比');
       return null;
@@ -127,7 +123,6 @@ class _CommercialTermsBatchSheetState
           : _supplierId,
       settlementMethodId: _settlementMethodId,
       currencyId: _currencyId,
-      exchangeRate: rate,
       taxRate: tax,
     );
     if (result.isEmpty) {
@@ -172,14 +167,6 @@ class _CommercialTermsBatchSheetState
             UtenDropdownItem(value: e.key, label: e.value),
         ],
         onChanged: (v) => setState(() => _currencyId = v),
-      ),
-      TextField(
-        controller: _rate,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: UtenInputDecoration(
-          const InputDecoration(labelText: '汇率', hintText: '不改'),
-          info: workflowFieldText(context).workflowExchangeRateHint,
-        ),
       ),
       TextField(
         controller: _taxRate,

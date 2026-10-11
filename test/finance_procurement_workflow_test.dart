@@ -142,6 +142,45 @@ void main() {
     expect(requests, hasLength(2));
   });
 
+  // 2026-10-10 财务订货审批口径：通过请求体带可选 exchangeRate（>0 才进请求体，
+  // 驳回不带）——汇率落在本笔审批 case 上（V438 迁移冻结期间订单头汇率禁改）。
+  test('batch approve carries the finance exchange rate when provided', () async {
+    final requests = <RequestOptions>[];
+    final repository = DioFinanceProcurementWorkflowRepository(
+      _api((request) {
+        requests.add(request);
+        return <String, dynamic>{};
+      }),
+    );
+
+    await repository.approveOrdersBatch(const [
+      FinanceProcurementDecisionItem(caseId: 'case-9', expectedVersion: 9),
+    ], exchangeRate: 6.5);
+    await repository.approveOrdersBatch(const [
+      FinanceProcurementDecisionItem(caseId: 'case-10', expectedVersion: 10),
+    ], exchangeRate: 0);
+    await repository.rejectOrdersBatch(const [
+      FinanceProcurementDecisionItem(caseId: 'case-11', expectedVersion: 11),
+    ], '原因');
+
+    expect(requests[0].data, {
+      'items': [
+        {'caseId': 'case-9', 'expectedVersion': 9},
+      ],
+      'exchangeRate': 6.5,
+    });
+    expect(requests[1].data, {
+      'items': [
+        {'caseId': 'case-10', 'expectedVersion': 10},
+      ],
+    }, reason: '非正数汇率不进请求体（服务端按缺省处理）');
+    expect(
+      (requests[2].data as Map<String, dynamic>).containsKey('exchangeRate'),
+      isFalse,
+      reason: '驳回不落汇率',
+    );
+  });
+
   test('unknown task type remains fail closed', () {
     final task = FinanceProcurementApprovalTask.fromJson(const {
       'taskId': 'task-unknown',
@@ -152,6 +191,31 @@ void main() {
 
     expect(task.canOpen, isFalse);
     expect(task.detailRoute, isNull);
+  });
+
+  // 2026-10-10 财务订货审批口径：review 详情响应新增 financeExchangeRate
+  // （数值或 null——已批 case = 财务通过时填的汇率；未批 = null 前端用快照兜底）。
+  test('review parses finance exchange rate (numeric or null)', () {
+    final approved = FinanceProcurementApprovalReview.fromJson(const {
+      'caseId': 'case-1',
+      'orderId': 'order-1',
+      'orderType': 'PURCHASE',
+      'billNo': 'PO-001',
+      'status': 'APPROVED',
+      'financeExchangeRate': 6.85,
+      'exchangeRate': '7.1',
+    });
+    expect(approved.financeExchangeRate, '6.85');
+    expect(approved.exchangeRate, '7.1');
+
+    final pending = FinanceProcurementApprovalReview.fromJson(const {
+      'caseId': 'case-2',
+      'orderId': 'order-2',
+      'orderType': 'SUBCONTRACT',
+      'billNo': 'SO-001',
+      'exchangeRate': '7.1',
+    });
+    expect(pending.financeExchangeRate, isNull);
   });
 
   test(

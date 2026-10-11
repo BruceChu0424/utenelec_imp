@@ -109,9 +109,11 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
                   AND material.active = TRUE
                   -- 2026-09-13 起让料不再只限第 1 层：深层子件（自制件、
-                  -- 委外件的下层组件）同样可以跨计划互让。第 0 层根供给行
-                  -- 仍走自己的根产出交付通道，不进让料。
-                  AND material.depth >= 1
+                  -- 委外件的下层组件）同样可以跨计划互让。2026-10-10 用户口径
+                  -- 再放开第 0 层根供给行（成品）：别的计划多锁的成品合格批次
+                  -- 同样可以互让，根行自己的产出交付通道不受影响（让料只动
+                  -- V309 entitlement，不建第二套账）。
+                  AND (material.depth >= 1 OR material.node_role = 'ROOT_SUPPLY')
                   AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
                   AND material.goods_id = :goodsId
                   AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -212,7 +214,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND analysis.is_deleted = FALSE
                   AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
                   AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
-                  AND material.active = TRUE AND material.depth >= 1
+                  AND material.active = TRUE
+                  AND (material.depth >= 1 OR material.node_role = 'ROOT_SUPPLY')
                   AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
                   AND material.goods_id = :goodsId
                   AND material.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -293,12 +296,14 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         }
 
         // 一、本分析里「还能当接收方」的行，连同它的物料维度。
+        // 根供给行（ROOT_SUPPLY，成品）2026-10-10 起同样可当接收方：它带真实
+        // 缺口(shortage_qty>0)时别的计划多锁的成品合格批次可以调进来。
         List<Object[]> targets = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT mine.id, mine.goods_id, mine.color_id, mine.unit_id
                 FROM production_material_analysis_materials mine
                 WHERE mine.analysis_id = :analysisId
                   AND mine.active = TRUE
-                  AND mine.depth >= 1
+                  AND (mine.depth >= 1 OR mine.node_role = 'ROOT_SUPPLY')
                   AND mine.control_stage NOT IN ('SHIP', 'REFERENCE')
                   AND mine.shortage_qty > 0
                   AND NOT EXISTS (
@@ -341,7 +346,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND analysis.is_deleted = FALSE
                   AND analysis.status IN ('ACTIVE', 'PARTIALLY_PLANNED')
                   AND fn_warehouse_same_main(analysis.warehouse_id, :warehouseId)
-                  AND material.active = TRUE AND material.depth >= 1
+                  AND material.active = TRUE
+                  AND (material.depth >= 1 OR material.node_role = 'ROOT_SUPPLY')
                   AND material.control_stage NOT IN ('SHIP', 'REFERENCE')
                   AND material.allocated_available_qty > 0
                   AND NOT EXISTS (
@@ -357,7 +363,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                   AND EXISTS (
                       SELECT 1 FROM production_material_analysis_materials mine
                       WHERE mine.analysis_id = :analysisId AND mine.active = TRUE
-                        AND mine.depth >= 1 AND mine.shortage_qty > 0
+                        AND (mine.depth >= 1 OR mine.node_role = 'ROOT_SUPPLY')
+                        AND mine.shortage_qty > 0
                         AND mine.goods_id = material.goods_id
                         AND mine.color_id IS NOT DISTINCT FROM material.color_id
                         AND mine.unit_id = material.unit_id)
@@ -764,7 +771,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                        material.depth, material.control_stage,
                        material.allocated_available_qty, material.shortage_qty,
                        material.active, item.delivery_date, item.source_ref,
-                       product.code, product.name
+                       product.code, product.name, material.node_role
                 FROM production_material_analysis_materials material
                 JOIN production_material_analyses analysis
                   ON analysis.id = material.analysis_id
@@ -790,7 +797,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 ((Number) row[11]).intValue(), string(row[12]),
                 decimal(row[13]), decimal(row[14]), Boolean.TRUE.equals(row[15]),
                 localDate(row[16]), firstNonBlank(string(row[17]),
-                        displayLabel(string(row[18]), string(row[19]))));
+                        displayLabel(string(row[18]), string(row[19]))),
+                string(row[20]));
     }
 
     private ReallocationHeader reallocation(UUID id, boolean forUpdate) {
@@ -820,7 +828,10 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                         MaterialAnalysisService.STATUS_PARTIAL)
                 .contains(source.status())
                 || source.warehouseId() == null || !source.active()
-                || source.depth() < 1
+                // 2026-10-10 用户口径：根供给行（成品，depth=0）开放跨计划调拨——
+                // 与候选/供方/可调池三处查询的 (depth >= 1 OR node_role =
+                // 'ROOT_SUPPLY') 同一谓词，四张嘴必须说同一句话。
+                || (source.depth() < 1 && !"ROOT_SUPPLY".equals(source.nodeRole()))
                 || MaterialAnalysisService.STAGE_SHIP.equals(source.controlStage())
                 || MaterialAnalysisService.STAGE_REFERENCE.equals(source.controlStage())) {
             throw conflict("该物料节点当前不能跨计划让料");
@@ -990,7 +1001,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
             UUID goodsId, UUID colorId, UUID unitId,
             int depth, String controlStage,
             BigDecimal allocatedAvailableQty, BigDecimal shortageQty,
-            boolean active, LocalDate deliveryDate, String productLabel) {
+            boolean active, LocalDate deliveryDate, String productLabel,
+            String nodeRole) {
     }
 
     private record ReallocationHeader(

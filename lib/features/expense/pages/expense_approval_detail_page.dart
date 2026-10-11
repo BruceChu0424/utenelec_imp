@@ -510,7 +510,7 @@ class _ExpenseApprovalDetailPageState
                   ),
                 ),
                 Text(
-                  '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+                  '${claim.totalAmount.toStringAsFixed(2)} 元',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: theme.colorScheme.primary,
@@ -654,7 +654,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                             label: account.balanceCurrent == null
                                 ? account.label
                                 : '${account.label} · 余额 '
-                                      '¥${account.balanceCurrent!.toStringAsFixed(2)}',
+                                      '${account.balanceCurrent!.toStringAsFixed(2)} 元',
                           ),
                       ],
                       onChanged: (value) => setState(() {
@@ -783,7 +783,7 @@ class _Hero extends StatelessWidget {
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                '¥ ${claim.totalAmount.toStringAsFixed(2)}',
+                '${claim.totalAmount.toStringAsFixed(2)} 元',
                 style: Theme.of(context).textTheme.displaySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                   fontWeight: FontWeight.w800,

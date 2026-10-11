@@ -235,13 +235,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('多选 N 个来源：行级仓库必填+勾选行整批落仓+一个命令登记送检', (tester) async {
+  testWidgets('多选 N 个来源：行级仓库必填+勾选行整批落仓+来源歧义 409 二选一后自动重提', (tester) async {
     tester.view.physicalSize = const Size(1600, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    final api = _BatchApi();
+    final api = _BatchApi(ambiguousArrivalOnce: true);
     final router = _router(route: InboundRoute.inspectFirst);
     addTearDown(router.dispose);
 
@@ -289,32 +289,6 @@ void main() {
     );
     expect(find.text('必选 · 点击选择'), findsNothing);
 
-    // 同一批里可以有正常到货与先补退货。
-    await tester.ensureVisible(
-      find.byKey(const Key('warehouse-arrival-source-batch-item-1')),
-    );
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('warehouse-arrival-source-batch-item-1')),
-        matching: find.text('自动识别'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('正常到货').last);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(
-      find.byKey(const Key('warehouse-arrival-source-batch-item-2')),
-    );
-    await tester.tap(
-      find.descendant(
-        of: find.byKey(const Key('warehouse-arrival-source-batch-item-2')),
-        matching: find.text('自动识别'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('先补退货').last);
-    await tester.pumpAndSettle();
-
     // 提交：两张订货单 x 同一仓库 = 两张收货单，但只发一个命令(一个事务)。
     await tester.tap(
       find.byKey(const Key('inbound-route-submit-inspectFirst')),
@@ -327,12 +301,36 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
 
+    // 「到货来源」列已删(2026-10-10)：订单同时有正常待到货与已退未补时，服务端以
+    // 409「请明确选择到货来源」拒绝，页面弹二选一兜底(ProcurementArrivalControlService
+    // 的 ArrivalCapacity.usesReplacement 守卫)。
     expect(api.arrivalPostBodies, hasLength(1));
-    final body = api.arrivalPostBodies.single;
+    final automaticKey =
+        api.arrivalPostBodies.single['idempotencyKey'] as String;
+    expect(automaticKey, matches(r'^warehouse-arrival-batch-[0-9a-f]{16}$'));
+    final automaticLines = (api.arrivalPostBodies.single['lines'] as List)
+        .cast<Map<String, dynamic>>();
     expect(
-      body['idempotencyKey'] as String?,
-      matches(r'^warehouse-arrival-batch-[0-9a-f]{16}$'),
+      automaticLines.every((line) => !line.containsKey('replacementIntent')),
+      isTrue,
+      reason: '自动识别不带 replacementIntent(服务端自行判别)',
     );
+    expect(
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-dialog')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('请明确选择到货来源'), findsOneWidget);
+
+    // 选「先补退货」：本次提交的全部行 source 一起设为先补退货，并自动重提一次。
+    await tester.tap(
+      find.byKey(const Key('warehouse-arrival-source-ambiguity-replacement')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.arrivalPostBodies, hasLength(2));
+    final body = api.arrivalPostBodies.last;
+    // 来源变了幂等键也变(_batchKey 含 source)：自动重提是另一次登记，不是同 key 重放。
+    expect(body['idempotencyKey'] as String?, isNot(automaticKey));
     expect(body['receiverEmployeeId'], 'emp-me');
     expect(body.containsKey('stockInBeforeInspection'), isFalse);
     final lines = (body['lines'] as List).cast<Map<String, dynamic>>();
@@ -359,9 +357,9 @@ void main() {
           line['orderItemId']: line['replacementIntent'],
       },
       {
-        'batch-item-1': 'NORMAL',
+        'batch-item-1': 'RETURN_REPLACEMENT',
         'batch-item-2': 'RETURN_REPLACEMENT',
-        'batch-item-3': null,
+        'batch-item-3': 'RETURN_REPLACEMENT',
       },
     );
     // 登记完成回任务中心。
@@ -957,11 +955,19 @@ class _ExpectationsApi extends ApiClient {
 
 /// 登记页桩：主档字典 + 按 id 读预计到货 + 批量登记命令回执。
 class _BatchApi extends ApiClient {
-  _BatchApi({this.disabledFirst = false, this.arrivalError}) : super(Dio());
+  _BatchApi({
+    this.disabledFirst = false,
+    this.arrivalError,
+    this.ambiguousArrivalOnce = false,
+  }) : super(Dio());
   final bool disabledFirst;
 
   /// 非空时登记端点按它失败(服务端明确拒绝 / 结果不确定)。
   final Object? arrivalError;
+
+  /// 第一次登记以「到货来源歧义」409 拒绝(服务端 ArrivalCapacity.usesReplacement
+  /// 守卫的真实文案)，用于弹窗二选一兜底的用例。
+  final bool ambiguousArrivalOnce;
 
   final List<Map<String, dynamic>> arrivalPostBodies = [];
   final List<Map<String, dynamic>?> byIdsQueries = [];
@@ -1009,6 +1015,9 @@ class _BatchApi extends ApiClient {
     if (path == arrivalBatchPath) {
       final request = Map<String, dynamic>.from(body! as Map);
       arrivalPostBodies.add(request);
+      if (ambiguousArrivalOnce && arrivalPostBodies.length == 1) {
+        throw _ArrivalSourceAmbiguityError();
+      }
       final error = arrivalError;
       if (error != null) throw error;
       return arrivalBatchAnswer(request);
@@ -1018,4 +1027,14 @@ class _BatchApi extends ApiClient {
     }
     throw ApiException('TEST_UNEXPECTED_POST', path);
   }
+}
+
+/// 服务端「到货来源歧义」409(ProcurementArrivalControlService 数据库守卫原文)。
+class _ArrivalSourceAmbiguityError extends ApiException {
+  _ArrivalSourceAmbiguityError()
+    : super(
+        'CONFLICT',
+        '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源',
+        httpStatus: 409,
+      );
 }

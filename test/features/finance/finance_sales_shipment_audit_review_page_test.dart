@@ -115,25 +115,25 @@ void main() {
     expect(find.textContaining('XS-20260912-001'), findsWidgets);
     expect(find.textContaining('待财务审核'), findsOneWidget);
     expect(find.text('合同定金'), findsOneWidget);
-    // 本单币种(美金)一档：应收未收 / 可用预收 / 还差多少，都写成「币种 金额」。
+    // 本单币种(美金)一档：应收未收 / 可用预收 / 还差多少，都写成「金额 币种」。
     expect(find.text('应收未收'), findsOneWidget);
-    expect(find.text('美金 0.00'), findsOneWidget);
+    expect(find.text('0.00 美金'), findsOneWidget);
     expect(find.text('可用预收'), findsOneWidget);
-    expect(find.text('美金 25.00'), findsOneWidget);
-    expect(find.text('预收有余 美金 25.00'), findsOneWidget);
+    expect(find.text('25.00 美金'), findsOneWidget);
+    expect(find.text('预收有余 25.00 美金'), findsOneWidget);
     // 铺底额只和全部币种正式应收(折本币，不扣预收)比，超出标红。
     expect(find.text('全部币种应收(折本币)'), findsOneWidget);
-    expect(find.text('人民币 100.00'), findsOneWidget);
+    expect(find.text('100.00 元'), findsOneWidget);
     expect(find.text('铺底额'), findsOneWidget);
-    expect(find.text('人民币 30.00'), findsOneWidget);
+    expect(find.text('30.00 元'), findsOneWidget);
     expect(find.text('超出铺底额'), findsOneWidget);
-    expect(find.text('人民币 70.00'), findsOneWidget);
+    expect(find.text('70.00 元'), findsOneWidget);
     expect(
-      tester.widget<Text>(find.text('人民币 70.00')).style?.color,
-      Theme.of(tester.element(find.text('人民币 70.00'))).colorScheme.error,
+      tester.widget<Text>(find.text('70.00 元')).style?.color,
+      Theme.of(tester.element(find.text('70.00 元'))).colorScheme.error,
     );
     // 其它币种各列各的，不换算。
-    expect(find.text('另有 人民币 100.00'), findsOneWidget);
+    expect(find.text('另有 100.00 元'), findsOneWidget);
     expect(find.textContaining('只算已审核到账的预收'), findsOneWidget);
     expect(find.textContaining('结账方式来自本单'), findsOneWidget);
     expect(

@@ -14,6 +14,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_doc.dart';
 import '../models/subcontract_draw.dart';
@@ -419,12 +420,8 @@ class _SubcontractOrderProgressSectionState
             width: 90,
             value: (row) => _label(row.colorName),
           ),
-          MasterColumnDef(
-            key: 'unitName',
-            label: '单位',
-            width: 70,
-            value: (row) => _label(row.unitName),
-          ),
+          // 2026-10-10 数量+单位口径：单位内联在数量后，独立「单位」列删除
+          //（与委外任务详情物料表同口径）。
           _qtyColumn('perUnitQty', '每套用量', (row) => row.perUnitQty),
           _qtyColumn('requiredQty', '需求', (row) => row.requiredQty),
           _qtyColumn('sentQty', '已发外', (row) => row.sentQty),
@@ -450,9 +447,9 @@ class _SubcontractOrderProgressSectionState
   ) => MasterColumnDef(
     key: key,
     label: label,
-    width: 96,
+    width: 130,
     type: 'number',
-    value: (row) => subcontractDrawQty(qty(row)),
+    value: (row) => formatQtyWithUnit(qty(row), row.unitName),
   );
 
   Widget _docSection(
@@ -582,48 +579,46 @@ class _SubcontractOrderProgressSectionState
                 width: 90,
                 value: (row) => row.colorName,
               ),
-              MasterColumnDef(
-                key: 'unitName',
-                label: '单位',
-                width: 80,
-                value: (row) => row.unitName,
-              ),
+              // 2026-10-10 数量+单位口径：单位内联在数量后(如 `12 PCS`)，独立单位列删除。
               MasterColumnDef(
                 key: 'atSupplierQty',
                 label: '发出',
                 width: 120,
                 type: 'number',
-                value: (row) => subcontractDrawQty(row.atSupplierQty),
+                value: (row) =>
+                    formatQtyWithUnit(row.atSupplierQty, row.unitName),
               ),
               MasterColumnDef(
                 key: 'consumedQty',
                 label: '回厂核销',
                 width: 140,
                 type: 'number',
-                value: (row) => subcontractDrawQty(row.consumedQty),
+                value: (row) =>
+                    formatQtyWithUnit(row.consumedQty, row.unitName),
               ),
               MasterColumnDef(
                 key: 'returnedQty',
                 label: '已退',
                 width: 110,
                 type: 'number',
-                value: (row) => subcontractDrawQty(row.returnedQty),
+                value: (row) => formatQtyWithUnit(row.returnedQty, row.unitName),
               ),
               MasterColumnDef(
                 key: 'wastedQty',
                 label: '损耗',
                 width: 110,
                 type: 'number',
-                value: (row) => subcontractDrawQty(row.wastedQty),
+                value: (row) => formatQtyWithUnit(row.wastedQty, row.unitName),
               ),
               MasterColumnDef(
                 key: 'supplierEnding',
                 label: '结存',
                 width: 120,
                 type: 'number',
-                value: (row) => subcontractDrawQty(row.supplierEnding),
+                value: (row) =>
+                    formatQtyWithUnit(row.supplierEnding, row.unitName),
                 cellBuilder: (_, row) => Text(
-                  subcontractDrawQty(row.supplierEnding),
+                  formatQtyWithUnit(row.supplierEnding, row.unitName),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),

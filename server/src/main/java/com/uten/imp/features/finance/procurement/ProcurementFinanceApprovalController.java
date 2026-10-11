@@ -73,13 +73,16 @@ public class ProcurementFinanceApprovalController {
         return service.review(caseId);
     }
 
-    /** 整批同事务通过；任一 case/version/快照失败则全部回滚。remark 选填留痕。 */
+    /** 整批同事务通过；任一 case/version/快照失败则全部回滚。remark 选填留痕。
+     *  V835：exchangeRate 选填的整批共用财务汇率（>0、≤6 位小数，缺省视为 1），
+     *  通过时落 case.finance_exchange_rate / finance_total_local，不回写订单。 */
     @PostMapping("/tasks/batch-approve")
     @PreAuthorize("hasAuthority('finance_order_approval:view') and "
             + "hasAuthority('finance_order_approval:approve')")
     public BatchDecisionResponse approveBatch(
             @Valid @RequestBody BatchApprovalRequest request) {
-        return service.approveBatch(request.items(), request.remark());
+        return service.approveBatch(
+                request.items(), request.remark(), request.exchangeRate());
     }
 
     /** 整批使用同一退回原因；任一项失败则全部回滚。 */

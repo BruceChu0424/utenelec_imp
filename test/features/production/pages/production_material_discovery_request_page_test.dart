@@ -442,7 +442,6 @@ void main() {
         'goodsCode': 'P01',
         'spec': 'PC-ABS',
         'colorName': '白色',
-        'unitName': '千克',
         'stockPlace': 'A-01',
       }.entries) {
         final column = table.columns.firstWhere(
@@ -452,6 +451,12 @@ void main() {
         expect(column.cellBuilder, isNull);
         expect(column.value(table.items.last), '—');
       }
+      // 2026-10-10 数量内联口径：独立「单位」列撤销，单位进领料数量输入框后缀。
+      expect(
+        table.columns.any((column) => column.key == 'unitName'),
+        isFalse,
+      );
+      expect(find.text('千克'), findsOneWidget);
       expect(row.values.containsKey('warehouseId'), isFalse);
       expect(row.qty.text, isEmpty);
       expect(tester.takeException(), isNull);

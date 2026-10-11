@@ -593,9 +593,10 @@ class _ProductionExecutionCardPrintDialogState
                     DataColumn(label: Text('规格')),
                     DataColumn(label: Text('单位')),
                     DataColumn(label: Text('用量口径')),
-                    DataColumn(numeric: true, label: Text('需求数量')),
-                    DataColumn(numeric: true, label: Text('现货承诺')),
-                    DataColumn(numeric: true, label: Text('缺口')),
+                    // 全站表格口径（2026-10-10）：数字列也左对齐，不再 numeric 右对齐。
+                    DataColumn(label: Text('需求数量')),
+                    DataColumn(label: Text('现货承诺')),
+                    DataColumn(label: Text('缺口')),
                     DataColumn(label: Text('供给路线')),
                   ],
                   rows: [

@@ -1,12 +1,14 @@
 // 销售单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
-// SalesGridRow：货品(选择)/数量/单位/单价→金额自动（AmountRowMixin）；
+// SalesGridRow：货品(选择)/数量/单价→金额自动（AmountRowMixin）；
 // 颜色/单位换算率 + 上游明细 id
 // 为透传（从上游引入或详情回填时预填，保存时随行写回）；报表补列（机加价/围数/进仓/
 // 材料价/压铸价/折扣）按 docType 显隐对应列。
-// 2026-09-04 口径：实际重量列下线（单位已表达重量；行模型 weight 保留透传），
-// 单位列紧跟数量。折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
-// salesGridColumns：货品/颜色/数量/单位/单价/金额 + 补列（条件）。
+// 2026-09-04 口径：实际重量列下线（单位已表达重量；行模型 weight 保留透传）。
+// 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位内联在数量后
+//（可编辑数量格用 suffixText；只读数量格直接拼 `12 箱`，见 formatQtyWithUnit）。
+// 折扣列表头 ⓘ 悬停说明「1 = 原价；0.9 = 9折」。
+// salesGridColumns：货品/颜色/数量/单价/金额 + 补列（条件）。
 // 2026-09-27(ADR-134)：报价/订货加「文件型号 / 文件品名 / 文件单价」三列(客户文件原文,
 // 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价可议价，订货锁定、
 // 折扣可编辑(可留空交财务核价); 识别结果里需要核对的行货品格黄框提醒。
@@ -16,6 +18,7 @@ import '../intake/sales_intake_l10n.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../shared/drafts/form_draft_values.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -136,8 +139,9 @@ class SalesGridRow extends EditableGridRow
   String? orderItemId;
   String? outItemId;
 
-  /// 颜色/单位（选货品后自动回填或上游引入预填；单元格只读显示）。
-  /// 用 ValueNotifier：选货品后单元格即时刷新（与 goodsNotifier 同款），无需整页 setState。
+  /// 颜色/单位（选货品后自动回填或上游引入预填；颜色只读格显示，单位随 2026-10-10
+  /// 口径内联在数量格 suffixText）。用 ValueNotifier：选货品后即时刷新
+  /// （与 goodsNotifier 同款），无需整页 setState。
   final colorIdNotifier = ValueNotifier<String?>(null);
   String? get colorId => colorIdNotifier.value;
   set colorId(String? v) => colorIdNotifier.value = v;
@@ -566,9 +570,11 @@ Set<String> filledSalesOptionalColumnKeys(Iterable<SalesGridRow> rows) => {
   },
 };
 
-/// 销售明细列：货品（点选）/ 颜色 / 单位 / 数量 / 单价 / 金额（自动）+ 报表补列（按
-/// [docType] 条件追加）。[onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
-/// [colorEntries]/[unitEntries] 由编辑页从 SalesMasterNameService 注入（单元格下拉用）。
+/// 销售明细列：货品（点选）/ 颜色 / 数量（单位内联在数量格 suffixText，2026-10-10
+/// 口径）/ 单价 / 金额（自动）+ 报表补列（按 [docType] 条件追加）。[onPickGoods] 由
+/// 编辑页提供（弹货品选择器并写回 row.goods）。
+/// [colorEntries]/[unitEntries] 由编辑页从 SalesMasterNameService 注入（颜色格与
+/// 数量格单位后缀用）。
 ///
 /// 报价/订货(ADR-134)：[showClientPrice] 有文件单价时显示「文件单价」列(表头带
 /// [clientFileCurrency])；[priceMasked] 看不到价格的账号单价格显示 ***、折扣格只读
@@ -787,43 +793,42 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           ),
         ),
       ),
+    // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，行单位改为
+    // 数量输入框的 suffixText 内联显示（选货品带出单位后即时刷新）；实际重量列
+    // 仍按下线口径处理（单位已表达重量；行模型 weight 字段保留，编辑既有单回填
+    // 并随保存透传，不丢历史数据）。
     EditableGridColumn<SalesGridRow>(
       key: 'qty',
       label: '数量',
-      width: 128,
+      width: 160,
       numeric: true,
       required: true,
       headerInfo: qtyHint,
-      frozenTextOf: (r) => r.qty.text,
+      frozenTextOf: (r) => _qtyFrozenText(r, unitEntries),
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
         child: _aiFilledField(
           row,
           'qty',
-          (decorate) => TextField(
-            controller: row.qty,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: decorate(
-              const UtenInputDecoration(
-                InputDecoration(isDense: true, hintText: '0'),
+          (decorate) => ValueListenableBuilder<String?>(
+            valueListenable: row.unitIdNotifier,
+            builder: (_, unitId, _) => TextField(
+              controller: row.qty,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: decorate(
+                UtenInputDecoration(
+                  InputDecoration(
+                    isDense: true,
+                    hintText: '0',
+                    suffixText: unitEntries[unitId ?? ''],
+                  ),
+                ),
               ),
             ),
           ),
         ),
       ),
-    ),
-    // 单位紧跟数量（2026-09-04 口径）：单位已表达重量，实际重量列下线（行模型
-    // weight 字段保留，编辑既有单回填并随保存透传，不丢历史数据）。
-    EditableGridColumn<SalesGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 110,
-      textOf: (r) => unitEntries[r.unitId ?? ''] ?? '',
-      listenableOf: (r) => r.unitIdNotifier,
-      cellBuilder: (context, row) =>
-          _readOnlyMasterCell(context, row.unitIdNotifier, unitEntries),
     ),
     if (!freeCustomerShipment)
       EditableGridColumn<SalesGridRow>(
@@ -836,7 +841,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         headerInfo: priceHint,
         frozenTextOf: (r) => priceMasked ? '***' : r.price.text,
         cellBuilder: (context, row) => priceMasked
-            ? const Text('***', textAlign: TextAlign.right)
+            ? const Text('***')
             : RequiredCellFrame(
                 listenable: row.price,
                 isEmpty: () =>
@@ -873,7 +878,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                             'sales-price-${row.documentItemId ?? row.goods?.id ?? 'new'}',
                           ),
                           controller: row.price,
-                          textAlign: TextAlign.right,
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
@@ -913,7 +917,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             // 不能把旧草稿控制器挂到只读框：hint 不会遮住已有文字。
             return Tooltip(
               message: intakeText.salesIntakeMaskedDiscount,
-              child: const Text('***', textAlign: TextAlign.right),
+              child: const Text('***'),
             );
           }
           if (row.quoteDiscountLocked) {
@@ -937,7 +941,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                 valueListenable: row.aiReviewNotifier,
                 builder: (context, review, _) => TextField(
                   controller: row.discount,
-                  textAlign: TextAlign.right,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
@@ -977,7 +980,6 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Text(
             row.clientPrice ?? '—',
-            textAlign: TextAlign.right,
             style: TextStyle(
               color: row.clientPrice == null
                   ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -1013,7 +1015,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             ? financeExactMoneyDisplay(r.amountExactNotifier.value!)
             : '¥${financeExactMoneyDisplay(r.amountExactNotifier.value!)}',
         cellBuilder: (context, row) => priceMasked
-            ? const Text('***', textAlign: TextAlign.right)
+            ? const Text('***')
             : allowsTotalInput && row.canEditTotal
             ? LinePricingAmountCell(controller: row.pricing)
             : ValueListenableBuilder<String?>(
@@ -1030,7 +1032,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
               ),
       ),
     // 报表补列（与 _save/_init 字段映射一致；按 docType 显隐）。
-    // 出货单(shipment)只留 货品/颜色/单位/数量/单价/金额/备注：成本分项/折扣等补列不展示
+    // 出货单(shipment)只留 货品/颜色/数量/单价/金额/备注：成本分项/折扣等补列不展示
     //（出货是发货履约，价格/折扣沿用订货单）。隐藏列的字段仍在行模型里，编辑既有出货单时
     // 回填并随保存回写，不丢数据。
     if (docType == SalesDocType.order || docType == SalesDocType.otherShipment)
@@ -1046,16 +1048,18 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       EditableGridColumn<SalesGridRow>(
         key: 'inboundQty',
         label: '进仓数量(历史参考)',
-        width: 160,
+        width: 190,
         numeric: true,
         defaultVisible: false,
         headerInfo:
             '保留历史单据或旧草稿的参考值；实际进仓数量以入库事实为准，'
             '不在销售订单录入，也不随订单保存。',
-        frozenTextOf: (row) => row.inboundQty.text,
-        cellBuilder: (context, row) => Text(
-          row.inboundQty.text.isEmpty ? '—' : row.inboundQty.text,
-          textAlign: TextAlign.right,
+        frozenTextOf: (row) => _inboundQtyText(row, unitEntries),
+        cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+          valueListenable: row.unitIdNotifier,
+          builder: (_, _, _) => Text(
+            _inboundQtyText(row, unitEntries),
+          ),
         ),
       ),
     if (docType == SalesDocType.otherShipment)
@@ -1132,7 +1136,24 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
   ];
 }
 
-/// 只读主档字段单元格（颜色/单位自动回填后用）：显示 entries[id] 名，空显示「—」。
+/// 数量列冻结副本格文本（2026-10-10「数量 + 单位」内联口径）：数字后跟行单位
+///（如 `12 箱`）；输入非法（解析不出数字）时原样显示用户输入。
+String _qtyFrozenText(SalesGridRow row, Map<String, String> unitEntries) {
+  final parsed = parseQty(row.qty.text);
+  return parsed == null
+      ? row.qty.text
+      : formatQtyWithUnit(parsed, unitEntries[row.unitId ?? '']);
+}
+
+/// 进仓数量(历史参考)只读格文本：数量 + 行单位内联（2026-10-10 口径），空值显「—」。
+String _inboundQtyText(SalesGridRow row, Map<String, String> unitEntries) {
+  final parsed = parseQty(row.inboundQty.text);
+  return parsed == null
+      ? '—'
+      : formatQtyWithUnit(parsed, unitEntries[row.unitId ?? '']);
+}
+
+/// 只读主档字段单元格（颜色自动回填后用）：显示 entries[id] 名，空显示「—」。
 Widget _readOnlyMasterCell(
   BuildContext context,
   ValueNotifier<String?> notifier,
@@ -1179,7 +1200,6 @@ Widget _lockedCell(
   return TextField(
     controller: ctl,
     readOnly: true,
-    textAlign: TextAlign.right,
     style: TextStyle(color: theme.colorScheme.onSurface),
     decoration: UtenInputDecoration(
       InputDecoration(
@@ -1215,10 +1235,9 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
     defaultVisible: false,
     frozenTextOf: (row) => priceMasked ? '***' : controller(row).text,
     cellBuilder: (context, row) => priceMasked
-        ? const Text('***', textAlign: TextAlign.right)
+        ? const Text('***')
         : TextField(
             controller: controller(row),
-            textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(isDense: true, hintText: '0'),
           ),

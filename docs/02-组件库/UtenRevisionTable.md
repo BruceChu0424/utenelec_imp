@@ -34,6 +34,10 @@ UtenRevisionRow(
 
 对照列使用纯文本值，不复用原列上的编辑或业务操作按钮，旧记录始终只读。
 
+## 防看岔行勾选（2026-10-10 审核页口径）
+
+`selectable + idOf + selectedIds + onSelectedIdsChanged` 与 `MasterDataTableView` 同一套受控多选；`idOf` 作用于行业务值——同一行的「修改前/修改后」两条快照共用同一 id（`removed` 快照行组件侧自动不可勾），勾一条即视为勾中该行业务行。审核页一律传 `showSelectionColumn: false` + `singleSelection: true` + `showSelectionSummary: false`：不画最前列勾选框列、单选互斥（点其他行自动换选、再点取消）、不驻「已选 N」胶囊，选中态只由青绿行高亮表达（纯阅读辅助，无行级批量动作）。
+
 ## 非明细字段
 
 `UtenRevisionFields(changes: List<UtenRevisionField>)` 展示标题、日期、地址、条款等变化字段。每项包含 `label`、`before`、`after`，旧值红色划线，新值绿底、实际变更文本红色加粗，长文本允许换行。

@@ -7,6 +7,7 @@ import com.uten.imp.application.port.ProcurementInspectionPort;
 import com.uten.imp.application.port.ProcurementIqcRejectionPort;
 import com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
+import com.uten.imp.common.concurrency.ProcurementMutationFootprint;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -148,7 +150,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             + " and hasAuthority('procurement_inspection:handle')")
     public void passBatch(String receiptType, UUID receiptId, BatchInspectionPassRequest request) {
         tx.bind();
-        executeBatch(receiptType, receiptId, ProcurementInspectionBatchCommand.pass(receiptType, receiptId, request));
+        executeBatch(receiptType, receiptId, ProcurementInspectionBatchCommand.pass(receiptType, receiptId, request),
+                null);
     }
 
     /**
@@ -161,12 +164,104 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             + " and hasAuthority('procurement_inspection:handle')")
     public void decideBatch(String receiptType, UUID receiptId, BatchInspectionDecideRequest request) {
         tx.bind();
-        executeBatch(receiptType, receiptId, ProcurementInspectionBatchCommand.decide(receiptType, receiptId, request));
+        executeBatch(receiptType, receiptId, ProcurementInspectionBatchCommand.decide(receiptType, receiptId, request),
+                null);
     }
 
-    private void executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command) {
-        Map<UUID, Object[]> rows = lockInspectionRows(receiptType, receiptId,
-                command.lines().stream().map(ProcurementInspectionBatchCommand.Line::inspectionItemId).toList());
+    /**
+     * 品质批量审批「整份检验报告」跨收货单一次提交（2026-10-10）：此前 N 张收货单由前端
+     * 逐单各发一次 {@code decide-batch}（每单一事务），长批次既是 N 次 HTTP 往返又要逐单补确认。
+     * 本入口把整份报告合成一个服务端事务：一次发现联合预锁全部收货单的品质足迹，逐单锁齐
+     * 待检行后先做一次严格前缀复核（与单张报告写前复核同一时机），再按报告顺序逐单执行既有
+     * decide 逻辑；任一单失败整批回滚并按单号报错。行级数量/幂等键与单张报告同构，响应丢失
+     * 后同体重放：已提交的单静默重放，回滚过的单重新执行——不存在半提交状态。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse decideReport(
+            com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportRequest request) {
+        tx.bind();
+        if (request == null || request.receipts() == null || request.receipts().isEmpty()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告收货单不能为空");
+        }
+        if (request.receipts().size() > 20) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多提交 20 张收货单的检验报告");
+        }
+        List<ProcurementInspectionBatchCommand> commands = new ArrayList<>(request.receipts().size());
+        Set<String> seenReceipts = new HashSet<>();
+        for (var receipt : request.receipts()) {
+            if (!seenReceipts.add(receipt.receiptType() + '|' + receipt.receiptId())) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "检验报告不能重复包含同一收货单");
+            }
+            commands.add(ProcurementInspectionBatchCommand.decide(receipt.receiptType(), receipt.receiptId(),
+                    new BatchInspectionDecideRequest(receipt.items(), request.reason())));
+        }
+        // 联合预锁：一次发现拿齐全部收货单的商业来源/库存/主仓/分析维度；随后逐单
+        // lockInspectionRows 的取锁是嵌套 acquire，只做覆盖检查（releaseHeldPreStock 同模式）。
+        List<ProcurementMutationFootprint.ReceiptRef> refs = new ArrayList<>(commands.size());
+        for (int i = 0; i < request.receipts().size(); i++) {
+            refs.add(new ProcurementMutationFootprint.ReceiptRef(
+                    request.receipts().get(i).receiptType(), request.receipts().get(i).receiptId(),
+                    Set.copyOf(commandInspectionIds(commands.get(i)))));
+        }
+        var unionGuard = mutationLocks.receipts(refs);
+        List<Map<UUID, Object[]>> rowLocks = new ArrayList<>(commands.size());
+        for (int i = 0; i < request.receipts().size(); i++) {
+            var receipt = request.receipts().get(i);
+            rowLocks.add(lockInspectionRows(receipt.receiptType(), receipt.receiptId(),
+                    commandInspectionIds(commands.get(i))));
+        }
+        // 全部行锁到手、尚未写入：整份报告的预读来源做一次严格复核。
+        unionGuard.verifyUnchanged();
+        var outcomes = new ArrayList<com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome>(
+                commands.size());
+        int lineCount = 0;
+        boolean replay = true;
+        for (int i = 0; i < request.receipts().size(); i++) {
+            var receipt = request.receipts().get(i);
+            boolean replayed;
+            try {
+                replayed = executeBatch(receipt.receiptType(), receipt.receiptId(), commands.get(i), rowLocks.get(i));
+            } catch (ApiException failure) {
+                throw new ApiException(failure.getCode(),
+                        reportReceiptLabel(receipt.receiptType(), receipt.receiptId()) + "：" + failure.getMessage(),
+                        failure.getFieldErrors());
+            }
+            outcomes.add(new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome(
+                    receipt.receiptType(), receipt.receiptId(), replayed));
+            lineCount += commands.get(i).lines().size();
+            replay &= replayed;
+        }
+        return new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse(
+                outcomes.size(), lineCount, replay, List.copyOf(outcomes));
+    }
+
+    private static List<UUID> commandInspectionIds(ProcurementInspectionBatchCommand command) {
+        return command.lines().stream()
+                .map(ProcurementInspectionBatchCommand.Line::inspectionItemId).toList();
+    }
+
+    /** 整份检验报告逐单报错用的单号标签（收货单不存在时退回 UUID，错误本体不变）。 */
+    private String reportReceiptLabel(String receiptType, UUID receiptId) {
+        String table = PURCHASE.equals(receiptType) ? "purchase_receipts"
+                : SUBCONTRACT.equals(receiptType) ? "subcontract_receipts" : null;
+        if (table == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "收货单类型不正确");
+        @SuppressWarnings("unchecked")
+        List<String> bills = em.createNativeQuery("SELECT bill_no FROM " + table + " WHERE id = :id")
+                .setParameter("id", receiptId).getResultList();
+        String prefix = PURCHASE.equals(receiptType) ? "采购收货单" : "委外进仓单";
+        if (bills.isEmpty() || bills.getFirst() == null || bills.getFirst().isBlank()) {
+            return prefix + " " + receiptId;
+        }
+        return prefix + " " + bills.getFirst();
+    }
+
+    /** [rows] 传入已锁行（整份报告联合预锁路径）；null = 本方法自取行锁（单张报告路径）。 */
+    private boolean executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command,
+                                 Map<UUID, Object[]> lockedRows) {
+        Map<UUID, Object[]> rows = lockedRows != null ? lockedRows
+                : lockInspectionRows(receiptType, receiptId, commandInspectionIds(command));
         for (var line : command.lines()) requireInspectionRow(rows, line.inspectionItemId(), receiptType);
         @SuppressWarnings("unchecked")
         List<Object[]> prior = em.createNativeQuery("""
@@ -218,6 +313,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             }
         }
         completeReceiptDisposition(receiptType, receiptId, preStocked);
+        return replay;
     }
 
     private static ApiException batchReplayConflict() {

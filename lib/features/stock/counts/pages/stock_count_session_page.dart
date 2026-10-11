@@ -34,6 +34,7 @@ import '../../../../shared/badges/badge_registry.dart';
 import '../../../../shared/drafts/form_draft_catalog.dart';
 import '../../../../shared/drafts/form_draft_mixin.dart';
 import '../../../../shared/formatters/exact_decimal.dart';
+import '../../../../shared/formatters/quantity_display.dart';
 import '../../../../shared/models/paged_result.dart';
 import '../../../basic_data/models/product_category_node.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
@@ -573,18 +574,15 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       width: 120,
       value: (row) => row.categoryName ?? '—',
     ),
-    MasterColumnDef<CountStockRow>(
-      key: 'unit',
-      label: '单位',
-      width: 70,
-      value: (row) => row.unitName,
-    ),
+    // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），独立「单位」列退役；
+    // 实盘数量输入框的单位在共享输入格后缀（stock_count_inline_editor）。
     MasterColumnDef<CountStockRow>(
       key: 'qty',
       label: '账面数量',
-      width: 110,
+      width: 145,
       type: 'number',
-      value: (row) => row.qty,
+      value: (row) =>
+          formatQtyWithUnit(double.tryParse(row.qty), row.unitName, maxDecimals: 4),
     ),
     MasterColumnDef<CountStockRow>(
       key: 'weight',
@@ -596,9 +594,17 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
     MasterColumnDef<CountStockRow>(
       key: 'delta',
       label: '数量差额',
-      width: 100,
+      width: 135,
       type: 'number',
-      value: (row) => _deltaText(row) ?? '',
+      value: (row) {
+        final delta = _deltaText(row);
+        if (delta == null) return '';
+        return formatQtyWithUnit(
+          double.tryParse(delta),
+          row.unitName,
+          maxDecimals: 4,
+        );
+      },
     ),
   ];
 

@@ -974,7 +974,8 @@ void main() {
     expect(find.text('外贸V5多功能三插后座'), findsWidgets);
     expect(find.text('HV50070'), findsWidgets);
     expect(find.text('深灰色'), findsWidgets);
-    expect(find.text('只'), findsWidgets);
+    // 2026-10-10 数量内联口径：单位列撤销，随单下发的单位名内联在数量后。
+    expect(find.text('1000 只'), findsWidgets);
     expect(find.text('六车间'), findsOneWidget);
     expect(find.text('王小明'), findsOneWidget);
     expect(
@@ -1027,7 +1028,8 @@ void main() {
     expect(defect.label, '不良数');
     expect(defect.info, productionDailyReportDefectInfo);
     expect(table.items.single.defectQty, 12.5);
-    expect(find.text('12.5'), findsOneWidget);
+    // 2026-10-10 数量内联口径：不良数直接带单位显示。
+    expect(find.text('12.5 只'), findsOneWidget);
     expect(defect.value(const ProductionDailyReportItem(id: 'slice')), isNull);
     expect(
       defect.value(

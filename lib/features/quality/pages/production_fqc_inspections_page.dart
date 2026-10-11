@@ -22,6 +22,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
@@ -474,46 +475,61 @@ class _ProductionFqcInspectionsPageState
       width: 120,
       value: (inspection) => inspection.colorName ?? '—',
     ),
+    // 「数量+单位」内联口径（2026-10-10）：单位跟在数字后，独立「单位」列撤掉。
     MasterColumnDef(
       key: 'reportedQty',
       label: '报工数量',
-      width: 110,
+      width: 145,
       type: 'number',
-      value: (inspection) => fqcQtyText(inspection.reportedQty),
+      value: (inspection) => formatQtyWithUnit(
+        inspection.reportedQty,
+        inspection.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'passedQty',
       label: '合格数量',
-      width: 110,
+      width: 145,
       type: 'number',
-      value: (inspection) => fqcQtyText(inspection.passedQty),
+      value: (inspection) => formatQtyWithUnit(
+        inspection.passedQty,
+        inspection.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'failedQty',
       label: '不合格数量',
-      width: 120,
+      width: 150,
       type: 'number',
-      value: (inspection) => fqcQtyText(inspection.failedQty),
+      value: (inspection) => formatQtyWithUnit(
+        inspection.failedQty,
+        inspection.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'remainingQty',
       label: '待检数量',
-      width: 110,
+      width: 145,
       type: 'number',
-      value: (inspection) => fqcQtyText(inspection.remainingQty),
+      value: (inspection) => formatQtyWithUnit(
+        inspection.remainingQty,
+        inspection.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'authorizedInboundQty',
       label: '已生成待点收',
-      width: 120,
+      width: 150,
       type: 'number',
-      value: (inspection) => fqcQtyText(inspection.authorizedInboundQty),
-    ),
-    MasterColumnDef(
-      key: 'unitName',
-      label: '单位',
-      width: 90,
-      value: (inspection) => inspection.unitName ?? '—',
+      value: (inspection) => formatQtyWithUnit(
+        inspection.authorizedInboundQty,
+        inspection.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef(
       key: 'createdAt',

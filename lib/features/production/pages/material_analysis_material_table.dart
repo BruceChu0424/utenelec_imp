@@ -29,6 +29,7 @@ final class _MaterialTableRow {
     this.rootAnalysisLineId,
     this.parentMaterialLineId,
     this.childCount,
+    this.productOrdinal,
   });
 
   final _MaterialTableRowKind kind;
@@ -58,6 +59,12 @@ final class _MaterialTableRow {
   /// 可见子件数而非 BOM 全量。
   final int? childCount;
 
+  /// 本行所属产品在**当前渲染序**里的序号（按产品视图，2026-10-10）：驱动
+  /// 层级连线按产品奇偶两色轮换（见 [_bomProductGuideColor]）。产品行与它
+  /// 的全部子件行同号，同棵子树连线同色；汇总视图与未归属产品的孤儿行
+  /// 为 null，维持默认灰连线。筛选后随可见产品重排，相邻产品永远异色。
+  final int? productOrdinal;
+
   bool get isAggregateSource => kind == _MaterialTableRowKind.aggregatePath;
 
   /// 套上共享树投影的连线信息。[hasChildren] / [childCount] **不由投影接管**：
@@ -79,6 +86,7 @@ final class _MaterialTableRow {
     rootAnalysisLineId: rootAnalysisLineId,
     parentMaterialLineId: parentMaterialLineId,
     childCount: childCount,
+    productOrdinal: productOrdinal,
   );
 }
 
@@ -428,6 +436,7 @@ abstract class _MaterialAnalysisMaterialTableState
           rootAnalysisLineId: product.analysisLineId,
           hasChildren: nodes.isNotEmpty,
           childCount: childCounts[null],
+          productOrdinal: productIndex,
           contextOnly: projection.contextOnlyProductIds.contains(
             product.analysisLineId,
           ),
@@ -464,6 +473,7 @@ abstract class _MaterialAnalysisMaterialTableState
                 presentation.parentIdsByMaterial[material.materialLineId],
             hasChildren: childCount != null,
             childCount: childCount,
+            productOrdinal: productIndex,
             contextOnly: projection.contextOnlyMaterialIds.contains(
               material.materialLineId,
             ),
@@ -731,6 +741,7 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 该操作组当前是否可显式「采用公共在途」（行内动作与右键菜单共用）。
+  @override
   bool _canClaimMaterialSharedFuture(_MaterialGroup group) {
     final analysis = _analysis;
     final material = group.representative;
@@ -1361,7 +1372,8 @@ abstract class _MaterialAnalysisMaterialTableState
   Map<String, String? Function(_MaterialTableRow)>
   get _materialTableGenericFacetExtractors => {
     'colorName': (row) => _blankFacet(_materialTableColorText(row)),
-    'unitName': (row) => _blankFacet(_materialTableUnitText(row)),
+    // 「单位」筛选随单位列退役（2026-10-10 T9）：单位内联进数量列后，
+    // 文本筛选口径里不再有独立的单位桶。
     // 下面两个一律复用列自己的取值函数, 不另写一份判据。
     // 2026-09-22 对抗复查: 原先各写各的, 于是「筛生产车间=二车间」会筛出一屏
     // 生产车间列显示横杠的采购行——筛选值与眼睛看到的对不上。
@@ -1515,9 +1527,11 @@ abstract class _MaterialAnalysisMaterialTableState
   ///
   /// 列顺序按用户口径：进度 / 待办 最前（2026-10-08「状态或进度列默认放
   /// 最前」，推翻此前「工序长文本进度列不动」的判定），再「这一行我能干
-  /// 什么」(物料办理)、身份四列、供应方式，然后四个数量(需要 / 还缺 / 下单 /
-  /// 追加)，再是落点与指派(所属仓库 / 生产车间 / 负责人)。原「归属车间」列
-  /// 2026-09-29 起并入「生产车间」(同一事实源，默认带出)。
+  /// 什么」(物料办理)、身份三列(名称 / 编号 / 颜色；「单位」列 2026-10-10 T9
+  /// 起退役、单位内联进各数量列)、供应方式，然后四个数量(需要 / 还缺 / 下单 /
+  /// 追加，2026-10-10 起数量内联单位)，再是落点与指派(所属仓库 / 生产车间 /
+  /// 负责人)。原「归属车间」列 2026-09-29 起并入「生产车间」(同一事实源，
+  /// 默认带出)。
   ///
   /// 退役的四列及去向：
   /// - 「可用数量」「在途未到」「公共认领未实收」——三者都是「还缺多少」的
@@ -1579,9 +1593,10 @@ abstract class _MaterialAnalysisMaterialTableState
       fillsCellHeight: true,
       cellBuilder: (_, row) => _materialTableIdentityCell(theme, row),
     ),
-    // 2026-09-14 用户口径：编号 / 颜色 / 单位从身份格副行提升为独立列，
-    // 紧跟「物料名称」。同名不同色/不同单位的行在这里一眼分得开，也能各自
-    // 筛选、导出(原副行只是一串 · 连起来的文本)。
+    // 2026-09-14 用户口径：编号 / 颜色从身份格副行提升为独立列，紧跟
+    // 「物料名称」。同名不同色的行在这里一眼分得开，也能各自筛选、导出。
+    // 「单位」列 2026-10-10 起（T9 全站口径）退役：单位直接内联进各数量列
+    //（需要 / 可用 / 还缺 / 下单 / 追加，经 formatQtyWithUnit），不再单列。
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
@@ -1593,12 +1608,6 @@ abstract class _MaterialAnalysisMaterialTableState
       label: '颜色',
       width: 96,
       value: _materialTableColorText,
-    ),
-    MasterColumnDef(
-      key: 'unitName',
-      label: '单位',
-      width: 76,
-      value: _materialTableUnitText,
     ),
     MasterColumnDef(
       key: 'route',
@@ -1616,9 +1625,13 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'requiredQty',
       label: _l10n.materialRequired,
-      width: 100,
+      // 2026-10-10 T9：单位列退役，数量内联单位（宽度 +35 容下「N 个」）。
+      width: 135,
       type: 'number',
-      value: (row) => _materialTableRequiredText(row) ?? '—',
+      value: (row) => _qtyTextWithUnit(
+        _materialTableRequiredText(row),
+        _materialTableUnitText(row),
+      ),
       exactValueOf: _materialTableRequiredText,
       // 不给 info：ADR-102 §12.8（2026-09-22 用户口径）——本列与「物料办理/
       // 编号/还缺数量/下单数量」同属「表头只显示那几个字」的五列。2026-09-23
@@ -1627,7 +1640,10 @@ abstract class _MaterialAnalysisMaterialTableState
       // ADR-129 §2.11：本行按哪个用量算(真实/设计、几批、设计值)放在单元格悬停里。
       cellBuilder: (_, row) {
         final quantity = Text(
-          _materialTableRequiredText(row) ?? '—',
+          _qtyTextWithUnit(
+            _materialTableRequiredText(row),
+            _materialTableUnitText(row),
+          ),
           key: ValueKey('material-analysis-source-required-${row.key}'),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
@@ -1650,9 +1666,12 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'publicAvailableQty',
       label: _l10n.materialPublicAvailable,
-      width: 100,
+      width: 135,
       type: 'number',
-      value: (row) => _materialTablePublicAvailableQty(row) ?? '—',
+      value: (row) => _qtyTextWithUnit(
+        _materialTablePublicAvailableText(row),
+        _materialTableUnitText(row),
+      ),
       exactValueOf: _materialTablePublicAvailableText,
       exactListenableOf: (_) => _tableEstimateTick,
       cellBuilder: (_, row) => ValueListenableBuilder<int>(
@@ -1668,7 +1687,10 @@ abstract class _MaterialAnalysisMaterialTableState
             );
           }
           final parts = _materialTablePublicAvailableParts(row);
-          final text = _materialTablePublicAvailableQty(row) ?? '—';
+          final text = _qtyTextWithUnit(
+            _materialTablePublicAvailableText(row),
+            _materialTableUnitText(row),
+          );
           final material = row.material ?? row.aggregate?.representative;
           final budget = _tableBudgetOf(row);
           final tooltip = budget != null
@@ -1698,9 +1720,12 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'netShortageQty',
       label: _l10n.materialShortage,
-      width: 112,
+      width: 145,
       type: 'number',
-      value: (row) => _materialTableNetShortageText(row) ?? '—',
+      value: (row) => _qtyTextWithUnit(
+        _materialTableNetShortageText(row),
+        _materialTableUnitText(row),
+      ),
       exactValueOf: _materialTableNetShortageText,
       exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
@@ -1716,9 +1741,9 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'orderQty',
       label: _l10n.materialToSupply,
-      width: 132,
+      width: 165,
       type: 'number',
-      value: _materialTableOrderQtyText,
+      value: (row) => _materialTableOrderQtyText(row) ?? '—',
       exactValueOf: (row) => _materialTableOrderRaw(row, append: false),
       exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
@@ -1776,14 +1801,14 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'appendQty',
       label: _l10n.materialAdditionalOrder,
-      width: 124,
+      width: 158,
       type: 'number',
       info:
           '已经下达过的行要再下多少。默认 0 = 本次不动它，填成正数才追加。'
           '追加只能增不能减：原申请还没被采购 / 委外做成订货单时直接改大那张申请，'
           '已经做成订货单的另立新单。要改小只能撤回重下。'
           '追加成功后它会并进左边的「下单数量」，这一格回到 0。',
-      value: _materialTableAppendQtyText,
+      value: (row) => _materialTableAppendQtyText(row) ?? '—',
       exactValueOf: (row) => _materialTableOrderRaw(row, append: true),
       exactListenableOf: (_) => _tableEstimateTick,
       cellBuilderHandlesSemantics: true,
@@ -1916,9 +1941,10 @@ abstract class _MaterialAnalysisMaterialTableState
     return breakdown == null ? name : '$name · $breakdown';
   }
 
-  // 三列的取值优先级与 2026-09-14 之前身份格副行完全一致：编号/颜色以产品行
-  // 自身为准（产品行同时挂着根供给物料），单位以物料行为准（根供给行记的是
-  // 基本单位，产品行记的是来源单位——副行一直显示前者，拆列后不能悄悄换口径）。
+  // 取值优先级沿用 2026-09-14 身份格副行的口径：编号/颜色以产品行自身为准
+  // （产品行同时挂着根供给物料），数量列的内联单位以物料行为准（根供给行记的
+  // 是基本单位，产品行记的是来源单位——单位列 2026-10-10 退役后，各数量列拼
+  // 单位继续用同一优先级，不悄悄换口径）。
   String? _materialTableCodeText(_MaterialTableRow row) =>
       (row.product?.goodsCode ??
               row.aggregate?.goodsCode ??
@@ -1936,6 +1962,50 @@ abstract class _MaterialAnalysisMaterialTableState
               row.product?.unitName ??
               row.aggregate?.unitName)
           ?.trim();
+
+  /// 数量展示文本 + 行单位（2026-10-10 T9 全站口径）：单位列退役，数量列的
+  /// 只读值统一经 [formatQtyWithUnit] 把单位拼在数字后（`12 个`）。展示原文
+  /// 本就是四位精确数量，这里按四位小数回排、不改数值精度；空值落「—」，
+  /// 解析不出的原文（如「无法确认」）原样返回不带单位。
+  String _qtyTextWithUnit(String? text, String? unit) {
+    final raw = text?.trim() ?? '';
+    if (raw.isEmpty || raw == '—') return '—';
+    final value = double.tryParse(raw);
+    if (value == null) return raw;
+    return formatQtyWithUnit(value, unit, maxDecimals: 4);
+  }
+
+  /// 按产品视图的层级连线轮换色（2026-10-10 用户口径「两个颜色换着显示，
+  /// 找两个色差大的」）：产品按渲染序奇偶轮换青绿/紫——同一产品整棵子树
+  /// 连线同色、相邻产品换色，产品边界由颜色分清，不再靠块边界竖线。明暗
+  /// 主题各配一对深浅档（[UtenColors.bomProductGuide*]）。汇总视图与未归属
+  /// 产品的孤儿行返回 null，维持默认灰连线。
+  Color? _bomProductGuideColor(ThemeData theme, _MaterialTableRow row) {
+    final ordinal = row.productOrdinal;
+    if (ordinal == null) return null;
+    final dark = theme.brightness == Brightness.dark;
+    return ordinal.isEven
+        ? (dark
+              ? UtenColors.bomProductGuideEvenDark
+              : UtenColors.bomProductGuideEven)
+        : (dark
+              ? UtenColors.bomProductGuideOddDark
+              : UtenColors.bomProductGuideOdd);
+  }
+
+  /// 有下级行展开箭头圆底的轮换色（2026-10-10 用户口径「箭头还有箭头的
+  /// 背景也统一」）：与连线同一对色相、按产品序号奇偶轮换。实底不走深色
+  /// 主题的亮档线色——明暗两主题统一用深档（teal600/紫），箭头按既有规则
+  /// 自动反白，白箭头对比度自带（与 ADR-169 状态实底同路数）；深底上深档
+  /// 实底仍是清晰的一块。无下级行的灰色占位图标不参与；汇总视图与孤儿行
+  /// 返回 null，维持 depth%4 层级轮换色。
+  Color? _bomProductToggleColor(_MaterialTableRow row) {
+    final ordinal = row.productOrdinal;
+    if (ordinal == null) return null;
+    return ordinal.isEven
+        ? UtenColors.bomProductGuideEven
+        : UtenColors.bomProductGuideOdd;
+  }
 
   /// 第一列身份格（2026-09-04 收敛）：不再显示 BOM 路径与「组件 N 级」文案，
   /// 统一「P几 + 名字」一行、编号第二行；层级仍由缩进/连接线/级联序号表达。
@@ -2002,14 +2072,22 @@ abstract class _MaterialAnalysisMaterialTableState
       toggleKey: ValueKey('material-table-toggle-${row.key}'),
       depth: row.depth,
       // 2026-09-14 用户口径：名称前不再挂级联号，最底层不再画圆点；
-      // 编号 / 颜色 / 单位已各自成列（就排在本列右边）。
+      // 编号 / 颜色已各自成列（就排在本列右边）；单位 2026-10-10 起内联进
+      // 数量列（T9），不再单列。
       sequence: '',
       sequenceInline: true,
       showLeafMarker: false,
-      // 2026-10-08 用户口径「按产品看左边加条竖线，分得清产品和子层级两个
-      // 部分」：子件行（depth>0）左缘画贯穿竖线；汇总视图不画（聚合行另带
-      // 来源展开，左缘线没有「同一棵子树」的语义）。
-      subtreeRail: !_bomAggregateByMaterial,
+      // 2026-10-10 用户口径「只用层级连接线」：最左的子树块边界竖线退役，
+      // 层级连线本身按产品序号奇偶两色轮换（青绿/紫，见 _bomProductGuideColor）
+      // ——同一产品整棵子树同色、相邻产品换色。
+      guideColor: _bomProductGuideColor(theme, row),
+      // 同口径「箭头还有箭头的背景也统一」：有下级行的展开箭头圆底与连线
+      // 同一对色、按产品序号奇偶轮换（无下级的灰色占位图标不受影响）；
+      // 实底明暗两主题同用深档、箭头自动反白（ADR-169 实底同路数）。
+      toggleColor: _bomProductToggleColor(row),
+      // 同口径「下面的箭头跟线挨在一起」：每级缩进 16→24，祖先竖线与箭头
+      // 圆底的间隙从 2px 放到 10px。两个视图一致传 24，切视图名称列不跳位。
+      indent: 24,
       // 2026-10-09 用户口径「没有子层级的行也在前面加个展开 icon，灰色不可
       // 点，统一好看」：无下级行（含汇总视图顶层产品行——2026-10-08「展开位
       // 让出来顶到左缘」随之退役）与有下级行同一位置画灰底粗箭头占位，两个
@@ -3934,13 +4012,59 @@ abstract class _MaterialAnalysisMaterialTableState
   };
 
   /// 本行此刻可以从别的计划锁定量里调进来多少(0 = 调拨按钮置灰)。
+  ///
+  /// 服务端可调量按货品+颜色+单位**维度**聚合供方——同一维度的每条合格路径
+  /// 拿到的是同一个池量。同一操作组里同料多路径（同料不同层共享提交单元）
+  /// 时**维度内取最大**（=池量），只有跨维度才相加；直接逐行求和会把同一个
+  /// 供方池报 N 遍（与聚合行 [_tableAggregateTransferableInQty] 同一口径）。
   double _tableTransferableInQty(_MaterialGroup group) {
     if (_tableTransferableIn.isEmpty) return 0;
-    var total = 0.0;
+    final poolByDimension = <String, double>{};
     for (final path in group.paths) {
-      total += _tableTransferableIn[path.materialLineId] ?? 0;
+      final qty = _tableTransferableIn[path.materialLineId] ?? 0;
+      if (qty <= 0) continue;
+      final key = _aggregateKeyOf(path);
+      if (qty > (poolByDimension[key] ?? 0)) poolByDimension[key] = qty;
+    }
+    var total = 0.0;
+    for (final pool in poolByDimension.values) {
+      total += pool;
     }
     return total;
+  }
+
+  /// 聚合行（按物料汇总）的可调池总量。服务端 transferableInSummary 按
+  /// 货品+颜色+单位**维度**聚合供方，同料每条合格路径拿到的是同一个池量——
+  /// 这里取路径最大值即池量（防御脏数据，与 warehouseStock 同款取向），
+  /// **绝不逐路径相加**：相加会把同一个供方池报 N 遍，按钮亮着进去却调不了
+  /// 那么多。
+  double _tableAggregateTransferableInQty(
+    Iterable<ProductionMaterialAnalysisMaterial> paths,
+  ) {
+    if (_tableTransferableIn.isEmpty) return 0;
+    var pool = 0.0;
+    for (final path in paths) {
+      final qty = _tableTransferableIn[path.materialLineId] ?? 0;
+      if (qty > pool) pool = qty;
+    }
+    return pool;
+  }
+
+  /// 聚合行调拨的合格落点：有池量且没被汇总草稿锁住的来源路径，缺口大者
+  /// 在前。调拨的让料关系记在**一条具体物料行**上（服务端按
+  /// to_analysis_material_id 记账），聚合行只是入口，落点必须真实存在。
+  List<ProductionMaterialAnalysisMaterial> _aggregateTransferPaths(
+    _MaterialAggregate aggregate,
+  ) {
+    if (_tableTransferableIn.isEmpty) return const [];
+    final candidates = [
+      for (final path in aggregate.paths)
+        if ((_tableTransferableIn[path.materialLineId] ?? 0) > 0 &&
+            !_aggregateTable.ownsLine(path.materialLineId))
+          path,
+    ];
+    candidates.sort((a, b) => b.shortageQty.compareTo(a.shortageQty));
+    return candidates;
   }
 
   /// 按需取一次批量可调拨量 (公共装载器的一类读取)。带会话作用域键：切账号后
@@ -4566,6 +4690,13 @@ abstract class _MaterialAnalysisMaterialTableState
   String? _materialTableHandleText(_MaterialTableRow row) {
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
+    // 汇总视图顶层产品行：已下单后由撤回 / 车间计划口径渲染（格子里是按钮
+    // 与状态文案），文本取「已下单」；未下单与按产品视图同一调拨取值。
+    // 聚合行不在这条取值上（办理格由 _MaterialAggregateActions 渲染）。
+    if (_bomAggregateByMaterial && row.product != null) {
+      if (_tableGroupIssuedQty(group) > 0.000000001) return '已下单';
+      return _tableTransferBlockedReason(group) == null ? '可调拨' : '暂不可办理';
+    }
     return _tableTransferBlockedReason(group) == null ? '可调拨' : '暂不可办理';
   }
 
@@ -4573,21 +4704,35 @@ abstract class _MaterialAnalysisMaterialTableState
     if (row.aggregate case final aggregate?) {
       return _aggregateTable.actionCell(aggregate);
     }
-    if (row.isAggregateSource) return const Text('—');
+    // 路径行（depth>=1 的来源投影）与按产品视图各层行走同一条办理取值；
+    // 没有可编辑组的行（只读上下文行等）保持横杠。
     final group = _tableEditableGroup(row);
-    if (group != null &&
-        _aggregateTable.ownsLine(group.representative.materialLineId)) {
+    if (group == null) return const Text('—');
+    if (_aggregateTable.ownsLine(group.representative.materialLineId)) {
       return _aggregateTable.lockedText('汇总草稿中');
     }
-    if (group == null) return const Text('—');
     // 2026-10-09 用户口径「明明已下单，按物料汇总看顶层的物料办理不该还是
     // 调拨」：汇总视图顶层产品行已下单后与聚合行同一撤回口径（沿同一精确
-    // 来源图找真实单据）；一张单没下过时返回 null，照旧走下方调拨入口。
-    // 按产品视图不动——该视图所有行办理列本就统一只给调拨，撤回走进度弹窗。
+    // 来源图找真实单据）。2026-10-10 二次修订（用户）：未下单时与按产品视图
+    // 同一枚调拨按钮——服务端已开放根供给行（node_role='ROOT_SUPPLY'）跨计划
+    // 调拨，别的计划多锁的成品合格批次可调入顶层；无可调来源时按钮置灰并
+    // 说明原因，不再显示横杠。按产品视图本就统一只给调拨，撤回走进度弹窗。
     if (_bomAggregateByMaterial && row.product != null) {
       final withdrawCell = _aggregateTable.topLevelWithdrawCell(group);
       if (withdrawCell != null) return withdrawCell;
+      return _materialTableTransferCell(theme, row, group);
     }
+    return _materialTableTransferCell(theme, row, group);
+  }
+
+  /// 办理列的「调拨」按钮：按产品视图各层行、汇总视图顶层产品行(未下单，
+  /// 2026-10-10 根供给行开放调拨后与按产品同一入口)与汇总视图来源路径行
+  /// 共用一枚。
+  Widget _materialTableTransferCell(
+    ThemeData theme,
+    _MaterialTableRow row,
+    _MaterialGroup group,
+  ) {
     final transferReason = _tableTransferBlockedReason(group);
     final transferable = _tableTransferableInQty(group);
     return _materialTableHandleButton(
@@ -4724,7 +4869,11 @@ abstract class _MaterialAnalysisMaterialTableState
       child: net == null
           ? const Text('—')
           : Text(
-              _materialTableNetShortageText(row) ?? '—',
+              // 2026-10-10 T9：还缺数量内联单位（单位列退役）。
+              _qtyTextWithUnit(
+                _materialTableNetShortageText(row),
+                _materialTableUnitText(row),
+              ),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: _shortageTextColor(theme, net),
                 fontWeight: FontWeight.w800,
@@ -4804,12 +4953,22 @@ abstract class _MaterialAnalysisMaterialTableState
       return _aggregateTable.quantityCell(theme, aggregate, append: false);
     }
     if (row.isAggregateSource) {
-      return Text(_materialTableOrderQtyText(row) ?? '—');
+      return Text(
+        _qtyTextWithUnit(
+          _materialTableOrderQtyText(row),
+          _materialTableUnitText(row),
+        ),
+      );
     }
     final group = _tableEditableGroup(row);
     if (group == null) return const Text('—');
     if (_aggregateTable.ownsLine(group.representative.materialLineId)) {
-      return _aggregateTable.lockedText(_materialTableOrderQtyText(row) ?? '—');
+      return _aggregateTable.lockedText(
+        _qtyTextWithUnit(
+          _materialTableOrderQtyText(row),
+          _materialTableUnitText(row),
+        ),
+      );
     }
     // 已下达：这一格锁住并改成显示累计已下单量，本次要再下就填右边的追加。
     if (_tableGroupIssued(group)) {
@@ -4818,6 +4977,8 @@ abstract class _MaterialAnalysisMaterialTableState
         0,
         (total, path) => total + path.preparationAdoptedQty,
       );
+      // 2026-10-10 T9：单位列退役，锁定的累计量 / 采用量内联单位。
+      final unit = group.representative.unitName?.trim();
       return Tooltip(
         message:
             '累计已下单 ${_qty(_tableGroupDisplayedIssuedQty(group))}。'
@@ -4835,7 +4996,11 @@ abstract class _MaterialAnalysisMaterialTableState
             const SizedBox(width: UtenSpacing.s4),
             Flexible(
               child: Text(
-                _qty(_tableGroupDisplayedIssuedQty(group)),
+                formatQtyWithUnit(
+                  _tableGroupDisplayedIssuedQty(group),
+                  unit,
+                  maxDecimals: 4,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
@@ -4847,7 +5012,7 @@ abstract class _MaterialAnalysisMaterialTableState
               const SizedBox(width: UtenSpacing.s4),
               Flexible(
                 child: Text(
-                  '采用 ${_qty(adopted)}',
+                  '采用 ${formatQtyWithUnit(adopted, unit, maxDecimals: 4)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -4925,6 +5090,8 @@ abstract class _MaterialAnalysisMaterialTableState
       controller: _tableOrderQtyController(group),
       enabled: !_busy && (_canNotify || _canGenerate),
       hintText: _qty(_tableGroupResidual(group)),
+      // 2026-10-10 T9：单位列退役，可编辑数量格的单位放输入框尾注。
+      suffixText: group.representative.unitName?.trim(),
       // 带下层的行改量要带动子层：记下用户亲手填的数，去抖后向服务端要重算。
       onTyped: (text) => _onTableQtyTyped(group, text),
       invalid: () => _tableOrderQtyInvalid(group),
@@ -4957,13 +5124,21 @@ abstract class _MaterialAnalysisMaterialTableState
       return _aggregateTable.quantityCell(theme, aggregate, append: true);
     }
     if (row.isAggregateSource) {
-      return Text(_materialTableAppendQtyText(row) ?? '—');
+      return Text(
+        _qtyTextWithUnit(
+          _materialTableAppendQtyText(row),
+          _materialTableUnitText(row),
+        ),
+      );
     }
     final group = _tableEditableGroup(row);
     if (group == null) return const Text('—');
     if (_aggregateTable.ownsLine(group.representative.materialLineId)) {
       return _aggregateTable.lockedText(
-        _materialTableAppendQtyText(row) ?? '—',
+        _qtyTextWithUnit(
+          _materialTableAppendQtyText(row),
+          _materialTableUnitText(row),
+        ),
       );
     }
     if (_tableAggregateDelegatedShare(group) != null &&
@@ -4997,6 +5172,7 @@ abstract class _MaterialAnalysisMaterialTableState
       controller: _tableAppendQtyController(group),
       enabled: !_busy && (_canNotify || _canGenerate),
       hintText: '0',
+      suffixText: group.representative.unitName?.trim(),
       // 追加格也要带动子层(用户口径 2026-09-21：「追加对应的子层级也要追加数量」)。
       // 少这一句时，「还需安排为 0 的已下达中间层」只能在这一格填数，填了却既不
       // 进 _tableUserTypedQty、也不触发重算——子层纹丝不动，提交时还因为提交量
@@ -5009,7 +5185,8 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 数量输入框：填错 / 填少了当场描红(RequiredCellFrame 订阅控制器 + 估算 tick，
-  /// 父行改大让这一行的还需安排涨上去时红框也立刻出现)。
+  /// 父行改大让这一行的还需安排涨上去时红框也立刻出现)。[suffixText] 是
+  /// 2026-10-10 T9 起的单位尾注（单位列退役，单位跟着输入框走）。
   Widget _materialTableQtyField(
     ThemeData theme, {
     required String key,
@@ -5017,6 +5194,7 @@ abstract class _MaterialAnalysisMaterialTableState
     required bool enabled,
     required String hintText,
     required bool Function() invalid,
+    String? suffixText,
     ValueChanged<String>? onTyped,
     ValueChanged<BuildContext>? onFinished,
   }) => Builder(
@@ -5032,11 +5210,14 @@ abstract class _MaterialAnalysisMaterialTableState
           key: ValueKey(key),
           controller: controller,
           enabled: enabled,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           style: theme.textTheme.bodySmall,
           decoration: UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: hintText),
+            InputDecoration(
+              isDense: true,
+              hintText: hintText,
+              suffixText: suffixText,
+            ),
           ),
           // 敲键不 setState：整张表几百行，每敲一下重建一次树会卡。数量本身由
           // controller 驱动重绘，依赖数量的列(办理可办性、筛选桶)在失焦/提交时重算。
@@ -6704,8 +6885,10 @@ abstract class _MaterialAnalysisMaterialTableState
     ),
   );
 
-  /// 「物料 / 调拨」的简化选择器入口：三个调入按钮 + 完整详情。
-  /// 子弹窗返回后由选择器自行刷新可调来源数量。
+  /// 「物料 / 调拨」的简化选择器入口（2026-10-10 口径：调拨只针对其他计划
+  /// 暂用的现货/专属在途，公共在途不进调拨弹窗——可用数量已含它，下单时服务端
+  /// 自动认领；手动采用保留在物料行右键菜单）。子弹窗返回后由选择器自行刷新
+  /// 可调来源数量。
   @override
   Future<void> _showTransferLauncher(_MaterialGroup group) async {
     final analysis = _analysis;
@@ -6719,24 +6902,6 @@ abstract class _MaterialAnalysisMaterialTableState
       qtyText: _qty,
       spotEnabled: !_busy && _canCrossReallocateIn(material),
       futureEnabled: !_busy && _canFutureTransferIn(material),
-      claimEnabled: !_busy && _canClaimMaterialSharedFuture(group),
-      sharedSourceCount: () {
-        final current = _analysis;
-        if (current == null) return 0;
-        final indexes = _analysisIndexes(current);
-        final fresh = indexes.groupsByLine[material.materialLineId];
-        final representative = (fresh ?? group).representative;
-        final refCount = representative.sharedFutureSupplyRefs
-            .where((ref) => ref.availableToClaimQty > 0)
-            .length;
-        if (refCount > 0) return refCount;
-        // 明细来源受权限保护或未展开时，按公共余量/晚到池是否有量兜底为 1，
-        // 避免把可用入口误置灰。
-        final pool =
-            representative.publicSurplusRemainingQty +
-            representative.lateSharedFutureAvailableQty;
-        return pool > 0 ? 1 : 0;
-      },
       onSpotReceive: () =>
           _showCrossReallocationDialog(material, receiveIntoCurrent: true),
       onFutureReceive: () => _showCrossReallocationDialog(
@@ -6744,7 +6909,6 @@ abstract class _MaterialAnalysisMaterialTableState
         receiveIntoCurrent: true,
         futureTransfer: true,
       ),
-      onClaimShared: () => _claimSharedFuture({group.key}),
       onOpenFullDetails: () => _showMaterialTableDetails(group),
     );
   }
@@ -7013,7 +7177,39 @@ abstract class _MaterialAnalysisMaterialTableState
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
+                // 多来源汇总批次不能从单个来源撤（服务端 422 镜像预检，2026-10-10
+                // 补）：前端直接置灰并指引去「按物料汇总」行整批撤回，避免点了
+                // 才收到报错。
                 if (resolution?.complete != false &&
+                    _canCancelSpecificAction(target.actionId) &&
+                    _aggregateActionSpansMultipleSources(target.actionId!))
+                  Tooltip(
+                    message: '该汇总任务同时承接多个来源，不能从单个来源撤回；请到「按物料汇总」视图该行整批撤回。',
+                    child: TextButton.icon(
+                      key: ValueKey(
+                        'material-table-cancel-action-${target.actionId}',
+                      ),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(48, 48),
+                        foregroundColor: theme.colorScheme.error,
+                      ),
+                      onPressed: null,
+                      icon: const Icon(Icons.undo_rounded),
+                      label: Text(
+                        target.notificationReversalPending
+                            ? AppLocalizations.of(
+                                dialogContext,
+                              ).materialNotificationReversalReconcile
+                            : _isSharedFutureClaimAction(target.actionId)
+                            ? '撤回认领'
+                            : _supplyOperationType(target.actionId) ==
+                                  'AGGREGATE_SUPPLY'
+                            ? '整批撤回'
+                            : '撤回',
+                      ),
+                    ),
+                  )
+                else if (resolution?.complete != false &&
                     _canCancelSpecificAction(target.actionId))
                   TextButton.icon(
                     key: ValueKey(
@@ -7054,6 +7250,26 @@ abstract class _MaterialAnalysisMaterialTableState
     );
   }
 
+  /// 该供给行动是否为「同时承接多个来源」的汇总批次（镜像服务端撤回守卫：
+  /// preplan_aggregate_batches.configuration_snapshot.materialLineIds>1）。
+  /// 多来源批次只能走「按物料汇总」行的整批撤回通道，单源撤会被服务端拒绝。
+  bool _aggregateActionSpansMultipleSources(String actionId) {
+    final analysis = _analysis;
+    if (analysis == null) return false;
+    if (_supplyOperationType(actionId) != 'AGGREGATE_SUPPLY') return false;
+    final lines = <String>{};
+    for (final material in analysis.materials) {
+      for (final target in material.notifiedTargets) {
+        if (target.actionId == actionId &&
+            target.status?.toUpperCase() != 'CANCELLED') {
+          lines.add(material.materialLineId);
+        }
+      }
+    }
+    return lines.length > 1;
+  }
+
+  @override
   Future<void> _claimSharedFuture(Set<String> groupKeys) async {
     final analysis = _analysis;
     if (analysis == null || !_canClaimSharedFuture || _busy) return;
@@ -7317,6 +7533,102 @@ abstract class _MaterialAnalysisMaterialTableState
       return false;
     }
     return true;
+  }
+
+  bool get _canCancelPlanningPackage =>
+      _permissions.contains(Perm.productionPlanningPackageCancel);
+
+  /// 汇总视图办理列的「整批撤回」（2026-10-10 用户口径）：顶层/聚合行按自制
+  /// 锚点计划下达后，在这里直接取消**最新一个计划包**——与生产计划详情页同一
+  /// 端点、同一必填原因与幂等键口径。仅未开工且没有执行事实的计划包可取消
+  ///（服务端原子释放占用并关闭可撤销的下游草稿），已开工的会被拒绝并提示去
+  /// 生产计划里办理；取消成功后静默重载分析，已下计划量与缺口当场回滚。
+  Future<bool> _cancelIssuedPlanningPackage({
+    required String planId,
+    required String? planNo,
+  }) async {
+    if (_busy || !_canCancelPlanningPackage) return false;
+    final repo = ref.read(productionPlanRepositoryProvider);
+    bucketActionBusyMessage.value = '正在读取计划包';
+    final String packageId;
+    try {
+      packageId = (await repo.latestPlanningPackageResult(planId)).packageId;
+    } catch (error) {
+      bucketActionBusyMessage.value = null;
+      if (mounted) {
+        context.appWarning(
+          productionErrorMessage(error, fallback: '没有读到可取消的计划包，请到生产计划里核对'),
+        );
+      }
+      return false;
+    }
+    bucketActionBusyMessage.value = null;
+    if (!mounted) return false;
+    final reasonController = TextEditingController();
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '整批撤回生产计划${(planNo ?? '').isEmpty ? '' : '（$planNo）'}',
+      confirmLabel: '确认整批撤回',
+      danger: true,
+      content: SizedBox(
+        width: 460,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '将取消这一行最新下达的生产计划包 $packageId。'
+              '仅未开工且没有执行事实的计划包可取消；系统会原子释放占用并关闭'
+              '可撤销的下游草稿，本分析的缺口随之恢复。',
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            TextField(
+              key: const Key('material-plan-cancel-reason'),
+              controller: reasonController,
+              maxLength: 500,
+              decoration: const InputDecoration(labelText: '撤回原因（必填）'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final reason = reasonController.text.trim();
+    // 不在这里 dispose：弹窗退场动画期间 TextField 还会 rebuild 一次，立即
+    // dispose 会触发「used after being disposed」（与同文件整批撤回供给任务
+    // 的原因框同一处理）。
+    if (!mounted) return false;
+    if (confirmed != true) return false;
+    if (reason.isEmpty) {
+      context.appWarning('必须填写撤回原因');
+      return false;
+    }
+    bucketActionBusyMessage.value = '正在取消生产计划包';
+    try {
+      await repo.changePlanningPackageLifecycle(
+        planId,
+        packageId,
+        ProductionPlanningPackageLifecycleAction.cancel,
+        idempotencyKey: businessIdempotencyKey(
+          'production-planning-package-cancel',
+          '$planId|$packageId|$reason',
+        ),
+        reason: reason,
+      );
+      bucketActionBusyMessage.value = null;
+      if (!mounted) return true;
+      context.appSuccess('生产计划包已取消，占用已释放；分析已按最新事实重载');
+      await _reloadAnalysisSilently(protectUnsavedEditing: true);
+      return true;
+    } catch (error) {
+      bucketActionBusyMessage.value = null;
+      if (mounted) {
+        context.appError(
+          productionErrorMessage(error, fallback: '取消生产计划包失败，请刷新后重试'),
+          force: true,
+        );
+      }
+      return false;
+    }
   }
 
   Future<bool> _cancelMaterialAction(String actionId) async {

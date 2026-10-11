@@ -4,8 +4,9 @@
 // 颜色/单位换算率/上游明细 id
 // 为透传（从上游引入或详情回填时预填，保存时随行写回，UI 不单独编辑）。
 // 2026-09-04 口径：实际重量不再录入（单位已表达重量，行模型 weight 字段保留
-// 供既有单回填/保存透传），单位列紧跟数量之后。
-// purchaseGridColumns：货品/数量/单价/金额 四列。
+// 供既有单回填/保存透传）。
+// 2026-10-10 T9 口径：独立「单位」列撤除，单位内联在数量输入框 suffix。
+// purchaseGridColumns：货品/数量(含单位)/单价/金额 四列。
 import 'package:flutter/material.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -414,12 +415,13 @@ class PurchaseGridRow extends EditableGridRow
 /// [showSource]+[onOpenSource]（订货单）：货品列后加「申请来源」只读列，引入行自动回填
 /// 来源申请单号；点击单号由 [onOpenSource] 跳申请详情（无来源 id 时退化为纯文本）。
 /// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
-/// （订货单）：金额列后加「币种/汇率/税率/结账方式」四列（行级商业条款，保存按组合拆单）。
+/// （订货单）：金额列后加「币种/税率/结账方式」三列（行级商业条款，保存按组合拆单；
+/// 汇率列已撤——2026-10-10 口径：采购不填汇率，财务审批时填，前端提交恒 1）。
 /// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
-/// [showAllowedOverReceipt]（订货单，ADR-144）：金额列后加「允许超收%」列
+/// [showAllowedOverReceipt]（订货单，ADR-144）：数量列后加「允许超收%」列
 /// （货品主档记忆预填带黄标，改值即清）。
-/// 列序（2026-09-04 口径）：数量之后紧跟单位（实际重量列已下线，行模型 weight
-/// 字段保留供既有单回填/保存透传）。
+/// 列序（2026-10-10 T9 口径）：单位内联在数量输入框 suffix（独立单位列已撤，
+/// 实际重量列已下线，行模型 weight 字段保留供既有单回填/保存透传）。
 List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   Future<void> Function(PurchaseGridRow row) onPickGoods, {
   required BuildContext context,
@@ -454,6 +456,21 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       listen: false,
     ).read(masterNameServiceProvider).color(id);
     return name == '—' ? null : name;
+  }
+
+  // 数量格单位后缀（2026-10-10 T9 口径）：单位列撤掉、单位内联在数量后。
+  // 字典未解析时退回原始 unitId；未维护（unitId 空）不占位。单位字典异步
+  // 加载完成后随表格重建自然刷新，suffix 无需单独的监听源。
+  String? unitSuffixOf(PurchaseGridRow r) {
+    final id = r.unitId;
+    if (id == null || id.isEmpty) return null;
+    return unitEntries[id] ?? id;
+  }
+
+  // 固定列（钉左）只读快照同样带单位，与输入框 suffix 口径一致。
+  String qtySnapshotOf(PurchaseGridRow r) {
+    final suffix = unitSuffixOf(r);
+    return suffix == null ? r.qty.text : '${r.qty.text} $suffix';
   }
 
   return [
@@ -639,39 +656,59 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
     EditableGridColumn<PurchaseGridRow>(
       key: 'qty',
       label: '数量',
-      width: 128,
+      // 加宽一档装下 suffix 单位（2026-10-10 T9 内联口径）。
+      width: 150,
       numeric: true,
       required: true,
       headerInfo: l10n.workflowQuantityHint,
-      frozenTextOf: (r) => r.qty.text,
+      frozenTextOf: qtySnapshotOf,
       cellBuilder: (context, row) => RequiredCellFrame(
         listenable: row.qty,
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
         child: TextField(
           controller: row.qty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              hintText: '0',
+              suffixText: unitSuffixOf(row),
+            ),
           ),
         ),
       ),
     ),
-    // 单位紧跟数量（2026-09-04 口径）：单位已表达重量，实际重量列下线。
-    EditableGridColumn<PurchaseGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 84,
-      textOf: (r) => unitEntries[r.unitId] ?? '',
-      cellBuilder: (context, row) => Text(
-        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-        style: TextStyle(
-          color: row.unitId == null
-              ? Theme.of(context).colorScheme.error
-              : Theme.of(context).colorScheme.onSurfaceVariant,
+    // ADR-144 允许超收%（订货单，2026-10-10 列序：紧跟数量）：货品主档记忆预填
+    // （黄标提醒核对，改值即清）；累计收货在 数量×(1+允许超收) 以内照常入库立
+    // 应付，超出部分才转财务。空 = 0%。
+    if (showAllowedOverReceipt)
+      EditableGridColumn<PurchaseGridRow>(
+        key: 'allowedOverReceiptPct',
+        label: '允许超收%',
+        width: 120,
+        numeric: true,
+        headerInfo:
+            '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
+            '在这以内照常入库、立应付；超过的部分才转财务审批。留空 = 不允许超收(按 0%)。'
+            '按货品主档记忆预填，保存后记住本次填写值；财务批准后不能再改。',
+        textOf: (r) => r.allowedOverReceiptPct.text,
+        listenableOf: (r) => r.allowedOverReceiptPct,
+        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+          valueListenable: row.termsAutofilledNotifier,
+          builder: (context, marks, _) => TextField(
+            key: ValueKey('purchase-allowed-over-receipt-${row.hashCode}'),
+            controller: row.allowedOverReceiptPct,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: applyAutofillHint(
+              const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '0'),
+              ),
+              Theme.of(context),
+              autofilled: marks.contains('allowedOverReceipt'),
+            ),
+          ),
         ),
       ),
-    ),
     EditableGridColumn<PurchaseGridRow>(
       key: 'price',
       label: '单价',
@@ -689,7 +726,6 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           controller: row.price,
           onChanged: (_) => row.clearTermsAutofilled('price'),
           onSubmitted: (_) => row.clearTermsAutofilled('price'),
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
             InputDecoration(isDense: true, hintText: '0'),
@@ -724,38 +760,8 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             )
           : LinePricingAmountCell(controller: row.pricing),
     ),
-    // ADR-144 允许超收%（订货单）：货品主档记忆预填（黄标提醒核对，改值即清）；
-    // 累计收货在 数量×(1+允许超收) 以内照常入库立应付，超出部分才转财务。空 = 0%。
-    if (showAllowedOverReceipt)
-      EditableGridColumn<PurchaseGridRow>(
-        key: 'allowedOverReceiptPct',
-        label: '允许超收%',
-        width: 120,
-        numeric: true,
-        headerInfo:
-            '供应商送货允许多于订货量的比例。例如填 5，订 100 件累计最多可收 105 件，'
-            '在这以内照常入库、立应付；超过的部分才转财务审批。留空 = 不允许超收(按 0%)。'
-            '按货品主档记忆预填，保存后记住本次填写值；财务批准后不能再改。',
-        textOf: (r) => r.allowedOverReceiptPct.text,
-        listenableOf: (r) => r.allowedOverReceiptPct,
-        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
-          valueListenable: row.termsAutofilledNotifier,
-          builder: (context, marks, _) => TextField(
-            key: ValueKey('purchase-allowed-over-receipt-${row.hashCode}'),
-            controller: row.allowedOverReceiptPct,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: applyAutofillHint(
-              const UtenInputDecoration(
-                InputDecoration(isDense: true, hintText: '0'),
-              ),
-              Theme.of(context),
-              autofilled: marks.contains('allowedOverReceipt'),
-            ),
-          ),
-        ),
-      ),
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
+    // 汇率列已撤（2026-10-10 口径：采购不填汇率，财务审批时填，前端提交恒 1）。
     if (showCommercial)
       ...procurementCommercialColumns<PurchaseGridRow>(
         context: context,

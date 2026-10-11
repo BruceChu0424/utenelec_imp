@@ -22,6 +22,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
@@ -268,49 +269,73 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
         type: 'number',
         value: (it) => it.exchangeRate?.toStringAsFixed(6),
       ),
+      // 金额「数值 币种」后缀（2026-10-10 口径）：原币列随行 currencyName/Code，
+      // 人民币列恒「元」；行缺币种或金额非数字（—/***)时不拼单位。
       MasterColumnDef(
         key: 'amountOriginal',
         label: directionLabel(ar: '应收款金额', ap: '应付款金额', mixed: '立账金额'),
-        width: 130,
+        width: 160,
         type: 'money',
-        value: (it) => it.amountOriginal?.toStringAsFixed(2),
+        value: (it) => financeMoneyWithUnitSuffix(
+          it.amountOriginal?.toStringAsFixed(2),
+          currencyName: it.currencyName,
+          currencyCode: it.currencyCode,
+        ),
       ),
       MasterColumnDef(
         key: 'amountReceivedOriginal',
         label: directionLabel(ar: '已收款金额', ap: '已付款金额', mixed: '已结算金额'),
-        width: 130,
+        width: 160,
         type: 'money',
-        value: (it) => it.amountReceivedOriginal?.toStringAsFixed(2),
+        value: (it) => financeMoneyWithUnitSuffix(
+          it.amountReceivedOriginal?.toStringAsFixed(2),
+          currencyName: it.currencyName,
+          currencyCode: it.currencyCode,
+        ),
       ),
       MasterColumnDef(
         key: 'amountWriteOffOriginal',
         label: '冲销金额',
-        width: 120,
+        width: 150,
         type: 'money',
-        value: (it) => it.amountWriteOffOriginal?.toStringAsFixed(2),
+        value: (it) => financeMoneyWithUnitSuffix(
+          it.amountWriteOffOriginal?.toStringAsFixed(2),
+          currencyName: it.currencyName,
+          currencyCode: it.currencyCode,
+        ),
       ),
       if (_direction != 'AP')
         MasterColumnDef(
           key: 'prepaymentAppliedOriginal',
           label: '预收已抵',
-          width: 120,
+          width: 150,
           type: 'money',
-          value: (it) => it.prepaymentAppliedOriginal,
+          value: (it) => financeMoneyWithUnitSuffix(
+            it.prepaymentAppliedOriginal,
+            currencyName: it.currencyName,
+            currencyCode: it.currencyCode,
+          ),
         ),
       MasterColumnDef(
         key: 'amountBalanceOriginal',
         label: directionLabel(ar: '未收金额', ap: '未付金额', mixed: '未结金额'),
-        width: 130,
+        width: 160,
         type: 'money',
-        value: (it) => it.amountBalanceOriginal?.toStringAsFixed(2),
+        value: (it) => financeMoneyWithUnitSuffix(
+          it.amountBalanceOriginal?.toStringAsFixed(2),
+          currencyName: it.currencyName,
+          currencyCode: it.currencyCode,
+        ),
       ),
       MasterColumnDef(
         key: 'amountBalance',
         label: directionLabel(ar: '未收人民币', ap: '未付人民币', mixed: '未结人民币'),
-        width: 130,
+        width: 160,
         type: 'money',
         sortable: true,
-        value: (it) => it.amountBalance?.toStringAsFixed(2),
+        value: (it) => financeLocalMoneyWithUnitSuffix(
+          it.amountBalance?.toStringAsFixed(2),
+        ),
       ),
       MasterColumnDef(
         key: 'settled',

@@ -50,7 +50,7 @@ void main() {
     expect(find.text('财务审核'), findsWidgets);
     expect(find.text('仓库作业'), findsOneWidget);
     // ADR-128：出货金额按本单币种写成「币种 金额」。
-    expect(find.text('美金 100.00'), findsOneWidget);
+    expect(find.text('100.00 美金'), findsOneWidget);
   });
 
   testWidgets(

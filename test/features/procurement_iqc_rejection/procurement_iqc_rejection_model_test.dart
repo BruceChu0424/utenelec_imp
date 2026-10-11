@@ -31,11 +31,11 @@ void main() {
     expect(masked.allows(ProcurementIqcRejectionAction.confirmCredit), isTrue);
     expect(masked.localAmountLabel(masked.failedAmountLocal), '***');
     expect(masked.originalAmountLabel(masked.failedAmountOriginal), '***');
-    // ADR-128：本币金额不挂单据币种；原币金额写成「币种 金额」。
+    // ADR-128（2026-10-10 后缀式）：本币金额不挂单据币种；原币金额写成「金额 币种」。
     expect(visible.localAmountLabel(visible.failedAmountLocal), '125.50');
     expect(
       visible.originalAmountLabel(visible.failedAmountOriginal),
-      'CNY 125.50',
+      '125.50 CNY',
     );
     expect(visible.localAmountLabel(null), '待核对');
   });
@@ -56,11 +56,11 @@ void main() {
     });
 
     expect(usd.currencyName, '美金');
-    expect(usd.originalAmountLabel(usd.failedAmountOriginal), '美金 10.00');
+    expect(usd.originalAmountLabel(usd.failedAmountOriginal), '10.00 美金');
     expect(usd.localAmountLabel(usd.failedAmountLocal), '72.10');
     expect(
       unnamed.originalAmountLabel(unnamed.failedAmountOriginal),
-      '原币 125.50',
+      '125.50',
     );
   });
 

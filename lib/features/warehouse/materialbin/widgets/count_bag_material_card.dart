@@ -141,7 +141,6 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
         key: key,
         controller: controller,
         enabled: widget.enabled,
-        textAlign: TextAlign.right,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         textInputAction: TextInputAction.done,
         decoration: InputDecoration(isDense: true, hintText: hint ?? '0'),

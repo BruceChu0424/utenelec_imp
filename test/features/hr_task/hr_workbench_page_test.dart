@@ -1,6 +1,8 @@
 // HR 工作台「证件核对」：事务入口只给能修改证件的人(超管或 employee:pii:edit)；
 // 卡片待办数 = UtenNotificationBadge 红色通知徽章(>0)/中性灰 0 常显(2026-10-06
-// 重做：概览 4 统计卡与证件红横幅已退役，数字并入卡片徽章)。
+// 重做：概览 4 统计卡与证件红横幅已退役，数字并入卡片徽章)；红数只计今日口径
+// (转正=逾期+今日、生日/周年=今日，临近/30天内只在说明行，2026-10-10 与工作台
+// hrTaskCenter 徽章对齐)。
 // 版式改版回归：事务办理=自适应小卡网格(桌面 5 列)、快捷发布祝福=紧凑胶囊横排、
 // 右下悬浮「入职登记」按权限出没。
 import 'package:flutter/material.dart';
@@ -140,6 +142,42 @@ void main() {
     await tester.tap(find.byKey(_identityEntry));
     await tester.pumpAndSettle();
     expect(find.text('task-list:identity'), findsOneWidget);
+  });
+
+  testWidgets('事务卡红数只计今日口径：临近转正/30天内生日不进红数，说明行仍体现', (tester) async {
+    final summary = HrTaskSummary(
+      generatedAt: '2026-10-10T08:00:00+08:00',
+      probationMonths: 3,
+      confirmToday: [_item('c1', '预计今日转正，请及时办理')],
+      confirmUpcoming: List.generate(3, (i) => _item('u$i', '')),
+      confirmOverdue: [_item('o1', '已过预计转正日，待办理或核实')],
+      unconfirmedLegacyCount: 0,
+      birthdayToday: [_item('b1', '今日生日')],
+      birthdayUpcoming: List.generate(12, (i) => _item('p$i', '')),
+      anniversaryToday: [_item('a1', '入职满 5 年')],
+      newHires: [_item('n1', ''), _item('n2', '')],
+      identityReview: const [],
+      badgeCount: 4,
+    );
+    await _pump(
+      tester,
+      summary,
+      permissions: const {Perm.employeeView, Perm.employeePiiEdit},
+    );
+
+    int badgeCount(String type) =>
+        tester.widget<UtenNotificationBadge>(
+          find.byKey(ValueKey('hr-workbench-entry-count-$type')),
+        ).count;
+    // 红数 = 今天要办的事：转正=逾期1+今日1(临近3不计)、生日=今日1(30天内12不计)、
+    // 周年=今日1、新入职=近30天全量(无「临近」概念，维持原样)。
+    expect(badgeCount('confirm'), 2, reason: '临近转正不进红数');
+    expect(badgeCount('birthday'), 1, reason: '30天内生日不进红数');
+    expect(badgeCount('anniversary'), 1);
+    expect(badgeCount('newhire'), 2);
+    // 临近/30 天内的量不丢：仍在卡片口径说明行里以文字体现。
+    expect(find.text('逾期 1 · 今日 1 · 临近 3'), findsOneWidget);
+    expect(find.text('今日 1 · 30 天内 12'), findsOneWidget);
   });
 
   testWidgets('没有 pii:edit 不显示证件核对入口；无人待核对时徽章位显示灰 0', (tester) async {

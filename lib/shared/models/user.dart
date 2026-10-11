@@ -3,6 +3,9 @@
 //
 // 角色体系已删除(ADR-109)：用户只有权限点，没有角色。
 
+/// 档案快照按值比较：access token 静默刷新（约每 15 分钟一次）会带回一份
+/// 新解析的 [AppUser]，内容与当前一致时必须判等，否则 SessionState 会被
+/// 换成"内容相同的新对象"，全站身份栅栏将 token 刷新误判为换号。
 class AppUser {
   const AppUser({
     required this.id,
@@ -39,6 +42,39 @@ class AppUser {
   bool can(String perm) => superAdmin || permissions.contains(perm);
 
   /// 是否拥有任一指定功能权限点（super admin 一律 true）。
-  /// 用于"多级权限任一满足即可见/可进"的场景（如客户资料 self/department/all）。
+  /// 用于"多级权限任一满足即可见/可进"的场景(如客户资料 self/department/all)。
   bool canAny(List<String> perms) => perms.any(can);
+
+  @override
+  bool operator ==(Object other) =>
+      other is AppUser &&
+      other.id == id &&
+      other.code == code &&
+      other.name == name &&
+      other.department == department &&
+      other.position == position &&
+      other.superAdmin == superAdmin &&
+      other.employeeId == employeeId &&
+      other.businessResetGeneration == businessResetGeneration &&
+      _samePermissions(other.permissions);
+
+  /// 权限点按集合比较：服务端合成顺序不稳定，同内容不同序仍是同一份档案。
+  bool _samePermissions(List<String> other) {
+    if (other.length != permissions.length) return false;
+    final owned = permissions.toSet();
+    return other.every(owned.contains);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    code,
+    name,
+    department,
+    position,
+    superAdmin,
+    employeeId,
+    businessResetGeneration,
+    Object.hashAllUnordered(permissions),
+  );
 }

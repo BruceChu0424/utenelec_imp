@@ -455,6 +455,12 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
     required List<ProcurementInspectionDecideItem> items,
     String? reason,
   }) async {}
+
+  @override
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
+    String? reason,
+  }) async {}
 }
 
 class _FqcApi extends ApiClient {

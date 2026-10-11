@@ -80,6 +80,12 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         qty("10",candidates.getItems().getFirst().sourceLendableQty());
         qty("14",candidates.getItems().getFirst().shortageQty());
         assertEquals(1,reallocations.candidates(a.analysisId(),am.materialLineId(),null,1,20).getTotal());
+        // 2026-10-10：批量可调池与逐行 sources() 同源——真库执行一遍钉住三处
+        // 谓词（含根供行放开后的 node_role 条件）。此刻只有 a 是供方(10)、b 是
+        // 接收方；b 的根行是另一货品维度且无供方，不进池。
+        var summary = reallocations.transferableInSummary(b.analysisId());
+        assertEquals(1,summary.qtyByMaterialLineId().size());
+        qty("10",summary.qtyByMaterialLineId().get(bm.materialLineId()));
         AnalysisView outsider = preview(world,other,product,"other","4");
         assertTrue(reallocations.sources(outsider.analysisId(),material(outsider,material).materialLineId(),null,1,20).getItems().isEmpty());
         final UUID sourceId = a.analysisId();

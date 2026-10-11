@@ -443,8 +443,9 @@ String _goodsLabel(GoodsListItem goods) {
   return code == null || code.isEmpty ? '所选货品' : code;
 }
 
-/// 手工需求单货品明细表的列：货品名称(点选) / 编号 / 颜色 / 规格 / 单位(随货品带出，
-/// 只读) / 数量(必填) / 需求日(选填，空 = 按单头需求日期)。
+/// 手工需求单货品明细表的列：货品名称(点选) / 编号 / 颜色 / 规格 / 数量(必填，
+/// 单位随货品带出、内联在输入框后缀——2026-10-10 数量内联口径) / 需求日(选填，
+/// 空 = 按单头需求日期)。
 List<EditableGridColumn<MaterialManualDemandLine>>
 materialManualDemandGridColumns({
   required void Function(MaterialManualDemandLine line) onPickGoods,
@@ -532,33 +533,33 @@ materialManualDemandGridColumns({
       cellBuilder: (context, line) =>
           goodsAttribute(line, (goods) => goods.spec),
     ),
-    EditableGridColumn<MaterialManualDemandLine>(
-      key: 'unit',
-      label: '单位',
-      width: 90,
-      textOf: (line) => line.goods == null ? '' : unitNameOf(line.goods!) ?? '',
-      listenableOf: (line) => line.goodsNotifier,
-      cellBuilder: (context, line) => goodsAttribute(line, unitNameOf),
-    ),
+    // 2026-10-10 数量内联口径：独立「单位」列撤销，单位跟在数量输入框后缀，
+    // 随选货品回填即时刷新。
     EditableGridColumn<MaterialManualDemandLine>(
       key: 'qty',
       exactValueOf: (r) => r.qty.text,
       exactListenableOf: (r) => r.qty,
       label: '数量',
-      width: 120,
+      width: 154,
       numeric: true,
       required: true,
       frozenTextOf: (line) => line.qty.text,
       cellBuilder: (context, line) => RequiredCellFrame(
         listenable: line.qty,
         isEmpty: () => (line.qtyValue ?? 0) <= 0,
-        child: TextField(
-          controller: line.qty,
-          enabled: enabled,
-          textAlign: TextAlign.right,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+        child: ValueListenableBuilder<GoodsListItem?>(
+          valueListenable: line.goodsNotifier,
+          builder: (context, goods, _) => TextField(
+            controller: line.qty,
+            enabled: enabled,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: UtenInputDecoration(
+              InputDecoration(
+                isDense: true,
+                hintText: '0',
+                suffixText: goods == null ? null : unitNameOf(goods),
+              ),
+            ),
           ),
         ),
       ),

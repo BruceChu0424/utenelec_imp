@@ -129,29 +129,28 @@ class PartyOpenBalance {
     );
   }
 
-  /// 单据币种一档的「还差多少」：「美金 12000.00」或「预收有余 美金 200.00」。
+  /// 单据币种一档的「还差多少」：「12000.00 美金」或「预收有余 200.00 美金」。
   String headline(PartyBalanceSide side) =>
       partyNetText(netOriginal, currencyName: currencyName, side: side);
 
-  /// 单据币种下的应收(应付)未结，「美金 500.00」。
+  /// 单据币种下的应收(应付)未结，「500.00 美金」。
   String get openText => _documentMoney(openOriginal);
 
-  /// 单据币种下的可用预收(可抵)，「美金 100.00」。
+  /// 单据币种下的可用预收(可抵)，「100.00 美金」。
   String get creditText => _documentMoney(creditOriginal);
 
-  /// 按本位币显示一笔本币金额，「人民币 3500.00」。
-  String baseMoneyText(String? amount) => financeMoneyWithCurrency(
+  /// 按本位币显示一笔本币金额，「3500.00 元」。
+  String baseMoneyText(String? amount) => financeMoneyWithUnitSuffix(
     amount,
     currencyName: baseCurrencyName,
-    fallback: '本币',
   );
 
-  /// 其它币种：「另有 人民币 30000.00、预收有余 港币 500.00」；没有时为 null。
+  /// 其它币种：「另有 30000.00 元、预收有余 500.00 港币」；没有时为 null。
   String? otherCurrenciesText(PartyBalanceSide side) => otherCurrencies.isEmpty
       ? null
       : '另有 ${otherCurrencies.map((other) => other.netText(side)).join('、')}';
 
-  /// 原币未核实：「另有历史应收 人民币 1200.00 原币未核实」；没有时为 null。
+  /// 原币未核实：「另有历史应收 1200.00 元 原币未核实」；没有时为 null。
   String? unverifiedText(PartyBalanceSide side) => _sign(unverifiedLocal) == 0
       ? null
       : '另有历史${side == PartyBalanceSide.customer ? '应收' : '应付'} '
@@ -166,14 +165,13 @@ class PartyOpenBalance {
     return parts.isEmpty ? null : parts.join('；');
   }
 
-  String _documentMoney(String amount) => financeMoneyWithCurrency(
+  String _documentMoney(String amount) => financeMoneyWithUnitSuffix(
     amount,
     currencyName: currencyName,
-    fallback: '单据币种',
   );
 }
 
-/// 一个币种的「还差多少」：正数(还欠)写「币种 金额」；负数写「预收有余 币种 金额」
+/// 一个币种的「还差多少」：正数(还欠)写「金额 币种」；负数写「预收有余 金额 币种」
 /// (供应商写「可抵有余」，因为里面可能是预付，也可能是退货或索赔贷项)。
 String partyNetText(
   String? netOriginal, {
@@ -183,14 +181,10 @@ String partyNetText(
   final net = financeExactDecimal(netOriginal);
   if (net == null) return '—';
   if (_sign(net) >= 0) {
-    return financeMoneyWithCurrency(
-      net,
-      currencyName: currencyName,
-      fallback: '单据币种',
-    );
+    return financeMoneyWithUnitSuffix(net, currencyName: currencyName);
   }
   final surplus = side == PartyBalanceSide.customer ? '预收有余' : '可抵有余';
-  return '$surplus ${financeMoneyWithCurrency(net.substring(1), currencyName: currencyName, fallback: '单据币种')}';
+  return '$surplus ${financeMoneyWithUnitSuffix(net.substring(1), currencyName: currencyName)}';
 }
 
 int _sign(String? decimal) => financeAmountUnits(decimal)?.sign ?? 0;

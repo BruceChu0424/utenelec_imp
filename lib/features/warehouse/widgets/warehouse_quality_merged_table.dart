@@ -7,6 +7,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../models/warehouse_quality_result.dart';
@@ -107,7 +108,8 @@ List<WarehouseQualityMergedRow> warehouseQualityRowsForDetail(
 
 /// 单张详情与批量入库共用的检查结果、来源和实际点收表。
 ///
-/// 来源商、目标叶仓、实际库位、单位和合格待入量均逐行保留，本次实收单独输入；
+/// 来源商、目标叶仓、实际库位和合格待入量均逐行保留（单位随数量内联显示，
+/// 2026-10-10 口径），本次实收单独输入；
 /// 其后只读「放行重量」= 本次实收按到货实称分摊的重量(ADR-135，入库时就按它记库存账)。
 /// 批量入口加来源收货单列；相同货品的不同放行切片始终是不同来源行。
 /// 三个总量列是明细行级口径（多放行切片行各自重复展示同一行总量，切片 i/n 已标注）；
@@ -265,24 +267,20 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         cellBuilder: (context, row) =>
             UtenGoodsAttributeCell(row.line.colorName),
       ),
-      EditableGridColumn(
-        key: 'unit',
-        label: '单位',
-        width: 64,
-        filterValueOf: (row) => row.unitName,
-        cellBuilder: (context, row) => Text(row.unitName ?? '—'),
-      ),
+      // 2026-10-10「数量 + 单位」内联口径：单位列删除，四个数量列单位直接跟数字
+      // （本次实收输入格的单位在 suffixText，见 _remainingCell）。
       EditableGridColumn(
         key: 'remaining',
         exactValueOf: (row) =>
             (row.draft?.slice.remainingBaseQty ?? row.line.pendingStockBaseQty)
                 .toString(),
         label: '合格待入量',
-        width: 110,
+        width: 145,
         numeric: true,
         cellBuilder: (context, row) => Text(
-          warehouseQualityQuantity(
+          _qty(
             row.draft?.slice.remainingBaseQty ?? row.line.pendingStockBaseQty,
+            row.unitName,
           ),
         ),
       ),
@@ -565,10 +563,9 @@ class WarehouseQualityMergedTable extends StatelessWidget {
               error: utenFieldError(
                 draft.selected ? draft.quantityError : null,
               ),
+              // 单位后缀色走主题 suffixStyle（2026-10-10 用户口径：正文色），
+              // 不再本地压灰。
               suffixText: draft.slice.unitName,
-              suffixStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
             ),
           ),
           onChanged: (_) => onChanged(),
@@ -609,7 +606,6 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             key: ValueKey(
               'quality-slice-released-weight-${draft.slice.passEventId}',
             ),
-            textAlign: TextAlign.right,
             style: draft.previewWeightKg == null
                 ? theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -708,5 +704,7 @@ Color? _verdictRowColor(
   };
 }
 
+/// 数量 + 单位 (2026-10-10 内联口径)：品质数量最多 4 位小数，走
+/// [formatQtyWithUnit] 拼单位并放宽到 4 位，不截断原有精度。
 String _qty(double value, String? unit) =>
-    '${warehouseQualityQuantity(value)}${unit == null ? '' : ' $unit'}';
+    formatQtyWithUnit(value, unit, maxDecimals: 4);

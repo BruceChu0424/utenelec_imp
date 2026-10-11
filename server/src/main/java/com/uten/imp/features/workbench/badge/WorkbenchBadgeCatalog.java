@@ -71,8 +71,10 @@ enum WorkbenchBadgeCatalog {
     productionDrafts(Module.production, facts("drafts.productionPlan", "drafts.productionDailyReport"), none()),
 
     // —— 车间(车间工视角, 工作台另有一张卡, 与生产管理卡分开计) ——
-    /** 我的车间任务: 红 = 等待物料(要去领料); 黄 = 生产中。 */
-    productionWorkshop(Module.workshop, facts("workshopTask.preparing"), facts("workshopTask.inProgress")),
+    /** 我的车间任务: 红 = 等待物料(要去领料); 黄 = 生产中 + 报工送检(在办不归我动手,
+     * 两桶互斥相加, 与拆分前的单一 inProgress 口径一致)。 */
+    productionWorkshop(Module.workshop, facts("workshopTask.preparing"),
+            facts("workshopTask.inProgress", "workshopTask.reportInspection")),
 
     // —— 研发 ——
     /** 工程研发部任务中心: 红 = 待认领; 黄 = 已认领在办。 */

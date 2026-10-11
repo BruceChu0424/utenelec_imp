@@ -212,6 +212,11 @@ abstract final class ApiEndpoints {
     String receiptType,
     String receiptId,
   ) => '/procurement/inspection/$receiptType/$receiptId/decide-batch';
+
+  /// 品质批量审批整份检验报告（2026-10-10）：多张收货单一次请求原子提交，
+  /// 替代前端逐单循环发 decide-batch。
+  static const procurementInspectionDecideReport =
+      '/procurement/inspection/decide-report';
   static const procurementArrivalExceptionTasks =
       '/procurement/arrival-exceptions/tasks';
   static const financeArrivalExceptionTasks =

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_autofill_text_controller.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/measurement/weight_predictor.dart';
@@ -176,13 +177,17 @@ String? _tooltip(WidgetTester tester) => tester
 
 String? _cellMessage(WidgetTester tester) {
   final finder = find.byKey(const ValueKey('weight-cell-message'));
-  if (finder.evaluate().isNotEmpty) {
-    return tester.widget<UtenFieldMessage>(finder.first).message;
-  }
-  final suggestion = find.byKey(const ValueKey('weight-cell-suggestion'));
-  return suggestion.evaluate().isEmpty
+  return finder.evaluate().isEmpty
       ? null
-      : tester.widget<Text>(suggestion.first).data;
+      : tester.widget<UtenFieldMessage>(finder.first).message;
+}
+
+/// 预填建议态的口径 (2026-10-10 起): 不再有「≈」前缀和格下「预估 · 请填实称」
+/// 小字，改为全站预填黄框 + ⓘ (UtenInputDecoration.autofilled)。
+void _expectSuggestedDecoration(WidgetTester tester) {
+  final decoration = _input(tester).decoration!;
+  expect(decoration, isA<UtenInputDecoration>());
+  expect((decoration as UtenInputDecoration).autofilled, isTrue);
 }
 
 void main() {
@@ -275,7 +280,7 @@ void main() {
     );
   });
 
-  testWidgets('真实表格150像素重量列带称重按钮，预估和黄色提示均在格内完整布局', (tester) async {
+  testWidgets('真实表格150像素重量列带称重按钮，黄框预填与偏差提示均在格内完整布局', (tester) async {
     final row = _Row(params: _stock, qty: '1000');
     await _pump(
       tester,
@@ -283,22 +288,8 @@ void main() {
       mode: WeightCaptureMode.outbound,
       weighButton: true,
     );
-    final estimate = find.text('预估 · 请填实称');
-    expect(estimate, findsOneWidget);
-    expect(
-      tester.getRect(estimate).bottom,
-      lessThanOrEqualTo(
-        tester
-            .getRect(find.byKey(const ValueKey('weight-cell-content')))
-            .bottom,
-      ),
-    );
-    expect(
-      tester.getRect(estimate).right,
-      lessThanOrEqualTo(
-        tester.getRect(find.byKey(const ValueKey('weight-cell-content'))).right,
-      ),
-    );
+    _expectSuggestedDecoration(tester);
+    expect(find.byKey(const ValueKey('weight-cell-suggestion')), findsNothing);
     await tester.enterText(_inputs.first, '1');
     await tester.pumpAndSettle();
     final warning = find.text('数值可能有问题');
@@ -455,6 +446,30 @@ void main() {
     expect(b.weight.text.text, isEmpty);
   });
 
+  testWidgets('输入首字符后焦点保持：说明出现不重建输入框（不再要点第二次）', (tester) async {
+    // 2026-10-10 根因修复回归锁：外层 Tooltip 曾按「有/无说明」切换包裹结构，
+    // 第一击键让说明从无到有，TextField 元素被废弃重建、焦点丢失，用户必须
+    // 再点一次才能继续输。结构恒定后焦点必须全程保持。
+    final row = _Row(params: _stock, qty: '1000');
+    await _pump(tester, [row], mode: WeightCaptureMode.outbound);
+    await tester.enterText(_inputs.first, '1');
+    await tester.pump();
+    final focusNode = _input(tester).focusNode;
+    expect(focusNode, isNotNull);
+    expect(focusNode!.hasFocus, isTrue, reason: '首个字符击键后焦点仍在重量格');
+    await tester.enterText(_inputs.first, '12');
+    await tester.pump();
+    expect(_input(tester).focusNode!.hasFocus, isTrue);
+    expect(row.weight.text.text, '12');
+    // 清空回说明消失态再输入，结构反向切换同样不得丢焦点。
+    await tester.enterText(_inputs.first, '');
+    await tester.pump();
+    await tester.enterText(_inputs.first, '3');
+    await tester.pump();
+    expect(_input(tester).focusNode!.hasFocus, isTrue);
+    expect(row.weight.kg, 3);
+  });
+
   testWidgets('货品按重量计: 只读「=25 kg」, 没有输入框', (tester) async {
     final row = _Row(params: _exactKg, qty: '25');
     await _pump(tester, [row]);
@@ -468,13 +483,14 @@ void main() {
     expect(find.text('=30 kg'), findsOneWidget);
   });
 
-  testWidgets('可信单重实际预填且标为预估，未学准保持可选空值', (tester) async {
+  testWidgets('可信单重实际预填且黄框待核对，未学准保持可选空值', (tester) async {
     final inbound = _Row(params: _learned, qty: '10000');
     await _pump(tester, [inbound]);
     expect(inbound.weight.text.text, '19.9926');
     expect(inbound.weight.kg, isNull);
     expect(inbound.weight.isSuggested, isTrue);
-    expect(_cellMessage(tester), '预估 · 请填实称');
+    _expectSuggestedDecoration(tester);
+    expect(_tooltip(tester), contains('尚未实称'));
 
     await _pump(tester, [
       _Row(params: _learned, qty: '10000'),

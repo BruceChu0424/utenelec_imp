@@ -305,8 +305,8 @@ void main() {
       _expectQuantityCard(tester, 'remaining', '700');
       expect(find.textContaining('SC-1'), findsOneWidget);
       expect(find.textContaining('V5-001'), findsOneWidget);
-      expect(find.text('150'), findsOneWidget);
-      expect(find.text('千克'), findsOneWidget);
+      // 2026-10-10 数量内联口径：单位列撤销，数量格直接显示「150 千克」。
+      expect(find.text('150 千克'), findsOneWidget);
       expect(repository.submissions, isEmpty);
       await tester.tap(find.byKey(_submitKey));
       await tester.pumpAndSettle();
@@ -368,7 +368,7 @@ void main() {
       expect(find.textContaining('留待后续安排'), findsWidgets);
       expect(find.textContaining('继续等待物料'), findsNothing);
       expect(find.textContaining('缺口'), findsNothing);
-      expect(find.text('100'), findsOneWidget);
+      expect(find.text('100 千克'), findsOneWidget);
       await tester.tap(find.byKey(_submitKey));
       await tester.pumpAndSettle();
       expect(repository.submissions.single.preview.quantity, 200);
@@ -473,7 +473,7 @@ void main() {
         tester.widget<UtenButton>(find.byKey(_submitKey)).type,
         UtenButtonType.danger,
       );
-      final materialQuantity = find.text('150');
+      final materialQuantity = find.text('150 千克');
       expect(
         tester.widget<Text>(materialQuantity).style?.color,
         Theme.of(tester.element(materialQuantity)).colorScheme.error,
@@ -508,7 +508,7 @@ void main() {
     ]);
     await tester.drag(find.byKey(_tableKey), const Offset(-300, 0));
     await tester.pumpAndSettle();
-    final quantityRect = tester.getRect(find.text('150'));
+    final quantityRect = tester.getRect(find.text('150 千克'));
     expect(quantityRect.left, greaterThanOrEqualTo(0));
     expect(quantityRect.right, lessThanOrEqualTo(390));
     expect(tester.takeException(), isNull);

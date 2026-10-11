@@ -946,6 +946,23 @@ class _FakeInspectionRepository implements ProcurementInspectionRepository {
     inspectionItems.removeWhere((item) => ids.contains(item.id));
     if (inspectionItems.isEmpty) receipts.clear();
   }
+
+  @override
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
+    String? reason,
+  }) async {
+    // 2026-10-10 起待检处置页与批量审批页统一走整份报告 decide-report；
+    // 按收货单展开记录，断言口径与原 decide-batch 记录同构。
+    for (final receipt in receipts) {
+      decideBatchCalls.add(
+        _DecideBatchCall(items: List.of(receipt.items), reason: reason),
+      );
+      final ids = receipt.items.map((item) => item.inspectionItemId).toSet();
+      inspectionItems.removeWhere((item) => ids.contains(item.id));
+    }
+    if (inspectionItems.isEmpty) this.receipts.clear();
+  }
 }
 
 class _QualityReviewerSessionNotifier extends SessionNotifier {

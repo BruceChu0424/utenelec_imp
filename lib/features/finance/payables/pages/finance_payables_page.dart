@@ -29,6 +29,7 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/currency_display.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/formatters/money_display.dart';
 import '../../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../basic_data/models/reference_method_option.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
@@ -472,62 +473,81 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       width: 120,
       value: (item) => item.openItemKindLabel,
     ),
+    // 金额「数值 币种」后缀（2026-10-10 口径）：原币列随行 currencyName/Code，
+    // 本币列恒「元」；列头保留 (原币)/(本币) 区分口径，行缺币种或金额非数字
+    // （—/***)时不拼单位。
     MasterColumnDef(
       key: 'grossOriginal',
       label: '应付(原币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.grossOriginal,
+      value: (item) => financeMoneyWithUnitSuffix(
+        item.grossOriginal,
+        currencyName: item.currencyName,
+        currencyCode: item.currencyCode,
+      ),
     ),
     MasterColumnDef(
       key: 'grossLocal',
       label: '应付(本币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.grossLocal,
+      value: (item) => financeLocalMoneyWithUnitSuffix(item.grossLocal),
     ),
     MasterColumnDef(
       key: 'paidOriginal',
       label: '现金已付(原币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.paidOriginal,
+      value: (item) => financeMoneyWithUnitSuffix(
+        item.paidOriginal,
+        currencyName: item.currencyName,
+        currencyCode: item.currencyCode,
+      ),
     ),
     MasterColumnDef(
       key: 'paidLocal',
       label: '现金已付(本币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.paidLocal,
+      value: (item) => financeLocalMoneyWithUnitSuffix(item.paidLocal),
     ),
     MasterColumnDef(
       key: 'offsetOriginal',
       label: '抵销(原币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.offsetOriginal,
+      value: (item) => financeMoneyWithUnitSuffix(
+        item.offsetOriginal,
+        currencyName: item.currencyName,
+        currencyCode: item.currencyCode,
+      ),
     ),
     MasterColumnDef(
       key: 'offsetLocal',
       label: '抵销(本币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.offsetLocal,
+      value: (item) => financeLocalMoneyWithUnitSuffix(item.offsetLocal),
     ),
     MasterColumnDef(
       key: 'outstandingOriginal',
       label: '未付(原币)',
-      width: 120,
+      width: 150,
       type: 'money',
       sortable: true,
-      value: (item) => item.outstandingOriginal,
+      value: (item) => financeMoneyWithUnitSuffix(
+        item.outstandingOriginal,
+        currencyName: item.currencyName,
+        currencyCode: item.currencyCode,
+      ),
     ),
     MasterColumnDef(
       key: 'outstandingLocal',
       label: '未付(本币)',
-      width: 120,
+      width: 150,
       type: 'money',
-      value: (item) => item.outstandingLocal,
+      value: (item) => financeLocalMoneyWithUnitSuffix(item.outstandingLocal),
     ),
     MasterColumnDef(
       key: 'overdueDays',

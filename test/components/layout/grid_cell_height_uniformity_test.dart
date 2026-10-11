@@ -102,6 +102,38 @@ void main() {
       );
     });
 
+    // 实称重量格同款（weight_grid_column 2026-10-10 口径）：黄框预填 + ⓘ + 24 槽
+    // 称重按钮。此前 44×44 按钮槽把整格撑高，与同行输入格不齐——本用例锁住
+    // 「suffix 24 槽 + 16 图标不再撑高」的规格。
+    heights['实称重量格（称重按钮24槽+黄框ⓘ）'] = await measureCell(tester, (ctx) {
+      return TextField(
+        controller: TextEditingController(text: '20'),
+        decoration: applyAutofillHint(
+          UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              suffixIconConstraints: const BoxConstraints(
+                minWidth: 24,
+                minHeight: 24,
+              ),
+              suffixIcon: IconButton(
+                onPressed: () {},
+                constraints: const BoxConstraints.tightFor(
+                  width: 24,
+                  height: 24,
+                ),
+                padding: const EdgeInsets.all(4),
+                icon: const Icon(Icons.scale_outlined, size: 16),
+              ),
+            ),
+            info: '系统预填；预估 20 kg，尚未实称。请输入秤上读数。',
+          ),
+          Theme.of(ctx),
+          autofilled: true,
+        ),
+      );
+    });
+
     heights['下拉 空'] = await measureCell(
       tester,
       (ctx) => UtenDropdownField(

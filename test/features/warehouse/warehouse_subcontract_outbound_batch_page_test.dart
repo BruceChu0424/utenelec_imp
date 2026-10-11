@@ -123,7 +123,7 @@ void main() {
     });
   }
 
-  testWidgets('实称重量列紧跟单位，录入的千克随草稿保存且不改数量', (tester) async {
+  testWidgets('实称重量列紧跟本次出库，录入的千克随草稿保存且不改数量', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = SubcontractOutboundFakeApi();
@@ -133,7 +133,9 @@ void main() {
       find.byType(UtenEditableGrid<SubcontractOutboundTableRow>),
     );
     final order = grid.initialColumnOrder!;
-    expect(order.indexOf('weight'), order.indexOf('unit') + 1);
+    // 2026-10-10 口径：独立「单位」列删除(数量内联单位)，实称重量紧跟「本次出库」。
+    expect(order.indexOf('weight'), order.indexOf('quantity') + 1);
+    expect(order.contains('unit'), isFalse);
     expect(find.text('实称重量(kg)'), findsOneWidget);
     final table = tester.widget<SubcontractOutboundDetailTable>(
       find.byType(SubcontractOutboundDetailTable),
@@ -496,7 +498,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('单据信息'));
+    // 2026-10-10 口径：「单据信息」折叠标题已删，单据卡直接渲染(不再折叠占位)；
+    // 窄屏下卡片占满首屏，滚到明细表再断言它仍可横向滚动。
+    expect(find.text('单据信息'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byType(SubcontractOutboundDetailTable),
+      240,
+    );
     await tester.pumpAndSettle();
     expect(find.byType(SubcontractOutboundDetailTable), findsOneWidget);
     expect(

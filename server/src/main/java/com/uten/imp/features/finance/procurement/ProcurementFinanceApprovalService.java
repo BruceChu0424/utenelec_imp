@@ -159,14 +159,34 @@ public class ProcurementFinanceApprovalService {
      * 批量通过使用一个事务和稳定的订货类型/UUID 顺序。任一项的 case、版本、
      * 快照或副作用失败都会回滚整批，禁止客户端循环单笔接口形成半批事实。
      * remark 为选填审批备注，写入通过事件快照留痕（可空）。
+     * 兼容旧签名：无财务汇率，缺省视为 1（V835 之前的调用口径不变）。
      */
     @Transactional
     @PreAuthorize("hasAuthority('finance_order_approval:approve')")
     public BatchDecisionResponse approveBatch(
             List<BatchDecisionItem> rawItems,
             String remark) {
+        return approveBatch(rawItems, remark, null);
+    }
+
+    /**
+     * 同上（V835 财务汇率口径，2026-10-10）：采购/委外创建时不填汇率（订单表头
+     * 默认 1），财务审批时填写当日汇率。整批共用一个 exchangeRate（>0、≤6 位
+     * 小数；未填时逐单解析缺省——沿用该单最近一次已批的财务汇率，再退提交快照
+     * 汇率，最后退 1），审批通过同一事务写 case.finance_exchange_rate 与
+     * finance_total_local = total_original × rate 的完整乘积（MoneyPolicy.local，
+     * 不舍入）；不回写订单表头（V438 商业冻结），不触碰 submission_snapshot /
+     * snapshot_hash。驳回不写。
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
+    public BatchDecisionResponse approveBatch(
+            List<BatchDecisionItem> rawItems,
+            String remark,
+            BigDecimal exchangeRate) {
         tx.bind();
         requireEligibleReviewer();
+        BigDecimal explicitRate = normalizeFinanceExchangeRate(exchangeRate);
         List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
         var mutationGuard=mutationLocks.orders(items.stream().map(item ->
                 new com.uten.imp.common.concurrency.ProcurementMutationFootprint.OrderRef(item.orderType(),item.orderId())).toList());
@@ -179,7 +199,9 @@ public class ProcurementFinanceApprovalService {
                     item.orderId(),
                     item.expectedVersion(),
                     item.caseId(),
-                    normalizeOptionalRemark(remark)));
+                    normalizeOptionalRemark(remark),
+                    exchangeRate,
+                    explicitRate));
         }
         return new BatchDecisionResponse(decisions.size(), decisions);
     }
@@ -189,7 +211,9 @@ public class ProcurementFinanceApprovalService {
             UUID orderId,
             long expectedVersion,
             UUID expectedCaseId,
-            String remark) {
+            String remark,
+            BigDecimal rawExchangeRate,
+            BigDecimal explicitRate) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         // V486 批准后改量复核：订单已批准时本 case 是「改后待复核」，数量变化
@@ -212,6 +236,15 @@ public class ProcurementFinanceApprovalService {
         if (!reconfirmation) {
             port.applyFinanceApproval(orderId, actorEmployee);
         }
+        // V835 财务汇率：与 APPROVED 同一事务落 case 新列；乘积完整不舍入
+        // （MoneyPolicy.local，ADR-112），订单侧事实不动（V438 冻结）。
+        // 未显式填写时逐单解析缺省（复核轮不覆盖首轮已批的财务决定值）。
+        BigDecimal financeRate = explicitRate != null
+                ? explicitRate
+                : resolveDefaultFinanceRate(orderType, orderId);
+        BigDecimal financeTotalLocal =
+                com.uten.imp.common.finance.MoneyPolicy.local(
+                        currentSnapshot.totalOriginal(), financeRate);
         int changed = jdbc.update("""
                 UPDATE procurement_order_approval_cases
                 SET status = 'APPROVED',
@@ -219,11 +252,15 @@ public class ProcurementFinanceApprovalService {
                     decided_by_employee_id = ?,
                     decided_at = now(),
                     version = version + 1,
-                    updated_at = now()
+                    updated_at = now(),
+                    finance_exchange_rate = ?,
+                    finance_total_local = ?
                 WHERE id = ? AND status = 'PENDING' AND version = ?
                 """,
                 actorUser,
                 actorEmployee,
+                financeRate,
+                financeTotalLocal,
                 approvalCase.caseId(),
                 expectedVersion);
         if (changed != 1) {
@@ -237,7 +274,7 @@ public class ProcurementFinanceApprovalService {
                 null,
                 null,
                 null,
-                approvedEventSnapshot(approvalCase, remark));
+                approvedEventSnapshot(approvalCase, remark, rawExchangeRate));
         if (!reconfirmation) {
             createInboundExpectation(
                     approvalCase.caseId(), currentSnapshot, actorUser);
@@ -376,12 +413,14 @@ public class ProcurementFinanceApprovalService {
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
         List<String> allowedActions = currentReviewerActions();
+        // V835 折合本币：财务已定值(finance_total_local)优先，未定回落提交快照值
+        // (amount_snapshot)——待审 case 的 finance_total_local 恒为空，口径向前兼容。
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
                        c.order_type,
                        c.order_id,
                        c.bill_no_snapshot,
-                       c.amount_snapshot,
+                       COALESCE(c.finance_total_local, c.amount_snapshot) AS amount_snapshot,
                        CAST(c.submission_snapshot ->> 'totalOriginal' AS numeric) AS total_original,
                        """ + SNAPSHOT_CURRENCY_NAME_SQL + """
                        , supplier.name AS supplier_name,
@@ -394,7 +433,29 @@ public class ProcurementFinanceApprovalService {
                        c.submitted_at,
                        (SELECT count(*)
                         FROM procurement_order_qty_change_logs change_log
-                        WHERE change_log.case_id = c.id) AS change_count
+                        WHERE change_log.case_id = c.id) AS change_count,
+                       CAST(c.submission_snapshot ->> 'exchangeRate' AS numeric) AS exchange_rate,
+                       jsonb_array_length(c.submission_snapshot -> 'items') AS line_count,
+                       -- 2026-10-10 口径修复：货品摘要与超收/损耗% 必须与审核详情同源
+                       -- (loadReviewLines 读 COALESCE(display_snapshot, submission_snapshot))。
+                       -- 提交快照 items 只有哈希链商业事实——goodsName 从未写入，
+                       -- allowedLossPct 只存在于委外展示快照(V691 触发器从明细实表冻结)；
+                       -- 此前读提交快照导致委外损耗%在列表恒为空→「不允许」，详情页却是 10%。
+                       (SELECT elem ->> 'goodsName'
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items')
+                               WITH ORDINALITY AS t(elem, ord)
+                         ORDER BY ord
+                         LIMIT 1) AS goods_first_name,
+                       (SELECT count(DISTINCT elem ->> 'goodsName')
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS goods_count,
+                       (SELECT min((elem ->> 'allowedOverReceiptPct')::numeric)
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_min_purchase,
+                       (SELECT max((elem ->> 'allowedOverReceiptPct')::numeric)
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_max_purchase,
+                       (SELECT min((elem ->> 'allowedLossPct')::numeric)
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_min_subcontract,
+                       (SELECT max((elem ->> 'allowedLossPct')::numeric)
+                          FROM jsonb_array_elements(COALESCE(c.display_snapshot, c.submission_snapshot) -> 'items') elem) AS tolerance_max_subcontract
                 FROM procurement_order_approval_cases c
                 LEFT JOIN purchase_orders po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
@@ -412,7 +473,11 @@ public class ProcurementFinanceApprovalService {
                 """ + filters.sql() + taskOrderBy(sort, order) + """
                 LIMIT ? OFFSET ?
                 """,
-                (rs, rowNum) -> new ApprovalTask(
+                (rs, rowNum) -> {
+                    String goodsFirstName = rs.getString("goods_first_name");
+                    int goodsCount = rs.getInt("goods_count");
+                    boolean purchase = "PURCHASE".equals(rs.getString("order_type"));
+                    return new ApprovalTask(
                         rs.getObject("case_id", UUID.class),
                         rs.getString("order_type"),
                         rs.getObject("order_id", UUID.class),
@@ -429,7 +494,21 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("submitted_by_name"),
                         rs.getObject("submitted_at", OffsetDateTime.class),
                         rs.getLong("change_count"),
-                        allowedActions),
+                        rs.getBigDecimal("exchange_rate"),
+                        rs.getInt("line_count"),
+                        goodsFirstName == null || goodsFirstName.isBlank()
+                            ? null
+                            : goodsCount > 1
+                                ? goodsFirstName + " 等" + goodsCount + "种"
+                                : goodsFirstName,
+                        purchase
+                            ? rs.getBigDecimal("tolerance_min_purchase")
+                            : rs.getBigDecimal("tolerance_min_subcontract"),
+                        purchase
+                            ? rs.getBigDecimal("tolerance_max_purchase")
+                            : rs.getBigDecimal("tolerance_max_subcontract"),
+                        allowedActions);
+                },
                 params.toArray());
         int totalPages = total == 0
                 ? 0
@@ -609,7 +688,8 @@ public class ProcurementFinanceApprovalService {
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'purchaserName' ELSE purchaser.full_name END AS purchaser_name,
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'makerName' ELSE maker.full_name END AS maker_name,
                        CAST(c.submission_snapshot ->> 'supplierId' AS uuid) AS supplier_id,
-                       CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id
+                       CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id,
+                       c.finance_exchange_rate
                 FROM procurement_order_approval_cases c
                 LEFT JOIN purchase_orders po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
@@ -656,7 +736,8 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("purchaser_name"),
                         rs.getString("maker_name"),
                         rs.getObject("supplier_id", UUID.class),
-                        rs.getObject("currency_id", UUID.class)},
+                        rs.getObject("currency_id", UUID.class),
+                        rs.getBigDecimal("finance_exchange_rate")},
                 caseId);
         if (headers.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "审批任务不存在或已被清理");
@@ -696,6 +777,9 @@ public class ProcurementFinanceApprovalService {
         UUID supplierId = (UUID) h[23];
         var supplierBalance = partyBalances.suppliers(Collections.singletonList(supplierId))
                 .forDocument(supplierId, (UUID) h[24], null);
+        // V835 审核详情口径：financeExchangeRate 只回填审批通过的财务决定值
+        // (h[25] = case.finance_exchange_rate)；未批/驳回为 null，前端用快照
+        // exchangeRate 兜底——订单表头汇率(创建时默认 1)与财务汇率是两个事实。
         return new ProcurementApprovalContracts.ApprovalReview(
                 (UUID) h[0],
                 orderType,
@@ -713,6 +797,7 @@ public class ProcurementFinanceApprovalService {
                 (String) h[18],
                 (String) h[19],
                 (BigDecimal) h[14],
+                (BigDecimal) h[25],
                 (String) h[20],
                 (BigDecimal) h[15],
                 (String) h[21],
@@ -931,15 +1016,73 @@ public class ProcurementFinanceApprovalService {
                 orderType, orderId);
     }
 
-    /** 通过事件快照：快照哈希 + 可选审批备注（无备注时保持旧形，便于历史一致性比对）。 */
+    /** 通过事件快照：快照哈希 + 可选审批备注（无备注时保持旧形，便于历史一致性比对）。
+     *  V835：财务明确填写汇率时把决定值一并留痕（缺省 1 不写，保持旧事件形）。 */
     private static Map<String, Object> approvedEventSnapshot(
-            ApprovalCase approvalCase, String remark) {
+            ApprovalCase approvalCase, String remark, BigDecimal rawExchangeRate) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("snapshotHash", approvalCase.snapshotHash());
         if (remark != null) {
             snapshot.put("remark", remark);
         }
+        if (rawExchangeRate != null) {
+            snapshot.put("financeExchangeRate", rawExchangeRate.toPlainString());
+        }
         return snapshot;
+    }
+
+    /**
+     * V835 财务审批汇率口径（2026-10-10）：财务未显式填写汇率时的缺省解析链——
+     * ① 沿用该单最近一次已批 case 的财务汇率（V486 改量复核轮未填时不得用 1
+     * 覆盖首轮的财务决定值）；② 退提交快照汇率（新口径创建恒 1，历史外币单
+     * 可能是真实汇率）；③ 退 1。显式填写的汇率由
+     * {@link #normalizeFinanceExchangeRate(BigDecimal)} 校验（>0、≤6 位小数、
+     * <10^12，与 FinancialExactAmount.rate 一致，列 NUMERIC(18,6) 无损承载）。
+     */
+    private List<BigDecimal> queryDefaultFinanceRate(String orderType, UUID orderId) {
+        List<BigDecimal> prior = jdbc.query("""
+                SELECT finance_exchange_rate FROM procurement_order_approval_cases
+                WHERE order_type = ? AND order_id = ? AND finance_exchange_rate IS NOT NULL
+                ORDER BY attempt DESC, decided_at DESC
+                LIMIT 1
+                """,
+                (rs, rowNum) -> rs.getBigDecimal(1),
+                orderType, orderId);
+        if (!prior.isEmpty()) {
+            return prior;
+        }
+        return jdbc.query("""
+                SELECT (submission_snapshot->>'exchangeRate')::numeric
+                FROM procurement_order_approval_cases
+                WHERE order_type = ? AND order_id = ? AND status = 'PENDING'
+                ORDER BY attempt DESC
+                LIMIT 1
+                """,
+                (rs, rowNum) -> rs.getBigDecimal(1),
+                orderType, orderId);
+    }
+
+    private BigDecimal resolveDefaultFinanceRate(String orderType, UUID orderId) {
+        List<BigDecimal> resolved = queryDefaultFinanceRate(orderType, orderId);
+        if (!resolved.isEmpty() && resolved.get(0) != null
+                && resolved.get(0).signum() > 0) {
+            return resolved.get(0);
+        }
+        return BigDecimal.ONE;
+    }
+
+    private static BigDecimal normalizeFinanceExchangeRate(BigDecimal rawRate) {
+        if (rawRate == null) {
+            return null;
+        }
+        if (rawRate.signum() <= 0
+                || rawRate.scale() > 6
+                || rawRate.abs().compareTo(BigDecimal.ONE.scaleByPowerOfTen(12)) >= 0) {
+            throw new ApiException(
+                    ErrorCode.VALIDATION_FAILED,
+                    "财务汇率必须大于0且最多6位小数");
+        }
+        return rawRate;
     }
 
     private static String normalizeOptionalRemark(String raw) {

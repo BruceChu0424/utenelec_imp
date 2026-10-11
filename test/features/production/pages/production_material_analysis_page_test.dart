@@ -3297,8 +3297,9 @@ void main() {
           // 净补量 2; 勾选进「下单页」后树顶默认数量同样是 2。
           final row = _frozenRowOf('待自制壳体');
           expect(
-            find.descendant(of: row, matching: find.text('2')),
+            find.descendant(of: row, matching: find.text('2 个')),
             findsWidgets,
+            reason: '数量列 2026-10-10 起内联单位',
           );
           await _tapBucketRowCheckbox(tester, '待自制壳体');
           await _openIssuePageFromBucket(
@@ -4170,7 +4171,8 @@ void main() {
             )
             .where(
               (text) =>
-                  text.data == '0' &&
+                  // 2026-10-10 T9：数量列内联单位。
+                  text.data == '0 个' &&
                   text.style?.color == UtenColors.successText,
             ),
         isNotEmpty,
@@ -6176,8 +6178,9 @@ void main() {
       );
       expect(sharedRow, findsOneWidget);
       expect(
-        find.descendant(of: sharedRow, matching: find.text('15')),
+        find.descendant(of: sharedRow, matching: find.text('15 个')),
         findsOneWidget,
+        reason: '数量列 2026-10-10 起内联单位',
       );
       expect(
         find.descendant(of: sharedRow, matching: find.text('等待下发采购')),
@@ -6636,12 +6639,10 @@ void main() {
       );
       expect(_cascadeSeedQtyText(tester, 'future-material'), '1000');
       await _leaveIssuePage(tester);
-      // 原「物料 / 调拨」按钮搬进行菜单「物料调拨与公共在途」。
+      // 2026-10-10 调拨口径收窄：公共在途不再进「物料调拨」弹窗，桶菜单里
+      // 「采用公共在途」是独立菜单项（与主表物料行右键一致）。
       await _openBucketRowMenu(tester, '未来物料');
-      await tester.tap(find.text('物料调拨与公共在途'));
-      await tester.pumpAndSettle();
-      // 2026-09-13 起先进简化选择器，公共在途走第三个按钮。
-      await tester.tap(find.byKey(const Key('transfer-launcher-claim')));
+      await tester.tap(find.text('采用公共在途'));
       await tester.pumpAndSettle();
       final claimQty = find.byKey(
         const ValueKey('shared-future-claim-qty-future-action'),
@@ -6668,7 +6669,10 @@ void main() {
         reason:
             'public surplus does not take the original owner share and needs no donor replacement order',
       );
-      // 认领口径在完整详情里核对：从选择器进入完整详情再逐层关闭。
+      // 认领口径在完整详情里核对：经「物料调拨」选择器进入完整详情再逐层关闭。
+      await _openBucketRowMenu(tester, '未来物料');
+      await tester.tap(find.text('物料调拨'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('transfer-launcher-full-details')));
       await tester.pumpAndSettle();
       expect(find.textContaining('公共已认领未实收 900'), findsWidgets);
@@ -6780,9 +6784,9 @@ void main() {
         },
       );
       await _openBucketDetail(tester, 'buy');
-      // 2026-09-22 起原「物料 / 调拨」按钮搬进行菜单「物料调拨与公共在途」。
+      // 2026-10-10 调拨口径收窄后菜单项更名「物料调拨」（公共在途是独立菜单项）。
       await _openBucketRowMenu(tester, '未来物料');
-      await tester.tap(find.text('物料调拨与公共在途'));
+      await tester.tap(find.text('物料调拨'));
       await tester.pumpAndSettle();
       // 2026-09-13 起先进简化选择器；在途调入走第二个按钮，弹窗自动勾选来源。
       await tester.tap(find.byKey(const Key('transfer-launcher-future')));
@@ -6923,10 +6927,10 @@ void main() {
         },
       );
       await _openBucketDetail(tester, 'workshop');
-      // 2026-09-22 起原「物料 / 调拨」按钮搬进行菜单「物料调拨与公共在途」;
+      // 2026-10-10 调拨口径收窄后菜单项更名「物料调拨」（公共在途是独立菜单项）;
       // 产品行(柜)直达根供给行的选择器。
       await _openBucketRowMenu(tester, '测试产品');
-      await tester.tap(find.text('物料调拨与公共在途'));
+      await tester.tap(find.text('物料调拨'));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('material-transfer-launcher')),
@@ -6937,14 +6941,11 @@ void main() {
       );
       expect(spotButton.onPressed, isNull, reason: '0 个来源须置灰不可点');
       expect(find.textContaining('从其他计划已入库中调入（0 个来源）'), findsOneWidget);
+      // 2026-10-10 口径：调拨弹窗不再有「从公共在途中调入」按钮（公共在途在
+      // 可用数量里，下单自动认领；手动采用走独立菜单项）。
       expect(
-        tester
-            .widget<UtenButton>(
-              find.byKey(const Key('transfer-launcher-claim')),
-            )
-            .onPressed,
-        isNull,
-        reason: '公共在途无可用来源同样置灰',
+        find.byKey(const Key('transfer-launcher-claim')),
+        findsNothing,
       );
       await tester.tap(find.byKey(const Key('transfer-launcher-future')));
       await tester.pumpAndSettle();
@@ -7092,12 +7093,13 @@ void main() {
           tester,
           route == 'MAKE' ? 'workshop' : 'subcontract',
         );
-        // 2026-09-22 起桶表只读: 行菜单里有「物料调拨与公共在途」(弹菜单会把该行
-        // 置为选中, 关掉菜单勾选态保留); 勾选进下单页后树顶默认 = 剩余 100。
+        // 2026-09-22 起桶表只读: 行菜单里有「物料调拨」(2026-10-10 公共在途拆成
+        // 独立菜单项; 弹菜单会把该行置为选中, 关掉菜单勾选态保留); 勾选进下单页
+        // 后树顶默认 = 剩余 100。
         await _tapBucketRowCheckbox(tester, '未来物料');
         expect(_bucketRowCheckboxValue(tester, '未来物料'), isTrue);
         await _openBucketRowMenu(tester, '未来物料');
-        expect(find.text('物料调拨与公共在途'), findsOneWidget);
+        expect(find.text('物料调拨'), findsOneWidget);
         await tester.tapAt(const Offset(8, 8));
         await tester.pumpAndSettle();
         expect(_bucketRowCheckboxValue(tester, '未来物料'), isTrue);
@@ -8157,7 +8159,7 @@ void main() {
       // 未下达统一「等待下达车间」(齐套由执行段自动判断)。2026-09-22 起桶表
       // 只读: 「缺口」列 = 剩余需求 10 (readyNow 0 不压量), 行可勾选下达。
       expect(find.text('等待下达车间'), findsWidgets);
-      expect(_bucketShortageText(tester, '测试产品'), '10');
+      expect(_bucketShortageText(tester, '测试产品'), '10 个');
       await _tapBucketRowCheckbox(tester, '测试产品');
       expect(_bucketRowCheckboxValue(tester, '测试产品'), isTrue);
       expect(find.text('创建生产计划(1)…'), findsOneWidget);
@@ -8671,7 +8673,8 @@ void main() {
       ((previewGroup['sources'] as List).single as Map)['allocatedQty'],
       500,
     );
-    expect(find.text('2000'), findsWidgets);
+    // 2026-10-10 T9：锁定的累计已下单量内联单位（物料基本单位「个」）。
+    expect(find.text('2000 个'), findsWidgets);
   });
 
   testWidgets(

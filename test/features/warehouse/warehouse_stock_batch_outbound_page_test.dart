@@ -263,11 +263,12 @@ void main() {
               .type,
           UtenButtonType.danger,
         );
+        // 2026-10-10「数量 + 单位」内联口径：数量列直接带行单位（件）。
         expect(
           table.columns
               .firstWhere((c) => c.key == 'qty')
               .value(table.items.first),
-          '0.0001',
+          '0.0001 件',
         );
         expect(
           table.columns

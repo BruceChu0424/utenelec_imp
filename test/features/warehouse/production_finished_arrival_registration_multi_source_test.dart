@@ -216,7 +216,13 @@ void main() {
     await tester.tap(find.text('确认移出'));
     await tester.pumpAndSettle();
     expect(removedPlace, findsNothing);
-    expect(find.textContaining('这些报工行未写入，仍在待登记'), findsOneWidget);
+    // 汇总下提示行已删(2026-10-10)：移出计数并进提交按钮 tooltip。
+    expect(
+      tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .any((tooltip) => tooltip.message?.contains('已移出 1 行') ?? false),
+      isTrue,
+    );
     await _toggleSelectAll(tester);
 
     _pressSubmit(tester);
@@ -248,7 +254,6 @@ void main() {
       '颜色',
       '报工数量',
       '其中',
-      '单位',
       '实称重量(kg)',
       '称重核对',
       '入库仓库',
@@ -572,7 +577,6 @@ void main() {
       '报工数量',
       '其中',
       '本次实收',
-      '单位',
       '实称重量(kg)',
       '称重核对',
       '入库仓库',

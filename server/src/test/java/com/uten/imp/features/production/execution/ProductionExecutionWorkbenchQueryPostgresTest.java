@@ -602,6 +602,34 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
     }
 
     @Test
+    void reportInspectionSplitsFullyReportedSegmentsOutOfInProgress() {
+        // 2026-10-10「报工送检」：IN_PROGRESS 按 remaining_qty 拆两段——还有可报量=生产中，
+        // 已报完(<=0)=报工送检；两段互斥且并集=原 IN_PROGRESS，计数恒等式保持
+        // preparing + inProgress + reportInspection = total。
+        var before = service.workshopTasks(1, 50, null, "IN_PROGRESS", null, null, null);
+        assertThat(before.getTotal()).isEqualTo(1);
+        var breakdownBefore = service.workshopTaskCountBreakdown();
+        assertThat(breakdownBefore.inProgress()).isEqualTo(1);
+        assertThat(breakdownBefore.reportInspection()).isZero();
+        jdbc.update("""
+                UPDATE v_production_execution_workbench_segments
+                SET remaining_qty=0, fqc_pending_qty=2 WHERE segment_status='IN_PROGRESS'
+                """);
+        var progress = service.workshopTasks(1, 50, null, "IN_PROGRESS", null, null, null);
+        assertThat(progress.getTotal()).isZero();
+        var review = service.workshopTasks(1, 50, null, "REPORT_INSPECTION", null, null, null);
+        assertThat(review.getTotal()).isEqualTo(1);
+        assertThat(review.getItems()).allMatch(item -> "IN_PROGRESS".equals(item.segmentStatus())
+                && item.remainingReportQty() != null && item.remainingReportQty().signum() <= 0);
+        var breakdownAfter = service.workshopTaskCountBreakdown();
+        assertThat(breakdownAfter.inProgress()).isZero();
+        assertThat(breakdownAfter.reportInspection()).isEqualTo(1);
+        assertThat(breakdownAfter.total()).isEqualTo(breakdownBefore.total());
+        assertThatThrownBy(() -> service.workshopTasks(1, 50, null, "NOT_A_STATUS", null, null, null))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
     void fullyReportedOpenTaskAllowsExplicitActualOutputWithoutInventingBatchQuantity() {
         try {
             jdbc.update("""
@@ -611,7 +639,9 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                         planned_inbound_qty=0, inbound_qty=20
                     WHERE segment_status='IN_PROGRESS'
                     """);
-            var tasks = service.workshopTasks(1, 50, "P001", "IN_PROGRESS", null, null, null);
+            // 2026-10-10「报工送检」拆档后，已报完(remaining=0)的工单列在 REPORT_INSPECTION；
+            // 超产续报的能力位(canReport)不受分类影响。
+            var tasks = service.workshopTasks(1, 50, "P001", "REPORT_INSPECTION", null, null, null);
             assertThat(tasks.getItems()).singleElement().satisfies(task -> {
                 assertThat(task.canReport()).isTrue();
                 assertThat(task.canBatchReport()).isFalse();
@@ -621,7 +651,7 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 assertThat(task.inboundQty()).isEqualByComparingTo("20");
             });
             when(access.hasAuthority("production_daily_report:create")).thenReturn(false);
-            assertThat(service.workshopTasks(1, 50, "P001", "IN_PROGRESS", null, null, null).getItems())
+            assertThat(service.workshopTasks(1, 50, "P001", "REPORT_INSPECTION", null, null, null).getItems())
                     .allMatch(task -> !task.canReport() && !task.canBatchReport());
         } finally {
             jdbc.update("""

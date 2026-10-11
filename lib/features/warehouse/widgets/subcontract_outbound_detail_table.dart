@@ -12,6 +12,7 @@ import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -215,7 +216,7 @@ class SubcontractOutboundTableRow extends EditableGridRow {
 /// Shared by single-document picking and batch picking. It uses the same
 /// compact, horizontally scrollable table as the inbound confirmation pages.
 ///
-/// 实称重量 (ADR-135 §3.8) 紧跟「单位」: 选填, 占位「应称 X」, 偏差框只提醒;
+/// 实称重量 (ADR-135 §3.8) 紧跟「本次出库」: 选填, 占位「应称 X」, 偏差框只提醒;
 /// 本次出库数量空着时填重量按称重推算数量 (黄框, 行打上 qtyFromWeight)。
 /// 单重参数由表格自己按行批量取 (页内缓存, 离开页面释放)。
 class SubcontractOutboundDetailTable extends ConsumerStatefulWidget {
@@ -336,9 +337,10 @@ class _SubcontractOutboundDetailTableState
       key,
       label,
       115,
+      // 2026-10-10 数量+单位口径：只读数量列内联行单位(如 `12 PCS`)，独立单位列已删。
       (row) {
         final quantity = value(row);
-        return quantity == null ? '—' : subcontractOutboundQuantity(quantity);
+        return quantity == null ? '—' : formatQtyWithUnit(quantity, row.draft.line.unitName);
       },
       numeric: true,
       info: info,
@@ -361,30 +363,27 @@ class _SubcontractOutboundDetailTableState
               entries: [for (final row in widget.rows) row.draft.weight],
               params: weightCache,
             ),
-      // 2026-09-14 用户口径(全站表格统一)：名称 / 编号 / 颜色各占一列。
-      // 委外发料最容易错的就是同名不同色——名称/编号/颜色在前几列同屏可见;
-      // 「领料数量」紧跟数量组, 仓库一眼看出只能改少到多少。
+      // 2026-10-10 用户口径(批量出库页默认列序)：处理结果前置，单据链(出库单号/来源订单)
+      // 次之，先核对身份(名称/编号/颜色)再核仓与量；数量列已内联单位(无独立单位列)，
+      // 实称重量紧跟「本次出库」之后 (ADR-135 §3.8)。单张拣货页 showOrder:false，不
+      // 认识的 key 会被忽略，不受批量页列序影响。
       initialColumnOrder: const [
-        // 处理结果列随 2026-10-08 口径前置（见 columns 首列注释）。
         'status',
         'document',
+        'order',
         'goodsName',
         'goodsCode',
         'color',
         'warehouse',
-        'quantity',
-        'unit',
-        // 实称重量紧跟数量组 (数量 + 单位) 之后 (ADR-135 §3.8)。
-        'weight',
         'requested',
         'stockAvailable',
         'place',
-        // 每条明细都是某个委外件的直属物料: 这两列是回厂交回的委外件。
+        'quantity',
+        'weight',
         'parentGoodsName',
         'parentGoodsCode',
         'lineRemark',
         'documentRemark',
-        'order',
         'supplier',
       ],
       selectable: widget.editable && widget.selectable,
@@ -461,12 +460,8 @@ class _SubcontractOutboundDetailTableState
           100,
           (row) => row.draft.line.colorName ?? '—',
         ),
-        textColumn(
-          'unit',
-          l10n.warehouseSubcontractOutboundUnit,
-          80,
-          (row) => row.draft.line.unitName ?? '—',
-        ),
+        // 2026-10-10 数量+单位口径：独立「单位」列删除，单位内联在
+        // 领料数量/仓内可动用(只读)与本次出库(输入框 suffixText)里。
         weightGridColumn<SubcontractOutboundTableRow>(
           controllerOf: (row) => row.draft.weight.weight,
           entryUnit: weightUnits.entry,
@@ -632,7 +627,6 @@ class _SubcontractOutboundDetailTableState
               ),
               controller: row.draft.qty,
               enabled: widget.editable && row.editable && row.draft.selected,
-              textAlign: TextAlign.right,
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
@@ -641,7 +635,14 @@ class _SubcontractOutboundDetailTableState
               ],
               decoration: applyAutofillHint(
                 UtenInputDecoration(
-                  const InputDecoration(isDense: true),
+                  InputDecoration(
+                    isDense: true,
+                    // 2026-10-10 数量+单位口径：可编辑数量输入框的单位放 suffixText。
+                    suffixText: () {
+                      final unit = row.draft.line.unitName?.trim();
+                      return unit == null || unit.isEmpty ? null : unit;
+                    }(),
+                  ),
                   info: autofilled
                       ? (row.draft.weight.weight.qtyEstimateNote ?? '按称重推算')
                       : row.draft.skipped

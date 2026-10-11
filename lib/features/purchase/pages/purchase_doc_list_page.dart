@@ -48,6 +48,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../config/purchase_doc_config.dart';
 import '../models/purchase_doc.dart';
 import '../widgets/purchase_status_badge.dart'
@@ -495,13 +496,20 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         MasterColumnDef(
           key: 'total',
           label: '合计',
-          width: 140,
+          width: 170,
           type: 'money',
           sortable: true,
+          // 合计恒本币（折合人民币）：金额带「元」后缀；历史原始表头值/未知原文不拼。
           value: (it) =>
               widget.docType == PurchaseDocType.receipt && it.legacyImported
-              ? '原始表头值 ${it.totalLocal?.toStringAsFixed(2) ?? '未知'}'
-              : it.totalLocal?.toStringAsFixed(2),
+              ? '原始表头值 ${financeLocalMoneyWithUnitSuffix(
+                  it.totalLocal?.toStringAsFixed(2) ?? '未知',
+                )}'
+              : it.totalLocal == null
+              ? null
+              : financeLocalMoneyWithUnitSuffix(
+                  it.totalLocal!.toStringAsFixed(2),
+                ),
         ),
     ];
   }

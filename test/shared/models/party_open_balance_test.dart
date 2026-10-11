@@ -2,28 +2,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/formatters/money_display.dart';
 import 'package:uten_imp/shared/models/party_open_balance.dart';
 
-/// ADR-128：往来余额只显示服务端算好的数，按单据币种写成「币种 金额」。
+/// ADR-128 → 2026-10-10 用户口径：往来余额只显示服务端算好的数，按单据币种
+/// 写成「金额 币种」后缀式（人民币显示为「元」）。
 void main() {
-  group('financeMoneyWithCurrency', () {
-    test('币种名优先，旧数字编号不显示，金额按原文至少两位小数', () {
+  group('financeMoneyWithUnitSuffix', () {
+    test('币种名优先做后缀，旧数字编号不显示，金额按原文至少两位小数', () {
       expect(
-        financeMoneyWithCurrency('158400.0000', currencyName: '美金'),
-        '美金 158400.00',
+        financeMoneyWithUnitSuffix('158400.0000', currencyName: '美金'),
+        '158400.00 美金',
       );
+      // 旧数字编号（002）认不出币种 → 不猜，只显金额。
+      expect(financeMoneyWithUnitSuffix('12.3456', currencyCode: '002'),
+          '12.3456');
       expect(
-        financeMoneyWithCurrency('12.3456', currencyCode: '002'),
-        '原币 12.3456',
+        financeMoneyWithUnitSuffix('5', currencyCode: 'USD'),
+        '5.00 USD',
       );
-      expect(
-        financeMoneyWithCurrency('5', currencyCode: 'USD', fallback: '订单币种'),
-        'USD 5.00',
-      );
+      // 本位币后缀短名「元」。
+      expect(financeMoneyWithUnitSuffix('0.5', currencyName: '人民币'), '0.50 元');
+      expect(financeLocalMoneyWithUnitSuffix('1500'), '1500.00 元');
     });
 
-    test('没有金额时只显示横线，不单挂币种名；非数字原样', () {
-      expect(financeMoneyWithCurrency(null, currencyName: '美金'), '—');
-      expect(financeMoneyWithCurrency('  ', currencyName: '美金'), '—');
-      expect(financeMoneyText('***'), '***');
+    test('没有金额时只显示横线，不单挂币种名；非数字哨兵原文不拼单位', () {
+      expect(financeMoneyWithUnitSuffix(null, currencyName: '美金'), '—');
+      expect(financeMoneyWithUnitSuffix('  ', currencyName: '美金'), '—');
+      expect(financeMoneyWithUnitSuffix('***', currencyName: '美金'), '***');
       expect(financeMoneyText('-0.5'), '-0.50');
     });
   });
@@ -51,12 +54,12 @@ void main() {
       'overCredit': true,
     };
 
-    test('解析服务端视图，单据币种一档写成「币种 金额」', () {
+    test('解析服务端视图，单据币种一档写成「金额 币种」', () {
       final balance = PartyOpenBalance.fromJson(json())!;
-      expect(balance.openText, '美金 500.00');
-      expect(balance.creditText, '美金 100.00');
-      expect(balance.headline(PartyBalanceSide.customer), '美金 400.00');
-      expect(balance.baseMoneyText(balance.openBookLocal), '人民币 3500.00');
+      expect(balance.openText, '500.00 美金');
+      expect(balance.creditText, '100.00 美金');
+      expect(balance.headline(PartyBalanceSide.customer), '400.00 美金');
+      expect(balance.baseMoneyText(balance.openBookLocal), '3500.00 元');
       expect(balance.creditLimitLocal, '3000');
       expect(balance.overLimitLocal, '500');
       expect(balance.overCredit, isTrue);
@@ -65,13 +68,13 @@ void main() {
 
     test('还差多少为负时客户写预收有余、供应商写可抵有余', () {
       final balance = PartyOpenBalance.fromJson(json(net: '-200.0000'))!;
-      expect(balance.headline(PartyBalanceSide.customer), '预收有余 美金 200.00');
-      expect(balance.headline(PartyBalanceSide.supplier), '可抵有余 美金 200.00');
+      expect(balance.headline(PartyBalanceSide.customer), '预收有余 200.00 美金');
+      expect(balance.headline(PartyBalanceSide.supplier), '可抵有余 200.00 美金');
       expect(
         PartyOpenBalance.fromJson(
           json(net: '0'),
         )!.headline(PartyBalanceSide.customer),
-        '美金 0.00',
+        '0.00 美金',
       );
     });
 
@@ -100,12 +103,12 @@ void main() {
       )!;
       expect(
         balance.footnote(PartyBalanceSide.customer),
-        '另有 人民币 30000.00、预收有余 港币 500.00；'
-        '另有历史应收 人民币 1200.50 原币未核实',
+        '另有 30000.00 元、预收有余 500.00 港币；'
+            '另有历史应收 1200.50 元 原币未核实',
       );
       expect(
         balance.unverifiedText(PartyBalanceSide.supplier),
-        '另有历史应付 人民币 1200.50 原币未核实',
+        '另有历史应付 1200.50 元 原币未核实',
       );
     });
 
@@ -113,9 +116,10 @@ void main() {
       expect(PartyOpenBalance.fromJson(null), isNull);
       expect(PartyOpenBalance.fromJson('12000'), isNull);
       final sparse = PartyOpenBalance.fromJson({'currencyName': '美金'})!;
-      expect(sparse.headline(PartyBalanceSide.customer), '美金 0.00');
+      expect(sparse.headline(PartyBalanceSide.customer), '0.00 美金');
       expect(sparse.creditLimitLocal, isNull);
-      expect(sparse.baseMoneyText('10'), '本币 10.00');
+      // 本位币名缺失 → 不猜币种，只显金额。
+      expect(sparse.baseMoneyText('10'), '10.00');
     });
   });
 }

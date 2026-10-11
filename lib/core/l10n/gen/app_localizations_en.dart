@@ -3281,10 +3281,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get warehouseArrivalSourceReplacement => 'Replace returns first';
 
   @override
-  String get warehouseArrivalSourceHint =>
-      'The system identifies the source when only one is available. If both normal arrivals and returned goods are outstanding, select the source of this batch. Replace returns first fills the returned quantity first; any remainder is a normal arrival. Whether replacement is free or billed follows the original return resolution.';
-
-  @override
   String get materialIssuedPlanSyncPending =>
       'Issued; waiting for plan progress to sync';
 
@@ -3713,9 +3709,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get warehouseSubcontractOutboundColor => 'Colour';
-
-  @override
-  String get warehouseSubcontractOutboundUnit => 'Unit';
 
   @override
   String get warehouseSubcontractOutboundStockAvailable =>
@@ -9264,10 +9257,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Ask the warehouse to open it in Workshop bins.';
 
   @override
-  String get wmBinDirectOnlyNotice =>
-      'This bin only receives workshop transfers; batch issuing is not started. Below is what is in the bin now, taken by the receiving jobs directly.';
-
-  @override
   String get wmBinPanelTitleOpen => 'Open workshop bins';
 
   @override
@@ -9412,10 +9401,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get handoffLotRegistrationTitle => 'Register finished goods receipt';
-
-  @override
-  String get handoffLotRegistrationFooter =>
-      'Each row is one physical lot (one report entry sent to the warehouse: demand share / planned public stock / actual surplus). Location, physical count and weight are entered once per lot. Warehouse and location are required (prefilled from the goods owning warehouse or your last choice; yellow means please check). Different lots of one report may go to different warehouses. All rows are selected by default; only selected rows are submitted.';
 
   @override
   String handoffLotBatchesTitle(int count) {

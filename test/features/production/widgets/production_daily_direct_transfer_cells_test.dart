@@ -278,6 +278,101 @@ void main() {
     expect(find.byTooltip('ZX-A 最多还能收 6'), findsWidgets);
   });
 
+  testWidgets('产出去向格：恒定 Tooltip 悬停给全文（摘要/兜底「—」/已审核行）', (tester) async {
+    final product = _product();
+    final direct = _allocation(product, 'A', '4');
+    final warehouse = _allocation(product, null, '10');
+    addTearDown(product.dispose);
+    addTearDown(direct.dispose);
+    addTearDown(warehouse.dispose);
+    await _pump(tester, [product]);
+
+    // 摘要被单行省略截断时，悬停提示给完整摘要（恒定包裹，不按内容切换）。
+    expect(find.byTooltip('转下一道工序 1 个工单 4 · 送入仓库 10'), findsOneWidget);
+    // 空去向格显示「—」，悬停兜底文案与显示一致，不给空 Tooltip。
+    final empty = DailyGridRow();
+    addTearDown(empty.dispose);
+    await _pump(tester, [empty]);
+    expect(find.text('—'), findsOneWidget);
+    expect(find.byTooltip('—'), findsOneWidget);
+    // 已审核行(只读回看)同样恒定悬停全文。
+    final accepted = DailyGridRow()
+      ..acceptedDestinationLabel = '转下一道工序 · 成品甲 ZX-A';
+    addTearDown(accepted.dispose);
+    await _pump(tester, [accepted]);
+    expect(find.byTooltip('转下一道工序 · 成品甲 ZX-A'), findsOneWidget);
+  });
+
+  testWidgets('去向子行格：下拉收起态恒定 Tooltip 给选中项全文，红字问题优先', (tester) async {
+    final product = _product();
+    final chosen = _allocation(product, 'A', '4');
+    addTearDown(product.dispose);
+    addTearDown(chosen.dispose);
+    await _pump(tester, [product, chosen]);
+    // 收起态只显示单行省略，悬停给当前选中项的全文（含「还差 N」）。
+    expect(find.byTooltip('ZX-A · 成品甲 · 还差 6'), findsOneWidget);
+    // 送入仓库条目兜底同名文案；有问题时悬停优先给问题。
+    final warehouse = _allocation(product, null, '3');
+    addTearDown(warehouse.dispose);
+    await _pump(tester, [product, warehouse]);
+    expect(find.byTooltip('送入仓库'), findsOneWidget);
+    // 有问题时悬停优先给问题（去向格与去向数量格的红框装饰各自带一条，都算数）。
+    warehouse.allocationIssue.value = 'ZX-A 最多还能收 6';
+    await tester.pump();
+    expect(find.byTooltip('ZX-A 最多还能收 6'), findsWidgets);
+  });
+
+  testWidgets('产出去向格：编辑态收起给展开/收起切换钮，点击回调带成品行', (tester) async {
+    final product = _product();
+    final direct = _allocation(product, 'A', '4');
+    final warehouse = _allocation(product, null, '10');
+    addTearDown(product.dispose);
+    addTearDown(direct.dispose);
+    addTearDown(warehouse.dispose);
+
+    // 未接回调（如纯单元格预览）不出切换钮，避免死按钮。
+    await _pump(tester, [product]);
+    expect(find.byTooltip('展开去向明细'), findsNothing);
+    expect(find.byTooltip('收起去向明细'), findsNothing);
+
+    // 收起态给「展开去向明细」，展开态给「收起去向明细」；图标随展开态翻转。
+    DailyGridRow? toggled;
+    await _pump(
+      tester,
+      [product],
+      allocationsExpanded: (row) => false,
+      onToggleAllocations: (row) => toggled = row,
+    );
+    expect(find.byTooltip('展开去向明细'), findsOneWidget);
+    await tester.tap(find.byTooltip('展开去向明细'));
+    await tester.pump();
+    expect(toggled, same(product));
+
+    await _pump(
+      tester,
+      [product],
+      allocationsExpanded: (row) => true,
+      onToggleAllocations: (row) => toggled = row,
+    );
+    expect(find.byTooltip('收起去向明细'), findsOneWidget);
+    await tester.tap(find.byTooltip('收起去向明细'));
+    await tester.pump();
+    expect(toggled, same(product));
+
+    // 只有一条「送入仓库」、没有可送工单的行不占子行，也就没有切换钮。
+    final top = DailyGridRow();
+    final only = _allocation(top, null, '10');
+    addTearDown(top.dispose);
+    addTearDown(only.dispose);
+    await _pump(
+      tester,
+      [top],
+      allocationsExpanded: (row) => true,
+      onToggleAllocations: (row) => toggled = row,
+    );
+    expect(find.byTooltip('收起去向明细'), findsNothing);
+  });
+
   test('已存草稿按批次还原成一行报工和它的固定去向', () {
     final items = [
       for (final (id, destination, demand, qty) in [
@@ -356,6 +451,8 @@ Future<List<String>> _pump(
   List<DailyGridRow> rows, {
   void Function(DailyGridRow row, String? demand)? onDestinationChanged,
   void Function(DailyGridRow row)? onQtyChanged,
+  bool Function(DailyGridRow product)? allocationsExpanded,
+  void Function(DailyGridRow product)? onToggleAllocations,
 }) async {
   var destinationTexts = <String>[];
   await tester.pumpWidget(
@@ -376,6 +473,8 @@ Future<List<String>> _pump(
               unitEntries: const {},
               onAllocationDestinationChanged: onDestinationChanged,
               onAllocationQtyChanged: onQtyChanged,
+              allocationsExpanded: allocationsExpanded,
+              onToggleAllocations: onToggleAllocations,
             );
             final destination = columns.firstWhere(
               (column) => column.key == 'destination',

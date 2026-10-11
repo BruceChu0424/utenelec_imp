@@ -2,7 +2,8 @@
 //
 // 与采购 purchase_grid_columns 同构（货品 ValueNotifier / 数量 / 单价→金额自动），
 // 但委外 8 单据差异更大，列由 SubcontractDocConfig 显隐：
-//  - 货品 / 数量 永远在；数量之后紧跟单位（2026-09-04 口径）；
+//  - 货品 / 数量 永远在；数量内联单位(2026-10-10 口径：单位放输入框 suffixText，
+//    独立单位列已删)；
 //  - 单价 / 金额 仅 itemHasPrice（询价/申请/订货/进仓/退货）；
 //  - 重量列已下线（2026-09-04：单位已表达重量；itemHasWeight 仍驱动保存透传）；
 //  围数 itemHasGirth；胶箱数 itemHasBoxQty；
@@ -375,14 +376,14 @@ class SubcontractGridRow extends EditableGridRow
   }
 }
 
-/// 委外明细列：货品（点选）/ 数量 / 单位 / 单价? / 金额? / 围数? / 胶箱数? /
+/// 委外明细列：货品（点选）/ 数量(内联单位) / 单价? / 金额? / 围数? / 胶箱数? /
 /// 损耗(标准用量?/结存数?/损耗率?/损耗原因?)，全部按 [cfg] 的 itemHas* 显隐。
 /// [onPickGoods] 由编辑页提供（弹货品选择器并写回 row.goods）。
 /// [showCommercial]+[currencyEntries]/[settlementEntries]/[onPickCurrency]/[onPickSettlement]
 /// （订货单）：金额列后加「币种/汇率/税率/结算方式」四列（行级商业条款，保存按组合拆单）。
 /// [showRemark]：明细末尾加「备注」列（随行提交 remark）。
-/// 列序（2026-09-04 口径）：数量之后紧跟单位；实际重量列下线（cfg.itemHasWeight
-/// 仍驱动保存透传，行模型 weight 保留既有单回填/回写）。
+/// 单位内联在数量输入框 suffixText（2026-10-10 口径，独立单位列已删）；实际重量列
+/// 下线（cfg.itemHasWeight 仍驱动保存透传，行模型 weight 保留既有单回填/回写）。
 List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   Future<void> Function(SubcontractGridRow row) onPickGoods,
   SubcontractDocConfig cfg, {
@@ -403,6 +404,14 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   final showSupplier = supplierEntries.isNotEmpty && cfg.hasSupplier;
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
+  // 2026-10-10 数量+单位口径：单位内联在数量输入框 suffixText（行单位由货品带出，
+  // 字典缺项时退显原 id；未维护单位则无后缀），独立「单位」列删除。
+  String? unitSuffixOf(SubcontractGridRow row) {
+    final id = row.unitId;
+    if (id == null || id.isEmpty) return null;
+    final name = unitEntries[id]?.trim();
+    return name == null || name.isEmpty ? id : name;
+  }
   // 货品身份列的颜色名（2026-09-14 口径）：行模型只透传 colorId，这里按需解析。
   // 延迟到取值/渲染时才读字典容器——列定义本身不碰 Provider，裸 MaterialApp
   // 构列的列序契约测试不受影响。未维护颜色返回 null（身份格自然省略，不占位）。
@@ -550,29 +559,43 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
         child: TextField(
           controller: row.qty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+          // 单位内联在数量输入框后（2026-10-10 口径，替代原独立单位列）。
+          decoration: UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0', suffixText: unitSuffixOf(row)),
           ),
         ),
       ),
     ),
-    // 单位紧跟数量（2026-09-04 口径）：单位已表达重量，实际重量列下线。
-    EditableGridColumn<SubcontractGridRow>(
-      key: 'unit',
-      label: '单位',
-      width: 84,
-      textOf: (r) => unitEntries[r.unitId] ?? '',
-      cellBuilder: (context, row) => Text(
-        unitEntries[row.unitId] ?? (row.unitId == null ? '未维护' : row.unitId!),
-        style: TextStyle(
-          color: row.unitId == null
-              ? Theme.of(context).colorScheme.error
-              : Theme.of(context).colorScheme.onSurfaceVariant,
+    // ADR-098 允许损耗%（订货单）：2026-10-10 列序口径——紧跟数量（与采购「允许
+    // 超收% 紧跟数量」对齐）。货品主档记忆预填（黄标提醒核对，改值即清）；回厂
+    // 累计低于 数量×(1−允许损耗) 时仓库登记要确认并通知委外判定。空 = 未设。
+    if (cfg.itemHasAllowedLossPct)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'allowedLossPct',
+        label: '允许损耗%',
+        width: 120,
+        numeric: true,
+        headerInfo:
+            '委外回厂允许少到的比例。例如填 5，订 100 件最少应到 95 件；'
+            '少于下限仓库登记时会确认并通知委外判定。留空 = 不设下限。'
+            '按货品主档记忆预填，保存后记住本次填写值。',
+        textOf: (r) => r.allowedLossPct.text,
+        listenableOf: (r) => r.allowedLossPct,
+        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
+          valueListenable: row.termsAutofilledNotifier,
+          builder: (context, marks, _) => TextField(
+            key: ValueKey('subcontract-allowed-loss-${row.hashCode}'),
+            controller: row.allowedLossPct,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: applyAutofillHint(
+              const UtenInputDecoration(InputDecoration(isDense: true)),
+              Theme.of(context),
+              autofilled: marks.contains('allowedLoss'),
+            ),
+          ),
         ),
       ),
-    ),
     if (cfg.itemHasPrice)
       EditableGridColumn<SubcontractGridRow>(
         key: 'price',
@@ -591,7 +614,6 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
             controller: row.price,
             onChanged: (_) => row.clearTermsAutofilled('price'),
             onSubmitted: (_) => row.clearTermsAutofilled('price'),
-            textAlign: TextAlign.right,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const UtenInputDecoration(
               InputDecoration(isDense: true, hintText: '0'),
@@ -636,7 +658,6 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         frozenTextOf: (r) => r.girth.text,
         cellBuilder: (context, row) => TextField(
           controller: row.girth,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
@@ -650,7 +671,6 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         frozenTextOf: (r) => r.boxQty.text,
         cellBuilder: (context, row) => TextField(
           controller: row.boxQty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
@@ -664,9 +684,11 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         frozenTextOf: (r) => r.standardQty.text,
         cellBuilder: (context, row) => TextField(
           controller: row.standardQty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          // 单位内联在数量输入框后（2026-10-10 口径）。
+          decoration: UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0', suffixText: unitSuffixOf(row)),
+          ),
         ),
       ),
       EditableGridColumn<SubcontractGridRow>(
@@ -677,9 +699,10 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         frozenTextOf: (r) => r.endingQty.text,
         cellBuilder: (context, row) => TextField(
           controller: row.endingQty,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(isDense: true, hintText: '0'),
+          decoration: UtenInputDecoration(
+            InputDecoration(isDense: true, hintText: '0', suffixText: unitSuffixOf(row)),
+          ),
         ),
       ),
       EditableGridColumn<SubcontractGridRow>(
@@ -690,7 +713,6 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         frozenTextOf: (r) => r.wasteRate.text,
         cellBuilder: (context, row) => TextField(
           controller: row.wasteRate,
-          textAlign: TextAlign.right,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(isDense: true, hintText: '0'),
         ),
@@ -707,35 +729,6 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         ),
       ),
     ],
-    // ADR-098 允许损耗%（订货单）：货品主档记忆预填（黄标提醒核对，改值即清）；
-    // 回厂累计低于 数量×(1−允许损耗) 时仓库登记要确认并通知委外判定。空 = 未设。
-    if (cfg.itemHasAllowedLossPct)
-      EditableGridColumn<SubcontractGridRow>(
-        key: 'allowedLossPct',
-        label: '允许损耗%',
-        width: 120,
-        numeric: true,
-        headerInfo:
-            '委外回厂允许少到的比例。例如填 5，订 100 件最少应到 95 件；'
-            '少于下限仓库登记时会确认并通知委外判定。留空 = 不设下限。'
-            '按货品主档记忆预填，保存后记住本次填写值。',
-        textOf: (r) => r.allowedLossPct.text,
-        listenableOf: (r) => r.allowedLossPct,
-        cellBuilder: (context, row) => ValueListenableBuilder<Set<String>>(
-          valueListenable: row.termsAutofilledNotifier,
-          builder: (context, marks, _) => TextField(
-            key: ValueKey('subcontract-allowed-loss-${row.hashCode}'),
-            controller: row.allowedLossPct,
-            textAlign: TextAlign.right,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: applyAutofillHint(
-              const UtenInputDecoration(InputDecoration(isDense: true)),
-              Theme.of(context),
-              autofilled: marks.contains('allowedLoss'),
-            ),
-          ),
-        ),
-      ),
     // 订货单行级商业条款（2026-09）：单头不再录，逐行选择/填写，保存按组合拆单。
     if (showCommercial)
       ...procurementCommercialColumns<SubcontractGridRow>(

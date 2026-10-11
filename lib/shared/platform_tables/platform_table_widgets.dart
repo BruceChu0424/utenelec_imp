@@ -37,7 +37,7 @@ class PlatformColumnValue<T> extends StatelessWidget {
       value?.isNotEmpty == true ? value! : '—',
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      textAlign: column.numeric ? TextAlign.right : TextAlign.left,
+      textAlign: TextAlign.left,
     );
     final error =
         controller.cell(row, column.id)?.error ??

@@ -35,10 +35,11 @@ void main() {
     final amount = table.columns.singleWhere(
       (column) => column.key == 'amount',
     );
-    expect(price.value(row), '0.0333333333（参考）');
+    // 金额「数值 币种」后缀（2026-10-10 口径）：表头币种随金额显示。
+    expect(price.value(row), '0.0333333333 美元（参考）');
     expect(price.info, contains('结算按单据记录的总金额'));
     expect(amount.label, '总金额');
-    expect(amount.value(row), '100.000000000000000001');
+    expect(amount.value(row), '100.000000000000000001 美元');
   });
 
   testWidgets('订货详情：合计数量按单位分组、合计金额标红且币种取表头', (tester) async {

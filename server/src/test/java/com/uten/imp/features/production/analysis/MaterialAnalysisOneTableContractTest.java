@@ -135,6 +135,15 @@ class MaterialAnalysisOneTableContractTest {
         // 对象级可见范围必须进查询：可调拨量随登录人变，不能做成与账号无关的缓存。
         assertThat(reallocation).contains("analysis.maker_id IN (:visibleOwners)");
         assertThat(reallocation).contains("access.requireWritable(makerId,");
+        // 2026-10-10 用户口径：根供给行（成品，depth=0）开放跨计划调拨。三处
+        // 查询与 validateSourceEndpoint 必须是同一谓词——任何一处漏改都会出现
+        // 「按钮亮着点进去被拒」或「池子给了却永远进不了候选」的错位。
+        assertThat(new int[]{
+            reallocation.split("OR material.node_role = 'ROOT_SUPPLY'", -1).length - 1,
+            reallocation.split("OR mine.node_role = 'ROOT_SUPPLY'", -1).length - 1,
+        }).containsExactly(3, 2);
+        assertThat(reallocation).contains(
+                "(source.depth() < 1 && !\"ROOT_SUPPLY\".equals(source.nodeRole()))");
     }
 
     @Test

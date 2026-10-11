@@ -150,4 +150,10 @@ class _ShelvedRepository implements ProcurementInspectionRepository {
     required List<ProcurementInspectionDecideItem> items,
     String? reason,
   }) async {}
+
+  @override
+  Future<void> decideReport({
+    required List<ProcurementInspectionReportReceipt> receipts,
+    String? reason,
+  }) async {}
 }

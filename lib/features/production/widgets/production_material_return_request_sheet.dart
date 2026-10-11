@@ -20,6 +20,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../warehouse/models/stock_doc.dart';
 import '../../warehouse/providers/warehouse_count_refresh.dart';
@@ -564,38 +565,38 @@ class _MaterialReturnRequestState
       cellBuilder: (context, row) =>
           UtenGoodsAttributeCell(_omitPlaceholder(row.source.colorName)),
     ),
-    EditableGridColumn(
-      key: 'unit',
-      label: '单位',
-      width: 75,
-      cellBuilder: (_, row) => Text(row.source.unitName),
-    ),
+    // 2026-10-10 数量内联口径：独立「单位」列撤销——可退/待仓库收料数字后内联
+    // 单位，本次退料输入框单位放后缀。
     EditableGridColumn(
       key: 'available',
       exactValueOf: (row) => row.source.availableQty.toString(),
       label: '可退数量',
       headerInfo: '可退数量已扣除待仓库收料数量；有退料限制时，悬停数量可查看原因。',
-      width: 100,
+      width: 134,
       numeric: true,
       cellBuilder: (_, row) => Tooltip(
         message: row.source.returnBlockedReason ?? '可退数量已扣除待仓库收料数量',
-        child: Text(_number(row.source.availableQty)),
+        child: Text(
+          formatQtyWithUnit(row.source.availableQty, row.source.unitName),
+        ),
       ),
     ),
     EditableGridColumn(
       key: 'pending',
       exactValueOf: (row) => row.source.pendingReturnQty.toString(),
       label: '待仓库收料',
-      width: 110,
+      width: 144,
       numeric: true,
-      cellBuilder: (_, row) => Text(_number(row.source.pendingReturnQty)),
+      cellBuilder: (_, row) => Text(
+        formatQtyWithUnit(row.source.pendingReturnQty, row.source.unitName),
+      ),
     ),
     EditableGridColumn(
       key: 'qty',
       exactValueOf: (row) => row.qty.text,
       exactListenableOf: (row) => row.qty,
       label: '本次退料',
-      width: 138,
+      width: 172,
       numeric: true,
       headerInfo: '仅填写本次交回仓库的实际数量；留待后续生产的部分保持不退。',
       cellBuilder: (_, row) => TextField(
@@ -603,9 +604,12 @@ class _MaterialReturnRequestState
         controller: row.qty,
         enabled: !_locked && row.source.availableQty > 0,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textAlign: TextAlign.right,
-        decoration: const UtenInputDecoration(
-          InputDecoration(isDense: true, hintText: '0'),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            hintText: '0',
+            suffixText: row.source.unitName,
+          ),
         ),
       ),
     ),

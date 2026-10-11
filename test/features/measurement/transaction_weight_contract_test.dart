@@ -75,13 +75,13 @@ void main() {
       // 盘点: 实盘后是只读账面重量与可选实盘重量。
       expect(stockGrid, contains("key: 'bookWeight'"));
       expect(stockGrid, contains("key: 'countWeight'"));
-      // 列序: 单位 → 实称重量 (数量组之后, 不把数量与单位拆开)。
+      // 列序: 数量(单位内联, 2026-10-10 T9 删独立单位列) → 实称重量 → 入库仓库。
       for (final page in [arrival, finished]) {
-        final unit = page.indexOf('shared.unit(),');
+        final qty = page.indexOf('shared.quantity(');
         final weight = page.indexOf('shared.weight(');
         final warehouse = page.indexOf('shared.warehouse(');
-        expect(unit, greaterThan(0));
-        expect(weight, greaterThan(unit));
+        expect(qty, greaterThan(0));
+        expect(weight, greaterThan(qty));
         expect(warehouse, greaterThan(weight));
       }
     },

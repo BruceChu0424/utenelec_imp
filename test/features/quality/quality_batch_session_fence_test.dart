@@ -217,13 +217,14 @@ void main() {
         ),
       );
       expect(requests, ['Bearer initial-access']);
-      expect(batch.completedReceiptCount, 0);
+      expect(batch.completedReceiptCount, 0,
+          reason: '命令响应期换身份：确认集不写入，FQC 不再发');
       expect(batch.complete, isFalse);
     },
   );
 
   test(
-    'switching after a valid acknowledgement stops before the next receipt',
+    'switching after a valid report submission stops before the FQC command',
     () async {
       final storage = _Storage();
       final requests = <String>[];
@@ -248,12 +249,12 @@ void main() {
         ),
       );
       expect(requests, ['Bearer initial-access']);
-      expect(batch.completedReceiptCount, 1);
-      expect(batch.acknowledgedIqcIds, ['inspection-1']);
+      expect(batch.completedReceiptCount, 2);
+      expect(batch.acknowledgedIqcIds, ['inspection-1', 'inspection-2']);
     },
   );
 
-  test('same-lineage refresh permits remaining IQC and FQC commands', () async {
+  test('same-lineage refresh permits the remaining FQC command', () async {
     final storage = _Storage();
     final headers = <String>[];
     final api = _api(storage, (options) async {
@@ -275,7 +276,6 @@ void main() {
     );
     expect(headers, [
       'Bearer initial-access',
-      'Bearer refreshed-access',
       'Bearer refreshed-access',
     ]);
     expect(batch.complete, isTrue);
@@ -324,7 +324,7 @@ void main() {
           _throwsBoundary('SESSION_CHANGED'),
         );
         expect(paths, hasLength(1));
-        expect(batch.completedReceiptCount, 1);
+        expect(batch.completedReceiptCount, 2);
         expect(jsonEncode(batch.exportDraft()['receipts']), keys);
         await expectLater(
           _send(batch, api),
@@ -340,7 +340,7 @@ void main() {
   }
 
   test(
-    'session-state read failure stops this attempt, then retries the original unacknowledged keys',
+    'session-state read failure stops this attempt, then retries the original report',
     () async {
       final storage = _Storage();
       final commands = <Object?>[];
@@ -360,20 +360,16 @@ void main() {
         _throwsBoundary('SESSION_STATE_UNAVAILABLE'),
       );
       expect(commands, hasLength(1));
-      expect(batch.completedReceiptCount, 1);
+      expect(batch.completedReceiptCount, 2);
       await _send(batch, api);
-      expect(commands, hasLength(3));
+      expect(commands, hasLength(2));
       final second = commands[1] as Map;
-      expect(
-        ((second['items'] as List).single as Map)['idempotencyKey'],
-        'original-key-2',
-      );
-      expect((commands.last as Map)['idempotencyKey'], 'original-fqc-key');
+      expect(second['idempotencyKey'], 'original-fqc-key');
     },
   );
 
   test(
-    'an ordinary 409 continues, but a concurrent identity boundary takes precedence',
+    'an ordinary 409 fails the whole report; a concurrent identity boundary takes precedence',
     () async {
       for (final switchSession in [false, true]) {
         final storage = _Storage();
@@ -393,7 +389,11 @@ void main() {
           _send(_batch(), api),
           _throwsBoundary(switchSession ? 'SESSION_CHANGED' : 'CONFLICT'),
         );
-        expect(calls, switchSession ? 1 : 2);
+        expect(
+          calls,
+          1,
+          reason: '整批原子提交：decide-report 失败即止，不再补发其它命令',
+        );
       }
     },
   );

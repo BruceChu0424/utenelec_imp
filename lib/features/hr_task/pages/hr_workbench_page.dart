@@ -5,6 +5,9 @@
 //  - 事务入口从整行 ListTile 改为自适应小卡网格(UtenResponsiveGrid：
 //    手机 2 列 / 中宽 3 列 / 桌面 5 列)；今日概览 4 张统计卡与证件待核对
 //    红横幅退役(与事务办理卡重复，数字并入卡片徽章)；
+//  - 卡片红数只计今日口径(转正=逾期+今日、生日/周年=今日，临近/30 天内只在
+//    说明行文字里体现，2026-10-10 修：并入统计卡数字时口径曾被放宽成含临近，
+//    页面红数与工作台 hrTaskCenter 徽章对不上)；
 //  - 卡片待办数用 UtenNotificationBadge 红色通知徽章(有需处理时)，
 //    无待办显示中性灰 0(2026-10-06 用户口径：数字常显)；
 //  - 「快捷发布祝福」三张大瓦片改为内容宽度的紧凑横排胶囊(图标+文字，Wrap 自适应换行)；
@@ -279,18 +282,20 @@ class HrWorkbenchPage extends ConsumerWidget {
     required bool canFixIdentity,
   }) {
     final theme = Theme.of(context);
+    // 红数只计「今天要办」的事(与工作台 hrTaskCenter 徽章、退役前的今日概览统计卡
+    // 同口径)：临近转正/30 天内生日不进红数，只在下方口径说明行里以文字体现
+    // (2026-10-10 修：并入统计卡数字时口径曾被放宽成含临近，导致页面红数与
+    // 工作台徽章对不上)。
     final entries = <(HrTaskType, int, String, Color)>[
       (
         HrTaskType.confirm,
-        s.confirmOverdue.length +
-            s.confirmToday.length +
-            s.confirmUpcoming.length,
+        s.confirmOverdue.length + s.confirmToday.length,
         '逾期 ${s.confirmOverdue.length} · 今日 ${s.confirmToday.length} · 临近 ${s.confirmUpcoming.length}',
         UtenColors.teal600,
       ),
       (
         HrTaskType.birthday,
-        s.birthdayToday.length + s.birthdayUpcoming.length,
+        s.birthdayToday.length,
         '今日 ${s.birthdayToday.length} · 30 天内 ${s.birthdayUpcoming.length}',
         UtenColors.catPink,
       ),

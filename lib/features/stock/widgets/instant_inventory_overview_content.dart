@@ -752,7 +752,8 @@ class _UnitQuantities extends StatelessWidget {
       ),
       child: Text(
         value,
-        textAlign: numberCell ? TextAlign.end : TextAlign.start,
+        // 全站表格口径（2026-10-10）：数字列同样左对齐，numberCell 只保留
+        // tabular 等宽数字与字重。
         style:
             (header ? theme.textTheme.labelLarge : theme.textTheme.bodyMedium)
                 ?.copyWith(

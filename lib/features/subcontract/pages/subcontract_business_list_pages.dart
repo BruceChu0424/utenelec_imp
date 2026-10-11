@@ -44,6 +44,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -1087,10 +1088,14 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
     MasterColumnDef(
       key: 'amount',
       label: '商业金额',
-      width: 140,
+      width: 170,
       type: 'money',
-      value: (row) =>
-          row.priceMasked ? '***' : row.totalLocal?.toStringAsFixed(2),
+      // 商业金额恒本币（折合人民币）：金额带「元」后缀；脱敏 '***' 原样。
+      value: (row) => row.priceMasked
+          ? '***'
+          : row.totalLocal == null
+          ? null
+          : financeLocalMoneyWithUnitSuffix(row.totalLocal!.toStringAsFixed(2)),
     ),
   if (weight)
     MasterColumnDef(

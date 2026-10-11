@@ -315,6 +315,11 @@ ThemeData buildDarkTheme() {
         color: UtenColors.darkTextSecondary,
         fontSize: 14,
       ),
+      // 2026-10-10 用户口径：单位后缀用正文色（深色=近白），与浅色主题成对。
+      suffixStyle: const TextStyle(
+        color: UtenColors.darkTextPrimary,
+        fontSize: 14,
+      ),
     ),
 
     navigationBarTheme: NavigationBarThemeData(

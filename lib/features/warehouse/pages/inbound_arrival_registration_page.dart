@@ -50,11 +50,13 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
 import '../../employee/repositories/employee_repository.dart';
@@ -868,73 +870,46 @@ class _InboundArrivalRegistrationPageState
               : ''),
     );
     if (!confirmed || !mounted) return;
+    await _register(route, submitLines);
+  }
+
+  /// 提交登记(确认弹窗后的一个事务命令)：失败按 [arrivalRegistrationFailureReason]
+  /// 如实报因；服务端「到货来源歧义」409 时弹二选一，选定后把本次提交的全部行
+  /// source 设为所选值并自动重提一次(2026-10-10 删「到货来源」列后的兜底，正常
+  /// 路径零感知)。
+  Future<void> _register(
+    InboundRoute route,
+    List<_BatchArrivalLine> submitLines,
+  ) async {
     setState(() => _saving = true);
     try {
-      await saveFormDraftNow();
-      final repo = ref.read(procurementInboundRepositoryProvider);
-      // 幂等键随草稿持久化(_registrationId)，再按路线与本批内容派生：响应丢失后原样重试安全重放，
-      // 改了数量/仓库/重量再提交是另一次登记。
-      final body = <String, dynamic>{
-        'idempotencyKey': _batchKey(submitLines, stockInFirst),
-        'billDate': _fmt(_billDate),
-        'receiverEmployeeId': _receiverId,
-        'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
-        // 先入库后质检(V596)：同事务按库位上架；先质检后入库时不传。
-        if (stockInFirst) 'stockInBeforeInspection': true,
-        'lines': [
-          for (final line in submitLines)
-            {
-              'orderType': line.prefill.orderType.name.toUpperCase(),
-              'warehouseId': line.warehouseId,
-              if (line.prefill.orderType ==
-                  ProcurementInboundOrderType.purchase)
-                'purchaserId': line.prefill.purchaserId,
-              'goodsId': line.item.goodsId,
-              'qty': double.tryParse(line.qty.text.trim()) ?? 0,
-              'orderItemId': line.item.orderItemId,
-              if (stockInFirst) 'preStockPlace': line.place.text.trim(),
-              if (line.source.apiValue != null)
-                'replacementIntent': line.source.apiValue,
-              'sourceDocNo': line.prefill.orderBillNo,
-              if (line.item.colorId != null) 'colorId': line.item.colorId,
-              if (line.item.unitId != null) 'unitId': line.item.unitId,
-              if (line.prefill.orderType !=
-                  ProcurementInboundOrderType.purchase)
-                'unitRate': line.item.unitRate,
-              // 实称净重(千克 4 位；没称不带，精确换算行不带)与「按称重改数量」。
-              'weight': ?_sentKg(line),
-              if (line.weight.qtyFromWeight) 'qtyFromWeight': true,
-            },
-        ],
-      };
-      if (!mounted) return;
-      // ADR-098：委外回厂累计低于允许损耗下限时服务端先 409，弹窗确认后带确认重发(一个事务，任何一组都还没写)。
-      final batch = await registerArrivalConfirmingShortDelivery(
-        context: context,
-        body: body,
-        register: (payload) =>
-            runFormDraftSubmission(() => repo.registerArrivals(payload)),
-        setBusy: _setSaving,
-      );
-      if (batch == null) return;
-      // 学习回写只针对实际登记了的行(未勾选行不产生本次事实)。
-      unawaited(_learnGoodsProfiles(submitLines));
-      if (!mounted) return;
-      await completeFormDraft();
-      if (!mounted) return;
-      bumpListRefresh(
-        ref,
-        PurchaseDocConfig.by(PurchaseDocType.receipt).refreshKey,
-      );
-      bumpListRefresh(
-        ref,
-        SubcontractDocConfig.by(SubcontractDocType.receipt).refreshKey,
-      );
-      invalidateWarehouseTaskCounts(ref);
-      if (context.canPop()) {
-        context.pop(batch);
-      } else {
-        context.go(RouteName.warehouseInboundExpectations);
+      while (true) {
+        try {
+          await _registerOnce(route, submitLines);
+          return;
+        } on ApiException catch (error) {
+          final ambiguous = _isArrivalSourceAmbiguityRejected(error) &&
+              // 已明确过来源仍报同错 = 不是来源歧义的问题，走通用失败口径。
+              submitLines.any(
+                (line) => line.source == WarehouseArrivalSource.automatic,
+              );
+          if (!ambiguous) rethrow;
+          // 先撤遮罩再弹窗(与短交确认同一坑)：UtenBusyOverlay 的裸图层在路由重排后
+          // 会压住后推的弹窗，两个按钮都点不动。
+          _setSaving(false);
+          await WidgetsBinding.instance.endOfFrame;
+          if (!mounted) return;
+          final resolved = await _pickArrivalSource(context, error);
+          // 「返回修改」：停在原页不报错，行保持自动识别，由用户改完再提交。
+          if (resolved == null) return;
+          setState(() {
+            for (final line in submitLines) {
+              line.source = resolved;
+            }
+          });
+          _setSaving(true);
+          // 来源变了幂等键也变(_batchKey 含 source)：自动重提是另一次登记，不是重放。
+        }
       }
     } catch (error, stack) {
       // 提交失败如实报因(ADR-151 §2)：服务端明确拒绝(4xx，含数据库守卫)给服务端原因；
@@ -945,6 +920,125 @@ class _InboundArrivalRegistrationPageState
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  /// 一次真正的登记提交(校验与确认弹窗已过)。
+  Future<void> _registerOnce(
+    InboundRoute route,
+    List<_BatchArrivalLine> submitLines,
+  ) async {
+    await saveFormDraftNow();
+    final repo = ref.read(procurementInboundRepositoryProvider);
+    // 幂等键随草稿持久化(_registrationId)，再按路线与本批内容派生：响应丢失后原样重试安全重放，
+    // 改了数量/仓库/重量再提交是另一次登记。
+    final body = <String, dynamic>{
+      'idempotencyKey': _batchKey(submitLines, route.isStockInFirst),
+      'billDate': _fmt(_billDate),
+      'receiverEmployeeId': _receiverId,
+      'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
+      // 先入库后质检(V596)：同事务按库位上架；先质检后入库时不传。
+      if (route.isStockInFirst) 'stockInBeforeInspection': true,
+      'lines': [
+        for (final line in submitLines)
+          {
+            'orderType': line.prefill.orderType.name.toUpperCase(),
+            'warehouseId': line.warehouseId,
+            if (line.prefill.orderType == ProcurementInboundOrderType.purchase)
+              'purchaserId': line.prefill.purchaserId,
+            'goodsId': line.item.goodsId,
+            'qty': double.tryParse(line.qty.text.trim()) ?? 0,
+            'orderItemId': line.item.orderItemId,
+            if (route.isStockInFirst) 'preStockPlace': line.place.text.trim(),
+            if (line.source.apiValue != null)
+              'replacementIntent': line.source.apiValue,
+            'sourceDocNo': line.prefill.orderBillNo,
+            if (line.item.colorId != null) 'colorId': line.item.colorId,
+            if (line.item.unitId != null) 'unitId': line.item.unitId,
+            if (line.prefill.orderType != ProcurementInboundOrderType.purchase)
+              'unitRate': line.item.unitRate,
+            // 实称净重(千克 4 位；没称不带，精确换算行不带)与「按称重改数量」。
+            'weight': ?_sentKg(line),
+            if (line.weight.qtyFromWeight) 'qtyFromWeight': true,
+          },
+      ],
+    };
+    if (!mounted) return;
+    // ADR-098：委外回厂累计低于允许损耗下限时服务端先 409，弹窗确认后带确认重发(一个事务，任何一组都还没写)。
+    final batch = await registerArrivalConfirmingShortDelivery(
+      context: context,
+      body: body,
+      register: (payload) =>
+          runFormDraftSubmission(() => repo.registerArrivals(payload)),
+      setBusy: _setSaving,
+    );
+    if (batch == null) return;
+    // 学习回写只针对实际登记了的行(未勾选行不产生本次事实)。
+    unawaited(_learnGoodsProfiles(submitLines));
+    if (!mounted) return;
+    await completeFormDraft();
+    if (!mounted) return;
+    bumpListRefresh(
+      ref,
+      PurchaseDocConfig.by(PurchaseDocType.receipt).refreshKey,
+    );
+    bumpListRefresh(
+      ref,
+      SubcontractDocConfig.by(SubcontractDocType.receipt).refreshKey,
+    );
+    invalidateWarehouseTaskCounts(ref);
+    if (context.canPop()) {
+      context.pop(batch);
+    } else {
+      context.go(RouteName.warehouseInboundExpectations);
+    }
+  }
+
+  /// 服务端「到货来源歧义」409 的判别：状态码 409 + 报错文案含「请明确选择到货来源」
+  /// (ProcurementArrivalControlService.ArrivalCapacity.usesReplacement 的守卫：订单
+  /// 同时存在正常待到货与已退未补数量)。文案口径见
+  /// server/src/main/java/com/uten/imp/features/warehouse/inbound/
+  /// ProcurementArrivalControlService.java 的「请明确选择到货来源」。
+  bool _isArrivalSourceAmbiguityRejected(ApiException error) =>
+      error.httpStatus == 409 && error.message.contains('请明确选择到货来源');
+
+  /// 歧义 409 的「到货来源」二选一弹窗(选项文案与原下拉项一致，l10n 既有 key)；
+  /// null = 「返回修改」。
+  Future<WarehouseArrivalSource?> _pickArrivalSource(
+    BuildContext context,
+    ApiException error,
+  ) => showDialog<WarehouseArrivalSource>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      key: const Key('warehouse-arrival-source-ambiguity-dialog'),
+      title: Text(workflowFieldText(dialogContext).warehouseArrivalSourceLabel),
+      content: Text(
+        '${error.message}。请按本批实物选择，本次提交的全部明细行将按所选来源登记：'
+        '「${WarehouseArrivalSource.normal.label(dialogContext)}」只用正常待到货额度，'
+        '不占用已退未补额度；「${WarehouseArrivalSource.replacementFirst.label(dialogContext)}」'
+        '先补回已退数量，超出部分按正常到货处理。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('返回修改'),
+        ),
+        FilledButton(
+          key: const Key('warehouse-arrival-source-ambiguity-normal'),
+          onPressed: () =>
+              Navigator.of(dialogContext).pop(WarehouseArrivalSource.normal),
+          child: Text(WarehouseArrivalSource.normal.label(dialogContext)),
+        ),
+        FilledButton(
+          key: const Key('warehouse-arrival-source-ambiguity-replacement'),
+          onPressed: () => Navigator.of(
+            dialogContext,
+          ).pop(WarehouseArrivalSource.replacementFirst),
+          child: Text(
+            WarehouseArrivalSource.replacementFirst.label(dialogContext),
+          ),
+        ),
+      ],
+    ),
+  );
 
   /// 本次提交的幂等键：草稿里持久化的登记编号 + 路线 + 本批内容(订货行、仓、数量、来源、重量)。
   String _batchKey(List<_BatchArrivalLine> lines, bool stockInFirst) {
@@ -1114,11 +1208,6 @@ class _InboundArrivalRegistrationPageState
             ),
             WeightParamsLoadNotice(cache: _weightCache),
             ..._warehouseNotices(theme),
-            // 来源单据张数 + 勾选口径(与产成品批量页同一句式)。
-            InboundGridIntro(
-              sourceSummary: '来自 $_orderCount 张订货单',
-              submitLabel: _route?.label ?? '提交按钮',
-            ),
             const SizedBox(height: UtenSpacing.s8),
             UtenEditableGrid<_BatchArrivalLine>(
               tableKey:
@@ -1170,40 +1259,28 @@ class _InboundArrivalRegistrationPageState
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 单重参数到达后「称重偏差 N 行」随之刷新。
+                  // 单重参数到达后「称重偏差 N 行」随之刷新。原合计条下方的长提示行
+                  // 已删(2026-10-10 简洁口径)；「已移出 N 行」计数并进右下提交按钮
+                  // tooltip(_buildBottomBar)。
                   ListenableBuilder(
                     listenable: _weightCache,
                     builder: (context, _) =>
                         inboundTotalsBar<_BatchArrivalLine>(
-                          key: const Key('warehouse-arrival-totals'),
-                          lines: _lines,
-                          qtyLabel: '本次实收',
-                          qtyOf: (line) =>
-                              double.tryParse(line.qty.text.trim()) ?? 0,
-                          unitIdOf: (line) => line.item.unitId,
-                          unitNameOf: (line) => line.item.unitName,
-                          weight: warehouseWeightTotals<_BatchArrivalLine>(
-                            _lines,
-                            weightOf: (line) => line.weight,
-                            exactKgOf: _exactKg,
-                            paramsOf: _paramsOf,
-                            qtyBaseOf: (line) => line.qtyBase,
-                          ),
-                          weightDisplay: weightUnits.display,
-                        ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    _removedLineCount == 0
-                        ? '本次实收默认=批准剩余量，可改；'
-                              '${_hasPurchaseLine ? '采购明细超过最多可收的部分才转财务；' : ''}'
-                              '入库仓库行级必填(按订货单建议仓或上次所选仓'
-                              '预填)，库位按该仓记住的库位或货品资料带出(黄框请核对)，入库后自动记住'
-                              '为该仓默认库位。明细默认全选，提交只含勾选行。'
-                        : '已移出 $_removedLineCount 行(仅本页临时选择)；这些来源行未写收货、未写库存，仍在待登记。'
-                              '明细默认全选，提交只含勾选行。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      key: const Key('warehouse-arrival-totals'),
+                      lines: _lines,
+                      qtyLabel: '本次实收',
+                      qtyOf: (line) =>
+                          double.tryParse(line.qty.text.trim()) ?? 0,
+                      unitIdOf: (line) => line.item.unitId,
+                      unitNameOf: (line) => line.item.unitName,
+                      weight: warehouseWeightTotals<_BatchArrivalLine>(
+                        _lines,
+                        weightOf: (line) => line.weight,
+                        exactKgOf: _exactKg,
+                        paramsOf: _paramsOf,
+                        qtyBaseOf: (line) => line.qtyBase,
+                      ),
+                      weightDisplay: weightUnits.display,
                     ),
                   ),
                 ],
@@ -1216,13 +1293,22 @@ class _InboundArrivalRegistrationPageState
     );
   }
 
-  int get _orderCount =>
-      _lines.map((line) => line.prefill.orderId).toSet().length;
+  /// 「最多可收」列文字：数量内联行单位(2026-10-10 T9)，比例 > 0 再带「(含允许超收
+  /// p%)」；没有这项数据(委外 / 旧接口)为「—」。
+  String _maxReceivableText(ProcurementReceiptPrefillItem item) {
+    final max = item.maxReceivableQty;
+    if (max == null) return '—';
+    final value = formatQtyWithUnit(max, item.unitName?.trim());
+    final pct = item.allowedOverReceiptPct ?? 0;
+    return pct > 0 ? '$value(含允许超收 ${procurementQty(pct)}%)' : value;
+  }
 
   // 明细表列(与产成品批量页同一套共用列，列名/列序/格式一致)：来源订货单 → 类型 →
-  // 货品名称 → 编号 → 颜色 → 批准剩余 → 到货来源 → 本次实收 → 单位 → 实称重量 →
-  // 称重核对 → 入库仓库 → 库位号 → 物料系列。表头快速筛选只做视图级过滤，不动行数据、
-  // 输入值与勾选。
+  // 货品名称 → 编号 → 颜色 → 批准剩余 → 本次实收 → 实称重量 → 称重核对 → 入库仓库 →
+  // 预计去向 → 库位号 → 物料系列。数量一律「数字 + 单位」内联(2026-10-10 T9，独立单位列
+  // 删除)；「到货来源」列已删(2026-10-10，行 source 保留 automatic 默认，歧义订单由服务端
+  // 409 弹窗二选一兜底，见 _register)。表头快速筛选只做视图级过滤，不动行数据、输入值
+  // 与勾选。
   List<EditableGridColumn<_BatchArrivalLine>> _lineColumns(
     bool canRegister,
     WeightUnit weightEntryUnit,
@@ -1269,8 +1355,7 @@ class _InboundArrivalRegistrationPageState
       shared.quantity(
         key: 'approvedRemainingQty',
         label: '批准剩余',
-        textOf: (line) => inboundQty(line.item.approvedRemainingQty),
-        exactValueOf: (line) => line.item.approvedRemainingQty.toString(),
+        valueOf: (line) => line.item.approvedRemainingQty,
       ),
       // ADR-144：采购明细显示「最多可收(含允许超收 p%)」，超过它的部分才转财务；
       // 委外明细显示「—」；来源全是委外时不出这一列。
@@ -1278,39 +1363,23 @@ class _InboundArrivalRegistrationPageState
         EditableGridColumn(
           key: 'maxReceivableQty',
           label: '最多可收',
-          width: 170,
+          width: 200,
           numeric: true,
           headerInfo: procurementMaxReceivableHint,
-          textOf: (line) => line.item.maxReceivableLabel,
+          textOf: (line) => _maxReceivableText(line.item),
           exactValueOf: (line) => line.item.maxReceivableQty?.toString(),
           cellBuilder: (context, line) => Text(
-            line.item.maxReceivableLabel,
+            _maxReceivableText(line.item),
             key: ValueKey(
               'warehouse-arrival-batch-max-receivable-${line.item.orderItemId}',
             ),
-            textAlign: TextAlign.right,
           ),
         ),
-      EditableGridColumn(
-        key: 'arrivalSource',
-        label: workflowFieldText(context).warehouseArrivalSourceLabel,
-        width: 165,
-        // 每行相同的通用说明放列头 ⓘ：格内只留行特有的错误/预填图标。
-        headerInfo: workflowFieldText(context).warehouseArrivalSourceHint,
-        textOf: (line) => line.source.label(context),
-        cellBuilder: (context, line) => WarehouseArrivalSourceField(
-          key: ValueKey('warehouse-arrival-source-${line.item.orderItemId}'),
-          value: line.source,
-          enabled: editable(line),
-          onChanged: (source) => setState(() => line.source = source),
-        ),
-      ),
       shared.receivedQuantity(
         controllerOf: (line) => line.qty,
         enabled: editable,
         headerInfo: workflowFieldText(context).workflowArrivalQuantityHint,
       ),
-      shared.unit(),
       // 实称重量跟在数量组之后；按该行订货单供应商学到的单重核对(称重核对列)。
       shared.weight(
         entryUnit: weightEntryUnit,
@@ -1438,6 +1507,10 @@ class _InboundArrivalRegistrationPageState
             isLoading: _saving && _activeRoute == route,
             onPressed: canSubmit ? () => _save(route) : null,
             onDisabledTap: onDisabledTap,
+            // 合计条下提示行删除后(2026-10-10)，「已移出 N 行」计数唯一可见处。
+            tooltip: _removedLineCount > 0
+                ? '已移出 $_removedLineCount 行(仅本页)；${route.hint}'
+                : null,
           ),
       ],
     );

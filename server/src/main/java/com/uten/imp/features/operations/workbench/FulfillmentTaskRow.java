@@ -83,7 +83,13 @@ public record FulfillmentTaskRow(
          * 待分解委外申请这次能下单的数量(各明细 MIN(剩余未下单, 现有物料够做的套数) 之和, ADR-156);
          * 0 = 等物料齐套(锁住)。其它行为 null。
          */
-        BigDecimal orderableQty) {
+        BigDecimal orderableQty,
+        /**
+         * 委外商名(2026-10-10 V836 起 SUBCONTRACT 申请行由投影经
+         * subcontract_applications→suppliers 下发, 委外任务中心「待处理」列表显示;
+         * 未定商为 null, 那是业务事实)。其它段恒 null。
+         */
+        String supplierName) {
 
     public FulfillmentTaskRow withSources(List<SubcontractTaskSource> value) {
         return new FulfillmentTaskRow(
@@ -98,7 +104,7 @@ public record FulfillmentTaskRow(
                 workshopName, workerName, drawBatchNo,
                 lines == null ? List.of() : List.copyOf(lines),
                 rdTaskNo, bomMissingItemIds == null ? List.of() : List.copyOf(bomMissingItemIds),
-                orderableQty);
+                orderableQty, supplierName);
     }
 
     /** 按单据归组的行（采购/委外）：一行代表一张申请或订货单的整批明细。 */

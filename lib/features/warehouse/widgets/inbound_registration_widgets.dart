@@ -1,7 +1,8 @@
 // 入库登记共用界面件(2026-09-27 用户口径：产成品入库与采购/委外入库 UI、逻辑、表格、
 // 格式一致，能公用的都公用)。两类任务中心的多选路线按钮、两类批量/单张登记页的提交
-// 按钮、确认弹窗要点、批量校验汇总句式、明细表共用列(货品 / 编号 / 颜色 / 单位 /
-// 数量 / 实称重量 / 称重核对 / 入库仓库 / 库位号)与库位建议提示条都从这里取，改一处两边同步。
+// 按钮、确认弹窗要点、批量校验汇总句式、明细表共用列(货品 / 编号 / 颜色 / 数量(单位
+// 内联，2026-10-10 T9) / 实称重量 / 称重核对 / 入库仓库 / 库位号)与库位建议提示条都
+// 从这里取，改一处两边同步。
 //
 // 仓库采集表格的重量接线(ADR-135)也放在这里，仓库单据编辑页共用：带黄框的数量格
 // ([WarehouseQtyInputField])、称重计数回填([warehouseWeighCount])与幂等键重量指纹；
@@ -18,6 +19,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_predictor.dart';
@@ -89,6 +91,7 @@ class WarehouseQtyInputField extends StatelessWidget {
     this.fieldKey,
     this.enabled = true,
     this.hintText,
+    this.suffixText,
     this.sourceOf,
     this.onChanged,
   });
@@ -99,6 +102,9 @@ class WarehouseQtyInputField extends StatelessWidget {
   final Key? fieldKey;
   final bool enabled;
   final String? hintText;
+
+  /// 数量单位内联在输入框尾部(2026-10-10 T9：独立单位列删除，行单位跟在数字后)。
+  final String? suffixText;
 
   /// 黄框 ⓘ 的来源说明(每次重绘现取，如「按称重推算 5,373~5,449个」)。
   final String? Function()? sourceOf;
@@ -118,10 +124,13 @@ class WarehouseQtyInputField extends StatelessWidget {
             enabled: enabled,
             onChanged: onChanged,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.right,
             decoration: applyAutofillHint(
               UtenInputDecoration(
-                InputDecoration(hintText: hintText, isDense: true),
+                InputDecoration(
+                  hintText: hintText,
+                  suffixText: suffixText,
+                  isDense: true,
+                ),
                 info: autofilled ? (sourceOf?.call() ?? '系统预填，请核对') : null,
               ),
               Theme.of(context),
@@ -266,39 +275,25 @@ class InboundConfirmPoints extends StatelessWidget {
   }
 }
 
-/// 明细表上方的说明行：来源单据张数 + 勾选口径(两类批量页同一句式)。
+/// 明细表上方的说明行：来源单据张数。
+///
+/// 2026-10-10 简洁口径：原「明细默认全选：右下提交只含勾选的行…」长提示删除(勾选
+/// 口径改由确认弹窗写明未勾选行去向)，只留来源张数一句；同日订货单到货登记页的
+/// 「来自 X 张订货单」提示行删除，只剩产成品批量页在用。
 class InboundGridIntro extends StatelessWidget {
-  const InboundGridIntro({
-    super.key,
-    required this.sourceSummary,
-    required this.submitLabel,
-  });
+  const InboundGridIntro({super.key, required this.sourceSummary});
 
   /// 如「来自 3 张订货单」「来自 2 张报工单(其中 1 张已登记，只读)」。
   final String sourceSummary;
 
-  /// 右下提交按钮名(批量页 = 所选路线；单张页 = 两条路线并列)。
-  final String submitLabel;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final style = theme.textTheme.bodySmall?.copyWith(
-      color: theme.colorScheme.onSurfaceVariant,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(sourceSummary, style: style),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          '明细默认全选：右下「$submitLabel」只提交勾选的行，未勾选的行不登记、'
-          '不写库存，仍留在任务中心待登记(可重新勾回)；本次不收的也可点行末 ⊖ '
-          '移出本次登记(可勾选多行后右键批量移出)。勾选多行后在任意一行改仓库或写库位，'
-          '会一起写到全部勾选行。',
-          style: style,
-        ),
-      ],
+    return Text(
+      sourceSummary,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
     );
   }
 }
@@ -453,9 +448,10 @@ String? inboundBucket(String? value) {
 
 /// 明细表共用列：列名、宽度、格式、交互在两类登记页完全一致。
 ///
-/// 列序口径(2026-09-27 统一；2026-09-28 ADR-135 加重量)：来源单号 → 货品名称 → 编号 →
-/// 颜色 → 应收数量 → 本次实收 → 单位 → 实称重量 → 称重核对 → 入库仓库 → 库位号 →
-/// (采购另有物料系列)。重量跟在数量组(数量 + 单位)之后，不把数量与单位拆开。
+/// 列序口径(2026-09-27 统一；2026-09-28 ADR-135 加重量；2026-10-10 T9 单位并入数量)：
+/// 来源单号 → 货品名称 → 编号 → 颜色 → 应收数量 → 本次实收 → 实称重量 → 称重核对 →
+/// 入库仓库 → 库位号 → (采购另有物料系列)。数量一律「数字 + 单位」内联(只读列
+/// [formatQtyWithUnit]、录入列输入框 suffixText)，独立「单位」列已删除。
 class InboundGridColumns<T extends InboundRegistrationLine> {
   const InboundGridColumns({
     required this.names,
@@ -478,7 +474,6 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
   final String? Function(T line) unitNameOf;
 
   String _color(T line) => colorNameOf(line) ?? names.color(line.colorId);
-  String _unit(T line) => unitNameOf(line) ?? '—';
 
   EditableGridColumn<T> goodsName() => EditableGridColumn(
     key: 'goodsName',
@@ -518,33 +513,31 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     cellBuilder: (context, line) => Text(_color(line)),
   );
 
-  EditableGridColumn<T> unit() => EditableGridColumn(
-    key: 'unit',
-    label: '单位',
-    width: 70,
-    filterValueOf: (line) => inboundBucket(_unit(line)),
-    textOf: _unit,
-    cellBuilder: (context, line) => Text(_unit(line)),
-  );
+  /// 行单位显示名(空 = 不拼，只显示数字)；录入列 suffixText 也用它。
+  String? _unitSuffix(T line) {
+    final name = unitNameOf(line)?.trim();
+    return name == null || name.isEmpty ? null : name;
+  }
 
-  /// 只读数量列(批准剩余 / 报工数量)。
+  /// 只读数量列(批准剩余 / 报工数量)：单位内联在数字后(如 `5 个`，2026-10-10 T9)。
   EditableGridColumn<T> quantity({
     required String key,
     required String label,
-    required String Function(T line) textOf,
-    required String? Function(T line) exactValueOf,
+    required num? Function(T line) valueOf,
   }) => EditableGridColumn(
     key: key,
     label: label,
-    width: 100,
+    width: 140,
     numeric: true,
-    textOf: textOf,
-    exactValueOf: exactValueOf,
-    cellBuilder: (context, line) =>
-        Text(textOf(line), textAlign: TextAlign.right),
+    textOf: (line) => formatQtyWithUnit(valueOf(line), _unitSuffix(line)),
+    exactValueOf: (line) => valueOf(line)?.toString(),
+    cellBuilder: (context, line) => Text(
+      formatQtyWithUnit(valueOf(line), _unitSuffix(line)),
+    ),
   );
 
-  /// 「本次实收」录入列(必填、大于 0；空或非正数红框)。
+  /// 「本次实收」录入列(必填、大于 0；空或非正数红框)：行单位内联在输入框尾部
+  /// (suffixText，2026-10-10 T9)。只读回显行([readOnlyTextOf])由页面给已拼好单位的文字。
   ///
   /// 控制器是 [UtenAutofillTextController] 时，按称重改过的数量描黄框待核对，
   /// ⓘ 说明取本行重量格的推算区间。
@@ -557,7 +550,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
   }) => EditableGridColumn(
     key: 'qty',
     label: '本次实收',
-    width: 130,
+    width: 170,
     numeric: true,
     required: true,
     headerInfo: headerInfo,
@@ -573,7 +566,6 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
       if (controller == null) {
         return Text(
           readOnlyTextOf?.call(line) ?? '—',
-          textAlign: TextAlign.right,
         );
       }
       return RequiredCellFrame(
@@ -587,6 +579,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
             controller: controller,
             enabled: enabled(line),
             hintText: '大于 0',
+            suffixText: _unitSuffix(line),
             sourceOf: () => line.weight.qtyEstimateNote ?? '按称重推算的数量，请核对',
           ),
         ),

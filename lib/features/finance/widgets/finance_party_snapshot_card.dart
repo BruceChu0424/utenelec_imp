@@ -33,7 +33,7 @@ class FinancePartySnapshotCard extends StatelessWidget {
     super.key,
     required this.title,
     required this.balance,
-    this.side = PartyBalanceSide.customer,
+    this.titleStyle,    this.side = PartyBalanceSide.customer,
     this.leading = const [],
     this.trailing = const [],
     this.limitLabel,
@@ -44,6 +44,10 @@ class FinancePartySnapshotCard extends StatelessWidget {
 
   /// 卡片标题，例如「客户财务快照 · 远硕智能(C001)」。
   final String title;
+
+  /// 标题样式覆盖（2026-10-10 订货审批口径：供应商名红色加粗）：null 保持
+  /// 默认 titleSmall·w600；非空时经 merge 覆盖默认（基线字号仍随主题）。
+  final TextStyle? titleStyle;
 
   /// 服务端共用余额视图；null = 服务端没给，余额各格显示「—」。
   final PartyOpenBalance? balance;
@@ -122,9 +126,9 @@ class FinancePartySnapshotCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600)
+                        .merge(titleStyle),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

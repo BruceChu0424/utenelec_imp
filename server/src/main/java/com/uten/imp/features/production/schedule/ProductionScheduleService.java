@@ -267,20 +267,26 @@ public class ProductionScheduleService {
         };
     }
 
-    /** pending 排序 ORDER BY（白名单映射前端列 key→SQL 表达式；未知/空→默认交货升序）。方向 asc/desc。
-     *  铁律：ORDER BY 不拼用户原值，只从白名单取表达式。deliver/need 是 SELECT 别名（Postgres 支持）。 */
+    /** pending 排序 ORDER BY（白名单映射前端列 key→SQL 表达式）。方向 asc/desc。
+     *  铁律：ORDER BY 不拼用户原值，只从白名单取表达式。deliver/need 是 SELECT 别名（Postgres 支持）。
+     *  默认（2026-10-10 用户口径）：同一张销售单的多行相邻，不同销售单之间早下单的
+     *  在前——bill_date（有索引）定组序、bill_no 消除同日并列并天然聚合同单行，
+     *  line_no/id 保证同单内行序与分页稳定。 */
     private static String pendingOrderBy(String sort, String order) {
-        String expr = switch (sort == null ? "" : sort) {
-            case "deliverDate" -> "deliver";
-            case "qty" -> "i.qty";
-            case "needQty" -> "need";
-            case "orderBillNo" -> "o.bill_no";
-            default -> "deliver";
-        };
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
-        return "deliver".equals(expr)
-                ? "ORDER BY deliver " + dir + " NULLS LAST, o.bill_date"
-                : "ORDER BY " + expr + " " + dir + " NULLS LAST, deliver ASC NULLS LAST, o.bill_date";
+        return switch (sort == null ? "" : sort) {
+            case "deliverDate" -> "ORDER BY deliver " + dir
+                    + " NULLS LAST, o.bill_date, o.bill_no, i.id";
+            case "qty" -> "ORDER BY i.qty " + dir
+                    + " NULLS LAST, deliver ASC NULLS LAST, o.bill_date, o.bill_no, i.id";
+            case "needQty" -> "ORDER BY need " + dir
+                    + " NULLS LAST, deliver ASC NULLS LAST, o.bill_date, o.bill_no, i.id";
+            // 点销售单号列：按单号分组排（组内按下单时间、行号稳定）。
+            case "orderBillNo" -> "ORDER BY o.bill_no " + dir
+                    + " NULLS LAST, o.bill_date, i.line_no NULLS LAST, i.id";
+            default -> "ORDER BY o.bill_date " + dir
+                    + " NULLS LAST, o.bill_no, i.line_no NULLS LAST, i.id";
+        };
     }
 
     /** 待排产 facets：{status:[紧急/正常], orderBillNo:[各销售单号]}（同一过滤基座，

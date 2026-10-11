@@ -381,7 +381,9 @@ void main() {
     (tester) async {
       final repository = _Repository();
       await _open(tester, repository);
-      expect(find.text('单位'), findsOneWidget);
+      // 2026-10-10 数量+单位口径：独立「单位」列已删，单位内联在「可继续登记」
+      // 等数量列（如「7 件」）。
+      expect(find.text('单位'), findsNothing);
       await _consume(tester, '3');
       expect(find.text('本次剩余物料'), findsOneWidget);
       expect(find.text('铝件：7 件'), findsOneWidget);

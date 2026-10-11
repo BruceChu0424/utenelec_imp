@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 
 /// The server resolves automatic arrivals only when the source is unambiguous.
@@ -23,36 +22,6 @@ enum WarehouseArrivalSource {
   }
 }
 
-class WarehouseArrivalSourceField extends StatelessWidget {
-  const WarehouseArrivalSourceField({
-    super.key,
-    required this.value,
-    required this.onChanged,
-    required this.enabled,
-  });
-
-  final WarehouseArrivalSource value;
-  final ValueChanged<WarehouseArrivalSource> onChanged;
-  final bool enabled;
-
-  // 列级通用说明（warehouseArrivalSourceHint）挂在表头 ⓘ 上（2026-09-10 全站
-  // 口径：格内只留行特有的错误/预填图标），故这里不传 info。
-  @override
-  Widget build(BuildContext context) => UtenDropdownField(
-    value: value.name,
-    enabled: enabled,
-    allowClear: false,
-    searchable: false,
-    // 2026-10-06 行高统一口径：编辑表（到货登记明细格）内下拉用紧凑形态，
-    // 与同行 39 高的实收/重量输入格等高。
-    dense: true,
-    items: [
-      for (final source in WarehouseArrivalSource.values)
-        UtenDropdownItem(value: source.name, label: source.label(context)),
-    ],
-    onChanged: (selected) {
-      if (selected == null) return;
-      onChanged(WarehouseArrivalSource.values.byName(selected));
-    },
-  );
-}
+// 2026-10-10「到货来源」列删除：来源默认自动识别；仅当订单「正常待到货」与
+// 「已退未补」并存时（服务端 409），登记页弹窗二选一后自动重提，枚举仍承载
+// 该弹窗的取值与文案，原先挂在列上的下拉控件随之退役。

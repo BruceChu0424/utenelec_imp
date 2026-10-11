@@ -213,6 +213,7 @@ class _ProductionExecutionGroupPanelState
   }
 
   List<MasterColumnDef<ProductionExecutionWorkbenchGroup>> get _columns => [
+    // 2026-10-08 用户口径（列序）：状态/进度列放最前——进度紧随状态列之后。
     MasterColumnDef(
       key: 'status',
       label: '状态',
@@ -222,6 +223,20 @@ class _ProductionExecutionGroupPanelState
       // 替代原格内 _GroupStatusBadge 胶囊。
       cellColor: (context, row) =>
           utenStatusBadgeCellColor(_groupStatusType(row.status)),
+    ),
+    // 顶层产品完工进度：只统计参与分析的销售下单产品（多张销售单联合
+    // 分析也按根产品行聚合），子层自制/委外的完工不冒充顶层进度。
+    MasterColumnDef(
+      key: 'progress',
+      label: '进度',
+      width: 220,
+      value: (row) => row.rootProgressPercent == null
+          ? '—'
+          : '完工 ${row.rootProgressPercent}%',
+      cellBuilder: (_, row) => ProductionFlowProgress(
+        ratio: row.rootProgressRatio,
+        semanticsLabel: '顶层产品完工进度',
+      ),
     ),
     MasterColumnDef(
       key: 'root',
@@ -280,20 +295,6 @@ class _ProductionExecutionGroupPanelState
           UtenGoodsAttributeCell.text(_blankToNull(row.productColorPreview)),
       cellBuilder: (_, row) =>
           UtenGoodsAttributeCell(_blankToNull(row.productColorPreview)),
-    ),
-    // 顶层产品完工进度：只统计参与分析的销售下单产品（多张销售单联合
-    // 分析也按根产品行聚合），子层自制/委外的完工不冒充顶层进度。
-    MasterColumnDef(
-      key: 'progress',
-      label: '进度',
-      width: 220,
-      value: (row) => row.rootProgressPercent == null
-          ? '—'
-          : '完工 ${row.rootProgressPercent}%',
-      cellBuilder: (_, row) => ProductionFlowProgress(
-        ratio: row.rootProgressRatio,
-        semanticsLabel: '顶层产品完工进度',
-      ),
     ),
     MasterColumnDef(
       key: 'maker',

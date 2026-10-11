@@ -181,6 +181,19 @@ public class ProcurementInspectionController {
         service.decideBatch(receiptType, receiptId, request);
     }
 
+    /**
+     * 品质批量审批整份检验报告（2026-10-10）：多张采购/委外收货单一次请求原子执行
+     * （服务端单事务，联合预锁 + 按报告顺序逐单），任一单冲突整批回滚并按单号报错；
+     * 同一报告体响应丢失后重试静默重放，替代前端逐单循环发 decide-batch。
+     */
+    @PostMapping("/decide-report")
+    @PreAuthorize("hasAuthority('procurement_inspection:view')"
+            + " and hasAuthority('procurement_inspection:handle')")
+    public com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse decideReport(
+            @Valid @RequestBody com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportRequest request) {
+        return service.decideReport(request);
+    }
+
     /** Read-only query with the exact original report body, never a second quality write. */
     @PostMapping("/{receiptType}/{receiptId}/decide-batch/receipt")
     @PreAuthorize("hasAuthority('procurement_inspection:view')")

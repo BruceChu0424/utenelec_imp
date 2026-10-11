@@ -342,7 +342,8 @@ void main() {
         Theme.of(tester.element(tableFinder)).colorScheme.errorContainer,
       );
       expect(table.rowColor!(known), isNull);
-      expect(known.remainingQtyText, '12.5');
+      // 2026-10-10「数量 + 单位」内联口径：数量文本直接带行单位。
+      expect(known.remainingQtyText, '12.5 千克');
       expect(known.unitName, '千克');
       expect(known.statusLabel, '待核对领料');
       expect(unknown.statusLabel, '需要填写');
@@ -424,7 +425,8 @@ void main() {
     expect(mergedA.requiredQty, 13);
     expect(mergedA.members!.length, 2);
     expect(mergedA.drawBillLabel, '2 张单');
-    expect(mergedA.remainingQtyText, '13');
+    // 2026-10-10「数量 + 单位」内联口径：合并行数量同样带行单位。
+    expect(mergedA.remainingQtyText, '13 个');
     // 外壳：多货品单拆出的独立货品行。
     final rowB = view.firstWhere((r) => r.goodsCode == 'B');
     expect(rowB.openQty, 5);

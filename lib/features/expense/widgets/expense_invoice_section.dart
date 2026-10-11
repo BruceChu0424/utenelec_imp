@@ -85,7 +85,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
             if (invoices.isNotEmpty) ...[
               const SizedBox(width: UtenSpacing.s8),
               Text(
-                '价税合计 ¥ ${total.toStringAsFixed(2)}',
+                '价税合计 ${total.toStringAsFixed(2)} 元',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -1028,7 +1028,7 @@ class _ExpenseInvoiceFormDialogState
                                   ),
                               decoration: const InputDecoration(
                                 labelText: '价税合计 *',
-                                prefixText: '¥ ',
+                                suffixText: '元',
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -1197,7 +1197,7 @@ class _InvoiceVerifyDialogState extends ConsumerState<_InvoiceVerifyDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                '${widget.invoice.invoiceNo} · ¥ ${widget.invoice.totalAmount.toStringAsFixed(2)}',
+                '${widget.invoice.invoiceNo} · ${widget.invoice.totalAmount.toStringAsFixed(2)} 元',
               ),
               const SizedBox(height: UtenSpacing.s12),
               Text(l10n.expenseFlowVerifyGuide),

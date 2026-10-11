@@ -397,7 +397,7 @@ public class SubcontractDrawQueryService {
                 task.drawnQty(), task.pendingQty(), BigDecimal.ZERO, shortQty, task.materialKindCount(),
                 task.readyKindCount(), task.shortKindCount(), task.unplannedShortKindCount(),
                 task.pendingQty().signum() > 0 ? "DRAW_SUBMITTED" : "WAITING_MATERIAL",
-                task.deliverDate(), false, task.materialQty());
+                task.deliverDate(), false, task.materialQty(), task.planNo());
     }
 
     /** 选中的开放任务(范围内), 带行级可领/已领/已覆盖套数。 */
@@ -580,7 +580,8 @@ public class SubcontractDrawQueryService {
                 alias + ".unit_name", alias + ".order_qty", alias + ".drawn_qty", alias + ".pending_qty",
                 alias + ".drawable_qty", alias + ".short_qty", alias + ".material_kind_count",
                 alias + ".ready_kind_count", alias + ".unplanned_short_kind_count", alias + ".status",
-                alias + ".deliver_date", alias + ".maker_id", alias + ".material_qty")) + "\n";
+                alias + ".deliver_date", alias + ".maker_id", alias + ".material_qty",
+                alias + ".plan_no")) + "\n";
     }
 
     private static final int ROW_MAKER = 23;
@@ -595,7 +596,7 @@ public class SubcontractDrawQueryService {
                 uuid(r[o + 11]), str(r[o + 12]), decimal(r[o + 13]), decimal(r[o + 14]), decimal(r[o + 15]),
                 drawable, decimal(r[o + 17]), kinds, ready, Math.max(kinds - ready, 0),
                 (int) number(r[o + 20]), str(r[o + 21]), localDate(r[o + 22]),
-                canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]));
+                canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]));
     }
 
     /** 状态筛选白名单(固定 SQL 片段, 不拼用户输入)。 */
@@ -620,10 +621,12 @@ public class SubcontractDrawQueryService {
         StringBuilder sql = new StringBuilder(" AND ").append(scope.predicate()).append(' ');
         String pattern = keyword == null || keyword.isBlank() ? null : "%" + keyword.strip() + "%";
         if (pattern != null) {
+            // 来源计划(= plan_no 同口径)也纳入关键字: 申请行一直可按 WL 编号搜, 领料行对齐。
             sql.append("""
                      AND (o.bill_no ILIKE :keyword OR supplier.name ILIKE :keyword
                           OR COALESCE(oi.goods_code_snapshot, goods.code) ILIKE :keyword
-                          OR COALESCE(oi.goods_name_snapshot, goods.name) ILIKE :keyword)
+                          OR COALESCE(oi.goods_name_snapshot, goods.name) ILIKE :keyword
+                          OR COALESCE(NULLIF(oi.source_doc_no, ''), o.bill_no) ILIKE :keyword)
                     """);
         }
         if (orderId != null) {

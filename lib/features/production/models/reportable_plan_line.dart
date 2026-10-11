@@ -34,6 +34,10 @@ class ReportablePlanLine {
     this.unitRate,
     this.unitRateExact,
     this.maxReportQtyExact,
+    this.plannedQtyExact,
+    this.producedQtyExact,
+    this.remainingActualSurplusQtyExact,
+    this.pendingSupplementQtyExact,
     this.plannedQty,
     this.producedQty,
     this.remainingPlanQty,
@@ -80,10 +84,32 @@ class ReportablePlanLine {
   final double? unitRate;
   final String? unitRateExact;
   final String? maxReportQtyExact;
+  final String? plannedQtyExact,
+      producedQtyExact,
+      remainingActualSurplusQtyExact,
+      pendingSupplementQtyExact;
   String? get unitRateText =>
       productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
   String? get maxReportQtyText =>
       productionExactQuantityText(maxReportQtyExact ?? maxReportQty);
+  String? get remainingActualSurplusQtyText => productionExactQuantityText(
+    remainingActualSurplusQtyExact ?? remainingActualSurplusQty ?? 0,
+  );
+  String? get pendingSupplementQtyText => productionExactQuantityText(
+    pendingSupplementQtyExact ?? pendingSupplementQty ?? 0,
+  );
+  String? get remainingCompletionQtyText {
+    final planned = productionExactQuantityUnits(plannedQtyExact ?? plannedQty);
+    final produced = productionExactQuantityUnits(
+      producedQtyExact ?? producedQty,
+    );
+    if (planned == null || produced == null) return null;
+    final remaining = planned - produced;
+    return productionQuantityTextFromUnits(
+      remaining > BigInt.zero ? remaining : BigInt.zero,
+    );
+  }
+
   final double? plannedQty;
   final double? producedQty;
   final double? remainingPlanQty;
@@ -120,16 +146,8 @@ class ReportablePlanLine {
 
   /// Drafts reserve reportable quota, but cannot make a task's last batch complete.
   double? get remainingCompletionQty {
-    final planned = plannedQty;
-    final produced = producedQty;
-    if (planned == null ||
-        produced == null ||
-        !planned.isFinite ||
-        !produced.isFinite) {
-      return null;
-    }
-    final remaining = planned - produced;
-    return remaining > 0 ? remaining : 0;
+    final text = remainingCompletionQtyText;
+    return text == null ? null : double.parse(text);
   }
 
   bool get canReport =>
@@ -181,6 +199,19 @@ class ReportablePlanLine {
     ),
     maxReportQtyExact: productionExactQuantityText(
       json['maxReportQtyExact'] ?? json['maxReportQty'],
+    ),
+    plannedQtyExact: productionExactQuantityText(
+      json['plannedQtyExact'] ?? json['plannedQty'],
+    ),
+    producedQtyExact: productionExactQuantityText(
+      json['producedQtyExact'] ?? json['producedQty'],
+    ),
+    remainingActualSurplusQtyExact: productionExactQuantityText(
+      json['remainingActualSurplusQtyExact'] ??
+          json['remainingActualSurplusQty'],
+    ),
+    pendingSupplementQtyExact: productionExactQuantityText(
+      json['pendingSupplementQtyExact'] ?? json['pendingSupplementQty'],
     ),
     plannedQty: _asDouble(json['plannedQty']),
     producedQty: _asDouble(json['producedQty']),

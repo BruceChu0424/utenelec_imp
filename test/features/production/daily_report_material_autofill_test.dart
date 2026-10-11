@@ -159,6 +159,80 @@ void main() {
     },
   );
 
+  test(
+    'material merge preserves large entered decimal text without rounding',
+    () {
+      expect(
+        mergeDraftMaterialUsages(
+          saved: const [],
+          edited: const [
+            {'demandId': 'exact-demand', 'qtyBase': '9999999999999.9999'},
+          ],
+        ),
+        [
+          {'demandId': 'exact-demand', 'qtyBase': '9999999999999.9999'},
+        ],
+      );
+    },
+  );
+
+  test(
+    'saved exact material text survives read failure and rounded legacy use blocks save',
+    () {
+      final saved = ProductionDailyReportMaterialUsage.fromJson({
+        'demandId': 'exact-demand',
+        'qtyBase': 10000000000000.0,
+        'qtyBaseExact': '9999999999999.9999',
+      });
+      expect(saved.qtyBaseText, '9999999999999.9999');
+      expect(mergeDraftMaterialUsages(saved: [saved], edited: const []), [
+        {'demandId': 'exact-demand', 'qtyBase': '9999999999999.9999'},
+      ]);
+      expect(
+        () => mergeDraftMaterialUsages(
+          saved: const [
+            ProductionDailyReportMaterialUsage(
+              demandId: 'legacy',
+              qtyBase: 10000000000000.0,
+            ),
+          ],
+          edited: const [],
+        ),
+        throwsFormatException,
+      );
+    },
+  );
+
+  test(
+    'quantity input rejects extra decimals without silently changing the quantity',
+    () {
+      const before = TextEditingValue(text: '1.2345');
+      expect(
+        productionQuantityInputFormatter.formatEditUpdate(
+          before,
+          const TextEditingValue(text: '1.23456'),
+        ),
+        same(before),
+      );
+      expect(
+        productionQuantityInputFormatter.formatEditUpdate(
+          before,
+          const TextEditingValue(text: '-1'),
+        ),
+        same(before),
+      );
+      expect(
+        productionQuantityInputFormatter
+            .formatEditUpdate(
+              before,
+              const TextEditingValue(text: '9999999999999.9999'),
+            )
+            .text,
+        '9999999999999.9999',
+      );
+    },
+  );
+
   test('whole packages cannot be guessed from an average or edited ratio', () {
     final material = _material(
       requiredQty: 4,

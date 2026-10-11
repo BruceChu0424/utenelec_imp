@@ -54,6 +54,94 @@ List<OutputAllocationSlot> _slotsFrom(OutputAllocationRowPlan plan) => [
 
 void main() {
   test(
+    'manual chosen receivers retain exact portions and derive only warehouse remainder',
+    () {
+      OutputAllocationRowPlan arrange(
+        String qty,
+        List<OutputAllocationSlot> slots,
+      ) => planOutputAllocations([
+        OutputAllocationRowInput(
+          sourceKey: 'source',
+          quantity: double.parse(qty),
+          quantityExact: qty,
+          unitRate: 1,
+          candidates: [_parent('a', 6), _parent('b', 3)],
+          slots: slots,
+          manual: true,
+        ),
+      ]).single;
+      final first = arrange('10', const [
+        OutputAllocationSlot(demandId: 'a', requestedExact: '3', fixed: true),
+        OutputAllocationSlot(requestedExact: '7', fixed: true),
+      ]);
+      expect(_lines(first), [('a', 3, true), (null, 7, false)]);
+      final two = arrange('10', const [
+        OutputAllocationSlot(demandId: 'a', requestedExact: '3', fixed: true),
+        OutputAllocationSlot(demandId: 'b', requestedExact: '2', fixed: true),
+      ]);
+      expect(_lines(two), [('a', 3, true), ('b', 2, true), (null, 5, false)]);
+      final small = arrange('2', _slotsFrom(two));
+      expect(small.lines.first.qtyExact, '2');
+      expect(small.lines.first.requestedExact, '3');
+      expect(small.lines[1].qtyExact, '0');
+      expect(small.lines[1].requestedExact, '2');
+      expect(_lines(arrange('10', _slotsFrom(small))), _lines(two));
+    },
+  );
+
+  test(
+    'nominal and converted storage overflow keep exact original allocation while flagged',
+    () {
+      for (final sample in [
+        ('100000000000000', 0.1, true),
+        ('10000000000000', 10.0, true),
+        ('99999999999999.9999', 1.0, false),
+      ]) {
+        final plan = planOutputAllocations([
+          OutputAllocationRowInput(
+            sourceKey: 'source',
+            quantity: double.parse(sample.$1),
+            quantityExact: sample.$1,
+            unitRate: sample.$2,
+            candidates: const [],
+            slots: const [],
+          ),
+        ]).single;
+        expect(plan.lines.single.qtyExact, sample.$1);
+        expect(plan.issues.isNotEmpty, sample.$3);
+        if (sample.$3) expect(plan.lines.single.issue, contains('系统计量范围'));
+      }
+    },
+  );
+
+  test(
+    'positive destination rounding to zero base is flagged without changing quantities',
+    () {
+      final plan = planOutputAllocations([
+        _row(
+          1,
+          rate: 0.4,
+          candidates: [_parent('a', 1)],
+          slots: const [
+            OutputAllocationSlot(
+              demandId: 'a',
+              requested: 0.0001,
+              requestedExact: '0.0001',
+              fixed: true,
+            ),
+          ],
+        ),
+      ]).single;
+      expect(_lines(plan), [('a', 0.0001, true), (null, 0.9999, false)]);
+      expect(plan.lines.first.issue, contains('基本量为 0'));
+      expect(plan.lines.last.issue, isNull);
+      final boundary = planOutputAllocations([_row(0.0001, rate: 0.5)]).single;
+      expect(boundary.lines.single.qtyExact, '0.0001');
+      expect(boundary.issues, isEmpty);
+    },
+  );
+
+  test(
     'exact large rows share receiver capacity without losing the final tick',
     () {
       final target = ProductionDirectTransferCandidate.fromJson({

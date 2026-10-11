@@ -30,6 +30,8 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportOutputAllocat
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageDto;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialUsageLine;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialDecision;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialReview;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportQueryFilter;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
 import com.uten.imp.features.production.plan.PlanOrderItemLink;
@@ -131,6 +133,8 @@ public class ProductionDailyReportService {
     private final com.uten.imp.application.port.ProductionCostTargetPort costTargets;
     /** V583：报工同页登记的实际用料，审核时与完工量同事务记账，红冲时一起退回。 */
     private final ProductionMaterialConsumptionWritePort materialConsumption;
+    @org.springframework.beans.factory.annotation.Autowired
+    private DailyReportMaterialReviewService materialReviews;
     /** V584/V585：车间内部直送，审核时同事务放行入线边仓并投给同车间上层工单。 */
     private final com.uten.imp.features.production.directtransfer
             .ProductionWorkshopDirectTransferService directTransfer;
@@ -446,8 +450,12 @@ public class ProductionDailyReportService {
         String idempotencyKey = normalizeApproveIdempotencyKey(
                 req == null ? null : req.getIdempotencyKey());
         int commandVersion = approvalCommandVersion(req);
-        Long reviewedVersion = commandVersion == 2 ? req.getExpectedVersion() : null;
-        String requestHash = approveRequestHash(id, reviewedVersion);
+        Long reviewedVersion = commandVersion >= 2 ? req.getExpectedVersion() : null;
+        List<DailyReportMaterialDecision> decisions = commandVersion == 3
+                ? DailyReportMaterialReviewService.normalizeDecisions(req.getMaterialDecisions()) : List.of();
+        String materialFingerprint = commandVersion == 3 ? req.getMaterialReviewFingerprint() : null;
+        String requestHash = commandVersion == 3 ? approveMaterialRequestHash(id, reviewedVersion, materialFingerprint, decisions)
+                : approveRequestHash(id, reviewedVersion);
         lockCommand(COMMAND_APPROVE, actorId, idempotencyKey);
         ReportCommand replay = findCommand(actorId, idempotencyKey);
         if (replay != null) {
@@ -456,19 +464,20 @@ public class ProductionDailyReportService {
                 throw new ApiException(
                         ErrorCode.CONFLICT, "同一防重复提交标识已用于不同的生产日报审核请求，请刷新后重试");
             }
-            if (commandVersion == 2 && !Integer.valueOf(2).equals(replay.approvalProtocolVersion())) {
+            if (commandVersion >= 2 && !Integer.valueOf(commandVersion).equals(replay.approvalProtocolVersion())) {
                 // Do not reinterpret a successful unversioned command as reviewed V2.
                 // The read-only resolver exposes its actual legacy provenance.
                 commandDetail(id); // Retain current history object-read permission.
                 throw new ApiException(ErrorCode.DAILY_REPORT_LEGACY_APPROVAL_RECEIPT);
             }
             if (!requestHash.equals(replay.requestHash())
-                    || (commandVersion == 2 && !Objects.equals(reviewedVersion, replay.reviewedRowVersion()))
-                    || (commandVersion == 1 && Integer.valueOf(2).equals(replay.approvalProtocolVersion()))) {
+                    || (commandVersion >= 2 && !Objects.equals(reviewedVersion, replay.reviewedRowVersion()))
+                    || (commandVersion == 3 && !Objects.equals(materialFingerprint, replay.materialReviewFingerprint()))
+                    || (commandVersion == 1 && replay.approvalProtocolVersion() != null && replay.approvalProtocolVersion() >= 2)) {
                 throw new ApiException(ErrorCode.CONFLICT, "同一防重复提交标识已用于不同的生产日报审核请求，请刷新后重试");
             }
             return withApprovalReceipt(commandDetail(id), idempotencyKey,
-                    replay.approvalProtocolVersion(), replay.reviewedRowVersion(), true);
+                    replay.approvalProtocolVersion(), replay.reviewedRowVersion(), true, replay.materialReviewFingerprint());
         }
         // ADR-131 §10 锁序：幂等顾问锁 → 预读本单日期与明细段 → 车间内料仓期间共享锁 → 原有足迹。
         ReportPeriodFacts periodFacts = reportPeriodFacts(id);
@@ -489,8 +498,17 @@ public class ProductionDailyReportService {
             throw new ApiException(ErrorCode.DAILY_REPORT_REVIEW_VERSION_CONFLICT);
         }
         // 过了闸门就落命令账本：同事务，失败一起回滚；重发时上面的回放分支直接命中。
-        recordCommand(COMMAND_APPROVE, actorId, idempotencyKey, requestHash, id,
-                commandVersion, reviewedVersion);
+        DailyReportMaterialReview materialReview = null;
+        if (commandVersion == 3) {
+            materialReview = materialReviews.review(id, r.getRowVersion(), true);
+            if (!materialReview.fingerprint().equals(materialFingerprint)) {
+                throw new ApiException(ErrorCode.DAILY_REPORT_MATERIAL_REVIEW_CONFLICT);
+            }
+            DailyReportMaterialReviewService.requireDecisions(materialReview, decisions);
+            materialReviews.recordApproval(actorId, idempotencyKey, requestHash, materialReview, decisions);
+        } else {
+            recordCommand(COMMAND_APPROVE, actorId, idempotencyKey, requestHash, id, commandVersion, reviewedVersion);
+        }
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         requireSamePeriodFacts(periodFacts, r, items);
         if (items.isEmpty())
@@ -509,6 +527,7 @@ public class ProductionDailyReportService {
             if (item.getQty() == null || item.getQty().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "报工明细数量必须大于 0");
             }
+            com.uten.imp.common.production.ProductionOutputQuantity.requirePositiveBaseQuantity(item.getQty(), item.getUnitRate());
         }
 
         // 1) 逐行报工回写（fqty + links.produced + 行状态）；收集来源计划行
@@ -566,7 +585,8 @@ public class ProductionDailyReportService {
         }
         // 2.5) V583 报工同页登记的本次实际用料：与完工量同事务记账，收尾按意愿提交余料退仓。
         // 放在计划结案重算之前——材料结清会改写 is_closed，顺序反过来会让刚算好的结案状态失效。
-        settleMaterialUsageOnApprove(r);
+        if (commandVersion == 3) settleReviewedMaterialUsageOnApprove(r, decisions, materialReview);
+        else settleMaterialUsageOnApprove(r);
         // 2.6) V595 持续生产：完结行所在工单的直送子件余量就此释放(不会再有人送料)。
         releaseContinuousMaterialRemainderOnFinal(r.getId(), items);
 
@@ -624,7 +644,7 @@ public class ProductionDailyReportService {
             chainNotice.notifyProductionFinishedArrivalPending(r.getId());
         }
         chainNotice.notifyRemakeCreated(r.getId()); // UUID 真源：完结缺额已自动补产→销售（无补产时静默）
-        return withApprovalReceipt(detail(id), idempotencyKey, commandVersion, reviewedVersion, false);
+        return withApprovalReceipt(detail(id), idempotencyKey, commandVersion, reviewedVersion, false, materialFingerprint);
     }
 
     /**
@@ -689,15 +709,33 @@ public class ProductionDailyReportService {
             throw new ApiException(ErrorCode.CONFLICT, "原提交标识不属于此生产日报审核");
         }
         DailyReportApprovalReceipt receipt = new DailyReportApprovalReceipt(id, key,
-                command.approvalProtocolVersion(), command.reviewedRowVersion(), true);
+                command.approvalProtocolVersion(), command.reviewedRowVersion(), true, command.materialReviewFingerprint());
         current.setApprovalReceipt(receipt);
         return new DailyReportApprovalResolution("CONFIRMED", receipt, current);
     }
 
     private static DailyReportDetail withApprovalReceipt(DailyReportDetail detail, String key,
             Integer protocolVersion, Long reviewedVersion, boolean replay) {
-        detail.setApprovalReceipt(new DailyReportApprovalReceipt(detail.getId(), key, protocolVersion, reviewedVersion, replay));
+        return withApprovalReceipt(detail, key, protocolVersion, reviewedVersion, replay, null);
+    }
+
+    private static DailyReportDetail withApprovalReceipt(DailyReportDetail detail, String key,
+            Integer protocolVersion, Long reviewedVersion, boolean replay, String materialFingerprint) {
+        detail.setApprovalReceipt(new DailyReportApprovalReceipt(detail.getId(), key, protocolVersion, reviewedVersion, replay, materialFingerprint));
         return detail;
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportMaterialReview materialReview(UUID id) {
+        ProductionDailyReport report = requireReport(id);
+        access.requireReadable(report.getMakerId(), "生产日报单不存在", "production_daily_report:approve");
+        if (report.getStatus() != null && report.getStatus() == STATUS_DRAFT) {
+            return materialReviews.review(id, report.getRowVersion(), false);
+        }
+        DailyReportDetail historical = detail(id);
+        if (historical.getMaterialReview() != null) return historical.getMaterialReview();
+        throw new ApiException(ErrorCode.CONFLICT, "此历史日报未登记材料审核快照，请查看原实际用料与退料记录");
     }
 
     /** 红冲（status 1→-1）：对称回退（见类注释）。 */
@@ -1634,7 +1672,7 @@ public class ProductionDailyReportService {
                 em.createNativeQuery("""
                         SELECT command_kind, request_hash, report_id,
                                approval_protocol_version, reviewed_row_version,
-                               create_payload_version, create_payload_hash
+                                create_payload_version, create_payload_hash, material_review_fingerprint
                         FROM production_daily_report_commands
                         WHERE actor_user_id = :actorId
                           AND idempotency_key = :idempotencyKey
@@ -1649,7 +1687,8 @@ public class ProductionDailyReportService {
                 rows.getFirst()[3] == null ? null : ((Number) rows.getFirst()[3]).intValue(),
                 rows.getFirst()[4] == null ? null : ((Number) rows.getFirst()[4]).longValue(),
                 rows.getFirst()[5] == null ? null : ((Number) rows.getFirst()[5]).intValue(),
-                rows.getFirst()[6] == null ? null : rows.getFirst()[6].toString());
+                rows.getFirst()[6] == null ? null : rows.getFirst()[6].toString(),
+                rows.getFirst().length < 8 || rows.getFirst()[7] == null ? null : rows.getFirst()[7].toString());
     }
 
     private void recordCommand(
@@ -1787,9 +1826,22 @@ public class ProductionDailyReportService {
         if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "审核请求不能为空");
         Integer protocol = request.getCommandVersion();
         Long version = request.getExpectedVersion();
-        if ((protocol == null || protocol == 1) && version == null) return 1;
-        if (Integer.valueOf(2).equals(protocol) && version != null && version >= 0) return 2;
-        throw new ApiException(ErrorCode.VALIDATION_FAILED, "新版审核必须同时提供 commandVersion=2 和有效 expectedVersion");
+        boolean materialFields = request.getMaterialReviewFingerprint() != null || request.getMaterialDecisions() != null;
+        if ((protocol == null || protocol == 1) && version == null && !materialFields) return 1;
+        if (Integer.valueOf(2).equals(protocol) && version != null && version >= 0 && !materialFields) return 2;
+        if (Integer.valueOf(3).equals(protocol) && version != null && version >= 0
+                && request.getMaterialReviewFingerprint() != null && request.getMaterialReviewFingerprint().matches("[a-f0-9]{64}")
+                && request.getMaterialDecisions() != null) return 3;
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "新版审核必须提供有效所见版本；V3还须提供材料审核指纹与逐项处理方式");
+    }
+
+    static String approveMaterialRequestHash(UUID id, Long version, String fingerprint, List<DailyReportMaterialDecision> decisions) {
+        List<String> parts = new ArrayList<>(List.of("PRODUCTION-DAILY-REPORT-APPROVE-V3", "report:" + id,
+                "reviewedVersion:" + version, "materialReviewFingerprint:" + fingerprint));
+        for (var decision : DailyReportMaterialReviewService.normalizeDecisions(decisions)) {
+            parts.add("demand:" + decision.demandId() + ":action:" + decision.action());
+        }
+        return CanonicalFingerprint.sha256(parts);
     }
 
     /**
@@ -1956,8 +2008,16 @@ public class ProductionDailyReportService {
         if (value == null) {
             canonical = "NULL";
         } else if (value instanceof BigDecimal decimal) {
+            BigDecimal normalized = decimal.stripTrailingZeros();
+            // Compact exponent notation must not allocate an unbounded plain
+            // string before the field's quantity/rate validation gets to run.
+            // All supported native values retain exactly their old hash bytes.
+            if (normalized.precision() + Math.max(0L, -(long) normalized.scale()) > 10_000
+                    || normalized.scale() > 10_000) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请求数值超出可处理范围，请核对原输入");
+            }
             canonical = "DECIMAL:"
-                    + decimal.stripTrailingZeros().toPlainString();
+                    + normalized.toPlainString();
         } else if (value instanceof String text) {
             canonical = "STRING:" + text;
         } else if (value instanceof UUID uuid) {
@@ -2140,6 +2200,7 @@ public class ProductionDailyReportService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, label + "最多 4 位小数");
         }
+        com.uten.imp.common.util.FinancialExactAmount.quantity(quantity, label);
     }
 
     /**
@@ -2239,6 +2300,41 @@ public class ProductionDailyReportService {
                     "DRRET-" + r.getId() + "-" + segmentId,
                     "生产日报 " + billNo + " 收尾余料退仓");
         }
+    }
+
+    /** V3 preserves saved actual usage even on old counted drafts; only reviewed demand decisions drive returns. */
+    private void settleReviewedMaterialUsageOnApprove(ProductionDailyReport report, List<DailyReportMaterialDecision> decisions,
+            DailyReportMaterialReview review) {
+        Map<List<UUID>, List<ProductionMaterialConsumptionWritePort.ConsumptionLine>> groups = new LinkedHashMap<>();
+        for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT plan_id,material_execution_segment_id,demand_id,qty_base
+                FROM production_daily_report_material_usages WHERE report_id=:report ORDER BY plan_id,material_execution_segment_id,demand_id
+                """).setParameter("report", report.getId()))) {
+            groups.computeIfAbsent(List.of((UUID) row[0], (UUID) row[1]), ignored -> new ArrayList<>())
+                    .add(new ProductionMaterialConsumptionWritePort.ConsumptionLine((UUID) row[2], bd(row[3])));
+        }
+        for (var group : groups.entrySet()) materialsConsume(report, group.getKey(), group.getValue());
+        Map<UUID, DailyReportMaterialDecision> selected = new HashMap<>();
+        decisions.stream().filter(value -> "RETURN".equals(value.action())).forEach(value -> selected.put(value.demandId(), value));
+        // Frozen review rows include eligible undrawn direct lots even when no ISSUE usage line exists.
+        Map<List<UUID>, List<UUID>> returnGroups = new LinkedHashMap<>();
+        for (var row : review.rows()) {
+            if (selected.containsKey(row.demandId())) returnGroups.computeIfAbsent(
+                    List.of(row.planId(), row.materialExecutionSegmentId()), ignored -> new ArrayList<>()).add(row.demandId());
+        }
+        for (var group : returnGroups.entrySet()) {
+            materialConsumption.requestSelectedSurplusReturnForDailyReport(group.getKey().getFirst(), group.getKey().get(1),
+                    report.getId(), "DRRET3-" + report.getId() + "-" + group.getKey().get(1),
+                    "生产日报 " + Objects.toString(report.getBillNo(), "") + " 审核余料申请退仓", group.getValue());
+        }
+        report.setSurplusReturnRequested(!selected.isEmpty());
+    }
+
+    private void materialsConsume(ProductionDailyReport report, List<UUID> key,
+            List<ProductionMaterialConsumptionWritePort.ConsumptionLine> usages) {
+        materialConsumption.consumeForDailyReport(key.getFirst(), key.get(1), report.getId(),
+                "DR-" + report.getId() + "-" + key.get(1),
+                "生产日报 " + Objects.toString(report.getBillNo(), "") + " 报工同步登记实际用料", usages);
     }
 
     /** 本单登记的一条用料；countedLeftoverQty 为空 = 没有实盘清点。 */
@@ -2673,7 +2769,7 @@ public class ProductionDailyReportService {
                                        List<String> allowedActions,
                                        List<com.uten.imp.features.production.dailyreport.dto.DailyReportOutputBatch> outputBatches) {
         List<UUID> workerIds = reportWorkerIds(r.getId(), r.getWorkerId());
-        return new DailyReportDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
+        DailyReportDetail detail = new DailyReportDetail(r.getId(), r.getLegacyId(), r.getBillNo(), r.getBillDate(),
                 r.getWarehouseId(), r.getDepartmentId(), r.getWorkshopName(), r.getWorkerId(),
                 workerIds, r.getSupplierId(),
                 r.getMakerId(), r.getApproverId(), r.getMakerLegacyId(), r.getApproverLegacyId(), r.getRemark(),
@@ -2684,7 +2780,9 @@ public class ProductionDailyReportService {
                 // (那个接口要 employee:view 且会落人事查看审计)。
                 departmentNameResolver.nameOf(r.getDepartmentId()),
                 workerIds.stream().map(nameResolver::nameOf).toList(),
-                allowedActions, 2, outputBatches, null);
+                allowedActions, 3, outputBatches, null);
+        if (materialReviews != null) materialReviews.hydrateDetail(detail);
+        return detail;
     }
 
     private ProductionDailyReport requireReport(UUID id) {
@@ -2707,7 +2805,7 @@ public class ProductionDailyReportService {
     private record ReportCommand(
             String commandKind, String requestHash, UUID reportId,
             Integer approvalProtocolVersion, Long reviewedRowVersion,
-            Integer createPayloadVersion, String createPayloadHash) {
+            Integer createPayloadVersion, String createPayloadHash, String materialReviewFingerprint) {
     }
 
     /**

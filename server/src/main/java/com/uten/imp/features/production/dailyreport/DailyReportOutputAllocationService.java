@@ -64,6 +64,7 @@ public class DailyReportOutputAllocationService {
                     || input.getQty().stripTrailingZeros().scale() > 4) {
                 throw validation("本次实际产量必须大于零，最多四位小数");
             }
+            com.uten.imp.common.production.ProductionOutputQuantity.requirePositiveBaseQuantity(input.getQty(), input.getUnitRate());
             Routing routing=Routing.of(input);
             if(!forSave)routing=Routing.warehouseOnly(input.getQty());
             if(routing.hasDirect()&&input.getExecutionSegmentId()==null)throw validation("转下一道工序必须先选择报工来源工单");
@@ -214,6 +215,10 @@ public class DailyReportOutputAllocationService {
                     surplusRemaining.put(segment,available.subtract(left).max(BigDecimal.ZERO));
                 }
             }
+            // Every ownership slice becomes a formal stock/transfer line. A
+            // positive batch total cannot conceal an unrepresentable zero slice.
+            for (var piece : pieces) com.uten.imp.common.production.ProductionOutputQuantity
+                    .requirePositiveBaseQuantity(piece.getQty(), piece.getUnitRate());
             distributeWeight(input,pieces);keepDefectOnFirstSlice(input,pieces);
             result.addAll(pieces);
         }
@@ -572,7 +577,7 @@ public class DailyReportOutputAllocationService {
             pieces.get(index).setDefectQty(index==0?input.getDefectQty():BigDecimal.ZERO);
     }
     static BigDecimal transferBaseQuantity(BigDecimal qty,BigDecimal rate) {
-        return com.uten.imp.common.finance.MoneyPolicy.quantity(qty.multiply(rate));
+        return com.uten.imp.common.production.ProductionOutputQuantity.requirePositiveBaseQuantity(qty,rate);
     }
     private static BigDecimal number(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static String plain(BigDecimal value){return value.stripTrailingZeros().toPlainString();}

@@ -24,6 +24,8 @@ public class DailyReportMaterialUsageDto {
     private String unitName;
     /** 本次实际用料基本量；实盘收尾的行审核后是「账面可用 − 实际剩余」。 */
     private BigDecimal qtyBase;
+    public String getQtyBaseExact() { return qtyBase == null ? null : qtyBase.stripTrailingZeros().toPlainString(); }
     /** 实盘收尾清点的实际剩余(ADR-129 §2.7)；空 = 没有清点。 */
     private BigDecimal countedLeftoverQty;
+    public String getCountedLeftoverQtyExact() { return countedLeftoverQty == null ? null : countedLeftoverQty.stripTrailingZeros().toPlainString(); }
 }

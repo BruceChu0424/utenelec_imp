@@ -246,7 +246,7 @@ class DailyReportApprovalV2PostgresTest {
         DailyReportSaveRequest input=ReflectionTestUtils.invokeMethod(workshop,"reportRequest",task,sources.getFirst(),"4","4");
         var detail=reports.create(input);String key=key();Authentication actor=auth(taskWorld.superAdminUserId());var command=v2(key,detail.getRowVersion());
         JsonNode first=body(request(post(path(detail.getId())+"/approve"),actor,command,200));
-        assertEquals(2,first.path("approvalCommandVersion").asInt());assertEquals(2,first.path("approvalReceipt").path("commandVersion").asInt());
+        assertEquals(3,first.path("approvalCommandVersion").asInt());assertEquals(2,first.path("approvalReceipt").path("commandVersion").asInt());
         assertEquals(detail.getRowVersion(),first.path("approvalReceipt").path("reviewedVersion").asLong());
         assertFalse(first.path("approvalReceipt").path("replay").asBoolean());
         fixture.loginAs(taskWorld.superAdminUserId());reports.reverse(detail.getId());

@@ -8,8 +8,14 @@ public record DailyReportApprovalReceipt(
         String idempotencyKey,
         Integer commandVersion,
         Long reviewedVersion,
-        boolean replay) {
+        boolean replay,
+        String materialReviewFingerprint) {
+    public DailyReportApprovalReceipt(UUID reportId, String key, Integer commandVersion,
+            Long reviewedVersion, boolean replay) {
+        this(reportId, key, commandVersion, reviewedVersion, replay, null);
+    }
     public String getReviewProtection() {
+        if (Integer.valueOf(3).equals(commandVersion)) return "REVIEWED_MATERIAL_SNAPSHOT";
         return Integer.valueOf(2).equals(commandVersion)
                 ? "REVIEWED_VERSION" : "LEGACY_UNVERSIONED";
     }

@@ -5,6 +5,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_material_usage_source.dart';
 import '../models/production_material_return.dart';
+import '../models/production_exact_quantity.dart';
 
 class ProductionMaterialCapabilities {
   const ProductionMaterialCapabilities({
@@ -53,6 +54,11 @@ class ProductionMaterialClearanceRow {
     this.directSupply = false,
     this.requirementMode = 'LINEAR',
     required this.availableToSettleQty,
+    this.availableToSettleQtyExact,
+    this.requiredQtyExact,
+    this.issuedQtyExact,
+    this.perProductQtyExact,
+    this.requiredForProductQtyExact,
   });
 
   final String planId;
@@ -77,6 +83,25 @@ class ProductionMaterialClearanceRow {
   final double unclearedQty;
   final double pendingReturnQty;
   final double availableToSettleQty;
+  final String? availableToSettleQtyExact,
+      requiredQtyExact,
+      issuedQtyExact,
+      perProductQtyExact,
+      requiredForProductQtyExact;
+  String? get availableToSettleQtyText => productionExactQuantityText(
+    availableToSettleQtyExact ?? availableToSettleQty,
+  );
+  String? get requiredQtyText =>
+      productionExactQuantityText(requiredQtyExact ?? requiredQty);
+  String? get issuedQtyText =>
+      productionExactQuantityText(issuedQtyExact ?? issuedQty);
+  String? get requiredForProductQtyText => productionExactQuantityText(
+    requiredForProductQtyExact ?? requiredForProductQty,
+  );
+  String? get perProductQtyText => productionExactQuantityText(
+    perProductQtyExact ?? perProductQty,
+    scale: 6,
+  );
   final bool canClose;
 
   /// 单耗(每 1 个成品用多少，需求单位口径)；报工页按完工申报量自动折算本次实际用料(V595)。
@@ -117,6 +142,22 @@ class ProductionMaterialClearanceRow {
       unclearedQty: number('unclearedQty'),
       pendingReturnQty: number('pendingReturnQty'),
       availableToSettleQty: number('availableToSettleQty'),
+      availableToSettleQtyExact: productionExactQuantityText(
+        json['availableToSettleQtyExact'] ?? json['availableToSettleQty'],
+      ),
+      requiredQtyExact: productionExactQuantityText(
+        json['requiredQtyExact'] ?? json['requiredQty'],
+      ),
+      issuedQtyExact: productionExactQuantityText(
+        json['issuedQtyExact'] ?? json['issuedQty'],
+      ),
+      requiredForProductQtyExact: productionExactQuantityText(
+        json['requiredForProductQtyExact'] ?? json['requiredForProductQty'],
+      ),
+      perProductQtyExact: productionExactQuantityText(
+        json['perProductQtyExact'] ?? json['perProductQty'],
+        scale: 6,
+      ),
       canClose: json['canClose'] == true,
     );
   }

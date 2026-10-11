@@ -34,4 +34,15 @@ public record ProductionMaterialClearanceRow(
         boolean directSupply,
         /** LINEAR supports proportional suggestions; exact batch rules must not be averaged. */
         String requirementMode) {
+    @com.fasterxml.jackson.annotation.JsonProperty(value="availableToSettleQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String availableToSettleQtyExact() { return exact(availableToSettleQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="requiredQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String requiredQtyExact() { return exact(requiredQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="issuedQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String issuedQtyExact() { return exact(issuedQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="perProductQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String perProductQtyExact() { return exact(perProductQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="requiredForProductQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String requiredForProductQtyExact() { return exact(requiredForProductQty); }
+    private static String exact(BigDecimal value) { return value == null ? null : value.toPlainString(); }
 }

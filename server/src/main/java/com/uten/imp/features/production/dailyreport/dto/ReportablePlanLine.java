@@ -62,4 +62,13 @@ public record ReportablePlanLine(
     public String maxReportQtyExact() { return maxReportQty == null ? null : maxReportQty.toPlainString(); }
     @com.fasterxml.jackson.annotation.JsonProperty(value="unitRateExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
     public String unitRateExact() { return unitRate == null ? null : unitRate.toPlainString(); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="remainingActualSurplusQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String remainingActualSurplusQtyExact() { return exact(remainingActualSurplusQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="pendingSupplementQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String pendingSupplementQtyExact() { return exact(pendingSupplementQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="plannedQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String plannedQtyExact() { return exact(plannedQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="producedQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String producedQtyExact() { return exact(producedQty); }
+    private static String exact(BigDecimal value) { return value == null ? null : value.toPlainString(); }
 }

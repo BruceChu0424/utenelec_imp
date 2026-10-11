@@ -31,6 +31,21 @@ public interface ProductionMaterialConsumptionWritePort {
      */
     Map<UUID, BigDecimal> bookAvailableByDemand(UUID planId, UUID executionSegmentId);
 
+    /** Current source balances, projected by the same FIFO used to post actual consumption. */
+    MaterialReviewScope reviewForDailyReport(UUID planId, UUID executionSegmentId,
+            List<ConsumptionLine> usages, boolean lockSources);
+
+    /** Only selected demands; quantities and ISSUE/DIRECT_LOT source IDs are server-derived. */
+    int requestSelectedSurplusReturnForDailyReport(UUID planId, UUID executionSegmentId,
+            UUID dailyReportId, String idempotencyKey, String reason, List<UUID> selectedDemandIds);
+
+    record MaterialReviewScope(String fingerprint, List<MaterialReviewRow> rows) { }
+    record MaterialReviewRow(UUID demandId, String segmentCode, String goodsCode, String goodsName,
+            String colorName, String unitName, BigDecimal availableQty, BigDecimal usageQty,
+            BigDecimal remainingIssuedQty, BigDecimal undrawnDirectQty,
+            BigDecimal returnableIssuedQty, BigDecimal returnableDirectQty,
+            boolean canReturn, String returnBlockedReason) { }
+
     /**
      * 按需求登记本次实际消耗。qtyBase 为 0 的行由实现直接丢弃(「这批料没用」不产生记账事实)。
      *

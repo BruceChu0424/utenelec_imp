@@ -859,7 +859,7 @@ class ProductionDailyReportCommandTest {
         var request = approveRequest("immutable-v2-review-key"); request.setCommandVersion(2); request.setExpectedVersion(0L);
         DailyReportDetail result = service.approve(reportId, request);
         assertEquals((short) -1, result.getStatus()); assertEquals(8L, result.getRowVersion());
-        assertEquals(2, result.getApprovalCommandVersion());
+        assertEquals(3, result.getApprovalCommandVersion());
         assertEquals(0L, result.getApprovalReceipt().reviewedVersion());
         org.junit.jupiter.api.Assertions.assertTrue(result.getApprovalReceipt().replay());
         assertEquals("REVIEWED_VERSION", result.getApprovalReceipt().getReviewProtection());

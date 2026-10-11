@@ -76,6 +76,24 @@ public class ProductionQualityMutationFootprintService {
                 result.row("report-material-source",row);
                 result.plan((UUID)row[1]);result.inventory((UUID)row[2],(UUID)row[3]);
             }
+            // V3 may return undrawn direct lots without a registered ISSUE usage
+            // row. Discover every exact legal material-source segment up front.
+            for(var row:rows("""
+                    WITH material_sources AS (
+                        SELECT item.execution_segment_id id FROM production_daily_report_items item
+                        WHERE item.report_id IN (:ids) AND NOT item.is_deleted AND item.execution_segment_id IS NOT NULL
+                        UNION SELECT source.segment_id FROM production_daily_report_items item
+                        CROSS JOIN LATERAL fn_production_material_usage_source_segments(item.execution_segment_id) source
+                        WHERE item.report_id IN (:ids) AND NOT item.is_deleted AND item.execution_segment_id IS NOT NULL)
+                    SELECT demand.id,demand.plan_id,demand.goods_id,demand.color_id,demand.xmin::text,segment.xmin::text
+                    FROM material_sources source JOIN production_material_demands demand ON demand.execution_segment_id=source.id
+                    JOIN production_execution_segments segment ON segment.id=source.id
+                    WHERE NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
+                    ORDER BY demand.plan_id,demand.id
+                    """,ids)) {
+                result.row("report-review-material-source",row);
+                result.plan((UUID)row[1]);result.inventory((UUID)row[2],(UUID)row[3]);
+            }
             // A workshop handoff also mutates the receiving task and its material
             // ownership. Discover that plan before any report/stock lock, even
             // when it belongs to another analysis in the same workshop.

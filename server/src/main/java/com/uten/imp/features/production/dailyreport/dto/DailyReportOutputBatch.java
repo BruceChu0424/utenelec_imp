@@ -25,4 +25,6 @@ public record DailyReportOutputBatch(
         itemIds = List.copyOf(itemIds);
         groups = List.copyOf(groups);
     }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="qtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String qtyExact() { return qty == null ? null : qty.toPlainString(); }
 }

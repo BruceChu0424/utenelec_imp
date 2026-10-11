@@ -315,6 +315,24 @@ class DailyReportOutputAllocationServiceTest {
         assertEquals(0,remaining.signum(),"three separately posted lines must exhaust the same base-quantity budget");
         assertEquals(new BigDecimal("1.0000"),DailyReportOutputAllocationService.transferBaseQuantity(new BigDecimal("3"),new BigDecimal("0.333333")));
     }
+    @Test void warehouseWorkshopAndRecoveryInputsCannotPersistAZeroRoundedBaseQuantity() {
+        for (boolean workshop : List.of(false,true)) {
+            var input=line("0.0001",workshop?DailyReportOutputAllocationLine.direct(A,new BigDecimal("0.0001")):DailyReportOutputAllocationLine.warehouse(new BigDecimal("0.0001")));
+            input.setUnitRate(new BigDecimal("0.4"));
+            var em=Mockito.mock(EntityManager.class);
+            var failure=assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(em).split(UUID.randomUUID(),List.of(input)));
+            assertTrue(failure.getMessage().contains("基本量不足0.0001"));Mockito.verifyNoInteractions(em);
+            input.setFqcRecoveryAuthorizationId(UUID.randomUUID());
+            assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(em).split(UUID.randomUUID(),List.of(input)));
+            Mockito.verifyNoInteractions(em);assertEquals(new BigDecimal("0.0001"),input.getQty());
+        }
+    }
+    @Test void aPositiveBatchCannotSilentlyDropItsSubQuantumOwnershipSlice() {
+        var em=database(List.of(),"1","1",".1");
+        var input=line("1.0001");input.setUnitRate(new BigDecimal("0.4"));
+        var failure=assertThrows(ApiException.class,()->new DailyReportOutputAllocationService(em).split(UUID.randomUUID(),List.of(input)));
+        assertTrue(failure.getMessage().contains("基本量不足0.0001"));assertEquals(new BigDecimal("1.0001"),input.getQty());
+    }
 
     private static DailyReportItemLine line(String qty,DailyReportOutputAllocationLine... allocations) {
         var line=new DailyReportItemLine();line.setQty(new BigDecimal(qty));

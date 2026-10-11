@@ -53,6 +53,7 @@ class UtenDropdownField extends StatefulWidget {
     super.key,
     this.label,
     required this.value,
+    this.selectedLabel,
     required this.items,
     required this.onChanged,
     this.required = false,
@@ -87,6 +88,11 @@ class UtenDropdownField extends StatefulWidget {
   /// 标签（表头字段用；grid 单元格可不传，由列头标识列）。
   final String? label;
   final String? value;
+
+  /// Optional label for the collapsed selected value. Menu choices, search and
+  /// identity still use [UtenDropdownItem.label] and [UtenDropdownItem.value].
+  /// Ignored when [value] is null; omitted preserves the original item label.
+  final String? selectedLabel;
   final List<UtenDropdownItem> items;
   final ValueChanged<String?> onChanged;
 
@@ -127,17 +133,9 @@ class UtenDropdownField extends StatefulWidget {
 }
 
 class _UtenDropdownFieldState extends State<UtenDropdownField> {
-  final LayerLink _link = LayerLink();
-  OverlayEntry? _overlay;
+  final OverlayPortalController _overlayController = OverlayPortalController();
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
-
-  /// 本次浮层向上还是向下展开（下方空间不够时向上）+ 适配后的最大高度。
-  bool _openAbove = false;
-  double _maxHeight = 320;
-
-  /// 浮层宽度 = 字段实测宽（打开时测得；120~480 夹紧）。
-  double _fieldWidth = 240;
 
   // ADR-150: AI page context registration; the value the assistant chose stays
   // framed yellow ("AI filled, please review") until the user picks again.
@@ -254,51 +252,31 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     return widget.value!;
   }
 
+  String get _selectedDisplay =>
+      widget.value == null ? '' : widget.selectedLabel ?? _display;
+
   void _open() {
-    if (_overlay != null || !widget.enabled) return;
-    // 测量字段在屏幕的位置：下方空间不够（比上方小）则向上展开，并按可用空间收限高，
-    // 避免浮层在底部被裁/溢出屏外（颜色/单位等表单字段靠近底部时尤甚）。
-    final box = context.findRenderObject() as RenderBox?;
-    // 位置与可用高度都按浮层(画布)坐标量：localToGlobal 不带 ancestor 得到的是窗口
-    // 坐标，根部整体缩放(UtenDisplayZoomBox)时与画布尺寸相差 zoom 倍。
-    final overlayObject = Overlay.of(
-      context,
-      rootOverlay: true,
-    ).context.findRenderObject();
-    final overlayBox = overlayObject is RenderBox && overlayObject.hasSize
-        ? overlayObject
-        : null;
-    final screenH =
-        overlayBox?.size.height ?? MediaQuery.sizeOf(context).height;
-    if (box != null && box.hasSize) {
-      final top = box.localToGlobal(Offset.zero, ancestor: overlayBox).dy;
-      final down = screenH - (top + box.size.height);
-      final up = top;
-      _openAbove = up > down;
-      final avail = (_openAbove ? up : down) - 8;
-      _maxHeight = avail.clamp(120.0, 320.0);
-      // 弹层与字段同宽（2026-09-18 用户口径：点开的列表应该和框一样宽）；
-      // 极窄字段保底 120，超宽表单字段封顶 480，超出部分仍可内部省略。
-      _fieldWidth = box.size.width.clamp(120.0, 480.0);
-    } else {
-      _openAbove = false;
-      _maxHeight = 320;
-      _fieldWidth = 240;
-    }
+    if (_overlayController.isShowing || !widget.enabled) return;
     _searchCtl = TextEditingController();
     _searchFocus = FocusNode();
-    _overlay = OverlayEntry(builder: _buildOverlay);
-    Overlay.of(context, rootOverlay: true).insert(_overlay!);
+    _overlayController.show();
   }
 
   void _close() {
-    _overlay?.remove();
-    _overlay = null;
+    if (_overlayController.isShowing) _overlayController.hide();
     _searchCtl?.dispose();
     _searchCtl = null;
     _searchFocus?.dispose();
     _searchFocus = null;
   }
+
+  Widget _withOverlay({required Widget child}) =>
+      OverlayPortal.overlayChildLayoutBuilder(
+        controller: _overlayController,
+        overlayLocation: OverlayChildLocation.rootOverlay,
+        overlayChildBuilder: _buildOverlay,
+        child: child,
+      );
 
   void _select(String? v) {
     _aiFilled = false;
@@ -331,8 +309,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     if (widget.flat) {
       return _buildFlat(theme, hasValue, requiredEmpty, autofillHint);
     }
-    return CompositedTransformTarget(
-      link: _link,
+    return _withOverlay(
       child: InkWell(
         onTap: _open,
         child: InputDecorator(
@@ -392,7 +369,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             requiredEmpty: requiredEmpty,
           ),
           child: Text(
-            hasValue ? _display : (widget.hintText ?? '请选择'),
+            hasValue ? _selectedDisplay : (widget.hintText ?? '请选择'),
             // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
             // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
             // 由网格列 textOf 自动加宽兜底，表单里就省略号。
@@ -425,12 +402,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     bool requiredEmpty,
     bool autofillHint,
   ) {
-    final display = hasValue ? _display : (widget.hintText ?? '请选择');
+    final display = hasValue ? _selectedDisplay : (widget.hintText ?? '请选择');
     final message = widget.errorMessage ?? widget.warningMessage;
-    return CompositedTransformTarget(
-      link: _link,
+    return _withOverlay(
       child: Tooltip(
-        message: message ?? display,
+        message: message ?? (hasValue ? _display : display),
         child: InkWell(
           onTap: _open,
           borderRadius: BorderRadius.circular(4),
@@ -471,9 +447,20 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   /// 弹层：锚定字段下方、限高 320、竖向滚动；点外部关闭。样式对齐 _FilterCell。
   /// 选项较多（或 searchable:true）时顶部带搜索框，输入实时过滤，回车选中第一项。
-  Widget _buildOverlay(BuildContext ctx) {
+  Widget _buildOverlay(BuildContext ctx, OverlayChildLayoutInfo layout) {
     final theme = Theme.of(ctx);
     final searchable = widget.searchable ?? widget.items.length >= 4;
+    // Resolve the anchor during layout. A paint-only follower prevents nested
+    // Tooltip overlays from positioning themselves when a menu item is hovered.
+    final anchor = MatrixUtils.transformRect(
+      layout.childPaintTransform,
+      Offset.zero & layout.childSize,
+    );
+    final down = layout.overlaySize.height - anchor.bottom;
+    final up = anchor.top;
+    final openAbove = up > down;
+    final maxHeight = ((openAbove ? up : down) - 8).clamp(120.0, 320.0);
+    final fieldWidth = anchor.width.clamp(120.0, 480.0);
     return Stack(
       children: [
         Positioned.fill(
@@ -482,11 +469,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             onTap: _close,
           ),
         ),
-        CompositedTransformFollower(
-          link: _link,
-          targetAnchor: _openAbove ? Alignment.topLeft : Alignment.bottomLeft,
-          followerAnchor: _openAbove ? Alignment.bottomLeft : Alignment.topLeft,
-          offset: Offset(0, _openAbove ? -2 : 2),
+        Positioned(
+          left: anchor.left,
+          top: openAbove ? null : anchor.bottom + 2,
+          bottom: openAbove ? layout.overlaySize.height - anchor.top + 2 : null,
           child: TapRegion(
             onTapOutside: (_) => _close(),
             child: Material(
@@ -495,8 +481,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
               borderRadius: BorderRadius.circular(8),
               clipBehavior: Clip.antiAlias,
               child: Container(
-                width: _fieldWidth,
-                constraints: BoxConstraints(maxHeight: _maxHeight),
+                width: fieldWidth,
+                constraints: BoxConstraints(maxHeight: maxHeight),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
@@ -616,6 +602,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               if (widget.allowClear)
                                 _item(
                                   ctx,
+                                  key: ValueKey((
+                                    'uten-dropdown-clear-option',
+                                    widget.key,
+                                  )),
                                   label: '不选',
                                   selected: widget.value == null,
                                   onTap: () => _select(null),
@@ -624,6 +614,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               for (final it in filtered)
                                 _item(
                                   ctx,
+                                  key: ValueKey((
+                                    'uten-dropdown-option',
+                                    widget.key,
+                                    it.value,
+                                  )),
                                   label: it.label,
                                   selected: it.value == widget.value,
                                   onTap: it.enabled
@@ -663,6 +658,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   Widget _item(
     BuildContext ctx, {
+    Key? key,
     required String label,
     required bool selected,
     required VoidCallback? onTap,
@@ -715,6 +711,6 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         ),
       ),
     );
-    return error ? Tooltip(message: label, child: item) : item;
+    return Tooltip(key: key, message: label, child: item);
   }
 }

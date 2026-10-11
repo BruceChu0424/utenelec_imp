@@ -39,9 +39,9 @@ Future<void> _prepareRecoveryInput(WidgetTester tester) async {
   final grid = _identityGrid(tester);
   final row = grid.rows.singleWhere((row) => !row.isSubRow)..qty.text = '37';
   row.platformFields.setValue(_identityField, '001');
-  for (final child in grid.rows.where(
-    (row) => row.isMaterialRow && row.materialEditable,
-  )) {
+  for (final child in _materialRows(
+    tester,
+  ).where((row) => row.isMaterialRow && row.materialEditable)) {
     child.materialUsed.text = '0';
   }
   await _identityState(tester).saveFormDraftNow();

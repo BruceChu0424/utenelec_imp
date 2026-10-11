@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.Valid;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -22,10 +24,17 @@ public class DailyReportApproveRequest {
 
     /** Omitted with expectedVersion for the unchanged V1 compatibility lane. */
     @Min(1)
-    @Max(2)
+    @Max(3)
     private Integer commandVersion;
 
     /** V2 binds the version shown before confirmation; never inferred by the server. */
     @Min(0)
     private Long expectedVersion;
+
+    /** V3 also binds the exact pre-posting material balances and eligible return sources. */
+    private String materialReviewFingerprint;
+
+    @Valid
+    @Size(max = 2000)
+    private List<DailyReportMaterialDecision> materialDecisions;
 }

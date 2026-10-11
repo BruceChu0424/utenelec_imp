@@ -77,6 +77,7 @@ class OutputAllocationRowInput {
     this.candidatesKnown = true,
     this.declined = const {},
     this.receiverLimit = 1 << 30,
+    this.manual = false,
   });
 
   /// 同一计划行拆出的工单共用「本来源最多可送」：计划行 id(没有时用工单 id)。
@@ -101,6 +102,7 @@ class OutputAllocationRowInput {
 
   /// 一行最多同时转给几个上层工单(服务端同一个常量)。
   final int receiverLimit;
+  final bool manual;
 }
 
 /// 重排后的一条去向。
@@ -224,6 +226,7 @@ List<OutputAllocationRowPlan> planOutputAllocations(
     for (var index = 0; index < row.slots.length; index++) {
       final slot = row.slots[index];
       if (!slot.fixed) continue;
+      if (row.manual && slot.demandId == null) continue;
       final wanted = _ticks(slot.requestedExact ?? slot.requested);
       final ticks = wanted < available ? wanted : available;
       if (wanted <= BigInt.zero && !slot.editing) continue;
@@ -282,7 +285,7 @@ List<OutputAllocationRowPlan> planOutputAllocations(
     };
     var receivers = used.length;
     for (final candidate
-        in row.candidatesKnown
+        in row.candidatesKnown && !row.manual
             ? row.candidates
             : const <ProductionDirectTransferCandidate>[]) {
       if (available <= BigInt.zero || receivers >= row.receiverLimit) break;
@@ -365,6 +368,14 @@ List<OutputAllocationRowPlan> planOutputAllocations(
       roomExact[demand] = _text(all < same ? all : same);
     }
     for (final line in lines[r]) {
+      if (line.ticks > productionQuantityMaxUnits ||
+          _baseTicks(line.ticks, row.rateText!) > productionQuantityMaxUnits) {
+        line.issue ??= '这条去向数量或换算后的基本量超过系统计量范围，请核对原输入';
+      }
+      if (line.ticks > BigInt.zero &&
+          _baseTicks(line.ticks, row.rateText!) <= BigInt.zero) {
+        line.issue ??= '这条去向换算后的基本量为 0，请核对去向数量和单位换算率';
+      }
       final demand = line.demandId;
       if (demand == null ||
           !line.fixed ||

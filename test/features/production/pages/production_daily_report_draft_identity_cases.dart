@@ -317,7 +317,7 @@ void registerDailyReportDraftIdentityTests() {
       grid.addRow(b);
       grid.setSelected([a, b], true);
       await tester.pumpAndSettle();
-      expect(grid.rows.where((r) => r.isMaterialRow), hasLength(2));
+      expect(_materialRows(tester), hasLength(2));
       await _identityState(tester).saveFormDraftNow();
       final draft = env.container.read(formDraftsProvider).single;
       final fields = draft.data['_platformGridDrafts'] as Map;
@@ -345,7 +345,7 @@ void registerDailyReportDraftIdentityTests() {
         'B-ONLY',
         'A-ONLY',
       ]);
-      expect(grid.rows.where((r) => r.isMaterialRow), hasLength(4));
+      expect(_materialRows(tester), hasLength(4));
       expect(
         grid.rows
             .where((r) => r.isSubRow)
@@ -354,9 +354,9 @@ void registerDailyReportDraftIdentityTests() {
       );
       expect(_identityState(tester).formDraftRestorationBlocked, isFalse);
       // Actual page submission proves local identity is not a formal entity ID.
-      for (final child in grid.rows.where(
-        (r) => r.isMaterialRow && r.materialEditable,
-      )) {
+      for (final child in _materialRows(
+        tester,
+      ).where((r) => r.isMaterialRow && r.materialEditable)) {
         child.materialUsed.text = '0';
       }
       await tester.pumpAndSettle();
@@ -436,10 +436,7 @@ void registerDailyReportDraftIdentityTests() {
             _identityGrid(tester).rows.singleWhere((r) => !r.isSubRow).qty.text,
             '2',
           );
-          expect(
-            _identityGrid(tester).rows.where((r) => r.isMaterialRow),
-            hasLength(2),
-          );
+          expect(_materialRows(tester), hasLength(2));
         }
         await _closeIdentityPage(tester, env);
       },

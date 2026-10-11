@@ -700,6 +700,10 @@ class _GridTotalNotifier<T extends EditableGridRow> extends ChangeNotifier
 /// 可编辑 Excel 明细表。sticky 表头（上滑到视口顶才吸附，不原地固定）+ 竖线分隔 +
 /// 横向滚动（共用 UtenHScrollArea：内容矮→横滚条紧贴末行下；内容高→钉视口底）+ 增删行。
 class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
+  /// Width of the leading selection column. Independent row details can use
+  /// this inset to align their content with the first business column.
+  static const double selectionColumnWidth = 44;
+
   /// 数据格的纵向内边距。要画跨行图形的单元格（层级树列）按它设
   /// `UtenTreeTableCell.guideBleed`，不要在调用点抄魔数。
   static const double cellVerticalPadding = UtenSpacing.s4;
@@ -708,6 +712,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     super.key,
     required this.controller,
     required this.columns,
+    this.rowDetailsBuilder,
     this.createBlankRow,
     this.footer,
     this.showRowDelete = true,
@@ -765,6 +770,17 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final bool columnEditingEnabled;
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
+
+  /// Optional independent content immediately below its owning data row.
+  ///
+  /// Details receive the visible viewport width and natural, unbounded height;
+  /// they stay in place when the data columns scroll horizontally. They are
+  /// mounted once, outside the row selection/menu region, and never become
+  /// controller rows, selectable records, copied rows, or exported columns.
+  /// Return null when a row has no details. The details widget owns expansion
+  /// and subscribes to its row's values; the grid listens only to row-set changes.
+  /// The default null preserves the existing grid layout and edit interactions.
+  final Widget? Function(BuildContext context, T row)? rowDetailsBuilder;
 
   /// Business pages provide a searchable catalog; the grid owns the same
   /// trailing header cell as row actions so the button stays visible on scroll.
@@ -1272,9 +1288,22 @@ class _UtenEditableGridState<T extends EditableGridRow>
   late final ScrollController _headerH;
   late final ScrollController _bodyH;
   bool _syncing = false;
+  bool _detailsLayoutPending = false;
+
+  void _onDetailsLayoutChanged() {
+    if (_detailsLayoutPending) return;
+    _detailsLayoutPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _detailsLayoutPending = false;
+      if (!mounted || widget.rowDetailsBuilder == null) return;
+      // Re-measure the shared sticky header and horizontal scrollbar after a
+      // detail expands/collapses. Batch all layout notifications into one frame.
+      setState(() {});
+    });
+  }
 
   /// 选择列宽（批量模式行首 checkbox）。
-  static const double _selectColWidth = 44;
+  static const double _selectColWidth = UtenEditableGrid.selectionColumnWidth;
 
   /// 表尾「添加行/添加多行 + 合计」并作一行的最小可用宽度。
   /// 低于此宽两者分两行——两个按钮约 200、合计条多单位/多币别时轻松超 300，
@@ -2448,26 +2477,86 @@ class _UtenEditableGridState<T extends EditableGridRow>
                   if (rows.isEmpty) {
                     return const _EmptyRows(message: '没有符合表头筛选条件的行');
                   }
-                  return UtenHScrollArea(
-                    controller: _bodyH,
-                    child: SizedBox(
-                      width: total,
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: EdgeInsets.zero,
-                        itemCount: rows.length,
-                        itemBuilder: (context, i) => RepaintBoundary(
-                          // 隔离行重绘：列宽拖拽/选中/粘性头重排时只绘本行，不蔓延整表与外层页面。
-                          child: _rowCellOrMenuRegion(
-                            rows[i],
-                            i,
-                            divider,
-                            visibleColumnIndices,
+                  final detailsBuilder = widget.rowDetailsBuilder;
+                  final rowIndices = detailsBuilder == null
+                      ? null
+                      : (Map<T, int>.identity()..addEntries(
+                          rows.asMap().entries.map(
+                            (entry) => MapEntry(entry.value, entry.key),
                           ),
+                        ));
+                  Widget rowList(double canvasWidth, {double? detailsWidth}) {
+                    return UtenHScrollArea(
+                      controller: _bodyH,
+                      child: SizedBox(
+                        width: canvasWidth,
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: EdgeInsets.zero,
+                          itemCount: rows.length,
+                          findChildIndexCallback: rowIndices == null
+                              ? null
+                              : (key) => key is ObjectKey
+                                    ? rowIndices[key.value]
+                                    : null,
+                          itemBuilder: (context, i) {
+                            final row = rows[i];
+                            final dataRow = _rowCellOrMenuRegion(
+                              row,
+                              i,
+                              divider,
+                              visibleColumnIndices,
+                            );
+                            return RepaintBoundary(
+                              key: detailsBuilder == null
+                                  ? null
+                                  : ObjectKey(row),
+                              // 主行与详情共用身份；筛选、删除、插入后展开状态不会串行。
+                              child: detailsBuilder == null
+                                  ? dataRow
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        dataRow,
+                                        NotificationListener<
+                                          SizeChangedLayoutNotification
+                                        >(
+                                          onNotification: (_) {
+                                            _onDetailsLayoutChanged();
+                                            return true;
+                                          },
+                                          child: SizeChangedLayoutNotifier(
+                                            child: _ViewportRowDetails(
+                                              horizontal: _bodyH,
+                                              viewportWidth: detailsWidth!,
+                                              builder: (context) =>
+                                                  detailsBuilder(context, row),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            );
+                          },
                         ),
                       ),
-                    ),
+                    );
+                  }
+
+                  if (detailsBuilder == null) return rowList(total);
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final viewportWidth = constraints.maxWidth.isFinite
+                          ? constraints.maxWidth
+                          : total;
+                      return rowList(
+                        total > viewportWidth ? total : viewportWidth,
+                        detailsWidth: viewportWidth,
+                      );
+                    },
                   );
                 },
               ),
@@ -3289,6 +3378,46 @@ class _UtenEditableGridState<T extends EditableGridRow>
             ),
           ],
         );
+      },
+    );
+  }
+}
+
+/// One viewport-wide, interactive details subtree. Counter-translate the whole
+/// canvas so hit testing covers the entire translated card, just like frozen
+/// columns, while the editor/controllers themselves are never duplicated.
+class _ViewportRowDetails extends StatelessWidget {
+  const _ViewportRowDetails({
+    required this.horizontal,
+    required this.viewportWidth,
+    required this.builder,
+  });
+
+  final ScrollController horizontal;
+  final double viewportWidth;
+  final Widget? Function(BuildContext context) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: horizontal,
+      child: Align(
+        alignment: AlignmentDirectional.topStart,
+        child: SizedBox(
+          width: viewportWidth,
+          child: Builder(
+            builder: (context) => builder(context) ?? const SizedBox.shrink(),
+          ),
+        ),
+      ),
+      builder: (context, child) {
+        final offset = horizontal.hasClients && horizontal.positions.length == 1
+            ? horizontal.offset
+            : 0.0;
+        final dx = Directionality.of(context) == TextDirection.rtl
+            ? -offset
+            : offset;
+        return Transform.translate(offset: Offset(dx, 0), child: child);
       },
     );
   }

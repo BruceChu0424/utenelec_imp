@@ -33,6 +33,7 @@ import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/analysis_linked_sales_order.dart';
 import '../models/production_daily_report.dart';
+import '../models/daily_report_material_review.dart';
 import '../models/production_daily_report_create_request.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_material_analysis.dart';
@@ -2194,6 +2195,8 @@ class ProductionDailyReportRepository {
     required String idempotencyKey,
     int? commandVersion,
     int? expectedVersion,
+    String? materialReviewFingerprint,
+    List<DailyReportMaterialDecision>? materialDecisions,
   }) async {
     final json = await api.post(
       '/production/daily-reports/$id/approve',
@@ -2201,9 +2204,19 @@ class ProductionDailyReportRepository {
         'idempotencyKey': idempotencyKey,
         'commandVersion': ?commandVersion,
         'expectedVersion': ?expectedVersion,
+        'materialReviewFingerprint': ?materialReviewFingerprint,
+        if (materialDecisions != null)
+          'materialDecisions': materialDecisions
+              .map((line) => line.toJson())
+              .toList(),
       },
     ); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
+  }
+
+  Future<DailyReportMaterialReview> materialReview(String id) async {
+    final json = await api.get('/production/daily-reports/$id/material-review');
+    return DailyReportMaterialReview.fromJson(json);
   }
 
   Future<ProductionDailyReportApprovalResolution> approvalReceipt(

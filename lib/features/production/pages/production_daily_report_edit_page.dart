@@ -75,7 +75,9 @@ import '../providers/production_department_provider.dart';
 import '../repositories/production_material_repository.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_daily_grid_columns.dart';
-import '../widgets/production_report_surplus_return_dialog.dart';
+import '../widgets/production_daily_product_details_card.dart';
+import '../widgets/daily_report_add_destination_dialog.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../repositories/production_actual_output_supplement_repository.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../widgets/reportable_plan_line_picker.dart';
@@ -149,32 +151,53 @@ class _ProductionDailyReportEditPageState
   Set<DailyGridRow> _allocationSelection = const {};
 
   /// 产出去向子行手动展开的成品行（2026-10-10 用户口径）：去向多时每个子件下面
-  /// 一长串，编辑已有单据默认收起，收起态由成品行摘要(转下一道工序 N 个工单 X ·
-  /// 送入仓库 Y)+ 悬停全文承载，要编辑去向先点「产出去向」格的切换钮展开。
-  /// 键 = planItemId ?? executionSegmentId（与 OutputAllocationRowInput.sourceKey
-  /// 同源，换来源即换键，天然作废旧展开态）。
+  /// 一长串，编辑已有单据默认收起，收起态由成品行摘要 + 悬停逐条全文承载，
+  /// 要编辑去向先点「产出去向」分组头的展开钮。
+  /// 键绑定本地行身份与来源，复制同一来源的行独立展开，换来源作废旧状态。
   final Set<String> _allocationsExpanded = {};
+  final Set<String> _allocationsCollapsed = {};
 
-  /// 本成品行的去向子行现在要不要进表格：新建报工直接要分去向，默认展开；
-  /// 编辑已有单据默认收起，只有手动展开过的行显示。
-  bool _allocationsShown(DailyGridRow product) =>
-      showsOutputAllocations(product) &&
-      (_isCreate ||
-          _allocationsExpanded.contains(
-            product.planItemId ?? product.executionSegmentId,
-          ));
+  String _groupKey(DailyGridRow product) =>
+      '${product.localRowId}:${product.planItemId ?? product.executionSegmentId ?? ''}';
 
-  /// 展开/收起某成品行的去向分配子行：改展开集后重建扁平行序，让子行进/出表格。
-  void _onToggleAllocations(DailyGridRow product) {
-    final key = product.planItemId ?? product.executionSegmentId;
-    if (key == null) return;
+  /// 子件用料分组手动收起的成品行（2026-10-10 双分组口径）：与去向分组不同，
+  /// 用料是必填事实、成品行没有摘要承载，默认一律展开；收起只是临时的浏览
+  /// 偏好，键同去向分组，换来源即作废。
+  final Set<String> _materialsCollapsed = {};
+
+  /// 每个产品详情卡片的两个独立展开态。
+  bool _isGroupExpanded(DailyGridRow product, DailyRowGroup group) =>
+      group == DailyRowGroup.allocations
+      ? (_allocationsExpanded.contains(_groupKey(product)) ||
+            (_isCreate && !_allocationsCollapsed.contains(_groupKey(product))))
+      : !_materialsCollapsed.contains(_groupKey(product));
+
+  /// 展开/收起一个产品的详情卡片区域；只改变布局，全量事实与控制器保持。
+  void _onToggleGroup(DailyGridRow product, DailyRowGroup group) {
+    final key = _groupKey(product);
     setState(() {
-      if (!_allocationsExpanded.add(key)) {
-        _allocationsExpanded.remove(key);
+      if (group == DailyRowGroup.allocations) {
+        if (_isGroupExpanded(product, group)) {
+          _allocationsExpanded.remove(key);
+          _allocationsCollapsed.add(key);
+        } else {
+          _allocationsCollapsed.remove(key);
+          _allocationsExpanded.add(key);
+        }
+      } else {
+        // 收起集：在集合里 = 收起。
+        if (!_materialsCollapsed.add(key)) _materialsCollapsed.remove(key);
       }
     });
     _applyMaterialRows(const {});
   }
+
+  /// 全量物料子行（含收起态不在表格里的行）：自动填充、必填校验与
+  /// 提交体都以这份为准——收起只影响看不看得见，不改变登记与校验口径。
+  /// 每次 _applyMaterialRows 重建。
+  Map<DailyGridRow, List<DailyGridRow>> _materialRowsByProduct = const {};
+  Iterable<DailyGridRow> get _allMaterialRows =>
+      _materialRowsByProduct.values.expand((rows) => rows);
 
   bool _materialLoading = false;
 
@@ -364,6 +387,8 @@ class _ProductionDailyReportEditPageState
           'localRowId': row.localRowId,
           'goods': draftGoods(row.goods),
           'selected': _grid.isSelected(row),
+          'allocationManual': row.allocationManual,
+          'allocationDeclined': row.allocationDeclined.toList(),
           // V736 去向分配：只存工人亲手定过的条目，其余建议恢复后按当时余量重新给出。
           'allocations': [
             for (final allocation in row.allocationRows)
@@ -397,10 +422,16 @@ class _ProductionDailyReportEditPageState
           'unitRateExact': row.unitRateText,
           'orderQty': row.orderQty,
           'maxReportQty': row.maxReportQty,
+          'maxReportQtyExact': row.maxReportQtyText,
+          'remainingActualSurplusQty': row.remainingActualSurplusQty,
+          'remainingActualSurplusQtyExact': row.remainingActualSurplusQtyExact,
+          'pendingSupplementQty': row.pendingSupplementQty,
+          'pendingSupplementQtyExact': row.pendingSupplementQtyText,
           'supplementApprovedActualQty': row.supplementApprovedActualQty,
           'supplementApprovedActualQtyExact':
               row.supplementApprovedActualQtyText,
           'remainingPlanQty': row.remainingPlanQty,
+          'remainingPlanQtyExact': row.remainingPlanQtyExact,
           'allowActualOverproduction': row.allowActualOverproduction,
           'legacyManual': row.legacyManual,
           'isFinal': row.isFinal,
@@ -438,6 +469,7 @@ class _ProductionDailyReportEditPageState
           'colorName': usage.colorName,
           'unitName': usage.unitName,
           'qtyBase': usage.qtyBase,
+          'qtyBaseExact': ?usage.qtyBaseText,
         },
     ],
   };
@@ -537,9 +569,26 @@ class _ProductionDailyReportEditPageState
       );
       row.orderQty = (item['orderQty'] as num?)?.toDouble();
       row.maxReportQty = (item['maxReportQty'] as num?)?.toDouble();
+      row.maxReportQtyExact = productionExactQuantityText(
+        item['maxReportQtyExact'] ?? item['maxReportQty'],
+      );
+      row.remainingActualSurplusQty =
+          (item['remainingActualSurplusQty'] as num?)?.toDouble();
+      row.remainingActualSurplusQtyExact = productionExactQuantityText(
+        item['remainingActualSurplusQtyExact'] ??
+            item['remainingActualSurplusQty'],
+      );
+      row.pendingSupplementQty = (item['pendingSupplementQty'] as num?)
+          ?.toDouble();
+      row.pendingSupplementQtyExact = productionExactQuantityText(
+        item['pendingSupplementQtyExact'] ?? item['pendingSupplementQty'],
+      );
       row.supplementApprovedActualQty =
           (item['supplementApprovedActualQty'] as num?)?.toDouble();
       row.remainingPlanQty = (item['remainingPlanQty'] as num?)?.toDouble();
+      row.remainingPlanQtyExact = productionExactQuantityText(
+        item['remainingPlanQtyExact'] ?? item['remainingPlanQty'],
+      );
       row.allowActualOverproduction = item['allowActualOverproduction'] == true;
       row.legacyManual = item['legacyManual'] == true;
       row.isFinal = item['isFinal'] == true;
@@ -560,6 +609,12 @@ class _ProductionDailyReportEditPageState
           ?.toInt();
       // A recovered choice is explicit. Fresh candidates may validate it but may not replace it.
       restoreOutputAllocations(row, draftMaps(item['allocations']));
+      row.allocationManual = item.containsKey('allocationManual')
+          ? item['allocationManual'] == true
+          : row.allocationRows.isNotEmpty;
+      row.allocationDeclined.addAll(
+        (item['allocationDeclined'] as List? ?? const []).whereType<String>(),
+      );
       rows.add(row);
       if (item['selected'] == true) selected.add(row);
     }
@@ -590,7 +645,7 @@ class _ProductionDailyReportEditPageState
     // Reattaching material watchers must not overwrite raw incomplete/manual input.
     applyMaterialInputs();
     final availableDemandIds = {
-      for (final row in _grid.rows)
+      for (final row in _allMaterialRows)
         if (row.material != null) row.material!.demandId,
     };
     if (draftMap(data['materialInputs']).entries.any(
@@ -689,7 +744,14 @@ class _ProductionDailyReportEditPageState
     _remark.dispose();
     _pendingFiles.dispose();
     _grid.removeListener(_scheduleMaterialOwnershipRefresh);
-    _grid.dispose(); // 自动 dispose 各行控制器
+    final detailRows = <DailyGridRow>{
+      ..._allMaterialRows,
+      for (final product in _productRows) ...product.allocationRows,
+    };
+    _grid.dispose(); // 主表只释放产品；独立卡片的行事实由本页释放。
+    for (final row in detailRows) {
+      row.dispose();
+    }
     for (final input in _materialInputs.values) {
       input.dispose();
     }
@@ -1080,6 +1142,7 @@ class _ProductionDailyReportEditPageState
             as String] = ProductionDailyReportMaterialUsage(
           demandId: line['demandId'] as String,
           qtyBase: qty,
+          qtyBaseExact: productionExactQuantityText(line['qtyBase']),
         );
       }
       _surplusReturnRequested = snapshot['surplusReturnRequested'] == true;
@@ -1129,9 +1192,15 @@ class _ProductionDailyReportEditPageState
       ..maxReportQty = source.fqcRecoveryRequiresMaterial
           ? 0
           : source.maxReportQty
+      ..maxReportQtyExact = source.fqcRecoveryRequiresMaterial
+          ? '0'
+          : source.maxReportQtyText
       ..remainingActualSurplusQty = source.remainingActualSurplusQty
+      ..remainingActualSurplusQtyExact = source.remainingActualSurplusQtyText
       ..pendingSupplementQty = source.pendingSupplementQty
+      ..pendingSupplementQtyExact = source.pendingSupplementQtyText
       ..remainingPlanQty = source.remainingCompletionQty
+      ..remainingPlanQtyExact = source.remainingCompletionQtyText
       ..fqcRecoveryDispositionCode = source.fqcRecoveryDispositionCode
       ..fqcSourceReportNo = source.fqcSourceReportNo
       ..clientName = source.clientName
@@ -1342,14 +1411,18 @@ class _ProductionDailyReportEditPageState
         ..defectQtyNeedsVerification = false
         ..orderQty = source.orderQty
         ..maxReportQty = source.maxReportQty
+        ..maxReportQtyExact = source.maxReportQtyText
         ..allowActualOverproduction = source.allowActualOverproduction
         ..remainingActualSurplusQty = source.remainingActualSurplusQty
+        ..remainingActualSurplusQtyExact = source.remainingActualSurplusQtyText
         ..pendingSupplementQty = source.pendingSupplementQty
+        ..pendingSupplementQtyExact = source.pendingSupplementQtyText
         ..supplementRequestId = null
         ..supplementProofId = null
         ..supplementApprovedActualQty = null
         ..supplementApprovedActualQtyExact = null
         ..remainingPlanQty = source.remainingCompletionQty
+        ..remainingPlanQtyExact = source.remainingCompletionQtyText
         ..legacyManual = false
         ..planNo.text = source.planNo
         ..goods = GoodsOption(
@@ -1424,11 +1497,17 @@ class _ProductionDailyReportEditPageState
         ..unitRateExact = null
         ..orderQty = null
         ..maxReportQty = null
+        ..maxReportQtyExact = null
+        ..remainingActualSurplusQty = null
+        ..remainingActualSurplusQtyExact = null
+        ..pendingSupplementQty = null
+        ..pendingSupplementQtyExact = null
         ..allowActualOverproduction = false
         ..supplementRequestId = null
         ..supplementProofId = null
         ..supplementApprovedActualQty = null
         ..remainingPlanQty = null
+        ..remainingPlanQtyExact = null
         ..legacyManual = false
         ..planNo.clear()
         ..goods = null
@@ -1444,10 +1523,6 @@ class _ProductionDailyReportEditPageState
         ..weight.clear();
     });
   }
-
-  String _quantityText(double value) => value == value.roundToDouble()
-      ? value.toStringAsFixed(0)
-      : value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
 
   // ===================== V583 物料子行 =====================
 
@@ -1596,79 +1671,90 @@ class _ProductionDailyReportEditPageState
     }
   }
 
-  /// 把缓存里的台账铺成「成品行 + 其去向分配子行 + 其物料子行」的扁平行序。
-  ///
-  /// 复用既有行对象而不是整表重建：用户已经填进去的数字不能因为换了个来源就清空。
+  /// 产品保留在主表；全量用料事实与控制器独立归产品详情卡片所有。
+  /// 复用既有行对象，折叠和主表横滚不清空输入或改变数量校验、共享额度与提交。
   void _applyMaterialRows(Map<String, ({String planId, String segmentId})> _) {
+    // 上一轮的全量物料行（含收起态不在表格里的）：复用优先看全量，收起再展开
+    // 不换行对象；已经从台账消失的行无论在不在表格都算孤儿。
+    final oldMaterialRows = _materialRowsByProduct;
     final previous = <DailyGridRow, Map<String, DailyGridRow>>{};
-    for (final row in _grid.rows) {
-      final parent = row.materialParent;
-      final material = row.material;
-      if (!row.isMaterialRow || parent == null || material == null) continue;
-      previous.putIfAbsent(parent, () => {})[material.demandId] = row;
+    for (final entry in oldMaterialRows.entries) {
+      previous.putIfAbsent(
+        entry.key,
+        () => {
+          for (final row in entry.value)
+            if (row.material != null) row.material!.demandId: row,
+        },
+      );
     }
     final reused = <DailyGridRow>{};
     final flat = <DailyGridRow>[];
+    final rowsByProduct = <DailyGridRow, List<DailyGridRow>>{};
     // 同一个执行工单挂在多个成品行下时，它的物料只有一份额度：第一处可填，
     // 其余只读镜像。否则两行各自按满额填，提交必被服务端守恒守卫拒掉。
     for (final product in _productRows) {
       flat.add(product);
-      // 去向子行按展开态进表（编辑已有单据默认收起）：收起时仍参与重排与提交，
-      // 只是不占行；与 _reflowOutputAllocations 的期望列表共用同一份 _allocationsShown。
-      if (_allocationsShown(product)) {
-        flat.addAll(product.allocationRows.where(outputAllocationVisible));
-      }
       _watchProductQty(product);
       final planId = product.planId;
       final segmentId = product.executionSegmentId;
-      if (planId == null || segmentId == null) continue;
-      final sources =
-          _usageSourceCache[_materialKey(planId, segmentId)] ??
-          const <ProductionMaterialUsageSource>[];
-      for (final source in sources) {
-        if (!source.canOpen) continue;
-        final rows =
-            _clearanceCache[_materialKey(
-              source.sourcePlanId ?? planId,
-              source.executionSegmentId,
-            )] ??
-            const <ProductionMaterialClearanceRow>[];
-        for (final clearance in rows) {
-          // 与材料台账同口径：没领过料、或已经没有可继续登记的量，就不占一行。
-          if ((clearance.issuedQty <= 0 ||
-                  clearance.availableToSettleQty <= 0) &&
-              !_savedMaterialUsage.containsKey(clearance.demandId)) {
-            continue;
+      final productMaterials = <DailyGridRow>[];
+      if (planId != null && segmentId != null) {
+        final sources =
+            _usageSourceCache[_materialKey(planId, segmentId)] ??
+            const <ProductionMaterialUsageSource>[];
+        for (final source in sources) {
+          if (!source.canOpen) continue;
+          final rows =
+              _clearanceCache[_materialKey(
+                source.sourcePlanId ?? planId,
+                source.executionSegmentId,
+              )] ??
+              const <ProductionMaterialClearanceRow>[];
+          for (final clearance in rows) {
+            // 与材料台账同口径：没领过料、或已经没有可继续登记的量，就不占一行。
+            if ((clearance.issuedQty <= 0 ||
+                    clearance.availableToSettleQty <= 0) &&
+                !_savedMaterialUsage.containsKey(clearance.demandId)) {
+              continue;
+            }
+            final row =
+                previous[product]?[clearance.demandId] ?? DailyGridRow();
+            reused.add(row);
+            row
+              ..depth = 2
+              ..material = clearance
+              ..materialParent = product
+              ..materialShared = source.shared
+              ..materialReadOnly = !source.canSettle;
+            row.bindMaterialInput(
+              _materialInputs.putIfAbsent(clearance.demandId, () {
+                final input = DailyMaterialInput();
+                final saved = _savedMaterialUsage[clearance.demandId];
+                if (saved != null) {
+                  input.used.text = saved.qtyBaseText ?? '';
+                  input.manuallyEdited = true;
+                }
+                return input;
+              }),
+            );
+            _watchProductQty(product);
+            _watchMaterialUsage(row);
+            productMaterials.add(row);
           }
-          final row = previous[product]?[clearance.demandId] ?? DailyGridRow();
-          reused.add(row);
-          row
-            ..depth = 1
-            ..material = clearance
-            ..materialParent = product
-            ..materialShared = source.shared
-            ..materialReadOnly = !source.canSettle;
-          row.bindMaterialInput(
-            _materialInputs.putIfAbsent(clearance.demandId, () {
-              final input = DailyMaterialInput();
-              final saved = _savedMaterialUsage[clearance.demandId];
-              if (saved != null) {
-                input.used.text = _quantityText(saved.qtyBase);
-                input.manuallyEdited = true;
-              }
-              return input;
-            }),
-          );
-          _watchProductQty(product);
-          _watchMaterialUsage(row);
-          flat.add(row);
         }
       }
+      rowsByProduct[product] = productMaterials;
     }
-    final orphans = [
-      for (final row in _grid.rows)
-        if (row.isMaterialRow && !reused.contains(row)) row,
-    ];
+    _materialRowsByProduct = rowsByProduct;
+    final orphans = <DailyGridRow>{};
+    for (final row in _grid.rows) {
+      if (row.isMaterialRow && !reused.contains(row)) orphans.add(row);
+    }
+    for (final rows in oldMaterialRows.values) {
+      for (final row in rows) {
+        if (row.isMaterialRow && !reused.contains(row)) orphans.add(row);
+      }
+    }
     // swapRows 不 dispose：行对象归本页所有。被丢弃的子行等这一帧的输入框拆掉
     // 之后再 dispose，同帧 dispose 正在使用的控制器会直接抛异常。
     _grid.swapRows(flat);
@@ -1683,7 +1769,7 @@ class _ProductionDailyReportEditPageState
     if (mounted) setState(() {});
   }
 
-  /// 删成品行：连带删掉挂在它下面的去向分配子行与物料子行，不留孤儿。
+  /// 删成品行：连带删掉挂在它下面的分组头、去向分配子行与物料子行，不留孤儿。
   void _deleteProductRow(DailyGridRow row, int index) {
     if (row.hasFixedSupplement) {
       context.appWarning('追加批次不能从草稿单独移除；如需重开，请删除整张日报草稿');
@@ -1693,35 +1779,32 @@ class _ProductionDailyReportEditPageState
       row,
       for (final candidate in _grid.rows)
         if (candidate.materialParent == row ||
-            candidate.allocationParent == row)
+            candidate.allocationParent == row ||
+            candidate.groupParent == row)
           candidate,
     ];
-    // 收起态的去向子行不在表格里、进不了 victims（removeRows 只处置表内行）：
-    // 它们此刻没挂在任何输入框上，这里直接释放，不随行对象一起漏掉。
+    // 卡片事实不在主表中；待输入框拆下后释放，避免同帧使用已销毁控制器。
     final hiddenAllocations = [
       for (final allocation in row.allocationRows)
         if (!victims.contains(allocation)) allocation,
     ];
+    final hiddenMaterials = [
+      for (final material
+          in _materialRowsByProduct[row] ?? const <DailyGridRow>[])
+        if (!victims.contains(material)) material,
+    ];
     row.allocationRows = [];
+    _materialRowsByProduct = {
+      for (final entry in _materialRowsByProduct.entries)
+        if (!identical(entry.key, row)) entry.key: entry.value,
+    };
     _grid.removeRows(victims);
-    for (final allocation in hiddenAllocations) {
-      allocation.dispose();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final child in [...hiddenAllocations, ...hiddenMaterials]) {
+        child.dispose();
+      }
+    });
     _reflowOutputAllocations();
-  }
-
-  DailyGridRow? _subRowParent(DailyGridRow row) =>
-      row.allocationParent ?? row.materialParent;
-
-  bool _hasSubRows(DailyGridRow row) =>
-      !row.isSubRow &&
-      _grid.rows.any((candidate) => _subRowParent(candidate) == row);
-
-  bool _isLastSubRow(DailyGridRow row) {
-    final rows = _grid.rows;
-    final index = rows.indexOf(row);
-    if (index < 0 || index + 1 >= rows.length) return true;
-    return _subRowParent(rows[index + 1]) != _subRowParent(row);
   }
 
   /// 拉每个成品行可转送的上层工单(V584/V585/V736)，读完后按先急后缓重排全部去向分配。
@@ -1792,14 +1875,14 @@ class _ProductionDailyReportEditPageState
   /// 计算只在 [planOutputAllocations] 一处。
   void _reflowOutputAllocations() {
     if (!mounted) return;
-    // 新建态只提交勾选行：勾选行先占上层工单的「还差多少」，未勾选行只分剩下的。
+    // Only submitted rows reserve receiver capacity. Unchecked rows retain
+    // their local choices until selected again, without blocking active rows.
     final products = [
-      for (final selected in [true, false])
-        for (final row in _productRows)
-          if (row.executionSegmentId != null &&
-              row.goods != null &&
-              (!_isCreate || _grid.isSelected(row)) == selected)
-            row,
+      for (final row in _productRows)
+        if (row.executionSegmentId != null &&
+            row.goods != null &&
+            (!_isCreate || _grid.isSelected(row)))
+          row,
     ];
     final plans = planOutputAllocations([
       for (final product in products)
@@ -1815,27 +1898,42 @@ class _ProductionDailyReportEditPageState
           candidates: product.directTransferCandidates,
           candidatesKnown: !product.directTransferLoadFailed,
           declined: product.allocationDeclined,
+          manual: product.allocationManual,
           // 品质返工/补产的报工整行只能一个去向(服务端同一规则)：不替它拆出转送建议，要转由人自己选。
           receiverLimit: product.isFqcRecovery
               ? 0
               : product.directTransferReceiverLimit,
-          slots: [
-            for (final allocation in product.allocationRows)
-              OutputAllocationSlot(
-                demandId: allocation.allocationDemandId,
-                fixed: allocation.allocationFixed,
-                editing: allocation.allocationEditing,
-                requested: allocation.allocationEditing
-                    ? double.tryParse(allocation.allocationQty.text.trim())
-                    : allocation.allocationRequested,
-                requestedExact: allocation.allocationEditing
-                    ? allocation.allocationQty.text.trim().replaceFirst(
-                        RegExp(r'\.$'),
-                        '',
-                      )
-                    : allocation.allocationRequestedExact,
-              ),
-          ],
+          slots: product.isFqcRecovery
+              ? [
+                  if (product.allocationRows.isNotEmpty)
+                    OutputAllocationSlot(
+                      demandId: product
+                          .allocationRows
+                          .firstOrNull
+                          ?.allocationDemandId,
+                      fixed: true,
+                      requestedExact: product.qty.text,
+                    ),
+                ]
+              : [
+                  for (final allocation in product.allocationRows)
+                    OutputAllocationSlot(
+                      demandId: allocation.allocationDemandId,
+                      fixed: allocation.allocationFixed,
+                      editing: allocation.allocationEditing,
+                      requested: allocation.allocationEditing
+                          ? double.tryParse(
+                              allocation.allocationQty.text.trim(),
+                            )
+                          : allocation.allocationRequested,
+                      requestedExact: allocation.allocationEditing
+                          ? allocation.allocationQty.text.trim().replaceFirst(
+                              RegExp(r'\.$'),
+                              '',
+                            )
+                          : allocation.allocationRequestedExact,
+                    ),
+                ],
         ),
     ]);
     var layoutChanged = false;
@@ -1881,36 +1979,17 @@ class _ProductionDailyReportEditPageState
         ..allocationRows = next
         ..directTransferRoomBaseExact = plan.roomBaseExact
         ..directTransferRoomBase = plan.roomBase;
-      final shown = [
-        for (final row in _grid.rows)
-          if (row.allocationParent == product) row,
-      ];
-      // 期望可见列表必须与 _applyMaterialRows 同用 _allocationsShown：收起行的期望
-      // 是空表，若这里仍按 showsOutputAllocations 给全量，重排会把刚收起的行又加回来。
-      if (!listEquals(
-        shown,
-        _allocationsShown(product)
-            ? next.where(outputAllocationVisible).toList()
-            : const <DailyGridRow>[],
-      )) {
-        layoutChanged = true;
-      }
+      if (!listEquals(previous, next)) layoutChanged = true;
       product.allocationRevision.value++;
     }
     for (final product in _productRows) {
+      if (_isCreate && !_grid.isSelected(product)) continue;
       if (products.contains(product) || product.allocationRows.isEmpty) {
         continue;
       }
       dropped.addAll(product.allocationRows);
       product.allocationRows = [];
       product.allocationRevision.value++;
-      layoutChanged = true;
-    }
-    // 换来源/清来源作废的子行还在表格里：这次一并摘掉。
-    for (final row in _grid.rows) {
-      final parent = row.allocationParent;
-      if (parent == null || parent.allocationRows.contains(row)) continue;
-      dropped.add(row);
       layoutChanged = true;
     }
     if (layoutChanged) {
@@ -1932,6 +2011,7 @@ class _ProductionDailyReportEditPageState
   /// 仍挂在表格里的旧子行由下一次重排从表格摘掉后再释放；没显示的当场释放。
   void _discardOutputAllocations(DailyGridRow product) {
     product.allocationDeclined.clear();
+    product.allocationManual = false;
     if (product.allocationRows.isEmpty) return;
     final dropped = product.allocationRows;
     product.allocationRows = [];
@@ -1939,9 +2019,11 @@ class _ProductionDailyReportEditPageState
     product.directTransferRoomBaseExact = const {};
     product.directTransferPrecisionIssue = null;
     product.allocationRevision.value++;
-    for (final row in dropped) {
-      if (!_grid.rows.contains(row)) row.dispose();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final row in dropped) {
+        row.dispose();
+      }
+    });
   }
 
   /// 改了某条之后，它和它上面的条目都算工人定过(不再被重排替换)。
@@ -1964,6 +2046,18 @@ class _ProductionDailyReportEditPageState
   ) {
     final product = allocation.allocationParent;
     if (product == null) return;
+    if (product.isFqcRecovery && demandId != null) {
+      final quantity = productionExactQuantityText(product.qty.text);
+      final allowed = outputAllocationWithinRoomText(
+        quantity ?? '0',
+        product.directTransferRoomBaseExact[demandId] ?? '0',
+        product.unitRateText ?? '0',
+      );
+      if (quantity == null || allowed != quantity) {
+        context.appWarning('品质恢复报工只能整行安排一个去向，该工单接收量不足；原分配已保留');
+        return;
+      }
+    }
     final index = product.allocationRows.indexOf(allocation);
     _fixOutputAllocationsThrough(product, index);
     final current =
@@ -1987,6 +2081,243 @@ class _ProductionDailyReportEditPageState
       allocation.allocationRequestedExact!,
     );
     _reflowOutputAllocations();
+  }
+
+  /// Adding is a staged choice. Only confirmed positive quantities become
+  /// facts; untouched suggestions are released to the warehouse remainder.
+  Future<void> _addAllocation(DailyGridRow product) async {
+    if (_saving ||
+        _saveOperationActive ||
+        _createdReportId != null ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    try {
+      final requestScope = await captureFormDraftRequestScope();
+      await requestScope.run(() async {
+        if (!_productRows.contains(product) ||
+            product.isFqcRecovery ||
+            (_isCreate && !_grid.isSelected(product))) {
+          return;
+        }
+        FocusManager.instance.primaryFocus?.unfocus();
+        await WidgetsBinding.instance.endOfFrame;
+        await requestScope.verify();
+        if (!mounted || !_productRows.contains(product)) return;
+        final quantity = productionExactQuantityUnits(product.qty.text);
+        final rate = product.unitRateText;
+        if (quantity == null || quantity <= BigInt.zero || rate == null) {
+          context.appWarning('请先填写有效的完工申报量并选择来源任务');
+          return;
+        }
+        if (product.directTransferLoadFailed ||
+            product.directTransferPrecisionIssue != null) {
+          context.appWarning('去向暂时无法核对，请重新读取来源后再安排；原分配已保留');
+          return;
+        }
+        final fixed = [
+          for (final row in product.allocationRows)
+            if (row.allocationFixed && row.allocationDemandId != null) row,
+        ];
+        final occupied = {for (final row in fixed) row.allocationDemandId!};
+        final used = fixed.fold(
+          BigInt.zero,
+          (sum, row) =>
+              sum +
+              (productionExactQuantityUnits(row.allocationQty.text) ??
+                  BigInt.zero),
+        );
+        final available = quantity - used;
+        if (available <= BigInt.zero) {
+          context.appWarning('去向已分配完，请先减少一个工单的去向数量，再添加');
+          return;
+        }
+        final maximum = <String, String>{};
+        final options = <UtenDropdownItem>[];
+        final unit = ref
+            .read(masterNameServiceProvider)
+            .unitEntries[product.unitId];
+        for (final candidate in product.directTransferCandidates) {
+          final cap = outputAllocationWithinRoomText(
+            productionQuantityTextFromUnits(available),
+            product.directTransferRoomBaseExact[candidate.demandId] ?? '0',
+            rate,
+          );
+          maximum[candidate.demandId] = cap;
+          final duplicate = occupied.contains(candidate.demandId);
+          final full = productionExactQuantityUnits(cap)! <= BigInt.zero;
+          final limited =
+              occupied.length >= product.directTransferReceiverLimit;
+          final label = [
+            candidate.executionSegmentCode ?? candidate.planNo,
+            candidate.receivingGoodsName ?? candidate.receivingGoodsCode,
+            '可安排 $cap${unit?.isNotEmpty == true ? ' $unit' : ''}',
+            if (duplicate) '本行已分给它',
+            if (full && !duplicate) '已分满',
+            if (limited && !duplicate) '达到接收工单数量上限',
+          ].whereType<String>().where((text) => text.isNotEmpty).join(' · ');
+          options.add(
+            UtenDropdownItem(
+              value: candidate.demandId,
+              label: label,
+              enabled: !duplicate && !full && !limited,
+            ),
+          );
+        }
+        if (!options.any((option) => option.enabled)) {
+          context.appWarning('当前没有可添加的工单去向；已选工单可直接调整，剩余量自动送仓库');
+          return;
+        }
+        final identity = (
+          product.planId,
+          product.planItemId,
+          product.executionSegmentId,
+          product.executionSegmentSalesAllocationId,
+          product.fqcRecoveryAuthorizationId,
+          product.goods?.id,
+          product.colorId,
+          product.unitId,
+          product.qty.text,
+          rate,
+          product.directTransferRequestVersion,
+        );
+        final choice = await DailyReportAddDestinationDialog.show(
+          context,
+          targets: options,
+          maximumByDemand: maximum,
+          availableQtyText: productionQuantityTextFromUnits(available),
+          unitRateText: rate,
+          unitName: unit,
+          replacesSuggestions: !product.allocationManual,
+        );
+        if (choice == null) return;
+        await requestScope.verify();
+        if (!mounted ||
+            !_productRows.contains(product) ||
+            (_isCreate && !_grid.isSelected(product)) ||
+            _saving ||
+            _saveOperationActive ||
+            _createdReportId != null) {
+          return;
+        }
+        if (identity !=
+            (
+              product.planId,
+              product.planItemId,
+              product.executionSegmentId,
+              product.executionSegmentSalesAllocationId,
+              product.fqcRecoveryAuthorizationId,
+              product.goods?.id,
+              product.colorId,
+              product.unitId,
+              product.qty.text,
+              product.unitRateText,
+              product.directTransferRequestVersion,
+            )) {
+          context.appWarning('来源或数量已经变化，请重新安排；原分配已保留');
+          return;
+        }
+        if (!options.any(
+          (option) => option.enabled && option.value == choice.demandId,
+        )) {
+          return;
+        }
+        final currentFixed = product.allocationRows
+            .where(
+              (row) => row.allocationFixed && row.allocationDemandId != null,
+            )
+            .toList();
+        final currentUsed = currentFixed.fold(
+          BigInt.zero,
+          (sum, row) =>
+              sum +
+              (productionExactQuantityUnits(row.allocationQty.text) ??
+                  BigInt.zero),
+        );
+        final currentAvailable = quantity - currentUsed;
+        final currentRoom = outputAllocationWithinRoomText(
+          productionQuantityTextFromUnits(
+            currentAvailable > BigInt.zero ? currentAvailable : BigInt.zero,
+          ),
+          product.directTransferRoomBaseExact[choice.demandId] ?? '0',
+          rate,
+        );
+        if (product.directTransferLoadFailed ||
+            product.directTransferPrecisionIssue != null ||
+            !product.directTransferCandidates.any(
+              (candidate) => candidate.demandId == choice.demandId,
+            ) ||
+            currentFixed.any(
+              (row) => row.allocationDemandId == choice.demandId,
+            ) ||
+            currentFixed.length >= product.directTransferReceiverLimit ||
+            productionExactQuantityUnits(choice.qtyText)! >
+                productionExactQuantityUnits(currentRoom)!) {
+          context.appWarning('可分配数量已经变化，请重新安排；原分配已保留');
+          return;
+        }
+        final stale = product.allocationRows
+            .where((row) => !currentFixed.contains(row))
+            .toList();
+        final added = DailyGridRow()
+          ..depth = 1
+          ..allocationParent = product
+          ..allocationDemandId = choice.demandId
+          ..allocationFixed = true
+          ..allocationRequestedExact = choice.qtyText
+          ..allocationRequested = double.parse(choice.qtyText);
+        added.allocationQty.text = choice.qtyText;
+        product
+          ..allocationManual = true
+          ..allocationRows = [...currentFixed, added];
+        product.allocationDeclined.remove(choice.demandId);
+        final key = _groupKey(product);
+        _allocationsExpanded.add(key);
+        _allocationsCollapsed.remove(key);
+        _reflowOutputAllocations();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          for (final row in stale) {
+            row.dispose();
+          }
+        });
+      });
+    } on ApiException catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appWarning(error.message);
+      }
+    }
+  }
+
+  void _removeAllocation(DailyGridRow allocation) {
+    final product = allocation.allocationParent;
+    if (product == null ||
+        !_productRows.contains(product) ||
+        allocation.allocationDemandId == null ||
+        _saving ||
+        _createdReportId != null ||
+        !formDraftIdentityIsCurrent) {
+      return;
+    }
+    // Removing a receiver keeps the other visible choices; their remainder
+    // becomes warehouse output instead of a new automatic receiver.
+    for (final row in product.allocationRows) {
+      if (row.allocationDemandId == null || row.allocationFixed) continue;
+      row
+        ..allocationFixed = true
+        ..allocationRequestedExact = productionExactQuantityText(
+          row.allocationQty.text,
+        )
+        ..allocationRequested = double.tryParse(row.allocationQty.text);
+    }
+    allocation.allocationEditing = false;
+    product
+      ..allocationManual = true
+      ..allocationRows = product.allocationRows
+          .where((row) => !identical(row, allocation))
+          .toList();
+    product.allocationDeclined.add(allocation.allocationDemandId!);
+    _reflowOutputAllocations();
+    WidgetsBinding.instance.addPostFrameCallback((_) => allocation.dispose());
   }
 
   void _onAllocationQtyChanged(DailyGridRow allocation) {
@@ -2019,12 +2350,28 @@ class _ProductionDailyReportEditPageState
   void _expandAllocationIssueRows() {
     var changed = false;
     for (final product in _productRows) {
-      final key = product.planItemId ?? product.executionSegmentId;
-      if (key == null) continue;
+      final key = _groupKey(product);
       if (product.allocationRows.any(
             (row) => row.allocationIssue.value != null,
           ) &&
           _allocationsExpanded.add(key)) {
+        _allocationsCollapsed.remove(key);
+        changed = true;
+      }
+    }
+    if (changed) _applyMaterialRows(const {});
+  }
+
+  /// 提交被用料问题拦下时调用：有红框问题的用料分组若被手动收起，先展开再报错
+  /// （与去向分组同一口径：错误要指得到格子）。
+  void _expandMaterialIssueRows() {
+    var changed = false;
+    for (final entry in _materialRowsByProduct.entries) {
+      final key = _groupKey(entry.key);
+      if (entry.value.any(
+            (row) => row.materialEditable && row.materialInvalid,
+          ) &&
+          _materialsCollapsed.remove(key)) {
         changed = true;
       }
     }
@@ -2111,8 +2458,9 @@ class _ProductionDailyReportEditPageState
   }
 
   void _refreshMaterialInputOwners() {
-    synchronizeMaterialInputOwners(_grid.rows, _materialParticipants);
-    for (final row in _grid.rows) {
+    // 全量行（含收起态）：收起不改变额度归属，第一处可填的仍是它。
+    synchronizeMaterialInputOwners(_allMaterialRows, _materialParticipants);
+    for (final row in _allMaterialRows) {
       if (!row.materialEditable) continue;
       if (row.materialUsed.text.trim().isEmpty ||
           row.materialAutofillText != null) {
@@ -2147,7 +2495,7 @@ class _ProductionDailyReportEditPageState
       input.manuallyEdited = true;
       final parentQty = materialReportedQuantity(
         demandId,
-        _grid.rows,
+        _allMaterialRows,
         _materialParticipants,
       );
       final value = double.tryParse(input.used.text.trim());
@@ -2159,12 +2507,12 @@ class _ProductionDailyReportEditPageState
 
   void _recomputeMaterialUsage(DailyGridRow product) {
     final affected = {
-      for (final row in _grid.rows)
+      for (final row in _allMaterialRows)
         if (row.materialParent == product && row.material != null)
           row.material!.demandId,
     };
     var changed = false;
-    for (final row in _grid.rows) {
+    for (final row in _allMaterialRows) {
       if (!row.materialEditable || !affected.contains(row.material?.demandId)) {
         continue;
       }
@@ -2182,7 +2530,7 @@ class _ProductionDailyReportEditPageState
       return false;
     }
     final participants = _materialParticipants;
-    if (_grid.rows.any(
+    if (_allMaterialRows.any(
       (candidate) =>
           candidate.material?.demandId == material.demandId &&
           candidate.materialShared &&
@@ -2190,99 +2538,22 @@ class _ProductionDailyReportEditPageState
     )) {
       return false;
     }
-    final parentQty = materialReportedQuantity(
+    final parentQty = materialReportedQuantityText(
       material.demandId,
-      _grid.rows,
+      _allMaterialRows,
       participants,
     );
-    final expected = expectedMaterialUsage(
+    final expected = expectedMaterialUsageText(
       reportedQty: parentQty,
       material: material,
       ratioOverride: row.materialManualRatio,
     );
     if (expected == null) return false;
-    final text = _quantityText(expected);
+    final text = expected;
     row.materialAutofillText = text;
     if (row.materialUsed.text != text) row.materialUsed.text = text;
     row.materialUsageAutofilled.value = true;
     return true;
-  }
-
-  /// 收尾清点(ADR-129 §2.7)：最后一次报工的行，其物料只要账面还有可用就列出来，
-  /// 纸面上用完了也要清点——实物剩余才是 BOM 真实使用数量的依据。
-  ///
-  /// 纸面剩余(账面可用 - 本次填的用料)只作预填；退仓数量由服务端在审核时按实际剩余发，
-  /// 因为退料走原领料单位、台账是基本量，两者在换算率不为 1 时对不上。
-  List<SurplusReturnCandidate> _surplusCandidates(
-    List<DailyGridRow> reportRows, {
-    Map<String, double> undrawnDirectLots = const {},
-  }) {
-    final seen = <String>{};
-    final out = <SurplusReturnCandidate>[];
-    for (final row in _grid.rows) {
-      if (!row.materialEditable) continue;
-      final parent = row.materialParent;
-      if (parent == null || !completesProductionTask(parent, reportRows)) {
-        continue;
-      }
-      final material = row.material!;
-      final available = material.availableToSettleQty;
-      if (available <= 0.0000001 || !seen.add(material.demandId)) continue;
-      out.add(
-        SurplusReturnCandidate(
-          demandId: material.demandId,
-          goodsName: material.goodsName ?? material.goodsCode ?? '物料',
-          colorName: material.colorName,
-          availableToSettleQty: available,
-          estimatedLeftoverQty: closeOutDifference(
-            available,
-            row.materialUsedValue ?? 0,
-          ),
-          unitName: material.unitName ?? '',
-          segmentLabel: row.materialShared ? row.materialSegmentLabel : null,
-          undrawnDirectLotQty: undrawnDirectLots[material.demandId] ?? 0,
-        ),
-      );
-    }
-    return out;
-  }
-
-  /// 各需求还能退的未领直送料(基本单位)，取自退料来源读取(与退料单同一份来源)。
-  /// 只是清点时的提示：读不到就不显示数量，弹窗仍有通用说明，不挡保存。
-  Future<Map<String, double>> _undrawnDirectLotsByDemand(
-    Set<String> demandIds,
-  ) async {
-    final scopes = <(String, String)>{
-      for (final row in _grid.rows)
-        if (row.material case final material?
-            when demandIds.contains(material.demandId) &&
-                material.executionSegmentId != null)
-          (material.planId, material.executionSegmentId!),
-    };
-    final repo = ref.read(productionMaterialRepositoryProvider);
-    final result = <String, double>{};
-    for (final (planId, segmentId) in scopes) {
-      try {
-        final sources = await repo.returnSources(
-          planId,
-          executionSegmentId: segmentId,
-        );
-        for (final source in sources) {
-          if (!source.isDirectLot || source.returnBlockedReason != null) {
-            continue;
-          }
-          final baseQty = source.availableQty * source.unitRate;
-          result.update(
-            source.demandId,
-            (qty) => qty + baseQty,
-            ifAbsent: () => baseQty,
-          );
-        }
-      } catch (_) {
-        // 提示读不到不影响收尾，通用说明仍在。
-      }
-    }
-    return result;
   }
 
   /// 把暂存附件上传到刚创建的日报；全部成功才跳详情，失败项留在页面供重试。
@@ -2459,6 +2730,8 @@ class _ProductionDailyReportEditPageState
       await requestScope.run(() => _saveWithRequestScope(requestScope));
     } on ApiException catch (error) {
       if (mounted) context.appWarning(error.message);
+    } on FormatException catch (error) {
+      if (mounted) context.appWarning(error.message);
     } finally {
       _saveOperationActive = false;
     }
@@ -2549,9 +2822,13 @@ class _ProductionDailyReportEditPageState
       final qtyText = productionExactQuantityText(
         r.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
       );
-      final qty = qtyText == null ? null : double.tryParse(qtyText);
-      if (qty == null || qty <= 0) {
+      final qty = productionExactQuantityUnits(qtyText);
+      if (qty == null || qty <= BigInt.zero) {
         context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多四位小数；数量不对时请重新读取或手动填写');
+        return;
+      }
+      if (qty > productionQuantityMaxUnits) {
+        context.appError('第 ${i + 1} 行完工申报量超过系统计量范围，请核对原输入；最多 14 位整数和 4 位小数');
         return;
       }
       if (r.hasFixedSupplement &&
@@ -2581,23 +2858,48 @@ class _ProductionDailyReportEditPageState
         context.appError('第 ${i + 1} 行来源任务缺少有效单位或换算率，请维护计划后重试');
         return;
       }
-      // 普通实际超限允许如实记录，由服务端分账冻结；品质恢复与旧固定追加仍守原授权。
-      final cap = r.reportQtyCap;
-      if (cap != null && qty > cap + 0.000001 && !r.canRecordOverLimit) {
-        final pending = r.pendingSupplementQty ?? 0;
-        final beyondPlan =
-            r.maxReportQty == null || qty > r.maxReportQty! + 0.000001;
+      final rate = productionExactQuantityUnits(r.unitRateText, scale: 6)!;
+      if (rate > productionQuantityMaxUnits) {
+        context.appError('第 ${i + 1} 行来源单位换算率超过系统计量范围，请维护来源任务后重试；原输入已保留');
+        return;
+      }
+      final baseQuantity = financeExactProductUnits(qtyText!, r.unitRateText!)!;
+      if (baseQuantity <= BigInt.zero) {
         context.appError(
-          pending > 0 && beyondPlan
-              ? '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(cap)}；'
-                    '已批准的固定追加量还有 ${_quantityText(pending)} 待续报，'
+          '第 ${i + 1} 行换算后的基本量为 0，请核对完工量和单位换算率；基本量精度为 0.0001，原输入已保留',
+        );
+        return;
+      }
+      if (baseQuantity > productionQuantityMaxUnits) {
+        context.appError('第 ${i + 1} 行换算后的基本量超过系统计量范围，请核对数量和单位换算率；原输入已保留');
+        return;
+      }
+      // 普通实际超限允许如实记录，由服务端分账冻结；品质恢复与旧固定追加仍守原授权。
+      final capText = r.reportQtyCapText;
+      final cap = productionExactQuantityUnits(capText);
+      if (r.hasReportQtyCap && cap == null) {
+        context.appError('第 ${i + 1} 行来源可报数量缺少精确原文，请重新读取来源核对；实际数量与用料已保留');
+        return;
+      }
+      if (cap != null && qty > cap && !r.canRecordOverLimit) {
+        final pending = productionExactQuantityUnits(
+          r.pendingSupplementQtyText,
+        );
+        final plannedCap = productionExactQuantityUnits(r.maxReportQtyText);
+        final beyondPlan = plannedCap == null || qty > plannedCap;
+        context.appError(
+          pending != null && pending > BigInt.zero && beyondPlan
+              ? '第 ${i + 1} 行完工申报量超过当前可报数量 $capText；'
+                    '已批准的固定追加量还有 ${r.pendingSupplementQtyText} 待续报，'
                     '请从「我的车间任务 → 固定追加量·续报」入口申报'
-              : '第 ${i + 1} 行完工申报量超过当前可报数量 ${_quantityText(cap)}',
+              : '第 ${i + 1} 行完工申报量超过当前可报数量 $capText',
         );
         return;
       }
       final overLimitReason = r.overLimitReason.text.trim();
-      if (r.estimatedOverLimitQty > 0.000001 &&
+      if ((productionExactQuantityUnits(r.estimatedOverLimitQtyText) ??
+                  BigInt.zero) >
+              BigInt.zero &&
           (overLimitReason.length < 2 || overLimitReason.length > 500)) {
         context.appError('第 ${i + 1} 行超出当前有效额度，请填写 2–500 字超限原因；实际数量与用料已保留');
         return;
@@ -2607,15 +2909,13 @@ class _ProductionDailyReportEditPageState
         return;
       }
     }
-    final sourceTotals = <String, double>{};
-    final sourceCaps = <String, double>{};
+    final sourceTotals = <String, BigInt>{};
+    final sourceCaps = <String, BigInt>{};
     // 同源累计口径(2026-10-06)：有上限(reportQtyCap 非空)的行才参与；cap 取该来源
     // 行自己的「计划剩余 + 剩余有效超产额度」，固定追加批次行与真无上限行不在此列。
     for (final r in rows.where(
       (row) =>
-          row.hasLinkedSource &&
-          row.reportQtyCap != null &&
-          !row.canRecordOverLimit,
+          row.hasLinkedSource && row.hasReportQtyCap && !row.canRecordOverLimit,
     )) {
       final key =
           r.fqcRecoveryAuthorizationId ??
@@ -2623,14 +2923,60 @@ class _ProductionDailyReportEditPageState
           '${r.executionSegmentId ?? r.planItemId}:'
               '${r.salesOrderItemId ?? 'internal'}';
       sourceTotals[key] =
-          (sourceTotals[key] ?? 0) + (double.tryParse(r.qty.text) ?? 0);
-      sourceCaps[key] = r.reportQtyCap!;
+          (sourceTotals[key] ?? BigInt.zero) +
+          productionExactQuantityUnits(
+            r.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+          )!;
+      final cap = productionExactQuantityUnits(r.reportQtyCapText)!;
+      final before = sourceCaps[key];
+      sourceCaps[key] = before == null || cap < before ? cap : before;
     }
     for (final entry in sourceTotals.entries) {
       final cap = sourceCaps[entry.key];
-      if (cap != null && entry.value > cap + 0.000001) {
+      if (cap != null && entry.value > cap) {
         context.appError(
-          '多行用了同一个来源任务，加起来的完工量超过可报数量 ${_quantityText(cap)}，请分摊后再报',
+          '多行用了同一个来源任务，加起来的完工量超过可报数量 ${productionQuantityTextFromUnits(cap)}，请分摊后再报',
+        );
+        return;
+      }
+    }
+    // Ordinary actual-output rows can cross their allowance together even when
+    // each row alone is below it. Bind the reason to the submitted row that uses
+    // the excess, without reducing any entered output or actual material use.
+    final ordinaryTotals = <String, BigInt>{};
+    final ordinaryRows = rows
+        .where(
+          (row) =>
+              row.hasLinkedSource &&
+              row.canRecordOverLimit &&
+              row.hasReportQtyCap,
+        )
+        .toList();
+    final ordinaryCaps = <String, BigInt>{};
+    for (final row in ordinaryRows) {
+      final key =
+          row.executionSegmentSalesAllocationId ??
+          '${row.executionSegmentId ?? row.planItemId}:${row.salesOrderItemId ?? 'internal'}';
+      final cap = productionExactQuantityUnits(row.reportQtyCapText)!;
+      final before = ordinaryCaps[key];
+      ordinaryCaps[key] = before == null || cap < before ? cap : before;
+    }
+    for (final r in ordinaryRows) {
+      final key =
+          r.executionSegmentSalesAllocationId ??
+          '${r.executionSegmentId ?? r.planItemId}:${r.salesOrderItemId ?? 'internal'}';
+      final total =
+          (ordinaryTotals[key] ?? BigInt.zero) +
+          productionExactQuantityUnits(
+            r.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+          )!;
+      ordinaryTotals[key] = total;
+      final cap = ordinaryCaps[key]!;
+      if (total > cap &&
+          (r.overLimitReason.text.trim().length < 2 ||
+              r.overLimitReason.text.trim().length > 500)) {
+        context.appError(
+          '第 ${_productRows.indexOf(r) + 1} 行与同源行累计超出当前有效额度 ${productionQuantityTextFromUnits(total - cap)}，请填写 2–500 字超限原因；实际数量与用料已保留',
         );
         return;
       }
@@ -2638,8 +2984,9 @@ class _ProductionDailyReportEditPageState
     // V583 物料子行：本次实际用料必填、不能为负、不能超过本次还能登记的量。
     // 允许填 0——「这批料一点没用」是合法事实，逼人编个正数就是在造假账。
     // 只看勾选成品行的物料子行：未勾选行不进本次提交，其用料也不校验。
+    // 全量行（含收起态）都校验：收起只影响看不看得见，不改变必填口径。
     final materialIssues = <String>[];
-    for (final row in _grid.rows) {
+    for (final row in _allMaterialRows) {
       if (!row.materialEditable ||
           !row.materialInvalid ||
           (row.materialParent != null &&
@@ -2650,17 +2997,32 @@ class _ProductionDailyReportEditPageState
       final material = row.material!;
       final name = material.goodsName ?? material.goodsCode ?? '物料';
       final value = row.materialUsedValue;
+      final exactValue = productionExactQuantityUnits(row.materialUsed.text);
       materialIssues.add(
-        value == null || !value.isFinite
+        exactValue != null && exactValue > productionQuantityMaxUnits
+            ? '$name 本次实际用料超过系统计量范围，请核对原输入'
+            : value == null || !value.isFinite
             ? '$name 未填写本次实际用料'
             : value < 0
             ? '$name 的本次实际用料不能为负'
-            : '$name 本次登记 ${_quantityText(value)}，'
-                  '超过可登记 ${_quantityText(row.materialCap)} '
+            : productionExactQuantityText(
+                    row.materialUsed.text.trim().replaceFirst(
+                      RegExp(r'\.$'),
+                      '',
+                    ),
+                  ) ==
+                  null
+            ? '$name 的本次实际用料最多填写 4 位小数，请核对原输入'
+            : row.materialCapText == null
+            ? '$name 可登记用料数量缺少精确原文，请重新读取材料台账核对'
+            : '$name 本次登记 ${row.materialUsed.text.trim()}，'
+                  '超过可登记 ${row.materialCapText} '
                   '${material.unitName ?? ''}',
       );
     }
     if (materialIssues.isNotEmpty) {
+      // 收起态的红框藏在收起区：先把有问题的分组展开让人看见，再报错。
+      _expandMaterialIssueRows();
       context.appError(
         '以下 ${materialIssues.length} 项用料需要先改正：${_joinIssues(materialIssues)}',
       );
@@ -2693,28 +3055,9 @@ class _ProductionDailyReportEditPageState
       );
       return;
     }
-    // 最后一次报工(报满或勾完结)且账面还有可用的料时，逐料清点实际剩余，再问要不要
-    // 退回仓库。账面已无可用 = 不问、不建单、不打扰仓库；关掉弹窗 = 回到报工表，不保存。
-    var surplus = _surplusCandidates(rows);
-    var surplusCounted = const <String, double>{};
-    if (surplus.isNotEmpty) {
-      final lots = await _undrawnDirectLotsByDemand({
-        for (final candidate in surplus) candidate.demandId,
-      });
-      await requestScope.verify();
-      if (!mounted) return;
-      if (lots.isNotEmpty) {
-        surplus = _surplusCandidates(rows, undrawnDirectLots: lots);
-      }
-      final decision = await showProductionReportSurplusReturnDialog(
-        context,
-        candidates: surplus,
-      );
-      if (!mounted || decision == null) return;
-      await requestScope.verify();
-      _surplusReturnRequested = decision.returnToWarehouse;
-      surplusCounted = decision.countedByDemandId;
-    } else if (_isCreate || _materialReadsComplete) {
+    // 保存只承载表格实耗，不清点、不覆盖用量；余料决定由审核页冻结后提交。
+    // 无法读取旧稿材料时保留其旧头信息，新版审核仍以保存的实耗为准。
+    if (_isCreate || _materialReadsComplete) {
       _surplusReturnRequested = false;
     }
     if (!mounted) return;
@@ -2744,7 +3087,7 @@ class _ProductionDailyReportEditPageState
         'weight': ?weight,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null)
+        if (r.unitRateText != null)
           'unitRate': productionQuantityWire(r.unitRateText, scale: 6),
         if (r.planItemId != null) 'planItemId': r.planItemId,
         if (r.executionSegmentId != null)
@@ -2770,15 +3113,18 @@ class _ProductionDailyReportEditPageState
       });
     }
     // 物料实耗只随勾选的成品行走（新建态）；编辑既有单整单提交不变。
+    // 全量行（含收起态）：收起不丢登记，提交的仍是全部可填行。
     final editedMaterialBody = <Map<String, dynamic>>[
-      for (final row in _grid.rows)
+      for (final row in _allMaterialRows)
         if (row.materialEditable &&
             (row.materialParent == null ||
                 !_isCreate ||
                 submitted.contains(row.materialParent)))
           {
             'demandId': row.material!.demandId,
-            'qtyBase': row.materialUsedValue ?? 0,
+            'qtyBase': productionQuantityWire(
+              row.materialUsed.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+            ),
           },
     ];
     final usageSourcesComplete = _productRows.every(
@@ -2804,24 +3150,7 @@ class _ProductionDailyReportEditPageState
             }
           : null,
     );
-    // ADR-129 实盘收尾：退回仓库时 本次用料 = 账面可用 - 实际剩余，与服务端审核同一口径；
-    // 留在车间不带清点数。台账读不到而原样带回的草稿行，已登记的实际剩余随行保留。
-    final editedDemandIds = {
-      for (final line in editedMaterialBody) line['demandId'] as String,
-    };
-    final materialBody = _surplusReturnRequested
-        ? applySurplusCounts(
-            mergedMaterialBody,
-            candidates: surplus,
-            counted: surplusCounted,
-            savedCounted: {
-              for (final usage in _savedMaterialUsage.values)
-                if (usage.countedLeftoverQty != null &&
-                    !editedDemandIds.contains(usage.demandId))
-                  usage.demandId: usage.countedLeftoverQty!,
-            },
-          )
-        : mergedMaterialBody;
+    final materialBody = mergedMaterialBody;
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
       'billDate': _fmt(_billDate),
@@ -3461,6 +3790,115 @@ class _ProductionDailyReportEditPageState
   Widget _savedFields(Widget child) =>
       SavedDocumentFields(locked: _createdReportId != null, child: child);
 
+  Widget _productGrid(
+    BuildContext context, {
+    required Map<String, String> colorEntries,
+    required Map<String, String> unitEntries,
+  }) {
+    final pool = dailyGridColumns(
+      context: context,
+      onPickGoods: _pickGoods,
+      onPickSource: _pickSource,
+      onOpenSource:
+          ref.watch(isSuperAdminProvider) ||
+              ref
+                  .watch(currentPermissionsProvider)
+                  .contains(Perm.productionPlanView)
+          ? _openSource
+          : null,
+      onClearSource: _clearSource,
+      colorEntries: colorEntries,
+      unitEntries: unitEntries,
+      standaloneDetails: true,
+      onMaterialChanged: () => setState(() {}),
+      onAllocationDestinationChanged: _onAllocationDestinationChanged,
+      onAllocationQtyChanged: _onAllocationQtyChanged,
+      onAllocationQtyFocus: _onAllocationQtyFocus,
+    );
+    const detailOnlyKeys = {
+      'issuedQty',
+      'materialUsed',
+      'destination',
+      'allocationQty',
+    };
+    final quantityCell = pool
+        .firstWhere((column) => column.key == 'allocationQty')
+        .cellBuilder;
+    final materialCell = pool
+        .firstWhere((column) => column.key == 'materialUsed')
+        .cellBuilder;
+    final editable =
+        !_loading && !_saving && !_resumeBlocked && _createdReportId == null;
+    return UtenEditableGrid<DailyGridRow>(
+      columnEditingEnabled: editable && (_isCreate || _detailLoaded),
+      tableKey: 'production.daily.items',
+      controller: _grid,
+      stickyHeaderPinned: _gridPinned,
+      columns: [
+        for (final column in pool)
+          if (!detailOnlyKeys.contains(column.key)) column,
+      ],
+      rowDetailsBuilder: (context, product) {
+        final detailEditable =
+            editable && (!_isCreate || _grid.isSelected(product));
+        final materials =
+            _materialRowsByProduct[product] ?? const <DailyGridRow>[];
+        final allocations = product.allocationRows
+            .where(outputAllocationVisible)
+            .toList();
+        if (materials.isEmpty &&
+            allocations.isEmpty &&
+            !product.directTransferLoadFailed) {
+          return null;
+        }
+        return ProductionDailyProductDetailsCard(
+          key: ValueKey('daily-product-details-${product.localRowId}'),
+          leadingInset: UtenEditableGrid.selectionColumnWidth,
+          product: product,
+          allocationRows: allocations,
+          materialRows: materials,
+          allocationsExpanded: _isGroupExpanded(
+            product,
+            DailyRowGroup.allocations,
+          ),
+          materialsExpanded: _isGroupExpanded(product, DailyRowGroup.materials),
+          onToggleGroup: (group) => _onToggleGroup(product, group),
+          unitEntries: unitEntries,
+          allocationQuantityBuilder: (context, row) =>
+              product.isFqcRecovery ||
+                  (product.allocationManual && row.allocationDemandId == null)
+              ? Tooltip(
+                  message: product.isFqcRecovery
+                      ? '品质恢复报工整行只有一个去向，数量随完工申报量更新'
+                      : '未分配余量自动送入仓库，调整工单去向的数量即可',
+                  child: Text(
+                    '${row.allocationQty.text}${unitEntries[product.unitId]?.isNotEmpty == true ? ' ${unitEntries[product.unitId]}' : ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              : quantityCell(context, row),
+          materialUsageBuilder: materialCell,
+          onAllocationDestinationChanged: _onAllocationDestinationChanged,
+          onAddAllocation:
+              detailEditable &&
+                  !product.isFqcRecovery &&
+                  !product.directTransferLoadFailed &&
+                  product.directTransferPrecisionIssue == null &&
+                  product.directTransferCandidates.isNotEmpty
+              ? () => _addAllocation(product)
+              : null,
+          onRemoveAllocation: detailEditable ? _removeAllocation : null,
+          enabled: detailEditable,
+        );
+      },
+      createBlankRow: () => DailyGridRow(),
+      cloneRow: (row) => row.clone(),
+      canDeleteRow: (row) => !row.hasFixedSupplement,
+      onDeleteRow: _deleteProductRow,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -3762,53 +4200,10 @@ class _ProductionDailyReportEditPageState
                                 ),
                               ),
                             _savedFields(
-                              UtenEditableGrid<DailyGridRow>(
-                                columnEditingEnabled:
-                                    !_loading &&
-                                    !_saving &&
-                                    !_resumeBlocked &&
-                                    _createdReportId == null &&
-                                    (_isCreate || _detailLoaded),
-                                tableKey: 'production.daily.items',
-                                controller: _grid,
-                                stickyHeaderPinned: _gridPinned,
-                                columns: dailyGridColumns(
-                                  context: context,
-                                  onPickGoods: _pickGoods,
-                                  onPickSource: _pickSource,
-                                  onOpenSource:
-                                      ref.watch(isSuperAdminProvider) ||
-                                          ref
-                                              .watch(currentPermissionsProvider)
-                                              .contains(Perm.productionPlanView)
-                                      ? _openSource
-                                      : null,
-                                  onClearSource: _clearSource,
-                                  colorEntries: names.colorEntries,
-                                  unitEntries: names.unitEntries,
-                                  hasSubRows: _hasSubRows,
-                                  isLastSubRow: _isLastSubRow,
-                                  onMaterialChanged: () => setState(() {}),
-                                  onAllocationDestinationChanged:
-                                      _onAllocationDestinationChanged,
-                                  onAllocationQtyChanged:
-                                      _onAllocationQtyChanged,
-                                  onAllocationQtyFocus: _onAllocationQtyFocus,
-                                  allocationsExpanded: _allocationsShown,
-                                  onToggleAllocations: _onToggleAllocations,
-                                ),
-                                createBlankRow: () => DailyGridRow(),
-                                cloneRow: (r) => r.clone(),
-                                // 去向分配子行与物料子行是成品行派生出来的：不能单独勾选、复制或删除，
-                                // 删成品行时由 _deleteProductRow 连带删掉它们。
-                                canSelectRow: (r) => !r.isSubRow,
-                                showRowSelection: (r) => !r.isSubRow,
-                                canDeleteRow: (r) =>
-                                    !r.isSubRow && !r.hasFixedSupplement,
-                                onDeleteRow: _deleteProductRow,
-                                rowColor: (r) => r.isSubRow
-                                    ? theme.colorScheme.surfaceContainerLow
-                                    : null,
+                              _productGrid(
+                                context,
+                                colorEntries: names.colorEntries,
+                                unitEntries: names.unitEntries,
                               ),
                             ),
                           ],

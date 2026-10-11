@@ -33,6 +33,8 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/models/daily_report_approval_intent.dart';
+import 'package:uten_imp/features/production/models/daily_report_material_review.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/production/pages/production_daily_report_detail_page.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
@@ -49,6 +51,8 @@ import '../../../support/audit_screenshot_support.dart';
 import '../../../support/memory_cas_storage.dart';
 
 part 'production_daily_report_review_v2_cases.dart';
+part 'production_daily_report_material_review_cases.dart';
+part 'production_daily_report_material_recovery_cases.dart';
 
 final _scope = StateProvider<AuthenticatedScope>(
   (ref) => const AuthenticatedScope(userId: 'daily-report-tester'),
@@ -90,6 +94,7 @@ class _DailyReportApi extends ApiClient {
   bool omitVersion = false;
   Object? versionOverride;
   int quantity = 1000;
+  Map<String, dynamic> itemOverrides = const {};
   bool includeReceipt = false;
   bool allowEdit = false;
   final approveBodies = <Map<String, dynamic>>[];
@@ -105,6 +110,19 @@ class _DailyReportApi extends ApiClient {
   final MemoryCasStorage approvalStorage;
   late ProviderContainer container;
   GoRouter? router;
+  List<Map<String, dynamic>> materialRows = [];
+  String materialFingerprint = 'material-snapshot-1';
+  int? materialVersionOverride;
+  Object? materialReadFailure;
+  Completer<void>? materialReadGate;
+  int materialReads = 0;
+
+  Map<String, dynamic> get _materialReview => {
+    'reportId': 'dr-1',
+    'reportVersion': materialVersionOverride ?? rowVersion,
+    'fingerprint': materialFingerprint,
+    'rows': materialRows,
+  };
 
   void rememberApproval({int? protocol, int? version, bool replay = false}) {
     final body = approveBodies.last;
@@ -114,6 +132,8 @@ class _DailyReportApi extends ApiClient {
       'commandVersion': protocol ?? body['commandVersion'],
       'reviewedVersion': version ?? body['expectedVersion'],
       'replay': replay,
+      if (body['materialReviewFingerprint'] != null)
+        'materialReviewFingerprint': body['materialReviewFingerprint'],
     };
     receiptStatus = 'CONFIRMED';
   }
@@ -126,6 +146,10 @@ class _DailyReportApi extends ApiClient {
     'makerId': 'maker-1',
     'createdAt': '2026-09-22T05:49:19+08:00',
     'status': serverStatus,
+    if (serverStatus != 0 && capability == 3 && approveBodies.isNotEmpty) ...{
+      'materialReview': _materialReview,
+      'materialDecisions': approveBodies.last['materialDecisions'],
+    },
     if (!omitVersion) 'rowVersion': versionOverride ?? rowVersion,
     if (capability != null) 'approvalCommandVersion': capability,
     'allowedActions': <String>[
@@ -146,6 +170,7 @@ class _DailyReportApi extends ApiClient {
         'goodsCode': 'HV50070',
         'colorName': '深灰色',
         'unitName': '只',
+        ...itemOverrides,
       },
     ],
   };
@@ -156,6 +181,12 @@ class _DailyReportApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     requestedPaths.add(path);
+    if (path.endsWith('/material-review')) {
+      materialReads++;
+      await materialReadGate?.future;
+      if (materialReadFailure case final failure?) throw failure;
+      return _materialReview;
+    }
     if (path.endsWith('/approval-receipt')) {
       receiptReads++;
       if (receiptFailure case final failure?) throw failure;
@@ -240,6 +271,11 @@ Future<(_DailyReportApi, List<String>)> _pump(
   bool omitVersion = false,
   Object? versionOverride,
   MemoryCasStorage? storage,
+  List<Map<String, dynamic>>? materialRows,
+  int? materialVersionOverride,
+  Object? materialReadFailure,
+  Completer<void>? materialReadGate,
+  Map<String, dynamic> itemOverrides = const {},
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -253,6 +289,11 @@ Future<(_DailyReportApi, List<String>)> _pump(
     ..serverStatus = status
     ..readFailure = readFailure
     ..commandGate = commandGate;
+  api.itemOverrides = itemOverrides;
+  api.materialRows = materialRows ?? [];
+  api.materialVersionOverride = materialVersionOverride;
+  api.materialReadFailure = materialReadFailure;
+  api.materialReadGate = materialReadGate;
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final container = ProviderContainer(
@@ -438,6 +479,8 @@ Future<void> _tapApprove(WidgetTester tester, {bool settle = true}) async {
 
 void main() {
   registerDailyReportReviewV2Cases();
+  registerDailyReportMaterialReviewCases();
+  registerDailyReportMaterialRecoveryCases();
   for (final responseLost in [false, true]) {
     testWidgets(
       'a reversed authoritative state does not report approval success: $responseLost',
@@ -1016,6 +1059,45 @@ void main() {
       findsNothing,
     );
   });
+
+  for (final sample in [
+    (
+      const <String, dynamic>{'qty': 0.0001, 'defectQty': 0.0001},
+      '0.0001 只',
+      '0.0001 只',
+    ),
+    (
+      const <String, dynamic>{
+        'qty': 10000000000000,
+        'qtyExact': '10000000000000.0001',
+      },
+      '10000000000000.0001 只',
+      '12.5 只',
+    ),
+    (const <String, dynamic>{'qty': 10000000000000}, '完工量待核对', '12.5 只'),
+  ]) {
+    testWidgets('审核明细精确数量：${sample.$2}', (tester) async {
+      await _pump(tester, onApprove: (_) => null, itemOverrides: sample.$1);
+      final table = tester
+          .widget<MasterDataTableView<ProductionDailyReportItem>>(
+            find.byType(MasterDataTableView<ProductionDailyReportItem>),
+          );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'qty')
+            .value(table.items.single),
+        sample.$2,
+      );
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'defectQty')
+            .value(table.items.single),
+        sample.$3,
+      );
+      expect(find.text(sample.$2), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('明细显示不良数：列头说明只记录，0 留空不显示', (tester) async {
     await _pump(tester, onApprove: (_) => null);

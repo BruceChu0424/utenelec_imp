@@ -11,6 +11,7 @@ import com.uten.imp.features.production.dailyreport.dto.DailyReportDetail;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportListItem;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportQueryFilter;
 import com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest;
+import com.uten.imp.features.production.dailyreport.dto.DailyReportMaterialReview;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -192,6 +193,12 @@ public class ProductionDailyReportController {
             @PathVariable UUID id,
             @Valid @RequestBody DailyReportApproveRequest req) {
         return service.approve(id, req);
+    }
+
+    @GetMapping("/{id}/material-review")
+    @PreAuthorize("hasAuthority('production_daily_report:view')")
+    public DailyReportMaterialReview materialReview(@PathVariable UUID id) {
+        return service.materialReview(id);
     }
 
     @GetMapping("/{id}/approval-receipt")

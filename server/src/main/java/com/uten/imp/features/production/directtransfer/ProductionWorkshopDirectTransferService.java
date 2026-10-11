@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -555,7 +554,7 @@ public class ProductionWorkshopDirectTransferService {
         if (item.getQty() == null || item.getQty().signum() <= 0 || rate.signum() <= 0) {
             throw validation("车间直送数量与单位换算率必须大于零");
         }
-        return item.getQty().multiply(rate).setScale(4, RoundingMode.HALF_UP);
+        return com.uten.imp.common.production.ProductionOutputQuantity.requirePositiveBaseQuantity(item.getQty(), rate);
     }
 
     private static ApiException validation(String message) {

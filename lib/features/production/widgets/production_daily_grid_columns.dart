@@ -6,6 +6,7 @@
 // 单位回填后作数量输入框后缀（2026-10-10 数量内联口径）；
 // 精确来源子任务链接 + 备注。历史完结事实保留，不再作为新报工入口。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -15,9 +16,9 @@ import '../../../components/inputs/uten_input_decoration.dart';
 
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/layout/uten_editable_grid.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/master_name_provider.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
 import '../models/daily_output_allocation.dart'
@@ -25,16 +26,20 @@ import '../models/daily_output_allocation.dart'
 import '../models/production_direct_transfer_candidate.dart';
 import '../models/production_daily_report.dart';
 import '../models/production_exact_quantity.dart';
-import '../models/production_execution_planning.dart'
-    show isValidProductionPlanningQuantityText;
 import '../repositories/production_material_repository.dart';
-import 'production_report_surplus_return_dialog.dart'
-    show productionQuantityInputFormatter;
+
+final _quantityTypingPattern = RegExp(r'^\d*\.?\d{0,4}$');
+
+/// 数量输入保留原文；不合格的按键保留原值，不截断为另一数量。
+final productionQuantityInputFormatter = TextInputFormatter.withFunction(
+  (oldValue, newValue) =>
+      _quantityTypingPattern.hasMatch(newValue.text) ? newValue : oldValue,
+);
 
 /// One editable fact per demand, shared by all displayed output slices.
 class DailyMaterialInput {
   final used = TextEditingController();
-  final autofilled = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> autofilled = ValueNotifier<bool>(false);
   String? autofillText;
   double? manualRatio;
   bool manuallyEdited = false;
@@ -44,6 +49,11 @@ class DailyMaterialInput {
     autofilled.dispose();
   }
 }
+
+/// 成品行下面的两个子行分组（2026-10-10 报工页口径）：「产出去向」与
+/// 「子件用料」各自独立折叠——两个分组头各带自己的展开/收起钮，互不影响，
+/// 也可以同时展开。
+enum DailyRowGroup { allocations, materials }
 
 /// 生产日报明细行。货品用 ValueNotifier（点选后单元格自动刷新）；
 /// 完工量是生产声明；颜色为来源任务冻结值，单位作数量输入框后缀。
@@ -95,13 +105,21 @@ class DailyGridRow extends EditableGridRow {
       productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
   double? orderQty;
   double? maxReportQty;
+  String? maxReportQtyExact;
+  String? get maxReportQtyText =>
+      productionExactQuantityText(maxReportQtyExact ?? maxReportQty);
   bool allowActualOverproduction = false;
 
   /// 剩余有效公共超产额度（服务端已扣「已批准未续报」的固定追加量）。
   double? remainingActualSurplusQty;
+  String? remainingActualSurplusQtyExact;
 
   /// 本来源工单已批准、尚未续报承接的固定追加量合计；>0 时上限提示指路续报入口。
   double? pendingSupplementQty;
+  String? pendingSupplementQtyExact;
+  String? get pendingSupplementQtyText => productionExactQuantityText(
+    pendingSupplementQtyExact ?? pendingSupplementQty ?? 0,
+  );
   String? supplementRequestId;
   String? supplementProofId;
   double? supplementApprovedActualQty;
@@ -119,13 +137,31 @@ class DailyGridRow extends EditableGridRow {
   /// 「固定追加量·续报」入口，原任务行不再无上限。固定追加批次行另由
   /// hasFixedSupplement 的整批锁量校验，不在这里。
   double? get reportQtyCap {
-    if (isFqcRecovery) return maxReportQty;
-    if (hasFixedSupplement) return null;
-    if (!allowActualOverproduction) return maxReportQty;
-    final surplus = remainingActualSurplusQty ?? 0;
-    return maxReportQty == null && surplus <= 0
-        ? null
-        : (maxReportQty ?? 0) + surplus;
+    final text = reportQtyCapText;
+    return text == null ? null : double.parse(text);
+  }
+
+  bool get hasReportQtyCap {
+    if (hasFixedSupplement) return false;
+    if (maxReportQty != null || maxReportQtyExact != null) return true;
+    if (isFqcRecovery || !allowActualOverproduction) return false;
+    final surplus = remainingActualSurplusQtyExact ?? remainingActualSurplusQty;
+    if (surplus == null) return false;
+    final units = productionExactQuantityUnits(surplus);
+    return units == null || units > BigInt.zero;
+  }
+
+  String? get reportQtyCapText {
+    if (!hasReportQtyCap) return null;
+    if (isFqcRecovery || !allowActualOverproduction) return maxReportQtyText;
+    final planned = maxReportQty == null && maxReportQtyExact == null
+        ? BigInt.zero
+        : productionExactQuantityUnits(maxReportQtyText);
+    final surplus = productionExactQuantityUnits(
+      remainingActualSurplusQtyExact ?? remainingActualSurplusQty ?? 0,
+    );
+    if (planned == null || surplus == null) return null;
+    return productionQuantityTextFromUnits(planned + surplus);
   }
 
   /// 普通生产可如实登记超限量；品质恢复与历史固定追加仍按原授权执行。
@@ -133,19 +169,26 @@ class DailyGridRow extends EditableGridRow {
       allowActualOverproduction && !isFqcRecovery && !hasFixedSupplement;
 
   double get estimatedOverLimitQty {
-    final cap = reportQtyCap;
-    final actual = double.tryParse(qty.text.trim());
-    if (!canRecordOverLimit ||
-        cap == null ||
-        actual == null ||
-        !actual.isFinite) {
-      return 0;
+    final text = estimatedOverLimitQtyText;
+    return text == null ? 0 : double.parse(text);
+  }
+
+  String? get estimatedOverLimitQtyText {
+    final cap = productionExactQuantityUnits(reportQtyCapText);
+    final actual = productionExactQuantityUnits(
+      qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+    );
+    if (!canRecordOverLimit || cap == null || actual == null) {
+      return null;
     }
-    return actual > cap ? actual - cap : 0;
+    return productionQuantityTextFromUnits(
+      actual > cap ? actual - cap : BigInt.zero,
+    );
   }
 
   /// Remaining output target, distinct from this delivery's material capacity.
   double? remainingPlanQty;
+  String? remainingPlanQtyExact;
   bool legacyManual = false;
 
   // ===== V583 物料子行 / V736 去向分配子行：报工、去向与实际用料合并到同一张表 =====
@@ -153,11 +196,27 @@ class DailyGridRow extends EditableGridRow {
   // 0 = 成品报工行(原有全部字段)，1 = 挂在它下面的子行——去向分配子行([allocationParent] 非空)
   // 或物料子行(其余)。各列的 cellBuilder 按行种分支，用不到的格返回空。
 
-  /// 0 = 成品报工行；1 = 挂在成品行下面的子行(去向分配或物料)。
+  /// 0 = 成品报工行；1 = 挂在成品行下面的分组头；2 = 挂在分组头下面的子行。
   int depth = 0;
 
-  /// 挂在成品行下面的子行(去向分配或物料)。成品行的校验、行号、勾选都只看 depth=0 的行。
+  /// 挂在成品行下面的子行(分组头、去向分配或物料)。成品行的校验、行号、勾选
+  /// 都只看 depth=0 的行。
   bool get isSubRow => depth > 0;
+
+  // ===== 子行分组头（产出去向 / 子件用料）：两个独立折叠分组的分组头行 =====
+  /// 非空 = 本行是分组头行；[groupParent] 指回所属成品行，[groupChildCount]
+  /// 由编辑页每次重排时刷新（收起态的「N」徽章与列宽测量用）。
+  DailyRowGroup? groupHeader;
+  DailyGridRow? groupParent;
+  int groupChildCount = 0;
+
+  /// 非分组头行才可能是去向/物料子行。
+  bool get isGroupHeaderRow => groupHeader != null;
+
+  /// 两个分组头对象挂在成品行上复用（重排换行不丢控制器）；分组消失时由
+  /// 编辑页释放。null = 该分组当前不存在（没有去向可分 / 没有台账行）。
+  DailyGridRow? allocationsGroupHeader;
+  DailyGridRow? materialsGroupHeader;
 
   /// 物料子行的来源台账行(领料量、可继续登记量、单位、颜色都在里面)。
   ProductionMaterialClearanceRow? material;
@@ -219,6 +278,10 @@ class DailyGridRow extends EditableGridRow {
   /// 成品行：去向分配子行(显示顺序)。
   List<DailyGridRow> allocationRows = [];
 
+  /// Explicit receivers are user-owned; the remainder is derived as warehouse
+  /// output and no new workshop receiver is suggested automatically.
+  bool allocationManual = false;
+
   /// 成品行：工人亲手从某条去向上改掉的上层工单，重排不再自动建议给它；换来源即清空。
   final Set<String> allocationDeclined = {};
 
@@ -274,8 +337,8 @@ class DailyGridRow extends EditableGridRow {
   double? get materialManualRatio => _materialInput.manualRatio;
   set materialManualRatio(double? value) => _materialInput.manualRatio = value;
 
-  /// 物料子行(挂在成品行下、不是去向分配的子行)。
-  bool get isMaterialRow => depth > 0 && !isAllocationRow;
+  /// 物料子行(挂在成品行下、不是去向分配也不是分组头的子行)。
+  bool get isMaterialRow => depth > 0 && !isAllocationRow && !isGroupHeaderRow;
 
   /// 物料所属工单的可读标识(子计划号，取不到时退回 UUID 前 8 位)。
   String get materialSegmentLabel {
@@ -294,16 +357,20 @@ class DailyGridRow extends EditableGridRow {
 
   /// 本次可登记上限：待仓库收料的数量已被扣掉，填超会被服务端守卫直接拒绝。
   double get materialCap => material?.availableToSettleQty ?? 0;
+  String? get materialCapText => material?.availableToSettleQtyText;
 
   double? get materialUsedValue => double.tryParse(materialUsed.text.trim());
 
   bool get materialInvalid {
     if (!materialEditable) return false;
-    final value = materialUsedValue;
+    final value = productionExactQuantityUnits(
+      materialUsed.text.trim().replaceFirst(RegExp(r'\.$'), ''),
+    );
+    final cap = productionExactQuantityUnits(materialCapText);
     return value == null ||
-        !value.isFinite ||
-        value < 0 ||
-        value - materialCap > 0.0000001;
+        value > productionQuantityMaxUnits ||
+        cap == null ||
+        value > cap;
   }
 
   bool get hasLinkedSource => planItemId != null && planItemId!.isNotEmpty;
@@ -349,13 +416,17 @@ class DailyGridRow extends EditableGridRow {
       ..defectQtyNeedsVerification = defectQtyNeedsVerification
       ..orderQty = orderQty
       ..maxReportQty = maxReportQty
+      ..maxReportQtyExact = maxReportQtyExact
       ..allowActualOverproduction = allowActualOverproduction
       ..supplementRequestId = null
       ..supplementProofId = null
       ..supplementApprovedActualQty = null
       ..remainingPlanQty = remainingPlanQty
+      ..remainingPlanQtyExact = remainingPlanQtyExact
       ..remainingActualSurplusQty = remainingActualSurplusQty
+      ..remainingActualSurplusQtyExact = remainingActualSurplusQtyExact
       ..pendingSupplementQty = pendingSupplementQty
+      ..pendingSupplementQtyExact = pendingSupplementQtyExact
       ..directTransferCandidates = List.of(directTransferCandidates)
       ..directTransferBlockedTargets = List.of(directTransferBlockedTargets)
       ..directTransferReceiverLimit = directTransferReceiverLimit
@@ -384,7 +455,9 @@ class DailyGridRow extends EditableGridRow {
         ..salesOrderItemId = null
         ..salesOrderNo = null
         ..maxReportQty = null
+        ..maxReportQtyExact = null
         ..remainingPlanQty = null
+        ..remainingPlanQtyExact = null
         ..allowActualOverproduction = false
         ..planNo.clear();
     }
@@ -404,8 +477,15 @@ class DailyGridRow extends EditableGridRow {
   bool get isFinal => finalNotifier.value;
   set isFinal(bool v) => finalNotifier.value = v;
 
+  /// 防重复释放：行对象同时被表格（removeRows/replaceAll 删行即 dispose）与
+  /// 页面（_applyMaterialRows 帧尾孤儿处置）两处管理，换稿/删行重排同帧内可能
+  /// 先后走到 dispose——幂等一次为准，第二次静默跳过。
+  bool _disposed = false;
+
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     goodsNotifier.dispose();
     colorIdNotifier.dispose();
     unitIdNotifier.dispose();
@@ -451,6 +531,7 @@ void restoreOutputAllocations(
     rows.add(row);
   }
   product.allocationRows = rows;
+  product.allocationManual = true;
 }
 
 /// 去向分配子行只在「有得选」时显示：有可送的上层工单，或已有转给上层工单的条目、或不止一条；
@@ -502,6 +583,16 @@ double materialReportedQuantity(
   String demandId,
   Iterable<DailyGridRow> rows,
   Set<DailyGridRow> submitted,
+) =>
+    double.tryParse(
+      materialReportedQuantityText(demandId, rows, submitted) ?? '',
+    ) ??
+    0;
+
+String? materialReportedQuantityText(
+  String demandId,
+  Iterable<DailyGridRow> rows,
+  Set<DailyGridRow> submitted,
 ) {
   final parents = <DailyGridRow>{
     for (final row in rows)
@@ -509,10 +600,15 @@ double materialReportedQuantity(
           submitted.contains(row.materialParent))
         row.materialParent!,
   };
-  return parents.fold(0, (total, row) {
-    final qty = double.tryParse(row.qty.text.trim());
-    return total + (qty != null && qty.isFinite && qty > 0 ? qty : 0);
-  });
+  var total = BigInt.zero;
+  for (final parent in parents) {
+    final raw = parent.qty.text.trim().replaceFirst(RegExp(r'\.$'), '');
+    if (raw.isEmpty) continue;
+    final qty = productionExactQuantityUnits(raw);
+    if (qty == null) return null;
+    total += qty;
+  }
+  return productionQuantityTextFromUnits(total);
 }
 
 /// A delivery's material cap does not mark the end of the production task.
@@ -535,30 +631,20 @@ bool completesProductionTask(DailyGridRow row, Iterable<DailyGridRow> rows) {
   return remaining != null && remaining > 0 && total >= remaining - 0.000001;
 }
 
-double? productionReportBaseQuantity(DailyGridRow row) {
-  final qty = double.tryParse(row.qty.text.trim());
-  final rate = row.unitRate ?? 1;
-  if (qty == null || !qty.isFinite || qty <= 0 || !rate.isFinite || rate <= 0) {
-    return null;
-  }
-  final baseUnits = financeExactProductUnits(qty.toString(), rate.toString());
-  if (baseUnits == null || baseUnits <= BigInt.zero) return null;
-  final rounded = baseUnits.toDouble() / 10000;
-  return rounded.isFinite ? rounded : null;
-}
-
 /// 不良数的唯一校验口径(格内红框与保存校验共用)：空 = 0 不校验；不小于 0、
 /// 最多 4 位小数；大于 0 时本行必须已选报工工单且完工申报量大于 0。
 String? productionReportDefectIssue(DailyGridRow row) {
   final raw = row.defectQty.text.trim();
   if (raw.isEmpty) return null;
-  if (!isValidProductionPlanningQuantityText(raw)) {
+  final value = productionExactQuantityUnits(raw);
+  if (value == null) {
     return '不良数请填写不小于 0、最多 4 位小数的数量';
   }
-  if (double.parse(raw) <= 0) return null;
+  if (value > productionQuantityMaxUnits) return '不良数超过系统计量范围，请核对原输入';
+  if (value <= BigInt.zero) return null;
   if (row.executionSegmentId == null) return '不良数只能记在已选择报工工单的行上';
-  final qty = double.tryParse(row.qty.text.trim());
-  if (qty == null || !qty.isFinite || qty <= 0) {
+  final qty = productionExactQuantityUnits(row.qty.text);
+  if (qty == null || qty <= BigInt.zero) {
     return '先填写大于 0 的完工申报量，才能记录不良数';
   }
   return null;
@@ -567,7 +653,7 @@ String? productionReportDefectIssue(DailyGridRow row) {
 /// 随行提交的不良数；空或 0 返回 null(不提交)。先经 [productionReportDefectIssue] 校验。
 Object? productionReportDefectQty(DailyGridRow row) {
   final raw = row.defectQty.text.trim().replaceFirst(RegExp(r'\.$'), '');
-  final units = financeExactDecimalUnits(raw);
+  final units = productionExactQuantityUnits(raw);
   return units != null && units > BigInt.zero
       ? productionQuantityWire(raw)
       : null;
@@ -580,20 +666,21 @@ List<Map<String, dynamic>> mergeDraftMaterialUsages({
   required Iterable<Map<String, dynamic>> edited,
   Set<String>? allowedSourceSegmentIds,
 }) {
-  final quantities = <String, double>{
+  final quantities = <String, Object>{
     for (final usage in saved)
       if (allowedSourceSegmentIds == null ||
           usage.materialExecutionSegmentId == null ||
           allowedSourceSegmentIds.contains(usage.materialExecutionSegmentId))
-        usage.demandId: usage.qtyBase,
+        usage.demandId: usage.qtyBaseText ?? usage.qtyBase,
   };
   for (final line in edited) {
-    quantities[line['demandId'] as String] = (line['qtyBase'] as num)
-        .toDouble();
+    quantities[line['demandId'] as String] = productionQuantityWire(
+      line['qtyBase'],
+    );
   }
   return [
     for (final entry in quantities.entries)
-      {'demandId': entry.key, 'qtyBase': entry.value},
+      {'demandId': entry.key, 'qtyBase': productionQuantityWire(entry.value)},
   ];
 }
 
@@ -616,27 +703,65 @@ double? expectedMaterialUsage({
   required ProductionMaterialClearanceRow material,
   double? ratioOverride,
 }) {
-  if (!reportedQty.isFinite || reportedQty <= 0) return null;
+  final text = expectedMaterialUsageText(
+    reportedQty: reportedQty,
+    material: material,
+    ratioOverride: ratioOverride,
+  );
+  return text == null ? null : double.parse(text);
+}
+
+String? expectedMaterialUsageText({
+  required Object? reportedQty,
+  required ProductionMaterialClearanceRow material,
+  double? ratioOverride,
+}) {
+  final qty = productionExactQuantityUnits(reportedQty);
+  final cap = productionExactQuantityUnits(material.availableToSettleQtyText);
+  if (qty == null || qty <= BigInt.zero || cap == null) return null;
   // Exact package/batch quantities cannot be prorated, even from a prior edit.
   if (material.requirementMode != 'LINEAR') return null;
-  final ratio = ratioOverride ?? materialUsagePerProduct(material);
-  if (ratio == null || !ratio.isFinite || ratio < 0) return null;
-  final raw = reportedQty * ratio;
-  final capped = raw > material.availableToSettleQty
-      ? material.availableToSettleQty
-      : raw;
-  return (capped * 10000).roundToDouble() / 10000;
+  final forProduct = productionExactQuantityUnits(
+    material.requiredForProductQtyText,
+  );
+  final required = productionExactQuantityUnits(material.requiredQtyText);
+  BigInt numerator, denominator;
+  if (ratioOverride != null) {
+    final ratio = productionExactQuantityUnits(ratioOverride, scale: 6);
+    if (ratio == null) return null;
+    numerator = qty * ratio;
+    denominator = BigInt.from(1000000);
+  } else if (forProduct != null &&
+      forProduct > BigInt.zero &&
+      required != null &&
+      required > BigInt.zero) {
+    numerator = qty * required;
+    denominator = forProduct;
+  } else {
+    final ratio = productionExactQuantityUnits(
+      material.perProductQtyText,
+      scale: 6,
+    );
+    if (ratio == null || ratio <= BigInt.zero) return null;
+    numerator = qty * ratio;
+    denominator = BigInt.from(1000000);
+  }
+  final rounded =
+      (numerator * BigInt.two + denominator) ~/ (denominator * BigInt.two);
+  return productionQuantityTextFromUnits(rounded > cap ? cap : rounded);
 }
 
 /// 生产日报明细列：货品(点选) / 颜色(只读) / 完工申报量 / 不良数 / 实际重量 /
 /// 关联计划号 / 备注。[onPickGoods] 由编辑页提供；[colorEntries]/[unitEntries] 由编辑页注入
 /// （颜色只读显示 + 数量输入框单位后缀，2026-10-10 数量内联口径）。
 /// [hasSubRows]/[isLastSubRow] 由编辑页按当前行序计算：本表把成品行与
-/// 它的物料子行扁平混排，树形缩进和连接线要知道「这行下面还有没有子行」「这是不是
+/// 它的子行扁平混排，树形缩进和连接线要知道「这行下面还有没有子行」「这是不是
 /// 最后一个子行」。[onMaterialChanged] 让编辑页在实耗输入变化时重算必填红框与提交态。
-/// [allocationsExpanded]/[onToggleAllocations] 是去向子行的展开态与切换回调
-/// （编辑已有单据默认收起，2026-10-10 用户口径）：收起时成品行只显示摘要，
-/// 「产出去向」格尾部给一个展开/收起小切换钮。
+/// [isGroupExpanded]/[onToggleGroup] 是「产出去向」「子件用料」两个分组的展开态
+/// 与切换回调（2026-10-10 双分组口径）：分组头行的展开钮与成品行去向格收起态的
+/// 悬停全文都读它；去向分组新建默认展开、编辑默认收起，用料分组默认展开。
+/// [productOrdinalOf] 给出成品行在当前渲染序里的序号，驱动子树连线与箭头圆底
+/// 按产品奇偶两色轮换（与物料分析「按产品看」同一视觉语言，2026-10-10 口径）。
 List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   required BuildContext context,
   required Future<void> Function(DailyGridRow row) onPickGoods,
@@ -645,6 +770,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   Future<void> Function(DailyGridRow row)? onOpenSource,
   required Map<String, String> colorEntries,
   required Map<String, String> unitEntries,
+  bool standaloneDetails = false,
   bool Function(DailyGridRow row)? hasSubRows,
   bool Function(DailyGridRow row)? isLastSubRow,
   void Function()? onMaterialChanged,
@@ -652,32 +778,73 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   onAllocationDestinationChanged,
   void Function(DailyGridRow allocation)? onAllocationQtyChanged,
   void Function(DailyGridRow allocation, bool focused)? onAllocationQtyFocus,
-  bool Function(DailyGridRow product)? allocationsExpanded,
-  void Function(DailyGridRow product)? onToggleAllocations,
+  bool Function(DailyGridRow product, DailyRowGroup group)? isGroupExpanded,
+  void Function(DailyGridRow product, DailyRowGroup group)? onToggleGroup,
+  int Function(DailyGridRow product)? productOrdinalOf,
 }) {
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
   return [
     EditableGridColumn<DailyGridRow>(
       key: 'goods',
-      label: '货品名称 / 用料',
-      // V583 起本列要容下物料子行的树形缩进(16)+ 叶子位(48)：树单元的缩进与
-      // 图标位不进 textOf 的自动量宽，宽度只能硬给，否则物料名一律被挤成省略号。
-      width: 320,
+      label: standaloneDetails ? '货品名称' : '货品名称 / 用料',
+      // 子行树形缩进(2×24)+ 叶子位(48)：树单元的缩进与图标位不进 textOf 的
+      // 自动量宽，宽度只能硬给，否则物料名一律被挤成省略号（缩进按物料分析
+      // 「按产品看」同款 24，双分组后子行深一层，320→368）。
+      width: standaloneDetails ? 280 : 368,
       required: true,
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
       // 报工行多由来源子任务冻结带入，同名不同色/不同编号的货品只看名称会报到
       // 别的货上；这里只放名称，编号见下一列，颜色/单位本表本来就有独立列。
-      textOf: (r) => r.isAllocationRow
-          ? '产出去向'
+      textOf: (r) => r.isGroupHeaderRow
+          ? (r.groupHeader == DailyRowGroup.allocations ? '产出去向' : '子件用料')
+          : r.isAllocationRow
+          ? '去向'
           : r.isMaterialRow
           ? (r.material?.goodsName ?? '')
           : (r.goods?.name ?? ''),
       listenableOf: (r) => r.goodsNotifier,
-      // 格尾树形/选择图标计入量宽（2026-09-16）；物料子行的树缩进仍由基础宽兜。
+      // 格尾树形/选择图标计入量宽（2026-09-16）；子行的树缩进仍由基础宽兜。
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
       cellBuilder: (context, row) {
-        if (row.isAllocationRow) {
+        // 子树连线/箭头圆底按成品行奇偶两色轮换（与物料分析「按产品看」同款，
+        // 2026-10-10 用户口径「参考按产品视图」）：同一成品行的分组头与子行
+        // 整棵子树同色、相邻成品行换色；未接回调的宿主维持默认灰。
+        DailyGridRow? subtreeProduct;
+        if (row.isGroupHeaderRow) {
+          subtreeProduct = row.groupParent;
+        } else if (row.isAllocationRow) {
+          subtreeProduct = row.allocationParent;
+        } else if (row.isMaterialRow) {
+          subtreeProduct = row.materialParent;
+        }
+        final ordinal = subtreeProduct == null || productOrdinalOf == null
+            ? null
+            : productOrdinalOf(subtreeProduct);
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        final Color? guideColor = ordinal == null || ordinal < 0
+            ? null
+            : ordinal.isEven
+            ? (dark
+                  ? UtenColors.bomProductGuideEvenDark
+                  : UtenColors.bomProductGuideEven)
+            : (dark
+                  ? UtenColors.bomProductGuideOddDark
+                  : UtenColors.bomProductGuideOdd);
+        // 箭头圆底明暗两主题同用深档（箭头自动反白），与物料分析同路数。
+        final Color? toggleColor = ordinal == null || ordinal < 0
+            ? null
+            : ordinal.isEven
+            ? UtenColors.bomProductGuideEven
+            : UtenColors.bomProductGuideOdd;
+        if (row.isGroupHeaderRow) {
+          final group = row.groupHeader!;
+          final product = row.groupParent;
+          final toggle = onToggleGroup;
+          // 未接回调（如纯单元格预览）不给可点的钮，避免死按钮。
+          final expanded = product == null || toggle == null
+              ? true
+              : isGroupExpanded?.call(product, group) ?? true;
           return UtenTreeTableCell(
             depth: 1,
             sequence: '',
@@ -685,12 +852,42 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             showLeafMarker: false,
             guideBleed: UtenEditableGrid.cellVerticalPadding,
             isLastChild: isLastSubRow?.call(row) ?? true,
-            title: '产出去向',
+            indent: 24,
+            guideColor: guideColor,
+            toggleColor: toggleColor,
+            title: group == DailyRowGroup.allocations ? '产出去向' : '子件用料',
+            hasChildren: toggle != null && product != null,
+            expanded: expanded,
+            onToggle: toggle == null || product == null
+                ? null
+                : () => toggle(product, group),
+            toggleKey: ValueKey(
+              'daily-group-toggle-${product?.localRowId}-$group',
+            ),
+            toggleTooltip: group == DailyRowGroup.allocations
+                ? (expanded ? '收起产出去向' : '展开产出去向')
+                : (expanded ? '收起子件用料' : '展开子件用料'),
+            childCount: row.groupChildCount,
+          );
+        }
+        if (row.isAllocationRow) {
+          return UtenTreeTableCell(
+            depth: 2,
+            sequence: '',
+            sequenceInline: true,
+            showLeafMarker: false,
+            guideBleed: UtenEditableGrid.cellVerticalPadding,
+            isLastChild: isLastSubRow?.call(row) ?? true,
+            indent: 24,
+            guideColor: guideColor,
+            mutedToggleWhenChildless: true,
+            // 分组头已写「产出去向」：每条子行只标自己是「去向」。
+            title: '去向',
           );
         }
         if (row.isMaterialRow) {
           return UtenTreeTableCell(
-            depth: 1,
+            depth: 2,
             sequence: '',
             sequenceInline: true,
             showLeafMarker: false,
@@ -698,6 +895,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             // 数值取自表格组件公开的常量，不在调用点抄魔数（2026-09-15）。
             guideBleed: UtenEditableGrid.cellVerticalPadding,
             isLastChild: isLastSubRow?.call(row) ?? true,
+            indent: 24,
+            guideColor: guideColor,
+            mutedToggleWhenChildless: true,
             title: row.material?.goodsName ?? '未命名物料',
             // 2026-09-27 用户口径：非共享物料的「本工单领用」小字删除；
             // 共享物料保留「沿用前批已领 · 工单号」（有区分价值）。
@@ -724,12 +924,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                       valueListenable: row.goodsNotifier,
                       builder: (context, g, _) => g == null
                           ? Text(
-                              '点击选择',
-                              style: TextStyle(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
-                              ),
+                              '选择货品',
+                              style: Theme.of(
+                                context,
+                              ).inputDecorationTheme.hintStyle,
                             )
                           : UtenGoodsIdentityCell(name: g.name),
                     ),
@@ -755,13 +953,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'goodsCode',
       label: '编号',
       width: 130,
-      textOf: (r) => r.isAllocationRow
+      textOf: (r) => r.isGroupHeaderRow
+          ? ''
+          : r.isAllocationRow
           ? ''
           : r.isMaterialRow
           ? (r.material?.goodsCode ?? '')
           : (r.goods?.code ?? ''),
       listenableOf: (r) => r.goodsNotifier,
-      cellBuilder: (context, row) => row.isAllocationRow
+      cellBuilder: (context, row) => row.isGroupHeaderRow || row.isAllocationRow
           ? const SizedBox.shrink()
           : row.isMaterialRow
           ? UtenGoodsAttributeCell(row.material?.goodsCode)
@@ -775,13 +975,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       key: 'color',
       label: '颜色',
       width: 130,
-      textOf: (r) => r.isAllocationRow
+      textOf: (r) => r.isGroupHeaderRow
+          ? ''
+          : r.isAllocationRow
           ? ''
           : r.isMaterialRow
           ? (r.material?.colorName ?? '')
           : (colorEntries[r.colorId ?? ''] ?? ''),
       listenableOf: (r) => r.colorIdNotifier,
-      cellBuilder: (context, row) => row.isAllocationRow
+      cellBuilder: (context, row) => row.isGroupHeaderRow || row.isAllocationRow
           ? const SizedBox.shrink()
           : row.isMaterialRow
           ? UtenGoodsAttributeCell(row.material?.colorName)
@@ -816,7 +1018,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   decoration: UtenInputDecoration(
                     InputDecoration(
                       isDense: true,
-                      hintText: '0',
+                      hintText: '完工申报量',
+                      hintStyle: Theme.of(
+                        context,
+                      ).inputDecorationTheme.hintStyle,
                       suffixText: _unitSuffixText(unitId, unitEntries),
                     ),
                   ),
@@ -837,7 +1042,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               listenable: Listenable.merge([row.qty, row.goodsNotifier]),
               builder: (context, _) {
                 if (!row.canRecordOverLimit) return const SizedBox.shrink();
-                final over = row.estimatedOverLimitQty;
+                final over = row.estimatedOverLimitQtyText;
                 return TextField(
                   key: ValueKey('over-limit-reason-${row.localRowId}'),
                   controller: row.overLimitReason,
@@ -846,10 +1051,16 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                     InputDecoration(
                       isDense: true,
                       counterText: '',
-                      hintText: over > 0
-                          ? '超限 ${_quantityText(over)}，请填原因'
-                          : '超限时填写（2–500字）',
+                      hintText: '超限原因（超量时必填）',
+                      hintStyle: Theme.of(
+                        context,
+                      ).inputDecorationTheme.hintStyle,
                     ),
+                    info:
+                        (productionExactQuantityUnits(over) ?? BigInt.zero) >
+                            BigInt.zero
+                        ? '超限 $over，请填写 2–500 字原因'
+                        : null,
                   ),
                 );
               },
@@ -893,7 +1104,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                       decoration: UtenInputDecoration(
                         InputDecoration(
                           isDense: true,
-                          hintText: '0',
+                          hintText: '不良数',
+                          hintStyle: Theme.of(
+                            context,
+                          ).inputDecorationTheme.hintStyle,
                           suffixText: _unitSuffixText(unitId, unitEntries),
                         ),
                       ),
@@ -939,7 +1153,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       headerInfo:
           '填本次这张报工真正用掉的数量，允许填 0(这批料一点没用)。'
           '上限是「本次还能登记多少」——已提交待仓库收料的部分不能再记成消耗。'
-          '最后一次报工时，剩下没登记的会问你要不要退回仓库。',
+          '保存保持填写值，余料由审核页核对并选择留用或申请退仓。',
       cellBuilder: (context, row) {
         if (!row.isMaterialRow) return const SizedBox.shrink();
         if (!row.materialOwnsInput) {
@@ -947,10 +1161,15 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           return Tooltip(
             message: '本工单的物料已在上面的成品行下登记，这里只作对照',
             child: Text(
-              formatQtyWithUnit(
-                row.materialUsedValue ?? 0,
-                row.material?.unitName,
-              ),
+              [
+                row.materialUsed.text.trim().isEmpty
+                    ? '待填写'
+                    : row.materialUsed.text.trim(),
+                if (row.material?.unitName?.trim().isNotEmpty == true)
+                  row.material!.unitName!.trim(),
+              ].join(' '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -981,7 +1200,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 UtenInputDecoration(
                   InputDecoration(
                     isDense: true,
-                    hintText: '0',
+                    hintText: '本次实际用料',
+                    hintStyle: Theme.of(context).inputDecorationTheme.hintStyle,
                     // 物料子行单位取材料台账单位（行创建时已冻结，不随行内 notifier 变）。
                     suffixText: row.material?.unitName,
                     helper: autofilled
@@ -993,9 +1213,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   ),
                   info: row.materialReadOnly
                       ? null
+                      : row.materialCapText == null
+                      ? '可登记用料量缺少精确原文，请重新读取材料台账核对；原输入已保留'
                       : row.material?.requirementMode == 'LINEAR'
-                      ? '可登记 ${_quantityText(row.materialCap)}；实际工艺耗用含 BOM 已计入的正常损耗'
-                      : '整包、固定批次或缺少计量依据不能按平均单耗估算。请填写实际工艺耗用（可填 0），可登记 ${_quantityText(row.materialCap)}',
+                      ? '可登记 ${row.materialCapText}；实际工艺耗用含 BOM 已计入的正常损耗'
+                      : '整包、固定批次或缺少计量依据不能按平均单耗估算。请填写实际工艺耗用（可填 0），可登记 ${row.materialCapText}',
                 ),
                 Theme.of(context),
                 autofilled: autofilled && !row.materialReadOnly,
@@ -1021,7 +1243,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           '计划内公共备货与超出计划的产量一律送入仓库。',
       textOf: (r) =>
           r.acceptedDestinationLabel ??
-          (r.isAllocationRow
+          (r.isGroupHeaderRow
+              ? ''
+              : r.isAllocationRow
               ? _allocationOptionText(r)
               : r.isMaterialRow
               ? ''
@@ -1037,7 +1261,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
             child: Text(accepted, maxLines: 1, overflow: TextOverflow.ellipsis),
           );
         }
-        if (row.isMaterialRow) return const SizedBox.shrink();
+        if (row.isGroupHeaderRow || row.isMaterialRow) {
+          return const SizedBox.shrink();
+        }
         if (!row.isAllocationRow) {
           return ValueListenableBuilder<int>(
             valueListenable: row.allocationRevision,
@@ -1051,11 +1277,18 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 final summary = _productDestinationText(row);
                 // Tooltip 恒定包裹 + 兜底文案：按内容条件切换包裹会拆掉子树重建，
                 // 悬停/焦点态丢失（docs/02-组件库/WeightGridColumn.md 同口径）。
-                // 单行省略后看不见的部分靠悬停全文；不可转原因优先于摘要。
+                // 收起态的去向子行不在表格里：悬停给逐条「去向全名：数量」全文，
+                // 名称过长被单行省略的部分在这里看全；展开态给摘要即可。
+                final expanded =
+                    isGroupExpanded?.call(row, DailyRowGroup.allocations) ??
+                    true;
+                final fallback = summary.isEmpty ? '—' : summary;
                 text = Tooltip(
                   message: blocked != null && blocked.isNotEmpty
                       ? blocked
-                      : (summary.isEmpty ? '—' : summary),
+                      : expanded
+                      ? fallback
+                      : _collapsedDestinationDetail(row, fallback),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -1069,32 +1302,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   ),
                 );
               }
-              final toggle = onToggleAllocations;
-              // 有去向可分才给展开/收起钮；收起态的明细由摘要 + 悬停全文承载。
-              if (toggle == null || !showsOutputAllocations(row)) return text;
-              final expanded = allocationsExpanded?.call(row) ?? true;
-              return Row(
-                children: [
-                  Expanded(child: text),
-                  IconButton(
-                    tooltip: expanded ? '收起去向明细' : '展开去向明细',
-                    onPressed: () => toggle(row),
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 24,
-                      minHeight: 24,
-                    ),
-                    padding: EdgeInsets.zero,
-                    iconSize: 18,
-                    icon: Icon(
-                      expanded
-                          ? Icons.expand_less_rounded
-                          : Icons.expand_more_rounded,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              );
+              return text;
             },
           );
         }
@@ -1118,12 +1326,13 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   );
                 }
                 // 下拉收起态单行省略：恒定悬停给当前选中项全文（工单还差多少一目了然），
-                // 有问题时优先给红字问题；选不中任何项时兜底「送入仓库」。
+                // 有问题时在全文后补原因，完整名称始终可查；选不中任何项时兜底「送入仓库」。
                 final selected = _allocationOptionText(row);
                 return Tooltip(
-                  message: issue != null && issue.isNotEmpty
-                      ? issue
-                      : (selected.isEmpty ? '送入仓库' : selected),
+                  message: [
+                    selected.isEmpty ? '送入仓库' : selected,
+                    if (issue != null && issue.isNotEmpty) issue,
+                  ].join('\n'),
                   child: UtenDropdownField(
                     key: ValueKey(
                       'daily-allocation-destination-${identityHashCode(row)}',
@@ -1189,7 +1398,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                   UtenInputDecoration(
                     InputDecoration(
                       isDense: true,
-                      hintText: '0',
+                      hintText: '去向数量',
+                      hintStyle: Theme.of(
+                        context,
+                      ).inputDecorationTheme.hintStyle,
                       suffixText: unit,
                       error: utenFieldError(issue),
                       helper: autofilled && issue == null
@@ -1257,9 +1469,14 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                             size: 16,
                           ),
                           label: Text(
-                            label.isEmpty ? '点击选择' : label,
+                            label.isEmpty ? '选择来源工单' : label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            style: label.isEmpty
+                                ? Theme.of(
+                                    context,
+                                  ).inputDecorationTheme.hintStyle
+                                : null,
                           ),
                         ),
                       ),
@@ -1291,7 +1508,11 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
           ? const SizedBox.shrink()
           : TextField(
               controller: row.remark,
-              decoration: const InputDecoration(isDense: true),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: '备注',
+                hintStyle: Theme.of(context).inputDecorationTheme.hintStyle,
+              ),
             ),
     ),
   ];
@@ -1321,6 +1542,19 @@ String _productDestinationText(DailyGridRow product) {
   return summary.isEmpty && product.directTransferUnavailable
       ? '送入仓库'
       : summary;
+}
+
+/// 去向分组收起时「产出去向」格的悬停全文：逐条列「去向全名：数量」。去向名称
+/// 过长时正文摘要只有合计数，单条的全名与数量在这里看全；没有可列的条目退回摘要。
+String _collapsedDestinationDetail(DailyGridRow product, String fallback) {
+  final lines = [
+    for (final allocation in product.allocationRows.where(
+      outputAllocationVisible,
+    ))
+      '${_allocationOptionText(allocation).trim().isEmpty ? '送入仓库' : _allocationOptionText(allocation)}'
+          '：${allocation.allocationQty.text.trim().isEmpty ? '0' : allocation.allocationQty.text.trim()}',
+  ];
+  return lines.isEmpty ? fallback : lines.join('\n');
 }
 
 /// 成品行「产出去向」格的摘要：转下一道工序几个工单共多少、送入仓库多少。

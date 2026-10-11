@@ -1,18 +1,23 @@
 // 报工页「产出去向」「去向数量」两格(V584/V595/V736, ADR-127)，用真实列定义驱动：
 // - 成品行：一个可送的上层工单都没有时写仓库去向摘要，原因放在整格悬停提示里，
 //   未分配数量也显示「送入仓库」；候选读取失败仍红字提示刷新，不当成「没有上层工单」；
+// - 去向分组收起时，去向格悬停给逐条「去向全名：数量」全文（名称过长在这里看全）；
 // - 去向分配子行：下拉按先急后缓列出可送的上层工单(还差 N)，本张报工已分满的置灰「已分满」，
 //   结构上是上层但不能收的置灰红字写原因，最后是「送入仓库」；一个都不能送时只读显示「送入仓库」，
-//   整格悬停可看原因；原来已选的失效工单保留，并允许人手修改。
+//   整格悬停可看原因；原来已选的失效工单保留，并允许人手修改；
+// - 货品列的「产出去向」「子件用料」分组头行：两个分组各带展开/收起钮，独立控制。
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/production/models/production_daily_report.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
+import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 const _subcontractReason = 'HV5ZJ012 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料';
 const _crossReason = '上层工单 ZX-C 在二车间，跨车间必须送入仓库';
@@ -56,6 +61,136 @@ DailyGridRow _allocation(DailyGridRow product, String? demand, String qty) {
 }
 
 void main() {
+  for (final (themeName, theme) in [
+    ('浅色', buildLightTheme()),
+    ('深色', buildDarkTheme()),
+  ]) {
+    testWidgets('$themeName空白输入格显示字段提示，填写后隐藏且不产生假零', (tester) async {
+      final product = _product()..allowActualOverproduction = true;
+      final allocation = _allocation(product, 'A', '');
+      final material = DailyGridRow()
+        ..depth = 2
+        ..material = ProductionMaterialClearanceRow.fromJson({
+          'planId': 'plan',
+          'demandId': 'demand',
+          'goodsId': 'raw',
+          'availableToSettleQty': 20,
+        });
+      for (final row in [product, allocation, material]) {
+        addTearDown(row.dispose);
+      }
+      final fields = [
+        (product, 'qty', '完工申报量', product.qty, '9.9999'),
+        (product, 'defectQty', '不良数', product.defectQty, '0.0001'),
+        (
+          product,
+          'overLimitReason',
+          '超限原因（超量时必填）',
+          product.overLimitReason,
+          '当天实际多产',
+        ),
+        (product, 'remark', '备注', product.remark, '保留手填备注'),
+        (
+          allocation,
+          'allocationQty',
+          '去向数量',
+          allocation.allocationQty,
+          '4.5001',
+        ),
+        (material, 'materialUsed', '本次实际用料', material.materialUsed, '6.0001'),
+      ];
+      final cells = [for (final (row, key, _, _, _) in fields) (row, key)];
+      await _pumpNamedCells(tester, cells, theme);
+      for (final (_, _, hint, controller, _) in fields) {
+        expect(controller.text, isEmpty, reason: '提示不是默认数量或已填写事实');
+        expect(_hintOpacity(tester, hint), 1);
+        expect(
+          tester.widget<Text>(find.text(hint)).style?.color,
+          theme.inputDecorationTheme.hintStyle?.color,
+        );
+      }
+      for (final (row, key, hint, controller, input) in fields) {
+        final field = find.descendant(
+          of: find.byKey(ValueKey('test-$key-${identityHashCode(row)}')),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(field, input);
+        await tester.pumpAndSettle();
+        expect(controller.text, input);
+        expect(_hintOpacity(tester, hint), 0, reason: '已有输入时提示自然隐藏');
+      }
+      await _pumpNamedCells(tester, cells, theme);
+      for (final (_, _, hint, controller, input) in fields) {
+        expect(controller.text, input, reason: '单元格重建保留原文与四位小数');
+        expect(_hintOpacity(tester, hint), 0);
+        controller.clear();
+      }
+      await tester.pumpAndSettle();
+      for (final (_, _, hint, controller, _) in fields) {
+        expect(controller.text, isEmpty);
+        expect(_hintOpacity(tester, hint), 1);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('已有建议和手填值保留原文、提示不替换数值或建议状态', (tester) async {
+    final product = _product()..qty.text = '9999999999999.9999';
+    final allocation = _allocation(product, 'A', '4.5001')
+      ..allocationAutofilled.value = true;
+    final material = DailyGridRow()
+      ..depth = 2
+      ..material = ProductionMaterialClearanceRow.fromJson({
+        'planId': 'plan',
+        'demandId': 'demand',
+        'goodsId': 'raw',
+        'availableToSettleQty': 10,
+      })
+      ..materialUsed.text = '6.0001'
+      ..materialUsageAutofilled.value = true;
+    for (final row in [product, allocation, material]) {
+      addTearDown(row.dispose);
+    }
+    await _pumpNamedCells(tester, [
+      (product, 'qty'),
+      (allocation, 'allocationQty'),
+      (material, 'materialUsed'),
+    ], buildLightTheme());
+    expect(product.qty.text, '9999999999999.9999');
+    expect(allocation.allocationQty.text, '4.5001');
+    expect(material.materialUsed.text, '6.0001');
+    expect(allocation.allocationAutofilled.value, isTrue);
+    expect(material.materialUsageAutofilled.value, isTrue);
+    for (final hint in ['完工申报量', '去向数量', '本次实际用料']) {
+      expect(_hintOpacity(tester, hint), 0);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('空选择格提示选择货品和来源，选定后展示真实值', (tester) async {
+    final row = DailyGridRow();
+    addTearDown(row.dispose);
+    final theme = buildLightTheme();
+    await _pumpNamedCells(tester, [(row, 'goods'), (row, 'planNo')], theme);
+    for (final hint in ['选择货品', '选择来源工单']) {
+      expect(find.text(hint), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.text(hint)).style?.color,
+        theme.inputDecorationTheme.hintStyle?.color,
+      );
+    }
+    row.goods = const GoodsOption(id: 'goods', name: '真实货品');
+    row.executionSegmentCode = 'ZX-原工单';
+    row.planNo.text = 'SJ-原计划';
+    await tester.pumpAndSettle();
+    expect(find.text('选择货品'), findsNothing);
+    expect(find.text('选择来源工单'), findsNothing);
+    expect(find.text('真实货品'), findsOneWidget);
+    expect(find.text('ZX-原工单'), findsOneWidget);
+    expect(row.planNo.text, 'SJ-原计划');
+    expect(tester.takeException(), isNull);
+  });
+
   test('去向下拉：先急后缓的上层工单、已分满置灰、不能收的红字原因、最后是送入仓库', () {
     final product = _product();
     final warehouse = _allocation(product, null, '10');
@@ -303,7 +438,7 @@ void main() {
     expect(find.byTooltip('转下一道工序 · 成品甲 ZX-A'), findsOneWidget);
   });
 
-  testWidgets('去向子行格：下拉收起态恒定 Tooltip 给选中项全文，红字问题优先', (tester) async {
+  testWidgets('去向子行格：下拉收起态 Tooltip 同时保留完整名称和异常原因', (tester) async {
     final product = _product();
     final chosen = _allocation(product, 'A', '4');
     addTearDown(product.dispose);
@@ -311,7 +446,7 @@ void main() {
     await _pump(tester, [product, chosen]);
     // 收起态只显示单行省略，悬停给当前选中项的全文（含「还差 N」）。
     expect(find.byTooltip('ZX-A · 成品甲 · 还差 6'), findsOneWidget);
-    // 送入仓库条目兜底同名文案；有问题时悬停优先给问题。
+    // 送入仓库条目兜底同名文案；有问题时全文与原因同时可见。
     final warehouse = _allocation(product, null, '3');
     addTearDown(warehouse.dispose);
     await _pump(tester, [product, warehouse]);
@@ -320,9 +455,28 @@ void main() {
     warehouse.allocationIssue.value = 'ZX-A 最多还能收 6';
     await tester.pump();
     expect(find.byTooltip('ZX-A 最多还能收 6'), findsWidgets);
+    expect(find.byTooltip('送入仓库\nZX-A 最多还能收 6'), findsOneWidget);
   });
 
-  testWidgets('产出去向格：编辑态收起给展开/收起切换钮，点击回调带成品行', (tester) async {
+  testWidgets('产出去向格：去向分组收起时悬停给逐条去向全文', (tester) async {
+    final product = _product();
+    final direct = _allocation(product, 'A', '4');
+    final warehouse = _allocation(product, null, '10');
+    addTearDown(product.dispose);
+    addTearDown(direct.dispose);
+    addTearDown(warehouse.dispose);
+    // 收起态子行不在表格里：摘要只有合计数，悬停给逐条「去向全名：数量」。
+    await _pump(tester, [product], isGroupExpanded: (row, group) => false);
+    expect(find.byTooltip('ZX-A · 成品甲 · 还差 6：4\n送入仓库：10'), findsOneWidget);
+    // 展开态回到摘要全文（子行自己另有整格悬停）。
+    await _pump(tester, [product], isGroupExpanded: (row, group) => true);
+    expect(find.byTooltip('转下一道工序 1 个工单 4 · 送入仓库 10'), findsOneWidget);
+    // 没接回调（纯单元格预览）按展开态处理，不因缺状态而丢摘要悬停。
+    await _pump(tester, [product]);
+    expect(find.byTooltip('转下一道工序 1 个工单 4 · 送入仓库 10'), findsOneWidget);
+  });
+
+  testWidgets('分组头：产出去向/子件用料各自独立展开收起，回调带成品行与分组', (tester) async {
     final product = _product();
     final direct = _allocation(product, 'A', '4');
     final warehouse = _allocation(product, null, '10');
@@ -330,47 +484,91 @@ void main() {
     addTearDown(direct.dispose);
     addTearDown(warehouse.dispose);
 
-    // 未接回调（如纯单元格预览）不出切换钮，避免死按钮。
-    await _pump(tester, [product]);
-    expect(find.byTooltip('展开去向明细'), findsNothing);
-    expect(find.byTooltip('收起去向明细'), findsNothing);
+    DailyGridRow header(DailyRowGroup group, int childCount) => DailyGridRow()
+      ..depth = 1
+      ..groupHeader = group
+      ..groupParent = product
+      ..groupChildCount = childCount;
+    final allocationsHeader = header(DailyRowGroup.allocations, 2);
+    final materialsHeader = header(DailyRowGroup.materials, 5);
+    addTearDown(allocationsHeader.dispose);
+    addTearDown(materialsHeader.dispose);
 
-    // 收起态给「展开去向明细」，展开态给「收起去向明细」；图标随展开态翻转。
-    DailyGridRow? toggled;
+    // 未接回调（如纯单元格预览）不出可点的展开钮，避免死按钮。
+    await _pump(tester, [allocationsHeader, materialsHeader], cells: ['goods']);
+    expect(find.byType(IconButton), findsNothing);
+
+    final toggled = <(DailyGridRow, DailyRowGroup)>[];
+    // 收起态给「展开产出去向」/「展开子件用料」，两个分组互不影响。
     await _pump(
       tester,
-      [product],
-      allocationsExpanded: (row) => false,
-      onToggleAllocations: (row) => toggled = row,
+      [allocationsHeader, materialsHeader],
+      cells: ['goods'],
+      isGroupExpanded: (row, group) => false,
+      onToggleGroup: (row, group) => toggled.add((row, group)),
     );
-    expect(find.byTooltip('展开去向明细'), findsOneWidget);
-    await tester.tap(find.byTooltip('展开去向明细'));
+    expect(find.byTooltip('展开产出去向'), findsOneWidget);
+    expect(find.byTooltip('展开子件用料'), findsOneWidget);
+    await tester.tap(find.byTooltip('展开产出去向'));
     await tester.pump();
-    expect(toggled, same(product));
-
-    await _pump(
-      tester,
-      [product],
-      allocationsExpanded: (row) => true,
-      onToggleAllocations: (row) => toggled = row,
-    );
-    expect(find.byTooltip('收起去向明细'), findsOneWidget);
-    await tester.tap(find.byTooltip('收起去向明细'));
+    expect(toggled, [(product, DailyRowGroup.allocations)]);
+    await tester.tap(find.byTooltip('展开子件用料'));
     await tester.pump();
-    expect(toggled, same(product));
+    expect(toggled, [
+      (product, DailyRowGroup.allocations),
+      (product, DailyRowGroup.materials),
+    ]);
 
-    // 只有一条「送入仓库」、没有可送工单的行不占子行，也就没有切换钮。
-    final top = DailyGridRow();
-    final only = _allocation(top, null, '10');
-    addTearDown(top.dispose);
-    addTearDown(only.dispose);
+    // 展开态换「收起」文案；两个分组可同时处于展开态。
+    toggled.clear();
     await _pump(
       tester,
-      [top],
-      allocationsExpanded: (row) => true,
-      onToggleAllocations: (row) => toggled = row,
+      [allocationsHeader, materialsHeader],
+      cells: ['goods'],
+      isGroupExpanded: (row, group) => true,
+      onToggleGroup: (row, group) => toggled.add((row, group)),
     );
-    expect(find.byTooltip('收起去向明细'), findsNothing);
+    expect(find.byTooltip('收起产出去向'), findsOneWidget);
+    expect(find.byTooltip('收起子件用料'), findsOneWidget);
+    await tester.tap(find.byTooltip('收起子件用料'));
+    await tester.pump();
+    expect(toggled, [(product, DailyRowGroup.materials)]);
+    // 一个分组收起不影响另一个分组保持展开。
+    expect(find.byTooltip('收起产出去向'), findsOneWidget);
+  });
+
+  testWidgets('去向子行与物料子行的货品格：挂在分组头下的第二层树格', (tester) async {
+    final product = _product();
+    final direct = _allocation(product, 'A', '4');
+    addTearDown(product.dispose);
+    addTearDown(direct.dispose);
+    await _pump(tester, [direct], cells: ['goods']);
+    // 分组头已写「产出去向」，子行只标「去向」；标题仍是加粗单行省略口径。
+    expect(find.text('去向'), findsOneWidget);
+    expect(find.text('产出去向'), findsNothing);
+    expect(
+      tester.widget<Text>(find.text('去向')).style?.fontWeight,
+      FontWeight.w700,
+    );
+  });
+
+  testWidgets('共享用料只读镜像保留四位小数原文', (tester) async {
+    final material = DailyGridRow()
+      ..depth = 2
+      ..materialOwnsInput = false
+      ..material = ProductionMaterialClearanceRow.fromJson({
+        'planId': 'plan',
+        'demandId': 'demand',
+        'goodsId': 'raw',
+        'unitName': '个',
+        'issuedQty': 1,
+        'availableToSettleQty': 1,
+      })
+      ..materialUsed.text = '0.9999';
+    addTearDown(material.dispose);
+    await _pump(tester, [material], cells: ['materialUsed']);
+    expect(find.text('0.9999 个'), findsOneWidget);
+    expect(find.text('1 个'), findsNothing);
   });
 
   test('已存草稿按批次还原成一行报工和它的固定去向', () {
@@ -446,13 +644,65 @@ void main() {
   });
 }
 
+double _hintOpacity(WidgetTester tester, String text) => tester
+    .widget<AnimatedOpacity>(
+      find
+          .ancestor(of: find.text(text), matching: find.byType(AnimatedOpacity))
+          .first,
+    )
+    .opacity;
+
+Future<void> _pumpNamedCells(
+  WidgetTester tester,
+  List<(DailyGridRow, String)> cells,
+  ThemeData theme,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: theme,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('zh'),
+      home: Scaffold(
+        body: Builder(
+          builder: (context) {
+            final columns = dailyGridColumns(
+              context: context,
+              onPickGoods: (_) async {},
+              onPickSource: (_) async {},
+              onClearSource: (_) {},
+              colorEntries: const {},
+              unitEntries: const {},
+            );
+            return Column(
+              children: [
+                for (final (row, key) in cells)
+                  SizedBox(
+                    key: ValueKey('test-$key-${identityHashCode(row)}'),
+                    width: 350,
+                    height: 40,
+                    child: columns
+                        .firstWhere((column) => column.key == key)
+                        .cellBuilder(context, row),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 Future<List<String>> _pump(
   WidgetTester tester,
   List<DailyGridRow> rows, {
   void Function(DailyGridRow row, String? demand)? onDestinationChanged,
   void Function(DailyGridRow row)? onQtyChanged,
-  bool Function(DailyGridRow product)? allocationsExpanded,
-  void Function(DailyGridRow product)? onToggleAllocations,
+  bool Function(DailyGridRow product, DailyRowGroup group)? isGroupExpanded,
+  void Function(DailyGridRow product, DailyRowGroup group)? onToggleGroup,
+  List<String> cells = const ['destination', 'allocationQty'],
 }) async {
   var destinationTexts = <String>[];
   await tester.pumpWidget(
@@ -473,8 +723,8 @@ Future<List<String>> _pump(
               unitEntries: const {},
               onAllocationDestinationChanged: onDestinationChanged,
               onAllocationQtyChanged: onQtyChanged,
-              allocationsExpanded: allocationsExpanded,
-              onToggleAllocations: onToggleAllocations,
+              isGroupExpanded: isGroupExpanded,
+              onToggleGroup: onToggleGroup,
             );
             final destination = columns.firstWhere(
               (column) => column.key == 'destination',
@@ -492,10 +742,8 @@ Future<List<String>> _pump(
             );
             return Column(
               children: [
-                for (final row in rows) ...[
-                  cell('destination', row),
-                  cell('allocationQty', row),
-                ],
+                for (final row in rows)
+                  for (final key in cells) cell(key, row),
               ],
             );
           },

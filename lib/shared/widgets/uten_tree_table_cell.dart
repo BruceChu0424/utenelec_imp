@@ -29,6 +29,7 @@ class UtenTreeTableCell extends StatelessWidget {
     this.expanded = false,
     this.onToggle,
     this.toggleKey,
+    this.toggleTooltip,
     this.maxVisualDepth = defaultMaxVisualDepth,
     this.ancestorContinuations = const [],
     this.isLastChild = false,
@@ -115,6 +116,10 @@ class UtenTreeTableCell extends StatelessWidget {
   final bool expanded;
   final VoidCallback? onToggle;
   final Key? toggleKey;
+
+  /// 展开钮悬停文案（可选）：默认「展开下级/收起下级」；分组头等需要更具体
+  /// 文案的宿主显式传入（如「展开产出去向」）。
+  final String? toggleTooltip;
 
   /// Caps indentation only; the explicit level label and semantics keep the
   /// true depth visible for unusually deep legacy BOMs.
@@ -250,11 +255,13 @@ class UtenTreeTableCell extends StatelessWidget {
                             height: _treeToggleExtent,
                           ),
                           padding: EdgeInsets.zero,
-                          tooltip: expanded
-                              ? '收起下级'
-                              : (childCount != null
-                                    ? '展开 $childCount 个下级'
-                                    : '展开下级'),
+                          tooltip:
+                              toggleTooltip ??
+                              (expanded
+                                  ? '收起下级'
+                                  : (childCount != null
+                                        ? '展开 $childCount 个下级'
+                                        : '展开下级')),
                           onPressed: onToggle,
                           // 2026-09-10 用户口径「展开箭头要一眼看到」：由淡色线性图标
                           // 改为 28px 层级色实心圆底 + 反相箭头；2026-09-12 再加强

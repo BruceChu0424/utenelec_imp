@@ -44,7 +44,7 @@ void main() {
       final legacy = DailyReportApprovalIntent.review(_detail({}), '旧版确认');
       expect(legacy.legacy, isTrue);
       expect(legacy.expectedVersion, isNull);
-      for (final capability in [0, 3, '2', true]) {
+      for (final capability in [0, 4, '2', true]) {
         expect(
           () => DailyReportApprovalIntent.review(
             _detail({'approvalCommandVersion': capability, 'rowVersion': 0}),

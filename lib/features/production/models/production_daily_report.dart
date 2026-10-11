@@ -11,6 +11,7 @@
 // 重新导出状态助手，方便日报页面从一处 import（plan/daily 共用 0/1/-1）。
 import '../../../shared/formatters/exact_decimal.dart';
 import 'production_exact_quantity.dart';
+import 'daily_report_material_review.dart';
 
 export 'production_plan.dart'
     show
@@ -435,6 +436,7 @@ class ProductionDailyReportOutputBatch {
     required this.qty,
     required this.summary,
     this.sourceItemId,
+    this.qtyExact,
     this.groups = const [],
   });
 
@@ -447,6 +449,8 @@ class ProductionDailyReportOutputBatch {
   /// 本批全部份(按行号)：草稿恢复按它把同批各份合回一行。
   final List<String> itemIds;
   final double qty;
+  final String? qtyExact;
+  String? get qtyText => productionExactQuantityText(qtyExact ?? qty);
 
   /// 「货品 共 1100：送入仓库 1100(其中实际超产 100)」。
   final String summary;
@@ -462,6 +466,7 @@ class ProductionDailyReportOutputBatch {
         if (id is String) id,
     ],
     qty: _asDouble(json['qty']) ?? 0,
+    qtyExact: productionExactQuantityText(json['qtyExact'] ?? json['qty']),
     summary: json['summary'] as String? ?? '',
     groups:
         (json['groups'] as List?)
@@ -485,6 +490,10 @@ class ProductionDailyReportOutputGroup {
     this.demandQty = 0,
     this.publicQty = 0,
     this.actualSurplusQty = 0,
+    this.qtyExact,
+    this.demandQtyExact,
+    this.publicQtyExact,
+    this.actualSurplusQtyExact,
     this.splitText,
     this.reasonText,
   });
@@ -500,6 +509,14 @@ class ProductionDailyReportOutputGroup {
   final double demandQty;
   final double publicQty;
   final double actualSurplusQty;
+  final String? qtyExact, demandQtyExact, publicQtyExact, actualSurplusQtyExact;
+  String? get qtyText => productionExactQuantityText(qtyExact ?? qty);
+  String? get demandQtyText =>
+      productionExactQuantityText(demandQtyExact ?? demandQty);
+  String? get publicQtyText =>
+      productionExactQuantityText(publicQtyExact ?? publicQty);
+  String? get actualSurplusQtyText =>
+      productionExactQuantityText(actualSurplusQtyExact ?? actualSurplusQty);
 
   /// 「需求 1000 · 实际超产 100」；整批都是需求份时为空。
   final String? splitText;
@@ -523,6 +540,16 @@ class ProductionDailyReportOutputGroup {
     demandQty: _asDouble(json['demandQty']) ?? 0,
     publicQty: _asDouble(json['publicQty']) ?? 0,
     actualSurplusQty: _asDouble(json['actualSurplusQty']) ?? 0,
+    qtyExact: productionExactQuantityText(json['qtyExact'] ?? json['qty']),
+    demandQtyExact: productionExactQuantityText(
+      json['demandQtyExact'] ?? json['demandQty'] ?? 0,
+    ),
+    publicQtyExact: productionExactQuantityText(
+      json['publicQtyExact'] ?? json['publicQty'] ?? 0,
+    ),
+    actualSurplusQtyExact: productionExactQuantityText(
+      json['actualSurplusQtyExact'] ?? json['actualSurplusQty'] ?? 0,
+    ),
     splitText: json['splitText'] as String?,
     reasonText: json['reasonText'] as String?,
     summary: json['summary'] as String? ?? '',
@@ -561,6 +588,8 @@ class ProductionDailyReportDetail {
     this.items = const [],
     this.outputBatches = const [],
     this.materialUsages = const [],
+    this.materialReview,
+    this.materialDecisions = const [],
     this.surplusReturnRequested = false,
     this.departmentName,
     this.workerNames = const [],
@@ -611,7 +640,10 @@ class ProductionDailyReportDetail {
   final ProductionDailyReportApprovalReceipt? approvalReceipt;
 
   bool get supportsReviewedApproval =>
-      !approvalCapabilityMalformed && approvalCommandVersion == 2;
+      !approvalCapabilityMalformed &&
+      (approvalCommandVersion == 2 || approvalCommandVersion == 3);
+  bool get supportsMaterialReview =>
+      !approvalCapabilityMalformed && approvalCommandVersion == 3;
   bool get supportsLegacyApproval =>
       !approvalCapabilityMalformed &&
       (approvalCommandVersion == null || approvalCommandVersion == 1);
@@ -637,6 +669,8 @@ class ProductionDailyReportDetail {
 
   /// V583 报工同页登记的本次实际用料；历史日报为空。
   final List<ProductionDailyReportMaterialUsage> materialUsages;
+  final DailyReportMaterialReview? materialReview;
+  final List<DailyReportMaterialDecision> materialDecisions;
 
   /// 收尾余料退仓意愿；审核时先结实耗再按剩余可退量开退料单。
   final bool surplusReturnRequested;
@@ -707,6 +741,17 @@ class ProductionDailyReportDetail {
             )
             .toList() ??
         const [],
+    materialReview: json['materialReview'] is Map
+        ? DailyReportMaterialReview.fromJson(
+            Map<String, dynamic>.from(json['materialReview'] as Map),
+          )
+        : null,
+    materialDecisions: [
+      for (final raw in json['materialDecisions'] as List? ?? const [])
+        DailyReportMaterialDecision.fromJson(
+          Map<String, dynamic>.from(raw as Map),
+        ),
+    ],
     surplusReturnRequested: json['surplusReturnRequested'] == true,
     departmentName: json['departmentName'] as String?,
     workerNames:
@@ -730,6 +775,7 @@ class ProductionDailyReportApprovalReceipt {
     required this.replay,
     this.metadataMalformed = false,
     this.reviewProtection,
+    this.materialReviewFingerprint,
   });
   final String reportId;
   final String idempotencyKey;
@@ -738,6 +784,7 @@ class ProductionDailyReportApprovalReceipt {
   final bool replay;
   final bool metadataMalformed;
   final String? reviewProtection;
+  final String? materialReviewFingerprint;
 
   bool get legacy => commandVersion == null || commandVersion == 1;
   bool get valid =>
@@ -748,11 +795,15 @@ class ProductionDailyReportApprovalReceipt {
           ? reviewedVersion == null &&
                 (reviewProtection == null ||
                     reviewProtection == 'LEGACY_UNVERSIONED')
-          : commandVersion == 2 &&
+          : (commandVersion == 2 || commandVersion == 3) &&
                 reviewedVersion != null &&
                 reviewedVersion! >= 0 &&
+                (commandVersion != 3 ||
+                    (materialReviewFingerprint?.isNotEmpty ?? false)) &&
                 (reviewProtection == null ||
-                    reviewProtection == 'REVIEWED_VERSION'));
+                    reviewProtection == 'REVIEWED_VERSION' ||
+                    (commandVersion == 3 &&
+                        reviewProtection == 'REVIEWED_MATERIAL_SNAPSHOT')));
 
   factory ProductionDailyReportApprovalReceipt.fromJson(
     Map<String, dynamic> json,
@@ -766,6 +817,7 @@ class ProductionDailyReportApprovalReceipt {
       reviewedVersion: _asInt(json['reviewedVersion']),
       replay: json['replay'] == true,
       reviewProtection: json['reviewProtection'] as String?,
+      materialReviewFingerprint: json['materialReviewFingerprint'] as String?,
       metadataMalformed:
           invalidInteger(json['commandVersion']) ||
           invalidInteger(json['reviewedVersion']),
@@ -805,6 +857,7 @@ class ProductionDailyReportMaterialUsage {
   const ProductionDailyReportMaterialUsage({
     required this.demandId,
     required this.qtyBase,
+    this.qtyBaseExact,
     this.id,
     this.lineNo,
     this.planId,
@@ -830,6 +883,9 @@ class ProductionDailyReportMaterialUsage {
   final String? colorName;
   final String? unitName;
   final double qtyBase;
+  final String? qtyBaseExact;
+  String? get qtyBaseText =>
+      productionExactQuantityText(qtyBaseExact ?? qtyBase);
 
   /// 最后一次报工按实物清点的实际剩余(基本单位，ADR-129 §2.7)；没清点为 null。
   final double? countedLeftoverQty;
@@ -850,6 +906,7 @@ class ProductionDailyReportMaterialUsage {
     colorName: json['colorName'] as String?,
     unitName: json['unitName'] as String?,
     qtyBase: (json['qtyBase'] as num?)?.toDouble() ?? 0,
+    qtyBaseExact: json['qtyBaseExact'] as String?,
     countedLeftoverQty: (json['countedLeftoverQty'] as num?)?.toDouble(),
   );
 }

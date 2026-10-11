@@ -40,17 +40,19 @@ import '../../../shared/auth/document_permission_set.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../models/production_daily_report.dart';
 import '../models/daily_report_approval_intent.dart';
+import '../models/daily_report_material_review.dart';
+import '../models/production_exact_quantity.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_repository.dart';
 import '../repositories/daily_report_approval_intent_store.dart';
 import '../widgets/production_status_badge.dart';
+import '../widgets/daily_report_material_review_section.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 
 class ProductionDailyReportDetailPage extends ConsumerStatefulWidget {
@@ -93,6 +95,12 @@ class _ProductionDailyReportDetailPageState
   bool _busyReadOnly = false;
   String? _approvalRecoveryMessage;
   int _approvalViewGeneration = 0;
+  DailyReportMaterialReview? _materialReview;
+  Map<String, DailyReportMaterialAction> _materialActions = {};
+  bool _materialReviewLoading = false;
+  String? _materialReviewError;
+  bool _materialReviewExpanded = true;
+  bool _materialReviewAttempted = false;
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获，不随后续导航现取）。
   String? _myLocation;
@@ -116,6 +124,10 @@ class _ProductionDailyReportDetailPageState
     setState(() {
       _approvalViewGeneration++;
       _detail = null;
+      _materialReview = null;
+      _materialActions = {};
+      _materialReviewError = null;
+      _materialReviewLoading = false;
       _pendingApproval = null;
       _approvalRecoveryReady = false;
       _approvalLocallySettled = false;
@@ -175,7 +187,14 @@ class _ProductionDailyReportDetailPageState
       _pendingApproval == null &&
       (_detail?.canApprove ?? false) &&
       ((_detail?.supportsLegacyApproval ?? false) ||
-          (_detail?.canFreezeReviewedApproval ?? false));
+          (_detail?.canFreezeReviewedApproval ?? false)) &&
+      (!(_detail?.supportsMaterialReview ?? false) || _materialReviewReady);
+
+  bool get _materialReviewReady =>
+      !_materialReviewLoading &&
+      _materialReviewError == null &&
+      _materialReview?.reportId == _detail?.id &&
+      _materialReview?.reportVersion == _detail?.rowVersion;
   bool get _canReverse =>
       _pendingApproval == null &&
       _approvalRecoveryReady &&
@@ -214,6 +233,12 @@ class _ProductionDailyReportDetailPageState
           () => _approvalRecoveryMessage = '本机原审核记录尚未读取，暂不能提交新审核。请保留本机记录并重试。',
         );
       }
+      if (d.supportsMaterialReview &&
+          d.status == kProductionStatusDraft &&
+          _pendingApproval == null) {
+        await _loadMaterialReview(d, isCurrent: isCurrent);
+        if (!mounted || !isCurrent()) return;
+      }
     } on ApiException catch (e) {
       if (!mounted || !isCurrent()) return;
       setState(() {
@@ -237,9 +262,106 @@ class _ProductionDailyReportDetailPageState
   void _applyDetail(ProductionDailyReportDetail d) {
     setState(() {
       _detail = d;
+      _materialReview = d.materialReview;
+      _materialActions = {
+        for (final line in d.materialDecisions) line.demandId: line.action,
+      };
+      _materialReviewError = null;
+      _materialReviewAttempted = false;
       _loading = false;
       _error = null;
     });
+  }
+
+  Future<void> _loadMaterialReview(
+    ProductionDailyReportDetail detail, {
+    required bool Function() isCurrent,
+  }) async {
+    setState(() {
+      _materialReviewLoading = true;
+      _materialReviewError = null;
+      _materialReview = null;
+      _materialActions = {};
+      _materialReviewAttempted = false;
+    });
+    try {
+      final review = await ref
+          .read(productionDailyReportRepositoryProvider)
+          .materialReview(detail.id);
+      if (!mounted || !isCurrent()) return;
+      if (review.reportId != detail.id ||
+          review.reportVersion != detail.rowVersion ||
+          _detail?.rowVersion != detail.rowVersion) {
+        throw const FormatException('日报或材料台账已变化，请刷新后重新核对');
+      }
+      setState(() => _materialReview = review);
+    } catch (error) {
+      if (!mounted || !isCurrent()) return;
+      setState(() {
+        _materialReviewError = error is ApiException
+            ? error.message
+            : '余料核对资料尚未读取，或日报已变化；请刷新后重新核对。';
+      });
+    } finally {
+      if (mounted && isCurrent()) {
+        setState(() => _materialReviewLoading = false);
+      }
+    }
+  }
+
+  Widget? _materialReviewSection() {
+    final detail = _detail;
+    if (detail == null) return null;
+    final pending = _pendingApproval?.intent;
+    if (pending != null && pending.commandVersion < 3) return null;
+    final originalReview = pending?.commandVersion == 3
+        ? pending?.materialReview
+        : null;
+    if (_materialReviewLoading && originalReview == null) {
+      return const UtenInlineNotice(title: '正在核对本次实际用料与余料');
+    }
+    if (detail.supportsMaterialReview &&
+        detail.status == kProductionStatusDraft &&
+        !_materialReviewReady &&
+        originalReview == null) {
+      return UtenInlineNotice(
+        key: const ValueKey('daily-material-review-unavailable'),
+        level: UtenInlineNoticeLevel.warning,
+        title: '用料核对需要重新读取',
+        message: _materialReviewError ?? '尚未获得可核对的材料台账，请刷新后再审核。',
+        trailing: UtenButton(
+          onPressed: !_busy && !_approvalConfirming ? _load : null,
+          child: const Text('重新读取'),
+        ),
+      );
+    }
+    final review = originalReview ?? _materialReview;
+    if (review == null || review.rows.isEmpty) return null;
+    final actions = pending?.commandVersion == 3
+        ? {
+            for (final line in pending!.materialDecisions)
+              line.demandId: line.action,
+          }
+        : _materialActions;
+    return DailyReportMaterialReviewSection(
+      review: review,
+      actions: actions,
+      originalIntent: originalReview != null,
+      originalResultConfirmed: _approvalLocallySettled,
+      historical:
+          originalReview == null && detail.status != kProductionStatusDraft,
+      editable: _canApprove && !_busy && !_loading,
+      expanded: _materialReviewExpanded,
+      attempted: _materialReviewAttempted,
+      onExpandedChanged: (expanded) =>
+          setState(() => _materialReviewExpanded = expanded),
+      onChanged: (id, action) {
+        if (_canApprove && !_busy && !_loading) {
+          setState(() => _materialActions = {..._materialActions, id: action});
+        }
+      },
+      onRefresh: _load,
+    );
   }
 
   /// 审核/红冲/删除改变了车间任务的已报数量与分类归属(2026-09-24 用户口径「报工成功
@@ -258,6 +380,19 @@ class _ProductionDailyReportDetailPageState
       requireCurrentIntent: false,
     );
     late final DailyReportApprovalIntent intent;
+    if (reviewed.supportsMaterialReview &&
+        _materialReview!.rows.any(
+          (row) =>
+              row.requiresDecision &&
+              !_materialActions.containsKey(row.demandId),
+        )) {
+      setState(() {
+        _materialReviewAttempted = true;
+        _materialReviewExpanded = true;
+      });
+      context.appWarning('请逐料选择退回仓库或留在车间，再确认审核');
+      return;
+    }
     try {
       // All confirmation semantics come from this one detail, before opening the dialog.
       intent = DailyReportApprovalIntent.review(
@@ -266,7 +401,10 @@ class _ProductionDailyReportDetailPageState
         '转给上层工单的部分交下工序；送入仓库的部分生成仓库到货登记任务，'
         '仓库登记成品仓与库位并送品质部检查。'
         '只有品质合格且仓库实际接收的数量才增加可用库存。确认审核？'
+        '${reviewed.supportsMaterialReview ? _materialConfirmation() : ''}'
         '${reviewed.supportsLegacyApproval ? '\n此服务器使用旧版审核，暂不核对所见版本。' : ''}',
+        materialReview: _materialReview,
+        materialActions: Map.of(_materialActions),
       );
     } catch (_) {
       context.appError('当前审核资料不完整，请刷新后重新核对，暂不能提交审核。');
@@ -303,6 +441,15 @@ class _ProductionDailyReportDetailPageState
     } on ApiException catch (error) {
       if (mounted) context.appWarning(error.message);
     }
+  }
+
+  String _materialConfirmation() {
+    final lines = _materialReview!.rows;
+    if (lines.isEmpty) return '';
+    return '\n\n用料与余料处理：\n${[for (final row in lines.take(6)) '${row.materialExecutionSegmentCode ?? '来源工单'} · ${row.goodsName ?? row.goodsCode ?? '物料'}：'
+          '本次实际用料 ${row.usageQty} ${row.unitName ?? ''}，'
+          '预计已领余料 ${row.remainingIssuedQty}，未领直送料 ${row.undrawnDirectQty}，'
+          '${row.requiresDecision ? _materialActions[row.demandId]!.label : '留在车间'}', if (lines.length > 6) '另有 ${lines.length - 6} 项，按页面已核对的处理方式登记。'].join('\n')}\n审核先登记本次实际用料，再生成退料申请；仓库收料后完成退仓。';
   }
 
   Future<bool> _clearApprovalRecord(StoredDailyReportApproval record) async {
@@ -395,8 +542,12 @@ class _ProductionDailyReportDetailPageState
       final updated = await repository.approve(
         intent.reportId,
         idempotencyKey: intent.idempotencyKey,
-        commandVersion: intent.legacy ? null : 2,
+        commandVersion: intent.legacy ? null : intent.commandVersion,
         expectedVersion: intent.expectedVersion,
+        materialReviewFingerprint: intent.materialReviewFingerprint,
+        materialDecisions: intent.commandVersion == 3
+            ? intent.materialDecisions
+            : null,
       );
       await requestScope.verify();
       if (!mounted || !isCurrent()) return;
@@ -449,7 +600,10 @@ class _ProductionDailyReportDetailPageState
       final staleV2 =
           !intent.legacy &&
           error is ApiException &&
-          error.code == 'DAILY_REPORT_REVIEW_VERSION_CONFLICT';
+          const {
+            'DAILY_REPORT_REVIEW_VERSION_CONFLICT',
+            'DAILY_REPORT_MATERIAL_REVIEW_CONFLICT',
+          }.contains(error.code);
       final rejectedFirstAttempt =
           original == null &&
           error is ApiException &&
@@ -462,6 +616,13 @@ class _ProductionDailyReportDetailPageState
       if (staleV2 || rejectedFirstAttempt) {
         await _clearApprovalRecord(record!);
         if (!mounted || !isCurrent()) return;
+        if (intent.commandVersion == 3) {
+          setState(() {
+            _materialReview = null;
+            _materialActions = {};
+            _materialReviewError = '材料台账已变化，请重新核对余料处理。';
+          });
+        }
         await _settleFailedAction(
           error.message,
           targetStatus: kProductionStatusApproved,
@@ -527,7 +688,8 @@ class _ProductionDailyReportDetailPageState
           receipt != null &&
           record.intent.ownsReceipt(receipt) &&
           detail?.id == widget.id) {
-        if (record.intent.verifiedReceipt(receipt) || receipt.legacy) {
+        if (record.intent.verifiedReceipt(receipt) ||
+            (record.intent.commandVersion < 3 && receipt.legacy)) {
           confirmed = true;
           await _publishApproval(
             record,
@@ -838,6 +1000,14 @@ class _ProductionDailyReportDetailPageState
     if (!mounted || !(responseIsCurrent?.call() ?? true)) return;
     if (fresh != null) {
       _applyDetail(fresh);
+      if (fresh.supportsMaterialReview &&
+          fresh.status == kProductionStatusDraft) {
+        await _loadMaterialReview(
+          fresh,
+          isCurrent: responseIsCurrent ?? _approvalViewFence(),
+        );
+        if (!mounted || !(responseIsCurrent?.call() ?? true)) return;
+      }
       if (fresh.status != before) {
         _signalExecutionChanged();
       }
@@ -1023,6 +1193,11 @@ class _ProductionDailyReportDetailPageState
                               const SizedBox(height: UtenSpacing.s12),
                             ],
                             _headerCard(theme),
+                            if (_materialReviewSection()
+                                case final material?) ...[
+                              const SizedBox(height: UtenSpacing.s12),
+                              material,
+                            ],
                             // 日报附件（报工照片/检验记录）：草稿可管理，审核后只读。
                             // 属「备注类小卡」，并入折叠头尾部随头部一起收起。
                             const SizedBox(height: UtenSpacing.s12),
@@ -1179,9 +1354,13 @@ class _ProductionDailyReportDetailPageState
                 label: '完工申报量',
                 width: 146,
                 type: 'number',
-                value: (it) => it.qty == null
+                value: (it) => it.qty == null && it.qtyExact == null
                     ? null
-                    : formatQtyWithUnit(it.qty!, _dictText(it.unitName)),
+                    : productionQuantityWithUnit(
+                            it.qtyText,
+                            _dictText(it.unitName),
+                          ) ??
+                          '完工量待核对',
               ),
               // ADR-129：一次报工拆成多条明细时不良数只记在第一条，其余留空。
               MasterColumnDef(
@@ -1190,9 +1369,18 @@ class _ProductionDailyReportDetailPageState
                 width: 130,
                 type: 'number',
                 info: productionDailyReportDefectInfo,
-                value: (it) => it.defectQty > 0
-                    ? formatQtyWithUnit(it.defectQty, _dictText(it.unitName))
-                    : null,
+                value: (it) {
+                  final quantity = productionExactQuantityUnits(
+                    it.defectQtyText,
+                  );
+                  if (quantity == null) return '不良数待核对';
+                  return quantity > BigInt.zero
+                      ? productionQuantityWithUnit(
+                          it.defectQtyText,
+                          _dictText(it.unitName),
+                        )
+                      : null;
+                },
               ),
               MasterColumnDef(
                 key: 'outputKind',
@@ -1331,8 +1519,9 @@ class _ProductionDailyReportDetailPageState
       }
     } else if (!_approvalRecoveryReady ||
         (detail.canApprove &&
-            !detail.supportsLegacyApproval &&
-            !detail.canFreezeReviewedApproval)) {
+            ((!detail.supportsLegacyApproval &&
+                    !detail.canFreezeReviewedApproval) ||
+                (detail.supportsMaterialReview && !_materialReviewReady)))) {
       addAction(
         UtenButton(
           key: const Key('daily-report-review-reload'),

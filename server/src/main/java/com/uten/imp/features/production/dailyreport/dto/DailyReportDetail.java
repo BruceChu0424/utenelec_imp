@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 生产日报详情（含明细行）。 */
 @Getter
 @AllArgsConstructor
-public class DailyReportDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class DailyReportDetail extends DailyReportMaterialReviewMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

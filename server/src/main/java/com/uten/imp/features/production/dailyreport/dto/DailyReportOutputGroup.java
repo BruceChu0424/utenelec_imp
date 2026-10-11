@@ -28,4 +28,13 @@ public record DailyReportOutputGroup(
     public DailyReportOutputGroup {
         itemIds = List.copyOf(itemIds);
     }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="qtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String qtyExact() { return exact(qty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="demandQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String demandQtyExact() { return exact(demandQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="publicQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String publicQtyExact() { return exact(publicQty); }
+    @com.fasterxml.jackson.annotation.JsonProperty(value="actualSurplusQtyExact", access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String actualSurplusQtyExact() { return exact(actualSurplusQty); }
+    private static String exact(BigDecimal value) { return value == null ? null : value.toPlainString(); }
 }

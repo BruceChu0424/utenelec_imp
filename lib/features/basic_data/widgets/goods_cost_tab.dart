@@ -784,11 +784,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   String _money(Object? value) => financeMoneyText(costText(value));
   TextEditingController _controller(String key, String? initial) => _controllers
       .putIfAbsent(key, () => TextEditingController(text: initial ?? ''));
-  Widget _oneLine(Object? text) => Text(
-    costText(text) ?? '—',
-    maxLines: 1,
-    overflow: TextOverflow.ellipsis,
-  );
+  Widget _oneLine(Object? text) =>
+      Text(costText(text) ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis);
 
   @override
   Widget build(BuildContext context) {

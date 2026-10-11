@@ -933,10 +933,13 @@ class _SubcontractDocDetailPageState
     // 2026-10-10 数量+单位口径：明细各数量列内联行单位(如 `12 PCS`)，独立单位列删除；
     // 单位缺失时只显数字，空数量保持原有的 null/'—' 占位语义。
     String? unitOf(SubcontractDocItem it) => _dictText(names.unit(it.unitId));
-    String? qtyWithUnit(SubcontractDocItem it, num? value, {int maxDecimals = 3}) =>
-        value == null
-            ? null
-            : formatQtyWithUnit(value, unitOf(it), maxDecimals: maxDecimals);
+    String? qtyWithUnit(
+      SubcontractDocItem it,
+      num? value, {
+      int maxDecimals = 3,
+    }) => value == null
+        ? null
+        : formatQtyWithUnit(value, unitOf(it), maxDecimals: maxDecimals);
 
     // 金额「数值 币种」后缀（2026-10-10 口径）：明细行币种随单据表头
     // d.currencyId（names.currency 缺失返回 '—'，助手遇 '—'/「未知」不拼单位）。
@@ -1041,12 +1044,7 @@ class _SubcontractDocDetailPageState
                   value: (it) =>
                       widget.docType == SubcontractDocType.order &&
                           it.totalAmountInputText != null
-                      ? '${financeMoneyWithUnitSuffix(
-                          financeExactTrimmed(
-                            it.priceText ?? it.price?.toString(),
-                          ),
-                          currencyName: docCurrencyName,
-                        )}（参考）'
+                      ? '${financeMoneyWithUnitSuffix(financeExactTrimmed(it.priceText ?? it.price?.toString()), currencyName: docCurrencyName)}（参考）'
                       : _historicalReceipt
                       ? financeMoneyWithUnitSuffix(
                           historicalReceiptAmount(it.priceText),

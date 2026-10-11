@@ -815,7 +815,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
             valueListenable: row.unitIdNotifier,
             builder: (_, unitId, _) => TextField(
               controller: row.qty,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: decorate(
                 UtenInputDecoration(
                   InputDecoration(
@@ -1057,9 +1059,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         frozenTextOf: (row) => _inboundQtyText(row, unitEntries),
         cellBuilder: (context, row) => ValueListenableBuilder<String?>(
           valueListenable: row.unitIdNotifier,
-          builder: (_, _, _) => Text(
-            _inboundQtyText(row, unitEntries),
-          ),
+          builder: (_, _, _) => Text(_inboundQtyText(row, unitEntries)),
         ),
       ),
     if (docType == SalesDocType.otherShipment)

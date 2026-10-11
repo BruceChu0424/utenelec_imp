@@ -641,7 +641,9 @@ void main() {
             Perm.productionExecutionStart,
             Perm.productionDailyReportCreate,
           }),
-          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(repo),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            repo,
+          ),
           productionPlanRepositoryProvider.overrideWithValue(
             _FakePlanRepository(),
           ),

@@ -12,12 +12,11 @@ void main() {
         '158400.00 美金',
       );
       // 旧数字编号（002）认不出币种 → 不猜，只显金额。
-      expect(financeMoneyWithUnitSuffix('12.3456', currencyCode: '002'),
-          '12.3456');
       expect(
-        financeMoneyWithUnitSuffix('5', currencyCode: 'USD'),
-        '5.00 USD',
+        financeMoneyWithUnitSuffix('12.3456', currencyCode: '002'),
+        '12.3456',
       );
+      expect(financeMoneyWithUnitSuffix('5', currencyCode: 'USD'), '5.00 USD');
       // 本位币后缀短名「元」。
       expect(financeMoneyWithUnitSuffix('0.5', currencyName: '人民币'), '0.50 元');
       expect(financeLocalMoneyWithUnitSuffix('1500'), '1500.00 元');
@@ -104,7 +103,7 @@ void main() {
       expect(
         balance.footnote(PartyBalanceSide.customer),
         '另有 30000.00 元、预收有余 500.00 港币；'
-            '另有历史应收 1200.50 元 原币未核实',
+        '另有历史应收 1200.50 元 原币未核实',
       );
       expect(
         balance.unverifiedText(PartyBalanceSide.supplier),

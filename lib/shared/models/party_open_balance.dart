@@ -140,10 +140,8 @@ class PartyOpenBalance {
   String get creditText => _documentMoney(creditOriginal);
 
   /// 按本位币显示一笔本币金额，「3500.00 元」。
-  String baseMoneyText(String? amount) => financeMoneyWithUnitSuffix(
-    amount,
-    currencyName: baseCurrencyName,
-  );
+  String baseMoneyText(String? amount) =>
+      financeMoneyWithUnitSuffix(amount, currencyName: baseCurrencyName);
 
   /// 其它币种：「另有 30000.00 元、预收有余 500.00 港币」；没有时为 null。
   String? otherCurrenciesText(PartyBalanceSide side) => otherCurrencies.isEmpty
@@ -165,10 +163,8 @@ class PartyOpenBalance {
     return parts.isEmpty ? null : parts.join('；');
   }
 
-  String _documentMoney(String amount) => financeMoneyWithUnitSuffix(
-    amount,
-    currencyName: currencyName,
-  );
+  String _documentMoney(String amount) =>
+      financeMoneyWithUnitSuffix(amount, currencyName: currencyName);
 }
 
 /// 一个币种的「还差多少」：正数(还欠)写「金额 币种」；负数写「预收有余 金额 币种」

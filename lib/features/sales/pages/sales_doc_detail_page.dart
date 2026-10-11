@@ -2232,7 +2232,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                   label: '机加价',
                   width: 110,
                   type: 'money',
-                  value: (it) => masked ? '***' : moneyWithUnit(it.machiningPrice),
+                  value: (it) =>
+                      masked ? '***' : moneyWithUnit(it.machiningPrice),
                 ),
                 MasterColumnDef(
                   key: 'circumference',

@@ -38,7 +38,11 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   FinanceProcurementApprovalReview reviewResult;
   String? requestedCaseId;
   final List<
-    ({List<FinanceProcurementDecisionItem> items, String? remark, double? exchangeRate})
+    ({
+      List<FinanceProcurementDecisionItem> items,
+      String? remark,
+      double? exchangeRate,
+    })
   >
   approved = [];
   final List<({List<FinanceProcurementDecisionItem> items, String reason})>
@@ -467,9 +471,7 @@ void main() {
     });
   }
 
-  testWidgets('token 静默刷新（同身份新状态对象/权限滑动）不清空页面与认领', (
-    tester,
-  ) async {
+  testWidgets('token 静默刷新（同身份新状态对象/权限滑动）不清空页面与认领', (tester) async {
     final repository = _FakeWorkflowRepo(
       FinanceProcurementApprovalReview.fromJson(_pendingReviewJson()),
     );
@@ -577,7 +579,11 @@ void main() {
 
     expect(repository.approved, hasLength(1));
     expect(repository.approved.single.remark, '已核对供应商账期');
-    expect(repository.approved.single.exchangeRate, 7.1, reason: '通过提交带当前汇率（快照兜底值）');
+    expect(
+      repository.approved.single.exchangeRate,
+      7.1,
+      reason: '通过提交带当前汇率（快照兜底值）',
+    );
     expect(repository.approved.single.items.single.toJson(), {
       'caseId': 'case-1',
       'expectedVersion': 3,
@@ -769,8 +775,10 @@ void main() {
           .value(row),
       '71000.00 元',
     );
-    expect(table.columns.singleWhere((c) => c.key == 'amountLocal').label,
-        '折合人民币');
+    expect(
+      table.columns.singleWhere((c) => c.key == 'amountLocal').label,
+      '折合人民币',
+    );
   });
 
   testWidgets('委外：独立 tableKey + 允许损耗%占据差异列位', (tester) async {
@@ -876,9 +884,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      tester.widget<Text>(
-        find.byKey(const Key('finance-order-review-rate-readonly')),
-      ).data,
+      tester
+          .widget<Text>(
+            find.byKey(const Key('finance-order-review-rate-readonly')),
+          )
+          .data,
       '6.8',
       reason: '只读汇率行显示财务落定的 financeExchangeRate（表内汇率列同值）',
     );
@@ -932,9 +942,7 @@ void main() {
   testWidgets('供应商红色加粗：快照卡标题与订单信息卡供应商值', (tester) async {
     await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
     final theme = Theme.of(tester.element(find.text('PO-2026-001')));
-    final title = tester.widget<Text>(
-      find.text('供应商财务快照 · 供应商A(S-001)'),
-    );
+    final title = tester.widget<Text>(find.text('供应商财务快照 · 供应商A(S-001)'));
     expect(title.style?.color, theme.colorScheme.error);
     expect(title.style?.fontWeight, FontWeight.w800);
     final supplier = tester.widget<Text>(find.text('供应商A'));

@@ -332,11 +332,15 @@ class _FinanceProcurementApprovalReviewPageState
       }
       await ref
           .read(financeProcurementWorkflowRepositoryProvider)
-          .approveOrdersBatch([
-            decision.withClaimId(
-              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', widget.caseId)!,
-            ),
-          ], remark: remark, exchangeRate: _effectiveRateDouble(review));
+          .approveOrdersBatch(
+            [
+              decision.withClaimId(
+                claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', widget.caseId)!,
+              ),
+            ],
+            remark: remark,
+            exchangeRate: _effectiveRateDouble(review),
+          );
       if (!mounted) return;
       context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
       refreshBadges(ref);
@@ -582,11 +586,10 @@ class _FinanceProcurementApprovalReviewPageState
                               const SizedBox(height: UtenSpacing.s12),
                               UtenRevisionFields(
                                 changes: [
-                                  for (final change
-                                      in procurementHeaderChanges(
-                                        review.previousHeaderSnapshot,
-                                        review.headerSnapshot,
-                                      ))
+                                  for (final change in procurementHeaderChanges(
+                                    review.previousHeaderSnapshot,
+                                    review.headerSnapshot,
+                                  ))
                                     UtenRevisionField(
                                       label: change.label,
                                       before: change.before,
@@ -779,7 +782,10 @@ class _FinanceProcurementApprovalReviewPageState
   /// 供应商财务快照卡(ADR-128)：本单金额与供应商在本单币种下的应付 / 可抵预付与贷项 /
   /// 还差多少放在一起比(财务共用 FinancePartySnapshotCard)；其它币种另列、不换算。
   /// 2026-10-10 订货审批口径：标题（供应商）红色加粗；「折合人民币」随汇率编辑联动。
-  Widget _supplierFinanceCard(ThemeData theme, FinanceProcurementApprovalReview r) {
+  Widget _supplierFinanceCard(
+    ThemeData theme,
+    FinanceProcurementApprovalReview r,
+  ) {
     final convertedTotal =
         _convertedLocalText(r.totalOriginal, _effectiveRateText(r)) ??
         r.totalLocal;
@@ -1091,14 +1097,16 @@ class _FinanceProcurementApprovalReviewPageState
                     label: '编号',
                     width: 130,
                     value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
-                    cellBuilder: (_, it) => UtenGoodsAttributeCell(it.goodsCode),
+                    cellBuilder: (_, it) =>
+                        UtenGoodsAttributeCell(it.goodsCode),
                   ),
                   MasterColumnDef(
                     key: 'colorName',
                     label: '颜色',
                     width: 96,
                     value: (it) => UtenGoodsAttributeCell.text(it.colorName),
-                    cellBuilder: (_, it) => UtenGoodsAttributeCell(it.colorName),
+                    cellBuilder: (_, it) =>
+                        UtenGoodsAttributeCell(it.colorName),
                   ),
                   // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
                   // 独立单位列退役（formatQtyWithUnit 是唯一拼装点）。
@@ -1107,8 +1115,10 @@ class _FinanceProcurementApprovalReviewPageState
                     label: '数量',
                     width: 110,
                     type: 'number',
-                    value: (it) =>
-                        formatQtyWithUnit(double.tryParse(it.qty ?? ''), it.unitName),
+                    value: (it) => formatQtyWithUnit(
+                      double.tryParse(it.qty ?? ''),
+                      it.unitName,
+                    ),
                   ),
                   // 采购=允许超收%（ADR-144，审批哈希快照自带，空=不允许超收）；
                   // 委外=允许损耗%。数值后直接带 %（2026-10-10 财务口径）。
@@ -1117,7 +1127,8 @@ class _FinanceProcurementApprovalReviewPageState
                       key: 'allowedOverReceiptPct',
                       label: '允许超收',
                       width: 120,
-                      info: '供应商累计送货在 数量×(1+允许超收%) 以内照常入库、立应付，超出部分才转财务审核组审批；批准后不能再改。',
+                      info:
+                          '供应商累计送货在 数量×(1+允许超收%) 以内照常入库、立应付，超出部分才转财务审核组审批；批准后不能再改。',
                       value: (it) {
                         final v = _trimNum(it.allowedOverReceiptPct);
                         return v == null ? '不允许' : '$v%';
@@ -1173,7 +1184,8 @@ class _FinanceProcurementApprovalReviewPageState
                     label: '汇率',
                     width: 140,
                     type: 'number',
-                    info: '未审批时在本列单元格填写记账汇率（同单全行同值，任一格输入全列同步）；折合人民币 = 总金额 × 汇率，实时重算。通过时随审批写入本单，驳回不落汇率。',
+                    info:
+                        '未审批时在本列单元格填写记账汇率（同单全行同值，任一格输入全列同步）；折合人民币 = 总金额 × 汇率，实时重算。通过时随审批写入本单，驳回不落汇率。',
                     value: (_) => _trimNum(rateText),
                   ),
                   // 折合人民币 = 总金额 × 当前汇率（实时联动；原币缺失回落快照本币）。
@@ -1196,7 +1208,8 @@ class _FinanceProcurementApprovalReviewPageState
                   if (r.orderType == FinanceProcurementOrderType.purchase &&
                       [...r.previousItems, ...r.items].any(
                         (line) =>
-                            line.giftQty != null && _trimNum(line.giftQty) != '0',
+                            line.giftQty != null &&
+                            _trimNum(line.giftQty) != '0',
                       ))
                     MasterColumnDef(
                       key: 'giftQty',

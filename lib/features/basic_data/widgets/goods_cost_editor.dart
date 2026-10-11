@@ -1036,9 +1036,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           aiSensitive: true,
           defaultVisible: false,
           value: (r) => costText(costMap(r['extraCosts'])[column['key']]),
-          cellBuilder: (_, r) => _oneLine(
-            _stale ? '…' : costMap(r['extraCosts'])[column['key']],
-          ),
+          cellBuilder: (_, r) =>
+              _oneLine(_stale ? '…' : costMap(r['extraCosts'])[column['key']]),
         ),
       ],
       MasterColumnDef(
@@ -1204,9 +1203,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     final path = row['path'].toString(), key = column['key'].toString();
     final cell = _priceCell(path, key);
     if (!_editable) {
-      return _oneLine(
-        cell == null ? _l.costNotApplicable : cell['value'],
-      );
+      return _oneLine(cell == null ? _l.costNotApplicable : cell['value']);
     }
     return TextFormField(
       key: ValueKey('cost-fee-$key-$path'),

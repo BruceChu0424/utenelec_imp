@@ -982,8 +982,7 @@ class _WorkshopMaterialBinPageState
             key: 'countReviewStatus',
             label: '状态',
             width: 90,
-            value: (r) =>
-                _countEditor.rowSubmitted(_countKey(r)) ? '待审核' : '—',
+            value: (r) => _countEditor.rowSubmitted(_countKey(r)) ? '待审核' : '—',
           ),
         MasterColumnDef(
           key: 'goodsCode',
@@ -1011,11 +1010,8 @@ class _WorkshopMaterialBinPageState
           label: '估计还剩',
           width: 150,
           type: 'number',
-          value: (r) => formatQtyWithUnit(
-            r.estimatedRemainingQty,
-            kg,
-            maxDecimals: 2,
-          ),
+          value: (r) =>
+              formatQtyWithUnit(r.estimatedRemainingQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'bookQty',
@@ -1064,7 +1060,8 @@ class _WorkshopMaterialBinPageState
           label: '本期退回',
           width: 150,
           type: 'number',
-          value: (r) => formatQtyWithUnit(r.periodReturnQty, kg, maxDecimals: 2),
+          value: (r) =>
+              formatQtyWithUnit(r.periodReturnQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'periodOtherQty',
@@ -1078,18 +1075,16 @@ class _WorkshopMaterialBinPageState
           label: '估计已用',
           width: 150,
           type: 'number',
-          value: (r) => formatQtyWithUnit(r.estimatedUsedQty, kg, maxDecimals: 2),
+          value: (r) =>
+              formatQtyWithUnit(r.estimatedUsedQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'warehouseAvailableQty',
           label: '仓库还有',
           width: 150,
           type: 'number',
-          value: (r) => formatQtyWithUnit(
-            r.warehouseAvailableQty,
-            kg,
-            maxDecimals: 2,
-          ),
+          value: (r) =>
+              formatQtyWithUnit(r.warehouseAvailableQty, kg, maxDecimals: 2),
         ),
         MasterColumnDef(
           key: 'notes',

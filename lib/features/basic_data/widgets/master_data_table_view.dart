@@ -189,9 +189,7 @@ double? _numericSortValue(String text) {
   final cleaned = text.replaceAll(',', '').trim();
   final direct = double.tryParse(cleaned);
   if (direct != null) return direct;
-  final match = RegExp(
-    r'^-?\d+(?:\.\d+)?',
-  ).firstMatch(cleaned);
+  final match = RegExp(r'^-?\d+(?:\.\d+)?').firstMatch(cleaned);
   return match == null ? null : double.tryParse(match.group(0)!);
 }
 
@@ -2913,7 +2911,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 本表是否实际渲染行首勾选框列（宽 [_selectionColWidth]）。
   /// [MasterDataTableView.showSelectionColumn]=false 的纯阅读勾选表不画列，
   /// 选中语义（单击切勾选/高亮/已选胶囊）不受影响。
-  bool get _hasSelectionColumn => widget.selectable && widget.showSelectionColumn;
+  bool get _hasSelectionColumn =>
+      widget.selectable && widget.showSelectionColumn;
 
   /// 多选模式下表头/表体行的交叉轴对齐：stretch 让所有单元格同高、网格竖线贯通，
   /// 文字垂直居中；非多选沿用默认 center（行为不变）。
@@ -3380,7 +3379,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final hWrapped = _usesOverlayHBar
         ? hArea
         : (_hasRowContent
-              ? Scrollbar(controller: _bodyH, thumbVisibility: true, child: hArea)
+              ? Scrollbar(
+                  controller: _bodyH,
+                  thumbVisibility: true,
+                  child: hArea,
+                )
               : hArea);
     // 竖向滚动条（上下）已改为表体 Stack 上的覆盖层
     // （见 body Stack children），此处只产出表体本体。
@@ -4768,16 +4771,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             controller: _bodyH,
             width: _pinnedLeadingWidth(pinnedIndices),
             cell: frozenRowRegion ?? const SizedBox.shrink(),
-          row: Row(
-            crossAxisAlignment: _selectableCross,
-            children: [
-              if (_hasSelectionColumn)
-                SizedBox(width: _selectionColWidth, child: selectionCell),
-              for (final i in _visibleIndices)
-                _buildDataCell(theme, i, item, selected, textStyle),
-              if (widget.showColumnChooser) const SizedBox(width: 48),
-            ],
-          ),
+            row: Row(
+              crossAxisAlignment: _selectableCross,
+              children: [
+                if (_hasSelectionColumn)
+                  SizedBox(width: _selectionColWidth, child: selectionCell),
+                for (final i in _visibleIndices)
+                  _buildDataCell(theme, i, item, selected, textStyle),
+                if (widget.showColumnChooser) const SizedBox(width: 48),
+              ],
+            ),
           ),
         ),
       ),

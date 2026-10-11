@@ -581,8 +581,11 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       label: '账面数量',
       width: 145,
       type: 'number',
-      value: (row) =>
-          formatQtyWithUnit(double.tryParse(row.qty), row.unitName, maxDecimals: 4),
+      value: (row) => formatQtyWithUnit(
+        double.tryParse(row.qty),
+        row.unitName,
+        maxDecimals: 4,
+      ),
     ),
     MasterColumnDef<CountStockRow>(
       key: 'weight',

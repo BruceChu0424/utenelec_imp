@@ -121,11 +121,8 @@ class ArrivalQtyRevisionTable extends StatelessWidget {
             label: '数量',
             width: 145,
             type: 'number',
-            value: (line) => formatQtyWithUnit(
-              line.qty,
-              line.task.unitName,
-              maxDecimals: 4,
-            ),
+            value: (line) =>
+                formatQtyWithUnit(line.qty, line.task.unitName, maxDecimals: 4),
           ),
           if (!task.priceMasked && task.unitPrice != null)
             MasterColumnDef(

@@ -25,11 +25,7 @@ double? parseQty(String text) {
 /// `3.5 米`)，本函数是唯一拼装点，保证空值/空单位时只显示数字、不落多余的
 /// 空格。排序侧由 MasterDataTableView 的数值容错解析兜底 (会剥掉这里的单位
 /// 后缀按数字排序)，页面不必各写一套。
-String formatQtyWithUnit(
-  num? value,
-  String? unit, {
-  int maxDecimals = 3,
-}) {
+String formatQtyWithUnit(num? value, String? unit, {int maxDecimals = 3}) {
   final number = formatQty(value, maxDecimals: maxDecimals);
   if (number.isEmpty) return '';
   final suffix = unit?.trim() ?? '';

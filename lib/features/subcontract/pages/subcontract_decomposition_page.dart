@@ -1664,8 +1664,10 @@ class _SubcontractDecompositionPageState
     // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
     value: (row) => switch (row) {
       SubcontractApplicationRow() => '—',
-      SubcontractPendingDrawRow(:final row) =>
-        formatQtyWithUnit(qty(row), row.unitName),
+      SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+        qty(row),
+        row.unitName,
+      ),
     },
   );
 

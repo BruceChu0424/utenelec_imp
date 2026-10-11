@@ -865,9 +865,8 @@ class _FinanceProcurementApprovalTasksPageState
       label: '明细行数',
       width: 84,
       type: 'count',
-      value: (task) => (task.lineCount ?? 0) > 0
-          ? task.lineCount.toString()
-          : '—',
+      value: (task) =>
+          (task.lineCount ?? 0) > 0 ? task.lineCount.toString() : '—',
     ),
     MasterColumnDef(
       key: 'tolerance',

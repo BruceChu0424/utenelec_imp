@@ -329,8 +329,7 @@ void main() {
     // 口径钉在列头说明(ADR-144)。
     expect(find.text('5.25 个(含允许超收 5%)'), findsOneWidget);
     expect(
-      grid
-          .columns
+      grid.columns
           .where((column) => column.key == 'maxReceivableQty')
           .single
           .headerInfo,

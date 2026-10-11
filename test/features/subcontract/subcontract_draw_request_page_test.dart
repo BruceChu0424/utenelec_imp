@@ -173,7 +173,10 @@ void main() {
       // 共 100 套物料A：item-1 先占 40，item-2 只剩 60。
       // 2026-10-10 口径：页面只有「本次出仓物料」表，数量按默认全量提交、
       // 单位内联在数量后(无任务表、无独立单位列)。
-      expect(find.byKey(const Key('subcontract-draw-request-tasks')), findsNothing);
+      expect(
+        find.byKey(const Key('subcontract-draw-request-tasks')),
+        findsNothing,
+      );
       expect(find.text('2 个委外任务 · 2 种物料 · 预计 2 张出仓单'), findsOneWidget);
       expect(find.text('领料仓库'), findsOneWidget);
       expect(find.text('本次领料数量'), findsOneWidget);

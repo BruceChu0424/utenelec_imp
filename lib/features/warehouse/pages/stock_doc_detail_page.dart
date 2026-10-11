@@ -1437,10 +1437,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         kgOf(it),
         estimated: estimatedOf?.call(it) ?? false,
       ),
-      cellBuilder: (context, it) => WeightText(
-        kg: kgOf(it),
-        estimated: estimatedOf?.call(it) ?? false,
-      ),
+      cellBuilder: (context, it) =>
+          WeightText(kg: kgOf(it), estimated: estimatedOf?.call(it) ?? false),
     );
 
     return MasterDataTableView<StockDocItem>(
@@ -1511,22 +1509,16 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             label: '实盘数量',
             width: 125,
             type: 'number',
-            value: (it) => formatQtyWithUnit(
-              it.countQty,
-              unitOf(it),
-              maxDecimals: 1,
-            ),
+            value: (it) =>
+                formatQtyWithUnit(it.countQty, unitOf(it), maxDecimals: 1),
           ),
           MasterColumnDef(
             key: 'surplusQty',
             label: '盈亏',
             width: 125,
             type: 'number',
-            value: (it) => formatQtyWithUnit(
-              it.surplusQty,
-              unitOf(it),
-              maxDecimals: 1,
-            ),
+            value: (it) =>
+                formatQtyWithUnit(it.surplusQty, unitOf(it), maxDecimals: 1),
           ),
           // 盘点重量 (ADR-135 §3.4): 账面重量 = 保存时的库存重量快照, 实盘重量选填。
           weightDisplay('bookWeight', '账面重量', (it) => it.bookWeight),
@@ -1548,11 +1540,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             label: detail.status == 1 ? '仓库实收' : '待点收',
             width: 135,
             type: 'number',
-            value: (it) => formatQtyWithUnit(
-              it.qty ?? 0,
-              unitOf(it),
-              maxDecimals: 2,
-            ),
+            value: (it) =>
+                formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2),
           ),
           weightDisplay('weight', '重量', (it) => it.weight),
         ] else ...[
@@ -1561,11 +1550,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             label: '数量',
             width: 125,
             type: 'number',
-            value: (it) => formatQtyWithUnit(
-              it.qty ?? 0,
-              unitOf(it),
-              maxDecimals: 2,
-            ),
+            value: (it) =>
+                formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2),
           ),
           if (capturing) ...[
             // 生产退料收仓 (ADR-135 §3.9): 登记数量只读, 逐行录实称重量, 随收仓确认提交。

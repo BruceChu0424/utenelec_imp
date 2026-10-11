@@ -201,11 +201,11 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'readyKindCount': row.readyKindCount,
       'shortKindCount': row.shortKindCount,
       'unplannedShortKindCount': row.unplannedShortKindCount,
-  'status': row.status.wireName,
-  'deliverDate': row.deliverDate,
-  'canDraw': row.canDraw,
-  'planNo': ?row.planNo,
-};
+      'status': row.status.wireName,
+      'deliverDate': row.deliverDate,
+      'canDraw': row.canDraw,
+      'planNo': ?row.planNo,
+    };
 
 /// 预览任务行。
 Map<String, dynamic> previewTaskJson(

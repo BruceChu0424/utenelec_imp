@@ -136,7 +136,10 @@ class UtenRevisionTable<T> extends StatelessWidget {
   /// 用可复制纯值），个别列需要交互控件（如订货审批的汇率编辑格）时经此注入。
   /// 命中的列不再套红字/highlight 替换，样式由调用方自带；[MasterColumnDef.value]
   /// 仍是排序/列宽/无障碍的真值。
-  final Map<String, Widget Function(BuildContext context, UtenRevisionRow<T> row)>?
+  final Map<
+    String,
+    Widget Function(BuildContext context, UtenRevisionRow<T> row)
+  >?
   cellBuilders;
 
   /// 多选（2026-10-10 审核页防看岔行口径）：与 MasterDataTableView 同一套
@@ -231,9 +234,8 @@ class UtenRevisionTable<T> extends StatelessWidget {
       singleSelection: singleSelection,
       idOf: idOf == null
           ? null
-          : (row) => row.kind == UtenRevisionKind.removed
-                ? null
-                : idOf!(row.value),
+          : (row) =>
+                row.kind == UtenRevisionKind.removed ? null : idOf!(row.value),
       selectedIds: selectedIds,
       onSelectedIdsChanged: onSelectedIdsChanged,
       showSelectionSummary: showSelectionSummary,
@@ -265,7 +267,8 @@ class UtenRevisionTable<T> extends StatelessWidget {
                 ? null
                 : (row) => column.exactValueOf!(row.value),
             value: (row) => column.value(row.value),
-            cellBuilder: cellBuilders != null && cellBuilders!.containsKey(column.key)
+            cellBuilder:
+                cellBuilders != null && cellBuilders!.containsKey(column.key)
                 ? (cellContext, row) =>
                       cellBuilders![column.key]!(cellContext, row)
                 : (cellContext, row) => Text(
@@ -278,7 +281,7 @@ class UtenRevisionTable<T> extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style:
                         row.kind == UtenRevisionKind.added &&
-                        row.changedKeys.contains(column.key)
+                            row.changedKeys.contains(column.key)
                         ? TextStyle(
                             color: utenRevisionForeground(
                               cellContext,

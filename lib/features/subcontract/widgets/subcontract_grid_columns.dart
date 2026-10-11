@@ -412,6 +412,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
     final name = unitEntries[id]?.trim();
     return name == null || name.isEmpty ? id : name;
   }
+
   // 货品身份列的颜色名（2026-09-14 口径）：行模型只透传 colorId，这里按需解析。
   // 延迟到取值/渲染时才读字典容器——列定义本身不碰 Provider，裸 MaterialApp
   // 构列的列序契约测试不受影响。未维护颜色返回 null（身份格自然省略，不占位）。
@@ -562,7 +563,11 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           // 单位内联在数量输入框后（2026-10-10 口径，替代原独立单位列）。
           decoration: UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0', suffixText: unitSuffixOf(row)),
+            InputDecoration(
+              isDense: true,
+              hintText: '0',
+              suffixText: unitSuffixOf(row),
+            ),
           ),
         ),
       ),
@@ -687,7 +692,11 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           // 单位内联在数量输入框后（2026-10-10 口径）。
           decoration: UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0', suffixText: unitSuffixOf(row)),
+            InputDecoration(
+              isDense: true,
+              hintText: '0',
+              suffixText: unitSuffixOf(row),
+            ),
           ),
         ),
       ),
@@ -701,7 +710,11 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
           controller: row.endingQty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0', suffixText: unitSuffixOf(row)),
+            InputDecoration(
+              isDense: true,
+              hintText: '0',
+              suffixText: unitSuffixOf(row),
+            ),
           ),
         ),
       ),

@@ -245,15 +245,7 @@ void main() {
       expect(find.text(label), findsNothing, reason: '「$label」列应已退役');
     }
     // 保留列还在（表头按 label 找）——「单位」列 2026-10-10 起并入数量列内联。
-    for (final label in [
-      '编号',
-      '规格',
-      '颜色',
-      '来源',
-      '计量方式',
-      '设计使用数量',
-      '真实使用数量',
-    ]) {
+    for (final label in ['编号', '规格', '颜色', '来源', '计量方式', '设计使用数量', '真实使用数量']) {
       expect(find.text(label), findsOneWidget, reason: '「$label」列应保留');
     }
     expect(find.text('数量'), findsNothing, reason: '「数量」已改名「设计使用数量」');

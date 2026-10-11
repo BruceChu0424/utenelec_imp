@@ -914,10 +914,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
         numeric: true,
         exactValueOf: (row) => row.item.amountWriteOffOriginalText,
         cellBuilder: (context, row) => Text(
-          _moneyWithRowCurrency(
-            row,
-            _fmt(row.item.amountWriteOffOriginal),
-          ),
+          _moneyWithRowCurrency(row, _fmt(row.item.amountWriteOffOriginal)),
         ),
       ),
     if (_isAr)
@@ -943,10 +940,7 @@ class _ArApPickerSheetState extends ConsumerState<_ArApPickerSheet> {
       cellBuilder: (context, row) => Text(
         row.item.amountBalanceOriginal == null
             ? '待财务核验'
-            : _moneyWithRowCurrency(
-                row,
-                _fmt(row.item.amountBalanceOriginal),
-              ),
+            : _moneyWithRowCurrency(row, _fmt(row.item.amountBalanceOriginal)),
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
     ),

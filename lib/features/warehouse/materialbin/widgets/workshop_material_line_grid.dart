@@ -321,8 +321,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
             decoration: InputDecoration(
               isDense: true,
               hintText: '0',
-              suffixText:
-                  material?.unitName ?? row.requisitionLine?.unitName,
+              suffixText: material?.unitName ?? row.requisitionLine?.unitName,
             ),
             onChanged: (text) {
               for (final target in targets(row)) {

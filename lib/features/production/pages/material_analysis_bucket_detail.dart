@@ -959,8 +959,7 @@ class _MaterialAnalysisBucketPageState
       enabled: !_actionsLocked && _supplyGroupsForRow(row).isNotEmpty,
       onTap: () => _openSupplyDetails(row),
     ),
-    if (row.group != null &&
-        _host._canClaimMaterialSharedFuture(row.group!))
+    if (row.group != null && _host._canClaimMaterialSharedFuture(row.group!))
       UtenMenuItem(
         label: '采用公共在途',
         icon: Icons.call_received_rounded,

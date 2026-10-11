@@ -144,42 +144,45 @@ void main() {
 
   // 2026-10-10 财务订货审批口径：通过请求体带可选 exchangeRate（>0 才进请求体，
   // 驳回不带）——汇率落在本笔审批 case 上（V438 迁移冻结期间订单头汇率禁改）。
-  test('batch approve carries the finance exchange rate when provided', () async {
-    final requests = <RequestOptions>[];
-    final repository = DioFinanceProcurementWorkflowRepository(
-      _api((request) {
-        requests.add(request);
-        return <String, dynamic>{};
-      }),
-    );
+  test(
+    'batch approve carries the finance exchange rate when provided',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = DioFinanceProcurementWorkflowRepository(
+        _api((request) {
+          requests.add(request);
+          return <String, dynamic>{};
+        }),
+      );
 
-    await repository.approveOrdersBatch(const [
-      FinanceProcurementDecisionItem(caseId: 'case-9', expectedVersion: 9),
-    ], exchangeRate: 6.5);
-    await repository.approveOrdersBatch(const [
-      FinanceProcurementDecisionItem(caseId: 'case-10', expectedVersion: 10),
-    ], exchangeRate: 0);
-    await repository.rejectOrdersBatch(const [
-      FinanceProcurementDecisionItem(caseId: 'case-11', expectedVersion: 11),
-    ], '原因');
+      await repository.approveOrdersBatch(const [
+        FinanceProcurementDecisionItem(caseId: 'case-9', expectedVersion: 9),
+      ], exchangeRate: 6.5);
+      await repository.approveOrdersBatch(const [
+        FinanceProcurementDecisionItem(caseId: 'case-10', expectedVersion: 10),
+      ], exchangeRate: 0);
+      await repository.rejectOrdersBatch(const [
+        FinanceProcurementDecisionItem(caseId: 'case-11', expectedVersion: 11),
+      ], '原因');
 
-    expect(requests[0].data, {
-      'items': [
-        {'caseId': 'case-9', 'expectedVersion': 9},
-      ],
-      'exchangeRate': 6.5,
-    });
-    expect(requests[1].data, {
-      'items': [
-        {'caseId': 'case-10', 'expectedVersion': 10},
-      ],
-    }, reason: '非正数汇率不进请求体（服务端按缺省处理）');
-    expect(
-      (requests[2].data as Map<String, dynamic>).containsKey('exchangeRate'),
-      isFalse,
-      reason: '驳回不落汇率',
-    );
-  });
+      expect(requests[0].data, {
+        'items': [
+          {'caseId': 'case-9', 'expectedVersion': 9},
+        ],
+        'exchangeRate': 6.5,
+      });
+      expect(requests[1].data, {
+        'items': [
+          {'caseId': 'case-10', 'expectedVersion': 10},
+        ],
+      }, reason: '非正数汇率不进请求体（服务端按缺省处理）');
+      expect(
+        (requests[2].data as Map<String, dynamic>).containsKey('exchangeRate'),
+        isFalse,
+        reason: '驳回不落汇率',
+      );
+    },
+  );
 
   test('unknown task type remains fail closed', () {
     final task = FinanceProcurementApprovalTask.fromJson(const {

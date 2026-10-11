@@ -351,9 +351,7 @@ class DioProcurementInspectionRepository
     await api.post(
       ApiEndpoints.procurementInspectionDecideReport,
       body: {
-        'receipts': [
-          for (final receipt in receipts) receipt.toJson(),
-        ],
+        'receipts': [for (final receipt in receipts) receipt.toJson()],
         if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
       },
     );

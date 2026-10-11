@@ -58,10 +58,7 @@ void main() {
     expect(usd.currencyName, '美金');
     expect(usd.originalAmountLabel(usd.failedAmountOriginal), '10.00 美金');
     expect(usd.localAmountLabel(usd.failedAmountLocal), '72.10');
-    expect(
-      unnamed.originalAmountLabel(unnamed.failedAmountOriginal),
-      '125.50',
-    );
+    expect(unnamed.originalAmountLabel(unnamed.failedAmountOriginal), '125.50');
   });
 
   test(

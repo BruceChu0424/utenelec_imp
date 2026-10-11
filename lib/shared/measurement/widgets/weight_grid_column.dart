@@ -713,10 +713,7 @@ class _WeightCellState<T extends EditableGridRow>
     // 结构恒定：空闲时也包一层 Tooltip(给固定短提示)。若按 message 有无切换
     // Tooltip 包裹，首个字符击键就会让 TextField 元素被废弃重建、光标丢失
     // (用户得再点一次才能继续输)；恒定结构下只有文本在变。
-    return Tooltip(
-      message: message ?? weightCellIdleTooltip,
-      child: content,
-    );
+    return Tooltip(message: message ?? weightCellIdleTooltip, child: content);
   }
 
   String _placeholder(WeightParams? params, double? qtyBase) {

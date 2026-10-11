@@ -356,11 +356,15 @@ class StockCountInlineCell extends StatelessWidget {
         if (weight && row.snapshot.weightExact) {
           return Align(
             alignment: Alignment.centerLeft,
-            child: Text('${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）'),
+            child: Text(
+              '${financeExactTrimmed(row.targetWeightKg) ?? '—'}（自动）',
+            ),
           );
         }
         final typed = (weight ? row.weight.text : row.qty.text).trim();
-        final fallback = weight ? (row.snapshot.weightKg ?? '未称') : row.snapshot.qty;
+        final fallback = weight
+            ? (row.snapshot.weightKg ?? '未称')
+            : row.snapshot.qty;
         return Align(
           alignment: Alignment.centerLeft,
           child: Text(typed.isEmpty ? fallback : typed),
@@ -505,8 +509,10 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('本次送审 ${controller.changedCount} 项实盘变化，送审后保留在本页等待审核，'
-              '审核通过前正式库存不变。'),
+          Text(
+            '本次送审 ${controller.changedCount} 项实盘变化，送审后保留在本页等待审核，'
+            '审核通过前正式库存不变。',
+          ),
           const SizedBox(height: UtenSpacing.s12),
           TextField(
             key: const Key('stock-count-reason'),
@@ -530,7 +536,9 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
       // 送审成功后 controller 进入「待审核」展示态(行保留为只读回执)，不再清空。
       final request = await controller.submit();
       if (!mounted) return;
-      context.appSuccess('盘点 ${request.requestNo} 已送${warehouse.reviewerLabel}审核，正式库存尚未改变');
+      context.appSuccess(
+        '盘点 ${request.requestNo} 已送${warehouse.reviewerLabel}审核，正式库存尚未改变',
+      );
       refreshBadgesIn(ProviderScope.containerOf(context));
       await widget.onSubmitted();
     } catch (error) {
@@ -605,7 +613,9 @@ class _StockCountModeToolbarState extends ConsumerState<StockCountModeToolbar> {
       UtenButton(
         key: const Key('stock-count-save'),
         size: UtenButtonSize.large,
-        onPressed: controller.busy || controller.changedCount == 0 ? null : _save,
+        onPressed: controller.busy || controller.changedCount == 0
+            ? null
+            : _save,
         child: const Text('保存并送审'),
       ),
     ];

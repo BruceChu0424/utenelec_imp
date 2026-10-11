@@ -347,9 +347,8 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
     required bool canRelearn,
   }) {
     /// 服务端没给的数(没有可用数据等)显示「—」；单位内联（2026-10-10 口径）。
-    String qtyOrDash(double? value, String? unit) => value == null
-        ? '—'
-        : formatQtyWithUnit(value, unit, maxDecimals: 6);
+    String qtyOrDash(double? value, String? unit) =>
+        value == null ? '—' : formatQtyWithUnit(value, unit, maxDecimals: 6);
 
     /// 服务端已按状态给好：BOM 外/已删除的料是每个父件的平均用量，
     /// 没有可用数据(含父件单位变了)为空。
@@ -463,22 +462,16 @@ class _GoodsBomLearningPanelState extends ConsumerState<GoodsBomLearningPanel> {
         label: l10n.bomLearningExposure,
         width: 125,
         type: 'number',
-        value: (row) => formatQtyWithUnit(
-          row.actual.outputQty,
-          outputUnit,
-          maxDecimals: 6,
-        ),
+        value: (row) =>
+            formatQtyWithUnit(row.actual.outputQty, outputUnit, maxDecimals: 6),
       ),
       MasterColumnDef(
         key: 'defectQty',
         label: l10n.bomLearningDefect,
         width: 115,
         type: 'number',
-        value: (row) => formatQtyWithUnit(
-          row.actual.defectQty,
-          outputUnit,
-          maxDecimals: 6,
-        ),
+        value: (row) =>
+            formatQtyWithUnit(row.actual.defectQty, outputUnit, maxDecimals: 6),
       ),
       MasterColumnDef(
         key: 'defectRate',

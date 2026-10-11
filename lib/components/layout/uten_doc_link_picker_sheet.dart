@@ -806,10 +806,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       numeric: true,
       cellBuilder: (context, row) {
         final text = formatLinkQuantity(_cfg.remainQty(row.item));
-        final unit = _cfg.unitName(
-          names,
-          _cfg.itemFields.unitId(row.item),
-        ).trim();
+        final unit = _cfg
+            .unitName(names, _cfg.itemFields.unitId(row.item))
+            .trim();
         return Text(unit.isEmpty ? text : '$text $unit');
       },
     ),

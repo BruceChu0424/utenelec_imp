@@ -6943,10 +6943,7 @@ void main() {
       expect(find.textContaining('从其他计划已入库中调入（0 个来源）'), findsOneWidget);
       // 2026-10-10 口径：调拨弹窗不再有「从公共在途中调入」按钮（公共在途在
       // 可用数量里，下单自动认领；手动采用走独立菜单项）。
-      expect(
-        find.byKey(const Key('transfer-launcher-claim')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('transfer-launcher-claim')), findsNothing);
       await tester.tap(find.byKey(const Key('transfer-launcher-future')));
       await tester.pumpAndSettle();
       expect(

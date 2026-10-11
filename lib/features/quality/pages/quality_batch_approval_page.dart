@@ -88,9 +88,7 @@ class _FqcSheetGroup {
 class _EditableIqcRow {
   _EditableIqcRow(this.item)
     : totalBaseQty = item.remainingBaseQty ?? 0,
-      pass = UtenAutofillTextController(
-        text: _fmt(item.remainingBaseQty ?? 0),
-      ),
+      pass = UtenAutofillTextController(text: _fmt(item.remainingBaseQty ?? 0)),
       fail = UtenAutofillTextController(text: '0') {
     // 2026-10-10 用户口径「改合格自动算不合格」：合格/不合格互补联动——改一边，
     // 另一边仍是程序值（autofilled）或空时回写「剩余待检 − 它」（max 0，黄框
@@ -813,11 +811,7 @@ class _QualityBatchApprovalPageState
       // 本机检查点或回执校验的原因如实给人看(ADR-151 §2); 真正未知才提示核对原报告。
       final reason = describeFormSaveError(error);
       if (mounted && requestScope?.isCurrent != false) {
-        context.appError(
-          reason == null
-              ? '检验报告提交未确认，请重试原报告'
-              : '检验报告：$reason',
-        );
+        context.appError(reason == null ? '检验报告提交未确认，请重试原报告' : '检验报告：$reason');
       }
     } finally {
       invalidateCounts();
@@ -985,12 +979,9 @@ class _QualityBatchApprovalPageState
       listenable: Listenable.merge([row.pass, row.fail]),
       builder: (context, _) => Semantics(
         textField: true,
-        label:
-            '${row.item.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
+        label: '${row.item.goodsName ?? '明细'} ${passed ? '合格数量' : '不合格数量'}',
         child: TextField(
-          key: Key(
-            'batch-approval-${passed ? 'pass' : 'fail'}-${row.item.id}',
-          ),
+          key: Key('batch-approval-${passed ? 'pass' : 'fail'}-${row.item.id}'),
           controller: passed ? row.pass : row.fail,
           enabled: row.selected && !row.completed && _submission == null,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1168,7 +1159,8 @@ class _QualityBatchApprovalPageState
           key: 'source',
           label: '来源单据',
           width: 60,
-          value: (row) => row.iqc?.item.sourceOrderNo ?? row.fqc?.reportNo ?? '—',
+          value: (row) =>
+              row.iqc?.item.sourceOrderNo ?? row.fqc?.reportNo ?? '—',
         ),
         if (hasFqcRow)
           MasterColumnDef(

@@ -1402,12 +1402,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                   value: (it) =>
                       widget.docType == PurchaseDocType.order &&
                           it.totalAmountInputText != null
-                      ? '${financeMoneyWithUnitSuffix(
-                          financeExactTrimmed(
-                            it.priceText ?? it.price?.toString(),
-                          ),
-                          currencyName: docCurrencyName,
-                        )}（参考）'
+                      ? '${financeMoneyWithUnitSuffix(financeExactTrimmed(it.priceText ?? it.price?.toString()), currencyName: docCurrencyName)}（参考）'
                       : _historicalReceipt
                       ? financeMoneyWithUnitSuffix(
                           historicalReceiptAmount(it.priceText),

@@ -1031,7 +1031,8 @@ class _FinanceSalesOrderReviewPageState
             label: l10n.quoteFinanceOrderColQuotePrice,
             width: 130,
             type: 'money',
-            value: (it) => financeLocalMoneyWithUnitSuffix(_trimNum(it.quotePrice)),
+            value: (it) =>
+                financeLocalMoneyWithUnitSuffix(_trimNum(it.quotePrice)),
           ),
           MasterColumnDef(
             key: 'quoteDiscount',

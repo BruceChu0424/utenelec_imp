@@ -1032,9 +1032,5 @@ class _BatchApi extends ApiClient {
 /// 服务端「到货来源歧义」409(ProcurementArrivalControlService 数据库守卫原文)。
 class _ArrivalSourceAmbiguityError extends ApiException {
   _ArrivalSourceAmbiguityError()
-    : super(
-        'CONFLICT',
-        '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源',
-        httpStatus: 409,
-      );
+    : super('CONFLICT', '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源', httpStatus: 409);
 }

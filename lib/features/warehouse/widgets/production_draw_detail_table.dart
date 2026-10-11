@@ -515,7 +515,11 @@ class ProductionDrawDetailTable extends StatelessWidget {
           width: 140,
           type: 'number',
           value: (row) => row.isMergedGroup
-              ? _mergedQty(row.group!, (item) => item.remainingQty, _unitOf(row))
+              ? _mergedQty(
+                  row.group!,
+                  (item) => item.remainingQty,
+                  _unitOf(row),
+                )
               : row.discovery == null
               ? formatQtyWithUnit(
                   row.item!.remainingQty,

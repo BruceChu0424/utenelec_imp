@@ -809,7 +809,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
               )
             : it.totalLocal == null
             ? null
-            : financeLocalMoneyWithUnitSuffix(it.totalLocal!.toStringAsFixed(2)),
+            : financeLocalMoneyWithUnitSuffix(
+                it.totalLocal!.toStringAsFixed(2),
+              ),
       ),
       // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
       if (_cfg.hasDeliverDate)

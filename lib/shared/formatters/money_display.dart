@@ -49,7 +49,9 @@ String financeMoneyWithUnitSuffix(
   if (text == null || text.isEmpty) return '—';
   if (financeExactDecimal(text) == null) return text;
   final unit = _currencyUnitSuffix(currencyName, currencyCode);
-  return unit == null ? financeMoneyText(text) : '${financeMoneyText(text)} $unit';
+  return unit == null
+      ? financeMoneyText(text)
+      : '${financeMoneyText(text)} $unit';
 }
 
 /// 本位币金额的「金额 元」后缀(折合人民币列/合计等已知恒为本币的场合)。

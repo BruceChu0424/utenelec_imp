@@ -601,7 +601,8 @@ class _SubcontractOrderProgressSectionState
                 label: '已退',
                 width: 110,
                 type: 'number',
-                value: (row) => formatQtyWithUnit(row.returnedQty, row.unitName),
+                value: (row) =>
+                    formatQtyWithUnit(row.returnedQty, row.unitName),
               ),
               MasterColumnDef(
                 key: 'wastedQty',

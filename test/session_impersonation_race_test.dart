@@ -140,7 +140,10 @@ void main() {
         '_utenAuthSessionLineage': auth.sessionLineage,
       });
       await pumpEventQueue();
-      expect(identical(fixture.container.read(sessionProvider), before), isTrue);
+      expect(
+        identical(fixture.container.read(sessionProvider), before),
+        isTrue,
+      );
       expect(notifications, 0);
       subscription.close();
     },

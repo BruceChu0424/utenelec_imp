@@ -217,8 +217,7 @@ void main() {
         ),
       );
       expect(requests, ['Bearer initial-access']);
-      expect(batch.completedReceiptCount, 0,
-          reason: '命令响应期换身份：确认集不写入，FQC 不再发');
+      expect(batch.completedReceiptCount, 0, reason: '命令响应期换身份：确认集不写入，FQC 不再发');
       expect(batch.complete, isFalse);
     },
   );
@@ -274,10 +273,7 @@ void main() {
         );
       },
     );
-    expect(headers, [
-      'Bearer initial-access',
-      'Bearer refreshed-access',
-    ]);
+    expect(headers, ['Bearer initial-access', 'Bearer refreshed-access']);
     expect(batch.complete, isTrue);
   });
 
@@ -389,11 +385,7 @@ void main() {
           _send(_batch(), api),
           _throwsBoundary(switchSession ? 'SESSION_CHANGED' : 'CONFLICT'),
         );
-        expect(
-          calls,
-          1,
-          reason: '整批原子提交：decide-report 失败即止，不再补发其它命令',
-        );
+        expect(calls, 1, reason: '整批原子提交：decide-report 失败即止，不再补发其它命令');
       }
     },
   );

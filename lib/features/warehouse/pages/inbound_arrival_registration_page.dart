@@ -888,7 +888,8 @@ class _InboundArrivalRegistrationPageState
           await _registerOnce(route, submitLines);
           return;
         } on ApiException catch (error) {
-          final ambiguous = _isArrivalSourceAmbiguityRejected(error) &&
+          final ambiguous =
+              _isArrivalSourceAmbiguityRejected(error) &&
               // 已明确过来源仍报同错 = 不是来源歧义的问题，走通用失败口径。
               submitLines.any(
                 (line) => line.source == WarehouseArrivalSource.automatic,
@@ -1266,22 +1267,22 @@ class _InboundArrivalRegistrationPageState
                     listenable: _weightCache,
                     builder: (context, _) =>
                         inboundTotalsBar<_BatchArrivalLine>(
-                      key: const Key('warehouse-arrival-totals'),
-                      lines: _lines,
-                      qtyLabel: '本次实收',
-                      qtyOf: (line) =>
-                          double.tryParse(line.qty.text.trim()) ?? 0,
-                      unitIdOf: (line) => line.item.unitId,
-                      unitNameOf: (line) => line.item.unitName,
-                      weight: warehouseWeightTotals<_BatchArrivalLine>(
-                        _lines,
-                        weightOf: (line) => line.weight,
-                        exactKgOf: _exactKg,
-                        paramsOf: _paramsOf,
-                        qtyBaseOf: (line) => line.qtyBase,
-                      ),
-                      weightDisplay: weightUnits.display,
-                    ),
+                          key: const Key('warehouse-arrival-totals'),
+                          lines: _lines,
+                          qtyLabel: '本次实收',
+                          qtyOf: (line) =>
+                              double.tryParse(line.qty.text.trim()) ?? 0,
+                          unitIdOf: (line) => line.item.unitId,
+                          unitNameOf: (line) => line.item.unitName,
+                          weight: warehouseWeightTotals<_BatchArrivalLine>(
+                            _lines,
+                            weightOf: (line) => line.weight,
+                            exactKgOf: _exactKg,
+                            paramsOf: _paramsOf,
+                            qtyBaseOf: (line) => line.qtyBase,
+                          ),
+                          weightDisplay: weightUnits.display,
+                        ),
                   ),
                 ],
               ),

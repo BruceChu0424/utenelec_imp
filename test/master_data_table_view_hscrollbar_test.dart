@@ -277,11 +277,7 @@ void main() {
   testWidgets('空表（流内路径）：不渲染横向滚动条，来数据后恢复', (tester) async {
     await tester.pumpWidget(_wrap(_table(const [])));
     await tester.pumpAndSettle();
-    expect(
-      find.byType(Scrollbar),
-      findsNothing,
-      reason: '空表不包流内 Scrollbar',
-    );
+    expect(find.byType(Scrollbar), findsNothing, reason: '空表不包流内 Scrollbar');
 
     await tester.pumpWidget(_wrap(_table(const [_Row('a')])));
     await tester.pumpAndSettle();

@@ -45,9 +45,8 @@ void main() {
       ],
     );
     addTearDown(container.dispose);
-    final notifier = container.read(
-      sessionProvider.notifier,
-    ) as _SwappableSessionNotifier;
+    final notifier =
+        container.read(sessionProvider.notifier) as _SwappableSessionNotifier;
     await pumpEventQueue();
     expect(container.read(sessionProvider).user?.id, 'finance-reviewer');
 

@@ -135,10 +135,8 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           label: l10n.warehouseStockOutboundQuantity,
           width: 145,
           type: 'number',
-          value: (r) => _quantityWithUnit(
-            r.item.qty,
-            names.unit(r.item.unitId),
-          ),
+          value: (r) =>
+              _quantityWithUnit(r.item.qty, names.unit(r.item.unitId)),
         ),
         // 单据行重量 (千克) 按用户显示单位带单位显示; 没称「未称」, 不显示成 0。
         MasterColumnDef(
@@ -147,8 +145,7 @@ class WarehouseStockOutboundDetailTable extends StatelessWidget {
           width: 110,
           type: 'number',
           value: (r) => formatWeightValue(r.item.weight),
-          cellBuilder: (context, r) =>
-              WeightText(kg: r.item.weight),
+          cellBuilder: (context, r) => WeightText(kg: r.item.weight),
         ),
         MasterColumnDef(
           key: 'source',

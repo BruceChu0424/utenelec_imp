@@ -41,21 +41,22 @@ void main() {
     },
   );
 
-  testWidgets('disposing an in-flight batch stops after the single report command', (
-    tester,
-  ) async {
-    final reply = Completer<void>();
-    final iqc = _Iqc(decide: () => reply.future);
-    await _pump(tester, iqc, 2);
-    await _confirm(tester);
-    await tester.pump();
-    expect(iqc.sent, hasLength(1));
-    await tester.pumpWidget(const SizedBox());
-    reply.complete();
-    await tester.pumpAndSettle();
-    expect(iqc.sent, hasLength(1));
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'disposing an in-flight batch stops after the single report command',
+    (tester) async {
+      final reply = Completer<void>();
+      final iqc = _Iqc(decide: () => reply.future);
+      await _pump(tester, iqc, 2);
+      await _confirm(tester);
+      await tester.pump();
+      expect(iqc.sent, hasLength(1));
+      await tester.pumpWidget(const SizedBox());
+      reply.complete();
+      await tester.pumpAndSettle();
+      expect(iqc.sent, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('changing server and returning does not revive the old batch', (
     tester,
@@ -355,8 +356,7 @@ void main() {
         'receipt-1+receipt-2',
         'receipt-1+receipt-2',
       ]);
-      expect(iqc.sent.last.$2, frozen,
-          reason: '重试发同一个整份报告体，服务端静默重放');
+      expect(iqc.sent.last.$2, frozen, reason: '重试发同一个整份报告体，服务端静默重放');
       expect(
         find.byKey(const Key('open-approval')),
         findsOneWidget,
@@ -602,7 +602,9 @@ class _Iqc extends Fake implements ProcurementInspectionRepository {
       receipts.map((receipt) => receipt.receiptId).join('+'),
       (jsonDecode(
                 jsonEncode({
-                  'receipts': [for (final receipt in receipts) receipt.toJson()],
+                  'receipts': [
+                    for (final receipt in receipts) receipt.toJson(),
+                  ],
                   'reason': reason,
                 }),
               )

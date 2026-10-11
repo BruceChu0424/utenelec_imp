@@ -531,9 +531,8 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     numeric: true,
     textOf: (line) => formatQtyWithUnit(valueOf(line), _unitSuffix(line)),
     exactValueOf: (line) => valueOf(line)?.toString(),
-    cellBuilder: (context, line) => Text(
-      formatQtyWithUnit(valueOf(line), _unitSuffix(line)),
-    ),
+    cellBuilder: (context, line) =>
+        Text(formatQtyWithUnit(valueOf(line), _unitSuffix(line))),
   );
 
   /// 「本次实收」录入列(必填、大于 0；空或非正数红框)：行单位内联在输入框尾部
@@ -564,9 +563,7 @@ class InboundGridColumns<T extends InboundRegistrationLine> {
     cellBuilder: (context, line) {
       final controller = controllerOf(line);
       if (controller == null) {
-        return Text(
-          readOnlyTextOf?.call(line) ?? '—',
-        );
+        return Text(readOnlyTextOf?.call(line) ?? '—');
       }
       return RequiredCellFrame(
         listenable: controller,

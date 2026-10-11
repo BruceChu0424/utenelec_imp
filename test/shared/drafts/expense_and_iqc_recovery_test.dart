@@ -304,7 +304,8 @@ void main() {
               as Map<String, dynamic>;
       final rejectedItems =
           ((iqc.sent.single['receipts'] as List<dynamic>).single
-              as Map<String, dynamic>)['items'] as List<dynamic>;
+                  as Map<String, dynamic>)['items']
+              as List<dynamic>;
       expect(
         restoredRow['key'],
         isNot((rejectedItems.single as Map<String, dynamic>)['idempotencyKey']),
@@ -503,7 +504,9 @@ class _Iqc extends DioProcurementInspectionRepository {
                   {
                     'receiptType': receipt.receiptType,
                     'receiptId': receipt.receiptId,
-                    'items': receipt.items.map((item) => item.toJson()).toList(),
+                    'items': receipt.items
+                        .map((item) => item.toJson())
+                        .toList(),
                   },
               ],
               'reason': reason,

@@ -165,10 +165,11 @@ void main() {
       permissions: const {Perm.employeeView, Perm.employeePiiEdit},
     );
 
-    int badgeCount(String type) =>
-        tester.widget<UtenNotificationBadge>(
+    int badgeCount(String type) => tester
+        .widget<UtenNotificationBadge>(
           find.byKey(ValueKey('hr-workbench-entry-count-$type')),
-        ).count;
+        )
+        .count;
     // 红数 = 今天要办的事：转正=逾期1+今日1(临近3不计)、生日=今日1(30天内12不计)、
     // 周年=今日1、新入职=近30天全量(无「临近」概念，维持原样)。
     expect(badgeCount('confirm'), 2, reason: '临近转正不进红数');

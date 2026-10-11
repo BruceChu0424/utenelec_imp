@@ -340,7 +340,9 @@ class _SubcontractOutboundDetailTableState
       // 2026-10-10 数量+单位口径：只读数量列内联行单位(如 `12 PCS`)，独立单位列已删。
       (row) {
         final quantity = value(row);
-        return quantity == null ? '—' : formatQtyWithUnit(quantity, row.draft.line.unitName);
+        return quantity == null
+            ? '—'
+            : formatQtyWithUnit(quantity, row.draft.line.unitName);
       },
       numeric: true,
       info: info,

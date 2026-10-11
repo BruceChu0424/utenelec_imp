@@ -159,9 +159,9 @@ void main() {
     expect(columnKeys.contains('action'), isFalse);
     final first = table.items.first;
     expect(
-      table.columns.singleWhere((column) => column.key == 'actionDocNo').value(
-            first,
-          ),
+      table.columns
+          .singleWhere((column) => column.key == 'actionDocNo')
+          .value(first),
       'PR-request-1',
     );
     // 仓库列（2026-10-10）：测试环境没有主档字典（api 未注入、预热静默失败），

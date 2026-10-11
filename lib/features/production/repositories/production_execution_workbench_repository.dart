@@ -236,7 +236,8 @@ class WorkshopTaskCountBreakdown {
           other.reportInspection == reportInspection;
 
   @override
-  int get hashCode => Object.hash(count, preparing, inProgress, reportInspection);
+  int get hashCode =>
+      Object.hash(count, preparing, inProgress, reportInspection);
 }
 
 final productionExecutionWorkbenchRepositoryProvider =

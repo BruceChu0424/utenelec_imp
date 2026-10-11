@@ -972,9 +972,7 @@ void main() {
     expect(api.arrivalPostBodies, hasLength(3));
     // 丢响应的那次(先补退货)与原动作重试同 key；首次(自动来源)因内容不同是另一个 key。
     expect(
-      api.arrivalPostBodies
-          .map((body) => body['idempotencyKey'])
-          .toSet(),
+      api.arrivalPostBodies.map((body) => body['idempotencyKey']).toSet(),
       {automaticKey, firstKey},
     );
     final items = api.lastPostBody?['lines'] as List?;
@@ -1417,9 +1415,5 @@ class _FakeApi extends ApiClient {
 /// 服务端「到货来源歧义」409(ProcurementArrivalControlService 数据库守卫原文)。
 class _ArrivalSourceAmbiguityError extends ApiException {
   _ArrivalSourceAmbiguityError()
-    : super(
-        'CONFLICT',
-        '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源',
-        httpStatus: 409,
-      );
+    : super('CONFLICT', '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源', httpStatus: 409);
 }

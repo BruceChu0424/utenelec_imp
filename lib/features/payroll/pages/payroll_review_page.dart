@@ -564,7 +564,8 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     width: 140,
     type: 'money',
     aiSensitive: true,
-    value: (s) => financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
+    value: (s) =>
+        financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
   ),
   MasterColumnDef(
     key: 'totalDeduction',
@@ -581,6 +582,7 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     width: 150,
     type: 'money',
     aiSensitive: true,
-    value: (s) => financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
+    value: (s) =>
+        financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
   ),
 ];

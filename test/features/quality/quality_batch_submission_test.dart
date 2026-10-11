@@ -76,8 +76,7 @@ void main() {
       expect(api.requests[0].$1, '/procurement/inspection/decide-report');
       expect(api.requests[1].$1, '/procurement/inspection/decide-report');
       expect(api.requests[2].$1, contains('pass-all'));
-      expect(api.requests[0].$2, api.requests[1].$2,
-          reason: '重试发同一个整份报告体');
+      expect(api.requests[0].$2, api.requests[1].$2, reason: '重试发同一个整份报告体');
       final body = api.requests[0].$2;
       expect(body['reason'], '按原报告确认少量不合格');
       final receipts = (body['receipts'] as List).cast<Map<String, dynamic>>();
@@ -153,9 +152,7 @@ void main() {
             'receiptType': 'PURCHASE',
             'receiptId': 'receipt-1',
             'label': 'R1',
-            'items': [
-              _item('inspection-1').toJson(),
-            ],
+            'items': [_item('inspection-1').toJson()],
           },
           {
             'receiptType': 'PURCHASE',
@@ -256,10 +253,9 @@ void main() {
       expect(report.completedReceiptCount, 0);
       // 整批原子提交：每次尝试只发一个 decide-report；IQC 未确认前 FQC 一张都不发。
       expect(api.requests.length, 2);
-      expect(
-        api.requests.map((request) => request.$1).toSet(),
-        {'/procurement/inspection/decide-report'},
-      );
+      expect(api.requests.map((request) => request.$1).toSet(), {
+        '/procurement/inspection/decide-report',
+      });
       expect(api.requests[0].$2, api.requests[1].$2);
       expect((api.requests[0].$2['receipts'] as List), hasLength(2));
     },
@@ -300,11 +296,12 @@ void main() {
     expect(paths.single, '/procurement/inspection/decide-report');
     final receipts = (api.requests.single.$2['receipts'] as List)
         .cast<Map<String, dynamic>>();
-    expect(
-      receipts.map((receipt) => receipt['receiptId']),
-      ['receipt-1', 'receipt-2', 'receipt-3', 'receipt-4'],
-      reason: '报告顺序原样进入请求体',
-    );
+    expect(receipts.map((receipt) => receipt['receiptId']), [
+      'receipt-1',
+      'receipt-2',
+      'receipt-3',
+      'receipt-4',
+    ], reason: '报告顺序原样进入请求体');
     expect(report.completedReceiptCount, 0, reason: '响应未回不确认');
     gates.single.complete({'receiptCount': 4});
     await running;

@@ -175,10 +175,8 @@ warehouseSalesOutboundTableColumns({
           row.line.weightKg,
           estimated: isEstimatedWeightSource(row.line.weightSource),
         ),
-        cellBuilder: (context, row) => WeightText(
-          kg: row.line.weightKg,
-          source: row.line.weightSource,
-        ),
+        cellBuilder: (context, row) =>
+            WeightText(kg: row.line.weightKg, source: row.line.weightSource),
       ),
   ];
   MasterColumnDef<WarehouseSalesOutboundTableRow> column(

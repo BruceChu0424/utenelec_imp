@@ -1342,20 +1342,23 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       final grams = item.periodicUnitWeightGrams;
       if (grams != null) return '${periodicGramsText(grams)} 克';
       // 单位不能按克换算：按基本单位显示小数 (不出现科学计数法)。
-      return formatQtyWithUnit(item.qty, item.componentUnitName, maxDecimals: 6);
+      return formatQtyWithUnit(
+        item.qty,
+        item.componentUnitName,
+        maxDecimals: 6,
+      );
     }
     return formatQtyWithUnit(item.qty, item.componentUnitName, maxDecimals: 6);
   }
 
   /// 真实使用数量：没有数据或不适用显示「—」，有数带组件单位。
-  static String _bomActualQtyText(GoodsBomItem item) =>
-      item.actual.qty == null
-          ? '—'
-          : formatQtyWithUnit(
-              item.actual.qty,
-              item.componentUnitName,
-              maxDecimals: 6,
-            );
+  static String _bomActualQtyText(GoodsBomItem item) => item.actual.qty == null
+      ? '—'
+      : formatQtyWithUnit(
+          item.actual.qty,
+          item.componentUnitName,
+          maxDecimals: 6,
+        );
 }
 
 /// 可选取 l10n：个别宿主测试没挂本地化代理，取不到时回落中文。

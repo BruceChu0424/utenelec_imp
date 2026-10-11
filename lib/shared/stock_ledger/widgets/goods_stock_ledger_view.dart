@@ -316,12 +316,10 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
     // 2026-10-10 数量+单位口径：行单位优先，货品级台账回落页级单位。
     String unitOf(StockLedgerRow r) =>
         (r.unitName ?? widget.unitName ?? '').trim();
-    String? inQty(StockLedgerRow r) =>
-        r.isWeightAdjustment || !r.isInbound
+    String? inQty(StockLedgerRow r) => r.isWeightAdjustment || !r.isInbound
         ? null
         : _qtyWithUnit(r.qtySigned?.abs(), unitOf(r));
-    String? outQty(StockLedgerRow r) =>
-        r.isWeightAdjustment || r.isInbound
+    String? outQty(StockLedgerRow r) => r.isWeightAdjustment || r.isInbound
         ? null
         : _qtyWithUnit(r.qtySigned?.abs(), unitOf(r));
     bool weightInColumn(StockLedgerRow r, {required bool inbound}) {

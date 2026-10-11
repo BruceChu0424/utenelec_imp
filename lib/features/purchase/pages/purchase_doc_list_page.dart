@@ -502,9 +502,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
           // 合计恒本币（折合人民币）：金额带「元」后缀；历史原始表头值/未知原文不拼。
           value: (it) =>
               widget.docType == PurchaseDocType.receipt && it.legacyImported
-              ? '原始表头值 ${financeLocalMoneyWithUnitSuffix(
-                  it.totalLocal?.toStringAsFixed(2) ?? '未知',
-                )}'
+              ? '原始表头值 ${financeLocalMoneyWithUnitSuffix(it.totalLocal?.toStringAsFixed(2) ?? '未知')}'
               : it.totalLocal == null
               ? null
               : financeLocalMoneyWithUnitSuffix(

@@ -439,12 +439,12 @@ void main() {
     expect(
       tester.renderObject(guideOf(childKey)),
       paints
+        ..line(color: guide, p1: const Offset(24, 0), p2: const Offset(24, 24))
         ..line(
           color: guide,
-          p1: const Offset(24, 0),
-          p2: const Offset(24, 24),
-        )
-        ..line(color: guide, p1: const Offset(24, 24), p2: const Offset(40, 24)),
+          p1: const Offset(24, 24),
+          p2: const Offset(40, 24),
+        ),
     );
   });
 
@@ -492,9 +492,7 @@ void main() {
   // 2026-10-10 用户口径「箭头还有箭头的背景也统一」：有下级行的圆底用
   // 宿主色（替代 depth%4 轮换层级色），偏深圆底箭头自动反白；无下级行的
   // 灰色占位图标不受影响。
-  testWidgets('toggleColor overrides the toggle circle colour', (
-    tester,
-  ) async {
+  testWidgets('toggleColor overrides the toggle circle colour', (tester) async {
     const toggleKey = Key('colored-toggle');
     const circle = Color(0xFF7C3AED);
     await tester.pumpWidget(

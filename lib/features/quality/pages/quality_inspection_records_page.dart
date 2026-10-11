@@ -639,22 +639,16 @@ class _QualityInspectionRecordsPageState
       label: '本次合格',
       width: 140,
       type: 'number',
-      value: (record) => formatQtyWithUnit(
-        record.passQty,
-        record.unitName,
-        maxDecimals: 4,
-      ),
+      value: (record) =>
+          formatQtyWithUnit(record.passQty, record.unitName, maxDecimals: 4),
     ),
     MasterColumnDef(
       key: 'failQty',
       label: '本次不合格',
       width: 150,
       type: 'number',
-      value: (record) => formatQtyWithUnit(
-        record.failQty,
-        record.unitName,
-        maxDecimals: 4,
-      ),
+      value: (record) =>
+          formatQtyWithUnit(record.failQty, record.unitName, maxDecimals: 4),
     ),
     MasterColumnDef(
       key: 'disposition',
@@ -922,8 +916,9 @@ class _QualityInspectionRecordDetailPanelState
           label: '本次决定',
           width: 145,
           type: 'number',
-          value: (row) =>
-              row.current == null ? '—' : formatQtyWithUnit(row.current, inlineUnit, maxDecimals: 4),
+          value: (row) => row.current == null
+              ? '—'
+              : formatQtyWithUnit(row.current, inlineUnit, maxDecimals: 4),
           exactValueOf: (row) => row.current?.toString(),
         ),
         MasterColumnDef(
@@ -931,7 +926,8 @@ class _QualityInspectionRecordDetailPanelState
           label: '当前累计',
           width: 145,
           type: 'number',
-          value: (row) => formatQtyWithUnit(row.cumulative, inlineUnit, maxDecimals: 4),
+          value: (row) =>
+              formatQtyWithUnit(row.cumulative, inlineUnit, maxDecimals: 4),
           exactValueOf: (row) => row.cumulative.toString(),
         ),
       ],

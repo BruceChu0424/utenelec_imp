@@ -1061,8 +1061,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       width: 136,
       type: 'number',
       sortable: true,
-      value: (r) =>
-          r.qty == null ? '—' : formatQtyWithUnit(r.qty, r.unitName),
+      value: (r) => r.qty == null ? '—' : formatQtyWithUnit(r.qty, r.unitName),
     ),
     MasterColumnDef(
       key: 'needQty',
@@ -1071,9 +1070,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel> {
       type: 'number',
       sortable: true,
       info: '尚未被任何物料分析承接的量 = 剩余未排量 − 已分析。全部被承接的行不在本段，改看「进行中」。',
-      value: (r) => r.needQty == null
-          ? '—'
-          : formatQtyWithUnit(r.needQty, r.unitName),
+      value: (r) =>
+          r.needQty == null ? '—' : formatQtyWithUnit(r.needQty, r.unitName),
     ),
     MasterColumnDef(
       key: 'plannedQty',

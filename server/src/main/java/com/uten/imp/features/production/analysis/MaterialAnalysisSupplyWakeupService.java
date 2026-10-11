@@ -2,6 +2,7 @@ package com.uten.imp.features.production.analysis;
 
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn;
+import com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt;
 import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
@@ -39,12 +40,12 @@ public class MaterialAnalysisSupplyWakeupService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptApproved(UUID receiptId) {
-        refreshReceipt("PURCHASE", receiptId, false);
+        refreshTargets(resolvedReceiptTargets(List.of(new ResolvedReceipt("PURCHASE", receiptId))));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterPurchaseReceiptReversed(UUID receiptId) {
-        refreshReceipt("PURCHASE", receiptId, true);
+        refreshReversedReceipt("PURCHASE", receiptId);
     }
 
     /**
@@ -85,6 +86,49 @@ public class MaterialAnalysisSupplyWakeupService {
                 targets.add(new AnalysisTarget(analysisId, makerEmployeeId)));
         refreshTargets(targets);
         notifyInspectionStockIn(batches);
+    }
+
+    /** All receipt quantities and source allocations are final, still inside the report transaction. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void afterQualityReportCompleted(List<ResolvedReceipt> receipts, List<ReceiptStockIn> partialBatches) {
+        Map<UUID, AnalysisTarget> targets = new TreeMap<>();
+        for (AnalysisTarget target : resolvedReceiptTargets(receipts)) targets.put(target.analysisId(), target);
+        for (AnalysisTarget target : inspectionStockInTargets(partialBatches)) targets.put(target.analysisId(), target);
+        refreshTargets(List.copyOf(targets.values()));
+    }
+
+    /** Single-receipt callbacks and complete reports share exactly the same qualified source scope. */
+    private List<AnalysisTarget> resolvedReceiptTargets(Collection<ResolvedReceipt> receipts) {
+        if (receipts.isEmpty()) return List.of();
+        List<UUID> purchase = receipts.stream().filter(receipt -> "PURCHASE".equals(receipt.receiptType()))
+                .map(ResolvedReceipt::receiptId).filter(java.util.Objects::nonNull).toList();
+        List<UUID> subcontract = receipts.stream().filter(receipt -> "SUBCONTRACT".equals(receipt.receiptType()))
+                .map(ResolvedReceipt::receiptId).filter(java.util.Objects::nonNull).toList();
+        if (purchase.isEmpty() && subcontract.isEmpty()) return List.of();
+        return analysisTargets(candidateQuery("""
+                        SELECT DISTINCT actual.warehouse_id, inspection.goods_id, inspection.color_id
+                        FROM procurement_inspection_items inspection
+                        CROSS JOIN LATERAL (
+                            SELECT inspection.warehouse_id WHERE inspection.warehouse_id IS NOT NULL
+                            UNION SELECT stock.warehouse_id FROM procurement_iqc_stock_in_batch_items stock
+                            WHERE stock.inspection_item_id=inspection.id
+                        ) actual
+                        WHERE inspection.status = 'RESOLVED' AND (
+                            (inspection.receipt_type = 'PURCHASE'
+                             AND inspection.receipt_id = ANY(CAST(string_to_array(:purchaseReceiptIds, ',') AS uuid[]))
+                             AND EXISTS (SELECT 1 FROM purchase_receipts receipt
+                                 WHERE receipt.id = inspection.receipt_id
+                                   AND receipt.status = 1 AND receipt.is_deleted = FALSE))
+                            OR
+                            (inspection.receipt_type = 'SUBCONTRACT'
+                             AND inspection.receipt_id = ANY(CAST(string_to_array(:subcontractReceiptIds, ',') AS uuid[]))
+                             AND EXISTS (SELECT 1 FROM subcontract_receipts receipt
+                                 WHERE receipt.id = inspection.receipt_id
+                                   AND receipt.status = 1 AND receipt.is_deleted = FALSE))
+                        )
+                    """)
+                    .setParameter("purchaseReceiptIds", uuidParameter(purchase))
+                    .setParameter("subcontractReceiptIds", uuidParameter(subcontract)));
     }
 
     /** Arrival notices only; the quality closeout orchestration refreshes the complete receipt scope. */
@@ -154,12 +198,12 @@ public class MaterialAnalysisSupplyWakeupService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterSubcontractReceiptApproved(UUID receiptId) {
-        refreshReceipt("SUBCONTRACT", receiptId, false);
+        refreshTargets(resolvedReceiptTargets(List.of(new ResolvedReceipt("SUBCONTRACT", receiptId))));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void afterSubcontractReceiptReversed(UUID receiptId) {
-        refreshReceipt("SUBCONTRACT", receiptId, true);
+        refreshReversedReceipt("SUBCONTRACT", receiptId);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -183,18 +227,13 @@ public class MaterialAnalysisSupplyWakeupService {
                 finishedInboundSourceDimensions(List.of(stockDocumentId), -1), "CURRENT_STATE", List.of());
     }
 
-    private void refreshReceipt(
-            String sourceType,
-            UUID receiptId,
-            boolean includeLegacyFallback) {
+    private void refreshReversedReceipt(String sourceType, UUID receiptId) {
         List<AnalysisTarget> targets = "PURCHASE".equals(sourceType)
-                ? purchaseTargets(receiptId, includeLegacyFallback)
-                : subcontractTargets(receiptId, includeLegacyFallback);
+                ? reversedPurchaseTargets(receiptId)
+                : reversedSubcontractTargets(receiptId);
         refreshTargets(targets);
-        if (includeLegacyFallback) {
-            notifyWaitingSegmentsAboutArrival(sourceType + "-REVERSE:" + receiptId,
-                    reversedReceiptDimensions(sourceType, receiptId), "CURRENT_STATE", List.of());
-        }
+        notifyWaitingSegmentsAboutArrival(sourceType + "-REVERSE:" + receiptId,
+                reversedReceiptDimensions(sourceType, receiptId), "CURRENT_STATE", List.of());
     }
 
     private void refreshTargets(List<AnalysisTarget> targets) {
@@ -210,8 +249,7 @@ public class MaterialAnalysisSupplyWakeupService {
         // Actual WAITING -> READY notifications belong to the exact workshop task.
     }
 
-    private List<AnalysisTarget> purchaseTargets(
-            UUID receiptId, boolean includeLegacyFallback) {
+    private List<AnalysisTarget> reversedPurchaseTargets(UUID receiptId) {
         return analysisTargets(candidateQuery("""
                     SELECT DISTINCT actual.warehouse_id,
                            inspection.goods_id, inspection.color_id
@@ -226,23 +264,15 @@ public class MaterialAnalysisSupplyWakeupService {
                      AND receipt.is_deleted = FALSE
                     WHERE inspection.receipt_type = 'PURCHASE'
                       AND inspection.receipt_id = :sourceDocumentId
-                      AND (
-                          (:includeLegacyFallback = FALSE
-                           AND receipt.status = 1
-                           AND inspection.status = 'RESOLVED')
-                          OR
-                          (:includeLegacyFallback = TRUE
-                           AND receipt.status = -1
-                           AND inspection.status = 'REVERSED')
-                      )
+                      AND receipt.status = -1
+                      AND inspection.status = 'REVERSED'
                     UNION
                     SELECT receipt.warehouse_id, item.goods_id, item.color_id
                     FROM purchase_receipts receipt
                     JOIN purchase_receipt_items item
                       ON item.receipt_id = receipt.id
                      AND item.is_deleted = FALSE
-                    WHERE :includeLegacyFallback = TRUE
-                      AND receipt.id = :sourceDocumentId
+                    WHERE receipt.id = :sourceDocumentId
                       AND receipt.is_deleted = FALSE
                       AND receipt.warehouse_id IS NOT NULL
                       AND receipt.status = -1
@@ -251,12 +281,10 @@ public class MaterialAnalysisSupplyWakeupService {
                           WHERE inspection.receipt_type = 'PURCHASE'
                             AND inspection.receipt_id = receipt.id)
                 """)
-                .setParameter("sourceDocumentId", receiptId)
-                .setParameter("includeLegacyFallback", includeLegacyFallback));
+                .setParameter("sourceDocumentId", receiptId));
     }
 
-    private List<AnalysisTarget> subcontractTargets(
-            UUID receiptId, boolean includeLegacyFallback) {
+    private List<AnalysisTarget> reversedSubcontractTargets(UUID receiptId) {
         return analysisTargets(candidateQuery("""
                     SELECT DISTINCT actual.warehouse_id,
                            inspection.goods_id, inspection.color_id
@@ -271,23 +299,15 @@ public class MaterialAnalysisSupplyWakeupService {
                      AND receipt.is_deleted = FALSE
                     WHERE inspection.receipt_type = 'SUBCONTRACT'
                       AND inspection.receipt_id = :sourceDocumentId
-                      AND (
-                          (:includeLegacyFallback = FALSE
-                           AND receipt.status = 1
-                           AND inspection.status = 'RESOLVED')
-                          OR
-                          (:includeLegacyFallback = TRUE
-                           AND receipt.status = -1
-                           AND inspection.status = 'REVERSED')
-                      )
+                      AND receipt.status = -1
+                      AND inspection.status = 'REVERSED'
                     UNION
                     SELECT receipt.warehouse_id, item.goods_id, item.color_id
                     FROM subcontract_receipts receipt
                     JOIN subcontract_receipt_items item
                       ON item.receipt_id = receipt.id
                      AND item.is_deleted = FALSE
-                    WHERE :includeLegacyFallback = TRUE
-                      AND receipt.id = :sourceDocumentId
+                    WHERE receipt.id = :sourceDocumentId
                       AND receipt.is_deleted = FALSE
                       AND receipt.warehouse_id IS NOT NULL
                       AND receipt.status = -1
@@ -296,8 +316,7 @@ public class MaterialAnalysisSupplyWakeupService {
                           WHERE inspection.receipt_type = 'SUBCONTRACT'
                             AND inspection.receipt_id = receipt.id)
                 """)
-                .setParameter("sourceDocumentId", receiptId)
-                .setParameter("includeLegacyFallback", includeLegacyFallback));
+                .setParameter("sourceDocumentId", receiptId));
     }
 
     private List<AnalysisTarget> finishedInboundTargets(

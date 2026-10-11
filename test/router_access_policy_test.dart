@@ -33,10 +33,66 @@ void main() {
       expect(requiredAnyPermFor(RouteName.adminSystemSettings), const [
         Perm.authorizationManage,
       ]);
+      expect(requiredAnyPermFor(RouteName.adminPlatformSettings), const [
+        Perm.authorizationManage,
+      ]);
       expect(requiredAnyPermFor('/admin/unknown'), const [
         Perm.authorizationManage,
       ]);
     });
+
+    test(
+      'platform settings require current super admin and explicit grant',
+      () {
+        const grantedEmployee = AppUser(
+          id: 'employee-config',
+          code: 'E-CFG',
+          name: '授权员工',
+          permissions: [Perm.authorizationManage],
+        );
+        const administratorWithoutGrant = AppUser(
+          id: 'admin-no-grant',
+          code: 'A-NO',
+          name: '缺少授权快照',
+          superAdmin: true,
+        );
+        const administrator = AppUser(
+          id: 'admin-config',
+          code: 'A-CFG',
+          name: '系统管理员',
+          permissions: [Perm.authorizationManage],
+          superAdmin: true,
+        );
+        for (final location in [
+          RouteName.adminPlatformSettings,
+          '${RouteName.adminPlatformSettings}?tab=server',
+        ]) {
+          for (final denied in [grantedEmployee, administratorWithoutGrant]) {
+            expect(
+              employeePermissionRedirect(denied, location),
+              RouteName.accessDenied,
+            );
+            expect(
+              locationAllowedFor(
+                denied.permissions.toSet(),
+                denied.superAdmin,
+                location,
+              ),
+              isFalse,
+            );
+          }
+          expect(employeePermissionRedirect(administrator, location), isNull);
+          expect(
+            locationAllowedFor(
+              administrator.permissions.toSet(),
+              administrator.superAdmin,
+              location,
+            ),
+            isTrue,
+          );
+        }
+      },
+    );
 
     test('ordinary employee deep links are redirected by the route guard', () {
       const ordinary = AppUser(id: 'employee-1', code: 'E001', name: '普通员工');

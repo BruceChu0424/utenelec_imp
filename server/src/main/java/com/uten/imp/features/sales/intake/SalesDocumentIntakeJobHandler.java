@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.AiCompletionPort;
 import com.uten.imp.application.port.AiJobHandler;
 import com.uten.imp.application.port.MasterIntakeLookupPort;
+import com.uten.imp.application.port.CompanyBrandingReadPort;
 import com.uten.imp.application.port.MasterIntakeLookupPort.ClientProfile;
 import com.uten.imp.common.files.document.DocumentImageGuard;
 import com.uten.imp.common.files.document.DocumentKind;
@@ -46,21 +47,31 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
     private final AiCompletionPort aiPort;
     private final SecurityContextCurrentUser currentUser;
     private final Clock clock;
+    private final CompanyBrandingReadPort companyBranding;
 
     @Autowired
     public SalesDocumentIntakeJobHandler(MasterIntakeLookupPort lookup, IntakeReferenceData data, ObjectMapper json,
-                                         AiCompletionPort aiPort, SecurityContextCurrentUser currentUser) {
-        this(lookup, data, json, aiPort, currentUser, Clock.system(ZoneId.of("Asia/Shanghai")));
+                                         AiCompletionPort aiPort, SecurityContextCurrentUser currentUser,
+                                         CompanyBrandingReadPort companyBranding) {
+        this(lookup, data, json, aiPort, currentUser, Clock.system(ZoneId.of("Asia/Shanghai")), companyBranding);
     }
 
     SalesDocumentIntakeJobHandler(MasterIntakeLookupPort lookup, IntakeReferenceData data, ObjectMapper json,
                                   AiCompletionPort aiPort, SecurityContextCurrentUser currentUser, Clock clock) {
+        this(lookup, data, json, aiPort, currentUser, clock,
+                () -> new CompanyBrandingReadPort.Identity(0, IntakeSellerIdentity.DEFAULT_COMPANY, java.util.List.of()));
+    }
+
+    SalesDocumentIntakeJobHandler(MasterIntakeLookupPort lookup, IntakeReferenceData data, ObjectMapper json,
+                                  AiCompletionPort aiPort, SecurityContextCurrentUser currentUser, Clock clock,
+                                  CompanyBrandingReadPort companyBranding) {
         this.lookup = lookup;
         this.data = data;
         this.json = json;
         this.aiPort = aiPort;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.companyBranding = companyBranding;
     }
 
     @Override
@@ -119,7 +130,8 @@ public class SalesDocumentIntakeJobHandler implements AiJobHandler {
 
     @Override
     public Map<String, Object> process(AiJobContext ctx) {
-        return new SalesIntakePipeline(lookup, data, json, this::visionSupported, clock).run(ctx);
+        IntakeSellerIdentity seller = new IntakeSellerIdentity(companyBranding.currentIdentity());
+        return new SalesIntakePipeline(lookup, data, json, this::visionSupported, clock, seller).run(ctx);
     }
 
     private boolean visionSupported() {

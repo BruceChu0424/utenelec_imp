@@ -163,7 +163,12 @@ void registerDailyReportManualDestinationTests() {
     final draft =
         jsonDecode(jsonEncode(state.captureFormDraft()))
             as Map<String, dynamic>;
-    expect((draft['rows'] as List).single['allocationManual'], isTrue);
+    expect(
+      (draft['rows'] as List)
+          .cast<Map<String, dynamic>>()
+          .single['allocationManual'],
+      isTrue,
+    );
     final restoration = state.restoreFormDraft(draft);
     await tester.pumpAndSettle();
     await restoration;
@@ -191,10 +196,10 @@ void registerDailyReportManualDestinationTests() {
     );
     await _chooseAddedDestination(tester, product, 'B', '2');
     if (capture) {
-        Scrollable.of(
-          tester.element(find.byType(UtenEditableGrid<DailyGridRow>)),
-          axis: Axis.vertical,
-        ).position.jumpTo(0);
+      Scrollable.of(
+        tester.element(find.byType(UtenEditableGrid<DailyGridRow>)),
+        axis: Axis.vertical,
+      ).position.jumpTo(0);
       await tester.pumpAndSettle();
       await saveAuditScreenshot(
         tester,
@@ -206,8 +211,11 @@ void registerDailyReportManualDestinationTests() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
     await tester.pumpAndSettle();
-    expect((saved!['items'] as List).single['qty'], 4);
-    expect((saved!['items'] as List).single['allocations'], [
+    final savedItem = (saved!['items'] as List)
+        .cast<Map<String, dynamic>>()
+        .single;
+    expect(savedItem['qty'], 4);
+    expect(savedItem['allocations'], [
       {'directTransferDemandId': 'A', 'qty': 1},
       {'directTransferDemandId': 'B', 'qty': 2},
       {'directTransferDemandId': null, 'qty': 1},

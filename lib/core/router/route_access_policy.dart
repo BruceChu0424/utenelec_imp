@@ -1,4 +1,5 @@
 import '../../shared/models/user.dart';
+import '../../shared/auth/permissions.dart';
 import 'hub_catalog.dart';
 import 'permission_by_path.dart';
 import 'route_names.dart';
@@ -10,12 +11,22 @@ import 'route_names.dart';
 bool isVisitorPortalLocation(String location) =>
     location == '/visitor' || location.startsWith('/visitor/');
 
+/// Platform writes belong to the confirmed current administrator and require
+/// the server-issued authorization grant; an admin flag alone is insufficient.
+bool platformSettingsAllowedFor(Set<String> permissions, bool superAdmin) =>
+    superAdmin && permissions.contains(Perm.authorizationManage);
+
 /// Returns the permission redirect for an authenticated employee route.
 ///
 /// The router uses this as its single permission gate so a hidden navigation
 /// entry cannot be bypassed by typing or opening a deep link directly.
 String? employeePermissionRedirect(AppUser? user, String location) {
   if (user == null) return RouteName.dashboard;
+
+  if (hubCardPath(location) == RouteName.adminPlatformSettings &&
+      !platformSettingsAllowedFor(user.permissions.toSet(), user.superAdmin)) {
+    return RouteName.accessDenied;
+  }
 
   // hub：任一子卡能进就能进(hub 守卫 = 子卡守卫并集，ADR-109)。
   if (isHubLocation(location)) {
@@ -51,6 +62,9 @@ bool locationAllowedFor(
   bool superAdmin,
   String location,
 ) {
+  if (hubCardPath(location) == RouteName.adminPlatformSettings) {
+    return platformSettingsAllowedFor(permissions, superAdmin);
+  }
   if (superAdmin) return true;
   if (isHubLocation(location)) {
     return hubCardLocations[hubCardPath(location)]!.any(

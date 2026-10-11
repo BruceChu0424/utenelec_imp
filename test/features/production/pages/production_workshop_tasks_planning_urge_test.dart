@@ -288,6 +288,16 @@ void main() {
     expect(copper.label, '等计划下单');
     expect(copper.type, UtenStatusBadgeType.fuchsia);
     expect(
+      find.byKey(const ValueKey('workshop-task-material-state-d-spring')),
+      findsNothing,
+    );
+    final expandMaterials = find.byKey(
+      const Key('workshop-task-material-toggle-all'),
+    );
+    await tester.ensureVisible(expandMaterials);
+    await tester.tap(expandMaterials);
+    await tester.pumpAndSettle();
+    expect(
       tester
           .widget<WorkshopMaterialStateCell>(
             find.byKey(const ValueKey('workshop-task-material-state-d-spring')),

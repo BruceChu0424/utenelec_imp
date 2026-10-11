@@ -9,6 +9,22 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get release2511DailyReport =>
+      '생산 일보가 간결한 제품 카드로 표시되며 목적지와 부품을 펼칠 수 있습니다. 자재 검토 시 수량과 출처 연결을 보존합니다.';
+
+  @override
+  String get release2511Workshop =>
+      '공장 업무 대화상자가 현재 상태에 맞는 작업을 표시하며, 자재 한 항목을 먼저 보여주고 전체 목록을 펼칠 수 있습니다.';
+
+  @override
+  String get release2511Batch =>
+      '자재 일괄 주문과 품질 처리가 쓰기 흐름을 공유하여 반복 조회, 잠금 및 최종 계산을 줄입니다.';
+
+  @override
+  String get release2511Platform =>
+      '최고 관리자가 회사 브랜드, 로고와 테마 색상을 설정할 수 있습니다. 업그레이드 시 기존 설정과 개인 환경설정을 보존합니다.';
+
+  @override
   String get businessResetAuditScope =>
       '테스트 업무 데이터, 삭제 이력, 필드 버전과 업무 감사 기록을 삭제합니다. 로그인 인증, 권한, 보안, 시스템 감사와 초기화 확인 기록은 보존됩니다.';
 
@@ -667,7 +683,7 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get visitorIsEmployee => '이 전화번호는 우텅 임직원 계정입니다. 임직원 로그인을 이용해 주세요';
+  String get visitorIsEmployee => '이 전화번호는 임직원 계정입니다. 임직원 로그인을 이용해 주세요';
 
   @override
   String get visitorPhoneInvalid => '올바른 전화번호를 입력해 주세요';

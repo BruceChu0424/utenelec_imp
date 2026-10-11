@@ -759,24 +759,28 @@ public class ProductionFqcInspectionService
             decisions.putAll(write.decisions());
             releases.addAll(write.releases());
         }
-        int lineNo = 0;
-        for (UUID inspectionId : active) {
+        StringBuilder itemValues = new StringBuilder();
+        for (int index = 0; index < active.size(); index++) {
+            UUID inspectionId = active.get(index);
             UUID decisionEventId = decisions.get(inspectionId);
             if (decisionEventId == null) {
                 throw conflict("批量全合格未能覆盖所选的全部待检份，请刷新后重试");
             }
-            em.createNativeQuery("""
-                            INSERT INTO production_fqc_pass_all_batch_items(
-                                batch_id, inspection_id, decision_event_id,
-                                line_no)
-                            VALUES (:batchId, :inspectionId, :decisionEventId,
-                                    :lineNo)
-                            """)
-                    .setParameter("batchId", batch.id())
-                    .setParameter("inspectionId", inspectionId)
-                    .setParameter("decisionEventId", decisionEventId)
-                    .setParameter("lineNo", ++lineNo)
-                    .executeUpdate();
+            if (!itemValues.isEmpty()) itemValues.append(',');
+            itemValues.append("(:batchId,:inspection").append(index)
+                    .append(",:decision").append(index).append(',').append(index + 1).append(')');
+        }
+        if (!active.isEmpty()) {
+            var itemInsert = em.createNativeQuery("""
+                    INSERT INTO production_fqc_pass_all_batch_items(batch_id, inspection_id, decision_event_id, line_no)
+                    VALUES
+                    """ + itemValues).setParameter("batchId", batch.id());
+            for (int index = 0; index < active.size(); index++) {
+                UUID inspectionId = active.get(index);
+                itemInsert.setParameter("inspection" + index, inspectionId)
+                        .setParameter("decision" + index, decisions.get(inspectionId));
+            }
+            itemInsert.executeUpdate();
         }
         stockDocs.getObject().withBatch(inboundBatch -> releaseLocked(releases, inboundBatch));
         Map<UUID, InspectionView> views = detailViews(active);
@@ -949,6 +953,12 @@ public class ProductionFqcInspectionService
             return new DecisionWrite((UUID) replay.getFirst()[0], true, null);
         }
 
+        return writeFreshDecisionLocked(inspectionId, normalized, inspection, verifyBeforeFirstWrite, lotCommandId);
+    }
+
+    private DecisionWrite writeFreshDecisionLocked(UUID inspectionId, NormalizedRequest normalized,
+            Object[] inspection, Runnable verifyBeforeFirstWrite, UUID lotCommandId) {
+
         BigDecimal reported = dec(inspection[1]);
         BigDecimal passed = dec(inspection[2]);
         BigDecimal failed = dec(inspection[3]);
@@ -1063,13 +1073,16 @@ public class ProductionFqcInspectionService
         // V597 先入库后质检：仓库登记时已按成品仓 + 库位上架并承诺全量入库，
         // 合格就在同一事务里按那个位置自动点收，仓库不再收到「待点收」任务。
         // 放行分配必须先落(放行命令守卫要求单据仍是草稿)，再自动点收推到已审核。
-        for (Map.Entry<UUID, UUID> document : autoConfirm.entrySet()) {
-            String key = "FQC-PRESTOCK:" + document.getValue();
-            if (inboundBatch == null) {
-                stockDocs.getObject().confirmPreStockedFinishedInbound(document.getKey(), key);
-            } else {
-                inboundBatch.confirm(document.getKey(), key);
+        if (inboundBatch == null) {
+            for (Map.Entry<UUID, UUID> document : autoConfirm.entrySet()) {
+                stockDocs.getObject().confirmPreStockedFinishedInbound(
+                        document.getKey(), "FQC-PRESTOCK:" + document.getValue());
             }
+        } else if (!autoConfirm.isEmpty()) {
+            inboundBatch.confirmAll(autoConfirm.entrySet().stream()
+                    .map(document -> new ProductionPreStockedInboundPort.Confirmation(
+                            document.getKey(), "FQC-PRESTOCK:" + document.getValue()))
+                    .toList());
         }
     }
 
@@ -1186,11 +1199,10 @@ public class ProductionFqcInspectionService
                     "PASS".equals(decision) ? null : dispositionCode,
                     reason,
                     "FQC-LOT:" + commandId + ':' + inspectionId));
-            DecisionWrite write = writeDecisionLocked(inspectionId, child, locked.get(inspectionId),
+            // This lot command was inserted above with a new UUID. Its child key is private to that
+            // command; parent replay was resolved before this method. No historical child can exist.
+            DecisionWrite write = writeFreshDecisionLocked(inspectionId, child, locked.get(inspectionId),
                     () -> { /* the whole lot was verified before its first write */ }, commandId);
-            if (write.replay()) {
-                throw conflict("整批判定子结果已存在，请刷新后查看结果");
-            }
             decisions.put(inspectionId, write.decisionEventId());
             if (write.release() != null) releases.add(write.release());
         }

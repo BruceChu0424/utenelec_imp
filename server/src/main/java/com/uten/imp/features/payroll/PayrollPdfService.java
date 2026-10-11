@@ -1,9 +1,11 @@
 package com.uten.imp.features.payroll;
 
+import com.uten.imp.application.port.CompanyBrandingReadPort;
 import com.uten.imp.features.payroll.dto.PayrollItemDto;
 import com.uten.imp.features.payroll.dto.PayrollPdf;
 import com.uten.imp.features.payroll.dto.PayrollSlipDto;
 import org.springframework.stereotype.Service;
+import lombok.RequiredArgsConstructor;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,11 +22,16 @@ import java.util.Locale;
  * 不是把文本伪装成 application/pdf。
  */
 @Service
+@RequiredArgsConstructor
 public class PayrollPdfService {
+    private final CompanyBrandingReadPort branding;
 
     public PayrollPdf render(PayrollSlipDto slip) {
         List<String> lines = new ArrayList<>();
-        lines.add("优腾智能管理平台 - 工资条");
+        String heading = branding.currentIdentity().companyName() + " - 工资条";
+        int[] headingPoints = heading.codePoints().toArray();
+        for (int start = 0; start < headingPoints.length; start += 30)
+            lines.add(new String(headingPoints, start, Math.min(30, headingPoints.length - start)));
         lines.add("工资期间：" + slip.year() + "年" + slip.month() + "月");
         lines.add("员工：" + slip.employeeName() + "(" + slip.employeeCode() + ")");
         lines.add("----------------------------------------");

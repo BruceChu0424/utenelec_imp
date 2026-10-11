@@ -150,7 +150,9 @@ class IntakeHeaderAndPromptTest {
         assertThat(((AiText) req.userParts().get(1)).untrusted()).isFalse();
         assertThat(((AiText) req.userParts().get(1)).text()).contains("g1 | Q1200148").contains("S1R13: g1, g2");
         assertThat(req.jsonSchema()).containsKey("properties");
-        assertThat(req.systemPrompt()).contains(IntakePrompts.SELLER).contains("Never invent");
+        assertThat(req.systemPrompt()).contains("Never invent").doesNotContain(IntakePrompts.SELLER);
+        assertThat(FakeJobContext.allText(req)).contains(IntakePrompts.SELLER);
+        assertThat(((AiText) req.userParts().get(2)).untrusted()).isTrue();
     }
 
     @Test

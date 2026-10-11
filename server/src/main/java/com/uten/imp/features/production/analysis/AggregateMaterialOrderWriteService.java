@@ -137,6 +137,12 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         while(cursor<ordered.size()) {
             AnalysisView current=nextSnapshot==null?analysis.detailInternal(analysisId,false):nextSnapshot;
             nextSnapshot=null;
+            List<GroupPreview> externalCohort=independentExternalPrefix(ordered.subList(cursor,ordered.size()),inputs,current);
+            if(externalCohort.size()>1) {
+                results.addAll(submitExternalCohort(analysisId,request,externalCohort,inputs,current,hash));
+                cursor+=externalCohort.size();
+                continue;
+            }
             List<GroupPreview> cohort=new ArrayList<>();int end=cursor;
             while(end<ordered.size()) {
                 List<GroupPreview> candidate=new ArrayList<>(cohort);candidate.add(ordered.get(end));
@@ -152,12 +158,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             GroupInput remapped=input; // resolve() reads the current exact alias projection for every depth.
             PreviewRequest step=new PreviewRequest(current.version(),current.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),request.approveNow(),List.of(remapped));
             GroupPreview group=previews.resolve(analysisId,step,current).groups().getFirst();
-            if(group.blockedReason()!=null)throw conflict(group.blockedReason());
-            boolean manufacturing=manufacturing(group);
-            if(manufacturing&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))throw forbidden("立即审核需要生产计划审核权限");
-            String permission=manufacturing?"production_material_analysis:generate":"production_material_analysis:notify";
-            if(!access.hasAuthority(permission))throw forbidden("缺少本次汇总下达路线权限");
-            if(!manufacturing&&group.publicExtraQty().signum()>0&&!access.hasAuthority("production_material_analysis:over_supply"))throw forbidden("外部公共备货需要独立超量下达权限");
+            boolean manufacturing=requireExecutableGroup(group,request);
             if(group.safetyQty().signum()>0&&!safetyDimensions.add(group.goodsId()+":"+Objects.toString(group.colorId(),"")))throw invalid("同一物料公共安全库存补库只能提交一次");
             Set<UUID> selectedIds=group.sources().stream().map(SourcePreview::materialLineId).collect(Collectors.toSet());
             Map<UUID,MaterialAnalysisContracts.ProductView> currentProducts=current.products().stream().collect(Collectors.toMap(MaterialAnalysisContracts.ProductView::analysisLineId,value->value));
@@ -226,27 +227,24 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             BatchResult legacy=issueExistingSingleSource(analysisId,current,group,request,manufacturing,input.allowedOverproductionRate());
             if(legacy!=null){results.add(legacy);continue;}
             GroupInput issueIntent=issuedIntent(input,group.requestedQty(),adoptionIntents);
-            Map<UUID,CapacitySnapshot> capacities=manufacturing?captureSourceCapacities(group,current):Map.of();
-            Batch batch=findReusable(analysisId,group,manufacturing,request.approveNow());
-            boolean append=batch!=null;
-            if(batch==null)batch=createBatch(analysisId,group,issueIntent,request,hash,manufacturing,current,privateProof,originalFlow);
-            else appendBatch(batch,group,issueIntent,request,hash,privateProof,originalFlow);
-            if(manufacturing) {
+            if(!manufacturing) {
+                results.add(writeExternalBatch(analysisId,request,group,issueIntent,current,hash,privateProof,originalFlow));
                 analysis.refreshLocked(analysisId);
-                installAliases(batch,group,capacities,request.idempotencyKey());
-                copySharedRoutes(batch);
-                analysis.refreshLocked(analysisId);
-                entitlements.delegateAggregateMakeEntitlements(analysisId,batch.action());
-                var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
-                        request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
-                analysis.refreshWithAnchorGrowth(analysisId);
-                results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
-            } else {
-                External external=append?growExternal(batch,group):createExternal(batch,group,request.warehouseId());
-                notices.notifyPreplanSupplyDocumentCreated(external.id(),external.type());
-                analysis.refreshLocked(analysisId);
-                results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),external.type(),external.id(),external.no(),null,null,group.requestedQty().add(group.safetyQty()),group.publicExtraQty(),group.sources()));
+                continue;
             }
+            Map<UUID,CapacitySnapshot> capacities=captureSourceCapacities(group,current);
+            Batch batch=findReusable(analysisId,group,true,request.approveNow());
+            if(batch==null)batch=createBatch(analysisId,group,issueIntent,request,hash,true,current,privateProof,originalFlow);
+            else appendBatch(batch,group,issueIntent,request,hash,privateProof,originalFlow);
+            analysis.refreshLocked(analysisId);
+            installAliases(batch,group,capacities,request.idempotencyKey());
+            copySharedRoutes(batch);
+            analysis.refreshLocked(analysisId);
+            entitlements.delegateAggregateMakeEntitlements(analysisId,batch.action());
+            var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
+                    request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
+            analysis.refreshWithAnchorGrowth(analysisId);
+            results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
         }
         List<MaterialIdentityBridge> bridges=materialBridges(results.stream().filter(result->result.batchId()!=null&&result.anchorAnalysisItemId()!=null).map(BatchResult::batchId).distinct().toList());
         ObjectNode payload=mapper.createObjectNode();payload.set("batches",mapper.valueToTree(results));payload.set("materialIdentityBridges",mapper.valueToTree(bridges));
@@ -257,6 +255,59 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 VALUES(:analysis,'AGGREGATE_ORDER',:key,:hash,CAST(:payload AS jsonb),:actor)
                 """).setParameter("analysis",analysisId).setParameter("key",request.idempotencyKey()).setParameter("hash",hash).setParameter("payload",payload.toString()).setParameter("actor",user.requireId()).executeUpdate();
         return new SubmitResult(analysis.detailInternal(analysisId,false),false,results,bridges);
+    }
+
+    /**
+     * External sibling orders do not change each other's allocation when they have
+     * distinct physical dimensions, no shared supply to adopt and no ancestry or
+     * alias dependency. Keep document writes in order under the existing locks;
+     * rebuild the analysis once after all these independent writes.
+     */
+    private List<BatchResult> submitExternalCohort(UUID analysisId,SubmitRequest request,List<GroupPreview> ordered,
+            Map<String,GroupInput> inputs,AnalysisView current,String hash) {
+        PreviewRequest step=new PreviewRequest(current.version(),current.fingerprint(),request.idempotencyKey(),request.warehouseId(),
+                request.billDate(),request.deliveryDate(),request.approveNow(),ordered.stream().map(group->inputs.get(group.clientGroupKey())).toList());
+        List<GroupPreview> groups=previews.resolve(analysisId,step,current).groups();
+        if(independentExternalPrefix(groups,inputs,current).size()!=groups.size())
+            throw conflict("汇总来源或可用供给已变化，请重新核对");
+        List<BatchResult> results=new ArrayList<>();
+        for(GroupPreview group:groups) {
+            requireExecutableGroup(group,request);
+            GroupInput input=inputs.get(group.clientGroupKey());
+            Map<UUID,Map<UUID,BigDecimal>> flow=originalPrivateFlow(input,group,current);
+            Map<UUID,BigDecimal> privateProof=flow==null||!hasOriginalBeneficiaryProof(input,current)?null:originalFlowTotals(input,flow);
+            results.add(writeExternalBatch(analysisId,request,group,input,current,hash,privateProof,flow));
+        }
+        analysis.refreshLocked(analysisId);
+        return results;
+    }
+
+    /** One external write kernel for both a single dependent order and an independent stage. */
+    private BatchResult writeExternalBatch(UUID analysisId,SubmitRequest request,GroupPreview group,GroupInput intent,
+            AnalysisView current,String hash,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
+        Batch batch=findReusable(analysisId,group,false,request.approveNow());
+        boolean append=batch!=null;
+        if(batch==null)batch=createBatch(analysisId,group,intent,request,hash,false,current,privateProof,privateFlow);
+        else appendBatch(batch,group,intent,request,hash,privateProof,privateFlow);
+        External external=append?growExternal(batch,group):createExternal(batch,group,request.warehouseId());
+        notices.notifyPreplanSupplyDocumentCreated(external.id(),external.type());
+        return new BatchResult(batch.id(),group.clientGroupKey(),group.route(),external.type(),external.id(),external.no(),
+                null,null,group.requestedQty().add(group.safetyQty()),group.publicExtraQty(),group.sources());
+    }
+
+    private boolean requireExecutableGroup(GroupPreview group,SubmitRequest request) {
+        if(group.blockedReason()!=null)throw conflict(group.blockedReason());
+        boolean manufacturing=manufacturing(group);
+        if(manufacturing&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))throw forbidden("立即审核需要生产计划审核权限");
+        String permission=manufacturing?"production_material_analysis:generate":"production_material_analysis:notify";
+        if(!access.hasAuthority(permission))throw forbidden("缺少本次汇总下达路线权限");
+        if(!manufacturing&&group.publicExtraQty().signum()>0&&!access.hasAuthority("production_material_analysis:over_supply"))throw forbidden("外部公共备货需要独立超量下达权限");
+        return manufacturing;
+    }
+
+    /** Conservative dependency check; uncertain or stateful groups retain the sequential path. */
+    static List<GroupPreview> independentExternalPrefix(List<GroupPreview> groups,Map<String,GroupInput> inputs,AnalysisView view) {
+        return AggregateExternalOrderCohort.prefix(groups,inputs,view);
     }
 
     /**
@@ -277,7 +328,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 ordered.stream().map(group->resolved.get(group.clientGroupKey())).toList(),current);
         for(GroupPreview original:ordered) {
             GroupPreview group=resolved.get(original.clientGroupKey());
-            if(group.blockedReason()!=null)throw conflict(group.blockedReason());
+            requireExecutableGroup(group,request);
             Batch batch=findReusable(analysisId,group,true,request.approveNow());
             GroupInput originalInput=inputs.get(group.clientGroupKey());
             Map<UUID,Map<UUID,BigDecimal>> flow=originalPrivateFlow(originalInput,group,current);

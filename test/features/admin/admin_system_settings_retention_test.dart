@@ -11,6 +11,7 @@ import 'package:uten_imp/features/admin/models/system_updater_status.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
 import 'package:uten_imp/shared/audit/audit_retention_presentation.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 
@@ -222,6 +223,8 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        currentPermissionsProvider.overrideWithValue(const {}),
+        isSuperAdminProvider.overrideWithValue(false),
         apiClientProvider.overrideWithValue(api),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'audit-admin'),

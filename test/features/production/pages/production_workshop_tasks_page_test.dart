@@ -1715,8 +1715,22 @@ void routeConfirmationTests() {
         find.byKey(const Key('workshop-task-material-table')),
         findsOneWidget,
       );
+      expect(find.text('等自制子件完成'), findsNothing);
+      final expandMaterials = find.byKey(
+        const Key('workshop-task-material-toggle-all'),
+      );
+      await tester.ensureVisible(expandMaterials);
+      await tester.tap(expandMaterials);
+      await tester.pumpAndSettle();
       expect(find.text('等自制子件完成'), findsOneWidget);
-      expect(find.text('ZX00000351 生产中'), findsOneWidget);
+      expect(find.textContaining('ZX00000351 生产中'), findsNothing);
+      await tester.tap(
+        find.byKey(
+          const ValueKey('workshop-task-material-details-demand-make'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('子件工单 ZX00000351 生产中'), findsOneWidget);
       expect(find.text('已领到车间'), findsWidgets);
       expect(tester.takeException(), isNull);
     },

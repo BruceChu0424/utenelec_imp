@@ -7,6 +7,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/models/production_work_card.dart';
 import 'package:uten_imp/features/production/widgets/production_execution_card_print_preview.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
+
+Widget _withBrand(Widget child) => ProviderScope(
+  overrides: [
+    platformBrandingSnapshotProvider.overrideWithValue(
+      const PlatformBranding(companyName: 'Acme Manufacturing'),
+    ),
+  ],
+  child: child,
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -40,6 +51,20 @@ void main() {
       buildProductionExecutionCardPdf(invalid),
       throwsA(isA<StateError>()),
     );
+  });
+
+  test('single and batch PDFs identify the configured company', () async {
+    const companyName = 'Acme Manufacturing';
+    final view = _confirmedView();
+    final single = await buildProductionExecutionCardPdf(
+      view,
+      companyName: companyName,
+    );
+    final batch = await buildProductionExecutionCardBatchPdf([
+      view,
+    ], companyName: companyName);
+    expect(latin1.decode(single), contains(companyName));
+    expect(latin1.decode(batch), contains(companyName));
   });
 
   test(
@@ -213,20 +238,22 @@ void main() {
       }
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) => Scaffold(
-              body: FilledButton(
-                onPressed: () => showProductionExecutionCardBatchPrintPreview(
-                  context,
-                  loader: loader,
-                  printer: (bytes, filename) async {
-                    printedNames.add(filename);
-                    printedBytes.add(bytes);
-                    return true;
-                  },
+        _withBrand(
+          MaterialApp(
+            home: Builder(
+              builder: (context) => Scaffold(
+                body: FilledButton(
+                  onPressed: () => showProductionExecutionCardBatchPrintPreview(
+                    context,
+                    loader: loader,
+                    printer: (bytes, filename) async {
+                      printedNames.add(filename);
+                      printedBytes.add(bytes);
+                      return true;
+                    },
+                  ),
+                  child: const Text('打开打印预览'),
                 ),
-                child: const Text('打开打印预览'),
               ),
             ),
           ),
@@ -251,6 +278,10 @@ void main() {
       expect(loadCount, 3);
       expect(printedNames.single, contains('SEG-001'));
       expect(ascii.decode(printedBytes.single.take(4).toList()), '%PDF');
+      expect(
+        latin1.decode(printedBytes.single),
+        contains('Acme Manufacturing'),
+      );
 
       await tester.tap(find.text('打印全部（1 张工卡）'));
       await tester.pumpAndSettle();
@@ -258,6 +289,7 @@ void main() {
       expect(printedNames, hasLength(2));
       expect(printedNames.last, contains('PP-001'));
       expect(ascii.decode(printedBytes.last.take(4).toList()), '%PDF');
+      expect(latin1.decode(printedBytes.last), contains('Acme Manufacturing'));
     },
   );
 
@@ -279,24 +311,26 @@ void main() {
     ];
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: FilledButton(
-              onPressed: () => showProductionExecutionCardBatchPrintPreview(
-                context,
-                loader: () async {
-                  loadCount++;
-                  return views;
-                },
-                printer: (bytes, filename) async {
-                  printCount++;
-                  printedName = filename;
-                  expect(ascii.decode(bytes.take(4).toList()), '%PDF');
-                  return true;
-                },
+      _withBrand(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showProductionExecutionCardBatchPrintPreview(
+                  context,
+                  loader: () async {
+                    loadCount++;
+                    return views;
+                  },
+                  printer: (bytes, filename) async {
+                    printCount++;
+                    printedName = filename;
+                    expect(ascii.decode(bytes.take(4).toList()), '%PDF');
+                    return true;
+                  },
+                ),
+                child: const Text('打开两计划批量打印'),
               ),
-              child: const Text('打开两计划批量打印'),
             ),
           ),
         ),
@@ -315,16 +349,18 @@ void main() {
 
   testWidgets('completed cards are marked archival only', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => Scaffold(
-            body: FilledButton(
-              onPressed: () => showProductionExecutionCardPrintPreview(
-                context,
-                loader: () async => _confirmedView(cardStatus: 'COMPLETED'),
-                printer: (_, _) async => true,
+      _withBrand(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () => showProductionExecutionCardPrintPreview(
+                  context,
+                  loader: () async => _confirmedView(cardStatus: 'COMPLETED'),
+                  printer: (_, _) async => true,
+                ),
+                child: const Text('打开已完成工卡'),
               ),
-              child: const Text('打开已完成工卡'),
             ),
           ),
         ),
@@ -349,6 +385,11 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
+        ],
         child: MaterialApp(
           home: Builder(
             builder: (context) => Scaffold(
@@ -382,6 +423,11 @@ void main() {
   ) async {
     await tester.pumpWidget(
       ProviderScope(
+        overrides: [
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
+        ],
         child: MaterialApp(
           builder: (context, child) => Stack(
             children: [

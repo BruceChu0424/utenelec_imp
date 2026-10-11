@@ -1,4 +1,8 @@
 {
+  "release2511DailyReport": "Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.",
+  "release2511Workshop": "Workshop task dialogs show actions for the current state, with one material visible initially and an option to expand the list.",
+  "release2511Batch": "Batch material orders and quality processing share the write flow to reduce repeated reads, locks and final calculations.",
+  "release2511Platform": "Super administrators can configure company branding, logos and theme colors; upgrades preserve saved settings and personal preferences.",
   "businessResetAuditScope": "Clears test business data, deletion history, field versions and business audit records. Authentication, authorization, security and system audit records, and reset receipts, are retained.",
   "serverAlertAcknowledge": "Acknowledge",
   "serverAlertDetails": "View details",
@@ -267,7 +271,7 @@
       "code": {}
     }
   },
-  "visitorIsEmployee": "This phone is a Uten employee account, please use staff sign in",
+  "visitorIsEmployee": "This phone is an employee account, please use staff sign in",
   "visitorPhoneInvalid": "Please enter a valid phone number",
   "visitorHomeTitle": "My Appointments",
   "visitorSettingsTitle": "Visitor Settings",

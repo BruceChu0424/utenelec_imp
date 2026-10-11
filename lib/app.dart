@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'components/feedback/uten_context_menu_policy.dart';
 import 'core/l10n/gen/app_localizations.dart';
+import 'core/platform/platform_window_title.dart';
 import 'core/responsive/display_zoom.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/dark_theme.dart';
@@ -25,6 +26,7 @@ import 'shared/providers/locale_provider.dart';
 import 'shared/providers/session_provider.dart';
 import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
+import 'shared/platform_branding/platform_branding_provider.dart';
 import 'shared/widgets/reauth_dialog.dart';
 import 'shared/widgets/user_activity_tracker.dart';
 import 'platform_tables_host.dart';
@@ -51,6 +53,8 @@ class UtenApp extends ConsumerWidget {
       }
     });
     final themeMode = ref.watch(themeProvider);
+    final branding = ref.watch(platformBrandingSnapshotProvider);
+    ref.watch(platformWindowTitleSyncProvider);
     final locale = ref.watch(localeProvider);
     final fontScale = ref.watch(fontScaleProvider);
     final router = ref.watch(appRouterProvider);
@@ -63,11 +67,13 @@ class UtenApp extends ConsumerWidget {
     final noticeIdentityKey = _notificationSessionKey(session);
 
     // 基础主题（字号档经下方 builder 的整体缩放生效）
-    final lightTheme = buildLightTheme();
-    final darkTheme = buildDarkTheme();
+    final lightTheme = buildLightTheme(branding: branding);
+    final darkTheme = buildDarkTheme(branding: branding);
 
     return MaterialApp.router(
-      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+      onGenerateTitle: (context) => branding.usesDefaultArtwork
+          ? AppLocalizations.of(context).appTitle
+          : branding.platformName,
       debugShowCheckedModeBanner: false,
 
       // 主题

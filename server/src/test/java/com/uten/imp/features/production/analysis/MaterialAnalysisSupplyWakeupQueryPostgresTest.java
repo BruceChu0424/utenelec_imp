@@ -42,11 +42,12 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
     private static MaterialAnalysisSupplyWakeupService service;
     private static UUID unit,actor,maker;
     private static String lastSql;
-    // V563 adds actual stock-in warehouses to the receiving suggestion. Freeze that
-    // reviewed expansion while retaining all approval/reversal/legacy conditions.
+    // Freeze the shared normal-receipt selector and the two reversal-only selectors.
+    // The approved/reversed/partial/legacy cases below validate the intentional query consolidation.
     private static final Map<String,String> DIMENSION_HASHES=Map.of(
-            "purchaseTargets","2abe25c3f7c4a5b9eab595480ad2382c63834c581f56017804494e745365f422",
-            "subcontractTargets","011776d0b58a9efd1b450b4c1636f5b01ffb3f50106a053184dbe42fade143ea");
+            "resolvedReceiptTargets","e74cfde7c0d014f6942c1d3d453eea378ca8cde9da07400ead473037521676d1",
+            "reversedPurchaseTargets","8337cfcf5808946277eef7b3bb05f969dfee1a0b14fbbf3ffe48f8aca9ac30aa",
+            "reversedSubcontractTargets","1de24fe0b164e47ac90428fedb105b478744f09a9ef2cb39d42ecee6eaf39ee9");
     // Independent, pre-change selector. This is intentionally not constructed from the new candidate filter.
     private static final String OLD_SELECTOR="""
             SELECT analysis.id, analysis.maker_id
@@ -88,20 +89,20 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
 
     @Test void purchaseAndSubcontractKeepApprovalReverseAndLegacyDimensions() throws Exception {
         for(String type:List.of("PURCHASE","SUBCONTRACT")){
-            Scope scope=scope();String method=type.equals("PURCHASE")?"purchaseTargets":"subcontractTargets";
+            Scope scope=scope();
             Receipt resolved=receipt(type,scope.leaf(),scope.goods(),null,1,"RESOLVED",false);
-            assertTargets(method,new Object[]{resolved.id(),false},Map.of("sourceDocumentId",resolved.id(),"includeLegacyFallback",false),scope.expected());
-            assertTargets(method,new Object[]{resolved.id(),true},Map.of("sourceDocumentId",resolved.id(),"includeLegacyFallback",true),List.of());
+            assertReceiptTargets(type,resolved.id(),false,scope.expected());
+            assertReceiptTargets(type,resolved.id(),true,List.of());
             Receipt reversed=receipt(type,scope.leaf(),scope.goods(),null,-1,"REVERSED",false);
-            assertTargets(method,new Object[]{reversed.id(),true},Map.of("sourceDocumentId",reversed.id(),"includeLegacyFallback",true),scope.expected());
-            assertTargets(method,new Object[]{reversed.id(),false},Map.of("sourceDocumentId",reversed.id(),"includeLegacyFallback",false),List.of());
+            assertReceiptTargets(type,reversed.id(),true,scope.expected());
+            assertReceiptTargets(type,reversed.id(),false,List.of());
             Receipt legacy=receipt(type,scope.leaf(),scope.goods(),null,-1,null,false);
-            assertTargets(method,new Object[]{legacy.id(),true},Map.of("sourceDocumentId",legacy.id(),"includeLegacyFallback",true),scope.expected());
+            assertReceiptTargets(type,legacy.id(),true,scope.expected());
             // Reversed IQC keeps its colored dimension and excludes the null-color analyses.
             Receipt mismatchedLegacy=receipt(type,scope.leaf(),scope.goods(),scope.blue(),-1,"REVERSED",false);
-            assertTargets(method,new Object[]{mismatchedLegacy.id(),true},Map.of("sourceDocumentId",mismatchedLegacy.id(),"includeLegacyFallback",true),List.of(scope.colored()));
+            assertReceiptTargets(type,mismatchedLegacy.id(),true,List.of(scope.colored()));
             db.update("UPDATE "+type.toLowerCase(Locale.ROOT)+"_receipts SET is_deleted=TRUE WHERE id=?",legacy.id());
-            assertTargets(method,new Object[]{legacy.id(),true},Map.of("sourceDocumentId",legacy.id(),"includeLegacyFallback",true),List.of());
+            assertReceiptTargets(type,legacy.id(),true,List.of());
         }
     }
 
@@ -112,8 +113,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
             assertEquals(0,new BigDecimal("4").compareTo(db.queryForObject("SELECT warehouse_stocked_base_qty FROM procurement_inspection_items WHERE id=?",BigDecimal.class,partial.inspection())));
             Map<String,Object> params=Map.of("sourceType",type,"sourceDocumentId",partial.id(),"inspectionItemIds",List.of(partial.inspection()));
             assertTargets("inspectionStockInTargets",new Object[]{type,partial.id(),List.of(partial.inspection())},params,scope.expected());
-            assertTargets(type.equals("PURCHASE")?"purchaseTargets":"subcontractTargets",new Object[]{partial.id(),false},
-                    Map.of("sourceDocumentId",partial.id(),"includeLegacyFallback",false),List.of());
+            assertReceiptTargets(type,partial.id(),false,List.of());
             Receipt pendingWarehouse=receipt(type,scope.leaf(),scope.goods(),null,1,"PARTIAL",false);
             assertTargets("inspectionStockInTargets",new Object[]{type,pendingWarehouse.id(),List.of(pendingWarehouse.inspection())},
                     Map.of("sourceType",type,"sourceDocumentId",pendingWarehouse.id(),"inspectionItemIds",List.of(pendingWarehouse.inspection())),List.of());
@@ -158,6 +158,23 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
                 "Unstocked partial inspection rows must not wake their colored analysis");
     }
 
+    @Test void mixedResolvedReportUsesTheSameReceiptContractAndRejectsPartialReversedOrForeignType() throws Exception {
+        Scope scope=scope();
+        Receipt purchase=receipt("PURCHASE",scope.leaf(),scope.goods(),null,1,"RESOLVED",false);
+        Receipt subcontract=receipt("SUBCONTRACT",scope.leaf(),scope.goods(),null,1,"RESOLVED",false);
+        Receipt partial=receipt("PURCHASE",scope.leaf(),scope.goods(),scope.blue(),1,"PARTIAL",false);
+        Receipt reversed=receipt("SUBCONTRACT",scope.leaf(),scope.goods(),scope.blue(),-1,"REVERSED",false);
+        var refs=List.of(
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("PURCHASE",purchase.id()),
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("PURCHASE",partial.id()),
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("SUBCONTRACT",subcontract.id()),
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("SUBCONTRACT",reversed.id()));
+        var params=Map.<String,Object>of("purchaseReceiptIds",joined(List.of(purchase.id(),partial.id())),
+                "subcontractReceiptIds",joined(List.of(subcontract.id(),reversed.id())));
+        assertTargets("resolvedReceiptTargets",new Object[]{refs},params,scope.expected());
+        assertReceiptTargets("SUBCONTRACT",purchase.id(),false,List.of());
+    }
+
     @Test void finishedInboundBatchCombinesApprovedDocumentsWithoutAdmittingDraftOrReversedRows() throws Exception {
         Scope scope = scope();
         UUID first = finished(scope.leaf(), scope.goods(), null, 1);
@@ -176,14 +193,14 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
 
     @Test void unrelatedHistoryIsExcludedBeforeExpensivePredicatesWithRepeatedExplainEvidence() throws Exception {
         Scope scope=scope();Receipt source=receipt("PURCHASE",scope.leaf(),scope.goods(),null,1,"RESOLVED",false);
-        Map<String,Object> params=Map.of("sourceDocumentId",source.id(),"includeLegacyFallback",false);
-        assertTargets("purchaseTargets",new Object[]{source.id(),false},params,scope.expected());
+        Map<String,Object> params=resolvedReceiptParameters("PURCHASE",source.id());
+        assertReceiptTargets("PURCHASE",source.id(),false,scope.expected());
         String candidate=lastSql,legacy=oldQuery(candidate);
         UUID unrelated=goods();
         new TransactionTemplate(new DataSourceTransactionManager(Objects.requireNonNull(db.getDataSource())))
                 .executeWithoutResult(status->{for(int i=0;i<800;i++)analysis(scope.main(),unrelated,null,i%2==0?"ACTIVE":"COMPLETED",true,false,true);});
         for(String table:List.of("production_material_analyses","production_material_analysis_items","production_material_analysis_materials","procurement_inspection_items","purchase_receipts"))db.execute("ANALYZE "+table);
-        assertTargets("purchaseTargets",new Object[]{source.id(),false},params,scope.expected());
+        assertReceiptTargets("PURCHASE",source.id(),false,scope.expected());
         // Warm both, alternate order, retain every plan; durations are observations, not a brittle speed assertion.
         explain(legacy,params);explain(candidate,params);
         var oldPlans=new ArrayList<JsonNode>();var newPlans=new ArrayList<JsonNode>();
@@ -208,7 +225,7 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
 
     @SuppressWarnings("unchecked")
     private static void assertTargets(String method,Object[] arguments,Map<String,Object> params,List<UUID> expected) throws Exception {
-        Class<?>[] types=switch(method){case "inspectionStockInTargets"->new Class[]{List.class};case "finishedInboundTargets"->new Class[]{UUID.class,int.class};default->new Class[]{UUID.class,boolean.class};};
+        Class<?>[] types=switch(method){case "inspectionStockInTargets"->new Class[]{List.class};case "resolvedReceiptTargets"->new Class[]{Collection.class};case "finishedInboundTargets"->new Class[]{UUID.class,int.class};default->new Class[]{UUID.class};};
         if (method.equals("inspectionStockInTargets")) {
             String receiptType = (String) arguments[0];
             UUID receiptId = (UUID) arguments[1];
@@ -231,6 +248,23 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         assertEquals(old,actual,"old/new UUID and maker results, including ordering");
         // PostgreSQL UUID ordering is unsigned lexicographic; Java UUID.compareTo has different signed semantics.
         assertEquals(expected.stream().sorted(Comparator.comparing(UUID::toString)).toList(),actual.stream().map(MaterialAnalysisSupplyWakeupService.AnalysisTarget::analysisId).toList());
+    }
+    private static Map<String,Object> resolvedReceiptParameters(String type,UUID receipt) {
+        return Map.of("purchaseReceiptIds","PURCHASE".equals(type)?receipt.toString():"",
+                "subcontractReceiptIds","SUBCONTRACT".equals(type)?receipt.toString():"");
+    }
+    private static String joined(List<UUID> ids) {
+        return ids.stream().distinct().sorted().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+    }
+    private static void assertReceiptTargets(String type,UUID receipt,boolean reversed,List<UUID> expected) throws Exception {
+        if(reversed) {
+            assertTargets("PURCHASE".equals(type)?"reversedPurchaseTargets":"reversedSubcontractTargets",
+                    new Object[]{receipt},Map.of("sourceDocumentId",receipt),expected);
+        } else {
+            assertTargets("resolvedReceiptTargets",new Object[]{List.of(
+                    new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt(type,receipt))},
+                    resolvedReceiptParameters(type,receipt),expected);
+        }
     }
     private static String dimension(String sql){return sql.substring(sql.indexOf('(')+1,sql.indexOf("), candidates AS MATERIALIZED ("));}
     private static String oldQuery(String sql){return "WITH dimensions AS ("+dimension(sql)+")\n"+OLD_SELECTOR;}

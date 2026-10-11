@@ -174,7 +174,7 @@ void registerDailyReportProductCardTests() {
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
     await tester.pumpAndSettle();
     expect(saved, isNotNull);
-    final submitted = (saved!['items'] as List).cast<Map>();
+    final submitted = (saved!['items'] as List).cast<Map<String, dynamic>>();
     expect(submitted.map((item) => item['qty']), [3000, 2000, 1500]);
     expect(submitted.map((item) => item['executionSegmentId']), [
       'multi-segment-0',
@@ -182,7 +182,8 @@ void registerDailyReportProductCardTests() {
       'multi-segment-2',
     ]);
     for (var p = 0; p < products.length; p++) {
-      final allocations = (submitted[p]['allocations'] as List).cast<Map>();
+      final allocations = (submitted[p]['allocations'] as List)
+          .cast<Map<String, dynamic>>();
       expect(allocations, hasLength(products[p].$4));
       expect(
         allocations.fold<num>(
@@ -192,7 +193,8 @@ void registerDailyReportProductCardTests() {
         products[p].$3,
       );
     }
-    final usages = (saved!['materialLines'] as List).cast<Map>();
+    final usages = (saved!['materialLines'] as List)
+        .cast<Map<String, dynamic>>();
     expect(usages, hasLength(7));
     expect(
       usages.singleWhere(

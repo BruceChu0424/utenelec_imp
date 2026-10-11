@@ -9,6 +9,20 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get release2511DailyReport =>
+      '生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。';
+
+  @override
+  String get release2511Workshop => '车间任务弹窗按状态呈现操作，物料默认显示一项并可展开全部。';
+
+  @override
+  String get release2511Batch => '物料批量下单与品质批量处理共用写入流程，减少重复读取、锁定和收尾计算。';
+
+  @override
+  String get release2511Platform =>
+      '新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。';
+
+  @override
   String get businessResetAuditScope =>
       '清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。';
 
@@ -635,7 +649,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get visitorIsEmployee => '该手机号为优腾员工账号，请走员工通道登录';
+  String get visitorIsEmployee => '该手机号为员工账号，请走员工通道登录';
 
   @override
   String get visitorPhoneInvalid => '请输入正确的手机号';

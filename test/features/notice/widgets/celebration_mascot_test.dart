@@ -2,19 +2,29 @@
 // assets/celebration/ 的「小优」美术是占位（磁盘缺失、目录为空），widget 必须经
 // Image.errorBuilder 安全回落 UtenBrandMascot(logo_ip.png)——不灰屏、不抛异常。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/brand/uten_brand_mascot.dart';
 import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/widgets/celebration_mascot.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
 void main() {
   testWidgets(
     'missing celebration art falls back to the brand IP mascot without crashing',
     (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
-            body: Center(child: CelebrationMascot(type: NoticeType.birthday)),
+        ProviderScope(
+          overrides: [
+            platformBrandingSnapshotProvider.overrideWithValue(
+              PlatformBranding.defaults,
+            ),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: Center(child: CelebrationMascot(type: NoticeType.birthday)),
+            ),
           ),
         ),
       );
@@ -32,10 +42,17 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: CelebrationMascot(type: NoticeType.task, size: 96),
+      ProviderScope(
+        overrides: [
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: CelebrationMascot(type: NoticeType.task, size: 96),
+            ),
           ),
         ),
       ),

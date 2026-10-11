@@ -13,7 +13,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/route_names.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -168,7 +167,7 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
                         subtitle: const Text('开启后，其他同事看不到你的姓名'),
                         value: _isAnonymous,
                         onChanged: (v) => setState(() => _isAnonymous = v),
-                        activeTrackColor: UtenColors.primary,
+                        activeTrackColor: theme.colorScheme.primary,
                       ),
                     ),
                   ),

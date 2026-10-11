@@ -84,6 +84,20 @@ abstract final class AuditFieldLabels {
   /// 表限定的列名标签(键 = `表名.列名`)，只收与通用字典含义不同或只属于
   /// 一张表的列；与服务端 AuditEventInterpreter.tableFieldLabels() 逐字一致。
   static const Map<String, String> _tableLabels = {
+    // ADR-175：平台品牌字段与服务端 AuditEventInterpreter.tableFieldLabels()
+    // 逐字一致；版本、时间与主键沿用下方通用标签，图片字节不进入审计快照。
+    'platform_branding.company_name': '公司名称',
+    'platform_branding.company_aliases': '公司英文名与简称',
+    'platform_branding.platform_name': '平台名称',
+    'platform_branding.tagline': '品牌标语',
+    'platform_branding.primary_color': '主题色',
+    'platform_branding.secondary_color': '副主题色',
+    'platform_branding.login_notice': '登录提示',
+    'platform_branding.support_phone': '联系电话',
+    'platform_branding.support_email': '联系邮箱',
+    'platform_branding.website': '公司网站',
+    'platform_branding.logo_sha256': 'Logo 摘要',
+    'platform_branding.updated_by': '修改人',
     // ADR-129：BOM 的 qty 是工程人员维护的设计值；真实使用数量另由学习累计。
     'goods_bom_items.qty': '设计使用数量',
     'goods_bom_items.learning_profile_goods_id': '系统学习标记',

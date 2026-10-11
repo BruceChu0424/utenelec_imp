@@ -18,6 +18,7 @@ import '../../features/admin/pages/admin_ai_usage_page.dart';
 import '../../features/admin/pages/admin_ai_usage_records_page.dart';
 import '../../features/admin/pages/admin_ai_usage_person_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
+import '../../features/admin/pages/admin_platform_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
@@ -1962,6 +1963,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminSystemSettings,
             name: 'admin-system-settings',
             builder: (_, _) => const AdminSystemSettingsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminPlatformSettings,
+            name: 'admin-platform-settings',
+            builder: (_, _) => const AdminPlatformSettingsPage(),
           ),
           DraftAwareGoRoute(
             path: RouteName.adminServerStatus,

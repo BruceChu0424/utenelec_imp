@@ -772,22 +772,55 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         var owner = org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus();
         PreStockedInboundBatchScope.run(context.postedDocumentIds, context.validatedWarehouseIds,
                 (id, key) -> confirmPreStockedFinishedInbound(id, key, context),
+                confirmations -> confirmPreStockedFinishedInboundBatch(confirmations, context),
                 productionCompletionReverse::afterFinishedInboundBatchApproved, owner::setRollbackOnly, work);
     }
 
     private void confirmPreStockedFinishedInbound(UUID id, String idempotencyKey,
             FinishedInboundBatchContext batchContext) {
-        List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        confirmPreStockedFinishedInboundBatch(
+                List.of(new ProductionPreStockedInboundPort.Confirmation(id, idempotencyKey)), batchContext);
+    }
+
+    /** One graph lock for the frozen set; posting and source allocation still follow the caller's order. */
+    private void confirmPreStockedFinishedInboundBatch(
+            List<ProductionPreStockedInboundPort.Confirmation> confirmations,
+            FinishedInboundBatchContext batchContext) {
+        List<ProductionPreStockedInboundPort.Confirmation> frozen = List.copyOf(confirmations);
+        if (frozen.isEmpty()) return;
+        var guard = lockProductionDocuments(frozen.stream()
+                .map(ProductionPreStockedInboundPort.Confirmation::documentId).toList());
+        for (var confirmation : frozen) {
+            UUID id = confirmation.documentId();
+            // Read after the complete row locks. Replays may return before the prefix's
+            // first-write verification; the shared Guard verifies once before any new posting.
+            var locked = new LockedFinishedInbound(id, requireDocForUpdate(id),
+                    itemRepo.findByDocIdOrderByLineNoAsc(id), guard);
+            confirmPreStockedFinishedInbound(locked, confirmation.idempotencyKey(), batchContext);
+        }
+    }
+
+    private void confirmPreStockedFinishedInbound(LockedFinishedInbound locked, String idempotencyKey,
+            FinishedInboundBatchContext batchContext) {
+        List<StockDocumentItem> items = locked.items();
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "先入库后质检的成品入库任务没有明细");
         }
         FinishedInboundConfirmRequest request = keyOnlyConfirmRequest(idempotencyKey);
         Map<UUID, BigDecimal> accepted = fullAcceptance(items);
-        String requestHash = finishedInboundConfirmationHash(id, accepted, null);
+        String requestHash = finishedInboundConfirmationHash(locked.id(), accepted, null);
         confirmFinishedInboundAfterPrelock(
-                id, request, accepted, null, requestHash,
-                lockProductionDocuments(List.of(id)), batchContext,
-                FinishedInLane.PRE_STOCKED_AUTO);
+                locked.id(), request, accepted, null, requestHash,
+                locked.guard(), batchContext, FinishedInLane.PRE_STOCKED_AUTO, locked);
+    }
+
+    /** Private synchronous evidence, created only after the complete document graph has been locked. */
+    private record LockedFinishedInbound(UUID id, StockDocument document, List<StockDocumentItem> items,
+            FulfillmentMutationLocks.Guard guard) {
+        private LockedFinishedInbound {
+            if (!id.equals(document.getId())) throw new IllegalArgumentException("入库单锁定身份不一致");
+            items = List.copyOf(items);
+        }
     }
 
     /**
@@ -828,9 +861,20 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             FulfillmentMutationLocks.Guard mutationGuard,
             FinishedInboundBatchContext batchContext,
             FinishedInLane lane) {
+        return confirmFinishedInboundAfterPrelock(id, request, accepted, varianceReason, requestHash,
+                mutationGuard, batchContext, lane, null);
+    }
+
+    private StockDocument confirmFinishedInboundAfterPrelock(
+            UUID id, FinishedInboundConfirmRequest request, Map<UUID, BigDecimal> accepted,
+            String varianceReason, String requestHash, FulfillmentMutationLocks.Guard mutationGuard,
+            FinishedInboundBatchContext batchContext, FinishedInLane lane, LockedFinishedInbound locked) {
+        if (locked != null && (!id.equals(locked.id()) || mutationGuard != locked.guard())) {
+            throw new IllegalStateException("已锁定入库上下文不属于本次确认");
+        }
         taskClaim.requireNoActiveClaimByOther(
                 "FULFILLMENT_TASK_APPROVE", id.toString());
-        StockDocument document = requireDocForUpdate(id);
+        StockDocument document = locked == null ? requireDocForUpdate(id) : locked.document();
         switch (lane) {
             case WORKSHOP_DIRECT_TRANSFER -> requireWorkshopDirectTransferDocument(document);
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(document);
@@ -882,7 +926,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         UUID planId = requireApprovedLinkedProductionPlan(document);
         List<StockDocumentItem> items =
-                itemRepo.findByDocIdOrderByLineNoAsc(id);
+                locked == null ? itemRepo.findByDocIdOrderByLineNoAsc(id) : locked.items();
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "成品入库明细为空");
         }
@@ -1025,7 +1069,17 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         // 确认实收与审核是同一个动作的两半，授权口径必须一起走：车间直送的确认
         // 已经按「这张单确实由一条有效直送行派生」判过，后半段不能再要仓库的码。
         return approveDocumentAfterPrelock(
-                id, true, false, batchContext, lane);
+                id, true, false, batchContext, lane,
+                new ConfirmedFinishedInbound(document, items.stream().filter(item -> !item.isDeleted()).toList(), planId, lane));
+    }
+
+    /** Confirmation and approval are one uninterrupted command under the same locks, never a reusable cache. */
+    private record ConfirmedFinishedInbound(StockDocument document, List<StockDocumentItem> items,
+            UUID planId, FinishedInLane lane) {
+        private ConfirmedFinishedInbound {
+            Objects.requireNonNull(planId);
+            items = List.copyOf(items);
+        }
     }
 
     /** ADR-146 当前用户能办理的不良品专门通道(转不良品仓 / 不良复判转回)。 */
@@ -1407,9 +1461,22 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             boolean allowProductionDrawApproveAndIssue,
             FinishedInboundBatchContext batchContext,
             FinishedInLane lane) {
+        return approveDocumentAfterPrelock(id, warehouseQuantityConfirmed, allowProductionDrawApproveAndIssue,
+                batchContext, lane, null);
+    }
+
+    private StockDocument approveDocumentAfterPrelock(
+            UUID id, boolean warehouseQuantityConfirmed, boolean allowProductionDrawApproveAndIssue,
+            FinishedInboundBatchContext batchContext, FinishedInLane lane, ConfirmedFinishedInbound confirmed) {
         tx.bind();
+        if (confirmed != null && (!warehouseQuantityConfirmed || !id.equals(confirmed.document().getId())
+                || lane != confirmed.lane() || !"FINISHED_IN".equals(confirmed.document().getDocType()))) {
+            throw new IllegalStateException("已确认入库上下文不属于本次审核");
+        }
+        // Task claims use their own lifecycle and are not protected by this
+        // document's row lock. Recheck that dynamic permission before posting.
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
-        StockDocument d = requireDocForUpdate(id);
+        StockDocument d = confirmed == null ? requireDocForUpdate(id) : confirmed.document();
         if ("DRAW".equals(d.getDocType())
                 && !allowProductionDrawApproveAndIssue
                 && isProductionLinked(id)) {
@@ -1419,7 +1486,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         // 内料仓通道下为登记的种类(ISSUE / RETURN / OTHER_ISSUE)，其余通道为空。
         String workshopMaterialKind = null;
-        switch (lane) {
+        if (confirmed == null) switch (lane) {
             case WORKSHOP_DIRECT_TRANSFER -> requireWorkshopDirectTransferDocument(d);
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(d);
             case WORKSHOP_MATERIAL_BIN -> workshopMaterialKind = requireWorkshopMaterialDocument(d);
@@ -1481,10 +1548,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             throw new ApiException(ErrorCode.CONFLICT,
                     "生产领料或成品入库必须指定目标仓库，禁止无库存流水推进业务链");
         }
-        if ("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType())) {
+        if (confirmed == null && ("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType()))) {
             requireApprovedLinkedProductionPlan(d);
         }
-        List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        List<StockDocumentItem> items = confirmed == null ? itemRepo.findByDocIdOrderByLineNoAsc(id) : confirmed.items();
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         validatePositiveStockItems(d, items, "审核");
         // 行级仓库复核（V787）：保存后行仓可能被停用/改线边，审核前重验；
@@ -1529,7 +1596,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             // 内料仓单据: 内料仓一侧的调出流水带登记来源引用, 由库存内核逐笔核验。
             applyStockEffect(d, items, +1, workshopMaterialOutboundKind(workshopMaterialKind));
         } else if (!"DRAW".equals(d.getDocType())) {
-            applyStockEffect(d, items, +1);
+            applyStockEffect(d, items, +1, null, confirmed);
         }
         if ("OTHER_IN".equals(d.getDocType()) && d.getWarehouseId() != null) {
             // V606 / ADR-091 批注：其它入库提交后，本仓等待中的齐套段尽力而为补跑提升
@@ -1559,7 +1626,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             }
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
-            applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty
+            applyFinishedInChain(d, items, +1, confirmed == null ? null : confirmed.planId());
         }
         // V787 库位记忆：其它入库/产成品进仓审核成功后按 仓×货品×颜色 学习本次库位，
         // 供下次登记/制单的建议库位带出（红冲不撤销——偏好只是未来默认）。
@@ -1574,7 +1641,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             // reconciliation trigger. Recompute the plan only afterwards: the
             // database close guard keeps it open while a segment is IN_PROGRESS.
             em.flush();
-            recomputeFinishedInboundPlanClosed(d.getId());
+            if (confirmed == null) recomputeFinishedInboundPlanClosed(d.getId());
+            else recomputePlanClosed(confirmed.planId());
             if (batchContext == null) {
                 productionCompletionReverse.afterFinishedInboundApproved(d.getId(), d.getWarehouseId());
             } else {
@@ -4003,11 +4071,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      * <b>红冲（-1）</b>——先释放本单补的预留（已发货则拒绝，库存不动），再对称回退各累计量。
      */
     private void applyFinishedInChain(StockDocument d, List<StockDocumentItem> items, int sign) {
-        List<UUID> planIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+        applyFinishedInChain(d, items, sign, null);
+    }
+
+    private void applyFinishedInChain(StockDocument d, List<StockDocumentItem> items, int sign, UUID confirmedPlanId) {
+        List<UUID> planIds = confirmedPlanId == null ? NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT l.plan_id FROM plan_draw_links l
                 WHERE l.draw_id = :did AND l.is_deleted = false
                 ORDER BY l.plan_id
-                """).setParameter("did", d.getId()), UUID.class);
+                """).setParameter("did", d.getId()), UUID.class) : List.of(confirmedPlanId);
         if (planIds.size() > 1) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "成品入库单关联多张生产计划，禁止猜测业务链归属");
@@ -4577,7 +4649,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 }
             }
         }
-        recomputePlanClosed(planId);
+        // Forward posting closes the plan once, after the document's approved
+        // status has flushed and the execution completion trigger has run.
+        // Reversal keeps its existing immediate reopening order.
+        if (sign < 0) recomputePlanClosed(planId);
     }
 
     private static void requireFullyAllocated(BigDecimal unallocated, String message) {
@@ -4638,6 +4713,12 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      */
     private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign,
             InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOut) {
+        return applyStockEffect(d, items, sign, workshopMaterialOut, null);
+    }
+
+    private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign,
+            InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOut,
+            ConfirmedFinishedInbound confirmed) {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         OffsetDateTime ts = d.getBillDate() == null ? OffsetDateTime.now()
                 : d.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
@@ -4649,7 +4730,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         boolean weighedLines = observedKind != null
                 && items.stream().anyMatch(it -> WeightMath.positive(it.getWeight()));
         // ADR-135: 生产成品入库的行重量来自产成品登记的累计切片; 其余手工单的行重量是仓库实称。
-        boolean productionLinked = ((sign > 0 && finishedIn) || weighedLines) && isProductionLinked(d.getId());
+        boolean productionLinked = confirmed != null
+                || ((sign > 0 && finishedIn) || weighedLines) && isProductionLinked(d.getId());
         boolean finishedFromProduction = sign > 0 && finishedIn && productionLinked;
         SourceKind learnKind = weighedLines && !productionLinked ? observedKind : null;
         UUID observedSupplier = sign > 0 && learnKind == SourceKind.OTHER_IN ? existingSupplier(d.getSupplierId()) : null;

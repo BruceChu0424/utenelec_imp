@@ -46,6 +46,46 @@ class PreStockedInboundBatchScopeTest {
         assertEquals(List.of(List.of(first, second)), finishes);
     }
 
+    @Test void aFrozenCollectionUsesOneBatchDispatchAndRetainsPostingOrder() {
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID();
+        var requested = new ArrayList<>(List.of(
+                new ProductionPreStockedInboundPort.Confirmation(second, "second"),
+                new ProductionPreStockedInboundPort.Confirmation(first, "first")));
+        var batches = new ArrayList<List<ProductionPreStockedInboundPort.Confirmation>>();
+        PreStockedInboundBatchScope.run(posted, validated,
+                (id, key) -> fail("The collection must not fall back to per-document dispatch"),
+                frozen -> {
+                    batches.add(frozen);
+                    assertThrows(UnsupportedOperationException.class, () -> frozen.clear());
+                    assertTrue(finishes.isEmpty());
+                    frozen.forEach(item -> posted.add(item.documentId()));
+                }, finishes::add, () -> rollbackOnly.set(true), batch -> {
+                    batch.confirmAll(requested);
+                    requested.clear();
+                    assertEquals(List.of(second, first), posted);
+                });
+        assertEquals(1, batches.size());
+        assertEquals(2, batches.getFirst().size());
+        assertEquals(List.of(List.of(second, first)), finishes);
+        assertFalse(rollbackOnly.get());
+    }
+
+    @Test void swallowedCollectionFailurePoisonsTheBatchAndEscapedCollectionUseIsRejected() {
+        var escaped = new AtomicReference<ProductionPreStockedInboundPort.Batch>();
+        var requested = List.of(new ProductionPreStockedInboundPort.Confirmation(UUID.randomUUID(), "first"));
+        assertThrows(IllegalStateException.class, () -> PreStockedInboundBatchScope.run(posted, validated,
+                (id, key) -> fail("single dispatch"), frozen -> {
+                    posted.add(frozen.getFirst().documentId());
+                    throw new IllegalArgumentException("failed after the first physical posting");
+                }, finishes::add, () -> rollbackOnly.set(true), batch -> {
+                    escaped.set(batch);
+                    assertThrows(IllegalArgumentException.class, () -> batch.confirmAll(requested));
+                }));
+        assertTrue(rollbackOnly.get());
+        assertTrue(finishes.isEmpty());
+        assertThrows(IllegalStateException.class, () -> escaped.get().confirmAll(requested));
+    }
+
     @Test void aFailedCallbackDoesNotFinishAndItsHandleCannotEscape() {
         var escaped = new AtomicReference<ProductionPreStockedInboundPort.Batch>();
         assertThrows(IllegalArgumentException.class, () -> run(batch -> {

@@ -133,6 +133,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.serverStatusView];
   }
   if (location == RouteName.adminSystemSettings ||
+      location == RouteName.adminPlatformSettings ||
       location.startsWith('/admin/')) {
     return const [Perm.authorizationManage];
   }

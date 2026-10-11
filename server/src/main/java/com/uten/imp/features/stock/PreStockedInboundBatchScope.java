@@ -18,6 +18,7 @@ final class PreStockedInboundBatchScope implements ProductionPreStockedInboundPo
     private final List<UUID> posted;
     private final Set<UUID> validatedWarehouses;
     private final BiConsumer<UUID, String> confirm;
+    private final Consumer<List<ProductionPreStockedInboundPort.Confirmation>> confirmAll;
     private final Runnable rollbackOnly;
     private final SavepointSnapshots<Checkpoint> savepoints = new SavepointSnapshots<>();
     private volatile boolean open = true;
@@ -25,10 +26,12 @@ final class PreStockedInboundBatchScope implements ProductionPreStockedInboundPo
     private boolean rollbackMarked;
 
     private PreStockedInboundBatchScope(List<UUID> posted, Set<UUID> validatedWarehouses,
-            BiConsumer<UUID, String> confirm, Runnable rollbackOnly) {
+            BiConsumer<UUID, String> confirm,
+            Consumer<List<ProductionPreStockedInboundPort.Confirmation>> confirmAll, Runnable rollbackOnly) {
         this.posted = posted;
         this.validatedWarehouses = validatedWarehouses;
         this.confirm = confirm;
+        this.confirmAll = confirmAll;
         this.rollbackOnly = rollbackOnly;
     }
 
@@ -36,12 +39,22 @@ final class PreStockedInboundBatchScope implements ProductionPreStockedInboundPo
             BiConsumer<UUID, String> confirm, Consumer<List<UUID>> finish,
             Runnable rollbackOnly,
             Consumer<ProductionPreStockedInboundPort.Batch> work) {
+        run(posted, validatedWarehouses, confirm,
+                confirmations -> confirmations.forEach(item -> confirm.accept(item.documentId(), item.idempotencyKey())),
+                finish, rollbackOnly, work);
+    }
+
+    static void run(List<UUID> posted, Set<UUID> validatedWarehouses,
+            BiConsumer<UUID, String> confirm,
+            Consumer<List<ProductionPreStockedInboundPort.Confirmation>> confirmAll,
+            Consumer<List<UUID>> finish, Runnable rollbackOnly,
+            Consumer<ProductionPreStockedInboundPort.Batch> work) {
         Objects.requireNonNull(work, "batch callback");
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("先入库品质批次必须在调用方事务内执行");
         }
-        var scope = new PreStockedInboundBatchScope(posted, validatedWarehouses, confirm, rollbackOnly);
+        var scope = new PreStockedInboundBatchScope(posted, validatedWarehouses, confirm, confirmAll, rollbackOnly);
         TransactionSynchronizationManager.registerSynchronization(scope);
         try {
             work.accept(scope);
@@ -63,6 +76,17 @@ final class PreStockedInboundBatchScope implements ProductionPreStockedInboundPo
             confirm.accept(documentId, idempotencyKey);
         } catch (RuntimeException | Error failure) {
             // An expired handle cannot change an already completed command.
+            if (open) poison();
+            throw failure;
+        }
+    }
+
+    @Override
+    public void confirmAll(List<ProductionPreStockedInboundPort.Confirmation> confirmations) {
+        try {
+            requireOwned();
+            confirmAll.accept(List.copyOf(confirmations));
+        } catch (RuntimeException | Error failure) {
             if (open) poison();
             throw failure;
         }

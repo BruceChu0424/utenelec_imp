@@ -216,23 +216,23 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         unionGuard.verifyUnchanged();
         var outcomes = new ArrayList<com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome>(
                 commands.size());
-        int lineCount = 0;
-        boolean replay = true;
-        for (int i = 0; i < request.receipts().size(); i++) {
-            var receipt = request.receipts().get(i);
-            boolean replayed;
-            try {
-                replayed = executeBatch(receipt.receiptType(), receipt.receiptId(), commands.get(i), rowLocks.get(i));
-            } catch (ApiException failure) {
-                throw new ApiException(failure.getCode(),
-                        reportReceiptLabel(receipt.receiptType(), receipt.receiptId()) + "：" + failure.getMessage(),
-                        failure.getFieldErrors());
+        stockInProduction.withQualityReport(followup -> {
+            for (int i = 0; i < request.receipts().size(); i++) {
+                var receipt = request.receipts().get(i);
+                boolean replayed;
+                try {
+                    replayed = executeBatch(receipt.receiptType(), receipt.receiptId(), commands.get(i), rowLocks.get(i), followup);
+                } catch (ApiException failure) {
+                    throw new ApiException(failure.getCode(),
+                            reportReceiptLabel(receipt.receiptType(), receipt.receiptId()) + "：" + failure.getMessage(),
+                            failure.getFieldErrors());
+                }
+                outcomes.add(new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome(
+                        receipt.receiptType(), receipt.receiptId(), replayed));
             }
-            outcomes.add(new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome(
-                    receipt.receiptType(), receipt.receiptId(), replayed));
-            lineCount += commands.get(i).lines().size();
-            replay &= replayed;
-        }
+        });
+        int lineCount = commands.stream().mapToInt(command -> command.lines().size()).sum();
+        boolean replay = outcomes.stream().allMatch(com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse.Outcome::replayed);
         return new com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportResponse(
                 outcomes.size(), lineCount, replay, List.copyOf(outcomes));
     }
@@ -260,6 +260,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     /** [rows] 传入已锁行（整份报告联合预锁路径）；null = 本方法自取行锁（单张报告路径）。 */
     private boolean executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command,
                                  Map<UUID, Object[]> lockedRows) {
+        return executeBatch(receiptType, receiptId, command, lockedRows, null);
+    }
+
+    private boolean executeBatch(String receiptType, UUID receiptId, ProcurementInspectionBatchCommand command,
+                                 Map<UUID, Object[]> lockedRows,
+                                 com.uten.imp.application.port.ProductionInspectionStockInPort.QualityReport followup) {
         Map<UUID, Object[]> rows = lockedRows != null ? lockedRows
                 : lockInspectionRows(receiptType, receiptId, commandInspectionIds(command));
         for (var line : command.lines()) requireInspectionRow(rows, line.inspectionItemId(), receiptType);
@@ -312,7 +318,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                         event.action(), event.quantity(), event.reason(), command.requestHash(), preStocked);
             }
         }
-        completeReceiptDisposition(receiptType, receiptId, preStocked);
+        completeReceiptDisposition(receiptType, receiptId, preStocked, followup);
         return replay;
     }
 
@@ -577,6 +583,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
      */
     private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(
             String receiptType, UUID receiptId, List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
+        return completeReceiptDisposition(receiptType, receiptId, preStocked, null);
+    }
+
+    private ProcurementIqcStockInService.PreStockedAutoStockIn completeReceiptDisposition(
+            String receiptType, UUID receiptId, List<ProcurementIqcStockInService.PreStockedRelease> preStocked,
+            com.uten.imp.application.port.ProductionInspectionStockInPort.QualityReport followup) {
         // 委外回厂短交待判定(ADR-098 × ADR-090)：已上架的合格行先不转正(heldPassEventIds)，也不改投
         // 「待仓库确认入库」——货已经在库位上，委外判定后由判定的同一事务自动转正，仓库没有要做的事。
         var autoStockIn = iqcStockIn.confirmPreStockedReleases(receiptType, receiptId, preStocked);
@@ -591,10 +603,12 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         // No intermediate event changes those inputs; reconcile each order once.
         recalculateOrderClosure(receiptType, receiptId);
         if (wakeProduction) {
-            stockInProduction.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches());
+            if (followup == null) stockInProduction.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches());
+            else followup.afterQualityReceiptResolved(receiptType, receiptId, autoStockIn.batches());
             recordWholeReceiptResolved(receiptType, receiptId, OffsetDateTime.now());
         } else if (!autoStockIn.batches().isEmpty()) {
-            stockInProduction.afterInspectionStockInConfirmed(autoStockIn.batches());
+            if (followup == null) stockInProduction.afterInspectionStockInConfirmed(autoStockIn.batches());
+            else followup.afterInspectionStockInConfirmed(autoStockIn.batches());
         }
         if (wholeReceiptResolved) {
             chainNotice.resolveReviewNotices("IQC_INSPECTION", receiptId, "INSPECTED");

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 /// 统一的圆形用户头像；暂无照片时显示姓名首字或用户图标。
 class UtenUserAvatar extends StatelessWidget {
@@ -17,17 +18,20 @@ class UtenUserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final customBrand = theme.extension<PlatformBrandTheme>() != null;
+    final foreground = customBrand ? theme.colorScheme.onPrimary : Colors.white;
     final characters = name?.trim().characters;
     final initial = characters == null || characters.isEmpty
         ? null
         : characters.first;
 
     final fallback = initial == null
-        ? Icon(Icons.person_rounded, color: Colors.white, size: size * 0.5)
+        ? Icon(Icons.person_rounded, color: foreground, size: size * 0.5)
         : Text(
             initial,
             style: TextStyle(
-              color: Colors.white,
+              color: foreground,
               fontSize: size * 0.38,
               fontWeight: FontWeight.w700,
             ),
@@ -41,8 +45,10 @@ class UtenUserAvatar extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: const LinearGradient(
-            colors: [UtenColors.teal500, UtenColors.teal700],
+          gradient: LinearGradient(
+            colors: customBrand
+                ? [theme.colorScheme.primary, theme.colorScheme.primary]
+                : const [UtenColors.teal500, UtenColors.teal700],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

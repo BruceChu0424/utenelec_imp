@@ -22,6 +22,7 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../core/network/server_selection.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_names.dart';
@@ -145,12 +146,17 @@ class _LoginPageState extends ConsumerState<LoginPage>
     final theme = Theme.of(context);
     final isCompact = context.breakpoint.isCompact;
     final isDark = theme.brightness == Brightness.dark;
+    final branding = ref.watch(platformBrandingSnapshotProvider);
 
     return Scaffold(
       // medium+ 铺一层极淡 teal 调底，让白色登录卡自然浮起；compact 保持页面底色
       backgroundColor: isCompact
           ? theme.scaffoldBackgroundColor
-          : (isDark ? UtenColors.darkBackground : UtenColors.teal50),
+          : (isDark
+                ? UtenColors.darkBackground
+                : branding.usesDefaultColors
+                ? UtenColors.teal50
+                : theme.colorScheme.primary.withValues(alpha: 0.04)),
       // 局部 SelectionArea：登录卡文字（标题/版本号/版权等）可框选复制（准则 §3.4）。
       // 登录路由在 ShellRoute 之外，选择区不含外壳轮询，无 CME 风险。
       body: SelectionArea(
@@ -203,6 +209,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
 
   /// 品牌区 + 表单字段（两种布局共用同一份内容）
   Widget _buildLoginForm(AppLocalizations l10n, ThemeData theme) {
+    final branding = ref.watch(platformBrandingSnapshotProvider);
     return Form(
       key: _formKey,
       child: Column(
@@ -210,11 +217,48 @@ class _LoginPageState extends ConsumerState<LoginPage>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 品牌区：吉祥物 + 横向字标
-          const Center(child: UtenBrandMascot.size(88)),
-          const SizedBox(height: UtenSpacing.s16),
-          const Center(
-            child: UtenWordmarkLogo(width: 220, height: 220 / (405 / 74)),
+          if (branding.usesDefaultArtwork) ...[
+            const Center(child: UtenBrandMascot.size(88)),
+            const SizedBox(height: UtenSpacing.s16),
+          ],
+          Center(
+            child: UtenWordmarkLogo(
+              width: 220,
+              height: branding.usesDefaultArtwork ? 220 / (405 / 74) : 72,
+            ),
           ),
+          if (branding.hasLogo) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              branding.platformName,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium,
+            ),
+          ],
+          if (branding.tagline.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              branding.tagline,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          if (branding.loginNotice.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s16),
+            Container(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerLow,
+                borderRadius: UtenRadius.mdAll,
+              ),
+              child: Text(
+                branding.loginNotice,
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          ],
           const SizedBox(height: UtenSpacing.s32),
           AccountField(
             controller: _accountController,
@@ -304,12 +348,30 @@ class _LoginPageState extends ConsumerState<LoginPage>
           ],
           const SizedBox(height: UtenSpacing.s24),
           Text(
-            l10n.loginFooter(DateTime.now().year),
+            branding.usesDefaultArtwork
+                ? l10n.loginFooter(DateTime.now().year)
+                : branding.copyright(DateTime.now().year),
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
             textAlign: TextAlign.center,
           ),
+          if (branding.supportPhone.isNotEmpty ||
+              branding.supportEmail.isNotEmpty ||
+              branding.website.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Text(
+              [
+                if (branding.supportPhone.isNotEmpty) branding.supportPhone,
+                if (branding.supportEmail.isNotEmpty) branding.supportEmail,
+                if (branding.website.isNotEmpty) branding.website,
+              ].join(' · '),
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
         ],
       ),
     );

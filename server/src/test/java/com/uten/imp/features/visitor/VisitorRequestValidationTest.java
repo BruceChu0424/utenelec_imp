@@ -16,6 +16,9 @@ import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.time.OffsetDateTime;
@@ -25,6 +28,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -319,6 +323,24 @@ class VisitorRequestValidationTest {
         assertEquals("单位", saved.getCompany());
         assertEquals("商务洽谈", saved.getVisitPurpose());
         assertEquals("encrypted:粤A12345", saved.getPlateNoEnc());
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = "  ")
+    void optionalVisitorCompanyStaysUnknownRatherThanBecomingTheHostCompany(String company) {
+        UUID hostId = UUID.randomUUID();
+        when(employeeRepo.findById(hostId)).thenReturn(Optional.of(eligibleHost(hostId)));
+        when(hostEligibility.isEligible(hostId)).thenReturn(true);
+        when(appRepo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(stepRepo.findByApplicationIdOrderByActedAtAsc(any())).thenReturn(List.of());
+        when(mapper.hostInfo(any())).thenReturn(new String[]{"接待人", "部门"});
+        service.submit(new VisitorApplyRequest("访客", null, null, company, "商务洽谈", false, null,
+                hostId, null, OffsetDateTime.now().plusHours(1), null));
+        var captured = ArgumentCaptor.forClass(VisitorApplication.class);
+        verify(appRepo).save(captured.capture());
+        assertNull(captured.getValue().getCompany());
+        assertEquals("verified-phone-ciphertext", captured.getValue().getPhoneEnc());
     }
 
     private static VisitorApplyRequest request(

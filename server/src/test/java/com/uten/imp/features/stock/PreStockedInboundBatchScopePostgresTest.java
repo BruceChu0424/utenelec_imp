@@ -54,6 +54,27 @@ class PreStockedInboundBatchScopePostgresTest {
         assertEquals(0, count(batchId));
     }
 
+    @Test void aCollectionFailureCannotCommitItsEarlierPhysicalPostings() {
+        UUID batchId = UUID.randomUUID(), first = UUID.randomUUID(), second = UUID.randomUUID();
+        List<UUID> posted = new ArrayList<>();
+        transactions.executeWithoutResult(owner -> {
+            assertThrows(IllegalStateException.class, () -> PreStockedInboundBatchScope.run(posted, new HashSet<>(),
+                    (id, key) -> fail("collection must use its batch kernel"), confirmations -> {
+                        for (var confirmation : confirmations) {
+                            db.update("INSERT INTO batch_scope_facts VALUES (?,?)", confirmation.documentId(), batchId);
+                            posted.add(confirmation.documentId());
+                            if (confirmation.documentId().equals(second)) throw new IllegalArgumentException("second posting rejected");
+                        }
+                    }, ids -> fail("failed collection cannot finish"), owner::setRollbackOnly, batch -> {
+                        assertThrows(IllegalArgumentException.class, () -> batch.confirmAll(List.of(
+                                new com.uten.imp.application.port.ProductionPreStockedInboundPort.Confirmation(first, "first"),
+                                new com.uten.imp.application.port.ProductionPreStockedInboundPort.Confirmation(second, "second"))));
+                    }));
+            assertTrue(owner.isRollbackOnly());
+        });
+        assertEquals(0, count(batchId));
+    }
+
     @Test void ordinarySavepointRollbackRestoresFactsAndBatchProjectionInputs() {
         UUID batchId = UUID.randomUUID(), first = UUID.randomUUID(), undone = UUID.randomUUID(), last = UUID.randomUUID();
         List<UUID> posted = new ArrayList<>();

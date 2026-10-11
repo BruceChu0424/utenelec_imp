@@ -20,7 +20,7 @@ import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
 import '../../../components/settings/uten_theme_switcher.dart';
 import '../../../components/settings/uten_time_display_switcher.dart';
-import '../../../core/constants/app_info.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/network/server_selection.dart';
@@ -34,7 +34,7 @@ import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/shared_providers.dart';
 import '../widgets/settings_section.dart';
 import '../widgets/app_version_tile.dart';
-import '../widgets/server_switch_dialog.dart';
+import '../../../shared/widgets/server_switch_dialog.dart';
 
 class SettingsPage extends ConsumerWidget {
   const SettingsPage({super.key});
@@ -43,6 +43,7 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final branding = ref.watch(platformBrandingSnapshotProvider);
     final canViewAuditLog = ref
         .watch(currentPermissionsProvider)
         .contains(Perm.auditLogView);
@@ -264,7 +265,7 @@ class SettingsPage extends ConsumerWidget {
               // 页脚信息
               Center(
                 child: Text(
-                  '${AppInfo.displayName}\n${AppInfo.copyright}',
+                  '${branding.platformName}\n${branding.copyright(DateTime.now().year)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

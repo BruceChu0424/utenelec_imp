@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/security/secure_storage.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
@@ -79,6 +80,30 @@ String warehouseTaskRecordBatchLabel(String? family) => switch (family) {
   _ => '办理所选',
 };
 
+Future<void> _openFinishedArrivalRegistration(
+  BuildContext context,
+  List<String> reportIds, {
+  bool? preStock,
+}) async {
+  if (!context.mounted) return;
+  final router = GoRouter.maybeOf(context);
+  if (router == null) {
+    context.appWarning('请返回仓库任务中心后重试');
+    return;
+  }
+  // A dialog or Navigator page has no declarative route identity. Read its
+  // host router configuration without subscribing across that route boundary.
+  // This captures navigation only; the destination keeps its permission gate.
+  final source = goRouterPageStateOrNull(context)?.uri ?? router.state.uri;
+  await router.push<void>(
+    RoutePath.warehouseProductionFinishedArrivalRegistration(
+      reportIds,
+      stockInBeforeInspection: preStock,
+      returnTo: source.toString(),
+    ),
+  );
+}
+
 Future<void> openWarehouseTaskRecord(
   BuildContext context,
   WidgetRef ref,
@@ -146,11 +171,9 @@ Future<void> openWarehouseTaskRecord(
             ),
       );
     case 'FINISHED_REGISTER':
-      await context.push<void>(
-        RoutePath.warehouseProductionFinishedArrivalRegistration([
-          row.dataId('reportId') ?? id,
-        ], returnTo: GoRouterState.of(context).uri.toString()),
-      );
+      await _openFinishedArrivalRegistration(context, [
+        row.dataId('reportId') ?? id,
+      ]);
     case 'FINISHED_COUNT' ||
         'RETURN_RECEIVE' ||
         'PRODUCTION_DRAW' ||
@@ -200,11 +223,9 @@ Future<void> openWarehouseTaskRecord(
       );
     case 'FINISHED_ARRIVAL_DETAIL':
       // The registration page reads all original batches and their immutable identities.
-      await context.push<void>(
-        RoutePath.warehouseProductionFinishedArrivalRegistration([
-          row.dataId('reportId') ?? id,
-        ], returnTo: GoRouterState.of(context).uri.toString()),
-      );
+      await _openFinishedArrivalRegistration(context, [
+        row.dataId('reportId') ?? id,
+      ]);
     case 'HISTORY_DETAIL':
       if (row.actionData['retained'] == true) {
         await _openRetained(context, ref, row);
@@ -287,12 +308,10 @@ Future<void> openWarehouseTaskRecordBatch(
               .toSet()
               .toList()
             ..sort();
-      await context.push<void>(
-        RoutePath.warehouseProductionFinishedArrivalRegistration(
-          reports,
-          stockInBeforeInspection: preStock,
-          returnTo: GoRouterState.of(context).uri.toString(),
-        ),
+      await _openFinishedArrivalRegistration(
+        context,
+        reports,
+        preStock: preStock,
       );
     case 'FINISHED_COUNT':
       final targets = rows

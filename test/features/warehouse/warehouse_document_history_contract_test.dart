@@ -6,6 +6,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import 'package:uten_imp/features/warehouse/config/warehouse_document_history_config.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_document_history.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_document_history_repository.dart';
@@ -154,6 +155,15 @@ void main() {
         '/warehouse/document-history/subcontract-material-returns/'
         'id%2Fwith%20space',
       );
+      expect(api.lastQuery, isEmpty);
+      final scoped = WarehouseDocumentHistoryRepository(
+        api,
+        WarehouseDocumentHistoryType.subcontractMaterialReturn,
+        warehouseScope: const WarehouseTaskScope.warehouse('leaf-warehouse'),
+      );
+      final detail = await scoped.detail(' id/with space ');
+      expect(detail.header.id, 'history-1');
+      expect(api.lastQuery, {'scopeWarehouseId': 'leaf-warehouse'});
     },
   );
 }
@@ -220,7 +230,10 @@ class _HistoryApi extends ApiClient {
   }) async {
     lastPath = path;
     lastQuery = query;
-    if (query == null) return _detailJson;
+    if (path.endsWith('/id%2Fwith%20space')) return _detailJson;
+    if (path != '/warehouse/document-history/subcontract-material-returns') {
+      throw StateError('Unexpected warehouse history request $path');
+    }
     return <String, dynamic>{
       'items': <Map<String, dynamic>>[
         Map<String, dynamic>.from(_detailJson)..remove('lines'),

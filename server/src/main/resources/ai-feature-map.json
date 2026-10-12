@@ -3618,8 +3618,8 @@
         "warehouse_purchase_receipt_history:view",
         "warehouse_sales_outbound:view",
         "warehouse_subcontract_finished_return_history:view",
+        "warehouse_subcontract_outbound_history:view",
         "warehouse_subcontract_receipt_history:view",
-        "warehouse_subcontract_waste_history:view",
         "workshop_material:setup"
       ],
       "allOf": [],
@@ -4199,7 +4199,7 @@
         "仓库任务中心页"
       ],
       "module": "仓库管理",
-      "purpose": "出库 · 入库 · 领料 · 品质结果 · 盘点审核",
+      "purpose": "出库 · 入库 · 品质结果 · 内料仓 · 盘点审核",
       "paths": [
         [
           "工作台",
@@ -4220,8 +4220,8 @@
         "warehouse_purchase_receipt_history:view",
         "warehouse_sales_outbound:view",
         "warehouse_subcontract_finished_return_history:view",
-        "warehouse_subcontract_receipt_history:view",
-        "warehouse_subcontract_waste_history:view"
+        "warehouse_subcontract_outbound_history:view",
+        "warehouse_subcontract_receipt_history:view"
       ],
       "allOf": [],
       "hubOf": [],
@@ -4255,6 +4255,8 @@
       "anyOf": [
         "stock_doc:view",
         "warehouse_inbound:view",
+        "warehouse_iqc_return:view",
+        "warehouse_iqc_stock_in:view",
         "warehouse_purchase_receipt_history:view",
         "warehouse_subcontract_receipt_history:view"
       ],
@@ -4274,7 +4276,8 @@
       "anyOf": [
         "stock_doc:view",
         "subcontract_outbound:view",
-        "warehouse_sales_outbound:view"
+        "warehouse_sales_outbound:view",
+        "warehouse_subcontract_outbound_history:view"
       ],
       "allOf": [],
       "hubOf": [],

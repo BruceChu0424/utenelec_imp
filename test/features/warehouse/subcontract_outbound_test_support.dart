@@ -225,6 +225,42 @@ class SubcontractOutboundFakeApi extends ApiClient {
       employeeLookups++;
       return employeeResult!;
     }
+    if (path == '/warehouse/task-center/outbound') {
+      listRequests++;
+      taskQueries.add(Map<String, dynamic>.from(query ?? const {}));
+      final rows = <Map<String, dynamic>>[
+        for (final issueId in taskHeaders.keys)
+          if ({'ALL', 'SUBCONTRACT'}.contains(query?['source']) &&
+              (query?['status'] != 'SUBCONTRACT_PENDING' ||
+                  documents[issueId]!['status'] == 0))
+            {
+              'rowKey': 'SUBCONTRACT:SUBCONTRACT_MATERIAL_ISSUE:$issueId',
+              'id': issueId,
+              'sourceType': 'SUBCONTRACT',
+              'recordType': 'SUBCONTRACT_MATERIAL_ISSUE',
+              'status': documents[issueId]!['status'] == 0
+                  ? 'SUBCONTRACT_PENDING'
+                  : 'SUBCONTRACT_SHIPPED',
+              'statusLabel': documents[issueId]!['status'] == 0
+                  ? '委外出库 · 待发料'
+                  : '委外出库 · 已发料',
+              'billNo': documents[issueId]!['billNo'],
+              'action': documents[issueId]!['status'] == 0
+                  ? 'SUBCONTRACT_OUTBOUND'
+                  : 'HISTORY_DETAIL',
+              'targetId': issueId,
+              'canHandle': documents[issueId]!['status'] == 0,
+            },
+      ];
+      return {
+        'items': rows,
+        'page': query?['page'] ?? 1,
+        'size': query?['size'] ?? 20,
+        'total': rows.length,
+        'totalPages': rows.isEmpty ? 0 : 1,
+        'facets': {},
+      };
+    }
     if (path == ApiEndpoints.warehouseSubcontractOutboundTasks) {
       listRequests++;
       taskQueries.add(Map<String, dynamic>.from(query ?? const {}));

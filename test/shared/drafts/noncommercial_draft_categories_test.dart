@@ -15,6 +15,7 @@ import 'package:uten_imp/features/expense/providers/expense_providers.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_list_page.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_list_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_form_draft_categories.dart';
@@ -290,25 +291,26 @@ void main() {
         toolbar.segments.any((segment) => segment.value == 'drafts'),
         isFalse,
       );
-      toolbar.onSelectionChanged!('otherIn');
+      // The source navigation uses canonical values; status is a table filter.
+      await tester.tap(find.text('其它入库'));
       await tester.pumpAndSettle();
-      // The manual stock document keeps its own server/local draft workspace.
-      expect(find.text('草稿'), findsWidgets);
-      await tester.tap(find.text('草稿').first);
+      var table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
+      );
+      table.onFilterChanged!('status', 'OTHER_DRAFT');
       await tester.pumpAndSettle();
       expect(find.byType(WarehouseFormDraftCategory), findsNothing);
       expect(find.textContaining('arrival-local'), findsNothing);
       expect(find.textContaining('outbound-local'), findsNothing);
-      final table = tester
-          .widget<MasterDataTableView<FormDraftCategoryRow<StockDocListItem>>>(
-            find.byType(
-              MasterDataTableView<FormDraftCategoryRow<StockDocListItem>>,
-            ),
-          );
-      expect(
-        [...table.unpagedItems, ...table.items].single.draft!.id,
-        'stock-local',
+      table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
       );
+      final row = [...table.unpagedItems, ...table.items].single;
+      expect(row.id, 'stock-local');
+      expect(row.sourceType, 'OTHER');
+      expect(row.status, 'LOCAL_DRAFT');
+      expect(row.action, 'FORM_DRAFT');
+      expect(row.targetId, 'stock-local');
       expect(tester.takeException(), isNull);
     },
   );

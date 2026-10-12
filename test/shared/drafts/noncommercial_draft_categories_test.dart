@@ -297,7 +297,7 @@ void main() {
       var table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
         find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
       );
-      table.onFilterChanged!('status', 'OTHER_DRAFT');
+      table.onFilterChanged('status', 'OTHER_DRAFT');
       await tester.pumpAndSettle();
       expect(find.byType(WarehouseFormDraftCategory), findsNothing);
       expect(find.textContaining('arrival-local'), findsNothing);

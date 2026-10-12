@@ -258,7 +258,7 @@ class SubcontractOutboundFakeApi extends ApiClient {
         'size': query?['size'] ?? 20,
         'total': rows.length,
         'totalPages': rows.isEmpty ? 0 : 1,
-        'facets': {},
+        'facets': <String, dynamic>{},
       };
     }
     if (path == ApiEndpoints.warehouseSubcontractOutboundTasks) {

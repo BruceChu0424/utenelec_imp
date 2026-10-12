@@ -37,6 +37,20 @@ class BusinessDataResetFeatureGateTest {
         assertTrue(Boolean.TRUE.equals(environment.getProperty(BusinessDataResetFeatureGate.PROPERTY, Boolean.class)));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"dev", "internal-test"})
+    void localTestingYamlHonorsExplicitDisableAndEnable(String profile) throws java.io.IOException {
+        var environment = new MockEnvironment();
+        var source = new org.springframework.boot.env.YamlPropertySourceLoader().load(profile,
+                new org.springframework.core.io.FileSystemResource("src/main/resources/application-" + profile + ".yml")).getFirst();
+        environment.getPropertySources().addLast(source);
+        assertTrue(Boolean.TRUE.equals(environment.getProperty(BusinessDataResetFeatureGate.PROPERTY, Boolean.class)));
+        environment.setProperty("UTEN_BUSINESS_DATA_RESET_ENABLED", "false");
+        assertFalse(Boolean.TRUE.equals(environment.getProperty(BusinessDataResetFeatureGate.PROPERTY, Boolean.class)));
+        environment.setProperty("UTEN_BUSINESS_DATA_RESET_ENABLED", "true");
+        assertTrue(Boolean.TRUE.equals(environment.getProperty(BusinessDataResetFeatureGate.PROPERTY, Boolean.class)));
+    }
+
     @Test
     void cloudSiteIsAlwaysClosedEvenWhenTheFlagIsExplicitlyTrue() {
         MockEnvironment cloud = new MockEnvironment();

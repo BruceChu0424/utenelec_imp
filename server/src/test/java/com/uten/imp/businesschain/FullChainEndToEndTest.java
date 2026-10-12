@@ -6237,6 +6237,26 @@ class FullChainEndToEndTest {
             assertEquals(0,completedRoot.allocatedAvailableQty().compareTo(new BigDecimal("10")));
             assertTrue(completedRoot.downstreamReferences().stream()
                     .anyMatch(ref -> "ROOT_OUTPUT_FULFILLMENT".equals(ref.documentType())));
+            // This fixture disables polling: IQC stores the output before its real
+            // material-cost tasks run. Formal withdrawal must wait for this source.
+            assertTrue(count("""
+                    SELECT count(*) FROM stock_value_production_cost_tasks task
+                    JOIN stock_value_events event ON event.result_node_id=task.output_source_node_id
+                    WHERE event.operation='POSITION_STORE' AND event.source_doc_type='SUBCONTRACT_RECEIPT'
+                        AND event.source_doc_id=? AND task.status='PENDING'
+                    """,receiptId)>0);
+            int movementsBefore=count("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",receiptId);
+            int eventsBefore=count("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",receiptId);
+            ApiException pendingCost=assertThrows(ApiException.class,()->subcontractReceiptService.reverse(receiptId));
+            assertTrue(pendingCost.getMessage().contains("本单成本来源仍在核对或传播"));
+            assertEquals(1,count("SELECT count(*) FROM subcontract_receipts WHERE id=? AND status=1",receiptId));
+            assertEquals(movementsBefore,count("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",receiptId));
+            assertEquals(eventsBefore,count("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",receiptId));
+            assertEquals(0,bigDecimalFor("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=?",targetAnalysisItemId).compareTo(BigDecimal.TEN));
+            assertEquals(0,bigDecimalFor("SELECT reserved_qty FROM sales_order_items WHERE id=?",orderItemId(orderA)).compareTo(BigDecimal.TEN));
+            assertEquals(0,stockBalance(w.warehouseId(),subcontracted).compareTo(BigDecimal.TEN));
+            InventoryValueWorkTestSupport.drain(inventoryValueWork,jdbc,
+                    List.of(subcontracted,suppliedMaterial,secondSuppliedMaterial));
             subcontractReceiptService.reverse(receiptId);
             assertEquals(0,bigDecimalFor("select root_fulfilled_qty from production_material_analysis_items where id=?",targetAnalysisItemId).compareTo(BigDecimal.ZERO));
             assertEquals(0,bigDecimalFor("select reserved_qty from sales_order_items where id=?",orderItemId(orderA)).compareTo(BigDecimal.ZERO));

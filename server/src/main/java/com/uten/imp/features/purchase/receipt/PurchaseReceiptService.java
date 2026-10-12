@@ -484,8 +484,11 @@ public class PurchaseReceiptService {
         }
         // IQC：红冲前须质检结案；只反向仓库已确认入库量（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.PURCHASE, id);
-        unapprovalPositions.requireStoresReversible(
-                inspectionService.requireResolvedReversibleReadOnly(ProcurementInspectionPort.PURCHASE, id));
+        var withdrawals=inspectionService.requireResolvedReversibleReadOnly(ProcurementInspectionPort.PURCHASE, id);
+        // 与反审预览同源，先保留已发货等真实下游拦截原因，再核对原库存成本。
+        var formalReservations=productionSupply.requirePurchaseReceiptReversible(id);
+        preplanAnalysisPeg.requireReceiptReversible(ProcurementInspectionPort.PURCHASE, id,formalReservations);
+        unapprovalPositions.requireStoresReversible(withdrawals);
         productionSupply.beforePurchaseReceiptReversed(id);
         // 分析备料绑定对称反向：释放本收货单建立的分析归属预留（V298）。
         preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.PURCHASE, id);

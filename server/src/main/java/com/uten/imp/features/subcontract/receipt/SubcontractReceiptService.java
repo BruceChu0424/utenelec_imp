@@ -503,6 +503,9 @@ public class SubcontractReceiptService {
         // IQC：红冲前须质检结案；只反向仓库已确认入库量（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
         var withdrawals=inspectionService.requireResolvedReversibleReadOnly(ProcurementInspectionPort.SUBCONTRACT, id);
+        // 与反审预览同源，先保留已发货等真实下游拦截原因，再核对原库存成本。
+        var formalReservations=productionSupply.requireSubcontractReceiptReversible(id);
+        preplanAnalysisPeg.requireReceiptReversible(ProcurementInspectionPort.SUBCONTRACT, id,formalReservations);
         if(!withdrawals.isEmpty())unapprovalPositions.requireStoresReversibleAfterSubcontractCostRelease(
                 withdrawals,procurementValue.previewReceiptCostWithdrawal(ProcurementInspectionPort.SUBCONTRACT, id));
         productionSupply.beforeSubcontractReceiptReversed(id);

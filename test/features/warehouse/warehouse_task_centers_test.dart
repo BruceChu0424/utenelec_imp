@@ -564,6 +564,39 @@ void main() {
     },
   );
 
+  for (final permission in [
+    Perm.warehouseIqcStockInView,
+    Perm.warehouseIqcReturnView,
+  ]) {
+    testWidgets(
+      'quality-only $permission retains both authorized inbound sources',
+      (tester) async {
+        await tester.pumpWidget(
+          app(const WarehouseInboundTaskCenterPage(), {permission}),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('采购入库'), findsOneWidget);
+        expect(find.text('委外入库'), findsOneWidget);
+        expect(find.text('产成品入库'), findsNothing);
+        expect(find.text('其它入库'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('inbound source navigation does not infer a quality view grant', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      app(const WarehouseInboundTaskCenterPage(), const <String>{}),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('暂无已授权的入库单据'), findsOneWidget);
+    expect(find.text('采购入库'), findsNothing);
+    expect(find.text('委外入库'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('draw task center gates on stock doc view', (tester) async {
     await tester.pumpWidget(
       app(const WarehouseDrawTaskCenterPage(), const {Perm.stockDocView}),

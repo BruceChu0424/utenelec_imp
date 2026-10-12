@@ -255,6 +255,7 @@ final _warehouse = StateProvider<WarehouseTaskScope>(
   (_) => const WarehouseTaskScope.warehouse('warehouse-a'),
 );
 final _server = StateProvider<String>((_) => 'https://unit.test/api');
+final _permissions = StateProvider<Set<String>>((_) => const {});
 
 class _Harness {
   _Harness(this.container, this.router, this.opened);
@@ -270,6 +271,8 @@ Future<_Harness> _pump(
   List<FormDraft> drafts = const [],
   PlatformTableLayout? layout,
   bool settle = true,
+  Set<String>? permissions,
+  bool readOnly = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1440, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -278,22 +281,30 @@ Future<_Harness> _pump(
   final container = ProviderContainer(
     overrides: [
       _view.overrideWith((_) => spec),
+      _actor.overrideWith(
+        (_) => AuthenticatedScope(userId: 'actor-a', readOnly: readOnly),
+      ),
+      _permissions.overrideWith(
+        (_) =>
+            permissions ??
+            const {
+              Perm.stockDocView,
+              Perm.stockDocCreate,
+              Perm.stockDocApprove,
+              Perm.warehouseInboundView,
+              Perm.warehouseInboundStockIn,
+              Perm.warehouseSalesOutboundView,
+              Perm.warehouseSalesOutboundExecute,
+              Perm.subcontractOutboundView,
+              Perm.subcontractMaterialIssueEdit,
+            },
+      ),
       warehouseTaskCenterRepositoryProvider.overrideWithValue(gateway),
       apiClientProvider.overrideWithValue(_Api()),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_actor)),
       warehouseTaskScopeProvider.overrideWith((ref) => ref.watch(_warehouse)),
-      currentPermissionsProvider.overrideWithValue({
-        Perm.stockDocView,
-        Perm.stockDocCreate,
-        Perm.stockDocApprove,
-        Perm.warehouseInboundView,
-        Perm.warehouseInboundStockIn,
-        Perm.warehouseSalesOutboundView,
-        Perm.warehouseSalesOutboundExecute,
-        Perm.subcontractOutboundView,
-        Perm.subcontractMaterialIssueEdit,
-      }),
+      currentPermissionsProvider.overrideWith((ref) => ref.watch(_permissions)),
       isSuperAdminProvider.overrideWithValue(false),
       sharedPreferencesProvider.overrideWithValue(preferences),
       formDraftsProvider.overrideWith(() => _Drafts(drafts)),
@@ -343,7 +354,15 @@ Future<_Harness> _pump(
         builder: (_, state) => target(state),
       ),
       GoRoute(
+        path: RouteName.warehouseProductionFinishedArrivalRegistration,
+        builder: (_, state) => target(state),
+      ),
+      GoRoute(
         path: '/warehouse/OTHER_OUT/new',
+        builder: (_, state) => target(state),
+      ),
+      GoRoute(
+        path: '/warehouse/FINISHED_OUT/new',
         builder: (_, state) => target(state),
       ),
       GoRoute(
@@ -387,6 +406,300 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets(
+    'legacy JSON without extra capability keeps inspection-first only',
+    (tester) async {
+      final row = WarehouseTaskCenterRecord.fromJson({
+        'rowKey': 'FINISHED:REPORT:legacy',
+        'id': 'legacy',
+        'sourceType': 'FINISHED',
+        'recordType': 'REPORT',
+        'status': 'FINISHED_READY_REGISTER',
+        'statusLabel': '待登记',
+        'action': 'FINISHED_REGISTER',
+        'canHandle': true,
+      });
+      final harness = await _pump(
+        tester,
+        WarehouseTaskRecordsFakeGateway([row]),
+        permissions: const {
+          Perm.stockDocView,
+          Perm.productionFinishedInBeforeInspection,
+        },
+      );
+      _table(tester).onSelectedIdsChanged!({row.rowKey});
+      await tester.pumpAndSettle();
+      expect(find.text('先入库后质检(1)'), findsNothing);
+      expect(find.text('先质检后入库(1)'), findsOneWidget);
+      await tester.tap(find.text('先质检后入库(1)'));
+      await tester.pumpAndSettle();
+      expect(harness.opened.single.queryParameters['preStock'], '0');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final action in ['ARRIVAL_REGISTER', 'FINISHED_REGISTER']) {
+    testWidgets(
+      '$action uses every selected server capability, not local special grants',
+      (tester) async {
+        final source = action == 'ARRIVAL_REGISTER' ? 'PURCHASE' : 'FINISHED';
+        final rows = [
+          for (final id in ['a', 'b'])
+            warehouseTestRecord(
+              source: source,
+              record: 'REPORT',
+              id: id,
+              billNo: 'CAP-$id',
+              action: action,
+              canHandle: true,
+              data: {
+                'reportId': 'report-$id',
+                'canRegisterBeforeInspection': true,
+              },
+            ),
+        ];
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway(rows),
+          spec: _ViewSpec(
+            direction: WarehouseTaskDirection.inbound,
+            source: source,
+            sources: warehouseTestInboundSources,
+          ),
+          permissions: const {Perm.stockDocView, Perm.warehouseInboundStockIn},
+        );
+        _table(tester).onSelectedIdsChanged!(
+          rows.map((row) => row.rowKey).toSet(),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('先入库后质检(2)'), findsOneWidget);
+        expect(find.text('先质检后入库(2)'), findsOneWidget);
+        await tester.tap(find.text('先入库后质检(2)'));
+        await tester.pumpAndSettle();
+        expect(harness.opened.last.queryParameters['preStock'], '1');
+        if (action == 'FINISHED_REGISTER') {
+          expect(
+            harness.opened.last.queryParameters['reportIds'],
+            'report-a,report-b',
+          );
+        } else {
+          expect(harness.opened.last.queryParameters['expectationIds'], 'a,b');
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final deniedCapability in [false, null, 'true']) {
+    testWidgets(
+      'mixed or legacy registration capability $deniedCapability fails closed',
+      (tester) async {
+        final rows = [
+          warehouseTestRecord(
+            source: 'FINISHED',
+            record: 'REPORT',
+            id: 'a',
+            billNo: 'CAP-A',
+            action: 'FINISHED_REGISTER',
+            canHandle: true,
+            data: {'canRegisterBeforeInspection': true},
+          ),
+          warehouseTestRecord(
+            source: 'FINISHED',
+            record: 'REPORT',
+            id: 'b',
+            billNo: 'CAP-B',
+            action: 'FINISHED_REGISTER',
+            canHandle: true,
+            data: {'canRegisterBeforeInspection': ?deniedCapability},
+          ),
+        ];
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway(rows),
+          permissions: const {
+            Perm.stockDocView,
+            Perm.productionFinishedInBeforeInspection,
+          },
+        );
+        _table(tester).onSelectedIdsChanged!({rows.first.rowKey});
+        await tester.pumpAndSettle();
+        final oldButton = tester
+            .widget<UtenButton>(
+              find.ancestor(
+                of: find.text('先入库后质检(1)'),
+                matching: find.byType(UtenButton),
+              ),
+            )
+            .onPressed!;
+        _table(tester).onSelectedIdsChanged!(
+          rows.map((row) => row.rowKey).toSet(),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('先入库后质检(2)'), findsNothing);
+        expect(find.text('先质检后入库(2)'), findsOneWidget);
+        oldButton(); // A stale callback must recheck the entire new selection.
+        await tester.pumpAndSettle();
+        expect(harness.opened, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('foreign family cannot reuse an arrival route capability', (
+    tester,
+  ) async {
+    final row = warehouseTestRecord(
+      source: 'SALES',
+      record: 'SHIPMENT',
+      id: 'a',
+      billNo: 'FOREIGN',
+      action: 'SALES_OUTBOUND',
+      canHandle: true,
+      data: {'canRegisterBeforeInspection': true},
+    );
+    await _pump(tester, WarehouseTaskRecordsFakeGateway([row]));
+    _table(tester).onSelectedIdsChanged!({row.rowKey});
+    await tester.pumpAndSettle();
+    expect(find.textContaining('先入库后质检'), findsNothing);
+    expect(find.textContaining('先质检后入库'), findsNothing);
+    expect(find.text('核对出库(1)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final boundary in [
+    'permissions',
+    'actor',
+    'warehouse',
+    'server',
+    'readOnly',
+  ]) {
+    testWidgets(
+      '$boundary change invalidates cached registration capability and stale button',
+      (tester) async {
+        final row = warehouseTestRecord(
+          source: 'FINISHED',
+          record: 'REPORT',
+          id: 'a',
+          billNo: 'CURRENT-CAP',
+          action: 'FINISHED_REGISTER',
+          canHandle: true,
+          data: {'canRegisterBeforeInspection': true},
+        );
+        final gateway = WarehouseTaskRecordsFakeGateway([
+          row,
+        ], controlled: true);
+        final harness = await _pump(tester, gateway, settle: false);
+        gateway.calls.last.result.complete(gateway.pageOf([row]));
+        await tester.pumpAndSettle();
+        _table(tester).onSelectedIdsChanged!({row.rowKey});
+        await tester.pumpAndSettle();
+        final oldButton = tester
+            .widget<UtenButton>(
+              find.ancestor(
+                of: find.text('先入库后质检(1)'),
+                matching: find.byType(UtenButton),
+              ),
+            )
+            .onPressed!;
+        switch (boundary) {
+          case 'permissions':
+            harness.container.read(_permissions.notifier).state = const {
+              Perm.stockDocView,
+            };
+          case 'actor':
+            harness.container.read(_actor.notifier).state =
+                const AuthenticatedScope(userId: 'actor-b');
+          case 'warehouse':
+            harness.container.read(_warehouse.notifier).state =
+                const WarehouseTaskScope.warehouse('warehouse-b');
+          case 'server':
+            harness.container.read(_server.notifier).state =
+                'https://other.unit.test/api';
+          case 'readOnly':
+            harness.container.read(_actor.notifier).state =
+                const AuthenticatedScope(userId: 'actor-a', readOnly: true);
+        }
+        await tester.pump();
+        oldButton();
+        await tester.pump();
+        expect(harness.opened, isEmpty);
+        expect(_table(tester).selectedIds, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final canHandle in [false, true]) {
+    testWidgets(
+      'readOnly or non-handleable capability does not authorize selection ($canHandle)',
+      (tester) async {
+        final row = warehouseTestRecord(
+          source: 'FINISHED',
+          record: 'REPORT',
+          id: 'a',
+          billNo: 'READONLY',
+          action: 'FINISHED_REGISTER',
+          canHandle: canHandle,
+          data: {'canRegisterBeforeInspection': true},
+        );
+        await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway([row]),
+          readOnly: canHandle,
+          permissions: const {
+            Perm.productionFinishedInBeforeInspection,
+            Perm.stockDocView,
+          },
+        );
+        expect(_table(tester).selectable, isFalse);
+        expect(find.textContaining('先入库后质检'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final spec in [
+    (
+      permissions: <String>{Perm.stockDocCreate},
+      readOnly: false,
+      allowed: false,
+    ),
+    (permissions: <String>{Perm.stockDocView}, readOnly: false, allowed: false),
+    (
+      permissions: <String>{Perm.stockDocView, Perm.stockDocCreate},
+      readOnly: false,
+      allowed: true,
+    ),
+    (
+      permissions: <String>{Perm.stockDocView, Perm.stockDocCreate},
+      readOnly: true,
+      allowed: false,
+    ),
+  ]) {
+    testWidgets('new document navigation uses full route policy $spec', (
+      tester,
+    ) async {
+      final harness = await _pump(
+        tester,
+        WarehouseTaskRecordsFakeGateway(const []),
+        permissions: spec.permissions,
+        readOnly: spec.readOnly,
+      );
+      expect(find.text('新建其它出库'), spec.allowed ? findsOneWidget : findsNothing);
+      expect(
+        find.text('新建产成品出库'),
+        spec.allowed ? findsOneWidget : findsNothing,
+      );
+      if (spec.allowed) {
+        await tester.tap(find.text('新建其它出库'));
+        await tester.pumpAndSettle();
+        expect(harness.opened.single.path, RoutePath.stockDocNew('OTHER_OUT'));
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   test(
     'repository sends source/status/date/scope before server pagination',
     () async {

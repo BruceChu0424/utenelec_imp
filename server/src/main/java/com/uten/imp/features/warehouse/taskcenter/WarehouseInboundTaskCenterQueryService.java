@@ -6,6 +6,8 @@ import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInPermissions;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.OwnerVisibility.OwnerScope;
 import com.uten.imp.security.ProductionStockTaskAccessPolicy;
@@ -270,6 +272,11 @@ public class WarehouseInboundTaskCenterQueryService {
             default -> false;
         };
         canHandle=canHandle && rights.actor().getImpersonatedBy()==null;
+        data.put("canRegisterBeforeInspection",canHandle && switch(proposed) {
+            case "ARRIVAL_REGISTER" -> rights.explicitAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION);
+            case "FINISHED_REGISTER" -> rights.explicitAuthority(ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY);
+            default -> false;
+        });
         String rowKey=source+":"+record+":"+id;
         String action=canHandle?proposed:"HISTORY_DETAIL";
         if(action.equals("STOCK_EDIT") && !rights.has("stock_doc:edit")) action="STOCK_DETAIL";
@@ -295,6 +302,9 @@ public class WarehouseInboundTaskCenterQueryService {
     }
 
     private record Rights(AuthUser actor,boolean warehouseParticipant,OwnerScope owner) {
+        // The original pre-inspection commands require this exact granted
+        // authority even when the principal carries the super-admin marker.
+        boolean explicitAuthority(String code) { return actor.getAuthorities().stream().anyMatch(a -> code.equals(a.getAuthority())); }
         boolean has(String code) { return actor.isSuperAdmin() || actor.getAuthorities().stream().anyMatch(a -> code.equals(a.getAuthority())); }
         boolean inbound() { return has("warehouse_inbound:view"); }
         boolean purchaseHistory() { return has("warehouse_purchase_receipt_history:view"); }

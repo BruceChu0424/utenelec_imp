@@ -13,6 +13,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/security/secure_storage.dart';
+import '../../../core/router/route_access_policy.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -393,6 +395,11 @@ class _WarehouseTaskRecordsViewState
     return families.length == 1 ? families.single : null;
   }
 
+  bool _canRegisterBeforeInspection(WarehouseTaskCenterRecord row) =>
+      row.canHandle &&
+      {'ARRIVAL_REGISTER', 'FINISHED_REGISTER'}.contains(row.action) &&
+      row.actionData['canRegisterBeforeInspection'] == true;
+
   Future<void> _batch({
     bool? preStock,
     List<WarehouseTaskCenterRecord>? targets,
@@ -412,6 +419,10 @@ class _WarehouseTaskRecordsViewState
     }
     if (rows.any((row) => !_canSelect(row))) {
       context.appWarning('单据状态或填写快照已变化，请刷新后重新选择');
+      return;
+    }
+    if (preStock == true && !rows.every(_canRegisterBeforeInspection)) {
+      context.appWarning('所选单据当前不能先入库后质检，请刷新后核对办理方式');
       return;
     }
     final requestVersion = _requestVersion;
@@ -589,14 +600,9 @@ class _WarehouseTaskRecordsViewState
     final family = _batchFamily;
     final hasRegistration =
         family == 'ARRIVAL_REGISTER' || family == 'FINISHED_REGISTER';
-    final permissions = ref.watch(currentPermissionsProvider);
     final canPreStock =
-        ref.watch(isSuperAdminProvider) ||
-        permissions.contains(
-          family == 'FINISHED_REGISTER'
-              ? Perm.productionFinishedInBeforeInspection
-              : Perm.warehouseIqcStockInBeforeInspection,
-        );
+        _selectedRows.isNotEmpty &&
+        _selectedRows.values.every(_canRegisterBeforeInspection);
     if (hasRegistration) {
       return [
         if (canPreStock)
@@ -639,6 +645,8 @@ class _WarehouseTaskRecordsViewState
   Widget build(BuildContext context) {
     final result = _result;
     ref.watch(formDraftsProvider);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final superAdmin = ref.watch(isSuperAdminProvider);
     final readOnly = ref.watch(authenticatedScopeProvider)?.readOnly ?? false;
     final selectable =
         !readOnly &&
@@ -788,21 +796,26 @@ class _WarehouseTaskRecordsViewState
         ],
         canShowRowMenu: warehouseTaskRecordCanOpen,
         toolbarActions: [
-          if (!readOnly &&
-              (ref.watch(isSuperAdminProvider) ||
-                  ref
-                      .watch(currentPermissionsProvider)
-                      .contains(Perm.stockDocCreate)))
+          if (!readOnly)
             for (final source in ['OTHER', 'FINISHED'])
               if (widget.sources.containsKey(source) &&
-                  (widget.source == 'ALL' || widget.source == source))
+                  (widget.source == 'ALL' || widget.source == source) &&
+                  locationAllowedFor(
+                    permissions,
+                    superAdmin,
+                    RoutePath.stockDocNew(
+                      '${source == 'OTHER' ? 'OTHER' : 'FINISHED'}_${widget.direction == WarehouseTaskDirection.inbound ? 'IN' : 'OUT'}',
+                    ),
+                  ))
                 UtenButton(
                   type: UtenButtonType.tonal,
                   icon: Icons.add_rounded,
                   onPressed: _busy
                       ? null
                       : () => context.push<void>(
-                          '/warehouse/${source == 'OTHER' ? 'OTHER' : 'FINISHED'}_${widget.direction == WarehouseTaskDirection.inbound ? 'IN' : 'OUT'}/new',
+                          RoutePath.stockDocNew(
+                            '${source == 'OTHER' ? 'OTHER' : 'FINISHED'}_${widget.direction == WarehouseTaskDirection.inbound ? 'IN' : 'OUT'}',
+                          ),
                         ),
                   child: Text('新建${widget.sources[source]}'),
                 ),

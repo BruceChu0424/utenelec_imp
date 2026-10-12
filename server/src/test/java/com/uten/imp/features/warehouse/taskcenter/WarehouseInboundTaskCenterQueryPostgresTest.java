@@ -5,6 +5,8 @@ import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
+import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
+import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInPermissions;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Row;
 import com.uten.imp.security.AuthUser;
@@ -176,6 +178,84 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(partial.items()).anySatisfy(row->assertThat(row.status()).isEqualTo("FINISHED_FQC_PARTIAL"));
     }
 
+    @Test void beforeInspectionCapabilityRequiresCurrentSpecialAuthorityAndOriginalRegistrationAction() {
+        UUID goods=UUID.randomUUID(),report=UUID.randomUUID(),expectation=UUID.randomUUID();
+        execute("INSERT INTO goods(id,code,name) VALUES(:id,'CAPABILITY-GOODS','能力实物')","id",goods);
+        report(report,"CAPABILITY-REPORT");
+        reportItem(UUID.randomUUID(),report,goods,5);
+        execute("INSERT INTO inbound_expectations(id,order_type,order_id,supplier_id,bill_no_snapshot,status,created_at)"
+                +" VALUES(:id,'PURCHASE',:order,:supplier,'CAPABILITY-EXPECTATION','OPEN',now())",
+                "id",expectation,"order",UUID.randomUUID(),"supplier",UUID.randomUUID());
+        execute("INSERT INTO inbound_expectation_items(id,expectation_id,order_item_id,line_no,goods_id,ordered_qty,accepted_qty,unit_rate)"
+                +" VALUES(:id,:expectation,:orderItem,1,:goods,5,0,1)",
+                "id",UUID.randomUUID(),"expectation",expectation,"orderItem",UUID.randomUUID(),"goods",goods);
+        UUID ordinary=UUID.randomUUID();
+        stock(ordinary,"OTHER_IN","CAPABILITY-OTHER","2026-10-12",null);
+        var currentGrants=new java.util.HashSet<>(Set.of("stock_doc:view","stock_doc:approve","stock_doc:edit",
+                "warehouse_inbound:view","warehouse_inbound:stock_in",
+                ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY,
+                ProcurementIqcStockInPermissions.BEFORE_INSPECTION));
+        var actor=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",currentGrants,false,true,false);
+        var service=service(actor,WarehouseTaskScope.ALL,true);
+        var permitted=service.list(filter("ALL","",1,30));
+        assertThat(registrationRow(permitted,"FINISHED_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",true);
+        assertThat(registrationRow(permitted,"ARRIVAL_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",true);
+        assertThat(permitted.items().stream().filter(row->row.id().equals(ordinary)).toList()).singleElement()
+                .satisfies(row->assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false));
+        assertThat(mapper.valueToTree(permitted).toString()).contains("\"canRegisterBeforeInspection\":true");
+
+        currentGrants.remove(ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY);
+        var arrivalOnly=service.list(filter("ALL","",1,30));
+        assertThat(registrationRow(arrivalOnly,"FINISHED_REGISTER").canHandle()).isTrue();
+        assertThat(registrationRow(arrivalOnly,"FINISHED_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",false);
+        assertThat(registrationRow(arrivalOnly,"ARRIVAL_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",true);
+        currentGrants.add(ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY);
+        currentGrants.remove(ProcurementIqcStockInPermissions.BEFORE_INSPECTION);
+        var finishedOnly=service.list(filter("ALL","",1,30));
+        assertThat(registrationRow(finishedOnly,"FINISHED_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",true);
+        assertThat(registrationRow(finishedOnly,"ARRIVAL_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",false);
+
+        var specialOnly=service(Set.of("stock_doc:view","warehouse_inbound:view",
+                ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY,
+                ProcurementIqcStockInPermissions.BEFORE_INSPECTION),WarehouseTaskScope.ALL,true)
+                .list(filter("ALL","",1,30));
+        assertThat(specialOnly.items()).isNotEmpty().allSatisfy(row->{
+            assertThat(row.canHandle()).isFalse();
+            assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false);
+        });
+        currentGrants.add(ProcurementIqcStockInPermissions.BEFORE_INSPECTION);
+        var impersonated=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",currentGrants,
+                false,true,false,false,UUID.randomUUID());
+        assertThat(service(impersonated,WarehouseTaskScope.ALL,true).list(filter("ALL","",1,30)).items())
+                .isNotEmpty().allSatisfy(row->{
+                    assertThat(row.canHandle()).isFalse();
+                    assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false);
+                });
+        assertThat(service(actor,WarehouseTaskScope.ALL,false).list(filter("FINISHED","",1,30)).items())
+                .noneSatisfy(row->assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",true));
+        var sparseAdmin=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"admin",
+                Set.of("stock_doc:view","stock_doc:approve","warehouse_inbound:view","warehouse_inbound:stock_in"),
+                false,true,true);
+        assertThat(service(sparseAdmin,WarehouseTaskScope.ALL,true).list(filter("ALL","",1,30)).items())
+                .isNotEmpty().allSatisfy(row->assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false));
+        var explicitAdmin=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"admin",currentGrants,false,true,true);
+        var adminPage=service(explicitAdmin,WarehouseTaskScope.ALL,true).list(filter("ALL","",1,30));
+        assertThat(registrationRow(adminPage,"ARRIVAL_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",true);
+        assertThat(registrationRow(adminPage,"FINISHED_REGISTER").actionData())
+                .containsEntry("canRegisterBeforeInspection",true);
+    }
+
+    private static Row registrationRow(WarehouseTaskCenterContracts.Page page,String action) {
+        return page.items().stream().filter(row->row.action().equals(action)).findFirst().orElseThrow();
+    }
+
     @Test void detailUsesRealSqlPaginationAndDoesNotTurnOneVisibleDocumentIntoUnboundedLines() {
         UUID document=UUID.randomUUID();
         stock(document,"OTHER_IN","DETAIL","2026-10-12",null);
@@ -323,8 +403,12 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
     }
 
     private WarehouseInboundTaskCenterQueryService service(Set<String> permissions,WarehouseTaskScope scope,boolean pool) {
+        return service(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",permissions,false,true,false),scope,pool);
+    }
+
+    private WarehouseInboundTaskCenterQueryService service(AuthUser actor,WarehouseTaskScope scope,boolean pool) {
         var current=mock(SecurityContextCurrentUser.class);
-        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",permissions,false,true,false)));
+        when(current.get()).thenReturn(Optional.of(actor));
         var scopes=mock(WarehouseTaskScopePort.class);
         when(scopes.current(any())).thenReturn(scope);
         doCallRealMethod().when(scopes).withQueryScopeCache(any());

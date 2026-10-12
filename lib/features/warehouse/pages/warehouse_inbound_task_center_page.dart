@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/warehouse/warehouse_task_badges.dart';
@@ -32,8 +33,11 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     final superAdmin = ref.watch(isSuperAdminProvider);
     bool can(String code) => superAdmin || permissions.contains(code);
     final canArrival = can(Perm.warehouseInboundView);
-    final canQuality =
-        can(Perm.warehouseIqcStockInView) || can(Perm.warehouseIqcReturnView);
+    final canQuality = locationAllowedFor(
+      permissions,
+      superAdmin,
+      RouteName.warehouseQualityResults,
+    );
     final canStock = can(Perm.stockDocView);
     int? fact(String key) => ref.watch(warehouseTaskFactOrNullProvider(key));
     int? sum(int? a, int? b) => a == null || b == null ? null : a + b;

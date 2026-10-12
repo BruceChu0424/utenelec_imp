@@ -631,7 +631,8 @@ public class MaterialAnalysisService {
     private Map<UUID, UUID> planAnchorByMaterial(UUID analysisId, List<AggregateMember> aggregateMembers) {
         Map<UUID, UUID> anchors = new LinkedHashMap<>(anchorChildByParentLine(analysisId));
         for (AggregateMember member : aggregateMembers) anchors.putIfAbsent(member.materialId(), member.anchorId());
-        return anchors;
+        return aggregateMembers.isEmpty()?anchors:
+                AggregateDelegationProjection.planAnchors(anchors,aggregateDelegationProjection(analysisId));
     }
 
     /**
@@ -6060,7 +6061,9 @@ public class MaterialAnalysisService {
                   WHERE parent.analysis_id=:id
                 )
                 """;
-        Query sourceQuery=em.createNativeQuery(selected+"""
+        String sourceCtes=(selected.isEmpty()?"WITH ":selected+", ")
+                +"subcontract_budget_allocations AS MATERIALIZED ("+allocationBudgetRowsSql("source.analysis_id=:id")+")\n";
+        Query sourceQuery=em.createNativeQuery(sourceCtes+"""
                 SELECT ai.id, ai.source_type, ai.sales_order_item_id,
                        so.id, so.bill_no, so.bill_date,
                        ai.delivery_date, c.name,
@@ -6100,7 +6103,7 @@ public class MaterialAnalysisService {
                 """ + SUBCONTRACT_PLANNED_OUTPUT_SQL + """
                            ) AS qty
                     FROM production_material_analysis_materials root
-                    JOIN preplan_supply_action_allocations allocation
+                    JOIN subcontract_budget_allocations allocation
                       ON allocation.analysis_material_id = root.id
                     JOIN preplan_supply_actions action
                       ON action.id = allocation.action_id
@@ -7307,19 +7310,20 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * 一笔委外申请分摊(别名 allocation，所属行动 action)里「要我方领直属物料发外」的份额，0..1
+     * 一笔委外申请分摊(别名 allocation，所属行动 action)里「要我方领直属物料发外」的基本量。
      * (ADR-143 §4.5)。已批准的委外订货一定有冻结领料计划行(缺 BOM 的委外件不能下单，§二.3)，
      * 订货余量全部计入；尚未批准订货的部分按货品现时是否有可发外直属边(fn_subcontract_draw_edges，
      * 与计划冻结同一判定)。还没挂上申请明细的行动只看现时直属边。
      */
-    static final String SUBCONTRACT_DRAW_SHARE_SQL = """
-                COALESCE((
+    static String subcontractDrawQuantitySql(String quantitySql) {
+        return """
+                (SELECT ROUND(COALESCE((
                     SELECT CASE
                         WHEN split.ordered_open_qty + split.unordered_qty > 0
-                        THEN (split.ordered_open_qty + CASE WHEN split.drawable_now
+                        THEN quantity.qty * (split.ordered_open_qty + CASE WHEN split.drawable_now
                                  THEN split.unordered_qty ELSE 0 END)
                              / (split.ordered_open_qty + split.unordered_qty)
-                        WHEN split.drawable_now THEN 1 ELSE 0 END
+                        WHEN split.drawable_now THEN quantity.qty ELSE 0 END
                     FROM (
                         SELECT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(application_item.goods_id))
                                    AS drawable_now,
@@ -7346,22 +7350,41 @@ public class MaterialAnalysisService {
                                  application_item.qty, application_item.unit_rate
                     ) split),
                     CASE WHEN EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(action.goods_id))
-                         THEN 1 ELSE 0 END)::numeric
-                """;
+                         THEN quantity.qty ELSE 0 END),4)
+                 FROM (SELECT (%s)::numeric AS qty) quantity)
+                """.formatted(quantitySql);
+    }
+
+    /** Compute source prefixes once for the admitted analysis, not once per allocation. */
+    static String allocationBudgetRowsSql(String scopeSql) {
+        return """
+                SELECT source.*,
+                    SUM(source.allocated_qty) OVER(PARTITION BY source.action_id ORDER BY source.id
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS planned_through_qty,
+                    COALESCE(SUM(source.allocated_qty) OVER(PARTITION BY source.action_id ORDER BY source.id
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS planned_before_qty
+                FROM preplan_supply_action_allocations source WHERE %s
+                """.formatted(scopeSql);
+    }
+
+    /** One four-place action budget, apportioned by cumulative exact source weights. */
+    static String allocationBudgetShareSql(String budgetSql) {
+        return """
+                (SELECT COALESCE(
+                    ROUND(budget.qty*allocation.planned_through_qty/NULLIF(action.requested_qty,0),4)
+                    - ROUND(budget.qty*allocation.planned_before_qty/NULLIF(action.requested_qty,0),4),0)
+                 FROM (SELECT ROUND(GREATEST((%s),0),4) AS qty) budget)
+                """.formatted(budgetSql);
+    }
 
     /**
      * 一笔未结委外申请分摊(别名 allocation/action)给 P 节点的计划产出(ADR-143 §4.5)：
      * 分摊比例 × (申请量 + 公共超量 − 合格入库回厂量)，只算要我方领料发外的份额。
      * 合格入库回厂量按回厂单与质检入库实收(与申请 DONE 判定同一口径)，领料、发货不动它。
      */
-    static final String SUBCONTRACT_PLANNED_OUTPUT_SQL = """
-                (GREATEST(allocation.allocated_qty / NULLIF(action.requested_qty, 0)
-                    * (action.requested_qty + action.public_surplus_qty - (
-                """ + SubcontractComponentCustodyProjection.ACTION_STOCKED_BASE_SQL + """
-                    )), 0) * (
-                """ + SUBCONTRACT_DRAW_SHARE_SQL + """
-                    ))
-                """;
+    static final String SUBCONTRACT_PLANNED_OUTPUT_SQL = subcontractDrawQuantitySql(allocationBudgetShareSql(
+            "action.requested_qty + action.public_surplus_qty - ("
+                    + SubcontractComponentCustodyProjection.ACTION_STOCKED_BASE_SQL + ")"));
 
     /**
      * 有效在途覆盖的公共取数。coverage 的每一行都带 supply_kind：
@@ -7381,7 +7404,9 @@ public class MaterialAnalysisService {
      * 展开基准需要区分二者（见 allocateNestedDiagnostics）。
      */
     private static final String ACTIVE_FUTURE_COVERAGE_SQL = """
-                WITH action_future AS (
+                WITH subcontract_budget_allocations AS MATERIALIZED (
+                """+allocationBudgetRowsSql("source.analysis_id=:analysisId")+"""
+                ), action_future AS (
                     SELECT action.id AS action_id,
                            progress.demand_future_qty AS future_qty
                     FROM preplan_supply_actions action
@@ -7396,15 +7421,19 @@ public class MaterialAnalysisService {
                       AND progress.demand_future_qty > 0
                 ), allocation_pending AS (
                     SELECT allocation.analysis_material_id,
+                           pending_qty.qty,
                            CASE WHEN action.external_document_type = 'PREPLAN_MAKE_TASK'
-                                THEN 1::numeric
+                                THEN pending_qty.qty
                                 WHEN action.external_document_type = 'SUBCONTRACT_APPLICATION'
                                  AND action.operation_type = 'SUPPLY'
                                 THEN (
-                """ + SUBCONTRACT_DRAW_SHARE_SQL + """
+                """ + subcontractDrawQuantitySql("pending_qty.qty") + """
                                 )
-                                ELSE 0::numeric END AS internal_ratio,
-                           CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_allocation_pending_qty(allocation.id)
+                                ELSE 0::numeric END AS internal_qty
+                    FROM subcontract_budget_allocations allocation
+                    JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                    CROSS JOIN LATERAL (
+                       SELECT CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_allocation_pending_qty(allocation.id)
                            WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_allocation_pending_qty(allocation.id)
                            ELSE GREATEST(fn_preplan_allocation_admitted_qty(allocation.id)
                              - fn_preplan_allocation_effective_exact_qty(allocation.id)
@@ -7414,29 +7443,26 @@ public class MaterialAnalysisService {
                                  JOIN preplan_analysis_stock_exact_pegs exact
                                    ON exact.stock_reservation_id=output.source_reservation_id
                                  WHERE exact.supply_action_allocation_id=allocation.id),0),0) END::numeric AS qty
-                    FROM preplan_supply_action_allocations allocation
-                    JOIN preplan_supply_actions action
-                      ON action.id = allocation.action_id
+                    ) pending_qty
                     WHERE action.analysis_id = :analysisId
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
                 ), coverage AS (
                     SELECT pending.analysis_material_id, split.supply_kind, split.qty
                     FROM allocation_pending pending
                     CROSS JOIN LATERAL (VALUES
-                        ('INTERNAL', ROUND(pending.qty * pending.internal_ratio, 4)),
-                        ('EXTERNAL', pending.qty - ROUND(pending.qty * pending.internal_ratio, 4))
+                        ('INTERNAL', pending.internal_qty),
+                        ('EXTERNAL', pending.qty - pending.internal_qty)
                     ) split(supply_kind, qty)
                     UNION ALL
                     SELECT claim.target_material_id,'EXTERNAL',fn_preplan_make_public_claim_pending_qty(claim.id)::numeric
                     FROM preplan_make_public_claims claim WHERE claim.target_analysis_id=:analysisId
                     UNION ALL
                     SELECT allocation.analysis_material_id, 'EXTERNAL',
-                           LEAST(allocation.allocated_qty,
-                               future.future_qty * allocation.allocated_qty
-                                   / NULLIF(action.requested_qty,0))::numeric
+                """ + allocationBudgetShareSql("LEAST(future.future_qty,action.requested_qty)") + """
+                           ::numeric
                     FROM action_future future
                     JOIN preplan_supply_actions action ON action.id = future.action_id
-                    JOIN preplan_supply_action_allocations allocation
+                    JOIN subcontract_budget_allocations allocation
                       ON allocation.action_id = action.id
                 )
                 """;
@@ -7780,12 +7806,15 @@ public class MaterialAnalysisService {
         // 只算要我方领料发外的份额。没有这一项, 真实下达 1500 之后直属物料需求会退回按
         // 物理缺口算的 1000, 多出来的 500 份物料就成了无人负责的需求。
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH subcontract_budget_allocations AS MATERIALIZED (
+                """+allocationBudgetRowsSql("source.analysis_id=:analysisId")+"""
+                )
                 SELECT material.analysis_item_id || '|' || material.node_key,
                        SUM(
                 """ + SUBCONTRACT_PLANNED_OUTPUT_SQL + """
                        )::numeric
                 FROM preplan_supply_actions action
-                JOIN preplan_supply_action_allocations allocation
+                JOIN subcontract_budget_allocations allocation
                   ON allocation.action_id = action.id
                 JOIN production_material_analysis_materials material
                   ON material.id = allocation.analysis_material_id

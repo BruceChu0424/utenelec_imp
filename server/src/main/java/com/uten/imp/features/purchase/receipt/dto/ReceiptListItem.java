@@ -25,4 +25,6 @@ public class ReceiptListItem extends com.uten.imp.common.history.DocumentHistory
 
     @Override public void disableHistoryActions() {
     }
+
+    public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

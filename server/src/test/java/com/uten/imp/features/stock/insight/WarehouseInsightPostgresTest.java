@@ -209,6 +209,53 @@ class WarehouseInsightPostgresTest {
     }
 
     @Test
+    void sameUnitLabelsKeepDistinctRealUnitIdsThroughTheHealthReaderAndTotals() throws Exception {
+        UUID warehouse,unitA,unitB;
+        try(StockReadSideSeed seed=new StockReadSideSeed(dataSource)){
+            warehouse=seed.warehouse("分组身份仓",null);
+            unitA=seed.unit("个",null);unitB=seed.unit("个",null);
+            UUID goodsA=seed.goods("分组身份A",unitA,null),goodsB=seed.goods("分组身份B",unitB,null);
+            seed.balance(warehouse,goodsA,"2",null,false,"2",null);
+            seed.balance(warehouse,goodsB,"3",null,false,"3",null);
+        }
+        var page=service(false).health(warehouse,null,null,null,false,false,1,1,null,null,AS_OF);
+        assertThat(page.getItems()).hasSize(1);assertThat(page.getTotal()).isEqualTo(2);
+        var groups=page.getTotals().stream().filter(t->t.key().equals("qty")).findFirst().orElseThrow().groups();
+        assertThat(groups).hasSize(2);assertThat(groups.stream().map(g->g.identity())).containsExactlyInAnyOrder(unitA.toString(),unitB.toString());
+        assertThat(groups.stream().map(g->g.value())).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
+    }
+
+    @Test
+    void instantInventoryKeepsSameLabelUnitIdsAndFullScopeTotals() throws Exception {
+        UUID warehouse,unitA,unitB;
+        try(StockReadSideSeed seed=new StockReadSideSeed(dataSource)){
+            warehouse=seed.warehouse("即时身份仓",null);unitA=seed.unit("个",null);unitB=seed.unit("个",null);
+            seed.balance(warehouse,seed.goods("即时身份A",unitA,null),"2",null,false,"2",null);
+            seed.balance(warehouse,seed.goods("即时身份B",unitB,null),"3",null,false,"3",null);
+        }
+        var jdbc=new NamedParameterJdbcTemplate(dataSource);var em=mock(jakarta.persistence.EntityManager.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.anyString())).thenAnswer(call->{
+            String sql=call.getArgument(0);var query=mock(jakarta.persistence.Query.class);
+            java.util.Map<String,Object> parameters=new java.util.LinkedHashMap<>();
+            when(query.setParameter(org.mockito.ArgumentMatchers.anyString(),any())).thenAnswer(p->{parameters.put(p.getArgument(0),p.getArgument(1));return query;});
+            when(query.getResultList()).thenAnswer(p->jdbc.query(sql,parameters,(rs,index)->{
+                int count=rs.getMetaData().getColumnCount();if(count==1)return rs.getObject(1);
+                Object[] row=new Object[count];for(int i=0;i<count;i++)row[i]=rs.getObject(i+1);return row;
+            }));
+            when(query.getSingleResult()).thenAnswer(p->jdbc.queryForObject(sql,parameters,Long.class));return query;
+        });
+        var cost=mock(StockCostMasker.class);when(cost.canView()).thenReturn(false);
+        var query=new com.uten.imp.features.stock.StockQueryService(mock(com.uten.imp.features.stock.StockBalanceRepository.class),em,cost);
+        var response=query.instantInventory(null,warehouse,false,"即时身份",1,1,null,null);
+        assertThat(response.getItems()).hasSize(1);assertThat(response.getTotal()).isEqualTo(2);
+        var page=(com.uten.imp.common.web.TotaledPageResponse<?>)response;
+        var groups=page.getTotals().stream().filter(t->t.key().equals("qty")).findFirst().orElseThrow().groups();
+        assertThat(groups).hasSize(2);assertThat(groups.stream().map(g->g.identity())).containsExactlyInAnyOrder(unitA.toString(),unitB.toString());
+        assertThat(groups.stream().map(g->g.value())).containsExactlyInAnyOrder(new BigDecimal("2.0000"),new BigDecimal("3.0000"));
+        assertThat(page.getTotals()).noneMatch(t->t.key().equals("cost_amount"));
+    }
+
+    @Test
     void cycleCountRanksDueUnknownAndRedTierLinesPerColor() throws Exception {
         World w = seed(dataSource);
         // X 另有白色: B 仓 5 个 (9-20 建账、重量未知); 白色在 A 仓 9-15 单独盘过, 不算无颜色那一行的上次盘点。

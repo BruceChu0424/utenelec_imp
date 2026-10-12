@@ -162,10 +162,10 @@ class InstantInventorySummaryTest {
                         .map(column -> column.substring("SUM(t.\"".length(), column.length() - 2))
                         .map(key -> summary.getOrDefault(key, BigDecimal.ZERO)).toArray();
                 rows = java.util.Collections.singletonList(aggregate);
-            } else if (sql.startsWith("SELECT t.\"unit_name\" AS __grp") && !summary.isEmpty()) {
+            } else if (sql.startsWith("SELECT t.\"unit_id\" AS __identity, t.\"unit_name\" AS __grp") && !summary.isEmpty()) {
                 rows = List.of(
-                        new Object[]{"个", new BigDecimal("3000.5"), BigDecimal.ZERO, BigDecimal.ZERO},
-                        new Object[]{"kg", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO});
+                        new Object[]{UUID.fromString("10000000-0000-0000-0000-000000000001"),"个",new BigDecimal("3000.5"),BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO},
+                        new Object[]{UUID.fromString("10000000-0000-0000-0000-000000000002"),"kg",BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO});
             }
             lenient().when(query.getResultList()).thenReturn(new ArrayList<>(rows));
             return query;

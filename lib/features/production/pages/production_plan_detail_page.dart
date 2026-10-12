@@ -60,7 +60,6 @@ import '../repositories/production_repository.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_execution_segments_card.dart';
 import '../widgets/production_status_badge.dart';
-import '../widgets/progress_ring.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -953,7 +952,6 @@ class _ProductionPlanDetailPageState
   }
 
   Widget _subplanProgressRow(ThemeData theme, MrpSubplanRef sp) {
-    final pct = sp.percent.clamp(0.0, 1.0);
     final reversed = sp.status == -1;
     final done = !reversed && sp.closed;
     final statusText = reversed
@@ -982,8 +980,6 @@ class _ProductionPlanDetailPageState
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
         child: Row(
           children: [
-            ProgressRing(value: pct, size: 40, fontSize: 10, done: done),
-            const SizedBox(width: UtenSpacing.s8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

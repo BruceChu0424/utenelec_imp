@@ -15,7 +15,7 @@
 //    实际领料完成行可「批量开工」，服务端复核齐套/分配/领料完成。
 //    未齐行点击给出明确原因（物料未入库/库存不足、
 //    仓库尚未完成备料出库等），双击进计划详情单独办理；
-//  - 生产中 = 正在生产·可报工：进度列只在本分类显示；勾选后「批量报工(N)」
+//  - 生产中 = 正在生产·可报工：显示实际阶段与产出；勾选后「批量报工(N)」
 //    （一次报工=同一车间，服务端同口径校验）；
 //  - 「可报工」分类退役（齐套可开工归等待物料、报工归生产中）；
 //  - 2026-10-10 新增「报工送检」分类：生产中按 remaining_qty 拆档，已报完未完工的
@@ -2558,7 +2558,7 @@ class _ProductionWorkshopTasksPageState
     _load();
   }
 
-  /// 状态列：全站统一流程词表（等待物料/物料齐套·可开工/生产中%/已完工）。
+  /// 状态列：全站统一流程词表（等待物料/物料齐套·可开工/生产中/已完工）。
   /// 路线确认后 WAITING 的等待方式按路线区分（齐套等到齐/分批等部分到货/
   /// 持续等部分物料——物料分析「未下达按路线显示第一步」同款）。
   ProductionFlowStage _flowStageOf(ProductionExecutionWorkbenchSegment task) =>
@@ -3590,8 +3590,8 @@ class _ProductionWorkshopTasksPageState
       width: 170,
       value: (task) => task.workshopName,
     ),
-    // 实际产出/计划实收进度：生产中与报工送检都显示——送检档看的正是检验/点收推进
-    // 到哪了(计划实收进度是该档最有信息量的列)；路线列只留生产中(报工送检已无关
+    // 实际产出：生产中与报工送检都显示；检验/点收推进由状态列的真实阶段说明。
+    // 路线列只留生产中(报工送检已无关
     // 路线，FAIL 恢复授权把量加回时任务自动回「生产中」再现)。
     if (status == 'IN_PROGRESS' || status == 'REPORT_INSPECTION')
       MasterColumnDef(
@@ -3610,20 +3610,6 @@ class _ProductionWorkshopTasksPageState
               ? '$summary · 待处理 ${task.overLimitPendingQtyText}'
               : summary;
         },
-      ),
-    if (status == 'IN_PROGRESS' || status == 'REPORT_INSPECTION')
-      MasterColumnDef(
-        key: 'progress',
-        label: '计划实收进度',
-        width: 220,
-        value: (task) {
-          final ratio = task.plannedInboundProgressRatio;
-          return ratio == null ? '—' : '计划实收 ${(ratio * 100).round()}%';
-        },
-        cellBuilder: (_, task) => ProductionFlowProgress(
-          ratio: task.plannedInboundProgressRatio,
-          semanticsLabel: '计划实收进度',
-        ),
       ),
   ];
 }

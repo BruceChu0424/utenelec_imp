@@ -37,11 +37,7 @@ public interface ProcurementOrderApprovalPort {
     /** Lock the effective order and snapshot current commercial facts without applying them again. */
     OrderSnapshot lockFinanceReconfirmationSnapshot(UUID orderId);
 
-    /** Finance changes commercial inputs on a draft only; row and source identities stay fixed. */
-    OrderSnapshot amendFinanceReview(UUID orderId, List<ReviewAmountEdit> edits);
 
-    /** Exactly one monetary input is supplied. Quantity/source allocation is not rewritten by this command. */
-    record ReviewAmountEdit(UUID itemId, BigDecimal price, BigDecimal totalAmountInput) {}
 
     record OrderSnapshot(
             String orderType,

@@ -43,7 +43,7 @@ class ReportTotalsCalculatorTest {
                 "FROM items i JOIN units un ON un.id = i.unit_id",
                 "WHERE i.is_deleted = false AND i.maker_id IN (:owners)",
                 Map.of("owners", List.of(1)),
-                List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName")));
+                List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId")));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(em).createNativeQuery(sql.capture());
@@ -72,8 +72,8 @@ class ReportTotalsCalculatorTest {
         ReportTotalsCalculator.compute(
                 em, "SELECT 1", "FROM t", "WHERE 1=1", Map.of(),
                 List.of(
-                        new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName"),
-                        new ReportTotalsCalculator.Spec("returnedQty", "合计退货数量", "number", "unitName"),
+                        new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId"),
+                        new ReportTotalsCalculator.Spec("returnedQty", "合计退货数量", "number", "unitName","unitId"),
                         new ReportTotalsCalculator.Spec("weight", "合计重量", "number", null)));
 
         // 3 个合计列、2 个分组维度 → 2 条聚合查询，不是 3 条（与列数无关，无 N+1）。
@@ -101,7 +101,7 @@ class ReportTotalsCalculatorTest {
         for (int i = 0; i < 50; i++) all.add(row("个", new BigDecimal("2")));
 
         List<ReportTotal> totals = ReportTotalsCalculator.computeFromRows(
-                all, List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName")));
+                all, List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId")));
 
         assertThat(totals).singleElement().satisfies(total -> {
             assertThat(total.groups()).singleElement()
@@ -118,7 +118,7 @@ class ReportTotalsCalculatorTest {
                 row("个", new BigDecimal("5")));
 
         List<ReportTotal> totals = ReportTotalsCalculator.computeFromRows(
-                all, List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName")));
+                all, List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId")));
 
         assertThat(totals).singleElement().satisfies(total -> {
             assertThat(total.groupKey()).isEqualTo("unitName");
@@ -126,8 +126,32 @@ class ReportTotalsCalculatorTest {
             assertThat(total.groups()).extracting(ReportTotalGroup::unit)
                     .containsExactly("个", "箱", null);
             assertThat(total.groups()).extracting(ReportTotalGroup::value)
-                    .containsExactly(new BigDecimal("15"), new BigDecimal("3"), new BigDecimal("7"));
+                    .containsExactly(new BigDecimal("15"), new BigDecimal("3"), null);
         });
+    }
+
+    @Test void nullAndBlankDimensionsKeepOnePendingMarkerAndNeverSumTheirNumbers() {
+        var totals = ReportTotalsCalculator.computeFromRows(List.of(
+                row(null, new BigDecimal("7")), row("", new BigDecimal("900")),
+                row("   ", new BigDecimal("30")), row("个", new BigDecimal("2"))),
+                List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId")));
+        assertThat(totals.getFirst().groups()).containsExactly(
+                new ReportTotalGroup("个",new BigDecimal("2"),java.util.UUID.nameUUIDFromBytes("个".getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString()),new ReportTotalGroup(null,null));
+    }
+
+    @Test void sqlReaderRejectsEvenOldNumericUnknownGroupsAndKeepsKnownGroups() {
+        Query query = mock(Query.class);
+        when(query.getResultList()).thenReturn(List.of(
+                new Object[] {null,null,new BigDecimal("7")}, new Object[] {null," ",new BigDecimal("9")},
+                new Object[] {"dollar-id","美金",new BigDecimal("2")}));
+        EntityManager em = mock(EntityManager.class); when(em.createNativeQuery(anyString())).thenReturn(query);
+        var totals = ReportTotalsCalculator.compute(em, "SELECT 1", "", "", Map.of(),
+                List.of(new ReportTotalsCalculator.Spec("amount", "合计金额", "money", "currency","currencyId")));
+        assertThat(totals.getFirst().groups()).containsExactly(
+                new ReportTotalGroup("美金",new BigDecimal("2"),"dollar-id"),new ReportTotalGroup(null,null));
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(em).createNativeQuery(sql.capture());
+        assertThat(sql.getValue()).contains("CASE WHEN NULLIF(BTRIM(t.\"currencyId\"::text),'') IS NULL OR NULLIF(BTRIM(t.\"currency\"::text),'') IS NULL THEN NULL ELSE SUM(t.\"amount\") END");
     }
 
     @Test
@@ -135,10 +159,37 @@ class ReportTotalsCalculatorTest {
         List<Map<String, Object>> all = List.of(row("个", null), row("箱", null));
 
         List<ReportTotal> totals = ReportTotalsCalculator.computeFromRows(
-                all, List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName")));
+                all, List.of(new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId")));
 
         // 宁可整项不显示，也不伪造一个 0。
         assertThat(totals).isEmpty();
+    }
+
+    @Test void equalLabelsWithDifferentRealIdentitiesStaySeparateInMemory() {
+        var spec=new ReportTotalsCalculator.Spec("amount","金额","money","currency","currencyId");
+        var totals=ReportTotalsCalculator.computeFromRows(List.of(
+                Map.of("currency","美金","currencyId","id-a","amount",new BigDecimal("7")),
+                Map.of("currency","美金","currencyId","id-b","amount",new BigDecimal("9")),
+                Map.of("currency","美金","currencyId","id-a","amount",new BigDecimal("3"))),List.of(spec));
+        assertThat(totals.getFirst().groups()).containsExactly(
+                new ReportTotalGroup("美金",new BigDecimal("10"),"id-a"),new ReportTotalGroup("美金",new BigDecimal("9"),"id-b"));
+    }
+
+    @Test void legacyGroupedConstructorWithoutIdentityEvidenceProducesPendingNotASum() {
+        var legacy=new ReportTotalsCalculator.Spec("qty","数量","number","unitName");
+        var totals=ReportTotalsCalculator.computeFromRows(List.of(row("个",new BigDecimal("7")),row("个",new BigDecimal("9"))),List.of(legacy));
+        assertThat(totals.getFirst().groups()).containsExactly(new ReportTotalGroup("个",null));
+        assertThat(new ReportTotalGroup("元",new BigDecimal("2")).identity()).isNull();
+    }
+
+    @Test void missingIdentityAndMissingLabelBothRemainPendingWhileKnownIdentitySums() {
+        Map<String,Object> missingLabel=new LinkedHashMap<>();missingLabel.put("currencyId","id-x");missingLabel.put("amount",new BigDecimal("7"));
+        var totals=ReportTotalsCalculator.computeFromRows(List.of(
+                missingLabel,Map.of("currency","美金","amount",new BigDecimal("9")),
+                Map.of("currency","美金","currencyId","id-a","amount",new BigDecimal("3"))),
+                List.of(new ReportTotalsCalculator.Spec("amount","金额","money","currency","currencyId")));
+        assertThat(totals.getFirst().groups()).containsExactly(new ReportTotalGroup("美金",new BigDecimal("3"),"id-a"),
+                new ReportTotalGroup("美金",null),new ReportTotalGroup(null,null,"id-x"));
     }
 
     @Test
@@ -181,7 +232,7 @@ class ReportTotalsCalculatorTest {
                                 ReportTotalsCalculator.TYPE_WEIGHT, null),
                         new ReportTotalsCalculator.Spec("weight_unknown_rows", "重量未知",
                                 ReportTotalsCalculator.TYPE_COUNT, null),
-                        new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName")));
+                        new ReportTotalsCalculator.Spec("qty", "合计数量", "number", "unitName","unitId")));
 
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         org.mockito.Mockito.verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
@@ -201,6 +252,7 @@ class ReportTotalsCalculatorTest {
     private static Map<String, Object> row(String unit, BigDecimal qty) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("unitName", unit);
+        row.put("unitId", unit==null||unit.isBlank()?null:java.util.UUID.nameUUIDFromBytes(unit.getBytes(java.nio.charset.StandardCharsets.UTF_8)).toString());
         row.put("qty", qty);
         return row;
     }

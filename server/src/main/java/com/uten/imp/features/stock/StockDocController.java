@@ -183,19 +183,6 @@ public class StockDocController {
         return service.update(id, req);
     }
 
-    @GetMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<StockDocDetail> review(@PathVariable UUID id) {
-        return service.reviewDraft(id);
-    }
-
-    @PutMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
-    public StockDocDetail saveReviewed(@PathVariable UUID id,
-            @Valid @RequestBody com.uten.imp.common.review.DocumentDraftReview.Save<StockDocSaveRequest> request) {
-        return service.updateReviewed(id,request.document(),request.expectedSnapshot(),request.approveNow());
-    }
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('stock_doc:delete')")
     public void delete(@PathVariable UUID id) {

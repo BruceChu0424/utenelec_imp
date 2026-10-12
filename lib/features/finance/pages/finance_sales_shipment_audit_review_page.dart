@@ -424,7 +424,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     final localPreview = _localAmountPreview();
     final rateLine = exchangeRate == null
         ? null
-        : '记账汇率 $exchangeRate(1 ${info.currencyName ?? '原币'} = $exchangeRate 本币)'
+        : '记账汇率 $exchangeRate(1 ${financeCurrencyText(name: info.currencyName)} = $exchangeRate 本币)'
               '${localPreview == null ? '' : '，本单折合本币约 $localPreview'}；'
               '仓库确认出库时按此汇率折算本币立应收。';
     final generation = _loadGeneration;
@@ -1047,7 +1047,7 @@ class _FinanceSalesShipmentAuditReviewPageState
         FinanceSnapshotMetric('结账方式', info.settlementMethodName ?? '未设置'),
         if (!_isFreeShipment)
           FinanceSnapshotMetric(
-            '主档参考汇率${info.currencyName == null ? '' : '(${info.currencyName})'}',
+            '主档参考汇率${info.currencyName == null ? '' : '(${financeCurrencyText(name: info.currencyName)})'}',
             _rateLocked
                 ? '1(本位币)'
                 : info.financeRateReady == false
@@ -1071,9 +1071,7 @@ class _FinanceSalesShipmentAuditReviewPageState
 
   /// V632 记账汇率区：待审时可填(预填主档参考汇率/本位币锁 1)，已决策时只读展示冻结值。
   Widget _exchangeRateSection(ThemeData theme, ShipmentFinanceAuditInfo info) {
-    final currency = info.currencyName?.trim().isNotEmpty == true
-        ? info.currencyName!.trim()
-        : '原币';
+    final currency = financeCurrencyText(name: info.currencyName);
     final decided =
         (_detail?.financeAudit ?? info.financeAudit) == 1 ||
         _detail?.shipmentWorkflow.financeRejected == true;

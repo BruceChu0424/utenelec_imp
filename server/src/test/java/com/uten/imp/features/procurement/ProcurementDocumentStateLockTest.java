@@ -48,7 +48,7 @@ class ProcurementDocumentStateLockTest {
                     "purchase/order/PurchaseOrderService.java",
                     "PurchaseOrder", "requireOrderForUpdate", "update", "delete", "cancel",
                     "requireFinanceSubmitterWritable", "lockAndValidateFinanceSubmission", "applyFinanceApproval",
-                    "reverse", "isFinanceApproved", "amendFinanceReview", "lockFinanceReconfirmationSnapshot", "changeQty"),
+                    "reverse", "isFinanceApproved", "lockFinanceReconfirmationSnapshot", "changeQty"),
             service("purchase/receipt/PurchaseReceiptService.java", "PurchaseReceipt", "requireReceiptForUpdate"),
             service("purchase/ret/PurchaseReturnService.java", "PurchaseReturn", "requireReturnForUpdate"),
             // V812 死代码清理删掉手动 approve/reverse(4→2)：申请=计划下达只读事实，
@@ -59,7 +59,7 @@ class ProcurementDocumentStateLockTest {
             financeOrderService(
                     "subcontract/order/SubcontractOrderService.java",
                     "SubcontractOrder", "requireOrderForUpdate", "update", "delete", "requireFinanceSubmitterWritable",
-                    "lockAndValidateFinanceSubmission", "isFinanceApproved", "amendFinanceReview",
+                    "lockAndValidateFinanceSubmission", "isFinanceApproved",
                     "lockFinanceReconfirmationSnapshot", "changeQtyInternal", "applyFinanceApproval", "reverse"),
             service("subcontract/receipt/SubcontractReceiptService.java", "SubcontractReceipt", "requireReceiptForUpdate"),
             service("subcontract/ret/SubcontractReturnService.java", "SubcontractReturn", "requireReturnForUpdate"),
@@ -176,9 +176,9 @@ class ProcurementDocumentStateLockTest {
 
     private static LockedService service(String relativePath, String entity, String helper) {
         List<String> mutations = relativePath.contains("receipt/")
-                ? List.of("review", "updateDraft", "delete", "approveReceipt", "reverse")
+                ? List.of("update", "delete", "approveReceipt", "reverse")
                 : relativePath.contains("/ret/")
-                ? List.of("review", "updateDraft", "delete", "approveReturn", "reverse")
+                ? List.of("update", "delete", "approve", "reverse")
                 : relativePath.contains("waste/")
                 ? List.of("update", "delete", "approveInternal", "reverse")
                 : List.of("update", "delete", "approve", "reverse");

@@ -170,8 +170,9 @@ final class SubcontractComponentCustodyProjection {
                     GROUP BY live.action_id
                 ), parent_output AS (
                     SELECT allocation.analysis_material_id AS parent_material_id,
-                           SUM(GREATEST(allocation.allocated_qty/action.requested_qty
-                               *(action.requested_qty+action.public_surplus_qty-COALESCE(received.qty,0)),0)) AS remaining_qty
+                           SUM(GREATEST(allocation.allocated_qty
+                               *(action.requested_qty+action.public_surplus_qty-COALESCE(received.qty,0))
+                               /action.requested_qty,0)) AS remaining_qty
                     FROM live_actions action
                     JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id
                       AND allocation.analysis_id=:analysisId AND allocation.allocated_qty>0

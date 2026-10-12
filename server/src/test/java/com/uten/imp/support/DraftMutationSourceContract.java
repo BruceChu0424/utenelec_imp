@@ -15,56 +15,16 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Checks the two authorization paths after a public update delegates to its draft kernel. */
+/** Exact AST checks for native maker saves and source-preserving mutation boundaries. */
 public final class DraftMutationSourceContract {
     private DraftMutationSourceContract() { }
 
     public static String ordinaryUpdateBody(String source) {
         String entry = method(source, "update");
-        assertThat(entry).contains("return updateDraft(id, req, false, null);");
-        assertOrdinaryAndReviewedBranches(source);
-        return method(source, "updateDraft");
-    }
-
-    public static void assertOrdinaryAndReviewedBranches(String source) {
-        Parsed parsed = parse(source);
-        MethodTree kernel = parsed.methods().stream()
-                .filter(method -> method.getName().contentEquals("updateDraft"))
-                .findFirst().orElseThrow();
-        List<IfTree> switches = new ArrayList<>();
-        new TreeScanner<Void, Void>() {
-            @Override public Void visitIf(IfTree node, Void unused) {
-                String condition = node.getCondition().toString();
-                // The daily-report kernel also uses this flag to protect its worker
-                // identity and editable fields. Select the authorization split only.
-                if ((condition.equals("(review)") || condition.equals("(reviewed)"))
-                        && invokes(node.getThenStatement(), "requireReviewer")) switches.add(node);
-                return super.visitIf(node, unused);
-            }
-        }.scan(kernel.getBody(), null);
-        assertThat(switches).as("explicit internal review flag, never a caller-controlled OR shortcut").hasSize(1);
-        IfTree branch = switches.getFirst();
-        assertThat(branch.getElseStatement()).as("ordinary draft path must retain its owner write guard").isNotNull();
-        assertThat(branch.getElseStatement().toString())
-                .contains("access.requireWritable(")
-                .doesNotContain("requireReviewer", "requireScopedOperationWritable");
-        assertThat(branch.getThenStatement().toString())
-                .contains("requireReviewer(", "requireCurrent(", "expectedSnapshot");
-        MethodTree reviewed = parsed.methods().stream()
-                .filter(method -> method.getName().contentEquals("saveReviewedDraft")).findFirst().orElseThrow();
-        assertThat(parsed.text(reviewed)).contains(":view", ":approve");
-        List<MethodInvocationTree> dispatches = new ArrayList<>();
-        new TreeScanner<Void, Void>() {
-            @Override public Void visitMethodInvocation(MethodInvocationTree node, Void unused) {
-                if (node.getMethodSelect().toString().equals("updateDraft")) dispatches.add(node);
-                return super.visitMethodInvocation(node, unused);
-            }
-        }.scan(reviewed.getBody(), null);
-        assertThat(dispatches).as("the protected review endpoint dispatches once to the same kernel").hasSize(1);
-        assertThat(dispatches.getFirst().getArguments().stream().map(Object::toString).toList())
-                .containsExactly(reviewed.getParameters().get(0).getName().toString(),
-                        reviewed.getParameters().get(1).getName().toString(), "true",
-                        reviewed.getParameters().get(2).getName().toString());
+        assertThat(entry).contains("access.requireWritable(").doesNotContain("requireReviewer(");
+        assertThat(parse(source).methods().stream().map(method -> method.getName().toString()))
+                .doesNotContain("updateReviewed", "saveReviewedDraft");
+        return entry;
     }
 
     private static boolean invokes(com.sun.source.tree.Tree tree, String name) {

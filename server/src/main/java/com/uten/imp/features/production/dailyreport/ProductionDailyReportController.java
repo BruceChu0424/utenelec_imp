@@ -181,17 +181,6 @@ public class ProductionDailyReportController {
         return service.update(id, req);
     }
 
-    @GetMapping("/{id}/draft-review")
-    @PreAuthorize("hasAuthority('production_daily_report:view') and hasAuthority('production_daily_report:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<DailyReportDetail> review(@PathVariable UUID id) { return service.review(id); }
-
-    @PutMapping("/{id}/draft-review")
-    @PreAuthorize("hasAuthority('production_daily_report:view') and hasAuthority('production_daily_report:approve')")
-    public DailyReportDetail updateReviewed(@PathVariable UUID id,
-            @Valid @RequestBody com.uten.imp.common.review.DocumentDraftReview.Save<DailyReportSaveRequest> request) {
-        return service.updateReviewed(id, request.document(), request.expectedSnapshot(), request.approveNow());
-    }
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('production_daily_report:delete')")
     public void delete(@PathVariable UUID id) {

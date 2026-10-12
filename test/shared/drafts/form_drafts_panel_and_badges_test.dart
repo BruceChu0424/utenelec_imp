@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/badges/badge_scope.dart';
 import 'package:uten_imp/shared/badges/effective_badge_summary_provider.dart';
-import 'package:uten_imp/shared/drafts/form_draft.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
@@ -34,6 +34,74 @@ class FixedFormDrafts extends FormDraftsNotifier {
 }
 
 void main() {
+  test('production card does not count its local draft entry twice', () {
+    final container = ProviderContainer(
+      overrides: [
+        fixedBadgeSummaryOverride(
+          badgeSummaryFixture(
+            entries: const {
+              BadgeEntry.productionSchedule: (2, 0),
+              BadgeEntry.productionBatches: (0, 7),
+              BadgeEntry.productionDrafts: (5, 0),
+            },
+          ),
+        ),
+        formDraftsProvider.overrideWith(
+          () => FixedFormDrafts([draft('plan-1', BadgeModule.production)]),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    const scope = BadgeScope.entries(
+      todo: BadgeEntry.productionSchedule,
+      inProgress: BadgeEntry.productionBatches,
+      additionalTodoEntries: {BadgeEntry.productionDrafts},
+      formDraftModule: BadgeModule.production,
+    );
+    expect(
+      container.read(badgeScopeCountsProvider(scope)),
+      const BadgeCounts(8, 7),
+    );
+    expect(container.read(badgeModuleTodoProvider(BadgeModule.production)), 8);
+  });
+
+  test('one warehouse task plus three task checkpoints remains one todo', () {
+    final checkpoints = [
+      FormDraftCatalog.arrival.spec(
+        route: '/warehouse/inbound/arrivals/register?expectationIds=source-a',
+      ),
+      FormDraftCatalog.warehouseQualityStockIn.spec(
+        route: '/warehouse/quality-results/PURCHASE/receipt-a',
+      ),
+      FormDraftCatalog.warehouseSalesOutbound.spec(
+        route: '/warehouse/sales-outbound/shipment-a',
+      ),
+    ];
+    final local = [
+      for (var index = 0; index < checkpoints.length; index++)
+        FormDraft(
+          id: 'checkpoint-$index',
+          title: checkpoints[index].title,
+          module: checkpoints[index].module,
+          route: checkpoints[index].route,
+          permission: checkpoints[index].permission,
+          updatedAt: DateTime.utc(2026, 10, 12),
+          data: const {},
+        ),
+    ];
+    final server = badgeSummaryFixture(
+      entries: const {
+        BadgeEntry.warehouseWorkshopMaterial: (1, 0),
+        BadgeEntry.warehouseQualityResult: (0, 1),
+      },
+    );
+    final effective = includeFormDraftBadges(server, local);
+    expect(effective.moduleTodo(BadgeModule.warehouse), 1);
+    expect(effective.moduleInProgress(BadgeModule.warehouse), 1);
+    expect(effective.entryTodo(BadgeEntry.warehouseDrafts), 0);
+    expect(effective.facts, same(server.facts));
+  });
+
   test(
     'local recovery counts once without changing formal facts or yellow',
     () {

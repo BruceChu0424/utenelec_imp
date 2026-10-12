@@ -79,6 +79,11 @@ void main() {
       //（驳回人/时间在进度详情页展示，不再进表格行）。
       expect(find.text('财务驳回'), findsWidgets);
       expect(find.text('SO-REJECTED'), findsOneWidget);
+      expect(
+        table.columns.map((column) => column.key),
+        isNot(contains('productionPct')),
+      );
+      expect(find.text('生产进度'), findsNothing);
       expect(find.textContaining('结账方式错误'), findsOneWidget);
       expect(api.readBySourceQueries, hasLength(1));
       final events = api.readBySourceQueries.single['events'] as String;

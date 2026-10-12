@@ -14,7 +14,6 @@ import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_execution_refresh.dart';
 import '../repositories/production_execution_workbench_repository.dart';
-import '../widgets/production_flow_stage_cell.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 
@@ -22,8 +21,8 @@ import '../../../core/router/nav_helpers.dart';
 ///
 /// 2026-09-06 起为「大的分析」统筹视角：顶部不再提供生产车间/排序筛选
 /// （关键词搜索在大类行，排序/细分信息双击进详情看）；表格只保留分析级
-/// 重要列——顶层产品完工进度（进度条+百分比，只统计参与分析的销售下单
-/// 产品，不含子层）、分析批次、关联销售订单、产品、分析人、分析时间。
+/// 重要列——按货品/颜色/单位统计的产品完成情况、分析批次、关联销售订单、
+/// 产品、分析人、分析时间；追加生产仍归同一产品的未完成状态。
 /// 工单号/车间/产品编号/数量明细等执行细节双击进物料分析页查看。
 class ProductionExecutionGroupPanel extends ConsumerStatefulWidget {
   const ProductionExecutionGroupPanel({super.key, required this.keyword});
@@ -224,19 +223,13 @@ class _ProductionExecutionGroupPanelState
       cellColor: (context, row) =>
           utenStatusBadgeCellColor(_groupStatusType(row.status)),
     ),
-    // 顶层产品完工进度：只统计参与分析的销售下单产品（多张销售单联合
-    // 分析也按根产品行聚合），子层自制/委外的完工不冒充顶层进度。
+    // 追加生产仍按产品身份统计：同货品/颜色/单位的全部有效工单完工才算完成。
     MasterColumnDef(
       key: 'progress',
-      label: '进度',
+      label: '产品完成情况',
       width: 220,
-      value: (row) => row.rootProgressPercent == null
-          ? '—'
-          : '完工 ${row.rootProgressPercent}%',
-      cellBuilder: (_, row) => ProductionFlowProgress(
-        ratio: row.rootProgressRatio,
-        semanticsLabel: '顶层产品完工进度',
-      ),
+      info: '按货品、颜色、单位统计；同一产品所有有效工单完工才算完成，取消和红冲工单不计。双击批次查看实际阶段。',
+      value: (row) => row.productCompletionLabel,
     ),
     MasterColumnDef(
       key: 'root',

@@ -24,7 +24,7 @@ class _Api extends ApiClient {
     final filtered = query?['status'] != null || query?['category'] != null;
     return {
       'items': filtered
-          ? []
+          ? <Map<String, dynamic>>[]
           : [
               {
                 'id': 'suggestion-1',

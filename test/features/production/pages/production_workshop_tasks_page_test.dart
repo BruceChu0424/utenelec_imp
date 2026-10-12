@@ -667,7 +667,7 @@ void main() {
 
     // 行渲染：状态列琥珀 waiting 档子标签；实际产出/计划实收进度在，路线列不在。
     expect(find.text('已报完 · 待品质检查'), findsOneWidget);
-    expect(find.text('计划实收进度'), findsOneWidget);
+    expect(find.text('计划实收进度'), findsNothing);
     expect(find.text('实际产出'), findsOneWidget);
     expect(find.text('生产路线'), findsNothing);
     // 不可勾选：分类不可选时表格没有全选框也没有行选择框。
@@ -727,51 +727,52 @@ void main() {
     },
   );
 
-  testWidgets('in-progress segment keeps batch report and progress column', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final router = _router();
-    addTearDown(router.dispose);
+  testWidgets(
+    'in-progress segment keeps batch report and actual stage without percentage column',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          sharedPreferencesProvider.overrideWithValue(_preferences),
-          currentPermissionsProvider.overrideWithValue(const {
-            Perm.productionExecutionView,
-            Perm.productionDailyReportView,
-            Perm.productionDailyReportCreate,
-          }),
-          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
-            _repository(),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionDailyReportView,
+              Perm.productionDailyReportCreate,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
           ),
-        ],
-        child: MaterialApp.router(
-          routerConfig: router,
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          locale: const Locale('zh'),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '生产中');
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '生产中');
+      await tester.pumpAndSettle();
 
-    // 生产中显示进度列与「生产中 · 可报工」口径。
-    expect(find.text('计划实收进度'), findsOneWidget);
-    expect(find.text('生产中 · 可报工 20%'), findsNWidgets(2));
-    expect(find.text('批量开工(0)'), findsNothing);
+      // 生产中显示真实阶段和实际产出，数量百分比列退役。
+      expect(find.text('计划实收进度'), findsNothing);
+      expect(find.text('生产中 · 可报工'), findsNWidgets(2));
+      expect(find.text('批量开工(0)'), findsNothing);
 
-    await _selectRow(tester, '产品 A');
-    await _selectRow(tester, '产品 B');
-    await tester.tap(find.text('批量报工(2)'));
-    await tester.pumpAndSettle();
+      await _selectRow(tester, '产品 A');
+      await _selectRow(tester, '产品 B');
+      await tester.tap(find.text('批量报工(2)'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('批量来源 segment-a,segment-b'), findsOneWidget);
-  });
+      expect(find.text('批量来源 segment-a,segment-b'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'row menu only opens the plan; single report goes through selection + floating button',

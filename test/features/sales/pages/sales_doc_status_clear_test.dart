@@ -76,7 +76,7 @@ void main() {
           ),
           currentPermissionsProvider.overrideWithValue(const {}),
           isSuperAdminProvider.overrideWithValue(false),
-          draftCountsProvider.overrideWith((ref) => const DraftCounts()),
+          draftCountsProvider.overrideWith((ref) => DraftCounts.empty),
           documentStatusCountsProvider.overrideWith((ref, scope) async => {}),
           fixedBadgeSummaryOverride(),
         ],

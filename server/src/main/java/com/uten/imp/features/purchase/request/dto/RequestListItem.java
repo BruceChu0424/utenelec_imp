@@ -20,4 +20,6 @@ public class RequestListItem extends com.uten.imp.common.history.DocumentHistory
 
     @Override public void disableHistoryActions() {
     }
+
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

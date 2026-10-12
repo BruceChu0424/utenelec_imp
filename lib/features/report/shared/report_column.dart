@@ -10,17 +10,23 @@ class ReportColumn {
     required this.label,
     required this.type,
     this.width,
+    this.unitLabel,
+    this.unitKey,
   });
 
   final String key;
   final String label;
   final String type;
   final double? width;
+  final String? unitLabel;
+  final String? unitKey;
 
   factory ReportColumn.fromJson(Map<String, dynamic> j) => ReportColumn(
     key: (j['key'] ?? '').toString(),
     label: (j['label'] ?? '').toString(),
     type: (j['type'] ?? 'text').toString(),
     width: (j['width'] as num?)?.toDouble(),
+    unitLabel: j['unitLabel']?.toString(),
+    unitKey: j['unitKey']?.toString(),
   );
 }

@@ -7,6 +7,8 @@
 import '../../../core/formatters/china_number_format.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 import 'report_column.dart';
 
 /// 按 [col.type] 格式化 [row] 中该列的值为展示字符串；空值返回 null。
@@ -16,22 +18,44 @@ String? formatReportCell(
   Map<String, dynamic> row, {
   WeightDisplay weightDisplay = WeightDisplay.auto,
 }) {
+  final v = row[col.key];
+  // A masked main value remains masked even if an older response retained Exact.
+  if (v == null) return null;
+  final numeric = const {'money', 'number', 'int', 'count'}.contains(col.type);
+  if (numeric && v is! num && financeExactDecimal(v.toString()) == null) {
+    return '$v';
+  }
+  final unitKey = col.unitKey?.trim();
+  final unit = unitKey != null && unitKey.isNotEmpty
+      ? row[unitKey]?.toString()
+      : col.unitLabel;
   final exact = row['${col.key}Exact'];
   if (exact is String && financeExactDecimal(exact) != null) {
-    if (col.type == 'money') return financeExactMoneyDisplay(exact);
+    if (col.type == 'money') {
+      return financeMoneyWithUnitSuffix(exact, currencyName: unit);
+    }
     if (col.type == 'number' || col.type == 'int' || col.type == 'count') {
-      return financeExactTrimmed(exact);
+      return formatExactQtyWithUnit(exact, unit);
     }
   }
-  final v = row[col.key];
-  if (v == null) return null;
   switch (col.type) {
     case 'money':
+      if (unit?.trim().isNotEmpty == true) {
+        return financeMoneyWithUnitSuffix(v.toString(), currencyName: unit);
+      }
+      final n = v is num ? v : num.tryParse('$v');
+      return n == null ? '$v' : formatChinaNumber(n);
     case 'number':
+      if (unit?.trim().isNotEmpty == true) {
+        return formatExactQtyWithUnit(v.toString(), unit);
+      }
       final n = v is num ? v : num.tryParse('$v');
       return n == null ? '$v' : formatChinaNumber(n);
     case 'int':
     case 'count':
+      if (unit?.trim().isNotEmpty == true) {
+        return formatExactQtyWithUnit(v.toString(), unit);
+      }
       final n = v is num ? v : num.tryParse('$v');
       return n == null ? '$v' : formatChinaNumber(n, decimalDigits: 0);
     case 'weight':

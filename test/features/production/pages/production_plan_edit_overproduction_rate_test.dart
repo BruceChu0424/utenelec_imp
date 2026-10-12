@@ -4,11 +4,6 @@
 // 人定的(EXPLICIT)比例照原值回传，来源是系统默认(DEFAULT)且没人改过的送空值——
 // 删行、插行让它换了位置也一样；人改过的按所填值明确提交。
 import 'package:dio/dio.dart';
-import 'dart:async';
-import 'package:go_router/go_router.dart';
-import 'package:uten_imp/shared/auth/permissions.dart';
-import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
-import '../../../support/native_detail_reader_overrides.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +17,6 @@ import 'package:uten_imp/features/production/widgets/production_overproduction_r
 import 'package:uten_imp/features/production/widgets/production_grid_columns.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
-part 'production_plan_reviewed_save_cases.dart';
 
 final _rateFields = find.descendant(
   of: find.byType(ProductionOverproductionRateField),

@@ -70,10 +70,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PurchaseReceiptService {
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.fasterxml.jackson.databind.ObjectMapper reviewJson;
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<PurchaseReceiptService> reviewedDraftProxy;
 
 
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
@@ -226,10 +222,8 @@ public class PurchaseReceiptService {
 
     /** Preserve the business prefix, header lock and source check before the field snapshot. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    @PreAuthorize("hasAuthority('purchase_receipt:edit') or (hasAuthority('purchase_receipt:view') and hasAuthority('purchase_receipt:approve'))")
+    @PreAuthorize("hasAuthority('purchase_receipt:edit')")
     public void lockPlatformColumnSave(UUID id, ReceiptSaveRequest request) {
-        if (!access.hasAuthority("purchase_receipt:edit") && !com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("purchase_receipt_item", id, currentUser.requireId()))
-            throw new ApiException(ErrorCode.FORBIDDEN);
         tx.bind();
         var guard = lockReceiptRequest(id, request);
         requireReceiptForUpdate(id);
@@ -240,57 +234,10 @@ public class PurchaseReceiptService {
     @PreAuthorize("hasAuthority('purchase_receipt:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_receipt_item", requestArgument=1, documentIdArgument=0)
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
-        return updateDraft(id, req, false, null);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('purchase_receipt:view') and hasAuthority('purchase_receipt:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<ReceiptDetail> review(UUID id) {
-        tx.bind();
-        var guard = mutationLocks.receipt("PURCHASE", id);
-        PurchaseReceipt r = requireReceiptForUpdate(id);
-        guard.verifyUnchanged();
-        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "purchase_receipt");
-        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
-        if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
-        return new com.uten.imp.common.review.DocumentDraftReview.View<>(com.uten.imp.common.review.DocumentDraftReview.snapshot(em, com.uten.imp.common.review.DocumentDraftReview.Kind.PURCHASE_RECEIPT, id), detail(id));
-    }
-
-    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
-    @PreAuthorize("hasAuthority('purchase_receipt:view') and hasAuthority('purchase_receipt:approve')")
-    public ReceiptDetail updateReviewed(UUID id, ReceiptSaveRequest req, String expectedSnapshot, boolean approveNow) {
-        review(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.PURCHASE_RECEIPT, id, expectedSnapshot);
-        com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.PURCHASE_RECEIPT, id, req);
-        ReceiptDetail saved;
-        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("purchase_receipt_item", id, currentUser.requireId())) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
-        }
-        if (!approveNow) return saved;
-        approveReceipt(id, true); return detail(id);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('purchase_receipt:view') and hasAuthority('purchase_receipt:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="purchase_receipt_item", requestArgument=1, documentIdArgument=0)
-    public ReceiptDetail saveReviewedDraft(UUID id, ReceiptSaveRequest req, String expectedSnapshot) {
-        if (!com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("purchase_receipt_item", id, currentUser.requireId()))
-            throw new ApiException(ErrorCode.FORBIDDEN);
-        ReceiptDetail result = updateDraft(id, req, true, expectedSnapshot);
-        em.flush();
-        return result;
-    }
-
-    private ReceiptDetail updateDraft(UUID id, ReceiptSaveRequest req, boolean reviewed, String expectedSnapshot) {
         tx.bind();
         var mutationGuard=lockReceiptRequest(id,req);
         PurchaseReceipt r = requireReceiptForUpdate(id);
-        if (reviewed) {
-            com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "purchase_receipt");
-            com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.PURCHASE_RECEIPT, id, expectedSnapshot);
-            com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.PURCHASE_RECEIPT, id, req);
-        } else access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -337,9 +284,7 @@ public class PurchaseReceiptService {
     }
 
     /** Shared transaction kernel; warehouse commands do not need the commercial detail projection. */
-    private void approveReceipt(UUID id) { approveReceipt(id, false); }
-
-    private void approveReceipt(UUID id, boolean reviewed) {
+    private void approveReceipt(UUID id) {
         tx.bind();
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RECEIPT, id);
@@ -352,8 +297,7 @@ public class PurchaseReceiptService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        if (reviewed) com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "purchase_receipt");
-        else access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购收货单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");

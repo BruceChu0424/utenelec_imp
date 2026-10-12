@@ -64,6 +64,34 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets(
+    'inventory actual row retains the smallest stored quantity with its unit',
+    (tester) async {
+      final row = InstantInventoryRow.fromJson({
+        'goodsId': 'small-quantity',
+        'name': '四位库存',
+        'unitName': '个',
+        'qty': 0.0001,
+        'pendingQty': 0.0001,
+        'pendingStockInQty': 0.0001,
+        'moreQty': 0.0001,
+      });
+      await pumpPage(tester, stock: _RecordingStockRepository(rows: [row]));
+      final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+        find.byType(MasterDataTableView<InstantInventoryRow>),
+      );
+      for (final key in ['qty', 'pendingQty', 'pendingStockInQty', 'moreQty']) {
+        expect(
+          table.columns.singleWhere((c) => c.key == key).value(row),
+          '0.0001 个',
+          reason: key,
+        );
+      }
+      expect(find.text('0.0001 个'), findsWidgets);
+      expect(find.text('0 个'), findsNothing);
+    },
+  );
+
   testWidgets('opens unfiltered and loads the first page immediately', (
     tester,
   ) async {

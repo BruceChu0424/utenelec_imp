@@ -520,13 +520,8 @@ class ProductionFlowStage {
     return _make(3, '备料中 · 等待领料指令', ProductionFlowTone.waiting);
   }
 
-  /// 带百分比的展示标签（生产中 N%）。
-  String get displayLabel {
-    if (progressPercent case final percent?) {
-      return '$label $percent%';
-    }
-    return label;
-  }
+  /// 展示真实阶段；完成数量保留在独立的数量事实里，不用数量比替代状态。
+  String get displayLabel => label;
 
   static ProductionFlowStage _make(
     int index,

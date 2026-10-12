@@ -273,10 +273,6 @@ class _FinanceSalesOrderReviewPageState
   }
 
   Future<void> _confirm() async {
-    if (_hasAmountEdits) {
-      context.appWarning('请先保存审核修改，核对新金额后确认');
-      return;
-    }
     if (!_canConfirm) {
       context.appWarning('您没有销售订单财务确认权限');
       return;
@@ -292,7 +288,7 @@ class _FinanceSalesOrderReviewPageState
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
-        title: Text('确认通过 $widgetSafeBillNo'),
+        title: Text('确认通过 ${reviewed.billNo}'),
         content: SizedBox(
           width: 440,
           child: Column(
@@ -421,10 +417,6 @@ class _FinanceSalesOrderReviewPageState
   }
 
   Future<void> _reject() async {
-    if (_hasAmountEdits) {
-      context.appWarning('请先保存审核修改或恢复原值，再驳回');
-      return;
-    }
     if (!_canConfirm) {
       context.appWarning('您没有销售订单财务确认权限');
       return;
@@ -442,7 +434,7 @@ class _FinanceSalesOrderReviewPageState
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (dialogCtx, setDialogState) => AlertDialog(
-          title: Text('驳回 $widgetSafeBillNo'),
+          title: Text('驳回 ${reviewed.billNo}'),
           content: SizedBox(
             width: 440,
             child: Column(

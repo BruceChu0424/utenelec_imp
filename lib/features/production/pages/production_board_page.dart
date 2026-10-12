@@ -66,7 +66,6 @@ import '../providers/production_pending_provider.dart';
 import '../providers/production_board_sort_provider.dart';
 import '../providers/production_execution_group_count_provider.dart';
 import '../repositories/production_repository.dart';
-import '../widgets/progress_ring.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
 import '../widgets/production_execution_group_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -1626,15 +1625,12 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
     final sumQty = (_summary?['sumQty'] as num?)?.toDouble() ?? 0;
     final sumReported = (_summary?['sumReported'] as num?)?.toDouble() ?? 0;
     final sumIn = (_summary?['sumInbound'] as num?)?.toDouble() ?? 0;
-    final overall = sumQty > 0 ? (sumIn / sumQty).clamp(0.0, 1.0) : 0.0;
     return Card(
       margin: const EdgeInsets.only(top: UtenSpacing.s8),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Row(
           children: [
-            ProgressRing(value: overall, size: 44),
-            const SizedBox(width: UtenSpacing.s12),
             Expanded(
               child: Text(
                 '${widget.closed ? '已完成' : '在产'} $count 张计划 · '
@@ -1786,7 +1782,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Widget _planCard(ThemeData theme, PlanProgressRow r) {
-    final pct = r.percent.clamp(0.0, 1.0);
     final done = r.closed;
     final overdue = r.overdue && !done; // 已过交货日：整卡红色标注
     final urgent = r.urgent && !done && !overdue; // 交货 ≤3 天未逾期：浅色提醒
@@ -1821,8 +1816,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ProgressRing(value: pct, done: done),
-                  const SizedBox(width: UtenSpacing.s12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2041,7 +2034,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Widget _subplanRow(ThemeData theme, SubPlanProgress s) {
-    final pct = s.percent.clamp(0.0, 1.0);
     final done = s.closed;
     final identity = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2120,13 +2112,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
                   children: [
                     Row(
                       children: [
-                        ProgressRing(
-                          value: pct,
-                          size: 42,
-                          fontSize: 11,
-                          done: done,
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
                         Expanded(child: identity),
                         _miniStatus(theme, s, done),
                         const SizedBox(width: UtenSpacing.s4),
@@ -2155,8 +2140,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
               }
               return Row(
                 children: [
-                  ProgressRing(value: pct, size: 40, fontSize: 11, done: done),
-                  const SizedBox(width: UtenSpacing.s8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

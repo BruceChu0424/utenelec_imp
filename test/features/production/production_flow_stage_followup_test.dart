@@ -278,6 +278,8 @@ void main() {
       );
       expect(stage.label, '持续生产中 · 按实际投料报工');
       expect(stage.progressPercent, 10);
+      expect(stage.displayLabel, '持续生产中 · 按实际投料报工');
+      expect(stage.displayLabel, isNot(contains('%')));
     },
   );
   test(

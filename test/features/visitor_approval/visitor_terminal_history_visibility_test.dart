@@ -29,7 +29,7 @@ class _Api extends ApiClient {
         'statuses': [
           {'value': query?['status'] ?? 'pending', 'count': 1},
         ],
-        'departments': [],
+        'departments': <Map<String, dynamic>>[],
       };
     }
     if (path != ApiEndpoints.visitorApproval &&

@@ -41,7 +41,7 @@ class SubcontractOrderInProgressFilterTest {
     @InjectMocks private SubcontractOrderService service;
 
     @Test
-    void includesPendingAndRejectedDraftsOrUnclosedApprovedOrdersBeforePagination() {
+    void includesPendingAndRejectedLiveOrdersOrUnclosedApprovedOrdersBeforePagination() {
         verifyInProgress(Set.of(UUID.randomUUID()), Set.of(UUID.randomUUID()));
     }
 
@@ -94,12 +94,12 @@ class SubcontractOrderInProgressFilterTest {
         if (financeIds.isEmpty()) {
             when(cb.disjunction()).thenReturn(finance);
         } else {
-            Predicate draft = mock(Predicate.class);
+            Predicate financeReviewable = mock(Predicate.class);
             Predicate belongsToFinance = mock(Predicate.class);
             when(root.get("id")).thenReturn(id);
-            when(cb.equal(status, (short) 0)).thenReturn(draft);
+            when(status.in((short) 0, (short) 1)).thenReturn(financeReviewable);
             when(id.in(financeIds)).thenReturn(belongsToFinance);
-            when(cb.and(draft, belongsToFinance)).thenReturn(finance);
+            when(cb.and(financeReviewable, belongsToFinance)).thenReturn(finance);
         }
         when(cb.or(finance, executing)).thenReturn(progress);
 
@@ -107,5 +107,6 @@ class SubcontractOrderInProgressFilterTest {
         verify(cb).or(finance, executing);
         verify(cb).and(new Predicate[]{active, readable, progress});
         if (financeIds.isEmpty()) verify(root, never()).get("id");
+        else verify(status).in((short) 0, (short) 1);
     }
 }

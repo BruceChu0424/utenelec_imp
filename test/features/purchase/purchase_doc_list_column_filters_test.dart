@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_list_page.dart';
@@ -42,6 +43,10 @@ void main() {
         overrides: [
           apiClientProvider.overrideWithValue(api),
           sharedPreferencesProvider.overrideWithValue(preferences),
+          currentPermissionsProvider.overrideWithValue(const {
+            Perm.purchaseReceiptView,
+            Perm.purchaseReceiptPriceView,
+          }),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -60,6 +65,42 @@ void main() {
       ),
     );
     final table = tableWidget();
+    final amount =
+        (table
+                as MasterDataTableView<
+                  FormDraftCategoryRow<PurchaseDocListItem>
+                >)
+            .columns
+            .singleWhere((c) => c.key == 'total');
+    for (final raw in ['0.0001', '99999999999999.9999']) {
+      final row = PurchaseDocListItem.fromJson({
+        'id': 'exact',
+        'totalLocal': double.parse(raw),
+        'totalLocalExact': raw,
+      });
+      expect(
+        amount.value(FormDraftCategoryRow<PurchaseDocListItem>(record: row)),
+        '$raw 元',
+      );
+    }
+    final masked = PurchaseDocListItem.fromJson({
+      'id': 'masked',
+      'priceMasked': true,
+      'totalLocal': 1,
+      'totalLocalExact': '99999999999999.9999',
+    });
+    expect(
+      amount.value(FormDraftCategoryRow<PurchaseDocListItem>(record: masked)),
+      '***',
+    );
+    expect(
+      PurchaseDocListItem.fromJson({
+        'id': 'unknown',
+        'totalLocal': null,
+        'totalLocalExact': '99999999999999.9999',
+      }).totalLocalText,
+      isNull,
+    );
     expect(table.facets.keys, containsAll(<String>['supplier', 'warehouse']));
     expect(table.facets['supplier']?.single.value, 'supplier-1');
     expect(table.facets['warehouse']?.single.value, 'warehouse-1');

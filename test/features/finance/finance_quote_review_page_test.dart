@@ -378,6 +378,29 @@ Future<void> _save(WidgetTester tester) async {
 }
 
 void main() {
+  for (final (code, suffix) in [('USD', '美金'), ('CNY', '元')]) {
+    testWidgets('quote header and total reuse Chinese currency units $code', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _review(extra: {'currencyName': code, 'totalOriginal': '300'}),
+      );
+      expect(find.text('300.00 $suffix'), findsWidgets);
+      expect(find.text(code), findsNothing);
+      expect(find.text('300.00'), findsNothing);
+    });
+  }
+  testWidgets('masked quote total is not fabricated into a unit amount', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _review(extra: {'currencyName': 'USD', 'totalOriginal': '***'}),
+    );
+    expect(find.text('***'), findsWidgets);
+    expect(find.text('*** 美金'), findsNothing);
+  });
   testWidgets(
     'retired local business amendments cannot be restored into quote pricing',
     (tester) async {

@@ -44,57 +44,18 @@ class StockDraftReviewEndToEndTest {
  @BeforeEach void prepare(){harness=new FullChainEndToEndTest();beans.autowireBean(harness);}
  @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
- @Test void approveOnlySharedReaderCanReviewQuantityWithoutTakingMakerRowIdentityOrClearingHiddenCost(){
-  var w=world();var original=create(w,"OTHER_IN","2","50");UUID reviewer=reviewer(w,false,false);harness.loginAs(reviewer);
-  assertThat(stock.detail(original.getId()).isCostMasked()).isTrue();
-  assertThatThrownBy(()->stock.update(original.getId(),input(original,"3",null))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
-  var review=stock.reviewDraft(original.getId());var changed=stock.updateReviewed(original.getId(),input(original,"3",null),review.snapshot(),true);
-  assertThat(changed.getMakerId()).isEqualTo(w.employeeId());assertThat(changed.getStatus()).isEqualTo((short)1);
-  assertThat(changed.getItems().getFirst().getId()).isEqualTo(original.getItems().getFirst().getId());
-  assertThat(number("SELECT amount_local FROM stock_document_items WHERE id=?",original.getItems().getFirst().getId())).isEqualByComparingTo("50");
-  assertThat(quantity(w)).isEqualByComparingTo("3");assertThat(value(w)).isEqualByComparingTo("50");
- }
- @Test void makerRevisionMakesReviewSnapshotStaleWithoutAnyStockOrApprovalEffect(){
-  var w=world();var original=create(w,"OTHER_IN","2",null);UUID reviewer=reviewer(w,false,false);harness.loginAs(reviewer);
-  var review=stock.reviewDraft(original.getId());harness.loginAs(w.superAdminUserId());var owner=input(original,"2.5",null);owner.setRemark("制单员新修订");stock.update(original.getId(),owner);
-  harness.loginAs(reviewer);conflict(()->stock.updateReviewed(original.getId(),input(original,"3",null),review.snapshot(),true));
-  assertThat(number("SELECT qty FROM stock_document_items WHERE doc_id=?",original.getId())).isEqualByComparingTo("2.5");assertThat(quantity(w)).isZero();
-  assertThat(stock.detail(original.getId()).getStatus()).isZero();
- }
- @Test void externalStockChangeMakesReviewSnapshotStaleEvenWhenDocumentInputsDidNotChange(){
-  var w=world();var incoming=create(w,"OTHER_IN","5","50");stock.approve(incoming.getId());var original=create(w,"OTHER_OUT","1",null);
-  UUID reviewer=reviewer(w,false,false);harness.loginAs(reviewer);var review=stock.reviewDraft(original.getId());
-  harness.loginAs(w.superAdminUserId());stock.approve(create(w,"OTHER_IN","1","10").getId());harness.loginAs(reviewer);
-  conflict(()->stock.updateReviewed(original.getId(),input(original,"2",null),review.snapshot(),true));
-  assertThat(quantity(w)).isEqualByComparingTo("6");assertThat(value(w)).isEqualByComparingTo("60");assertThat(stock.detail(original.getId()).getStatus()).isZero();
- }
- @Test void amendedOutboundRefusesOldFingerprintAndApprovesOnlyItsNewQuantity(){
+ @Test void makerEditInvalidatesTheReadonlyOutboundReviewAndOnlyTheCurrentQuantityCanPost(){
   var w=world();stock.approve(create(w,"OTHER_IN","5","50").getId());var original=create(w,"OTHER_OUT","1",null);
-  UUID reviewer=reviewer(w,false,false);harness.loginAs(reviewer);var old=stock.reviewOutbound(original.getId());var review=stock.reviewDraft(original.getId());
-  stock.updateReviewed(original.getId(),input(original,"2",null),review.snapshot(),false);
-  harness.loginAs(w.superAdminUserId());
+  UUID reviewer=reviewer(w,false,false);harness.loginAs(reviewer);var old=stock.reviewOutbound(original.getId());
+  assertThatThrownBy(()->stock.update(original.getId(),input(original,"2",null))).isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+  harness.loginAs(w.superAdminUserId());stock.update(original.getId(),input(original,"2",null));
   conflict(()->stock.approveReviewed(original.getId(),new StockDocReviewedApproveRequest(old.reviewToken())));
-  assertThat(quantity(w)).isEqualByComparingTo("5");harness.loginAs(reviewer);var latest=stock.reviewDraft(original.getId());
-  stock.updateReviewed(original.getId(),input(original,"2",null),latest.snapshot(),true);
+  assertThat(quantity(w)).isEqualByComparingTo("5");harness.loginAs(reviewer);var latest=stock.reviewOutbound(original.getId());
+  assertThatThrownBy(()->stock.approveReviewed(original.getId(),new StockDocReviewedApproveRequest(latest.reviewToken())))
+   .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
+  harness.loginAs(w.superAdminUserId());var owned=stock.reviewOutbound(original.getId());
+  stock.approveReviewed(original.getId(),new StockDocReviewedApproveRequest(owned.reviewToken()));
   assertThat(quantity(w)).isEqualByComparingTo("3");assertThat(value(w)).isEqualByComparingTo("30");
- }
- @Test void countNeedsFinancePrivilegeAndRecalculatesBookAndDifferenceFromTheLockedBalance(){
-  var w=world();stock.approve(create(w,"OTHER_IN","3","30").getId());var original=createCount(w,"5");
-  UUID insufficient=reviewer(w,false,false);harness.loginAs(insufficient);
-  assertThatThrownBy(()->stock.reviewDraft(original.getId())).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
-  UUID reviewer=reviewer(w,true,false);harness.loginAs(reviewer);var review=stock.reviewDraft(original.getId());var request=input(original,"999","4");request.getItems().getFirst().setSurplusQty(new BigDecimal("999"));
-  var result=stock.updateReviewed(original.getId(),request,review.snapshot(),true);
-  assertThat(result.getItems().getFirst().getQty()).isEqualByComparingTo("3");assertThat(result.getItems().getFirst().getSurplusQty()).isEqualByComparingTo("1");
-  assertThat(quantity(w)).isEqualByComparingTo("4");assertThat(value(w)).isEqualByComparingTo("30");assertThat(result.getMakerId()).isEqualTo(w.employeeId());
-  assertThat(number("SELECT COUNT(*) FROM stock_value_events event JOIN stock_value_nodes source ON source.id=event.result_node_id WHERE event.source_doc_type='STOCK_DOC' AND event.source_doc_id=? AND event.operation='RECEIVE' AND NOT source.source_final AND event.qty_base=1",original.getId())).isEqualByComparingTo("1");
- }
- @Test void crossDocumentIdentityAndChangedTypeRefuseAtomicallyAndReviewContextDoesNotLeak(){
-  var w=world();var original=create(w,"OTHER_IN","2",null);var other=create(w,"OTHER_IN","4",null);UUID reviewer=reviewer(w,false,true);harness.loginAs(reviewer);
-  var review=stock.reviewDraft(original.getId());var wrong=input(original,"3",null);wrong.getItems().getFirst().setSourceItemId(other.getItems().getFirst().getId());
-  conflict(()->stock.updateReviewed(original.getId(),wrong,review.snapshot(),false));var type=input(original,"3",null);type.setDocType("OTHER_OUT");conflict(()->stock.updateReviewed(original.getId(),type,review.snapshot(),false));
-  assertThat(number("SELECT qty FROM stock_document_items WHERE doc_id=?",original.getId())).isEqualByComparingTo("2");assertThat(quantity(w)).isZero();
-  assertThat(com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("stock_doc_item",original.getId(),reviewer)).isFalse();
-  assertThat(stock.canEditPlatformFields(original.getId())).isFalse();
  }
  @Test void earlierIncomingCannotBeErasedAcrossALaterReceiptAndNewestUnusedIncomingReversesItsActualCost(){
   var w=world();var first=create(w,"OTHER_IN","2","50");stock.approve(first.getId());var last=create(w,"OTHER_IN","1","100");stock.approve(last.getId());
@@ -269,7 +230,7 @@ class StockDraftReviewEndToEndTest {
   var request=new StockDocSaveRequest();request.setDocType(original.getDocType());request.setBillDate(original.getBillDate());request.setWarehouseId(original.getWarehouseId());
   request.setToWarehouseId(original.getToWarehouseId());request.setSupplierId(original.getSupplierId());request.setClientId(original.getClientId());request.setWorkerId(original.getWorkerId());
   request.setDepartmentId(original.getDepartmentId());request.setAssTeam(original.getAssTeam());request.setPlanNo(original.getPlanNo());request.setRemark("审核实物核改");
-  var source=original.getItems().getFirst();var line=new StockDocItemLine();line.setSourceItemId(source.getId());line.setGoodsId(source.getGoodsId());line.setColorId(source.getColorId());line.setUnitId(source.getUnitId());line.setUnitRate(source.getUnitRate());
+  var source=original.getItems().getFirst();var line=new StockDocItemLine();line.setGoodsId(source.getGoodsId());line.setColorId(source.getColorId());line.setUnitId(source.getUnitId());line.setUnitRate(source.getUnitRate());
   line.setQty(new BigDecimal(quantity));if(count!=null)line.setCountQty(new BigDecimal(count));request.setItems(List.of(line));return request;
  }
  private void conflict(org.assertj.core.api.ThrowableAssert.ThrowingCallable command){assertThatThrownBy(command).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));}

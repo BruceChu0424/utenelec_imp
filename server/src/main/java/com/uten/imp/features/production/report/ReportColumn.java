@@ -9,7 +9,27 @@ package com.uten.imp.features.production.report;
  * @param width 建议列宽（px），可空
  */
 public record ReportColumn(String key, String label, String type, Integer width,
-                           String totalLabel, String totalGroupKey) {
+                           String totalLabel, String totalGroupKey, String unitLabel, String unitKey,
+                           String totalGroupIdentityKey) implements com.uten.imp.common.report.ReportValueUnit {
+
+    public ReportColumn(String key, String label, String type, Integer width,
+                        String totalLabel, String totalGroupKey, String unitLabel, String unitKey) {
+        this(key,label,type,width,totalLabel,totalGroupKey,unitLabel,unitKey,null);
+    }
+
+    /** Unit metadata changes presentation only; numeric values and totals remain authoritative. */
+    public ReportColumn(String key, String label, String type, Integer width,
+                        String totalLabel, String totalGroupKey) {
+        this(key, label, type, width, totalLabel, totalGroupKey, null, null);
+    }
+
+    public ReportColumn withUnitLabel(String unit) {
+        return new ReportColumn(key, label, type, width, totalLabel, totalGroupKey, unit, null, totalGroupIdentityKey);
+    }
+
+    public ReportColumn withUnitKey(String rowKey) {
+        return new ReportColumn(key, label, type, width, totalLabel, totalGroupKey, null, rowKey, totalGroupIdentityKey);
+    }
 
     /** 兼容构造：不参与合计的列沿用原 4 参签名（所有既有工厂方法走这里）。 */
     public ReportColumn(String key, String label, String type, Integer width) {
@@ -25,7 +45,12 @@ public record ReportColumn(String key, String label, String type, Integer width,
      * <p>只对「可加」的列声明：数量/金额/重量可以；单价、库存快照、比率这类列相加无意义，不要声明。
      */
     public ReportColumn totaled(String totalLabel, String groupKey) {
-        return new ReportColumn(key, label, type, width, totalLabel, groupKey);
+        return totaled(totalLabel,groupKey,null);
+    }
+
+    /** Group totals by a real source identity; the display name never establishes equivalence. */
+    public ReportColumn totaled(String totalLabel,String displayKey,String identityKey) {
+        return new ReportColumn(key,label,type,width,totalLabel,displayKey,unitLabel,unitKey,identityKey);
     }
 
     /** 无分组维度的合计（整份报表只出一个总数）。 */

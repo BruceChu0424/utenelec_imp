@@ -35,4 +35,6 @@ public class OtherShipmentListItem extends com.uten.imp.common.history.DocumentH
     @Override public void disableHistoryActions() {
         writable = false;
     }
+
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

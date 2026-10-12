@@ -54,7 +54,8 @@ public class ExportTableProjectionService {
             if(label.length()>200)throw invalid("导出表头过长");
             Double width=requested.width();
             if(width!=null&&(!Double.isFinite(width)||width<1||width>2000))throw invalid("导出列宽无效");
-            columns.add(new ExportColumn(original.key(),label,original.type(),width));
+            columns.add(new ExportColumn(original.key(),label,original.type(),width,
+                    original.unitLabel(),original.unitKey()));
         }
         if(customIds.isEmpty())return new ExportPayload(columns,source,source.size());
         List<Map<String,Object>> rows=source.stream().map(row->(Map<String,Object>)new LinkedHashMap<>(row)).toList();

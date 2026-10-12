@@ -50,4 +50,7 @@ public class QuoteListItem extends com.uten.imp.common.history.DocumentHistoryMe
         writable = false;
         allowedActions = java.util.List.of();
     }
+
+    public String getTotalOriginalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

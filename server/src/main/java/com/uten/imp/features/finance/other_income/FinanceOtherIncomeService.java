@@ -79,8 +79,6 @@ public class FinanceOtherIncomeService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<FinanceOtherIncomeService> reviewedDraftProxy;
     private final GlPostingService glPosting;
     private final AccountFlowLedgerService accountFlowLedger;
 
@@ -178,43 +176,6 @@ public class FinanceOtherIncomeService {
     @PreAuthorize("hasAuthority('finance_other_income:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_other_income_item", requestArgument=1, documentIdArgument=0)
     public FinanceOtherIncomeDetail update(UUID id, FinanceOtherIncomeSaveRequest req) {
-        return updateDraft(id, req, false, null);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
-    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceOtherIncomeDetail> review(UUID id) {
-        tx.bind(); PaymentStyleHierarchyLock.lock(em);
-        FinanceOtherIncome o = lockActive(id);
-        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, o.getMakerId(), "finance_other_income");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
-        if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
-        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
-                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.INCOME, id), detail(id));
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
-    public FinanceOtherIncomeDetail updateReviewed(UUID id, FinanceOtherIncomeSaveRequest req, String expectedSnapshot, boolean approveNow) {
-        var review = review(id);
-        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.INCOME, id, expectedSnapshot);
-        FinanceOtherIncomeDetail saved;
-        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_other_income_item", id, currentUser.requireId())) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
-        }
-        return approveNow ? approve(id) : saved;
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_other_income_item", requestArgument=1, documentIdArgument=0)
-    public FinanceOtherIncomeDetail saveReviewedDraft(UUID id, FinanceOtherIncomeSaveRequest req, String expectedSnapshot) {
-        FinanceOtherIncomeDetail saved = updateDraft(id, req, true, expectedSnapshot);
-        em.flush();
-        return saved;
-    }
-
-    private FinanceOtherIncomeDetail updateDraft(UUID id, FinanceOtherIncomeSaveRequest req, boolean review, String expectedSnapshot) {
         tx.bind();
         if ((req.getItems() != null && !req.getItems().isEmpty())
                 || req.getReceiptMethodId() != null
@@ -222,10 +183,7 @@ public class FinanceOtherIncomeService {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceOtherIncome o = lockActive(id);
-        if (review) {
-            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, o.getMakerId(), "finance_other_income");
-            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.INCOME, id, expectedSnapshot);
-        } else access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");

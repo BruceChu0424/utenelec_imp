@@ -189,7 +189,7 @@ public class SalesQuoteFinanceService {
         Object[] h = (Object[]) em.createNativeQuery("""
                         SELECT COALESCE(c.name, ''), COALESCE(c.code, ''),
                                COALESCE(maker.full_name, ''), COALESCE(seller.full_name, ''),
-                               COALESCE(cur.name, base.name, ''), COALESCE(cur.is_base_currency, TRUE),
+                               COALESCE(CASE WHEN cur.id IS NOT NULL THEN %s ELSE %s END, ''), COALESCE(cur.is_base_currency, TRUE),
                                COALESCE(sm.name, ''),
                                COALESCE(submitter.full_name, ''), COALESCE(returner.full_name, ''),
                                COALESCE(confirmer.full_name, '')
@@ -204,7 +204,8 @@ public class SalesQuoteFinanceService {
                         LEFT JOIN employees returner ON returner.id = o.finance_returned_by
                         LEFT JOIN employees confirmer ON confirmer.id = o.finance_confirmed_by
                         WHERE o.id = :id
-                        """)
+                        """.formatted(com.uten.imp.common.finance.CurrencyDisplayLabel.sql("cur"),
+                                com.uten.imp.common.finance.CurrencyDisplayLabel.sql("base")))
                 .setParameter("id", id)
                 .getSingleResult();
         @SuppressWarnings("unchecked")

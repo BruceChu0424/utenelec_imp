@@ -55,6 +55,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -649,7 +650,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
                 Text(l10n.quoteFinanceConfirmBody),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
-                  l10n.quoteFinanceConfirmTotal(_money(review.totalOriginal)),
+                  l10n.quoteFinanceConfirmTotal(
+                    _money(
+                      review.totalOriginal,
+                      currencyName: review.currencyName,
+                    ),
+                  ),
                   key: const Key('quote-finance-confirm-total'),
                   style: Theme.of(dialogContext).textTheme.titleMedium
                       ?.copyWith(
@@ -1220,18 +1226,27 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
                 ),
                 kv(l10n.quoteFinanceFieldDeliverDate, review.deliverDate),
                 kv(l10n.quoteFinanceFieldContractNo, review.contractNo),
-                kv(l10n.quoteFinanceFieldCurrency, review.currencyName),
+                kv(
+                  l10n.quoteFinanceFieldCurrency,
+                  financeCurrencyDisplayLabel(name: review.currencyName),
+                ),
                 if (review.clientFileCurrency != null)
                   kv(
                     l10n.quoteFinanceFieldFileCurrency,
                     review.financeRateMissing
                         ? l10n.quoteFinanceFileRateMissing(
-                            review.clientFileCurrency!,
+                            financeCurrencyText(
+                              name: review.clientFileCurrency,
+                            ),
                           )
                         : review.financeRate == null
-                        ? review.clientFileCurrency
+                        ? financeCurrencyDisplayLabel(
+                            name: review.clientFileCurrency,
+                          )
                         : l10n.quoteFinanceFileRateHint(
-                            review.clientFileCurrency!,
+                            financeCurrencyText(
+                              name: review.clientFileCurrency,
+                            ),
                             financeExactTrimmed(review.financeRate) ??
                                 review.financeRate!,
                           ),
@@ -1445,7 +1460,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             key: 'clientPrice',
             label: review.clientFileCurrency == null
                 ? l10n.quoteFinanceColFilePrice
-                : '${l10n.quoteFinanceColFilePrice} ${review.clientFileCurrency}',
+                : '${l10n.quoteFinanceColFilePrice} ${financeCurrencyText(name: review.clientFileCurrency)}',
             width: 150,
             type: 'money',
             // 文件单价是客户文件原币：后缀带 review.clientFileCurrency（缺失不拼）。
@@ -1817,13 +1832,13 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
         ),
         UtenTotalEntry(
           l10n.quoteFinanceTotalAmount,
-          _money(review.totalOriginal),
+          _money(review.totalOriginal, currencyName: review.currencyName),
           danger: true,
         ),
         if (dirtyLines)
           UtenTotalEntry(
             l10n.quoteFinanceTotalPreview,
-            _money(_previewTotal(review)),
+            _money(_previewTotal(review), currencyName: review.currencyName),
           ),
       ],
     );
@@ -1914,12 +1929,8 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   }
 
   /// 金额按服务端十进制原文显示(ADR-112)：至少 2 位小数、不四舍五入。
-  String _money(String? raw) {
-    if (raw == null || raw.isEmpty) return '—';
-    return financeExactDecimal(raw) == null
-        ? raw
-        : financeExactMoneyDisplay(raw);
-  }
+  String _money(String? raw, {String? currencyName}) =>
+      financeMoneyWithUnitSuffix(raw, currencyName: currencyName);
 
   static String? _dateText(DateTime? value) {
     if (value == null) return null;

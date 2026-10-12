@@ -15,6 +15,7 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
@@ -69,6 +70,46 @@ Future<_RecordingApi> _pumpOrderList(
 }
 
 void main() {
+  testWidgets(
+    'ordinary order list preserves exact amount digits and masks stale Exact',
+    (tester) async {
+      await _pumpOrderList(tester, initialHistory: true);
+      final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+        find.byType(MasterDataTableView<SalesDocListItem>),
+      );
+      final amount = table.columns.singleWhere((c) => c.key == 'total');
+      for (final raw in ['0.0001', '99999999999999.9999']) {
+        final row = SalesDocListItem.fromJson({
+          'id': 'exact',
+          'currencyId': 'usd',
+          'totalOriginal': double.parse(raw),
+          'totalOriginalExact': raw,
+        });
+        expect(amount.value(row), '$raw 美金');
+      }
+      expect(
+        amount.value(
+          SalesDocListItem.fromJson({
+            'id': 'masked',
+            'priceMasked': true,
+            'totalOriginal': 0,
+            'totalOriginalExact': '99999999999999.9999',
+          }),
+        ),
+        '***',
+      );
+      expect(
+        amount.value(
+          SalesDocListItem.fromJson({
+            'id': 'unknown',
+            'totalOriginal': null,
+            'totalOriginalExact': '99999999999999.9999',
+          }),
+        ),
+        '—',
+      );
+    },
+  );
   testWidgets('草稿段只按 status=0 查，不叠加任何链路过滤', (tester) async {
     final api = await _pumpOrderList(tester);
 
@@ -263,5 +304,9 @@ class _RecordingApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const <Map<String, dynamic>>[];
+  }) async => path == ApiEndpoints.currenciesDict
+      ? const [
+          {'id': 'usd', 'name': 'US Dollar', 'code': 'USD'},
+        ]
+      : const <Map<String, dynamic>>[];
 }

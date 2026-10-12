@@ -101,19 +101,6 @@ public class PurchaseReturnController {
         return service.update(id, req);
     }
 
-    @GetMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('purchase_return:view') and hasAuthority('purchase_return:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<ReturnDetail> review(@PathVariable UUID id) {
-        return service.review(id);
-    }
-
-    @PostMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('purchase_return:view') and hasAuthority('purchase_return:approve')")
-    public ReturnDetail saveReview(@PathVariable UUID id,
-            @Valid @RequestBody com.uten.imp.common.review.DocumentDraftReview.Save<ReturnSaveRequest> request) {
-        return service.updateReviewed(id, request.document(), request.expectedSnapshot(), request.approveNow());
-    }
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase_return:delete')")
     public void delete(@PathVariable UUID id) {

@@ -793,16 +793,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         cellColor: (context, r) => utenStatusBadgeCellColor(_stageBadgeType(r)),
       ),
       MasterColumnDef(
-        // 2026-10-08 用户口径「状态或进度列默认放最前」：生产进度是本表的
-        // 纯数值进度列（推翻 2026-10-06 批次「纯数值进度列不动」的判定），
-        // 紧跟状态列前置。
-        key: 'productionPct',
-        label: '生产进度',
-        width: 90,
-        // 财务确认前不展示排产进度（V300 口径），数量区同卡版本保持 0。
-        value: (r) => '${(r.productionPct * 100).round()}%',
-      ),
-      MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
         key: 'billNo',
         sortable: true,

@@ -571,7 +571,8 @@ public class StockQueryService {
                            THEN 1 ELSE 0 END AS nonpositive_pending_stock_in_rows,
                        COALESCE(base.negative_balance_rows, 0) AS negative_balance_rows,
                        g.owning_warehouse_id, ow.name AS owning_warehouse_name,
-                       COALESCE(base.defective_qty, 0) AS defective_qty
+                       COALESCE(base.defective_qty, 0) AS defective_qty,
+                       u.id AS unit_id
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,
@@ -702,14 +703,14 @@ public class StockQueryService {
                             "weight_estimated_rows", "重量含估算",
                             com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT, null),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                            "qty", "合计库存数量", "number", "unit_name"),
+                            "qty", "合计库存数量", "number", "unit_name","unit_id"),
                     // ADR-146: 合计库存数量含了「含不良品仓」打开时的不良品, 这里单列其中的不良品。
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                            "defective_qty", "其中不良品数量", "number", "unit_name"),
+                            "defective_qty", "其中不良品数量", "number", "unit_name","unit_id"),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                            "pending_qty", "合计待检量", "number", "unit_name"),
+                            "pending_qty", "合计待检量", "number", "unit_name","unit_id"),
                     new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                            "pending_stock_in_qty", "合计合格待入库", "number", "unit_name"),
+                            "pending_stock_in_qty", "合计合格待入库", "number", "unit_name","unit_id"),
                     inventoryCount("inventory_rows", "库存统计项数"),
                     inventoryCount("positive_stock_rows", "正库存项数"),
                     inventoryCount("negative_stock_rows", "净负库存项数"),

@@ -112,6 +112,7 @@ class PurchaseDocListItem {
     this.supplierId,
     this.warehouseId,
     this.totalLocal,
+    this.totalLocalText,
     this.priceMasked = false,
     this.status,
     this.closed = false,
@@ -126,6 +127,7 @@ class PurchaseDocListItem {
   final String? supplierId;
   final String? warehouseId;
   final double? totalLocal;
+  final String? totalLocalText;
 
   /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
   final bool priceMasked;
@@ -143,6 +145,10 @@ class PurchaseDocListItem {
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        totalLocalText:
+            json['priceMasked'] == true || json['totalLocal'] == null
+            ? null
+            : receiptRecordedDecimal(json, 'totalLocal'),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,

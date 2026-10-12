@@ -65,7 +65,6 @@ import '../widgets/production_material_return_receive_dialog.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
 import '../../production/providers/production_execution_refresh.dart';
 import '../repositories/stock_doc_repository.dart';
-import 'stock_doc_edit_page.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
@@ -1775,35 +1774,6 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                   ? (_materialReturnKey == null ? '确认实收并入库' : '重试本次收料')
                   : '审核',
             ),
-          ),
-        );
-      }
-      if (_canApprove &&
-          detail.canEdit &&
-          !detail.productionLinked &&
-          widget.docType.supportsManualDraft &&
-          (widget.docType != StockDocType.check ||
-              ref
-                  .read(currentPermissionsProvider)
-                  .contains('stock:count:finance_review'))) {
-        addAction(
-          UtenButton(
-            size: UtenButtonSize.large,
-            type: UtenButtonType.secondary,
-            icon: Icons.edit_note_rounded,
-            onPressed: () async {
-              final changed = await Navigator.of(context).push<StockDocDetail>(
-                MaterialPageRoute(
-                  builder: (_) => StockDocEditPage(
-                    docType: widget.docType,
-                    id: widget.id,
-                    reviewMode: true,
-                  ),
-                ),
-              );
-              if (changed != null && mounted) await _load();
-            },
-            child: const Text('核改后审核'),
           ),
         );
       }

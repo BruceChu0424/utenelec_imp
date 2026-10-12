@@ -705,6 +705,12 @@ class SalesDocListItem {
   final String? outType;
   final double? totalOriginal;
   final double? totalLocal;
+  String? get totalOriginalText => priceMasked || totalOriginal == null
+      ? null
+      : exactDecimals['totalOriginal'] ?? totalOriginal.toString();
+  String? get totalLocalText => priceMasked || totalLocal == null
+      ? null
+      : exactDecimals['totalLocal'] ?? totalLocal.toString();
   final int? status;
   final bool closed;
   final bool stopped;

@@ -21,6 +21,49 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  testWidgets(
+    'ordinary subcontract list keeps exact money with local unit and masks stale Exact',
+    (tester) async {
+      await _mount(
+        tester,
+        permissions: const {
+          Perm.subcontractOrderView,
+          Perm.subcontractOrderPriceView,
+        },
+      );
+      await _tap(tester, '进行中');
+      final amount = _table(
+        tester,
+      ).columns.singleWhere((c) => c.key == 'amount');
+      for (final raw in ['0.0001', '99999999999999.9999']) {
+        final row = SubcontractDocListItem.fromJson({
+          'id': 'exact',
+          'totalLocal': double.parse(raw),
+          'totalLocalExact': raw,
+        });
+        expect(amount.value(row), '$raw 元');
+      }
+      expect(
+        amount.value(
+          SubcontractDocListItem.fromJson({
+            'id': 'masked',
+            'priceMasked': true,
+            'totalLocal': 1,
+            'totalLocalExact': '99999999999999.9999',
+          }),
+        ),
+        '***',
+      );
+      expect(
+        SubcontractDocListItem.fromJson({
+          'id': 'unknown',
+          'totalLocal': null,
+          'totalLocalExact': '99999999999999.9999',
+        }).totalLocalText,
+        isNull,
+      );
+    },
+  );
   testWidgets('order stages filter the server aggregate and reset pagination', (
     tester,
   ) async {

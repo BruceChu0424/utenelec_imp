@@ -2,6 +2,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 
 void main() {
+  test(
+    'retired mixed-product ratio stays unavailable while stage is retained',
+    () {
+      final row = SalesOrderProgressRow.fromJson(const {
+        'orderId': 'mixed-units',
+        'stage': 'PRODUCING',
+        'orderQty': 1001,
+        'producedQty': 1,
+        'productionPct': null,
+      });
+      expect(row.productionPct, isNull);
+      expect(salesProgressStageText(row), '生产中');
+      expect(row.orderQty, 1001);
+    },
+  );
   test('in-flight shipments surface as their own stages with quantities', () {
     // V631：开了出货单但仓库还没出库——阶段带数量，「出货在途」列按阶段拆分。
     final pendingFinance = SalesOrderProgressRow.fromJson(const {

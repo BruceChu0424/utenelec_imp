@@ -3,11 +3,43 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 
 void main() {
+  test(
+    'currency dictionary normalizes display without changing reference facts',
+    () async {
+      final api = _FinanceNameApi()
+        ..currencies = [
+          {
+            'id': 'usd',
+            'name': 'US Dollar',
+            'code': 'USD',
+            'exchangeRateText': '7.123456',
+            'baseCurrency': false,
+          },
+          {'id': 'cny', 'name': 'CNY', 'code': 'CNY', 'baseCurrency': true},
+          {'id': 'legacy', 'name': '', 'code': '002'},
+        ];
+      final service = FinanceNameService(
+        api,
+        _FakePaymentStyleRepository(const []),
+      );
+      addTearDown(service.dispose);
+      await service.ensureLoaded(includeCounterparties: false);
+      expect(service.currency('usd'), '美金');
+      expect(service.currency('cny'), '人民币');
+      expect(service.currency('legacy'), '—');
+      expect(service.currencyReferenceRateText('usd'), '7.123456');
+      expect(service.currencyEntries, contains('usd'));
+      expect(service.currencyIsBase('cny'), isTrue);
+      expect(api.currencies.first['code'], 'USD');
+      expect(api.currencies.first['name'], 'US Dollar');
+    },
+  );
   test(
     'new document options only contain active leaves but history names remain',
     () async {
@@ -208,6 +240,7 @@ class _FinanceNameApi extends ApiClient {
   _FinanceNameApi() : super(Dio());
 
   List<Map<String, dynamic>> accounts = const [];
+  List<Map<String, dynamic>> currencies = const [];
   bool failAccounts = false;
 
   @override
@@ -219,6 +252,7 @@ class _FinanceNameApi extends ApiClient {
       if (failAccounts) throw StateError('offline');
       return accounts;
     }
+    if (path == ApiEndpoints.currenciesDict) return currencies;
     return const [];
   }
 }

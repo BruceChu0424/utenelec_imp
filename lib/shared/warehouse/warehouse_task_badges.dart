@@ -21,6 +21,7 @@ final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
       }
       // 全站汇总有变化(轮询、本端写操作后的补拉)就跟着重拉, 两份数字不会一新一旧。
       ref.watch(badgeSummaryProvider);
+      ref.watch(badgeSummaryFetchRevisionProvider);
       final json = await ref
           .read(apiClientProvider)
           .get(

@@ -31,6 +31,7 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -42,6 +43,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class StandardFinanceApprovalReadOnlyTest {
     @AfterEach void clearAuthentication() {
         SecurityContextHolder.clearContext();
+    }
+
+    @ParameterizedTest
+    @MethodSource("documents")
+    void retiredReviewerWritesHaveNoPublicServiceBridgeWhileMakerSaveAndApprovalRemain(Document document) {
+        assertThat(java.util.Arrays.stream(document.service().getClass().getMethods()).map(java.lang.reflect.Method::getName))
+                .doesNotContain("updateReviewed", "saveReviewedDraft")
+                .contains("update", "approve", "detail");
     }
 
     @ParameterizedTest

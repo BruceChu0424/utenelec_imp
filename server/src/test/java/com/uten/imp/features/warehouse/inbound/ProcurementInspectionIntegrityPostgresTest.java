@@ -92,6 +92,7 @@ class ProcurementInspectionIntegrityPostgresTest {
     @Autowired private ProcurementReceiptConsiderationService consideration;
     @Autowired private ArApLedgerService arAp;
     @Autowired private com.uten.imp.common.concurrency.ProcurementMutationLocks mutationLocks;
+    @Autowired private com.uten.imp.features.notice.outbox.BusinessOutboxProcessor outbox;
 
     @AfterEach
     void clearSecurity() {
@@ -120,6 +121,7 @@ class ProcurementInspectionIntegrityPostgresTest {
         assertThat(receiptEventCount(receipt, "PRODUCTION_WOKEN")).isZero();
         assertInspection(line.inspectionItemId(), "RESOLVED", "6", "4");
         assertProductionStockFactsUnchanged(stockFactsBefore);
+        awaitFailureFunding(receipt);
 
         UUID passEventId = passEventId(line.inspectionItemId());
         loginCurrentEmployee("partial-stock-in");
@@ -154,6 +156,7 @@ class ProcurementInspectionIntegrityPostgresTest {
         transactions.executeWithoutResult(ignored -> {
             tx.bind();
             mutationLocks.receipt(receipt.type(),receipt.id()).verifyUnchanged();
+            inspectionService.requireResolvedForReverse(receipt.type(),receipt.id());
             consideration.reverseReceipt(receipt.type(), receipt.id(), UUID.randomUUID(), "Fixture original receipt reversal");
             arAp.reverseArAp(receipt.id(), receipt.type()+"_RECEIPT");
             inspectionService.reverseResolvedStock(receipt.type(), receipt.id(), OffsetDateTime.now());
@@ -171,6 +174,37 @@ class ProcurementInspectionIntegrityPostgresTest {
         assertThat(receiptEventCount(receipt, "PASS")).isEqualTo(1L);
         assertThat(receiptEventCount(receipt, "FAIL")).isEqualTo(1L);
         assertThat(receiptEventCount(receipt, "RECEIPT_REVERSED")).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_cases WHERE receipt_type=? AND receipt_id=? AND status<>'REVERSED'",
+                Long.class,receipt.type(),receipt.id())).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM procurement_iqc_funding_slices funding
+                JOIN procurement_iqc_rejection_cases rejection ON rejection.id=funding.case_id
+                WHERE rejection.receipt_type=? AND rejection.receipt_id=?
+                  AND fn_procurement_consideration_active('FUNDING',funding.id)
+                """,Long.class,receipt.type(),receipt.id())).isZero();
+    }
+
+    /** Exercise the real completed FAIL projection rather than racing its background worker. */
+    private void awaitFailureFunding(ReceiptFixture receipt) {
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+        do {
+            outbox.processNext();
+            long pending=jdbc.queryForObject("""
+                    SELECT count(*) FROM business_outbox event
+                    JOIN procurement_inspection_items inspection ON inspection.id=event.aggregate_id
+                    WHERE event.event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND event.status<>1
+                      AND inspection.receipt_type=? AND inspection.receipt_id=?
+                    """,Long.class,receipt.type(),receipt.id());
+            BigDecimal funded=jdbc.queryForObject("""
+                    SELECT COALESCE(SUM(funding.base_qty),0) FROM procurement_iqc_funding_slices funding
+                    JOIN procurement_iqc_rejection_cases rejection ON rejection.id=funding.case_id
+                    WHERE rejection.receipt_type=? AND rejection.receipt_id=?
+                    """,BigDecimal.class,receipt.type(),receipt.id());
+            if(pending==0&&funded.compareTo(new BigDecimal("4"))==0)return;
+            try { Thread.sleep(25); }
+            catch(InterruptedException interrupted) { Thread.currentThread().interrupt();throw new IllegalStateException(interrupted); }
+        } while(System.nanoTime()<deadline);
+        throw new AssertionError("The real FAIL projection must freeze all four failed units before receipt reversal");
     }
 
     @Test

@@ -54,4 +54,7 @@ public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMe
         super.copyHistoryFrom(source);
         if (requotedToId != null) setHistoryReadOnly(true);
     }
+
+    public String getTotalOriginalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalOriginal); }
+    public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

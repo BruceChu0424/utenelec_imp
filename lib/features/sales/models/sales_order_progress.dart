@@ -47,7 +47,7 @@ class SalesOrderProgressRow {
   final double unplannedQty;
 
   /// 生产进度 = 已产/订货（外层总进度环口径，clamp≤1）。
-  final double productionPct;
+  final double? productionPct;
 
   /// PENDING 待排产（含部分排产：unplannedQty>0）/ PRODUCING 生产中 /
   /// SHIPPABLE 可分批发货 / SHIPPED 已发货；
@@ -112,7 +112,7 @@ class SalesOrderProgressRow {
         reservedQty: (json['reservedQty'] as num?)?.toDouble() ?? 0,
         plannedQty: (json['plannedQty'] as num?)?.toDouble() ?? 0,
         unplannedQty: (json['unplannedQty'] as num?)?.toDouble() ?? 0,
-        productionPct: (json['productionPct'] as num?)?.toDouble() ?? 0,
+        productionPct: (json['productionPct'] as num?)?.toDouble(),
         stage: json['stage'] as String? ?? 'PENDING',
         financeConfirmed: (json['financeConfirmed'] as bool?) ?? true,
         financeRejected: (json['financeRejected'] as bool?) ?? false,

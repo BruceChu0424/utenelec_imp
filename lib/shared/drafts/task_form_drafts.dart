@@ -29,25 +29,28 @@ bool isTaskFormDraft(FormDraft draft) {
             row[key] is String &&
             (row[key] as String).trim().isNotEmpty,
       );
-  if (FormDraftCatalog.iqcReport.groups(draft) ||
-      FormDraftCatalog.fqcSheet.groups(draft) ||
-      FormDraftCatalog.fqcInspection.groups(draft) ||
-      FormDraftCatalog.warehouseDiscovery.groups(draft) ||
-      FormDraftCatalog.subcontractOutbound.groups(draft) ||
-      FormDraftCatalog.subcontractOutboundBatch.groups(draft) ||
-      FormDraftCatalog.warehouseSalesOutbound.groups(draft) ||
-      FormDraftCatalog.warehouseSalesOutboundBatch.groups(draft) ||
-      FormDraftCatalog.warehouseQualityStockIn.groups(draft) ||
-      FormDraftCatalog.warehouseQualityBatchStockIn.groups(draft) ||
-      FormDraftCatalog.warehouseQualityPreStockIn.groups(draft) ||
-      FormDraftCatalog.productionFinishedBatchStockIn.groups(draft) ||
-      FormDraftCatalog.materialReturnBatchReceive.groups(draft) ||
-      FormDraftCatalog.financeSalesOrderReview.groups(draft) ||
-      FormDraftCatalog.financeProcurementReview.groups(draft) ||
-      FormDraftCatalog.financeQuoteReview.groups(draft) ||
-      FormDraftCatalog.financeShipmentReview.groups(draft) ||
-      (FormDraftCatalog.employeeReconcile.groups(draft) && hasQuery('planId')) ||
-      FormDraftCatalog.employeeOffboarding.groups(draft)) {
+  if (FormDraftCatalog.iqcReport.matchesDestination(draft) ||
+      FormDraftCatalog.fqcSheet.matchesDestination(draft) ||
+      FormDraftCatalog.fqcInspection.matchesDestination(draft) ||
+      FormDraftCatalog.warehouseDiscovery.matchesDestination(draft) ||
+      FormDraftCatalog.subcontractOutbound.matchesDestination(draft) ||
+      FormDraftCatalog.subcontractOutboundBatch.matchesDestination(draft) ||
+      FormDraftCatalog.warehouseSalesOutbound.matchesDestination(draft) ||
+      FormDraftCatalog.warehouseSalesOutboundBatch.matchesDestination(draft) ||
+      FormDraftCatalog.warehouseQualityStockIn.matchesDestination(draft) ||
+      FormDraftCatalog.warehouseQualityBatchStockIn.matchesDestination(draft) ||
+      FormDraftCatalog.warehouseQualityPreStockIn.matchesDestination(draft) ||
+      FormDraftCatalog.productionFinishedBatchStockIn.matchesDestination(
+        draft,
+      ) ||
+      FormDraftCatalog.materialReturnBatchReceive.matchesDestination(draft) ||
+      FormDraftCatalog.financeSalesOrderReview.matchesDestination(draft) ||
+      FormDraftCatalog.financeProcurementReview.matchesDestination(draft) ||
+      FormDraftCatalog.financeQuoteReview.matchesDestination(draft) ||
+      FormDraftCatalog.financeShipmentReview.matchesDestination(draft) ||
+      (FormDraftCatalog.employeeReconcile.matchesDestination(draft) &&
+          hasQuery('planId')) ||
+      FormDraftCatalog.employeeOffboarding.matchesDestination(draft)) {
     return true;
   }
   if (path == '/production/daily-reports/new') {
@@ -72,16 +75,18 @@ bool isTaskFormDraft(FormDraft draft) {
       path == '/production/material-increment-requests/new') {
     return hasQuery('segmentId');
   }
-  if (FormDraftCatalog.arrival.groups(draft)) return hasQuery('expectationIds');
-  if (FormDraftCatalog.finishedArrival.groups(draft)) {
+  if (FormDraftCatalog.arrival.matchesDestination(draft)) {
+    return hasQuery('expectationIds');
+  }
+  if (FormDraftCatalog.finishedArrival.matchesDestination(draft)) {
     return hasQuery('reportIds');
   }
-  if (FormDraftCatalog.warehouseDraw.groups(draft)) {
+  if (FormDraftCatalog.warehouseDraw.matchesDestination(draft)) {
     return hasQuery('documentIds') || hasQuery('discoveryRequestIds');
   }
   final selection = draft.data['selection'];
-  if ((FormDraftCatalog.iqcBatchReport.groups(draft) ||
-          FormDraftCatalog.fqcBatchReport.groups(draft)) &&
+  if ((FormDraftCatalog.iqcBatchReport.matchesDestination(draft) ||
+          FormDraftCatalog.fqcBatchReport.matchesDestination(draft)) &&
       selection is Map) {
     return hasList(selection['receipts']) ||
         hasList(selection['sheetIds']) ||
@@ -150,7 +155,7 @@ Future<void> resumeTaskFormDraft(
                                     dialogContext,
                                     title: '丢弃这份本机填写？',
                                     content: const Text(
-                                        '只丢弃这份本机填写及待处理附件，原任务与已经保存的业务单据保留。',
+                                      '只丢弃这份本机填写及待处理附件，原任务与已经保存的业务单据保留。',
                                     ),
                                     confirmLabel: '丢弃本机填写',
                                     danger: true,

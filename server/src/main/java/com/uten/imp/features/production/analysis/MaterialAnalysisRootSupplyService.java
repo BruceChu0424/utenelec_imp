@@ -145,6 +145,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             Map<UUID,BigDecimal> allocatedByMaterial, Map<UUID,BigDecimal> openPlanBySource,
             MaterialAnalysisIssuePreviewOverlay overlay) {
         Map<InventoryKey, BigDecimal> publicPools = new HashMap<>();
+        Map<InventoryKey,BigDecimal> projectedReservations=publicReservationChanges(analysisId,overlay);
         List<RootQuantityRow> quantities = new ArrayList<>();
         StringBuilder overrides = new StringBuilder("[");
         allocatedByMaterial.forEach((id, qty) -> overrides.append(overrides.length() > 1 ? "," : "")
@@ -160,7 +161,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   COALESCE((SELECT SUM(r.qty-r.consumed_qty-r.released_qty)
                     FROM stock_reservations r WHERE r.goods_id=item.goods_id
                     AND r.color_id IS NOT DISTINCT FROM item.color_id
-                    AND (r.warehouse_id=analysis.warehouse_id OR r.warehouse_id IS NULL)
+                    AND ((fn_warehouse_same_main(r.warehouse_id,analysis.warehouse_id)
+                          AND fn_warehouse_is_good_stock_leaf(r.warehouse_id)) OR r.warehouse_id IS NULL)
                     AND r.status=0 AND r.is_deleted=FALSE),0),
                   GREATEST(COALESCE((SELECT SUM(GREATEST(COALESCE(override.qty,m.allocated_available_qty)-GREATEST(COALESCE((
                       SELECT SUM(ent.effective_qty)
@@ -177,7 +179,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                       FROM stock_reservations r WHERE r.owner_type='PREPLAN_ANALYSIS'
                         AND r.owner_id=item.analysis_id AND r.goods_id=item.goods_id
                         AND r.color_id IS NOT DISTINCT FROM item.color_id
-                        AND r.warehouse_id=analysis.warehouse_id AND r.status=0 AND r.is_deleted=FALSE
+                        AND fn_warehouse_same_main(r.warehouse_id,analysis.warehouse_id)
+                        AND fn_warehouse_is_good_stock_leaf(r.warehouse_id) AND r.status=0 AND r.is_deleted=FALSE
                         AND NOT EXISTS (SELECT 1 FROM preplan_stock_entitlement_events event
                                         WHERE event.stock_reservation_id=r.id)),0),0),
                   COALESCE((SELECT SUM(CASE WHEN event_kind='FULFILL' THEN qty_base ELSE -qty_base END)
@@ -202,14 +205,22 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                       JOIN stock_reservations reservation ON reservation.id=entitlement.stock_reservation_id
                       WHERE entitlement.beneficiary_analysis_id=item.analysis_id
                         AND entitlement.beneficiary_analysis_material_id=root.id
-                        AND reservation.warehouse_id=analysis.warehouse_id
+                        AND reservation.goods_id=item.goods_id
+                        AND reservation.color_id IS NOT DISTINCT FROM item.color_id
+                        AND fn_preplan_reservation_has_qualified_origin(reservation.id)
+                        AND NOT EXISTS(SELECT 1 FROM warehouses defective
+                            WHERE defective.id=reservation.warehouse_id AND defective.is_defective)
                         AND reservation.status=0 AND NOT reservation.is_deleted),0)
                 FROM production_material_analysis_items item
                 JOIN production_material_analyses analysis ON analysis.id=item.analysis_id
                 JOIN production_material_analysis_materials root ON root.id=item.root_material_id
                 JOIN goods ON goods.id=item.goods_id
-                LEFT JOIN stock_balances balance ON balance.warehouse_id=analysis.warehouse_id
-                  AND balance.goods_id=item.goods_id AND balance.color_id IS NOT DISTINCT FROM item.color_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(physical.qty) AS qty FROM stock_balances physical
+                    WHERE physical.goods_id=item.goods_id AND physical.color_id IS NOT DISTINCT FROM item.color_id
+                      AND fn_warehouse_same_main(physical.warehouse_id,analysis.warehouse_id)
+                      AND fn_warehouse_is_good_stock_leaf(physical.warehouse_id)
+                ) balance ON TRUE
                 WHERE item.analysis_id=:analysisId AND item.is_deleted=FALSE
                 ORDER BY item.line_priority,item.id
                 """).setParameter("analysisId", analysisId).setParameter("overrides", overrides.toString()))) {
@@ -217,7 +228,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             InventoryKey dimension = new InventoryKey((UUID) row[2], (UUID) row[3]);
             BigDecimal required = decimal(row[6]).multiply(decimal(row[4]))
                     .setScale(4, RoundingMode.CEILING).max(BigDecimal.ZERO);
-            BigDecimal reserved = decimal(row[10]).add(overlay.publicReservationChange((UUID)row[7],(UUID)row[2],(UUID)row[3]));
+            BigDecimal reserved = decimal(row[10]).add(projectedReservations.getOrDefault(dimension,BigDecimal.ZERO));
             BigDecimal stock = decimal(row[9]).subtract(reserved).max(BigDecimal.ZERO);
             BigDecimal publicAvailable = publicPools.computeIfAbsent(dimension,
                     ignored -> stock.subtract(decimal(row[11])).subtract(decimal(row[8]))
@@ -241,6 +252,50 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         return quantities;
     }
 
+    private Map<InventoryKey,BigDecimal> publicReservationChanges(UUID analysisId,MaterialAnalysisIssuePreviewOverlay overlay) {
+        var changes=overlay.publicReservations();
+        if(changes.isEmpty())return Map.of();
+        Set<UUID> warehouses=Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT warehouse.id FROM warehouses warehouse
+                JOIN production_material_analyses analysis ON analysis.id=:analysis
+                WHERE fn_warehouse_is_good_stock_leaf(warehouse.id)
+                  AND fn_warehouse_same_main(warehouse.id,analysis.warehouse_id)
+                """).setParameter("analysis",analysisId),UUID.class));
+        Map<InventoryKey,BigDecimal> result=new HashMap<>();
+        for(var change:changes)if(warehouses.contains(change.warehouseId()))
+            result.merge(new InventoryKey(change.goodsId(),change.colorId()),change.qty(),BigDecimal::add);
+        return result;
+    }
+
+    /** Global reservations reduce the whole scope once; each sale remains tied to its real leaf. */
+    private List<PublicStock> publicBalances(Root root) {
+        BigDecimal global=decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(qty-consumed_qty-released_qty),0) FROM stock_reservations
+                WHERE goods_id=:goods AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND warehouse_id IS NULL AND status=0 AND NOT is_deleted
+                """).setParameter("goods",root.goodsId()).setParameter("color",root.colorId()).getSingleResult());
+        List<PublicStock> result=new ArrayList<>();
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT balance.warehouse_id,GREATEST(balance.qty-COALESCE((
+                    SELECT SUM(qty-consumed_qty-released_qty) FROM stock_reservations reservation
+                    WHERE reservation.goods_id=balance.goods_id
+                      AND reservation.color_id IS NOT DISTINCT FROM balance.color_id
+                      AND reservation.warehouse_id=balance.warehouse_id AND reservation.status=0 AND NOT reservation.is_deleted),0),0)
+                FROM stock_balances balance WHERE balance.goods_id=:goods
+                  AND balance.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND fn_warehouse_same_main(balance.warehouse_id,:scope)
+                  AND fn_warehouse_is_good_stock_leaf(balance.warehouse_id)
+                ORDER BY balance.warehouse_id
+                """).setParameter("goods",root.goodsId()).setParameter("color",root.colorId()).setParameter("scope",root.scopeWarehouseId()))) {
+            BigDecimal available=decimal(row[1]),withheld=global.min(available);
+            global=global.subtract(withheld);available=available.subtract(withheld);
+            if(available.signum()>0)result.add(new PublicStock((UUID)row[0],available));
+        }
+        return List.copyOf(result);
+    }
+
+    private record PublicStock(UUID warehouseId,BigDecimal qty) { }
+
     /** Explicit notify may allocate existing stock before creating only the external shortage. */
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean fulfillExisting(UUID analysisId, Collection<UUID> materialIds, String key) {
@@ -263,21 +318,19 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             if (exists(command)) continue;
             BigDecimal qty = root.allocated().min(root.remainingBase());
             if (qty.signum() <= 0) continue;
-            List<?> availableBalances = em.createNativeQuery("""
-                    SELECT GREATEST(COALESCE(balance.qty,0)-COALESCE((
-                      SELECT SUM(r.qty-r.consumed_qty-r.released_qty) FROM stock_reservations r
-                      WHERE r.goods_id=:goodsId AND r.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
-                        AND (r.warehouse_id=:warehouseId OR r.warehouse_id IS NULL)
-                        AND r.status=0 AND r.is_deleted=FALSE),0),0)
-                    FROM stock_balances balance WHERE balance.goods_id=:goodsId
-                      AND balance.color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
-                      AND balance.warehouse_id=:warehouseId
-                    """).setParameter("goodsId", root.goodsId()).setParameter("colorId", root.colorId())
-                    .setParameter("warehouseId", root.warehouseId()).getResultList();
-            BigDecimal available = availableBalances.isEmpty()
-                    ? BigDecimal.ZERO : decimal(availableBalances.getFirst());
+            List<PublicStock> balances=publicBalances(root);
+            BigDecimal available=balances.stream().map(PublicStock::qty).reduce(BigDecimal.ZERO,BigDecimal::add);
             if (available.compareTo(qty) < 0) throw conflict("根产品现货已变化，请重新分析后下达");
-            transfer(root, qty, null, null, null, null, command);
+            BigDecimal remaining=qty;
+            boolean first=true;
+            for(PublicStock balance:balances) {
+                BigDecimal take=remaining.min(balance.qty());
+                if(take.signum()==0)continue;
+                transfer(root,balance.warehouseId(),take,null,null,null,null,
+                        first?command:command+":"+balance.warehouseId());
+                remaining=remaining.subtract(take);first=false;
+                if(remaining.signum()==0)break;
+            }
             changed = true;
         }
         return changed;
@@ -300,8 +353,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         String key = "ROOT-IQC:" + originId;
         if (exists(key)) return true;
         if (!root.salesSourceEligible()) return false;
-        var lot = entitlement.listAvailableBeneficiaryLots(root.analysisId(), root.materialId(),
-                root.warehouseId(), root.goodsId(), root.colorId(), true).stream()
+        var lot = entitlement.listAvailableBeneficiaryLotsForProduction(root.analysisId(), root.materialId(),
+                root.scopeWarehouseId(), root.goodsId(), root.colorId(), true).stream()
                 .filter(value -> value.entitlementEventId().equals(originId)).findFirst()
                 .orElseThrow(() -> conflict("根产品合格权益不存在或已被使用"));
         transferQualifiedLot(root, lot, (String) origin[2], (UUID) origin[3], key);
@@ -348,8 +401,8 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
 
     private boolean fulfillWaitingOrigins(Root initial) {
         List<PreplanStockEntitlementService.AvailableLot> lots = entitlement
-                .listAvailableBeneficiaryLots(initial.analysisId(), initial.materialId(),
-                        initial.warehouseId(), initial.goodsId(), initial.colorId(), true)
+                .listAvailableBeneficiaryLotsForProduction(initial.analysisId(), initial.materialId(),
+                        initial.scopeWarehouseId(), initial.goodsId(), initial.colorId(), true)
                 .stream().filter(lot -> "ORIGIN_IQC".equals(lot.originEventType())
                         || "ORIGIN_MAKE".equals(lot.originEventType())).toList();
         if (lots.isEmpty()) return false;
@@ -380,6 +433,9 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
             String receiptType, UUID receiptId, String key) {
         BigDecimal qty = lot.remainingQty();
         if (qty.compareTo(root.remainingBase()) > 0) throw conflict("根产品合格入库超过剩余来源数量");
+        if(!Boolean.TRUE.equals(em.createNativeQuery("SELECT fn_preplan_reservation_has_qualified_origin(:id)")
+                .setParameter("id",lot.stockReservationId()).getSingleResult()))
+            throw conflict("根产品合格权益缺少原放行和实际入库仓证明，请先核对原收货来源");
         UUID releaseId = entitlement.appendReleaseLot(UUID.randomUUID(), lot, qty, null, key + ":RELEASE");
         int released = em.createNativeQuery("""
                 UPDATE stock_reservations SET released_qty=released_qty+:qty,
@@ -388,7 +444,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 WHERE id=:id AND qty-consumed_qty-released_qty>=:qty AND status=0 AND is_deleted=FALSE
                 """).setParameter("qty", qty).setParameter("id", lot.stockReservationId()).executeUpdate();
         if (released != 1) throw conflict("根产品入库权益已被并发使用");
-        transfer(root, qty, lot.stockReservationId(), releaseId, receiptType, receiptId, key);
+        transfer(root,lot.warehouseId(),qty,lot.stockReservationId(),releaseId,receiptType,receiptId,key);
     }
 
 
@@ -527,13 +583,13 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 """).setParameter("id", root.analysisId()).executeUpdate();
     }
 
-    private void transfer(Root root, BigDecimal qty, UUID sourceReservation, UUID releaseEvent,
+    private void transfer(Root root,UUID actualWarehouseId,BigDecimal qty,UUID sourceReservation,UUID releaseEvent,
                           String receiptType, UUID receiptId, String key) {
         BigDecimal before = fulfilled(root.itemId());
         UUID saleReservation = null;
         if (root.salesOrderItemId() != null) {
             StockReservation reservation = salesReservations.reserve(root.salesOrderItemId(), root.goodsId(),
-                    root.colorId(), root.warehouseId(), qty, StockReservation.SOURCE_ORDER,
+                    root.colorId(),actualWarehouseId,qty,StockReservation.SOURCE_ORDER,
                     "ROOT_SUPPLY_INBOUND", root.itemId());
             em.flush();
             saleReservation = reservation.getId();
@@ -546,7 +602,7 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                 VALUES(:analysis,:item,:material,'FULFILL',:warehouse,:goods,:color,:qty,
                   :reservation,:release,:salesItem,:salesReservation,:receiptType,:receipt,:key,:actor,:route)
                 """).setParameter("analysis", root.analysisId()).setParameter("item", root.itemId())
-                .setParameter("material", root.materialId()).setParameter("warehouse", root.warehouseId())
+                .setParameter("material", root.materialId()).setParameter("warehouse",actualWarehouseId)
                 .setParameter("goods", root.goodsId()).setParameter("color", root.colorId()).setParameter("qty", qty)
                 .setParameter("reservation", sourceReservation).setParameter("release", releaseEvent)
                 .setParameter("salesItem", root.salesOrderItemId()).setParameter("salesReservation", saleReservation)
@@ -641,11 +697,11 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());
     }
     private static ApiException conflict(String message) { return new ApiException(ErrorCode.CONFLICT,message); }
-    private record Root(UUID analysisId,UUID itemId,UUID materialId,UUID goodsId,UUID colorId,UUID warehouseId,
+    private record Root(UUID analysisId,UUID itemId,UUID materialId,UUID goodsId,UUID colorId,UUID scopeWarehouseId,
                         UUID salesOrderItemId,String route,BigDecimal allocated,BigDecimal remainingBase,
                         boolean salesSourceEligible) {
         Root afterHandoff(BigDecimal qty) {
-            return new Root(analysisId,itemId,materialId,goodsId,colorId,warehouseId,salesOrderItemId,
+            return new Root(analysisId,itemId,materialId,goodsId,colorId,scopeWarehouseId,salesOrderItemId,
                     route,allocated,remainingBase.subtract(qty),salesSourceEligible);
         }
     }

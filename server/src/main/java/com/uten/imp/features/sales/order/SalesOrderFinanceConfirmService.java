@@ -66,68 +66,7 @@ public class SalesOrderFinanceConfirmService {
     // ADR-128: 客户应收只经 finance 的共用余额查询取, 本服务不再自写 ar_ap_ledger 汇总。
     private final PartyOpenBalancePort partyBalances;
 
-    public record FinanceAmendmentRequest(
-            @NotNull @jakarta.validation.constraints.Min(0) Long expectedRevision,
-            @NotNull UUID expectedClaimId,
-            @NotEmpty @Size(max = 500) List<@jakarta.validation.Valid FinanceLineEdit> lines) {}
 
-    public record FinanceLineEdit(@NotNull UUID itemId,
-            @jakarta.validation.constraints.DecimalMin("0") BigDecimal price,
-            @jakarta.validation.constraints.DecimalMin("0") BigDecimal discount) {}
-
-    /** Dedicated initial-review correction: preserves quantities, reservations and source UUIDs. */
-    @Transactional
-    @PreAuthorize("hasAuthority('sales_order_finance:view') and hasAuthority('sales_order_finance:confirm')")
-    public SalesOrderFinanceReviewDto amend(UUID orderId, FinanceAmendmentRequest request) {
-        tx.bind();
-        requireEligibleConfirmer();
-        if (request == null || request.expectedRevision() == null || request.expectedClaimId() == null
-                || request.lines() == null || request.lines().isEmpty() || request.lines().size() > 500) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "审核修改必须绑定当前版本、认领和修改明细");
-        }
-        SalesOrder order = requireDecisionOrderForUpdate(orderId);
-        requireReviewRevision(order, request.expectedRevision());
-        requireConfirmable(order);
-        if (order.isFinanceConfirmed() || order.getFinanceConfirmedAt() != null) {
-            throw new ApiException(ErrorCode.CONFLICT, "已有财务放行或下游执行的订单，须处理下游并反审后修改金额");
-        }
-        taskClaim.requireActiveClaimByMe("SALES_ORDER_FINANCE_CONFIRM", orderId.toString(), request.expectedClaimId());
-        requireNoShipmentWorkForRejection(orderId);
-        List<SalesOrderItem> items = em.createQuery(
-                "SELECT i FROM SalesOrderItem i WHERE i.orderId=:id AND i.deleted=false ORDER BY i.id", SalesOrderItem.class)
-                .setParameter("id", orderId).setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE).getResultList();
-        Map<UUID, SalesOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(SalesOrderItem::getId, java.util.function.Function.identity()));
-        java.util.Set<UUID> seen = new java.util.HashSet<>();
-        for (var line : request.lines()) {
-            if (line == null || line.itemId() == null || !seen.add(line.itemId()) || !byId.containsKey(line.itemId())
-                    || (line.price() == null && line.discount() == null)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "修改行不属于当前订单、重复或没有金额输入");
-            }
-            if (line.price() != null) {
-                com.uten.imp.common.util.FinancialExactAmount.unitPrice(line.price(), "财务核改单价");
-                com.uten.imp.features.sales.SalesPriceAuthority.requireClientPrice(line.price(), "财务核改单价");
-            }
-            if (line.discount() != null) com.uten.imp.features.sales.SalesPriceAuthority.normalizeExplicitDiscount(line.discount());
-        }
-        String before = revisions.snapshot(orderId);
-        for (var line : request.lines()) {
-            SalesOrderItem item = byId.get(line.itemId());
-            if (line.price() != null) item.setPrice(line.price());
-            if (line.discount() != null) item.setDiscount(com.uten.imp.features.sales.SalesPriceAuthority.normalizeExplicitDiscount(line.discount()));
-            item.setAmountOriginal(com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    SalesOrderService.authoritativeOrderAmount(item.getQty(), item.getPrice(), item.getDiscount()), item.getExtraColumns()));
-            item.setAmountLocal(null);
-        }
-        order.setTotalOriginal(items.stream().map(SalesOrderItem::getAmountOriginal).reduce(BigDecimal.ZERO, BigDecimal::add));
-        order.setTotalLocal(null);
-        orderRepo.save(order);
-        em.flush();
-        if (revisions.record(orderId, before)) {
-            order.setFinanceReviewRevision(order.getFinanceReviewRevision() + 1);
-            orderRepo.saveAndFlush(order);
-        }
-        return review(orderId);
-    }
 
     /** 客户信用额度: 迁入客户的旧额度不可信, 按未设置处理(列表与审核页同一表达式)。 */
     private static final String CLIENT_CREDIT_SQL =

@@ -43,6 +43,8 @@ class ProductionExecutionWorkbenchGroup {
     this.ownerEmployeeName,
     this.analyzedAt,
     this.rootProgressRatio,
+    this.completedProductCount,
+    this.unfinishedProductCount,
   });
 
   final String rootType;
@@ -86,6 +88,22 @@ class ProductionExecutionWorkbenchGroup {
   final String? ownerEmployeeName;
   final String? analyzedAt;
   final double? rootProgressRatio;
+  final int? completedProductCount;
+  final int? unfinishedProductCount;
+
+  /// Authoritative goods/color/unit identities; legacy segment counts cannot replace these facts.
+  String get productCompletionLabel {
+    final completed = completedProductCount;
+    final unfinished = unfinishedProductCount;
+    if (completed == null ||
+        unfinished == null ||
+        completed < 0 ||
+        unfinished < 0) {
+      return '产品状态待核对';
+    }
+    if (completed + unfinished == 0) return '暂无有效工单';
+    return '已完成 $completed 个 · 未完成 $unfinished 个';
+  }
 
   String get id => '$rootType:$rootId';
 
@@ -156,6 +174,8 @@ class ProductionExecutionWorkbenchGroup {
     ownerEmployeeName: json['ownerEmployeeName'] as String?,
     analyzedAt: json['analyzedAt'] as String?,
     rootProgressRatio: (json['rootProgressRatio'] as num?)?.toDouble(),
+    completedProductCount: (json['completedProductCount'] as num?)?.toInt(),
+    unfinishedProductCount: (json['unfinishedProductCount'] as num?)?.toInt(),
   );
 }
 

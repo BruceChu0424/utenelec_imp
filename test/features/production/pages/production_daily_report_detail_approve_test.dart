@@ -53,7 +53,6 @@ import '../../../support/memory_cas_storage.dart';
 part 'production_daily_report_review_v2_cases.dart';
 part 'production_daily_report_material_review_cases.dart';
 part 'production_daily_report_material_recovery_cases.dart';
-part 'production_daily_report_review_v3_merge_cases.dart';
 
 final _scope = StateProvider<AuthenticatedScope>(
   (ref) => const AuthenticatedScope(userId: 'daily-report-tester'),
@@ -137,7 +136,6 @@ class _DailyReportApi extends ApiClient {
   Object? materialReadFailure;
   Completer<void>? materialReadGate;
   int materialReads = 0;
-  void Function(_DailyReportApi)? afterReviewedSave;
 
   Map<String, dynamic> get _materialReview => {
     'reportId': 'dr-1',
@@ -416,15 +414,7 @@ Future<(_DailyReportApi, List<String>)> _pump(
                 body: ElevatedButton(
                   onPressed: () {
                     api.rowVersion++;
-                    if (state.uri.queryParameters['review'] == '1') {
-                      final saved = ProductionDailyReportDetail.fromJson(
-                        api._detail,
-                      );
-                      api.afterReviewedSave?.call(api);
-                      context.pop(saved);
-                    } else {
-                      context.pop('dr-1');
-                    }
+                    context.pop('dr-1');
                   },
                   child: Text('保存编辑 ${state.uri.queryParameters['from']}'),
                 ),
@@ -548,7 +538,6 @@ Future<void> _tapApprove(WidgetTester tester, {bool settle = true}) async {
 }
 
 void main() {
-  registerDailyReviewV3MergeCases();
   registerDailyReportReviewV2Cases();
   registerDailyReportMaterialReviewCases();
   registerDailyReportMaterialRecoveryCases();

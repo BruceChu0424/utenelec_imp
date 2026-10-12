@@ -63,6 +63,45 @@ class AggregateMaterialOrderPreviewServiceTest {
         return new PreviewRequest(13L,FINGERPRINT,"aggregate-preview-key",WAREHOUSE,DATE,DATE,true,groups);
     }
 
+    @Test void appendCannotReplaceItsOwnIssuedWorkshopWithTheGoodsDefault(){
+        UUID source=UUID.randomUUID(),child=UUID.randomUUID(),injection=UUID.randomUUID();
+        MaterialView row=material(source,"child","0");when(row.planAnchorAnalysisLineId()).thenReturn(child);
+        ProductView plan=product(child,"AGGREGATE_MAKE","110");
+        when(plan.goodsId()).thenReturn(GOODS);when(plan.unitId()).thenReturn(UNIT);
+        when(plan.latestPlanId()).thenReturn(UUID.randomUUID());when(plan.planExecutionStatus()).thenReturn("COMPLETED");
+        when(plan.planExecutionWorkshopId()).thenReturn(injection);
+        when(plan.planExecutionResponsibleId()).thenReturn(UUID.fromString("00000000-0000-0000-0000-000000000200"));
+        var preview=service().resolve(ANALYSIS,request(List.of(group(List.of(row),"1000",true))),view(List.of(plan),List.of(row))).groups().getFirst();
+        assertThat(preview.blockedReason()).contains("原任务","车间");
+        assertThat(preview.departmentId()).isEqualTo(injection);
+    }
+
+    @Test void appendDerivesMissingAssignmentFromTheActualComponentTask(){
+        UUID source=UUID.randomUUID(),child=UUID.randomUUID(),injection=UUID.randomUUID(),worker=UUID.randomUUID();
+        MaterialView row=material(source,"child","0");when(row.planAnchorAnalysisLineId()).thenReturn(child);
+        ProductView plan=product(child,"AGGREGATE_MAKE","110");
+        when(plan.goodsId()).thenReturn(GOODS);when(plan.unitId()).thenReturn(UNIT);when(plan.latestPlanId()).thenReturn(UUID.randomUUID());
+        when(plan.planExecutionWorkshopId()).thenReturn(injection);when(plan.planExecutionResponsibleId()).thenReturn(worker);
+        var input=new GroupInput("material-group",List.of(row.materialLineId()),"MAKE",qty("1000"),true,
+                null,null,null,null,null,null,null,null);
+        var preview=service().resolve(ANALYSIS,request(List.of(input)),view(List.of(plan),List.of(row))).groups().getFirst();
+        assertThat(preview.blockedReason()).isNull();assertThat(preview.departmentId()).isEqualTo(injection);assertThat(preview.workerId()).isEqualTo(worker);
+        assertThat(preview.publicExtraQty()).isEqualByComparingTo("1000");
+    }
+
+    @Test void differentActualComponentAssignmentsRequireSourceGrouping(){
+        MaterialView a=material(UUID.randomUUID(),"a","0"),b=material(UUID.randomUUID(),"b","0");
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        when(a.planAnchorAnalysisLineId()).thenReturn(first);when(b.planAnchorAnalysisLineId()).thenReturn(second);
+        ProductView p=product(first,"AGGREGATE_MAKE","110"),q=product(second,"AGGREGATE_MAKE","110");
+        for(ProductView plan:List.of(p,q)) {
+            when(plan.goodsId()).thenReturn(GOODS);when(plan.unitId()).thenReturn(UNIT);when(plan.latestPlanId()).thenReturn(UUID.randomUUID());
+            when(plan.planExecutionWorkshopId()).thenReturn(UUID.randomUUID());when(plan.planExecutionResponsibleId()).thenReturn(UUID.randomUUID());
+        }
+        var result=service().resolve(ANALYSIS,request(List.of(group(List.of(a,b),"1000",true))),view(List.of(p,q),List.of(a,b))).groups().getFirst();
+        assertThat(result.blockedReason()).contains("不唯一","按来源分组");
+    }
+
     @Test void mixedAliasTargetsKeepLiveResponsibilityWithoutReactivatingRetiredZeroTargets() {
         MaterialView origin=material(UUID.randomUUID(),"origin","0");
         MaterialView retired=material(UUID.randomUUID(),"retired","0");

@@ -30,7 +30,7 @@ class OperationalCommercialSignGuardWiringTest {
     @Test
     void allThreeOperationalDocumentsValidateRequestsAndStoredState() throws IOException {
         assertPurchaseWired(read("purchase/receipt/PurchaseReceiptService.java"), "approveReceipt");
-        assertPurchaseWired(read("purchase/ret/PurchaseReturnService.java"), "approveReturn");
+        assertPurchaseWired(read("purchase/ret/PurchaseReturnService.java"), "approve");
         assertWired(read("sales/ret/SalesReturnService.java"));
     }
 

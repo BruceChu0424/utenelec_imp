@@ -273,6 +273,34 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         assertThat(coverage(w.analysis).get(childA)[0]).isCloseTo(new BigDecimal("100"), within(EPSILON));
     }
 
+    @Test
+    void partiallyOrderedSourceCapsOverageCustodyAtItsExactOutputBudget() throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent large = w.parent("large", false), small = w.parent("small", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",large.id(),small.id());
+        UUID child = w.child(large,"A",w.goodsA);
+        UUID action = w.action(large,"110","0");
+        UUID first = w.allocation(action,small,"10"), last = w.allocation(action,large,"100");
+        // Subcontract ordering admits overage on the last source. The material
+        // has an original requirement of 200, but this action only commits 100.
+        UUID item = w.orderItem("1",first,"10"); w.source(item,last,"150",2);
+        w.planLine(item,w.goodsA,"1","160");
+        BigDecimal[] actual = coverage(w.analysis).get(child);
+        assertThat(actual[0]).isEqualByComparingTo("150");
+        var node = new MaterialAnalysisService.BomNode(large.analysisItemId(),child,UUID.randomUUID(),
+                w.goodsA,null,UUID.randomUUID(),2,"large/A","large",BigDecimal.ONE,BigDecimal.ONE,BigDecimal.ONE,
+                new BigDecimal("200"),"A","A",null,null,"piece",BigDecimal.ZERO,"BUY",false,
+                "START","PER_UNIT",BigDecimal.ONE,true,true);
+        var formal = new MaterialAnalysisService.FormalMaterialCoverage(child,large.analysisItemId(),"large/A",actual[0],actual[1]);
+        var loose = MaterialAnalysisService.planFormalCoverage(java.util.List.of(formal),java.util.List.of(node));
+        var tight = MaterialAnalysisService.planFormalCoverage(java.util.List.of(formal),
+                java.util.List.of(node.withSnapshotRequiredQty(new BigDecimal("100"))));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertThat(actual[1]).isEqualByComparingTo("100"),
+                () -> assertThat(loose.securedTotal(large.analysisItemId()+"|large/A")).isEqualByComparingTo("100"),
+                () -> assertThat(tight.securedTotal(large.analysisItemId()+"|large/A")).isEqualByComparingTo("100"));
+    }
+
     private Map<UUID, BigDecimal[]> coverage(UUID analysisId) throws SQLException {
         String sql = productionSql().replace(":analysisId", "'" + analysisId + "'::uuid");
         Map<UUID, BigDecimal[]> rows = new LinkedHashMap<>();

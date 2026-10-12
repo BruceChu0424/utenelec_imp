@@ -13,8 +13,6 @@ import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
-import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
-import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
 void main() {
   for (final variant in _ContentVariant.values) {

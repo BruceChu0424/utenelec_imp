@@ -22,6 +22,33 @@ FormDraft _draft(
 
 void main() {
   test(
+    'old task permission labels cannot create a second todo or authorize restore',
+    () {
+      final current = FormDraftCatalog.warehouseSalesOutbound.spec(
+        route: '/warehouse/sales-outbound/shipment-a',
+      );
+      final checkpoint = FormDraft(
+        id: 'old-task',
+        title: current.title,
+        module: current.module,
+        route: current.route,
+        permission: 'retired_warehouse_issue:edit',
+        updatedAt: DateTime.utc(2026, 10, 12),
+        data: const {},
+      );
+      expect(
+        FormDraftCatalog.warehouseSalesOutbound.groups(checkpoint),
+        isFalse,
+      );
+      expect(isTaskFormDraft(checkpoint), isTrue);
+      expect(
+        includeFormDraftBadges(BadgeSummary.empty, [checkpoint]).total.todo,
+        0,
+      );
+    },
+  );
+
+  test(
     'task checkpoints stay out of standalone draft counts without adding a second todo',
     () {
       final task = _draft(

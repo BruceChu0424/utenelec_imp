@@ -62,6 +62,7 @@ public class XlsxExportService {
             exact.setAlignment(HorizontalAlignment.RIGHT);
             CellStyle text = wb.createCellStyle();
             text.setDataFormat(wb.createDataFormat().getFormat("@"));
+            Map<String, CellStyle> unitStyles = new java.util.HashMap<>();
             var info = wb.createSheet("说明");
             int infoRow = 0;
             for (String value : java.util.stream.Stream.concat(java.util.stream.Stream.of(document.title()),
@@ -91,7 +92,9 @@ public class XlsxExportService {
                     Row row = sheet.createRow(rowIndex++);
                     for (int c = 0; c < section.columns().size(); c++) {
                         ExportColumn column = section.columns().get(c);
-                        writeCell(row.createCell(c), column.type(), values.get(column.key()), number, exact, text);
+                        Cell cell = row.createCell(c);
+                        writeCell(cell, column.type(), values.get(column.key()), number, exact, text);
+                        applyUnit(cell, column, values, wb, unitStyles);
                     }
                 }
                 sheet.createFreezePane(0, 1);
@@ -132,6 +135,7 @@ public class XlsxExportService {
             // 且不改变显示内容（区别于加单引号前缀）。AES-256 不防此——文件被合法查看者解密后才被解释。
             CellStyle textStyle = wb.createCellStyle();
             textStyle.setDataFormat(wb.createDataFormat().getFormat("@"));
+            Map<String, CellStyle> unitStyles = new java.util.HashMap<>();
 
             Sheet sheet = wb.createSheet("data");
             // 表头
@@ -152,7 +156,9 @@ public class XlsxExportService {
                 for (int i = 0; i < columns.size(); i++) {
                     ExportColumn col = columns.get(i);
                     Object v = row == null ? null : row.get(col.key());
-                    writeCell(R.createCell(i), col.type(), v, numStyle, qtyStyle, textStyle);
+                    Cell cell = R.createCell(i);
+                    writeCell(cell, col.type(), v, numStyle, qtyStyle, textStyle);
+                    applyUnit(cell, col, row, wb, unitStyles);
                 }
             }
             sheet.createFreezePane(0, 1); // 冻结首行
@@ -186,6 +192,30 @@ public class XlsxExportService {
             case ExportColumn.DATE -> { cell.setCellValue(toDateStr(v)); cell.setCellStyle(textStyle); }
             default -> { cell.setCellValue(Objects.toString(v)); cell.setCellStyle(textStyle); }
         }
+    }
+
+    /** Excel literal number formats show units while retaining numeric and exact-text cell values. */
+    private static void applyUnit(Cell cell, ExportColumn column, Map<String, Object> row,
+                                  SXSSFWorkbook workbook, Map<String, CellStyle> cache) {
+        Object raw = row == null ? null : row.get(column.key());
+        if (raw == null || toBigDecimal(raw) == null) return;
+        String unit = column.unitKey() == null ? column.unitLabel()
+                : Objects.toString(row.get(column.unitKey()), "");
+        if (unit == null || unit.isBlank()) return;
+        unit = unit.strip();
+        if ("人民币".equals(unit)) unit = "元";
+        String base = cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING ? "@"
+                : ExportColumn.MONEY.equals(column.type()) ? "#,##0.00############" : "0.################";
+        String literal = unit.replace("\\", "\\\\").replace("\"", "\\\"");
+        String format = base + "\" " + literal + "\"";
+        CellStyle style = cache.get(format);
+        if (style == null) {
+            style = workbook.createCellStyle();
+            style.cloneStyleFrom(cell.getCellStyle());
+            style.setDataFormat(workbook.createDataFormat().getFormat(format));
+            cache.put(format, style);
+        }
+        cell.setCellStyle(style);
     }
 
     private static BigDecimal toBigDecimal(Object v) {

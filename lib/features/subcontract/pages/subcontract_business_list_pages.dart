@@ -1005,6 +1005,16 @@ class _SubcontractBusinessListPageState
     );
     return widget.embedded ? page.body! : page;
   }
+
+  // 子分段激活时主分段 chip 已处于选中态（SegmentedButton 点已选段不回调），
+  // 这是唯一的单击返回主分段入口——不属于「分类下面的清除筛选」重复入口口径。
+  Widget? _clearSubstageAction() => _seg == _primarySeg
+      ? null
+      : TextButton.icon(
+          onPressed: () => _selectSeg(_primarySeg!),
+          icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+          label: const Text('清除状态筛选'),
+        );
 }
 
 class _BusinessPagedController extends ChangeNotifier {
@@ -1115,7 +1125,9 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
           ? '***'
           : row.totalLocal == null
           ? null
-          : financeLocalMoneyWithUnitSuffix(row.totalLocal!.toStringAsFixed(2)),
+          : financeLocalMoneyWithUnitSuffix(
+              row.totalLocalText ?? row.totalLocal?.toString(),
+            ),
     ),
   if (weight)
     MasterColumnDef(

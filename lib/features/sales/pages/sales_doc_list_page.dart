@@ -464,7 +464,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     subtitle: Text(
-                      '${names.client(q.clientId)} · ${q.billDate ?? ''} · ¥${q.totalLocal?.toStringAsFixed(2) ?? '—'}',
+                      '${names.client(q.clientId)} · ${q.billDate ?? ''} · ${financeLocalMoneyWithUnitSuffix(q.totalLocalText ?? q.totalLocal?.toString())}',
                     ),
                     onTap: () => Navigator.pop(ctx, q),
                   );
@@ -811,14 +811,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
             ? '***'
             : _isOrder
             ? financeMoneyWithUnitSuffix(
-                it.totalOriginal?.toStringAsFixed(2),
+                it.totalOriginalText,
                 currencyName: names.currency(it.currencyId),
               )
             : it.totalLocal == null
             ? null
-            : financeLocalMoneyWithUnitSuffix(
-                it.totalLocal!.toStringAsFixed(2),
-              ),
+            : financeLocalMoneyWithUnitSuffix(it.totalLocalText),
       ),
       // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
       if (_cfg.hasDeliverDate)

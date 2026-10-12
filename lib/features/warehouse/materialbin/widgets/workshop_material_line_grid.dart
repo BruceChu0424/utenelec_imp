@@ -342,6 +342,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
         l10n,
         row,
         positionByKey,
+        materials,
         atLeaf: showLeafWarehouse,
         showWarehouseAvailable: showWarehouseAvailable,
       ),
@@ -354,6 +355,7 @@ List<EditableGridColumn<WmIssueLineRow>> wmIssueLineColumns({
               l10n,
               row,
               positionByKey,
+              materials,
               atLeaf: showLeafWarehouse,
               showWarehouseAvailable: showWarehouseAvailable,
             ),
@@ -393,7 +395,8 @@ List<WmLeafStock> _requisitionLeafOptions(
 String _hintText(
   AppLocalizations l10n,
   WmIssueLineRow row,
-  Map<String, WmPositionRow> positionByKey, {
+  Map<String, WmPositionRow> positionByKey,
+  List<WmMaterialOption> materials, {
   required bool atLeaf,
   required bool showWarehouseAvailable,
 }) {
@@ -403,13 +406,34 @@ String _hintText(
   if (material != null && showWarehouseAvailable) {
     var available = material.warehouseAvailableQty;
     if (atLeaf) {
-      for (final w in wmLeafOptions(material)) {
-        if (w.warehouseId == row.leafWarehouseId.value) {
-          available = w.availableQty;
-        }
-      }
+      available = wmSelectedLeafAvailable(material, row.leafWarehouseId.value);
     }
     parts.add('仓库可发 ${wmQty(available)} ${material.unitName ?? ''}');
+    if (available <= 0) {
+      final others = materials.where(
+        (candidate) =>
+            candidate.goodsId == material.goodsId &&
+            candidate.colorId != material.colorId &&
+            (atLeaf
+                    ? wmSelectedLeafAvailable(
+                        candidate,
+                        row.leafWarehouseId.value,
+                      )
+                    : candidate.warehouseAvailableQty) >
+                0,
+      );
+      if (others.isNotEmpty) {
+        final alternative = others.first;
+        final stock = atLeaf
+            ? wmSelectedLeafAvailable(alternative, row.leafWarehouseId.value)
+            : alternative.warehouseAvailableQty;
+        parts.add(
+          '申请颜色：${material.colorName ?? '未指定颜色'}；'
+          '${alternative.colorName ?? '未指定颜色'}另有 ${wmQty(stock)} '
+          '${alternative.unitName ?? ''}，请按实际颜色重新申请',
+        );
+      }
+    }
   }
   final position = key == null ? null : positionByKey[key];
   if (position != null) {
@@ -424,4 +448,17 @@ String _hintText(
     );
   }
   return parts.join(' · ');
+}
+
+/// A selected leaf without a matching stock row has no stock in that exact
+/// goods/color dimension. The total at other leaves cannot fill this row.
+double wmSelectedLeafAvailable(
+  WmMaterialOption? material,
+  String? warehouseId,
+) {
+  if (material == null || warehouseId == null) return 0;
+  for (final leaf in material.leafWarehouses) {
+    if (leaf.warehouseId == warehouseId) return leaf.availableQty;
+  }
+  return 0;
 }

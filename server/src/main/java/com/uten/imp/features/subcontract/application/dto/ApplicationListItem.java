@@ -23,4 +23,6 @@ public class ApplicationListItem extends com.uten.imp.common.history.DocumentHis
 
     @Override public void disableHistoryActions() {
     }
+
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

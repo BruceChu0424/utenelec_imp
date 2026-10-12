@@ -107,6 +107,7 @@ public class ProductionReportService {
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
             for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i]));
+            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
 
@@ -144,6 +145,7 @@ public class ProductionReportService {
                         em, dataSelect, fromJoin, full.sql(), full.params(),
                         reportTotalSpecs(columns, columns));
 
+        totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
         return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, Map.of(), totals);
     }
@@ -167,8 +169,10 @@ public class ProductionReportService {
             if (label == null || label.isBlank()) continue;
             String g = c.totalGroupKey();
             if (g != null && !present.contains(g)) continue;
+            String identity=c.totalGroupIdentityKey();
+            if(identity!=null&&!present.contains(identity))identity=null;
             specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                    c.key(), label, c.type(), g));
+                    c.key(), label, c.type(), g,identity));
         }
         return specs;
     }
@@ -249,16 +253,17 @@ public class ProductionReportService {
                 ReportColumn.text("spec", "规格", 140),
                 // 订货数量 = 来源销售订单行的数量快照：一张销售订单行被拆成父计划 + 多张子计划时
                 // 同一个 oqty 会重复落在多行上（明细报表全量含子计划），相加会重复计数，故不声明合计。
-                ReportColumn.number("oqty", "订货数量"),
-                ReportColumn.number("qty", "排产数量").totaled("合计排产数量", "__unitName"),
+                ReportColumn.number("oqty", "订货数量").withUnitKey("__unitName"),
+                ReportColumn.number("qty", "排产数量").withUnitKey("__unitName").totaled("合计排产数量", "__unitName","__unitId"),
                 ReportColumn.date("planBeginDate", "计划开工日期"),
                 ReportColumn.date("planEndDate", "计划完工日期"),
-                ReportColumn.number("iqty", "完工数量").totaled("合计完工数量", "__unitName"),
+                ReportColumn.number("iqty", "完工数量").withUnitKey("__unitName").totaled("合计完工数量", "__unitName","__unitId"),
                 ReportColumn.text("requestNote", "特殊要求", 140),
                 ReportColumn.text("summary", "摘要", 140),
                 // 隐藏分组列：本报表不展示单位，但合计必须按单位分组（绝不跨单位相加），
                 // 故把行单位名投进派生表、不进前端 columns（"__" 前缀由 execute 过滤）。
                 ReportColumn.text("__unitName", ""),
+                ReportColumn.text("__unitId", ""),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳生产计划编辑页
         String dataSelect = """
                 SELECT i.bill_no AS "billNo", i.bill_date AS "billDate",
@@ -267,12 +272,12 @@ public class ProductionReportService {
                        i.sales_order_no AS "salesOrderNo", i.client_name AS "clientName",
                        i.order_date AS "orderDate", i.outbound_date AS "deliveryDate",
                        i.product_no AS "productNo", mc.name AS "categoryName", g.series AS "series",
-                       g.code AS "goodsCode", g.model AS "model", i.customer_model AS "customerModel",
-                       g.name AS "goodsName", g.spec AS "spec", col.name AS "colorName",
+                       g.name AS "goodsName", g.code AS "goodsCode", col.name AS "colorName",
+                       g.model AS "model", i.customer_model AS "customerModel", g.spec AS "spec",
                        i.oqty AS "oqty", i.qty AS "qty",
                        i.plan_begin_date AS "planBeginDate", i.plan_end_date AS "planEndDate",
                        i.iqty AS "iqty", i.request_note AS "requestNote", i.remark AS "summary",
-                       un.name AS "__unitName", p.id AS "__srcId"
+                       un.name AS "__unitName", i.unit_id AS "__unitId", p.id AS "__srcId"
                 """;
         String fromJoin = """
                 FROM production_plan_items i
@@ -364,7 +369,7 @@ public class ProductionReportService {
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
                 ReportTableResponse::rows);
     }
 

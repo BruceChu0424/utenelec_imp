@@ -22,4 +22,6 @@ public class ReturnListItem extends com.uten.imp.common.history.DocumentHistoryM
 
     @Override public void disableHistoryActions() {
     }
+
+    public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

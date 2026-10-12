@@ -27,8 +27,12 @@ class FormDraftDescriptor {
   /// Presentation grouping only; actual restoration still validates the full
   /// active editor contract and current permissions.
   bool groups(FormDraft draft) =>
+      draft.permission == permission && matchesDestination(draft);
+
+  /// Stable editor identity for counting across permission-name changes.
+  /// Restore and write authorization still require [groups] and live grants.
+  bool matchesDestination(FormDraft draft) =>
       draft.module == module &&
-      draft.permission == permission &&
       _matchesRouteTemplate(draft.route) &&
       Uri.parse(draft.route).queryParameters['draftForm'] == dialogKind;
 

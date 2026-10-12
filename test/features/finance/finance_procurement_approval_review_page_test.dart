@@ -901,6 +901,19 @@ void main() {
     });
   });
 
+  testWidgets('missing supplier balance retains local amount unit suffix', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo(
+      FinanceProcurementApprovalReview.fromJson(
+        _pendingReviewJson()..['supplierBalance'] = null,
+      ),
+    );
+    await _pumpReviewPage(tester, repository);
+    expect(find.text('71000.00 元'), findsWidgets);
+    expect(find.text('71000.00'), findsNothing);
+  });
+
   testWidgets('汇率编辑器：默认快照兜底，编辑实时重算折合人民币列与合计', (tester) async {
     await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
     final field = find.byKey(const Key('finance-order-review-rate-field'));

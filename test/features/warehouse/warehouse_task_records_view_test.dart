@@ -499,8 +499,9 @@ void main() {
       expect(gateway.calls.length, greaterThanOrEqualTo(2));
       final latest = gateway.calls.last;
       if (boundary == 'source') expect(latest.source, 'SUBCONTRACT');
-      if (boundary == 'warehouse')
+      if (boundary == 'warehouse') {
         expect(latest.scope.warehouseId, 'warehouse-b');
+      }
       latest.result.complete(
         gateway.pageOf([
           warehouseTestRecord(

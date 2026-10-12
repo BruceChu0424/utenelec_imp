@@ -7564,8 +7564,9 @@ abstract class _MaterialAnalysisMaterialTableState
     MaterialAnalysisPlanReference plan,
   ) async {
     final analysis = _analysis;
-    if (analysis == null || _busy || !_canWithdrawIssuedAnalysisPlan(plan))
+    if (analysis == null || _busy || !_canWithdrawIssuedAnalysisPlan(plan)) {
       return false;
+    }
     final sessionScope = _sessionScopeKey();
     final reasonController = TextEditingController();
     final planNo = plan.planNo?.trim();
@@ -7624,8 +7625,9 @@ abstract class _MaterialAnalysisMaterialTableState
             idempotencyKey: idempotencyKey,
             reason: reason,
           );
-      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope))
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) {
         return false;
+      }
       setState(() => _applyAnalysis(current));
       refreshBadges(ref);
       context.appSuccess('生产计划已撤回，来源待安排数量已恢复');

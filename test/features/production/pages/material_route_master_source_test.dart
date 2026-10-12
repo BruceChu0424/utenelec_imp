@@ -169,10 +169,12 @@ List<String> _notices(WidgetTester tester) => ProviderScope.containerOf(
 
 Future<void> _choose(WidgetTester tester, String id, String label) async {
   await tester.ensureVisible(_dropdown(id));
-  await tester.tap(_dropdown(id));
-  await tester.pump(const Duration(milliseconds: 300));
   final field = tester.widget<UtenDropdownField>(_dropdown(id));
   final value = field.items.singleWhere((item) => item.label == label).value;
+  await tester.tap(_dropdown(id));
+  await tester.pump(const Duration(milliseconds: 300));
+  // The portal menu shares its element scope with the field; another row can
+  // have the same closed label. Select this field's visible option by identity.
   final option = find.byKey(
     ValueKey<(String, Key?, String?)>((
       'uten-dropdown-option',
@@ -180,7 +182,10 @@ Future<void> _choose(WidgetTester tester, String id, String label) async {
       value,
     )),
   );
-  expect(option, findsOneWidget);
+  expect(
+    find.descendant(of: option, matching: find.text(label)),
+    findsOneWidget,
+  );
   await tester.tap(option);
   await tester.pump(const Duration(milliseconds: 300));
 }

@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.awt.image.BufferedImage;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,6 +82,9 @@ class PlatformBrandingMigrationPostgresTest {
         assertEquals(savedSettings, jdbc.queryForList("SELECT to_jsonb(setting)::text FROM system_settings setting ORDER BY key", String.class));
         assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='839' AND success", Long.class));
         assertEquals("PRESERVE", jdbc.queryForObject("SELECT disposition FROM fn_business_reset_table_policy() WHERE table_name='platform_branding'", String.class));
+        assertEquals(List.of("platform_branding_pkey"), jdbc.queryForList(
+                "SELECT indexname FROM pg_indexes WHERE schemaname='public' AND tablename='platform_branding' ORDER BY indexname",
+                String.class), "the singleton is read by id and needs only its primary-key index");
         assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='public.platform_branding'::regclass AND NOT tgisinternal AND tgenabled='A' AND tgfoid='public.fn_audit()'::regprocedure", Long.class));
         assertEquals(0L, jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE target_type='platform_branding'", Long.class));
 

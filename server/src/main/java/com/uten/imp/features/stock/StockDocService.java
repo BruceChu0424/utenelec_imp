@@ -163,6 +163,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     private com.uten.imp.features.stock.allocation.ProductionMaterialReturnDrawInstructionService materialReturnDrawInstructions;
     private final ProductionCompletionReversePort productionCompletionReverse;
     private final TaskClaimService taskClaim;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<StockDocService> reviewedStockProxy;
     private final StockDocAccessPolicy access;
     private final ProductionStockTaskAccessPolicy productionStockTaskAccess;
     private final com.uten.imp.application.port.PreplanAnalysisPegPort preplanAnalysisPeg;
@@ -581,11 +583,82 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         return toDetail(d, items);
     }
 
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public com.uten.imp.common.review.DocumentDraftReview.View<StockDocDetail> reviewDraft(UUID id) {
+        tx.bind();prelockProductionDocument(id);
+        StockDocument document=requireDocForUpdate(id);requireReviewableDraft(document);
+        stockService.lockInventory(itemRepo.findByDocIdOrderByLineNoAsc(id).stream().map(item->new InventoryKey(item.getGoodsId(),item.getColorId())).toList());
+        return new com.uten.imp.common.review.DocumentDraftReview.View<>(reviewDraftSnapshot(document),detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    public StockDocDetail updateReviewed(UUID id,StockDocSaveRequest request,String expectedSnapshot,boolean approveNow) {
+        var current=reviewDraft(id);
+        requireReviewSnapshot(current.snapshot(),expectedSnapshot);
+        try(var context=com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("stock_doc_item",id,currentUser.requireId())) {
+            StockDocDetail saved=reviewedStockProxy.getObject().saveReviewedDraft(id,request,expectedSnapshot);
+            if(!approveNow)return saved;
+            StockDocument document=requireDocForUpdate(id);
+            if(Set.of("OTHER_OUT","FINISHED_OUT").contains(document.getDocType())) {
+                String token=StockDocOutboundReviewFingerprint.of(document,itemRepo.findByDocIdOrderByLineNoAsc(id));
+                return approveReviewed(id,new StockDocReviewedApproveRequest(token));
+            }
+            return approveInternal(id,false,false);
+        }
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="stock_doc_item",requestArgument=1,documentIdArgument=0,quantityFields={"countQty","qty"})
+    public StockDocDetail saveReviewedDraft(UUID id,StockDocSaveRequest request,String expectedSnapshot) {
+        tx.bind();StockDocument document=requireDocForUpdate(id);requireReviewableDraft(document);
+        requireReviewSnapshot(reviewDraftSnapshot(document),expectedSnapshot);
+        requireFrozenReviewHeader(document,request);
+        List<StockDocumentItem> original=itemRepo.findByDocIdOrderByLineNoAsc(id);
+        if(request.getItems()==null || request.getItems().size()!=original.size())throw reviewConflict("审核核改不能增加或删除原单明细");
+        Map<UUID,StockDocumentItem> byId=original.stream().collect(java.util.stream.Collectors.toMap(StockDocumentItem::getId,item->item));
+        Set<UUID> seen=new HashSet<>();
+        for(StockDocItemLine line:request.getItems()) {
+            if(line==null || line.getSourceItemId()==null || !seen.add(line.getSourceItemId()) || !byId.containsKey(line.getSourceItemId()))
+                throw reviewConflict("审核明细必须逐行绑定本单原 UUID");
+            StockDocumentItem before=byId.get(line.getSourceItemId());
+            if(!Objects.equals(line.getGoodsId(),before.getGoodsId()) || suppliedChanged(line.getColorId(),before.getColorId())
+                    || suppliedChanged(line.getUnitId(),before.getUnitId()) || decimalChanged(line.getUnitRate(),before.getUnitRate())
+                    || suppliedChanged(line.getWarehouseId(),before.getWarehouseId()) || suppliedChanged(line.getUpstreamItemId(),before.getUpstreamItemId())
+                    || suppliedChanged(line.getExecutionSegmentId(),before.getExecutionSegmentId()) || suppliedChanged(line.getExecutionSegmentSalesAllocationId(),before.getExecutionSegmentSalesAllocationId())
+                    || suppliedChanged(line.getSourceDocNo(),before.getSourceDocNo()) || suppliedChanged(line.getLineNo(),before.getLineNo())
+                    || decimalChanged(line.getPrice(),before.getPrice()) || decimalChanged(line.getAmountOriginal(),before.getAmountOriginal())
+                    || decimalChanged(line.getAmountLocal(),before.getAmountLocal()) || decimalChanged(line.getGiftQty(),before.getGiftQty()))
+                throw reviewConflict("审核核改不能改变货品、单位、仓库、成本或来源身份");
+            if(line.getPlatformFields()!=null && line.getPlatformFields().sourceRecordId()!=null && !line.getSourceItemId().equals(line.getPlatformFields().sourceRecordId()))
+                throw reviewConflict("审核扩展单元格必须属于同一原明细");
+            line.setColorId(before.getColorId());line.setUnitId(before.getUnitId());line.setUnitRate(before.getUnitRate());line.setWarehouseId(before.getWarehouseId());
+            line.setWeight(before.getWeight());line.setCountWeight(before.getCountWeight());
+        }
+        boolean count="CHECK".equals(document.getDocType());
+        Map<InventoryKey,BigDecimal> bookWeights=count?prepareCheckLines(document,request.getItems()):Map.of();
+        int index=1;for(StockDocItemLine line:request.getItems()) {
+            if(!count)normalizeAndValidateSaveLine(document,line,index++);
+        }
+        normalizeLineWeights(document,request.getItems());
+        for(StockDocItemLine line:request.getItems()) {
+            StockDocumentItem item=byId.get(line.getSourceItemId());item.setQty(line.getQty());item.setBaseQty(baseQtyOf(line));
+            item.setSurplusQty(line.getSurplusQty());item.setCountQty(line.getCountQty());
+            item.setWeight(line.getWeight());item.setCountWeight(line.getCountWeight());item.setQtyFromWeight(Boolean.TRUE.equals(line.getQtyFromWeight()));
+            if(count)item.setBookWeight(bookWeights.get(new InventoryKey(item.getGoodsId(),item.getColorId())));
+            if(line.getPlace()!=null)item.setPlace(line.getPlace());if(line.getRemark()!=null)item.setRemark(line.getRemark());
+        }
+        document.setRemark(request.getRemark());itemRepo.saveAll(original);itemRepo.flush();
+        applyTotals(document,original.stream().map(this::toItemDto).toList());docRepo.saveAndFlush(document);em.flush();return detail(id);
+    }
+
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
-    @PreAuthorize("hasAuthority('stock_doc:edit')")
     public void lockDraftInputsForPlatform(UUID id,StockDocSaveRequest request) {
         if(id==null)return;StockDocument document=requireDocForUpdate(id);
-        access.requireWritable(document.getMakerId(),"只能操作本人负责的仓库单据");
+        if(com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("stock_doc_item",id,currentUser.requireId()))requireReviewableDraft(document);
+        else access.requireWritable(document.getMakerId(),"只能操作本人负责的仓库单据");
     }
 
     @Transactional(readOnly=true)
@@ -594,6 +667,43 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             && document.getStatus()!=null && document.getStatus()==STATUS_DRAFT
             && !isProductionLinked(id) && !isAuthorizedBalanceAdjustment(document);
     }
+
+    private void requireReviewableDraft(StockDocument document) {
+        access.requireScopedOperationWritable(document.getMakerId(),"只能核改本人审核范围内的仓库草稿","stock_doc:approve");
+        rejectGenericMutationOfProductionDocument(document);rejectGenericMaterialReturn(document.getDocType());
+        if(document.getStatus()==null || document.getStatus()!=STATUS_DRAFT || document.getLegacyId()!=null || isAuthorizedBalanceAdjustment(document))
+            throw reviewConflict("仅无来源生成锁的原生仓库草稿可核改；历史或授权库存调整须走原专用流程");
+        if("CHECK".equals(document.getDocType())&&!access.hasAuthority("stock:count:finance_review"))throw new ApiException(ErrorCode.FORBIDDEN,"盘点审核须持财务复核权限");
+        taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_EDIT",document.getId().toString());
+        taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE",document.getId().toString());
+    }
+
+    private String reviewDraftSnapshot(StockDocument document) {
+        Object balances=em.createNativeQuery("""
+            SELECT COALESCE(jsonb_agg(jsonb_build_object('item',item.id,'balance',
+                COALESCE(to_jsonb(balance)-'created_at'-'updated_at','{}'::jsonb)) ORDER BY item.id),'[]'::jsonb)::text
+            FROM stock_document_items item LEFT JOIN stock_balances balance
+              ON balance.warehouse_id=COALESCE(item.warehouse_id,:warehouse) AND balance.goods_id=item.goods_id
+             AND balance.color_id IS NOT DISTINCT FROM item.color_id
+            WHERE item.doc_id=:id AND NOT item.is_deleted
+            """).setParameter("id",document.getId()).setParameter("warehouse",document.getWarehouseId()).getSingleResult();
+        return CanonicalFingerprint.sha256(List.of(com.uten.imp.common.review.DocumentDraftReview.snapshot(em,com.uten.imp.common.review.DocumentDraftReview.Kind.STOCK,document.getId()),String.valueOf(balances)));
+    }
+
+    private static void requireReviewSnapshot(String actual,String expected){
+        if(expected==null||!expected.matches("[0-9a-f]{64}")||!actual.equals(expected))throw reviewConflict("单据或库存事实已变化，请重新读取后核改");
+    }
+    private static void requireFrozenReviewHeader(StockDocument before,StockDocSaveRequest request){
+        if(request==null || !Objects.equals(request.getDocType(),before.getDocType()) || !Objects.equals(request.getBillDate(),before.getBillDate())
+            || suppliedChanged(request.getWarehouseId(),before.getWarehouseId()) || suppliedChanged(request.getToWarehouseId(),before.getToWarehouseId())
+            || suppliedChanged(request.getSupplierId(),before.getSupplierId()) || suppliedChanged(request.getClientId(),before.getClientId())
+            || suppliedChanged(request.getWorkerId(),before.getWorkerId()) || suppliedChanged(request.getDepartmentId(),before.getDepartmentId())
+            || suppliedChanged(request.getAssTeam(),before.getAssTeam()) || suppliedChanged(request.getPlanNo(),before.getPlanNo())
+            || suppliedChanged(request.getBillNo(),before.getBillNo()))throw reviewConflict("审核核改不能改变单据类型、日期、仓库或原业务归属");
+    }
+    private static boolean suppliedChanged(Object requested,Object original){return requested!=null&&!Objects.equals(requested,original);}
+    private static boolean decimalChanged(BigDecimal requested,BigDecimal original){return requested!=null&&(original==null||requested.compareTo(original)!=0);}
+    private static ApiException reviewConflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
 
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:delete')")
@@ -5885,7 +5995,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             productionStockTaskAccess.requireWarehouseTaskAccess(message);
             return;
         }
-        access.requireWritable(document.getMakerId(), message);
+        if(com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("stock_doc_item",document.getId(),currentUser.requireId()))
+            access.requireScopedOperationWritable(document.getMakerId(),message,authority);
+        else access.requireWritable(document.getMakerId(), message);
     }
 
     private boolean isProductionLinked(UUID documentId) {

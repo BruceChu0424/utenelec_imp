@@ -818,6 +818,36 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public OrderSnapshot amendFinanceReview(UUID id, List<ProcurementOrderApprovalPort.ReviewAmountEdit> edits) {
+        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
+        PurchaseOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.CONFLICT, "仅待生效草稿可在审核中修改金额；已有下游事实请先反审");
+        }
+        List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        Map<UUID, PurchaseOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(PurchaseOrderItem::getId, java.util.function.Function.identity()));
+        for (var edit : edits) {
+            PurchaseOrderItem item = byId.get(edit.itemId());
+            if (item == null) throw new ApiException(ErrorCode.CONFLICT, "审核修改明细不属于当前订货单");
+            com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireSamePricingMode(edit, item.getTotalAmountInput());
+            BigDecimal price = com.uten.imp.common.finance.FinanceReviewAmountPolicy.price(edit, item.getQty());
+            item.setPrice(price);
+            item.setTotalAmountInput(edit.totalAmountInput());
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.orderBaseAmount(item.getQty(), price, edit.totalAmountInput()), item.getExtraColumns());
+            item.setAmountOriginal(original);
+            item.setAmountLocal(MoneyPolicy.local(original, order.getExchangeRate()));
+            itemRepo.save(item);
+        }
+        recalcOrderTotals(order, items);
+        orderRepo.save(order);
+        itemRepo.flush();
+        orderRepo.flush();
+        return lockAndValidateFinanceSubmission(id);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockFinanceReconfirmationSnapshot(UUID id) {
         PurchaseOrder order = requireOrderForUpdate(id);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
@@ -1184,7 +1214,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         }
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额），request_item_id 落首来源（主锚点）。
-        Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines,o.getQuantitySemantics());
+        Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines, o.getQuantitySemantics());
         Map<UUID, PurchaseGoodsSnapshot> requestSnapshots =
                 PurchaseGoodsSnapshot.fromRequestItems(
                         em,
@@ -1298,31 +1328,40 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return out;
     }
 
-    /** V463 合并行来源分配结果：requestItemId + 归属本行的数量份额。 */
-    record SourceSplit(UUID requestItemId, BigDecimal allocQty, BigDecimal allocGiftQty) { }
-    record PhysicalShare(UUID requestItemId,BigDecimal physicalQty) { }
+    /** Paid and additional free shares retain the same proven physical source. */
+    record SourceSplit(UUID requestItemId, BigDecimal allocQty, BigDecimal allocGiftQty) {}
+    record PhysicalShare(UUID requestItemId, BigDecimal physicalQty) {}
 
     private static BigDecimal effectiveGift(PurchaseOrderItem item) {
         return ProcurementQuantities.isExtraGift(item.getQuantitySemantics())
                 ? (item.getGiftQty()==null?BigDecimal.ZERO:item.getGiftQty()) : BigDecimal.ZERO;
     }
+
     private static BigDecimal sourceGift(Object[] source) {
         return source.length>5 && source[5]!=null ? (BigDecimal)source[5] : BigDecimal.ZERO;
     }
-    /** Physical FIFO is decided first; every paid/free remainder stays attached to a real source. */
-    static List<SourceSplit> allocateSourceShares(List<PhysicalShare> sources,BigDecimal charged,BigDecimal gift) {
-        if(sources.isEmpty())return List.of();
+
+    /** Split the document's commercial quantities only after physical FIFO has established source ownership. */
+    static List<SourceSplit> allocateSourceShares(List<PhysicalShare> sources, BigDecimal charged, BigDecimal gift) {
+        if(sources.isEmpty()) return List.of(); // Manual orders have no invented upstream shares.
         BigDecimal physical=charged.add(gift);
         BigDecimal assigned=sources.stream().map(PhysicalShare::physicalQty).reduce(BigDecimal.ZERO,BigDecimal::add);
-        if(physical.signum()<=0 || physical.compareTo(assigned)!=0)
+        if(charged.signum()<0||gift.signum()<0||physical.signum()<=0||physical.compareTo(assigned)!=0)
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"来源实物分配与计价量、赠品量不一致");
-        BigDecimal paidRemaining=charged;BigDecimal futurePhysical=physical;List<SourceSplit> out=new ArrayList<>();
+        BigDecimal paidRemaining=charged,futurePhysical=physical;
+        List<SourceSplit> out=new ArrayList<>(sources.size());
         for(int index=0;index<sources.size();index++){
-            PhysicalShare source=sources.get(index);futurePhysical=futurePhysical.subtract(source.physicalQty());
+            PhysicalShare source=sources.get(index);
+            if(source.requestItemId()==null||source.physicalQty().signum()<=0)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"来源实物分配必须关联真实来源及正数量");
+            futurePhysical=futurePhysical.subtract(source.physicalQty());
+            // Rounding each paid share down can accumulate a remainder larger
+            // than the final tiny source. Reserve no more than the capacity of
+            // every future source, while retaining the exact four-place totals.
             BigDecimal paid=index==sources.size()-1?paidRemaining
                     : charged.multiply(source.physicalQty()).divide(physical,4,java.math.RoundingMode.DOWN)
                         .max(paidRemaining.subtract(futurePhysical)).min(source.physicalQty()).min(paidRemaining);
-            if(paid.signum()<0 || paid.compareTo(source.physicalQty())>0)
+            if(paid.signum()<0||paid.compareTo(source.physicalQty())>0)
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,"来源计价分配不合法");
             out.add(new SourceSplit(source.requestItemId(),paid,source.physicalQty().subtract(paid)));
             paidRemaining=paidRemaining.subtract(paid);
@@ -1334,9 +1373,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
      * 同货品合并行的来源 FIFO 拆分：按各申请行当前剩余量
      *（实物需求减去已审和待财审的收费、赠品实物，与分解预览同口径）在
      *「需求日期升序、id 升序」稳定顺序上先到先得，末位来源吸收超额（超采）；
-     * 先确定实物份额，再拆为计价与赠品份额；末来源承接超采及精确余量。
+     * 先确定实物份额，再拆为收费与赠品；零收费但有赠品的来源仍保留。
      */
-    private Map<OrderItemLine, List<SourceSplit>> planSourceSplits(List<OrderItemLine> lines,String semantics) {
+    private Map<OrderItemLine, List<SourceSplit>> planSourceSplits(List<OrderItemLine> lines, String semantics) {
         List<UUID> allIds = lines.stream()
                 .flatMap(line -> line.resolvedRequestItemIds().stream())
                 .distinct().toList();
@@ -1347,7 +1386,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT item.id,
-                               GREATEST(%s - %s - COALESCE(pending.pending_physical_qty,0),0) AS remaining_qty,
+                               GREATEST(%s - %s - COALESCE(pending.pending_physical_qty, 0), 0) AS remaining_qty,
                                COALESCE(item.deliver_date, request.need_date) AS need_date
                         FROM purchase_request_items item
                         JOIN purchase_requests request ON request.id = item.request_id
@@ -1381,7 +1420,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                                     ? stableOrder.indexOf(id)
                                     : Integer.MAX_VALUE))
                     .toList();
-            BigDecimal gift=ProcurementQuantities.isExtraGift(semantics) && line.getGiftQty()!=null?line.getGiftQty():BigDecimal.ZERO;
+            BigDecimal gift=ProcurementQuantities.isExtraGift(semantics)&&line.getGiftQty()!=null?line.getGiftQty():BigDecimal.ZERO;
             BigDecimal budget = line.getQty().add(gift);
             List<PhysicalShare> splits = new ArrayList<>();
             for (int index = 0; index < ordered.size(); index++) {
@@ -1405,7 +1444,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 // 全部来源剩余量为 0 的极端退化：首来源承接全量（超采口径）。
                 splits.add(new PhysicalShare(line.resolvedRequestItemIds().getFirst(), line.getQty().add(gift)));
             }
-            result.put(line, allocateSourceShares(splits,line.getQty(),gift));
+            result.put(line, allocateSourceShares(splits, line.getQty(), gift));
         }
         return result;
     }

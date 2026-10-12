@@ -44,6 +44,7 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
+import 'finance_doc_edit_page.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
 import '../widgets/finance_status_badge.dart';
@@ -1146,6 +1147,26 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         );
       }
       if (_canApprove) {
+        addAction(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.edit_note_outlined,
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FinanceDocEditPage(
+                    docType: widget.docType,
+                    id: widget.id,
+                    reviewMode: true,
+                  ),
+                ),
+              );
+              if (mounted) await _load();
+            },
+            child: const Text('修改后审核'),
+          ),
+        );
         addAction(
           UtenButton(
             size: UtenButtonSize.large,

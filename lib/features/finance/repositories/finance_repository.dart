@@ -160,6 +160,32 @@ class FinanceRepository {
     return FinanceDocDetail.fromJson(json);
   }
 
+  Future<({String snapshot, FinanceDocDetail detail})> review(String id) async {
+    final json = await api.get('${FinanceEndpoints.docOne(_seg, id)}/review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: FinanceDocDetail.fromJson(
+        Map<String, dynamic>.from(json['detail'] as Map),
+      ),
+    );
+  }
+
+  Future<FinanceDocDetail> saveReviewed(
+    String id,
+    Map<String, dynamic> body,
+    String snapshot,
+  ) async {
+    final json = await api.post(
+      '${FinanceEndpoints.docOne(_seg, id)}/review',
+      body: {
+        'expectedSnapshot': snapshot,
+        'document': body,
+        'approveNow': true,
+      },
+    );
+    return FinanceDocDetail.fromJson(json);
+  }
+
   Future<FinanceDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(FinanceEndpoints.docBase(_seg), body: body);
     return FinanceDocDetail.fromJson(json);

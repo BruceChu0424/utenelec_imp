@@ -112,6 +112,8 @@ void main() {
         '已结案',
         '已反审',
       ]);
+      expect(find.text('已结案'), findsOneWidget);
+      expect(find.text('已反审'), findsOneWidget);
       expect(find.text('执行中'), findsNothing);
       // 2026-10-04 起历史门默认「全部」：选中历史记录即发一次全量查询（无状态）。
       expect(api.queries, [
@@ -144,8 +146,7 @@ void main() {
         'dateTo': '2026-08-31',
       });
 
-      _table(tester).onFilterChanged('status', 'REVERSED');
-      await tester.pumpAndSettle();
+      await _tap(tester, '已反审');
       expect(api.lastQuery, {
         'page': 1,
         'size': 20,
@@ -201,6 +202,8 @@ void main() {
           '已审',
           '已反审',
         ]);
+        expect(find.text('已审'), findsOneWidget);
+        expect(find.text('已反审'), findsOneWidget);
         // 2026-10-04 起历史门默认「全部」：选中历史记录即全量加载（不带状态）。
         expect(api.lastQuery, {'page': 1, 'size': 20});
         _table(tester).onFilterChanged('status', 'APPROVED');
@@ -209,8 +212,7 @@ void main() {
         // 时间胶囊「全部」默认已选中：再点不重复发请求。
         await _tap(tester, '全部');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
-        _table(tester).onFilterChanged('status', 'REVERSED');
-        await tester.pumpAndSettle();
+        await _tap(tester, '已反审');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': -1});
         _table(tester).onFilterChanged('status', null);
         await tester.pumpAndSettle();

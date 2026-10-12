@@ -82,6 +82,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     private final DocNumberService docNumberService;
     private final com.uten.imp.features.finance.gl.GlPostingService glPosting;
     private final FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<FinanceExpenseService> reviewedDraftProxy;
     private final AccountFlowLedgerService accountFlowLedger;
 
     @Transactional(readOnly = true)
@@ -175,12 +177,52 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @PreAuthorize("hasAuthority('finance_expense:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_expense_item", requestArgument=1, documentIdArgument=0)
     public FinanceExpenseDetail update(UUID id, FinanceExpenseSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:approve')")
+    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceExpenseDetail> review(UUID id) {
+        tx.bind(); PaymentStyleHierarchyLock.lock(em);
+        FinanceExpense e = lockActive(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, e.getMakerId(), "finance_expense");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
+        if (e.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
+                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.EXPENSE, id), detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:approve')")
+    public FinanceExpenseDetail updateReviewed(UUID id, FinanceExpenseSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        var review = review(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.EXPENSE, id, expectedSnapshot);
+        FinanceExpenseDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_expense_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        return approveNow ? approve(id) : saved;
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_expense_item", requestArgument=1, documentIdArgument=0)
+    public FinanceExpenseDetail saveReviewedDraft(UUID id, FinanceExpenseSaveRequest req, String expectedSnapshot) {
+        FinanceExpenseDetail saved = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return saved;
+    }
+
+    private FinanceExpenseDetail updateDraft(UUID id, FinanceExpenseSaveRequest req, boolean review, String expectedSnapshot) {
         tx.bind();
         if (req.getItems() != null && !req.getItems().isEmpty()) {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceExpense e = lockActive(id);
-        access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
+        if (review) {
+            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, e.getMakerId(), "finance_expense");
+            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.EXPENSE, id, expectedSnapshot);
+        } else access.requireWritable(e.getMakerId(), "只能操作本人负责或已授权的一般费用单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
         if (e.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");

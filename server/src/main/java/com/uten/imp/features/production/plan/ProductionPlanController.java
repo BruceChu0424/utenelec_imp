@@ -151,6 +151,17 @@ public class ProductionPlanController {
         return service.update(id, req);
     }
 
+    @GetMapping("/{id}/draft-review")
+    @PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_plan:approve')")
+    public ProductionPlanService.DraftReview review(@PathVariable UUID id) { return service.review(id); }
+
+    @PutMapping("/{id}/draft-review")
+    @PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_plan:approve')")
+    public PlanDetail updateReviewed(@PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.common.review.DocumentDraftReview.Save<PlanSaveRequest> request) {
+        return service.updateReviewed(id, request.document(), request.expectedSnapshot(), request.approveNow());
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('production_plan:delete')")
     public void delete(@PathVariable UUID id) {

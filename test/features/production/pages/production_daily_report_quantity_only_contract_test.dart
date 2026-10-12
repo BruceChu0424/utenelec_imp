@@ -42,7 +42,9 @@ void main() {
       expect(edit, contains('_savedWarehouseId = d.warehouseId;'));
       expect(
         edit,
-        contains("if (_savedWarehouseId != null) 'warehouseId': _savedWarehouseId"),
+        contains(
+          "if (_savedWarehouseId != null) 'warehouseId': _savedWarehouseId",
+        ),
       );
       expect(edit, isNot(contains("key: 'warehouseId'")));
       expect(edit, isNot(contains("label: '仓库'")));

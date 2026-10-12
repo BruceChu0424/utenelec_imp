@@ -273,6 +273,10 @@ class _FinanceSalesOrderReviewPageState
   }
 
   Future<void> _confirm() async {
+    if (_hasAmountEdits) {
+      context.appWarning('请先保存审核修改，核对新金额后确认');
+      return;
+    }
     if (!_canConfirm) {
       context.appWarning('您没有销售订单财务确认权限');
       return;
@@ -376,10 +380,6 @@ class _FinanceSalesOrderReviewPageState
     }
   }
 
-  String get widgetSafeBillNo => _review?.billNo ?? '';
-
-  /// 办结后的落点：调用方带 returnTo（确认队列/修改队列/业务审核中心）则原样
-  /// 回去；深链无 returnTo 时按审核轮次归位（改过的单回「修改」队列）。
   String get _returnPath =>
       widget.returnTo ??
       '/finance/sales-order-confirmations?state=${_review?.financeConfirmed == true
@@ -421,6 +421,10 @@ class _FinanceSalesOrderReviewPageState
   }
 
   Future<void> _reject() async {
+    if (_hasAmountEdits) {
+      context.appWarning('请先保存审核修改或恢复原值，再驳回');
+      return;
+    }
     if (!_canConfirm) {
       context.appWarning('您没有销售订单财务确认权限');
       return;

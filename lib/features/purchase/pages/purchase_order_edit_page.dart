@@ -355,9 +355,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       // 同货品+颜色+单位 合并：数量=剩余量之和，来源逐条聚合（保留预览顺序）。
       final merged = <String, PurchaseGridRow>{};
       for (final item in available) {
-        final paidText = financeExactTrimmed(
-          item.remainingQtyText ?? item.remainingQty.toString(),
-        );
+        final paidText = financeExactTrimmed(item.chargedRemainingQtyText);
         final giftText = financeExactTrimmed(item.defaultGiftQtyText);
         if (financeExactDecimalUnits(paidText) == null ||
             financeExactDecimalUnits(giftText) == null) {
@@ -396,7 +394,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           colorId: item.colorId,
           unitId: item.unitId,
           unitRate: item.unitRate,
-          unitRateText: item.unitRateText,
+          unitRateText: item.unitRateExactText,
         );
         final row = PurchaseGridRow.fromLinked(
           linked,
@@ -504,7 +502,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               ..colorId = it.colorId
               ..unitId = it.unitId
               ..unitRate = it.unitRate
-              ..unitRateText = it.unitRateText
+              ..unitRateText = it.unitRateExactText
               // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
               ..upstreamItemIds = [
                 if (it.requestItemId != null) it.requestItemId!,
@@ -1394,7 +1392,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.recordedUnitRateText != null) 'unitRate': r.recordedUnitRateText,
+        if (r.unitRateText != null || r.unitRate != null)
+          'unitRate': r.unitRateText ?? r.unitRate,
         'weight': ?weight,
         'supplierId': r.supplierId,
         'settlementMethodId': r.settlementMethodId,
@@ -1816,10 +1815,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                       !_loading &&
                                       !_saving &&
                                       !_hasCreatedDocuments,
-                                  // 默认列序 2026-10-10 变更（单位列撤并进数量
-                                  // suffix、允许超收% 紧跟数量、汇率列撤）：bump
-                                  // tableKey 让旧保存布局不再压住新默认序。
-                                  tableKey: 'purchase.order.items.v2',
+                                  // 两套保存布局分别按 layoutVersion 迁移超收列；
+                                  // 保留此 key，继续沿用列宽、显隐和扩展列设置。
+                                  tableKey:
+                                      'purchase.order.items.v2', // gitleaks:allow public UI column-layout persistence identifier.
                                   onAddColumn: (hidden) =>
                                       addBusinessGridColumn(
                                         context,

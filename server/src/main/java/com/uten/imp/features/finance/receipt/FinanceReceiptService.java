@@ -119,6 +119,8 @@ public class FinanceReceiptService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<FinanceReceiptService> reviewedDraftProxy;
     private final GlPostingService glPosting;
     private final FinanceReceiptSourceAllocationService sourceAllocation;
     private final AccountFlowLedgerService accountFlowLedger;
@@ -250,10 +252,54 @@ public class FinanceReceiptService {
             + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_receipt_item", requestArgument=1, documentIdArgument=0)
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:view') and hasAuthority('finance_receipt:approve')")
+    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceReceiptDetail> review(UUID id) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "finance_receipt");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
+        requirePrepaymentView(r);
+        if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
+                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.RECEIPT, id), detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:view') and hasAuthority('finance_receipt:approve')")
+    public FinanceReceiptDetail updateReviewed(UUID id, FinanceReceiptSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        var review = review(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.RECEIPT, id, expectedSnapshot);
+        if (req.getExpectedVersion() == null || !req.getExpectedVersion().equals(review.detail().getVersion()))
+            throw new ApiException(ErrorCode.CONFLICT, "财务草稿版本已变化，请刷新后重试");
+        FinanceReceiptDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_receipt_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        return approveNow ? approve(id) : saved;
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:view') and hasAuthority('finance_receipt:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_receipt_item", requestArgument=1, documentIdArgument=0)
+    public FinanceReceiptDetail saveReviewedDraft(UUID id, FinanceReceiptSaveRequest req, String expectedSnapshot) {
+        FinanceReceiptDetail saved = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return saved;
+    }
+
+    private FinanceReceiptDetail updateDraft(UUID id, FinanceReceiptSaveRequest req, boolean review, String expectedSnapshot) {
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        FinanceReceipt r = lockActive(id);
+        if (review) {
+            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "finance_receipt");
+            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.RECEIPT, id, expectedSnapshot);
+        } else access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         requirePrepaymentView(req.getReceiptKind());

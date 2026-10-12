@@ -100,6 +100,30 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @release2511DailyReport.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。'**
+  String get release2511DailyReport;
+
+  /// No description provided for @release2511Workshop.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间任务弹窗按状态呈现操作，物料默认显示一项并可展开全部。'**
+  String get release2511Workshop;
+
+  /// No description provided for @release2511Batch.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料批量下单与品质批量处理共用写入流程，减少重复读取、锁定和收尾计算。'**
+  String get release2511Batch;
+
+  /// No description provided for @release2511Platform.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。'**
+  String get release2511Platform;
+
   /// No description provided for @businessResetAuditScope.
   ///
   /// In zh, this message translates to:

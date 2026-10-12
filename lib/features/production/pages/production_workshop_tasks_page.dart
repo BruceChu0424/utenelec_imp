@@ -1394,7 +1394,8 @@ class _ProductionWorkshopTasksPageState
   ) async {
     final drafts = taskDraftsFor(
       ref.read(formDraftCategoryProvider(_draftScope)),
-      matches: (draft) => paths.contains(Uri.parse(draft.route).path) &&
+      matches: (draft) =>
+          paths.contains(Uri.parse(draft.route).path) &&
           tasks.any((task) => workshopTaskDraftMatches(draft, task.segmentId)),
     );
     if (drafts.isEmpty) return false;
@@ -1408,7 +1409,9 @@ class _ProductionWorkshopTasksPageState
     return true;
   }
 
-  Future<void> _resumeTaskDraft(ProductionExecutionWorkbenchSegment task) async {
+  Future<void> _resumeTaskDraft(
+    ProductionExecutionWorkbenchSegment task,
+  ) async {
     if (_navigating || _loading) return;
     final owner = ref.read(authenticatedScopeProvider);
     final local = _localDraftsOf(task);
@@ -1440,7 +1443,8 @@ class _ProductionWorkshopTasksPageState
                             title: Text(draft.title),
                             subtitle: Text(taskDraftStatus([draft])),
                             onTap: () => Navigator.pop(
-                              dialogContext, 'local:${draft.id}',
+                              dialogContext,
+                              'local:${draft.id}',
                             ),
                           ),
                         for (final report in formal)
@@ -1449,7 +1453,8 @@ class _ProductionWorkshopTasksPageState
                             title: Text(report.billNo ?? '报工草稿'),
                             subtitle: const Text('报工草稿 · 待审核'),
                             onTap: () => Navigator.pop(
-                              dialogContext, 'report:${report.id}',
+                              dialogContext,
+                              'report:${report.id}',
                             ),
                           ),
                       ],
@@ -1491,7 +1496,9 @@ class _ProductionWorkshopTasksPageState
           ref,
           selected == null
               ? local
-              : local.where((draft) => 'local:${draft.id}' == selected).toList(),
+              : local
+                    .where((draft) => 'local:${draft.id}' == selected)
+                    .toList(),
         );
       }
       if (mounted) await _reloadAfterChange();
@@ -2828,7 +2835,10 @@ class _ProductionWorkshopTasksPageState
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          const FormDraftsAppBarButton(categoryId: 'workshop-new', label: '新建草稿'),
+          const FormDraftsAppBarButton(
+            categoryId: 'workshop-new',
+            label: '新建草稿',
+          ),
           if (canOpenMaterialBin)
             TextButton.icon(
               key: const Key('workshop-material-bin-entry'),
@@ -2868,7 +2878,9 @@ class _ProductionWorkshopTasksPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const TaskDraftRecoveryNotice(scope: FormDraftCategoryScope(module: BadgeModule.workshop)),
+                const TaskDraftRecoveryNotice(
+                  scope: FormDraftCategoryScope(module: BadgeModule.workshop),
+                ),
                 // 开工准备汇总认料、等料、领料和可开工；数量不是必须领料的工单数。
                 // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
                 // 「开工准备」红徽章：等待认料、领料、确认开工等下一步办理；

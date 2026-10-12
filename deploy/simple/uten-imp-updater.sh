@@ -319,7 +319,12 @@ do_activate() {
   require_web_group
   publish_release_permissions "$RELEASES_DIR/$version"
   if [ "$code_only" = 0 ]; then
-    install -d -m 0700 -- "$UTEN_BACKUP_DIR" \
+    # Check the actual directory too: a helper's successful exit cannot prove
+    # that it created a directory, and a symlink must not redirect backup work.
+    [ ! -L "$UTEN_BACKUP_DIR" ] \
+      && install -d -m 0700 -- "$UTEN_BACKUP_DIR" \
+      && [ -d "$UTEN_BACKUP_DIR" ] && [ ! -L "$UTEN_BACKUP_DIR" ] \
+      && [ -w "$UTEN_BACKUP_DIR" ] \
       || die "升级前备份目录不可写：$UTEN_BACKUP_DIR (备份盘没挂载?), 未停应用、未改数据库"
     runuser -u uten-imp -- test -r "$RELEASES_DIR/$version/server/uten-imp-migrator.jar" \
       || die "应用账号无法读取迁移程序，未停应用、未改数据库"

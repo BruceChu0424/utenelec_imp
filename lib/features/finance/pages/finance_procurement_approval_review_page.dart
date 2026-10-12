@@ -404,6 +404,10 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _approve() async {
     final review = _review;
     if (review == null || _busy) return;
+    if (_hasAmountEdits) {
+      context.appWarning('请先保存审核修改，核对服务端重算后的金额再通过');
+      return;
+    }
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (review.isPending && !_rateInputValid()) {
@@ -519,6 +523,10 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _reject() async {
     final review = _review;
     if (review == null || _busy) return;
+    if (_hasAmountEdits) {
+      context.appWarning('请先保存审核修改或恢复原值，再驳回');
+      return;
+    }
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady) {

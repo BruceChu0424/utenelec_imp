@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
 import 'package:uten_imp/features/shell/widgets/floating_capsule_nav_bar.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
@@ -220,6 +224,8 @@ Future<GoRouter> _pumpShell(
   tester.view.physicalSize = Size(width, height);
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   final router = GoRouter(
     // A cold business route exercises the real shell without initializing the
     // dashboard, notices, profile or settings pages and their repositories.
@@ -250,6 +256,12 @@ Future<GoRouter> _pumpShell(
         apiBaseUrlProvider.overrideWithValue('https://shell-test.invalid/api'),
         platformBrandingSnapshotProvider.overrideWithValue(
           PlatformBranding.defaults,
+        ),
+        // The real bootstrap provides this before the shell can read branding
+        // cached for its current server. Keep navigation tests equally booted.
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        platformBrandingProvider.overrideWith(
+          (ref) async => PlatformBranding.defaults,
         ),
         badgeTotalTodoProvider.overrideWithValue(5),
         unreadNoticeCountProvider.overrideWithValue(2),

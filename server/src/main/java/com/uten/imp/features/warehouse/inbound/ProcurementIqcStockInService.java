@@ -976,7 +976,7 @@ public class ProcurementIqcStockInService {
                                item.base_qty, item.weight,
                                item.place_snapshot, employee.full_name,
                                batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
-                               batch.origin
+                               batch.origin, inspection.quantity_tranche
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id

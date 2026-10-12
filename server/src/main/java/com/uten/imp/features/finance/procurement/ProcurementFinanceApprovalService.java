@@ -155,6 +155,68 @@ public class ProcurementFinanceApprovalService {
         return projection.latestForOrder(orderType, orderId, (short) 0);
     }
 
+    /** Preserve the submitted case and start a new review attempt with recalculated money. */
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:view') and hasAuthority('finance_order_approval:approve')")
+    public ProcurementApprovalContracts.ApprovalReview amend(
+            UUID caseId, ProcurementApprovalContracts.ReviewAmendmentRequest request) {
+        tx.bind();
+        requireEligibleReviewer();
+        if (request == null || request.expectedVersion() == null || request.expectedClaimId() == null
+                || request.lines() == null || request.lines().stream().anyMatch(java.util.Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "审核修改必须绑定当前版本和认领");
+        }
+        var edits = request.lines() == null ? List.<ProcurementOrderApprovalPort.ReviewAmountEdit>of()
+                : request.lines().stream().map(line -> new ProcurementOrderApprovalPort.ReviewAmountEdit(
+                        line.itemId(), line.price(), line.totalAmountInput())).toList();
+        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
+        var decisions = List.of(new BatchDecisionItem(caseId, request.expectedVersion(), request.expectedClaimId()));
+        ResolvedBatchItem target = resolveBatchItems(decisions).getFirst();
+        var mutationGuard = mutationLocks.order(target.orderType(), target.orderId());
+        requireBatchReviewClaims(decisions);
+        mutationGuard.verifyUnchanged();
+        ProcurementOrderApprovalPort port = requirePort(target.orderType());
+        if (port.isFinanceApproved(target.orderId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "已生效订货的复核不能改金额；请先处理下游并反审");
+        }
+        OrderSnapshot before = port.lockAndValidateFinanceSubmission(target.orderId());
+        ApprovalCase oldCase = lockPendingCase(target.orderType(), target.orderId());
+        requireCaseIdentity(oldCase, caseId);
+        requireVersion(oldCase, request.expectedVersion());
+        requireUnchangedSnapshot(oldCase, before);
+        // The original immutable snapshots remain in the canceled attempt. The
+        // existing database freeze permits only the now-unreviewed draft to change.
+        int canceled = jdbc.update("""
+                UPDATE procurement_order_approval_cases
+                SET status='CANCELED', version=version+1, updated_at=now()
+                WHERE id=? AND status='PENDING' AND version=?
+                """, caseId, request.expectedVersion());
+        if (canceled != 1) throw concurrentChange();
+        OrderSnapshot after = port.amendFinanceReview(target.orderId(), edits);
+        UUID amendedCaseId = UUID.randomUUID();
+        int attempt = nextAttempt(target.orderType(), target.orderId());
+        String snapshotJson = canonicalSnapshotJson(after);
+        String snapshotHash = HashUtil.sha256(snapshotJson);
+        jdbc.update("""
+                INSERT INTO procurement_order_approval_cases(
+                    id,order_type,order_id,attempt,bill_no_snapshot,amount_snapshot,
+                    submission_snapshot,snapshot_hash,submitted_by_user_id,submitted_by_employee_id,
+                    assignee_user_id,assignee_employee_id,assignee_name_snapshot,status,version)
+                SELECT ?,order_type,order_id,?,?,?,CAST(? AS jsonb),?,
+                       submitted_by_user_id,submitted_by_employee_id,NULL,NULL,NULL,'PENDING',1
+                FROM procurement_order_approval_cases WHERE id=?
+                """, amendedCaseId, attempt, after.billNo(), after.totalLocal(), snapshotJson, snapshotHash, caseId);
+        appendEvent(caseId, "FINANCE_EDIT", currentUser.requireId(), currentUser.requireEmployeeId(),
+                null, null, null, Map.of("nextCaseId", amendedCaseId, "previousSnapshotHash", oldCase.snapshotHash(),
+                        "snapshotHash", snapshotHash, "lines", request.lines()));
+        appendEvent(amendedCaseId, "SUBMITTED", currentUser.requireId(), currentUser.requireEmployeeId(),
+                null, null, null, Map.of("attempt", attempt, "snapshotHash", snapshotHash, "previousCaseId", caseId));
+        taskClaims.release("PROCUREMENT_FINANCE_APPROVE", caseId.toString());
+        chainNotice.resolveReviewNotices("PROCUREMENT_APPROVAL_CASE", caseId, "FINANCE_EDIT");
+        publish(EVENT_SUBMITTED, amendedCaseId, target.orderType(), "PENDING", 1);
+        return review(amendedCaseId);
+    }
+
     /**
      * 批量通过使用一个事务和稳定的订货类型/UUID 顺序。任一项的 case、版本、
      * 快照或副作用失败都会回滚整批，禁止客户端循环单笔接口形成半批事实。
@@ -809,6 +871,15 @@ public class ProcurementFinanceApprovalService {
         List<String> allowedActions = "PENDING".equals(status)
                 ? currentReviewerActions()
                 : List.of();
+        if (allowedActions.contains("APPROVE")) {
+            Integer draftCount = jdbc.queryForObject("SELECT COUNT(*) FROM "
+                    + ("PURCHASE".equals(orderType) ? "purchase_orders" : "subcontract_orders")
+                    + " WHERE id=? AND status=0 AND NOT is_deleted", Integer.class, orderId);
+            if (draftCount != null && draftCount == 1) {
+                allowedActions = new ArrayList<>(allowedActions);
+                allowedActions.add("EDIT");
+            }
+        }
         List<ProcurementApprovalContracts.QtyChange> qtyChanges =
                 loadQtyChanges(caseId);
         // A historical round must never be used to reverse a newer approval generation.

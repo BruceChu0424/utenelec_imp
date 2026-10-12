@@ -721,6 +721,43 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public OrderSnapshot amendFinanceReview(UUID id, List<ProcurementOrderApprovalPort.ReviewAmountEdit> edits) {
+        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
+        SubcontractOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.CONFLICT, "仅待生效草稿可在审核中修改金额；已有下游事实请先反审");
+        }
+        List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        Map<UUID, SubcontractOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(SubcontractOrderItem::getId, java.util.function.Function.identity()));
+        BigDecimal originalTotal = BigDecimal.ZERO;
+        BigDecimal localTotal = BigDecimal.ZERO;
+        for (var edit : edits) {
+            SubcontractOrderItem item = byId.get(edit.itemId());
+            if (item == null) throw new ApiException(ErrorCode.CONFLICT, "审核修改明细不属于当前订货单");
+            com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireSamePricingMode(edit, item.getTotalAmountInput());
+            BigDecimal price = com.uten.imp.common.finance.FinanceReviewAmountPolicy.price(edit, item.getQty());
+            item.setPrice(price);
+            item.setTotalAmountInput(edit.totalAmountInput());
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.orderBaseAmount(item.getQty(), price, edit.totalAmountInput()), item.getExtraColumns());
+            item.setAmountOriginal(original);
+            item.setAmountLocal(MoneyPolicy.local(original, order.getExchangeRate()));
+            itemRepo.save(item);
+        }
+        for (var item : items) {
+            originalTotal = originalTotal.add(item.getAmountOriginal());
+            localTotal = localTotal.add(item.getAmountLocal());
+        }
+        order.setTotalOriginal(originalTotal);
+        order.setTotalLocal(localTotal);
+        orderRepo.save(order);
+        itemRepo.flush();
+        orderRepo.flush();
+        return lockAndValidateFinanceSubmission(id);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockFinanceReconfirmationSnapshot(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {

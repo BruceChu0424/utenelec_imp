@@ -35,6 +35,8 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
     private final List<FactDefinition> facts;
     private String documentRowsLookup;
     private Set<String> creators = Set.of();
+    private Set<String> reviewers = Set.of();
+    private BiPredicate<UUID, JsonNode> reviewedWritable = (id, header) -> false;
     private BiConsumer<UUID,Object> documentSaveLocks = (id,request) -> { };
     private Function<UUID,Object> historyDetail;
     private String historicalParentLookup;
@@ -107,8 +109,21 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         return this;
     }
 
+    /** The domain supplies its existing review action and object/state guard; CRUD grants are unchanged. */
+    public DocumentPlatformColumnAdapter reviewedSaveAuthorities(Set<String> permissions, BiPredicate<UUID, JsonNode> writable) {
+        reviewers = Set.copyOf(permissions);
+        reviewedWritable = Objects.requireNonNull(writable);
+        return this;
+    }
+
+    private boolean canSaveReviewed() {
+        return PlatformColumnReviewedSave.matchesScope(scope, current.get().map(user -> user.getId()).orElse(null)) && hasAny(reviewers)
+                && current.get().map(user -> user.getImpersonatedBy() == null).orElse(false);
+    }
+
     private boolean writableDocument(UUID documentId, JsonNode header) {
-        return canWrite() && writable.test(documentId, header);
+        return canSaveReviewed() && PlatformColumnReviewedSave.matches(scope, documentId, current.requireId())
+                ? reviewedWritable.test(documentId, header) : canWrite() && writable.test(documentId, header);
     }
 
     /** Fixed domain registration; request types and lock plans never come from client-supplied metadata. */
@@ -128,7 +143,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
                 throw new ApiException(ErrorCode.FORBIDDEN);
         } else {
             requireDefinitionAccess(false);
-            if (!canWrite()) throw new ApiException(ErrorCode.FORBIDDEN);
+            if (!canWrite() && !canSaveReviewed()) throw new ApiException(ErrorCode.FORBIDDEN);
         }
     }
 
@@ -183,7 +198,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
     @Override
     public Map<UUID, RecordAccess> authorize(Set<UUID> ids, boolean write) {
         requireDefinitionAccess(false);
-        if (write && !canWrite()) throw new ApiException(ErrorCode.FORBIDDEN);
+        if (write && !canWrite() && !canSaveReviewed()) throw new ApiException(ErrorCode.FORBIDDEN);
         return authorizeRecords(ids, write, false);
     }
 

@@ -857,6 +857,33 @@ class _SubcontractBusinessListPageState
                     ),
                     if (seg?.history == true) ...[
                       const SizedBox(height: UtenSpacing.s8),
+                      UtenFilterToolbar<_BizSeg>(
+                        segmentsKey: Key(
+                          'subcontract-biz-history-stages-${_p.type.name}',
+                        ),
+                        segments: [
+                          if (_isOrder)
+                            const UtenFilterSegment(
+                              value: _BizSeg.history(1, true),
+                              label: '已结案',
+                            )
+                          else
+                            UtenFilterSegment(
+                              value: const _BizSeg.history(1),
+                              label: '已审',
+                              count: bucket(DocumentStatusBucket.approved),
+                            ),
+                          UtenFilterSegment(
+                            value: const _BizSeg.history(-1),
+                            label: '已反审',
+                            count: bucket(DocumentStatusBucket.reversed),
+                          ),
+                        ],
+                        selected: seg == primarySeg ? const {} : {seg!},
+                        onSelectionChanged: _selectSeg,
+                        trailing: _clearSubstageAction(),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
                       UtenHistoryTimeFilter(
                         key: Key(
                           'subcontract-biz-history-time-${_p.type.name}',

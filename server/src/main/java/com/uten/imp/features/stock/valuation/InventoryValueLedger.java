@@ -375,27 +375,38 @@ abstract class InventoryValueLedger {
     }
     protected State state(Node n){return (effectivePending(n)||propagationPending()
             ||(authority.installed&&nodeBound(n)==null))?State.PENDING:State.FINAL;}
-    /** A reversal mirrors one original source. Unrelated publication work cannot change its recorded finality. */
-    protected State reversalSourceState(Node source){
-        String relatedWork="""
-            WITH RECURSIVE ancestors(id) AS (
-                SELECT CAST(:source AS uuid)
-                UNION
-                SELECT edge.parent_node_id FROM stock_value_edges edge JOIN ancestors child ON child.id=edge.child_node_id
-                WHERE edge.interval_to>edge.interval_from
-            )
-            SELECT EXISTS(SELECT 1 FROM stock_value_jobs job JOIN ancestors source ON source.id=job.source_node_id WHERE job.status='PENDING')
-            """+(productionCostInstalled?"""
-             OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks task JOIN ancestors source ON source.id=task.output_source_node_id WHERE task.status='PENDING')
-             OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty
-                JOIN stock_value_production_cost_outputs output ON output.execution_segment_id=dirty.execution_segment_id
-                JOIN ancestors source ON source.id=output.source_node_id WHERE dirty.observed_revision>dirty.cleared_revision)
-            """:"");
-        if(Boolean.TRUE.equals(db.queryForObject(relatedWork,args("source",source.id()),Boolean.class)))
-            throw conflict("原入库的关联成本来源仍在传播，请完成同源成本核对后再反审");
-        return !source.sourceFinal()||effectivePending(source)||(authority.installed&&nodeBound(source)==null)?State.PENDING:State.FINAL;
+    /** Immutable reversal facts describe this source closure, not other pools' publication work. */
+    protected State sourceClosureState(Node n){
+        if(!n.sourceFinal()||effectivePending(n)||(authority.installed&&nodeBound(n)==null))return State.PENDING;
+        // A derived receipt can still hold its old complete snapshot while a
+        // changed input is waiting to reach it. Only work feeding this positive
+        // input closure matters; a source's unrelated descendants do not.
+        boolean pending=Boolean.TRUE.equals(db.queryForObject("""
+                WITH RECURSIVE ancestors(id) AS (
+                    SELECT CAST(:source AS uuid) UNION
+                    SELECT edge.parent_node_id FROM stock_value_edges edge
+                    JOIN ancestors child ON child.id=edge.child_node_id
+                    WHERE edge.interval_to>edge.interval_from
+                )
+                SELECT EXISTS(SELECT 1 FROM stock_value_tasks task
+                    JOIN stock_value_edges edge ON edge.id=task.edge_id
+                    JOIN ancestors input ON input.id=edge.child_node_id WHERE task.status='PENDING')
+                """+(productionCostInstalled?"""
+                 OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks task
+                    JOIN ancestors input ON input.id=task.output_source_node_id WHERE task.status='PENDING')
+                 OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty
+                    JOIN stock_value_production_cost_outputs output USING(execution_segment_id)
+                    JOIN ancestors input ON input.id=output.source_node_id
+                    WHERE dirty.observed_revision>dirty.cleared_revision
+                        AND (to_jsonb(output)->>'withdrawn_movement_id') IS NULL)
+                 OR EXISTS(SELECT 1 FROM stock_value_production_cost_outputs output
+                    JOIN stock_value_production_cost_objects object USING(execution_segment_id)
+                    JOIN ancestors input ON input.id=output.source_node_id
+                    WHERE COALESCE((to_jsonb(object)->>'business_refresh_pending')::boolean,FALSE)
+                        AND (to_jsonb(output)->>'withdrawn_movement_id') IS NULL)
+                """:""),args("source",n.id()),Boolean.class));
+        return pending?State.PENDING:State.FINAL;
     }
-
     private ValueBounds nodeBound(Node node){
         if(!authority.installed)return null;
         // This is an explicit value returned by the current operation, not a

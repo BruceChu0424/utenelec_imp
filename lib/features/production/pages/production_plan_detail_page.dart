@@ -2109,6 +2109,23 @@ class _ProductionPlanDetailPageState
         }
         children.add(
           UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_note_outlined,
+            onPressed: _commandBusy
+                ? null
+                : () => _openLinkedPage(
+                    '/production/plans/${widget.id}/edit?review=1',
+                  ),
+            child: const Text('修改后审核'),
+          ),
+        );
+      }
+      if (_canApprove) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
             icon: Icons.check_circle_outline,
             onPressed: _commandBusy ? null : _approve,
             onDisabledTap: () =>

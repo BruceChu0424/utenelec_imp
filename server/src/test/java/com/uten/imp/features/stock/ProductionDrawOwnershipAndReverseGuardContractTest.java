@@ -106,17 +106,32 @@ class ProductionDrawOwnershipAndReverseGuardContractTest {
         assertThat(exactMapping).isGreaterThan(linkedPlan);
 
         // 审核：生产链 DRAW 禁止单独审核（出库即审核口径）；DRAW/成品入库
-        // 的「必须关联已审计划」保持无条件（生产领料域归生产链所有，手工
-        // 入口已在任务中心撤除，历史草稿在此得到一致的拒绝文案）。
+        // 的「必须关联已审计划」分别由普通审核与锁内点收的证明路径守住。
+        // 点收复用同一事务已经验证的计划；DRAW 不允许使用该点收上下文。
         String approve = slice(
                 stock,
                 "private StockDocDetail approveInternal(",
                 "/** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先取消全部出库。 */");
         assertThat(approve)
                 .contains("!allowProductionDrawApproveAndIssue\n                && isProductionLinked(id)")
-                .contains("if (\"DRAW\".equals(d.getDocType()) "
-                        + "|| \"FINISHED_IN\".equals(d.getDocType())) {\n"
+                .contains("if (confirmed == null && (\"DRAW\".equals(d.getDocType()) "
+                        + "|| \"FINISHED_IN\".equals(d.getDocType()))) {\n"
                         + "            requireApprovedLinkedProductionPlan(d);");
+        assertThat(approve)
+                .contains("!warehouseQuantityConfirmed")
+                .contains("!id.equals(confirmed.document().getId())")
+                .contains("lane != confirmed.lane()")
+                .contains("!\"FINISHED_IN\".equals(confirmed.document().getDocType())");
+        String confirmation = slice(stock,
+                "private StockDocument confirmFinishedInboundAfterPrelock(",
+                "private record ConfirmedFinishedInbound(");
+        int verified = confirmation.indexOf("mutationGuard.verifyUnchanged()");
+        int approvedPlan = confirmation.indexOf(
+                "UUID planId = requireApprovedLinkedProductionPlan(document)");
+        int frozen = confirmation.indexOf("new ConfirmedFinishedInbound(");
+        assertThat(verified).isGreaterThanOrEqualTo(0);
+        assertThat(approvedPlan).isGreaterThan(verified);
+        assertThat(frozen).isGreaterThan(approvedPlan);
     }
 
     private static String source(String relative) throws Exception {

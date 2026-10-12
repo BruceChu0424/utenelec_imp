@@ -53,8 +53,14 @@ class ProductionStockLockOrderContractTest {
         String source = compact(Path.of(
                 "src/main/java/com/uten/imp/features/production/fulfillment/"
                         + "ProductionExecutionReadinessService.java"));
-        String method = method(source,
+        String unwind = method(source,
                 "private void unwindpromotedsegment(uuid segmentid)");
+        // The shared preflight is read-only for capability queries; demotion must
+        // request its complete package -> segment -> draw locks before any write.
+        assertThat(unwind.indexOf("readunwindplan(segmentid,true)"))
+                .isNotNegative().isLessThan(unwind.indexOf("update production_execution_segments"));
+        String method = method(source,
+                "private unwindplan readunwindplan(uuid segmentid,boolean lock)");
 
         assertThat(method.indexOf(
                         "select id from production_planning_packages"))
@@ -65,6 +71,8 @@ class ProductionStockLockOrderContractTest {
                         "select package_id, status from production_execution_segments"))
                 .isLessThan(method.indexOf(
                         "join stock_documents document"));
+        assertThat(method).contains("formatted(lock?\"for update\":\"\")")
+                .contains("formatted(lock?\"for update of header, document\":\"\")");
     }
 
     private static String method(String source, String signature) {

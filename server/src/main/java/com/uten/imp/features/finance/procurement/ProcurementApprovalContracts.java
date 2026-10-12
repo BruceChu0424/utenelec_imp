@@ -54,6 +54,16 @@ public final class ProcurementApprovalContracts {
         public BatchDecisionItem(UUID caseId,Long expectedVersion) { this(caseId,expectedVersion,null); }
     }
 
+    public record ReviewAmendmentRequest(
+            @NotNull @Min(1) Long expectedVersion,
+            @NotNull UUID expectedClaimId,
+            @NotEmpty @Size(max = 500) List<@Valid ReviewAmountEdit> lines) {}
+
+    public record ReviewAmountEdit(
+            @NotNull UUID itemId,
+            @DecimalMin("0") @Digits(integer = 14, fraction = 10) BigDecimal price,
+            @DecimalMin("0") @Digits(integer = 40, fraction = 24) BigDecimal totalAmountInput) {}
+
     /**
      * 批量通过请求。remark 为单笔详情页提供的选填审批备注（≤500 字），
      * 写入审批事件快照留痕；列表批量操作可省略。

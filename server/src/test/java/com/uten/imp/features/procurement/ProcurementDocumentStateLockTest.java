@@ -18,6 +18,7 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.junit.jupiter.api.Test;
+import com.uten.imp.support.DraftMutationSourceContract;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,20 +43,24 @@ class ProcurementDocumentStateLockTest {
             // V812 死代码清理删掉手动 reverse(4→3)：申请已是计划下达的只读事实。
             financeOrderService(
                     "purchase/request/PurchaseRequestService.java",
-                    "PurchaseRequest", "requireRequestForUpdate", 3),
+                    "PurchaseRequest", "requireRequestForUpdate", "update", "delete", "approve"),
             financeOrderService(
                     "purchase/order/PurchaseOrderService.java",
-                    "PurchaseOrder", "requireOrderForUpdate", 10),
+                    "PurchaseOrder", "requireOrderForUpdate", "update", "delete", "cancel",
+                    "requireFinanceSubmitterWritable", "lockAndValidateFinanceSubmission", "applyFinanceApproval",
+                    "reverse", "isFinanceApproved", "amendFinanceReview", "lockFinanceReconfirmationSnapshot", "changeQty"),
             service("purchase/receipt/PurchaseReceiptService.java", "PurchaseReceipt", "requireReceiptForUpdate"),
             service("purchase/ret/PurchaseReturnService.java", "PurchaseReturn", "requireReturnForUpdate"),
             // V812 死代码清理删掉手动 approve/reverse(4→2)：申请=计划下达只读事实，
             // 审批快照由 ProductionSubcontractRequestFacade 承担。
             financeOrderService(
                     "subcontract/application/SubcontractApplicationService.java",
-                    "SubcontractApplication", "requireApplicationForUpdate", 2),
+                    "SubcontractApplication", "requireApplicationForUpdate", "update", "delete"),
             financeOrderService(
                     "subcontract/order/SubcontractOrderService.java",
-                    "SubcontractOrder", "requireOrderForUpdate", 9),
+                    "SubcontractOrder", "requireOrderForUpdate", "update", "delete", "requireFinanceSubmitterWritable",
+                    "lockAndValidateFinanceSubmission", "isFinanceApproved", "amendFinanceReview",
+                    "lockFinanceReconfirmationSnapshot", "changeQtyInternal", "applyFinanceApproval", "reverse"),
             service("subcontract/receipt/SubcontractReceiptService.java", "SubcontractReceipt", "requireReceiptForUpdate"),
             service("subcontract/ret/SubcontractReturnService.java", "SubcontractReturn", "requireReturnForUpdate"),
             service("subcontract/material_issue/SubcontractMaterialIssueService.java", "SubcontractMaterialIssue", "requireIssueForUpdate"),
@@ -68,9 +73,33 @@ class ProcurementDocumentStateLockTest {
             String source = Files.readString(Path.of("src/main/java/com/uten/imp/features")
                     .resolve(service.relativePath()));
 
-            assertEquals(service.expectedLockCount(),
-                    occurrences(source, "= " + service.helper() + "(id);"),
-                    service.relativePath() + " must lock every scoped state transition before status checks");
+            var lockingMethods = DraftMutationSourceContract.methodNamesCalling(
+                    source, "= " + service.helper() + "(id);");
+            org.assertj.core.api.Assertions.assertThat(lockingMethods)
+                    .as("explicit scoped transition coverage for %s", service.relativePath())
+                    .containsExactlyInAnyOrderElementsOf(service.mutations());
+            for (String name : service.mutations()) {
+                String body = DraftMutationSourceContract.methodContaining(source, name,
+                        "= " + service.helper() + "(id);");
+                int locked = body.indexOf("= " + service.helper() + "(id);");
+                assertTrue(locked >= 0, name + " must acquire the locked header");
+                for (String guarded : List.of("getStatus()", "access.requireWritable(",
+                        "requireReviewer(", "itemRepo.find", "repo.save(")) {
+                    int boundary = body.indexOf(guarded);
+                    if (guarded.equals("itemRepo.find") && body.contains("prelockItems")) {
+                        // Inventory dimensions are sampled before the header to
+                        // preserve the global inventory->document lock order.
+                        // Business facts must be reloaded and their dimensions
+                        // reconciled after the direct locked header read.
+                        org.assertj.core.api.Assertions.assertThat(body).contains(
+                                "stockService.lockInventory(prelockItems.stream()",
+                                "requireSameInventoryDimensions(prelockItems, items)");
+                        boundary = body.lastIndexOf(guarded);
+                    }
+                    if (boundary >= 0) assertTrue(locked < boundary,
+                            service.relativePath() + ":" + name + " must lock before " + guarded);
+                }
+            }
             assertTrue(source.contains(service.entity()
                             + ".class, id, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE"),
                     service.relativePath() + " must use a direct locked find");
@@ -146,28 +175,21 @@ class ProcurementDocumentStateLockTest {
     }
 
     private static LockedService service(String relativePath, String entity, String helper) {
-        return new LockedService(relativePath, entity, helper, 4);
+        List<String> mutations = relativePath.contains("receipt/")
+                ? List.of("review", "updateDraft", "delete", "approveReceipt", "reverse")
+                : relativePath.contains("/ret/")
+                ? List.of("review", "updateDraft", "delete", "approveReturn", "reverse")
+                : relativePath.contains("waste/")
+                ? List.of("update", "delete", "approveInternal", "reverse")
+                : List.of("update", "delete", "approve", "reverse");
+        return new LockedService(relativePath, entity, helper, mutations);
     }
 
     private static LockedService financeOrderService(
-            String relativePath, String entity, String helper, int expectedLockCount) {
-        // 基线：update/delete/submitter-owner-guard/snapshot-validation/
-        // apply-finance-approval/reverse；采购侧 + cancel（2026-09-05 草稿取消：
-        // 在审单同步撤回财务审批）= 7，委外侧暂无 cancel = 6。
-        return new LockedService(relativePath, entity, helper, expectedLockCount);
-    }
-
-    private static int occurrences(String source, String needle) {
-        int count = 0;
-        int offset = 0;
-        while ((offset = source.indexOf(needle, offset)) >= 0) {
-            count++;
-            offset += needle.length();
-        }
-        return count;
+            String relativePath, String entity, String helper, String... mutations) {
+        return new LockedService(relativePath, entity, helper, List.of(mutations));
     }
 
     private record LockedService(
-            String relativePath, String entity, String helper, int expectedLockCount) {
-    }
+            String relativePath, String entity, String helper, List<String> mutations) { }
 }

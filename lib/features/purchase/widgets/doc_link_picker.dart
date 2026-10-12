@@ -179,6 +179,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
   bool allowOverRemaining = false,
 }) async {
   final upstream = _upstreamType(cfg);
+  final sourceUnitRates = <String, String?>{};
   final docConfig =
       UtenDocLinkPickerConfig<
         PurchaseDocListItem,
@@ -225,6 +226,11 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
           final detail = await ref
               .read(purchaseRepositoryProvider(upstream))
               .detail(docId);
+          for (final item in detail.items) {
+            if (item.id != null) {
+              sourceUnitRates[item.id!] = item.unitRateExactText;
+            }
+          }
           return UtenDocLinkDetail<PurchaseDocItem>(
             partyId: detail.supplierId,
             items: detail.items,
@@ -296,7 +302,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
             colorId: d.colorId,
             unitId: d.unitId,
             unitRate: d.unitRate,
-            unitRateText: d.unitRateText,
+            unitRateText: sourceUnitRates[d.upstreamItemId],
           ),
         )
         .toList(),

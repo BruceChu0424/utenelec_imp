@@ -275,6 +275,7 @@ final List<RouteBase> productionRoutes = [
         : null,
     builder: (_, state) => ProductionDailyReportEditPage(
       id: state.pathParameters['id'],
+      reviewMode: state.uri.queryParameters['review'] == '1',
       returnToWorkshopTasks:
           state.uri.queryParameters['from'] == 'workshop-tasks',
     ),

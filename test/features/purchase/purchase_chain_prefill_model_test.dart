@@ -5,6 +5,8 @@ import 'package:uten_imp/features/purchase/widgets/doc_link_picker.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/models/procurement_quantity.dart';
+import 'package:uten_imp/shared/formatters/exact_decimal.dart';
 
 Future<List<EditableGridColumn<PurchaseGridRow>>> _columnsWithSource(
   WidgetTester tester,
@@ -28,6 +30,118 @@ Future<List<EditableGridColumn<PurchaseGridRow>>> _columnsWithSource(
 }
 
 void main() {
+  test(
+    'numeric recorded rates keep historical text without changing legacy payload types',
+    () {
+      final item = PurchaseDocItem.fromJson({'id': 'old', 'unitRate': 2.5});
+      expect(item.unitRateText, '2.5');
+      expect(item.unitRateExactText, isNull);
+      final exact = PurchaseDocItem.fromJson({
+        'id': 'new',
+        'unitRate': 999999999999,
+        'unitRateExact': '999999999999.000001',
+      });
+      expect(exact.unitRateText, '999999999999.000001');
+      expect(exact.unitRateExactText, '999999999999.000001');
+    },
+  );
+
+  test(
+    '18,6 source unit rate survives linked row, clone and draft with its stock quantum',
+    () {
+      const exact = '999999999999.000001';
+      final row = PurchaseGridRow.fromLinked(
+        const LinkedItem(
+          goodsId: 'g',
+          qty: 100,
+          unitId: 'u',
+          unitRate: 999999999999,
+          unitRateText: exact,
+        ),
+        const GoodsOption(id: 'g', name: 'Goods'),
+      );
+      final cloned = row.clone();
+      final restored = PurchaseGridRow.fromDraft(row.exportDraft());
+      for (final value in [row, cloned, restored]) {
+        addTearDown(value.dispose);
+        expect(value.unitRateText, exact);
+        expect(value.unitRateInputValid, isTrue);
+        expect(
+          financeExactDecimalFromUnits(
+            financeExactProductUnits(
+              value.qty.text,
+              value.recordedUnitRateText,
+            )!,
+          ),
+          '99999999999900.0001',
+        );
+      }
+    },
+  );
+
+  test(
+    'manual ratio and identity changes clear old exact rates; old drafts remain numeric',
+    () {
+      final row = PurchaseGridRow()
+        ..goods = const GoodsOption(id: 'g', name: 'Goods')
+        ..unitId = 'u'
+        ..unitRateText = '999999999999.000001';
+      addTearDown(row.dispose);
+      row.unitRate = 2.5;
+      expect(row.unitRateText, isNull);
+      expect(row.unitRate, 2.5);
+      row.unitRateText = '999999999999.000001';
+      row.unitId = 'another-unit';
+      expect(row.unitRateText, isNull);
+      row.unitRate = 3;
+      expect(row.recordedUnitRateText, '3');
+      row.unitRateText = '999999999999.000001';
+      row.goods = const GoodsOption(id: 'other', name: 'Other');
+      expect(row.unitRateText, isNull);
+      final old = PurchaseGridRow.fromDraft({
+        'goods': {'id': 'g'},
+        'unitId': 'u',
+        'unitRate': 2.5,
+      });
+      addTearDown(old.dispose);
+      expect(old.unitRateText, isNull);
+      expect(old.unitRate, 2.5);
+      for (final invalid in ['0', '-1', 'bad', '0.0000001', '1000000000000']) {
+        row.unitRateText = invalid;
+        expect(row.unitRateInputValid, isFalse, reason: invalid);
+      }
+    },
+  );
+
+  test(
+    'typed positive gift enables zero charged amount and updates when gift changes',
+    () {
+      final row = PurchaseGridRow(supportsTotalInput: true);
+      addTearDown(row.dispose);
+      row.qty.text = '0';
+      row.price.text = '2';
+      expect(row.pricing.validate(), contains('必须大于 0'));
+      row.giftQty.text = '0.0001';
+      expect(row.pricing.amountExact, '0');
+      expect(row.pricing.validate(), isNull);
+      for (final invalid in ['0', '-1', 'bad', '0.00001']) {
+        row.giftQty.text = invalid;
+        expect(row.pricing.validate(), contains('必须大于 0'), reason: invalid);
+      }
+    },
+  );
+
+  test('legacy gift annotations never authorize zero charged quantity', () {
+    final row = PurchaseGridRow()
+      ..quantitySemantics = procurementLegacyQuantity;
+    addTearDown(row.dispose);
+    row.qty.text = '0';
+    row.price.text = '2';
+    row.giftQty.text = '1';
+    expect(row.physicalQtyText, '0');
+    expect(row.pricing.validate(), contains('必须大于 0'));
+  });
+
   test('purchase request item exposes already ordered quantity', () {
     final item = PurchaseDocItem.fromJson({
       'id': 'request-item-1',

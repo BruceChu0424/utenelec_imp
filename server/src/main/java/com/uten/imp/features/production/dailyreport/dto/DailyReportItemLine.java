@@ -25,6 +25,8 @@ public class DailyReportItemLine extends com.uten.imp.common.platformcolumns.Pla
     /** Approved, exact same-batch additional-plan proof; never a free-form plan link. */
     private UUID supplementProofId;
     @com.fasterxml.jackson.annotation.JsonIgnore private Integer inputLineIndex;
+    /** Required only for reviewer amendments; binds this input group to its original stored row. */
+    private UUID reviewSourceItemId;
     private Integer lineNo;
     @NotNull private UUID goodsId;
     private UUID colorId;

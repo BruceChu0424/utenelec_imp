@@ -404,7 +404,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate
-            ..unitRateText = it.unitRateText;
+            ..unitRateText = it.unitRateExactText;
           row.qty.text =
               financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
           row.giftQty.text = it.giftQtyText ?? it.giftQty?.toString() ?? '0';
@@ -812,7 +812,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.recordedUnitRateText != null) 'unitRate': r.recordedUnitRateText,
+        if (r.unitRateText != null || r.unitRate != null)
+          'unitRate': r.unitRateText ?? r.unitRate,
         'weight': ?weight,
         if (remarkText.isNotEmpty) 'remark': remarkText,
       });

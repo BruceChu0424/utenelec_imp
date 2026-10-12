@@ -22,6 +22,9 @@ import java.util.UUID;
 @Setter
 public class StockDocItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput {
 
+    /** Existing native row identity for the dedicated review command; ordinary saves cannot assign IDs. */
+    private UUID sourceItemId;
+
     private Integer lineNo;
 
     @NotNull

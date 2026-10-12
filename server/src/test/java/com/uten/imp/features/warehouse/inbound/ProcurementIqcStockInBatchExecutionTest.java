@@ -254,7 +254,7 @@ class ProcurementIqcStockInBatchExecutionTest {
                     BigDecimal.ONE, quantity, new BigDecimal("10"), null, quantity, BigDecimal.ZERO,
                     quantity, new BigDecimal("10"), null, BigDecimal.ZERO, quantity, "合格",
                     OffsetDateTime.now(), "G001", "货品", null, "件", "A1", "检验员", "PO001", unit,
-                    UUID.randomUUID(),"原建议仓"});
+                    UUID.randomUUID(),"原建议仓","LEGACY"});
             return new BatchConfirmEntry("PURCHASE", receipt, key,
                     List.of(new ConfirmItem(event, quantity, quantity, "A1")));
         }

@@ -213,6 +213,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 command.originalMovementId(),materialReturn,true);
         UUID originalId=plan.originalId();Node source=plan.source();
         UUID eventId=UUID.randomUUID();BigDecimal cost=plan.cost(),qty=plan.qty();
+        State state=plan.sourceState();
         List<Node> retained=materialReturn?plan.retained().stream().map(component->retainValueReference(component,eventId)).toList():plan.retained();
         for(Restoration part:plan.parts()){
             var transfer=part.transfer();Node root=part.root(),held=part.held();
@@ -236,7 +237,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         Node archived=createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,eventId,List.of(whole(current)));
         Node next=createDerivedNode(pool,"POOL",null,null,null,null,remainingQty,ZERO,remainingQty,remainingValue,remainingPending,true,true,eventId,
                 retained.isEmpty()?List.of(fraction(current,ZERO,ZERO,current.qty())):retained.stream().map(InventoryPositionService::whole).toList());
-        deactivate(current);head(pool,next.id(),pool.headId());State state=reversalSourceState(source);
+        deactivate(current);head(pool,next.id(),pool.headId());
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
                     actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
@@ -415,9 +416,9 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         Node originalHead=projectCostRelease(node((UUID)original.get("result_head_id"),false),costReleases),source=projectCostRelease(node((UUID)original.get("result_node_id"),false),costReleases);
         if(!costReleases.containsKey(source.id())&&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_stock_value_stored_cost_reversible(:source)",args("source",source.id()),Boolean.class)))
             throw conflict("该入库包含生产或委外材料成本，须先按专用来源完成成本撤回");
-        State sourceState=reversalSourceState(source);
-        if(source.value().signum()==0 && sourceState!=State.FINAL)
-            throw conflict("原入库零成本尚未最终确认，请先完成原来源成本核对再反审");
+        State sourceState=sourceClosureState(source);
+        if(!materialReturn&&source.value().signum()==0&&sourceState!=State.FINAL)
+            throw conflict("该入库来源成本尚未闭合，不能按已确认零成本撤回；请待本来源成本传播完成后重新核对");
         var predecessors=db.queryForList("""
                 SELECT parent_node_id FROM stock_value_edges edge JOIN stock_value_nodes parent ON parent.id=edge.parent_node_id
                 WHERE edge.child_node_id=:head AND parent.kind='POOL' ORDER BY edge.id
@@ -465,7 +466,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 ||(!materialReturn && cursor.qty().compareTo(originalHead.qty())!=0)||cursor.qty().subtract(qty).compareTo(remainingQty)!=0
                 ||cursor.value().compareTo(remainingValue.add(cost))!=0)
             throw conflict("原入库成本尚未完成来源传播或余额核对，不能按混合均价撤回");
-        return new WithdrawalPlan(originalId,originalHead,source,predecessor,List.copyOf(retained),List.copyOf(parts),qty,cost,remainingQty,remainingValue,remainingPending);
+        return new WithdrawalPlan(originalId,originalHead,source,predecessor,List.copyOf(retained),List.copyOf(parts),qty,cost,remainingQty,remainingValue,remainingPending,sourceState);
     }
 
     private boolean materialReturnOwner(Map<String,Object> original,Node held){
@@ -485,7 +486,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                                BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal amount){}
     private record WithdrawalPlan(UUID originalId,Node originalHead,Node source,Node predecessor,
                                   List<Node> retained,List<Restoration> parts,BigDecimal qty,BigDecimal cost,
-                                  BigDecimal remainingQty,BigDecimal remainingValue,int remainingPending){}
+                                  BigDecimal remainingQty,BigDecimal remainingValue,int remainingPending,State sourceState){}
 
     private PositionValue result(Event e,boolean replayed){Node root=node(e.resultNodeId(),false);
         return new PositionValue(e.id(),root.id(),e.sourceNodeId(),root.qty(),e.knownValue(),e.state(),replayed);}

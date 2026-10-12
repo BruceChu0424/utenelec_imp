@@ -9,6 +9,22 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get release2511DailyReport =>
+      'Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.';
+
+  @override
+  String get release2511Workshop =>
+      'Workshop task dialogs show actions for the current state, with one material visible initially and an option to expand the list.';
+
+  @override
+  String get release2511Batch =>
+      'Batch material orders and quality processing share the write flow to reduce repeated reads, locks and final calculations.';
+
+  @override
+  String get release2511Platform =>
+      'Super administrators can configure company branding, logos and theme colors; upgrades preserve saved settings and personal preferences.';
+
+  @override
   String get businessResetAuditScope =>
       'Clears test business data, deletion history, field versions and business audit records. Authentication, authorization, security and system audit records, and reset receipts, are retained.';
 

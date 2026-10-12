@@ -136,13 +136,44 @@ class MaterialAnalysisSupplyWakeupHookContractTest {
         String stock = source("features/stock/StockDocService.java");
         String completion = source(
                 "features/production/execution/ProductionCompletionReverseService.java");
+        String approval = methodBody(stock,
+                "FinishedInLane lane, ConfirmedFinishedInbound confirmed) {");
 
-        assertOrdered(stock,
-                "applyStockEffect(d, items, +1)",
+        assertOrdered(approval,
+                "applyStockEffect(d, items, +1, null, confirmed)",
+                "d.setStatus(STATUS_APPROVED)");
+        String completed = approval.substring(approval.indexOf("d.setStatus(STATUS_APPROVED)"));
+        assertOrdered(completed, "em.flush()",
                 "productionCompletionReverse.afterFinishedInboundApproved(");
         assertOrdered(completion,
                 "afterFinishedInboundPosted(stockDocumentId, warehouseId)",
                 "materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentId)");
+
+        // Each batch document advances readiness immediately after its physical
+        // posting/completion; only the final material-analysis wakeup is pooled.
+        assertOrdered(completed, "em.flush()",
+                "productionCompletionReverse.afterFinishedInboundPosted(");
+        assertOrdered(completed,
+                "productionCompletionReverse.afterFinishedInboundPosted(",
+                "batchContext.postedDocumentIds.add(d.getId())");
+        String batch = methodBody(stock,
+                "private FinishedInboundBatchConfirmResponse confirmFinishedInboundBatchInOneScope(");
+        assertOrdered(batch, "confirmFinishedInboundAfterPrelock(",
+                "productionCompletionReverse.afterFinishedInboundBatchApproved(");
+        String scope = source("features/stock/PreStockedInboundBatchScope.java");
+        assertOrdered(scope, "work.accept(scope)", "finish.accept(List.copyOf(posted))");
+        assertThat(stock).contains("productionCompletionReverse::afterFinishedInboundBatchApproved");
+        assertThat(completion).contains("materialAnalysisWakeup.afterFinishedInboundApproved(stockDocumentIds)");
+    }
+
+    private static String methodBody(String source, String declaration) {
+        String normalized = source.replace("\r\n", "\n");
+        int start = normalized.indexOf(declaration);
+        assertThat(start).as("reviewed method declaration").isGreaterThanOrEqualTo(0);
+        int open = normalized.indexOf('{', start);
+        int end = normalized.indexOf("\n    }", open);
+        assertThat(end).as("reviewed method boundary").isGreaterThan(open);
+        return normalized.substring(open, end);
     }
 
     private static void assertOrdered(String source, String first, String second) {

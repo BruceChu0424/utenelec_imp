@@ -45,6 +45,7 @@ public class RequestItemDto {
         this.rowVersion = rowVersion;
     }
     public String getGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftQty);}
+    public String getUnitRateExact(){return com.uten.imp.common.util.DecimalText.of(unitRate);}
     public String getPhysicalQtyExact(){return com.uten.imp.common.finance.ProcurementQuantities.physicalText(quantitySemantics,qty,giftQty);}
     public String getGiftOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftOrderedQty);}
     public String getPendingGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingGiftQty);}

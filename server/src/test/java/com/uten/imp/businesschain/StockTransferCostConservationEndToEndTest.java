@@ -66,13 +66,15 @@ class StockTransferCostConservationEndToEndTest {
   var transfer=transfer(w,b,"5");stock.approve(transfer.getId());balances(w,b,"5","50","10","200");assertThat(probe(w,b,transfer)).hasSize(64);
   unapproval.unapprove("stockDocument",transfer.getId(),new DocumentUnapprovalService.UnapproveRequest("transfer-prior-"+transfer.getId(),"B原有150不能按混价误退100"));balances(w,b,"10","100","5","150");
  }
- @Test void legacyStoredNegativeGiftCannotPost(){
+ @Test void legacyStoredNegativeGiftCannotPostOrEscapeThroughReviewedApproval(){
   var w=world();var old=create(w,"OTHER_IN","1",null);
   // Reconstruct the actually observed R5 accepted malformed draft; normal current API already refuses this input.
   db.update("UPDATE stock_document_items SET gift_qty=-1 WHERE doc_id=?",old.getId());
   BigDecimal eventCount=number("SELECT COUNT(*) FROM stock_value_events");
   assertThatThrownBy(()->stock.approve(old.getId())).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
   assertThat(quantity(w)).isZero();assertThat(value(w)).isZero();assertThat(stock.detail(old.getId()).getStatus()).isZero();
+  var review=stock.reviewDraft(old.getId());
+  assertThatThrownBy(()->stock.updateReviewed(old.getId(),input(old,"2",null),review.snapshot(),true)).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
   assertThat(number("SELECT qty FROM stock_document_items WHERE doc_id=?",old.getId())).isEqualByComparingTo("1");
   assertThat(number("SELECT gift_qty FROM stock_document_items WHERE doc_id=?",old.getId())).isEqualByComparingTo("-1");
   assertThat(number("SELECT COUNT(*) FROM stock_value_events")).isEqualByComparingTo(eventCount);
@@ -117,6 +119,13 @@ class StockTransferCostConservationEndToEndTest {
  private StockDocDetail createCount(FullChainEndToEndTest.World w,String counted){
   var request=new StockDocSaveRequest();request.setDocType("CHECK");request.setBillDate(BusinessTime.today());request.setWarehouseId(w.warehouseId());
   var line=new StockDocItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ZERO);line.setCountQty(new BigDecimal(counted));request.setItems(List.of(line));return stock.create(request);
+ }
+ private StockDocSaveRequest input(StockDocDetail original,String quantity,String count){
+  var request=new StockDocSaveRequest();request.setDocType(original.getDocType());request.setBillDate(original.getBillDate());request.setWarehouseId(original.getWarehouseId());
+  request.setToWarehouseId(original.getToWarehouseId());request.setSupplierId(original.getSupplierId());request.setClientId(original.getClientId());request.setWorkerId(original.getWorkerId());
+  request.setDepartmentId(original.getDepartmentId());request.setAssTeam(original.getAssTeam());request.setPlanNo(original.getPlanNo());request.setRemark("审核实物核改");
+  var source=original.getItems().getFirst();var line=new StockDocItemLine();line.setSourceItemId(source.getId());line.setGoodsId(source.getGoodsId());line.setColorId(source.getColorId());line.setUnitId(source.getUnitId());line.setUnitRate(source.getUnitRate());
+  line.setQty(new BigDecimal(quantity));if(count!=null)line.setCountQty(new BigDecimal(count));request.setItems(List.of(line));return request;
  }
  private void conflict(org.assertj.core.api.ThrowableAssert.ThrowingCallable command){assertThatThrownBy(command).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.CONFLICT));}
  private BigDecimal number(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}

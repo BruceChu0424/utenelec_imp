@@ -166,6 +166,7 @@ class PurchaseDocItem {
     this.unitId,
     this.unitRate,
     this.unitRateText,
+    this.unitRateExactText,
     this.qty,
     this.qtyText,
     this.rowVersion,
@@ -225,6 +226,7 @@ class PurchaseDocItem {
   final String? unitId;
   final double? unitRate;
   final String? unitRateText;
+  final String? unitRateExactText;
   final double? qty;
   final String? qtyText;
 
@@ -315,6 +317,9 @@ class PurchaseDocItem {
     unitId: json['unitId'] as String?,
     unitRate: (json['unitRate'] as num?)?.toDouble(),
     unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+    unitRateExactText: json.containsKey('unitRateExact')
+        ? json['unitRateExact']?.toString() ?? ''
+        : null,
     qty: (json['qty'] as num?)?.toDouble(),
     qtyText: receiptRecordedDecimal(json, 'qty'),
     rowVersion: json['rowVersion'] is int && (json['rowVersion'] as int) >= 0
@@ -605,7 +610,13 @@ class ProcurementDecompositionLine {
     this.pendingQtyText,
     this.remainingQtyText,
     this.unitRateText,
-    this.quantitySemantics,
+    this.unitRateExactText,
+    this.quantitySemantics = procurementLegacyQuantity,
+    this.giftQty = 0,
+    this.giftOrderedQty = 0,
+    this.pendingGiftQty = 0,
+    this.remainingGiftQty = 0,
+    this.physicalRemainingQty,
     this.giftQtyText,
     this.giftOrderedQtyText,
     this.pendingGiftQtyText,
@@ -635,7 +646,13 @@ class ProcurementDecompositionLine {
   final String? pendingQtyText;
   final String? remainingQtyText;
   final String? unitRateText;
+  final String? unitRateExactText;
   final String? quantitySemantics;
+  final double giftQty;
+  final double giftOrderedQty;
+  final double pendingGiftQty;
+  final double remainingGiftQty;
+  final double? physicalRemainingQty;
   final String? giftQtyText;
   final String? giftOrderedQtyText;
   final String? pendingGiftQtyText;
@@ -644,6 +661,9 @@ class ProcurementDecompositionLine {
   final String? physicalOrderedQtyText;
   final String? physicalPendingQtyText;
   final String? physicalRemainingQtyText;
+
+  String get chargedRemainingQtyText =>
+      remainingQtyText ?? remainingQty.toString();
 
   String? get defaultGiftQtyText =>
       quantitySemantics == procurementChargedPlusGiftQuantity
@@ -655,6 +675,7 @@ class ProcurementDecompositionLine {
 
   String? get availablePhysicalQtyText =>
       physicalRemainingQtyText ??
+      physicalRemainingQty?.toString() ??
       (quantitySemantics == null ||
               quantitySemantics == procurementLegacyQuantity
           ? remainingQtyText ?? remainingQty.toString()
@@ -662,9 +683,7 @@ class ProcurementDecompositionLine {
 
   factory ProcurementDecompositionLine.fromJson(Map<String, dynamic> json) {
     double number(String key) {
-      final value = json[key];
-      if (value is num) return value.toDouble();
-      return double.tryParse(value?.toString() ?? '') ?? 0;
+      return double.tryParse(receiptRecordedDecimal(json, key) ?? '') ?? 0;
     }
 
     return ProcurementDecompositionLine(
@@ -674,7 +693,9 @@ class ProcurementDecompositionLine {
       goodsId: json['goodsId'] as String,
       colorId: json['colorId'] as String?,
       unitId: json['unitId'] as String?,
-      unitRate: json['unitRate'] == null ? null : number('unitRate'),
+      unitRate: receiptRecordedDecimal(json, 'unitRate') == null
+          ? null
+          : number('unitRate'),
       requestedQty: number('requestedQty'),
       orderedQty: number('orderedQty'),
       pendingQty: number('pendingQty'),
@@ -687,7 +708,18 @@ class ProcurementDecompositionLine {
       pendingQtyText: receiptRecordedDecimal(json, 'pendingQty'),
       remainingQtyText: receiptRecordedDecimal(json, 'remainingQty'),
       unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+      unitRateExactText: json.containsKey('unitRateExact')
+          ? json['unitRateExact']?.toString() ?? ''
+          : null,
       quantitySemantics: json['quantitySemantics'] as String?,
+      giftQty: number('giftQty'),
+      giftOrderedQty: number('giftOrderedQty'),
+      pendingGiftQty: number('pendingGiftQty'),
+      remainingGiftQty: number('remainingGiftQty'),
+      physicalRemainingQty:
+          receiptRecordedDecimal(json, 'physicalRemainingQty') == null
+          ? null
+          : number('physicalRemainingQty'),
       giftQtyText: receiptRecordedDecimal(json, 'giftQty'),
       giftOrderedQtyText: receiptRecordedDecimal(json, 'giftOrderedQty'),
       pendingGiftQtyText: receiptRecordedDecimal(json, 'pendingGiftQty'),

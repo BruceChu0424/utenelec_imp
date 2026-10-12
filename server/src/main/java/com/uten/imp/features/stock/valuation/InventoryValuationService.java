@@ -70,6 +70,7 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         Node next=createDerivedNode(pool,"POOL",null,null,null,null,left,ZERO,left,value(predecessor),pending(predecessor),true,true,event,
                 List.of(predecessor==null?fraction(current,ZERO,ZERO,current.qty()):whole(predecessor)));
         deactivate(current);head(pool,next.id(),pool.headId());
+        State resultState=sourceClosureState(source);
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
                     actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
@@ -78,9 +79,9 @@ public class InventoryValuationService extends InventoryValueLedger implements I
                     :pool,:movement,:qty,:before,0,:result,:head,:state,:source,:revision,:original)
                 """,args("id",event,"sourceEvent",c.sourceEventId(),"docType",c.sourceDocType(),"doc",c.sourceDocId(),"item",c.sourceItemId(),"version",c.sourceVersion(),
                 "user",c.actorUserId(),"employee",c.actorEmployeeId(),"at",c.occurredAt(),"key",c.idempotencyKey(),"hash",request.hash(),"payload",request.json(),
-                "pool",pool.id(),"movement",movement,"qty",qty,"before",before,"result",archived.id(),"head",next.id(),"state",state(source).name(),
+                "pool",pool.id(),"movement",movement,"qty",qty,"before",before,"result",archived.id(),"head",next.id(),"state",resultState.name(),
                 "source",source.id(),"revision",source.revision(),"original",original.get("id")));
-        return new MovementValue(event,movement,archived.id(),next.id(),ZERO,state(source),false);
+        return new MovementValue(event,movement,archived.id(),next.id(),ZERO,resultState,false);
     }
 
     /** Withdraw the same unused SOURCE contribution; never reprice it from today's pool. */
@@ -100,6 +101,7 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         Node next=createDerivedNode(pool,"POOL",null,null,null,null,left,ZERO,left,value(previous),pending(previous),true,true,event,
             List.of(previous==null?fraction(current,ZERO,ZERO,current.qty()):whole(previous)));
         deactivate(current);head(pool,next.id(),pool.headId());
+        State resultState=plan.sourceState();
         db.update("""
             INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
               actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
@@ -108,11 +110,11 @@ public class InventoryValuationService extends InventoryValueLedger implements I
               :pool,:movement,:qty,:before,:cost,:result,:head,:state,:source,:revision,:original)
             """,args("id",event,"sourceEvent",c.sourceEventId(),"docType",c.sourceDocType(),"doc",c.sourceDocId(),"item",c.sourceItemId(),"version",c.sourceVersion(),
               "user",c.actorUserId(),"employee",c.actorEmployeeId(),"at",c.occurredAt(),"key",c.idempotencyKey(),"hash",request.hash(),"payload",request.json(),
-              "pool",pool.id(),"movement",command.movementId(),"qty",qty,"before",before,"cost",cost,"result",archived.id(),"head",next.id(),"state",state(source).name(),
+              "pool",pool.id(),"movement",command.movementId(),"qty",qty,"before",before,"cost",cost,"result",archived.id(),"head",next.id(),"state",resultState.name(),
               "source",source.id(),"revision",source.revision(),"original",original.get("id")));
         posting(event,null,current.id(),"INVENTORY",pool.id(),cost.negate());
         posting(event,null,source.id(),"SOURCE",(UUID)original.get("source_event_id"),cost);
-        return new MovementValue(event,command.movementId(),archived.id(),next.id(),cost,state(source),false);
+        return new MovementValue(event,command.movementId(),archived.id(),next.id(),cost,resultState,false);
     }
 
     @Override @Transactional(propagation = Propagation.MANDATORY)
@@ -235,7 +237,7 @@ public class InventoryValuationService extends InventoryValueLedger implements I
     }
 
     private record ReceiveWithdrawal(Map<String,Object> original,Node source,Node previous,
-                                     BigDecimal qty,BigDecimal left,BigDecimal cost) {}
+                                     BigDecimal qty,BigDecimal left,BigDecimal cost,State sourceState) {}
     private ReceiveWithdrawal prepareReceiveWithdrawal(Pool pool,Node current,BigDecimal before,
                                                         UUID movement,EventContext context,boolean lock){
         var originals=db.queryForList("SELECT * FROM stock_value_events WHERE movement_id=:movement AND operation='RECEIVE'",args("movement",movement));
@@ -269,7 +271,10 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         if(before.compareTo(originalHead.qty())!=0 || before.subtract(qty).compareTo(left)!=0
                 || current.value().compareTo(value(previous).add(cost))!=0)
             throw conflict("原实物、成本传播与前置库存不守恒，请核对后撤回");
-        return new ReceiveWithdrawal(original,source,previous,qty,left,cost);
+        State sourceState=sourceClosureState(source);
+        if(source.sourceFinal()&&source.pending()==0&&sourceState!=State.FINAL)
+            throw conflict("该原入库成本仍待核对或传播，不能按最终成本撤回");
+        return new ReceiveWithdrawal(original,source,previous,qty,left,cost,sourceState);
     }
 
     private Pool readActivePool(PoolKey key){
@@ -391,6 +396,7 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         Node next=createDerivedNode(pool,"POOL",null,null,null,null,plan.left(),ZERO,plan.left(),value(plan.previous()),pending(plan.previous()),true,true,event,
                 List.of(plan.previous()==null?fraction(current,ZERO,ZERO,current.qty()):whole(plan.previous())));
         deactivate(current);head(pool,next.id(),pool.headId());
+        State resultState=sourceClosureState(issue);
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
                     actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
@@ -399,10 +405,10 @@ public class InventoryValuationService extends InventoryValueLedger implements I
                     :pool,:movement,:qty,:before,:value,:result,:head,:state,:source,:revision,:original)
                 """,args("id",event,"sourceEvent",context.sourceEventId(),"type",context.sourceDocType(),"doc",context.sourceDocId(),"item",context.sourceItemId(),"version",context.sourceVersion(),
                     "user",context.actorUserId(),"employee",context.actorEmployeeId(),"at",context.occurredAt(),"key",context.idempotencyKey(),"hash",request.hash(),"payload",request.json(),
-                    "pool",pool.id(),"movement",command.movementId(),"qty",plan.qty(),"before",before,"value",plan.cost(),"result",issue.id(),"head",next.id(),"state",state(issue).name(),
+                    "pool",pool.id(),"movement",command.movementId(),"qty",plan.qty(),"before",before,"value",plan.cost(),"result",issue.id(),"head",next.id(),"state",resultState.name(),
                     "source",plan.source().id(),"revision",plan.source().revision(),"original",plan.original().get("id")));
         posting(event,null,current.id(),"INVENTORY",pool.id(),plan.cost().negate());posting(event,null,issue.id(),"IN_TRANSIT",context.sourceItemId(),plan.cost());
-        return new MovementValue(event,command.movementId(),issue.id(),next.id(),plan.cost(),state(issue),false);
+        return new MovementValue(event,command.movementId(),issue.id(),next.id(),plan.cost(),resultState,false);
     }
 
     @Override @Transactional(propagation = Propagation.MANDATORY)

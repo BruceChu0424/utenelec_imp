@@ -16,6 +16,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -146,11 +147,15 @@ class UtenDropdownField extends StatefulWidget {
   State<UtenDropdownField> createState() => _UtenDropdownFieldState();
 }
 
-class _UtenDropdownFieldState extends State<UtenDropdownField> {
-  OverlayEntry? _overlay;
-  OverlayState? _targetOverlay;
-  ScrollNotificationObserverState? _scrollObserver;
+class _UtenDropdownFieldState extends State<UtenDropdownField>
+    with WidgetsBindingObserver {
+  final GlobalKey _anchorKey = GlobalKey();
   final Set<ScrollPosition> _scrollPositions = {};
+  OverlayEntry? _overlay;
+  OverlayEntry? _pendingOverlayRebuild;
+  OverlayState? _overlayHost;
+  Rect? _lastAnchor;
+  ScrollNotificationObserverState? _scrollObserver;
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
   Object? _menuWidthSignature;
@@ -175,25 +180,35 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
       _scrollObserver = observer;
       _scrollObserver?.addListener(_onScrollNotification);
     }
-    _observeAncestorScrollPositions();
+    _aiAttach();
     final route = ModalRoute.of(context);
+    if (_overlay != null && route != null && !route.isCurrent) _close();
     if (_overlay != null &&
-        (route != null && !route.isCurrent ||
-            _targetOverlay != Overlay.maybeOf(context, rootOverlay: true))) {
+        (!(_overlayHost?.mounted ?? false) ||
+            !identical(
+              _overlayHost,
+              Overlay.maybeOf(context, rootOverlay: true),
+            ))) {
       _close();
     }
-    _markOverlayNeedsBuild();
-    _aiAttach();
+    if (_overlay != null) _watchScrollPositions();
+    _refreshOverlay();
   }
 
   @override
   void didUpdateWidget(covariant UtenDropdownField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.enabled) _close();
-    _observeAncestorScrollPositions();
-    _markOverlayNeedsBuild();
     _aiAttach();
+    if (!widget.enabled) {
+      _close();
+    } else {
+      if (_overlay != null) _watchScrollPositions();
+      _refreshOverlay();
+    }
   }
+
+  void _onScrollNotification(ScrollNotification notification) =>
+      _refreshOverlay();
 
   void _aiAttach() => _aiSlot.attach(
     context,
@@ -294,126 +309,179 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   void _open() {
     if (_overlay != null || !widget.enabled) return;
-    _observeAncestorScrollPositions();
-    _searchCtl = TextEditingController();
-    _searchFocus = FocusNode();
-    _targetOverlay = Overlay.of(context, rootOverlay: true);
-    _overlay = OverlayEntry(
-      builder: (overlayContext) {
-        if (!mounted) return const SizedBox.shrink();
-        return InheritedTheme.captureAll(
-          context,
-          LayoutBuilder(
-            builder: (overlayContext, constraints) {
-              final field = context.findRenderObject();
-              final overlay = _targetOverlay?.context.findRenderObject();
-              if (!mounted ||
-                  field is! RenderBox ||
-                  overlay is! RenderBox ||
-                  !field.attached ||
-                  !field.hasSize ||
-                  !overlay.attached) {
-                return const SizedBox.shrink();
-              }
-              final transform = field.getTransformTo(overlay);
-              final anchor = MatrixUtils.transformRect(
-                transform,
-                Offset.zero & field.size,
-              );
-              var visible = Offset.zero & constraints.biggest;
-              context.visitAncestorElements((element) {
-                if (element is StatefulElement &&
-                    element.state is ScrollableState) {
-                  final viewport = element.findRenderObject();
-                  if (viewport is RenderBox &&
-                      viewport.attached &&
-                      viewport.hasSize) {
-                    visible = visible.intersect(
-                      MatrixUtils.transformRect(
-                        viewport.getTransformTo(overlay),
-                        Offset.zero & viewport.size,
-                      ),
-                    );
-                  }
-                }
-                return true;
-              });
-              if (!visible.overlaps(anchor)) {
-                final entry = _overlay;
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted && identical(entry, _overlay)) _close();
-                });
-                return const SizedBox.shrink();
-              }
-              // Resolve real layout coordinates, rather than a paint-only follower.
-              // Nested Tooltip overlays can position from the laid-out menu items.
-              return _buildOverlay(
-                overlayContext,
-                _UtenDropdownOverlayLayout(
-                  childPaintTransform: transform,
-                  childSize: field.size,
-                  overlaySize: constraints.biggest,
-                ),
-              );
-            },
-          ),
-        );
-      },
+    final search = _searchCtl = TextEditingController();
+    final focus = _searchFocus = FocusNode();
+    final host = _overlayHost = Overlay.of(context, rootOverlay: true);
+    late final OverlayEntry entry;
+    entry = OverlayEntry(
+      builder: (overlayContext) =>
+          _buildHostedOverlay(overlayContext, entry, search, focus),
     );
-    _targetOverlay!.insert(_overlay!);
+    _overlay = entry;
+    host.insert(entry);
+    _watchScrollPositions();
+    WidgetsBinding.instance.addObserver(this);
+    _watchAnchor(entry);
   }
 
-  void _observeAncestorScrollPositions() {
-    final next = <ScrollPosition>{};
+  Rect? _anchorRect() {
+    final field = _anchorKey.currentContext?.findRenderObject();
+    final overlay = _overlayHost?.context.findRenderObject();
+    if (field is! RenderBox ||
+        !field.hasSize ||
+        !field.attached ||
+        overlay is! RenderBox ||
+        !overlay.attached) {
+      return null;
+    }
+    return MatrixUtils.transformRect(
+      field.getTransformTo(overlay),
+      Offset.zero & field.size,
+    );
+  }
+
+  void _watchAnchor(OverlayEntry entry) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !identical(_overlay, entry)) return;
+      final anchor = _anchorRect();
+      if (anchor == null) {
+        _close();
+        return;
+      }
+      if (anchor != _lastAnchor) _refreshOverlay();
+      // Observe actual UI frames without requesting frames while the anchor is
+      // stationary. Ancestor layout can move a constant field without rebuilding
+      // it or changing any ScrollPosition.
+      _watchAnchor(entry);
+    });
+  }
+
+  void _watchScrollPositions() {
+    // Every ancestor can move the field, including an outer viewport when a
+    // nested viewport scrolls along the same axis.
+    final positions = <ScrollPosition>{};
     context.visitAncestorElements((element) {
       if (element is StatefulElement && element.state is ScrollableState) {
-        next.add((element.state as ScrollableState).position);
+        positions.add((element.state as ScrollableState).position);
       }
       return true;
     });
-    for (final position in _scrollPositions.difference(next)) {
-      position.removeListener(_markOverlayNeedsBuild);
+    for (final position in _scrollPositions.difference(positions)) {
+      position.removeListener(_refreshOverlay);
     }
-    for (final position in next.difference(_scrollPositions)) {
-      position.addListener(_markOverlayNeedsBuild);
+    for (final position in positions.difference(_scrollPositions)) {
+      position.addListener(_refreshOverlay);
     }
     _scrollPositions
       ..clear()
-      ..addAll(next);
+      ..addAll(positions);
   }
 
-  void _stopObservingScrollPositions() {
+  void _close() {
+    final entry = _overlay;
+    final search = _searchCtl;
+    final focus = _searchFocus;
+    _overlay = null;
+    _overlayHost = null;
+    _lastAnchor = null;
+    _pendingOverlayRebuild = null;
+    _searchCtl = null;
+    _searchFocus = null;
+    WidgetsBinding.instance.removeObserver(this);
     for (final position in _scrollPositions) {
-      position.removeListener(_markOverlayNeedsBuild);
+      position.removeListener(_refreshOverlay);
     }
     _scrollPositions.clear();
+    if (entry == null) {
+      search?.dispose();
+      focus?.dispose();
+      return;
+    }
+    // remove can defer unmount to the next frame. Keep the old resources alive
+    // until its TextField unmounts, without touching a rapidly reopened menu.
+    var released = false;
+    void releaseResources() {
+      if (released || entry.mounted) return;
+      released = true;
+      entry.removeListener(releaseResources);
+      search?.dispose();
+      focus?.dispose();
+    }
+
+    entry.addListener(releaseResources);
+    entry.remove();
+    entry.dispose();
+    releaseResources();
   }
 
-  void _onScrollNotification(ScrollNotification notification) =>
-      _markOverlayNeedsBuild();
+  @override
+  void didChangeMetrics() => _refreshOverlay();
 
-  void _markOverlayNeedsBuild() {
+  void _refreshOverlay() {
     final entry = _overlay;
     if (entry == null) return;
-    if (WidgetsBinding.instance.schedulerPhase ==
+    if (SchedulerBinding.instance.schedulerPhase ==
         SchedulerPhase.persistentCallbacks) {
+      if (identical(_pendingOverlayRebuild, entry)) return;
+      _pendingOverlayRebuild = entry;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && identical(entry, _overlay)) entry.markNeedsBuild();
+        if (identical(_pendingOverlayRebuild, entry)) {
+          _pendingOverlayRebuild = null;
+        }
+        if (mounted && identical(_overlay, entry)) entry.markNeedsBuild();
       });
     } else {
       entry.markNeedsBuild();
     }
   }
 
-  void _close() {
-    _overlay?.remove();
-    _overlay?.dispose();
-    _overlay = null;
-    _targetOverlay = null;
-    _searchCtl?.dispose();
-    _searchCtl = null;
-    _searchFocus?.dispose();
-    _searchFocus = null;
+  Widget _withAnchor({required Widget child}) =>
+      KeyedSubtree(key: _anchorKey, child: child);
+
+  Widget _buildHostedOverlay(
+    BuildContext overlayContext,
+    OverlayEntry entry,
+    TextEditingController search,
+    FocusNode focus,
+  ) {
+    if (!mounted || !identical(_overlay, entry)) {
+      return const SizedBox.shrink();
+    }
+    final themes = InheritedTheme.capture(
+      from: context,
+      to: _overlayHost!.context,
+    );
+    final fieldMedia = MediaQuery.of(context);
+    final overlayMedia = MediaQuery.of(overlayContext);
+    Widget menu = LayoutBuilder(
+      builder: (menuContext, constraints) =>
+          _buildOverlay(menuContext, constraints, entry, search, focus),
+    );
+    menu = MediaQuery(
+      data: fieldMedia.copyWith(
+        padding: overlayMedia.padding,
+        viewInsets: overlayMedia.viewInsets,
+        viewPadding: overlayMedia.viewPadding,
+      ),
+      child: Localizations.override(
+        context: context,
+        child: Directionality(
+          textDirection: Directionality.of(context),
+          child: menu,
+        ),
+      ),
+    );
+    final scope =
+        context
+                .getElementForInheritedWidgetOfExactType<
+                  UncontrolledProviderScope
+                >()
+                ?.widget
+            as UncontrolledProviderScope?;
+    if (scope != null) {
+      menu = UncontrolledProviderScope(container: scope.container, child: menu);
+    }
+    return themes.wrap(menu);
   }
 
   void _select(String? v) {
@@ -421,6 +489,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
       _close();
       return;
     }
+    final selectable = widget.items.any(
+      (item) => item.value == v && item.enabled && item.visible,
+    );
+    if (!selectable && !(v == null && widget.allowClear)) return;
     _aiFilled = false;
     final onChanged = widget.onChanged;
     _close();
@@ -429,14 +501,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   @override
   void deactivate() {
+    // A GlobalKey can move this still-mounted field within the same Overlay.
+    // Invalidate the old owner entry and its callbacks before reattachment.
     _close();
-    _stopObservingScrollPositions();
     super.deactivate();
   }
 
   @override
   void dispose() {
-    _stopObservingScrollPositions();
     _scrollObserver?.removeListener(_onScrollNotification);
     _scrollObserver = null;
     _aiSlot.detach();
@@ -462,79 +534,84 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     if (widget.flat) {
       return _buildFlat(theme, hasValue, requiredEmpty, autofillHint);
     }
-    return InkWell(
-      onTap: _open,
-      child: InputDecorator(
-        decoration: applyRequiredEmpty(
-          applyAutofillHint(
-            UtenInputDecoration(
-              InputDecoration(
-                // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
-                // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
-                // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
-                // 走主题默认。
-                isDense: widget.dense,
-                contentPadding: widget.dense
-                    ? UtenEditableGridCellSpec.contentPadding
-                    : null,
-                // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
-                // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填
-                // 黄标时 UtenInputDecoration 的提示包装也按本约束收敛。
-                suffixIconConstraints: widget.dense
-                    ? const BoxConstraints(minWidth: 20, minHeight: 20)
-                    : null,
-                label: widget.label == null
-                    ? null
-                    : fieldLabel(
-                        widget.label!,
-                        theme,
-                        required: widget.required,
-                        info: widget.info,
-                        base: theme.inputDecorationTheme.labelStyle,
-                      ),
-                hintText: widget.hintText,
-                // 同格内值单行口径：内部 hint 超宽折行同样会撑高字段。
-                hintMaxLines: 1,
-                helper: autofillHint
-                    ? UtenFieldMessage.autofill(
-                        (_aiFilledNow
-                                ? aiPageL10n(context).fieldAiFilledReview
-                                : null) ??
-                            widget.warningMessage ??
-                            '已按上次记录预填，请核对',
-                      )
-                    : null,
-                error: widget.errorMessage == null
-                    ? null
-                    : UtenFieldMessage.error(widget.errorMessage!),
-                suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
+    return _withAnchor(
+      child: InkWell(
+        onTap: _open,
+        child: InputDecorator(
+          decoration: applyRequiredEmpty(
+            applyAutofillHint(
+              UtenInputDecoration(
+                InputDecoration(
+                  // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
+                  // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
+                  // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
+                  // 走主题默认。
+                  isDense: widget.dense,
+                  contentPadding: widget.dense
+                      ? UtenEditableGridCellSpec.contentPadding
+                      : null,
+                  // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
+                  // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填
+                  // 黄标时 UtenInputDecoration 的提示包装也按本约束收敛。
+                  suffixIconConstraints: widget.dense
+                      ? const BoxConstraints(minWidth: 20, minHeight: 20)
+                      : null,
+                  label: widget.label == null
+                      ? null
+                      : fieldLabel(
+                          widget.label!,
+                          theme,
+                          required: widget.required,
+                          info: widget.info,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                  hintText: widget.hintText,
+                  // 同格内值单行口径：内部 hint 超宽折行同样会撑高字段。
+                  hintMaxLines: 1,
+                  helper: autofillHint
+                      ? UtenFieldMessage.autofill(
+                          (_aiFilledNow
+                                  ? aiPageL10n(context).fieldAiFilledReview
+                                  : null) ??
+                              widget.warningMessage ??
+                              '已按上次记录预填，请核对',
+                        )
+                      : null,
+                  error: widget.errorMessage == null
+                      ? null
+                      : UtenFieldMessage.error(widget.errorMessage!),
+                  suffixIcon: const Icon(
+                    Icons.arrow_drop_down_rounded,
+                    size: 20,
+                  ),
+                ),
+                info: widget.info,
               ),
-              info: widget.info,
+              theme,
+              autofilled: autofillHint,
             ),
             theme,
-            autofilled: autofillHint,
+            requiredEmpty: requiredEmpty,
           ),
-          theme,
-          requiredEmpty: requiredEmpty,
-        ),
-        child: Text(
-          hasValue ? _selectedDisplay : (widget.hintText ?? '请选择'),
-          // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
-          // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
-          // 由网格列 textOf 自动加宽兜底，表单里就省略号。
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
-          // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
-          style:
-              (widget.dense
-                      ? theme.textTheme.bodyLarge
-                      : theme.textTheme.bodyMedium)
-                  ?.copyWith(
-                    color: hasValue
-                        ? theme.colorScheme.onSurface
-                        : theme.colorScheme.onSurfaceVariant,
-                  ),
+          child: Text(
+            hasValue ? _selectedDisplay : (widget.hintText ?? '请选择'),
+            // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
+            // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
+            // 由网格列 textOf 自动加宽兜底，表单里就省略号。
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
+            // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
+            style:
+                (widget.dense
+                        ? theme.textTheme.bodyLarge
+                        : theme.textTheme.bodyMedium)
+                    ?.copyWith(
+                      color: hasValue
+                          ? theme.colorScheme.onSurface
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+          ),
         ),
       ),
     );
@@ -552,40 +629,42 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   ) {
     final display = hasValue ? _selectedDisplay : (widget.hintText ?? '请选择');
     final message = widget.errorMessage ?? widget.warningMessage;
-    return Tooltip(
-      message: message ?? (hasValue ? _display : display),
-      child: InkWell(
-        onTap: _open,
-        borderRadius: BorderRadius.circular(4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                display,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: !widget.enabled
-                      ? theme.colorScheme.onSurfaceVariant
-                      : widget.errorMessage != null || requiredEmpty
-                      ? theme.colorScheme.error
-                      : !hasValue
-                      ? theme.colorScheme.onSurfaceVariant
-                      : autofillHint
-                      ? UtenColors.warning
-                      : null,
+    return _withAnchor(
+      child: Tooltip(
+        message: message ?? (hasValue ? _display : display),
+        child: InkWell(
+          onTap: _open,
+          borderRadius: BorderRadius.circular(4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  display,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: !widget.enabled
+                        ? theme.colorScheme.onSurfaceVariant
+                        : widget.errorMessage != null || requiredEmpty
+                        ? theme.colorScheme.error
+                        : !hasValue
+                        ? theme.colorScheme.onSurfaceVariant
+                        : autofillHint
+                        ? UtenColors.warning
+                        : null,
+                  ),
                 ),
               ),
-            ),
-            Icon(
-              Icons.arrow_drop_down_rounded,
-              size: 16,
-              color: widget.enabled
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-          ],
+              Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 16,
+                color: widget.enabled
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -593,24 +672,58 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   /// 弹层：锚定字段下方、限高 320、竖向滚动；点外部关闭。样式对齐 _FilterCell。
   /// 选项较多（或 searchable:true）时顶部带搜索框，输入实时过滤，回车选中第一项。
-  Widget _buildOverlay(BuildContext ctx, _UtenDropdownOverlayLayout layout) {
+  Widget _buildOverlay(
+    BuildContext ctx,
+    BoxConstraints constraints,
+    OverlayEntry entry,
+    TextEditingController search,
+    FocusNode focus,
+  ) {
+    bool current() => mounted && identical(_overlay, entry) && widget.enabled;
+    void close() {
+      if (current()) _close();
+    }
+
+    void select(String? value) {
+      if (current()) _select(value);
+    }
+
+    final anchor = _anchorRect();
+    if (anchor == null) return const SizedBox.shrink();
+    final host = _overlayHost!.context.findRenderObject() as RenderBox;
+    var visible = Offset.zero & constraints.biggest;
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        final viewport = element.findRenderObject();
+        if (viewport is RenderBox && viewport.attached && viewport.hasSize) {
+          visible = visible.intersect(
+            MatrixUtils.transformRect(
+              viewport.getTransformTo(host),
+              Offset.zero & viewport.size,
+            ),
+          );
+        }
+      }
+      return true;
+    });
+    if (!visible.overlaps(anchor)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(_overlay, entry)) _close();
+      });
+      return const SizedBox.shrink();
+    }
+    _lastAnchor = anchor;
+    final overlaySize = constraints.biggest;
     final theme = Theme.of(ctx);
     final searchable = widget.searchable ?? widget.items.length >= 4;
     // Resolve the anchor during layout. A paint-only follower prevents nested
     // Tooltip overlays from positioning themselves when a menu item is hovered.
-    final anchor = MatrixUtils.transformRect(
-      layout.childPaintTransform,
-      Offset.zero & layout.childSize,
-    );
-    final down = layout.overlaySize.height - anchor.bottom;
+    final down = overlaySize.height - anchor.bottom;
     final up = anchor.top;
     final openAbove = up > down;
     final maxHeight = ((openAbove ? up : down) - 8).clamp(120.0, 320.0);
     final defaultWidth = anchor.width.clamp(120.0, 480.0);
-    final viewportWidth = math.max(
-      0.0,
-      layout.overlaySize.width - UtenSpacing.s16,
-    );
+    final viewportWidth = math.max(0.0, overlaySize.width - UtenSpacing.s16);
     final fieldWidth = widget.menuMatchContentWidth
         ? math.min(
             viewportWidth,
@@ -626,7 +739,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 UtenSpacing.s8,
                 math.max(
                   UtenSpacing.s8,
-                  layout.overlaySize.width - UtenSpacing.s8 - fieldWidth,
+                  overlaySize.width - UtenSpacing.s8 - fieldWidth,
                 ),
               )
               .toDouble()
@@ -636,15 +749,15 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onTap: _close,
+            onTap: close,
           ),
         ),
         Positioned(
           left: left,
           top: openAbove ? null : anchor.bottom + 2,
-          bottom: openAbove ? layout.overlaySize.height - anchor.top + 2 : null,
+          bottom: openAbove ? overlaySize.height - anchor.top + 2 : null,
           child: TapRegion(
-            onTapOutside: (_) => _close(),
+            onTapOutside: (_) => close(),
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
@@ -655,7 +768,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                 constraints: BoxConstraints(maxHeight: maxHeight),
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
-                    final q = _searchCtl?.text.trim().toLowerCase() ?? '';
+                    final q = search.text.trim().toLowerCase();
                     final filtered = widget.items
                         .where(
                           (it) =>
@@ -675,8 +788,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               UtenSpacing.s4,
                             ),
                             child: TextField(
-                              controller: _searchCtl,
-                              focusNode: _searchFocus,
+                              controller: search,
+                              focusNode: focus,
                               autofocus: true,
                               style: theme.textTheme.bodyMedium,
                               decoration: InputDecoration(
@@ -698,7 +811,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                           size: 16,
                                         ),
                                         onPressed: () {
-                                          _searchCtl!.clear();
+                                          if (!current()) return;
+                                          search.clear();
                                           setOverlayState(() {});
                                         },
                                       ),
@@ -713,7 +827,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                               onChanged: (_) => setOverlayState(() {}),
                               onSubmitted: (_) {
                                 if (filtered.isNotEmpty) {
-                                  _select(filtered.first.value);
+                                  select(filtered.first.value);
                                 }
                               },
                             ),
@@ -728,8 +842,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                             ),
                             child: InkWell(
                               onTap: () {
+                                if (!current()) return;
+                                final onAddNew = widget.onAddNew;
+                                if (onAddNew == null) return;
                                 _close();
-                                widget.onAddNew!();
+                                onAddNew();
                               },
                               borderRadius: BorderRadius.circular(6),
                               child: Container(
@@ -778,7 +895,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   )),
                                   label: '不选',
                                   selected: widget.value == null,
-                                  onTap: () => _select(null),
+                                  onTap: () => select(null),
                                   theme: theme,
                                 ),
                               for (final it in filtered)
@@ -793,7 +910,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                   tooltip: it.tooltip,
                                   selected: it.value == widget.value,
                                   onTap: it.enabled
-                                      ? () => _select(it.value)
+                                      ? () => select(it.value)
                                       : null,
                                   theme: theme,
                                   indent: it.indent,
@@ -974,15 +1091,4 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     _measuredMenuWidth = width.ceilToDouble() + 2;
     return _measuredMenuWidth;
   }
-}
-
-class _UtenDropdownOverlayLayout {
-  const _UtenDropdownOverlayLayout({
-    required this.childPaintTransform,
-    required this.childSize,
-    required this.overlaySize,
-  });
-  final Matrix4 childPaintTransform;
-  final Size childSize;
-  final Size overlaySize;
 }

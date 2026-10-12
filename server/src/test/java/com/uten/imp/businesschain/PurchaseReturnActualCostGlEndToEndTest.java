@@ -1,6 +1,7 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.features.documents.DocumentUnapprovalService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
@@ -18,8 +19,13 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.*;
@@ -31,13 +37,28 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
     "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
     "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-    "uten.jwt.secret=gift-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
-    "uten.crypto.pgp-master-key=gift-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
+    "uten.jwt.secret=gift-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
+    "uten.crypto.pgp-master-key=gift-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
     "uten.crypto.hmac-key=gift-regression-isolated-hmac-key-0123456789-abcdef",
-    "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
+    "uten.bootstrap.admin-login=gift-regression-bootstrap","uten.bootstrap.admin-password=GiftRegressionAdmin-1!"})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners=PurchaseReturnActualCostGlEndToEndTest.Cleanup.class,
+    mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class PurchaseReturnActualCostGlEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+    private static MigratedSchemaBaseline.ScopedDatabase database;
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
+        // Period-wide regeneration and posting-role configuration must not adopt
+        // another full-chain scenario's confirmed expense or configured variance role.
+        database=MigratedSchemaBaseline.openDatabase("purchase_return_gl");
+        registry.add("spring.datasource.url",database::getJdbcUrl);
+        registry.add("spring.datasource.username",database::getUsername);
+        registry.add("spring.datasource.password",database::getPassword);
+    }
+    public static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
+        @Override public void afterTestClass(TestContext ignored) throws Exception {if(database!=null)database.close();}
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired PurchaseRequestService requests;
@@ -96,8 +117,8 @@ class PurchaseReturnActualCostGlEndToEndTest {
         String period=java.time.YearMonth.from(BusinessTime.today()).toString();gl.generate(period);
         UUID previous=db.queryForObject("SELECT id FROM gl_vouchers WHERE source_type='AP_POST' AND source_doc_id=?",UUID.class,receipt);
         UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"0","1");returns.approve(returned);
-        // This database is deliberately shared by several real Spring contexts. Other
-        // classes may already have configured this global role, irrespective of @Order.
+        // The private GL database isolates period-wide regeneration. Explicitly
+        // remove the configured role here to prove the missing-role rollback path.
         // Only this isolated test fixture temporarily removes the one required mapping;
         // the public configure API correctly cannot remove an operational assignment.
         UUID previousRole=db.queryForObject("SELECT style_id FROM system_posting_style_roles WHERE role_key='PROCUREMENT_RETURN_VARIANCE'",UUID.class);

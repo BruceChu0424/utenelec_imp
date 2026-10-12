@@ -11,6 +11,8 @@ import java.util.UUID;
 @Getter @Setter
 public class ReturnItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
     private Integer lineNo;
+    /** Retained row identity required only by the dedicated review amendment. */
+    private UUID sourceItemId;
     @NotNull private UUID goodsId;
     private UUID colorId;
     private UUID unitId;

@@ -9021,10 +9021,12 @@ Future<void> _chooseMaterialRoute(
   await _materialTableRowVisible(tester, lineId);
   final dropdown = find.byKey(ValueKey('material-route-dropdown-$lineId'));
   await tester.ensureVisible(dropdown);
-  await tester.tap(dropdown);
-  await tester.pumpAndSettle();
   final field = tester.widget<UtenDropdownField>(dropdown);
   final value = field.items.singleWhere((item) => item.label == label).value;
+  await tester.tap(dropdown);
+  await tester.pumpAndSettle();
+  // Other table rows can display the same route while the portal is open.
+  // Follow the active field and item value rather than widget traversal order.
   final option = find.byKey(
     ValueKey<(String, Key?, String?)>((
       'uten-dropdown-option',
@@ -9032,7 +9034,10 @@ Future<void> _chooseMaterialRoute(
       value,
     )),
   );
-  expect(option, findsOneWidget);
+  expect(
+    find.descendant(of: option, matching: find.text(label)),
+    findsOneWidget,
+  );
   await tester.tap(option);
   await tester.pumpAndSettle();
   // 2026-09-25 确认路线退役：「确认并换桶」弹窗退役，选好即存。

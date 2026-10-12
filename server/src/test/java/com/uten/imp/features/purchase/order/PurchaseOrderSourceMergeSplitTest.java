@@ -26,7 +26,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -209,11 +209,9 @@ class PurchaseOrderSourceMergeSplitTest {
         Wiring wiring = wire(new BigDecimal("30"), new BigDecimal("20"));
         wiring.service.create(request(
                 wiring, new BigDecimal("50"), wiring.sourceA(), wiring.sourceB()));
-        assertThat(wiring.captured().get("allocQty"))
-                .as("50 应按剩余量 FIFO 拆成 30 + 20")
-                .usingComparatorForType(BigDecimal::compareTo,BigDecimal.class)
-                .containsExactly(new BigDecimal("30"),new BigDecimal("20"));
-        assertEquals(2, wiring.captured().get("lineNo").size());
+        assertSourceAllocations(wiring, new BigDecimal("50"),
+                List.of(wiring.sourceA(), wiring.sourceB()),
+                List.of(new BigDecimal("30"), new BigDecimal("20")));
     }
 
     @Test
@@ -221,10 +219,9 @@ class PurchaseOrderSourceMergeSplitTest {
         Wiring wiring = wire(new BigDecimal("30"), new BigDecimal("20"));
         wiring.service.create(request(
                 wiring, new BigDecimal("60"), wiring.sourceA(), wiring.sourceB()));
-        assertThat(wiring.captured().get("allocQty"))
-                .as("超采 60：首来源吃满剩余 30，末位来源吸收超额 30")
-                .usingComparatorForType(BigDecimal::compareTo,BigDecimal.class)
-                .containsExactly(new BigDecimal("30"),new BigDecimal("30"));
+        assertSourceAllocations(wiring, new BigDecimal("60"),
+                List.of(wiring.sourceA(), wiring.sourceB()),
+                List.of(new BigDecimal("30"), new BigDecimal("30")));
     }
 
     @Test
@@ -232,10 +229,8 @@ class PurchaseOrderSourceMergeSplitTest {
         Wiring wiring = wire(new BigDecimal("30"), new BigDecimal("20"));
         wiring.service.create(request(
                 wiring, new BigDecimal("10"), wiring.sourceA(), wiring.sourceB()));
-        assertEquals(
-                List.of(new BigDecimal("10")),
-                wiring.captured().get("allocQty"),
-                "改小为 10：只落首来源一份，0 份额来源不落库");
+        assertSourceAllocations(wiring, new BigDecimal("10"),
+                List.of(wiring.sourceA()), List.of(new BigDecimal("10")));
     }
 
     @Test
@@ -243,10 +238,8 @@ class PurchaseOrderSourceMergeSplitTest {
         Wiring wiring = wire(new BigDecimal("30"), new BigDecimal("20"));
         wiring.service.create(request(
                 wiring, new BigDecimal("8"), wiring.sourceA()));
-        assertEquals(
-                List.of(new BigDecimal("8")),
-                wiring.captured().get("allocQty"),
-                "单来源行 alloc = 行数量（历史单锚语义）");
+        assertSourceAllocations(wiring, new BigDecimal("8"),
+                List.of(wiring.sourceA()), List.of(new BigDecimal("8")));
     }
 
     @Test
@@ -257,7 +250,36 @@ class PurchaseOrderSourceMergeSplitTest {
         req.getItems().getFirst().setRequestItemIds(null);
         var document = wiring.service.create(req);
         assertNull(document.getItems().getFirst().getRequestItemId());
-        assertEquals(BigDecimal.TEN, document.getItems().getFirst().getQty());
+        assertEquals(0, BigDecimal.TEN.compareTo(document.getItems().getFirst().getQty()));
         assertEquals(Map.of(), wiring.captured());
+    }
+
+    private static void assertSourceAllocations(Wiring wiring, BigDecimal documentQty,
+                                                List<UUID> sources, List<BigDecimal> physicalShares) {
+        assertEquals(sources, wiring.captured().get("requestItemId"), "来源 UUID 必须保留 FIFO 顺序");
+        assertEquals(java.util.stream.IntStream.rangeClosed(1, sources.size()).boxed().toList(),
+                wiring.captured().get("lineNo"), "来源行号必须与 FIFO 顺序一致");
+        var paid = wiring.captured().get("allocQty");
+        var gift = wiring.captured().get("giftQty");
+        assertEquals(sources.size(), paid.size());
+        assertEquals(sources.size(), gift.size());
+        BigDecimal paidTotal = BigDecimal.ZERO, giftTotal = BigDecimal.ZERO;
+        for (int index = 0; index < sources.size(); index++) {
+            BigDecimal sourcePaid = (BigDecimal) paid.get(index);
+            BigDecimal sourceGift = (BigDecimal) gift.get(index);
+            // NUMERIC(18,4) quantity equality is exact numeric equality. Scale is
+            // representation, so 30 and 30.0000 must satisfy the same FIFO contract.
+            assertEquals(0, physicalShares.get(index).compareTo(sourcePaid), "原收费份额必须精确保留");
+            assertEquals(0, sourceGift.signum(), "未提供额外赠品的行不能伪造赠品来源份额");
+            assertEquals(0, physicalShares.get(index).compareTo(sourcePaid.add(sourceGift)),
+                    "每个来源的收费、赠品两分量必须共同守恒该来源实物预算");
+            assertTrue(sourcePaid.signum() >= 0 && sourceGift.signum() >= 0);
+            assertTrue(sourcePaid.scale() <= 4 && sourceGift.scale() <= 4);
+            paidTotal = paidTotal.add(sourcePaid);
+            giftTotal = giftTotal.add(sourceGift);
+        }
+        assertEquals(0, documentQty.compareTo(paidTotal));
+        assertEquals(0, giftTotal.signum());
+        assertEquals(0, documentQty.compareTo(paidTotal.add(giftTotal)));
     }
 }

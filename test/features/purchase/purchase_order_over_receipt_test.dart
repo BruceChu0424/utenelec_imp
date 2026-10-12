@@ -24,6 +24,9 @@ import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/models/procurement_commercial_terms.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/providers/editable_grid_column_prefs.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
+import 'package:uten_imp/shared/widgets/procurement_document_layout.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
@@ -49,6 +52,38 @@ class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState();
 }
+
+class _SavedPurchaseColumns extends PurchaseOrderGridColumnPrefsNotifier {
+  _SavedPurchaseColumns(this.raw);
+  final Object raw;
+  @override
+  Map<String, EditableGridColumnsPrefs> build() => decode(raw)!;
+}
+
+class _SavedPlatformLayout extends PlatformTableLayoutNotifier {
+  _SavedPlatformLayout(this.raw) : super(purchaseOrderItemsTableKey);
+  final Object raw;
+  @override
+  PlatformTableLayout build() => decode(raw)!;
+  void restore(Object next) => state = decode(next)!;
+}
+
+const _oldColumnLayout = {
+  'order': [
+    'goods',
+    'goodsCode',
+    'colorName',
+    'supplier',
+    'qty',
+    'price',
+    'amount',
+    'currency',
+    'taxRate',
+    'settlement',
+    'remark',
+    'allowedOverReceiptPct',
+  ],
+};
 
 /// 新建页用：/last-terms 给 g1 带货品主档允许超收 5%，g2 没有记忆。
 class _CreateApi extends ApiClient {
@@ -201,6 +236,8 @@ final _picks = <GoodsListItem>[];
 Future<void> _pumpCreate(
   WidgetTester tester, {
   List<GoodsListItem> picks = _goods,
+  Object? hostLayout,
+  Object? platformLayout,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1700, 1050));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -212,6 +249,14 @@ Future<void> _pumpCreate(
       overrides: [
         apiClientProvider.overrideWithValue(_CreateApi()),
         sessionProvider.overrideWith(_Session.new),
+        if (hostLayout != null)
+          purchaseOrderGridColumnPrefsProvider.overrideWith(
+            () => _SavedPurchaseColumns(hostLayout),
+          ),
+        if (platformLayout != null)
+          platformTableLayoutProvider(
+            purchaseOrderItemsTableKey,
+          ).overrideWith(() => _SavedPlatformLayout(platformLayout)),
         purchaseGridGoodsPickerProvider.overrideWithValue(
           (_, _) async => List.of(_picks),
         ),
@@ -294,7 +339,66 @@ Future<void> _save(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+void _expectToleranceAfterQuantity(WidgetTester tester) {
+  final columns = _grid(tester).columns;
+  double x(String key) {
+    final column = columns.firstWhere((column) => column.key == key);
+    final label = '${column.label}${column.required ? ' *' : ''}';
+    return tester.getTopLeft(find.text(label).first).dx;
+  }
+
+  expect(x('qty'), lessThan(x('allowedOverReceiptPct')));
+  expect(x('allowedOverReceiptPct'), lessThan(x('price')));
+}
+
 void main() {
+  for (final sources in [(true, false), (false, true), (true, true)]) {
+    testWidgets('采购新建旧布局恢复：宿主=${sources.$1} 平台=${sources.$2} 超收紧跟数量', (
+      tester,
+    ) async {
+      await _pumpCreate(
+        tester,
+        hostLayout: sources.$1 ? {'order': _oldColumnLayout} : null,
+        platformLayout: sources.$2 ? _oldColumnLayout : null,
+      );
+      _expectToleranceAfterQuantity(tester);
+    });
+  }
+
+  for (final pinned in [
+    ['qty'],
+    ['allowedOverReceiptPct'],
+  ]) {
+    testWidgets('采购新建旧平台固定边界不拆开数量与超收 $pinned', (tester) async {
+      await _pumpCreate(
+        tester,
+        hostLayout: {'order': _oldColumnLayout},
+        platformLayout: {..._oldColumnLayout, 'pinned': pinned},
+      );
+      _expectToleranceAfterQuantity(tester);
+    });
+  }
+
+  testWidgets('采购新建平台布局迟到也迁移超收列', (tester) async {
+    await _pumpCreate(
+      tester,
+      hostLayout: {'order': _oldColumnLayout},
+      platformLayout: const {},
+    );
+    _expectToleranceAfterQuantity(tester);
+    final context = tester.element(
+      find.byType(UtenEditableGrid<PurchaseGridRow>),
+    );
+    final container = ProviderScope.containerOf(context);
+    (container.read(
+              platformTableLayoutProvider(purchaseOrderItemsTableKey).notifier,
+            )
+            as _SavedPlatformLayout)
+        .restore(_oldColumnLayout);
+    await tester.pumpAndSettle();
+    _expectToleranceAfterQuantity(tester);
+  });
+
   group('口径', () {
     test('允许超收量 T = ROUND(q × p / 100, 4)，空比例为 0', () {
       expect(purchaseOverReceiptTolerance(100, 5), 5);

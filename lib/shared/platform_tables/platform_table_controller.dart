@@ -48,6 +48,11 @@ class PlatformTableController<T> extends ChangeNotifier {
   PlatformRowDraft? Function(T)? draftOf;
   Set<String> _exactFactKeys = const {};
   String get tableKey => _tableKey;
+  PlatformTableLayout get _defaultLayout =>
+      _container
+          ?.read(platformTableLayoutProvider(_tableKey).notifier)
+          .defaultValue ??
+      PlatformTableLayoutNotifier(_tableKey).defaultValue;
   bool get bound => binding != null;
   PlatformColumnDefinition _visibleDefinition(
     PlatformColumnDefinition definition,
@@ -143,7 +148,7 @@ class PlatformTableController<T> extends ChangeNotifier {
         if (disposed) return;
         _queryLifecycle++;
         layoutTouched = false;
-        layout = const PlatformTableLayout();
+        layout = _defaultLayout;
         _invalidateAccess();
       }
 
@@ -168,8 +173,7 @@ class PlatformTableController<T> extends ChangeNotifier {
               unawaited(reload());
             });
       layout =
-          container?.read(platformTableLayoutProvider(key)) ??
-          const PlatformTableLayout();
+          container?.read(platformTableLayoutProvider(key)) ?? _defaultLayout;
       _adoptDefinitions();
       _layoutSubscription = container?.listen(
         platformTableLayoutProvider(key),
@@ -386,7 +390,7 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   void resetLayout() {
-    updateLayout(const PlatformTableLayout());
+    updateLayout(_defaultLayout);
     _signature = '';
     _emit();
     unawaited(reload());

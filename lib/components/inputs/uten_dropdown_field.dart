@@ -708,10 +708,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final openAbove = up > down;
     final maxHeight = ((openAbove ? up : down) - 8).clamp(120.0, 320.0);
     final defaultWidth = anchor.width.clamp(120.0, 480.0);
-    final viewportWidth = math.max(
-      0.0,
-      layout.overlaySize.width - UtenSpacing.s16,
-    );
+    final viewportWidth = math.max(0.0, overlaySize.width - UtenSpacing.s16);
     final fieldWidth = widget.menuMatchContentWidth
         ? math.min(
             viewportWidth,
@@ -727,7 +724,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                 UtenSpacing.s8,
                 math.max(
                   UtenSpacing.s8,
-                  layout.overlaySize.width - UtenSpacing.s8 - fieldWidth,
+                  overlaySize.width - UtenSpacing.s8 - fieldWidth,
                 ),
               )
               .toDouble()

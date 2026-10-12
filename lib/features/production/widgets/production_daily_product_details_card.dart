@@ -547,7 +547,10 @@ class _ProductionDailyProductDetailsCardState
         key: ValueKey('daily-allocation-destination-${identityHashCode(row)}'),
         dense: true,
         allowClear: false,
-        enabled: enabled && onAllocationDestinationChanged != null,
+        enabled:
+            enabled &&
+            widget.destinationsEditable &&
+            onAllocationDestinationChanged != null,
         value: selected,
         selectedLabel: _destinationName(row),
         items: items,
@@ -558,7 +561,7 @@ class _ProductionDailyProductDetailsCardState
             ? '$fullName\n系统按先急后缓给出的建议去向，请核对'
             : null,
         onChanged: (value) {
-          if (!enabled || !destinationsEditable || value == null) return;
+          if (!enabled || !widget.destinationsEditable || value == null) return;
           onAllocationDestinationChanged?.call(
             row,
             value == outputAllocationWarehouseValue ? null : value,

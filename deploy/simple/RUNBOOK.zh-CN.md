@@ -62,7 +62,11 @@ Nginx：web 静态 + /api 反代 127.0.0.1:8080（deploy/nginx/uten-imp-http-lan
    （控制台 → 该桶 → 传输加速），再把 GitHub 变量 `OSS_UPLOAD_ENDPOINT` 填成
    `oss-accelerate.aliyuncs.com`；加速按流量另计费，只用于上传；
 2. RAM 建两个子账号，都只授权这一个桶：
-   - **发布账号**（给 GitHub）：`PutObject/GetObject` 限 `releases/*` 与 `LATEST.txt`；
+   - **发布账号**（给 GitHub）：`PutObject/GetObject/DeleteObject/DeleteObjectVersion` 限
+     `releases/*` 与 `LATEST.txt`；版本清理另外需要发布桶的 `ListObjectVersions`。
+     `DeleteObject` 用于上传探针，指定版本永久删除需要独立的 `DeleteObjectVersion`。
+     参见[OSS 版本列举权限](https://help.aliyun.com/zh/oss/developer-reference/listobjectversions)
+     与[删除指定版本权限](https://help.aliyun.com/zh/oss/developer-reference/deleteobject)；
    - **服务器账号**（给 updater）：仅 `GetObject` 同前缀，无任何写删权限；
    - 密钥分别填进 GitHub Secrets 和 `/etc/uten-imp-updater.env`。
 
@@ -240,10 +244,12 @@ git tag v1.4.1 && git push origin v1.4.1
   间隔、下次执行和最后尝试；保存值不等于服务器已应用。缺失、过期、与数据库设置不一致或
   执行失败必须显示未同步/异常。该状态查询与保存设置都不产生 OSS GET。
   `uten-imp-updater status` 仍会访问 OSS 读取最新版本，只用于主动检查，不接入周期状态探测。
-- **OSS 只保留最新一版**：发布流水线在发布成功后自动删除 `releases/` 下旧版本
-  （含版本控制桶的历史版本与删除标记）。若发布 RAM 子账号缺 `DeleteObject` 权限，
-  发布作业的 Purge 步骤会告警（发布本身不受影响）——去 RAM 控制台给发布账号策略
-  追加 `DeleteObject`（资源限 `releases/*` 与 `LATEST.txt`）即可；
+- **OSS 只保留最新一版**：发布流水线上传本版后自动删除 `releases/` 下旧版本
+  （含版本控制桶的历史版本与删除标记），并分页清理精确 `LATEST.txt` 的历史版本。
+  清理前后确认最新指针仍是本版；当前版本目录的全部对象版本与当前指针保留。
+  SDK、分页或权限错误会使 Purge 步骤和发布工作流报红，已上传的本版制品保持有效。
+  若报 `AccessDenied`，先核对发布身份的 `ListObjectVersions`、`DeleteObjectVersion`
+  权限及精确对象范围；修正后可以用同一脚本重试清理，不通过忽略错误伪造绿灯；
 - **动了数据库**（`server/src/main/resources/db/migration/` 有增改）的版本：等 CI 完成
   → `uten-imp-updater check` 暂存 → 在维护窗口 SSH：
 

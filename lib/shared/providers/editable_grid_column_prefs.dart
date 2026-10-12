@@ -4,6 +4,7 @@
 // 设备/重登经 user_preferences 自动带上（三层策略见 UtenPagePrefsNotifier）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../widgets/procurement_document_layout.dart';
 import 'uten_page_prefs_notifier.dart';
 
 /// 一个模式下的列设置快照：order=完整列顺序（含隐藏列），hidden=隐藏列 key，
@@ -14,11 +15,13 @@ class EditableGridColumnsPrefs {
     this.order = const [],
     this.hidden = const {},
     this.pinned = const {},
+    this.layoutVersion = 0,
   });
 
   final List<String> order;
   final Set<String> hidden;
   final Set<String> pinned;
+  final int layoutVersion;
 }
 
 /// 全部订货编辑页共用的基类：state = {模式key: 列设置}。页面只读写自己模式
@@ -27,6 +30,8 @@ abstract class EditableGridColumnPrefsNotifierBase
     extends UtenPagePrefsNotifier<Map<String, EditableGridColumnsPrefs>> {
   @override
   Map<String, EditableGridColumnsPrefs> get defaultValue => const {};
+
+  int currentLayoutVersion(String mode) => 0;
 
   @override
   Map<String, EditableGridColumnsPrefs>? decode(Object? raw) {
@@ -40,6 +45,9 @@ abstract class EditableGridColumnPrefsNotifierBase
       final hidden = value['hidden'];
       final pinned = value['pinned'];
       result[mode] = EditableGridColumnsPrefs(
+        layoutVersion: value['layoutVersion'] is int
+            ? value['layoutVersion'] as int
+            : 0,
         order: order is List
             ? List.unmodifiable(
                 order.map((item) => item.toString()).where((s) => s.isNotEmpty),
@@ -72,6 +80,8 @@ abstract class EditableGridColumnPrefsNotifierBase
           'order': entry.value.order,
           'hidden': entry.value.hidden.toList(growable: false),
           'pinned': entry.value.pinned.toList(growable: false),
+          if (entry.value.layoutVersion > 0)
+            'layoutVersion': entry.value.layoutVersion,
         },
     };
   }
@@ -82,12 +92,17 @@ abstract class EditableGridColumnPrefsNotifierBase
     Set<String> hidden,
     Set<String> pinned,
   ) {
+    final previousVersion = state[mode]?.layoutVersion ?? 0;
+    final currentVersion = currentLayoutVersion(mode);
     state = {
       ...state,
       mode: EditableGridColumnsPrefs(
         order: List.unmodifiable(order),
         hidden: Set.unmodifiable(hidden),
         pinned: Set.unmodifiable(pinned),
+        layoutVersion: previousVersion > currentVersion
+            ? previousVersion
+            : currentVersion,
       ),
     };
     persist();
@@ -110,6 +125,31 @@ class PurchaseOrderGridColumnPrefsNotifier
     extends EditableGridColumnPrefsNotifierBase {
   @override
   String get prefKey => 'purchase.order.gridColumns';
+
+  @override
+  int currentLayoutVersion(String mode) =>
+      mode == 'order' ? purchaseOrderColumnLayoutVersion : 0;
+
+  @override
+  Map<String, EditableGridColumnsPrefs>? decode(Object? raw) {
+    final decoded = super.decode(raw);
+    final order = decoded?['order'];
+    if (order == null ||
+        order.layoutVersion >= purchaseOrderColumnLayoutVersion) {
+      return decoded;
+    }
+    final migrated = migratePurchaseOrderColumnLayout(
+      order: order.order,
+      pinned: order.pinned,
+    );
+    decoded!['order'] = EditableGridColumnsPrefs(
+      order: migrated.order,
+      hidden: order.hidden,
+      pinned: migrated.pinned,
+      layoutVersion: purchaseOrderColumnLayoutVersion,
+    );
+    return decoded;
+  }
 }
 
 class SubcontractApplicationGridColumnPrefsNotifier

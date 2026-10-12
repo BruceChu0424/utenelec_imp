@@ -134,6 +134,7 @@ class _CardHost extends StatefulWidget {
     this.allocationsOpen = true,
     this.materialsOpen = true,
     this.enabled = true,
+    this.destinationsEditable = true,
     this.leadingInset = 0,
     this.onAddAllocation,
     this.onRemoveAllocation,
@@ -141,6 +142,7 @@ class _CardHost extends StatefulWidget {
   final _DetailsData data;
   final _Events events;
   final bool allocationsOpen, materialsOpen, enabled;
+  final bool destinationsEditable;
   final double leadingInset;
   final VoidCallback? onAddAllocation;
   final ValueChanged<DailyGridRow>? onRemoveAllocation;
@@ -195,6 +197,7 @@ class _CardHostState extends State<_CardHost> {
         allocationsExpanded: allocationsOpen,
         materialsExpanded: materialsOpen,
         enabled: widget.enabled,
+        destinationsEditable: widget.destinationsEditable,
         leadingInset: widget.leadingInset,
         onAddAllocation: widget.onAddAllocation,
         onRemoveAllocation: widget.onRemoveAllocation,
@@ -229,6 +232,7 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
   bool allocationsOpen = true,
   bool materialsOpen = true,
   bool enabled = true,
+  bool destinationsEditable = true,
   double leadingInset = 0,
   VoidCallback? onAddAllocation,
   ValueChanged<DailyGridRow>? onRemoveAllocation,
@@ -281,6 +285,7 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
                     allocationsOpen: allocationsOpen,
                     materialsOpen: materialsOpen,
                     enabled: enabled,
+                    destinationsEditable: destinationsEditable,
                     leadingInset: leadingInset,
                     onAddAllocation: onAddAllocation,
                     onRemoveAllocation: onRemoveAllocation,
@@ -1190,6 +1195,49 @@ void main() {
       },
     );
   }
+  testWidgets(
+    'destination permission disables the picker while quantity editing stays enabled',
+    (tester) async {
+      final data = _DetailsData();
+      final row = data.allocations.first;
+      final initialRevision = data.product.allocationRevision.value;
+      final (events, _) = await _pump(
+        tester,
+        data,
+        destinationsEditable: false,
+      );
+      final pickerFinder = find.byKey(
+        ValueKey('daily-allocation-destination-${identityHashCode(row)}'),
+      );
+      final picker = tester.widget<UtenDropdownField>(pickerFinder);
+      expect(picker.enabled, isFalse);
+      await tester.tap(pickerFinder);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(
+          ValueKey<(String, Key?, String?)>((
+            'uten-dropdown-option',
+            picker.key,
+            'C',
+          )),
+        ),
+        findsNothing,
+      );
+      picker.onChanged('C');
+      expect(events.destinations, isEmpty);
+      expect(row.allocationDemandId, 'A');
+      expect(data.product.allocationRevision.value, initialRevision);
+      final quantity = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              identical(widget.controller, row.allocationQty),
+        ),
+      );
+      expect(quantity.readOnly, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'read-only card cannot change destination or focus an editable quantity',
     (tester) async {

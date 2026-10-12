@@ -1790,9 +1790,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                       !_loading &&
                                       !_saving &&
                                       !_hasCreatedDocuments,
-                                  // 默认列序 2026-10-10 变更（单位列撤并进数量
-                                  // suffix、允许超收% 紧跟数量、汇率列撤）：bump
-                                  // tableKey 让旧保存布局不再压住新默认序。
+                                  // 两套保存布局分别按 layoutVersion 迁移超收列；
+                                  // 保留此 key，继续沿用列宽、显隐和扩展列设置。
                                   tableKey:
                                       'purchase.order.items.v2', // gitleaks:allow public UI column-layout persistence identifier.
                                   onAddColumn: (hidden) =>

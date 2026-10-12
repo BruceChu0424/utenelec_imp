@@ -179,6 +179,14 @@ void main() {
       Perm.stockDocApprove,
     });
     await tester.pumpAndSettle();
+    expect(find.byKey(_inspectSubmitKey), findsNothing);
+    expect(find.byKey(_stockInSubmitKey), findsNothing);
+
+    container.read(_testBatchPermissionsProvider.notifier).replace({
+      Perm.stockDocView,
+      Perm.stockDocApprove,
+    });
+    await tester.pumpAndSettle();
     expect(find.byKey(_inspectSubmitKey), findsOneWidget);
     expect(find.byKey(_stockInSubmitKey), findsNothing);
     expect(
@@ -187,6 +195,12 @@ void main() {
           .any((checkbox) => checkbox.onChanged != null),
       isTrue,
     );
+
+    container.read(_testBatchPermissionsProvider.notifier).replace(const {
+      Perm.stockDocView,
+    });
+    await tester.pumpAndSettle();
+    expect(find.byKey(_inspectSubmitKey), findsNothing);
 
     container.read(_testBatchPermissionsProvider.notifier).replace(const {});
     await tester.pumpAndSettle();
@@ -558,6 +572,7 @@ void main() {
       api: api,
       stockInBeforeInspection: true,
       permissions: const {
+        Perm.stockDocView,
         Perm.stockDocApprove,
         Perm.productionFinishedInBeforeInspection,
       },
@@ -629,7 +644,7 @@ void main() {
       tester,
       api: _BatchArrivalApi(),
       stockInBeforeInspection: true,
-      // 默认权限只有 stock_doc:approve，没有「产成品先入库后质检」独立权限。
+      // 默认有查看与登记权限，没有「产成品先入库后质检」独立权限。
     );
 
     expect(find.text('路线：先质检后入库'), findsOneWidget);
@@ -696,7 +711,7 @@ Future<ProviderContainer> _openBatchPage(
   required _BatchArrivalApi api,
   String? rememberedWarehouseId = 'warehouse-1',
   bool stockInBeforeInspection = false,
-  Set<String> permissions = const {Perm.stockDocApprove},
+  Set<String> permissions = const {Perm.stockDocView, Perm.stockDocApprove},
   MemoryFormDraftStorage? drafts,
 }) async {
   // 给了 [drafts] 就按真实应用打开本机草稿保护(登录身份 + 本机存储)。

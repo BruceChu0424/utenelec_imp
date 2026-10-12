@@ -396,7 +396,8 @@ void main() {
     final json = _pendingReviewJson(
       allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
     );
-    final totalLine = (json['items'] as List<Object?>).single as Map<String, dynamic>;
+    final totalLine =
+        (json['items'] as List<Object?>).single as Map<String, dynamic>;
     totalLine['totalAmountInput'] = '10000';
     final repository = _FakeWorkflowRepo(
       FinanceProcurementApprovalReview.fromJson(json),

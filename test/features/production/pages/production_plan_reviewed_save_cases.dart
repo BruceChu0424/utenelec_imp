@@ -119,10 +119,8 @@ Future<ProviderContainer> _openPlanReview(
           ? MaterialApp.router(routerConfig: router)
           : ValueListenableBuilder<ThemeData>(
               valueListenable: theme,
-              builder: (_, current, _) => MaterialApp.router(
-                routerConfig: router,
-                theme: current,
-              ),
+              builder: (_, current, _) =>
+                  MaterialApp.router(routerConfig: router, theme: current),
             ),
     ),
   );
@@ -134,22 +132,21 @@ Future<ProviderContainer> _openPlanReview(
 }
 
 void registerPlanReviewedSaveTests() {
-  testWidgets(
-    'review requests wait for the first confirmed Me snapshot',
-    (tester) async {
-      final meGate = Completer<SessionSnapshot?>();
-      final api = _PlanReviewApi();
-      await _openPlanReview(tester, api, meGate: meGate);
-      expect(api.reads, 0);
-      expect(find.byType(UtenEditableGrid<ProductionGridRow>), findsNothing);
-      meGate.complete(SessionSnapshot());
-      await tester.pumpAndSettle();
-      expect(api.reads, greaterThan(0));
-      expect(find.byType(UtenEditableGrid<ProductionGridRow>), findsOneWidget);
-      expect(api.reviewAttempt, isNull);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('review requests wait for the first confirmed Me snapshot', (
+    tester,
+  ) async {
+    final meGate = Completer<SessionSnapshot?>();
+    final api = _PlanReviewApi();
+    await _openPlanReview(tester, api, meGate: meGate);
+    expect(api.reads, 0);
+    expect(find.byType(UtenEditableGrid<ProductionGridRow>), findsNothing);
+    meGate.complete(SessionSnapshot());
+    await tester.pumpAndSettle();
+    expect(api.reads, greaterThan(0));
+    expect(find.byType(UtenEditableGrid<ProductionGridRow>), findsOneWidget);
+    expect(api.reviewAttempt, isNull);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'review-only plan uses original grid and retained redline then dedicated snapshot save',
     (tester) async {
@@ -270,7 +267,8 @@ void registerPlanReviewedSaveTests() {
     'an old denial cannot hide the latest server-authorized reviewer snapshot',
     (tester) async {
       final gate = Completer<void>();
-      final api = _PlanReviewApi(readGate: gate)..firstReadFailsAfterGate = true;
+      final api = _PlanReviewApi(readGate: gate)
+        ..firstReadFailsAfterGate = true;
       final theme = ValueNotifier(ThemeData.light());
       addTearDown(theme.dispose);
       final container = await _openPlanReview(tester, api, theme: theme);

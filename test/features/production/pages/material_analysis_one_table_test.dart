@@ -4921,9 +4921,7 @@ void main() {
       reason: '缺审批状态时不得弹整计划确认框',
     );
     expect(
-      requests.any(
-        (r) => r.path.endsWith('/withdraw'),
-      ),
+      requests.any((r) => r.path.endsWith('/withdraw')),
       isFalse,
       reason: '缺审批状态时不得发整计划撤回请求',
     );
@@ -5159,9 +5157,7 @@ void main() {
     );
     expect(find.textContaining('整批撤回生产计划'), findsOneWidget);
     expect(
-      requests.any(
-        (r) => r.path.endsWith('/withdraw'),
-      ),
+      requests.any((r) => r.path.endsWith('/withdraw')),
       isFalse,
       reason: '没确认前不许发取消请求',
     );
@@ -5173,9 +5169,7 @@ void main() {
     await tester.tap(find.text('确认整批撤回'));
     await tester.pumpAndSettle();
     expect(
-      requests.any(
-        (r) => r.path.endsWith('/withdraw'),
-      ),
+      requests.any((r) => r.path.endsWith('/withdraw')),
       isFalse,
       reason: '空原因必须被拦下，不发取消请求',
     );
@@ -5193,9 +5187,7 @@ void main() {
     }
     await tester.pumpAndSettle();
     final cancelRequest = requests
-        .where(
-          (r) => r.path.endsWith('/withdraw'),
-        )
+        .where((r) => r.path.endsWith('/withdraw'))
         .single;
     expect(
       cancelRequest.path,

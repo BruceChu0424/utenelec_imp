@@ -2172,7 +2172,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   void columnDragHideStart(int index) {
-    if (index < 0 || index >= _columns.length ||
+    if (index < 0 ||
+        index >= _columns.length ||
         _isRequiredLeading(_columns[index].key)) {
       return;
     }
@@ -2181,7 +2182,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   void columnReorderStart(int index) {
-    if (index < 0 || index >= _columns.length ||
+    if (index < 0 ||
+        index >= _columns.length ||
         _isRequiredLeading(_columns[index].key)) {
       return;
     }
@@ -2343,7 +2345,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         canMoveRight: cap.canMoveRight && !required,
         canMoveToFront: cap.canMoveToFront && !required,
         canMoveToBack: cap.canMoveToBack && !required,
-        onTogglePin: cap.canPin && !required ? () => _toggleColumnPin(key) : null,
+        onTogglePin: cap.canPin && !required
+            ? () => _toggleColumnPin(key)
+            : null,
         onHide: cap.canHide ? () => _toggleColumn(key) : null,
         onMoveLeft: cap.canMoveLeft && !required
             ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
@@ -2950,7 +2954,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         final retained = _requiredLeadingKeys.toSet();
         if (retained.isEmpty) retained.add(_columns.first.key);
         _hiddenKeys.addAll(
-          _columns.where((column) => !retained.contains(column.key)).map((c) => c.key),
+          _columns
+              .where((column) => !retained.contains(column.key))
+              .map((c) => c.key),
         );
       }
       _pinnedKeys.removeWhere(_hiddenKeys.contains);

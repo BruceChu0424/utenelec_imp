@@ -339,7 +339,10 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
             // 任务分段（待发料/待收退回）里 PENDING=轮到仓库动手 → 绿；
             // 记录分段混排 PENDING/DONE/CANCELLED，沿用黄/绿/灰互区分。
             cellColor: (context, r) => utenStatusBadgeCellColor(
-              wmRequisitionStatusBadgeType(r.status, taskView: widget.status == 'PENDING'),
+              wmRequisitionStatusBadgeType(
+                r.status,
+                taskView: widget.status == 'PENDING',
+              ),
             ),
           ),
           MasterColumnDef(
@@ -355,13 +358,13 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
             value: (r) => r.workshopName,
           ),
           MasterColumnDef(
-              key: 'kind',
-              label: '类型',
-              width: 90,
+            key: 'kind',
+            label: '类型',
+            width: 90,
             value: (r) => const {'ISSUE', 'RETURN'}.contains(r.kind)
                 ? wmRequisitionKindLabel(l10n, r.kind)
                 : (r.kind.isEmpty ? '未知类型' : r.kind),
-            ),
+          ),
           MasterColumnDef(
             key: 'material',
             label: '料',
@@ -465,10 +468,10 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
         onPageChange: _load,
         emptyMessage: pending
             ? (_kindFilter == 'RETURN'
-                ? '没有待收的退回'
-                : _kindFilter == 'ISSUE'
-                ? '没有待发的领料申请'
-                : '没有待处理的内料仓申请')
+                  ? '没有待收的退回'
+                  : _kindFilter == 'ISSUE'
+                  ? '没有待发的领料申请'
+                  : '没有待处理的内料仓申请')
             : '还没有记录',
       ),
     );

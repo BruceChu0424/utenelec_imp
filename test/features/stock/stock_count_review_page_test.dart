@@ -254,16 +254,19 @@ const _materialReviewPermissions = {
 void main() {
   testWidgets('嵌入审核只用状态表头，服务器过滤并清选择，保留仓库范围', (tester) async {
     final repo = _Repo();
-    await _pump(tester, repo,
-      requestId: null, reviewRoute: 'WAREHOUSE', embedded: true,
+    await _pump(
+      tester,
+      repo,
+      requestId: null,
+      reviewRoute: 'WAREHOUSE',
+      embedded: true,
       permissions: {Perm.stockCountWarehouseReview},
       warehouseScope: const WarehouseTaskScope.warehouse('warehouse-1'),
       keyword: 'PD01',
     );
     expect(find.byKey(const Key('stock-count-status-segments')), findsNothing);
-    MasterDataTableView<StockCountRequest> table() => tester.widget(
-      find.byType(MasterDataTableView<StockCountRequest>),
-    );
+    MasterDataTableView<StockCountRequest> table() =>
+        tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
     expect(table().requiredLeadingColumnKeys, ['status']);
     expect(table().singleSelection, isTrue);
     expect(table().showSelectionColumn, isTrue);
@@ -271,7 +274,11 @@ void main() {
     await tester.pumpAndSettle();
     table().onFilterChanged('status', 'REJECTED');
     await tester.pumpAndSettle();
-    expect(repo.queries.last, (reviewRoute: 'WAREHOUSE', status: 'REJECTED', page: 1));
+    expect(repo.queries.last, (
+      reviewRoute: 'WAREHOUSE',
+      status: 'REJECTED',
+      page: 1,
+    ));
     expect(table().selectedIds, isEmpty);
     table().onFilterChanged('status', null);
     await tester.pumpAndSettle();

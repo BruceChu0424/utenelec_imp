@@ -329,7 +329,7 @@ void main() {
       final repaint =
           boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
       await tester.runAsync(() async {
-    final image = await repaint.toImage();
+        final image = await repaint.toImage();
         final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
         await Directory(_output).create(recursive: true);
         await File(

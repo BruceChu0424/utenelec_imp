@@ -346,21 +346,27 @@ void main() {
     _viewport(tester, const Size(1200, 900));
     final gateway = _QualityGateway([
       WarehouseQualityResultTask.fromJson(_summaryJson('ALL_PASSED')),
-      WarehouseQualityResultTask.fromJson(_summaryJson('WAITING_INSPECTION', receiptId: 'waiting')),
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson('WAITING_INSPECTION', receiptId: 'waiting'),
+      ),
     ]);
     final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(_app(const WarehouseQualityResultsPage(), gateway, preferences));
-    await tester.pumpAndSettle();
-    MasterDataTableView<WarehouseQualityResultTask> table() => tester.widget(
-      find.byKey(const Key('warehouse-quality-result-table')),
+    await tester.pumpWidget(
+      _app(const WarehouseQualityResultsPage(), gateway, preferences),
     );
+    await tester.pumpAndSettle();
+    MasterDataTableView<WarehouseQualityResultTask> table() =>
+        tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
     expect(table().requiredLeadingColumnKeys, ['workStatus']);
     expect(table().columns.first.label, '状态');
     table().onSelectedIdsChanged!({'PURCHASE:receipt-1'});
     await tester.pumpAndSettle();
     table().onFilterChanged('workStatus', 'WAITING_INSPECTION');
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.waitingInspection);
+    expect(
+      gateway.lastWorkStatus,
+      WarehouseQualityWorkStatus.waitingInspection,
+    );
     expect(table().items.single.receiptId, 'waiting');
     expect(table().selectedIds, isEmpty);
     table().onFilterChanged('workStatus', null);
@@ -382,26 +388,36 @@ void main() {
       WarehouseQualityResultTask.fromJson(_summaryJson('ALL_PASSED')),
     ]);
     final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(_app(const WarehouseQualityResultsPage(), gateway, preferences));
+    await tester.pumpWidget(
+      _app(const WarehouseQualityResultsPage(), gateway, preferences),
+    );
     await tester.pumpAndSettle();
-    final historyButton = find.ancestor(
-      of: find.descendant(
-        of: find.byKey(const Key('warehouse-quality-result-status')),
-        matching: find.text('历史记录'),
-      ),
-      matching: find.byType(InkWell),
-    ).first;
+    final historyButton = find
+        .ancestor(
+          of: find.descendant(
+            of: find.byKey(const Key('warehouse-quality-result-status')),
+            matching: find.text('历史记录'),
+          ),
+          matching: find.byType(InkWell),
+        )
+        .first;
     tester.widget<InkWell>(historyButton).onTap!();
     await tester.pumpAndSettle();
-    tester.widget<UtenHistoryTimeFilter>(
-      find.byKey(const Key('warehouse-quality-result-history-time')),
-    ).onChanged(UtenHistoryTimeValue.range(DateTimeRange(
-      start: DateTime(2026, 10), end: DateTime(2026, 10, 7),
-    )));
+    tester
+        .widget<UtenHistoryTimeFilter>(
+          find.byKey(const Key('warehouse-quality-result-history-time')),
+        )
+        .onChanged(
+          UtenHistoryTimeValue.range(
+            DateTimeRange(
+              start: DateTime(2026, 10),
+              end: DateTime(2026, 10, 7),
+            ),
+          ),
+        );
     await tester.pumpAndSettle();
-    MasterDataTableView<WarehouseQualityResultTask> table() => tester.widget(
-      find.byKey(const Key('warehouse-quality-result-table')),
-    );
+    MasterDataTableView<WarehouseQualityResultTask> table() =>
+        tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
     table().onFilterChanged('workStatus', 'ALL_PASSED');
     await tester.pumpAndSettle();
     expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.allPassed);
@@ -410,7 +426,10 @@ void main() {
     expect(gateway.lastWorkStatus, isNull);
     expect(gateway.lastDateFrom, '2026-10-01');
     expect(gateway.lastDateTo, '2026-10-07');
-    expect(find.byKey(const Key('warehouse-quality-result-history-time')), findsOneWidget);
+    expect(
+      find.byKey(const Key('warehouse-quality-result-history-time')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

@@ -18,24 +18,46 @@ void main() {
     _setViewport(tester, const Size(1200, 1500));
     final type = ValueNotifier(WarehouseDocumentHistoryType.subcontractReturn);
     addTearDown(type.dispose);
-    final returns = _TypeGateway(WarehouseDocumentHistoryType.subcontractReturn, 'RETURN');
-    final wastes = _TypeGateway(WarehouseDocumentHistoryType.subcontractWaste, 'WASTE');
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        warehouseDocumentHistoryRepositoryProvider(WarehouseDocumentHistoryType.subcontractReturn).overrideWithValue(returns),
-        warehouseDocumentHistoryRepositoryProvider(WarehouseDocumentHistoryType.subcontractWaste).overrideWithValue(wastes),
-      ],
-      child: MaterialApp(home: Scaffold(body: ValueListenableBuilder(
-        valueListenable: type,
-        builder: (_, value, _) => WarehouseDocumentHistoryView(
-          key: const Key('same-history-state'), type: value,
-          keyword: 'same-query', refreshTick: 7, embedded: true,
-          dateFrom: '2026-10-01', dateTo: '2026-10-12',
+    final returns = _TypeGateway(
+      WarehouseDocumentHistoryType.subcontractReturn,
+      'RETURN',
+    );
+    final wastes = _TypeGateway(
+      WarehouseDocumentHistoryType.subcontractWaste,
+      'WASTE',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          warehouseDocumentHistoryRepositoryProvider(
+            WarehouseDocumentHistoryType.subcontractReturn,
+          ).overrideWithValue(returns),
+          warehouseDocumentHistoryRepositoryProvider(
+            WarehouseDocumentHistoryType.subcontractWaste,
+          ).overrideWithValue(wastes),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: ValueListenableBuilder(
+              valueListenable: type,
+              builder: (_, value, _) => WarehouseDocumentHistoryView(
+                key: const Key('same-history-state'),
+                type: value,
+                keyword: 'same-query',
+                refreshTick: 7,
+                embedded: true,
+                dateFrom: '2026-10-01',
+                dateTo: '2026-10-12',
+              ),
+            ),
+          ),
         ),
-      ))),
-    ));
+      ),
+    );
     await tester.pumpAndSettle();
-    MasterDataTableView<WarehouseDocumentHistorySummary> table(WarehouseDocumentHistoryType value) => tester.widget(
+    MasterDataTableView<WarehouseDocumentHistorySummary> table(
+      WarehouseDocumentHistoryType value,
+    ) => tester.widget(
       find.byKey(Key('warehouse-history-table-${value.segment}')),
     );
     table(type.value).onFilterChanged('status', '-1');
@@ -61,7 +83,10 @@ void main() {
     expect(wastes.lastSourceDocNo, isNull);
     expect(wastes.lastRange, ('2026-10-01', '2026-10-12'));
     expect(table(type.value).requiredLeadingColumnKeys, ['status']);
-    expect(table(type.value).items.single.type, WarehouseDocumentHistoryType.subcontractWaste);
+    expect(
+      table(type.value).items.single.type,
+      WarehouseDocumentHistoryType.subcontractWaste,
+    );
     returns.listGate!.complete();
     await tester.pumpAndSettle();
     expect(find.text('RETURN-3'), findsNothing);
@@ -319,9 +344,16 @@ class _TypeGateway extends _Gateway {
   Completer<void>? listGate;
   @override
   Future<PagedResult<WarehouseDocumentHistorySummary>> list({
-    int page = 1, int size = 20, String? keyword, String? status,
-    String? dateFrom, String? dateTo, String? sort, String? order,
-    String? billNo, String? sourceDocNo,
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    String? status,
+    String? dateFrom,
+    String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+    String? sourceDocNo,
   }) async {
     lastPage = page;
     lastStatus = status;
@@ -330,11 +362,20 @@ class _TypeGateway extends _Gateway {
     lastRange = (dateFrom, dateTo);
     await listGate?.future;
     return PagedResult(
-      items: [WarehouseDocumentHistorySummary(
-        id: '${type.segment}-$page', type: type, closed: false, itemCount: 1,
-        billNo: '$prefix-$page', status: status ?? '1',
-      )],
-      page: page, size: 1, total: 3, totalPages: 3,
+      items: [
+        WarehouseDocumentHistorySummary(
+          id: '${type.segment}-$page',
+          type: type,
+          closed: false,
+          itemCount: 1,
+          billNo: '$prefix-$page',
+          status: status ?? '1',
+        ),
+      ],
+      page: page,
+      size: 1,
+      total: 3,
+      totalPages: 3,
     );
   }
 }

@@ -19,6 +19,7 @@ class _SavedLayout extends PlatformTableLayoutNotifier {
     super.build();
     return seed;
   }
+
   @override
   void persist() {}
 }
@@ -42,50 +43,70 @@ Future<ProviderContainer> _pump(
 }) async {
   await tester.binding.setSurfaceSize(const Size(1200, 850));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final container = ProviderContainer(overrides: [
-    authenticatedScopeProvider.overrideWithValue(null),
-    apiBaseUrlProvider.overrideWithValue('https://unit.test/api'),
-    platformTableLayoutProvider(_tableKey).overrideWith(
-      () => _SavedLayout(_tableKey, seed),
-    ),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      authenticatedScopeProvider.overrideWithValue(null),
+      apiBaseUrlProvider.overrideWithValue('https://unit.test/api'),
+      platformTableLayoutProvider(
+        _tableKey,
+      ).overrideWith(() => _SavedLayout(_tableKey, seed)),
+    ],
+  );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: MaterialApp(home: Scaffold(body: SizedBox(
-      width: 820,
-      height: 480,
-      child: MasterDataTableView<String>(
-        tableKey: _tableKey,
-        requiredLeadingColumnKeys: required,
-        columns: [
-          for (final field in const [
-            ('billNo', '单号'), ('amount', '金额'), ('status', '状态'),
-            ('remark', '备注'), ('date', '日期'),
-          ]) MasterColumnDef(
-            key: field.$1, label: field.$2, width: 160,
-            sortable: field.$1 == 'billNo',
-            value: (_) => '${field.$1}-value',
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 820,
+            height: 480,
+            child: MasterDataTableView<String>(
+              tableKey: _tableKey,
+              requiredLeadingColumnKeys: required,
+              columns: [
+                for (final field in const [
+                  ('billNo', '单号'),
+                  ('amount', '金额'),
+                  ('status', '状态'),
+                  ('remark', '备注'),
+                  ('date', '日期'),
+                ])
+                  MasterColumnDef(
+                    key: field.$1,
+                    label: field.$2,
+                    width: 160,
+                    sortable: field.$1 == 'billNo',
+                    value: (_) => '${field.$1}-value',
+                  ),
+              ],
+              items: const ['row-1'],
+              facets: const {
+                'billNo': [
+                  MasterFacetBucket(value: 'DOC-1', label: 'DOC-1', count: 1),
+                ],
+              },
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (key, value) =>
+                  filters?.add(MapEntry(key, value)),
+              onSortChange: (_, _) {},
+              selectable: true,
+              idOf: (row) => row,
+              onSelectedIdsChanged: (_) {},
+            ),
           ),
-        ],
-        items: const ['row-1'],
-        facets: const {'billNo': [MasterFacetBucket(value: 'DOC-1', label: 'DOC-1', count: 1)]},
-        nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (key, value) => filters?.add(MapEntry(key, value)),
-        onSortChange: (_, _) {},
-        selectable: true,
-        idOf: (row) => row,
-        onSelectedIdsChanged: (_) {},
+        ),
       ),
-    ))),
-  ));
+    ),
+  );
   await tester.pumpAndSettle();
   return container;
 }
 
 Finder _header(String label) => find.text(label).hitTestable().first;
-double _x(WidgetTester tester, String label) => tester.getTopLeft(_header(label)).dx;
+double _x(WidgetTester tester, String label) =>
+    tester.getTopLeft(_header(label)).dx;
 
 Future<void> _rightClick(WidgetTester tester, String label) async {
   final gesture = await tester.startGesture(
@@ -104,13 +125,18 @@ void main() {
     expect(_x(tester, '状态'), lessThan(_x(tester, '金额')));
     expect(_x(tester, '金额'), lessThan(_x(tester, '单号')));
     expect(find.text('备注'), findsNothing);
-    expect(filters.any((entry) => entry.key == 'billNo' && entry.value == 'DOC-1'), isTrue);
+    expect(
+      filters.any((entry) => entry.key == 'billNo' && entry.value == 'DOC-1'),
+      isTrue,
+    );
     final stored = container.read(platformTableLayoutProvider(_tableKey));
     expect(stored.widths, _oldLayout.widths);
     expect(stored.filters, _oldLayout.filters);
     expect(stored.sortColumn, 'billNo');
     expect(stored.sortAscending, isFalse);
-    final checkboxX = tester.getTopLeft(find.byType(Checkbox).hitTestable().first).dx;
+    final checkboxX = tester
+        .getTopLeft(find.byType(Checkbox).hitTestable().first)
+        .dx;
     expect(_x(tester, '状态'), greaterThan(checkboxX));
     expect(tester.takeException(), isNull);
   });
@@ -133,7 +159,10 @@ void main() {
     expect(_x(tester, '状态'), lessThan(_x(tester, '金额')));
     await _rightClick(tester, '状态');
     for (final label in ['取消固定', '隐藏此列', '放到最后']) {
-      final ink = find.ancestor(of: find.text(label), matching: find.byType(InkWell));
+      final ink = find.ancestor(
+        of: find.text(label),
+        matching: find.byType(InkWell),
+      );
       expect(tester.widget<InkWell>(ink).onTap, isNull);
     }
     await tester.tapAt(const Offset(1100, 750));
@@ -151,8 +180,13 @@ void main() {
     await tester.tap(find.text('全屏'));
     await tester.pumpAndSettle();
     expect(_x(tester, '状态'), lessThan(_x(tester, '金额')));
-    final chooser = tester.widget<UtenColumnChooserButton>(find.byType(UtenColumnChooserButton).hitTestable().first);
-    expect(chooser.entries.singleWhere((entry) => entry.key == 'status').required, isTrue);
+    final chooser = tester.widget<UtenColumnChooserButton>(
+      find.byType(UtenColumnChooserButton).hitTestable().first,
+    );
+    expect(
+      chooser.entries.singleWhere((entry) => entry.key == 'status').required,
+      isTrue,
+    );
     chooser.onToggle('status');
     chooser.onToggleAll(false);
     await tester.pumpAndSettle();

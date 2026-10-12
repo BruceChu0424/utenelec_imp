@@ -43,11 +43,21 @@ class _FakeApi extends ApiClient {
     if (path == '/stock/docs') {
       lastStockListQuery = Map<String, dynamic>.from(query ?? const {});
     }
-    if (path == '/warehouse/task-center/inbound' || path == '/warehouse/task-center/outbound') {
+    if (path == '/warehouse/task-center/inbound' ||
+        path == '/warehouse/task-center/outbound') {
       lastTaskListQuery = Map<String, dynamic>.from(query ?? const {});
       lastTaskDirection = path.split('/').last;
-      return const {'items': <Map<String, dynamic>>[], 'page': 1, 'size': 20, 'total': 0, 'totalPages': 0,
-        'facets': {'status': <Map<String, dynamic>>[], 'billNo': <Map<String, dynamic>>[]}};
+      return const {
+        'items': <Map<String, dynamic>>[],
+        'page': 1,
+        'size': 20,
+        'total': 0,
+        'totalPages': 0,
+        'facets': {
+          'status': <Map<String, dynamic>>[],
+          'billNo': <Map<String, dynamic>>[],
+        },
+      };
     }
     // 列表端点回空页；其余端点回空对象（页面各自 catch 后显示空态/降级）。
     if (path == '/stock/docs' ||
@@ -218,19 +228,32 @@ void main() {
 
   group('merged warehouse task center (2026-09-24)', () {
     testWidgets('旧scWaste预设不恢复仓库损耗主分类，旧只读权限不扩到任务中心', (tester) async {
-      await tester.pumpWidget(app(
-        const WarehouseTaskCenterPage(initialGroup: 'scWaste'),
-        {Perm.stockDocView, Perm.warehouseSubcontractWasteHistoryView},
-      ));
+      await tester.pumpWidget(
+        app(const WarehouseTaskCenterPage(initialGroup: 'scWaste'), {
+          Perm.stockDocView,
+          Perm.warehouseSubcontractWasteHistoryView,
+        }),
+      );
       await tester.pumpAndSettle();
-      final groups = tester.widget<UtenFilterToolbar<String>>(find.byWidgetPredicate(
-        (widget) => widget is UtenFilterToolbar<String> &&
-          widget.segmentsKey == const Key('warehouse-task-center-groups'),
-      ));
-      expect(groups.segments.any((segment) => segment.value == 'scWaste'), isFalse);
+      final groups = tester.widget<UtenFilterToolbar<String>>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenFilterToolbar<String> &&
+              widget.segmentsKey == const Key('warehouse-task-center-groups'),
+        ),
+      );
+      expect(
+        groups.segments.any((segment) => segment.value == 'scWaste'),
+        isFalse,
+      );
       expect(find.text('委外损耗'), findsNothing);
-      expect(requiredAnyPermFor(RouteName.warehouseTasks), isNot(contains(Perm.warehouseSubcontractWasteHistoryView)));
-      expect(requiredAnyPermFor(RouteName.warehouseSubcontractWasteHistory), [Perm.warehouseSubcontractWasteHistoryView]);
+      expect(
+        requiredAnyPermFor(RouteName.warehouseTasks),
+        isNot(contains(Perm.warehouseSubcontractWasteHistoryView)),
+      );
+      expect(requiredAnyPermFor(RouteName.warehouseSubcontractWasteHistory), [
+        Perm.warehouseSubcontractWasteHistoryView,
+      ]);
       expect(tester.takeException(), isNull);
     });
 
@@ -298,7 +321,14 @@ void main() {
       expect(find.text('全部单据'), findsOneWidget);
       // fixture 的生产领料红数为3，会按真实规则自动选中DRAW待办来源。
       expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
-      expect(tester.widget<WarehouseTaskRecordsView>(find.byType(WarehouseTaskRecordsView)).source, 'DRAW');
+      expect(
+        tester
+            .widget<WarehouseTaskRecordsView>(
+              find.byType(WarehouseTaskRecordsView),
+            )
+            .source,
+        'DRAW',
+      );
       await tester.pump(const Duration(seconds: 61));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -350,10 +380,16 @@ void main() {
     });
     testWidgets('旧draw退料深链归入库的生产退料来源', (tester) async {
       final api = _FakeApi();
-      await tester.pumpWidget(app(
-        const WarehouseTaskCenterPage(initialGroup: 'draw', initialSection: 'wdraw'),
-        {Perm.stockDocView}, api: api,
-      ));
+      await tester.pumpWidget(
+        app(
+          const WarehouseTaskCenterPage(
+            initialGroup: 'draw',
+            initialSection: 'wdraw',
+          ),
+          {Perm.stockDocView},
+          api: api,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(api.lastTaskDirection, 'inbound');
       expect(api.lastTaskListQuery?['source'], 'RETURN');
@@ -380,7 +416,9 @@ void main() {
     // 无委外出仓权限：委外分段隐藏。
     expect(find.text('委外出库'), findsNothing);
     expect(find.text('生产领料'), findsOneWidget);
-    final scaffold = tester.widget<WarehouseTaskCenterScaffold>(find.byType(WarehouseTaskCenterScaffold));
+    final scaffold = tester.widget<WarehouseTaskCenterScaffold>(
+      find.byType(WarehouseTaskCenterScaffold),
+    );
     expect(scaffold.segments.last.value, 'ALL');
     expect(scaffold.segments.last.label, '全部单据');
 
@@ -390,7 +428,10 @@ void main() {
     await tester.pump();
     expect(find.text('新建其它出库'), findsNothing);
     expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
-    expect(find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')), findsNothing);
+    expect(
+      find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')),
+      findsNothing,
+    );
     expect(find.text('历史单据'), findsNothing);
     // 分段切换会触达 60s 轮询计数的重建，推进时钟排空再卸载页面。
     await tester.pump(const Duration(seconds: 61));
@@ -480,42 +521,48 @@ void main() {
     await tester.pump();
     expect(find.text('新建其它出库'), findsOneWidget);
     expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
-    expect(find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')), findsNothing);
+    expect(
+      find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')),
+      findsNothing,
+    );
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
 
-  testWidgets('inbound source row filters permissions and loads all stages directly', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      app(const WarehouseInboundTaskCenterPage(), const {
-        Perm.warehouseInboundView,
-      }),
-    );
-    await tester.pump();
+  testWidgets(
+    'inbound source row filters permissions and loads all stages directly',
+    (tester) async {
+      await tester.pumpWidget(
+        app(const WarehouseInboundTaskCenterPage(), const {
+          Perm.warehouseInboundView,
+        }),
+      );
+      await tester.pump();
 
-    expect(find.text('采购入库'), findsOneWidget);
-    expect(find.text('委外入库'), findsOneWidget);
-    // 无库存单据权限：产成品/其它入库分段隐藏。
-    expect(find.text('产成品入库'), findsNothing);
-    expect(find.text('其它入库'), findsNothing);
-    // 进页面不预选大类：小类行只随选中的大类出现（大类未选时小类锁定）。
-    expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
-    expect(find.text('预计到货'), findsNothing);
+      expect(find.text('采购入库'), findsOneWidget);
+      expect(find.text('委外入库'), findsOneWidget);
+      // 无库存单据权限：产成品/其它入库分段隐藏。
+      expect(find.text('产成品入库'), findsNothing);
+      expect(find.text('其它入库'), findsNothing);
+      // 进页面不预选大类：小类行只随选中的大类出现（大类未选时小类锁定）。
+      expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
+      expect(find.text('预计到货'), findsNothing);
 
-    // 来源后直接进统一表；预计到货、异常、收货历史是行状态/记录类型。
-    await tester.tap(find.text('采购入库'));
-    await tester.pump();
-    expect(find.text('预计到货'), findsNothing);
-    expect(find.text('到货异常'), findsNothing);
-    expect(find.text('收货历史'), findsNothing);
-    expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
-    final scaffold = tester.widget<WarehouseTaskCenterScaffold>(find.byType(WarehouseTaskCenterScaffold));
-    expect(scaffold.segments.last.value, 'ALL');
-    expect(scaffold.segments.last.label, '全部单据');
-  });
+      // 来源后直接进统一表；预计到货、异常、收货历史是行状态/记录类型。
+      await tester.tap(find.text('采购入库'));
+      await tester.pump();
+      expect(find.text('预计到货'), findsNothing);
+      expect(find.text('到货异常'), findsNothing);
+      expect(find.text('收货历史'), findsNothing);
+      expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
+      final scaffold = tester.widget<WarehouseTaskCenterScaffold>(
+        find.byType(WarehouseTaskCenterScaffold),
+      );
+      expect(scaffold.segments.last.value, 'ALL');
+      expect(scaffold.segments.last.label, '全部单据');
+    },
+  );
 
   testWidgets('draw task center gates on stock doc view', (tester) async {
     await tester.pumpWidget(

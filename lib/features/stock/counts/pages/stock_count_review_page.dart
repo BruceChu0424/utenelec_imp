@@ -153,7 +153,8 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
 
   void _selectStatus(String? value) {
     if (_working) return;
-    final next = const {'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'}.contains(value)
+    final next =
+        const {'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'}.contains(value)
         ? value!
         : '';
     if (_status == next) return;
@@ -476,46 +477,48 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     };
     return Column(
       children: [
-        if (!widget.embedded) Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-          child: UtenFilterToolbar<String>(
-            segmentsKey: const Key('stock-count-status-segments'),
-            selected: {_status},
-            enabled: !_working,
-            segments: [
-              UtenFilterSegment<String>(
-                value: 'PENDING',
-                label: '待审核',
-                count:
-                    reviewTodo ?? (_status == 'PENDING' ? _page?.total : null),
-                countForm: reviewTodo == null
-                    ? UtenSegmentCountForm.browsing
-                    : UtenSegmentCountForm.actionable,
-              ),
-              UtenFilterSegment<String>(
-                value: 'APPROVED',
-                label: '已通过',
-                count: _status == 'APPROVED' ? _page?.total : null,
-              ),
-              UtenFilterSegment<String>(
-                value: 'REJECTED',
-                label: '已驳回',
-                count: _status == 'REJECTED' ? _page?.total : null,
-              ),
-              UtenFilterSegment<String>(
-                value: 'CANCELLED',
-                label: '已撤回',
-                count: _status == 'CANCELLED' ? _page?.total : null,
-              ),
-              UtenFilterSegment<String>(
-                value: '',
-                label: '全部',
-                count: _status.isEmpty ? _page?.total : null,
-              ),
-            ],
-            onSelectionChanged: _selectStatus,
+        if (!widget.embedded)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+            child: UtenFilterToolbar<String>(
+              segmentsKey: const Key('stock-count-status-segments'),
+              selected: {_status},
+              enabled: !_working,
+              segments: [
+                UtenFilterSegment<String>(
+                  value: 'PENDING',
+                  label: '待审核',
+                  count:
+                      reviewTodo ??
+                      (_status == 'PENDING' ? _page?.total : null),
+                  countForm: reviewTodo == null
+                      ? UtenSegmentCountForm.browsing
+                      : UtenSegmentCountForm.actionable,
+                ),
+                UtenFilterSegment<String>(
+                  value: 'APPROVED',
+                  label: '已通过',
+                  count: _status == 'APPROVED' ? _page?.total : null,
+                ),
+                UtenFilterSegment<String>(
+                  value: 'REJECTED',
+                  label: '已驳回',
+                  count: _status == 'REJECTED' ? _page?.total : null,
+                ),
+                UtenFilterSegment<String>(
+                  value: 'CANCELLED',
+                  label: '已撤回',
+                  count: _status == 'CANCELLED' ? _page?.total : null,
+                ),
+                UtenFilterSegment<String>(
+                  value: '',
+                  label: '全部',
+                  count: _status.isEmpty ? _page?.total : null,
+                ),
+              ],
+              onSelectionChanged: _selectStatus,
+            ),
           ),
-        ),
         Expanded(
           child: MasterDataTableView<StockCountRequest>(
             tableKey: 'stock.count-requests',
@@ -526,12 +529,13 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                 label: '状态',
                 width: 72,
                 value: (r) => _statusText(r.status),
-                cellColor: (_, r) => utenStatusBadgeCellColor(switch (r.status) {
-                  'PENDING' => UtenStatusBadgeType.accent,
-                  'APPROVED' => UtenStatusBadgeType.success,
-                  'REJECTED' => UtenStatusBadgeType.danger,
-                  _ => UtenStatusBadgeType.neutral,
-                }),
+                cellColor: (_, r) =>
+                    utenStatusBadgeCellColor(switch (r.status) {
+                      'PENDING' => UtenStatusBadgeType.accent,
+                      'APPROVED' => UtenStatusBadgeType.success,
+                      'REJECTED' => UtenStatusBadgeType.danger,
+                      _ => UtenStatusBadgeType.neutral,
+                    }),
               ),
               MasterColumnDef(
                 key: 'requestNo',
@@ -583,12 +587,13 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             ],
             items: _page?.items ?? const [],
             facets: {
-              if (widget.embedded) 'status': const [
-                MasterFacetBucket(value: 'PENDING', label: '待审核', count: 0),
-                MasterFacetBucket(value: 'APPROVED', label: '已通过', count: 0),
-                MasterFacetBucket(value: 'REJECTED', label: '已驳回', count: 0),
-                MasterFacetBucket(value: 'CANCELLED', label: '已撤回', count: 0),
-              ],
+              if (widget.embedded)
+                'status': const [
+                  MasterFacetBucket(value: 'PENDING', label: '待审核', count: 0),
+                  MasterFacetBucket(value: 'APPROVED', label: '已通过', count: 0),
+                  MasterFacetBucket(value: 'REJECTED', label: '已驳回', count: 0),
+                  MasterFacetBucket(value: 'CANCELLED', label: '已撤回', count: 0),
+                ],
             },
             nullCounts: const {},
             filters: {

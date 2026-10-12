@@ -21,63 +21,110 @@ class _SavedQuery extends PlatformTableLayoutNotifier {
       hasQueryPreferences: true,
     );
   }
+
   @override
   void persist() {}
 }
 
 class _Requisitions extends FakeWorkshopMaterialRepository {
-  final queries = <({String? status, String? kind, int page, Map<String, String> scope})>[];
+  final queries =
+      <({String? status, String? kind, int page, Map<String, String> scope})>[];
   final rows = [
-    for (var index = 1; index <= 20; index++) WmRequisition(
-      id: 'issue-$index', requestNo: 'ISSUE-$index', kind: 'ISSUE', status: 'PENDING',
+    for (var index = 1; index <= 20; index++)
+      WmRequisition(
+        id: 'issue-$index',
+        requestNo: 'ISSUE-$index',
+        kind: 'ISSUE',
+        status: 'PENDING',
+      ),
+    const WmRequisition(
+      id: 'return-21',
+      requestNo: 'RETURN-21',
+      kind: 'RETURN',
+      status: 'DONE',
     ),
-    const WmRequisition(id: 'return-21', requestNo: 'RETURN-21', kind: 'RETURN', status: 'DONE'),
   ];
 
   @override
   Future<PagedResult<WmRequisition>> requisitions({
-    String? status, String? kind, String? workshopId, String? keyword,
-    int page = 1, int size = 20, Map<String, String> scope = const {},
+    String? status,
+    String? kind,
+    String? workshopId,
+    String? keyword,
+    int page = 1,
+    int size = 20,
+    Map<String, String> scope = const {},
   }) async {
     queries.add((status: status, kind: kind, page: page, scope: Map.of(scope)));
-    final matching = rows.where((row) =>
-      (status == null || row.status == status) && (kind == null || row.kind == kind)).toList();
+    final matching = rows
+        .where(
+          (row) =>
+              (status == null || row.status == status) &&
+              (kind == null || row.kind == kind),
+        )
+        .toList();
     return PagedResult(
       items: matching.skip((page - 1) * size).take(size).toList(),
-      page: page, size: size, total: matching.length,
+      page: page,
+      size: size,
+      total: matching.length,
       totalPages: (matching.length + size - 1) ~/ size,
     );
   }
 }
 
-MasterDataTableView<WmRequisition> _table(WidgetTester tester) => tester.widget(
-  find.byType(MasterDataTableView<WmRequisition>),
-);
+MasterDataTableView<WmRequisition> _table(WidgetTester tester) =>
+    tester.widget(find.byType(MasterDataTableView<WmRequisition>));
 
 void main() {
   testWidgets('旧记录查询偏好不能覆盖待收退回入口的默认数据范围', (tester) async {
     final repo = _Requisitions();
-    const key = 'features.warehouse.materialbin.widgets.workshop_material_task_center.WmRequisitionSegmentState.build.1';
-    await pumpWorkshopMaterialPage(tester, ProviderScope(
-      overrides: [platformTableLayoutProvider(key).overrideWith(() => _SavedQuery(key))],
-      child: const Scaffold(body: WmRequisitionSegment(
-        status: 'PENDING', kind: 'RETURN', keyword: '', refreshTick: 0,
-        header: SizedBox.shrink(),
-      )),
-    ), repo: repo);
-    expect(repo.queries.every((query) => query.status == 'PENDING' && query.kind == 'RETURN'), isTrue);
+    const key =
+        'features.warehouse.materialbin.widgets.workshop_material_task_center.WmRequisitionSegmentState.build.1';
+    await pumpWorkshopMaterialPage(
+      tester,
+      ProviderScope(
+        overrides: [
+          platformTableLayoutProvider(key).overrideWith(() => _SavedQuery(key)),
+        ],
+        child: const Scaffold(
+          body: WmRequisitionSegment(
+            status: 'PENDING',
+            kind: 'RETURN',
+            keyword: '',
+            refreshTick: 0,
+            header: SizedBox.shrink(),
+          ),
+        ),
+      ),
+      repo: repo,
+    );
+    expect(
+      repo.queries.every(
+        (query) => query.status == 'PENDING' && query.kind == 'RETURN',
+      ),
+      isTrue,
+    );
     expect(_table(tester).filters, {'status': 'PENDING', 'kind': 'RETURN'});
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('申请状态/类型表头由服务端过滤全结果，清空保留仓库范围', (tester) async {
     final repo = _Requisitions();
-    await pumpWorkshopMaterialPage(tester, const Scaffold(body: WarehouseListScope(
-      scope: WarehouseTaskScope.warehouse('warehouse-1'),
-      child: WmRequisitionSegment(
-        keyword: '', refreshTick: 0, header: SizedBox.shrink(),
+    await pumpWorkshopMaterialPage(
+      tester,
+      const Scaffold(
+        body: WarehouseListScope(
+          scope: WarehouseTaskScope.warehouse('warehouse-1'),
+          child: WmRequisitionSegment(
+            keyword: '',
+            refreshTick: 0,
+            header: SizedBox.shrink(),
+          ),
+        ),
       ),
-    )), repo: repo);
+      repo: repo,
+    );
     expect(find.text('RETURN-21'), findsNothing);
     expect(_table(tester).totalPages, 2);
     expect(_table(tester).requiredLeadingColumnKeys, ['status']);
@@ -103,10 +150,19 @@ void main() {
 
   testWidgets('待发料默认范围仍是PENDING/ISSUE，旧非法表头值清回全部', (tester) async {
     final repo = _Requisitions();
-    await pumpWorkshopMaterialPage(tester, const Scaffold(body: WmRequisitionSegment(
-      status: 'PENDING', kind: 'ISSUE', keyword: '', refreshTick: 0,
-      header: SizedBox.shrink(),
-    )), repo: repo);
+    await pumpWorkshopMaterialPage(
+      tester,
+      const Scaffold(
+        body: WmRequisitionSegment(
+          status: 'PENDING',
+          kind: 'ISSUE',
+          keyword: '',
+          refreshTick: 0,
+          header: SizedBox.shrink(),
+        ),
+      ),
+      repo: repo,
+    );
     expect(repo.queries.last.status, 'PENDING');
     expect(repo.queries.last.kind, 'ISSUE');
     expect(find.text('领料待发'), findsWidgets);

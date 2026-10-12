@@ -40,6 +40,7 @@ class LinkedItem {
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
   });
 
   final String goodsId;
@@ -54,6 +55,7 @@ class LinkedItem {
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据供应商 id（编辑页表头未选供应商时回填用）
@@ -177,6 +179,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
   bool allowOverRemaining = false,
 }) async {
   final upstream = _upstreamType(cfg);
+  final sourceUnitRates = <String, String?>{};
   final docConfig =
       UtenDocLinkPickerConfig<
         PurchaseDocListItem,
@@ -220,6 +223,11 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
           final detail = await ref
               .read(purchaseRepositoryProvider(upstream))
               .detail(docId);
+          for (final item in detail.items) {
+            if (item.id != null) {
+              sourceUnitRates[item.id!] = item.unitRateExactText;
+            }
+          }
           return UtenDocLinkDetail<PurchaseDocItem>(
             partyId: detail.supplierId,
             items: detail.items,
@@ -290,6 +298,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
             colorId: d.colorId,
             unitId: d.unitId,
             unitRate: d.unitRate,
+            unitRateText: sourceUnitRates[d.upstreamItemId],
           ),
         )
         .toList(),

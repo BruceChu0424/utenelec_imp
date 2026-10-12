@@ -12,6 +12,7 @@ void main() {
     bool supportsTotalInput = false,
     bool Function()? canCalculateQuantity,
     bool Function()? canCalculatePrice,
+    bool Function()? allowZeroQuantity,
     Iterable<BusinessColumn> Function()? extraColumns,
     TextEditingController? discount,
   }) {
@@ -21,6 +22,7 @@ void main() {
       supportsTotalInput: supportsTotalInput,
       canCalculateQuantity: canCalculateQuantity,
       canCalculatePrice: canCalculatePrice,
+      allowZeroQuantity: allowZeroQuantity,
       extraColumns: extraColumns,
       discount: discount,
     );
@@ -46,6 +48,39 @@ void main() {
     price.text = '0.1234567891';
     expect(pricing.amountExact, '152.41577651425098');
     expect(pricing.totalAmountInput, isNull);
+  });
+
+  test(
+    'zero quantity is rejected by default and is opt-in only for forward amount',
+    () {
+      create();
+      qty.text = '0';
+      price.text = '2';
+      expect(pricing.validate(), contains('必须大于 0'));
+      pricing.dispose();
+      create(allowZeroQuantity: () => true, supportsTotalInput: true);
+      expect(pricing.validate(), isNull);
+      expect(pricing.amountExact, '0');
+      qty.text = '-1';
+      expect(pricing.validate(), contains('不能小于 0'));
+      qty.text = '0.00001';
+      expect(pricing.validate(), contains('4 位小数'));
+    },
+  );
+
+  test('zero-forward opt-in still refuses inverse zero denominators', () {
+    create(allowZeroQuantity: () => true, supportsTotalInput: true);
+    qty.text = '0';
+    price.text = '2';
+    pricing.setMode(LinePricingMode.calculatePrice);
+    pricing.totalAmount.text = '0';
+    expect(pricing.validate(), contains('必须大于 0'));
+    expect(pricing.amountExact, isNull);
+    pricing.setMode(LinePricingMode.calculateQuantity);
+    price.text = '0';
+    pricing.totalAmount.text = '1';
+    expect(pricing.validate(), contains('必须大于 0'));
+    expect(pricing.amountExact, isNull);
   });
 
   test('packaging quantity and total calculate a cheap unit price exactly', () {

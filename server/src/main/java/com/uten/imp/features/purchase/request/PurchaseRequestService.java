@@ -62,27 +62,8 @@ public class PurchaseRequestService {
 
     /** Same pending financial commitment on the detail and order-generation paths.
      * The correlated lookup uses the request-item index instead of aggregating every order source. */
-    private static final String PENDING_ORDER_QUANTITY_JOIN = """
-            LEFT JOIN LATERAL (
-                SELECT COALESCE(SUM(part.qty), 0) AS pending_qty
-                FROM (
-                    SELECT src.alloc_qty AS qty, oi.order_id
-                    FROM purchase_order_item_sources src
-                    JOIN purchase_order_items oi ON oi.id=src.order_item_id AND NOT oi.is_deleted
-                    WHERE src.request_item_id=i.id
-                    UNION ALL
-                    SELECT oi.qty, oi.order_id FROM purchase_order_items oi
-                    WHERE oi.request_item_id=i.id AND NOT oi.is_deleted
-                      AND NOT EXISTS(SELECT 1 FROM purchase_order_item_sources src WHERE src.order_item_id=oi.id)
-                ) part
-                JOIN purchase_orders o ON o.id=part.order_id
-                WHERE o.status = 0 AND o.is_deleted = FALSE
-                  AND EXISTS (
-                      SELECT 1 FROM procurement_order_approval_cases approval
-                      WHERE approval.order_type = 'PURCHASE' AND approval.order_id = o.id
-                        AND approval.status = 'PENDING')
-            ) pending ON TRUE
-            """;
+    private static final String PENDING_ORDER_QUANTITY_JOIN =
+            com.uten.imp.features.purchase.common.PurchaseRequestQuantities.pendingJoin("i");
 
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
@@ -163,19 +144,21 @@ public class PurchaseRequestService {
     private RequestDetail readDetail(UUID id, boolean historyRead) {
         PurchaseRequest r = requireRequest(id, historyRead);
         Map<UUID, BigDecimal> pending = new LinkedHashMap<>();
+        Map<UUID, BigDecimal> pendingGift = new LinkedHashMap<>();
         Map<UUID, Long> versions = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT i.id, pending.pending_qty, i.row_version FROM purchase_request_items i
+                SELECT i.id, pending.pending_qty, i.row_version, pending.pending_gift_qty FROM purchase_request_items i
                 %s
                 WHERE i.request_id = :requestId AND i.is_deleted = FALSE
                 """.formatted(PENDING_ORDER_QUANTITY_JOIN)).setParameter("requestId", id))) {
             pending.put(uuid(row[0]), decimal(row[1]));
+            pendingGift.put(uuid(row[0]), row.length>3?decimal(row[3]):BigDecimal.ZERO);
             versions.put(uuid(row[0]), ((Number) row[2]).longValue());
         }
         List<RequestItemDto> items = itemRepo.findByRequestIdOrderByLineNoAsc(id).stream()
                 .filter(item -> versions.containsKey(item.getId()))
                 .map(item -> toItemDto(item, pending.getOrDefault(item.getId(), BigDecimal.ZERO),
-                        versions.get(item.getId()))).toList();
+                        pendingGift.getOrDefault(item.getId(),BigDecimal.ZERO), versions.get(item.getId()))).toList();
         return finishHistory(toDetail(r, items), r, historyRead);
     }
 
@@ -229,7 +212,8 @@ public class PurchaseRequestService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已下达且可分解的申请明细可修正数量");
         }
         taskClaim.requireNoActiveClaimByOther("PURCHASE_DECOMPOSE", requestId.toString());
-        java.math.BigDecimal ordered = item.getOrderedQty();
+        java.math.BigDecimal ordered = (item.getOrderedQty()==null?BigDecimal.ZERO:item.getOrderedQty())
+                .add(item.getGiftOrderedQty()==null?BigDecimal.ZERO:item.getGiftOrderedQty());
         if (ordered != null && ordered.signum() > 0) {
             throw new ApiException(ErrorCode.BUSINESS,
                     "该明细已生成订货单（在途 " + ordered.stripTrailingZeros().toPlainString()
@@ -285,7 +269,7 @@ public class PurchaseRequestService {
     /** 待财务审核订货单对该申请明细的占用量（与工作台 V199 purchase_pending 同口径）。 */
     private java.math.BigDecimal pendingApprovalOrderQty(UUID requestItemId) {
         Object value = em.createNativeQuery("""
-                SELECT pending.pending_qty FROM purchase_request_items i
+                SELECT pending.pending_physical_qty FROM purchase_request_items i
                 %s WHERE i.id=:itemId AND NOT i.is_deleted
                 """.formatted(PENDING_ORDER_QUANTITY_JOIN))
                 .setParameter("itemId", requestItemId)
@@ -307,7 +291,9 @@ public class PurchaseRequestService {
                                        COALESCE(i.deliver_date, r.need_date), r.warehouse_id,
                                        COALESCE(NULLIF(i.production_plan_no, ''),
                                                 NULLIF(i.source_doc_no, ''),
-                                                NULLIF(r.source_doc_no, ''), r.bill_no)
+                                                NULLIF(r.source_doc_no, ''), r.bill_no),
+                                       i.quantity_semantics, COALESCE(i.gift_qty,0),
+                                       COALESCE(i.gift_ordered_qty,0), COALESCE(pending.pending_gift_qty,0)
                                 FROM purchase_request_items i
                                 JOIN purchase_requests r ON r.id = i.request_id
                                 %s
@@ -319,11 +305,11 @@ public class PurchaseRequestService {
                                   AND COALESCE(r.is_stopped, FALSE) = FALSE
                                   AND i.unit_id IS NOT NULL
                                   AND COALESCE(i.unit_rate, 0) > 0
-                                  AND COALESCE(i.qty, 0)
-                                        - COALESCE(i.ordered_qty, 0)
-                                        - COALESCE(pending.pending_qty, 0) > 0
+                                  AND %s - %s - COALESCE(pending.pending_physical_qty,0) > 0
                                 ORDER BY i.id
-                                """.formatted(PENDING_ORDER_QUANTITY_JOIN))
+                                """.formatted(PENDING_ORDER_QUANTITY_JOIN,
+                                        com.uten.imp.features.purchase.common.PurchaseRequestQuantities.requiredSql("i"),
+                                        com.uten.imp.features.purchase.common.PurchaseRequestQuantities.orderedSql("i")))
                         .setParameter("itemIds", itemIds));
 
         // 并发认领守卫（PURCHASE_DECOMPOSE，最高双工风险）：他人正分解同一申请时拒绝重复操作。
@@ -349,13 +335,17 @@ public class PurchaseRequestService {
             BigDecimal requestedQty = decimal(row[7]);
             BigDecimal orderedQty = decimal(row[8]);
             BigDecimal pendingQty = decimal(row[9]);
-            BigDecimal remainingQty = requestedQty
-                    .subtract(orderedQty)
-                    .subtract(pendingQty);
+            String semantics=row.length>13?text(row[13]):com.uten.imp.common.finance.ProcurementQuantities.LEGACY;
+            BigDecimal giftQty=row.length>14?decimal(row[14]):BigDecimal.ZERO;
+            BigDecimal giftOrdered=row.length>15?decimal(row[15]):BigDecimal.ZERO;
+            BigDecimal giftPending=row.length>16?decimal(row[16]):BigDecimal.ZERO;
+            var remaining=com.uten.imp.features.purchase.common.PurchaseRequestQuantities.remaining(
+                    semantics,requestedQty,giftQty,orderedQty,giftOrdered,pendingQty,giftPending);
             return new DecompositionPreviewItem(
                     uuid(row[0]), text(row[1]), itemId, uuid(row[3]), uuid(row[4]),
                     uuid(row[5]), decimal(row[6]), requestedQty, orderedQty, pendingQty,
-                    remainingQty, localDate(row[10]), uuid(row[11]), text(row[12]));
+                    remaining.chargedRemaining(), localDate(row[10]), uuid(row[11]), text(row[12]),
+                    semantics,giftQty,giftOrdered,giftPending,remaining.giftRemaining(),remaining.physicalRemaining());
         }).toList();
     }
 
@@ -579,6 +569,11 @@ public class PurchaseRequestService {
     }
 
     private RequestItemDto toItemDto(PurchaseRequestItem it, BigDecimal pendingQty, long rowVersion) {
+        return toItemDto(it,pendingQty,BigDecimal.ZERO,rowVersion);
+    }
+    private RequestItemDto toItemDto(PurchaseRequestItem it, BigDecimal pendingQty, BigDecimal pendingGiftQty, long rowVersion) {
+        var remaining=com.uten.imp.features.purchase.common.PurchaseRequestQuantities.remaining(
+                it.getQuantitySemantics(),it.getQty(),it.getGiftQty(),it.getOrderedQty(),it.getGiftOrderedQty(),pendingQty,pendingGiftQty);
         RequestItemDto dto = new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
@@ -586,11 +581,10 @@ public class PurchaseRequestService {
                 it.getAmountLocal(), it.getOrderedQty(), it.getGiftQty(), it.getWeight(),
                 it.getSourceDocNo(), it.getDeliverDate(), it.getProductionPlanNo(),
                 it.getSalesOrderNo(), it.getRemark(), pendingQty,
-                (it.getQty() == null ? BigDecimal.ZERO : it.getQty())
-                        .subtract(it.getOrderedQty() == null ? BigDecimal.ZERO : it.getOrderedQty())
-                        .subtract(pendingQty).max(BigDecimal.ZERO), rowVersion);
+                remaining.chargedRemaining(), rowVersion);
         dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftOrderedQty(it.getGiftOrderedQty());
-        dto.setRemainingGiftQty(com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics())?it.getGiftQty().subtract(it.getGiftOrderedQty()).max(BigDecimal.ZERO):BigDecimal.ZERO);
+        dto.setRemainingGiftQty(remaining.giftRemaining());dto.setPendingGiftQty(pendingGiftQty);
+        dto.setPhysicalRemainingQty(remaining.physicalRemaining());
         return dto;
     }
 

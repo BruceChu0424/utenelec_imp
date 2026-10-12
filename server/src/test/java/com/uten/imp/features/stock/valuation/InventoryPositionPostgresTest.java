@@ -75,7 +75,23 @@ class InventoryPositionPostgresTest {
             consumptionReturns=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);
         }
         db.execute(consumptionReturns.substring(0,consumptionReturns.indexOf("-- Correcting an explicit material settlement")));
-        db.execute("ALTER TABLE stock_value_production_cost_objects ADD COLUMN source_kind text NOT NULL DEFAULT 'PRODUCTION_EXECUTION', ADD COLUMN business_refresh_pending boolean NOT NULL DEFAULT false");
+        db.execute("ALTER TABLE stock_value_production_cost_objects ADD COLUMN source_kind text NOT NULL DEFAULT 'PRODUCTION_EXECUTION'");
+        try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V521__production_settlement_exact_issue_sources.sql")){
+            String migration=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);
+            // Use the actual refresh columns and projection permission; this value-core
+            // fixture supplies the report/identity adapters below rather than the full production schema.
+            db.execute(migration.substring(migration.indexOf("ALTER TABLE stock_value_production_cost_objects"),
+                    migration.indexOf("CREATE FUNCTION fn_guard_cost_business_refresh_source")));
+        }
+        db.execute("""
+                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,target_qty_base numeric NOT NULL);
+                CREATE FUNCTION fn_production_execution_cost_scope(uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT $1 $$;
+                CREATE FUNCTION fn_production_execution_cost_target(uuid) RETURNS numeric LANGUAGE sql
+                    AS $$ SELECT target_qty_base FROM production_execution_segments WHERE id=$1 $$;
+                CREATE TABLE production_daily_reports(id uuid PRIMARY KEY,status smallint,is_deleted boolean NOT NULL DEFAULT false);
+                CREATE TABLE production_daily_report_items(id uuid PRIMARY KEY,report_id uuid,execution_segment_id uuid,
+                    is_final boolean,is_actual_surplus boolean,is_deleted boolean NOT NULL DEFAULT false);
+                """);
         db.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,warehouse_id uuid,status smallint,is_deleted boolean DEFAULT false,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text)");
         db.execute("CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,execution_segment_id uuid)");
         try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V527__unused_procurement_stock_in_reversal.sql")){
@@ -207,6 +223,98 @@ class InventoryPositionPostgresTest {
         money(ownedInPool(suggested,"QUALITY_PASSED"),"0");
         assertThat(db.queryForObject("SELECT count(*) FROM stock_value_events WHERE position_store_reversal_of=?",
                 Integer.class,stored.eventId())).isZero();
+    }
+
+    @Test void unrelatedPendingCostWorkDoesNotChangeQualifiedWithdrawalFactsOrReplayState(){
+        PoolKey target=key(),unrelated=key();
+        PositionValue acquisition=acquire(target,"10","100","0",true,List.of());
+        PositionValue passed=move(target,acquisition.positionRootId(),"10",Owner.QUALITY_PASSED);
+        MovementValue stored=store(target,List.of(slice(passed.positionRootId(),"10")));
+        PositionValue other=acquire(unrelated,"2","20","0",true,List.of());
+        PositionValue otherPassed=move(unrelated,other.positionRootId(),"2",Owner.QUALITY_PASSED);
+        store(unrelated,List.of(slice(otherPassed.positionRootId(),"2")));adjust(unrelated,other.fundingSourceNodeId(),"1");
+        assertThat(values.pool(target).state()).isEqualTo(State.PENDING);
+        assertThat(values.pool(target).propagationPending()).isTrue();
+        int sources=db.queryForObject("SELECT count(*) FROM stock_value_acquisition_sources",Integer.class);
+        EventContext context=context();ReverseStore command=new ReverseStore(context,UUID.randomUUID(),target,bd("10"),stored.movementId());
+        MovementValue first=locked(target,()->{var result=positions.reverseStore(command);physical(result,context,target,bd("10"),-1);return result;});
+        assertThat(first.state()).isEqualTo(State.FINAL);money(first.knownValueLocal(),"100");
+        assertThat(db.queryForObject("SELECT result_state FROM stock_value_events WHERE id=?",String.class,first.eventId())).isEqualTo("FINAL");
+        var rows=readinessRowCounts();MovementValue replay=locked(target,()->positions.reverseStore(command));
+        assertThat(replay.replayed()).isTrue();assertThat(replay.state()).isEqualTo(first.state());assertThat(replay.eventId()).isEqualTo(first.eventId());
+        assertThat(readinessRowCounts()).isEqualTo(rows);physicalPool(target,"0","0");money(ownedInPool(target,"QUALITY_PASSED"),"100");
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_acquisition_sources",Integer.class)).isEqualTo(sources);
+        assertThat(values.pool(target).state()).isEqualTo(State.PENDING);assertThat(positions.position(passed.positionRootId()).state()).isEqualTo(State.PENDING);
+        drain();money(ownedInPool(target,"QUALITY_PASSED"),"100");physicalPool(unrelated,"2","21");
+    }
+
+    @Test void qualifiedWithdrawalTracksItsOwnUnpropagatedInputsAndUnknownZeroIsNotFinal(){
+        PoolKey target=key();PositionValue acquisition=acquire(target,"10","100","0",true,List.of());
+        PositionValue passed=move(target,acquisition.positionRootId(),"10",Owner.QUALITY_PASSED);
+        MovementValue stored=store(target,List.of(slice(passed.positionRootId(),"10")));adjust(target,acquisition.fundingSourceNodeId(),"1");
+        // The stored node still has its old bound and pending counter, but a
+        // real task on a positive input ancestor has not reached it yet.
+        var source=values.node(stored.valueNodeId(),false);assertThat(source.pending()).isZero();
+        assertThat(values.sourceClosureState(source)).isEqualTo(State.PENDING);
+        EventContext context=context();ReverseStore command=new ReverseStore(context,UUID.randomUUID(),target,bd("10"),stored.movementId());
+        MovementValue reversed=locked(target,()->{var result=positions.reverseStore(command);physical(result,context,target,bd("10"),-1);return result;});
+        assertThat(reversed.state()).isEqualTo(State.PENDING);assertThat(locked(target,()->positions.reverseStore(command)).state()).isEqualTo(State.PENDING);
+        physicalPool(target,"0","0");drain();money(ownedInPool(target,"QUALITY_PASSED"),"101");physicalPool(target,"0","0");
+
+        PoolKey unknown=key();PositionValue unpriced=acquire(unknown,"1",null,"0",false,List.of());
+        PositionValue unknownPassed=move(unknown,unpriced.positionRootId(),"1",Owner.QUALITY_PASSED);
+        MovementValue unknownStored=store(unknown,List.of(slice(unknownPassed.positionRootId(),"1")));
+        assertThat(values.sourceClosureState(values.node(unknownStored.valueNodeId(),false))).isEqualTo(State.PENDING);
+        var rows=readinessRowCounts();
+        assertThatThrownBy(()->locked(unknown,()->positions.reverseStore(new ReverseStore(context(),UUID.randomUUID(),unknown,bd("1"),unknownStored.movementId()))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("成本尚未闭合");
+        assertThat(readinessRowCounts()).isEqualTo(rows);physicalPool(unknown,"1","0");
+    }
+
+    @Test void reportTargetRefreshBlocksItsFinalOutputAndPositiveIssueClosureBeforeTasksExist(){
+        Production p=finalProduction();
+        MovementValue issue=locked(p.product(),()->{EventContext event=context();
+            var result=values.issue(new Issue(event,UUID.randomUUID(),p.product(),bd("1"),qty(p.product()),Destination.IN_TRANSIT,event.sourceItemId()));
+            physical(result,event,p.product(),bd("1"),-1);return result;});
+        var output=values.node(p.fg().valueNodeId(),false);var input=values.node(issue.valueNodeId(),false);
+        assertThat(output.sourceFinal()).isTrue();assertThat(output.pending()).isZero();
+        assertThat(input.sourceFinal()).isTrue();assertThat(input.pending()).isZero();
+        assertThat(input.to().subtract(input.from())).isEqualByComparingTo("1");
+        assertThat(values.sourceClosureState(output)).isEqualTo(State.FINAL);
+        assertThat(values.sourceClosureState(input)).isEqualTo(State.FINAL);
+        reportTargetChanged(p);
+        try{
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_tasks WHERE execution_segment_id=? AND status='PENDING'",Integer.class,p.segment())).isZero();
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_production_cost_dirty WHERE execution_segment_id=? AND observed_revision>cleared_revision",Integer.class,p.segment())).isZero();
+            assertThat(values.node(output.id(),false)).isEqualTo(output);
+            assertThat(values.node(input.id(),false)).isEqualTo(input);
+            assertThat(values.sourceClosureState(output)).isEqualTo(State.PENDING);
+            assertThat(values.sourceClosureState(input)).isEqualTo(State.PENDING);
+            assertThat(values.sourceClosureState(input)).isEqualTo(State.PENDING);
+            physicalPool(p.product(),"19","570");money(owned(p.product(),"IN_TRANSIT"),"30");
+        }finally{clearReportTargetRefresh(p);}
+        assertThat(values.sourceClosureState(input)).isEqualTo(State.FINAL);
+    }
+
+    @Test void unrelatedReportRefreshKeepsQualifiedWithdrawalFinalAcrossReplay(){
+        Production unrelated=finalProduction();PoolKey target=key();
+        PositionValue acquired=acquire(target,"10","100","0",true,List.of());
+        PositionValue passed=move(target,acquired.positionRootId(),"10",Owner.QUALITY_PASSED);
+        MovementValue stored=store(target,List.of(slice(passed.positionRootId(),"10")));
+        reportTargetChanged(unrelated);
+        try{
+            assertThat(values.sourceClosureState(values.node(stored.valueNodeId(),false))).isEqualTo(State.FINAL);
+            int sources=db.queryForObject("SELECT count(*) FROM stock_value_acquisition_sources",Integer.class);
+            EventContext event=context();ReverseStore command=new ReverseStore(event,UUID.randomUUID(),target,bd("10"),stored.movementId());
+            MovementValue first=locked(target,()->{var result=positions.reverseStore(command);physical(result,event,target,bd("10"),-1);return result;});
+            assertThat(first.state()).isEqualTo(State.FINAL);money(first.knownValueLocal(),"100");
+            assertThat(db.queryForObject("SELECT result_state FROM stock_value_events WHERE id=?",String.class,first.eventId())).isEqualTo("FINAL");
+            var rows=readinessRowCounts();clearReportTargetRefresh(unrelated);
+            MovementValue replay=locked(target,()->positions.reverseStore(command));
+            assertThat(replay.replayed()).isTrue();assertThat(replay.state()).isEqualTo(first.state());assertThat(replay.eventId()).isEqualTo(first.eventId());
+            assertThat(readinessRowCounts()).isEqualTo(rows);physicalPool(target,"0","0");money(ownedInPool(target,"QUALITY_PASSED"),"100");
+            assertThat(db.queryForObject("SELECT count(*) FROM stock_value_acquisition_sources",Integer.class)).isEqualTo(sources);
+        }finally{clearReportTargetRefresh(unrelated);}
     }
 
     @Test void salesReturnMovesOriginalCogsThroughInspectionToGoodAndLossThenLateCostFollowsBoth(){
@@ -645,6 +753,24 @@ class InventoryPositionPostgresTest {
         var outputs=first?List.of(new InventoryProductionCostPort.Output(p.fg().valueNodeId(),p.fg().movementId())):List.<InventoryProductionCostPort.Output>of();
         return lockedAll(List.of(p.product(),p.b(),p.e()),()->productionCosts.revise(new InventoryProductionCostPort.Revision(context(),p.segment(),p.product(),prior,bd(target),false,UUID.randomUUID(),"b".repeat(64),inputs,outputs)));
     }
+    private static Production finalProduction(){
+        Production p=production("20",false);
+        var inputs=List.of(new InventoryProductionCostPort.Input(p.bInput(),UUID.randomUUID(),InventoryProductionCostPort.InputKind.CONSUMED),
+                new InventoryProductionCostPort.Input(p.eInput(),UUID.randomUUID(),InventoryProductionCostPort.InputKind.CONSUMED));
+        lockedAll(List.of(p.product(),p.b(),p.e()),()->productionCosts.revise(new InventoryProductionCostPort.Revision(context(),p.segment(),p.product(),0,bd("20"),true,
+                UUID.randomUUID(),"b".repeat(64),inputs,List.of(new InventoryProductionCostPort.Output(p.fg().valueNodeId(),p.fg().movementId())))));
+        drainProduction();return p;
+    }
+    private static void reportTargetChanged(Production p){
+        UUID report=UUID.randomUUID();
+        db.update("INSERT INTO production_execution_segments VALUES (?,21)",p.segment());
+        db.update("INSERT INTO production_daily_reports(id,status) VALUES (?,1)",report);
+        db.update("INSERT INTO production_daily_report_items(id,report_id,execution_segment_id,is_final,is_actual_surplus) VALUES (?,?,?,true,false)",UUID.randomUUID(),report,p.segment());
+        locked(p.product(),()->{new ProductionInventoryValueService(new NamedParameterJdbcTemplate(db),positions,productionCosts,mutex,null).targetChangedByReport(report,USER);return null;});
+        assertThat(db.queryForObject("SELECT business_refresh_pending AND business_refresh_event_id=? AND business_refresh_actor_id=? FROM stock_value_production_cost_objects WHERE execution_segment_id=?",
+                Boolean.class,report,USER,p.segment())).isTrue();
+    }
+    private static void clearReportTargetRefresh(Production p){db.update("UPDATE stock_value_production_cost_objects SET business_refresh_pending=false WHERE execution_segment_id=?",p.segment());}
     private static void costPosition(Production p,String actual,String allocated,String wip,String adjustment,String unclassified){var v=productionCosts.position(p.segment());
         money(v.actualKnownCostLocal(),actual);money(v.allocatedToOutputsLocal(),allocated);money(v.heldWipLocal(),wip);money(v.pendingReallocationLocal(),adjustment);money(v.unclassifiedLocal(),unclassified);
         money(v.allocatedToOutputsLocal().add(v.heldWipLocal()).add(v.pendingReallocationLocal()).add(v.unclassifiedLocal()),actual);}

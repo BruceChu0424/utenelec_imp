@@ -1,6 +1,7 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.features.documents.DocumentUnapprovalService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
@@ -18,8 +19,13 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.*;
@@ -36,8 +42,23 @@ import static org.assertj.core.api.Assertions.*;
     "uten.crypto.hmac-key=gift-regression-isolated-hmac-key-0123456789-abcdef",
     "uten.bootstrap.admin-login=gift-regression-bootstrap","uten.bootstrap.admin-password=GiftRegressionAdmin-1!"})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners=PurchaseReturnActualCostGlEndToEndTest.Cleanup.class,
+    mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class PurchaseReturnActualCostGlEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+    private static MigratedSchemaBaseline.ScopedDatabase database;
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
+        // Period-wide regeneration and posting-role configuration must not adopt
+        // another full-chain scenario's confirmed expense or configured variance role.
+        database=MigratedSchemaBaseline.openDatabase("purchase_return_gl");
+        registry.add("spring.datasource.url",database::getJdbcUrl);
+        registry.add("spring.datasource.username",database::getUsername);
+        registry.add("spring.datasource.password",database::getPassword);
+    }
+    public static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
+        @Override public void afterTestClass(TestContext ignored) throws Exception {if(database!=null)database.close();}
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired PurchaseRequestService requests;

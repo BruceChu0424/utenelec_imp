@@ -48,6 +48,13 @@ class GiftFreeOnlyOrderConservationEndToEndTest {
     @Autowired ProcurementInspectionService inspection;
     @Autowired ProcurementIqcStockInService stockIn;
     @Autowired DocumentUnapprovalService unapproval;
+    @Autowired com.uten.imp.features.stock.StockDocService stockDocuments;
+    @Autowired com.uten.imp.application.port.InventoryValuationPort values;
+    @Autowired com.uten.imp.features.stock.InventoryMutationLock inventoryLocks;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
+    @Autowired com.uten.imp.application.concurrency.FulfillmentMutationLocks mutationLocks;
+    @Autowired com.uten.imp.common.concurrency.ProcurementMutationFootprint procurementFootprints;
+    @Autowired com.uten.imp.application.port.ProductionMutationFootprintPort stockFootprints;
     @Autowired com.uten.imp.features.finance.payables.ProcurementIqcRejectionService rejections;
     private FullChainEndToEndTest harness;
     private record F(FullChainEndToEndTest.World w,UUID requestItem,UUID order,UUID orderItem,UUID currency){}
@@ -70,6 +77,83 @@ class GiftFreeOnlyOrderConservationEndToEndTest {
         assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(returned)).isZero();
         returns.reverse(returned);assertThat(stock(f)).isEqualByComparingTo("1");assertThat(value(f)).isZero();
         receipts.reverse(received);assertThat(stock(f)).isZero();assertThat(value(f)).isZero();
+    }
+
+    @Test void confirmedFreeReceiptUnapprovalKeepsExactZeroFactsWhileUnrelatedCostPublicationIsPending(){
+        F f=fixture();UUID received=receipt(f,"0","1");receipts.approve(received);passAndStock(f,received);
+        UUID source=receipts.detail(received).getItems().getFirst().getId();
+        UUID returned=returned(f,source,"0","1");returns.approve(returned);returns.reverse(returned);
+        UUID unrelated=unrelatedStockReceipt(f);
+        var transaction=new org.springframework.transaction.support.TransactionTemplate(transactions);
+        UUID[] adjustment={null};
+        try{
+            transaction.executeWithoutResult(status->{
+                mutationLocks.acquireAll(List.of(
+                    com.uten.imp.application.concurrency.FulfillmentMutationLocks.Footprint.undeclared(()->
+                        procurementFootprints.receipts(List.of(new com.uten.imp.common.concurrency.ProcurementMutationFootprint.ReceiptRef("PURCHASE",received)))),
+                    com.uten.imp.application.concurrency.FulfillmentMutationLocks.Footprint.undeclared(()->
+                        stockFootprints.forStockDocuments(List.of(unrelated))))).verifyUnchanged();
+                adjustment[0]=queueUnrelatedCostCorrection(f,unrelated);
+                var giftPool=new com.uten.imp.application.port.InventoryValuationPort.PoolKey(
+                    f.w().warehouseId(),f.w().goodsD(),null);
+                assertThat(values.pool(giftPool).state()).isEqualTo(
+                    com.uten.imp.application.port.InventoryValuationPort.State.PENDING);
+                var command=new DocumentUnapprovalService.UnapproveRequest(
+                    "gift-pending-unapproval-"+received,"原赠品实物与零成本完整，无关传播不阻断反审");
+                var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)
+                    unapproval.unapprove("purchaseReceipt",received,command);
+                var repeated=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)
+                    unapproval.unapprove("purchaseReceipt",received,command);
+                assertThat(repeated.getId()).isEqualTo(draft.getId());
+                db.execute("SET CONSTRAINTS trg_stock_value_reverse_store IMMEDIATE");
+                assertThat(stock(f)).isZero();assertThat(value(f)).isZero();assertThat(ap(received)).isZero();
+                assertThat(number("SELECT received_qty+gift_received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isZero();
+                assertThat(draft.getItems().getFirst().getQty()).isZero();
+                assertThat(draft.getItems().getFirst().getGiftQty()).isEqualByComparingTo("1");
+                assertThat(number("SELECT COUNT(*) FROM stock_value_events WHERE source_doc_id=? AND operation='POSITION_STORE_REVERSE' AND result_state='FINAL' AND known_value_local=0",received)).isEqualByComparingTo("1");
+                assertThat(number("SELECT COUNT(*) FROM stock_value_postings posting JOIN stock_value_events event ON event.id=posting.event_id WHERE event.source_doc_id=? AND event.operation='POSITION_STORE_REVERSE'",received)).isZero();
+                // Publication remains conservative even though this reversal's own source facts are final.
+                assertThat(values.pool(giftPool).state()).isEqualTo(
+                    com.uten.imp.application.port.InventoryValuationPort.State.PENDING);
+                assertThat(db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,adjustment[0])).isEqualTo("PENDING");
+            });
+        }finally{
+            if(adjustment[0]!=null)drainUnrelatedCostCorrection(f,adjustment[0],transaction);
+        }
+    }
+
+    private UUID unrelatedStockReceipt(F f){
+        var request=new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        request.setDocType("OTHER_IN");request.setBillDate(BusinessTime.today());request.setWarehouseId(f.w().warehouseId());
+        var line=new com.uten.imp.features.stock.dto.StockDocItemLine();
+        line.setGoodsId(f.w().goodsE());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);
+        line.setQty(BigDecimal.TEN);line.setPrice(BigDecimal.TEN);request.setItems(List.of(line));
+        return stockDocuments.create(request).getId();
+    }
+
+    private UUID queueUnrelatedCostCorrection(F f,UUID document){
+        stockDocuments.approve(document);
+        var original=db.queryForMap("SELECT source_item_id,result_node_id FROM stock_value_events WHERE source_doc_id=? AND operation='RECEIVE'",document);
+        UUID event=UUID.randomUUID();
+        var context=new com.uten.imp.application.port.InventoryValuationPort.EventContext(event,"TEST_GIFT_UNRELATED_COST",
+            document,(UUID)original.get("source_item_id"),1,f.w().superAdminUserId(),f.w().employeeId(),event.toString(),java.time.OffsetDateTime.now());
+        var correction=values.adjustSource(new com.uten.imp.application.port.InventoryValuationPort.SourceAdjustment(
+            context,(UUID)original.get("result_node_id"),BigDecimal.ONE,true));
+        assertThat(correction.pendingTasks()).isPositive();
+        assertThat(db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,correction.eventId())).isEqualTo("PENDING");
+        return correction.eventId();
+    }
+
+    private void drainUnrelatedCostCorrection(F f,UUID event,org.springframework.transaction.support.TransactionTemplate transaction){
+        for(int attempt=0;attempt<100;attempt++){
+            List<UUID> tasks=db.queryForList("SELECT id FROM stock_value_tasks WHERE event_id=? AND status='PENDING' ORDER BY task_sequence",UUID.class,event);
+            if(tasks.isEmpty())return;
+            for(UUID task:tasks)transaction.executeWithoutResult(status->{
+                inventoryLocks.lock(new com.uten.imp.features.stock.InventoryKey(f.w().goodsE(),null));
+                values.propagate(task);
+            });
+        }
+        fail("The unrelated fixture's actual cost correction did not finish");
     }
 
     private UUID failAndReturnGift(F f,UUID receipt){

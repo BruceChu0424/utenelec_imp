@@ -334,10 +334,18 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final open = await ref
           .read(purchaseRepositoryProvider(PurchaseDocType.request))
           .decompositionPreview(selectedIds);
-      if (open.isEmpty) {
+      final available = open
+          .where(
+            (item) =>
+                (financeExactDecimalUnits(item.availablePhysicalQtyText) ??
+                    BigInt.zero) >
+                BigInt.zero,
+          )
+          .toList();
+      if (available.isEmpty) {
         throw StateError('所选申请明细都已生成过订货，请回任务中心刷新后重新选择');
       }
-      final goodsIds = open.map((item) => item.goodsId).toSet();
+      final goodsIds = available.map((item) => item.goodsId).toSet();
       await ref
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
@@ -346,14 +354,23 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final rows = <PurchaseGridRow>[];
       // 同货品+颜色+单位 合并：数量=剩余量之和，来源逐条聚合（保留预览顺序）。
       final merged = <String, PurchaseGridRow>{};
-      for (final item in open) {
+      for (final item in available) {
+        final paidText = financeExactTrimmed(item.chargedRemainingQtyText);
+        final giftText = financeExactTrimmed(item.defaultGiftQtyText);
+        if (financeExactDecimalUnits(paidText) == null ||
+            financeExactDecimalUnits(giftText) == null) {
+          throw StateError('申请收费量或赠品剩余量尚未完整核定，请刷新后重新选择');
+        }
         final key =
-            '${item.goodsId}|${item.colorId ?? ''}|${item.unitId ?? ''}|${item.unitRate ?? 1}';
+            '${item.goodsId}|${item.colorId ?? ''}|${item.unitId ?? ''}|${financeExactTrimmed(item.unitRateText ?? (item.unitRate ?? 1).toString())}';
         final existing = merged[key];
         if (existing != null) {
-          final total =
-              (double.tryParse(existing.qty.text) ?? 0) + item.remainingQty;
-          existing.qty.text = _formatQty(total);
+          existing.qty.text = financeExactTrimmed(
+            financeExactSumTexts([existing.qty.text, paidText]),
+          )!;
+          existing.giftQty.text = financeExactTrimmed(
+            financeExactSumTexts([existing.giftQty.text, giftText]),
+          )!;
           existing.maxQty = (existing.maxQty ?? 0) + item.remainingQty;
           existing.upstreamItemIds = [
             ...existing.upstreamItemIds,
@@ -372,11 +389,14 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         final linked = LinkedItem(
           goodsId: item.goodsId,
           qty: item.remainingQty,
+          qtyText: paidText,
+          giftQtyText: giftText,
           maxQty: item.remainingQty,
           upstreamItemId: item.sourceItemId,
           colorId: item.colorId,
           unitId: item.unitId,
           unitRate: item.unitRate,
+          unitRateText: item.unitRateExactText,
         );
         final row = PurchaseGridRow.fromLinked(
           linked,
@@ -406,14 +426,14 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       // 引入申请行后按主档默认值预填各货品的整套商业条款。
       await _prefillRememberedTerms();
       final dates =
-          open
+          available
               .map((line) => _parseDate(line.needDate))
               .whereType<DateTime>()
               .toList()
             ..sort();
       _deliverDate = dates.isEmpty ? null : dates.first;
       // 并发认领（PURCHASE_DECOMPOSE）：仅 UX/防碰撞层；后端守卫是正确性底线。
-      final requestIds = open.map((e) => e.sourceDocumentId).toSet();
+      final requestIds = available.map((e) => e.sourceDocumentId).toSet();
       if (requestIds.isNotEmpty) {
         _decomposeClaim = TaskClaimSession(
           ref.read(taskClaimRepositoryProvider),
@@ -429,10 +449,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (mounted) context.appError('读取采购申请失败，请返回任务中心重新选择');
     }
   }
-
-  /// 数量显示：整数值去掉小数尾巴，避免合并求和出现 100.00000000001。
-  static String _formatQty(num value) =>
-      value == value.roundToDouble() ? value.toInt().toString() : '$value';
 
   Future<void> _loadExisting() async {
     try {
@@ -488,6 +504,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               ..colorId = it.colorId
               ..unitId = it.unitId
               ..unitRate = it.unitRate
+              ..unitRateText = it.unitRateExactText
               // V463：多来源合并行回显（来源明细 ids + 单号逐条带回）。
               ..upstreamItemIds = [
                 if (it.requestItemId != null) it.requestItemId!,
@@ -916,10 +933,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final touched = <PurchaseGridRow>[];
     void mergeIntoGrid(PurchaseGridRow row) {
       final key =
-          '${row.goods?.id ?? ''}|${row.colorId ?? ''}|${row.unitId ?? ''}|${row.unitRate ?? 1}';
+          '${row.goods?.id ?? ''}|${row.colorId ?? ''}|${row.unitId ?? ''}|${row.recordedUnitRateText ?? '1'}';
       for (final existing in _grid.rows) {
         final existingKey =
-            '${existing.goods?.id ?? ''}|${existing.colorId ?? ''}|${existing.unitId ?? ''}|${existing.unitRate ?? 1}';
+            '${existing.goods?.id ?? ''}|${existing.colorId ?? ''}|${existing.unitId ?? ''}|${existing.recordedUnitRateText ?? '1'}';
         if (existingKey != key ||
             existing.pricing.totalAmountInput != null ||
             existing.extraColumnsPreventMerge) {
@@ -1079,7 +1096,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       rowNoOf: (r) => rowNoOf[r] ?? 0,
       groupKey: (r) =>
           '${_comboKey(r)}|${r.goods?.id ?? ''}|${r.colorId ?? ''}|'
-          '${r.unitId ?? ''}|${r.unitRate ?? 1}|${r.extraColumnsSignature}|'
+          '${r.unitId ?? ''}|${r.recordedUnitRateText ?? '1'}|${r.extraColumnsSignature}|'
           '${(r.extraColumnsPreventMerge || r.pricing.totalAmountInput != null) ? identityHashCode(r) : ''}',
       identityLabel: (r) {
         final parts = <String>[
@@ -1222,6 +1239,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     final badRate = <String>[];
     final badTax = <String>[];
     final badQty = <String>[];
+    final badUnitRate = <String>[];
     final badPrice = <String>[];
     final badWeight = <String>[];
     final badOverReceipt = <String>[];
@@ -1233,6 +1251,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final r = gridRows[i];
       if (r.goods == null || !submitted.contains(r)) continue;
       final label = labelOf(i, r);
+      if (!r.unitRateInputValid) badUnitRate.add(label);
       if (r.supplierId == null) missingSupplier.add(label);
       if (r.settlementMethodId == null) missingSettlement.add(label);
       if (r.currencyId == null) missingCurrency.add(label);
@@ -1270,6 +1289,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     // 在工具条上找一个 2026-09-11 已撤掉的按钮。
     const batchHint = '请补齐后再提交（可勾选多行后右键「统一设置条款」）';
     final rowIssues = <String>[
+      if (badUnitRate.isNotEmpty)
+        _rowIssueMessage(badUnitRate, '的单位换算率无效', action: '请重新引入来源或核对单位'),
       if (missingSupplier.isNotEmpty)
         _rowIssueMessage(missingSupplier, '未选择供应商', action: batchHint),
       if (missingSettlement.isNotEmpty)
@@ -1368,7 +1389,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.unitRateText != null || r.unitRate != null)
+          'unitRate': r.unitRateText ?? r.unitRate,
         'weight': ?weight,
         'supplierId': r.supplierId,
         'settlementMethodId': r.settlementMethodId,

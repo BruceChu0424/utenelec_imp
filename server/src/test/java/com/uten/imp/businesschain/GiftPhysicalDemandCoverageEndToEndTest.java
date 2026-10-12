@@ -74,12 +74,54 @@ class GiftPhysicalDemandCoverageEndToEndTest {
         assertThat(number("SELECT gift_ordered_qty FROM purchase_request_items WHERE id=?",f.requestItem())).isEqualByComparingTo("1");
         assertThat(number("SELECT qty FROM purchase_request_items WHERE id=?",f.requestItem())).isEqualByComparingTo("10");
         assertThat(db.queryForObject("SELECT r.is_closed FROM purchase_requests r JOIN purchase_request_items i ON i.request_id=r.id WHERE i.id=?",Boolean.class,f.requestItem())).isTrue();
+        var originalRequest=requests.detail(db.queryForObject("SELECT request_id FROM purchase_request_items WHERE id=?",UUID.class,f.requestItem()));
+        var remaining=originalRequest.getItems().getFirst();
+        assertThat(remaining.getQty()).isEqualByComparingTo("10");
+        assertThat(remaining.getOrderedQty()).isEqualByComparingTo("9");
+        assertThat(remaining.getGiftOrderedQty()).isEqualByComparingTo("1");
+        assertThat(remaining.getRemainingQty()).isZero();
+        assertThat(remaining.getRemainingGiftQty()).isZero();
+        assertThat(remaining.getPhysicalRemainingQty()).isZero();
+        assertThatThrownBy(()->requests.decompositionPreview(List.of(f.requestItem())))
+            .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         UUID received=receipt(f,"9","1");receipts.approve(received);passAndStock(f,received);
         assertThat(stock(f)).isEqualByComparingTo("10");assertThat(value(f)).isEqualByComparingTo("90");assertThat(ap(received)).isEqualByComparingTo("90");
     }
 
     @Test void trueProductionPlanNeedsTenAndReceivesNineChargedPlusOneFreeWithoutChangingItsOriginalNeed(){ plannedSupply(true); }
     @Test void analysisReadyTenBeforeIssueThenNewPlanUsesTenPhysicalUnitsWithoutChangingChargedNine(){ plannedSupply(false); }
+
+    @Test void anUnfulfilledPromisedGiftStaysFreeAndAPendingFreeOrderCannotBeDecomposedAgain(){
+        F f=fixture("1","10","0");
+        UUID request=db.queryForObject("SELECT request_id FROM purchase_request_items WHERE id=?",UUID.class,f.requestItem());
+        var detail=requests.detail(request).getItems().getFirst();
+        assertThat(detail.getRemainingQty()).isZero();
+        assertThat(detail.getRemainingGiftQty()).isEqualByComparingTo("1");
+        assertThat(detail.getPhysicalRemainingQty()).isEqualByComparingTo("1");
+        var preview=requests.decompositionPreview(List.of(f.requestItem())).getFirst();
+        assertThat(preview.remainingQty()).isZero();
+        assertThat(preview.remainingGiftQty()).isEqualByComparingTo("1");
+        assertThat(preview.physicalRemainingQty()).isEqualByComparingTo("1");
+        var order=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();
+        order.setBillDate(BusinessTime.today());order.setSupplierId(f.w().supplierId());
+        order.setWarehouseId(f.w().warehouseId());order.setCurrencyId(f.currency());
+        order.setExchangeRate(BigDecimal.ONE);order.setTaxRate(BigDecimal.ZERO);order.setSettlementMethodId(settlement());
+        var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();
+        line.setGoodsId(f.w().goodsD());line.setUnitId(f.w().unitId());line.setUnitRate(BigDecimal.ONE);
+        line.setQty(BigDecimal.ZERO);line.setGiftQty(BigDecimal.ONE);line.setPrice(BigDecimal.ZERO);
+        line.setRequestItemId(f.requestItem());order.setItems(List.of(line));
+        UUID pendingOrder=orders.create(order).getId();finance.submit("PURCHASE",pendingOrder);
+        var reserved=requests.detail(request).getItems().getFirst();
+        assertThat(reserved.getPendingQty()).isZero();
+        assertThat(reserved.getPendingGiftQty()).isEqualByComparingTo("1");
+        assertThat(reserved.getRemainingQty()).isZero();
+        assertThat(reserved.getRemainingGiftQty()).isZero();
+        assertThat(reserved.getPhysicalRemainingQty()).isZero();
+        assertThat(reserved.getQty()).isEqualByComparingTo("10");
+        assertThat(reserved.getGiftQty()).isEqualByComparingTo("1");
+        assertThatThrownBy(()->requests.decompositionPreview(List.of(f.requestItem())))
+            .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
     private void plannedSupply(boolean issueEarly){
         var w=harness.seedWorld("gift-plan-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());
         UUID product=UUID.randomUUID();harness.insertGoods(product,"GIFT-PLAN-"+product,"赠品备料就绪验算","自制",w.unitId(),w.unitLegacy());
@@ -124,7 +166,8 @@ class GiftPhysicalDemandCoverageEndToEndTest {
     }
 
     private F fixture(){ return fixture("1","10"); }
-    private F fixture(String requestedGift,String charged){
+    private F fixture(String requestedGift,String charged){ return fixture(requestedGift,charged,"1"); }
+    private F fixture(String requestedGift,String charged,String orderedGift){
         var w=harness.seedWorld("gift-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());
         UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);
         var req=new com.uten.imp.features.purchase.request.dto.RequestSaveRequest();req.setBillDate(BusinessTime.today());req.setWarehouseId(w.warehouseId());
@@ -132,7 +175,7 @@ class GiftPhysicalDemandCoverageEndToEndTest {
         var source=requests.create(req);requests.approve(source.getId());UUID requestItem=source.getItems().getFirst().getId();
         UUID reviewer=harness.createUserWithPerms(w,"gift-finance-"+UUID.randomUUID(),"finance_order_approval:view","finance_order_approval:approve");harness.loginAs(w.superAdminUserId());
         var order=new com.uten.imp.features.purchase.order.dto.OrderSaveRequest();order.setBillDate(BusinessTime.today());order.setSupplierId(w.supplierId());order.setWarehouseId(w.warehouseId());order.setCurrencyId(currency);order.setExchangeRate(BigDecimal.ONE);order.setTaxRate(BigDecimal.ZERO);order.setSettlementMethodId(settlement());
-        var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(BigDecimal.ONE);line.setPrice(new BigDecimal("10"));line.setRequestItemId(requestItem);order.setItems(List.of(line));
+        var line=new com.uten.imp.features.purchase.order.dto.OrderItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(charged));line.setGiftQty(new BigDecimal(orderedGift));line.setPrice(new BigDecimal("10"));line.setRequestItemId(requestItem);order.setItems(List.of(line));
         UUID id=orders.create(order).getId();finance.submit("PURCHASE",id);harness.loginAs(reviewer);
         var approval=db.queryForMap("SELECT id,version FROM procurement_order_approval_cases WHERE order_type='PURCHASE' AND order_id=? AND status='PENDING'",id);UUID caseId=(UUID)approval.get("id");
         UUID claim=claims.claim("PROCUREMENT_FINANCE_APPROVE",caseId.toString()).claimId();finance.approveBatch(List.of(new BatchDecisionItem(caseId,((Number)approval.get("version")).longValue(),claim)),null,BigDecimal.ONE);harness.loginAs(w.superAdminUserId());

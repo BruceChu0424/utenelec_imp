@@ -503,7 +503,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                 ..upstreamItemId = upstreamItemId
                 ..colorId = it.colorId
                 ..unitId = it.unitId
-                ..unitRate = it.unitRate;
+                ..unitRate = it.unitRate
+                ..unitRateText = it.unitRateExactText;
           row.qty.text =
               financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
           row.giftQty.text = it.giftQtyText ?? it.giftQty?.toString() ?? '0';
@@ -843,6 +844,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     // 判定条件不变，只改暴露方式：逐行 return 时一批几十行只暴露第一处违规，
     // 用户改一行提交一次；这里按类别把**全部**违规行收齐，循环结束一次说完。
     final badQty = <String>[];
+    final badUnitRate = <String>[];
     final overQty = <String>[];
     final badWeight = <String>[];
     // 行标识用用户看得见的行序 + 货品名（明细表不显示 UUID，报 id 等于没报）。
@@ -853,6 +855,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       final r = rows[i];
       if (r.goods == null) continue;
       var rowOk = true;
+      if (!r.unitRateInputValid) {
+        badUnitRate.add(labelOf(i, r));
+        rowOk = false;
+      }
       final qty = double.tryParse(r.qty.text) ?? 0;
       if (procurementQuantityError(
             r.qty.text,
@@ -916,12 +922,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.unitRateText != null || r.unitRate != null)
+          'unitRate': r.unitRateText ?? r.unitRate,
         'weight': ?weight,
         if (remarkText.isNotEmpty) 'remark': remarkText,
       });
     }
     final rowIssues = <String>[
+      if (badUnitRate.isNotEmpty)
+        _rowIssueMessage(badUnitRate, '的单位换算率无效', action: '请重新引入来源或核对单位'),
       if (badQty.isNotEmpty)
         _rowIssueMessage(badQty, '的收费量、赠品量或实物合计不符合数量要求', action: '请改正后再提交'),
       if (overQty.isNotEmpty)

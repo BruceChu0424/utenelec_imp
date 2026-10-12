@@ -213,6 +213,9 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 command.originalMovementId(),materialReturn,true);
         UUID originalId=plan.originalId();Node source=plan.source();
         UUID eventId=UUID.randomUUID();BigDecimal cost=plan.cost(),qty=plan.qty();
+        State state=sourceClosureState(source);
+        if(!materialReturn&&cost.signum()==0&&state!=State.FINAL)
+            throw conflict("该入库来源成本尚未闭合，不能按已确认零成本撤回；请待本来源成本传播完成后重新核对");
         List<Node> retained=materialReturn?plan.retained().stream().map(component->retainValueReference(component,eventId)).toList():plan.retained();
         for(Restoration part:plan.parts()){
             var transfer=part.transfer();Node root=part.root(),held=part.held();
@@ -236,7 +239,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         Node archived=createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,eventId,List.of(whole(current)));
         Node next=createDerivedNode(pool,"POOL",null,null,null,null,remainingQty,ZERO,remainingQty,remainingValue,remainingPending,true,true,eventId,
                 retained.isEmpty()?List.of(fraction(current,ZERO,ZERO,current.qty())):retained.stream().map(InventoryPositionService::whole).toList());
-        deactivate(current);head(pool,next.id(),pool.headId());State state=state(source);
+        deactivate(current);head(pool,next.id(),pool.headId());
         db.update("""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
                     actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,

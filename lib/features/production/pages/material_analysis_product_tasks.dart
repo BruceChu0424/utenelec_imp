@@ -993,6 +993,7 @@ abstract class _MaterialAnalysisProductTasksState
         return const {
           'SUBMITTED',
           'APPROVED',
+          'PLANNING_REQUIRED',
           'WAITING',
           'READY',
           'DISPATCHED',

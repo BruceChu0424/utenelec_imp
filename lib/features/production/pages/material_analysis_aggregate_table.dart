@@ -1943,11 +1943,7 @@ final class _MaterialAggregateTableController {
               ) !=
               null ||
           (owner._tableUsesMakeAnchor(group) &&
-              (owner
-                          ._tableMakeAnchorOf(group, authoritative: true)
-                          ?.issuedPlanQty ??
-                      0) >
-                  0),
+              owner._tableMakeAnchorOf(group, authoritative: true) != null),
     )) {
       return null;
     }
@@ -1992,10 +1988,24 @@ final class _MaterialAggregateTableController {
     if (summary == null || !summary.known || summary.total == '0') return null;
     // 合并身份（2026-10-09）：同料合并批次一张申请承载 N 个来源，悬浮里
     // 直接给出真实单据号，与「已下单 X = 需求份 + 公共份」同处一行。
-    final documents = summary.documents.isEmpty
+    final displayDocuments = <String>{};
+    for (final id in summary.actionIds) {
+      final action = owner._supplyActionOf(id);
+      if (action == null) continue;
+      if (action.route == MaterialSupplyRoute.make &&
+          action.documentType == 'PREPLAN_MAKE_TASK') {
+        final plans = _actionMakePlans(action);
+        displayDocuments.addAll(
+          plans.isEmpty ? ['生产任务待核对'] : plans.map(_planLabel),
+        );
+      } else if (action.documentNo?.trim().isNotEmpty == true) {
+        displayDocuments.add(action.documentNo!.trim());
+      }
+    }
+    final documents = displayDocuments.isEmpty
         ? ''
-        : '（${summary.documents.take(3).join('、')}'
-              '${summary.documents.length > 3 ? ' 等 ${summary.documents.length} 张' : ''}）';
+        : '（${displayDocuments.take(3).join('、')}'
+              '${displayDocuments.length > 3 ? ' 等 ${displayDocuments.length} 张' : ''}）';
     return '已下单 ${summary.total} = 需求份 ${summary.demand} + 公共备货 ${summary.public}'
         '${summary.safety == '0' ? '' : ' + 安全补库 ${summary.safety}'}$documents';
   }

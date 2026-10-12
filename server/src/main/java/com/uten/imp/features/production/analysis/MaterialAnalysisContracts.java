@@ -330,6 +330,17 @@ public final class MaterialAnalysisContracts {
         }
     }
 
+    /** Withdraw one exact ordinary source plan, including its execution packages. */
+    public record PlanWithdrawalRequest(
+            @NotNull @JsonAlias("expectedVersion") Long version,
+            @NotBlank @Pattern(regexp = "(?i)[0-9a-f]{64}") String fingerprint,
+            @NotBlank @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+") String idempotencyKey,
+            @NotBlank @Size(max = 500)
+            @Pattern(regexp = "(?s)\\s*\\S.*\\S\\s*", message = "撤回原因至少 2 个字") String reason) {
+        public String effectiveReason() { return reason.strip(); }
+    }
+
     /**
      * 取消分析 / 撤回供给任务 / 撤回根产品交接共用的请求体。
      * <p>原因选填(2026-09-22 用户口径「取消分析的原因不用必填」)：留空落审计时记
@@ -588,6 +599,13 @@ public final class MaterialAnalysisContracts {
         }
     }
 
+    /** Stable display references to every effective production plan for one source. */
+    public record PlanReference(UUID planId, String planNo, Integer status) {
+        public PlanReference(UUID planId, String planNo) {
+            this(planId, planNo, null);
+        }
+    }
+
     public record ProductView(
             UUID analysisLineId,
             String sourceType,
@@ -655,7 +673,72 @@ public final class MaterialAnalysisContracts {
              */
             boolean canIssueSurplus,
             UUID planExecutionWorkshopId,
-            UUID planExecutionResponsibleId) implements MaterialAnalysisPlanSource {
+            UUID planExecutionResponsibleId,
+            List<PlanReference> planReferences) implements MaterialAnalysisPlanSource {
+        public ProductView {
+            planReferences = planReferences == null ? List.of() : List.copyOf(planReferences);
+        }
+
+        /** Compatibility constructor for callers that only carry the latest plan. */
+        public ProductView(
+            UUID analysisLineId,
+            String sourceType,
+            String sourceRef,
+            String sourceReason,
+            UUID salesOrderItemId,
+            UUID salesOrderId,
+            String salesOrderNo,
+            LocalDate orderDate,
+            LocalDate deliveryDate,
+            String clientName,
+            UUID goodsId,
+            String goodsCode,
+            String goodsName,
+            String spec,
+            UUID colorId,
+            String colorName,
+            UUID unitId,
+            String unitName,
+            BigDecimal unitRate,
+            BigDecimal requestedQty,
+            BigDecimal submittedQty,
+            BigDecimal approvedQty,
+            BigDecimal remainingQty,
+            int allocationPriority,
+            boolean canSchedule,
+            BigDecimal maxSchedulableQty,
+            String scheduleBlockedReason,
+            BigDecimal readyNowQty,
+            BigDecimal readyByDateQty,
+            BigDecimal readyStartQty,
+            BigDecimal readyFinishQty,
+            BigDecimal readyShipQty,
+            BigDecimal readinessRatio,
+            boolean hasProductionMaterialChildren,
+            UUID parentAnalysisLineId,
+            String parentGoodsName,
+            String planExecutionStatus,
+            UUID latestPlanId,
+            String latestPlanNo,
+            BigDecimal planExecutionPlannedQty,
+            BigDecimal planExecutionInboundQty,
+            BigDecimal planExecutionProgressRatio,
+            BigDecimal planExecutionReportedQty,
+            boolean planExecutionZeroMaterial,
+            String planExecutionWorkshopName,
+            String planExecutionResponsibleName,
+            UUID rootMaterialLineId,
+            UUID owningWarehouseId,
+            String owningWarehouseName,
+            UUID owningWorkshopId,
+            String owningWorkshopName,
+            BigDecimal issuedPlanQty,
+            boolean canIssueSurplus,
+            UUID planExecutionWorkshopId,
+            UUID planExecutionResponsibleId) {
+            this(analysisLineId, sourceType, sourceRef, sourceReason, salesOrderItemId, salesOrderId, salesOrderNo, orderDate, deliveryDate, clientName, goodsId, goodsCode, goodsName, spec, colorId, colorName, unitId, unitName, unitRate, requestedQty, submittedQty, approvedQty, remainingQty, allocationPriority, canSchedule, maxSchedulableQty, scheduleBlockedReason, readyNowQty, readyByDateQty, readyStartQty, readyFinishQty, readyShipQty, readinessRatio, hasProductionMaterialChildren, parentAnalysisLineId, parentGoodsName, planExecutionStatus, latestPlanId, latestPlanNo, planExecutionPlannedQty, planExecutionInboundQty, planExecutionProgressRatio, planExecutionReportedQty, planExecutionZeroMaterial, planExecutionWorkshopName, planExecutionResponsibleName, rootMaterialLineId, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, issuedPlanQty, canIssueSurplus, planExecutionWorkshopId, planExecutionResponsibleId, List.of());
+        }
+
         @com.fasterxml.jackson.annotation.JsonProperty(value="quantityFactsExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public Map<String,String> quantityFactsExact() {
             var values=new java.util.LinkedHashMap<String,String>();

@@ -152,18 +152,8 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     groups: [group],
   );
 
-  /// 可撤回供给任务按钮列 + 「已下单，暂无可撤回任务」空态。沿同一精确来源图
-  /// 解析 [materialLineIds] 的真实单据（聚合行与汇总视图顶层产品行共用，2026-10-09
-  /// 抽出）；既没有可撤回任务也没有下单记录时返回 null，空态交还调用方。
-  /// [keyPrefix] 只是测试锚点前缀，两个入口各自稳定。
-  ///
-  /// [groups] 供空态分流（2026-10-10）：自制组的下达走 issue-plans 生成生产计划，
-  /// 不进供给行动表——actionIds 为空是常态。全部组都按自制锚点计划下达时不显
-  /// 示「已下达车间计划 N」文字行（2026-10-10 二次修订，说明进整批撤回的悬浮），
-  /// 锚点带计划号且有查看权限时给计划号链接（与按产品视图同一路由），有取消
-  /// 计划包权限时在同一行给撤回图标，单号只显示一次；没有查看权限时仍给
-  /// 「整批撤回 单号」。真下了供给单而无可撤回任务的行维持
-  /// 「已下单，暂无可撤回任务」。
+  /// 顶层、普通子件和共享批次共用真实计划号与撤回图标；
+  /// 展示引用与撤回身份分开，历史供给行动仍按原 UUID 办理。
   Widget? withdrawCell({
     required Iterable<String> materialLineIds,
     required bool hasOrdered,
@@ -192,177 +182,320 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
             })
             .toList(growable: false) ??
         const <String>[];
-    if (actionIds.isEmpty) {
-      if (!hasOrdered) return null;
-      final makePlan = _issuedMakePlanOf(groups ?? const []);
-      if (makePlan != null) {
-        final anchor = makePlan.anchor;
-        final planNo = anchor?.planNo?.trim();
-        final viewPlan = anchor == null || !owner._canViewPlans || owner._busy
-            ? null
-            : Tooltip(
-                message: '查看计划${(planNo ?? '').isEmpty ? '' : ' $planNo'}',
-                child: TextButton(
-                  key: ValueKey('$keyPrefix-view-plan'),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s4,
-                      vertical: UtenSpacing.s8,
-                    ),
-                  ),
-                  onPressed: () => unawaited(
-                    owner.context.push(
-                      RoutePath.productionPlanDetail(anchor.planId),
-                    ),
-                  ),
-                  child: Text(
-                    (planNo ?? '').isEmpty ? '查看计划' : planNo!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              );
-        // 查看与撤回共享一份单号，单行布局避免两个默认按钮叠加撑高整行。
-        // 取消最新计划包仍走原端点、必填原因、权限与幂等键口径。
-        Widget? cancelPlan;
-        if (anchor != null && owner._canCancelPlanningPackage) {
-          final label = '整批撤回${(planNo ?? '').isEmpty ? '' : ' $planNo'}';
-          final tooltip =
-              '$label。已下达车间计划 ${owner._qty(makePlan.qty)}'
-              '${makePlan.unit == null ? '' : ' ${makePlan.unit}'}。'
-              '整批撤回 = 取消最新计划包，仅未开工且没有执行事实的计划包可取消，'
-              '系统会原子释放占用并关闭可撤销的下游草稿；'
-              '已开工计划的撤回在生产计划里办理。';
-          final VoidCallback? onCancel = owner._busy
-              ? null
-              : () => unawaited(
-                  owner._cancelIssuedPlanningPackage(
-                    planId: anchor.planId,
-                    planNo: planNo,
-                  ),
-                );
-          cancelPlan = viewPlan == null
-              ? Tooltip(
-                  message: tooltip,
-                  child: TextButton(
-                    key: ValueKey('$keyPrefix-cancel-plan'),
-                    onPressed: onCancel,
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-              : IconButton(
-                  key: ValueKey('$keyPrefix-cancel-plan'),
-                  tooltip: tooltip,
-                  onPressed: onCancel,
-                  icon: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Icon(Icons.undo_rounded, size: 18),
-                  ),
-                  style: IconButton.styleFrom(
-                    foregroundColor: Theme.of(
-                      owner.context,
-                    ).colorScheme.primary,
-                    padding: EdgeInsets.zero,
-                    minimumSize: const Size(40, 40),
-                    visualDensity: VisualDensity.standard,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                );
+    final entries = <Widget>[];
+    final shownPlanIds = <String>{};
+
+    // 共享批次只沿行动的准确锚点取计划，不能用同货品或首个来源猜测。
+    for (final id in actionIds) {
+      final action = owner._supplyActionOf(id)!;
+      final product = _actionMakeProduct(action);
+      final shared = product?.sourceType == 'AGGREGATE_MAKE';
+      final plans = _actionMakePlans(action);
+      if (plans.isNotEmpty) {
+        var planIndex = 0;
+        for (final plan in plans) {
+          if (!shownPlanIds.add(plan.planId)) continue;
+          final suffix = planIndex++ == 0 ? '' : '-${plan.planId}';
+          entries.add(
+            _planHandleEntry(
+              plan,
+              viewKey: '$keyPrefix-view-plan-$id$suffix',
+              cancelKey: '$keyPrefix-cancel-$id$suffix',
+              canCancel: shared
+                  ? owner._canCancelSpecificAction(id) &&
+                        owner._hasPlanLifecyclePermission(plan)
+                  : owner._canWithdrawIssuedAnalysisPlan(plan),
+              cancelTooltip: shared
+                  ? '整批撤回 ${_planLabel(plan)}。撤回本批全部来源，确认时逐条核对来源数量；已领用、报工或有后续单据的批次由系统核对后阻止撤回。'
+                  : '整批撤回 ${_planLabel(plan)}。撤回此生产计划及有效执行安排，恢复对应来源的待安排量；已有执行或库存依赖时阻止撤回。',
+              onCancel: sources?.complete == true && !owner._busy
+                  ? () => unawaited(
+                      shared
+                          ? owner._cancelMaterialAction(id)
+                          : owner._withdrawIssuedAnalysisPlan(plan),
+                    )
+                  : null,
+            ),
+          );
         }
-        final actions = viewPlan != null && cancelPlan != null
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(flex: 3, child: viewPlan),
-                  Flexible(child: cancelPlan),
-                ],
-              )
-            : viewPlan ?? cancelPlan;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [?actions, ?note],
+        continue;
+      }
+      if (action.route == MaterialSupplyRoute.make &&
+          action.documentType == 'PREPLAN_MAKE_TASK') {
+        if (product?.sourceType == 'MAKE_COMPONENT' &&
+            product!.issuedPlanQty == 0) {
+          entries.add(const Text('待下达生产计划'));
+          continue;
+        }
+        entries.add(
+          _unresolvedMakeTaskEntry(
+            action,
+            keyPrefix: keyPrefix,
+            complete: sources?.complete == true,
+          ),
+        );
+        continue;
+      }
+      // 采购、委外、公共认领和待核对冲正沿用其原单据与撤回流程。
+      entries.add(
+        TextButton(
+          key: ValueKey('$keyPrefix-cancel-$id'),
+          onPressed:
+              owner._busy ||
+                  sources?.complete != true ||
+                  !owner._canCancelSpecificAction(id)
+              ? null
+              : () => unawaited(owner._cancelMaterialAction(id)),
+          child: Text(
+            '${pendingReversals.contains(id)
+                ? owner._l10n.materialNotificationReversalReconcile
+                : action.operationType == 'AGGREGATE_SUPPLY'
+                ? '整批撤回'
+                : owner._isSharedFutureClaimAction(id)
+                ? '撤回认领'
+                : '撤回'} ${action.documentNo ?? ''}',
+          ),
+        ),
+      );
+    }
+
+    // 原产品自己的多个有效计划也逐张列出，不能用最新计划冒充全部计划。
+    var ordinaryIndex = 0;
+    for (final group in groups ?? const <_MaterialGroup>[]) {
+      final product =
+          owner._tableIssuedMakeAnchorOf(group, authoritative: true) ??
+          owner._tableLegacyAnchorWithSharedSupply(group, authoritative: true);
+      if (product == null || product.sourceType == 'AGGREGATE_MAKE') continue;
+      for (final plan in _productPlans(product)) {
+        if (!shownPlanIds.add(plan.planId)) continue;
+        final suffix = ordinaryIndex++ == 0 ? '' : '-${plan.planId}';
+        entries.add(
+          _planHandleEntry(
+            plan,
+            viewKey: '$keyPrefix-view-plan$suffix',
+            cancelKey: '$keyPrefix-cancel-plan$suffix',
+            canCancel: owner._canWithdrawIssuedAnalysisPlan(plan),
+            cancelTooltip:
+                '整批撤回 ${_planLabel(plan)}。撤回此生产计划及有效执行安排，'
+                '恢复对应来源的待安排量；已领用、报工或有后续单据时系统阻止撤回。',
+            onCancel: sources?.complete == true && !owner._busy
+                ? () => unawaited(owner._withdrawIssuedAnalysisPlan(plan))
+                : null,
+          ),
         );
       }
-      final issued = Tooltip(
-        message: sources?.complete == false
-            ? '来源单据关联尚未完整返回，请刷新后核对。'
-            : '已有下单记录，当前没有可撤回的供给任务；请在单据详情核对处理状态。',
-        child: Text('已下单，暂无可撤回任务', key: ValueKey('$keyPrefix-issued')),
+    }
+    if (entries.isEmpty) {
+      if (!hasOrdered) return null;
+      entries.add(
+        Tooltip(
+          message: sources?.complete == false
+              ? '来源单据关联尚未完整返回，请刷新后核对。'
+              : '已有下单记录，当前没有可撤回的供给任务；请在单据详情核对处理状态。',
+          child: Text('已下单，暂无可撤回任务', key: ValueKey('$keyPrefix-issued')),
+        ),
       );
-      return note == null
-          ? issued
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [issued, note],
-            );
     }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
+      children: [...entries, ?note],
+    );
+  }
+
+  List<MaterialAnalysisPlanReference> _productPlans(
+    ProductionMaterialAnalysisProduct product,
+  ) {
+    final references = product.planReferences;
+    if (references.isNotEmpty) {
+      return references.where((plan) => plan.planId.trim().isNotEmpty).toList();
+    }
+    // 兼容旧服务器，回退仍使用准确产品身份对应的最新计划。
+    final planId = product.latestPlanId?.trim();
+    return planId == null || planId.isEmpty
+        ? const []
+        : [
+            MaterialAnalysisPlanReference(
+              planId: planId,
+              planNo: product.latestPlanNo,
+            ),
+          ];
+  }
+
+  /// 表格排序和导出沿用界面准确计划引用，不回显内部制造任务编号。
+  String? planText({
+    required Iterable<String> materialLineIds,
+    required Iterable<_MaterialGroup> groups,
+  }) {
+    final analysis = owner._analysis;
+    if (analysis == null) return null;
+    final sources = owner
+        ._analysisIndexes(analysis)
+        .sourceGraph
+        .resolve(materialLineIds);
+    final plans = <String, String>{};
+    var unresolved = false;
+    var pendingPlan = false;
+    for (final id in sources.activeActionIds) {
+      final action = owner._supplyActionOf(id);
+      if (action == null ||
+          const {
+            'CANCELLED',
+            'REVERSED',
+            'WITHDRAWN',
+          }.contains(action.status)) {
+        continue;
+      }
+      final references = _actionMakePlans(action);
+      for (final plan in references) {
+        plans[plan.planId] = _planLabel(plan);
+      }
+      if (references.isEmpty &&
+          action.route == MaterialSupplyRoute.make &&
+          action.documentType == 'PREPLAN_MAKE_TASK') {
+        final product = _actionMakeProduct(action);
+        if (product?.sourceType == 'MAKE_COMPONENT' &&
+            product!.issuedPlanQty == 0) {
+          pendingPlan = true;
+        } else {
+          unresolved = true;
+        }
+      }
+    }
+    for (final group in groups) {
+      final product =
+          owner._tableIssuedMakeAnchorOf(group, authoritative: true) ??
+          owner._tableLegacyAnchorWithSharedSupply(group, authoritative: true);
+      if (product == null || product.sourceType == 'AGGREGATE_MAKE') continue;
+      for (final plan in _productPlans(product)) {
+        plans[plan.planId] = _planLabel(plan);
+      }
+    }
+    final labels = [
+      ...plans.values,
+      if (pendingPlan) '待下达生产计划',
+      if (unresolved) '生产任务待核对',
+    ];
+    return labels.isEmpty ? null : labels.join('、');
+  }
+
+  List<MaterialAnalysisPlanReference> _actionMakePlans(
+    MaterialAnalysisSupplyAction action,
+  ) {
+    final product = _actionMakeProduct(action);
+    return product == null ? const [] : _productPlans(product);
+  }
+
+  ProductionMaterialAnalysisProduct? _actionMakeProduct(
+    MaterialAnalysisSupplyAction action,
+  ) {
+    if (action.route != MaterialSupplyRoute.make ||
+        action.documentType != 'PREPLAN_MAKE_TASK') {
+      return null;
+    }
+    final analysis = owner._analysis;
+    if (analysis == null) return null;
+    final product = owner
+        ._analysisIndexes(analysis)
+        .productsById[action.documentId];
+    if (product == null ||
+        !const {
+          'AGGREGATE_MAKE',
+          'MAKE_COMPONENT',
+        }.contains(product.sourceType)) {
+      return null;
+    }
+    return product;
+  }
+
+  String _planLabel(MaterialAnalysisPlanReference plan) =>
+      plan.planNo?.trim().isNotEmpty == true ? plan.planNo!.trim() : '查看计划';
+
+  /// 相同的单行布局：计划号只显示一次，查看权限和撤回权限各自核对。
+  Widget _planHandleEntry(
+    MaterialAnalysisPlanReference plan, {
+    required String viewKey,
+    required String cancelKey,
+    required bool canCancel,
+    required String cancelTooltip,
+    required VoidCallback? onCancel,
+  }) {
+    final label = _planLabel(plan);
+    final view = owner._canViewPlans
+        ? Tooltip(
+            message: '查看计划 $label',
+            child: TextButton(
+              key: ValueKey(viewKey),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: UtenSpacing.s4,
+                  vertical: UtenSpacing.s8,
+                ),
+              ),
+              onPressed: owner._busy
+                  ? null
+                  : () => unawaited(
+                      owner.context.push(
+                        RoutePath.productionPlanDetail(plan.planId),
+                      ),
+                    ),
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          )
+        : Tooltip(
+            message: label,
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        for (final id in actionIds)
-          TextButton(
-            key: ValueKey('$keyPrefix-cancel-$id'),
-            onPressed:
-                owner._busy ||
-                    sources?.complete != true ||
-                    !owner._canCancelSpecificAction(id)
-                ? null
-                : () => unawaited(owner._cancelMaterialAction(id)),
-            child: Text(
-              '${pendingReversals.contains(id)
-                  ? owner._l10n.materialNotificationReversalReconcile
-                  : owner._supplyOperationType(id) == 'AGGREGATE_SUPPLY'
-                  ? '整批撤回'
-                  : owner._isSharedFutureClaimAction(id)
-                  ? '撤回认领'
-                  : '撤回'} '
-              '${owner._supplyActionOf(id)?.documentNo ?? ''}',
+        Flexible(flex: 3, child: view),
+        if (canCancel)
+          Flexible(
+            child: IconButton(
+              key: ValueKey(cancelKey),
+              tooltip: cancelTooltip,
+              onPressed: onCancel,
+              icon: const FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Icon(Icons.undo_rounded, size: 18),
+              ),
+              style: IconButton.styleFrom(
+                foregroundColor: Theme.of(owner.context).colorScheme.primary,
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(48, 48),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
             ),
           ),
-        ?note,
       ],
     );
   }
 
-  /// 空态分流的「已下达车间计划」事实：[groups] 非空且**全部**按自制锚点计划
-  /// 下达（[_tableUsesMakeAnchor] 且锚点 issuedPlanQty>0，判据与
-  /// [_tableGroupIssuedQty] 的自制分支同源）才成立；锚点按 analysisLineId 去重
-  /// 后累计已下达量（同一锚点多路径可见时只算一次），并带上锚点最新计划号供
-  /// 入口跳转。混有供给单 / 锚点未建 / 未下达的返回 null，空态走原文案。
-  ({double qty, String? unit, ({String planId, String? planNo})? anchor})?
-  _issuedMakePlanOf(List<_MaterialGroup> groups) {
-    if (groups.isEmpty) return null;
-    var qty = 0.0;
-    final seenAnchors = <String>{};
-    ({String planId, String? planNo})? anchor;
-    for (final group in groups) {
-      final product = owner._tableIssuedMakeAnchorOf(
-        group,
-        authoritative: true,
-      );
-      if (product == null) return null;
-      if (seenAnchors.add(product.analysisLineId)) {
-        qty +=
-            product.issuedPlanQty * owner._tableAnchorUnitRate(group, product);
-        final planId = product.latestPlanId?.trim();
-        if (anchor == null && planId != null && planId.isNotEmpty) {
-          anchor = (planId: planId, planNo: product.latestPlanNo?.trim());
-        }
-      }
-    }
-    return (
-      qty: qty,
-      unit: groups.first.representative.unitName?.trim(),
-      anchor: anchor,
-    );
-  }
+  Widget _unresolvedMakeTaskEntry(
+    MaterialAnalysisSupplyAction action, {
+    required String keyPrefix,
+    required bool complete,
+  }) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const Flexible(
+        child: Tooltip(
+          message: '没有完整的生产计划关联，请刷新核对后查看计划。',
+          child: Text('生产任务待核对', maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ),
+      if (owner._canCancelSpecificAction(action.actionId))
+        IconButton(
+          key: ValueKey('$keyPrefix-cancel-${action.actionId}'),
+          tooltip: '整批撤回生产任务；确认时核对全部来源和实际执行事实',
+          onPressed: complete && !owner._busy
+              ? () => unawaited(owner._cancelMaterialAction(action.actionId))
+              : null,
+          icon: const Icon(Icons.undo_rounded, size: 18),
+        ),
+    ],
+  );
 
   Future<bool> cancelAction(String actionId) async {
     final analysis = owner._analysis;

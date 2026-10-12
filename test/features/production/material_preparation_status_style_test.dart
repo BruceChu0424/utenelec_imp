@@ -3,6 +3,33 @@ import 'package:uten_imp/features/production/models/production_flow_stage.dart';
 import 'package:uten_imp/features/production/widgets/material_preparation_status_style.dart';
 
 void main() {
+  test(
+    'plan awaiting new execution uses pending color for product and material',
+    () {
+      final product = ProductionFlowStage.forProduct(
+        planExecutionStatus: 'PLANNING_REQUIRED',
+      );
+      final material = ProductionFlowStage.fromServerKey(
+        'MAKE_PLANNING_REQUIRED',
+        route: ProductionFlowRoute.make,
+      );
+      expect(
+        materialPreparationStatusPhase(
+          stage: product,
+          actualState: 'PLANNING_REQUIRED',
+        ),
+        MaterialPreparationStatusPhase.pending,
+      );
+      expect(
+        materialPreparationStatusPhase(stage: material),
+        MaterialPreparationStatusPhase.pending,
+      );
+      expect(
+        MaterialPreparationStatusStyle.resolve(stage: product).background,
+        MaterialPreparationStatusStyle.resolve(stage: material).background,
+      );
+    },
+  );
   test('matching preparation stages share colors across routes', () {
     for (final keys in [
       ['MAKE_PENDING_ISSUE', 'BUY_PENDING_ISSUE', 'SC_PENDING_ISSUE'],

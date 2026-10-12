@@ -2803,6 +2803,9 @@ class _ProductionMaterialAnalysisPageState
           product.planExecutionStatus,
           product.latestPlanId,
           product.latestPlanNo,
+          product.planReferences
+              .map((plan) => '${plan.planId}:${plan.planNo}:${plan.status}')
+              .join(','),
           product.planExecutionPlannedQty,
           product.planExecutionInboundQty,
           product.planExecutionProgressRatio,

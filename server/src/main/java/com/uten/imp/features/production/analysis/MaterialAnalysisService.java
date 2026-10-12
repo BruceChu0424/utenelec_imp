@@ -13,6 +13,9 @@ import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.io.IOException;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -55,6 +59,9 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 @Service
 @RequiredArgsConstructor
 public class MaterialAnalysisService {
+
+    private static final ObjectReader PLAN_REFERENCES_READER = new ObjectMapper()
+            .readerFor(new TypeReference<List<PlanReference>>() { });
 
     static final String STATUS_ACTIVE = "ACTIVE";
     static final String STATUS_PARTIAL = "PARTIALLY_PLANNED";
@@ -4913,7 +4920,7 @@ public class MaterialAnalysisService {
                     && "COMPLETED".equals(planState.status())) {
                 planState=new ProductPlanState("NOT_STARTED",planState.planId(),planState.planNo(),
                         planState.plannedQty(),planState.inboundQty(),planExecutionProgressRatio(source.requestedQty(),planState.inboundQty()),
-                        planState.reportedQty(),planState.zeroMaterial(),planState.workshopName(),planState.responsibleName(),planState.workshopId(),planState.responsibleId());
+                        planState.reportedQty(),planState.zeroMaterial(),planState.workshopName(),planState.responsibleName(),planState.workshopId(),planState.responsibleId(),planState.planReferences());
             }
             return source.toView(ratio,productIdsWithMaterialChildren.contains(source.analysisItemId()),
                     planState,planningBlocks.get(source.analysisItemId()));
@@ -6989,7 +6996,8 @@ public class MaterialAnalysisService {
     }
 
     /** Real plan/execution projection shown beside MAKE node tasks. */
-    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
+    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {
+        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH active_links AS (
                     SELECT link.analysis_item_id, link.plan_id,
@@ -7008,6 +7016,15 @@ public class MaterialAnalysisService {
                 plan_ids AS (
                     SELECT DISTINCT plan_id
                     FROM active_links
+                ),
+                effective_segments AS MATERIALIZED (
+                    SELECT segment.*
+                    FROM plan_ids ids
+                    JOIN production_execution_segments segment ON segment.plan_id = ids.plan_id
+                    JOIN production_planning_packages package
+                      ON package.id = segment.package_id AND package.plan_id = segment.plan_id
+                     AND package.status = 'CONFIRMED' AND NOT package.is_deleted
+                    WHERE NOT segment.is_deleted AND segment.status NOT IN ('CANCELLED','REVERSED')
                 ),
                 item_rollup AS (
                     SELECT ids.plan_id,
@@ -7051,10 +7068,9 @@ public class MaterialAnalysisService {
                     LEFT JOIN production_plan_items plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
-                    LEFT JOIN production_execution_segments segment
+                    LEFT JOIN effective_segments segment
                       ON segment.source_plan_item_id = plan_item.id
-                     AND segment.is_deleted = FALSE
-                     AND segment.status NOT IN ('CANCELLED','REVERSED')
+                     AND segment.plan_id = plan_item.plan_id
                     LEFT JOIN departments workshop
                       ON workshop.id = segment.workshop_department_id
                     LEFT JOIN employees responsible
@@ -7068,10 +7084,9 @@ public class MaterialAnalysisService {
                     LEFT JOIN production_plan_items plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
-                    LEFT JOIN production_execution_segments segment
+                    LEFT JOIN effective_segments segment
                       ON segment.source_plan_item_id = plan_item.id
-                     AND segment.is_deleted = FALSE
-                     AND segment.status NOT IN ('CANCELLED','REVERSED')
+                     AND segment.plan_id = plan_item.plan_id
                     LEFT JOIN production_daily_report_items report_item
                       ON report_item.execution_segment_id = segment.id
                      AND report_item.is_deleted = FALSE
@@ -7084,22 +7099,15 @@ public class MaterialAnalysisService {
                 SELECT link.analysis_item_id,
                        (array_agg(plan.id ORDER BY link.created_at DESC, plan.id DESC))[1],
                        (array_agg(plan.bill_no ORDER BY link.created_at DESC, plan.id DESC))[1],
-                       CASE
-                         WHEN COALESCE(SUM(item_rollup.item_count),0) > 0
-                              AND BOOL_AND(item_rollup.all_complete)
-                            THEN 'COMPLETED'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_in_progress), FALSE)
-                            THEN 'IN_PROGRESS'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_dispatched), FALSE)
-                            THEN 'DISPATCHED'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_ready), FALSE)
-                            THEN 'READY'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_waiting), FALSE)
-                            THEN 'WAITING'
-                         WHEN COALESCE(BOOL_OR(link.approved), FALSE)
-                            THEN 'APPROVED'
-                         ELSE 'SUBMITTED'
-                       END AS execution_status,
+                """ + MaterialAnalysisFlowStageService.executionStatusSql(
+                        "COALESCE(SUM(item_rollup.item_count),0) > 0 AND BOOL_AND(item_rollup.all_complete)",
+                        "BOOL_OR(link.approved AND plan.status = 1 AND NOT item_rollup.all_complete AND segment_rollup.segment_count = 0)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_in_progress), FALSE)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_dispatched), FALSE)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_ready), FALSE)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_waiting), FALSE)",
+                        "COALESCE(BOOL_OR(link.approved), FALSE)") + """
+                        AS execution_status,
                        COALESCE(SUM(item_rollup.planned_qty)
                            FILTER (WHERE link.approved AND plan.status = 1),0)
                          AS execution_planned_qty,
@@ -7118,7 +7126,9 @@ public class MaterialAnalysisService {
                        (array_agg(CASE WHEN segment_rollup.segment_count>0 THEN segment_rollup.workshop_id
                            ELSE plan.department_id END ORDER BY link.created_at DESC,plan.id DESC))[1] AS execution_workshop_id,
                        (array_agg(CASE WHEN segment_rollup.segment_count>0 THEN segment_rollup.responsible_id
-                           ELSE plan.worker_id END ORDER BY link.created_at DESC,plan.id DESC))[1] AS execution_responsible_id
+                            ELSE plan.worker_id END ORDER BY link.created_at DESC,plan.id DESC))[1] AS execution_responsible_id,
+                        CAST(jsonb_agg(jsonb_build_object('planId',plan.id,'planNo',plan.bill_no,'status',plan.status)
+                            ORDER BY link.created_at DESC,plan.id DESC) AS text) AS plan_references
                 FROM active_links link
                 JOIN production_plans plan
                   ON plan.id = link.plan_id
@@ -7140,9 +7150,19 @@ public class MaterialAnalysisService {
                     plannedQty, inboundQty,
                     planExecutionProgressRatio(plannedQty, inboundQty),
                     decimal(row[6]), Boolean.TRUE.equals(row[7]),
-                    string(row[8]), string(row[9]),uuid(row[10]),uuid(row[11])));
+                    string(row[8]), string(row[9]),uuid(row[10]),uuid(row[11]),
+                    planReferences(string(row[12]))));
         }
         return Map.copyOf(result);
+    }
+
+    private static List<PlanReference> planReferences(String json) {
+        if (json == null) return List.of();
+        try {
+            return List.copyOf(PLAN_REFERENCES_READER.readValue(json));
+        } catch (IOException error) {
+            throw new IllegalStateException("Production plan references could not be read", error);
+        }
     }
 
     static BigDecimal planExecutionProgressRatio(
@@ -7697,7 +7717,7 @@ public class MaterialAnalysisService {
 
     static int preparationStageRank(String stage) {
         if(stage.endsWith("PENDING_ISSUE"))return 0;
-        if(stage.endsWith("REQUESTED")||stage.endsWith("PLAN_SUBMITTED"))return 1;
+        if(stage.endsWith("REQUESTED")||stage.endsWith("PLAN_SUBMITTED")||stage.endsWith("PLANNING_REQUIRED"))return 1;
         if(stage.endsWith("PENDING_FINANCE"))return 2;
         if(stage.endsWith("WAITING_MATERIAL")||stage.endsWith("WAIT_RECEIPT"))return 3;
         if(stage.endsWith("WAITING_DRAW")||stage.endsWith("ZERO_READY")||stage.endsWith("WAIT_OUTBOUND"))return 4;
@@ -9578,7 +9598,7 @@ public class MaterialAnalysisService {
                     planState.responsibleName(), rootMaterialLineId,
                     owningWarehouseId, owningWarehouseName,
                     owningWorkshopId, owningWorkshopName,
-                    issuedPlanQty(), canIssueSurplus,planState.workshopId(),planState.responsibleId());
+                    issuedPlanQty(), canIssueSurplus,planState.workshopId(),planState.responsibleId(),planState.planReferences());
         }
     }
 
@@ -9594,7 +9614,15 @@ public class MaterialAnalysisService {
             String workshopName,
             String responsibleName,
             UUID workshopId,
-            UUID responsibleId) {
+            UUID responsibleId,
+            List<PlanReference> planReferences) {
+        ProductPlanState {
+            planReferences = planReferences == null ? List.of() : List.copyOf(planReferences);
+        }
+        ProductPlanState(String status,UUID planId,String planNo,BigDecimal plannedQty,BigDecimal inboundQty,BigDecimal progressRatio,
+                BigDecimal reportedQty,boolean zeroMaterial,String workshopName,String responsibleName,UUID workshopId,UUID responsibleId) {
+            this(status,planId,planNo,plannedQty,inboundQty,progressRatio,reportedQty,zeroMaterial,workshopName,responsibleName,workshopId,responsibleId,List.of());
+        }
         ProductPlanState(String status,UUID planId,String planNo,BigDecimal plannedQty,BigDecimal inboundQty,BigDecimal progressRatio,
                 BigDecimal reportedQty,boolean zeroMaterial,String workshopName,String responsibleName) {
             this(status,planId,planNo,plannedQty,inboundQty,progressRatio,reportedQty,zeroMaterial,workshopName,responsibleName,null,null);

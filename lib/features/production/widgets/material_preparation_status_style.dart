@@ -21,6 +21,9 @@ MaterialPreparationStatusPhase materialPreparationStatusPhase({
   String? actualState,
 }) {
   final state = actualState?.trim().toUpperCase() ?? '';
+  if (state == 'PLANNING_REQUIRED' || stage?.key == 'MAKE_PLANNING_REQUIRED') {
+    return MaterialPreparationStatusPhase.pending;
+  }
   if (state == 'CANCELLED' ||
       state == 'CANCELED' ||
       state == 'REVERSED' ||

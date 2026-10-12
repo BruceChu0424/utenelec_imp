@@ -638,6 +638,25 @@ Map<String, List<MaterialWarehouseStock>>? _sharedWarehouseStocks(
   return result;
 }
 
+class MaterialAnalysisPlanReference {
+  const MaterialAnalysisPlanReference({
+    required this.planId,
+    this.planNo,
+    this.status,
+  });
+
+  final String planId;
+  final String? planNo;
+  final int? status;
+
+  factory MaterialAnalysisPlanReference.fromJson(Map<String, dynamic> json) =>
+      MaterialAnalysisPlanReference(
+        planId: _string(json['planId']) ?? '',
+        planNo: _string(json['planNo']),
+        status: _int(json['status']),
+      );
+}
+
 class ProductionMaterialAnalysisProduct {
   const ProductionMaterialAnalysisProduct({
     required this.analysisLineId,
@@ -685,6 +704,7 @@ class ProductionMaterialAnalysisProduct {
     this.planExecutionStatus,
     this.latestPlanId,
     this.latestPlanNo,
+    this.planReferences = const [],
     this.planExecutionPlannedQty,
     this.planExecutionInboundQty,
     this.planExecutionProgressRatio,
@@ -771,6 +791,7 @@ class ProductionMaterialAnalysisProduct {
   final String? planExecutionStatus;
   final String? latestPlanId;
   final String? latestPlanNo;
+  final List<MaterialAnalysisPlanReference> planReferences;
 
   /// Effective approved production-plan totals for this analysis product.
   /// The ratio is nullable so an older server or a plan without an executable
@@ -854,6 +875,10 @@ class ProductionMaterialAnalysisProduct {
     planExecutionStatus: _string(json['planExecutionStatus']),
     latestPlanId: _string(json['latestPlanId']),
     latestPlanNo: _string(json['latestPlanNo']),
+    planReferences: _mapList(
+      json['planReferences'],
+      MaterialAnalysisPlanReference.fromJson,
+    ),
     planExecutionPlannedQty: _double(json['planExecutionPlannedQty']),
     planExecutionInboundQty: _double(json['planExecutionInboundQty']),
     planExecutionProgressRatio: _normaliseNullableRatio(

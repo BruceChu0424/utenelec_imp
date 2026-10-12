@@ -123,6 +123,11 @@ void main() {
       expect(product.unitRate, 20);
       expect(product.latestPlanId, 'actual-plan');
       expect(product.latestPlanNo, 'SJ-actual');
+      expect(product.planReferences, same(original.planReferences));
+      expect(product.planReferences.map((plan) => plan.planId), [
+        'actual-plan',
+        'older-plan',
+      ]);
       expect(product.planExecutionStatus, 'IN_PROGRESS');
       expect(product.planExecutionWorkshopId, 'actual-workshop');
       expect(product.planExecutionWorkshopName, '实际派工车间');
@@ -291,6 +296,13 @@ ProductionMaterialAnalysisView _current() => ProductionMaterialAnalysisView(
       issuedPlanQty: 10000,
       latestPlanId: 'actual-plan',
       latestPlanNo: 'SJ-actual',
+      planReferences: [
+        MaterialAnalysisPlanReference(
+          planId: 'actual-plan',
+          planNo: 'SJ-actual',
+        ),
+        MaterialAnalysisPlanReference(planId: 'older-plan', planNo: 'SJ-older'),
+      ],
       planExecutionStatus: 'IN_PROGRESS',
       planExecutionWorkshopId: 'actual-workshop',
       planExecutionWorkshopName: '实际派工车间',

@@ -878,6 +878,26 @@ class ProductionPlanRepository {
     return ProductionMaterialAnalysisView.fromJson(json);
   }
 
+  /// 撤回准确来源计划及其执行安排；服务端同事务恢复分析责任，保留业务历史。
+  Future<ProductionMaterialAnalysisView> withdrawMaterialAnalysisPlan({
+    required ProductionMaterialAnalysisView analysis,
+    required String planId,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/plans/$planId/withdraw',
+      query: _materialAnalysisProjection,
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
   Future<ProductionMaterialAnalysisView> revokeMaterialRootStockOutput({
     required ProductionMaterialAnalysisView analysis,
     required String eventId,

@@ -73,6 +73,8 @@ public class MaterialAnalysisFlowStageService {
     // 自制链（锚点子件执行段）
     static final String MAKE_PENDING_ISSUE = "MAKE_PENDING_ISSUE";
     static final String MAKE_PLAN_SUBMITTED = "MAKE_PLAN_SUBMITTED";
+    /** The approved plan remains committed, but currently has no effective execution arrangement. */
+    static final String MAKE_PLANNING_REQUIRED = "MAKE_PLANNING_REQUIRED";
     static final String MAKE_WAITING_MATERIAL = "MAKE_WAITING_MATERIAL";
     static final String MAKE_WAITING_DRAW = "MAKE_WAITING_DRAW";
     static final String MAKE_ZERO_READY = "MAKE_ZERO_READY";
@@ -144,6 +146,7 @@ public class MaterialAnalysisFlowStageService {
         }
         return switch (childStatus) {
             case "SUBMITTED" -> MAKE_PLAN_SUBMITTED;
+            case "PLANNING_REQUIRED" -> MAKE_PLANNING_REQUIRED;
             case "APPROVED", "WAITING" -> MAKE_WAITING_MATERIAL;
             case "READY" -> childZero ? MAKE_ZERO_READY : MAKE_WAITING_DRAW;
             case "DISPATCHED" -> MAKE_WAITING_DRAW;
@@ -151,6 +154,21 @@ public class MaterialAnalysisFlowStageService {
             case "COMPLETED" -> MAKE_COMPLETED;
             default -> MAKE_PENDING_ISSUE;
         };
+    }
+
+    /** Shared execution precedence for both owned plans and adopted manufacturing supply. */
+    static String executionStatusSql(String completed, String planningRequired, String inProgress,
+            String dispatched, String ready, String waiting, String approved) {
+        return """
+                CASE WHEN %s THEN 'COMPLETED'
+                     WHEN %s THEN 'PLANNING_REQUIRED'
+                     WHEN %s THEN 'IN_PROGRESS'
+                     WHEN %s THEN 'DISPATCHED'
+                     WHEN %s THEN 'READY'
+                     WHEN %s THEN 'WAITING'
+                     WHEN %s THEN 'APPROVED'
+                     ELSE 'SUBMITTED' END
+                """.formatted(completed, planningRequired, inProgress, dispatched, ready, waiting, approved);
     }
 
     private static String purchaseStage(

@@ -5,6 +5,7 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
 import '../../../components/layout/uten_h_scroll_area.dart';
+import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -16,7 +17,7 @@ import 'production_daily_grid_columns.dart';
 /// A product's details occupy their own full-width grid row. The page owns every
 /// row/controller, expansion state and business action; this widget only lays out
 /// those facts and delegates edits to the existing cells and allocation engine.
-class ProductionDailyProductDetailsCard extends StatelessWidget {
+class ProductionDailyProductDetailsCard extends StatefulWidget {
   const ProductionDailyProductDetailsCard({
     super.key,
     required this.product,
@@ -49,6 +50,40 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
   onAllocationDestinationChanged;
   final VoidCallback? onAddAllocation;
   final ValueChanged<DailyGridRow>? onRemoveAllocation;
+
+  @override
+  State<ProductionDailyProductDetailsCard> createState() =>
+      _ProductionDailyProductDetailsCardState();
+}
+
+class _ProductionDailyProductDetailsCardState
+    extends State<ProductionDailyProductDetailsCard> {
+  final _manualWidths = <DailyRowGroup, Map<String, double>>{};
+
+  DailyGridRow get product => widget.product;
+  List<DailyGridRow> get allocationRows => widget.allocationRows;
+  List<DailyGridRow> get materialRows => widget.materialRows;
+  bool get allocationsExpanded => widget.allocationsExpanded;
+  bool get materialsExpanded => widget.materialsExpanded;
+  bool get enabled => widget.enabled;
+  double get leadingInset => widget.leadingInset;
+  ValueChanged<DailyRowGroup> get onToggleGroup => widget.onToggleGroup;
+  Map<String, String> get unitEntries => widget.unitEntries;
+  Widget Function(BuildContext, DailyGridRow) get allocationQuantityBuilder =>
+      widget.allocationQuantityBuilder;
+  Widget Function(BuildContext, DailyGridRow) get materialUsageBuilder =>
+      widget.materialUsageBuilder;
+  void Function(DailyGridRow, String?)? get onAllocationDestinationChanged =>
+      widget.onAllocationDestinationChanged;
+  VoidCallback? get onAddAllocation => widget.onAddAllocation;
+  ValueChanged<DailyGridRow>? get onRemoveAllocation =>
+      widget.onRemoveAllocation;
+
+  @override
+  void didUpdateWidget(ProductionDailyProductDetailsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.product, product)) _manualWidths.clear();
+  }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -131,7 +166,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
               if (allocationIssues.isNotEmpty) _issues(allocationIssues),
               if (enabled && onAddAllocation != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                  padding: const EdgeInsets.only(top: UtenSpacing.s4),
                   child: Wrap(
                     spacing: UtenSpacing.s12,
                     runSpacing: UtenSpacing.s4,
@@ -157,7 +192,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              const SizedBox(height: UtenSpacing.s8),
+              const SizedBox(height: UtenSpacing.s4),
             ],
           ],
         ),
@@ -187,7 +222,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
             if (materialsExpanded) ...[
               _materialTable(context),
               if (materialIssues.isNotEmpty) _issues(materialIssues),
-              const SizedBox(height: UtenSpacing.s8),
+              const SizedBox(height: UtenSpacing.s4),
             ],
           ],
         ),
@@ -195,15 +230,15 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         leadingInset,
+        UtenSpacing.s4,
         UtenSpacing.s8,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
+        UtenSpacing.s4,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var index = 0; index < groups.length; index++) ...[
-            if (index > 0) const SizedBox(height: UtenSpacing.s8),
+            if (index > 0) const SizedBox(height: UtenSpacing.s4),
             groups[index],
           ],
         ],
@@ -244,7 +279,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s4,
+          vertical: UtenSpacing.s2,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -280,36 +315,69 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
         allocationRows.any((row) => row.allocationDemandId != null);
     return _ProductDetailsTable(
       key: ValueKey('daily-product-allocation-table-${product.localRowId}'),
-      widths: [128, null, 164, if (removable) 40],
-      compactColumns: removable ? const {3} : const {},
-      nameWidth: _nameWidth(
-        context,
-        header: '接收名称',
-        names: allocationRows.map(_destinationName),
-        dropdown: allocationRows.any(
-          (row) =>
-              !((product.directTransferUnavailable ||
-                      (product.allocationManual && !product.isFqcRecovery)) &&
-                  row.allocationDemandId == null),
-        ),
-        hasDisclosure: allocationRows.any(
-          (row) =>
-              row.allocationAutofilled.value ||
-              row.allocationIssue.value != null,
-        ),
+      columnKeys: [
+        'order',
+        'name',
+        'code',
+        'color',
+        'quantity',
+        if (removable) 'actions',
+      ],
+      columnLabels: ['去向工单', '接收名称', '编号', '颜色', '去向数量', if (removable) ''],
+      minimumWidths: [64, 148, 64, 64, 140, if (removable) 40],
+      manualWidths: _manualWidths[DailyRowGroup.allocations] ?? const {},
+      onResize: (key, delta, initial, minimum) => _resizeDetailColumn(
+        DailyRowGroup.allocations,
+        key,
+        delta,
+        initial,
+        minimum,
       ),
+      onReset: (key) => _resetDetailColumn(DailyRowGroup.allocations, key),
+      compactColumns: removable ? const {5} : const {},
+      widths: [
+        _nameWidth(
+          context,
+          header: '去向工单',
+          names: allocationRows.map(_destinationCode),
+        ),
+        _nameWidth(
+          context,
+          header: '接收名称',
+          names: allocationRows.map(_destinationName),
+          dropdown: allocationRows.any(
+            (row) =>
+                !((product.directTransferUnavailable ||
+                        (product.allocationManual && !product.isFqcRecovery)) &&
+                    row.allocationDemandId == null),
+          ),
+          hasDisclosure: allocationRows.any(
+            (row) =>
+                row.allocationAutofilled.value ||
+                row.allocationIssue.value != null,
+          ),
+        ),
+        _nameWidth(
+          context,
+          header: '编号',
+          names: allocationRows.map(_receivingCode),
+        ),
+        _nameWidth(
+          context,
+          header: '颜色',
+          names: allocationRows.map(_receivingColor),
+        ),
+        164,
+        if (removable) 40,
+      ],
       headers: [
         const Text('去向工单'),
         const Text('接收名称'),
-        const Tooltip(
+        const Text('编号'),
+        const Text('颜色'),
+        const UtenColumnHeaderInfo(
+          label: Text('去向数量'),
           message: '数量与完工申报量同单位，未分配余量自动送入仓库。',
-          child: Row(
-            children: [
-              Text('去向数量'),
-              SizedBox(width: UtenSpacing.s4),
-              Icon(Icons.info_outline, size: 16),
-            ],
-          ),
         ),
         if (removable) const SizedBox.shrink(),
       ],
@@ -320,6 +388,8 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
             cells: [
               _singleLine(_destinationCode(row)),
               _destinationCell(context, row),
+              _singleLine(_receivingCode(row)),
+              _singleLine(_receivingColor(row)),
               _editable(allocationQuantityBuilder(context, row)),
               if (removable)
                 if (row.allocationDemandId != null)
@@ -365,12 +435,41 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
 
   Widget _materialTable(BuildContext context) => _ProductDetailsTable(
     key: ValueKey('daily-product-material-table-${product.localRowId}'),
-    widths: const [null, 96, 80, 120, 192],
-    nameWidth: _nameWidth(
-      context,
-      header: '子件名称',
-      names: materialRows.map((row) => row.material?.goodsName ?? '—'),
+    columnKeys: const ['name', 'code', 'color', 'issued', 'usage'],
+    columnLabels: const ['子件名称', '编号', '颜色', '领料量', '本次实际用料'],
+    minimumWidths: const [72, 64, 64, 96, 160],
+    manualWidths: _manualWidths[DailyRowGroup.materials] ?? const {},
+    onResize: (key, delta, initial, minimum) => _resizeDetailColumn(
+      DailyRowGroup.materials,
+      key,
+      delta,
+      initial,
+      minimum,
     ),
+    onReset: (key) => _resetDetailColumn(DailyRowGroup.materials, key),
+    widths: [
+      _nameWidth(
+        context,
+        header: '子件名称',
+        names: materialRows.map((row) => row.material?.goodsName ?? '—'),
+      ),
+      _nameWidth(
+        context,
+        header: '编号',
+        names: materialRows.map((row) => row.material?.goodsCode ?? '—'),
+      ),
+      _nameWidth(
+        context,
+        header: '颜色',
+        names: materialRows.map((row) => row.material?.colorName ?? '—'),
+      ),
+      _nameWidth(
+        context,
+        header: '领料量',
+        names: materialRows.map(_issuedQuantity),
+      ),
+      192,
+    ],
     headers: const [
       Text('子件名称'),
       Text('编号'),
@@ -405,9 +504,30 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
       return _singleLine('送入仓库', extra: '未分配余量自动送入仓库，调整上面工单的数量即可');
     }
     final selected = row.allocationDemandId ?? outputAllocationWarehouseValue;
-    final items = outputAllocationOptions(row);
+    final originalItems = outputAllocationOptions(row);
+    final items = [
+      for (final item in originalItems)
+        UtenDropdownItem(
+          value: item.value,
+          label: item.value == outputAllocationWarehouseValue
+              ? '送入仓库'
+              : _receivingName(item.value) ?? '原接收产品（待核对）',
+          enabled: item.enabled,
+          indent: item.indent,
+          visible: item.visible,
+          error: item.error,
+          tooltip: [
+            item.label,
+            if (_receivingColorName(item.value)?.isNotEmpty == true)
+              '接收颜色：${_receivingColorName(item.value)}',
+          ].join('\n'),
+        ),
+    ];
     final fullName =
-        items.where((item) => item.value == selected).firstOrNull?.label ??
+        originalItems
+            .where((item) => item.value == selected)
+            .firstOrNull
+            ?.label ??
         '原去向暂时无法核对';
     final issue = row.allocationIssue.value;
     final tooltip = <String>{
@@ -429,6 +549,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
         value: selected,
         selectedLabel: _destinationName(row),
         items: items,
+        menuMatchContentWidth: true,
         errorMessage: issue == null ? null : '$fullName\n$issue',
         autofilled: row.allocationAutofilled.value && issue == null,
         warningMessage: row.allocationAutofilled.value
@@ -448,16 +569,73 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
   String _destinationName(DailyGridRow row) {
     final id = row.allocationDemandId;
     if (id == null) return '送入仓库';
+    return _receivingName(id) ?? '原接收产品（待核对）';
+  }
+
+  String? _receivingName(String? id) {
+    if (id == null) return null;
     final candidate = product.directTransferCandidates
         .where((entry) => entry.demandId == id)
         .firstOrNull;
     final blocked = product.directTransferBlockedTargets
         .where((entry) => entry.demandId == id)
         .firstOrNull;
-    return candidate?.receivingGoodsName ??
-        blocked?.receivingGoodsName ??
-        '原接收产品（待核对）';
+    for (final name in [
+      candidate?.receivingGoodsName,
+      blocked?.receivingGoodsName,
+    ]) {
+      if (name?.trim().isNotEmpty == true) return name!.trim();
+    }
+    return null;
   }
+
+  String _receivingCode(DailyGridRow row) {
+    final id = row.allocationDemandId;
+    if (id == null) return '—';
+    return product.directTransferCandidates
+            .where((entry) => entry.demandId == id)
+            .firstOrNull
+            ?.receivingGoodsCode ??
+        product.directTransferBlockedTargets
+            .where((entry) => entry.demandId == id)
+            .firstOrNull
+            ?.receivingGoodsCode ??
+        '—';
+  }
+
+  String _receivingColor(DailyGridRow row) {
+    final id = row.allocationDemandId;
+    if (id == null) return '—';
+    return _receivingColorName(id) ?? '—';
+  }
+
+  String? _receivingColorName(String? id) {
+    if (id == null) return null;
+    return product.directTransferCandidates
+            .where((entry) => entry.demandId == id)
+            .firstOrNull
+            ?.receivingColorName ??
+        product.directTransferBlockedTargets
+            .where((entry) => entry.demandId == id)
+            .firstOrNull
+            ?.receivingColorName;
+  }
+
+  void _resizeDetailColumn(
+    DailyRowGroup group,
+    String key,
+    double delta,
+    double initial,
+    double minimum,
+  ) {
+    final widths = _manualWidths.putIfAbsent(group, () => {});
+    setState(
+      () => widths[key] = math.max(minimum, (widths[key] ?? initial) + delta),
+    );
+  }
+
+  void _resetDetailColumn(DailyRowGroup group, String key) =>
+      setState(() => _manualWidths[group]?.remove(key));
 
   String _destinationCode(DailyGridRow row) {
     final id = row.allocationDemandId;
@@ -501,7 +679,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
     }
 
     final headerWidth =
-        measure(header, theme.textTheme.bodyMedium!) + UtenSpacing.s12 * 2;
+        measure(header, UtenTableHeader.textStyle(theme)) + UtenSpacing.s12 * 2;
     final style = dropdown
         ? theme.textTheme.bodyLarge!
         : theme.textTheme.bodyMedium!;
@@ -519,9 +697,9 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
     for (final name in names) {
       width = math.max(width, measure(name, style) + chrome);
     }
-    // Very long names stay a single compact row and disclose their whole value
-    // through the existing tooltip/menu, rather than forcing a huge name column.
-    return math.min(width.ceilToDouble(), dropdown ? 600 : 480);
+    // Default widths show the complete name; a user's narrower width remains
+    // authoritative and can be restored by double-clicking the column edge.
+    return width.ceilToDouble();
   }
 
   Widget _singleLine(String? value, {String? extra}) {
@@ -599,7 +777,7 @@ class _DetailGroupHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+      padding: EdgeInsets.symmetric(vertical: expanded ? UtenSpacing.s2 : 0),
       child: Row(
         children: [
           Icon(icon, size: 18, color: colors.primary),
@@ -644,7 +822,10 @@ class _DetailGroupHeader extends StatelessWidget {
               child: UtenButton(
                 key: toggleKey,
                 size: UtenButtonSize.small,
-                height: 36,
+                height: math.max(
+                  36,
+                  MediaQuery.textScalerOf(context).scale(18) + 12,
+                ),
                 onPressed: onToggle,
                 icon: expanded
                     ? Icons.keyboard_arrow_up
@@ -669,13 +850,21 @@ class _ProductDetailsTable extends StatelessWidget {
   const _ProductDetailsTable({
     super.key,
     required this.widths,
-    required this.nameWidth,
+    required this.columnKeys,
+    required this.columnLabels,
+    required this.minimumWidths,
+    required this.manualWidths,
+    required this.onResize,
+    required this.onReset,
     required this.headers,
     required this.rows,
     this.compactColumns = const {},
   });
-  final List<double?> widths;
-  final double nameWidth;
+  final List<double> widths, minimumWidths;
+  final List<String> columnKeys, columnLabels;
+  final Map<String, double> manualWidths;
+  final void Function(String, double, double, double) onResize;
+  final ValueChanged<String> onReset;
   final List<Widget> headers;
   final List<_ProductDetailRow> rows;
   final Set<int> compactColumns;
@@ -683,14 +872,16 @@ class _ProductDetailsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      final fixed = widths.whereType<double>().fold(
-        0.0,
-        (sum, value) => sum + value,
-      );
-      final width = fixed + nameWidth;
+      final resolved = [
+        for (var i = 0; i < widths.length; i++)
+          math.max(minimumWidths[i], manualWidths[columnKeys[i]] ?? widths[i]),
+      ];
+      final width = resolved.fold(0.0, (sum, value) => sum + value);
       final rowHeight = math.max(
-        52.0,
-        MediaQuery.textScalerOf(context).scale(46) + 6,
+        42.0,
+        MediaQuery.textScalerOf(context).scale(24) +
+            UtenEditableGridCellSpec.contentPadding.vertical +
+            6,
       );
       final colors = Theme.of(context).colorScheme;
       return UtenHScrollArea(
@@ -700,7 +891,7 @@ class _ProductDetailsTable extends StatelessWidget {
             defaultVerticalAlignment: TableCellVerticalAlignment.middle,
             columnWidths: {
               for (var i = 0; i < widths.length; i++)
-                i: FixedColumnWidth(widths[i] ?? nameWidth),
+                i: FixedColumnWidth(resolved[i]),
             },
             border: TableBorder(
               horizontalInside: BorderSide(color: colors.outlineVariant),
@@ -711,22 +902,61 @@ class _ProductDetailsTable extends StatelessWidget {
                 children: [
                   for (var column = 0; column < headers.length; column++)
                     SizedBox(
-                      height: UtenSpacing.s40,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: compactColumns.contains(column)
-                              ? UtenSpacing.s2
-                              : UtenSpacing.s12,
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: DefaultTextStyle(
-                            style: Theme.of(context).textTheme.bodyMedium!
-                                .copyWith(color: colors.onSurfaceVariant),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            child: headers[column],
+                      height: math.max(
+                        32,
+                        MediaQuery.textScalerOf(context).scale(20) + 12,
+                      ),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: BorderDirectional(
+                            end: BorderSide(color: colors.outline),
                           ),
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: compactColumns.contains(column)
+                                      ? UtenSpacing.s2
+                                      : UtenSpacing.s12,
+                                ),
+                                child: Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: DefaultTextStyle(
+                                    style: UtenTableHeader.textStyle(
+                                      Theme.of(context),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    child: headers[column],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (!compactColumns.contains(column))
+                              PositionedDirectional(
+                                end: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: 8,
+                                child: UtenColumnResizeHandle(
+                                  key: ValueKey((
+                                    key,
+                                    'resize',
+                                    columnKeys[column],
+                                  )),
+                                  label: columnLabels[column],
+                                  onResize: (delta) => onResize(
+                                    columnKeys[column],
+                                    delta,
+                                    resolved[column],
+                                    minimumWidths[column],
+                                  ),
+                                  onReset: () => onReset(columnKeys[column]),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -744,7 +974,7 @@ class _ProductDetailsTable extends StatelessWidget {
                             horizontal: compactColumns.contains(column)
                                 ? UtenSpacing.s2
                                 : UtenSpacing.s12,
-                            vertical: UtenSpacing.s6,
+                            vertical: UtenSpacing.s2,
                           ),
                           child: Align(
                             alignment: Alignment.centerLeft,

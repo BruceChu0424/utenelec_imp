@@ -81,6 +81,8 @@ void registerDailyReportProductCardTests() {
               'executionSegmentCode': 'HP${35800 + p * 10 + d}',
               'planNo': 'ZX00000${326 + p * 10 + d}',
               'receivingGoodsName': '$name · 面板及底座总成（${d + 1}）',
+              'receivingGoodsCode': '$code-R${d + 1}',
+              'receivingColorName': d.isEven ? '深灰色' : '乳白色',
               'remainingQty': total ~/ destinationCount,
               'unitName': '个',
             },
@@ -95,7 +97,7 @@ void registerDailyReportProductCardTests() {
       itemsOverride: items,
       materialsBySegment: materials,
       candidatesBySegment: candidates,
-      surfaceSize: const Size(1920, 1840),
+      surfaceSize: const Size(1920, 1600),
       captureKey: captureKey,
       theme: capture ? auditScreenshotTheme(buildLightTheme()) : null,
       onPutBody: (body) => saved = body,
@@ -174,7 +176,7 @@ void registerDailyReportProductCardTests() {
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
     await tester.pumpAndSettle();
     expect(saved, isNotNull);
-    final submitted = (saved!['items'] as List).cast<Map>();
+    final submitted = (saved!['items'] as List).cast<Map<String, dynamic>>();
     expect(submitted.map((item) => item['qty']), [3000, 2000, 1500]);
     expect(submitted.map((item) => item['executionSegmentId']), [
       'multi-segment-0',
@@ -182,7 +184,8 @@ void registerDailyReportProductCardTests() {
       'multi-segment-2',
     ]);
     for (var p = 0; p < products.length; p++) {
-      final allocations = (submitted[p]['allocations'] as List).cast<Map>();
+      final allocations = (submitted[p]['allocations'] as List)
+          .cast<Map<String, dynamic>>();
       expect(allocations, hasLength(products[p].$4));
       expect(
         allocations.fold<num>(
@@ -192,7 +195,8 @@ void registerDailyReportProductCardTests() {
         products[p].$3,
       );
     }
-    final usages = (saved!['materialLines'] as List).cast<Map>();
+    final usages = (saved!['materialLines'] as List)
+        .cast<Map<String, dynamic>>();
     expect(usages, hasLength(7));
     expect(
       usages.singleWhere(
@@ -261,6 +265,7 @@ void registerDailyReportProductCardTests() {
             'receivingGoodsName':
                 '测试产品${i == 0 ? '' : '（$i）'} · V5系列一开单控开关功能件及面板底座总成',
             'receivingGoodsCode': 'V5-TEST-${i + 1}',
+            'receivingColorName': i.isEven ? '深灰色' : '乳白色',
             'remainingQty': 1000,
             'unitName': '个',
           },

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -18,6 +20,8 @@ import 'package:uten_imp/features/production/widgets/production_daily_product_de
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../../support/audit_screenshot_support.dart';
+
+part 'production_daily_product_details_resize_cases.dart';
 
 const _receiver = 'V5一开单控10A开关功能件与面板总成（带UTEN）及配套安装组件完整接收名称';
 const _unitEntries = {'unit': '个'};
@@ -41,6 +45,8 @@ class _DetailsData {
           executionSegmentId: 'receiver-a',
           executionSegmentCode: 'HP035754',
           receivingGoodsName: _receiver,
+          receivingGoodsCode: 'V5R001',
+          receivingColorName: '深灰色',
           remainingQty: 1000,
         ),
         ProductionDirectTransferCandidate(
@@ -48,6 +54,8 @@ class _DetailsData {
           executionSegmentId: 'receiver-b',
           executionSegmentCode: 'HP035756',
           receivingGoodsName: _receiver,
+          receivingGoodsCode: 'V5R002',
+          receivingColorName: '乳白色',
           remainingQty: 1000,
         ),
         ProductionDirectTransferCandidate(
@@ -55,6 +63,8 @@ class _DetailsData {
           executionSegmentId: 'receiver-c',
           executionSegmentCode: 'HP035757',
           receivingGoodsName: 'V5开关滑杆组件',
+          receivingGoodsCode: 'V5R003',
+          receivingColorName: '黑色',
           remainingQty: 1000,
         ),
       ]
@@ -225,6 +235,7 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
   bool dark = false,
   double textScale = 1,
   GlobalKey? capture,
+  GlobalKey? overlayCapture,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -234,7 +245,7 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
   final events = _Events();
   final key = GlobalKey<_CardHostState>();
   var theme = dark ? buildDarkTheme() : buildLightTheme();
-  if (capture != null) {
+  if (capture != null || overlayCapture != null) {
     theme = auditScreenshotTheme(theme);
   }
   await tester.pumpWidget(
@@ -245,12 +256,17 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
+        builder: (context, child) {
+          final content = MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          );
+          return overlayCapture == null
+              ? content
+              : RepaintBoundary(key: overlayCapture, child: content);
+        },
         home: Scaffold(
           appBar: AppBar(title: const Text('新建生产日报')),
           body: Builder(
@@ -295,6 +311,153 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
 }
 
 void main() {
+  _registerProductDetailsResizeTests();
+  testWidgets(
+    'full-name menu and compact folded cards preserve entered quantities',
+    (tester) async {
+      final data = _DetailsData();
+      final captureRequested =
+          Platform.environment['UTEN_CAPTURE_PRODUCT_DETAILS'] == '1';
+      final capture = captureRequested ? GlobalKey() : null;
+      final oldShadows = debugDisableShadows;
+      if (captureRequested) {
+        debugDisableShadows = false;
+        addTearDown(() => debugDisableShadows = oldShadows);
+        await loadAuditScreenshotFonts(tester);
+      }
+      final (events, _) = await _pump(
+        tester,
+        data,
+        size: const Size(1920, 1000),
+        leadingInset: 44,
+        onAddAllocation: () {},
+        onRemoveAllocation: (_) {},
+        overlayCapture: capture,
+      );
+      if (capture != null) {
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'daily-card-columns-expanded',
+        );
+      }
+      final handle = _resizeHandle(DailyRowGroup.allocations, '接收名称');
+      final before = _resizeWidth(tester, DailyRowGroup.allocations, 1);
+      await tester.drag(handle, Offset(180 - before, 0));
+      await tester.pumpAndSettle();
+      final fieldKey = ValueKey(
+        'daily-allocation-destination-${identityHashCode(data.allocations.first)}',
+      );
+      await tester.tap(find.byKey(fieldKey));
+      await tester.pumpAndSettle();
+      final picker = tester.widget<UtenDropdownField>(find.byKey(fieldKey));
+      final option = find.byKey(
+        ValueKey<(String, Key?, String?)>((
+          'uten-dropdown-option',
+          picker.key,
+          'A',
+        )),
+      );
+      expect(option, findsOneWidget);
+      expect(
+        tester.getSize(option).width,
+        greaterThan(tester.getSize(find.byKey(fieldKey)).width),
+      );
+      if (capture != null) {
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'daily-card-columns-name-menu',
+        );
+      }
+      await tester.tapAt(const Offset(1850, 940));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('收起产出去向'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('收起子件用料'));
+      await tester.pumpAndSettle();
+      if (capture != null) {
+        await saveAuditScreenshot(
+          tester,
+          capture,
+          'daily-card-columns-collapsed',
+        );
+      }
+      expect(data.allocations.map((row) => row.allocationQty.text), [
+        '1000',
+        '1000',
+        '1000',
+      ]);
+      expect(events.destinations, isEmpty);
+      expect(events.quantityChanges, 0);
+      expect(tester.takeException(), isNull);
+      debugDisableShadows = oldShadows;
+    },
+  );
+  testWidgets('collapsed cards use compact heights and a small gap', (
+    tester,
+  ) async {
+    final data = _DetailsData();
+    await _pump(tester, data, allocationsOpen: false, materialsOpen: false);
+    final allocation = find.byKey(
+      const ValueKey('daily-product-allocations-card-product'),
+    );
+    final material = find.byKey(
+      const ValueKey('daily-product-materials-card-product'),
+    );
+    expect(tester.getSize(allocation).height, lessThanOrEqualTo(44));
+    expect(tester.getSize(material).height, lessThanOrEqualTo(44));
+    expect(
+      tester.getTopLeft(material).dy - tester.getBottomLeft(allocation).dy,
+      inInclusiveRange(0, 6),
+    );
+    expect(find.byTooltip('展开产出去向'), findsOneWidget);
+    expect(find.byTooltip('展开子件用料'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  for (final scale in [1.0, 1.8]) {
+    testWidgets(
+      'compact detail rows keep input height readable at text scale $scale',
+      (tester) async {
+        final data = _DetailsData();
+        final (events, _) = await _pump(
+          tester,
+          data,
+          size: const Size(1920, 1100),
+          textScale: scale,
+        );
+        Finder input(TextEditingController controller) =>
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is TextField &&
+                  identical(widget.controller, controller),
+            );
+        for (final pair in [
+          (
+            data.allocations[0].allocationQty,
+            data.allocations[1].allocationQty,
+            '1000',
+          ),
+          (
+            data.materials[0].materialUsed,
+            data.materials[1].materialUsed,
+            '3000',
+          ),
+        ]) {
+          final first = input(pair.$1), second = input(pair.$2);
+          final rowHeight =
+              tester.getCenter(second).dy - tester.getCenter(first).dy;
+          expect(rowHeight, lessThanOrEqualTo(scale == 1 ? 44 : 64));
+          expect(tester.getSize(first).height, greaterThanOrEqualTo(28));
+          expect(tester.getSize(first).height, lessThan(rowHeight));
+          expect(pair.$1.text, pair.$3);
+        }
+        expect(events.quantityChanges, 0);
+        expect(events.materialChanges, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'natural name columns keep code and quantities adjacent while the remaining card width stays unused',
     (tester) async {
@@ -508,7 +671,7 @@ void main() {
         final table = tester.widget<Table>(
           find.descendant(of: allocation, matching: find.byType(Table)),
         );
-        expect(table.columnWidths, hasLength(3));
+        expect(table.columnWidths, hasLength(5));
         expect(removed, isEmpty);
         expect(tester.takeException(), isNull);
       },
@@ -1127,7 +1290,7 @@ void main() {
   );
 
   testWidgets(
-    'destination code and name are separate while same-name menus retain full work-order labels',
+    'destination menu shows only names while same-name choices retain work-order context in tooltips',
     (tester) async {
       final data = _DetailsData();
       await _pump(tester, data);
@@ -1140,12 +1303,20 @@ void main() {
       );
       expect(field.selectedLabel, _receiver);
       expect(
-        field.items.firstWhere((item) => item.value == 'A').label,
+        field.items.firstWhere((item) => item.value == 'A').tooltip,
         contains('HP035754'),
       );
       expect(
-        field.items.firstWhere((item) => item.value == 'B').label,
+        field.items.firstWhere((item) => item.value == 'B').tooltip,
         contains('HP035756'),
+      );
+      expect(
+        field.items.firstWhere((item) => item.value == 'A').label,
+        _receiver,
+      );
+      expect(
+        field.items.firstWhere((item) => item.value == 'B').label,
+        _receiver,
       );
       expect(find.text('HP035754'), findsOneWidget);
       final text = tester.widget<Text>(find.text('HP035754'));
@@ -1167,10 +1338,18 @@ void main() {
         ValueKey('daily-allocation-destination-${identityHashCode(last)}'),
       );
       final field = tester.widget<UtenDropdownField>(picker);
-      final target = field.items.firstWhere((item) => item.value == 'C').label;
+      final target = field.items.firstWhere((item) => item.value == 'C');
       await tester.tap(picker);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(target));
+      await tester.tap(
+        find.byKey(
+          ValueKey<(String, Key?, String?)>((
+            'uten-dropdown-option',
+            field.key,
+            target.value,
+          )),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(events.destinations, ['C']);
       final quantity = find.byWidgetPredicate(

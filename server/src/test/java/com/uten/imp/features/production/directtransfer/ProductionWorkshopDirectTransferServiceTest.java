@@ -420,6 +420,68 @@ class ProductionWorkshopDirectTransferServiceTest {
         assertThat(bound).containsEntry("segmentId", segment).containsEntry("goodsId", goods).containsKey("colorId");
     }
 
+    @Test
+    void receivingProductColorProjectionIsDistinctFromTheTransferredMaterialForEligibleAndBlockedTargets() {
+        UUID segment = UUID.randomUUID(), goods = UUID.randomUUID();
+        Object[] eligible = targetRow(UUID.randomUUID(), goods, true, null, null, 0);
+        eligible[10] = "转送料深灰";
+        eligible[16] = "P-100";
+        eligible[17] = "接收成品";
+        eligible[22] = "成品珍珠白";
+        Object[] blocked = targetRow(UUID.randomUUID(), goods, false, "DIFFERENT_WORKSHOP", "跨车间必须送入仓库", 40);
+        blocked[10] = "转送料深灰";
+        blocked[16] = "P-200";
+        blocked[22] = "成品米白";
+        Map<String, Object> bound = new HashMap<>();
+        var listing = candidateService(List.of(eligible, blocked), bound).candidates(segment, goods, null);
+        var candidate = listing.candidates().getFirst();
+        assertThat(candidate.colorName()).isEqualTo("转送料深灰");
+        assertThat(candidate.receivingGoodsCode()).isEqualTo("P-100");
+        assertThat(candidate.receivingColorName()).isEqualTo("成品珍珠白");
+        assertThat(candidate.remainingQty()).isEqualByComparingTo("10");
+        assertThat(listing.blockedTargets().getFirst().receivingColorName()).isEqualTo("成品米白");
+        assertThat(listing.blockedTargets().getFirst().reasonCode()).isEqualTo("DIFFERENT_WORKSHOP");
+        assertThat((String) bound.get("projectionSql"))
+                .contains("ON receiving.id = target.receiving_segment_id",
+                        "ON receiving_plan_item.id = receiving.source_plan_item_id",
+                        "receiving_color.id = receiving_plan_item.color_id",
+                        "receiving_color.name", "ORDER BY target.sort_order")
+                .doesNotContain("receiving_color.id = demand.color_id");
+        var json = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(listing);
+        assertThat(json.path("candidates").get(0).path("colorName").asText()).isEqualTo("转送料深灰");
+        assertThat(json.path("candidates").get(0).path("receivingColorName").asText()).isEqualTo("成品珍珠白");
+        assertThat(json.path("blockedTargets").get(0).path("receivingColorName").asText()).isEqualTo("成品米白");
+    }
+
+    @Test
+    void unknownReceivingColorStaysNullInsteadOfBorrowingTheMaterialColor() {
+        UUID segment = UUID.randomUUID(), goods = UUID.randomUUID();
+        Object[] eligible = targetRow(UUID.randomUUID(), goods, true, null, null, 0);
+        eligible[10] = "转送料有色";
+        Object[] blocked = targetRow(UUID.randomUUID(), goods, false, "PLAN_NOT_ACTIVE", "接收计划未审核", 31);
+        blocked[10] = "转送料有色";
+        var listing = candidateService(List.of(eligible, blocked)).candidates(segment, goods, null);
+        assertThat(listing.candidates().getFirst().colorName()).isEqualTo("转送料有色");
+        assertThat(listing.candidates().getFirst().receivingColorName()).isNull();
+        assertThat(listing.blockedTargets().getFirst().receivingColorName()).isNull();
+    }
+
+    @Test
+    void legacyCandidateAndBlockedConstructorsKeepTheirFieldsAndHaveNoInventedReceivingColor() {
+        var candidate = new ProductionWorkshopDirectTransferService.Candidate(UUID.randomUUID(), UUID.randomUUID(),
+                "ZX-100", "READY", false, UUID.randomUUID(), "PB-100", UUID.randomUUID(), "M-100", "转送料",
+                "转送料深灰", "个", BigDecimal.TEN, BigDecimal.ZERO, BigDecimal.TEN,
+                UUID.randomUUID(), "P-100", "接收成品");
+        var blocked = new ProductionWorkshopDirectTransferService.BlockedTarget(UUID.randomUUID(), UUID.randomUUID(),
+                "ZX-200", "PB-200", UUID.randomUUID(), "P-200", "接收成品", "PLAN_NOT_ACTIVE", "计划未审核");
+        assertThat(candidate.receivingColorName()).isNull();
+        assertThat(candidate.colorName()).isEqualTo("转送料深灰");
+        assertThat(candidate.remainingQty()).isEqualByComparingTo("10");
+        assertThat(blocked.receivingColorName()).isNull();
+        assertThat(blocked.reasonCode()).isEqualTo("PLAN_NOT_ACTIVE");
+        assertThat(blocked.reason()).isEqualTo("计划未审核");
+    }
+
     private static Object[] targetRow(UUID demand, UUID goods, boolean eligible, String code, String text, int rank) {
         Object[] row = new Object[23];
         row[0] = demand;
@@ -447,6 +509,7 @@ class ProductionWorkshopDirectTransferServiceTest {
         EntityManager em = mock(EntityManager.class);
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0);
+            if (sql.contains("fn_workshop_direct_targets(")) bound.put("projectionSql", sql);
             Query query = mock(Query.class);
             when(query.setParameter(anyString(), any())).thenAnswer(binding -> {
                 if (sql.contains("fn_workshop_direct_targets(")) bound.put(binding.getArgument(0), binding.getArgument(1));

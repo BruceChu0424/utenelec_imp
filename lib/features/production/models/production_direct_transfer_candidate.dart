@@ -21,6 +21,7 @@ class ProductionDirectTransferCandidate {
     this.receivingGoodsId,
     this.receivingGoodsCode,
     this.receivingGoodsName,
+    this.receivingColorName,
     this.requiredQty = 0,
     this.alreadyCoveredQty = 0,
     this.remainingQtyExact,
@@ -48,6 +49,9 @@ class ProductionDirectTransferCandidate {
   final String? receivingGoodsId;
   final String? receivingGoodsCode;
   final String? receivingGoodsName;
+
+  /// 接收工单关联计划行的产品颜色；与转送料本身的 [colorName] 分开。
+  final String? receivingColorName;
 
   final double requiredQty;
   final double alreadyCoveredQty;
@@ -106,6 +110,7 @@ class ProductionDirectTransferCandidate {
       receivingGoodsId: json['receivingGoodsId'] as String?,
       receivingGoodsCode: json['receivingGoodsCode'] as String?,
       receivingGoodsName: json['receivingGoodsName'] as String?,
+      receivingColorName: json['receivingColorName'] as String?,
       requiredQty: number('requiredQty'),
       alreadyCoveredQty: number('alreadyCoveredQty'),
       remainingQty: number('remainingQty'),
@@ -146,6 +151,7 @@ class ProductionDirectTransferBlockedTarget {
     this.receivingGoodsId,
     this.receivingGoodsCode,
     this.receivingGoodsName,
+    this.receivingColorName,
     this.reasonCode,
   });
 
@@ -156,6 +162,7 @@ class ProductionDirectTransferBlockedTarget {
   final String? receivingGoodsId;
   final String? receivingGoodsCode;
   final String? receivingGoodsName;
+  final String? receivingColorName;
 
   /// 服务端给的原因大白话(例如「上层工单 ZX… 在二车间，跨车间必须送入仓库」)。
   final String reason;
@@ -188,6 +195,7 @@ class ProductionDirectTransferBlockedTarget {
     receivingGoodsId: json['receivingGoodsId'] as String?,
     receivingGoodsCode: json['receivingGoodsCode'] as String?,
     receivingGoodsName: json['receivingGoodsName'] as String?,
+    receivingColorName: json['receivingColorName'] as String?,
     reasonCode: json['reasonCode'] as String?,
     reason: json['reason'] as String? ?? '',
   );

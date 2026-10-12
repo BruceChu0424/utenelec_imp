@@ -92,7 +92,19 @@ public class ProductionWorkshopDirectTransferService {
             BigDecimal remainingQty,
             UUID receivingGoodsId,
             String receivingGoodsCode,
-            String receivingGoodsName) {
+            String receivingGoodsName,
+            String receivingColorName) {
+        /** Legacy callers have no receiving product color; never substitute the transferred material color. */
+        public Candidate(UUID demandId, UUID executionSegmentId, String executionSegmentCode,
+                String executionSegmentStatus, boolean continuousSupply, UUID planId, String planNo,
+                UUID goodsId, String goodsCode, String goodsName, String colorName, String unitName,
+                BigDecimal requiredQty, BigDecimal alreadyCoveredQty, BigDecimal remainingQty,
+                UUID receivingGoodsId, String receivingGoodsCode, String receivingGoodsName) {
+            this(demandId, executionSegmentId, executionSegmentCode, executionSegmentStatus, continuousSupply,
+                    planId, planNo, goodsId, goodsCode, goodsName, colorName, unitName,
+                    requiredQty, alreadyCoveredQty, remainingQty, receivingGoodsId, receivingGoodsCode,
+                    receivingGoodsName, null);
+        }
         @com.fasterxml.jackson.annotation.JsonProperty(value="requiredQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public String requiredQtyExact() { return requiredQty==null?null:requiredQty.toPlainString(); }
         @com.fasterxml.jackson.annotation.JsonProperty(value="alreadyCoveredQtyExact",access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
@@ -111,7 +123,14 @@ public class ProductionWorkshopDirectTransferService {
             String receivingGoodsCode,
             String receivingGoodsName,
             String reasonCode,
-            String reason) {
+            String reason,
+            String receivingColorName) {
+        public BlockedTarget(UUID demandId, UUID executionSegmentId, String executionSegmentCode,
+                String planNo, UUID receivingGoodsId, String receivingGoodsCode, String receivingGoodsName,
+                String reasonCode, String reason) {
+            this(demandId, executionSegmentId, executionSegmentCode, planNo, receivingGoodsId, receivingGoodsCode,
+                    receivingGoodsName, reasonCode, reason, null);
+        }
     }
 
     /**
@@ -154,7 +173,8 @@ public class ProductionWorkshopDirectTransferService {
                                     ELSE fn_workshop_direct_reason_text('GOODS_MISMATCH',
                                          NULL, NULL, NULL, NULL, NULL, NULL) END,
                                CASE WHEN matched.same_goods THEN target.reason_rank
-                                    ELSE fn_workshop_direct_reason_rank('GOODS_MISMATCH') END
+                                     ELSE fn_workshop_direct_reason_rank('GOODS_MISMATCH') END,
+                                receiving_color.name
                         FROM fn_workshop_direct_targets(:segmentId) target
                         LEFT JOIN production_material_demands demand ON demand.id = target.demand_id
                         CROSS JOIN LATERAL (
@@ -165,6 +185,11 @@ public class ProductionWorkshopDirectTransferService {
                         LEFT JOIN goods ON goods.id = demand.goods_id
                         LEFT JOIN goods product ON product.id = target.receiving_product_goods_id
                         LEFT JOIN colors color ON color.id = demand.color_id
+                         LEFT JOIN production_execution_segments receiving
+                           ON receiving.id = target.receiving_segment_id
+                         LEFT JOIN production_plan_items receiving_plan_item
+                           ON receiving_plan_item.id = receiving.source_plan_item_id
+                         LEFT JOIN colors receiving_color ON receiving_color.id = receiving_plan_item.color_id
                         LEFT JOIN units unit ON unit.id = demand.unit_id
                         ORDER BY target.sort_order
                         """;
@@ -196,13 +221,13 @@ public class ProductionWorkshopDirectTransferService {
                         (UUID) row[5], (String) row[6], (UUID) row[7],
                         (String) row[8], (String) row[9], (String) row[10], (String) row[11],
                         decimal(row[12]), decimal(row[13]), decimal(row[14]),
-                        (UUID) row[15], (String) row[16], (String) row[17]));
+                        (UUID) row[15], (String) row[16], (String) row[17], (String) row[22]));
                 continue;
             }
             // 报工行货品对不上时(本查询标的 GOODS_MISMATCH)列出的工单都不是它的上层，不进置灰列表。
             if (row[0] != null && row[19] != null && !"GOODS_MISMATCH".equals(row[19])) {
                 blocked.add(new BlockedTarget((UUID) row[0], (UUID) row[1], (String) row[2], (String) row[6],
-                        (UUID) row[15], (String) row[16], (String) row[17], (String) row[19], (String) row[20]));
+                        (UUID) row[15], (String) row[16], (String) row[17], (String) row[19], (String) row[20], (String) row[22]));
             }
             // 一个都不能送时只报最接近可送的那条原因(接近程度由库里统一给出)。
             int rank = row[21] == null ? Integer.MAX_VALUE : ((Number) row[21]).intValue();

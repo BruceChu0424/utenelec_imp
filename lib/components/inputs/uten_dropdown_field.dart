@@ -12,6 +12,8 @@
 //     onChanged: (v) => setState(() => _supplierId = v),
 //   )
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -36,12 +38,17 @@ class UtenDropdownItem {
     this.indent = 0,
     this.visible = true,
     this.error = false,
+    this.tooltip,
   });
   final String? value;
   final String label;
   final bool enabled;
   final double indent;
   final bool error;
+
+  /// Optional full context for a shorter visible label, such as an exact work
+  /// order and receiving limit. Omitting it keeps the original label tooltip.
+  final String? tooltip;
 
   /// A historical value can retain its label without appearing in new choices.
   final bool visible;
@@ -62,6 +69,7 @@ class UtenDropdownField extends StatefulWidget {
     this.hintText,
     this.info,
     this.searchable,
+    this.menuMatchContentWidth = false,
     this.errorMessage,
     this.autofilled = false,
     this.warningMessage,
@@ -111,6 +119,11 @@ class UtenDropdownField extends StatefulWidget {
   /// 弹层是否带搜索框（输入实时过滤选项）。null=自动（选项 ≥4 个时启用）。
   final bool? searchable;
 
+  /// Widen the open menu for all visible labels using their actual font and
+  /// text scale. The menu stays inside the viewport; labels wrap in a narrow
+  /// viewport. The collapsed field and the default fixed-width menu are unchanged.
+  final bool menuMatchContentWidth;
+
   /// Validation error shown by a red border and an in-field error icon.
   final String? errorMessage;
 
@@ -136,6 +149,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   final OverlayPortalController _overlayController = OverlayPortalController();
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
+  Object? _menuWidthSignature;
+  List<UtenDropdownItem> _measuredMenuItems = const [];
+  double _measuredMenuWidth = 0;
 
   // ADR-150: AI page context registration; the value the assistant chose stays
   // framed yellow ("AI filled, please review") until the user picks again.
@@ -460,7 +476,31 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     final up = anchor.top;
     final openAbove = up > down;
     final maxHeight = ((openAbove ? up : down) - 8).clamp(120.0, 320.0);
-    final fieldWidth = anchor.width.clamp(120.0, 480.0);
+    final defaultWidth = anchor.width.clamp(120.0, 480.0);
+    final viewportWidth = math.max(
+      0.0,
+      layout.overlaySize.width - UtenSpacing.s16,
+    );
+    final fieldWidth = widget.menuMatchContentWidth
+        ? math.min(
+            viewportWidth,
+            math.max(
+              math.max(anchor.width, 120.0),
+              _menuContentWidth(ctx, searchable),
+            ),
+          )
+        : defaultWidth;
+    final left = widget.menuMatchContentWidth
+        ? anchor.left
+              .clamp(
+                UtenSpacing.s8,
+                math.max(
+                  UtenSpacing.s8,
+                  layout.overlaySize.width - UtenSpacing.s8 - fieldWidth,
+                ),
+              )
+              .toDouble()
+        : anchor.left;
     return Stack(
       children: [
         Positioned.fill(
@@ -470,7 +510,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
           ),
         ),
         Positioned(
-          left: anchor.left,
+          left: left,
           top: openAbove ? null : anchor.bottom + 2,
           bottom: openAbove ? layout.overlaySize.height - anchor.top + 2 : null,
           child: TapRegion(
@@ -620,6 +660,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
                                     it.value,
                                   )),
                                   label: it.label,
+                                  tooltip: it.tooltip,
                                   selected: it.value == widget.value,
                                   onTap: it.enabled
                                       ? () => _select(it.value)
@@ -665,6 +706,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     required ThemeData theme,
     double indent = 0,
     bool error = false,
+    String? tooltip,
   }) {
     final disabled = onTap == null;
     final item = InkWell(
@@ -693,8 +735,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
             Expanded(
               child: Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: widget.menuMatchContentWidth ? null : 1,
+                overflow: widget.menuMatchContentWidth
+                    ? TextOverflow.clip
+                    : TextOverflow.ellipsis,
                 style: error
                     ? theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.error,
@@ -711,6 +755,93 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
         ),
       ),
     );
-    return Tooltip(key: key, message: label, child: item);
+    return Tooltip(key: key, message: tooltip ?? label, child: item);
+  }
+
+  double _menuContentWidth(BuildContext context, bool searchable) {
+    final theme = Theme.of(context);
+    final inherited = DefaultTextStyle.of(context).style;
+    final style = inherited.merge(theme.textTheme.bodyMedium);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    var scrollbar = 8.0;
+    final thickness = ScrollbarTheme.of(context).thickness;
+    for (final states in [
+      <WidgetState>{},
+      {WidgetState.hovered},
+      {WidgetState.dragged},
+    ]) {
+      scrollbar = math.max(scrollbar, thickness?.resolve(states) ?? 0);
+    }
+    final addLabel = widget.onAddNew == null
+        ? null
+        : widget.addNewLabel ?? '添加';
+    final signature = (
+      _searchCtl,
+      style,
+      scaler,
+      direction,
+      scrollbar,
+      searchable,
+      widget.allowClear,
+      addLabel,
+    );
+    final visible = widget.items
+        .where((item) => item.visible)
+        .toList(growable: false);
+    if (_menuWidthSignature == signature &&
+        visible.length == _measuredMenuItems.length &&
+        visible.indexed.every(
+          (entry) => identical(entry.$2, _measuredMenuItems[entry.$1]),
+        )) {
+      return _measuredMenuWidth;
+    }
+    double textWidth(String text, TextStyle textStyle) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: textStyle),
+        textDirection: direction,
+        textScaler: scaler,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    // Every row reserves the check column, padding and scrollbar even when not
+    // selected. Disabled section rows use the same semibold font as their text.
+    final itemChrome =
+        UtenSpacing.s12 * 2 + 18 + UtenSpacing.s4 + scrollbar + UtenSpacing.s8;
+    var width = widget.allowClear ? textWidth('不选', style) + itemChrome : 0.0;
+    for (final item in visible) {
+      final itemStyle = !item.enabled && !item.error
+          ? style.copyWith(fontWeight: FontWeight.w600)
+          : style;
+      width = math.max(
+        width,
+        textWidth(item.label, itemStyle) + itemChrome + item.indent,
+      );
+    }
+    if (searchable) {
+      // Include both search and clear icons, outer padding and input padding so
+      // typing a narrow search never resizes the original full-choice menu.
+      width = math.max(
+        width,
+        textWidth('输入关键字搜索', style) + 32 * 2 + UtenSpacing.s8 * 4,
+      );
+    }
+    if (addLabel != null) {
+      width = math.max(
+        width,
+        textWidth(addLabel, style.copyWith(fontWeight: FontWeight.w600)) +
+            18 +
+            UtenSpacing.s4 +
+            UtenSpacing.s12 * 2 +
+            UtenSpacing.s8 * 2,
+      );
+    }
+    _menuWidthSignature = signature;
+    _measuredMenuItems = visible;
+    _measuredMenuWidth = width.ceilToDouble() + 2;
+    return _measuredMenuWidth;
   }
 }

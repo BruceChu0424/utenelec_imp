@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** List/count/facet/detail scope executes against actual migrated tables and types. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -127,9 +128,15 @@ class WarehouseHistoryScopePostgresTest {
                 .addValue("date_from", null).addValue("date_to", null).addValue("bill_no", null).addValue("source_doc_no", null)
                 .addValue("limit", 20).addValue("offset", 0L);
     }
+    @Test void malformedFixtureBindingsFailBeforeAnyDatabaseWrite() {
+        assertThatThrownBy(() -> execute("SELECT 1", "missingValue"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("SQL fixture parameters must be key/value pairs");
+    }
+
     private void execute(String sql, Object... parameters) {
+        if (parameters.length % 2 != 0) throw new IllegalArgumentException("SQL fixture parameters must be key/value pairs");
         var values = new MapSqlParameterSource();
-        for (int index = 0; index < parameters.length; index += 2) values.addValue((String) parameters[index], parameters[index + 1]);
+        for (int index = 0; index + 1 < parameters.length; index += 2) values.addValue((String) parameters[index], parameters[index + 1]);
         jdbc.update(sql, values);
     }
 }

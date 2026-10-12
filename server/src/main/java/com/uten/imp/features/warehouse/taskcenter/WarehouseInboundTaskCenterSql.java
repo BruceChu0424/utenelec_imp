@@ -61,14 +61,14 @@ final class WarehouseInboundTaskCenterSql {
     static String rows(String base,String sort,String order,String identityFilter) {
         String column=sort==null || sort.isBlank()?"business_date":sort.equals("billNo")?"bill_no":"business_date";
         String direction="asc".equalsIgnoreCase(order)?"ASC":"DESC";
-        return base+"SELECT * FROM inbound_rows "+predicate(true)+identityFilter
+        return base+" SELECT * FROM inbound_rows "+predicate(true)+identityFilter
                 +" ORDER BY "+column+" "+direction+" NULLS LAST, sort_time DESC NULLS LAST, source_type, record_type, id"
                 +" LIMIT :limit OFFSET :offset";
     }
 
-    static String count(String base) { return base + "SELECT COUNT(*) FROM inbound_rows " + predicate(true); }
+    static String count(String base) { return base + " SELECT COUNT(*) FROM inbound_rows " + predicate(true); }
     static String facets(String base) {
-        return base + "SELECT workflow_status, COUNT(*) FROM inbound_rows " + predicate(false)
+        return base + " SELECT workflow_status, COUNT(*) FROM inbound_rows " + predicate(false)
                 + " GROUP BY workflow_status ORDER BY workflow_status";
     }
 

@@ -68,6 +68,10 @@ public class WarehouseInboundTaskCenterQueryService {
         if (!rights.anyView() || !rights.sourceAllowed(source)) {
             throw new ApiException(ErrorCode.FORBIDDEN,"没有该入库来源的查看权限");
         }
+        return warehouseScopes.withQueryScopeCache(() -> listScoped(filter, identity, source, status, actor, rights));
+    }
+
+    private Page listScoped(Filter filter, Identity identity, String source, String status, AuthUser actor, Rights rights) {
         var scope = warehouseScopes.current(filter.scopeWarehouseId());
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
@@ -121,6 +125,10 @@ public class WarehouseInboundTaskCenterQueryService {
         if(parts.length!=3 || !SOURCES.contains(parts[0]) || parts[0].equals("ALL")) throw invalid("入库记录身份不正确");
         UUID id;
         try { id=UUID.fromString(parts[2]); } catch(IllegalArgumentException failure) { throw invalid("入库记录身份不正确"); }
+        return warehouseScopes.withQueryScopeCache(() -> detailScoped(parts, id, warehouseId, linePage, lineSize));
+    }
+
+    private Map<String,Object> detailScoped(String[] parts, UUID id, UUID warehouseId, int linePage, int lineSize) {
         Page page=list(new Filter(parts[0],"","",null,null,null,warehouseId,1,1),new Identity(id,parts[1]));
         if(page.items().isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"入库记录不存在或已不在当前范围");
         Row row=page.items().getFirst();

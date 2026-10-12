@@ -57,7 +57,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         if (currentUser.get().isEmpty() || currentUser.get().orElseThrow().isVisitor()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权查看仓库出库任务");
         }
-        return warehouseScopes.withScopeCache(() -> listScoped(filter));
+        return warehouseScopes.withQueryScopeCache(() -> listScoped(filter));
     }
 
     private Page listScoped(Filter filter) {
@@ -129,7 +129,7 @@ public class WarehouseOutboundTaskCenterQueryService {
             if (!id.toString().equalsIgnoreCase(parts[2])) throw notFound();
         } catch (IllegalArgumentException ex) { throw notFound(); }
         UUID documentId = id;
-        return warehouseScopes.withScopeCache(() -> {
+        return warehouseScopes.withQueryScopeCache(() -> {
             var access = access();
             if (!allowedSources(access).contains(parts[0])) throw notFound();
             var scope = warehouseScopes.current(requestedWarehouse);

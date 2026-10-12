@@ -74,7 +74,7 @@ class MaterialAnalysisPlanWithdrawalEndToEndTest {
             assertEquals(1,status(other.planId()));amount("1000",product(restored,other.analysisLineId()).approvedQty());
         }
         UUID sharedSegment=segment(shared.planId());
-        h.receive(c,c.child(),"5000");issueMaterials(c,sharedSegment,true);
+        h.receive(c,c.child(),"5000");issueMaterials(sharedSegment,true);
         var destinations=beans.getBean(ProductionWorkshopDirectTransferService.class).candidates(sharedSegment,c.common(),null);
         assertEquals(4,destinations.candidates().size());
         assertTrue(destinations.candidates().stream().noneMatch(target->target.planId().equals(plan)));
@@ -174,7 +174,7 @@ class MaterialAnalysisPlanWithdrawalEndToEndTest {
     @ParameterizedTest @ValueSource(booleans={false,true})
     void actualIssuedInventoryAndStartedWorkRejectAtomically(boolean started) {
         var c=h.create(true,false,"1",false,1,"1");var root=issueRoots(c,true).getFirst();
-        h.receive(c,c.common(),"1");issueMaterials(c,segment(root.planId()),started);
+        h.receive(c,c.common(),"1");issueMaterials(segment(root.planId()),started);
         var before=h.analyses.detail(c.analysis());UUID pack=packageId(root.planId());
         String segmentState=h.db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment(root.planId()));
         assertThrows(ApiException.class,()->withdrawals.withdraw(c.analysis(),root.planId(),request(before,"executed-withdraw-")));
@@ -188,7 +188,7 @@ class MaterialAnalysisPlanWithdrawalEndToEndTest {
     @Test void approvedDailyReportCannotWithdrawItsPlanOrChangePhysicalAndCostFacts() {
         var c=h.create(true,false,"1",false,1,"1");var root=issueRoots(c,true).getFirst();
         UUID execution=segment(root.planId()),pack=packageId(root.planId());
-        h.receive(c,c.common(),"1");issueMaterials(c,execution,true);
+        h.receive(c,c.common(),"1");issueMaterials(execution,true);
         var segment=h.db.queryForMap("SELECT source_plan_item_id,product_goods_id FROM production_execution_segments WHERE id=?",execution);
         UUID planItem=(UUID)segment.get("source_plan_item_id"),outputGoods=(UUID)segment.get("product_goods_id");
         var allocation=h.db.queryForMap("SELECT id,sales_order_item_id FROM execution_segment_sales_allocations WHERE execution_segment_id=?",execution);
@@ -243,7 +243,7 @@ class MaterialAnalysisPlanWithdrawalEndToEndTest {
                         "SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,plan.planId()))).toList();
     }
 
-    private void issueMaterials(AggregateMaterialOrderEndToEndTest.Case c,UUID segment,boolean start) {
+    private void issueMaterials(UUID segment,boolean start) {
         var execution=beans.getBean(ProductionExecutionSegmentService.class);
         UUID plan=h.db.queryForObject("SELECT plan_id FROM production_execution_segments WHERE id=?",UUID.class,segment);
         if("WAITING".equals(h.db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment))) {

@@ -27,6 +27,34 @@ import static org.mockito.Mockito.doReturn;
 
 class WarehouseInboundTaskCenterQueryServiceTest {
     @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void authorizedListUsesAReadLeaseWithoutEnteringTheCommandCallback() {
+        var jdbc=mock(NamedParameterJdbcTemplate.class);
+        var current=mock(SecurityContextCurrentUser.class);
+        when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",
+                Set.of("warehouse_purchase_receipt_history:view"),false,true,false)));
+        var scopes=mock(WarehouseTaskScopePort.class);
+        when(scopes.current(null)).thenReturn(WarehouseTaskScope.ALL);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).withQueryScopeCache(org.mockito.ArgumentMatchers.any());
+        var stock=mock(StockDocAccessPolicy.class);
+        when(stock.scope()).thenReturn(new OwnerScope(true,Set.of()));
+        when(stock.nativeReadScope(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(OwnerScope.class)))
+                .thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1",null,Set.of()));
+        when(jdbc.queryForObject(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.MapSqlParameterSource.class),
+                org.mockito.ArgumentMatchers.eq(Long.class))).thenReturn(0L);
+        when(jdbc.query(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.namedparam.MapSqlParameterSource.class),
+                org.mockito.ArgumentMatchers.any(org.springframework.jdbc.core.RowMapper.class))).thenReturn(java.util.List.of());
+        var service=new WarehouseInboundTaskCenterQueryService(jdbc,new ObjectMapper(),current,scopes,stock,
+                mock(ProductionStockTaskAccessPolicy.class));
+        assertThat(service.list(filter("PURCHASE","")).total()).isZero();
+        verify(scopes).withQueryScopeCache(org.mockito.ArgumentMatchers.any());
+        verify(scopes,org.mockito.Mockito.never()).withScopeCache(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void unknownSourceStatusSortAndUnauthorizedDomainNeverReachTheDatabase() {
         var jdbc=mock(NamedParameterJdbcTemplate.class);
         var current=mock(SecurityContextCurrentUser.class);

@@ -19,9 +19,9 @@ final class WarehouseOutboundTaskCenterSql {
     record Plan(String cte, Map<String, Object> parameters, String orderBy) {
         String countSql() { return cte + " SELECT COUNT(*) FROM filtered"; }
         String rowsSql() {
-            return cte + projection() + " FROM filtered " + orderBy + " LIMIT :limit OFFSET :offset";
+            return cte + " " + projection() + " FROM filtered " + orderBy + " LIMIT :limit OFFSET :offset";
         }
-        String identitySql() { return cte + projection() + " FROM filtered WHERE source_type=:rowSource AND record_type=:rowRecord AND id=:rowId"; }
+        String identitySql() { return cte + " " + projection() + " FROM filtered WHERE source_type=:rowSource AND record_type=:rowRecord AND id=:rowId"; }
         private String projection() {
             return """
                     SELECT source_type,record_type,id,bill_no,source_doc_no,business_date,
@@ -30,14 +30,14 @@ final class WarehouseOutboundTaskCenterSql {
                     """;
         }
         String facetsSql() {
-            return cte + """
+            return cte + " " + """
                     SELECT status,COUNT(*) FROM physical_rows
                     WHERE context_match AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
                     GROUP BY status ORDER BY status
                     """;
         }
         String billNoFacetsSql() {
-            return cte + """
+            return cte + " " + """
                     SELECT bill_no,COUNT(*) FROM physical_rows
                     WHERE context_match AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
                       AND NULLIF(bill_no,'') IS NOT NULL
@@ -199,8 +199,11 @@ final class WarehouseOutboundTaskCenterSql {
                 CASE WHEN d.status=-1 THEN 'DRAW_REVERSED'
                      WHEN d.is_closed OR d.issue_status=2 THEN 'DRAW_SHIPPED'
                      WHEN d.issue_status=1 THEN 'DRAW_PARTIAL' ELSE 'DRAW_PENDING' END
-                """ : "CASE WHEN d.status=-1 THEN '" + source + "_REVERSED' WHEN d.is_closed THEN '"
-                + source + "_CLOSED' WHEN d.status=1 THEN '" + source + "_APPROVED' ELSE '" + source + "_DRAFT' END";
+                """ : """
+                CASE WHEN d.status=-1 THEN '%s_REVERSED'
+                     WHEN d.is_closed THEN '%s_CLOSED'
+                     WHEN d.status=1 THEN '%s_APPROVED' ELSE '%s_DRAFT' END
+                """.formatted(source,source,source,source);
         String requested = draw ? """
                 AND (fn_production_draw_requested(d.id) OR (d.status=-1 AND EXISTS (
                   SELECT 1 FROM production_planning_package_document_items provenance

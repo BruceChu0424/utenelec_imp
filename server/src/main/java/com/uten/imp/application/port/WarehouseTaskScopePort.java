@@ -73,6 +73,17 @@ public interface WarehouseTaskScopePort {
      */
     <T> T withScopeCache(Supplier<T> work);
 
+    /** A read projection callback; warehouse commands retain their existing Supplier boundary. */
+    @FunctionalInterface
+    interface ReadQuery<T> {
+        T read();
+    }
+
+    /** Reuses the same scope window for a read projection without adapting it to a command callback. */
+    default <T> T withQueryScopeCache(ReadQuery<T> query) {
+        return query.read();
+    }
+
     /**
      * 当前是不是在「本次汇总按某仓计」的上下文里({@link #withRequestedWarehouse} 执行期间)。
      * 本人默认范围里自己的草稿不论仓都算(库存单据), 挑了仓就只看那个仓: 计数来源据此决定要不要带上本人草稿。

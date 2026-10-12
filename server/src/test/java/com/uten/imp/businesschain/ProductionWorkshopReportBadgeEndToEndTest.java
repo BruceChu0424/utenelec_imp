@@ -139,7 +139,15 @@ class ProductionWorkshopReportBadgeEndToEndTest {
   assertEquals(full,ownRows(lists.get("REPORT_INSPECTION"),c));assertEquals(partial,ownRows(lists.get("IN_PROGRESS"),c));
   System.out.println("ISOLATED-WORKSHOP-PHASE "+name+" count="+count+" ownFull="+full+" ownPartial="+partial);
  }
- private long ownRows(JsonNode list,Case c){long found=0;for(JsonNode row:list.path("items"))if(c.segmentIds().stream().anyMatch(id->id.toString().equals(row.path("segmentId").asText())))found++;return found;}
+ private long ownRows(JsonNode list,Case c){
+  long found=0;
+  for(JsonNode row:list.path("items")){
+   if(c.segmentIds().stream().anyMatch(id->id.toString().equals(row.path("segmentId").asText()))){
+    found++;
+   }
+  }
+  return found;
+ }
  private JsonNode getJson(String path,Authentication actor)throws Exception{var response=http.perform(get(path).with(authentication(actor))).andReturn().getResponse();assertEquals(200,response.getStatus(),path+" "+response.getContentAsString());return json.readTree(response.getContentAsByteArray());}
  private long version(UUID segment){return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);}
  private static void quantity(BigDecimal expected,BigDecimal actual){assertEquals(0,expected.compareTo(actual));}

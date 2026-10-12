@@ -20,6 +20,16 @@ class WarehouseTaskScopeTest {
     private final UUID second = UUID.fromString("00000000-0000-0000-0000-00000000a002");
 
     @Test
+    void fallbackReadCallbackDoesNotEnterTheCommandSupplierBoundary() {
+        var port = org.mockito.Mockito.mock(WarehouseTaskScopePort.class, org.mockito.Mockito.CALLS_REAL_METHODS);
+        assertThat(port.withQueryScopeCache(() -> "read result")).isEqualTo("read result");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> port.withQueryScopeCache(() -> {
+            throw new IllegalStateException("read failed");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("read failed");
+        org.mockito.Mockito.verify(port, org.mockito.Mockito.never()).withScopeCache(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void allScopeIsInactive() {
         assertThat(WarehouseTaskScope.ALL.active()).isFalse();
         assertThat(WarehouseTaskScope.ALL.warehouseIds()).isEmpty();

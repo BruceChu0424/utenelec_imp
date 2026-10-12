@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Supplier;
 
 import static com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.*;
 import static org.assertj.core.api.Assertions.*;
@@ -52,6 +51,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         assertThat(result.items()).extracting(Row::rowKey).containsExactly(
                 "SALES:SALES_SHIPMENT:" + sharedId, "OTHER:STOCK_DOC:" + sharedId);
         assertThat(result.items()).allMatch(item -> !item.canHandle());
+        verify(f.scopes).withQueryScopeCache(any());
+        verify(f.scopes, never()).withScopeCache(any());
         assertThat(result.facets().get("status")).anyMatch(bucket -> bucket.value().equals("SALES_PENDING") && bucket.count() == 2);
         verify(rows).setParameter("offset", 2L);
         verify(rows).setParameter("limit", 2);
@@ -199,6 +200,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         verify(lines).setParameter("lineOffset", 1L);
         verify(f.audit).recordHistory("view_subcontract_material_issue_detail", "subcontract_material_issues", id,
                 "SAME-NUMBER", null, "仓库出库实物记录");
+        verify(f.scopes).withQueryScopeCache(any());
+        verify(f.scopes, never()).withScopeCache(any());
         assertThat(new ObjectMapper().findAndRegisterModules().writeValueAsString(detail))
                 .doesNotContain("price", "amount", "cost", "currency");
     }
@@ -246,7 +249,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
             when(actor.get()).thenReturn(Optional.of(user));
             when(actor.employeeId()).thenReturn(Optional.of(ACTOR));
             when(scopes.current(any())).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
-            when(scopes.withScopeCache(any())).thenAnswer(invocation -> ((Supplier<?>) invocation.getArgument(0)).get());
+            doCallRealMethod().when(scopes).withQueryScopeCache(any());
             ProductionStockTaskAccessPolicy tasks = mock(ProductionStockTaskAccessPolicy.class);
             when(tasks.canAccessWarehouseTasks()).thenReturn(production);
             service = new WarehouseOutboundTaskCenterQueryService(em, access, actor, scopes, tasks, audit);

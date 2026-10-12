@@ -89,12 +89,30 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
 
     @Override
     public <T> T withScopeCache(Supplier<T> work) {
-        if (WINDOW.get() != null) return work.get();
-        WINDOW.set(new HashMap<>());
-        try {
+        try (ScopeCacheLease ignored = new ScopeCacheLease()) {
             return work.get();
-        } finally {
-            WINDOW.remove();
+        }
+    }
+
+    @Override
+    public <T> T withQueryScopeCache(ReadQuery<T> query) {
+        try (ScopeCacheLease ignored = new ScopeCacheLease()) {
+            return query.read();
+        }
+    }
+
+    /** Nested readers and commands share a window; only its owner releases it, including on failure. */
+    private static final class ScopeCacheLease implements AutoCloseable {
+        private final boolean owner;
+
+        private ScopeCacheLease() {
+            owner = WINDOW.get() == null;
+            if (owner) WINDOW.set(new HashMap<>());
+        }
+
+        @Override
+        public void close() {
+            if (owner) WINDOW.remove();
         }
     }
 

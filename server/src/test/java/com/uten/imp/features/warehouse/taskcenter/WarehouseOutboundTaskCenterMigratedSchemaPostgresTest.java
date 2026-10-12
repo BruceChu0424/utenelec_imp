@@ -24,6 +24,7 @@ import java.util.UUID;
 
 import static com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Real migrated column/function contracts complement the isolated paging/function fixture. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -149,9 +150,15 @@ class WarehouseOutboundTaskCenterMigratedSchemaPostgresTest {
         return new Row(source + ":" + record + ":" + id, id, source, record, null, null, null,
                 "", "", "", 0, status, status, "neutral", "HISTORY_DETAIL", id, false, Map.of());
     }
+    @Test void malformedFixtureBindingsFailBeforeAnyDatabaseWrite() {
+        assertThatThrownBy(() -> execute("SELECT 1", "missingValue"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("SQL fixture parameters must be key/value pairs");
+    }
+
     private void execute(String sql, Object... parameters) {
+        if (parameters.length % 2 != 0) throw new IllegalArgumentException("SQL fixture parameters must be key/value pairs");
         MapSqlParameterSource values = new MapSqlParameterSource();
-        for (int index = 0; index < parameters.length; index += 2) values.addValue((String) parameters[index], parameters[index + 1]);
+        for (int index = 0; index + 1 < parameters.length; index += 2) values.addValue((String) parameters[index], parameters[index + 1]);
         jdbc.update(sql, values);
     }
 }

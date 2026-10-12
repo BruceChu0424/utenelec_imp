@@ -32,6 +32,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -326,6 +327,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",permissions,false,true,false)));
         var scopes=mock(WarehouseTaskScopePort.class);
         when(scopes.current(any())).thenReturn(scope);
+        doCallRealMethod().when(scopes).withQueryScopeCache(any());
         var stock=mock(StockDocAccessPolicy.class);
         OwnerScope owner=new OwnerScope(true,Set.of());
         when(stock.scope()).thenReturn(owner);
@@ -346,9 +348,15 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 +" VALUES(:id,:type,:bill,CAST(:date AS date),0,FALSE,FALSE,:report,now())",
                 "id",id,"type",type,"bill",billNo,"date",date,"report",report);
     }
+    @Test void malformedFixtureBindingsFailBeforeAnyDatabaseWrite() {
+        assertThatThrownBy(() -> execute("SELECT 1", "missingValue"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("SQL fixture parameters must be key/value pairs");
+    }
+
     private void execute(String sql,Object... parameters) {
+        if(parameters.length%2!=0) throw new IllegalArgumentException("SQL fixture parameters must be key/value pairs");
         MapSqlParameterSource values=new MapSqlParameterSource();
-        for(int index=0;index<parameters.length;index+=2) values.addValue((String)parameters[index],parameters[index+1]);
+        for(int index=0;index+1<parameters.length;index+=2) values.addValue((String)parameters[index],parameters[index+1]);
         jdbc.update(sql,values);
     }
 }

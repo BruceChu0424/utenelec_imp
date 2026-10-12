@@ -40,7 +40,7 @@ logging:
 uten:
   features:
     # 本地开发库启用工作台「清空业务数据」测试工具（生产默认关闭）。
-    business-data-reset-enabled: true
+    business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:true}
   jwt:
     issuer: ${UTEN_JWT_ISSUER:uten-imp-dev}
   security:
